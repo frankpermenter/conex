@@ -21,6 +21,9 @@ class QuadraticConstraint {
     assert(constraint_matrix.rows() == n_ + 1);
     assert(Q_.rows() == n_ || /*We assume Q = I*/ Q_.rows() == 0);
     assert(constraint_affine.cols() == 1);
+    //if (Q_.rows() == n_) {
+    //  Q_ += 100*Eigen::MatrixXd::Identity(n_, n_);
+    //}
     Initialize();
   }
 
@@ -54,7 +57,7 @@ class QuadraticConstraint {
 
   const int n_ = 0;
   WorkspaceSOC workspace_;
-  const DenseMatrix Q_;
+  DenseMatrix Q_;
 
   const Eigen::VectorXd A0_;
   const Eigen::MatrixXd A1_;

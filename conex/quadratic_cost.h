@@ -30,5 +30,9 @@ inline void AddQuadraticCost(conex::Program* conex_prog,
   auto z_indices = z;
   z_indices.push_back(epigraph);
   conex_prog->AddConstraint(conex::QuadraticConstraint(Q, Ai, b), z_indices);
+  DUMP("Quadratic cost");
+  DUMP(Qi);
+  DUMP(z);
+  DUMP(epigraph);
 }
 }  // namespace conex

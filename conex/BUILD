@@ -336,3 +336,12 @@ cc_binary(
         "conex_lib",
     ],
 )
+
+cc_binary(
+    name = "contact_problem",
+    srcs = ["test/contact_problem.cc"],
+    copts = ["-g"],
+    deps = [
+        "conex_lib",
+    ],
+)

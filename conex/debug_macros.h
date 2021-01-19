@@ -11,6 +11,11 @@ namespace conex {
             << #x ":" << std::endl                           \
             << x << std::endl;
 
+#define DUMPINIT(x)                                              \
+  std::cerr << __FILE__ << " line " << __LINE__ << std::endl \
+            << #x                             \
+            << x.format(Eigen::IOFormat(Eigen::StreamPrecision, 1, ", ", ", ", "", "", " << ", ";") ) << std::endl;
+
 #ifndef CONEX_VERBOSE
 #define CONEX_VERBOSE 1
 #endif
