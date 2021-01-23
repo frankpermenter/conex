@@ -157,48 +157,54 @@ void TakeStep(QuadraticConstraint* o, const StepOptions& opt, const Ref& y,
               StepInfo* info) {
   Eigen::internal::set_is_malloc_allowed(false);
   // d =  e - Q(w^{1/2})(C-A^y)
-  double wsqrt_q0 = o->workspace_.W0;
+  double& wsqrt_q0 = o->workspace_.W0;
   auto& wsqrt_q1 = o->workspace_.temp3_1;
-  wsqrt_q1 = o->workspace_.W1;
   auto& d_q1 = o->workspace_.temp2_1;
-  double d_q0;
+  double& d_q0 = o->workspace_.d0;
 
-  {  // Use temp_1
-    auto& minus_s_1 = o->workspace_.temp1_1;
-    double minus_s_0;
-    o->ComputeNegativeSlack(opt.inv_sqrt_mu, y, &minus_s_0, &minus_s_1);
+  if (opt.prepare_step) {
+    {  // Use temp_1
+      auto& minus_s_1 = o->workspace_.temp1_1;
+      double minus_s_0;
+      o->ComputeNegativeSlack(opt.inv_sqrt_mu, y, &minus_s_0, &minus_s_1);
 
-    Sqrt(Norm(o->Q_, wsqrt_q1, &o->workspace_.temp2_1), &wsqrt_q0, &wsqrt_q1);
+      wsqrt_q1 = o->workspace_.W1;
+      Sqrt(Norm(o->Q_, wsqrt_q1, &o->workspace_.temp2_1), &wsqrt_q0, &wsqrt_q1);
+
+      QuadraticRepresentation(
+          SquaredNorm(o->Q_, wsqrt_q1, &o->workspace_.temp2_1),
+          InnerProduct(o->Q_, wsqrt_q1, minus_s_1, &o->workspace_.temp2_1),
+          wsqrt_q0, wsqrt_q1, minus_s_0, minus_s_1, &d_q0, &d_q1);
+      d_q0 += 1;
+    }  // temp_1 is free
+
+    // Compute rescaling.
+    auto ev = Eigenvalues(Norm(o->Q_, d_q1, &o->workspace_.temp1_1), d_q0);
+    info->norminfd = std::fabs(ev(0));
+    if (info->norminfd < std::fabs(ev(1))) {
+      info->norminfd = std::fabs(ev(1));
+    }
+    info->normsqrd = ev.squaredNorm();
+  }
+
+  if (opt.take_step) {
+    double scale = opt.norminfd * opt.norminfd;
+    // double scale = info->norminfd * opt.norminfd;
+    if (scale > 2.0) {
+      d_q0 = 2 * d_q0 / scale;
+      d_q1 = 2 * d_q1 / scale;
+    }
+
+    Exp(Norm(o->Q_, d_q1, &o->workspace_.temp1_1), &d_q0, &d_q1);
+    const auto& expd_q1 = d_q1;
+    const auto& expd_q0 = d_q0;
 
     QuadraticRepresentation(
-        SquaredNorm(o->Q_, wsqrt_q1, &o->workspace_.temp2_1),
-        InnerProduct(o->Q_, wsqrt_q1, minus_s_1, &o->workspace_.temp2_1),
-        wsqrt_q0, wsqrt_q1, minus_s_0, minus_s_1, &d_q0, &d_q1);
-    d_q0 += 1;
-  }  // temp_1 is free
-
-  // Compute rescaling.
-  auto ev = Eigenvalues(Norm(o->Q_, d_q1, &o->workspace_.temp1_1), d_q0);
-  info->norminfd = std::fabs(ev(0));
-  if (info->norminfd < std::fabs(ev(1))) {
-    info->norminfd = std::fabs(ev(1));
+        SquaredNorm(o->Q_, wsqrt_q1, &o->workspace_.temp1_1),
+        InnerProduct(o->Q_, wsqrt_q1, expd_q1, &o->workspace_.temp1_1),
+        wsqrt_q0, wsqrt_q1, expd_q0, expd_q1, &o->workspace_.W0,
+        &o->workspace_.W1);
   }
-  info->normsqrd = ev.squaredNorm();
-
-  double scale = info->norminfd * info->norminfd;
-  if (scale > 2.0) {
-    d_q0 = 2 * d_q0 / scale;
-    d_q1 = 2 * d_q1 / scale;
-  }
-
-  Exp(Norm(o->Q_, d_q1, &o->workspace_.temp1_1), &d_q0, &d_q1);
-  const auto& expd_q1 = d_q1;
-  const auto& expd_q0 = d_q0;
-
-  QuadraticRepresentation(
-      SquaredNorm(o->Q_, wsqrt_q1, &o->workspace_.temp1_1),
-      InnerProduct(o->Q_, wsqrt_q1, expd_q1, &o->workspace_.temp1_1), wsqrt_q0,
-      wsqrt_q1, expd_q0, expd_q1, &o->workspace_.W0, &o->workspace_.W1);
 
   Eigen::internal::set_is_malloc_allowed(true);
 }

@@ -21,7 +21,7 @@ class QuadraticConstraint {
     assert(constraint_matrix.rows() == n_ + 1);
     assert(Q_.rows() == n_ || /*We assume Q = I*/ Q_.rows() == 0);
     assert(constraint_affine.cols() == 1);
-    //if (Q_.rows() == n_) {
+    // if (Q_.rows() == n_) {
     //  Q_ += 100*Eigen::MatrixXd::Identity(n_, n_);
     //}
     Initialize();
@@ -36,8 +36,8 @@ class QuadraticConstraint {
 
   int number_of_variables() { return A1_.cols(); }
   friend int Rank(const QuadraticConstraint&) { return 2; };
-  friend void SetIdentity(QuadraticConstraint* o) {
-    o->workspace_.W0 = 1;
+  friend void SetIdentity(QuadraticConstraint* o, double scale) {
+    o->workspace_.W0 = scale;
     o->workspace_.W1.setZero();
   }
   friend void TakeStep(QuadraticConstraint* o, const StepOptions& opt,
@@ -47,6 +47,20 @@ class QuadraticConstraint {
   friend void ConstructSchurComplementSystem(QuadraticConstraint* o,
                                              bool initialize,
                                              SchurComplementSystem* sys);
+
+  friend void GetScalingData(QuadraticConstraint* o, Ref* a_fro_norm,
+                             double* c_fro_norm) {
+    // (a + b)^2 + (a-b)^2 = 2 (a^2 + b^2)
+    *a_fro_norm = 2 * (o->A0_.cwiseProduct(o->A0_) + o->A_gram_.diagonal());
+    (*a_fro_norm) = a_fro_norm->array().sqrt();
+    if (o->Q_.size() > 0) {
+      (*c_fro_norm) = std::sqrt(
+          2 * (o->C0_ * o->C0_ + o->C1_.transpose() * o->Q_ * o->C1_));
+    } else {
+      (*c_fro_norm) =
+          std::sqrt(2 * (o->C0_ * o->C0_ + o->C1_.transpose() * o->C1_));
+    }
+  }
 
  private:
   void Initialize();

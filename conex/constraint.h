@@ -17,6 +17,14 @@ bool Permute(T*, std::vector<int> P) {
 }
 
 template <typename T>
+void GetScalingData(T*, Ref*, double*) {}
+
+template <typename T>
+void SetIdentity(T* o, double) {
+  SetIdentity(o);
+}
+
+template <typename T>
 bool UpdateLinearOperator(T*, double, int, int, int, int) {
   CONEX_DEMAND(false,
                "Constraint does not support updates of linear operator.");
@@ -53,7 +61,9 @@ class Constraint {
     o->model->do_schur_complement(initialize, sys);
   }
 
-  friend void SetIdentity(Constraint* o) { o->model->do_set_identity(); }
+  friend void SetIdentity(Constraint* o, double scale) {
+    o->model->do_set_identity(scale);
+  }
 
   friend void TakeStep(Constraint* o, const StepOptions& opt, const Ref& y,
                        StepInfo* info) {
@@ -63,6 +73,10 @@ class Constraint {
   friend void GetMuSelectionParameters(Constraint* o, const Ref& y,
                                        MuSelectionParameters* p) {
     o->model->do_min_mu(y, p);
+  }
+
+  friend void GetScalingData(Constraint* o, Ref* a_fro, double* c_fro) {
+    o->model->do_get_scaling_data(a_fro, c_fro);
   }
 
   friend int Rank(const Constraint& o) { return o.model->do_rank(); }
@@ -90,7 +104,7 @@ class Constraint {
   struct Concept {
     virtual void do_schur_complement(bool initialize,
                                      SchurComplementSystem* sys) = 0;
-    virtual void do_set_identity() = 0;
+    virtual void do_set_identity(double scale) = 0;
     virtual void do_min_mu(const Ref& y, MuSelectionParameters* p) = 0;
     virtual Workspace do_get_workspace() = 0;
     virtual void do_take_step(const StepOptions& opt, const Ref& y,
@@ -98,6 +112,7 @@ class Constraint {
     virtual void do_get_dual_variable(double*) = 0;
     virtual int do_dual_variable_size() = 0;
     virtual int do_number_of_variables() = 0;
+    virtual void do_get_scaling_data(Ref* y, double* c_fro) = 0;
     virtual bool do_update_linear_operator(double val, int var, int row,
                                            int col, int hyper_complex_dim) = 0;
     virtual bool do_update_affine_term(double val, int row, int col,
@@ -115,7 +130,7 @@ class Constraint {
       ConstructSchurComplementSystem(data, initialize, sys);
     }
 
-    void do_set_identity() override { SetIdentity(data); }
+    void do_set_identity(double scale) override { SetIdentity(data, scale); }
 
     void do_min_mu(const Ref& y, MuSelectionParameters* p) override {
       GetMuSelectionParameters(data, y, p);
@@ -129,6 +144,10 @@ class Constraint {
 
     Workspace do_get_workspace() override {
       return Workspace(data->workspace());
+    }
+
+    void do_get_scaling_data(Ref* a_fro, double* c_fro) override {
+      GetScalingData(data, a_fro, c_fro);
     }
 
     void do_get_dual_variable(double* var) override {

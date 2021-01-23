@@ -8,16 +8,17 @@ namespace conex {
 using DenseMatrix = Eigen::MatrixXd;
 using Ref = Eigen::Map<DenseMatrix, Eigen::Aligned>;
 
+struct IterationStats {
+  double norminf = 0;
+};
+
 struct MuSelectionParameters {
   double limit = 0;
   double gw_norm_squared = 0;
   double gw_trace = 0;
   double gw_lambda_min = 1e30;
   double gw_lambda_max = -1e30;
-};
-
-struct IterationStats {
-  double norminf = 0;
+  double rank;
 };
 
 struct StepOptions {
@@ -27,11 +28,15 @@ struct StepOptions {
   // Take step of form  w_1 e + Q(w/2)(A^y - w_2 c)
   double c_weight = 0;
   double e_weight = 0;
+  bool prepare_step;
+  bool take_step;
+  double norminfd;
 };
 
 struct StepInfo {
   double normsqrd;
   double norminfd;
+  bool step_prepared = false;
 };
 
 using DenseMatrix = Eigen::MatrixXd;

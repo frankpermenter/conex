@@ -72,11 +72,11 @@ cc_test(
 )
 
 cc_test(
-    name = "divergence",
+    name = "divergence_test",
     srcs = glob(["test/test_divergence.cc"]),
     copts = ["-Iexternal/gtest/include -O0"],
     deps = [
-        "conex_lib",
+        "divergence",
         "@gtest//:main",
     ],
 )
@@ -276,11 +276,27 @@ cc_library(
 )
 
 cc_library(
+    name = "divergence",
+    srcs = [
+        "divergence.cc",
+    ],
+    hdrs = [
+        "divergence.h",
+        "newton_step.h",
+        "memory_utils.h",
+        "debug_macros.h",
+    ],
+    copts = COPTS,
+#    linkopts = ["-lm"],
+    visibility = ["//visibility:public"],
+    deps = [ "@eigen"],
+)
+
+cc_library(
     name = "conex_lib",
     srcs = [
         "cone_program.cc",
         "dense_lmi_constraint.cc",
-        "divergence.cc",
         "hermitian_psd.cc",
         "linear_constraint.cc",
         "psd_constraint.cc",
@@ -292,7 +308,6 @@ cc_library(
         "constraint.h",
         "debug_macros.h",
         "dense_lmi_constraint.h",
-        "divergence.h",
         "error_checking_macros.h",
         "error_codes.h",
         "hermitian_psd.h",
@@ -311,6 +326,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "approximate_eigenvalues",
+        "divergence",
         "exponential_map",
         "exponential_map_pade",
         "jordan_matrix_algebra",
@@ -339,8 +355,8 @@ cc_binary(
 
 cc_binary(
     name = "contact_problem",
-    srcs = ["test/contact_problem.cc"],
-    copts = ["-g"],
+    srcs = ["test/contact_problem.cc", "test/contact_problem_util.cc"],
+    copts = ["-O0"],
     deps = [
         "conex_lib",
     ],

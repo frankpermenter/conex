@@ -34,7 +34,7 @@ Eigen::VectorXd Vars(const Eigen::VectorXd& x, std::vector<int> indices) {
 }
 
 void TakeStep(ConstraintManager<Container>* kkt,
-              const StepOptions& newton_step_parameters, const Ref& y,
+              const StepOptions& newton_step_parameters_in, const Ref& y,
               StepInfo* info) {
   StepInfo info_i;
   info_i.normsqrd = 0;
@@ -42,6 +42,9 @@ void TakeStep(ConstraintManager<Container>* kkt,
   info->normsqrd = 0;
   info->norminfd = -1;
   int i = 0;
+  StepOptions newton_step_parameters = newton_step_parameters_in;
+  newton_step_parameters.prepare_step = true;
+  newton_step_parameters.take_step = false;
   for (auto& ci : kkt->eqs) {
     // TODO(FrankPermenter): Remove creation of these maps.
     auto ysegment = Vars(y, kkt->cliques.at(i));
@@ -52,6 +55,19 @@ void TakeStep(ConstraintManager<Container>* kkt,
       info->norminfd = info_i.norminfd;
     }
     info->normsqrd += info_i.normsqrd;
+    i++;
+  }
+
+  newton_step_parameters.prepare_step = false;
+  newton_step_parameters.take_step = true;
+  newton_step_parameters.norminfd = info->norminfd;
+  i = 0;
+  // TODO(FrankPermenter): Remove creation of these maps.
+  for (auto& ci : kkt->eqs) {
+    auto ysegment = Vars(y, kkt->cliques.at(i));
+    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
+                                                  ysegment.size(), 1);
+    TakeStep(&ci.constraint, newton_step_parameters, z, &info_i);
     i++;
   }
 }
@@ -66,6 +82,34 @@ void GetMuSelectionParameters(ConstraintManager<Container>* constraints,
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
                                                   ysegment.size(), 1);
     GetMuSelectionParameters(&ci.constraint, z, p);
+    i++;
+  }
+}
+
+double CalcRescaling(const Ref& a, const Eigen::VectorXd& b, double c) {
+  double pscale =
+      ((a.array() + 1).cwiseInverse().cwiseProduct(b.array().abs() + 1))
+          .maxCoeff();
+  double dscale = a.maxCoeff();
+  if (dscale < c) {
+    dscale = c;
+  }
+  double scale = std::sqrt(pscale / (1 + dscale));
+  // return 1;
+  return scale;
+}
+
+void GetScalingData(const Eigen::VectorXd& b,
+                    ConstraintManager<Container>* constraints) {
+  int i = 0;
+  for (auto& ci : constraints->eqs) {
+    Eigen::MatrixXd data(constraints->cliques.at(i).size(), 1);
+    Ref a_fro(data.data(), data.size(), 1);
+    double c_fro;
+    GetScalingData(&ci.constraint, &a_fro, &c_fro);
+    double scale =
+        CalcRescaling(a_fro, Vars(b, constraints->cliques.at(i)), c_fro);
+    SetIdentity(&ci.constraint, 1);  // scale);
     i++;
   }
 }
@@ -89,12 +133,14 @@ void ConstructSchurComplementSystem(std::vector<T*>* c, bool initialize,
   }
 }
 
-bool Initialize(Program& prog, const SolverConfiguration& config) {
+bool Initialize(Program& prog, const Eigen::VectorXd& b,
+                const SolverConfiguration& config) {
   if (config.initialization_mode == 0) {
     auto& solver = prog.solver;
     auto& kkt = prog.kkt;
     prog.InitializeWorkspace();
-    SetIdentity(&prog.constraints);
+    GetScalingData(b, &prog.kkt_system_manager_);
+    // SetIdentity(&prog.constraints);
 
     START_TIMER(Sparsity);
     solver = std::make_unique<Solver>(prog.kkt_system_manager_.cliques,
@@ -118,17 +164,37 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
 
   return true;
 }
-double UpdateMu(ConstraintManager<Container>& constraints,
-                std::unique_ptr<Solver>& solver, const DenseMatrix& AQc,
-                const DenseMatrix& b, const SolverConfiguration& config,
-                int rankK, Ref* temporary_memory) {
+std::pair<double, double> UpdateMu(ConstraintManager<Container>& constraints,
+                                   std::unique_ptr<Solver>& solver,
+                                   const DenseMatrix& AQc, const DenseMatrix& b,
+                                   const SolverConfiguration& config, int rankK,
+                                   Ref* temporary_memory) {
   MuSelectionParameters mu_param;
   *temporary_memory = solver->Solve(AQc - b);
   GetMuSelectionParameters(&constraints, *temporary_memory, &mu_param);
+  mu_param.rank = rankK;
 
-  return DivergenceUpperBoundInverse(
-      config.divergence_upper_bound * rankK, mu_param.gw_norm_squared,
-      mu_param.gw_lambda_max, mu_param.gw_trace, rankK);
+  double divergence_bound = config.divergence_upper_bound * rankK;
+
+  double inv_sqrt_mu = 0;
+  inv_sqrt_mu = DivergenceUpperBoundInverse(divergence_bound, mu_param);
+
+  // If inverse evaluation has failed, choose mu that minimizes the norm of the
+  // Newton step.
+  if (inv_sqrt_mu < 0) {
+    inv_sqrt_mu = mu_param.gw_trace / mu_param.gw_norm_squared;
+  }
+
+  double k = inv_sqrt_mu;
+  double norm_inf = std::fabs(k * mu_param.gw_lambda_max - 1);
+  if (norm_inf < std::fabs(k * mu_param.gw_lambda_min - 1)) {
+    norm_inf = std::fabs(k * mu_param.gw_lambda_min - 1);
+  }
+
+  std::pair<double, double> y;
+  y.second = norm_inf;
+  y.first = inv_sqrt_mu;
+  return y;
 }
 
 void ApplyLimits(double* x, double lb, double ub) {
@@ -142,7 +208,8 @@ void ApplyLimits(double* x, double lb, double ub) {
 }
 
 bool Solve(const DenseMatrix& bin, Program& prog,
-           const SolverConfiguration& config, double* primal_variable) {
+           const SolverConfiguration& config_in, double* primal_variable) {
+  auto config = config_in;
 #ifdef EIGEN_USE_MKL_ALL
   std::cout << "CONEX: MKL Enabled";
 #endif
@@ -154,7 +221,7 @@ bool Solve(const DenseMatrix& bin, Program& prog,
 #if CONEX_VERBOSE
   std::cout.precision(2);
   std::cout << std::scientific;
-  std::cout << "Initializing: \n";
+  std::cout << "Starting the Conex optimizer: \n";
 #endif
 
   CONEX_DEMAND(prog.GetNumberOfVariables() == bin.rows(),
@@ -170,7 +237,7 @@ bool Solve(const DenseMatrix& bin, Program& prog,
   }
 
   START_TIMER(Assemble)
-  Initialize(prog, config);
+  Initialize(prog, bin, config);
   END_TIMER
   std::cout << "\n";
 
@@ -187,6 +254,7 @@ bool Solve(const DenseMatrix& bin, Program& prog,
   newton_step_parameters.affine = false;
 
   int rankK = Rank(constraints);
+  double scale = rankK;
   int centering_steps = 0;
 
   Eigen::VectorXd AW(prog.kkt_system_manager_.SizeOfKKTSystem());
@@ -195,17 +263,21 @@ bool Solve(const DenseMatrix& bin, Program& prog,
   b.setZero();
   b.head(m) << bin;
 
+  bool mu_update_enabled = true;
+
   for (int i = 0; i < config.max_iterations; i++) {
 #if CONEX_VERBOSE
     if (i < 10) {
-      std::cout << "i:  " << i << ", ";
+      std::cout << "i,  " << i << ", ";
     } else {
-      std::cout << "i: " << i << ", ";
+      std::cout << "i, " << i << ", ";
     }
 #endif
     bool update_mu =
-        (i == 0) || ((newton_step_parameters.inv_sqrt_mu < inv_sqrt_mu_max) &&
-                     i < config.max_iterations - config.final_centering_steps);
+        mu_update_enabled &&
+        ((i == 0) ||
+         ((newton_step_parameters.inv_sqrt_mu < inv_sqrt_mu_max) &&
+          i < config.max_iterations - config.final_centering_steps));
 
     if (!update_mu && (centering_steps >= config.final_centering_steps)) {
       break;
@@ -225,9 +297,12 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     }
     END_TIMER
 
+    std::pair<double, double> mu_data;
     if (update_mu) {
-      newton_step_parameters.inv_sqrt_mu =
+      mu_data =
           UpdateMu(prog.kkt_system_manager_, solver, AQc, b, config, rankK, &y);
+      newton_step_parameters.inv_sqrt_mu = mu_data.first;
+
     } else {
       centering_steps++;
     }
@@ -265,6 +340,11 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     REPORT(mu);
     REPORT(d_2);
     REPORT(d_inf);
+    config.divergence_upper_bound =
+        mu_data.second / d_inf * config.divergence_upper_bound;
+    if (config.divergence_upper_bound < .1) {
+      config.divergence_upper_bound = .1;
+    }
 
     prog.stats.num_iter = i + 1;
     prog.stats.sqrt_inv_mu[i] = newton_step_parameters.inv_sqrt_mu;
@@ -296,7 +376,9 @@ bool Solve(const DenseMatrix& bin, Program& prog,
 
 DenseMatrix GetFeasibleObjective(Program* prg) {
   auto& prog = *prg;
-  Initialize(prog, SolverConfiguration());
+  Eigen::VectorXd b_dummy(prg->GetNumberOfVariables());
+  b_dummy.setZero();
+  Initialize(prog, b_dummy, SolverConfiguration());
   Solver solver(prog.kkt_system_manager_.cliques,
                 prog.kkt_system_manager_.dual_vars);
   std::vector<KKT_SystemAssembler> kkt;
