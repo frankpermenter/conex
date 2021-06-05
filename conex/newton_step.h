@@ -34,6 +34,10 @@ struct StepOptions {
 struct StepInfo {
   double normsqrd;
   double norminfd;
+  double inv_sqrt_mu_primal_lower_bound = -1e30;
+  double inv_sqrt_mu_primal_upper_bound = 1e30;
+  double inv_sqrt_mu_dual_lower_bound = -1e30;
+  double inv_sqrt_mu_dual_upper_bound = 1e30;
 };
 
 using DenseMatrix = Eigen::MatrixXd;

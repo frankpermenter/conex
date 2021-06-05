@@ -27,10 +27,13 @@ bool UpdateAffineTerm(T*, double, int, int, int) {
   CONEX_DEMAND(false, "Constraint does not support updates of affine term.");
 }
 
-// template <typename T>
-// bool TakeStep(T*, const StepOptions&) {
-//  return true;
-//}
+
+template <typename T>
+void PrepareParametrizedSlack(T* o, const StepOptions& opt, const Ref& y1, const Ref& y2, StepInfo* data) {
+  throw std::runtime_error("Constraint does not support construction of parametrized slack.");
+}
+
+
 
 // A helper class for forwarding to different implementations of an "interface."
 // With this approach, implementations do not need to use inheritance or virtual
@@ -56,6 +59,11 @@ class Constraint {
   friend void ConstructSchurComplementSystem(Constraint* o, bool initialize,
                                              SchurComplementSystem* sys) {
     o->model->do_schur_complement(initialize, sys);
+  }
+
+  friend void PrepareParametrizedSlack(Constraint* o, 
+                                const StepOptions& opt, const Ref& y1, const Ref& y2, StepInfo* data) {
+    o->model->do_prepare_parametrized_slack(opt, y1, y2, data);
   }
 
   friend void SetIdentity(Constraint* o) { o->model->do_set_identity(); }
@@ -108,6 +116,8 @@ class Constraint {
     virtual bool do_take_step(const StepOptions&) = 0;
     virtual int do_dual_variable_size() = 0;
     virtual int do_number_of_variables() = 0;
+    virtual void do_prepare_parametrized_slack(const StepOptions& opt, const Ref& y,
+    const Ref& y2, StepInfo* info) = 0;
     virtual bool do_update_linear_operator(double val, int var, int row,
                                            int col, int hyper_complex_dim) = 0;
     virtual bool do_update_affine_term(double val, int row, int col,
@@ -165,6 +175,12 @@ class Constraint {
                          StepInfo* info) override {
       PrepareStep(data, opt, y, info);
     }
+
+    void do_prepare_parametrized_slack(const StepOptions& opt, const Ref& y, const Ref& y2,
+                         StepInfo* info) override {
+      PrepareParametrizedSlack(data, opt, y, y2, info);
+    }
+
 
     bool do_take_step(const StepOptions& opt) override {
       return TakeStep(data, opt);

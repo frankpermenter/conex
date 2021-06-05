@@ -43,7 +43,7 @@ GTEST_TEST(LP, Dense) {
     EXPECT_TRUE((slack).minCoeff() >= -eps);
   }
 }
-
+#if 0
 Eigen::VectorXd Vars(const Eigen::VectorXd& x, std::vector<int> indices) {
   Eigen::VectorXd z(indices.size());
   int cnt = 0;
@@ -391,4 +391,5 @@ GTEST_TEST(LP, RandomDual) {
     DoRandomDualFailsSlater(distance_to_infeasibility);
   }
 }
+#endif
 }  // namespace conex

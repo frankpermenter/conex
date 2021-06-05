@@ -90,6 +90,52 @@ void GetWeightedSlackEigenvalues(ConstraintManager<Container>* constraints,
   }
 }
 
+void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
+                 const StepOptions& newton_step_parameters, 
+                 const Ref& y1,
+                 const Ref& y2,
+                 StepInfo* info) {
+  StepInfo info_i;
+  *info = info_i;
+  
+  int i = 0;
+  for (auto& ci : kkt->eqs) {
+    // TODO(FrankPermenter): Remove creation of these maps.
+    auto y1segment = Vars(y1, kkt->cliques.at(i));
+    auto y2segment = Vars(y2, kkt->cliques.at(i));
+    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z1(y1segment.data(),
+                                                  y1segment.size(), 1);
+
+    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z2(y2segment.data(),
+                                                  y2segment.size(), 1);
+
+    PrepareParametrizedSlack(&ci.constraint, newton_step_parameters, z1, z2, &info_i);
+    if (info_i.inv_sqrt_mu_primal_lower_bound >
+        info->inv_sqrt_mu_primal_lower_bound) { 
+        info->inv_sqrt_mu_primal_lower_bound = info_i.inv_sqrt_mu_primal_lower_bound;
+    }
+    if (info_i.inv_sqrt_mu_dual_lower_bound >
+        info->inv_sqrt_mu_dual_lower_bound) { 
+        info->inv_sqrt_mu_dual_lower_bound = info_i.inv_sqrt_mu_dual_lower_bound;
+    }
+    if (info_i.inv_sqrt_mu_primal_upper_bound <
+        info->inv_sqrt_mu_primal_upper_bound) { 
+        info->inv_sqrt_mu_primal_upper_bound = info_i.inv_sqrt_mu_primal_upper_bound;
+    }
+    if (info_i.inv_sqrt_mu_dual_upper_bound <
+        info->inv_sqrt_mu_dual_upper_bound) { 
+        info->inv_sqrt_mu_dual_upper_bound = info_i.inv_sqrt_mu_dual_upper_bound;
+    }
+
+    i++;
+  }
+}
+
+
+
+
+
+
 template <typename T>
 int Rank(const std::vector<T*>& c) {
   int rank = 0;
@@ -310,18 +356,39 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     END_TIMER
 
     if (update_mu) {
-      double temp = ComputeMuFromDivergence(prog.kkt_system_manager_, solver,
-                                            AQc, b, config, rankK, &y);
-      if (temp > 0) {
-        newton_step_parameters.inv_sqrt_mu = temp;
-      } else {
-        newton_step_parameters.inv_sqrt_mu *= .5;
+      //double temp = ComputeMuFromDivergence(prog.kkt_system_manager_, solver,
+      //                                      AQc, b, config, rankK, &y);
+      //if (temp > 0) {
+      //  newton_step_parameters.inv_sqrt_mu = temp;
+      //} else {
+      //  newton_step_parameters.inv_sqrt_mu *= .5;
+      //}
+
+      Eigen::MatrixXd y1data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+      Ref y1(y1data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+      y1 = -2*AW;
+      solver->SolveInPlace(&y1);
+      Eigen::MatrixXd y2data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+      Ref y2(y2data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+      y2 = b + AQc;
+      solver->SolveInPlace(&y2);
+      StepInfo info_slack;
+      PrepareParametrizedSlack(&prog.kkt_system_manager_, newton_step_parameters, y1, y2, &info_slack);
+      newton_step_parameters.inv_sqrt_mu = info_slack.inv_sqrt_mu_primal_upper_bound;
+      if (newton_step_parameters.inv_sqrt_mu > info_slack.inv_sqrt_mu_dual_upper_bound) {
+        newton_step_parameters.inv_sqrt_mu = info_slack.inv_sqrt_mu_dual_upper_bound;
       }
+
     } else {
       if (initial_centering == 0) {
         centering_steps++;
       }
     }
+
+
+
+
+
 
     const double max = config.inv_sqrt_mu_max;
     const double min = std::sqrt(1.0 / (1e-15 + config.maximum_mu));

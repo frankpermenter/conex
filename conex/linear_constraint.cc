@@ -31,6 +31,63 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
   }
 }
 
+
+void PrepareParametrizedSlack(LinearConstraint* o, const StepOptions& opt, const Ref& y1, const Ref& y2, StepInfo* data) {
+  int n = o->constraint_affine_.rows();
+  auto& W = o->workspace_.W;
+  Eigen::VectorXd slack1(n); 
+  Eigen::VectorXd slack2(n);
+  Ref s1(slack1.data(), n, 1);
+  Ref s2(slack2.data(), n, 1);
+  o->ComputeNegativeSlack(0, y1, &s1);
+  o->ComputeNegativeSlack(1, y2, &s2);
+
+  double lower_bound_primal = -1e30;
+  double upper_bound_primal = 1e30;
+  double lower_bound_dual = -1e30;
+  double upper_bound_dual = 1e30;
+
+  Eigen::VectorXd SW0 = -s1.cwiseProduct(W);
+  Eigen::VectorXd SW1 = -s2.cwiseProduct(W);
+
+  for (int i = 0; i < SW0.rows(); i++) {
+    double temp = -SW0(i) / SW1(i); 
+    if (SW1(i) > 0) {
+      // SW0 + SW1 * t >= 0 => t >= - SW0 / SW1 
+      if (temp > lower_bound_primal) {
+        lower_bound_primal = temp;
+      }
+    } else {
+      // SW0 + SW1 * t >= 0 => t <= - SW0 / SW1 
+      if (temp < upper_bound_primal) {
+        upper_bound_primal = temp;
+      }
+    }
+
+    temp = (2 - SW0(i)) / SW1(i); 
+    if (SW1(i) > 0) {
+      // SW0 + SW1 * t <= 1 => t <= (2- SW0) / SW1 
+      if (temp < upper_bound_dual) {
+        upper_bound_dual = temp;
+      }
+    } else {
+      // SW0 + SW1 * t >= 1 => t >=  (2- SW0) / SW1 
+      if (temp > lower_bound_dual) {
+        lower_bound_dual = temp;
+      }
+    }
+  }
+ // Eigen::VectorXd e(n); e.setConstant(1);
+  //DUMP(e - (SW0 + SW1 * lower_bound_primal));
+  //DUMP(e - (SW0 + SW1 * upper_bound_primal));
+  //DUMP(e - (SW0 + SW1 * lower_bound_dual));
+  //DUMP(e  - (SW0 + SW1 * upper_bound_dual));
+  data->inv_sqrt_mu_primal_lower_bound = lower_bound_primal;
+  data->inv_sqrt_mu_dual_lower_bound = lower_bound_dual;
+  data->inv_sqrt_mu_primal_upper_bound = upper_bound_primal;
+  data->inv_sqrt_mu_dual_upper_bound = upper_bound_dual;
+}
+
 bool TakeStep(LinearConstraint* o, const StepOptions& options) {
   if (!options.affine) {
     auto& d = o->workspace_.temp_2;
