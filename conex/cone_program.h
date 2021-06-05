@@ -69,7 +69,7 @@ class Program {
       if (cnt == i) {
         ci.constraint.get_dual_variable(xi->data());
         if (status_.solved) {
-          xi->array() /= stats.sqrt_inv_mu[stats.num_iter - 1];
+          xi->array() /= stats->sqrt_inv_mu[stats->num_iter - 1];
         }
         return;
       }
@@ -120,7 +120,7 @@ class Program {
     for (auto& constraint : kkt_system_manager_.eqs) {
       workspaces.push_back(constraint.constraint.workspace());
     }
-    workspaces.push_back(Workspace{&stats});
+    workspaces.push_back(Workspace{stats.get()});
     workspaces.push_back(Workspace{&sys});
     auto size = SizeOf(workspaces);
     if (size > workspace_data_->size()) {
@@ -166,7 +166,7 @@ class Program {
   ConstraintManager<Container> kkt_system_manager_;
   std::vector<Constraint*> constraints;
   SchurComplementSystem sys;
-  WorkspaceStats stats;
+  std::unique_ptr<WorkspaceStats> stats;
   std::vector<Workspace> workspaces;
   std::unique_ptr<Solver> solver;
   std::vector<KKT_SystemAssembler> kkt;
