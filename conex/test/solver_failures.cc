@@ -1,4 +1,5 @@
 #include "conex/cone_program.h"
+#include "conex/dense_lmi_constraint.h"
 #include "conex/equality_constraint.h"
 #include "conex/linear_constraint.h"
 #include "conex/quadratic_cost.h"
@@ -201,9 +202,109 @@ class MPCFailingLDLT {
     config.final_centering_steps = 10;
     config.max_iterations = 50;
     conex::Solve(linear_cost, prog, config, var.data());
-    DUMP(var);
   }
 };
+
+VectorXd ConvolveWithSelf(const Eigen::VectorXd& f) {
+  int const nf = f.size();
+  int const ng = f.size();
+  int const n = nf + ng - 1;
+  Eigen::VectorXd y(n);
+  for (auto i(0); i < n; ++i) {
+    int const jmn = (i >= ng - 1) ? i - (ng - 1) : 0;
+    int const jmx = (i < nf - 1) ? i : nf - 1;
+    for (auto j(jmn); j <= jmx; ++j) {
+      y(i) += (f(j) * f(i - j));
+    }
+  }
+  return y;
+}
+
+void PureSquare(bool use_equations) {
+  using Eigen::MatrixXd;
+  using std::vector;
+  Eigen::MatrixXd Af(5, 6);
+  Eigen::MatrixXd bf(5, 1);
+  // clang-format off
+  Af << 1, 0, 0, 0, 0, 0,
+        0, 2, 0, 0, 0, 0,
+        0, 0, 2, 1, 0, 0,
+        0, 0, 0, 0, 2, 0,
+        0, 0, 0, 0, 0, 1;
+
+  Eigen::VectorXd f(3);
+  f << 700, -900, 732;
+  bf = ConvolveWithSelf(f);
+
+  vector<MatrixXd> A;
+  MatrixXd Ai(3, 3);
+
+  Ai << -1,  0,  0,
+         0,  0,  0,
+         0,  0,  0;
+  A.push_back(Ai);
+
+  Ai <<  0, -1,  0,
+        -1,  0,  0,
+         0,  0,  0;
+  A.push_back(Ai);
+
+if (use_equations) {
+  Ai <<  0,  0, -1,
+         0,  0,  0,
+        -1,  0,  0;
+  A.push_back(Ai);
+
+  Ai <<  0,  0,  0,
+         0, -1,  0,
+         0,  0,  0;
+  A.push_back(Ai);
+} else {
+  Ai <<  0,  0, -1,
+         0, -1,  0,
+        -1,  0,  0;
+  A.push_back(Ai);
+}
+
+
+  Ai << 0,  0,  0,
+        0,  0, -1,
+        0, -1,  0;
+  A.push_back(Ai);
+
+  Ai << 0,  0,  0,
+        0,  0,  0,
+        0,  0, -1;
+  A.push_back(Ai);
+
+  // clang-format on
+  MatrixXd C(3, 3);
+  C.setZero();
+
+  SolverConfiguration config;
+  //  config.inv_sqrt_mu_max = .001;
+  //  config.maximum_mu = 1.0 / (config.inv_sqrt_mu_max *
+  //  config.inv_sqrt_mu_max);
+  config.final_centering_steps = 10000;
+  config.infeasibility_threshold = 1e10;
+  config.max_iterations = config.final_centering_steps;
+  if (use_equations) {
+    conex::Program prog(6);
+    prog.AddConstraint(EqualityConstraints(Af, bf));
+    prog.AddConstraint(DenseLMIConstraint(A, C));
+    VectorXd b(6);
+    b.setConstant(0);
+    VectorXd y(6);
+    Solve(b, prog, config, y.data());
+  } else {
+    int n = A.size();
+    conex::Program prog(n);
+    prog.AddConstraint(DenseLMIConstraint(A, C));
+    VectorXd b = -bf;
+    VectorXd y(n);
+    Solve(b, prog, config, y.data());
+  }
+}
 
 }  // namespace conex
 
@@ -214,4 +315,7 @@ int main() {
   for (int i = 0; i < 5; i++) {
     conex::DoBadInitialization(true /*trigger fail*/);
   }
+
+  conex::PureSquare(true);
+  conex::PureSquare(false);
 }
