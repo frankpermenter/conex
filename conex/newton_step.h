@@ -29,6 +29,7 @@ struct StepOptions {
   double c_weight = 0;
   double e_weight = 0;
   double step_size = 1;
+  double dinf_limit = 1;
 };
 
 struct StepInfo {
