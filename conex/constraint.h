@@ -27,17 +27,17 @@ bool UpdateAffineTerm(T*, double, int, int, int) {
   CONEX_DEMAND(false, "Constraint does not support updates of affine term.");
 }
 
+template <typename T>
+void PrepareParametrizedSlack(T* o, const Ref& y1, const Ref& y2) {
+  throw std::runtime_error(
+      "Constraint does not support construction of parametrized slack.");
+}
 
-//template <typename T>
-//void PrepareParametrizedSlack(T* o, const Ref& y1, const Ref& y2) {
-//  throw std::runtime_error("Constraint does not support construction of parametrized slack.");
-//}
-
-//template <typename T>
-//bool DoPrimalDualLineSearch(T* o, double dinf_limit,  StepInfo* data) {
-//  throw std::runtime_error("Constraint does not support line search.");
-//}
-
+template <typename T>
+bool DoPrimalDualLineSearch(T* o, double dinf_limit, StepInfo* data) {
+  throw std::runtime_error("Constraint does not support line search.");
+  return false;
+}
 
 // A helper class for forwarding to different implementations of an "interface."
 // With this approach, implementations do not need to use inheritance or virtual
@@ -65,14 +65,15 @@ class Constraint {
     o->model->do_schur_complement(initialize, sys);
   }
 
-  friend void PrepareParametrizedSlack(Constraint* o, const Ref& y1, const Ref& y2) {
+  friend void PrepareParametrizedSlack(Constraint* o, const Ref& y1,
+                                       const Ref& y2) {
     o->model->do_prepare_parametrized_slack(y1, y2);
   }
 
-  friend bool DoPrimalDualLineSearch(Constraint* o, double dinf_limit,  StepInfo* data) {
-   return  o->model->do_primal_dual_line_search(dinf_limit, data);
+  friend bool DoPrimalDualLineSearch(Constraint* o, double dinf_limit,
+                                     StepInfo* data) {
+    return o->model->do_primal_dual_line_search(dinf_limit, data);
   }
-
 
   friend void SetIdentity(Constraint* o) { o->model->do_set_identity(); }
 
@@ -185,11 +186,11 @@ class Constraint {
     }
 
     void do_prepare_parametrized_slack(const Ref& y, const Ref& y2) override {
-      return PrepareParametrizedSlack(data,  y, y2);
+      return PrepareParametrizedSlack(data, y, y2);
     }
 
     bool do_primal_dual_line_search(double limit, StepInfo* info) override {
-      DoPrimalDualLineSearch(data,  limit, info);
+      DoPrimalDualLineSearch(data, limit, info);
     }
 
     bool do_take_step(const StepOptions& opt) override {

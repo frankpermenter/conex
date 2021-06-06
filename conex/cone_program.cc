@@ -91,21 +91,18 @@ void GetWeightedSlackEigenvalues(ConstraintManager<Container>* constraints,
 }
 
 void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
-                 const StepOptions& newton_step_parameters, 
-                 const Ref& y1,
-                 const Ref& y2,
-                 StepInfo* info) {
-
+                              const StepOptions& newton_step_parameters,
+                              const Ref& y1, const Ref& y2, StepInfo* info) {
   int i = 0;
   for (auto& ci : kkt->eqs) {
     // TODO(FrankPermenter): Remove creation of these maps.
     auto y1segment = Vars(y1, kkt->cliques.at(i));
     auto y2segment = Vars(y2, kkt->cliques.at(i));
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z1(y1segment.data(),
-                                                  y1segment.size(), 1);
+                                                   y1segment.size(), 1);
 
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z2(y2segment.data(),
-                                                  y2segment.size(), 1);
+                                                   y2segment.size(), 1);
 
     PrepareParametrizedSlack(&ci.constraint, z1, z2);
     i++;
@@ -125,28 +122,36 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
     for (auto& ci : kkt->eqs) {
       DoPrimalDualLineSearch(&ci.constraint, params.dinf_limit, &info_i);
       if (info_i.inv_sqrt_mu_primal_lower_bound >
-          info->inv_sqrt_mu_primal_lower_bound) { 
-          info->inv_sqrt_mu_primal_lower_bound = info_i.inv_sqrt_mu_primal_lower_bound;
+          info->inv_sqrt_mu_primal_lower_bound) {
+        info->inv_sqrt_mu_primal_lower_bound =
+            info_i.inv_sqrt_mu_primal_lower_bound;
       }
       if (info_i.inv_sqrt_mu_dual_lower_bound >
-          info->inv_sqrt_mu_dual_lower_bound) { 
-          info->inv_sqrt_mu_dual_lower_bound = info_i.inv_sqrt_mu_dual_lower_bound;
+          info->inv_sqrt_mu_dual_lower_bound) {
+        info->inv_sqrt_mu_dual_lower_bound =
+            info_i.inv_sqrt_mu_dual_lower_bound;
       }
       if (info_i.inv_sqrt_mu_primal_upper_bound <
-          info->inv_sqrt_mu_primal_upper_bound) { 
-          info->inv_sqrt_mu_primal_upper_bound = info_i.inv_sqrt_mu_primal_upper_bound;
+          info->inv_sqrt_mu_primal_upper_bound) {
+        info->inv_sqrt_mu_primal_upper_bound =
+            info_i.inv_sqrt_mu_primal_upper_bound;
       }
       if (info_i.inv_sqrt_mu_dual_upper_bound <
-          info->inv_sqrt_mu_dual_upper_bound) { 
-          info->inv_sqrt_mu_dual_upper_bound = info_i.inv_sqrt_mu_dual_upper_bound;
+          info->inv_sqrt_mu_dual_upper_bound) {
+        info->inv_sqrt_mu_dual_upper_bound =
+            info_i.inv_sqrt_mu_dual_upper_bound;
       }
 
-      if (info_i.inv_sqrt_mu_dual_lower_bound < info_i.inv_sqrt_mu_dual_upper_bound) {
-        dual_feasible = params.dinf_limit <= 1 && info_i.inv_sqrt_mu_dual_upper_bound > 0;
+      if (info_i.inv_sqrt_mu_dual_lower_bound <
+          info_i.inv_sqrt_mu_dual_upper_bound) {
+        dual_feasible =
+            params.dinf_limit <= 1 && info_i.inv_sqrt_mu_dual_upper_bound > 0;
       }
 
-      if (info_i.inv_sqrt_mu_primal_lower_bound < info_i.inv_sqrt_mu_primal_upper_bound) {
-        primal_feasible = params.dinf_limit <= 1 && info_i.inv_sqrt_mu_primal_upper_bound > 0;
+      if (info_i.inv_sqrt_mu_primal_lower_bound <
+          info_i.inv_sqrt_mu_primal_upper_bound) {
+        primal_feasible =
+            params.dinf_limit <= 1 && info_i.inv_sqrt_mu_primal_upper_bound > 0;
       }
 
       double lower_bound = info_i.inv_sqrt_mu_primal_lower_bound;
@@ -168,8 +173,8 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
       i++;
     }
     if (valid) {
-      //DUMP(i);
-      //DUMP(params.dinf_limit);
+      // DUMP(i);
+      // DUMP(params.dinf_limit);
       return;
     } else {
       params.dinf_limit += 0.1;
@@ -177,11 +182,6 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
   }
   throw std::runtime_error("Failed to find mu");
 }
-
-
-
-
-
 
 template <typename T>
 int Rank(const std::vector<T*>& c) {
@@ -404,18 +404,22 @@ bool Solve(const DenseMatrix& bin, Program& prog,
 
     Eigen::MatrixXd y1data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
     Ref y1(y1data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
-    y1 = -2*AW;
+    y1 = -2 * AW;
     solver->SolveInPlace(&y1);
     Eigen::MatrixXd y2data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
     Ref y2(y2data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
     y2 = b + AQc;
     solver->SolveInPlace(&y2);
     StepInfo info_slack;
-    PrepareParametrizedSlack(&prog.kkt_system_manager_, newton_step_parameters, y1, y2, &info_slack);
+    PrepareParametrizedSlack(&prog.kkt_system_manager_, newton_step_parameters,
+                             y1, y2, &info_slack);
     if (update_mu) {
-      newton_step_parameters.inv_sqrt_mu = info_slack.inv_sqrt_mu_primal_upper_bound;
-      if (newton_step_parameters.inv_sqrt_mu > info_slack.inv_sqrt_mu_dual_upper_bound) {
-        newton_step_parameters.inv_sqrt_mu = info_slack.inv_sqrt_mu_dual_upper_bound;
+      newton_step_parameters.inv_sqrt_mu =
+          info_slack.inv_sqrt_mu_primal_upper_bound;
+      if (newton_step_parameters.inv_sqrt_mu >
+          info_slack.inv_sqrt_mu_dual_upper_bound) {
+        newton_step_parameters.inv_sqrt_mu =
+            info_slack.inv_sqrt_mu_dual_upper_bound;
       }
 
     } else {
@@ -423,11 +427,6 @@ bool Solve(const DenseMatrix& bin, Program& prog,
         centering_steps++;
       }
     }
-
-
-
-
-
 
     const double max = config.inv_sqrt_mu_max;
     const double min = std::sqrt(1.0 / (1e-15 + config.maximum_mu));
@@ -440,7 +439,7 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     START_TIMER(Solve)
     solver->SolveInPlace(&y);
     END_TIMER
-    if ((y - (y1+ newton_step_parameters.inv_sqrt_mu*y2)).norm() > .1) {
+    if ((y - (y1 + newton_step_parameters.inv_sqrt_mu * y2)).norm() > .1) {
       throw std::runtime_error("Bad KKT solve.");
     }
 

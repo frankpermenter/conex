@@ -324,7 +324,7 @@ void DoRandomPrimalFailsSlater(double distance_to_infeasible) {
 
 GTEST_TEST(LP, RandomPrimalFailsSlater) {
   srand(0);
-  //for (int i = 0; i < 3; i++) {
+  // for (int i = 0; i < 3; i++) {
   for (int i = 0; i < 1; i++) {
     DoRandomPrimalFailsSlater(.1 * (-1 + i * 1));
   }

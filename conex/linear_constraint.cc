@@ -3,8 +3,8 @@
 #include "newton_step.h"
 
 namespace conex {
-using Eigen::VectorXd;
 using Eigen::MatrixXd;
+using Eigen::VectorXd;
 void SetIdentity(LinearConstraint* o) { o->workspace_.W.setConstant(1); }
 
 // TODO: use e_weight and c_weight
@@ -31,52 +31,54 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
   }
 }
 
-bool DoPrimalDualLineSearch(LinearConstraint* o, double dinf_limit, StepInfo* data) {
+bool DoPrimalDualLineSearch(LinearConstraint* o, double dinf_limit,
+                            StepInfo* data) {
   double lower_bound_primal = -std::numeric_limits<double>::max();
   double upper_bound_primal = std::numeric_limits<double>::max();
-  double lower_bound_dual   = -std::numeric_limits<double>::max();
-  double upper_bound_dual   = std::numeric_limits<double>::max();
+  double lower_bound_dual = -std::numeric_limits<double>::max();
+  double upper_bound_dual = std::numeric_limits<double>::max();
   const auto& SW0 = o->workspace_.temp_1;
   const auto& SW1 = o->workspace_.temp_2;
   for (int i = 0; i < SW0.rows(); i++) {
     // e + At * y - k * c
-    double temp = (-dinf_limit+1+SW0(i)) / -SW1(i); 
+    double temp = (-dinf_limit + 1 + SW0(i)) / -SW1(i);
     if (-SW1(i) > 0) {
-      // SW0 + SW1 * t >= 0 => t >= - SW0 / SW1 
+      // SW0 + SW1 * t >= 0 => t >= - SW0 / SW1
       if (temp > lower_bound_primal) {
         lower_bound_primal = temp;
       }
     } else {
-      // SW0 + SW1 * t >= 0 => t <= - SW0 / SW1 
+      // SW0 + SW1 * t >= 0 => t <= - SW0 / SW1
       if (temp < upper_bound_primal) {
         upper_bound_primal = temp;
       }
     }
 
-    temp = (dinf_limit + 1 + SW0(i)) / -SW1(i); 
+    temp = (dinf_limit + 1 + SW0(i)) / -SW1(i);
     if (-SW1(i) > 0) {
-      // SW0 + SW1 * t <= 1 => t <= (2- SW0) / SW1 
+      // SW0 + SW1 * t <= 1 => t <= (2- SW0) / SW1
       if (temp < upper_bound_dual) {
         upper_bound_dual = temp;
       }
     } else {
-      // SW0 + SW1 * t >= 1 => t >=  (2- SW0) / SW1 
+      // SW0 + SW1 * t >= 1 => t >=  (2- SW0) / SW1
       if (temp > lower_bound_dual) {
         lower_bound_dual = temp;
       }
     }
   }
-  //DUMP(SW1);
-  //DUMP(std::numeric_limits<double>::min());
-  Eigen::VectorXd e(SW0.rows()); e.setConstant(1);
-  //DUMP(e - (SW0 + upper_bound_primal*SW1));
-  //DUMP(e - (SW0 + lower_bound_primal*SW1));
-  //DUMP(e - (SW0 + upper_bound_dual*SW1));
-  //DUMP(e - (SW0 + lower_bound_dual*SW1));
-  //DUMP(upper_bound_dual);
-  //DUMP(lower_bound_primal);
-  //DUMP(upper_bound_primal);
-  //DUMP(lower_bound_dual);
+  // DUMP(SW1);
+  // DUMP(std::numeric_limits<double>::min());
+  Eigen::VectorXd e(SW0.rows());
+  e.setConstant(1);
+  // DUMP(e - (SW0 + upper_bound_primal*SW1));
+  // DUMP(e - (SW0 + lower_bound_primal*SW1));
+  // DUMP(e - (SW0 + upper_bound_dual*SW1));
+  // DUMP(e - (SW0 + lower_bound_dual*SW1));
+  // DUMP(upper_bound_dual);
+  // DUMP(lower_bound_primal);
+  // DUMP(upper_bound_primal);
+  // DUMP(lower_bound_dual);
   data->inv_sqrt_mu_primal_lower_bound = lower_bound_primal;
   data->inv_sqrt_mu_dual_lower_bound = lower_bound_dual;
   data->inv_sqrt_mu_primal_upper_bound = upper_bound_primal;
@@ -84,7 +86,8 @@ bool DoPrimalDualLineSearch(LinearConstraint* o, double dinf_limit, StepInfo* da
   return false;
 }
 
-void PrepareParametrizedSlack(LinearConstraint* o,  const Ref& y1, const Ref& y2) {
+void PrepareParametrizedSlack(LinearConstraint* o, const Ref& y1,
+                              const Ref& y2) {
   auto& W = o->workspace_.W;
   auto& s1 = o->workspace_.temp_1;
   auto& s2 = o->workspace_.temp_2;
