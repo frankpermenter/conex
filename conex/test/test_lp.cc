@@ -10,7 +10,7 @@
 namespace conex {
 using DenseMatrix = Eigen::MatrixXd;
 using Eigen::VectorXd;
-
+#if 0
 GTEST_TEST(LP, Dense) {
   for (int i = 0; i < 10; i++) {
     SolverConfiguration config;
@@ -43,7 +43,6 @@ GTEST_TEST(LP, Dense) {
     EXPECT_TRUE((slack).minCoeff() >= -eps);
   }
 }
-#if 0
 Eigen::VectorXd Vars(const Eigen::VectorXd& x, std::vector<int> indices) {
   Eigen::VectorXd z(indices.size());
   int cnt = 0;
@@ -264,7 +263,7 @@ GTEST_TEST(LP, SparseWithFillIn) {
   auto y2 = SolveFillIn(false);
   EXPECT_NEAR((y1 - y2).norm(), 0, 1e-7);
 }
-
+#else 
 void DoRandomPrimalFailsSlater(double distance_to_infeasible) {
   SolverConfiguration config;
   config.prepare_dual_variables = true;
@@ -322,7 +321,7 @@ void DoRandomPrimalFailsSlater(double distance_to_infeasible) {
   }
 }
 
-GTEST_TEST(LP, RandomPrimal) {
+GTEST_TEST(LP, RandomPrimalFailsSlater) {
   srand(0);
   for (int i = 0; i < 3; i++) {
     DoRandomPrimalFailsSlater(.1 * (-1 + i * 1));

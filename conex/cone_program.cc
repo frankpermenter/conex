@@ -95,39 +95,58 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
                  const Ref& y1,
                  const Ref& y2,
                  StepInfo* info) {
-  StepInfo info_i;
-  *info = info_i;
-  
-  int i = 0;
-  for (auto& ci : kkt->eqs) {
-    // TODO(FrankPermenter): Remove creation of these maps.
-    auto y1segment = Vars(y1, kkt->cliques.at(i));
-    auto y2segment = Vars(y2, kkt->cliques.at(i));
-    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z1(y1segment.data(),
-                                                  y1segment.size(), 1);
 
-    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z2(y2segment.data(),
-                                                  y2segment.size(), 1);
+  auto params = newton_step_parameters;
+  for (int j = 0; j < 5; j++) {
+    int i = 0;
+    StepInfo info_i;
+    *info = info_i;
+    bool valid = true;
+    for (auto& ci : kkt->eqs) {
+      // TODO(FrankPermenter): Remove creation of these maps.
+      auto y1segment = Vars(y1, kkt->cliques.at(i));
+      auto y2segment = Vars(y2, kkt->cliques.at(i));
+      Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z1(y1segment.data(),
+                                                    y1segment.size(), 1);
 
-    PrepareParametrizedSlack(&ci.constraint, newton_step_parameters, z1, z2, &info_i);
-    if (info_i.inv_sqrt_mu_primal_lower_bound >
-        info->inv_sqrt_mu_primal_lower_bound) { 
-        info->inv_sqrt_mu_primal_lower_bound = info_i.inv_sqrt_mu_primal_lower_bound;
-    }
-    if (info_i.inv_sqrt_mu_dual_lower_bound >
-        info->inv_sqrt_mu_dual_lower_bound) { 
-        info->inv_sqrt_mu_dual_lower_bound = info_i.inv_sqrt_mu_dual_lower_bound;
-    }
-    if (info_i.inv_sqrt_mu_primal_upper_bound <
-        info->inv_sqrt_mu_primal_upper_bound) { 
-        info->inv_sqrt_mu_primal_upper_bound = info_i.inv_sqrt_mu_primal_upper_bound;
-    }
-    if (info_i.inv_sqrt_mu_dual_upper_bound <
-        info->inv_sqrt_mu_dual_upper_bound) { 
-        info->inv_sqrt_mu_dual_upper_bound = info_i.inv_sqrt_mu_dual_upper_bound;
-    }
+      Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z2(y2segment.data(),
+                                                    y2segment.size(), 1);
 
-    i++;
+      PrepareParametrizedSlack(&ci.constraint, params, z1, z2, &info_i);
+      if (info_i.inv_sqrt_mu_primal_lower_bound >
+          info->inv_sqrt_mu_primal_lower_bound) { 
+          info->inv_sqrt_mu_primal_lower_bound = info_i.inv_sqrt_mu_primal_lower_bound;
+      }
+      if (info_i.inv_sqrt_mu_dual_lower_bound >
+          info->inv_sqrt_mu_dual_lower_bound) { 
+          info->inv_sqrt_mu_dual_lower_bound = info_i.inv_sqrt_mu_dual_lower_bound;
+      }
+      if (info_i.inv_sqrt_mu_primal_upper_bound <
+          info->inv_sqrt_mu_primal_upper_bound) { 
+          info->inv_sqrt_mu_primal_upper_bound = info_i.inv_sqrt_mu_primal_upper_bound;
+      }
+      if (info_i.inv_sqrt_mu_dual_upper_bound <
+          info->inv_sqrt_mu_dual_upper_bound) { 
+          info->inv_sqrt_mu_dual_upper_bound = info_i.inv_sqrt_mu_dual_upper_bound;
+      }
+
+      if (info_i.inv_sqrt_mu_dual_lower_bound > info_i.inv_sqrt_mu_dual_upper_bound) {
+        bool valid = false;
+        break;
+      }
+      if (info_i.inv_sqrt_mu_primal_lower_bound > info_i.inv_sqrt_mu_primal_upper_bound) {
+        bool valid = false;
+        break;
+      }
+
+      i++;
+    }
+    if (valid) {
+      break; 
+    } else {
+      params.dinf_limit += .5;
+      DUMP(params.dinf_limit);
+    }
   }
 }
 

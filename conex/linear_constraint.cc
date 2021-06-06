@@ -49,7 +49,7 @@ void PrepareParametrizedSlack(LinearConstraint* o, const StepOptions& opt, const
   SW0 = -s1.cwiseProduct(W);
   SW1 = -s2.cwiseProduct(W);
 
-  double dinf_limit = 1.5;
+  double dinf_limit = opt.dinf_limit;
   for (int i = 0; i < SW0.rows(); i++) {
     // e + At * y - k * c
     double temp = (-dinf_limit+1+-SW0(i)) / SW1(i); 
