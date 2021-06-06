@@ -108,6 +108,7 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
                                                   y2segment.size(), 1);
 
     PrepareParametrizedSlack(&ci.constraint, z1, z2);
+    i++;
   }
 
   auto params = newton_step_parameters;
@@ -401,17 +402,17 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     }
     END_TIMER
 
+    Eigen::MatrixXd y1data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+    Ref y1(y1data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+    y1 = -2*AW;
+    solver->SolveInPlace(&y1);
+    Eigen::MatrixXd y2data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+    Ref y2(y2data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+    y2 = b + AQc;
+    solver->SolveInPlace(&y2);
+    StepInfo info_slack;
+    PrepareParametrizedSlack(&prog.kkt_system_manager_, newton_step_parameters, y1, y2, &info_slack);
     if (update_mu) {
-      Eigen::MatrixXd y1data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
-      Ref y1(y1data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
-      y1 = -2*AW;
-      solver->SolveInPlace(&y1);
-      Eigen::MatrixXd y2data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
-      Ref y2(y2data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
-      y2 = b + AQc;
-      solver->SolveInPlace(&y2);
-      StepInfo info_slack;
-      PrepareParametrizedSlack(&prog.kkt_system_manager_, newton_step_parameters, y1, y2, &info_slack);
       newton_step_parameters.inv_sqrt_mu = info_slack.inv_sqrt_mu_primal_upper_bound;
       if (newton_step_parameters.inv_sqrt_mu > info_slack.inv_sqrt_mu_dual_upper_bound) {
         newton_step_parameters.inv_sqrt_mu = info_slack.inv_sqrt_mu_dual_upper_bound;
@@ -439,6 +440,9 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     START_TIMER(Solve)
     solver->SolveInPlace(&y);
     END_TIMER
+    if ((y - (y1+ newton_step_parameters.inv_sqrt_mu*y2)).norm() > .1) {
+      throw std::runtime_error("Bad KKT solve.");
+    }
 
     newton_step_parameters.e_weight = 1;
     newton_step_parameters.c_weight = newton_step_parameters.inv_sqrt_mu;

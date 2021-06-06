@@ -12,16 +12,14 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
                  StepInfo* info) {
   auto* workspace = &o->workspace_;
   auto& minus_s = workspace->temp_1;
+  auto& SW0 = o->workspace_.temp_1;
+  auto& SW1 = o->workspace_.temp_2;
+
+  Eigen::VectorXd SWn = -(SW0 + options.inv_sqrt_mu * SW1);
   if (!options.affine) {
-    o->ComputeNegativeSlack(options.inv_sqrt_mu, y, &minus_s);
-    auto& W = workspace->W;
-    auto& SW = workspace->temp_1;
-    auto& d = workspace->temp_2;
-    SW = minus_s.cwiseProduct(W);
-
-    int n = SW.rows();
-
-    d = SW + DenseMatrix::Ones(n, 1);
+    auto& d = workspace->temp_1;
+    d = SWn; 
+    d.array() += 1;
     double norminf = (d).array().abs().maxCoeff();
     info->norminfd = norminf;
     info->normsqrd = d.squaredNorm();
@@ -100,7 +98,7 @@ void PrepareParametrizedSlack(LinearConstraint* o,  const Ref& y1, const Ref& y2
 
 bool TakeStep(LinearConstraint* o, const StepOptions& options) {
   if (!options.affine) {
-    auto& d = o->workspace_.temp_2;
+    auto& d = o->workspace_.temp_1;
     auto& W = o->workspace_.W;
     if (options.step_size != 1) {
       d.array() *= options.step_size;

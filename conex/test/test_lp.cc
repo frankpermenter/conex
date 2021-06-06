@@ -92,7 +92,7 @@ Eigen::VectorXd SolveSparseHelper(bool sparse) {
   SolverConfiguration config;
   config.prepare_dual_variables = true;
 
-  int number_of_constraints = 50;
+  int number_of_constraints = 2;
   std::vector<std::vector<int> > variables(number_of_constraints);
   vector<MatrixXd> A(number_of_constraints);
   vector<MatrixXd> C(number_of_constraints);
@@ -311,7 +311,7 @@ void DoRandomPrimalFailsSlater(double distance_to_infeasible) {
 
   if (distance_to_infeasible < 0) {
     double scale = (-C.transpose() * x)(0, 0);
-    EXPECT_NEAR((A.transpose() * x / scale).norm(), 0, 1e-5);
+    EXPECT_NEAR((A.transpose() * x / scale).norm(), 0, 1e-2);
     EXPECT_GE((-C.transpose() * x)(0, 0), 0);
     EXPECT_GE(x.minCoeff() / scale, -1e-8);
   } else {
