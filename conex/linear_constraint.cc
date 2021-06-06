@@ -15,10 +15,11 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
   auto& SW0 = o->workspace_.temp_1;
   auto& SW1 = o->workspace_.temp_2;
 
-  Eigen::VectorXd SWn = -(SW0 + options.inv_sqrt_mu * SW1);
   if (!options.affine) {
-    auto& d = workspace->temp_1;
-    d = SWn; 
+    auto& d = workspace->temp_2;
+    // d = SW0
+    d *= options.inv_sqrt_mu;
+    d += SW0;
     d.array() += 1;
     double norminf = (d).array().abs().maxCoeff();
     info->norminfd = norminf;
@@ -39,8 +40,8 @@ bool DoPrimalDualLineSearch(LinearConstraint* o, double dinf_limit, StepInfo* da
   const auto& SW1 = o->workspace_.temp_2;
   for (int i = 0; i < SW0.rows(); i++) {
     // e + At * y - k * c
-    double temp = (-dinf_limit+1+-SW0(i)) / SW1(i); 
-    if (SW1(i) > 0) {
+    double temp = (-dinf_limit+1+SW0(i)) / -SW1(i); 
+    if (-SW1(i) > 0) {
       // SW0 + SW1 * t >= 0 => t >= - SW0 / SW1 
       if (temp > lower_bound_primal) {
         lower_bound_primal = temp;
@@ -52,8 +53,8 @@ bool DoPrimalDualLineSearch(LinearConstraint* o, double dinf_limit, StepInfo* da
       }
     }
 
-    temp = (dinf_limit + 1 - SW0(i)) / SW1(i); 
-    if (SW1(i) > 0) {
+    temp = (dinf_limit + 1 + SW0(i)) / -SW1(i); 
+    if (-SW1(i) > 0) {
       // SW0 + SW1 * t <= 1 => t <= (2- SW0) / SW1 
       if (temp < upper_bound_dual) {
         upper_bound_dual = temp;
@@ -92,13 +93,13 @@ void PrepareParametrizedSlack(LinearConstraint* o,  const Ref& y1, const Ref& y2
   o->ComputeNegativeSlack(0, y1, &s1);
   o->ComputeNegativeSlack(1, y2, &s2);
 
-  SW0 = -s1.cwiseProduct(W);
-  SW1 = -s2.cwiseProduct(W);
+  SW0 = s1.cwiseProduct(W);
+  SW1 = s2.cwiseProduct(W);
 }
 
 bool TakeStep(LinearConstraint* o, const StepOptions& options) {
   if (!options.affine) {
-    auto& d = o->workspace_.temp_1;
+    auto& d = o->workspace_.temp_2;
     auto& W = o->workspace_.W;
     if (options.step_size != 1) {
       d.array() *= options.step_size;
