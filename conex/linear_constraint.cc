@@ -32,25 +32,13 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
   }
 }
 
-void PrepareParametrizedSlack(LinearConstraint* o, const StepOptions& opt, const Ref& y1, const Ref& y2, StepInfo* data) {
-  int n = o->constraint_affine_.rows();
-  auto& W = o->workspace_.W;
-  auto& s1 = o->workspace_.temp_1;
-  auto& s2 = o->workspace_.temp_2;
-  auto& SW0 = o->workspace_.temp_1;
-  auto& SW1 = o->workspace_.temp_2;
-  o->ComputeNegativeSlack(0, y1, &s1);
-  o->ComputeNegativeSlack(1, y2, &s2);
-
+bool DoPrimalDualLineSearch(LinearConstraint* o, double dinf_limit, StepInfo* data) {
   double lower_bound_primal = -std::numeric_limits<double>::max();
   double upper_bound_primal = std::numeric_limits<double>::max();
-  double lower_bound_dual = -std::numeric_limits<double>::max();
-  double upper_bound_dual = std::numeric_limits<double>::max();
-
-  SW0 = -s1.cwiseProduct(W);
-  SW1 = -s2.cwiseProduct(W);
-
-  double dinf_limit = opt.dinf_limit;
+  double lower_bound_dual   = -std::numeric_limits<double>::max();
+  double upper_bound_dual   = std::numeric_limits<double>::max();
+  const auto& SW0 = o->workspace_.temp_1;
+  const auto& SW1 = o->workspace_.temp_2;
   for (int i = 0; i < SW0.rows(); i++) {
     // e + At * y - k * c
     double temp = (-dinf_limit+1+-SW0(i)) / SW1(i); 
@@ -94,6 +82,20 @@ void PrepareParametrizedSlack(LinearConstraint* o, const StepOptions& opt, const
   data->inv_sqrt_mu_dual_lower_bound = lower_bound_dual;
   data->inv_sqrt_mu_primal_upper_bound = upper_bound_primal;
   data->inv_sqrt_mu_dual_upper_bound = upper_bound_dual;
+  return false;
+}
+
+void PrepareParametrizedSlack(LinearConstraint* o,  const Ref& y1, const Ref& y2) {
+  auto& W = o->workspace_.W;
+  auto& s1 = o->workspace_.temp_1;
+  auto& s2 = o->workspace_.temp_2;
+  auto& SW0 = o->workspace_.temp_1;
+  auto& SW1 = o->workspace_.temp_2;
+  o->ComputeNegativeSlack(0, y1, &s1);
+  o->ComputeNegativeSlack(1, y2, &s2);
+
+  SW0 = -s1.cwiseProduct(W);
+  SW1 = -s2.cwiseProduct(W);
 }
 
 bool TakeStep(LinearConstraint* o, const StepOptions& options) {

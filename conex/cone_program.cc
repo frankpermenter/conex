@@ -96,7 +96,24 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
                  const Ref& y2,
                  StepInfo* info) {
 
+  int i = 0;
+  for (auto& ci : kkt->eqs) {
+    // TODO(FrankPermenter): Remove creation of these maps.
+    auto y1segment = Vars(y1, kkt->cliques.at(i));
+    auto y2segment = Vars(y2, kkt->cliques.at(i));
+    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z1(y1segment.data(),
+                                                  y1segment.size(), 1);
+
+    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z2(y2segment.data(),
+                                                  y2segment.size(), 1);
+
+    PrepareParametrizedSlack(&ci.constraint, z1, z2);
+  }
+
   auto params = newton_step_parameters;
+  bool valid = true;
+  bool primal_feasible = false;
+  bool dual_feasible = false;
   for (int j = 0; j < 5; j++) {
     int i = 0;
     StepInfo info_i;
@@ -105,16 +122,7 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
     bool primal_feasible = false;
     bool dual_feasible = false;
     for (auto& ci : kkt->eqs) {
-      // TODO(FrankPermenter): Remove creation of these maps.
-      auto y1segment = Vars(y1, kkt->cliques.at(i));
-      auto y2segment = Vars(y2, kkt->cliques.at(i));
-      Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z1(y1segment.data(),
-                                                    y1segment.size(), 1);
-
-      Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z2(y2segment.data(),
-                                                    y2segment.size(), 1);
-
-      PrepareParametrizedSlack(&ci.constraint, params, z1, z2, &info_i);
+      DoPrimalDualLineSearch(&ci.constraint, params.dinf_limit, &info_i);
       if (info_i.inv_sqrt_mu_primal_lower_bound >
           info->inv_sqrt_mu_primal_lower_bound) { 
           info->inv_sqrt_mu_primal_lower_bound = info_i.inv_sqrt_mu_primal_lower_bound;
@@ -140,17 +148,15 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
         primal_feasible = params.dinf_limit <= 1 && info_i.inv_sqrt_mu_primal_upper_bound > 0;
       }
 
-      double lower_bound =  info_i.inv_sqrt_mu_primal_lower_bound;
+      double lower_bound = info_i.inv_sqrt_mu_primal_lower_bound;
       if (lower_bound < info_i.inv_sqrt_mu_dual_lower_bound) {
         lower_bound = info_i.inv_sqrt_mu_dual_lower_bound;
       }
-      double upper_bound =  info_i.inv_sqrt_mu_primal_upper_bound;
+      double upper_bound = info_i.inv_sqrt_mu_primal_upper_bound;
       if (upper_bound > info_i.inv_sqrt_mu_dual_upper_bound) {
         upper_bound = info_i.inv_sqrt_mu_dual_upper_bound;
       }
       if (upper_bound > lower_bound) {
-        //DUMP(upper_bound);
-        //DUMP(lower_bound);
         params.dinf_limit = upper_bound;
         valid = true;
         break;
@@ -396,14 +402,6 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     END_TIMER
 
     if (update_mu) {
-      //double temp = ComputeMuFromDivergence(prog.kkt_system_manager_, solver,
-      //                                      AQc, b, config, rankK, &y);
-      //if (temp > 0) {
-      //  newton_step_parameters.inv_sqrt_mu = temp;
-      //} else {
-      //  newton_step_parameters.inv_sqrt_mu *= .5;
-      //}
-
       Eigen::MatrixXd y1data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
       Ref y1(y1data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
       y1 = -2*AW;
@@ -432,7 +430,7 @@ bool Solve(const DenseMatrix& bin, Program& prog,
 
     const double max = config.inv_sqrt_mu_max;
     const double min = std::sqrt(1.0 / (1e-15 + config.maximum_mu));
-    //ApplyLimits(&newton_step_parameters.inv_sqrt_mu, min, max);
+    ApplyLimits(&newton_step_parameters.inv_sqrt_mu, min, max);
 
     double mu = 1.0 / (newton_step_parameters.inv_sqrt_mu);
     mu *= mu;
