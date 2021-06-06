@@ -3,7 +3,8 @@
 #include "newton_step.h"
 
 namespace conex {
-
+using Eigen::VectorXd;
+using Eigen::MatrixXd;
 void SetIdentity(LinearConstraint* o) { o->workspace_.W.setConstant(1); }
 
 // TODO: use e_weight and c_weight
@@ -41,10 +42,10 @@ void PrepareParametrizedSlack(LinearConstraint* o, const StepOptions& opt, const
   o->ComputeNegativeSlack(0, y1, &s1);
   o->ComputeNegativeSlack(1, y2, &s2);
 
-  double lower_bound_primal = -1e30;
-  double upper_bound_primal = 1e30;
-  double lower_bound_dual = -1e30;
-  double upper_bound_dual = 1e30;
+  double lower_bound_primal = -std::numeric_limits<double>::max();
+  double upper_bound_primal = std::numeric_limits<double>::max();
+  double lower_bound_dual = -std::numeric_limits<double>::max();
+  double upper_bound_dual = std::numeric_limits<double>::max();
 
   SW0 = -s1.cwiseProduct(W);
   SW1 = -s2.cwiseProduct(W);
@@ -78,6 +79,17 @@ void PrepareParametrizedSlack(LinearConstraint* o, const StepOptions& opt, const
       }
     }
   }
+  //DUMP(SW1);
+  //DUMP(std::numeric_limits<double>::min());
+  Eigen::VectorXd e(SW0.rows()); e.setConstant(1);
+  //DUMP(e - (SW0 + upper_bound_primal*SW1));
+  //DUMP(e - (SW0 + lower_bound_primal*SW1));
+  //DUMP(e - (SW0 + upper_bound_dual*SW1));
+  //DUMP(e - (SW0 + lower_bound_dual*SW1));
+  //DUMP(upper_bound_dual);
+  //DUMP(lower_bound_primal);
+  //DUMP(upper_bound_primal);
+  //DUMP(lower_bound_dual);
   data->inv_sqrt_mu_primal_lower_bound = lower_bound_primal;
   data->inv_sqrt_mu_dual_lower_bound = lower_bound_dual;
   data->inv_sqrt_mu_primal_upper_bound = upper_bound_primal;

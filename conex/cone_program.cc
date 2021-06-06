@@ -102,6 +102,8 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
     StepInfo info_i;
     *info = info_i;
     bool valid = true;
+    bool primal_feasible = false;
+    bool dual_feasible = false;
     for (auto& ci : kkt->eqs) {
       // TODO(FrankPermenter): Remove creation of these maps.
       auto y1segment = Vars(y1, kkt->cliques.at(i));
@@ -130,24 +132,43 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
           info->inv_sqrt_mu_dual_upper_bound = info_i.inv_sqrt_mu_dual_upper_bound;
       }
 
-      if (info_i.inv_sqrt_mu_dual_lower_bound > info_i.inv_sqrt_mu_dual_upper_bound) {
-        bool valid = false;
-        break;
+      if (info_i.inv_sqrt_mu_dual_lower_bound < info_i.inv_sqrt_mu_dual_upper_bound) {
+        dual_feasible = params.dinf_limit <= 1 && info_i.inv_sqrt_mu_dual_upper_bound > 0;
       }
-      if (info_i.inv_sqrt_mu_primal_lower_bound > info_i.inv_sqrt_mu_primal_upper_bound) {
-        bool valid = false;
+
+      if (info_i.inv_sqrt_mu_primal_lower_bound < info_i.inv_sqrt_mu_primal_upper_bound) {
+        primal_feasible = params.dinf_limit <= 1 && info_i.inv_sqrt_mu_primal_upper_bound > 0;
+      }
+
+      double lower_bound =  info_i.inv_sqrt_mu_primal_lower_bound;
+      if (lower_bound < info_i.inv_sqrt_mu_dual_lower_bound) {
+        lower_bound = info_i.inv_sqrt_mu_dual_lower_bound;
+      }
+      double upper_bound =  info_i.inv_sqrt_mu_primal_upper_bound;
+      if (upper_bound > info_i.inv_sqrt_mu_dual_upper_bound) {
+        upper_bound = info_i.inv_sqrt_mu_dual_upper_bound;
+      }
+      if (upper_bound > lower_bound) {
+        //DUMP(upper_bound);
+        //DUMP(lower_bound);
+        params.dinf_limit = upper_bound;
+        valid = true;
         break;
+      } else {
+        valid = false;
       }
 
       i++;
     }
     if (valid) {
-      break; 
+      //DUMP(i);
+      //DUMP(params.dinf_limit);
+      return;
     } else {
-      params.dinf_limit += .5;
-      DUMP(params.dinf_limit);
+      params.dinf_limit += 0.1;
     }
   }
+  throw std::runtime_error("Failed to find mu");
 }
 
 
@@ -411,7 +432,7 @@ bool Solve(const DenseMatrix& bin, Program& prog,
 
     const double max = config.inv_sqrt_mu_max;
     const double min = std::sqrt(1.0 / (1e-15 + config.maximum_mu));
-    ApplyLimits(&newton_step_parameters.inv_sqrt_mu, min, max);
+    //ApplyLimits(&newton_step_parameters.inv_sqrt_mu, min, max);
 
     double mu = 1.0 / (newton_step_parameters.inv_sqrt_mu);
     mu *= mu;
