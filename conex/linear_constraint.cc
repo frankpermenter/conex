@@ -39,6 +39,7 @@ bool DoPrimalDualLineSearch(LinearConstraint* o, double dinf_limit,
   double upper_bound_dual = std::numeric_limits<double>::max();
   const auto& SW0 = o->workspace_.temp_1;
   const auto& SW1 = o->workspace_.temp_2;
+  
   for (int i = 0; i < SW0.rows(); i++) {
     // e + At * y - k * c
     double temp = (-dinf_limit + 1 + SW0(i)) / -SW1(i);
@@ -69,8 +70,6 @@ bool DoPrimalDualLineSearch(LinearConstraint* o, double dinf_limit,
   }
   // DUMP(SW1);
   // DUMP(std::numeric_limits<double>::min());
-  Eigen::VectorXd e(SW0.rows());
-  e.setConstant(1);
   // DUMP(e - (SW0 + upper_bound_primal*SW1));
   // DUMP(e - (SW0 + lower_bound_primal*SW1));
   // DUMP(e - (SW0 + upper_bound_dual*SW1));
