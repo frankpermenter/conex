@@ -17,7 +17,7 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
 
   if (!options.affine) {
     auto& d = workspace->temp_2;
-    // d = SW0
+    // d = SW1
     d *= options.inv_sqrt_mu;
     d += SW0;
     d.array() += 1;
@@ -31,14 +31,37 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
   }
 }
 
-bool DoPrimalDualLineSearch(LinearConstraint* o, double dinf_limit,
+bool DoPrimalDualLineSearch(LinearConstraint* o, 
+                            const LineSearchParameters& p, 
                             StepInfo* data) {
+  double dinf_limit = p.dinf_limit;
   double lower_bound_primal = -std::numeric_limits<double>::max();
   double upper_bound_primal = std::numeric_limits<double>::max();
   double lower_bound_dual = -std::numeric_limits<double>::max();
   double upper_bound_dual = std::numeric_limits<double>::max();
   const auto& SW0 = o->workspace_.temp_1;
   const auto& SW1 = o->workspace_.temp_2;
+
+  VectorXd SW2 = -(SW0 + SW1 * p.inv_sqrt_mu);
+
+  DUMP(SW2);
+  SW2 = -SW1.cwiseProduct(SW2.cwiseInverse());
+  DUMP(1.0/(p.inv_sqrt_mu * p.inv_sqrt_mu));
+  DUMP(-1.0/SW2.minCoeff() + p.inv_sqrt_mu);
+  double upper_bound_primal_2 = -1.0/SW2.minCoeff() + p.inv_sqrt_mu;
+
+  DUMP(1.0/(upper_bound_primal_2*upper_bound_primal_2));
+
+
+  // 2 + (SW0 + SW1 t)  >= 0
+  SW2.setConstant(2);
+  SW2 += SW0 + SW1 * p.inv_sqrt_mu;
+  SW2 = SW1.cwiseProduct(SW2.cwiseInverse());
+  double upper_bound_dual_2 = -1.0/SW2.minCoeff() + p.inv_sqrt_mu;
+  DUMP(SW0 + SW1 * upper_bound_dual_2);
+  DUMP(SW0 + SW1 * upper_bound_primal_2);
+  DUMP(1.0/(upper_bound_dual_2*upper_bound_dual_2));
+
 
   for (int i = 0; i < SW0.rows(); i++) {
     // e + At * y - k * c
@@ -80,6 +103,7 @@ bool DoPrimalDualLineSearch(LinearConstraint* o, double dinf_limit,
   // DUMP(lower_bound_dual);
   data->inv_sqrt_mu_primal_lower_bound = lower_bound_primal;
   data->inv_sqrt_mu_dual_lower_bound = lower_bound_dual;
+  //data->inv_sqrt_mu_primal_upper_bound = upper_bound_primal;
   data->inv_sqrt_mu_primal_upper_bound = upper_bound_primal;
   data->inv_sqrt_mu_dual_upper_bound = upper_bound_dual;
   return false;

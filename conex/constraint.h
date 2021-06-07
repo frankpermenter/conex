@@ -34,7 +34,7 @@ void PrepareParametrizedSlack(T* o, const Ref& y1, const Ref& y2) {
 }
 
 template <typename T>
-bool DoPrimalDualLineSearch(T* o, double dinf_limit, StepInfo* data) {
+bool DoPrimalDualLineSearch(T*, const LineSearchParameters&, StepInfo*) {
   throw std::runtime_error("Constraint does not support line search.");
   return false;
 }
@@ -70,9 +70,9 @@ class Constraint {
     o->model->do_prepare_parametrized_slack(y1, y2);
   }
 
-  friend bool DoPrimalDualLineSearch(Constraint* o, double dinf_limit,
+  friend bool DoPrimalDualLineSearch(Constraint* o, const LineSearchParameters& p,
                                      StepInfo* data) {
-    return o->model->do_primal_dual_line_search(dinf_limit, data);
+    return o->model->do_primal_dual_line_search(p, data);
   }
 
   friend void SetIdentity(Constraint* o) { o->model->do_set_identity(); }
@@ -126,7 +126,7 @@ class Constraint {
     virtual int do_dual_variable_size() = 0;
     virtual int do_number_of_variables() = 0;
     virtual void do_prepare_parametrized_slack(const Ref& y, const Ref& y2) = 0;
-    virtual bool do_primal_dual_line_search(double limint, StepInfo* data) = 0;
+    virtual bool do_primal_dual_line_search(const LineSearchParameters& p, StepInfo* data) = 0;
     virtual bool do_update_linear_operator(double val, int var, int row,
                                            int col, int hyper_complex_dim) = 0;
     virtual bool do_update_affine_term(double val, int row, int col,
@@ -189,8 +189,8 @@ class Constraint {
       return PrepareParametrizedSlack(data, y, y2);
     }
 
-    bool do_primal_dual_line_search(double limit, StepInfo* info) override {
-      DoPrimalDualLineSearch(data, limit, info);
+    bool do_primal_dual_line_search(const LineSearchParameters& p, StepInfo* info) override {
+      DoPrimalDualLineSearch(data, p, info);
     }
 
     bool do_take_step(const StepOptions& opt) override {

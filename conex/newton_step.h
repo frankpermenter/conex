@@ -31,7 +31,7 @@ struct StepOptions {
   double step_size = 1;
   double dinf_limit = 1;
 };
-
+using LineSearchParameters = StepOptions;
 struct StepInfo {
   double normsqrd;
   double norminfd;

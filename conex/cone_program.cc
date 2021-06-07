@@ -93,6 +93,7 @@ void GetWeightedSlackEigenvalues(ConstraintManager<Container>* constraints,
 void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
                               const StepOptions& newton_step_parameters,
                               const Ref& y1, const Ref& y2, StepInfo* info) {
+  static double mu_last = -1;
   int i = 0;
   for (auto& ci : kkt->eqs) {
     // TODO(FrankPermenter): Remove creation of these maps.
@@ -117,7 +118,7 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
     bool primal_feasible = false;
     bool dual_feasible = false;
     for (auto& ci : kkt->eqs) {
-      DoPrimalDualLineSearch(&ci.constraint, params.dinf_limit, &info_i);
+      DoPrimalDualLineSearch(&ci.constraint, params, &info_i);
       if (info_i.inv_sqrt_mu_primal_lower_bound >
           info->inv_sqrt_mu_primal_lower_bound) {
         info->inv_sqrt_mu_primal_lower_bound =
@@ -161,6 +162,15 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
       }
       if (upper_bound > lower_bound) {
         params.dinf_limit = upper_bound;
+        if (mu_last > 0) {
+          if (mu_last - lower_bound < 0) {
+            DUMP("lower bad");  
+          }
+          if (upper_bound - mu_last < 0) {
+            DUMP("upper bad");  
+          }
+        }
+        mu_last = upper_bound;
         valid = true;
         break;
       } else {
@@ -416,7 +426,6 @@ bool Solve(const DenseMatrix& bin, Program& prog,
         newton_step_parameters.inv_sqrt_mu =
             info_slack.inv_sqrt_mu_dual_upper_bound;
       }
-
     } else {
       if (initial_centering == 0) {
         centering_steps++;
