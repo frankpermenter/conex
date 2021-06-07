@@ -109,9 +109,6 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
   }
 
   auto params = newton_step_parameters;
-  bool valid = true;
-  bool primal_feasible = false;
-  bool dual_feasible = false;
   for (int j = 0; j < 5; j++) {
     int i = 0;
     StepInfo info_i;
@@ -173,8 +170,6 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
       i++;
     }
     if (valid) {
-      // DUMP(i);
-      // DUMP(params.dinf_limit);
       return;
     } else {
       params.dinf_limit += 0.1;
