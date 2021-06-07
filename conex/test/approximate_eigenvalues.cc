@@ -16,7 +16,12 @@ using Eigen::VectorXd;
 GTEST_TEST(Eigenvalues, NonsymmetricFromJacobiIterations) {
   int n = 4;
   MatrixXd A(n, n);
-  A << 3, 1, 0, 1, 1, 3, 1, 0, 0, 1, 4, 1, 1, 0, 1, 5;
+  // clang-format off
+  A << 3, 1, 0, 1,
+       1, 3, 1, 0,
+       0, 1, 4, 1,
+       1, 0, 1, 5;
+  // clang-format on
   A = A / A.trace();
 
   MatrixXd W = MatrixXd::Random(n, n);
@@ -44,7 +49,12 @@ GTEST_TEST(Eigenvalues, NonsymmetricFromJacobiIterations) {
 GTEST_TEST(Eigenvalues, TruncatedApproximiationInterlaces) {
   int n = 4;
   MatrixXd A(n, n);
-  A << .1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 4, 0, 0, 0, 0, 5;
+  // clang-format off
+  A << .1, 0, 0, 0,
+        0, 3, 0, 0, 
+        0, 0, 4, 0,
+        0, 0, 0, 5;
+  // clang-format on
 
   VectorXd r0(n);
   r0 << 1, 2, 0, 4;
@@ -63,7 +73,12 @@ GTEST_TEST(Eigenvalues, TruncatedApproximiationInterlaces) {
 GTEST_TEST(Eigenvalues, Lanczos) {
   int n = 4;
   MatrixXd A(n, n);
-  A << 3, 1, 0, 1, 1, 3, 1, 0, 0, 1, 4, 1, 1, 0, 1, 5;
+  // clang-format off
+  A << 3, 1, 0, 1,
+       1, 3, 1, 0,
+       0, 1, 4, 1,
+       1, 0, 1, 5;
+  // clang-format on
   A = A / A.trace();
 
   VectorXd r0(n);
