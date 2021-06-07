@@ -111,7 +111,6 @@ cc_test(
     ],
 )
 
-
 cc_library(
     name = "approximate_eigenvalues",
     srcs = ["approximate_eigenvalues.cc"],
@@ -129,23 +128,27 @@ cc_test(
     ]),
     copts = ["-Iexternal/gtest/include"],
     deps = [
-        "generalized_eigenvalues",
         "conex_lib",
+        "generalized_eigenvalues",
         "test_util",
         "@eigen",
         "@gtest//:main",
     ],
 )
+
 cc_library(
     name = "generalized_eigenvalues",
-    srcs = ["generalized_eigenvalues.cc", "debug_macros.h"],
+    srcs = [
+        "generalized_eigenvalues.cc",
+    ],
     hdrs = ["generalized_eigenvalues.h"],
     copts = COPTS,
     visibility = ["//visibility:public"],
-    deps = ["@eigen", "approximate_eigenvalues"],
+    deps = [
+        "approximate_eigenvalues",
+        "@eigen",
+    ],
 )
-
-
 
 cc_test(
     name = "exponential_map_pade_test",

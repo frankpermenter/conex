@@ -1,6 +1,5 @@
 #include "conex/generalized_eigenvalues.h"
 #include "conex/approximate_eigenvalues.h"
-#include "conex/debug_macros.h"
 
 namespace conex {
 
@@ -15,7 +14,7 @@ Eigen::VectorXd GeneralizedEigenvalues(const Eigen::MatrixXd& A,
                                        int num_iteration) {
   Eigen::MatrixXd Ainv = A.inverse();
   // Eigenvalues of A^{-1} B
-  return ApproximateEigenvalues(Ainv*B, Ainv, r, num_iteration, 1); 
+  return ApproximateEigenvalues(Ainv * B, Ainv, r, num_iteration, 1);
 }
 
 }  // namespace conex
