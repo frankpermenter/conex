@@ -8,8 +8,7 @@ using Eigen::VectorXd;
 void SetIdentity(LinearConstraint* o) { o->workspace_.W.setConstant(1); }
 
 // TODO: use e_weight and c_weight
-void PrepareStep(LinearConstraint* o, 
-                 const StepOptions& options, const Ref& y,
+void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
                  StepInfo* info) {
   auto* workspace = &o->workspace_;
   auto& minus_s = workspace->temp_1;
@@ -32,8 +31,7 @@ void PrepareStep(LinearConstraint* o,
   }
 }
 
-bool DoPrimalDualLineSearch(LinearConstraint* o, 
-                            const LineSearchParameters& p, 
+bool DoPrimalDualLineSearch(LinearConstraint* o, const LineSearchParameters& p,
                             StepInfo* data) {
   double dinf_limit = p.dinf_limit;
   double lower_bound_primal = -std::numeric_limits<double>::max();
@@ -46,20 +44,17 @@ bool DoPrimalDualLineSearch(LinearConstraint* o,
   VectorXd SW2 = -(SW0 + SW1 * p.inv_sqrt_mu);
 
   SW2 = -SW1.cwiseProduct(SW2.cwiseInverse());
-  //DUMP(1.0/(p.inv_sqrt_mu * p.inv_sqrt_mu));
-  //DUMP(-1.0/SW2.minCoeff() + p.inv_sqrt_mu);
-  double upper_bound_primal_2 = -1.0/SW2.minCoeff() + p.inv_sqrt_mu;
-
-
+  // DUMP(1.0/(p.inv_sqrt_mu * p.inv_sqrt_mu));
+  // DUMP(-1.0/SW2.minCoeff() + p.inv_sqrt_mu);
+  double upper_bound_primal_2 = -1.0 / SW2.minCoeff() + p.inv_sqrt_mu;
 
   // 2 + (SW0 + SW1 t)  >= 0
   SW2.setConstant(2);
   SW2 += SW0 + SW1 * p.inv_sqrt_mu;
   SW2 = SW1.cwiseProduct(SW2.cwiseInverse());
-  double upper_bound_dual_2 = -1.0/SW2.minCoeff() + p.inv_sqrt_mu;
-  //DUMP(SW0 + SW1 * upper_bound_dual_2);
-  //DUMP(SW0 + SW1 * upper_bound_primal_2);
-
+  double upper_bound_dual_2 = -1.0 / SW2.minCoeff() + p.inv_sqrt_mu;
+  // DUMP(SW0 + SW1 * upper_bound_dual_2);
+  // DUMP(SW0 + SW1 * upper_bound_primal_2);
 
   for (int i = 0; i < SW0.rows(); i++) {
     // e + At * y - k * c
@@ -101,16 +96,14 @@ bool DoPrimalDualLineSearch(LinearConstraint* o,
   // DUMP(lower_bound_dual);
   data->inv_sqrt_mu_primal_lower_bound = lower_bound_primal;
   data->inv_sqrt_mu_dual_lower_bound = lower_bound_dual;
-  //data->inv_sqrt_mu_primal_upper_bound = upper_bound_primal;
+  // data->inv_sqrt_mu_primal_upper_bound = upper_bound_primal;
   data->inv_sqrt_mu_primal_upper_bound = upper_bound_primal;
   data->inv_sqrt_mu_dual_upper_bound = upper_bound_dual;
   return false;
 }
 
-void PrepareParametrizedSlack(LinearConstraint* o, 
-                              const SlackWeights& p1, 
-                              const Ref& y1, 
-                              const SlackWeights& p2, 
+void PrepareParametrizedSlack(LinearConstraint* o, const SlackWeights& p1,
+                              const Ref& y1, const SlackWeights& p2,
                               const Ref& y2) {
   auto& W = o->workspace_.W;
   auto& s1 = o->workspace_.temp_1;

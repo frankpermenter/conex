@@ -94,8 +94,12 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
                               const StepOptions& newton_step_parameters,
                               const Ref& y1, const Ref& y2, StepInfo* info) {
   int i = 0;
-  SlackWeights p1; p1.e_weight = 0; p1.c_weight = 0;
-  SlackWeights p2; p2.e_weight = 0; p2.c_weight = 1;
+  SlackWeights p1;
+  p1.e_weight = 0;
+  p1.c_weight = 0;
+  SlackWeights p2;
+  p2.e_weight = 0;
+  p2.c_weight = 1;
   for (auto& ci : kkt->eqs) {
     // TODO(FrankPermenter): Remove creation of these maps.
     auto y1segment = Vars(y1, kkt->cliques.at(i));

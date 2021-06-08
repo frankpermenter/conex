@@ -48,13 +48,12 @@ class LinearConstraint {
   friend void PrepareStep(LinearConstraint* o, const StepOptions& opt,
                           const Ref& y, StepInfo* data);
 
-  friend void PrepareParametrizedSlack(LinearConstraint* o, 
-                              const SlackWeights& p1, 
-                              const Ref& y1, 
-                              const SlackWeights& p2, 
-                              const Ref& y2);
+  friend void PrepareParametrizedSlack(LinearConstraint* o,
+                                       const SlackWeights& p1, const Ref& y1,
+                                       const SlackWeights& p2, const Ref& y2);
 
-  friend bool DoPrimalDualLineSearch(LinearConstraint* o, const LineSearchParameters& p,
+  friend bool DoPrimalDualLineSearch(LinearConstraint* o,
+                                     const LineSearchParameters& p,
                                      StepInfo* data);
 
   // Eigenvalues of Q(w^{1/2}) *(c-A*y)

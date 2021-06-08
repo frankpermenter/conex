@@ -37,9 +37,6 @@ struct SlackWeights {
   double e_weight = 0;
 };
 
-
-
-
 using LineSearchParameters = StepOptions;
 struct StepInfo {
   double normsqrd;
