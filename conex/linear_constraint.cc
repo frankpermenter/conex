@@ -8,7 +8,8 @@ using Eigen::VectorXd;
 void SetIdentity(LinearConstraint* o) { o->workspace_.W.setConstant(1); }
 
 // TODO: use e_weight and c_weight
-void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
+void PrepareStep(LinearConstraint* o, 
+                 const StepOptions& options, const Ref& y,
                  StepInfo* info) {
   auto* workspace = &o->workspace_;
   auto& minus_s = workspace->temp_1;
@@ -44,13 +45,11 @@ bool DoPrimalDualLineSearch(LinearConstraint* o,
 
   VectorXd SW2 = -(SW0 + SW1 * p.inv_sqrt_mu);
 
-  DUMP(SW0 + SW1 * p.inv_sqrt_mu);
   SW2 = -SW1.cwiseProduct(SW2.cwiseInverse());
   //DUMP(1.0/(p.inv_sqrt_mu * p.inv_sqrt_mu));
   //DUMP(-1.0/SW2.minCoeff() + p.inv_sqrt_mu);
   double upper_bound_primal_2 = -1.0/SW2.minCoeff() + p.inv_sqrt_mu;
 
-  DUMP(1.0/(upper_bound_primal_2*upper_bound_primal_2));
 
 
   // 2 + (SW0 + SW1 t)  >= 0
@@ -60,7 +59,6 @@ bool DoPrimalDualLineSearch(LinearConstraint* o,
   double upper_bound_dual_2 = -1.0/SW2.minCoeff() + p.inv_sqrt_mu;
   //DUMP(SW0 + SW1 * upper_bound_dual_2);
   //DUMP(SW0 + SW1 * upper_bound_primal_2);
-  DUMP(1.0/(upper_bound_dual_2*upper_bound_dual_2));
 
 
   for (int i = 0; i < SW0.rows(); i++) {
@@ -109,15 +107,18 @@ bool DoPrimalDualLineSearch(LinearConstraint* o,
   return false;
 }
 
-void PrepareParametrizedSlack(LinearConstraint* o, const Ref& y1,
+void PrepareParametrizedSlack(LinearConstraint* o, 
+                              const SlackWeights& p1, 
+                              const Ref& y1, 
+                              const SlackWeights& p2, 
                               const Ref& y2) {
   auto& W = o->workspace_.W;
   auto& s1 = o->workspace_.temp_1;
   auto& s2 = o->workspace_.temp_2;
   auto& SW0 = o->workspace_.temp_1;
   auto& SW1 = o->workspace_.temp_2;
-  o->ComputeNegativeSlack(0, y1, &s1);
-  o->ComputeNegativeSlack(1, y2, &s2);
+  o->ComputeNegativeSlack(p1.c_weight, y1, &s1);
+  o->ComputeNegativeSlack(p2.c_weight, y2, &s2);
 
   SW0 = s1.cwiseProduct(W);
   SW1 = s2.cwiseProduct(W);

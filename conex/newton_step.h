@@ -31,6 +31,15 @@ struct StepOptions {
   double step_size = 1;
   double dinf_limit = 1;
 };
+
+struct SlackWeights {
+  double c_weight = 0;
+  double e_weight = 0;
+};
+
+
+
+
 using LineSearchParameters = StepOptions;
 struct StepInfo {
   double normsqrd;
@@ -47,7 +56,7 @@ struct WorkspaceSchurComplement {
   WorkspaceSchurComplement() {}
 
   static constexpr int size_of(int m) {
-    return get_size_aligned(m * m) + 3 * get_size_aligned(m);
+    return get_size_aligned(m * m) + 4 * get_size_aligned(m);
   }
 
   friend int SizeOf(const WorkspaceSchurComplement& o) { return size_of(o.m_); }
@@ -62,6 +71,8 @@ struct WorkspaceSchurComplement {
         Map(data + get_size_aligned(m * m) + get_size_aligned(m), m, 1);
     new (&o->AQc)
         Map(data + get_size_aligned(m * m) + 2 * get_size_aligned(m), m, 1);
+    new (&o->AWsquared)
+        Map(data + get_size_aligned(m * m) + 3 * get_size_aligned(m), m, 1);
     o->initialized = true;
   }
 
@@ -74,9 +85,13 @@ struct WorkspaceSchurComplement {
   }
 
   double inner_product_of_w_and_c;
+  double inner_product_of_c_and_Qc;
+  double inner_product_of_c_and_w_squared;
   Eigen::Map<DenseMatrix, Eigen::Aligned> G{NULL, 0, 0};
+
   Eigen::Map<DenseMatrix, Eigen::Aligned> b{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> AW{NULL, 0, 0};
+  Eigen::Map<DenseMatrix, Eigen::Aligned> AWsquared{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> AQc{NULL, 0, 0};
   int m_;
   bool initialized = false;

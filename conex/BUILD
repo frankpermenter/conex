@@ -445,3 +445,15 @@ cc_binary(
         "conex_lib",
     ],
 )
+
+cc_test(
+    name = "self_dual_embedding_test",
+    srcs = glob(["test/self_dual_embedding_test.cc"]),
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "conex_lib",
+        "@gtest//:main",
+    ],
+)
+
+

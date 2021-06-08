@@ -94,6 +94,8 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
                               const StepOptions& newton_step_parameters,
                               const Ref& y1, const Ref& y2, StepInfo* info) {
   int i = 0;
+  SlackWeights p1; p1.e_weight = 0; p1.c_weight = 0;
+  SlackWeights p2; p2.e_weight = 0; p2.c_weight = 1;
   for (auto& ci : kkt->eqs) {
     // TODO(FrankPermenter): Remove creation of these maps.
     auto y1segment = Vars(y1, kkt->cliques.at(i));
@@ -104,7 +106,7 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z2(y2segment.data(),
                                                    y2segment.size(), 1);
 
-    PrepareParametrizedSlack(&ci.constraint, z1, z2);
+    PrepareParametrizedSlack(&ci.constraint, p1, z1, p2, z2);
     i++;
   }
 
