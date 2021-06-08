@@ -44,10 +44,10 @@ bool DoPrimalDualLineSearch(LinearConstraint* o,
 
   VectorXd SW2 = -(SW0 + SW1 * p.inv_sqrt_mu);
 
-  DUMP(SW2);
+  DUMP(SW0 + SW1 * p.inv_sqrt_mu);
   SW2 = -SW1.cwiseProduct(SW2.cwiseInverse());
-  DUMP(1.0/(p.inv_sqrt_mu * p.inv_sqrt_mu));
-  DUMP(-1.0/SW2.minCoeff() + p.inv_sqrt_mu);
+  //DUMP(1.0/(p.inv_sqrt_mu * p.inv_sqrt_mu));
+  //DUMP(-1.0/SW2.minCoeff() + p.inv_sqrt_mu);
   double upper_bound_primal_2 = -1.0/SW2.minCoeff() + p.inv_sqrt_mu;
 
   DUMP(1.0/(upper_bound_primal_2*upper_bound_primal_2));
@@ -58,8 +58,8 @@ bool DoPrimalDualLineSearch(LinearConstraint* o,
   SW2 += SW0 + SW1 * p.inv_sqrt_mu;
   SW2 = SW1.cwiseProduct(SW2.cwiseInverse());
   double upper_bound_dual_2 = -1.0/SW2.minCoeff() + p.inv_sqrt_mu;
-  DUMP(SW0 + SW1 * upper_bound_dual_2);
-  DUMP(SW0 + SW1 * upper_bound_primal_2);
+  //DUMP(SW0 + SW1 * upper_bound_dual_2);
+  //DUMP(SW0 + SW1 * upper_bound_primal_2);
   DUMP(1.0/(upper_bound_dual_2*upper_bound_dual_2));
 
 

@@ -93,7 +93,6 @@ void GetWeightedSlackEigenvalues(ConstraintManager<Container>* constraints,
 void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
                               const StepOptions& newton_step_parameters,
                               const Ref& y1, const Ref& y2, StepInfo* info) {
-  static double mu_last = -1;
   int i = 0;
   for (auto& ci : kkt->eqs) {
     // TODO(FrankPermenter): Remove creation of these maps.
@@ -162,15 +161,6 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
       }
       if (upper_bound > lower_bound) {
         params.dinf_limit = upper_bound;
-        if (mu_last > 0) {
-          if (mu_last - lower_bound < 0) {
-            DUMP("lower bad");  
-          }
-          if (upper_bound - mu_last < 0) {
-            DUMP("upper bad");  
-          }
-        }
-        mu_last = upper_bound;
         valid = true;
         break;
       } else {
