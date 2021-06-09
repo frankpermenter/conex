@@ -150,7 +150,7 @@ void AssembleSchurComplement(ConstraintManager<Container>* kkt,
   s->setZero();
   int i = 0;
   for (auto& ci : kkt->eqs) {
-    auto* rhs_i = ci.GetWorkspace();
+    auto* rhs_i = &ci.kkt_assembler.schur_complement_data;
     s->inner_product_of_c_and_w += rhs_i->inner_product_of_c_and_w;
     s->inner_product_of_c_and_e += rhs_i->inner_product_of_c_and_e;
     s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;

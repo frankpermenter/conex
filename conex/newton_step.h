@@ -107,6 +107,7 @@ struct WorkspaceSchurComplement {
     AW.setZero();
     AQe.setZero();
     AQc.setZero();
+    Ae.setZero();
     inner_product_of_c_and_w = 0;
     inner_product_of_c_and_e = 0;;
     inner_product_of_c_and_Qc = 0;

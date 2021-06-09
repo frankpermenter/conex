@@ -30,7 +30,7 @@ GTEST_TEST(Basic, Schur) {
   prog.Initialize(SolverConfiguration());
 
   double sqrtmu = .1;
-  for (int i = 0; i < 12; i++) {
+  for (int i = 0; i < 10; i++) {
     MatrixXd Qw = (w.cwiseProduct(w)).asDiagonal();
     MatrixXd Qwsqrt = w.asDiagonal();
 
@@ -40,16 +40,21 @@ GTEST_TEST(Basic, Schur) {
     prog.solver->Assemble();
     prog.solver->Factor();
     AssembleSchurComplement(&prog.kkt_system_manager_, &sys);
+    EXPECT_NEAR((sys.AW - A*w).norm(), 0, 1e-9);
+    EXPECT_NEAR((sys.AQc - A*Qw*c).norm(), 0, 1e-9);
+    EXPECT_NEAR((sys.AQe - A*Qw*e).norm(), 0, 1e-9);
+    EXPECT_NEAR((sys.Ae - A*e).norm(), 0, 1e-9);
     
 
 //    sys.AW = A * w;
 //    sys.AQc = A * Qw * c;
 //    sys.AQe = A * Qw * e;
 //    sys.Ae = A * e;
-//    sys.inner_product_of_c_and_e = c.transpose() * e;
-//    sys.inner_product_of_c_and_w = c.transpose() * w;
-//    sys.inner_product_of_c_and_Qc = c.transpose() * Qw * c;
-//    sys.inner_product_of_c_and_Qe = c.dot(Qw * e);
+    double eps = 1e-12;
+    EXPECT_NEAR(sys.inner_product_of_c_and_e, c.transpose() * e, eps);
+    EXPECT_NEAR(sys.inner_product_of_c_and_w, c.transpose() * w, eps);
+    EXPECT_NEAR(sys.inner_product_of_c_and_Qc, c.transpose() * Qw * c, eps);
+    EXPECT_NEAR(sys.inner_product_of_c_and_Qe, c.dot(Qw * e), eps);
 
 
 
@@ -94,8 +99,11 @@ GTEST_TEST(Basic, Schur) {
 
 
     VectorXd slack = e_weight * e + c_weight * c - A.transpose() * y;
+
     VectorXd d = e - Qwsqrt * slack;
-    DUMP(d);
+    EXPECT_NEAR(d.squaredNorm(), info.normsqrd, 1e-12);
+    EXPECT_NEAR(d.array().abs().maxCoeff(), info.norminfd, 1e-12);
+
 
     VectorXd errS = sqrtmu * Qwsqrt.inverse() * (e - d) -
                     (sqrtmu * wt * (1 + dt) * c + sqrtmu * sqrtmu * (e - c) -
