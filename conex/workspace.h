@@ -24,15 +24,6 @@ void print(const std::vector<T>& x) {
   }
 }
 
-template <typename T>
-void Initialize(std::vector<T>* x, double* ptr) {
-  double* data = ptr;
-  for (auto& xi : *x) {
-    Initialize(&xi, data);
-    data += SizeOf(xi);
-  }
-}
-
 // Workspaces are actually smart pointers to type-erased data:
 class Workspace {
  public:
@@ -98,5 +89,13 @@ struct WorkspaceStats {
   int max_iter_;
   bool initialized = false;
 };
+
+inline void InitializeWorkspaces(std::vector<Workspace>* x, double* ptr) {
+  double* data = ptr;
+  for (auto& xi : *x) {
+    Initialize(&xi, data);
+    data += SizeOf(xi);
+  }
+}
 
 }  // namespace conex

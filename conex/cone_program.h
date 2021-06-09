@@ -126,7 +126,7 @@ class Program {
     if (size > workspace_data_->size()) {
       workspace_data_->resize(size);
     }
-    Initialize(&workspaces, workspace_data_->data());
+    InitializeWorkspaces(&workspaces, workspace_data_->data());
 
     is_initialized = true;
   }
@@ -174,6 +174,8 @@ class Program {
   Eigen::VectorXd* workspace_data_;
   bool is_initialized = false;
   ConexStatus status_;
+
+  bool Initialize(const SolverConfiguration& config);
 };
 
 DenseMatrix GetFeasibleObjective(Program* prog);

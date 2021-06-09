@@ -551,4 +551,8 @@ DenseMatrix GetFeasibleObjective(Program* prg) {
   return .5 * AW;
 }
 
+bool Program::Initialize(const SolverConfiguration& config) {
+  return ::conex::Initialize(*this, config);
+}
+
 }  // namespace conex
