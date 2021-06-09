@@ -2,6 +2,7 @@ COPTS = [
     #"-DEIGEN_NO_DEBUG",
     #"-DNDEBUG",
     "-O0",
+    "-g",
     #    "-ffast-math",
 ]
 
@@ -448,8 +449,12 @@ cc_binary(
 
 cc_test(
     name = "self_dual_embedding_test",
-    srcs = glob(["test/self_dual_embedding_test.cc", "self_dual_embedding.cc", "self_dual_embedding.h"]),
-    copts = ["-Iexternal/gtest/include"],
+    srcs = glob([
+        "test/self_dual_embedding_test.cc",
+        "self_dual_embedding.cc",
+        "self_dual_embedding.h",
+    ]),
+    copts = ["-Iexternal/gtest/include", "-g"],
     deps = [
         "conex_lib",
         "@gtest//:main",

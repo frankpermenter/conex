@@ -17,10 +17,13 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
 
   if (!options.affine) {
     auto& d = workspace->temp_2;
-    // d = SW1
-    d *= options.inv_sqrt_mu;
-    d += SW0;
-    d.array() += 1;
+
+    o->ComputeNegativeSlack(options.c_weight, y, &d);
+    d.array() -= options.w_weight;
+    d = d.cwiseProduct(o->workspace_.W);
+
+    d.array() += options.e_weight;
+
     double norminf = (d).array().abs().maxCoeff();
     info->norminfd = norminf;
     info->normsqrd = d.squaredNorm();
@@ -178,7 +181,8 @@ void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
 
   if (initialize) {
     sys->inner_product_of_w_and_c = WC.sum();
-    sys->inner_product_of_c_and_Qc = WC.col(0).dot(o->constraint_affine_.col(0));
+    sys->inner_product_of_c_and_Qc =
+        WC.col(0).dot(o->constraint_affine_.col(0));
     if (G->rows() != m) {
       G->setZero();
       sys->AW.setZero();
@@ -189,11 +193,13 @@ void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
     sys->AQc.topRows(m).noalias() = WA.transpose() * WC;
   } else {
     sys->inner_product_of_w_and_c += WC.sum();
-    sys->inner_product_of_c_and_Qc += WC.col(0).dot(o->constraint_affine_.col(0));
+    sys->inner_product_of_c_and_Qc +=
+        WC.col(0).dot(o->constraint_affine_.col(0));
     (*G).topLeftCorner(m, m).noalias() += WA.transpose() * WA;
     sys->AW.topRows(m).noalias() += o->constraint_matrix_.transpose() * W;
     sys->AQc.topRows(m).noalias() += WA.transpose() * WC;
-    //sys->AWsquared.topRows(m).noalias() += o->constraint_matrix_.transpose() * (W.cwiseProduct(W));
+    // sys->AWsquared.topRows(m).noalias() += o->constraint_matrix_.transpose()
+    // * (W.cwiseProduct(W));
   }
 }
 

@@ -24,45 +24,6 @@ void SetIdentity(std::vector<T*>* c) {
   }
 }
 
-Eigen::VectorXd Vars(const Eigen::VectorXd& x, std::vector<int> indices) {
-  Eigen::VectorXd z(indices.size());
-  int cnt = 0;
-  for (auto i : indices) {
-    z(cnt++) = x(i);
-  }
-  return z;
-}
-
-void PrepareStep(ConstraintManager<Container>* kkt,
-                 const StepOptions& newton_step_parameters, const Ref& y,
-                 StepInfo* info) {
-  StepInfo info_i;
-  info_i.normsqrd = 0;
-  info_i.norminfd = 0;
-  info->normsqrd = 0;
-  info->norminfd = -1;
-  int i = 0;
-  for (auto& ci : kkt->eqs) {
-    // TODO(FrankPermenter): Remove creation of these maps.
-    auto ysegment = Vars(y, kkt->cliques.at(i));
-    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
-                                                  ysegment.size(), 1);
-    PrepareStep(&ci.constraint, newton_step_parameters, z, &info_i);
-    if (info_i.norminfd > info->norminfd) {
-      info->norminfd = info_i.norminfd;
-    }
-    info->normsqrd += info_i.normsqrd;
-    i++;
-  }
-}
-
-void TakeStep(ConstraintManager<Container>* kkt,
-              const StepOptions& newton_step_parameters) {
-  for (auto& ci : kkt->eqs) {
-    TakeStep(&ci.constraint, newton_step_parameters);
-  }
-}
-
 void GetWeightedSlackEigenvalues(ConstraintManager<Container>* constraints,
                                  const Ref& y, WeightedSlackEigenvalues* p) {
   p->frobenius_norm_squared = 0;
@@ -71,7 +32,7 @@ void GetWeightedSlackEigenvalues(ConstraintManager<Container>* constraints,
   p->lambda_min = 30000;
   int i = 0;
   for (auto& ci : constraints->eqs) {
-    auto ysegment = Vars(y, constraints->cliques.at(i));
+    auto ysegment = ExtractVars(y, constraints->cliques.at(i));
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
                                                   ysegment.size(), 1);
     WeightedSlackEigenvalues temp;
@@ -102,8 +63,8 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
   p2.c_weight = 1;
   for (auto& ci : kkt->eqs) {
     // TODO(FrankPermenter): Remove creation of these maps.
-    auto y1segment = Vars(y1, kkt->cliques.at(i));
-    auto y2segment = Vars(y2, kkt->cliques.at(i));
+    auto y1segment = ExtractVars(y1, kkt->cliques.at(i));
+    auto y2segment = ExtractVars(y2, kkt->cliques.at(i));
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z1(y1segment.data(),
                                                    y1segment.size(), 1);
 

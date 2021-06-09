@@ -4,6 +4,7 @@
 #include <list>
 #include "conex/equality_constraint.h"
 #include "conex/kkt_system_assembler.h"
+#include "conex/newton_step.h"
 
 namespace conex {
 
@@ -100,5 +101,51 @@ class ConstraintManager {
   int max_number_of_variables_ = 0;
   int dual_variable_start_ = 0;
 };
+
+
+inline Eigen::VectorXd ExtractVars(const Eigen::VectorXd& x, std::vector<int> indices) {
+  Eigen::VectorXd z(indices.size());
+  int cnt = 0;
+  for (auto i : indices) {
+    z(cnt++) = x(i);
+  }
+  return z;
+}
+
+template<typename Container>
+void PrepareStep(ConstraintManager<Container>* kkt,
+                 const StepOptions& newton_step_parameters, const Ref& y,
+                 StepInfo* info) {
+  StepInfo info_i;
+  info_i.normsqrd = 0;
+  info_i.norminfd = 0;
+  info->normsqrd = 0;
+  info->norminfd = -1;
+  int i = 0;
+  for (auto& ci : kkt->eqs) {
+    // TODO(FrankPermenter): Remove creation of these maps.
+    auto ysegment = ExtractVars(y, kkt->cliques.at(i));
+    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
+                                                  ysegment.size(), 1);
+    PrepareStep(&ci.constraint, newton_step_parameters, z, &info_i);
+    if (info_i.norminfd > info->norminfd) {
+      info->norminfd = info_i.norminfd;
+    }
+    info->normsqrd += info_i.normsqrd;
+    i++;
+  }
+}
+
+template<typename Container>
+void TakeStep(ConstraintManager<Container>* kkt,
+              const StepOptions& newton_step_parameters) {
+  for (auto& ci : kkt->eqs) {
+    TakeStep(&ci.constraint, newton_step_parameters);
+  }
+}
+
+
+
+
 
 }  // namespace conex
