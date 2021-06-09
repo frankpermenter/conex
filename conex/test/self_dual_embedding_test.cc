@@ -18,6 +18,7 @@ struct SelfDualEmbeddingSystem {
   double inner_product_of_c_and_e;
   double inner_product_of_c_and_w;
   double inner_product_of_c_and_Qc;
+  double inner_product_of_c_and_Qc_scale;
   double inner_product_of_c_and_Qe;
 };
 
@@ -36,12 +37,16 @@ VectorXd BuildRHS(SelfDualEmbeddingSystem& s,
   //f(m) = 1.0/wt + 2*s.inner_product_of_c_and_w
   //     - wt*s.inner_product_of_c_and_Qc - sqrtmu * (s.inner_product_of_c_and_Qe  - s.inner_product_of_c_and_Qc) - sqrtmu * (s.inner_product_of_c_and_e + 1);
 
-  f(m) = 1.0/wt + 2*s.inner_product_of_c_and_w
-       - wt*s.inner_product_of_c_and_Qc - sqrtmu * (s.inner_product_of_c_and_Qe - s.inner_product_of_c_and_Qc)
-                                        - sqrtmu * (s.inner_product_of_c_and_e + 1);
 
-  //  f(m) = 1.0/wt + 2*c.transpose() * w 
-  //      - wt*c.transpose() * Qw * c - sqrtmu * c.transpose() * Qw*(e-c) - sqrtmu * (c.dot(e) + 1);
+
+
+  //f(m) = 1.0/wt + 2*s.inner_product_of_c_and_w
+  //     - wt*s.inner_product_of_c_and_Qc - sqrtmu * (s.inner_product_of_c_and_Qe - s.inner_product_of_c_and_Qc)
+             //                           - sqrtmu * (s.inner_product_of_c_and_e + 1);
+  f(m) =  1.0/wt + 2*s.inner_product_of_c_and_w - wt*( s.inner_product_of_c_and_Qc_scale)
+            - sqrtmu * (  s.inner_product_of_c_and_Qe - s.inner_product_of_c_and_Qc_scale) 
+            - sqrtmu * (s.inner_product_of_c_and_e + 1);
+
 
   return f;
 }
@@ -52,8 +57,6 @@ struct SelfDualEmbeddingSolution {
 };
 
 SelfDualEmbeddingSolution SolveEmbedding(SelfDualEmbeddingSystem& s,
-                  const VectorXd& rhs,
-                  const VectorXd& S22_,
                   const VectorXd& b,
                   const double& wt,
                   const double& sqrtmu) {
@@ -111,9 +114,16 @@ GTEST_TEST(Basic, Schur)  {
     sys.inner_product_of_c_and_w = c.transpose() * w;
     sys.inner_product_of_c_and_Qc = c.transpose()*Qw*c;
     sys.inner_product_of_c_and_Qe = c.dot(Qw*e);
+
+    VectorXd Qc = Qw*c;
+    double scale = Qc.norm()/ c.norm();;
+    VectorXd cscale = c*scale;
+    sys.inner_product_of_c_and_Qc_scale = cscale.dot(Qc) / scale;
+
+
     sys.AWA = A*Qw*A.transpose();
 
-
+#if 0
     MatrixXd S(m+1, m+1);
 
     S.topLeftCorner(m, m) = A*Qw*A.transpose();
@@ -123,6 +133,7 @@ GTEST_TEST(Basic, Schur)  {
 
     //S(m, m) = wt*c.transpose()*Qw*c + 1.0/wt; 
     S(m, m) = wt*sys.inner_product_of_c_and_Qc + 1.0/wt; 
+
     S.topRightCorner(m, 1) = -wt*(AQc + b);
 
     f.head(m) = wt*(b+AQc) + sqrtmu * ( A* Qw * (e-c) + A*e-b) - 2*A*w;
@@ -137,15 +148,16 @@ GTEST_TEST(Basic, Schur)  {
     //          - sqrtmu * (sys.inner_product_of_c_and_Qe_minus_c) 
     //          - sqrtmu * (sys.inner_product_of_c_and_e + 1);
 
-#if 1
+#if 0
     /*Works*/
     f(m) =  1.0/wt + 2*sys.inner_product_of_c_and_w - wt*c.transpose()*Qw*c
               - sqrtmu * (  sys.inner_product_of_c_and_Qe - sys.inner_product_of_c_and_Qc) 
               - sqrtmu * (sys.inner_product_of_c_and_e + 1);
 #else
     /*Fails*/
-    f(m) =  1.0/wt + 2*sys.inner_product_of_c_and_w - wt*( (c.transpose()*Qw*c).eval()(0,0))
-              - sqrtmu * (  sys.inner_product_of_c_and_Qe - sys.inner_product_of_c_and_Qc) 
+    double c_dot_Qwc = cscale.dot(Qc) / scale;
+    f(m) =  1.0/wt + 2*sys.inner_product_of_c_and_w - wt*( sys.inner_product_of_c_and_Qc_scale)
+              - sqrtmu * (  sys.inner_product_of_c_and_Qe - sys.inner_product_of_c_and_Qc_scale) 
               - sqrtmu * (sys.inner_product_of_c_and_e + 1);
 #endif
 
@@ -168,34 +180,35 @@ GTEST_TEST(Basic, Schur)  {
     MatrixXd S12 = S.topRightCorner(m, 1);
 
     Eigen::LLT<MatrixXd> LLT(S11);
-    VectorXd sol1 = (S22 - S21 * LLT.solve(S12)).eval().inverse() * (f.tail(1) - 
+    if (LLT.info() != Eigen::Success) {
+      break;
+    }
+
+    double schur_complement =  (S22 - S21 * LLT.solve(S12)).eval()(0, 0);
+    if (std::fabs(schur_complement) <= 0) {
+      DUMP("NOO!");
+      return;
+      schur_complement = 1e-15;
+    }
+    DUMP(schur_complement);
+    VectorXd sol1 = 1.0/(schur_complement) * (f.tail(1) - 
                                           S21 * LLT.solve(f.head(m)));
 
     VectorXd sol2 =  LLT.solve(f.head(m)  - S12 * sol1);
+#endif
 
-    auto sol = SolveEmbedding(sys, f, S22, b, wt, sqrtmu);
+    auto sol = SolveEmbedding(sys,  b, wt, sqrtmu);
 
     //for (int i = 0; i < 3; i++) {
     //  sol += S.colPivHouseholderQr().solve(f - S * sol);
     //}
 
     //VectorXd y = sol.head(m);
-    VectorXd y = sol2;
-    dt = sol1(0);
+    //VectorXd y = sol2;
+    //dt = sol1(0);
 
-
-    if ((f-f2).norm() > 1e-4) {
-      DUMP("HEHEH!");
-      DUMP(f);
-      DUMP(f2);
-      DUMP(f-f2);
-      DUMP(sqrtmu);
-    DUMP(y);
-    DUMP(y-sol.sol2);
-    DUMP(dt-sol.sol1(0));
-//      std::runtime_error("NO!");
- //     break;
-    }
+    VectorXd y = sol.sol2;
+    double dt =sol.sol1(0);
 
 
     double c_weight = wt*(1+dt) - sqrtmu;
