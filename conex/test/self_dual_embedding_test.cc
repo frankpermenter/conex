@@ -19,7 +19,6 @@ struct SelfDualEmbeddingSystem {
   double inner_product_of_c_and_w;
   double inner_product_of_c_and_Qc;
   double inner_product_of_c_and_Qe;
-  double inner_product_of_c_and_Qe_minus_c;
 };
 
 
@@ -38,7 +37,7 @@ VectorXd BuildRHS(SelfDualEmbeddingSystem& s,
   //     - wt*s.inner_product_of_c_and_Qc - sqrtmu * (s.inner_product_of_c_and_Qe  - s.inner_product_of_c_and_Qc) - sqrtmu * (s.inner_product_of_c_and_e + 1);
 
   f(m) = 1.0/wt + 2*s.inner_product_of_c_and_w
-       - wt*s.inner_product_of_c_and_Qc - sqrtmu * (s.inner_product_of_c_and_Qe_minus_c) 
+       - wt*s.inner_product_of_c_and_Qc - sqrtmu * (s.inner_product_of_c_and_Qe - s.inner_product_of_c_and_Qc)
                                         - sqrtmu * (s.inner_product_of_c_and_e + 1);
 
   //  f(m) = 1.0/wt + 2*c.transpose() * w 
@@ -62,17 +61,14 @@ SelfDualEmbeddingSolution SolveEmbedding(SelfDualEmbeddingSystem& s,
 
   SelfDualEmbeddingSolution sol;
   int m = b.rows();
-  //auto f = BuildRHS(s, b, wt, sqrtmu);
-  auto f = rhs;
+  auto f = BuildRHS(s, b, wt, sqrtmu);
+//  auto f = rhs;
 
   const MatrixXd& S11 = s.AWA;
   const MatrixXd& S21 = b.transpose() - s.AQc.transpose();
   const MatrixXd& S12 = -wt*(s.AQc + b);
   MatrixXd S22(1, 1);
   S22(0, 0) = wt*s.inner_product_of_c_and_Qc + 1.0/wt; 
-  S22 = S22_;
-
-  // wt*c.transpose()*Qw*c + 1.0/wt
 
   Eigen::LLT<MatrixXd> LLT(S11);
 
@@ -107,13 +103,12 @@ GTEST_TEST(Basic, Schur)  {
     MatrixXd Qwsqrt = w.asDiagonal();
 
     SelfDualEmbeddingSystem sys;
-    sys.inner_product_of_c_and_Qe_minus_c = c.transpose() * Qw*(e-c);
     sys.AW = A*w;
     sys.AQc = A*Qw*c;
     sys.AQe = A * Qw * e;
     sys.Ae = A * e;
-    sys.inner_product_of_c_and_e = c.dot(e);
-    sys.inner_product_of_c_and_w = c.dot(w);
+    sys.inner_product_of_c_and_e = c.transpose() * e;
+    sys.inner_product_of_c_and_w = c.transpose() * w;
     sys.inner_product_of_c_and_Qc = c.transpose()*Qw*c;
     sys.inner_product_of_c_and_Qe = c.dot(Qw*e);
     sys.AWA = A*Qw*A.transpose();
@@ -126,12 +121,33 @@ GTEST_TEST(Basic, Schur)  {
 
     S.bottomLeftCorner(1, m) = b.transpose() - AQc.transpose();
 
-    S(m, m) = wt*c.transpose()*Qw*c + 1.0/wt; 
+    //S(m, m) = wt*c.transpose()*Qw*c + 1.0/wt; 
+    S(m, m) = wt*sys.inner_product_of_c_and_Qc + 1.0/wt; 
     S.topRightCorner(m, 1) = -wt*(AQc + b);
 
     f.head(m) = wt*(b+AQc) + sqrtmu * ( A* Qw * (e-c) + A*e-b) - 2*A*w;
-    f(m) = 1.0/wt + 2*c.transpose() * w 
-        - wt*c.transpose() * Qw * c - sqrtmu * c.transpose() * Qw*(e-c) - sqrtmu * (c.dot(e) + 1);
+
+    f(m) = 1.0/wt + 2*c.transpose() * w - wt*c.transpose() * Qw * c 
+            -sqrtmu * c.transpose() * Qw*(e-c) 
+            -sqrtmu * (c.dot(e) + 1);
+
+
+    
+    //f(m) = 1.0/wt + 2*sys.inner_product_of_c_and_w - wt*sys.inner_product_of_c_and_Qc 
+    //          - sqrtmu * (sys.inner_product_of_c_and_Qe_minus_c) 
+    //          - sqrtmu * (sys.inner_product_of_c_and_e + 1);
+
+#if 1
+    /*Works*/
+    f(m) =  1.0/wt + 2*sys.inner_product_of_c_and_w - wt*c.transpose()*Qw*c
+              - sqrtmu * (  sys.inner_product_of_c_and_Qe - sys.inner_product_of_c_and_Qc) 
+              - sqrtmu * (sys.inner_product_of_c_and_e + 1);
+#else
+    /*Fails*/
+    f(m) =  1.0/wt + 2*sys.inner_product_of_c_and_w - wt*( (c.transpose()*Qw*c).eval()(0,0))
+              - sqrtmu * (  sys.inner_product_of_c_and_Qe - sys.inner_product_of_c_and_Qc) 
+              - sqrtmu * (sys.inner_product_of_c_and_e + 1);
+#endif
 
     auto f2 = BuildRHS(sys, b, wt, sqrtmu);
 
