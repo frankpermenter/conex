@@ -448,7 +448,7 @@ cc_binary(
 
 cc_test(
     name = "self_dual_embedding_test",
-    srcs = glob(["test/self_dual_embedding_test.cc"]),
+    srcs = glob(["test/self_dual_embedding_test.cc", "self_dual_embedding.cc", "self_dual_embedding.h"]),
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
