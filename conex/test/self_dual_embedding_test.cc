@@ -89,6 +89,9 @@ GTEST_TEST(Basic, Schur)  {
       double tau = sqrtmu * (wt*(1+dt));
       VectorXd x = sqrtmu * (w+Qwsqrt*d)/tau;
       VectorXd s = sqrtmu * (w.cwiseInverse()- Qwsqrt.inverse()*d)/tau;
+      DUMP(A*x-b);
+      DUMP(x);
+      DUMP(s);
       break;
       } else {
         sqrtmu *= .1;

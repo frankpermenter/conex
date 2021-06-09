@@ -1,4 +1,5 @@
 #include "conex/self_dual_embedding.h"
+#include "conex/debug_macros.h"
 namespace conex {
 
 using Eigen::MatrixXd;
@@ -34,10 +35,12 @@ VectorXd BuildRHS(SelfDualEmbeddingSystem& s,
 
 class KKTSolver {
  public:
-  KKTSolver(const MatrixXd S) : LLT_(S) {}
+  KKTSolver(const MatrixXd& S) : LLT_(S) {}
   void SolveInPlace(VectorXd * d) { LLT_.solveInPlace(*d); }
+  VectorXd Solve(const VectorXd& d) const { 
+    return LLT_.matrixL().transpose().solve(LLT_.matrixL().solve(d));
+  }
 
- private:
   Eigen::LLT<MatrixXd> LLT_;
 };
 
@@ -48,12 +51,10 @@ SelfDualEmbeddingSolution SolveEmbeddingHelper(SelfDualEmbeddingSystem& s,
                   const VectorXd& b,
                   const double& wt,
                   const double& sqrtmu) {
-
-
+  static double schur_complement_system_last = -1;
   SelfDualEmbeddingSolution sol;
   int m = b.rows();
   auto f = BuildRHS(s, b, wt, sqrtmu);
-//  auto f = rhs;
 
   const MatrixXd& S11 = s.AWA;
   const MatrixXd& S21 = b.transpose() - s.AQc.transpose();
@@ -61,14 +62,19 @@ SelfDualEmbeddingSolution SolveEmbeddingHelper(SelfDualEmbeddingSystem& s,
   MatrixXd S22(1, 1);
   S22(0, 0) = wt*s.inner_product_of_c_and_Qc + 1.0/wt; 
 
-  Eigen::LLT<MatrixXd> LLT(S11);
+  double schur_complement_system = S22(0, 0);
+  schur_complement_system -= (S21 * kkt_solver.Solve(S12))(0, 0);
 
-  //  S11 S12
-  //  S21 S22
-  sol.sol1 = (S22 - S21 * LLT.solve(S12)).eval().inverse() * (f.tail(1) - 
-                                        S21 * LLT.solve(f.head(m)));
+  if (schur_complement_system == 0) {
+    schur_complement_system = schur_complement_system_last;
+  } 
+  schur_complement_system_last = schur_complement_system;
 
-  sol.sol2 =  LLT.solve(f.head(m)  - S12 * sol.sol1);
+  sol.sol1 = 1.0/schur_complement_system * (f.tail(1) - 
+                                        S21 * kkt_solver.Solve(f.head(m)));
+
+  VectorXd ref = f.head(m)  - S12 * sol.sol1;
+  sol.sol2 =  kkt_solver.Solve(ref);
   return sol;
 }
 
