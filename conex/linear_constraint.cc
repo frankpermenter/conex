@@ -180,26 +180,40 @@ void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
   WC = W.cwiseProduct(o->constraint_affine_);
 
   if (initialize) {
-    sys->inner_product_of_c_and_w = WC.sum();
-    sys->inner_product_of_c_and_Qc =
-        WC.col(0).dot(o->constraint_affine_.col(0));
     if (G->rows() != m) {
       G->setZero();
-      sys->AW.setZero();
-      sys->AQc.setZero();
+      sys->setZero();
     }
+    DUMP(*G);
+    DUMP(G->rows());
+    DUMP(m);
+    DUMP(WA.transpose() * WA);
+    DUMP("DD");
     (*G).topLeftCorner(m, m).noalias() = WA.transpose() * WA;
+    DUMP("DD");
+
+    sys->inner_product_of_c_and_w = WC.sum();
+    sys->inner_product_of_c_and_Qc = WC.col(0).dot(o->constraint_affine_.col(0));
+    sys->inner_product_of_c_and_Qe = WC.col(0).sum();
     sys->AW.topRows(m).noalias() = o->constraint_matrix_.transpose() * W;
     sys->AQc.topRows(m).noalias() = WA.transpose() * WC;
+    sys->AQe.topRows(m).noalias() = o->constraint_matrix_.transpose() * (W.cwiseProduct(W));
+
+    // TODO(FrankPermenter): cache this quantity
+    sys->inner_product_of_c_and_e = o->constraint_affine_.sum();
+    sys->Ae.topRows(m).noalias() = o->constraint_matrix_.rowwise().sum();
   } else {
-    sys->inner_product_of_c_and_w += WC.sum();
-    sys->inner_product_of_c_and_Qc +=
-        WC.col(0).dot(o->constraint_affine_.col(0));
     (*G).topLeftCorner(m, m).noalias() += WA.transpose() * WA;
+
+    sys->inner_product_of_c_and_w += WC.sum();
+    sys->inner_product_of_c_and_Qc += WC.col(0).dot(o->constraint_affine_.col(0));
+    sys->inner_product_of_c_and_Qe += WC.col(0).sum();
+    sys->inner_product_of_c_and_e += o->constraint_affine_.sum();
+
     sys->AW.topRows(m).noalias() += o->constraint_matrix_.transpose() * W;
     sys->AQc.topRows(m).noalias() += WA.transpose() * WC;
-    // sys->AWsquared.topRows(m).noalias() += o->constraint_matrix_.transpose()
-    // * (W.cwiseProduct(W));
+    sys->AQe.topRows(m).noalias() += o->constraint_matrix_.transpose() * (W.cwiseProduct(W));
+    sys->Ae.topRows(m).noalias() += o->constraint_matrix_.rowwise().sum();
   }
 }
 

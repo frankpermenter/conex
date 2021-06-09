@@ -260,9 +260,9 @@ void ConstructSchurComplementSystem(QuadraticConstraintBase* o, bool initialize,
   }
   sys->AQc.noalias() += 2 * (A_dot_x + A0 * (*o->workspace_.W0)) * scale;
   if (initialize) {
-    sys->inner_product_of_w_and_c = scale;
+    sys->inner_product_of_c_and_w = scale;
   } else {
-    sys->inner_product_of_w_and_c += scale;
+    sys->inner_product_of_c_and_w += scale;
   }
 }
 

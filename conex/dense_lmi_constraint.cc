@@ -73,7 +73,7 @@ void ConstructSchurComplementSystem(DenseLMIConstraint* o, bool initialize,
       sys->AW(i, 0) = AW.trace();
       sys->AQc(i, 0) = o->EvalDualObjective(WAW);
     }
-    sys->inner_product_of_w_and_c = 0;
+    sys->inner_product_of_c_and_w = 0;
   } else {
     int n = Rank(*o);
     Eigen::Map<Eigen::VectorXd> vectWAW(WAW.data(), n * n);
@@ -85,7 +85,7 @@ void ConstructSchurComplementSystem(DenseLMIConstraint* o, bool initialize,
       sys->AQc(i, 0) += o->EvalDualObjective(WAW);
     }
   }
-  sys->inner_product_of_w_and_c += o->EvalDualObjective(W);
+  sys->inner_product_of_c_and_w += o->EvalDualObjective(W);
 }
 
 void ConstructSchurComplementSystem(SparseLMIConstraint* o, bool initialize,
@@ -100,7 +100,7 @@ void ConstructSchurComplementSystem(SparseLMIConstraint* o, bool initialize,
     sys->G.setZero();
     sys->AW.setZero();
     sys->AQc.setZero();
-    sys->inner_product_of_w_and_c = 0;
+    sys->inner_product_of_c_and_w = 0;
   }
 
   for (int i = 0; i < m; i++) {
@@ -112,7 +112,7 @@ void ConstructSchurComplementSystem(SparseLMIConstraint* o, bool initialize,
     sys->AW(o->variable(i), 0) += AW.trace();
     sys->AQc(o->variable(i), 0) += o->EvalDualObjective(WAW);
   }
-  sys->inner_product_of_w_and_c += o->EvalDualObjective(W);
+  sys->inner_product_of_c_and_w += o->EvalDualObjective(W);
 }
 
 }  // namespace conex

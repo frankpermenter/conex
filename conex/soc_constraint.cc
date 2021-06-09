@@ -290,12 +290,12 @@ void ConstructSchurComplementSystem(SOCConstraint* o, bool initialize,
     (*G).noalias() = WA.transpose() * WA;
     sys->AW.noalias() = o->constraint_matrix_.transpose() * W;
     sys->AQc.noalias() = WA.transpose() * WC;
-    sys->inner_product_of_w_and_c = WC(0);
+    sys->inner_product_of_c_and_w = WC(0);
   } else {
     (*G).noalias() += WA.transpose() * WA;
     sys->AW.noalias() += o->constraint_matrix_.transpose() * W;
     sys->AQc.noalias() += WA.transpose() * WC;
-    sys->inner_product_of_w_and_c += WC(0);
+    sys->inner_product_of_c_and_w += WC(0);
   }
 }
 

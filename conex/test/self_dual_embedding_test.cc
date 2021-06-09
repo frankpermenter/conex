@@ -34,19 +34,22 @@ GTEST_TEST(Basic, Schur) {
     MatrixXd Qw = (w.cwiseProduct(w)).asDiagonal();
     MatrixXd Qwsqrt = w.asDiagonal();
 
-    SelfDualEmbeddingSystem sys(m);
+//    SelfDualEmbeddingSystem sys(m);
 
-    prog.solver->Assemble(&sys.AW, &sys.AQc, &sys.inner_product_of_c_and_w);
+    auto sys = prog.sys;
+    prog.solver->Assemble();
     prog.solver->Factor();
+    AssembleSchurComplement(&prog.kkt_system_manager_, &sys);
+    
 
-    sys.AW = A * w;
-    sys.AQc = A * Qw * c;
-    sys.AQe = A * Qw * e;
-    sys.Ae = A * e;
-    sys.inner_product_of_c_and_e = c.transpose() * e;
-    sys.inner_product_of_c_and_w = c.transpose() * w;
-    sys.inner_product_of_c_and_Qc = c.transpose() * Qw * c;
-    sys.inner_product_of_c_and_Qe = c.dot(Qw * e);
+//    sys.AW = A * w;
+//    sys.AQc = A * Qw * c;
+//    sys.AQe = A * Qw * e;
+//    sys.Ae = A * e;
+//    sys.inner_product_of_c_and_e = c.transpose() * e;
+//    sys.inner_product_of_c_and_w = c.transpose() * w;
+//    sys.inner_product_of_c_and_Qc = c.transpose() * Qw * c;
+//    sys.inner_product_of_c_and_Qe = c.dot(Qw * e);
 
 
 
@@ -55,9 +58,9 @@ GTEST_TEST(Basic, Schur) {
     double scale = Qc.norm() / c.norm();
     ;
     VectorXd cscale = c * scale;
-    sys.inner_product_of_c_and_Qc_scale = cscale.dot(Qc) / scale;
+    //sys.inner_product_of_c_and_Qc_scale = cscale.dot(Qc) / scale;
 
-    sys.AWA = A * Qw * A.transpose();
+    //sys.AWA = A * Qw * A.transpose();
 
     auto sol = SolveEmbedding(sys, *prog.solver, b, wt, sqrtmu);
 

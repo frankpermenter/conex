@@ -7,6 +7,7 @@ struct SelfDualEmbeddingSolution {
   Eigen::VectorXd sol2;
 };
 
+/*
 struct SelfDualEmbeddingSystem {
   SelfDualEmbeddingSystem(int m) : 
       AWA(m, m), AW(m, 1), AQc(m, 1), AQe(m, 1), Ae(m, 1) {}
@@ -20,7 +21,7 @@ struct SelfDualEmbeddingSystem {
   double inner_product_of_c_and_Qc;
   double inner_product_of_c_and_Qc_scale;
   double inner_product_of_c_and_Qe;
-};
+};*/
 
 SelfDualEmbeddingSolution SolveEmbedding(SelfDualEmbeddingSystem& s,
                                          const Eigen::VectorXd& b,

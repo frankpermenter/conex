@@ -144,7 +144,28 @@ void TakeStep(ConstraintManager<Container>* kkt,
   }
 }
 
-
+template<typename Container>
+void AssembleSchurComplement(ConstraintManager<Container>* kkt,
+                             SelfDualEmbeddingSystem* s) {
+  s->setZero();
+  int i = 0;
+  for (auto& ci : kkt->eqs) {
+    auto* rhs_i = ci.GetWorkspace();
+    s->inner_product_of_c_and_w += rhs_i->inner_product_of_c_and_w;
+    s->inner_product_of_c_and_e += rhs_i->inner_product_of_c_and_e;
+    s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
+    s->inner_product_of_c_and_Qe += rhs_i->inner_product_of_c_and_Qe;
+    int cnt = 0;
+    for (auto k : kkt->cliques.at(i)) {
+      s->AW(k) += rhs_i->AW(cnt);
+      s->AQc(k) += rhs_i->AQc(cnt);
+      s->AQe(k) += rhs_i->AQe(cnt);
+      s->Ae(k) += rhs_i->Ae(cnt);
+      cnt++;
+    }
+    i++;
+  }
+}
 
 
 

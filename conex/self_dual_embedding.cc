@@ -25,9 +25,9 @@ VectorXd BuildRHS(SelfDualEmbeddingSystem& s, const VectorXd& b,
   //     (s.inner_product_of_c_and_Qe - s.inner_product_of_c_and_Qc)
   //                           - sqrtmu * (s.inner_product_of_c_and_e + 1);
   f(m) = 1.0 / wt + 2 * s.inner_product_of_c_and_w -
-         wt * (s.inner_product_of_c_and_Qc_scale) -
+         wt * (s.inner_product_of_c_and_Qc) -
          sqrtmu *
-             (s.inner_product_of_c_and_Qe - s.inner_product_of_c_and_Qc_scale) -
+             (s.inner_product_of_c_and_Qe - s.inner_product_of_c_and_Qc) -
          sqrtmu * (s.inner_product_of_c_and_e + 1);
 
   return f;
@@ -55,7 +55,7 @@ SelfDualEmbeddingSolution SolveEmbeddingHelper(SelfDualEmbeddingSystem& s,
   int m = b.rows();
   auto f = BuildRHS(s, b, wt, sqrtmu);
 
-  const MatrixXd& S11 = s.AWA;
+  //const MatrixXd& S11 = s.G;
   const MatrixXd& S21 = b.transpose() - s.AQc.transpose();
   const MatrixXd& S12 = -wt * (s.AQc + b);
   MatrixXd S22(1, 1);
@@ -82,7 +82,7 @@ SelfDualEmbeddingSolution SolveEmbeddingHelper(SelfDualEmbeddingSystem& s,
 SelfDualEmbeddingSolution SolveEmbedding(SelfDualEmbeddingSystem& s,
                                          const VectorXd& b, const double& wt,
                                          const double& sqrtmu) {
-  KKTSolver solver(s.AWA);
+  KKTSolver solver(s.G);
   return SolveEmbeddingHelper(s, solver, b, wt, sqrtmu);
 }
 
