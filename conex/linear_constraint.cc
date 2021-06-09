@@ -23,7 +23,6 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
     d = d.cwiseProduct(o->workspace_.W);
 
     d.array() += options.e_weight;
-    DUMP(d);
 
     double norminf = (d).array().abs().maxCoeff();
     info->norminfd = norminf;
