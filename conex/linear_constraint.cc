@@ -180,7 +180,7 @@ void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
   WC = W.cwiseProduct(o->constraint_affine_);
 
   if (initialize) {
-    sys->inner_product_of_w_and_c = WC.sum();
+    sys->inner_product_of_c_and_w = WC.sum();
     sys->inner_product_of_c_and_Qc =
         WC.col(0).dot(o->constraint_affine_.col(0));
     if (G->rows() != m) {
@@ -192,7 +192,7 @@ void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
     sys->AW.topRows(m).noalias() = o->constraint_matrix_.transpose() * W;
     sys->AQc.topRows(m).noalias() = WA.transpose() * WC;
   } else {
-    sys->inner_product_of_w_and_c += WC.sum();
+    sys->inner_product_of_c_and_w += WC.sum();
     sys->inner_product_of_c_and_Qc +=
         WC.col(0).dot(o->constraint_affine_.col(0));
     (*G).topLeftCorner(m, m).noalias() += WA.transpose() * WA;

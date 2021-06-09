@@ -138,7 +138,7 @@ void T::Assemble(Eigen::VectorXd* AW, Eigen::VectorXd* AQc,
     for (int e = static_cast<int>(cliques.size()) - 1; e >= 0; e--) {
       int i = data.clique_order.at(e);
       auto* rhs_i = assembler.at(i)->GetWorkspace();
-      *inner_product_of_c_and_w += rhs_i->inner_product_of_w_and_c;
+      *inner_product_of_c_and_w += rhs_i->inner_product_of_c_and_w;
       int cnt = 0;
       for (auto k : cliques.at(i)) {
         (*AW)(k) += rhs_i->AW(cnt);

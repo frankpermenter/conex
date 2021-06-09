@@ -107,7 +107,7 @@ struct WorkspaceSchurComplement {
     AW.setZero();
     AQe.setZero();
     AQc.setZero();
-    inner_product_of_w_and_c = 0;
+    inner_product_of_c_and_w = 0;
     inner_product_of_c_and_e = 0;;
     inner_product_of_c_and_Qc = 0;
     inner_product_of_c_and_Qe = 0;
@@ -121,7 +121,7 @@ struct WorkspaceSchurComplement {
     DUMP(o.AQc);
   }
 
-  double inner_product_of_w_and_c;
+  double inner_product_of_c_and_w;
   double inner_product_of_c_and_e;
   double inner_product_of_c_and_Qc;
   double inner_product_of_c_and_Qe;
