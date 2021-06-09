@@ -8,6 +8,33 @@ namespace conex {
 using DenseMatrix = Eigen::MatrixXd;
 using Ref = Eigen::Map<DenseMatrix, Eigen::Aligned>;
 
+/*
+struct SelfDualEmbeddingSystem {
+  SelfDualEmbeddingSystem(int m) : 
+      AWA(m, m), AW(m, 1), AQc(m, 1), AQe(m, 1), Ae(m, 1) {}
+  void setZero() { 
+    AW.setZero();
+    AQc.setZero();
+    AQe.setZero();
+    Ae.setZero();
+    inner_product_of_c_and_e = 0;
+    inner_product_of_c_and_w = 0;
+    inner_product_of_c_and_Qc = 0;
+    inner_product_of_c_and_Qe = 0;;
+  };
+
+  Eigen::MatrixXd AWA;
+  Eigen::VectorXd AW;
+  Eigen::VectorXd AQc;
+  Eigen::VectorXd AQe;
+  Eigen::VectorXd Ae;
+  double inner_product_of_c_and_e;
+  double inner_product_of_c_and_w;
+  double inner_product_of_c_and_Qc;
+  double inner_product_of_c_and_Qc_scale;
+  double inner_product_of_c_and_Qe;
+};*/
+
 struct WeightedSlackEigenvalues {
   double limit = 0;
   double frobenius_norm_squared = 0;
@@ -54,7 +81,7 @@ struct WorkspaceSchurComplement {
   WorkspaceSchurComplement() {}
 
   static constexpr int size_of(int m) {
-    return get_size_aligned(m * m) + 4 * get_size_aligned(m);
+    return get_size_aligned(m * m) + 5 * get_size_aligned(m);
   }
 
   friend int SizeOf(const WorkspaceSchurComplement& o) { return size_of(o.m_); }
@@ -69,9 +96,21 @@ struct WorkspaceSchurComplement {
         Map(data + get_size_aligned(m * m) + get_size_aligned(m), m, 1);
     new (&o->AQc)
         Map(data + get_size_aligned(m * m) + 2 * get_size_aligned(m), m, 1);
-    new (&o->AWsquared)
+    new (&o->AQe)
         Map(data + get_size_aligned(m * m) + 3 * get_size_aligned(m), m, 1);
+    new (&o->Ae)
+        Map(data + get_size_aligned(m * m) + 4 * get_size_aligned(m), m, 1);
     o->initialized = true;
+  }
+
+  void setZero() {
+    AW.setZero();
+    AQe.setZero();
+    AQc.setZero();
+    inner_product_of_w_and_c = 0;
+    inner_product_of_c_and_e = 0;;
+    inner_product_of_c_and_Qc = 0;
+    inner_product_of_c_and_Qe = 0;
   }
 
   friend void print(const WorkspaceSchurComplement& o) {
@@ -83,18 +122,22 @@ struct WorkspaceSchurComplement {
   }
 
   double inner_product_of_w_and_c;
+  double inner_product_of_c_and_e;
   double inner_product_of_c_and_Qc;
-  double inner_product_of_c_and_w_squared;
+  double inner_product_of_c_and_Qe;
+  
   Eigen::Map<DenseMatrix, Eigen::Aligned> G{NULL, 0, 0};
 
   Eigen::Map<DenseMatrix, Eigen::Aligned> b{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> AW{NULL, 0, 0};
-  Eigen::Map<DenseMatrix, Eigen::Aligned> AWsquared{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> AQc{NULL, 0, 0};
+  Eigen::Map<DenseMatrix, Eigen::Aligned> AQe{NULL, 0, 0};
+  Eigen::Map<DenseMatrix, Eigen::Aligned> Ae{NULL, 0, 0};
   int m_;
   bool initialized = false;
 };
 
 using SchurComplementSystem = WorkspaceSchurComplement;
+using SelfDualEmbeddingSystem = WorkspaceSchurComplement;
 
 }  // namespace conex
