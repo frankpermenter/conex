@@ -36,6 +36,10 @@ class ConstraintManager {
     max_number_of_variables_ = N;
     dual_variable_start_ = N;
   }
+  
+  int GetNumberOfVariables() {
+    return max_number_of_variables_;
+  }
 
   int SizeOfKKTSystem() {
     int num_dual_vars = 0;

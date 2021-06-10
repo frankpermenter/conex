@@ -57,10 +57,11 @@ class Program {
 
   void SetNumberOfVariables(int m) {
     kkt_system_manager_.SetNumberOfVariables(m);
-    sys.m_ = m;
   }
 
-  int GetNumberOfVariables() { return sys.m_; }
+  int GetNumberOfVariables() { 
+    return kkt_system_manager_.GetNumberOfVariables();
+  }
 
   template <typename T>
   void GetDualVariable(int i, T* xi) {
@@ -117,8 +118,9 @@ class Program {
 
   void InitializeWorkspace() {
     workspaces.clear();
-    for (auto& constraint : kkt_system_manager_.eqs) {
-      workspaces.push_back(constraint.constraint.workspace());
+    for (auto& c : kkt_system_manager_.eqs) {
+      workspaces.push_back(c.constraint.workspace());
+      workspaces.push_back(Workspace{&c.kkt_assembler.schur_complement_data});
     }
     workspaces.push_back(Workspace{stats.get()});
     workspaces.push_back(Workspace{&sys});
