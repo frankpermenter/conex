@@ -41,7 +41,9 @@ class EqualityConstraints : public LinearKKTAssemblerBase {
   friend int Rank(const EqualityConstraints&) { return 0; };
   friend void SetIdentity(EqualityConstraints*){};
   friend void PrepareStep(EqualityConstraints* o, const StepOptions&,
-                          const Ref& y, StepInfo*) {
+                          const Ref& y, StepInfo* info) {
+    info->normsqrd = 0;
+    info->norminfd = 0;
     o->lambda_ = y.col(0).tail(o->b_.rows());
   }
 

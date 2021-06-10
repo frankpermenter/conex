@@ -31,14 +31,12 @@ bool UpdateAffineTerm(T*, double, int, int, int) {
 template <typename T>
 void PrepareParametrizedSlack(T* o, const SlackWeights& p1, const Ref& y1,
                               const SlackWeights& p2, const Ref& y2) {
-  throw std::runtime_error(
-      "Constraint does not support construction of parametrized slack.");
+  throw std::runtime_error("Constraint does not support construction of parametrized slack.");
 }
 
 template <typename T>
 bool DoPrimalDualLineSearch(T*, const LineSearchParameters&, StepInfo*) {
   throw std::runtime_error("Constraint does not support line search.");
-  return false;
 }
 
 // A helper class for forwarding to different implementations of an "interface."

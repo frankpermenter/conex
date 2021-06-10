@@ -80,8 +80,8 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
     StepInfo info_i;
     *info = info_i;
     bool valid = true;
-    bool primal_feasible = false;
-    bool dual_feasible = false;
+    //bool primal_feasible = false;
+    //bool dual_feasible = false;
     for (auto& ci : kkt->eqs) {
       DoPrimalDualLineSearch(&ci.constraint, params, &info_i);
       if (info_i.inv_sqrt_mu_primal_lower_bound >
@@ -107,14 +107,14 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
 
       if (info_i.inv_sqrt_mu_dual_lower_bound <
           info_i.inv_sqrt_mu_dual_upper_bound) {
-        dual_feasible =
-            params.dinf_limit <= 1 && info_i.inv_sqrt_mu_dual_upper_bound > 0;
+//        dual_feasible =
+  //          params.dinf_limit <= 1 && info_i.inv_sqrt_mu_dual_upper_bound > 0;
       }
 
       if (info_i.inv_sqrt_mu_primal_lower_bound <
           info_i.inv_sqrt_mu_primal_upper_bound) {
-        primal_feasible =
-            params.dinf_limit <= 1 && info_i.inv_sqrt_mu_primal_upper_bound > 0;
+    //    primal_feasible =
+    //        params.dinf_limit <= 1 && info_i.inv_sqrt_mu_primal_upper_bound > 0;
       }
 
       double lower_bound = info_i.inv_sqrt_mu_primal_lower_bound;
@@ -185,8 +185,7 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
     int i = 0;
     for (auto& c : prog.kkt_system_manager_.eqs) {
       c.kkt_assembler.workspace_ = &c.constraint;
-      c.kkt_assembler.SetNumberOfVariables(prog.kkt_system_manager_.cliques.at(i).size() +
-                                           prog.kkt_system_manager_.dual_vars.at(i).size());
+      c.kkt_assembler.SetNumberOfVariables(prog.kkt_system_manager_.cliques.at(i).size()); 
       kkt.push_back(&c.kkt_assembler);
       i++;
     }
@@ -373,24 +372,40 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     }
     END_TIMER
 
-    Eigen::MatrixXd y1data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
-    Ref y1(y1data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
-    y1 = -2 * prog.sys.AW;
-    solver->SolveInPlace(&y1);
-    Eigen::MatrixXd y2data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
-    Ref y2(y2data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
-    y2 = b + prog.sys.AQc;
-    solver->SolveInPlace(&y2);
+    // Do not do line search if we have equality constraints.
+    // TODO(FrankPermenter): Add support for line search with equalities.
+    bool do_line_search = prog.kkt_system_manager_.GetNumberOfDualVariables() == 0;
+
     StepInfo info_slack;
-    PrepareParametrizedSlack(&prog.kkt_system_manager_, newton_step_parameters,
-                             y1, y2, &info_slack);
+    if (do_line_search) {
+      Eigen::MatrixXd y1data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+      Ref y1(y1data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+      y1 = -2 * prog.sys.AW;
+      solver->SolveInPlace(&y1);
+      Eigen::MatrixXd y2data(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+      Ref y2(y2data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+      y2 = b + prog.sys.AQc;
+      solver->SolveInPlace(&y2);
+      PrepareParametrizedSlack(&prog.kkt_system_manager_, newton_step_parameters,
+                               y1, y2, &info_slack);
+    }
     if (update_mu) {
-      newton_step_parameters.inv_sqrt_mu =
-          info_slack.inv_sqrt_mu_primal_upper_bound;
-      if (newton_step_parameters.inv_sqrt_mu >
-          info_slack.inv_sqrt_mu_dual_upper_bound) {
+      if (do_line_search) {
         newton_step_parameters.inv_sqrt_mu =
-            info_slack.inv_sqrt_mu_dual_upper_bound;
+            info_slack.inv_sqrt_mu_primal_upper_bound;
+        if (newton_step_parameters.inv_sqrt_mu >
+            info_slack.inv_sqrt_mu_dual_upper_bound) {
+          newton_step_parameters.inv_sqrt_mu =
+              info_slack.inv_sqrt_mu_dual_upper_bound;
+        }
+      } else {
+        double temp = ComputeMuFromDivergence(prog.kkt_system_manager_, solver,
+                                              prog.sys.AQc, b, config, rankK, &y);
+        if (temp > 0) {
+          newton_step_parameters.inv_sqrt_mu = temp;
+        } else {
+          newton_step_parameters.inv_sqrt_mu *= .5;
+        }
       }
     } else {
       if (initial_centering == 0) {
@@ -409,9 +424,6 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     START_TIMER(Solve)
     solver->SolveInPlace(&y);
     END_TIMER
-    if ((y - (y1 + newton_step_parameters.inv_sqrt_mu * y2)).norm() > .1) {
-      throw std::runtime_error("Bad KKT solve.");
-    }
 
     newton_step_parameters.e_weight = 1;
     newton_step_parameters.c_weight = newton_step_parameters.inv_sqrt_mu;

@@ -12,13 +12,16 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
 void BasicTestHelper(const Eigen::MatrixXd& A, 
-                     const Eigen::VectorXd& b, 
+                     const Eigen::VectorXd& bin, 
                      const Eigen::VectorXd& c,
-                     int constraints_per_block = 3) {
+                     int constraints_per_block = 3,
+                     const Eigen::MatrixXd& B = MatrixXd(),
+                     const Eigen::VectorXd& f = VectorXd()) {
+
+
   if (constraints_per_block == -1) {
     constraints_per_block = c.rows();
   } else {
-      DUMP(A.cols() / constraints_per_block);
     if ((A.cols() / constraints_per_block) * constraints_per_block != A.cols()) {
       EXPECT_TRUE(false);
       DUMP("Number of constraints must be divisible by constraints-per-block");
@@ -28,6 +31,7 @@ void BasicTestHelper(const Eigen::MatrixXd& A,
 
   int n = A.cols();
   int m = A.rows();
+
   double wt = .9;
   VectorXd e(n);
   e.setConstant(1);
@@ -39,31 +43,35 @@ void BasicTestHelper(const Eigen::MatrixXd& A,
     prog.AddConstraint(LinearConstraint(A.middleCols(offset, constraints_per_block).transpose(), c.segment(offset, constraints_per_block)));
     offset += constraints_per_block;
   }
+  if (B.rows() > 0) {
+    prog.AddConstraint(EqualityConstraints(B, f));
+  }
 
   prog.Initialize(SolverConfiguration());
 
+  Eigen::VectorXd b(prog.kkt_system_manager_.SizeOfKKTSystem());
+  b.setZero();
+  b.head(m) << bin;
+
+
+  auto sys = prog.sys;
+
+
   double sqrtmu = .1;
   double eps = 1e-6;
-  for (int i = 0; i < 20; i++) {
+  for (int i = 0; i < 15; i++) {
     MatrixXd Qw = (w.cwiseProduct(w)).asDiagonal();
     MatrixXd Qwsqrt = w.asDiagonal();
 
-//    SelfDualEmbeddingSystem sys(m);
 
-    auto sys = prog.sys;
     prog.solver->Assemble();
     prog.solver->Factor();
     AssembleSchurComplement(&prog.kkt_system_manager_, &sys);
-    EXPECT_NEAR((sys.AW - A*w).norm() / (A*w).norm(), 0, eps);
-    EXPECT_NEAR((sys.AQc - A*Qw*c).norm() / (A*Qw*c).norm() , 0, eps);
-    EXPECT_NEAR((sys.AQe - A*Qw*e).norm() / (A*Qw*e).norm(), 0, eps);
-    EXPECT_NEAR((sys.Ae - A*e).norm()/(A*e).norm(), 0, eps);
+    EXPECT_NEAR((sys.AW.topRows(m) - A*w).norm() / (A*w).norm(), 0, eps);
+    EXPECT_NEAR((sys.AQc.topRows(m) - A*Qw*c).norm() / (A*Qw*c).norm() , 0, eps);
+    EXPECT_NEAR((sys.AQe.topRows(m) - A*Qw*e).norm() / (A*Qw*e).norm(), 0, eps);
+    EXPECT_NEAR((sys.Ae.topRows(m) - A*e).norm()/(A*e).norm(), 0, eps);
     
-
-//    sys.AW = A * w;
-//    sys.AQc = A * Qw * c;
-//    sys.AQe = A * Qw * e;
-//    sys.Ae = A * e;
     EXPECT_NEAR(sys.inner_product_of_c_and_e, c.transpose() * e, eps * (c.transpose() * e).norm());
     EXPECT_NEAR(sys.inner_product_of_c_and_w, c.transpose() * w, eps * (c.transpose() * w).norm());
     EXPECT_NEAR(sys.inner_product_of_c_and_Qc, c.transpose() * Qw * c,   (c.transpose() * Qw * c).norm()*  eps);
@@ -76,6 +84,10 @@ void BasicTestHelper(const Eigen::MatrixXd& A,
 
     auto sol = SolveEmbedding(sys, *prog.solver, b, wt, sqrtmu);
     VectorXd y = sol.sol2; double dt = sol.sol1(0);
+    VectorXd lambda;
+    if (B.rows() > 0) {
+      lambda = y.bottomRows(B.rows());
+    }
 
     double c_weight = wt * (1 + dt) - sqrtmu;
     double e_weight = sqrtmu;
@@ -86,7 +98,7 @@ void BasicTestHelper(const Eigen::MatrixXd& A,
     options.c_weight = c_weight;
     options.e_weight = 1;
     options.w_weight = e_weight;
-    Ref ym(y.data(), y.rows(), 1);
+    Ref ym(sol.sol2.data(), y.rows(), 1);
     PrepareStep(&prog.kkt_system_manager_, options, ym, &info);
     options.step_size = 2.0 / (info.norminfd * info.norminfd);
     if (options.step_size > 1) {
@@ -95,18 +107,22 @@ void BasicTestHelper(const Eigen::MatrixXd& A,
     TakeStep(&prog.kkt_system_manager_, options);
 
 
-    VectorXd slack = e_weight * e + c_weight * c - A.transpose() * y;
+    VectorXd slack = e_weight * e + c_weight * c - A.transpose() * y.head(m);
 
     VectorXd d = e - Qwsqrt * slack;
-    EXPECT_NEAR(d.squaredNorm(), info.normsqrd, eps);
+    EXPECT_NEAR(d.squaredNorm(), info.normsqrd, eps * info.normsqrd);
     EXPECT_NEAR(d.array().abs().maxCoeff(), info.norminfd, eps);
 
     VectorXd errS = sqrtmu * Qwsqrt.inverse() * (e - d) -
                     (sqrtmu * wt * (1 + dt) * c + sqrtmu * sqrtmu * (e - c) -
-                     A.transpose() * sqrtmu * y);
+                     A.transpose() * sqrtmu * y.head(m));
 
-    VectorXd errX =
-        A * (w + Qwsqrt * d) - (wt * (1 + dt) * b + sqrtmu * (A * e - b));
+    VectorXd errX;
+    if (B.rows() > 0) {
+        errX = A * (w + Qwsqrt * d) + B.transpose() * y.tail(B.rows()) - (wt * (1 + dt) * b.head(m) + sqrtmu * (A * e - b.head(m)));
+    } else {
+        errX = A * (w + Qwsqrt * d) - (wt * (1 + dt) * b.head(m) + sqrtmu * (A * e - b.head(m)));
+    }
 
     double errG1 = b.dot(y) - c.dot(w + Qwsqrt * d);
     double errG2 = 1.0 / wt * (1 - dt) - sqrtmu * (c.transpose() * e + 1);
@@ -123,9 +139,16 @@ void BasicTestHelper(const Eigen::MatrixXd& A,
         double tau = sqrtmu * (wt * (1 + dt));
         VectorXd x = sqrtmu * (w + Qwsqrt * d) / tau;
         VectorXd s = sqrtmu * (w.cwiseInverse() - Qwsqrt.inverse() * d) / tau;
-        DUMP(A * x - b);
-        DUMP(x);
-        DUMP(s);
+        if (B.cols() > 0) {
+          EXPECT_NEAR((A * x + B.transpose() * y.tail(B.rows()) * sqrtmu/tau  - b.head(m)).norm(), 
+                      0, eps); 
+        } else {
+          EXPECT_NEAR((A * x  - b.head(m)).norm(), 0, eps); 
+        }
+        EXPECT_NEAR(x.dot(s), 0, eps);
+        if (B.rows() > 0) {
+          EXPECT_NEAR((B * (y.head(m) * sqrtmu/tau) - f).norm(), 0, eps);
+        }
         break;
       } else {
         sqrtmu *= .01;
@@ -142,23 +165,62 @@ void BasicTestHelper(const Eigen::MatrixXd& A,
   }
 }
 
-GTEST_TEST(Basic, Schur) {
+struct TestData {
+  MatrixXd A;
+  VectorXd b;
+  VectorXd c;
+  MatrixXd B;
+  VectorXd f;
+};
+
+TestData GetTestData() {
+  srand(1);
+  TestData d;
   int n = 10;
   int m = 5;
   double wt = .9;
-  VectorXd b = VectorXd::Random(m);
-  VectorXd f = VectorXd::Random(m + 1);
+  d.b = VectorXd::Random(m);
   VectorXd e(n);
   e.setConstant(1);
-  MatrixXd A = MatrixXd::Random(m, n);
-  VectorXd c = VectorXd::Random(n);
+  d.A = MatrixXd::Random(m, n);
+  d.c = VectorXd::Random(n);
+  d.b = d.A * e;
+  d.c = d.c.cwiseProduct(d.c);
+  d.B.resize(1, m); d.B.setConstant(1);
+  d.f.resize(1); d.f(0) = 1;
+  return d;
+}
 
-  b = A * e;
-  c = c.cwiseProduct(c);
+GTEST_TEST(Basic, Schur1) {
+  auto d = GetTestData();
+  BasicTestHelper(d.A, d.b, d.c, 10, d.B, d.f);
+}
 
-  BasicTestHelper(A, b, c, 1);
-  BasicTestHelper(A, b, c, 2);
-  BasicTestHelper(A, b, c, 5);
+GTEST_TEST(Basic, Schur2) {
+  auto d = GetTestData();
+  BasicTestHelper(d.A, d.b, d.c, 2, d.B, d.f);
+}
+
+/*
+GTEST_TEST(Basic, Schur3) {
+  auto d = GetTestData();
+  BasicTestHelper(d.A, d.b, d.c, 5, d.B, d.f);
+}*/
+
+GTEST_TEST(Basic, Schur4) {
+  auto d = GetTestData();
+  BasicTestHelper(d.A, d.b, d.c, 10);
+}
+GTEST_TEST(Basic, Schur5) {
+  auto d = GetTestData();
+}
+GTEST_TEST(Basic, Schur6) {
+  auto d = GetTestData();
+  BasicTestHelper(d.A, d.b, d.c, 2);
+}
+GTEST_TEST(Basic, Schur7) {
+  auto d = GetTestData();
+  BasicTestHelper(d.A, d.b, d.c, 5);
 }
 
 

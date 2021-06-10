@@ -67,8 +67,8 @@ struct SlackWeights {
 
 using LineSearchParameters = StepOptions;
 struct StepInfo {
-  double normsqrd;
-  double norminfd;
+  double normsqrd = 0;
+  double norminfd = 0;
   double inv_sqrt_mu_primal_lower_bound = -std::numeric_limits<double>::max();
   double inv_sqrt_mu_primal_upper_bound = std::numeric_limits<double>::max();
   double inv_sqrt_mu_dual_lower_bound = -std::numeric_limits<double>::max();

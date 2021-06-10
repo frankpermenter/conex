@@ -10,20 +10,7 @@ VectorXd BuildRHS(SelfDualEmbeddingSystem& s, const VectorXd& b,
                   const double& wt, const double& sqrtmu) {
   int m = b.rows();
   VectorXd f(m + 1);
-  // f.head(m) = wt*(b+AQc) + sqrtmu * ( A* Qw * (e-c) + A*e-b) - 2*A*w;
   f.head(m) = wt * (b + s.AQc) + sqrtmu * (s.AQe - s.AQc + s.Ae - b) - 2 * s.AW;
-  // f(m) = 1.0/wt + 2*c.transpose() * w
-  //     - wt*c.transpose() * Qw * c - sqrtmu * c.transpose() * Qw*(e-c) -
-  //     sqrtmu * (c.dot(e) + 1);
-  // f(m) = 1.0/wt + 2*s.inner_product_of_c_and_w
-  //     - wt*s.inner_product_of_c_and_Qc - sqrtmu *
-  //     (s.inner_product_of_c_and_Qe  - s.inner_product_of_c_and_Qc) - sqrtmu *
-  //     (s.inner_product_of_c_and_e + 1);
-
-  // f(m) = 1.0/wt + 2*s.inner_product_of_c_and_w
-  //     - wt*s.inner_product_of_c_and_Qc - sqrtmu *
-  //     (s.inner_product_of_c_and_Qe - s.inner_product_of_c_and_Qc)
-  //                           - sqrtmu * (s.inner_product_of_c_and_e + 1);
   f(m) = 1.0 / wt + 2 * s.inner_product_of_c_and_w -
          wt * (s.inner_product_of_c_and_Qc) -
          sqrtmu *
