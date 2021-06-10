@@ -375,6 +375,7 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     // Do not do line search if we have equality constraints.
     // TODO(FrankPermenter): Add support for line search with equalities.
     bool do_line_search = prog.kkt_system_manager_.GetNumberOfDualVariables() == 0;
+    // do_line_search = false;
 
     StepInfo info_slack;
     if (do_line_search) {

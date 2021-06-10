@@ -81,5 +81,61 @@ SelfDualEmbeddingSolution SolveEmbedding(SelfDualEmbeddingSystem& s,
   return SolveEmbeddingHelper(s, kkt_solver, b, wt, sqrtmu);
 }
 
+void SolveHSD(Program& prog, const Eigen::VectorXd& bin, 
+              const SolverConfiguration& config, VectorXd* yout, double* tau, double* kappa) {
+  int m = bin.size();
+  Eigen::VectorXd b(prog.kkt_system_manager_.SizeOfKKTSystem());
+  b.setZero();
+  b.head(m) << bin;
+
+  auto sys = prog.sys;
+
+  double sqrtmu = .1;
+  double eps = 1e-6;
+  double wt = sqrtmu;
+  for (int i = 0; i < 25; i++) {
+    prog.solver->Assemble();
+    prog.solver->Factor();
+    AssembleSchurComplement(&prog.kkt_system_manager_, &sys);
+    auto sol = SolveEmbedding(sys, *prog.solver, b, wt, sqrtmu);
+    VectorXd y = sol.sol2; double dt = sol.sol1(0);
+    VectorXd lambda;
+
+    double c_weight = wt * (1 + dt) - sqrtmu;
+    double e_weight = sqrtmu;
+
+    StepOptions options;
+    StepInfo info;
+    options.affine = 0;
+    options.c_weight = c_weight;
+    options.e_weight = 1;
+    options.w_weight = e_weight;
+    Ref ym(sol.sol2.data(), y.rows(), 1);
+    PrepareStep(&prog.kkt_system_manager_, options, ym, &info);
+    options.step_size = 2.0 / (info.norminfd * info.norminfd);
+    if (options.step_size > 1) {
+      options.step_size = 1;
+    }
+
+
+    std::cout << "\n tau: " << sqrtmu * wt << "  d:" << info.norminfd << "  sqrtmu:" << sqrtmu;
+    if (info.norminfd < 1) {
+      if (sqrtmu * sqrtmu < 1e-10) {
+        double tau = sqrtmu * (wt * (1 + dt));
+        (*yout) = y.head(m) * sqrtmu/tau;
+        return;
+      } else {
+        sqrtmu *= .01;
+      }
+    }
+
+    TakeStep(&prog.kkt_system_manager_, options);
+
+
+    wt = wt * std::exp(options.step_size*dt);
+  }
+  DUMP("FAILED!");
+}
+
 
 }  // namespace conex

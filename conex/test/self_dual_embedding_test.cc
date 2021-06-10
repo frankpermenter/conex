@@ -11,13 +11,51 @@ namespace conex {
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
+void BasicHSDSolverTestHelper(const Eigen::MatrixXd& A, 
+                     const Eigen::VectorXd& bin, 
+                     const Eigen::VectorXd& c,
+                     int constraints_per_block = 3,
+                     const Eigen::MatrixXd& B = MatrixXd(),
+                     const Eigen::VectorXd& f = VectorXd()) {
+  if (constraints_per_block == -1) {
+    constraints_per_block = c.rows();
+  } else {
+    if ((A.cols() / constraints_per_block) * constraints_per_block != A.cols()) {
+      EXPECT_TRUE(false);
+      DUMP("Number of constraints must be divisible by constraints-per-block");
+      return;
+    }
+  }
+
+  int n = A.cols();
+  int m = A.rows();
+
+  VectorXd e(n);
+  e.setConstant(1);
+
+  VectorXd w = e;
+  Program prog(m);
+  int offset = 0;
+  for (int i = 0; i < c.rows() / constraints_per_block; i++) {
+    prog.AddConstraint(LinearConstraint(A.middleCols(offset, constraints_per_block).transpose(), c.segment(offset, constraints_per_block)));
+    offset += constraints_per_block;
+  }
+  if (B.rows() > 0) {
+    prog.AddConstraint(EqualityConstraints(B, f));
+  }
+
+  prog.Initialize(SolverConfiguration());
+  VectorXd ysol; double kappa_sol; double tau_sol;
+  SolveHSD(prog, bin, SolverConfiguration(), &ysol, &tau_sol, &kappa_sol);
+  return;
+}
+
 void BasicTestHelper(const Eigen::MatrixXd& A, 
                      const Eigen::VectorXd& bin, 
                      const Eigen::VectorXd& c,
                      int constraints_per_block = 3,
                      const Eigen::MatrixXd& B = MatrixXd(),
                      const Eigen::VectorXd& f = VectorXd()) {
-
 
   if (constraints_per_block == -1) {
     constraints_per_block = c.rows();
@@ -32,7 +70,6 @@ void BasicTestHelper(const Eigen::MatrixXd& A,
   int n = A.cols();
   int m = A.rows();
 
-  double wt = .9;
   VectorXd e(n);
   e.setConstant(1);
 
@@ -59,7 +96,9 @@ void BasicTestHelper(const Eigen::MatrixXd& A,
 
   double sqrtmu = .1;
   double eps = 1e-6;
-  for (int i = 0; i < 15; i++) {
+  // double wt = sqrtmu;
+  double wt = .9;
+  for (int i = 0; i < 25; i++) {
     MatrixXd Qw = (w.cwiseProduct(w)).asDiagonal();
     MatrixXd Qwsqrt = w.asDiagonal();
 
@@ -130,7 +169,7 @@ void BasicTestHelper(const Eigen::MatrixXd& A,
     double dinf = d.array().abs().maxCoeff();
     double stepsize = 2.0 / (dinf * dinf);
 
-    std::cout << "\n tau: " << sqrtmu * wt << "  d:" << dinf
+    std::cout << "\n tau: " << sqrtmu * wt << "  d:" << dinf << "  dinf_step:" << info.norminfd
               << "  sqrtmu:" << sqrtmu << " , " << errX.norm() << " , "
               << errS.norm() << "," << errG1 - errG2;
 
@@ -161,7 +200,7 @@ void BasicTestHelper(const Eigen::MatrixXd& A,
     d *= stepsize;
     VectorXd expd = d.array().exp();
     w = w.cwiseProduct(expd);
-    wt = wt * std::exp(dt);
+    wt = wt * std::exp(stepsize*dt);
   }
 }
 
@@ -221,6 +260,7 @@ GTEST_TEST(Basic, Schur6) {
 GTEST_TEST(Basic, Schur7) {
   auto d = GetTestData();
   BasicTestHelper(d.A, d.b, d.c, 5);
+  BasicHSDSolverTestHelper(d.A, d.b, d.c, 5);
 }
 
 

@@ -51,7 +51,6 @@ struct IterationStats {
 struct StepOptions {
   bool affine = true;
   double inv_sqrt_mu = 0;
-  double stepsize = 0;
   // Take step of form  w_1 e + Q(w/2)(A^y - w_2 c)
   double c_weight = 0;
   double e_weight = 0;
