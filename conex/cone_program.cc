@@ -375,7 +375,7 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     // Do not do line search if we have equality constraints.
     // TODO(FrankPermenter): Add support for line search with equalities.
     bool do_line_search = prog.kkt_system_manager_.GetNumberOfDualVariables() == 0;
-    // do_line_search = false;
+    do_line_search = false;
 
     StepInfo info_slack;
     if (do_line_search) {
@@ -516,21 +516,11 @@ bool Solve(const DenseMatrix& bin, Program& prog,
 DenseMatrix GetFeasibleObjective(Program* prg) {
   auto& prog = *prg;
   Initialize(prog, SolverConfiguration());
-  Solver solver(prog.kkt_system_manager_.cliques,
-                prog.kkt_system_manager_.dual_vars);
-  std::vector<KKT_SystemAssembler> kkt;
-  std::list<LinearKKTAssembler> kkt_;
-  for (auto& c : prog.kkt_system_manager_.eqs) {
-    kkt_.push_back(LinearKKTAssembler());
-    kkt_.back().workspace_ = &c.constraint;
-    kkt.push_back(&kkt_.back());
-  }
-  solver.Bind(&kkt);
 
   Eigen::VectorXd AW(prog.kkt_system_manager_.SizeOfKKTSystem());
   Eigen::VectorXd AQc(prog.kkt_system_manager_.SizeOfKKTSystem());
   double inner_product_of_c_and_w;
-  solver.Assemble(&AW, &AQc, &inner_product_of_c_and_w);
+  prog.solver->Assemble(&AW, &AQc, &inner_product_of_c_and_w);
 
   return .5 * AW;
 }
