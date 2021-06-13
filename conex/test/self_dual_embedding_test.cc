@@ -1,16 +1,18 @@
 #include "conex/self_dual_embedding.h"
 
 #include "conex/cone_program.h"
+#include "conex/dense_lmi_constraint.h"
 #include "conex/equality_constraint.h"
 #include "conex/linear_constraint.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
+#include "conex/test/test_util.h"
 namespace conex {
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
-
+#if 0
 void BasicHSDSolverTestHelper(const Eigen::MatrixXd& A, 
                      const Eigen::VectorXd& bin, 
                      const Eigen::VectorXd& c,
@@ -262,7 +264,49 @@ GTEST_TEST(Basic, Schur7) {
   BasicTestHelper(d.A, d.b, d.c, 5);
   BasicHSDSolverTestHelper(d.A, d.b, d.c, 5);
 }
+#endif
 
+GTEST_TEST(Basic, Schur7) {
+  SolverConfiguration config;
+  int n = 15;
+  int m = 3;
+  auto constraints2 = GetRandomDenseMatrices(n, m);
 
+  DenseMatrix affine2 = -Eigen::MatrixXd::Identity(n, n);
+  DenseLMIConstraint LMI{n, constraints2, affine2};
+
+  Program prog(m);
+  DenseMatrix y(m, 1);
+  prog.AddConstraint(LMI);
+
+  auto b = GetFeasibleObjective(&prog);
+  prog.Initialize(SolverConfiguration());
+  VectorXd ysol;
+  double kappa_sol;
+  double tau_sol;
+  SolveHSD(prog, b, SolverConfiguration(), &ysol, NULL, NULL);
+  DUMP(y);
+}
+
+GTEST_TEST(Basic, NoSlater) {
+  SolverConfiguration config;
+  int n = 3;
+  int m = 2;
+
+  DenseMatrix affine = -Eigen::MatrixXd::Identity(n, n);
+  DenseLMIConstraint LMI{n, constraints, affine};
+
+  Program prog(m);
+  DenseMatrix y(m, 1);
+  prog.AddConstraint(LMI);
+
+  auto b = GetFeasibleObjective(&prog);
+  prog.Initialize(SolverConfiguration());
+  VectorXd ysol;
+  double kappa_sol;
+  double tau_sol;
+  SolveHSD(prog, b, SolverConfiguration(), &ysol, NULL, NULL);
+  DUMP(y);
+}
 
 }  // namespace conex

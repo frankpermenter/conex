@@ -31,7 +31,8 @@ bool UpdateAffineTerm(T*, double, int, int, int) {
 template <typename T>
 void PrepareParametrizedSlack(T* o, const SlackWeights& p1, const Ref& y1,
                               const SlackWeights& p2, const Ref& y2) {
-  throw std::runtime_error("Constraint does not support construction of parametrized slack.");
+  throw std::runtime_error(
+      "Constraint does not support construction of parametrized slack.");
 }
 
 template <typename T>
@@ -85,8 +86,9 @@ class Constraint {
   }
 
   friend void GetWeightedSlackEigenvalues(Constraint* o, const Ref& y,
+                                          double c_weight,
                                           WeightedSlackEigenvalues* p) {
-    o->model->do_min_mu(y, p);
+    o->model->do_min_mu(y, c_weight, p);
   }
 
   friend int Rank(const Constraint& o) { return o.model->do_rank(); }
@@ -119,7 +121,8 @@ class Constraint {
     virtual void do_schur_complement(bool initialize,
                                      SchurComplementSystem* sys) = 0;
     virtual void do_set_identity() = 0;
-    virtual void do_min_mu(const Ref& y, WeightedSlackEigenvalues* p) = 0;
+    virtual void do_min_mu(const Ref& y, double c_weight,
+                           WeightedSlackEigenvalues* p) = 0;
     virtual Workspace do_get_workspace() = 0;
     virtual void do_prepare_step(const StepOptions& opt, const Ref& y,
                                  StepInfo* info) = 0;
@@ -153,8 +156,9 @@ class Constraint {
 
     void do_set_identity() override { SetIdentity(data); }
 
-    void do_min_mu(const Ref& y, WeightedSlackEigenvalues* p) override {
-      GetWeightedSlackEigenvalues(data, y, p);
+    void do_min_mu(const Ref& y, double c_weight,
+                   WeightedSlackEigenvalues* p) override {
+      GetWeightedSlackEigenvalues(data, y, c_weight, p);
     }
 
     int do_rank() override { return Rank(*data); }

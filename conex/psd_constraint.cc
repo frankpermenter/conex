@@ -7,6 +7,7 @@
 
 namespace conex {
 
+using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
 // Applies update  W^{1/2}( exp ( e + W^{1/2} S W^{1/2} ) W^{1/2}
@@ -17,6 +18,7 @@ void PsdConstraint::GeodesicUpdate(double scale, const StepOptions& opt,
   auto& expWS = workspace.temp_2;
 
   WS->diagonal().array() += opt.e_weight;
+  MatrixXd d_sdp = *WS;
   if (scale != 1.0) {
     (*WS) *= scale;
   }
@@ -52,21 +54,21 @@ void PrepareStep(PsdConstraint* o, const StepOptions& opt, const Ref& y,
 
   if (opt.affine) {
     o->ComputeNegativeSlack(opt.c_weight, y, &minus_s);
+    minus_s.diagonal().array() -= opt.w_weight;
     WS = W * minus_s;
     o->AffineUpdate(opt.e_weight, &WS);
     return;
   }
 
   o->ComputeNegativeSlack(opt.c_weight, y, &minus_s);
+  minus_s.diagonal().array() -= opt.w_weight;
   WS = W * minus_s;
 
   int n = Rank(*o);
   // Use heuristic initialization of ApproximateEigenvalues.
   // Finds eigenvalues of -Q(w/2) s
-  int index = 0;
-  WS.diagonal().maxCoeff(&index);
-  auto gw_eig =
-      ApproximateEigenvalues(WS, workspace.W, minus_s.col(index), n / 2, true);
+  VectorXd w0 = WS * VectorXd::Random(n, 1);
+  auto gw_eig = ApproximateEigenvalues(WS, workspace.W, w0, n, true);
 
   // Get eigenvalues of e - Q(w/2) s.
   const double lambda_1 = std::fabs(opt.e_weight + gw_eig.minCoeff());
@@ -85,7 +87,14 @@ void PrepareStep(PsdConstraint* o, const StepOptions& opt, const Ref& y,
 
 bool TakeStep(PsdConstraint* o, const StepOptions& options) {
   auto& WS = o->workspace_.temp_1;
-  o->GeodesicUpdate(options.step_size, options, &WS);
+  auto& W = o->workspace_.W;
+  if (options.affine) {
+    // W = W + (W + W S W) =  (2I + WS)
+    WS.diagonal().array() += 2;
+    W = WS * W;
+  } else {
+    o->GeodesicUpdate(options.step_size, options, &WS);
+  }
   return true;
 }
 

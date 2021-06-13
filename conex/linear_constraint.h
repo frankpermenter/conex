@@ -58,6 +58,7 @@ class LinearConstraint {
 
   // Eigenvalues of Q(w^{1/2}) *(c-A*y)
   friend void GetWeightedSlackEigenvalues(LinearConstraint* o, const Ref& y,
+                                          double c_weight,
                                           WeightedSlackEigenvalues* p);
 
   friend void ConstructSchurComplementSystem(LinearConstraint* o,

@@ -10,9 +10,9 @@ using Ref = Eigen::Map<DenseMatrix, Eigen::Aligned>;
 
 /*
 struct SelfDualEmbeddingSystem {
-  SelfDualEmbeddingSystem(int m) : 
+  SelfDualEmbeddingSystem(int m) :
       AWA(m, m), AW(m, 1), AQc(m, 1), AQe(m, 1), Ae(m, 1) {}
-  void setZero() { 
+  void setZero() {
     AW.setZero();
     AQc.setZero();
     AQe.setZero();
@@ -87,19 +87,17 @@ struct WorkspaceSchurComplement {
     }
   }
 
-  friend int SizeOf(const WorkspaceSchurComplement& o) { return size_of(o.m_, o.residual_only_); }
+  friend int SizeOf(const WorkspaceSchurComplement& o) {
+    return size_of(o.m_, o.residual_only_);
+  }
 
   friend void Initialize(WorkspaceSchurComplement* o, double* data) {
     using Map = Eigen::Map<DenseMatrix, Eigen::Aligned>;
     int m = o->m_;
-    new (&o->AW)
-        Map(data, m, 1);
-    new (&o->AQc)
-        Map(data + 1 * get_size_aligned(m), m, 1);
-    new (&o->AQe)
-        Map(data + 2 * get_size_aligned(m), m, 1);
-    new (&o->Ae)
-        Map(data + 3 * get_size_aligned(m), m, 1);
+    new (&o->AW) Map(data, m, 1);
+    new (&o->AQc) Map(data + 1 * get_size_aligned(m), m, 1);
+    new (&o->AQe) Map(data + 2 * get_size_aligned(m), m, 1);
+    new (&o->Ae) Map(data + 3 * get_size_aligned(m), m, 1);
 
     if (!o->residual_only_) {
       new (&o->G) Map(data + 4 * get_size_aligned(m), m, m);
@@ -114,7 +112,8 @@ struct WorkspaceSchurComplement {
     AQc.setZero();
     Ae.setZero();
     inner_product_of_c_and_w = 0;
-    inner_product_of_c_and_e = 0;;
+    inner_product_of_c_and_e = 0;
+    ;
     inner_product_of_c_and_Qc = 0;
     inner_product_of_c_and_Qe = 0;
   }
@@ -131,7 +130,7 @@ struct WorkspaceSchurComplement {
   double inner_product_of_c_and_e;
   double inner_product_of_c_and_Qc;
   double inner_product_of_c_and_Qe;
-  
+
   Eigen::Map<DenseMatrix, Eigen::Aligned> G{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> AW{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> AQc{NULL, 0, 0};

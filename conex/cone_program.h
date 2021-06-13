@@ -59,7 +59,7 @@ class Program {
     kkt_system_manager_.SetNumberOfVariables(m);
   }
 
-  int GetNumberOfVariables() { 
+  int GetNumberOfVariables() {
     return kkt_system_manager_.GetNumberOfVariables();
   }
 
@@ -69,9 +69,7 @@ class Program {
     for (auto& ci : kkt_system_manager_.eqs) {
       if (cnt == i) {
         ci.constraint.get_dual_variable(xi->data());
-        if (status_.solved) {
-          xi->array() /= stats->sqrt_inv_mu[stats->num_iter - 1];
-        }
+        xi->array() /= stats->sqrt_inv_mu[stats->num_iter - 1];
         return;
       }
       cnt++;
@@ -120,10 +118,10 @@ class Program {
     workspaces.clear();
     for (auto& c : kkt_system_manager_.eqs) {
       workspaces.push_back(c.constraint.workspace());
-      workspaces.push_back(Workspace{&c.kkt_assembler.schur_complement_data});
+      workspaces.emplace_back(&c.kkt_assembler.schur_complement_data);
     }
-    workspaces.push_back(Workspace{stats.get()});
-    workspaces.push_back(Workspace{&sys});
+    workspaces.emplace_back(stats.get());
+    workspaces.emplace_back(&sys);
     auto size = SizeOf(workspaces);
     if (size > workspace_data_->size()) {
       workspace_data_->resize(size);

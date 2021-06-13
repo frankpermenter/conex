@@ -2,6 +2,7 @@
 #include "conex/constraint.h"
 #include "conex/dense_lmi_constraint.h"
 #include "conex/linear_constraint.h"
+#include "conex/self_dual_embedding.h"
 #include "conex/test/test_util.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
@@ -11,7 +12,7 @@ namespace conex {
 using DenseMatrix = Eigen::MatrixXd;
 #define TEST_OR_PROFILE 1
 #if TEST_OR_PROFILE
-
+#if 0
 GTEST_TEST(SDP, Mixed) {
   using Eigen::MatrixXd;
   int m = 3;
@@ -54,8 +55,8 @@ GTEST_TEST(SDP, Mixed) {
   S_expected.setConstant(1);
   EXPECT_NEAR((S - S_expected).norm(), 0, 1e-6);
 }
-
-int TestDiagonalSDP() {
+#endif
+void TestDiagonalSDP() {
   srand(1);
   int n = 5;
   int m = 2;
@@ -77,19 +78,25 @@ int TestDiagonalSDP() {
   DenseLMIConstraint LMI{n, constraints2, affine2};
   LinearConstraint Linear{n, &Alinear, &Clinear};
 
+  Eigen::VectorXd b = Alinear.transpose() * Clinear;
   Program prog(m);
-  Eigen::VectorXd b(m);
   prog.AddConstraint(LMI, {0, 1});
-  b = GetFeasibleObjective(&prog);
-  DenseMatrix y1(m, 1);
-  Solve(b, prog, config, y1.data());
+  Eigen::VectorXd y1(m, 1);
+  // Solve(b, prog, config, y1.data());
+
+  prog.Initialize(SolverConfiguration());
+  SolveHSD(prog, b, SolverConfiguration(), &y1, NULL, NULL);
+  DUMP(y1);
 
   Program prog2(m);
   prog2.AddConstraint(Linear, {0, 1});
-  b = GetFeasibleObjective(&prog2);
-  DenseMatrix y2(m, 1);
-  Solve(b, prog2, config, y2.data());
+  Eigen::VectorXd y2(m, 1);
+  // Solve(b, prog2, config, y2.data());
 
+  prog2.Initialize(SolverConfiguration());
+  SolveHSD(prog2, b, SolverConfiguration(), &y2, NULL, NULL);
+  DUMP(y2);
+  return;
   Program prog3(m);
   DenseMatrix y3(m, 1);
   prog3.AddConstraint(Linear);
@@ -98,7 +105,7 @@ int TestDiagonalSDP() {
 
   EXPECT_TRUE((y2 - y1).norm() < 1e-6);
   EXPECT_TRUE((y3 - y1).norm() < 1e-4);
-  return 0;
+  return;
 }
 
 GTEST_TEST(SDP, DiagonalSDP) {
@@ -106,7 +113,7 @@ GTEST_TEST(SDP, DiagonalSDP) {
     TestDiagonalSDP();
   }
 }
-
+#if 0
 GTEST_TEST(SDP, SparseAndDenseAgree) {
   SolverConfiguration config;
 
@@ -164,6 +171,7 @@ GTEST_TEST(SDP, SparseAndDenseAgree) {
 
   EXPECT_NEAR((y - y_sparse).norm(), 0, 1e-8);
 }
+#endif
 #else
 
 int TestSDP(int i) {

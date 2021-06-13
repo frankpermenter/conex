@@ -51,11 +51,14 @@ class PsdConstraint {
 
  protected:
   PsdConstraint(int n, int m) : workspace_(n), num_dual_constraints_{m} {}
+  PsdConstraint(int n, int m, double scaling)
+      : workspace_(n), num_dual_constraints_{m}, scaling_(scaling) {}
   void GeodesicUpdate(double scale, const StepOptions&, Ref* sw);
   void AffineUpdate(double e_weight, Ref* sw);
 
   WorkspaceDensePSD workspace_;
   int num_dual_constraints_;
+  double scaling_ = 1;
   virtual double EvalDualConstraint(int j, const Ref& W) = 0;
   virtual double EvalDualObjective(const Ref& W) = 0;
   virtual void ComputeAW(int i, const Ref& W, Ref* AW, Ref* WAW) = 0;

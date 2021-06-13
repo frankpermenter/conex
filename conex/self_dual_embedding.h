@@ -1,6 +1,6 @@
-#include <Eigen/Dense>
-#include "conex/kkt_solver.h"
 #include "conex/cone_program.h"
+#include "conex/kkt_solver.h"
+#include <Eigen/Dense>
 
 namespace conex {
 struct SelfDualEmbeddingSolution {
@@ -10,7 +10,7 @@ struct SelfDualEmbeddingSolution {
 
 /*
 struct SelfDualEmbeddingSystem {
-  SelfDualEmbeddingSystem(int m) : 
+  SelfDualEmbeddingSystem(int m) :
       AWA(m, m), AW(m, 1), AQc(m, 1), AQe(m, 1), Ae(m, 1) {}
   Eigen::MatrixXd AWA;
   Eigen::VectorXd AW;
@@ -35,8 +35,8 @@ SelfDualEmbeddingSolution SolveEmbedding(SelfDualEmbeddingSystem& s,
                                          const double& wt,
                                          const double& sqrtmu);
 
-void SolveHSD(Program& prog, const Eigen::VectorXd& b, const SolverConfiguration& config, 
-                               Eigen::VectorXd* yout, double* tau, double* kappa);
-
+void SolveHSD(Program& prog, const Eigen::VectorXd& b,
+              const SolverConfiguration& config, Eigen::VectorXd* yout,
+              double* tau, double* kappa);
 
 }  // namespace conex

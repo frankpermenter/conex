@@ -49,6 +49,7 @@ cc_test(
     copts = ["-Iexternal/gtest/include -fno-omit-frame-pointer"],
     deps = [
         "conex_lib",
+        "self_dual_embedding",
         "test_util",
         "@gtest//:main",
     ],
@@ -114,7 +115,10 @@ cc_test(
 
 cc_library(
     name = "approximate_eigenvalues",
-    srcs = ["approximate_eigenvalues.cc"],
+    srcs = [
+        "approximate_eigenvalues.cc",
+        "debug_macros.h",
+    ],
     hdrs = ["approximate_eigenvalues.h"],
     copts = COPTS,
     visibility = ["//visibility:public"],
@@ -444,6 +448,24 @@ cc_binary(
     copts = ["-g"],
     deps = [
         "conex_lib",
+        "self_dual_embedding",
+        "test_util",
+    ],
+)
+
+cc_library(
+    name = "self_dual_embedding",
+    srcs = [
+        "self_dual_embedding.cc",
+    ],
+    hdrs = [
+        "self_dual_embedding.h",
+    ],
+    copts = COPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        "conex_lib",
+        "@eigen",
     ],
 )
 
@@ -451,12 +473,15 @@ cc_test(
     name = "self_dual_embedding_test",
     srcs = glob([
         "test/self_dual_embedding_test.cc",
-        "self_dual_embedding.cc",
-        "self_dual_embedding.h",
     ]),
-    copts = ["-Iexternal/gtest/include", "-g"],
+    copts = [
+        "-Iexternal/gtest/include",
+        "-g",
+    ],
     deps = [
         "conex_lib",
+        "self_dual_embedding",
+        "test_util",
         "@gtest//:main",
     ],
 )

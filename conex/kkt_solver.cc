@@ -120,9 +120,9 @@ T::Solver(const std::vector<std::vector<int>>& cliques, int num_vars,
 
 void T::Assemble(Eigen::VectorXd* AW, Eigen::VectorXd* AQc,
                  double* inner_product_of_c_and_w) {
-  if (AW->rows() != SizeOfSystem() || 
-      AQc->rows() != SizeOfSystem()) {
-    throw std::runtime_error("Cannot assemble system data: invalid output dimensions."); 
+  if (AW->rows() != SizeOfSystem() || AQc->rows() != SizeOfSystem()) {
+    throw std::runtime_error(
+        "Cannot assemble system data: invalid output dimensions.");
   }
   const auto& cliques = cliques_;
 
@@ -148,7 +148,6 @@ void T::Assemble(Eigen::VectorXd* AW, Eigen::VectorXd* AQc,
     }
   }
 }
-
 
 void T::Assemble() {
   const auto& cliques = cliques_;

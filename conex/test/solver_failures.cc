@@ -3,6 +3,8 @@
 #include "conex/equality_constraint.h"
 #include "conex/linear_constraint.h"
 #include "conex/quadratic_cost.h"
+#include "conex/self_dual_embedding.h"
+#include "conex/test/test_util.h"
 #include <Eigen/Dense>
 
 namespace conex {
@@ -210,6 +212,7 @@ VectorXd ConvolveWithSelf(const Eigen::VectorXd& f) {
   int const ng = f.size();
   int const n = nf + ng - 1;
   Eigen::VectorXd y(n);
+  y.setZero();
   for (auto i(0); i < n; ++i) {
     int const jmn = (i >= ng - 1) ? i - (ng - 1) : 0;
     int const jmx = (i < nf - 1) ? i : nf - 1;
@@ -233,48 +236,54 @@ void PureSquare(bool use_equations) {
         0, 0, 0, 0, 0, 1;
 
   Eigen::VectorXd f(3);
-  f << 700, -900, 732;
+  f << 1, 2, 1;
+  f << 1, 20, 100;
   bf = ConvolveWithSelf(f);
 
   vector<MatrixXd> A;
   MatrixXd Ai(3, 3);
 
-  Ai << -1,  0,  0,
+  double Av = 1;
+  if (use_equations) {
+    Av = -1;
+  } 
+
+  Ai << Av,  0,  0,
          0,  0,  0,
          0,  0,  0;
   A.push_back(Ai);
 
-  Ai <<  0, -1,  0,
-        -1,  0,  0,
+  Ai <<  0, Av,  0,
+        Av,  0,  0,
          0,  0,  0;
   A.push_back(Ai);
 
 if (use_equations) {
-  Ai <<  0,  0, -1,
+  Ai <<  0,  0,  Av,
          0,  0,  0,
-        -1,  0,  0;
+        Av,  0,  0;
   A.push_back(Ai);
 
   Ai <<  0,  0,  0,
-         0, -1,  0,
+         0, Av,  0,
          0,  0,  0;
   A.push_back(Ai);
 } else {
-  Ai <<  0,  0, -1,
-         0, -1,  0,
-        -1,  0,  0;
+  Ai <<  0,  0, Av,
+         0, Av,  0,
+        Av,  0,  0;
   A.push_back(Ai);
 }
 
 
   Ai << 0,  0,  0,
-        0,  0, -1,
-        0, -1,  0;
+        0,  0, Av,
+        0, Av,  0;
   A.push_back(Ai);
 
   Ai << 0,  0,  0,
         0,  0,  0,
-        0,  0, -1;
+        0,  0, Av;
   A.push_back(Ai);
 
   // clang-format on
@@ -285,9 +294,9 @@ if (use_equations) {
   //  config.inv_sqrt_mu_max = .001;
   //  config.maximum_mu = 1.0 / (config.inv_sqrt_mu_max *
   //  config.inv_sqrt_mu_max);
-  config.final_centering_steps = 10000;
+  config.final_centering_steps = 1;
   config.infeasibility_threshold = 1e10;
-  config.max_iterations = config.final_centering_steps;
+  config.max_iterations = 10;
   if (use_equations) {
     conex::Program prog(6);
     prog.AddConstraint(EqualityConstraints(Af, bf));
@@ -295,27 +304,54 @@ if (use_equations) {
     VectorXd b(6);
     b.setConstant(0);
     VectorXd y(6);
+    // Solve(b, prog, config, y.data());
+    // prog.Initialize(SolverConfiguration());
+    // SolveHSD(prog, b, SolverConfiguration(), &y, NULL, NULL);
     Solve(b, prog, config, y.data());
+    DUMP(y);
   } else {
     int n = A.size();
     conex::Program prog(n);
+    C = MatrixXd::Zero(3, 3);
     prog.AddConstraint(DenseLMIConstraint(A, C));
-    VectorXd b = -bf;
+    VectorXd b(5);
+    b << bf;
     VectorXd y(n);
+    DUMP(bf);
+    // Solve(b, prog, config, y.data());
+
+    SolverConfiguration config;
+    config.max_iterations = 1000;
+    // prog.Initialize(config);
+    // SolveHSD(prog, b/b.norm(), config, &y, NULL, NULL);
+    MatrixXd X(3, 3);
+    // prog.GetDualVariable(0, &X);
+    // DUMP(X/X(0, 0));
+    // DUMP(X * b.norm());
+    Eigen::MatrixXd Xs = X * b.norm();
+    // DUMP(eig(Xs).eigenvalues);
+
+    config.initialization_mode = 0;
+    config.prepare_dual_variables = 1;
     Solve(b, prog, config, y.data());
+    prog.GetDualVariable(0, &X);
+    DUMP(X / X(0, 0));
+    DUMP(X * b.norm());
+    Xs = X * b.norm();
+    DUMP(eig(Xs).eigenvalues);
   }
 }
 
 }  // namespace conex
 
 int main() {
-  conex::EqualityConstraintFailingLDLT();
-  conex::MPCFailingLDLT().Run(true /*trigger fail*/);
-  srand(0);
-  for (int i = 0; i < 5; i++) {
-    conex::DoBadInitialization(true /*trigger fail*/);
-  }
+  // conex::EqualityConstraintFailingLDLT();
+  // conex::MPCFailingLDLT().Run(true /*trigger fail*/);
+  // srand(0);
+  // for (int i = 0; i < 5; i++) {
+  //   conex::DoBadInitialization(true /*trigger fail*/);
+  // }
 
   conex::PureSquare(true);
-  conex::PureSquare(false);
+  //  conex::PureSquare(false);
 }

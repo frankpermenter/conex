@@ -36,10 +36,8 @@ class ConstraintManager {
     max_number_of_variables_ = N;
     dual_variable_start_ = N;
   }
-  
-  int GetNumberOfVariables() {
-    return max_number_of_variables_;
-  }
+
+  int GetNumberOfVariables() { return max_number_of_variables_; }
 
   int GetNumberOfDualVariables() {
     int num_dual_vars = 0;
@@ -114,8 +112,8 @@ class ConstraintManager {
   int dual_variable_start_ = 0;
 };
 
-
-inline Eigen::VectorXd ExtractVars(const Eigen::VectorXd& x, std::vector<int> indices) {
+inline Eigen::VectorXd ExtractVars(const Eigen::VectorXd& x,
+                                   std::vector<int> indices) {
   Eigen::VectorXd z(indices.size());
   int cnt = 0;
   for (auto i : indices) {
@@ -124,7 +122,7 @@ inline Eigen::VectorXd ExtractVars(const Eigen::VectorXd& x, std::vector<int> in
   return z;
 }
 
-template<typename Container>
+template <typename Container>
 void PrepareStep(ConstraintManager<Container>* kkt,
                  const StepOptions& newton_step_parameters, const Ref& y,
                  StepInfo* info) {
@@ -148,7 +146,7 @@ void PrepareStep(ConstraintManager<Container>* kkt,
   }
 }
 
-template<typename Container>
+template <typename Container>
 void TakeStep(ConstraintManager<Container>* kkt,
               const StepOptions& newton_step_parameters) {
   for (auto& ci : kkt->eqs) {
@@ -156,7 +154,7 @@ void TakeStep(ConstraintManager<Container>* kkt,
   }
 }
 
-template<typename Container>
+template <typename Container>
 void AssembleSchurComplement(ConstraintManager<Container>* kkt,
                              SelfDualEmbeddingSystem* s) {
   s->setZero();
@@ -178,7 +176,5 @@ void AssembleSchurComplement(ConstraintManager<Container>* kkt,
     i++;
   }
 }
-
-
 
 }  // namespace conex

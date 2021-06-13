@@ -136,13 +136,13 @@ bool TakeStep(LinearConstraint* o, const StepOptions& options) {
   return true;
 }
 
-// Eigenvalues of Q(w/2)(C - A'y).
+// Eigenvalues of Q(w/2)(k C - A'y).
 void GetWeightedSlackEigenvalues(LinearConstraint* o, const Ref& y,
-                                 WeightedSlackEigenvalues* p) {
+                                 double c_weight, WeightedSlackEigenvalues* p) {
   auto* workspace = &o->workspace_;
   auto& minus_s = workspace->temp_1;
   auto& Ws = workspace->temp_2;
-  o->ComputeNegativeSlack(1, y, &minus_s);
+  o->ComputeNegativeSlack(c_weight, y, &minus_s);
   Ws.noalias() = workspace->W.cwiseProduct(minus_s);
 
   const double lamda_max = -Ws.minCoeff();
@@ -191,11 +191,13 @@ void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
     sys->inner_product_of_c_and_Qe = WC.col(0).dot(W.col(0));
     sys->AW.topRows(m).noalias() = o->constraint_matrix_.transpose() * W;
     sys->AQc.topRows(m).noalias() = WA.transpose() * WC;
-    sys->AQe.topRows(m).noalias() = o->constraint_matrix_.transpose() * (W.cwiseProduct(W));
+    sys->AQe.topRows(m).noalias() =
+        o->constraint_matrix_.transpose() * (W.cwiseProduct(W));
 
     // TODO(FrankPermenter): cache this quantity
     sys->inner_product_of_c_and_e = o->constraint_affine_.sum();
-    sys->Ae.topRows(m).noalias() = o->constraint_matrix_.colwise().sum().transpose();
+    sys->Ae.topRows(m).noalias() =
+        o->constraint_matrix_.colwise().sum().transpose();
   } else {
     (*G).topLeftCorner(m, m).noalias() += WA.transpose() * WA;
 
@@ -208,8 +210,10 @@ void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
     sys->AQc.topRows(m).noalias() += WA.transpose() * WC;
 
     // TODO(FrankPermenter): cache this quantity
-    sys->AQe.topRows(m).noalias() += o->constraint_matrix_.transpose() * (W.cwiseProduct(W));
-    sys->Ae.topRows(m).noalias() += o->constraint_matrix_.colwise().sum().transpose();
+    sys->AQe.topRows(m).noalias() +=
+        o->constraint_matrix_.transpose() * (W.cwiseProduct(W));
+    sys->Ae.topRows(m).noalias() +=
+        o->constraint_matrix_.colwise().sum().transpose();
   }
 }
 

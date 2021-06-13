@@ -25,7 +25,8 @@ void SetIdentity(std::vector<T*>* c) {
 }
 
 void GetWeightedSlackEigenvalues(ConstraintManager<Container>* constraints,
-                                 const Ref& y, WeightedSlackEigenvalues* p) {
+                                 const Ref& y, double c_weight,
+                                 WeightedSlackEigenvalues* p) {
   p->frobenius_norm_squared = 0;
   p->trace = 0;
   p->lambda_max = -30000;
@@ -36,7 +37,7 @@ void GetWeightedSlackEigenvalues(ConstraintManager<Container>* constraints,
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
                                                   ysegment.size(), 1);
     WeightedSlackEigenvalues temp;
-    GetWeightedSlackEigenvalues(&ci.constraint, z, &temp);
+    GetWeightedSlackEigenvalues(&ci.constraint, z, c_weight, &temp);
 
     if (p->lambda_max < temp.lambda_max) {
       p->lambda_max = temp.lambda_max;
@@ -45,7 +46,7 @@ void GetWeightedSlackEigenvalues(ConstraintManager<Container>* constraints,
       p->lambda_min = temp.lambda_min;
     }
     p->frobenius_norm_squared += temp.frobenius_norm_squared;
-    p->trace += temp.trace; 
+    p->trace += temp.trace;
     i++;
   }
 }
@@ -80,8 +81,8 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
     StepInfo info_i;
     *info = info_i;
     bool valid = true;
-    //bool primal_feasible = false;
-    //bool dual_feasible = false;
+    // bool primal_feasible = false;
+    // bool dual_feasible = false;
     for (auto& ci : kkt->eqs) {
       DoPrimalDualLineSearch(&ci.constraint, params, &info_i);
       if (info_i.inv_sqrt_mu_primal_lower_bound >
@@ -107,14 +108,16 @@ void PrepareParametrizedSlack(ConstraintManager<Container>* kkt,
 
       if (info_i.inv_sqrt_mu_dual_lower_bound <
           info_i.inv_sqrt_mu_dual_upper_bound) {
-//        dual_feasible =
-  //          params.dinf_limit <= 1 && info_i.inv_sqrt_mu_dual_upper_bound > 0;
+        //        dual_feasible =
+        //          params.dinf_limit <= 1 &&
+        //          info_i.inv_sqrt_mu_dual_upper_bound > 0;
       }
 
       if (info_i.inv_sqrt_mu_primal_lower_bound <
           info_i.inv_sqrt_mu_primal_upper_bound) {
-    //    primal_feasible =
-    //        params.dinf_limit <= 1 && info_i.inv_sqrt_mu_primal_upper_bound > 0;
+        //    primal_feasible =
+        //        params.dinf_limit <= 1 &&
+        //        info_i.inv_sqrt_mu_primal_upper_bound > 0;
       }
 
       double lower_bound = info_i.inv_sqrt_mu_primal_lower_bound;
@@ -170,8 +173,7 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
     auto& kkt = prog.kkt;
 
     prog.sys.m_ = prog.kkt_system_manager_.SizeOfKKTSystem();
-    prog.sys.residual_only_ = true; 
-
+    prog.sys.residual_only_ = true;
 
     START_TIMER(Sparsity Analysis);
     solver = std::make_unique<Solver>(prog.kkt_system_manager_.cliques,
@@ -185,7 +187,8 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
     int i = 0;
     for (auto& c : prog.kkt_system_manager_.eqs) {
       c.kkt_assembler.workspace_ = &c.constraint;
-      c.kkt_assembler.SetNumberOfVariables(prog.kkt_system_manager_.cliques.at(i).size()); 
+      c.kkt_assembler.SetNumberOfVariables(
+          prog.kkt_system_manager_.cliques.at(i).size());
       kkt.push_back(&c.kkt_assembler);
       i++;
     }
@@ -196,7 +199,6 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
     if (config.initialization_mode == 0) {
       SetIdentity(&prog.constraints);
     }
-
 
     END_TIMER
   }
@@ -213,13 +215,14 @@ double MinimizeNormInf(WeightedSlackEigenvalues& p) {
 
 double ComputeMuFromDivergence(ConstraintManager<Container>& constraints,
                                std::unique_ptr<Solver>& solver,
-                               const DenseMatrix& AQc, const DenseMatrix& b,
+                               const DenseMatrix& AQc, double c_weight,
+                               const DenseMatrix& b,
                                const SolverConfiguration& config, int rankK,
                                Ref* workspace_y) {
   WeightedSlackEigenvalues mu_param;
   *workspace_y = AQc - b;
   solver->SolveInPlace(workspace_y);
-  GetWeightedSlackEigenvalues(&constraints, *workspace_y, &mu_param);
+  GetWeightedSlackEigenvalues(&constraints, *workspace_y, c_weight, &mu_param);
   mu_param.rank = rankK;
 
   double divergence_bound = config.divergence_upper_bound * rankK;
@@ -320,6 +323,8 @@ bool Solve(const DenseMatrix& bin, Program& prog,
 
   int initial_centering_steps = config.initial_centering_steps_coldstart;
   int initial_centering = 1;
+  double c_scaling = 1;
+  double b_scaling = 1;
 
   if (config.initialization_mode) {
     PRINTSTATUS("Warmstarting...");
@@ -356,12 +361,19 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     AssembleSchurComplement(&prog.kkt_system_manager_, &prog.sys);
     END_TIMER
 
+    if (i < 1) {
+      b_scaling = 1.0 / (1e-9 + b.norm());
+      c_scaling = 1.0 / (1e-9 + prog.sys.AQc.norm());
+    }
+    REPORT(b_scaling);
+    REPORT(c_scaling);
+
     START_TIMER(Factor)
     if (!solver->Factor()) {
       solver->Assemble();
       solver->Factor();
       if (i == 0 && config.initialization_mode) {
-        PRINTSTATUS("Aborting warmstart...");
+        PRINTSTATUS("Aborting warmstart (factorization failed)...");
         SetIdentity(&prog.constraints);
         warmstart_aborted = true;
         continue;
@@ -374,7 +386,8 @@ bool Solve(const DenseMatrix& bin, Program& prog,
 
     // Do not do line search if we have equality constraints.
     // TODO(FrankPermenter): Add support for line search with equalities.
-    bool do_line_search = prog.kkt_system_manager_.GetNumberOfDualVariables() == 0;
+    bool do_line_search =
+        prog.kkt_system_manager_.GetNumberOfDualVariables() == 0;
     do_line_search = false;
 
     StepInfo info_slack;
@@ -387,9 +400,10 @@ bool Solve(const DenseMatrix& bin, Program& prog,
       Ref y2(y2data.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
       y2 = b + prog.sys.AQc;
       solver->SolveInPlace(&y2);
-      PrepareParametrizedSlack(&prog.kkt_system_manager_, newton_step_parameters,
-                               y1, y2, &info_slack);
+      PrepareParametrizedSlack(&prog.kkt_system_manager_,
+                               newton_step_parameters, y1, y2, &info_slack);
     }
+
     if (update_mu) {
       if (do_line_search) {
         newton_step_parameters.inv_sqrt_mu =
@@ -400,8 +414,9 @@ bool Solve(const DenseMatrix& bin, Program& prog,
               info_slack.inv_sqrt_mu_dual_upper_bound;
         }
       } else {
-        double temp = ComputeMuFromDivergence(prog.kkt_system_manager_, solver,
-                                              prog.sys.AQc, b, config, rankK, &y);
+        double temp = ComputeMuFromDivergence(
+            prog.kkt_system_manager_, solver, prog.sys.AQc * c_scaling,
+            c_scaling, b * b_scaling, config, rankK, &y);
         if (temp > 0) {
           newton_step_parameters.inv_sqrt_mu = temp;
         } else {
@@ -421,13 +436,16 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     double mu = 1.0 / (newton_step_parameters.inv_sqrt_mu);
     mu *= mu;
 
-    y = newton_step_parameters.inv_sqrt_mu * (b + prog.sys.AQc) - 2 * prog.sys.AW;
+    y = newton_step_parameters.inv_sqrt_mu *
+            (b * b_scaling + prog.sys.AQc * c_scaling) -
+        2 * prog.sys.AW;
     START_TIMER(Solve)
     solver->SolveInPlace(&y);
     END_TIMER
 
     newton_step_parameters.e_weight = 1;
-    newton_step_parameters.c_weight = newton_step_parameters.inv_sqrt_mu;
+    newton_step_parameters.c_weight =
+        newton_step_parameters.inv_sqrt_mu * c_scaling;
 
     StepInfo info;
     START_TIMER(Update)
@@ -439,7 +457,7 @@ bool Solve(const DenseMatrix& bin, Program& prog,
 
     if (i == 0 && config.initialization_mode &&
         info.norminfd >= config.warmstart_abort_threshold) {
-      PRINTSTATUS("Aborting warmstart...");
+      PRINTSTATUS("Aborting warmstart... (Newton step too large)");
       SetIdentity(&prog.constraints);
       warmstart_aborted = true;
     } else {
@@ -453,8 +471,10 @@ bool Solve(const DenseMatrix& bin, Program& prog,
     REPORT(mu);
     REPORT(d_2);
     REPORT(d_inf);
-    by = b.col(0).dot(y.col(0)) * 1.0 / newton_step_parameters.inv_sqrt_mu;
-    cw = prog.sys.inner_product_of_c_and_w * 1.0 / newton_step_parameters.inv_sqrt_mu;
+    by = b.col(0).dot(y.col(0)) * 1.0 /
+         (newton_step_parameters.inv_sqrt_mu * c_scaling);
+    cw = prog.sys.inner_product_of_c_and_w * 1.0 /
+         (newton_step_parameters.inv_sqrt_mu * b_scaling);
 
     REPORT(by);
     REPORT(cw);
@@ -508,7 +528,8 @@ bool Solve(const DenseMatrix& bin, Program& prog,
   }
 
   if (prog.status_.solved) {
-    yout /= newton_step_parameters.inv_sqrt_mu;
+    yout /= (newton_step_parameters.inv_sqrt_mu);
+    yout /= c_scaling;
   }
   return prog.status_.solved;
 }
