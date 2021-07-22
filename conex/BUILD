@@ -1,8 +1,22 @@
 COPTS = [
     "-DEIGEN_NO_DEBUG",
     "-DNDEBUG",
+#    "-DEIGEN_USE_MKL_ALL",
     "-O3",
     #    "-ffast-math",
+]
+
+LOPTS = [
+    "-L /opt/intel/oneapi/mkl/2021.3.0/lib/intel64/",
+    "-lblas",
+    "-llapacke",
+    "-lmkl_core",
+    "-lmkl_gnu_thread",
+    "-lmkl_intel_lp64",
+    "-lpthread",
+    "-lm",
+    "-ldl",
+    "-fopenmp",
 ]
 
 cc_library(
@@ -12,7 +26,7 @@ cc_library(
         "test/test_util.h",
         "debug_macros.h",
     ]),
-    copts = ["-Iexternal/gtest/include"],
+    copts = COPTS + ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
         "@gtest//:main",
@@ -45,7 +59,8 @@ cc_test(
 cc_test(
     name = "sdp",
     srcs = glob(["test/test_sdp.cc"]),
-    copts = ["-Iexternal/gtest/include -fno-omit-frame-pointer"],
+    copts = COPTS + ["-Iexternal/gtest/include -fno-omit-frame-pointer"],
+    linkopts = LOPTS,
     deps = [
         "conex_lib",
         "test_util",
@@ -115,6 +130,7 @@ cc_library(
     srcs = ["approximate_eigenvalues.cc"],
     hdrs = ["approximate_eigenvalues.h"],
     copts = COPTS,
+    linkopts = LOPTS,
     visibility = ["//visibility:public"],
     deps = ["@eigen"],
 )
@@ -138,6 +154,7 @@ cc_library(
     ],
     hdrs = ["exponential_map_pade.h"],
     copts = COPTS,
+    linkopts = LOPTS,
     visibility = ["//visibility:public"],
     deps = ["@eigen"],
 )
@@ -150,6 +167,7 @@ cc_library(
     ],
     hdrs = ["jordan_matrix_algebra.h"],
     copts = COPTS,
+    linkopts = LOPTS,
     visibility = ["//visibility:public"],
     deps = [
         "@eigen",
@@ -182,6 +200,7 @@ cc_library(
     srcs = ["exponential_map.cc"],
     hdrs = ["exponential_map.h"],
     copts = COPTS,
+    linkopts = LOPTS,
     visibility = ["//visibility:public"],
     deps = [
         "jordan_matrix_algebra",
@@ -215,6 +234,7 @@ cc_test(
     copts = ["-Iexternal/gtest/include -O0"],
     deps = [
         "supernodal_solver",
+        "@eigen",
         "@gtest//:main",
     ],
 )
@@ -222,7 +242,8 @@ cc_test(
 cc_test(
     name = "assembly_test",
     srcs = ["test/assembly_test.cc"],
-    copts = ["-Iexternal/gtest/include"],
+    copts = COPTS + ["-Iexternal/gtest/include"],
+    #linkopts = ["-Wl,--start-group libmkl_intel_lp64.a libmkl_gnu_thread.a libmkl_core.a -Wl,--end-group"],
     deps = [
         "supernodal_solver",
         "@gtest//:main",
@@ -275,8 +296,11 @@ cc_library(
         "workspace.h",
     ],
     copts = COPTS,
+    linkopts = LOPTS,
     visibility = ["//visibility:public"],
-    deps = ["@eigen"],
+    deps = [
+        "@eigen",
+    ],
 )
 
 cc_library(
@@ -297,6 +321,7 @@ cc_library(
         "workspace.h",
     ],
     copts = COPTS,
+    linkopts = LOPTS,
     visibility = ["//visibility:public"],
     deps = [
         "divergence",
@@ -315,6 +340,7 @@ cc_library(
         "linear_workspace.h",
     ],
     copts = COPTS,
+    linkopts = LOPTS,
     visibility = ["//visibility:public"],
     deps = [
         "core",
@@ -334,6 +360,7 @@ cc_library(
         "newton_step.h",
     ],
     copts = COPTS,
+    linkopts = LOPTS,
     visibility = ["//visibility:public"],
     deps = ["@eigen"],
 )
@@ -352,6 +379,7 @@ cc_library(
         "soc_constraint.h",
     ],
     copts = COPTS,
+    linkopts = LOPTS,
     visibility = ["//visibility:public"],
     deps = [
         "core",
@@ -381,7 +409,7 @@ cc_library(
         "workspace.h",
     ],
     copts = COPTS,
-    linkopts = ["-lm"],
+    linkopts = LOPTS,
     visibility = ["//visibility:public"],
     deps = [
         "approximate_eigenvalues",

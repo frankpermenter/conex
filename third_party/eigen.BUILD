@@ -62,15 +62,23 @@ cc_library(
         "EIGEN_MPL2_ONLY",
         "EIGEN_MAX_ALIGN_BYTES=64",
         "EIGEN_HAS_TYPE_TRAITS=0",
-        "EIGEN_USE_BLAS",
-        "EIGEN_USE_LAPACKE",
+        "EIGEN_USE_MKL_ALL",
+        #        "EIGEN_USE_BLAS",
+        #        "EIGEN_USE_LAPACKE",
     ],
-    includes = ["."],
+    includes = [
+        ".",
+    ],
     linkopts = [
+        "-L /opt/intel/oneapi/mkl/2021.3.0/lib/intel64/",
         "-lblas",
         "-llapacke",
+        "-lmkl_intel_lp64",
+        "-lmkl_gnu_thread",
+        "-lmkl_core",
     ],
     visibility = ["//visibility:public"],
+    deps = ["@conex//third_party:mkl"],
 )
 
 filegroup(
