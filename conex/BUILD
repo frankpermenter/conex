@@ -1,7 +1,7 @@
 COPTS = [
     "-DEIGEN_NO_DEBUG",
     "-DNDEBUG",
-#    "-DEIGEN_USE_MKL_ALL",
+    "-DEIGEN_USE_MKL_ALL",
     "-O3",
     #    "-ffast-math",
 ]
