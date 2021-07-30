@@ -431,3 +431,39 @@ cc_binary(
         "conex_lib",
     ],
 )
+
+
+cc_library(
+    name = "self_dual_embedding",
+    srcs = [
+        "self_dual_embedding.cc",
+    ],
+    hdrs = [
+        "self_dual_embedding.h",
+    ],
+    copts = COPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        "conex_lib",
+        "@eigen",
+    ],
+)
+
+cc_test(
+    name = "self_dual_embedding_test",
+    srcs = glob([
+        "test/self_dual_embedding_test.cc",
+    ]),
+    copts = [
+        "-Iexternal/gtest/include",
+        "-g",
+    ],
+    deps = [
+        "conex_lib",
+        "self_dual_embedding",
+        "test_util",
+        "@gtest//:main",
+    ],
+)
+
+

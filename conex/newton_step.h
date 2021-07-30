@@ -27,6 +27,7 @@ struct StepOptions {
   // Take step of form  w_1 e + Q(w/2)(A^y - w_2 c)
   double c_weight = 0;
   double e_weight = 0;
+  double w_weight = 0;
   double step_size = 1;
 };
 
@@ -83,9 +84,17 @@ struct WorkspaceSchurComplement {
   double inner_product_of_w_and_c;
   double inner_product_of_c_and_Qc;
 
+
   Eigen::Map<DenseMatrix, Eigen::Aligned> G{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> AW{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> AQc{NULL, 0, 0};
+
+  // Self-dual embedding
+  double inner_product_of_c_and_e;
+  double inner_product_of_c_and_Qe;
+  Eigen::Map<DenseMatrix, Eigen::Aligned> Ae{NULL, 0, 0};
+  Eigen::Map<DenseMatrix, Eigen::Aligned> AQe{NULL, 0, 0};
+
   int m_;
   bool initialized = false;
   bool residual_only_ = false;
