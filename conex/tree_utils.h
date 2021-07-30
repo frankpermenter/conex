@@ -15,6 +15,7 @@ struct RootedTree {
       : parent(number_of_nodes), height(number_of_nodes) {}
   std::vector<int> parent;
   std::vector<int> height;
+  int NumberOfNodes() const { return parent.size(); };
 };
 
 vector<int> PathInTree(int x, int y, const std::vector<int>& tree,

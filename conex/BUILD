@@ -234,9 +234,23 @@ cc_test(
     srcs = ["test/tree_utils_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
-        "supernodal_solver",
+        "tree_utils",
         "@gtest//:main",
     ],
+)
+
+cc_library(
+    name = "tree_utils",
+    srcs = [
+        "debug_macros.h",
+        "tree_utils.cc",
+    ],
+    hdrs = [
+        "tree_utils.h",
+    ],
+    copts = COPTS,
+    visibility = ["//visibility:public"],
+    deps = ["@eigen"],
 )
 
 cc_library(
@@ -276,7 +290,10 @@ cc_library(
     ],
     copts = COPTS,
     visibility = ["//visibility:public"],
-    deps = ["@eigen"],
+    deps = [
+        "tree_utils",
+        "@eigen",
+    ],
 )
 
 cc_library(
@@ -412,5 +429,22 @@ cc_binary(
     copts = ["-g"],
     deps = [
         "conex_lib",
+    ],
+)
+
+cc_binary(
+    name = "tree_traversal_test",
+    srcs = [
+        "test/tree_traversal_test.cc",
+        "tree_traversal.cc",
+        "tree_traversal.h",
+    ],
+    copts = [
+        "-g",
+        "-fopenmp",
+    ],
+    linkopts = ["-fopenmp"],
+    deps = [
+        "tree_utils",
     ],
 )

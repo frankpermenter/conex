@@ -1,4 +1,4 @@
-#include "traverse.h"
+#include "conex/tree_traversal.h"
 #include <stack>
 
 namespace conex {
@@ -14,8 +14,8 @@ std::vector<int> NumberOfChildren(const RootedTree& tree) {
   return num_children;
 }
 
-vector<int> GetUnvisitedLeafNode(const std::vector<int>& num_children, 
-                         const std::vector<int>& visited) {
+vector<int> GetUnvisitedLeafNode(const std::vector<int>& num_children,
+                                 const std::vector<int>& visited) {
   std::vector<int> leaf_nodes;
   for (size_t i = 0; i < num_children.size(); i++) {
     if (num_children[i] == 0 && visited[i] == 0) {
@@ -25,10 +25,8 @@ vector<int> GetUnvisitedLeafNode(const std::vector<int>& num_children,
   return leaf_nodes;
 }
 
-void VisitPostOrder(int starting_node, 
-           const RootedTree& d, 
-           vector<int>* visited,
-           vector<int>* num_children) {
+void VisitPostOrder(int starting_node, const RootedTree& d,
+                    vector<int>* visited, vector<int>* num_children) {
   int node = starting_node;
   while (1) {
     int parent_node = d.parent.at(node);
@@ -47,28 +45,27 @@ void VisitPostOrder(int starting_node,
   }
 }
 
-void VisitDepthFirst(int starting_node, 
-           const RootedTree& d, 
-           vector<int>* visited) {
+void VisitDepthFirst(int starting_node, const RootedTree& d,
+                     vector<int>* visited) {
   std::stack<size_t> node_stack;
   node_stack.push(starting_node);
   while (node_stack.size() > 0) {
     int node = node_stack.top();
     node_stack.pop();
     visited->at(node) = 1;
-    printf("Node %d", node);
+    printf("Node %d\n", node);
     for (size_t i = 0; i < d.NumberOfNodes(); i++) {
       if (d.parent.at(i) == node && visited->at(i) == 0) {
         node_stack.push(i);
       }
     }
-  } 
+  }
 }
 
-std::vector<int> GetUnvisitedRootNodes(const RootedTree& d, 
-           const vector<int>& visited) {
+std::vector<int> GetUnvisitedRootNodes(const RootedTree& d,
+                                       const vector<int>& visited) {
   vector<int> nodes;
-  for (size_t i = 0; i < d.NumberOfNodes(); i++) {
+  for (int i = 0; i < d.NumberOfNodes(); i++) {
     if (visited.at(i) == 0 && d.parent.at(i) == -1) {
       nodes.push_back(i);
     }
@@ -76,8 +73,7 @@ std::vector<int> GetUnvisitedRootNodes(const RootedTree& d,
   return nodes;
 }
 
-
-} // namespace
+}  // namespace
 
 void TraverseFromLeafs(const RootedTree& d) {
   bool parallelism_enabled = true;
@@ -87,8 +83,8 @@ void TraverseFromLeafs(const RootedTree& d) {
   do {
     leaf_nodes = GetUnvisitedLeafNode(num_children, visited);
     int N = leaf_nodes.size();
-   #pragma omp parallel for if(parallelism_enabled)
-    for(int n = 0; n < N; ++n) { 
+#pragma omp parallel for if (parallelism_enabled)
+    for (int n = 0; n < N; ++n) {
       VisitPostOrder(leaf_nodes[n], d, &visited, &num_children);
     }
   } while (leaf_nodes.size() > 0);
@@ -102,16 +98,11 @@ void TraverseFromRoot(const RootedTree& d) {
   do {
     root_nodes = GetUnvisitedRootNodes(d, visited);
     int N = root_nodes.size();
-   #pragma omp parallel for if(parallelism_enabled)
-    for(int n = 0; n < N; ++n) { 
+#pragma omp parallel for if (parallelism_enabled)
+    for (int n = 0; n < N; ++n) {
       VisitDepthFirst(root_nodes[n], d, &visited);
     }
   } while (root_nodes.size() > 0);
 }
 
-
-
-
-
-
-} // namespace conex
+}  // namespace conex
