@@ -432,7 +432,6 @@ cc_binary(
     ],
 )
 
-
 cc_library(
     name = "self_dual_embedding",
     srcs = [
@@ -451,9 +450,7 @@ cc_library(
 
 cc_test(
     name = "self_dual_embedding_test",
-    srcs = glob([
-        "test/self_dual_embedding_test.cc",
-    ]),
+    srcs = ["test/self_dual_embedding_test.cc"],
     copts = [
         "-Iexternal/gtest/include",
         "-g",
@@ -465,5 +462,3 @@ cc_test(
         "@gtest//:main",
     ],
 )
-
-

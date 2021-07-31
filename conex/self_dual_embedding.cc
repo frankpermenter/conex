@@ -1,6 +1,6 @@
 #include "conex/self_dual_embedding.h"
-#include "conex/debug_macros.h"
 #include "conex/cone_program.h"
+#include "conex/debug_macros.h"
 namespace conex {
 
 using Eigen::MatrixXd;
@@ -103,7 +103,7 @@ void SolveHSD(Program& prog, const Eigen::VectorXd& bin,
     prog.solver->Assemble();
     MatrixXd M = prog.solver->KKTMatrix();
     prog.solver->Factor();
-    AssembleSchurComplement(&prog.kkt_system_manager_, &sys);
+    AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &sys);
     auto sol = SolveEmbedding(sys, *prog.solver, b, wt, sqrtmu);
     VectorXd y = sol.sol2;
     double dt = sol.sol1(0);

@@ -110,10 +110,15 @@ void AssembleSchurComplementResiduals(ConstraintManager<Container>* kkt,
     auto* rhs_i = &ci.kkt_assembler.schur_complement_data;
     s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
     s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
+
+    s->inner_product_of_c_and_Qe += rhs_i->inner_product_of_c_and_Qe;
+    s->inner_product_of_c_and_e += rhs_i->inner_product_of_c_and_e;
     int cnt = 0;
     for (auto k : kkt->cliques.at(i)) {
       s->AW(k) += rhs_i->AW(cnt);
       s->AQc(k) += rhs_i->AQc(cnt);
+      s->AQe(k) += rhs_i->AQe(cnt);
+      s->Ae(k) += rhs_i->Ae(cnt);
       cnt++;
     }
     i++;

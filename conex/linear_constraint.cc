@@ -11,16 +11,18 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
                  StepInfo* info) {
   auto* workspace = &o->workspace_;
   auto& minus_s = workspace->temp_1;
+  auto& SW0 = o->workspace_.temp_1;
+  auto& SW1 = o->workspace_.temp_2;
+
   if (!options.affine) {
-    o->ComputeNegativeSlack(options.c_weight, y, &minus_s);
-    auto& W = workspace->W;
-    auto& SW = workspace->temp_1;
     auto& d = workspace->temp_2;
-    SW = minus_s.cwiseProduct(W);
 
-    int n = SW.rows();
+    o->ComputeNegativeSlack(options.c_weight, y, &d);
+    d.array() -= options.w_weight;
+    d = d.cwiseProduct(o->workspace_.W);
 
-    d = SW + DenseMatrix::Ones(n, 1);
+    d.array() += options.e_weight;
+
     double norminf = (d).array().abs().maxCoeff();
     info->norminfd = norminf;
     info->normsqrd = d.squaredNorm();
@@ -93,20 +95,30 @@ void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
   if (initialize) {
     sys->inner_product_of_w_and_c = WC.sum();
     sys->inner_product_of_c_and_Qc = WC.squaredNorm();
+    sys->inner_product_of_c_and_Qe = WC.col(0).dot(W.col(0));
+    sys->inner_product_of_c_and_e = o->constraint_affine_.sum();
     if (G->rows() != m) {
-      G->setZero();
-      sys->AW.setZero();
-      sys->AQc.setZero();
+      sys->setZero();
     }
     (*G).topLeftCorner(m, m).noalias() = WA.transpose() * WA;
     sys->AW.topRows(m).noalias() = o->constraint_matrix_.transpose() * W;
     sys->AQc.topRows(m).noalias() = WA.transpose() * WC;
+    sys->AQe.topRows(m).noalias() =
+        o->constraint_matrix_.transpose() * (W.cwiseProduct(W));
+    sys->Ae.topRows(m).noalias() =
+        o->constraint_matrix_.colwise().sum().transpose();
   } else {
     sys->inner_product_of_w_and_c += WC.sum();
     sys->inner_product_of_c_and_Qc += WC.squaredNorm();
+    sys->inner_product_of_c_and_Qe += WC.col(0).dot(W.col(0));
+    sys->inner_product_of_c_and_e += o->constraint_affine_.sum();
     (*G).topLeftCorner(m, m).noalias() += WA.transpose() * WA;
     sys->AW.topRows(m).noalias() += o->constraint_matrix_.transpose() * W;
     sys->AQc.topRows(m).noalias() += WA.transpose() * WC;
+    sys->AQe.topRows(m).noalias() +=
+        o->constraint_matrix_.transpose() * (W.cwiseProduct(W));
+    sys->Ae.topRows(m).noalias() +=
+        o->constraint_matrix_.colwise().sum().transpose();
   }
 }
 

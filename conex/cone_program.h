@@ -47,7 +47,8 @@ class Container {
   LinearKKTAssembler kkt_assembler;
 };
 
-inline Eigen::VectorXd Vars(const Eigen::VectorXd& x, std::vector<int> indices) {
+inline Eigen::VectorXd Vars(const Eigen::VectorXd& x,
+                            std::vector<int> indices) {
   Eigen::VectorXd z(indices.size());
   int cnt = 0;
   for (auto i : indices) {
@@ -56,10 +57,9 @@ inline Eigen::VectorXd Vars(const Eigen::VectorXd& x, std::vector<int> indices) 
   return z;
 }
 
-
 inline void PrepareStep(ConstraintManager<Container>* kkt,
-                 const StepOptions& newton_step_parameters, const Ref& y,
-                 StepInfo* info) {
+                        const StepOptions& newton_step_parameters, const Ref& y,
+                        StepInfo* info) {
   StepInfo info_i;
   info_i.normsqrd = 0;
   info_i.norminfd = 0;
@@ -81,12 +81,11 @@ inline void PrepareStep(ConstraintManager<Container>* kkt,
 }
 
 inline void TakeStep(ConstraintManager<Container>* kkt,
-              const StepOptions& newton_step_parameters) {
+                     const StepOptions& newton_step_parameters) {
   for (auto& ci : kkt->eqs) {
     TakeStep(&ci.constraint, newton_step_parameters);
   }
 }
-
 
 class Program {
  public:
@@ -226,5 +225,7 @@ class Program {
 DenseMatrix GetFeasibleObjective(Program* prog);
 bool Solve(const DenseMatrix& b, Program& prog,
            const SolverConfiguration& config, double* primal_variable);
+
+bool Initialize(Program& prog, const SolverConfiguration& config);
 
 }  // namespace conex

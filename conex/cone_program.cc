@@ -24,7 +24,6 @@ void SetIdentity(std::vector<T*>* c) {
   }
 }
 
-
 void GetWeightedSlackEigenvalues(ConstraintManager<Container>* constraints,
                                  const Ref& y, double c_weight,
                                  WeightedSlackEigenvalues* p) {
