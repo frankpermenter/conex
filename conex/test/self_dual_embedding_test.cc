@@ -57,7 +57,7 @@ void BasicHSDSolverTestHelper(const Eigen::MatrixXd& A,
   return;
 }
 
-void BasicTestHelper(const Eigen::MatrixXd& A, const Eigen::VectorXd& bin,
+void DirectionTestsHelper(const Eigen::MatrixXd& A, const Eigen::VectorXd& bin,
                      const Eigen::VectorXd& c, int constraints_per_block = 3,
                      const Eigen::MatrixXd& B = MatrixXd(),
                      const Eigen::VectorXd& f = VectorXd()) {
@@ -228,10 +228,9 @@ struct TestData {
   VectorXd f;
 };
 
-TestData GetTestData(bool linear_equations = false) {
+TestData GetTestData(int num_constraints = 10, bool linear_equations = false) {
   srand(1);
   TestData d;
-  int num_constraints = 10;
   int num_vars = 5;
   double wt = .9;
   d.b = VectorXd::Random(num_vars);
@@ -253,30 +252,30 @@ TestData GetTestData(bool linear_equations = false) {
   return d;
 }
 
-GTEST_TEST(Basic, Schur1) {
-  auto d = GetTestData();
-  BasicTestHelper(d.A, d.b, d.c, 10, d.B, d.f);
+GTEST_TEST(DirectionTests, OneConstraintBlockWithEqualities) {
+  auto d = GetTestData(10, false);
+  DirectionTestsHelper(d.A, d.b, d.c, 10, d.B, d.f);
 }
 
-GTEST_TEST(Basic, Schur2) {
-  auto d = GetTestData();
-  BasicTestHelper(d.A, d.b, d.c, 2, d.B, d.f);
+GTEST_TEST(DirectionTests, TwoConstraintBlocksWithEqualities) {
+  auto d = GetTestData(10, false);
+  DirectionTestsHelper(d.A, d.b, d.c, 2, d.B, d.f);
 }
 
-GTEST_TEST(Basic, Schur4) {
-  auto d = GetTestData();
-  BasicTestHelper(d.A, d.b, d.c, 10);
+GTEST_TEST(DirectionTests, OneConstraintBlock) {
+  auto d = GetTestData(10, false);
+  DirectionTestsHelper(d.A, d.b, d.c, 10);
 }
 
-GTEST_TEST(Basic, Schur6) {
-  auto d = GetTestData();
-  BasicTestHelper(d.A, d.b, d.c, 2);
+GTEST_TEST(DirectionTests, TwoConstraintBlocks) {
+  auto d = GetTestData(10, false);
+  DirectionTestsHelper(d.A, d.b, d.c, 2);
 }
 
-GTEST_TEST(Basic, Schur7) {
-  auto data = GetTestData(false);
+GTEST_TEST(Basic, SolverTest) {
+  auto data = GetTestData(10, false);
   BasicHSDSolverTestHelper(data.A, data.b, data.c, 10);
-  data = GetTestData(true);
+  data = GetTestData(10, true);
   BasicHSDSolverTestHelper(data.A, data.b, data.c, 10, data.B, data.f);
 }
 
