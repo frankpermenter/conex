@@ -6,6 +6,8 @@ namespace conex {
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
+
+
 namespace {
 VectorXd BuildRHS(SelfDualEmbeddingSystem& s, const VectorXd& b,
                   const double& wt, const double& sqrtmu) {
@@ -80,6 +82,15 @@ SelfDualEmbeddingSolution SolveEmbedding(SelfDualEmbeddingSystem& s,
   return SolveEmbeddingHelper(s, kkt_solver, b, wt, sqrtmu);
 }
 
+
+
+// Solves embedding equations for decreasing
+// sequence of mu:
+//
+//    x's + k * tau = mu * (rank K + 1)
+//    b'y - c'x = kappa
+//    A'x = tau * b + mu * (Ae - b)
+//    tau c - Ay = s + mu * (c-e)
 void SolveHSD(Program& prog, const Eigen::VectorXd& bin,
               const SolverConfiguration& config, VectorXd* yout, double* tau,
               double* kappa) {
@@ -92,44 +103,52 @@ void SolveHSD(Program& prog, const Eigen::VectorXd& bin,
   Eigen::VectorXd b(prog.kkt_system_manager_.SizeOfKKTSystem());
   int num_eqs = b.rows() - m;
   b.setZero();
-  b.head(m) << bin / (1 + bin.norm() * 0);
+  b.head(m) << bin;
+  b.head(m) << bin;
 
   auto sys = prog.sys;
 
-  double sqrtmu = .1;
+  double sqrtmu = 1;
   double eps = 1e-6;
   double wt = sqrtmu;
   for (int i = 0; i < config.max_iterations; i++) {
     prog.solver->Assemble();
     MatrixXd M = prog.solver->KKTMatrix();
     prog.solver->Factor();
+
     AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &sys);
-    auto sol = SolveEmbedding(sys, *prog.solver, b, wt, sqrtmu);
-    VectorXd y = sol.sol2;
-    double dt = sol.sol1(0);
-
-    MatrixXd Error(num_eqs, 2);
-    MatrixXd My = M.bottomRows(num_eqs) * y;
-    VectorXd feq = sys.AQc.bottomRows(num_eqs);
-    Error << My * feq.norm() / My.norm(), feq;
-    VectorXd lambda;
-
-    double c_weight = wt * (1 + dt) - sqrtmu;
-    double e_weight = sqrtmu;
-
+    double dinf = 1;
+    double scale = 1;
+    double sqrtmu_previous = sqrtmu;
+    double dt;
+    int j = 0;
     StepOptions options;
-    StepInfo info;
-    options.affine = 0;
-    options.c_weight = c_weight;
-    options.e_weight = 1;
-    options.w_weight = e_weight;
-    Ref ym(sol.sol2.data(), y.rows(), 1);
-    PrepareStep(&prog.kkt_system_manager_, options, ym, &info);
+    VectorXd y;
+    while (dinf >= 1 && j < 10) {
+      scale = 1 - std::pow(.8, j + 1);
+      sqrtmu = sqrtmu_previous * scale;
+      auto sol = SolveEmbedding(sys, *prog.solver, b, wt, sqrtmu);
+      dt = sol.sol1(0);
+      y = sol.sol2;
 
-    double dinf = info.norminfd;
-    if (dinf < std::abs(dt)) {
-      dinf = std::abs(dt);
+      double c_weight = wt * (1 + dt) - sqrtmu;
+      double e_weight = sqrtmu;
+
+      StepInfo info;
+      options.affine = 0;
+      options.c_weight = c_weight;
+      options.e_weight = 1;
+      options.w_weight = e_weight;
+      Ref ym(sol.sol2.data(), y.rows(), 1);
+      PrepareStep(&prog.kkt_system_manager_, options, ym, &info);
+
+      dinf = info.norminfd;
+      if (dinf < std::abs(dt)) {
+        dinf = std::abs(dt);
+      }
+      j++;
     }
+
     options.step_size = 2.0 / (dinf);
     if (options.step_size > 1) {
       options.step_size = 1;
@@ -137,31 +156,35 @@ void SolveHSD(Program& prog, const Eigen::VectorXd& bin,
 
     double tau;
     double kappa;
-    if (dinf < 1) {
-      tau = sqrtmu * (wt * (1 + dt));
-      kappa = sqrtmu * (1.0 / wt * (1 - dt));
-    } else {
-      tau = sqrtmu * wt;
-      kappa = sqrtmu * 1.0 / wt;
-    }
+    tau = sqrtmu * (wt * (1 + dt));
+    kappa = sqrtmu * (1.0 / wt * (1 - dt));
 
     double primal_obj = b.head(m).dot(y.head(m));
     double dual_obj = sys.inner_product_of_w_and_c;
-    int num_eqs = b.size() - m;
-    if (num_eqs > 0) {
-      dual_obj += feq.dot(y.tail(num_eqs));
-    }
+
+    // inv_sqrt_mu * <c, x> = c' Q(w^{1/2}) (e + d)
+    //                      = c' Q(w^{1/2}) (e +  e + Q(w^{1/2})(Ay - k c - k_1 e))
+    //                      = c' Q(w^{1/2}) (2e + Q(w^{1/2})(Ay - k c - k1 e))
+    //                      = 2 c' w + c'Q(w)(Ay - k c' Q(w) c - k1 c Q(w) e   )
+    dual_obj = 2 * sys.inner_product_of_w_and_c +
+         sys.AQc.col(0).dot(y.col(0)) 
+         - options.c_weight * sys.inner_product_of_c_and_Qc
+         - options.w_weight * sys.inner_product_of_c_and_Qe;
 
     dual_obj *= sqrtmu / tau;
     primal_obj *= sqrtmu / tau;
 
-    std::cout << i << " tau: " << tau << " kappa: " << kappa << "  d: " << dinf
+    double gap_error = primal_obj - dual_obj - (kappa - sqrtmu*sqrtmu*(1.0 + sys.inner_product_of_c_and_e));
+
+    std::cout << i << " tau: " << tau << " kappa: " << kappa << "  dinf: " << dinf
               << "  sqrtmu: " << sqrtmu << "  b'y: " << primal_obj
-              << " c'w: " << dual_obj << std::endl;
+              << " c'x: " << dual_obj  
+              << " gap_error " << gap_error
+              << std::endl;
     prog.stats->sqrt_inv_mu[i] = tau / sqrtmu;
     prog.stats->num_iter = i + 1;
-    double min_mu = 0.0001;
-    if (dinf < 0.01) {
+    double min_mu = 1e-4;
+    if (dinf < 1) {
       if (sqrtmu < min_mu) {
         (*yout) = y.head(m) * sqrtmu / tau;
         options.affine = 1;
@@ -169,13 +192,13 @@ void SolveHSD(Program& prog, const Eigen::VectorXd& bin,
         return;
       }
     }
-    if (sqrtmu > min_mu) {
-      sqrtmu *= 0.5;
-    }
+
+    //if (sqrtmu > min_mu && gap_error < 1e-15) {
+    //  sqrtmu *= 0.1;
+    //}
     TakeStep(&prog.kkt_system_manager_, options);
     wt = wt * std::exp(options.step_size * dt);
   }
-  DUMP("FAILED!");
 }
 
 }  // namespace conex

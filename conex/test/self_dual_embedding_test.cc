@@ -12,7 +12,7 @@ namespace conex {
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
-#if 1
+
 void BasicHSDSolverTestHelper(const Eigen::MatrixXd& A,
                               const Eigen::VectorXd& bin,
                               const Eigen::VectorXd& c,
@@ -186,6 +186,7 @@ void BasicTestHelper(const Eigen::MatrixXd& A, const Eigen::VectorXd& bin,
               << " , " << errX.norm() << " , " << errS.norm() << ","
               << errG1 - errG2;
 
+
     if (dinf < 1) {
       if (sqrtmu * sqrtmu < 1e-10) {
         double tau = sqrtmu * (wt * (1 + dt));
@@ -227,23 +228,28 @@ struct TestData {
   VectorXd f;
 };
 
-TestData GetTestData() {
+TestData GetTestData(bool linear_equations = false) {
   srand(1);
   TestData d;
-  int n = 10;
-  int m = 5;
+  int num_constraints = 10;
+  int num_vars = 5;
   double wt = .9;
-  d.b = VectorXd::Random(m);
-  VectorXd e(n);
+  d.b = VectorXd::Random(num_vars);
+  VectorXd e(num_constraints);
   e.setConstant(1);
-  d.A = MatrixXd::Random(m, n);
-  d.c = VectorXd::Random(n);
+  d.A = MatrixXd::Random(num_vars, num_constraints);
+  d.c = VectorXd::Random(num_constraints);
   d.b = d.A * e;
   d.c = d.c.cwiseProduct(d.c);
-  d.B.resize(1, m);
-  d.B.setConstant(1);
-  d.f.resize(1);
-  d.f(0) = 1;
+  int num_eq = 0;
+  if (linear_equations) {
+    num_eq = 3;
+    if (num_eq < 1) {
+      num_eq = 1;
+    }
+  }
+  d.B = MatrixXd::Random(num_eq, num_vars);
+  d.f = MatrixXd::Random(num_eq, 1);
   return d;
 }
 
@@ -251,77 +257,27 @@ GTEST_TEST(Basic, Schur1) {
   auto d = GetTestData();
   BasicTestHelper(d.A, d.b, d.c, 10, d.B, d.f);
 }
-#endif
 
 GTEST_TEST(Basic, Schur2) {
   auto d = GetTestData();
   BasicTestHelper(d.A, d.b, d.c, 2, d.B, d.f);
 }
 
-/*
-GTEST_TEST(Basic, Schur3) {
-  auto d = GetTestData();
-  BasicTestHelper(d.A, d.b, d.c, 5, d.B, d.f);
-}*/
-
 GTEST_TEST(Basic, Schur4) {
   auto d = GetTestData();
   BasicTestHelper(d.A, d.b, d.c, 10);
 }
-GTEST_TEST(Basic, Schur5) { auto d = GetTestData(); }
+
 GTEST_TEST(Basic, Schur6) {
   auto d = GetTestData();
   BasicTestHelper(d.A, d.b, d.c, 2);
 }
+
 GTEST_TEST(Basic, Schur7) {
-  auto d = GetTestData();
-  BasicTestHelper(d.A, d.b, d.c, 5);
-  BasicHSDSolverTestHelper(d.A, d.b, d.c, 5);
+  auto data = GetTestData(false);
+  BasicHSDSolverTestHelper(data.A, data.b, data.c, 10);
+  data = GetTestData(true);
+  BasicHSDSolverTestHelper(data.A, data.b, data.c, 10, data.B, data.f);
 }
-#if 0
-GTEST_TEST(Basic, Schur7) {
-  SolverConfiguration config;
-  int n = 15;
-  int m = 3;
-  auto constraints2 = GetRandomDenseMatrices(n, m);
-
-  DenseMatrix affine2 = -Eigen::MatrixXd::Identity(n, n);
-  DenseLMIConstraint LMI{n, constraints2, affine2};
-
-  Program prog(m);
-  DenseMatrix y(m, 1);
-  prog.AddConstraint(LMI);
-
-  auto b = GetFeasibleObjective(&prog);
-  Initialize(prog, SolverConfiguration());
-  VectorXd ysol;
-  double kappa_sol;
-  double tau_sol;
-  SolveHSD(prog, b, SolverConfiguration(), &ysol, NULL, NULL);
-  DUMP(y);
-}
-#endif
-#if 0
-GTEST_TEST(Basic, NoSlater) {
-  SolverConfiguration config;
-  int n = 3;
-  int m = 2;
-
-  DenseMatrix affine = -Eigen::MatrixXd::Identity(n, n);
-  DenseLMIConstraint LMI{n, constraints, affine};
-
-  Program prog(m);
-  DenseMatrix y(m, 1);
-  prog.AddConstraint(LMI);
-
-  auto b = GetFeasibleObjective(&prog);
-  Initialize(prog, SolverConfiguration());
-  VectorXd ysol;
-  double kappa_sol;
-  double tau_sol;
-  SolveHSD(prog, b, SolverConfiguration(), &ysol, NULL, NULL);
-  DUMP(y);
-}
-#endif
 
 }  // namespace conex

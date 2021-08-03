@@ -6,17 +6,15 @@ namespace conex {
 
 void SetIdentity(LinearConstraint* o) { o->workspace_.W.setConstant(1); }
 
-// TODO: use e_weight and c_weight
 void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
                  StepInfo* info) {
   auto* workspace = &o->workspace_;
   auto& minus_s = workspace->temp_1;
-  auto& SW0 = o->workspace_.temp_1;
-  auto& SW1 = o->workspace_.temp_2;
 
   if (!options.affine) {
     auto& d = workspace->temp_2;
 
+    // d =  e + w \circ ( A'y  - c k_1 - k_0 e)
     o->ComputeNegativeSlack(options.c_weight, y, &d);
     d.array() -= options.w_weight;
     d = d.cwiseProduct(o->workspace_.W);
