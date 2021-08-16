@@ -124,8 +124,12 @@ void SolveHSD(Program& prog, const Eigen::VectorXd& bin,
     int j = 0;
     StepOptions options;
     VectorXd y;
-    while (dinf >= 1 && j < 10) {
+    int max_iter = 10;
+    while (dinf >= 1 && j < max_iter) {
       scale = 1 - std::pow(.8, j + 1);
+      if (j == max_iter - 1) {
+        scale = .99;
+      }
       sqrtmu = sqrtmu_previous * scale;
       auto sol = SolveEmbedding(sys, *prog.solver, b, wt, sqrtmu);
       dt = sol.sol1(0);
@@ -180,6 +184,7 @@ void SolveHSD(Program& prog, const Eigen::VectorXd& bin,
               << "  sqrtmu: " << sqrtmu << "  b'y: " << primal_obj
               << " c'x: " << dual_obj  
               << " gap_error " << gap_error
+              << " back-track " << j
               << std::endl;
     prog.stats->sqrt_inv_mu[i] = tau / sqrtmu;
     prog.stats->num_iter = i + 1;

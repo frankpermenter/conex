@@ -279,4 +279,18 @@ GTEST_TEST(Basic, SolverTest) {
   BasicHSDSolverTestHelper(data.A, data.b, data.c, 10, data.B, data.f);
 }
 
+GTEST_TEST(Infeasible, SolverTest) {
+  auto data = GetTestData(10, false);
+  data.c *= -100;
+  BasicHSDSolverTestHelper(data.A, data.b, data.c, 10);
+}
+
+GTEST_TEST(Unbounded, SolverTest) {
+  auto data = GetTestData(1, false);
+  data.b = VectorXd::Random(data.b.rows());
+  BasicHSDSolverTestHelper(data.A, data.b, data.c, 1);
+}
+
+
+
 }  // namespace conex
