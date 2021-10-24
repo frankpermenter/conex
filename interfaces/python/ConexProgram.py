@@ -55,6 +55,24 @@ class LMIOperator:
         y.transposed = not y.transposed
         return y;
 
+def ConexSolveQuadraticProgram(quadratic_cost_matrix,
+                    cost_vector, 
+                    inequality_matrix,
+                    inequality_upper_bound,
+                    inequality_lower_bound,
+                    config):
+    wrapper = conex
+    m = quadratic_cost_matrix.shape[0]
+    solution = np.ones(m).astype(real)
+    wrapper.CONEX_QP_Solver(quadratic_cost_matrix, 
+                    cost_vector, 
+                    inequality_matrix,
+                    inequality_upper_bound,
+                    inequality_lower_bound, 
+                    config, 
+                    solution)
+    return solution
+
 class Conex:
     def __init__(self, m = -1):
         self.wrapper = conex
@@ -112,6 +130,7 @@ class Conex:
         self.A.append(np.matrix(A))
         self.c.append(np.matrix(ub_))
         self.num_constraints = self.num_constraints + 1
+
     def DefaultConfiguration(self):
         config = self.wrapper.CONEX_SolverConfiguration()
         self.wrapper.CONEX_SetDefaultOptions(config);
@@ -123,6 +142,8 @@ class Conex:
         config.infeasibility_threshold = 1e8
         config.divergence_upper_bound = 1
         return config
+
+
 
 
     def Solve(self, config = []): 

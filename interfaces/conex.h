@@ -27,6 +27,9 @@ typedef struct {
   double kkt_error_tolerance;
   int enable_rescaling;
   int kkt_solver;
+  // QP solver settings.
+  double inv_sqrt_mu_weight;
+  double theta_weight;
 } CONEX_SolverConfiguration;
 
 typedef struct {
@@ -39,40 +42,41 @@ typedef struct {
 } CONEX_SolutionStats;
 
 void* CONEX_CreateConeProgram();
-void CONEX_DeleteConeProgram(void*);
+void CONEX_DeleteConeProgram(void* program);
 
-int CONEX_AddDenseLinearConstraint(void* prog, const double* A, int Ar, int Ac,
-                                   const double* c, int cr);
+int CONEX_AddDenseLinearConstraint(void* program, const double* A, int Ar,
+                                   int Ac, const double* c, int cr);
 
-int CONEX_AddLinearInequalities(void* prog, const double* A, int Ar, int Ac,
+int CONEX_AddLinearInequalities(void* program, const double* A, int Ar, int Ac,
                                 const double* lb, int num_lb, const double* ub,
                                 int num_ub);
 
-int CONEX_AddQuadraticCost(void* prog, const double* A, int Ar, int Ac);
+int CONEX_AddQuadraticCost(void* program, const double* A, int Ar, int Ac);
 //  Parameters Aarrayr, Aarrayc, cr, cc all equal the
 //  order n of LMI.
 // TODO(FrankPermenter): update this.
-int CONEX_AddDenseLMIConstraint(void* prog, const double* Aarray, int Aarrayr,
-                                int Aarrayc, int m, const double* cmat, int cr,
-                                int cc);
+int CONEX_AddDenseLMIConstraint(void* program, const double* Aarray,
+                                int Aarrayr, int Aarrayc, int m,
+                                const double* cmat, int cr, int cc);
 
-int CONEX_AddSparseLMIConstraint(void* prog, const double* Aarray, int Aarrayr,
-                                 int Aarrayc, int m, const double* cmat, int cr,
-                                 int cc, const long* vars, int vars_c);
+int CONEX_AddSparseLMIConstraint(void* program, const double* Aarray,
+                                 int Aarrayr, int Aarrayc, int m,
+                                 const double* cmat, int cr, int cc,
+                                 const long* vars, int vars_c);
 
-int CONEX_Maximize(void* prog, const double* b, int br,
+int CONEX_Maximize(void* program, const double* b, int br,
                    const CONEX_SolverConfiguration* config, double* y, int yr);
 
-int CONEX_Solve(void* prog, const CONEX_SolverConfiguration* config, double* y,
-                int yr);
+int CONEX_Solve(void* program, const CONEX_SolverConfiguration* config,
+                double* y, int yr);
 
-void CONEX_GetDualVariable(void* prog, int i, double* x, int xr, int xc);
+void CONEX_GetDualVariable(void* program, int i, double* x, int xr, int xc);
 
-int CONEX_GetDualVariableSize(void* prog_ptr, int i);
+int CONEX_GetDualVariableSize(void* program, int i);
 
 void CONEX_SetDefaultOptions(CONEX_SolverConfiguration* config);
 
-void CONEX_GetIterationStats(void* prog, CONEX_IterationStats* stats,
+void CONEX_GetIterationStats(void* program, CONEX_IterationStats* stats,
                              int iter_num);
 
 CONEX_STATUS CONEX_UpdateLinearOperator(void* program, int constraint,
@@ -92,11 +96,22 @@ CONEX_STATUS CONEX_NewLorentzConeConstraint(void* program, int order,
 CONEX_STATUS CONEX_NewLinearInequality(void* program, int num_rows,
                                        int* constraint_id);
 
-CONEX_STATUS CONEX_NewQuadraticCost(void* p, int* constraint_id);
+CONEX_STATUS CONEX_NewQuadraticCost(void* program, int* constraint_id);
 CONEX_STATUS CONEX_UpdateQuadraticCostMatrix(void* p, int id, double value,
                                              int row, int col);
 
 CONEX_STATUS CONEX_SetNumberOfVariables(void* program, int m);
+
+int CONEX_QP_Solver(const double* quadratic_cost_matrix,
+                    int quadratic_cost_matrix_num_row,
+                    int quadratic_cost_matrix_num_col,
+                    const double* cost_vector, int num_row_cost_vector,
+                    const double* inequality_matrix, int num_row_ineq,
+                    int num_col_ineq, const double* inequality_upper_bound,
+                    int num_row_ineq_ub, const double* inequality_lower_bound,
+                    int num_row_ineq_lb,
+                    const CONEX_SolverConfiguration* config_input,
+                    double* solution, int num_row);
 
 #ifdef __cplusplus
 }  // extern "C"

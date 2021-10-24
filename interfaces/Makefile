@@ -13,6 +13,7 @@ LFLAGS=-lblas
 
 all: libconex.so
 
+# The source for the cone program solver
 SOURCES = approximate_eigenvalues.cc \
 	  block_triangular_operations.cc \
 	  clique_ordering.cc \
@@ -31,22 +32,36 @@ SOURCES = approximate_eigenvalues.cc \
 	  quadratic_cone_constraint.cc \
 	  soc_constraint.cc \
 	  supernodal_solver.cc \
+	  sparsity_utils.cc \
 	  triangular_matrix_workspace.cc \
 	  tree_utils.cc \
 	  jordan_matrix_algebra.cc \
 
 OBJECTS := $(SOURCES:.cc=.o)
-
 %.o : $(CONEX)/conex/%.cc
 	$(CXX) -c $(CPPFLAGS_LIBRARY) $< 
-
 libsource: $(SOURCES:.cc=.o)
+
+
+# The source for the qp solver
+QP_SOURCES = utils.cc  \
+	     logspace_interior_point_method.cc  \
+	     two_dimensional_lp.cc  \
+
+%.o : $(CONEX)/conex/quadratic_programs/%.cc
+	$(CXX) -c $(CPPFLAGS_LIBRARY) $< 
+
+QP_OBJECTS := $(QP_SOURCES:.cc=.o)
+lib_qp_source: $(QP_SOURCES:.cc=.o)
 
 conex.o: conex.h conex.cc
 	g++ -c $(CPPFLAGS) -I${EIGEN_DIR} -I $(CONEX) conex.cc
 
-libconex.so:  conex.o libsource
-	g++ -static-libstdc++ -Wl,--exclude-libs,ALL -Wl,--gc-sections -shared -o libconex.so conex.o $(OBJECTS) $(LFLAGS)
+conex_qp.o: conex.h conex_qp.cc
+	g++ -c $(CPPFLAGS) -I${EIGEN_DIR} -I $(CONEX) conex_qp.cc
+
+libconex.so:  conex.o conex_qp.o libsource lib_qp_source 
+	g++ -static-libstdc++ -Wl,--exclude-libs,ALL -Wl,--gc-sections -shared -o libconex.so conex.o conex_qp.o $(OBJECTS) $(QP_OBJECTS) $(LFLAGS)
 
 main: libconex.so
 	g++ -L./ test/test_app.cc -lconex 

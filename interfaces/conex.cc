@@ -13,6 +13,7 @@
 #include "conex/hermitian_psd.h"
 #include "conex/linear_constraint.h"
 #include "conex/soc_constraint.h"
+#include "conex/sparsity_utils.h"
 
 #include "conex/error_checking_macros.h"
 
@@ -38,6 +39,9 @@ using conex::HermitianPsdConstraint;
 using conex::LinearConstraint;
 using conex::Program;
 using conex::SolverConfiguration;
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
+using std::vector;
 
 namespace {
 
@@ -187,6 +191,32 @@ int CONEX_AddSparseLMIConstraint(void* prog, const double* A, int Ar, int Ac,
   return constraint_id;
 }
 
+void PrintNonZero(const Eigen::MatrixXd& G) {
+  std::vector<int> vars;
+
+  MatrixXd A;
+  NonZeroSubMat(G * G.transpose(), &vars, &A);
+  DUMP(A);
+  Eigen::LLT<MatrixXd> llt(A);
+  if (llt.info() != Eigen::Success) {
+    DUMP("LLT FAILED");
+  } else {
+    DUMP("LLT SUCCESS");
+  }
+
+  for (int i = 0; i < A.rows(); i++) {
+    for (int j = 0; j < A.cols(); j++) {
+      if (A(i, j) != 0) {
+        std::cout << A(i, j) << " ";
+      }
+    }
+    std::cout << "\n ";
+  }
+  std::cout << "\n ";
+  std::cout << "\n ";
+  std::cout << "\n ";
+}
+
 int CONEX_AddLinearInequalities(void* prog, const double* A, int Ar, int Ac,
                                 const double* lb, int num_lb, const double* ub,
                                 int num_ub) {
@@ -204,12 +234,33 @@ int CONEX_AddLinearInequalities(void* prog, const double* A, int Ar, int Ac,
                                     &beq);
 
   auto& program = *reinterpret_cast<Program*>(prog);
+
   if (Aineq.rows() > 0) {
     program.AddConstraint(conex::LinearConstraint(Aineq, bineq));
   }
+
   if (Aeq.rows() > 0) {
+    // int num_eq = 15; broke?
+    int num_eq = Aeq.rows();
+    Aeq = Aeq.topRows(num_eq);
+    beq = beq.topRows(num_eq);
+#if 0
+    conex::PartitionRows(Aeq, &rows, &cols);
+    vector<vector<int>> rows;
+    vector<vector<int>> cols;
+    for (size_t i = 0; i < rows.size(); i++) {
+      DUMP(cols.at(i).size());
+      program.AddConstraint(conex::EqualityConstraints(
+                                conex::Submatrix(Aeq, rows.at(i), cols.at(i)),
+                                conex::Subvector(beq, rows.at(i))),
+                            cols.at(i));
+    }
+#else
     program.AddConstraint(conex::EqualityConstraints(Aeq, beq));
+
+#endif
   }
+
   // TODO(FrankPermenter): Return the correct ID.
   return -1;
 }
@@ -254,6 +305,9 @@ void CONEX_SetDefaultOptions(CONEX_SolverConfiguration* c) {
   c->infeasibility_threshold = config.infeasibility_threshold;
   c->kkt_error_tolerance = config.kkt_error_tolerance;
   c->enable_rescaling = config.enable_rescaling;
+
+  c->theta_weight = 1;
+  c->inv_sqrt_mu_weight = -0.01;
 }
 
 void CONEX_GetIterationStats(void* prog, CONEX_IterationStats* stats,

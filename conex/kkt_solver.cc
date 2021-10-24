@@ -229,8 +229,9 @@ double T::SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b) {
 
   if (use_qr) {
     VectorXd sol = qr_decomp_.solve(*b);
+    const VectorXd residual = *b - kkt_matrix_ * sol;
     *b = sol;
-    return -1;
+    return residual.norm();
   }
 
   Eigen::VectorXd total_residual;

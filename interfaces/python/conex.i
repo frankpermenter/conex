@@ -26,4 +26,16 @@
 %apply (long* INPLACE_ARRAY1, int DIM1) {(const long* vars, int vars_c)}
 %apply (double* INPLACE_FARRAY2, int DIM1, int DIM2) {(double* x, int xr, int xc)}
 
+
+
+
+%apply (double* IN_FARRAY2, int DIM1, int DIM2) {(const double* quadratic_cost_matrix, int quadratic_cost_matrix_num_row, int quadratic_cost_matrix_num_col)}
+%apply (double* INPLACE_ARRAY1, int DIM1) {(const double* cost_vector, int num_row_cost_vector)}
+%apply (double* IN_FARRAY2, int DIM1, int DIM2) {(const double* inequality_matrix, int num_row_ineq, int num_col_ineq)}
+%apply (double* INPLACE_ARRAY1, int DIM1)  {(const double* inequality_upper_bound, int num_row_ineq_ub)}
+%apply (double* INPLACE_ARRAY1, int DIM1) {(const double* inequality_lower_bound, int num_row_ineq_lb)}
+%apply (double* INPLACE_ARRAY1, int DIM1) {(double* solution, int num_row)}
+
+
+
 %include "../conex.h"

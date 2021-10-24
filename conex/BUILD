@@ -240,6 +240,30 @@ cc_test(
 )
 
 cc_library(
+    name = "sparsity_utils",
+    srcs = [
+        "debug_macros.h",
+        "sparsity_utils.cc",
+    ],
+    hdrs = [
+        "sparsity_utils.h",
+    ],
+    copts = COPTS,
+    visibility = ["//visibility:public"],
+    deps = ["@eigen"],
+)
+
+cc_test(
+    name = "sparsity_utils_test",
+    srcs = ["test/sparsity_utils_test.cc"],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "sparsity_utils",
+        "@gtest//:main",
+    ],
+)
+
+cc_library(
     name = "tree_utils",
     srcs = [
         "debug_macros.h",
