@@ -32,11 +32,23 @@ struct Variable {
   double sqrtmu = 0;
 };
 
-Variable LogspaceIPM(const ProblemData& data,
+enum : int {
+   CONEX_LOGSPACE_IPM_SOLVED = 0,
+   CONEX_LOGSPACE_IPM_SOLVED_INACCURATE = 1,
+   CONEX_LOGSPACE_IPM_INFEASIBLE = 2,
+   CONEX_LOGSPACE_IPM_UNKNOWN = 3,
+};
+
+struct Solution {
+  Variable x;
+  int status;
+};
+
+Solution LogspaceIPM(const ProblemData& data,
                      const SolverOptions& options = SolverOptions(),
                      const Variable& v0 = Variable());
 
-Variable LogspaceIPM(const ProblemData& data, const SolverOptions& options,
+Solution LogspaceIPM(const ProblemData& data, const SolverOptions& options,
                      const Eigen::VectorXd& v0);
 
 }  // namespace quadratic_programs

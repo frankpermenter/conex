@@ -138,11 +138,11 @@ int CONEX_QP_Solver(const double* quadratic_cost_matrix, int num_row,
   config.maximum_iterations = config_input->max_iterations;
   config.theta_weight = config_input->theta_weight;
   config.inv_sqrt_mu_weight = config_input->inv_sqrt_mu_weight;
+  config.target_duality_gap = config_input->target_duality_gap;
+  config.dinf_limit = config_input->dinf_upper_bound;
 
-  DUMP("SOLVING");
   auto sol = LogspaceIPM(data, config);
   Eigen::Map<MatrixXd> sol_map(solution, num_vars, 1);
-  sol_map = sol.x;
-
-  return 0;
+  sol_map = sol.x.x;
+  return sol.status;
 }

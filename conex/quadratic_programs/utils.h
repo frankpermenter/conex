@@ -10,6 +10,19 @@ struct Direction {
   Eigen::VectorXd x;
 };
 
+
+ProblemData RescaleProblemData(const ProblemData& data);
+bool CheckPrimalInfeasibility(const ProblemData& data, 
+                        const Variable& w, 
+                        const Direction& d, double* descent,
+                        Variable* certificate);
+
+bool CheckDualInfeasibility(const ProblemData& data, 
+                        const Variable& w, 
+                        const Direction& d, double* descent,
+                        Variable* certificate);
+
+
 double UpperBound(const ProblemData& data, const Eigen::VectorXd& exp_v);
 
 Direction NewtonDirection(const ProblemData& data, const Eigen::VectorXd& exp_v,

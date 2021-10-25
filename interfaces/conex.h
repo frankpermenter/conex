@@ -30,6 +30,7 @@ typedef struct {
   // QP solver settings.
   double inv_sqrt_mu_weight;
   double theta_weight;
+  double target_duality_gap;
 } CONEX_SolverConfiguration;
 
 typedef struct {

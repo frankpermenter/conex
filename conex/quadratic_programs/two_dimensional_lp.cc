@@ -229,13 +229,6 @@ Eigen::MatrixXd InfinityNorm(const Eigen::MatrixXd& d0,
       A, b, limit.inv_sqrt_mu_ub /*ub of x0*/, limit.theta_times_inv_sqrt_mu_ub,
       limit.inv_sqrt_mu_lb /*ub of x0*/, limit.theta_times_inv_sqrt_mu_lb);
   if (vertices.size() == 0) {
-    DUMP("FAILED");
-    DUMP(A);
-    DUMP(b);
-    DUMP(limit.inv_sqrt_mu_ub);
-    DUMP(limit.inv_sqrt_mu_lb);
-    DUMP(limit.theta_times_inv_sqrt_mu_lb);
-    DUMP(limit.theta_times_inv_sqrt_mu_ub);
     return VectorXd();
   }
 

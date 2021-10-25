@@ -7,6 +7,88 @@ using Eigen::VectorXd;
 namespace conex {
 namespace quadratic_programs {
 
+ProblemData RescaleProblemData(const ProblemData& data) {
+  MatrixXd G = data.A.transpose() * data.A;
+  Eigen::LLT<MatrixXd> llt(G);
+  MatrixXd P = data.A * llt.solve(data.A.transpose());
+  VectorXd b0 = data.b - P * data.b;
+  VectorXd l0 = data.A * llt.solve(data.c);
+
+  auto datain = data;
+
+  int n = data.A.rows();
+  if (b0.squaredNorm() > 1.0 / n) {
+    double scale = 1.0 / std::sqrt(n) / b0.norm();
+    datain.A *= scale;
+    datain.b *= scale; 
+  }
+
+  if (l0.squaredNorm() > 1.0 / n) {
+    double scale = 1.0 / std::sqrt(n) / l0.norm();
+    datain.c *= scale;
+  }
+  return datain;
+}
+ 
+
+
+
+// Want to find an improving ray satisfying
+//
+// A' r = W z
+// <b, r> < 0
+// r > 0
+//
+// Given feasible lambda, i.e., lambda > 0
+// satisfying
+//
+//  A'lambda = Wx + c
+//
+// We have that
+//
+//  A' (lambda + alp * r) = W(x+alp*z) + c
+//
+//  minimize (b'lambda)
+//
+bool CheckPrimalInfeasibility(const ProblemData& data, 
+                        const Variable& w, 
+                        const Direction& d, double* descent,
+                        Variable* certificate) {
+
+
+  // Verify that 
+  // A' w(e + d) = Wx 
+  VectorXd lambda = w.expv;
+  lambda += w.expv.cwiseProduct(d.d);
+  double residual = (data.A.transpose() * (lambda)  - data.W * d.x).norm();
+  *descent = data.b.dot(lambda);
+  certificate->x = d.x;
+  certificate->lambda = lambda;
+  return (*descent)/lambda.norm() < -1 && residual < 1e-9 && d.d.minCoeff() > -(1 + 1e-5);
+}
+
+// Want point x satisfying
+// Ax > 0
+// x'Wx + c'x < 0
+bool CheckDualInfeasibility(const ProblemData& data, 
+                        const Variable& w, 
+                        const Direction& d, 
+                        double* directional_deriv,
+                        Variable* certificate) {
+
+
+  *directional_deriv = d.x.dot(data.W * d.x + data.c);
+  certificate->x  =  d.x;
+  certificate->slack  =  data.A * d.x;
+  // d = e - A'x =>  
+  //
+  //  Ax = e - d
+  //
+  return *directional_deriv/d.x.norm() < -1 && d.d.maxCoeff() < 1 + 1e-4;
+}
+
+
+
 Direction PredictorDirection(const ProblemData& data, const VectorXd& exp_v) {
   const MatrixXd& W = data.W;
   const VectorXd& c = data.c;
