@@ -94,7 +94,8 @@ int CONEX_QP_Solver(const double* quadratic_cost_matrix, int num_row,
                     int num_row_ineq_ub, const double* inequality_lower_bound,
                     int num_row_ineq_lb,
                     const CONEX_SolverConfiguration* config_input,
-                    double* solution, int num_row_solution) {
+                    double* solution, int num_row_solution,
+                    CONEX_SolutionStats* stats) {
   CONEX_DEMAND(num_col == num_row, "Cost matrix must be square.");
   CONEX_DEMAND(num_col == num_row_solution,
                "Output dimension does not equal number of variables.");
@@ -144,5 +145,8 @@ int CONEX_QP_Solver(const double* quadratic_cost_matrix, int num_row,
   auto sol = LogspaceIPM(data, config);
   Eigen::Map<MatrixXd> sol_map(solution, num_vars, 1);
   sol_map = sol.x.x;
+  if (stats) {
+    stats->iterations = sol.iterations;
+  }
   return sol.status;
 }

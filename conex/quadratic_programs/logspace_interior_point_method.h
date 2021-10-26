@@ -42,6 +42,7 @@ enum : int {
 struct Solution {
   Variable x;
   int status;
+  int iterations;
 };
 
 Solution LogspaceIPM(const ProblemData& data,

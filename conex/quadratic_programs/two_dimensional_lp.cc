@@ -218,6 +218,58 @@ int MinLinearFunction(const std::vector<Vertex>& vertices,
 namespace conex {
 namespace quadratic_programs {
 
+
+MuThetaValues MuThetaSelect(const Eigen::MatrixXd& d0,
+                              const Eigen::MatrixXd& d1,
+                              const Eigen::MatrixXd& d2, double bound,
+                             const Limits& limit) {
+
+  // d0 + d1 * k + theta * k d2 <= bound
+  // d0 * sqrtmu + d1 + theta * d2 <= sqrtmu * bound
+  //
+  // (d0 - 1) sqrtmu + theta * d2 <= -d1
+  int m = d0.size();
+  MatrixXd A1(m, 2);
+  VectorXd b1(m);
+  A1.col(0).setConstant(-bound);
+  A1.col(0) += d0;
+  A1.col(1) = d2;
+  b1 = -d1;
+
+
+  // -(d0 + d1 * k + theta * k d2) <= bound
+  // -(d0 * sqrtmu + d1 + theta * d2) <= sqrtmu * bound
+  //
+  // -(d0 + 1) sqrtmu - theta * d2 <= d1
+  MatrixXd A2(m, 2);
+  VectorXd b2(m);
+  A2.col(0).setConstant(-bound);
+  A2.col(0) -= d0;
+  A2.col(1) = -d2;
+  b2 = d1;
+
+  MatrixXd A(2*m, 2);
+  MatrixXd b(2*m, 1);
+  A << A1, A2;
+  b << b1, b2;
+
+  auto vertices = DoMain(A, b, 1e8, 1,  1e-8, 0);
+
+  MuThetaValues vals;
+  if (vertices.size() > 0) {
+    VectorXd w(2);
+    w << 0.000, 1;
+    int opt = MinLinearFunction(vertices, w);
+    vals.theta = vertices.at(opt).x(1);
+    vals.sqrtmu = vertices.at(opt).x(0);
+    vals.success = true;
+  } else {
+    vals.success = false;
+  }
+  return vals; 
+}
+
+
 Eigen::MatrixXd InfinityNorm(const Eigen::MatrixXd& d0,
                              const Eigen::MatrixXd& d1,
                              const Eigen::MatrixXd& d2, double bound,

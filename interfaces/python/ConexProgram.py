@@ -64,14 +64,17 @@ def ConexSolveQuadraticProgram(quadratic_cost_matrix,
     wrapper = conex
     m = quadratic_cost_matrix.shape[0]
     solution = np.ones(m).astype(real)
+
+    stats =  wrapper.CONEX_SolutionStats()
     status = wrapper.CONEX_QP_Solver(quadratic_cost_matrix, 
                     cost_vector, 
                     inequality_matrix,
                     inequality_upper_bound,
                     inequality_lower_bound, 
                     config, 
-                    solution)
-    return solution, status
+                    solution, 
+                    stats)
+    return solution, status, stats
 
 class Conex:
     def __init__(self, m = -1):

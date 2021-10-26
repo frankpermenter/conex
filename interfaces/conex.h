@@ -112,7 +112,10 @@ int CONEX_QP_Solver(const double* quadratic_cost_matrix,
                     int num_row_ineq_ub, const double* inequality_lower_bound,
                     int num_row_ineq_lb,
                     const CONEX_SolverConfiguration* config_input,
-                    double* solution, int num_row);
+                    double* solution, int num_row,
+                    CONEX_SolutionStats* stats);
+
+
 
 #ifdef __cplusplus
 }  // extern "C"

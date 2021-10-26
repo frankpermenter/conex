@@ -16,5 +16,17 @@ Eigen::MatrixXd InfinityNorm(const Eigen::MatrixXd& d0,
                              const Eigen::MatrixXd& d2, double bound,
                              const Limits& limit = Limits());
 
+
+struct MuThetaValues {
+  double sqrtmu;
+  double theta;
+  bool success;
+};
+MuThetaValues MuThetaSelect(const Eigen::MatrixXd& d0,
+                             const Eigen::MatrixXd& d1,
+                             const Eigen::MatrixXd& d2, double bound,
+                             const Limits& limit = Limits());
+
+
 }  // namespace quadratic_programs
 }  // namespace conex

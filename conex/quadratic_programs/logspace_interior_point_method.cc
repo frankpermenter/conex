@@ -84,7 +84,8 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
   bool primal_infeas;
   bool dual_infeas;
   bool solved = false;
-  for (int i = 0; i < options.maximum_iterations; i++) {
+  int i = 0;
+  for (; i < options.maximum_iterations; i++) {
     adjust_theta = adjust_theta && theta > 1e-15;
     double k = 1;
 
@@ -116,15 +117,15 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
         VectorXd d1 = dmu_.d - d0;
         VectorXd d2 = dtheta_.d - dmu_.d;
         Limits lim;
-        VectorXd extreme_points;
 
         bool no_feasible_theta = true;
         {
           Limits theta_config;
+#if 0
           theta_config.inv_sqrt_mu_ub = 1e6;
           theta_config.inv_sqrt_mu_lb = 1e-4;
           theta_config.theta_times_inv_sqrt_mu_ub = 1e-4;
-          theta_config.theta_times_inv_sqrt_mu_lb = 0;
+          theta_config.theta_times_inv_sqrt_mu_lb = -1e-9;
           theta_config.theta_weight = 1; 
           theta_config.inv_sqrt_mu_weight = -1; 
           VectorXd extreme_points = InfinityNorm(d0, d1, d2, options.dinf_limit, theta_config);
@@ -133,9 +134,24 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
             adjust_theta = false;
             theta = 0;
           }
+#else
+
+          auto vals = MuThetaSelect(d0, d1, d2, options.dinf_limit, theta_config);
+          if (vals.success) {
+            sqrtmu = vals.sqrtmu;
+            if (vals.theta < 1e-9) {
+              no_feasible_theta = false;
+              adjust_theta = false;
+              theta = 0;
+            } else {
+              theta = vals.theta;
+            }
+          }
+#endif
         }
 
-        if (no_feasible_theta) {
+        //if (no_feasible_theta) {
+        if (false) {
           lim.theta_times_inv_sqrt_mu_ub = theta * sqrtmu;
           Limits theta_config;
           theta_config.theta_weight = options.theta_weight;
@@ -151,13 +167,13 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
           if (primal_ray_deriv && dual_ray_deriv > 0) {
             theta_config.inv_sqrt_mu_lb = 1.0/sqrtmu * .01;
           }
-          extreme_points = InfinityNorm(d0, d1, d2, options.dinf_limit, theta_config);
+          VectorXd extreme_points = InfinityNorm(d0, d1, d2, options.dinf_limit, theta_config);
+          if (extreme_points.size() > 0) {
+            sqrtmu = 1.0 / extreme_points(0);
+            theta = extreme_points(1) * sqrtmu;
+          } 
         }
 
-        if (extreme_points.size() > 0) {
-          sqrtmu = 1.0 / extreme_points(0);
-          theta = extreme_points(1) * sqrtmu;
-        } 
       }
         // throw std::runtime_error("DFDF");
     } else {
@@ -323,15 +339,15 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
 
   }
 
+  Solution sol;
   if (solved) {
-    Solution sol;
     sol.x = v;
     sol.status = CONEX_LOGSPACE_IPM_SOLVED;
-    return sol;
+  } else {
+    sol.x = v; sol.x.x.setConstant(std::sqrt(-1));
+    sol.status = CONEX_LOGSPACE_IPM_UNKNOWN;
   }
-  Solution sol;
-  sol.x = v; sol.x.x.setConstant(std::sqrt(-1));
-  sol.status = CONEX_LOGSPACE_IPM_UNKNOWN;
+  sol.iterations = i;
   return sol;
 }
 }  // namespace
@@ -407,6 +423,7 @@ Solution LogspaceIPM(const ProblemData& data_raw, const SolverOptions& options,
   if (remove_equations) {
     solution.x.x = B_null_space * solution.x.x + x0;
   }
+
   return solution;
 }
 
