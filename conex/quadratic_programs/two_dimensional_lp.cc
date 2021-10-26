@@ -258,7 +258,8 @@ MuThetaValues MuThetaSelect(const Eigen::MatrixXd& d0,
   MuThetaValues vals;
   if (vertices.size() > 0) {
     VectorXd w(2);
-    w << 0.000, 1;
+    //w << 0.000, 1;
+    w << limit.inv_sqrt_mu_weight, limit.theta_weight;
     int opt = MinLinearFunction(vertices, w);
     vals.theta = vertices.at(opt).x(1);
     vals.sqrtmu = vertices.at(opt).x(0);

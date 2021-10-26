@@ -136,6 +136,8 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
           }
 #else
 
+          theta_config.theta_weight = options.theta_weight;
+          theta_config.inv_sqrt_mu_weight = options.inv_sqrt_mu_weight;
           auto vals = MuThetaSelect(d0, d1, d2, options.dinf_limit, theta_config);
           if (vals.success) {
             sqrtmu = vals.sqrtmu;

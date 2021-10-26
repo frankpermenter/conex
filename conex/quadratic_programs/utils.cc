@@ -64,7 +64,9 @@ bool CheckPrimalInfeasibility(const ProblemData& data,
   *descent = data.b.dot(lambda);
   certificate->x = d.x;
   certificate->lambda = lambda;
-  return (*descent)/lambda.norm() < -1 && residual < 1e-9 && d.d.minCoeff() > -(1 + 1e-5);
+
+  double descent_normalized = *descent/(lambda.norm() * data.b.norm());
+  return descent_normalized < -1e-3 && residual < 1e-9 && d.d.minCoeff() > -(1 + 1e-5);
 }
 
 // Want point x satisfying
@@ -83,7 +85,6 @@ bool CheckDualInfeasibility(const ProblemData& data,
   // d = e - A'x =>  
   //
   //  Ax = e - d
-  //
   return *directional_deriv/d.x.norm() < -1 && d.d.maxCoeff() < 1 + 1e-4;
 }
 
