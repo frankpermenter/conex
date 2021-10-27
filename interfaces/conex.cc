@@ -307,7 +307,9 @@ void CONEX_SetDefaultOptions(CONEX_SolverConfiguration* c) {
   c->enable_rescaling = config.enable_rescaling;
 
   c->theta_weight = 1;
-  c->inv_sqrt_mu_weight = -0.01;
+  c->sqrt_mu_weight = 0.01;
+  c->theta_truncation_threshold = 1e-5;
+  c->target_duality_gap = 1e-5;
 }
 
 void CONEX_GetIterationStats(void* prog, CONEX_IterationStats* stats,

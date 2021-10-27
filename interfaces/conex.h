@@ -28,9 +28,10 @@ typedef struct {
   int enable_rescaling;
   int kkt_solver;
   // QP solver settings.
-  double inv_sqrt_mu_weight;
+  double sqrt_mu_weight;
   double theta_weight;
   double target_duality_gap;
+  double theta_truncation_threshold;
 } CONEX_SolverConfiguration;
 
 typedef struct {
@@ -103,6 +104,7 @@ CONEX_STATUS CONEX_UpdateQuadraticCostMatrix(void* p, int id, double value,
 
 CONEX_STATUS CONEX_SetNumberOfVariables(void* program, int m);
 
+
 int CONEX_QP_Solver(const double* quadratic_cost_matrix,
                     int quadratic_cost_matrix_num_row,
                     int quadratic_cost_matrix_num_col,
@@ -114,6 +116,23 @@ int CONEX_QP_Solver(const double* quadratic_cost_matrix,
                     const CONEX_SolverConfiguration* config_input,
                     double* solution, int num_row,
                     CONEX_SolutionStats* stats);
+
+
+int CONEX_QP_GetCanonicalProblemData(const double* quadratic_cost_matrix,
+                    int quadratic_cost_matrix_num_row,
+                    int quadratic_cost_matrix_num_col,
+                    const double* cost_vector, int num_row_cost_vector,
+                    const double* inequality_matrix, int num_row_ineq,
+                    int num_col_ineq, const double* inequality_upper_bound,
+                    int num_row_ineq_ub, const double* inequality_lower_bound,
+                    int num_row_ineq_lb,
+                    int *num_ineq,
+                    int *num_eq,
+                    double* matrix_A, int num_row_A, int num_col_A,
+                    double* vector_b, int num_row_b,
+                    double* matrix_B, int num_row_B, int num_col_B,
+                    double* vector_d, int num_row_d);
+
 
 
 

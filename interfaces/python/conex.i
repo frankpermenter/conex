@@ -36,6 +36,11 @@
 %apply (double* INPLACE_ARRAY1, int DIM1) {(const double* inequality_lower_bound, int num_row_ineq_lb)}
 %apply (double* INPLACE_ARRAY1, int DIM1) {(double* solution, int num_row)}
 
+%apply (double* INPLACE_ARRAY1, int DIM1) {(double* vector_b, int num_row_b)}
+%apply (double* INPLACE_ARRAY1, int DIM1) {(double* vector_d, int num_row_d)}
+
+%apply (double* INPLACE_FARRAY2, int DIM1, int DIM2) {(double* matrix_A, int num_row_A, int num_col_A)}
+%apply (double* INPLACE_FARRAY2, int DIM1, int DIM2) {(double* matrix_B, int num_row_B, int num_col_B)}
 
 
 %include "../conex.h"

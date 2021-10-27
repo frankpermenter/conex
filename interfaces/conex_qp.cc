@@ -87,6 +87,75 @@ SolverConfiguration APIConvertSolverConfiguration(
 }
 }  // namespace
 
+int CONEX_QP_GetCanonicalProblemData(const double* quadratic_cost_matrix,
+                    int num_row,
+                    int num_col,
+                    const double* cost_vector, int num_row_cost_vector,
+                    const double* inequality_matrix, int num_row_ineq,
+                    int num_col_ineq, const double* inequality_upper_bound,
+                    int num_row_ineq_ub, const double* inequality_lower_bound, int num_row_ineq_lb,
+                    int *num_ineq,
+                    int *num_eq,
+                    double* matrix_A, int num_row_A, int num_col_A,
+                    double* vector_b, int num_row_b,
+                    double* matrix_B, int num_row_B, int num_col_B,
+                    double* vector_d, int num_row_d) {
+
+  CONEX_DEMAND(num_col == num_row, "Cost matrix must be square.");
+  CONEX_DEMAND(num_row_cost_vector == num_col,
+               "Cost vector and cost matrix must have same number of rows.");
+  CONEX_DEMAND(num_row_ineq == num_row_ineq_ub,
+               "Inequality matrix and upper bound vector must have same number "
+               "of rows.");
+  CONEX_DEMAND(num_row_ineq == num_row_ineq_lb,
+               "Inequality matrix and lower bound vector must have same number "
+               "of rows.");
+  CONEX_DEMAND(
+      num_col_ineq == num_col,
+      "Inequality matrix and cost matrix must have same number of columns.");
+
+  using Map = Eigen::Map<const MatrixXd>;
+  int num_vars = num_col;
+  conex::quadratic_programs::ProblemData data;
+  data.W = Map(quadratic_cost_matrix, num_row, num_col);
+  data.c = Map(cost_vector, num_vars, 1);
+
+  MatrixXd affine_term_ineq;
+  MatrixXd affine_term_eq;
+  MatrixXd ineq_mat = Map(inequality_matrix, num_row_ineq, num_vars);
+  conex::PreprocessLinearInequality(
+      Map(inequality_matrix, num_row_ineq, num_vars),
+      Map(inequality_lower_bound, num_row_ineq_lb, 1),
+      Map(inequality_upper_bound, num_row_ineq_ub, 1), &data.A,
+      &affine_term_ineq, &data.B, &affine_term_eq);
+
+  if (affine_term_ineq.rows() > 0) {
+    data.b = affine_term_ineq;
+    data.A.array() *= -1;
+  }
+
+  if (affine_term_eq.rows() > 0) {
+    data.d = affine_term_eq;
+  }
+  using MapOutput = Eigen::Map<MatrixXd>;
+  if (data.A.rows() > 0) {
+    MapOutput Aout(matrix_A, num_row_A, num_col_A); 
+    Aout.topLeftCorner(data.A.rows(), data.A.cols()) = data.A;
+    Eigen::Map<VectorXd> bout(vector_b, num_row_b); 
+    bout.head(data.b.rows()) = data.b;
+  }
+  if (data.B.rows() > 0) {
+    MapOutput Bout(matrix_B, num_row_B, num_col_B);
+    Bout.topLeftCorner(data.B.rows(), data.B.cols()) = data.B;
+    Eigen::Map<VectorXd> dout(vector_d, num_row_d); 
+    dout.head(data.d.rows()) = data.d;
+  }
+
+  *num_eq = data.B.rows();
+  *num_ineq = data.A.rows();
+  return 0;
+}
+
 int CONEX_QP_Solver(const double* quadratic_cost_matrix, int num_row,
                     int num_col, const double* cost_vector, int num_row_cost,
                     const double* inequality_matrix, int num_row_ineq,
@@ -119,6 +188,7 @@ int CONEX_QP_Solver(const double* quadratic_cost_matrix, int num_row,
 
   MatrixXd affine_term_ineq;
   MatrixXd affine_term_eq;
+  MatrixXd ineq_mat = Map(inequality_matrix, num_row_ineq, num_vars);
   conex::PreprocessLinearInequality(
       Map(inequality_matrix, num_row_ineq, num_vars),
       Map(inequality_lower_bound, num_row_ineq_lb, 1),
@@ -138,9 +208,12 @@ int CONEX_QP_Solver(const double* quadratic_cost_matrix, int num_row,
   config.enable_dynamic_regularization = config_input->enable_line_search;
   config.maximum_iterations = config_input->max_iterations;
   config.theta_weight = config_input->theta_weight;
-  config.inv_sqrt_mu_weight = config_input->inv_sqrt_mu_weight;
+  config.sqrt_mu_weight = config_input->sqrt_mu_weight;
   config.target_duality_gap = config_input->target_duality_gap;
   config.dinf_limit = config_input->dinf_upper_bound;
+  config.minimum_mu = config_input->minimum_mu;
+  config.enable_rescaling = config_input->enable_rescaling;
+  config.theta_truncation_threshold = config_input->theta_truncation_threshold;
 
   auto sol = LogspaceIPM(data, config);
   Eigen::Map<MatrixXd> sol_map(solution, num_vars, 1);

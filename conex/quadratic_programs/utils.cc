@@ -7,25 +7,46 @@ using Eigen::VectorXd;
 namespace conex {
 namespace quadratic_programs {
 
+// For LP, we rescale A, b, c  so that 
+//
+//   inf |Ax + b\| = 1,  | A(A'A)^{-1} c| = 1 
+//
+// This means the min. norm points in the affine
+// sets
+//  
+//  \{ l : A'l = c\}   \{ Ax + b : x \in R^m \}
+//
+//  have unit norm.
+//
+//  For QP, we generalize this by simply replacing
+//  all instances of A'A in the normal equations
+//  with A'A + W.
 ProblemData RescaleProblemData(const ProblemData& data) {
-  MatrixXd G = data.A.transpose() * data.A;
+  MatrixXd G = data.W + data.A.transpose() * data.A;
   Eigen::LLT<MatrixXd> llt(G);
   MatrixXd P = data.A * llt.solve(data.A.transpose());
   VectorXd b0 = data.b - P * data.b;
   VectorXd l0 = data.A * llt.solve(data.c);
 
   auto datain = data;
-
   int n = data.A.rows();
+  double scale_b = 1;
   if (b0.squaredNorm() > 1.0 / n) {
-    double scale = 1.0 / std::sqrt(n) / b0.norm();
-    datain.A *= scale;
-    datain.b *= scale; 
+    scale_b =  1.0 / b0.norm() * 1.0 / std::sqrt(n);
+    datain.A *= scale_b;
+    datain.b *= scale_b; 
   }
 
   if (l0.squaredNorm() > 1.0 / n) {
-    double scale = 1.0 / std::sqrt(n) / l0.norm();
+    // We have already scaled A, so the minimum
+    // norm solution now has value
+    //   l0_hat = (1/scale_b) * A(A'A)^{-1} c
+    // implying that
+    //   |l0_hat| = (1/scale_b) * \|l0||
+    //double scale = (1.0 / std::sqrt(n)) * 1.0 / l0.norm();
+    double scale =  scale_b / l0.norm()   * 1.0 / std::sqrt(n);
     datain.c *= scale;
+    datain.W *= scale;
   }
   return datain;
 }
@@ -61,12 +82,13 @@ bool CheckPrimalInfeasibility(const ProblemData& data,
   VectorXd lambda = w.expv;
   lambda += w.expv.cwiseProduct(d.d);
   double residual = (data.A.transpose() * (lambda)  - data.W * d.x).norm();
+  residual = residual/lambda.norm(); 
   *descent = data.b.dot(lambda);
   certificate->x = d.x;
   certificate->lambda = lambda;
 
   double descent_normalized = *descent/(lambda.norm() * data.b.norm());
-  return descent_normalized < -1e-3 && residual < 1e-9 && d.d.minCoeff() > -(1 + 1e-5);
+  return descent_normalized < -1e-3 && residual < 1e-9 && d.d.minCoeff() > -(1 + 5e-2);
 }
 
 // Want point x satisfying
@@ -168,7 +190,20 @@ Direction NewtonDirection(const ProblemData& data, const VectorXd& exp_v,
 
   VectorXd rhs = -sqrtmuinv * (c + A.transpose() * Q * b);
   rhs = rhs + 2 * A.transpose() * exp_v;
-  y.x = llt.solve(rhs);
+  VectorXd rhs_e = 2* A.transpose() * exp_v;
+  VectorXd rhs_c = c;
+  VectorXd rhs_b = A.transpose() * Q * b;
+
+  VectorXd x_e = llt.solve(rhs_e);
+  VectorXd x_c = llt.solve(rhs_c);
+  VectorXd x_b = llt.solve(rhs_b);
+
+  //y.x = llt.solve(rhs);
+  y.x = x_e + -sqrtmuinv * (x_c + x_b);
+
+  VectorXd Dx_b = exp_v.cwiseProduct(A * x_b - b);
+  VectorXd Dx_c = exp_v.cwiseProduct(A * x_c);
+  VectorXd Dx_e = exp_v.cwiseProduct(-A * x_e); Dx_e.array() += 1;
 
 #ifdef ITERATIVE_REFINEMENT
   for (int i = 0; i < 10; i++) {
@@ -176,10 +211,15 @@ Direction NewtonDirection(const ProblemData& data, const VectorXd& exp_v,
   }
 #endif
 
-  // DUMP(S*y.x - rhs);
   y.d = -exp_v.cwiseProduct(A * y.x + sqrtmuinv * b);
-
   y.d.array() += 1;
+
+  y.scale_c = Dx_c.norm();
+  y.scale_b = Dx_b.norm();
+
+  // DUMP((Dx_e + sqrtmuinv*(Dx_b + Dx_c) - y.d).norm());
+
+
   return y;
 }
 

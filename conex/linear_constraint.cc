@@ -26,20 +26,26 @@ void PreprocessLinearInequality(const MatrixXd& A, const MatrixXd& lb,
     if (lb.row(i) == ub.row(i)) {
       double scale =
           1.0 / std::sqrt(A.row(i).squaredNorm() + ub.row(i).squaredNorm());
-      AppendRow(Aeq, scale * A.row(i));
-      AppendRow(beq, scale * ub.row(i));
+        if (std::isfinite(scale)) {
+        AppendRow(Aeq, scale * A.row(i));
+        AppendRow(beq, scale * ub.row(i));
+      }
     } else {
       if (ub(i, 0) < 1e8) {
         double scale =
             1.0 / std::sqrt(A.row(i).squaredNorm() + ub.row(i).squaredNorm());
-        AppendRow(Aineq, scale * A.row(i));
-        AppendRow(bineq, scale * ub.row(i));
+        if (std::isfinite(scale)) {
+          AppendRow(Aineq, scale * A.row(i));
+          AppendRow(bineq, scale * ub.row(i));
+        }
       }
       if (lb(i, 0) > -1e8) {
         double scale =
             1.0 / std::sqrt(A.row(i).squaredNorm() + lb.row(i).squaredNorm());
-        AppendRow(Aineq, -scale * A.row(i));
-        AppendRow(bineq, -scale * lb.row(i));
+        if (std::isfinite(scale)) {
+          AppendRow(Aineq, -scale * A.row(i));
+          AppendRow(bineq, -scale * lb.row(i));
+        }
       }
     }
   }

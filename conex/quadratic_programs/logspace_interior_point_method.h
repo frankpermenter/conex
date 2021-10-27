@@ -21,7 +21,9 @@ struct SolverOptions {
   double target_duality_gap = 1e-9;
   int maximum_iterations = 10;
   double theta_weight = 1;
-  double inv_sqrt_mu_weight = 1;
+  double sqrt_mu_weight = 1;
+  double minimum_mu = 1;
+  double theta_truncation_threshold; 
 };
 
 struct Variable {

@@ -55,6 +55,37 @@ class LMIOperator:
         y.transposed = not y.transposed
         return y;
 
+
+def ConexGetQuadraticProgramData(quadratic_cost_matrix,
+                    cost_vector, 
+                    inequality_matrix,
+                    inequality_upper_bound,
+                    inequality_lower_bound):
+    wrapper = conex
+    m = quadratic_cost_matrix.shape[0]
+
+    n = inequality_matrix.shape[0]
+    A = np.zeros((2*n, m)).astype(real)
+    B = np.zeros((n, m)).astype(real)
+    b = np.zeros((2*n)).astype(real)
+    d = np.zeros((n)).astype(real)
+    num_eq = wrapper.intp();
+    num_ineq = wrapper.intp();
+    status = wrapper.CONEX_QP_GetCanonicalProblemData(quadratic_cost_matrix, 
+                    cost_vector, 
+                    inequality_matrix,
+                    inequality_upper_bound,
+                    inequality_lower_bound, 
+                    num_ineq,
+                    num_eq,
+                    A,
+                    b,
+                    B,
+                    d)
+
+    return A[0:num_ineq.value(), :], b[0:num_ineq.value()], B[0:num_eq.value(), :], d[0:num_eq.value()]
+
+
 def ConexSolveQuadraticProgram(quadratic_cost_matrix,
                     cost_vector, 
                     inequality_matrix,
@@ -74,6 +105,8 @@ def ConexSolveQuadraticProgram(quadratic_cost_matrix,
                     config, 
                     solution, 
                     stats)
+
+
     return solution, status, stats
 
 class Conex:
@@ -110,9 +143,6 @@ class Conex:
 
     def AddQuadraticCost(self, P): 
         if P.shape[0] != self.m or P.shape[1] != self.m:
-            print self.m
-            print P.shape[0]
-            print P.shape[1]
             raise NameError("Cost matrix dimension does not match number of variables.")
 
         cost = self.wrapper.CONEX_AddQuadraticCost(self.a, P)
@@ -256,7 +286,6 @@ class Conex:
 
     def AddSparseLinearMatrixInequality(self, A, c, variables): 
         if np.max(variables) + 1 > self.m:
-            print self.m
             raise NameError("Invalid sparse LMI." + str(self.m) + "!=" + str(np.max(variables+1)))
         self.A.append(LMIOperator(A, [self.m, variables]))
         self.c.append(c)
