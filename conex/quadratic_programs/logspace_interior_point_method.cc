@@ -291,6 +291,9 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
     double dinf = d.array().abs().maxCoeff();
     double dnorm = d.norm();
     double stepsize = 2.0 / (dinf * dinf);
+    if (stepsize > 1) {
+      stepsize = 1;
+    }
 
 
 
@@ -302,37 +305,53 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
     double mean_scaling = scaling.mean();
     scaling.array() -= mean_scaling;
     double scaling_dev = scaling.array().abs().maxCoeff();
-    bool enable_rapid_mu = scaling.array().abs().maxCoeff() < .001 && dinf < 1;
+    bool enable_rapid_mu = (scaling_dev < .15 || sqrtmu < 1e-9) && (dinf < 1.01);
 
 
 
 
-    if (stepsize < 1) {
-      d = d * stepsize;
-    } else {
-      stepsize = 1;
-    }
-
-    VectorXd expd = d.array().exp();
-    v.expv = v.expv.cwiseProduct(expd);
 
 
-    bool quadratic_convergence;
+
+    bool quadratic_convergence = false;
     if (enable_rapid_mu) {
-      if (!adjust_theta   && sqrtmu * sqrtmu > 1e-13) {
+      if (!adjust_theta) {
         quadratic_convergence = true;
         int n = v.expv.rows();
-        double scale = mean_scaling * 1.0/100; 
+        double scale = mean_scaling * 1.0/10; 
         for (int i = 0; i < n; i++) {
           if (v.expv(i) > 1) {
-            v.expv(i) /= scale; 
+            v.expv(i) *= (2-scale);
           } else {
-            v.expv(i) *= scale;
+            v.expv(i) /= (2-scale);
           }
         }
       }
     }
 
+    //if (quadratic_convergence) {
+    //  stepsize *= 2;
+    //}
+
+    if (stepsize != 1) {
+      d = d * stepsize;
+    }
+
+      VectorXd expd = d.array().exp();
+      v.expv = v.expv.cwiseProduct(expd);
+
+
+    //  k e^a = e^a (1+d1)
+    //  k e^{-b} = e^{-b} (1-d2)
+    //
+    //  k e^{b} = e^{-b} (1+d2)
+    //  k e^{-a} = e^{-a} (1-d1) 
+
+    //  k e^a = e^a .1
+    //  k e^{-b} = e^{-b} .1 
+    //
+    //  k e^{b} = e^{-b} 1.9
+    //  k e^{-a} = e^{-a} 1.9 
 
     //if (options.enable_rescaling) {
     //  k = Rescale(data_theta, sqrtmu, v);
@@ -349,7 +368,7 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
     if (quadratic_convergence) {
     std::cout << "- ";
     } else {
-    std::cout << "0 ";
+    std::cout << "  ";
     }
 
     if (i < 10) {
@@ -368,10 +387,6 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
         << " |d|_inf " << dinf 
         //<< "  |d|^2 " << dnorm * dnorm
         //<< "  stepsize: " << stepsize 
-        << " |d0|_max " << dir0.d.maxCoeff() 
-        << " |d0|_min " << dir0.d.minCoeff() 
-//        << " |d1|_max " << z.maxCoeff() 
-        //<< " |d1|_min " << z.minCoeff() 
         << " scaling " << mean_scaling
         << " scaling dev" << scaling_dev
         << " dual_ray " << dual_ray_deriv 
