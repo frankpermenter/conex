@@ -252,7 +252,6 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
       sqrtmu = std::sqrt(options.minimum_mu);
     }
 
-
     Errors error;
     Direction dstep;
     dstep.sqrtmu = sqrtmu;
@@ -297,9 +296,19 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
 
 
 
-    // Goal: rescale v and mu such that mu e^{v}(1+d) and mu e^{-v}(1-d)
-    // don't change "much". We can scale up v such that e^{-v} absorbs
-    // (1-d). So the scaling is alpha = log(1-d)
+    // Goal: rescale v and mu such that mu e^{v} does change.
+    // This implies that d is a primal Newton direction for mu' = mu e^{-alpha}.
+    //    mu e^v = mu e^{-alpha} e^{v + alpha}  
+    //
+    // The new dual point is 
+    //  s' = mu e^{-alpha} e^{-v-alpha}
+    //   
+    //  s'/(mu e^{-v}) = e^{-2 alpha}
+    //
+    //  so it has been decreased by a factor of e^{-2 alpha}.
+    //
+    //   How far is it from dual feasibility for mu' = mu e^{-alpha}?
+    //
     VectorXd scaling(d.rows()); scaling.setConstant(1);
     scaling.array() -= d.array().abs();
     double mean_scaling = scaling.mean();
@@ -307,10 +316,8 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
     double scaling_dev = scaling.array().abs().maxCoeff();
     bool enable_rapid_mu = (scaling_dev < .15 || sqrtmu < 1e-9) && (dinf < 1.01);
 
-
-
-
-
+    Direction dir = NewtonDirection(data_theta, v.expv, 1);
+    enable_rapid_mu = dir.dlambda_times_d_slack < options.endgame_rescaling_threshold;
 
 
     bool quadratic_convergence = false;
@@ -318,12 +325,13 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
       if (!adjust_theta) {
         quadratic_convergence = true;
         int n = v.expv.rows();
-        double scale = mean_scaling * 1.0/10; 
+        //double scale = 2 - mean_scaling * 1.0/10; 
+
         for (int i = 0; i < n; i++) {
           if (v.expv(i) > 1) {
-            v.expv(i) *= (2-scale);
+            v.expv(i) *= options.endgame_rescaling_factor;
           } else {
-            v.expv(i) /= (2-scale);
+            v.expv(i) /= options.endgame_rescaling_factor;
           }
         }
       }

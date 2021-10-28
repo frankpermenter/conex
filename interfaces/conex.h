@@ -32,6 +32,8 @@ typedef struct {
   double theta_weight;
   double target_duality_gap;
   double theta_truncation_threshold;
+  double endgame_rescaling_threshold; 
+  double endgame_rescaling_factor; 
 } CONEX_SolverConfiguration;
 
 typedef struct {

@@ -11,6 +11,7 @@ struct Direction {
   double sqrtmu;
   double scale_c;
   double scale_b;
+  double dlambda_times_d_slack;
 };
 
 

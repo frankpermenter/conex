@@ -214,6 +214,8 @@ int CONEX_QP_Solver(const double* quadratic_cost_matrix, int num_row,
   config.minimum_mu = config_input->minimum_mu;
   config.enable_rescaling = config_input->enable_rescaling;
   config.theta_truncation_threshold = config_input->theta_truncation_threshold;
+  config.endgame_rescaling_threshold = config_input->endgame_rescaling_threshold;
+  config.endgame_rescaling_factor = config_input->endgame_rescaling_factor;
 
   auto sol = LogspaceIPM(data, config);
   Eigen::Map<MatrixXd> sol_map(solution, num_vars, 1);

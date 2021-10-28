@@ -24,6 +24,8 @@ struct SolverOptions {
   double sqrt_mu_weight = 1;
   double minimum_mu = 1;
   double theta_truncation_threshold; 
+  double endgame_rescaling_threshold; 
+  double endgame_rescaling_factor; 
 };
 
 struct Variable {

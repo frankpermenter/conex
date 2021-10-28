@@ -177,6 +177,10 @@ double UpperBound(const ProblemData& data, const VectorXd& exp_v) {
 
 Direction NewtonDirection(const ProblemData& data, const VectorXd& exp_v,
                           const double sqrtmuinv) {
+  // A(w +  w*d) = c + Wx
+  // w^{-1}(e-d) = A*x + b 
+  //
+  //
   const MatrixXd& W = data.W;
   const VectorXd& c = data.c;
   const MatrixXd& A = data.A;
@@ -190,7 +194,7 @@ Direction NewtonDirection(const ProblemData& data, const VectorXd& exp_v,
 
   VectorXd rhs = -sqrtmuinv * (c + A.transpose() * Q * b);
   rhs = rhs + 2 * A.transpose() * exp_v;
-  VectorXd rhs_e = 2* A.transpose() * exp_v;
+  VectorXd rhs_e =  A.transpose() * exp_v;
   VectorXd rhs_c = c;
   VectorXd rhs_b = A.transpose() * Q * b;
 
@@ -198,12 +202,11 @@ Direction NewtonDirection(const ProblemData& data, const VectorXd& exp_v,
   VectorXd x_c = llt.solve(rhs_c);
   VectorXd x_b = llt.solve(rhs_b);
 
-  //y.x = llt.solve(rhs);
-  y.x = x_e + -sqrtmuinv * (x_c + x_b);
+  y.x = 2 * x_e + -sqrtmuinv * (x_c + x_b);
 
-  VectorXd Dx_b = exp_v.cwiseProduct(A * x_b - b);
-  VectorXd Dx_c = exp_v.cwiseProduct(A * x_c);
-  VectorXd Dx_e = exp_v.cwiseProduct(-A * x_e); Dx_e.array() += 1;
+  VectorXd d_lambda = -exp_v.cwiseProduct(A * (x_e - sqrtmuinv * x_c));
+  VectorXd d_slack = -exp_v.cwiseProduct(A * (x_e - sqrtmuinv * x_b)   + sqrtmuinv * b );
+  d_slack.array() += 1;
 
 #ifdef ITERATIVE_REFINEMENT
   for (int i = 0; i < 10; i++) {
@@ -214,11 +217,9 @@ Direction NewtonDirection(const ProblemData& data, const VectorXd& exp_v,
   y.d = -exp_v.cwiseProduct(A * y.x + sqrtmuinv * b);
   y.d.array() += 1;
 
-  y.scale_c = Dx_c.norm();
-  y.scale_b = Dx_b.norm();
-
   // DUMP((Dx_e + sqrtmuinv*(Dx_b + Dx_c) - y.d).norm());
 
+  y.dlambda_times_d_slack  = d_lambda.cwiseProduct(d_slack).eval().array().abs().maxCoeff();
 
   return y;
 }
