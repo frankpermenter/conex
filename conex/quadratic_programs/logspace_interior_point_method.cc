@@ -67,6 +67,7 @@ Errors ComputeErrors(const ProblemData& data_theta,
 
 
 
+
 Solution LogspaceIPMHelper(const ProblemData& data_input,
                            const SolverOptions& options,
                            const Variable& initial_point) {
@@ -291,6 +292,21 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
     double dnorm = d.norm();
     double stepsize = 2.0 / (dinf * dinf);
 
+
+
+    // Goal: rescale v and mu such that mu e^{v}(1+d) and mu e^{-v}(1-d)
+    // don't change "much". We can scale up v such that e^{-v} absorbs
+    // (1-d). So the scaling is alpha = log(1-d)
+    VectorXd scaling(d.rows()); scaling.setConstant(1);
+    scaling.array() -= d.array().abs();
+    double mean_scaling = scaling.mean();
+    scaling.array() -= mean_scaling;
+    double scaling_dev = scaling.array().abs().maxCoeff();
+    bool enable_rapid_mu = scaling.array().abs().maxCoeff() < .001 && dinf < 1;
+
+
+
+
     if (stepsize < 1) {
       d = d * stepsize;
     } else {
@@ -300,33 +316,18 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
     VectorXd expd = d.array().exp();
     v.expv = v.expv.cwiseProduct(expd);
 
-    int n = v.expv.rows();
-    bool d0_error_in_range = dir0.d.maxCoeff()  < 1.02 &&
-                             dir1.d.minCoeff()  > -1.02;
 
-    bool quadratic_convergence = 0;
-    bool enable_rapid_mu = true;
+    bool quadratic_convergence;
     if (enable_rapid_mu) {
-      if (!adjust_theta && d0_error_in_range  && sqrtmu * sqrtmu > 1e-13) {
-        double scale = (v.expv.sum() + v.expv.cwiseInverse().sum())/(2*n);
-        if (scale > 1000) {
-          scale = 1000;
-        }
+      if (!adjust_theta   && sqrtmu * sqrtmu > 1e-13) {
         quadratic_convergence = true;
-        //sqrtmu /= scale; 
-       
-        double max_val = 1e10;
+        int n = v.expv.rows();
+        double scale = mean_scaling * 1.0/100; 
         for (int i = 0; i < n; i++) {
           if (v.expv(i) > 1) {
-            v.expv(i) *= scale;
-            if (v.expv(i) > max_val) {
-              v.expv(i) = max_val;
-            }
+            v.expv(i) /= scale; 
           } else {
-            v.expv(i) /= scale;
-            if (v.expv(i) < 1.0/max_val) {
-              v.expv(i) = 1.0/max_val;
-            }
+            v.expv(i) *= scale;
           }
         }
       }
@@ -369,8 +370,10 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
         //<< "  stepsize: " << stepsize 
         << " |d0|_max " << dir0.d.maxCoeff() 
         << " |d0|_min " << dir0.d.minCoeff() 
-        << " |d1|_max " << z.maxCoeff() 
-        << " |d1|_min " << z.minCoeff() 
+//        << " |d1|_max " << z.maxCoeff() 
+        //<< " |d1|_min " << z.minCoeff() 
+        << " scaling " << mean_scaling
+        << " scaling dev" << scaling_dev
         << " dual_ray " << dual_ray_deriv 
         << " primal_ray " << primal_ray_deriv 
 //        << " p_scale " << dir.scale_c
