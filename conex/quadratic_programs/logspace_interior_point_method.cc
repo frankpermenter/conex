@@ -42,6 +42,31 @@ ProblemData ThetaData(const ProblemData& datain, double theta) {
   return data;
 }
 
+
+struct Errors {
+  double gap;
+  double dfeas;
+};
+
+Errors ComputeErrors(const ProblemData& data_theta, 
+                     const Variable& v,
+                     const Direction& dir) {
+    
+  const auto& d = dir.d;
+  double sqrtmu = dir.sqrtmu;
+  VectorXd lambda = sqrtmu * (v.expv + v.expv.cwiseProduct(d));
+  VectorXd expmv = v.expv.cwiseInverse();
+
+  auto s = sqrtmu * (expmv - expmv.cwiseProduct(d));
+  Errors error;
+  error.gap = std::abs(s.dot(lambda));
+
+  error.dfeas = (data_theta.A.transpose() * lambda - (data_theta.W * v.x + data_theta.c)).norm();
+  return error;
+}
+
+
+
 Solution LogspaceIPMHelper(const ProblemData& data_input,
                            const SolverOptions& options,
                            const Variable& initial_point) {
@@ -84,11 +109,11 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
   bool quit = false;
   int status = CONEX_LOGSPACE_IPM_UNKNOWN;
   int i = 0;
+  bool target_gap_reached = false;
   for (; i < options.maximum_iterations; i++) {
     adjust_theta = adjust_theta && theta > 1e-15;
     double k = 1;
 
-    VectorXd expmv = v.expv.cwiseInverse();
     VectorXd w = v.expv;
 
     Direction dir0;
@@ -108,6 +133,12 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
                                              &primal_infeasiblity_certificate);
     bool dual_infeas = CheckDualInfeasibility(data_rescaled, v, dir0, &primal_ray_deriv, 
                                          &dual_infeasiblity_certificate);
+
+    double dinf_limit = options.dinf_limit;
+    if ((target_gap_reached || adjust_theta) && dinf_limit   > 1) {
+        dinf_limit = 1;
+    }
+
 
     if (adjust_theta) {
       auto dmu_ = NewtonDirection(ThetaData(data_rescaled, 0), v.expv, 1);
@@ -137,10 +168,10 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
 
           theta_config.theta_weight = options.theta_weight;
           theta_config.inv_sqrt_mu_weight = options.sqrt_mu_weight;
-          auto vals = MuThetaSelect(d0, d1, d2, options.dinf_limit, theta_config);
+          auto vals = MuThetaSelect(d0, d1, d2, dinf_limit, theta_config);
           if (vals.success) {
             sqrtmu = vals.sqrtmu;
-            if (vals.theta < options.theta_truncation_threshold) {
+            if (vals.theta < 1e-9) {
               no_feasible_theta = false;
               adjust_theta = false;
               theta = 0;
@@ -151,29 +182,6 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
 #endif
         }
 
-        //if (no_feasible_theta) {
-        if (false) {
-          lim.theta_times_inv_sqrt_mu_ub = theta * sqrtmu;
-          Limits theta_config;
-          theta_config.theta_weight = options.theta_weight;
-          theta_config.inv_sqrt_mu_weight = options.sqrt_mu_weight;
-          // Force theta to decrease
-          theta_config.theta_times_inv_sqrt_mu_ub = 1.0/sqrtmu * theta;
-          theta_config.inv_sqrt_mu_ub = 1e6;
-
-
-          // Force sqrtmu to decrease unless we think the problem
-          // is infeasible.
-          theta_config.inv_sqrt_mu_lb = 1.0/sqrtmu * .1;
-          if (primal_ray_deriv && dual_ray_deriv > 0) {
-            theta_config.inv_sqrt_mu_lb = 1.0/sqrtmu * .01;
-          }
-          VectorXd extreme_points = InfinityNorm(d0, d1, d2, options.dinf_limit, theta_config);
-          if (extreme_points.size() > 0) {
-            sqrtmu = 1.0 / extreme_points(0);
-            theta = extreme_points(1) * sqrtmu;
-          } 
-        }
 
       }
         // throw std::runtime_error("DFDF");
@@ -223,8 +231,8 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
 
     double mu_ls = -z.dot(dir0.d) / dir0.d.squaredNorm();
 
+    double dinfbound = dinf_limit;
     if (!adjust_theta) {
-      double dinfbound = options.dinf_limit;
       double upper_bound = FindMinimumMu(dir0.d, z, dinfbound);
       while (upper_bound < 0) {
         dinfbound *= 1.1;
@@ -243,15 +251,29 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
       sqrtmu = std::sqrt(options.minimum_mu);
     }
 
-    auto dir = NewtonDirection(data_theta, v.expv, 1.0/sqrtmu);
-    //v.x = dir.x;
-    //VectorXd d = dir.d;
-    v.x = sqrtmu * (dir0.x + 1.0 / sqrtmu * (dir1.x - dir0.x));
-    VectorXd d = dir0.d + 1.0 / sqrtmu * (dir1.d - dir0.d);
-    if ((dir.d - d).norm() > 1e-3) {
-      throw std::runtime_error("Bad calculation");
-    }
 
+    Errors error;
+    Direction dstep;
+    dstep.sqrtmu = sqrtmu;
+    dstep.x = sqrtmu * (dir0.x + 1.0 / sqrtmu * (dir1.x - dir0.x));
+    dstep.d = dir0.d + 1.0 / sqrtmu * (dir1.d - dir0.d);
+    v.x = dstep.x;
+    error = ComputeErrors(data_theta, v, dstep);
+
+    //double feasible_sqrtmu = FindMinimumMu(dir0.d, z, 1.0);
+    //if (feasible_sqrtmu > 0) {
+    //  Direction d_feas;
+    //  d_feas.d = dir0.d + 1.0 / feasible_sqrtmu * (dir1.d - dir0.d);
+    //  d_feas.x = dir0.x + 1.0 / feasible_sqrtmu * (dir1.x - dir0.x);
+    //  d_feas.sqrtmu = sqrtmu;
+    //  error = ComputeErrors(data_theta, v, d_feas);
+    //  v.x = d_feas.x;  
+    //} else {
+    //  error = ComputeErrors(data_theta, v, dstep);
+    //}
+
+
+    auto& d = dstep.d;
     if (options.enable_dual_correction && i == options.maximum_iterations - 1) {
       auto dirP = DualNewtonDirection(data_theta, v.expv, v.x, 1.0 / sqrtmu);
       double alpha = 1;
@@ -264,16 +286,10 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
     }
     v.lambda = lambda;
 
-    auto s = sqrtmu * (expmv - expmv.cwiseProduct(d));
-    double gap = s.dot(lambda);
 
-    double dfeas =
-        (data_theta.A.transpose() * lambda - (data_theta.W * v.x + data_theta.c)).norm();
     double dinf = d.array().abs().maxCoeff();
     double dnorm = d.norm();
     double stepsize = 2.0 / (dinf * dinf);
-
-    mu_from_gap = sqrtmu * sqrtmu * (d.rows() - d.squaredNorm()) / d.rows();
 
     if (stepsize < 1) {
       d = d * stepsize;
@@ -283,6 +299,39 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
 
     VectorXd expd = d.array().exp();
     v.expv = v.expv.cwiseProduct(expd);
+
+    int n = v.expv.rows();
+    bool d0_error_in_range = dir0.d.maxCoeff()  < 1.02 &&
+                             dir1.d.minCoeff()  > -1.02;
+
+    bool quadratic_convergence = 0;
+    bool enable_rapid_mu = true;
+    if (enable_rapid_mu) {
+      if (!adjust_theta && d0_error_in_range  && sqrtmu * sqrtmu > 1e-13) {
+        double scale = (v.expv.sum() + v.expv.cwiseInverse().sum())/(2*n);
+        if (scale > 1000) {
+          scale = 1000;
+        }
+        quadratic_convergence = true;
+        //sqrtmu /= scale; 
+       
+        double max_val = 1e10;
+        for (int i = 0; i < n; i++) {
+          if (v.expv(i) > 1) {
+            v.expv(i) *= scale;
+            if (v.expv(i) > max_val) {
+              v.expv(i) = max_val;
+            }
+          } else {
+            v.expv(i) /= scale;
+            if (v.expv(i) < 1.0/max_val) {
+              v.expv(i) = 1.0/max_val;
+            }
+          }
+        }
+      }
+    }
+
 
     //if (options.enable_rescaling) {
     //  k = Rescale(data_theta, sqrtmu, v);
@@ -296,11 +345,22 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
     } else {
     std::cout << "* ";
     }
+    if (quadratic_convergence) {
+    std::cout << "- ";
+    } else {
+    std::cout << "0 ";
+    }
 
-    std::cout << "  mu: " << sqrtmu * sqrtmu
+    if (i < 10) {
+      std::cout << i  << " ";
+    } else {
+      std::cout << i;
+    }
+    std::cout
+        << "  mu: " << sqrtmu * sqrtmu
         //<< "  gap_p: " << l0.dot(s) + b0.dot(lambda) 
         << "  theta " << theta
-        << "  gap:" << gap 
+        << "  gap:" << error.gap 
         //<< "  mu_from_gap" <<  mu_from_gap
         //        << " ipd0dt:  " << dir0.d.squaredNorm() - dir1.d.dot(dir0.d)
         //        << "  d0d1: " << dir0.d.squaredNorm() - dir1.d.squaredNorm()
@@ -309,12 +369,14 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
         //<< "  stepsize: " << stepsize 
         << " |d0|_max " << dir0.d.maxCoeff() 
         << " |d0|_min " << dir0.d.minCoeff() 
+        << " |d1|_max " << z.maxCoeff() 
+        << " |d1|_min " << z.minCoeff() 
         << " dual_ray " << dual_ray_deriv 
         << " primal_ray " << primal_ray_deriv 
-        << " p_scale " << dir.scale_c
-        << " d_scale " << dir.scale_b
+//        << " p_scale " << dir.scale_c
+//        << " d_scale " << dir.scale_b
 
-        << " gradx " << dfeas
+ //       << " gradx " << error.dfeas
         // << "  mu_ls " <<  mu_ls
         //  << "  min(s) " << (data.A*v.x + data.b).minCoeff()
         //  << "  min(lam) " << (lambda).minCoeff() <<
@@ -323,8 +385,13 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
 
     slack = data_theta.A * v.x + data_theta.b;
 
+    if (error.gap <= options.target_duality_gap) {
+      target_gap_reached = true;
+    }
+
     mu_from_gap = sqrtmu * sqrtmu * (d.rows() - d.squaredNorm()) / d.rows();
-    if (gap < options.target_duality_gap && dinf <= (options.dinf_limit + 1e-9) && theta < 1e-9) {
+    if (error.gap <= options.target_duality_gap && dinf <= (1 + 1e-2) && 
+        theta <= options.theta_truncation_threshold) {
       std::cout << "\n Primal-dual optimal solutions found." << std::endl;
       status = CONEX_LOGSPACE_IPM_SOLVED;
       break;
@@ -386,8 +453,9 @@ Solution LogspaceIPM(const ProblemData& data_raw, const SolverOptions& options,
   std::cout << "\n Number of variables:  " << data_raw.W.cols();
   std::cout << "\n Number of inequalities: " << data_raw.A.rows();
   std::cout << "\n Number of equations: " << data_raw.B.rows();
-  ;
-
+  
+  // Minimize x' W x + c'x 
+  // Bx = d
   if (data_raw.A.rows() == 0) {
     std::cout << "\n Algorithm: analytical solution.";
     int num_eq = data_raw.B.rows();
@@ -403,12 +471,12 @@ Solution LogspaceIPM(const ProblemData& data_raw, const SolverOptions& options,
       f << -data_raw.c;
     }
 
-    Eigen::LDLT<Eigen::MatrixXd> llt(S);
+    Eigen::FullPivLU<Eigen::MatrixXd> llt(S);
     Solution sol;
-    sol.x.x = llt.solve(f);
-    sol.x.x = sol.x.x.topRows(data_raw.W.cols());
+    sol.x.x = llt.solve(f).topRows(data_raw.W.cols());
     sol.status = CONEX_LOGSPACE_IPM_SOLVED;
-
+    sol.iterations = 0;
+    std::cout << std::endl;
     return sol;
   } else {
     std::cout << "\n Algorithm: Logspace IPM";

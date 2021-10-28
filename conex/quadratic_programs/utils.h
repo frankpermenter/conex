@@ -8,6 +8,7 @@ namespace quadratic_programs {
 struct Direction {
   Eigen::VectorXd d;
   Eigen::VectorXd x;
+  double sqrtmu;
   double scale_c;
   double scale_b;
 };
