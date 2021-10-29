@@ -34,6 +34,7 @@ typedef struct {
   double theta_truncation_threshold;
   double endgame_rescaling_threshold; 
   double endgame_rescaling_factor; 
+  double verbosity; 
 } CONEX_SolverConfiguration;
 
 typedef struct {

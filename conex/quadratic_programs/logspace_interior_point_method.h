@@ -26,6 +26,7 @@ struct SolverOptions {
   double theta_truncation_threshold; 
   double endgame_rescaling_threshold; 
   double endgame_rescaling_factor; 
+  int verbosity; 
 };
 
 struct Variable {

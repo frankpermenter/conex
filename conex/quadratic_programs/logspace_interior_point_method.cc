@@ -2,6 +2,13 @@
 #include "two_dimensional_lp.h"
 #include "utils.h"
 
+#define PRINT_LINE(verbosity, string) \
+    if (verbosity) { \
+      std::cout << string;  \
+    } 
+
+    
+
 namespace conex {
 namespace quadratic_programs {
 namespace {
@@ -65,19 +72,43 @@ Errors ComputeErrors(const ProblemData& data_theta,
   return error;
 }
 
+struct ScaledData {
+  ProblemData data;
+  VectorXd variable_scaling;
+  VectorXd ineq_scaling;
+  VectorXd eq_scaling;
+};
+
+ScaledData VariableScaling(ProblemData& data) {
+  ScaledData data_scaled;
+  data_scaled.data = data;
+  VectorXd D = data.W.diagonal();
+  if (data.A.rows() > 0) {
+    D += (data.A.transpose() * data.A).diagonal();
+  }
+  D = D.array().sqrt();
+  for (int i = 0; i < D.rows(); i++) {
+    if (D(i) <= 1e-12) {
+      D(i) = 1;
+    }
+  }
+  D = D.cwiseInverse();
+  data_scaled.variable_scaling = D;
+  data_scaled.data.W = D.asDiagonal() * data.W * D.asDiagonal();
+  data_scaled.data.c = D.asDiagonal() *data.c;
+
+  if (data_scaled.data.A.rows() > 0) {
+    data_scaled.data.A = data.A * D.asDiagonal();
+  }
+
+  return data_scaled;
+}
 
 
 
-Solution LogspaceIPMHelper(const ProblemData& data_input,
+Solution LogspaceIPMHelper(const ProblemData& data_rescaled,
                            const SolverOptions& options,
                            const Variable& initial_point) {
-  ProblemData data_rescaled = data_input;
-  if (options.enable_rescaling) {
-    std::cout << " Rescaling enabled.\n";
-    data_rescaled = RescaleProblemData(data_input);
-  } 
-  
-
   bool adjust_theta = options.enable_dynamic_regularization;
 
   int m = data_rescaled.A.rows();
@@ -236,14 +267,14 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
     if (!adjust_theta) {
       double upper_bound = FindMinimumMu(dir0.d, z, dinfbound);
       while (upper_bound < 0) {
-        dinfbound *= 1.1;
+        dinfbound *= 1.5;
         upper_bound = FindMinimumMu(dir0.d, z, dinfbound);
       }
       double sqrtmu_next = 1.0 / (1e-12 + upper_bound);
       if (sqrtmu_next > 1e4) {
         sqrtmu_next = 1e4;
       }
-      if (sqrtmu_next < sqrtmu || i == 0) {
+      if (sqrtmu_next < sqrtmu || i < 4) {
         sqrtmu = sqrtmu_next;
       }
     }
@@ -368,37 +399,37 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
 
     std::cout << std::setprecision(4);
     std::cout << std::scientific;
-    if (adjust_theta) {
-    std::cout << "  ";
-    } else {
-    std::cout << "* ";
-    }
-    if (quadratic_convergence) {
-    std::cout << "- ";
-    } else {
-    std::cout << "  ";
-    }
+    if (options.verbosity) {
+      if (adjust_theta) {
+      std::cout << "  ";
+      } else {
+      std::cout << "* ";
+      }
+      if (quadratic_convergence) {
+      std::cout << "- ";
+      } else {
+      std::cout << "  ";
+      }
 
-    if (i < 10) {
-      std::cout << i  << " ";
-    } else {
-      std::cout << i;
+      if (i < 10) {
+        std::cout << i  << " ";
+      } else {
+        std::cout << i;
+      }
     }
-    std::cout
-        << "  mu: " << sqrtmu * sqrtmu
+    PRINT_LINE(options.verbosity,
+        "  mu: " << sqrtmu * sqrtmu
         //<< "  gap_p: " << l0.dot(s) + b0.dot(lambda) 
         << "  theta " << theta
         << "  gap:" << error.gap 
+        << " ratio:" << d.norm()/(std::sqrt(d.rows())*dinf)
         //<< "  mu_from_gap" <<  mu_from_gap
         //        << " ipd0dt:  " << dir0.d.squaredNorm() - dir1.d.dot(dir0.d)
         //        << "  d0d1: " << dir0.d.squaredNorm() - dir1.d.squaredNorm()
         << " |d|_inf " << dinf 
         //<< "  |d|^2 " << dnorm * dnorm
         //<< "  stepsize: " << stepsize 
-        << " scaling " << mean_scaling
-        << " scaling dev" << scaling_dev
-        << " dual_ray " << dual_ray_deriv 
-        << " primal_ray " << primal_ray_deriv 
+        << " dl*ds " << dir.dlambda_times_d_slack
 //        << " p_scale " << dir.scale_c
 //        << " d_scale " << dir.scale_b
 
@@ -407,7 +438,7 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
         //  << "  min(s) " << (data.A*v.x + data.b).minCoeff()
         //  << "  min(lam) " << (lambda).minCoeff() <<
         //        "  all " <<  all_agree <<
-        << "\n";
+        << "\n");
 
     slack = data_theta.A * v.x + data_theta.b;
 
@@ -418,25 +449,24 @@ Solution LogspaceIPMHelper(const ProblemData& data_input,
     mu_from_gap = sqrtmu * sqrtmu * (d.rows() - d.squaredNorm()) / d.rows();
     if (error.gap <= options.target_duality_gap && dinf <= (1 + 1e-2) && 
         theta <= options.theta_truncation_threshold) {
-      std::cout << "\n Primal-dual optimal solutions found." << std::endl;
+      PRINT_LINE(options.verbosity, "\n Primal-dual optimal solutions found." << std::endl);
       status = CONEX_LOGSPACE_IPM_SOLVED;
       break;
     }
 
     if (quit) {
-      std::cout << "\n Numerical errors encountered. Terminating" << std::endl;
+      PRINT_LINE(options.verbosity, "\n Numerical errors encountered. Terminating" << std::endl);
       break;
     }
 
     if (primal_infeas) { 
-      std::cout << "\nThe primal is infeasible.";
+      PRINT_LINE(options.verbosity, "\nThe primal is infeasible." << std::endl);
     }
     if (dual_infeas) { 
-      std::cout << "\nThe dual is infeasible.";
+      PRINT_LINE(options.verbosity, "\nThe dual is infeasible." << std::endl);
     }
     if (dual_infeas || primal_infeas) {
       status = CONEX_LOGSPACE_IPM_INFEASIBLE;
-      std::cout << std::endl;
       break;
     }
   }
@@ -471,19 +501,24 @@ Solution LogspaceIPM(const ProblemData& data, const SolverOptions& options,
   return LogspaceIPM(data, options, v);
 }
 
+
+
+
 Solution LogspaceIPM(const ProblemData& data_raw, const SolverOptions& options,
                      const Variable& initial_point) {
+
+
   bool remove_equations = data_raw.B.rows() > 0;
 
-  std::cout << "Starting the Conex optimizer...";
-  std::cout << "\n Number of variables:  " << data_raw.W.cols();
-  std::cout << "\n Number of inequalities: " << data_raw.A.rows();
-  std::cout << "\n Number of equations: " << data_raw.B.rows();
+  PRINT_LINE(options.verbosity, "Starting the Conex optimizer..."
+   "\n Number of variables:  " << data_raw.W.cols()
+   << "\n Number of inequalities: " << data_raw.A.rows()
+   <<"\n Number of equations: " << data_raw.B.rows());
   
   // Minimize x' W x + c'x 
   // Bx = d
   if (data_raw.A.rows() == 0) {
-    std::cout << "\n Algorithm: analytical solution.";
+    PRINT_LINE(options.verbosity, "\n Algorithm: analytical solution.");
     int num_eq = data_raw.B.rows();
     int size_kkt = data_raw.W.cols() + data_raw.B.rows();
     MatrixXd S(size_kkt, size_kkt);
@@ -505,7 +540,7 @@ Solution LogspaceIPM(const ProblemData& data_raw, const SolverOptions& options,
     std::cout << std::endl;
     return sol;
   } else {
-    std::cout << "\n Algorithm: Logspace IPM";
+    PRINT_LINE(options.verbosity, "\n Algorithm: Logspace IPM");
   }
   std::cout << std::endl;
 
@@ -534,7 +569,24 @@ Solution LogspaceIPM(const ProblemData& data_raw, const SolverOptions& options,
     data.W = B_null_space.transpose() * data_raw.W * B_null_space;
     data.b += data_raw.A * x0;
   }
-  auto solution = LogspaceIPMHelper(data, options, initial_point);
+
+  
+  ScaledData data_rescaled;// = 
+  if (1) {
+    data_rescaled.variable_scaling.resize(data.A.cols());
+    data_rescaled.variable_scaling.setConstant(1);
+    data_rescaled.data = data;
+  } else {
+    data_rescaled = VariableScaling(data);
+  }
+  
+  if (options.enable_rescaling) {
+    PRINT_LINE(options.verbosity, " Rescaling enabled.\n");
+    data_rescaled.data = RescaleProblemData(data_rescaled.data);
+  } 
+
+  auto solution = LogspaceIPMHelper(data_rescaled.data, options, initial_point);
+  solution.x.x =  data_rescaled.variable_scaling.cwiseProduct(solution.x.x);
   if (remove_equations) {
     solution.x.x = B_null_space * solution.x.x + x0;
   }
