@@ -7,7 +7,6 @@
 namespace conex {
 
 using Eigen::MatrixXd;
-using T = TriangularMatrixOperations;
 using B = BlockTriangularOperations;
 
 void RunningIntersectionClosure(std::vector<Clique>* cliques) {
@@ -105,13 +104,13 @@ void DoCholeskyTest(const std::vector<Clique>& cliques) {
     sn.diagonal().array() += 100;
   }
 
-  Eigen::MatrixXd x = T::ToDense(mat);
+  Eigen::MatrixXd x = mat.MakeDenseMatrix();
   Eigen::LLT<MatrixXd> llt(x);
   MatrixXd L = llt.matrixL();
   EXPECT_TRUE(llt.info() == Eigen::Success);
 
   B::BlockCholeskyInPlace(&mat.workspace_);
-  MatrixXd error = T::ToDense(mat) - L;
+  MatrixXd error = mat.MakeDenseMatrix() - L;
   error = error.triangularView<Eigen::Lower>();
   EXPECT_NEAR(error.norm(), 0, 1e-12);
 }
@@ -130,7 +129,7 @@ void DoInverseTest(const std::vector<Clique>& cliques) {
     sn.diagonal().array() += 10;
   }
 
-  Eigen::MatrixXd L = T::ToDense(mat).triangularView<Eigen::Lower>();
+  Eigen::MatrixXd L = mat.MakeDenseMatrix().triangularView<Eigen::Lower>();
   Eigen::VectorXd b;
   b.setLinSpaced(L.rows(), -1, 1);
 
@@ -151,7 +150,7 @@ void DoInverseOfTransposeTest(const std::vector<Clique>& cliques) {
     sn.diagonal().array() += 10;
   }
 
-  Eigen::MatrixXd L = T::ToDense(mat).triangularView<Eigen::Lower>();
+  Eigen::MatrixXd L = mat.MakeDenseMatrix().triangularView<Eigen::Lower>();
   Eigen::VectorXd b;
   b.setLinSpaced(L.rows(), -1, 1);
 
@@ -200,7 +199,7 @@ void DoLDLTTest(bool diagonal, const std::vector<Clique>& cliques) {
     }
   }
 
-  Eigen::MatrixXd X = T::ToDense(mat).selfadjointView<Eigen::Lower>();
+  Eigen::MatrixXd X = mat.MakeDenseMatrix().selfadjointView<Eigen::Lower>();
 
   std::vector<Eigen::RLDLT<Eigen::Ref<MatrixXd>>> factorization;
   B::BlockLDLTInPlace(&mat.workspace_, &factorization);

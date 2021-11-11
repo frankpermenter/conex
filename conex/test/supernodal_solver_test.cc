@@ -69,8 +69,6 @@ SparseTriangularMatrix GetFillInPattern(
 }
 
 using Eigen::MatrixXd;
-using T = TriangularMatrixOperations;
-using B = BlockTriangularOperations;
 using std::vector;
 
 int GetMax(const vector<Clique>& cliques) {
@@ -122,7 +120,7 @@ MatrixXd GetMatrix(int N, const vector<Clique>& c, double val) {
 bool DoPatternTest(const vector<Clique>& cliques) {
   int N = GetMax(cliques) + 1;
   MatrixXd error =
-      GetMatrix(N, cliques) - T::ToDense(GetFillInPattern(N, cliques));
+      GetMatrix(N, cliques) - (GetFillInPattern(N, cliques)).MakeDenseMatrix();
   error = error.triangularView<Eigen::Lower>();
   return error.norm() == 0;
 }
@@ -155,7 +153,7 @@ GTEST_TEST(LowerTri, Constant) {
 
   auto mat = MakeSparseTriangularMatrix(GetMax(cliques) + 1, cliques);
   mat.SetConstant(-1);
-  auto y = T::ToDense(mat);
+  auto y = mat.MakeDenseMatrix();
   auto yref = GetMatrix(GetMax(cliques) + 1, cliques, -1);
   MatrixXd error = y - yref;
   error = error.triangularView<Eigen::Lower>();
@@ -168,13 +166,13 @@ void DoCholeskyTest(const vector<Clique>& cliques) {
     sn.diagonal().array() += 100;
   }
 
-  Eigen::MatrixXd x = T::ToDense(mat);
+  Eigen::MatrixXd x = mat.MakeDenseMatrix();
   Eigen::LLT<MatrixXd> llt(x);
   MatrixXd L = llt.matrixL();
   EXPECT_TRUE(llt.info() == Eigen::Success);
 
-  T::CholeskyInPlace(&mat);
-  MatrixXd error = T::ToDense(mat) - L;
+  TriangularMatrixOperations::CholeskyInPlace(&mat);
+  MatrixXd error = mat.MakeDenseMatrix() - L;
   error = error.triangularView<Eigen::Lower>();
   EXPECT_NEAR(error.norm(), 0, 1e-12);
 }
@@ -196,10 +194,10 @@ void DoInverseTest(const vector<Clique>& cliques) {
     sn.diagonal().array() += 10;
   }
 
-  Eigen::MatrixXd L = T::ToDense(mat).triangularView<Eigen::Lower>();
+  Eigen::MatrixXd L = mat.MakeDenseMatrix().triangularView<Eigen::Lower>();
   Eigen::VectorXd b;
   b.setLinSpaced(L.rows(), -1, 1);
-  auto y = T::ApplyInverse(&mat, b);
+  auto y = TriangularMatrixOperations::ApplyInverse(&mat, b);
   EXPECT_NEAR((L * y - b).norm(), 0, 1e-12);
 }
 
@@ -215,10 +213,10 @@ void DoInverseOfTransposeTest(const vector<Clique>& cliques) {
     sn.diagonal().array() += 10;
   }
 
-  Eigen::MatrixXd L = T::ToDense(mat).triangularView<Eigen::Lower>();
+  Eigen::MatrixXd L = mat.MakeDenseMatrix().triangularView<Eigen::Lower>();
   Eigen::VectorXd b;
   b.setLinSpaced(L.rows(), -1, 1);
-  auto y = T::ApplyInverseOfTranspose(&mat, b);
+  auto y = TriangularMatrixOperations::ApplyInverseOfTranspose(&mat, b);
   EXPECT_NEAR((L.transpose() * y - b).norm(), 0, 1e-12);
 }
 

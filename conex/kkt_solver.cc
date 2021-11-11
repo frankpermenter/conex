@@ -263,8 +263,7 @@ void T::SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b) const {
 }
 
 Eigen::MatrixXd T::KKTMatrix() const {
-  Eigen::MatrixXd G =
-      TriangularMatrixOperations::ToDense(mat).selfadjointView<Eigen::Lower>();
+  Eigen::MatrixXd G = mat.MakeDenseMatrix().selfadjointView<Eigen::Lower>();
   return Pt * G * Pt.transpose();
 }
 

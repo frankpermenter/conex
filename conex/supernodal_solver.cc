@@ -13,10 +13,11 @@ using Eigen::MatrixXi;
 using Eigen::VectorXd;
 using Eigen::VectorXi;
 using Permutation = Eigen::PermutationMatrix<-1>;
-using T = TriangularMatrixOperations;
 using std::vector;
 
 namespace {
+
+using Matrix = SparseTriangularMatrix;
 
 vector<int> Relabel(const vector<int>& x, const vector<int>& labels) {
   vector<int> y(x.size());
@@ -41,7 +42,7 @@ int GetMax(const std::vector<Clique>& cliques) {
 
 class TriangularMatrixColumnOperations {
  public:
-  TriangularMatrixColumnOperations(T::Matrix* mat) : mat_(mat) {
+  TriangularMatrixColumnOperations(Matrix* mat) : mat_(mat) {
     dense_size = mat_->supernode_size.at(0);
   }
   void NextColumn() {
@@ -262,8 +263,8 @@ void Sort(std::vector<Clique>* path) {
   }
 }
 
-Eigen::MatrixXd TriangularMatrixOperations::ToDense(
-    const SparseTriangularMatrix& mat) {
+Eigen::MatrixXd Matrix::MakeDenseMatrix() const {
+  auto mat = *this;
   MatrixXd y(mat.num_columns(), mat.num_columns());
   for (int i = 0; i < mat.num_columns(); i++) {
     for (int j = 0; j < mat.num_columns(); j++) {
@@ -282,7 +283,8 @@ void SparseTriangularMatrix::SetConstant(double val) {
   }
 }
 
-void T::CholeskyInPlace(SparseTriangularMatrix* C) {
+namespace TriangularMatrixOperations {
+void CholeskyInPlace(SparseTriangularMatrix* C) {
   TriangularMatrixColumnOperations col(C);
   LowerTriangularSuperNodal mat(C);
   double sqrt_d = std::sqrt(col.Diagonal());
@@ -313,8 +315,8 @@ void T::CholeskyInPlace(SparseTriangularMatrix* C) {
 
 // L
 // B in
-VectorXd T::ApplyInverseOfTranspose(SparseTriangularMatrix* mat,
-                                    const VectorXd& b) {
+VectorXd ApplyInverseOfTranspose(SparseTriangularMatrix* mat,
+                                 const VectorXd& b) {
   assert(b.rows() == mat->num_columns());
   int n = b.rows();
   VectorXd y(n);
@@ -331,7 +333,7 @@ VectorXd T::ApplyInverseOfTranspose(SparseTriangularMatrix* mat,
   return y;
 }
 
-VectorXd T::ApplyInverse(SparseTriangularMatrix* mat, const VectorXd& b) {
+VectorXd ApplyInverse(SparseTriangularMatrix* mat, const VectorXd& b) {
   assert(b.rows() == mat->num_columns());
   int n = b.rows();
   VectorXd y(n);
@@ -352,6 +354,7 @@ VectorXd T::ApplyInverse(SparseTriangularMatrix* mat, const VectorXd& b) {
   }
   return y;
 }
+}  // namespace TriangularMatrixOperations
 
 std::vector<int> UnionOfSorted(const std::vector<int>& x1,
                                const std::vector<int>& x2) {

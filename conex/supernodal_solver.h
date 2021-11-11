@@ -111,7 +111,9 @@ class SparseTriangularMatrix {
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& separator;
 
   void SetConstant(double val);
+  Eigen::MatrixXd MakeDenseMatrix() const;
 };
+
 std::vector<Clique> Permute(std::vector<Clique>& path,
                             std::vector<int>& permutation);
 void Sort(std::vector<Clique>* path);
@@ -119,19 +121,14 @@ void Sort(std::vector<Clique>* path);
 void IntersectionOfSorted(const std::vector<int>& v1,
                           const std::vector<int>& v2, std::vector<int>* v3);
 
-class TriangularMatrixOperations {
- public:
-  using Matrix = SparseTriangularMatrix;
-  static Eigen::MatrixXd Multiply(SparseTriangularMatrix& mat,
-                                  const Eigen::MatrixXd& x);
-  static Eigen::MatrixXd ToDense(const SparseTriangularMatrix& mat);
-  static void RescaleColumn(Matrix* mat);
-  static void CholeskyInPlace(SparseTriangularMatrix* mat);
-  static Eigen::VectorXd ApplyInverse(SparseTriangularMatrix* L,
-                                      const Eigen::VectorXd& b);
-  static Eigen::VectorXd ApplyInverseOfTranspose(SparseTriangularMatrix* L,
-                                                 const Eigen::VectorXd& b);
-};
+namespace TriangularMatrixOperations {
+Eigen::MatrixXd Multiply(SparseTriangularMatrix& mat, const Eigen::MatrixXd& x);
+void CholeskyInPlace(SparseTriangularMatrix* mat);
+Eigen::VectorXd ApplyInverse(SparseTriangularMatrix* L,
+                             const Eigen::VectorXd& b);
+Eigen::VectorXd ApplyInverseOfTranspose(SparseTriangularMatrix* L,
+                                        const Eigen::VectorXd& b);
+};  // namespace TriangularMatrixOperations
 
 MatrixData SupernodesToData(int num_vars, const std::vector<int>& order,
                             const std::vector<std::vector<int>>& supernodes,
