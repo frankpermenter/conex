@@ -7,11 +7,11 @@ COPTS = [
 
 cc_library(
     name = "test_util",
-    srcs = glob(["test/test_util.cc"]),
-    hdrs = glob([
-        "test/test_util.h",
+    srcs = ["test/test_util.cc"],
+    hdrs = [
         "debug_macros.h",
-    ]),
+        "test/test_util.h",
+    ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
@@ -21,7 +21,7 @@ cc_library(
 
 cc_test(
     name = "lp",
-    srcs = glob(["test/test_lp.cc"]),
+    srcs = ["test/test_lp.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "core",
@@ -33,7 +33,7 @@ cc_test(
 
 cc_test(
     name = "hermitian_psd_test",
-    srcs = glob(["test/hermitian_psd_test.cc"]),
+    srcs = ["test/hermitian_psd_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
@@ -44,7 +44,7 @@ cc_test(
 
 cc_test(
     name = "sdp",
-    srcs = glob(["test/test_sdp.cc"]),
+    srcs = ["test/test_sdp.cc"],
     copts = ["-Iexternal/gtest/include -fno-omit-frame-pointer"],
     deps = [
         "linear_constraint",
@@ -56,7 +56,7 @@ cc_test(
 
 cc_binary(
     name = "psdp",
-    srcs = glob(["test/profile_sdp.cc"]),
+    srcs = ["test/profile_sdp.cc"],
     deps = [
         "conex_lib",
         "test_util",
@@ -66,7 +66,7 @@ cc_binary(
 
 cc_test(
     name = "socp",
-    srcs = glob(["test/test_socp.cc"]),
+    srcs = ["test/test_socp.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
@@ -76,7 +76,7 @@ cc_test(
 
 cc_test(
     name = "divergence_test",
-    srcs = glob(["test/test_divergence.cc"]),
+    srcs = ["test/test_divergence.cc"],
     copts = ["-Iexternal/gtest/include -O0"],
     deps = [
         "divergence",
@@ -86,7 +86,7 @@ cc_test(
 
 cc_test(
     name = "warmstart",
-    srcs = glob(["test/test_warmstart.cc"]),
+    srcs = ["test/test_warmstart.cc"],
     copts = ["-Iexternal/gtest/include -O0"],
     deps = [
         "conex_lib",
@@ -97,10 +97,10 @@ cc_test(
 
 cc_test(
     name = "approximate_eigenvalues_test",
-    srcs = glob([
-        "test/approximate_eigenvalues.cc",
+    srcs = [
         "debug_macros.h",
-    ]),
+        "test/approximate_eigenvalues.cc",
+    ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "approximate_eigenvalues",
@@ -122,7 +122,7 @@ cc_library(
 
 cc_test(
     name = "exponential_map_pade_test",
-    srcs = glob(["test/exponential_map_pade_test.cc"]),
+    srcs = ["test/exponential_map_pade_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "exponential_map_pade",
@@ -294,6 +294,7 @@ cc_library(
     ],
 )
 
+
 cc_library(
     name = "core",
     srcs = [
@@ -432,7 +433,7 @@ cc_library(
 
 cc_test(
     name = "equality_constraints_test",
-    srcs = glob(["test/equality_constraints_test.cc"]),
+    srcs = ["test/equality_constraints_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
@@ -442,7 +443,7 @@ cc_test(
 
 cc_test(
     name = "quadratic_objective_test",
-    srcs = glob(["test/quadratic_objective_test.cc"]),
+    srcs = ["test/quadratic_objective_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
@@ -452,7 +453,7 @@ cc_test(
 
 cc_test(
     name = "kkt_solver_options_test",
-    srcs = glob(["test/kkt_solver_options_test.cc"]),
+    srcs = ["test/kkt_solver_options_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
