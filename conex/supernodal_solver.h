@@ -9,8 +9,6 @@
 
 namespace conex {
 
-using Clique = std::vector<int>;
-
 std::vector<int> UnionOfSorted(const std::vector<int>& x1,
                                const std::vector<int>& x2);
 
@@ -28,9 +26,9 @@ struct MatrixData {
   int N;
 };
 
-MatrixData GetData(const std::vector<Clique>& cliques, int init = 0);
+MatrixData GetData(const std::vector<std::vector<int>>& cliques, int init = 0);
 
-MatrixData GetData(const std::vector<Clique>& cliques,
+MatrixData GetData(const std::vector<std::vector<int>>& cliques,
                    const std::vector<int>& valid_leafs, int init = 0);
 
 template <typename T>
@@ -63,7 +61,8 @@ inline void DoBind(const MatrixData& data, TriangularMatrixWorkspace& workspace,
 
 class SparseTriangularMatrix {
  public:
-  SparseTriangularMatrix(int num_cols, const std::vector<Clique>& cliques,
+  SparseTriangularMatrix(int num_cols,
+                         const std::vector<std::vector<int>>& cliques,
                          const std::vector<int>& supernode_sizes,
                          const Eigen::VectorXd& memory)
       : workspace_(cliques, supernode_sizes),
@@ -77,7 +76,7 @@ class SparseTriangularMatrix {
     Initialize(&workspace_, memory_.data());
   }
 
-  SparseTriangularMatrix(int N_, const std::vector<Clique>& cliques,
+  SparseTriangularMatrix(int N_, const std::vector<std::vector<int>>& cliques,
                          const std::vector<int>& supernode_sizes)
       : SparseTriangularMatrix(
             N_, cliques, supernode_sizes,
@@ -98,13 +97,11 @@ class SparseTriangularMatrix {
 
  public:
   int num_columns() const { return workspace_.num_columns(); }
-  TriangularMatrixWorkspace workspace_;
-
- private:
-  Eigen::VectorXd memory_;
 
  public:
-  std::vector<Clique> cliques_;
+  TriangularMatrixWorkspace workspace_;
+  Eigen::VectorXd memory_;
+  std::vector<std::vector<int>> cliques_;
   std::vector<int>& supernode_size;
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& supernodes;
   std::vector<std::vector<int>>& snodes;
@@ -114,15 +111,14 @@ class SparseTriangularMatrix {
   Eigen::MatrixXd MakeDenseMatrix() const;
 };
 
-std::vector<Clique> Permute(std::vector<Clique>& path,
-                            std::vector<int>& permutation);
-void Sort(std::vector<Clique>* path);
+std::vector<std::vector<int>> Permute(std::vector<std::vector<int>>& path,
+                                      std::vector<int>& permutation);
+void Sort(std::vector<std::vector<int>>* path);
 
 void IntersectionOfSorted(const std::vector<int>& v1,
                           const std::vector<int>& v2, std::vector<int>* v3);
 
 namespace TriangularMatrixOperations {
-Eigen::MatrixXd Multiply(SparseTriangularMatrix& mat, const Eigen::MatrixXd& x);
 void CholeskyInPlace(SparseTriangularMatrix* mat);
 Eigen::VectorXd ApplyInverse(SparseTriangularMatrix* L,
                              const Eigen::VectorXd& b);
