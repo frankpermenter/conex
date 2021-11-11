@@ -69,9 +69,9 @@ class SparseTriangularMatrix {
         memory_(memory),
         cliques_(cliques),
         supernode_size(workspace_.supernode_size),
-        supernodes(workspace_.diagonal),
+        supernodes_(workspace_.diagonal),
         snodes(workspace_.snodes),
-        separator(workspace_.off_diagonal) {
+        separator_(workspace_.off_diagonal) {
     assert(memory_.size() >= SizeOf(workspace_));
     Initialize(&workspace_, memory_.data());
   }
@@ -98,17 +98,31 @@ class SparseTriangularMatrix {
  public:
   int num_columns() const { return workspace_.num_columns(); }
 
- public:
+  std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& supernodes() {
+    return supernodes_;
+  }
+
+  std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& separator() {
+    return separator_;
+  }
+
+  std::vector<std::vector<int>>& cliques() { return cliques_; }
+
+  double coeff(int i, int j) const;
+  Eigen::MatrixXd MakeDenseMatrix() const;
+  void SetConstant(double val);
+
   TriangularMatrixWorkspace workspace_;
   Eigen::VectorXd memory_;
+
+ private:
   std::vector<std::vector<int>> cliques_;
   std::vector<int>& supernode_size;
-  std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& supernodes;
+  std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& supernodes_;
   std::vector<std::vector<int>>& snodes;
-  std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& separator;
+  std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& separator_;
 
-  void SetConstant(double val);
-  Eigen::MatrixXd MakeDenseMatrix() const;
+  friend class SupernodalCholeskyFactorization;
 };
 
 std::vector<std::vector<int>> Permute(std::vector<std::vector<int>>& path,

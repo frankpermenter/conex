@@ -51,6 +51,7 @@ struct TriangularMatrixWorkspace {
   std::vector<int> variable_to_supernode_;
   std::vector<int> variable_to_supernode_position_;
   int num_columns() const { return num_columns_; }
+  double coeff(int i, int j) const;
 
  private:
   // TODO(FrankPermenter): Remove this method.

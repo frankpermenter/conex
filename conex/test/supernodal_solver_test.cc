@@ -50,16 +50,16 @@ SparseTriangularMatrix GetFillInPattern(
     int N, const std::vector<Clique>& cliques_input) {
   auto mat = MakeSparseTriangularMatrix(N, cliques_input);
 
-  for (int j = static_cast<int>(mat.cliques_.size()) - 1; j >= 0; j--) {
+  for (int j = static_cast<int>(mat.cliques().size()) - 1; j >= 0; j--) {
     // Initialize columns of super nodes.
-    mat.supernodes.at(j).setConstant(1);
-    mat.separator.at(j).setConstant(1);
+    mat.supernodes().at(j).setConstant(1);
+    mat.separator().at(j).setConstant(1);
 
     // Update other columns: the (seperator, seperator) components.
     int index = 0;
     auto s_s = mat.workspace_.seperator_diagonal.at(j);
-    int n = mat.cliques_.at(j).size();
-    for (int i = mat.supernode_size.at(j); i < n; i++) {
+    int n = mat.cliques().at(j).size();
+    for (int i = mat.supernodes().at(j).rows(); i < n; i++) {
       for (int k = i; k < n; k++) {
         *s_s.at(index++) += 1;
       }
@@ -121,6 +121,8 @@ bool DoPatternTest(const vector<Clique>& cliques) {
   int N = GetMax(cliques) + 1;
   MatrixXd error =
       GetMatrix(N, cliques) - (GetFillInPattern(N, cliques)).MakeDenseMatrix();
+  DUMP(GetMatrix(N, cliques));
+  DUMP(GetFillInPattern(N, cliques).MakeDenseMatrix());
   error = error.triangularView<Eigen::Lower>();
   return error.norm() == 0;
 }
@@ -134,14 +136,6 @@ GTEST_TEST(Basic, Basic) {
   EXPECT_TRUE(DoPatternTest(cliques2));
 
   EXPECT_TRUE(DoPatternTest({{0, 1, 2, 4}, {3, 4}, {5, 6, 7}}));
-}
-
-vector<int> RandomTuple(int max, int size) {
-  vector<int> y(size);
-  for (int i = 0; i < size; i++) {
-    y.at(i) = rand() % max;
-  }
-  return y;
 }
 
 GTEST_TEST(GetPattern, Basic) {
@@ -158,127 +152,6 @@ GTEST_TEST(LowerTri, Constant) {
   MatrixXd error = y - yref;
   error = error.triangularView<Eigen::Lower>();
   EXPECT_TRUE(error.norm() == 0);
-}
-
-void DoCholeskyTest(const vector<Clique>& cliques) {
-  auto mat = GetFillInPattern(GetMax(cliques) + 1, cliques);
-  for (auto& sn : mat.supernodes) {
-    sn.diagonal().array() += 100;
-  }
-
-  Eigen::MatrixXd x = mat.MakeDenseMatrix();
-  Eigen::LLT<MatrixXd> llt(x);
-  MatrixXd L = llt.matrixL();
-  EXPECT_TRUE(llt.info() == Eigen::Success);
-
-  TriangularMatrixOperations::CholeskyInPlace(&mat);
-  MatrixXd error = mat.MakeDenseMatrix() - L;
-  error = error.triangularView<Eigen::Lower>();
-  EXPECT_NEAR(error.norm(), 0, 1e-12);
-}
-
-GTEST_TEST(LowerTri, Cholesky) {
-  DoCholeskyTest({{0, 1, 2}, {2}});
-
-  DoCholeskyTest({{0, 1, 2, 4}, {3, 4}, {5, 6, 7}});
-  DoCholeskyTest({{0, 1, 5}, {1, 2, 5}, {3, 4, 5}});
-
-  DoCholeskyTest({{0, 1, 2}, {1, 2, 3}, {3, 4, 2}});
-
-  DoCholeskyTest({{0, 1}, {2, 4}, {3, 4}, {5, 6, 7}, {7, 8, 9, 10}});
-}
-
-void DoInverseTest(const vector<Clique>& cliques) {
-  auto mat = GetFillInPattern(GetMax(cliques) + 1, cliques);
-  for (auto& sn : mat.supernodes) {
-    sn.diagonal().array() += 10;
-  }
-
-  Eigen::MatrixXd L = mat.MakeDenseMatrix().triangularView<Eigen::Lower>();
-  Eigen::VectorXd b;
-  b.setLinSpaced(L.rows(), -1, 1);
-  auto y = TriangularMatrixOperations::ApplyInverse(&mat, b);
-  EXPECT_NEAR((L * y - b).norm(), 0, 1e-12);
-}
-
-GTEST_TEST(LowerTri, InverseTest) {
-  DoInverseTest({{0, 1, 2, 3}, {3, 4, 5}});
-  DoInverseTest({{0, 1, 2, 3}});
-  DoInverseTest({{0, 1, 2, 3}, {3, 4}, {4, 5, 6}});
-}
-
-void DoInverseOfTransposeTest(const vector<Clique>& cliques) {
-  auto mat = GetFillInPattern(GetMax(cliques) + 1, cliques);
-  for (auto& sn : mat.supernodes) {
-    sn.diagonal().array() += 10;
-  }
-
-  Eigen::MatrixXd L = mat.MakeDenseMatrix().triangularView<Eigen::Lower>();
-  Eigen::VectorXd b;
-  b.setLinSpaced(L.rows(), -1, 1);
-  auto y = TriangularMatrixOperations::ApplyInverseOfTranspose(&mat, b);
-  EXPECT_NEAR((L.transpose() * y - b).norm(), 0, 1e-12);
-}
-
-GTEST_TEST(LowerTri, InverseOfTranspose) {
-  DoInverseOfTransposeTest({{0, 1, 2, 5}, {3, 4, 5}});
-  DoInverseOfTransposeTest({{0, 1, 2, 5}, {3, 4, 5}, {5, 6}});
-  DoInverseOfTransposeTest({{0, 1, 2, 3}});
-}
-
-typedef struct Foo {
-  double* supernode_block;
-  double* separator_supernode_block;
-  int num_supernodes;
-  int num_separators;
-  double** separator_block;
-  int seperator_block_stride = -1;
-} Foo;
-
-int Set(int initial_value, Foo* data) {
-  int cnt = initial_value;
-  int num_n = data->num_supernodes;
-  int num_s = data->num_separators;
-  double* n = data->supernode_block;
-  for (int j = 0; j < num_n; j++) {
-    for (int i = j; i < num_n; i++) {
-      n[i + j * num_n] = cnt++;
-    }
-  }
-
-  double* s_n = data->separator_supernode_block;
-  for (int j = 0; j < num_s; j++) {
-    for (int i = 0; i < num_n; i++) {
-      s_n[i + j * num_n] = cnt++;
-    }
-  }
-
-  int index = 0;
-  for (int j = 0; j < num_s; j++) {
-    for (int i = j; i < num_s; i++) {
-      *data->separator_block[index++] = cnt++;
-    }
-  }
-  return cnt;
-}
-
-GTEST_TEST(SupernodalSolver, TestFullSolver) {
-  vector<Clique> cliques{{0, 1, 2, 4, 5}, {3, 4}, {5}, {6, 7, 8}};
-  auto mat = GetFillInPattern(GetMax(cliques) + 1, cliques);
-  for (auto& sn : mat.supernodes) {
-    sn.diagonal().array() += 10;
-  }
-  int val = 0;
-  for (size_t i = 0; i < cliques.size(); i++) {
-    auto SS = mat.workspace_.seperator_diagonal.at(i);
-    Foo data;
-    data.supernode_block = mat.supernodes.at(i).data();
-    data.separator_supernode_block = mat.separator.at(i).data();
-    data.separator_block = SS.data();
-    data.num_supernodes = mat.supernodes.at(i).cols();
-    data.num_separators = mat.separator.at(i).cols();
-    val = Set(val, &data);
-  }
 }
 
 }  // namespace conex

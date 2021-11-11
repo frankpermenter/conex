@@ -52,36 +52,20 @@ SparseTriangularMatrix GetFillInPattern(
     int N, const std::vector<Clique>& cliques_input) {
   auto mat = MakeSparseTriangularMatrix(N, cliques_input);
 
-  for (int j = static_cast<int>(mat.cliques_.size()) - 1; j >= 0; j--) {
+  for (int j = static_cast<int>(mat.cliques().size()) - 1; j >= 0; j--) {
     // Initialize columns of super nodes.
-    mat.supernodes.at(j).setConstant(1);
-    mat.separator.at(j).setConstant(1);
+    mat.supernodes().at(j).setConstant(1);
+    mat.separator().at(j).setConstant(1);
 
     // Update other columns: the (seperator, seperator) components.
     int index = 0;
     auto s_s = mat.workspace_.seperator_diagonal.at(j);
-    int n = mat.cliques_.at(j).size();
-    for (int i = mat.supernode_size.at(j); i < n; i++) {
+    int n = mat.cliques().at(j).size();
+    for (int i = mat.supernodes().at(j).rows(); i < n; i++) {
       for (int k = i; k < n; k++) {
         *s_s.at(index++) += 1;
       }
     }
-  }
-  return mat;
-}
-
-SparseTriangularMatrix RandomSparseMatrix(
-    int N, const std::vector<Clique>& cliques_input) {
-  auto mat = MakeSparseTriangularMatrix(N, cliques_input);
-
-  for (int j = static_cast<int>(mat.cliques_.size()) - 1; j >= 0; j--) {
-    // Initialize columns of super nodes.
-    int r = mat.supernodes.at(j).rows();
-    int c = mat.supernodes.at(j).cols();
-    mat.supernodes.at(j) = MatrixXd::Random(r, c);
-    r = mat.separator.at(j).rows();
-    c = mat.separator.at(j).cols();
-    mat.separator.at(j) = MatrixXd::Random(r, c);
   }
   return mat;
 }
@@ -100,7 +84,7 @@ int GetMax(const std::vector<Clique>& cliques) {
 
 void DoCholeskyTest(const std::vector<Clique>& cliques) {
   auto mat = GetFillInPattern(GetMax(cliques) + 1, cliques);
-  for (auto& sn : mat.supernodes) {
+  for (auto& sn : mat.supernodes()) {
     sn.diagonal().array() += 100;
   }
 
@@ -125,7 +109,7 @@ GTEST_TEST(LowerTri, Cholesky) {
 
 void DoInverseTest(const std::vector<Clique>& cliques) {
   auto mat = GetFillInPattern(GetMax(cliques) + 1, cliques);
-  for (auto& sn : mat.supernodes) {
+  for (auto& sn : mat.supernodes()) {
     sn.diagonal().array() += 10;
   }
 
@@ -146,7 +130,7 @@ GTEST_TEST(LowerTri, InverseTest) {
 
 void DoInverseOfTransposeTest(const std::vector<Clique>& cliques) {
   auto mat = GetFillInPattern(GetMax(cliques) + 1, cliques);
-  for (auto& sn : mat.supernodes) {
+  for (auto& sn : mat.supernodes()) {
     sn.diagonal().array() += 10;
   }
 

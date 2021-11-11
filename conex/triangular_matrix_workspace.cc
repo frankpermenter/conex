@@ -113,6 +113,26 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
   }
 }
 
+double TriangularMatrixWorkspace::coeff(int r, int c) const {
+  int node_r = variable_to_supernode_[r];
+  int node = variable_to_supernode_[c];
+
+  int j = variable_to_supernode_position_[c];
+  if (node == node_r) {
+    int i = variable_to_supernode_position_[r];
+    return diagonal[node](i, j);
+  }
+
+  int cnt = 0;
+  for (auto si : separators[node]) {
+    if (si == r) {
+      return off_diagonal[node](j, cnt);
+    }
+    cnt++;
+  }
+  return 0;
+}
+
 void Initialize(TriangularMatrixWorkspace* o, double* data_start) {
   double* data = data_start;
   for (size_t j = 0; j < o->snodes.size(); j++) {
