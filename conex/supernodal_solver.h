@@ -66,8 +66,7 @@ class SparseTriangularMatrix {
   SparseTriangularMatrix(int num_cols, const std::vector<Clique>& cliques,
                          const std::vector<int>& supernode_sizes,
                          const Eigen::VectorXd& memory)
-      : N(num_cols),
-        workspace_(cliques, supernode_sizes),
+      : workspace_(cliques, supernode_sizes),
         memory_(memory),
         cliques_(cliques),
         supernode_size(workspace_.supernode_size),
@@ -89,13 +88,15 @@ class SparseTriangularMatrix {
       : SparseTriangularMatrix(data.N, data.cliques, data.supernode_size) {}
 
   SparseTriangularMatrix(const SparseTriangularMatrix& s)
-      : SparseTriangularMatrix(s.N, s.cliques_, s.supernode_size, s.memory_) {}
+      : SparseTriangularMatrix(s.num_columns(), s.cliques_, s.supernode_size,
+                               s.memory_) {}
 
   SparseTriangularMatrix operator=(const SparseTriangularMatrix& s) {
-    return SparseTriangularMatrix(s.N, s.cliques_, s.supernode_size, s.memory_);
+    return SparseTriangularMatrix(s.num_columns(), s.cliques_, s.supernode_size,
+                                  s.memory_);
   }
 
-  int N;
+  int num_columns() const { return workspace_.num_columns(); }
   TriangularMatrixWorkspace workspace_;
   Eigen::VectorXd memory_;
   std::vector<Clique> cliques_;

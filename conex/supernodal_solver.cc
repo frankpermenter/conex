@@ -264,9 +264,9 @@ void Sort(std::vector<Clique>* path) {
 
 Eigen::MatrixXd TriangularMatrixOperations::ToDense(
     const SparseTriangularMatrix& mat) {
-  MatrixXd y(mat.N, mat.N);
-  for (int i = 0; i < mat.N; i++) {
-    for (int j = 0; j < mat.N; j++) {
+  MatrixXd y(mat.num_columns(), mat.num_columns());
+  for (int i = 0; i < mat.num_columns(); i++) {
+    for (int j = 0; j < mat.num_columns(); j++) {
       y(i, j) = Get(mat, i, j);
     }
   }
@@ -290,7 +290,7 @@ void T::CholeskyInPlace(SparseTriangularMatrix* C) {
   col.Rescale(1.0 / sqrt_d);
 
   // i: a supernode
-  for (int i = 0; i < C->N - 1; i++) {
+  for (int i = 0; i < C->num_columns() - 1; i++) {
     // Substract col(2:n) c(2:n)^T
     auto indices = col.NonzeroRows();
     for (size_t k = 0; k < indices.size(); k++) {
@@ -316,7 +316,7 @@ void T::CholeskyInPlace(SparseTriangularMatrix* C) {
 // B in
 VectorXd T::ApplyInverseOfTranspose(SparseTriangularMatrix* mat,
                                     const VectorXd& b) {
-  assert(b.rows() == mat->N);
+  assert(b.rows() == mat->num_columns());
   int n = b.rows();
   VectorXd y(n);
   auto res = b;
@@ -333,7 +333,7 @@ VectorXd T::ApplyInverseOfTranspose(SparseTriangularMatrix* mat,
 }
 
 VectorXd T::ApplyInverse(SparseTriangularMatrix* mat, const VectorXd& b) {
-  assert(b.rows() == mat->N);
+  assert(b.rows() == mat->num_columns());
   int n = b.rows();
   VectorXd y(n);
   auto res = b;
