@@ -14,7 +14,6 @@ using Clique = std::vector<int>;
 struct TriangularMatrixWorkspace {
   TriangularMatrixWorkspace(const std::vector<Clique>& cliques,
                             const std::vector<int>& supernode_size);
-  int num_columns_;
   // TODO(FrankPermenter): Remove all of these members.
   std::vector<int> supernode_size;
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>> diagonal;
@@ -51,6 +50,7 @@ struct TriangularMatrixWorkspace {
 
   std::vector<int> variable_to_supernode_;
   std::vector<int> variable_to_supernode_position_;
+  int num_columns() const { return num_columns_; }
 
  private:
   // TODO(FrankPermenter): Remove this method.
@@ -62,6 +62,8 @@ struct TriangularMatrixWorkspace {
   int SizeOfSeparator(int i) const {
     return get_size_aligned(supernode_size.at(i) * separators.at(i).size());
   }
+
+  int num_columns_;
 };
 
 }  // namespace conex
