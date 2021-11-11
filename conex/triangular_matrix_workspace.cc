@@ -35,30 +35,23 @@ double* LookupAddress(T& o, int r, int c) {
 }  // namespace
 
 TriangularMatrixWorkspace::TriangularMatrixWorkspace(
-    const std::vector<Clique>& path_, const std::vector<int>& supernode_size_)
+    const std::vector<Clique>& cliques, const std::vector<int>& supernode_size_)
     : supernode_size(supernode_size_) {
-  N = std::accumulate(supernode_size.begin(), supernode_size.end(), 0);
-  variable_to_supernode_.resize(N);
-  variable_to_supernode_position_.resize(N);
-
-  // separators.resize(path_.size());
-  // for (auto& si : separators) {
-  //  for (size_t i = supernode_size.at(cnt); i < path_.at(cnt).size(); i++) {
-  //    si.push_back(path_.at(cnt).at(i));
-  //  }
-  //  cnt++;
-  //}
+  num_columns_ =
+      std::accumulate(supernode_size.begin(), supernode_size.end(), 0);
+  variable_to_supernode_.resize(num_columns_);
+  variable_to_supernode_position_.resize(num_columns_);
 
   int cnt = 0;
   int var = 0;
-  snodes.resize(path_.size());
+  snodes.resize(cliques.size());
   for (auto& si : snodes) {
     si.resize(supernode_size.at(cnt));
     for (int i = 0; i < supernode_size.at(cnt); i++) {
-      if (var >= N) {
+      if (var >= num_columns_) {
         std::runtime_error("Invalid variable index.");
       }
-      si.at(i) = path_.at(cnt).at(i);
+      si.at(i) = cliques.at(cnt).at(i);
       variable_to_supernode_[var] = cnt;
       variable_to_supernode_position_[var] = i;
       var++;
@@ -66,7 +59,7 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
     cnt++;
   }
 
-  separators.resize(path_.size());
+  separators.resize(cliques.size());
   column_intersections.resize(snodes.size() - 1);
   intersection_position.resize(snodes.size() - 1);
   cnt = 0;
@@ -77,10 +70,10 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
   //  column_intersection(supernode) = list of (i, j) pairs indexed by k, where
   //  supernode[i] = separator_list(supernode)[k][j]
   for (auto& sep_i : separators) {
-    int seperator_size = path_.at(cnt).size() - supernode_size.at(cnt);
+    int seperator_size = cliques.at(cnt).size() - supernode_size.at(cnt);
     sep_i.resize(seperator_size);
     for (int i = 0; i < seperator_size; i++) {
-      int var = path_.at(cnt).at(i + supernode_size.at(cnt));
+      int var = cliques.at(cnt).at(i + supernode_size.at(cnt));
       sep_i[i] = var;
 
       int sn = variable_to_supernode_[var] - 1;

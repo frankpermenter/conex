@@ -10,50 +10,50 @@ using Eigen::MatrixXd;
 using T = TriangularMatrixOperations;
 using B = BlockTriangularOperations;
 
-void RunningIntersectionClosure(std::vector<Clique>* path) {
-  if (path->size() < 2) {
+void RunningIntersectionClosure(std::vector<Clique>* cliques) {
+  if (cliques->size() < 2) {
     return;
   }
-  int n = path->size();
+  int n = cliques->size();
   for (int i = 0; i < n - 2; i++) {
     for (int j = n - 1; j > i + 1; j--) {
       std::vector<int> temp;
-      IntersectionOfSorted(path->at(i), path->at(j), &temp);
+      IntersectionOfSorted(cliques->at(i), cliques->at(j), &temp);
       if (temp.size() == 0) {
         continue;
       }
       for (int k = j - 1; k > i; k--) {
-        path->at(k) = UnionOfSorted(path->at(k), temp);
+        cliques->at(k) = UnionOfSorted(cliques->at(k), temp);
       }
     }
   }
 }
 
-std::vector<int> ResidualSize(std::vector<Clique>& path) {
+std::vector<int> ResidualSize(std::vector<Clique>& cliques) {
   std::vector<int> y;
-  for (size_t j = 0; j < path.size() - 1; j++) {
+  for (size_t j = 0; j < cliques.size() - 1; j++) {
     std::vector<int> temp;
-    IntersectionOfSorted(path.at(j), path.at(j + 1), &temp);
-    y.push_back(path.at(j).size() - temp.size());
+    IntersectionOfSorted(cliques.at(j), cliques.at(j + 1), &temp);
+    y.push_back(cliques.at(j).size() - temp.size());
   }
-  y.push_back(path.back().size());
+  y.push_back(cliques.back().size());
   return y;
 }
 
 SparseTriangularMatrix MakeSparseTriangularMatrix(
-    int N, const std::vector<Clique>& path_) {
-  auto path = path_;
-  Sort(&path);
-  RunningIntersectionClosure(&path);
-  auto supernode_size = ResidualSize(path);
-  return SparseTriangularMatrix(N, path, supernode_size);
+    int N, const std::vector<Clique>& cliques_) {
+  auto cliques = cliques_;
+  Sort(&cliques);
+  RunningIntersectionClosure(&cliques);
+  auto supernode_size = ResidualSize(cliques);
+  return SparseTriangularMatrix(N, cliques, supernode_size);
 }
 
 SparseTriangularMatrix GetFillInPattern(
     int N, const std::vector<Clique>& cliques_input) {
   auto mat = MakeSparseTriangularMatrix(N, cliques_input);
 
-  for (int j = static_cast<int>(mat.path.size()) - 1; j >= 0; j--) {
+  for (int j = static_cast<int>(mat.cliques_.size()) - 1; j >= 0; j--) {
     // Initialize columns of super nodes.
     mat.supernodes.at(j).setConstant(1);
     mat.separator.at(j).setConstant(1);
@@ -61,7 +61,7 @@ SparseTriangularMatrix GetFillInPattern(
     // Update other columns: the (seperator, seperator) components.
     int index = 0;
     auto s_s = mat.workspace_.seperator_diagonal.at(j);
-    int n = mat.path.at(j).size();
+    int n = mat.cliques_.at(j).size();
     for (int i = mat.supernode_size.at(j); i < n; i++) {
       for (int k = i; k < n; k++) {
         *s_s.at(index++) += 1;
@@ -75,7 +75,7 @@ SparseTriangularMatrix RandomSparseMatrix(
     int N, const std::vector<Clique>& cliques_input) {
   auto mat = MakeSparseTriangularMatrix(N, cliques_input);
 
-  for (int j = static_cast<int>(mat.path.size()) - 1; j >= 0; j--) {
+  for (int j = static_cast<int>(mat.cliques_.size()) - 1; j >= 0; j--) {
     // Initialize columns of super nodes.
     int r = mat.supernodes.at(j).rows();
     int c = mat.supernodes.at(j).cols();

@@ -50,7 +50,7 @@ SparseTriangularMatrix GetFillInPattern(
     int N, const std::vector<Clique>& cliques_input) {
   auto mat = MakeSparseTriangularMatrix(N, cliques_input);
 
-  for (int j = static_cast<int>(mat.path.size()) - 1; j >= 0; j--) {
+  for (int j = static_cast<int>(mat.cliques_.size()) - 1; j >= 0; j--) {
     // Initialize columns of super nodes.
     mat.supernodes.at(j).setConstant(1);
     mat.separator.at(j).setConstant(1);
@@ -58,7 +58,7 @@ SparseTriangularMatrix GetFillInPattern(
     // Update other columns: the (seperator, seperator) components.
     int index = 0;
     auto s_s = mat.workspace_.seperator_diagonal.at(j);
-    int n = mat.path.at(j).size();
+    int n = mat.cliques_.at(j).size();
     for (int i = mat.supernode_size.at(j); i < n; i++) {
       for (int k = i; k < n; k++) {
         *s_s.at(index++) += 1;

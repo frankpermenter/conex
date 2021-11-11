@@ -75,7 +75,7 @@ class TriangularMatrixColumnOperations {
 
     int offset = mat_->supernode_size.at(supernode_index_);
     for (int i = 0; i < mat_->separator.at(supernode_index_).cols(); i++) {
-      int row = mat_->path.at(supernode_index_).at(offset + i);
+      int row = mat_->cliques_.at(supernode_index_).at(offset + i);
       (*b)(row) -=
           y * mat_->separator.at(supernode_index_)(supernode_column_, i);
     }
@@ -88,7 +88,7 @@ class TriangularMatrixColumnOperations {
     }
     int offset = mat_->supernode_size.at(supernode_index_);
     for (int i = 0; i < mat_->separator.at(supernode_index_).cols(); i++) {
-      int row = mat_->path.at(supernode_index_).at(offset + i);
+      int row = mat_->cliques_.at(supernode_index_).at(offset + i);
       y.push_back(row);
     }
     return y;
@@ -122,14 +122,15 @@ double Get(const SparseTriangularMatrix& o, int i, int j) {
   int node = LookupSuperNode(o, j, 0);
 
   // Apply offsets.
-  int offset_i = i - o.path.at(node).at(0);
-  int offset_j = j - o.path.at(node).at(0);
+  int offset_i = i - o.cliques_.at(node).at(0);
+  int offset_j = j - o.cliques_.at(node).at(0);
   if ((offset_i < o.supernode_size.at(node)) &&
       (offset_j < o.supernode_size.at(node))) {
     return o.supernodes.at(node)(offset_i, offset_j);
   }
-  for (size_t k = o.supernode_size.at(node); k < o.path.at(node).size(); k++) {
-    if (i == o.path.at(node).at(k)) {
+  for (size_t k = o.supernode_size.at(node); k < o.cliques_.at(node).size();
+       k++) {
+    if (i == o.cliques_.at(node).at(k)) {
       return o.separator.at(node)(offset_j, k - o.supernode_size.at(node));
     }
   }
@@ -148,7 +149,7 @@ class LowerTriangularSuperNodal {
   LowerTriangularSuperNodal(SparseTriangularMatrix* mat)
       : supernodes_(mat->supernodes),
         supernode_size_(mat->supernode_size),
-        path_(mat->path),
+        path_(mat->cliques_),
         separator_(mat->separator) {
     Init();
   }

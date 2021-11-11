@@ -294,7 +294,6 @@ cc_library(
     ],
 )
 
-
 cc_library(
     name = "core",
     srcs = [

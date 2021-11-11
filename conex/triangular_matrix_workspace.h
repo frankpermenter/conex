@@ -12,9 +12,9 @@ namespace conex {
 using Clique = std::vector<int>;
 
 struct TriangularMatrixWorkspace {
-  TriangularMatrixWorkspace(const std::vector<Clique>& path_,
-                            const std::vector<int>& supernode_size_);
-  int N;
+  TriangularMatrixWorkspace(const std::vector<Clique>& cliques,
+                            const std::vector<int>& supernode_size);
+  int num_columns_;
   // TODO(FrankPermenter): Remove all of these members.
   std::vector<int> supernode_size;
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>> diagonal;
