@@ -273,12 +273,11 @@ Eigen::MatrixXd TriangularMatrixOperations::ToDense(
   return y;
 }
 
-void TriangularMatrixOperations::SetConstant(SparseTriangularMatrix* mat,
-                                             double val) {
-  for (auto& n : mat->supernodes) {
+void SparseTriangularMatrix::SetConstant(double val) {
+  for (auto& n : supernodes) {
     n.array() = val;
   }
-  for (auto& n : mat->separator) {
+  for (auto& n : separator) {
     n.array() = val;
   }
 }

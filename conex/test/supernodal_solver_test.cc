@@ -151,11 +151,10 @@ GTEST_TEST(GetPattern, Basic) {
 }
 
 GTEST_TEST(LowerTri, Constant) {
-  using T = TriangularMatrixOperations;
   vector<Clique> cliques{{0, 1, 5}, {1, 2, 5}, {3, 4, 5}};
 
   auto mat = MakeSparseTriangularMatrix(GetMax(cliques) + 1, cliques);
-  T::SetConstant(&mat, -1);
+  mat.SetConstant(-1);
   auto y = T::ToDense(mat);
   auto yref = GetMatrix(GetMax(cliques) + 1, cliques, -1);
   MatrixXd error = y - yref;

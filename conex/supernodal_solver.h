@@ -96,14 +96,21 @@ class SparseTriangularMatrix {
                                   s.memory_);
   }
 
+ public:
   int num_columns() const { return workspace_.num_columns(); }
   TriangularMatrixWorkspace workspace_;
+
+ private:
   Eigen::VectorXd memory_;
+
+ public:
   std::vector<Clique> cliques_;
   std::vector<int>& supernode_size;
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& supernodes;
   std::vector<std::vector<int>>& snodes;
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& separator;
+
+  void SetConstant(double val);
 };
 std::vector<Clique> Permute(std::vector<Clique>& path,
                             std::vector<int>& permutation);
@@ -117,7 +124,6 @@ class TriangularMatrixOperations {
   using Matrix = SparseTriangularMatrix;
   static Eigen::MatrixXd Multiply(SparseTriangularMatrix& mat,
                                   const Eigen::MatrixXd& x);
-  static void SetConstant(SparseTriangularMatrix* mat, double val);
   static Eigen::MatrixXd ToDense(const SparseTriangularMatrix& mat);
   static void RescaleColumn(Matrix* mat);
   static void CholeskyInPlace(SparseTriangularMatrix* mat);
