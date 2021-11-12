@@ -71,14 +71,7 @@ void Sort(std::vector<Clique>* path) {
 }
 
 Eigen::MatrixXd Matrix::MakeDenseMatrix() const {
-  auto mat = *this;
-  MatrixXd y(mat.num_columns(), mat.num_columns());
-  for (int i = 0; i < mat.num_columns(); i++) {
-    for (int j = 0; j < mat.num_columns(); j++) {
-      y(i, j) = mat.workspace_.coeff(i, j);
-    }
-  }
-  return y;
+  return workspace_.MakeDenseMatrix();
 }
 
 void SparseTriangularMatrix::SetConstant(double val) {

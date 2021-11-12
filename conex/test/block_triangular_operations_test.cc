@@ -9,26 +9,9 @@ namespace conex {
 using Eigen::MatrixXd;
 using B = BlockTriangularOperations;
 
-void RunningIntersectionClosure(std::vector<Clique>* cliques) {
-  if (cliques->size() < 2) {
-    return;
-  }
-  int n = cliques->size();
-  for (int i = 0; i < n - 2; i++) {
-    for (int j = n - 1; j > i + 1; j--) {
-      std::vector<int> temp;
-      IntersectionOfSorted(cliques->at(i), cliques->at(j), &temp);
-      if (temp.size() == 0) {
-        continue;
-      }
-      for (int k = j - 1; k > i; k--) {
-        cliques->at(k) = UnionOfSorted(cliques->at(k), temp);
-      }
-    }
-  }
-}
+namespace {
 
-std::vector<int> ResidualSize(std::vector<Clique>& cliques) {
+std::vector<int> SupernodeSize(std::vector<Clique>& cliques) {
   std::vector<int> y;
   for (size_t j = 0; j < cliques.size() - 1; j++) {
     std::vector<int> temp;
@@ -43,21 +26,18 @@ SparseTriangularMatrix MakeSparseTriangularMatrix(
     int N, const std::vector<Clique>& cliques_) {
   auto cliques = cliques_;
   Sort(&cliques);
-  RunningIntersectionClosure(&cliques);
-  auto supernode_size = ResidualSize(cliques);
-  return SparseTriangularMatrix(N, cliques, supernode_size);
-}
+  auto supernode_size = SupernodeSize(cliques);
+  auto mat = SparseTriangularMatrix(N, cliques, supernode_size);
 
-SparseTriangularMatrix GetFillInPattern(
-    int N, const std::vector<Clique>& cliques_input) {
-  auto mat = MakeSparseTriangularMatrix(N, cliques_input);
-
-  for (int j = static_cast<int>(mat.cliques().size()) - 1; j >= 0; j--) {
-    // Initialize columns of super nodes.
-    mat.supernodes().at(j).setConstant(1);
-    mat.separator().at(j).setConstant(1);
+  mat.SetConstant(1);
+  for (auto& sn : mat.supernodes()) {
+    sn.diagonal().array() += 10;
   }
-  return mat;
+  for (auto& sn : mat.separator()) {
+    sn.setRandom();
+  }
+
+  return mat; 
 }
 
 int GetMax(const std::vector<Clique>& cliques) {
@@ -74,11 +54,6 @@ int GetMax(const std::vector<Clique>& cliques) {
 
 void DoCholeskyTest(const std::vector<Clique>& cliques) {
   auto mat = MakeSparseTriangularMatrix(GetMax(cliques) + 1, cliques);
-  mat.SetConstant(1);
-
-  for (auto& sn : mat.supernodes()) {
-    sn.diagonal().array() += 100;
-  }
 
   Eigen::MatrixXd x = mat.MakeDenseMatrix();
   Eigen::LLT<MatrixXd> llt(x);
@@ -91,6 +66,7 @@ void DoCholeskyTest(const std::vector<Clique>& cliques) {
   EXPECT_NEAR(error.norm(), 0, 1e-12);
 }
 
+}
 GTEST_TEST(LowerTri, Cholesky) {
   DoCholeskyTest({{0, 1, 2}, {2}});
   DoCholeskyTest({{0, 1, 2, 4, 7}, {3, 4}, {5, 6, 7}});
@@ -100,10 +76,7 @@ GTEST_TEST(LowerTri, Cholesky) {
 }
 
 void DoInverseTest(const std::vector<Clique>& cliques) {
-  auto mat = GetFillInPattern(GetMax(cliques) + 1, cliques);
-  for (auto& sn : mat.supernodes()) {
-    sn.diagonal().array() += 10;
-  }
+  auto mat = MakeSparseTriangularMatrix(GetMax(cliques) + 1, cliques);
 
   Eigen::MatrixXd L = mat.MakeDenseMatrix().triangularView<Eigen::Lower>();
   Eigen::VectorXd b;
@@ -115,16 +88,13 @@ void DoInverseTest(const std::vector<Clique>& cliques) {
 }
 
 GTEST_TEST(LowerTri, InverseTest) {
-  DoInverseTest({{0, 1, 2, 3}, {3, 4, 5}});
+  DoInverseTest({{0, 1, 2, 3, 6}, {3, 4, 5}});
   DoInverseTest({{0, 1, 2, 3}});
   DoInverseTest({{0, 1, 2, 3}, {3, 4}, {4, 5, 6}});
 }
 
 void DoInverseOfTransposeTest(const std::vector<Clique>& cliques) {
-  auto mat = GetFillInPattern(GetMax(cliques) + 1, cliques);
-  for (auto& sn : mat.supernodes()) {
-    sn.diagonal().array() += 10;
-  }
+  auto mat = MakeSparseTriangularMatrix(GetMax(cliques) + 1, cliques);
 
   Eigen::MatrixXd L = mat.MakeDenseMatrix().triangularView<Eigen::Lower>();
   Eigen::VectorXd b;
@@ -141,40 +111,24 @@ GTEST_TEST(LowerTri, InverseOfTranspose) {
   DoInverseOfTransposeTest({{0, 1, 2, 3}});
 }
 
-MatrixXd Submatrix(const MatrixXd& T, const Clique& c) {
-  MatrixXd y(c.size(), c.size());
-  int i = 0;
-  for (auto ci : c) {
-    int j = 0;
-    for (auto cj : c) {
-      y(i, j) = T(ci, cj);
-      j++;
-    }
-    i++;
-  }
-  return y;
-}
 
 void DoLDLTTest(bool diagonal, const std::vector<Clique>& cliques) {
-  auto mat = GetFillInPattern(GetMax(cliques) + 1, cliques);
+  auto mat = MakeSparseTriangularMatrix(GetMax(cliques) + 1, cliques);
 
   // Set to identity.
-  for (auto& sn : mat.workspace_.diagonal) {
+  for (auto& sn : mat.supernodes()) {
     if (diagonal) {
       sn.setZero();
     }
-    int n = sn.diagonal().size();
-    for (int i = 0; i < n; i++) {
-      sn.diagonal()(i) = -101 + i * 100;
-    }
+    // Make indefinite.
+    sn.diagonal().setLinSpaced(sn.rows(), -100, 99);
   }
 
   if (diagonal) {
-    for (auto& sn : mat.workspace_.off_diagonal) {
-      sn.setZero();
+    for (auto& s : mat.separator()) {
+      s.setZero();
     }
   }
-
   Eigen::MatrixXd X = mat.MakeDenseMatrix().selfadjointView<Eigen::Lower>();
 
   std::vector<Eigen::RLDLT<Eigen::Ref<MatrixXd>>> factorization;

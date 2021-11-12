@@ -66,9 +66,9 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
 
   // For each supernode [sn], find cliques that overlap. Store
   // this using two list of lists:.
-  //  seperator_list(supernode) = list of separators
-  //  column_intersection(supernode) = list of (i, j) pairs indexed by k, where
-  //  supernode[i] = separator_list(supernode)[k][j]
+  //  separator_list(supernode) = list of separators
+  //  column_intersection(supernode) = list of (i, j) pairs, where
+  //  supernode[i] = separator_list(supernode)[j]
   for (auto& sep_i : separators) {
     int seperator_size = cliques.at(cnt).size() - supernode_size.at(cnt);
     sep_i.resize(seperator_size);
@@ -77,19 +77,10 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
       sep_i[i] = var;
 
       int sn = variable_to_supernode_[var] - 1;
-#ifndef NDEBUG
-      if (sn < 0) {
-        throw std::runtime_error("Invalid supernode index.");
-      }
-#endif
-
-#ifndef NDEBUG
       if (cnt > sn) {
         throw std::runtime_error(
-            "Supernode has already been eliminated. The sparsity pattern is "
-            "malformed.");
+            "Supernode has already been eliminated. The input cliques do not satisfy the running intersection property.");
       }
-#endif
 
       // Create list for this separator if supernode doesn't have one.
       if (column_intersections[sn].size() == 0 ||

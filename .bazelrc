@@ -11,6 +11,7 @@ build:debug --copt="-O0"
 build:debug -c dbg
 build:debug --javacopt="-g"
 build:debug --strip="never"
+build:debug --copt="-UNDEBUG"
 
 build:blas --copt="-DEIGEN_USE_BLAS"
 build:blas --linkopt="-lblas"

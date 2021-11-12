@@ -72,7 +72,9 @@ class SparseTriangularMatrix {
         supernodes_(workspace_.diagonal),
         snodes(workspace_.snodes),
         separator_(workspace_.off_diagonal) {
-    assert(memory_.size() >= SizeOf(workspace_));
+    if (memory_.size() >= SizeOf(workspace_)) {
+      std::runtime_error("Invalid workspace size.");
+    }
     Initialize(&workspace_, memory_.data());
   }
 
