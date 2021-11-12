@@ -113,8 +113,8 @@ struct TriangularMatrixWorkspace {
 
   int num_columns_;
   std::vector<std::vector<int>> snodes;
-  std::vector<int> variable_to_supernode_;
-  std::vector<int> variable_to_supernode_position_;
+  std::vector<int> variable_to_diagonal_block_;
+  std::vector<int> variable_to_diagonal_block_position_;
 };
 
 }  // namespace conex

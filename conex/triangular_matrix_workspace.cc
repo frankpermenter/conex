@@ -5,12 +5,12 @@ namespace conex {
 using T = TriangularMatrixWorkspace;
 
 double* TriangularMatrixWorkspace::LookupAddress(int r, int c) {
-  int node = variable_to_supernode_[c];
-  int node_r = variable_to_supernode_[r];
+  int node = variable_to_diagonal_block_[c];
+  int node_r = variable_to_diagonal_block_[r];
 
-  int j = variable_to_supernode_position_[c];
+  int j = variable_to_diagonal_block_position_[c];
   if (node == node_r) {
-    int i = variable_to_supernode_position_[r];
+    int i = variable_to_diagonal_block_position_[r];
     return &diagonal[node](i, j);
   }
 
@@ -25,14 +25,13 @@ double* TriangularMatrixWorkspace::LookupAddress(int r, int c) {
       "Specified entry of sparse matrix is not accessible.");
 }
 
-
 TriangularMatrixWorkspace::TriangularMatrixWorkspace(
     const std::vector<Clique>& cliques, const std::vector<int>& supernode_size_)
     : supernode_size(supernode_size_) {
   num_columns_ =
       std::accumulate(supernode_size.begin(), supernode_size.end(), 0);
-  variable_to_supernode_.resize(num_columns_);
-  variable_to_supernode_position_.resize(num_columns_);
+  variable_to_diagonal_block_.resize(num_columns_);
+  variable_to_diagonal_block_position_.resize(num_columns_);
 
   int cnt = 0;
   int var = 0;
@@ -44,8 +43,8 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
         std::runtime_error("Invalid variable index.");
       }
       si.at(i) = cliques.at(cnt).at(i);
-      variable_to_supernode_[var] = cnt;
-      variable_to_supernode_position_[var] = i;
+      variable_to_diagonal_block_[var] = cnt;
+      variable_to_diagonal_block_position_[var] = i;
       var++;
     }
     cnt++;
@@ -68,7 +67,7 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
       int var = cliques.at(cnt).at(i + supernode_size.at(cnt));
       sep_i[i] = var;
 
-      int sn = variable_to_supernode_[var] - 1;
+      int sn = variable_to_diagonal_block_[var] - 1;
       if (cnt > sn) {
         throw std::runtime_error(
             "Supernode has already been eliminated. The input cliques do not "
@@ -82,7 +81,7 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
         intersection_position[sn].emplace_back(
             std::vector<std::pair<int, int>>());
       }
-      std::pair<int, int> pair{variable_to_supernode_position_[var], i};
+      std::pair<int, int> pair{variable_to_diagonal_block_position_[var], i};
       intersection_position[sn].back().push_back(pair);
     }
     cnt++;
@@ -98,12 +97,12 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
 }
 
 double TriangularMatrixWorkspace::coeff(int r, int c) const {
-  int node_r = variable_to_supernode_[r];
-  int node = variable_to_supernode_[c];
+  int node_r = variable_to_diagonal_block_[r];
+  int node = variable_to_diagonal_block_[c];
 
-  int j = variable_to_supernode_position_[c];
+  int j = variable_to_diagonal_block_position_[c];
   if (node == node_r) {
-    int i = variable_to_supernode_position_[r];
+    int i = variable_to_diagonal_block_position_[r];
     return diagonal[node](i, j);
   }
 
