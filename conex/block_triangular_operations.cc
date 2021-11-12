@@ -113,10 +113,10 @@ class PartitionVectorIterator {
 //   Structure of B_i:  non-zero columns are dense.
 void T::ApplyBlockInverseOfTransposeInPlace(
     const TriangularMatrixWorkspace& mat, VectorXd* y) {
-  PartitionVectorIterator ypart(*y, mat.num_columns(), mat.supernode_size);
+  PartitionVectorIterator ypart(*y, mat.num_columns(), mat.block_column_size_);
 
   // Loop over partition {B_j} of c_{i+1}
-  PartitionVectorIterator residual(*y, mat.num_columns(), mat.supernode_size);
+  PartitionVectorIterator residual(*y, mat.num_columns(), mat.block_column_size_);
   for (int i = static_cast<int>(mat.diagonal.size() - 2); i >= 0; i--) {
     if (mat.diagonal.at(i + 1).size() == 0) {
       ypart.Decrement();
@@ -159,7 +159,7 @@ void T::ApplyBlockInverseOfTransposeInPlace(
 //   r = r -  c_i * y_i
 void T::ApplyBlockInverseInPlace(const TriangularMatrixWorkspace& mat,
                                  VectorXd* y) {
-  PartitionVectorForwardIterator ypart(*y, mat.supernode_size);
+  PartitionVectorForwardIterator ypart(*y, mat.block_column_size_);
 
   for (size_t i = 0; i < mat.diagonal.size() - 1; i++) {
     if (mat.diagonal[i].size() == 0) {
@@ -171,7 +171,7 @@ void T::ApplyBlockInverseInPlace(const TriangularMatrixWorkspace& mat,
       mat.temporaries[i].noalias() =
           mat.off_diagonal[i].transpose() * ypart.b_i();
       int cnt = 0;
-      for (auto si : mat.separators[i]) {
+      for (auto si : mat.non_zero_rows_[i]) {
         (*y)(si) -= mat.temporaries[i](cnt);
         cnt++;
       }
@@ -223,7 +223,7 @@ void T::ApplyBlockInverseOfMTranspose(
     const TriangularMatrixWorkspace& mat,
     const std::vector<Eigen::RLDLT<Eigen::Ref<MatrixXd>>> factorization,
     VectorXd* y) {
-  PartitionVectorIterator ypart(*y, mat.num_columns(), mat.supernode_size);
+  PartitionVectorIterator ypart(*y, mat.num_columns(), mat.block_column_size_);
   // mat.diagonal.back().triangularView<Eigen::Lower>().transpose().solveInPlace(ypart.b_i());
   factorization.back().matrixL().transpose().solveInPlace(ypart.b_i());
   Eigen::PermutationMatrix<-1> P0(factorization.back().transpositionsP());
@@ -233,7 +233,7 @@ void T::ApplyBlockInverseOfMTranspose(
     ypart.Decrement();
 
     // Loop over partition {B_j} of c_{i+1}
-    PartitionVectorIterator residual(*y, mat.num_columns(), mat.supernode_size);
+    PartitionVectorIterator residual(*y, mat.num_columns(), mat.block_column_size_);
 
     int jcnt = 0;
     for (auto j : mat.column_intersections[i]) {
@@ -267,7 +267,7 @@ void T::ApplyBlockInverseOfMD(
     const std::vector<Eigen::RLDLT<Eigen::Ref<MatrixXd>>> factorization,
     VectorXd* y) {
   // Apply inv(M) = inv(P^T L) = inv(L) P
-  PartitionVectorForwardIterator ypart(*y, mat.supernode_size);
+  PartitionVectorForwardIterator ypart(*y, mat.block_column_size_);
   Eigen::PermutationMatrix<-1> P0(factorization[0].transpositionsP());
   ypart.b_i() = P0 * ypart.b_i();
   factorization[0].matrixL().solveInPlace(ypart.b_i());
@@ -277,7 +277,7 @@ void T::ApplyBlockInverseOfMD(
     if (mat.off_diagonal[i - 1].size() > 0) {
       VectorXd temp = mat.off_diagonal[i - 1].transpose() * ypart.b_i_minus_1();
       int cnt = 0;
-      for (auto si : mat.separators[i - 1]) {
+      for (auto si : mat.non_zero_rows_[i - 1]) {
         (*y)(si) -= temp(cnt);
         cnt++;
       }
@@ -288,7 +288,7 @@ void T::ApplyBlockInverseOfMD(
   }
 
   // Apply D inverse
-  PartitionVectorForwardIterator ypart2(*y, mat.supernode_size);
+  PartitionVectorForwardIterator ypart2(*y, mat.block_column_size_);
   ypart2.b_i() =
       factorization[0].vectorD().cwiseInverse().cwiseProduct(ypart2.b_i());
   for (size_t i = 1; i < mat.diagonal.size(); i++) {

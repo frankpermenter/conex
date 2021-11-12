@@ -27,7 +27,7 @@ struct TriangularMatrixWorkspace {
   //      R_1  R_2  R_3  D_4
   //
   //
-  // The inputs are the sizes of the matrices D_i and a list of 
+  // The inputs are the sizes of the matrices D_i and a list of
   // rows on which the i^{th} block column of T is nonzero.
   // This list satisfies:
   //
@@ -63,15 +63,15 @@ struct TriangularMatrixWorkspace {
   // contains the addresses of the non-zero elements of T that
   // are updated by the following operation:
   //
-  //  T += lower_tri(  full(R_i) * full(R'_i)  ) 
+  //  T += lower_tri(  full(R_i) * full(R'_i)  )
   //
   // where full(R_i) denotes the matrix of size equal to T non-zero
-  // only on the R_i block. 
+  // only on the R_i block.
   std::vector<std::vector<double*>> scatter_destination_pointers;
 
   // TODO(FrankPermenter): Remove all of these members.
-  std::vector<int> supernode_size;
-  std::vector<std::vector<int>> separators;
+  std::vector<int> block_column_size_;
+  std::vector<std::vector<int>> non_zero_rows_;
 
   friend int SizeOf(const TriangularMatrixWorkspace& o) {
     int size = 0;
@@ -101,7 +101,7 @@ struct TriangularMatrixWorkspace {
   int num_columns() const { return num_columns_; }
   int num_block_columns() const { return num_block_columns_; }
   double coeff(int i, int j) const;
-  
+
   Eigen::MatrixXd MakeDenseMatrix() const {
     Eigen::MatrixXd y(num_columns(), num_columns());
     for (int i = 0; i < num_columns(); i++) {
@@ -116,11 +116,13 @@ struct TriangularMatrixWorkspace {
   // TODO(FrankPermenter): Remove this method.
   void S_S(int clique, std::vector<double*>*);
   int SizeOfSupernode(int i) const {
-    return get_size_aligned(supernode_size.at(i) * supernode_size.at(i));
+    return get_size_aligned(block_column_size_.at(i) *
+                            block_column_size_.at(i));
   }
 
   int SizeOfSeparator(int i) const {
-    return get_size_aligned(supernode_size.at(i) * separators.at(i).size());
+    return get_size_aligned(block_column_size_.at(i) *
+                            non_zero_rows_.at(i).size());
   }
 
   double* LookupAddress(int r, int c);

@@ -68,7 +68,7 @@ class SparseTriangularMatrix {
       : workspace_(cliques, supernode_sizes),
         memory_(memory),
         cliques_(cliques),
-        supernode_size(workspace_.supernode_size),
+        supernode_size(workspace_.block_column_size_),
         supernodes_(workspace_.diagonal),
         separator_(workspace_.off_diagonal) {
     if (memory_.size() >= SizeOf(workspace_)) {

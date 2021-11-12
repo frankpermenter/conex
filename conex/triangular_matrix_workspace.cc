@@ -15,7 +15,7 @@ double* TriangularMatrixWorkspace::LookupAddress(int r, int c) {
   }
 
   int cnt = 0;
-  for (auto si : separators[node]) {
+  for (auto si : non_zero_rows_[node]) {
     if (si == r) {
       return &off_diagonal[node](j, cnt);
     }
@@ -26,18 +26,19 @@ double* TriangularMatrixWorkspace::LookupAddress(int r, int c) {
 }
 
 TriangularMatrixWorkspace::TriangularMatrixWorkspace(
-    const std::vector<Clique>& cliques, const std::vector<int>& supernode_size_)
-    : supernode_size(supernode_size_) {
+    const std::vector<Clique>& cliques,
+    const std::vector<int>& block_column_size__)
+    : block_column_size_(block_column_size__) {
   num_block_columns_ = cliques.size();
   num_columns_ =
-      std::accumulate(supernode_size.begin(), supernode_size.end(), 0);
+      std::accumulate(block_column_size_.begin(), block_column_size_.end(), 0);
   variable_to_diagonal_block_.resize(num_columns_);
   variable_to_diagonal_block_position_.resize(num_columns_);
 
   int cnt = 0;
   int var = 0;
   for (cnt = 0; cnt < num_block_columns_; cnt++) {
-    for (int i = 0; i < supernode_size.at(cnt); i++) {
+    for (int i = 0; i < block_column_size_.at(cnt); i++) {
       if (var >= num_columns_) {
         std::runtime_error("Invalid variable index.");
       }
@@ -47,21 +48,21 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
     }
   }
 
-  separators.resize(cliques.size());
+  non_zero_rows_.resize(cliques.size());
   column_intersections.resize(num_block_columns_ - 1);
   intersection_position.resize(num_block_columns_ - 1);
   cnt = 0;
 
   // For each supernode [sn], find cliques that overlap. Store
   // this using two list of lists:.
-  //  separator_list(supernode) = list of separators
+  //  separator_list(supernode) = list of non_zero_rows_
   //  column_intersection(supernode) = list of (i, j) pairs, where
   //  supernode[i] = separator_list(supernode)[j]
-  for (auto& sep_i : separators) {
-    int seperator_size = cliques.at(cnt).size() - supernode_size.at(cnt);
+  for (auto& sep_i : non_zero_rows_) {
+    int seperator_size = cliques.at(cnt).size() - block_column_size_.at(cnt);
     sep_i.resize(seperator_size);
     for (int i = 0; i < seperator_size; i++) {
-      int var = cliques.at(cnt).at(i + supernode_size.at(cnt));
+      int var = cliques.at(cnt).at(i + block_column_size_.at(cnt));
       sep_i[i] = var;
 
       int sn = variable_to_diagonal_block_[var] - 1;
@@ -104,7 +105,7 @@ double TriangularMatrixWorkspace::coeff(int r, int c) const {
   }
 
   int cnt = 0;
-  for (auto si : separators[node]) {
+  for (auto si : non_zero_rows_[node]) {
     if (si == r) {
       return off_diagonal[node](j, cnt);
     }
@@ -116,12 +117,12 @@ double TriangularMatrixWorkspace::coeff(int r, int c) const {
 void Initialize(TriangularMatrixWorkspace* o, double* data_start) {
   double* data = data_start;
   for (int j = 0; j < o->num_block_columns_; j++) {
-    o->diagonal.emplace_back(data, o->supernode_size.at(j),
-                             o->supernode_size.at(j));
+    o->diagonal.emplace_back(data, o->block_column_size_.at(j),
+                             o->block_column_size_.at(j));
 
     data += o->SizeOfSupernode(j);
-    o->off_diagonal.emplace_back(data, o->supernode_size.at(j),
-                                 o->separators.at(j).size());
+    o->off_diagonal.emplace_back(data, o->block_column_size_.at(j),
+                                 o->non_zero_rows_.at(j).size());
     data += o->SizeOfSeparator(j);
   }
 
@@ -135,12 +136,12 @@ void Initialize(TriangularMatrixWorkspace* o, double* data_start) {
 
   o->temporaries.resize(o->num_block_columns_);
   for (int j = 0; j < o->num_block_columns_; j++) {
-    o->temporaries.at(j).resize(o->separators.at(j).size());
+    o->temporaries.at(j).resize(o->non_zero_rows_.at(j).size());
   }
 }
 
 void TriangularMatrixWorkspace::S_S(int clique, std::vector<double*>* y) {
-  auto& s = separators.at(clique);
+  auto& s = non_zero_rows_.at(clique);
   int size = .5 * (s.size() * s.size() + s.size());
   y->resize(size);
   int cnt = 0;
