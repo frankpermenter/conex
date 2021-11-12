@@ -56,16 +56,6 @@ SparseTriangularMatrix GetFillInPattern(
     // Initialize columns of super nodes.
     mat.supernodes().at(j).setConstant(1);
     mat.separator().at(j).setConstant(1);
-
-    // Update other columns: the (seperator, seperator) components.
-    int index = 0;
-    auto s_s = mat.workspace_.seperator_diagonal.at(j);
-    int n = mat.cliques().at(j).size();
-    for (int i = mat.supernodes().at(j).rows(); i < n; i++) {
-      for (int k = i; k < n; k++) {
-        *s_s.at(index++) += 1;
-      }
-    }
   }
   return mat;
 }
@@ -83,7 +73,9 @@ int GetMax(const std::vector<Clique>& cliques) {
 }
 
 void DoCholeskyTest(const std::vector<Clique>& cliques) {
-  auto mat = GetFillInPattern(GetMax(cliques) + 1, cliques);
+  auto mat = MakeSparseTriangularMatrix(GetMax(cliques) + 1, cliques);
+  mat.SetConstant(1);
+
   for (auto& sn : mat.supernodes()) {
     sn.diagonal().array() += 100;
   }

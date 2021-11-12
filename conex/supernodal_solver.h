@@ -113,9 +113,9 @@ class SparseTriangularMatrix {
   void SetConstant(double val);
 
   TriangularMatrixWorkspace workspace_;
-  Eigen::VectorXd memory_;
 
  private:
+  Eigen::VectorXd memory_;
   std::vector<std::vector<int>> cliques_;
   std::vector<int>& supernode_size;
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& supernodes_;
@@ -123,6 +123,7 @@ class SparseTriangularMatrix {
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& separator_;
 
   friend class SupernodalCholeskyFactorization;
+  friend class SupernodalKKTSolver;
 };
 
 std::vector<std::vector<int>> Permute(std::vector<std::vector<int>>& path,

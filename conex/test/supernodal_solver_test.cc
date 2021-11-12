@@ -54,16 +54,6 @@ SparseTriangularMatrix GetFillInPattern(
     // Initialize columns of super nodes.
     mat.supernodes().at(j).setConstant(1);
     mat.separator().at(j).setConstant(1);
-
-    // Update other columns: the (seperator, seperator) components.
-    int index = 0;
-    auto s_s = mat.workspace_.seperator_diagonal.at(j);
-    int n = mat.cliques().at(j).size();
-    for (int i = mat.supernodes().at(j).rows(); i < n; i++) {
-      for (int k = i; k < n; k++) {
-        *s_s.at(index++) += 1;
-      }
-    }
   }
   return mat;
 }
@@ -91,7 +81,7 @@ MatrixXd GetMatrix(int N, const vector<Clique>& c) {
     for (auto ci : c.at(k)) {
       int j = 0;
       for (auto cj : c.at(k)) {
-        M(ci, cj) += 1;
+        M(ci, cj) = 1;
         j++;
       }
       i++;
@@ -121,8 +111,6 @@ bool DoPatternTest(const vector<Clique>& cliques) {
   int N = GetMax(cliques) + 1;
   MatrixXd error =
       GetMatrix(N, cliques) - (GetFillInPattern(N, cliques)).MakeDenseMatrix();
-  DUMP(GetMatrix(N, cliques));
-  DUMP(GetFillInPattern(N, cliques).MakeDenseMatrix());
   error = error.triangularView<Eigen::Lower>();
   return error.norm() == 0;
 }
