@@ -34,6 +34,7 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
       std::accumulate(block_column_size_.begin(), block_column_size_.end(), 0);
   variable_to_diagonal_block_.resize(num_columns_);
   variable_to_diagonal_block_position_.resize(num_columns_);
+  variable_to_entering_block_column_.resize(num_columns_);
 
   int cnt = 0;
   int var = 0;
@@ -43,6 +44,7 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
         std::runtime_error("Invalid variable index.");
       }
       variable_to_diagonal_block_[var] = cnt;
+      variable_to_entering_block_column_[var] = cnt;
       variable_to_diagonal_block_position_[var] = i;
       var++;
     }
@@ -51,38 +53,50 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
   non_zero_rows_.resize(cliques.size());
   column_intersections.resize(num_block_columns_ - 1);
   intersection_position.resize(num_block_columns_ - 1);
-  cnt = 0;
 
-  // For each supernode [sn], find cliques that overlap. Store
-  // this using two list of lists:.
-  //  separator_list(supernode) = list of non_zero_rows_
-  //  column_intersection(supernode) = list of (i, j) pairs, where
-  //  supernode[i] = separator_list(supernode)[j]
+  // For each block column J, build list of non-zero
+  // rows i not in J:
+  //
+  //  non_zero_rows_(J) = list of non_zero_rows_
+  //
+  // For each block column I, build list of block columns
+  // J nonzero on row i \in I. Store this using two list of lists:.
+  //
+  //  column_intersection(I)(J) = list of (i, j) pairs, where
+  //  i \in I,
+  //  j \in non_zero_rows_(J)(j)
+
+  int J = 0;
   for (auto& sep_i : non_zero_rows_) {
-    int seperator_size = cliques.at(cnt).size() - block_column_size_.at(cnt);
+    int seperator_size = cliques.at(J).size() - block_column_size_.at(J);
     sep_i.resize(seperator_size);
     for (int i = 0; i < seperator_size; i++) {
-      int var = cliques.at(cnt).at(i + block_column_size_.at(cnt));
+      int var = cliques.at(J).at(i + block_column_size_.at(J));
       sep_i[i] = var;
 
-      int sn = variable_to_diagonal_block_[var] - 1;
-      if (cnt > sn) {
+      if (variable_to_entering_block_column_[var] > J) {
+        variable_to_entering_block_column_[var] = J;
+      }
+
+      int I = variable_to_diagonal_block_[var] - 1;
+      if (J > I) {
         throw std::runtime_error(
-            "Supernode has already been eliminated. The input cliques do not "
+            "This variable has already been eliminated. The input cliques do "
+            "not "
             "satisfy the running intersection property.");
       }
 
       // Create list for this separator if supernode doesn't have one.
-      if (column_intersections[sn].size() == 0 ||
-          column_intersections[sn].back() != cnt) {
-        column_intersections[sn].push_back(cnt);
-        intersection_position[sn].emplace_back(
+      if (column_intersections[I].size() == 0 ||
+          column_intersections[I].back() != J) {
+        column_intersections[I].push_back(J);
+        intersection_position[I].emplace_back(
             std::vector<std::pair<int, int>>());
       }
       std::pair<int, int> pair{variable_to_diagonal_block_position_[var], i};
-      intersection_position[sn].back().push_back(pair);
+      intersection_position[I].back().push_back(pair);
     }
-    cnt++;
+    J++;
   }
 
   // TODO(FrankPermenter): Remove this.

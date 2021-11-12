@@ -116,7 +116,8 @@ void T::ApplyBlockInverseOfTransposeInPlace(
   PartitionVectorIterator ypart(*y, mat.num_columns(), mat.block_column_size_);
 
   // Loop over partition {B_j} of c_{i+1}
-  PartitionVectorIterator residual(*y, mat.num_columns(), mat.block_column_size_);
+  PartitionVectorIterator residual(*y, mat.num_columns(),
+                                   mat.block_column_size_);
   for (int i = static_cast<int>(mat.diagonal.size() - 2); i >= 0; i--) {
     if (mat.diagonal.at(i + 1).size() == 0) {
       ypart.Decrement();
@@ -233,7 +234,8 @@ void T::ApplyBlockInverseOfMTranspose(
     ypart.Decrement();
 
     // Loop over partition {B_j} of c_{i+1}
-    PartitionVectorIterator residual(*y, mat.num_columns(), mat.block_column_size_);
+    PartitionVectorIterator residual(*y, mat.num_columns(),
+                                     mat.block_column_size_);
 
     int jcnt = 0;
     for (auto j : mat.column_intersections[i]) {

@@ -131,6 +131,7 @@ struct TriangularMatrixWorkspace {
   int num_block_columns_;
   std::vector<int> variable_to_diagonal_block_;
   std::vector<int> variable_to_diagonal_block_position_;
+  std::vector<int> variable_to_entering_block_column_;
 };
 
 }  // namespace conex
