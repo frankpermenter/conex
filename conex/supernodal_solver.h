@@ -70,7 +70,6 @@ class SparseTriangularMatrix {
         cliques_(cliques),
         supernode_size(workspace_.supernode_size),
         supernodes_(workspace_.diagonal),
-        snodes(workspace_.snodes),
         separator_(workspace_.off_diagonal) {
     if (memory_.size() >= SizeOf(workspace_)) {
       std::runtime_error("Invalid workspace size.");
@@ -121,7 +120,6 @@ class SparseTriangularMatrix {
   std::vector<std::vector<int>> cliques_;
   std::vector<int>& supernode_size;
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& supernodes_;
-  std::vector<std::vector<int>>& snodes;
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& separator_;
 
   friend class SupernodalCholeskyFactorization;

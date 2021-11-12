@@ -79,7 +79,8 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
       int sn = variable_to_supernode_[var] - 1;
       if (cnt > sn) {
         throw std::runtime_error(
-            "Supernode has already been eliminated. The input cliques do not satisfy the running intersection property.");
+            "Supernode has already been eliminated. The input cliques do not "
+            "satisfy the running intersection property.");
       }
 
       // Create list for this separator if supernode doesn't have one.

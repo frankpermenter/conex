@@ -37,7 +37,7 @@ SparseTriangularMatrix MakeSparseTriangularMatrix(
     sn.setRandom();
   }
 
-  return mat; 
+  return mat;
 }
 
 int GetMax(const std::vector<Clique>& cliques) {
@@ -66,7 +66,7 @@ void DoCholeskyTest(const std::vector<Clique>& cliques) {
   EXPECT_NEAR(error.norm(), 0, 1e-12);
 }
 
-}
+}  // namespace
 GTEST_TEST(LowerTri, Cholesky) {
   DoCholeskyTest({{0, 1, 2}, {2}});
   DoCholeskyTest({{0, 1, 2, 4, 7}, {3, 4}, {5, 6, 7}});
@@ -110,7 +110,6 @@ GTEST_TEST(LowerTri, InverseOfTranspose) {
   DoInverseOfTransposeTest({{0, 1, 2, 5}, {3, 4, 5}, {5, 6}});
   DoInverseOfTransposeTest({{0, 1, 2, 3}});
 }
-
 
 void DoLDLTTest(bool diagonal, const std::vector<Clique>& cliques) {
   auto mat = MakeSparseTriangularMatrix(GetMax(cliques) + 1, cliques);

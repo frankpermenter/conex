@@ -12,7 +12,6 @@ namespace conex {
 using Clique = std::vector<int>;
 
 struct TriangularMatrixWorkspace {
-
   // Inputs: a list of cliques satisfying the running intersection property
   // given in elimination order. The first N_i elements are supernodes of
   // clique i, where N = supernode_size.at(i)
@@ -30,8 +29,9 @@ struct TriangularMatrixWorkspace {
   //
   // The inputs are the sizes of the matrices D and the rows of R_i
   // that are non-zero.  The columns of D_i and R_i are equal.
-  std::vector<std::vector<int>> GetCliques(const std::vector<int>& diagonal_size,
-             const std::vector<std::vector<int>>& non_zero_rows) {
+  std::vector<std::vector<int>> GetCliques(
+      const std::vector<int>& diagonal_size,
+      const std::vector<std::vector<int>>& non_zero_rows) {
     int cnt = 0;
     std::vector<std::vector<int>> cliques(diagonal_size.size());
     for (size_t e = 0; e < diagonal_size.size(); e++) {
@@ -41,21 +41,23 @@ struct TriangularMatrixWorkspace {
       for (auto s : non_zero_rows.at(e)) {
         cliques.at(e).push_back(s);
         if (s < cnt) {
-          throw std::runtime_error("Nonzero rows of R_i must be below the diagonal block D_i.");
+          throw std::runtime_error(
+              "Nonzero rows of R_i must be below the diagonal block D_i.");
         }
       }
     }
     return cliques;
   }
   TriangularMatrixWorkspace(const std::vector<int>& diagonal_size,
-                            const std::vector<std::vector<int>>& non_zero_rows) : TriangularMatrixWorkspace(GetCliques(diagonal_size, non_zero_rows), diagonal_size) {}
+                            const std::vector<std::vector<int>>& non_zero_rows)
+      : TriangularMatrixWorkspace(GetCliques(diagonal_size, non_zero_rows),
+                                  diagonal_size) {}
   // TODO(FrankPermenter): Remove all of these members.
   std::vector<int> supernode_size;
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>> diagonal;
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>> off_diagonal;
   std::vector<std::vector<double*>> seperator_diagonal;
 
-  std::vector<std::vector<int>> snodes;
   std::vector<std::vector<int>> separators;
 
   friend int SizeOf(const TriangularMatrixWorkspace& o) {
@@ -109,7 +111,9 @@ struct TriangularMatrixWorkspace {
     return get_size_aligned(supernode_size.at(i) * separators.at(i).size());
   }
 
+
   int num_columns_;
+  std::vector<std::vector<int>> snodes;
 };
 
 }  // namespace conex
