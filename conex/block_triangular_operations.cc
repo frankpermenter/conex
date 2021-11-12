@@ -101,53 +101,57 @@ class PartitionVectorIterator {
 };
 }  // namespace
 
-//  Given block lower-triangular matrix, applies the recursion
-//    c_1 c_2 c_3
-//    L_1 B_2 B_2
-//        L_2 B_1
-//            L_3
+//  Applies the recursion
 //
-//   y_{i} = inv(L_{i}) b_{i}
-//   b = b -  c_i * y_i
+// for k = N - 1, N-2, ..., 0:
+//   y_{k} = inv(U_{i}) b_{i}
+//   b_{0:k-1} = b_{0:k-1} -  c_{0:k-1, k} * y_k
+
+// where c_i are the columns of an upper triangular
+// matrix:
 //
-//   Structure of B_i:  non-zero columns are dense.
+//    c_0 c_1 c_2 c_3
+//    U_0 R_0 R_0 R_0
+//        U_1 R_1 R_1
+//            U_2 R_2
+//                U_3
+//
 void T::ApplyBlockInverseOfTransposeInPlace(
     const TriangularMatrixWorkspace& mat, VectorXd* y) {
-  PartitionVectorIterator ypart(*y, mat.num_columns(), mat.block_column_size_);
+  PartitionVectorIterator y_partitioned(*y, mat.num_columns(),
+                                        mat.block_column_size_);
 
-  // Loop over partition {B_j} of c_{i+1}
-  PartitionVectorIterator residual(*y, mat.num_columns(),
-                                   mat.block_column_size_);
-  for (int i = static_cast<int>(mat.diagonal.size() - 2); i >= 0; i--) {
-    if (mat.diagonal.at(i + 1).size() == 0) {
-      ypart.Decrement();
+  PartitionVectorIterator b_partitioned(*y, mat.num_columns(),
+                                        mat.block_column_size_);
+  for (int k = static_cast<int>(mat.diagonal.size() - 1); k > 0; k--) {
+    if (mat.diagonal.at(k).size() == 0) {
+      y_partitioned.Decrement();
       continue;
     }
-    mat.diagonal.at(i + 1)
-        .triangularView<Eigen::Lower>()
-        .transpose()
-        .solveInPlace(ypart.b_i());
+    mat.diagonal.at(k).triangularView<Eigen::Lower>().transpose().solveInPlace(
+        y_partitioned.b_i());
 
-    residual.Reset();
+    b_partitioned.Reset();
 
     int jcnt = 0;
-    for (auto j : mat.column_intersections[i]) {
-      residual.Set(j);
+    for (auto j : mat.column_intersections[k - 1]) {
+      b_partitioned.Set(j);
       // Find columns of B_j that are nonzero on columns c_{i+1} of supernode
       // i+1. This corresponds to separators(i) that contain supernode(j) for j
       // > i.
-      const auto& index_and_column_list = mat.intersection_position[i][jcnt++];
+      const auto& index_and_column_list =
+          mat.intersection_position[k - 1][jcnt++];
       for (const auto& pair : index_and_column_list) {
-        residual.b_i().noalias() -=
-            mat.off_diagonal[j].col(pair.second) * ypart.b_i()(pair.first);
+        b_partitioned.b_i().noalias() -= mat.off_diagonal[j].col(pair.second) *
+                                         y_partitioned.b_i()(pair.first);
       }
     }
 
-    ypart.Decrement();
+    y_partitioned.Decrement();
   }
   if (mat.diagonal[0].size() > 0) {
     mat.diagonal[0].triangularView<Eigen::Lower>().transpose().solveInPlace(
-        ypart.b_i());
+        y_partitioned.b_i());
   }
 }
 
