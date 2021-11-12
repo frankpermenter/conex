@@ -28,6 +28,7 @@ double* TriangularMatrixWorkspace::LookupAddress(int r, int c) {
 TriangularMatrixWorkspace::TriangularMatrixWorkspace(
     const std::vector<Clique>& cliques, const std::vector<int>& supernode_size_)
     : supernode_size(supernode_size_) {
+  num_block_columns_ = cliques.size();
   num_columns_ =
       std::accumulate(supernode_size.begin(), supernode_size.end(), 0);
   variable_to_diagonal_block_.resize(num_columns_);
@@ -35,24 +36,20 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
 
   int cnt = 0;
   int var = 0;
-  snodes.resize(cliques.size());
-  for (auto& si : snodes) {
-    si.resize(supernode_size.at(cnt));
+  for (cnt = 0; cnt < num_block_columns_; cnt++) {
     for (int i = 0; i < supernode_size.at(cnt); i++) {
       if (var >= num_columns_) {
         std::runtime_error("Invalid variable index.");
       }
-      si.at(i) = cliques.at(cnt).at(i);
       variable_to_diagonal_block_[var] = cnt;
       variable_to_diagonal_block_position_[var] = i;
       var++;
     }
-    cnt++;
   }
 
   separators.resize(cliques.size());
-  column_intersections.resize(snodes.size() - 1);
-  intersection_position.resize(snodes.size() - 1);
+  column_intersections.resize(num_block_columns_ - 1);
+  intersection_position.resize(num_block_columns_ - 1);
   cnt = 0;
 
   // For each supernode [sn], find cliques that overlap. Store
@@ -118,7 +115,7 @@ double TriangularMatrixWorkspace::coeff(int r, int c) const {
 
 void Initialize(TriangularMatrixWorkspace* o, double* data_start) {
   double* data = data_start;
-  for (size_t j = 0; j < o->snodes.size(); j++) {
+  for (int j = 0; j < o->num_block_columns_; j++) {
     o->diagonal.emplace_back(data, o->supernode_size.at(j),
                              o->supernode_size.at(j));
 
@@ -128,16 +125,16 @@ void Initialize(TriangularMatrixWorkspace* o, double* data_start) {
     data += o->SizeOfSeparator(j);
   }
 
-  o->seperator_diagonal.resize(o->snodes.size());
-  for (size_t j = 0; j < o->snodes.size(); j++) {
-    o->S_S(j, &o->seperator_diagonal.at(j));
+  o->scatter_destination_pointers.resize(o->num_block_columns_);
+  for (int j = 0; j < o->num_block_columns_; j++) {
+    o->S_S(j, &o->scatter_destination_pointers.at(j));
   }
 
   // Use reserve so that we can call default constructor of LLT objects.
-  o->llts.reserve(o->snodes.size());
+  o->llts.reserve(o->num_block_columns_);
 
-  o->temporaries.resize(o->snodes.size());
-  for (size_t j = 0; j < o->snodes.size(); j++) {
+  o->temporaries.resize(o->num_block_columns_);
+  for (int j = 0; j < o->num_block_columns_; j++) {
     o->temporaries.at(j).resize(o->separators.at(j).size());
   }
 }

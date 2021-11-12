@@ -207,7 +207,7 @@ bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* C) {
       auto& temp = C->off_diagonal[i];
 
       int index = 0;
-      const auto& s_s = C->seperator_diagonal[i];
+      const auto& s_s = C->scatter_destination_pointers[i];
       for (int k = 0; k < temp.cols(); k++) {
         for (int j = k; j < temp.cols(); j++) {
           *s_s[index++] -= temp.col(k).dot(temp.col(j));
@@ -337,7 +337,7 @@ bool T::BlockLDLTInPlace(
       MatrixXd temp = llts.back().vectorD().asDiagonal() * C->off_diagonal[i];
 
       int index = 0;
-      const auto& s_s = C->seperator_diagonal[i];
+      const auto& s_s = C->scatter_destination_pointers[i];
       for (int k = 0; k < temp.cols(); k++) {
         for (int j = k; j < temp.cols(); j++) {
           *s_s[index++] -= temp.col(k).dot(C->off_diagonal[i].col(j));

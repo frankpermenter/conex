@@ -51,9 +51,9 @@ inline void DoBind(const MatrixData& data, TriangularMatrixWorkspace& workspace,
       eqs.at(i)->BindOffDiagonalBlock(&block);
     }
 
-    if (workspace.seperator_diagonal.at(e).size() > 0) {
+    if (workspace.scatter_destination_pointers.at(e).size() > 0) {
       auto block = BuildBlock(&sep.at(e), &sep.at(e),
-                              &workspace.seperator_diagonal.at(e));
+                              &workspace.scatter_destination_pointers.at(e));
       eqs.at(i)->BindOffDiagonalBlock(&block);
     }
   }
