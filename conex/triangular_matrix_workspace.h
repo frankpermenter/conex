@@ -52,12 +52,12 @@ struct TriangularMatrixWorkspace {
                             const std::vector<std::vector<int>>& non_zero_rows)
       : TriangularMatrixWorkspace(GetCliques(diagonal_size, non_zero_rows),
                                   diagonal_size) {}
-  // TODO(FrankPermenter): Remove all of these members.
-  std::vector<int> supernode_size;
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>> diagonal;
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>> off_diagonal;
   std::vector<std::vector<double*>> seperator_diagonal;
 
+  // TODO(FrankPermenter): Remove all of these members.
+  std::vector<int> supernode_size;
   std::vector<std::vector<int>> separators;
 
   friend int SizeOf(const TriangularMatrixWorkspace& o) {
