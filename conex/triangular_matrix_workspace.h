@@ -85,8 +85,6 @@ struct TriangularMatrixWorkspace {
   // Needed for solving linear systems.
   mutable std::vector<Eigen::VectorXd> temporaries;
 
-  std::vector<int> variable_to_supernode_;
-  std::vector<int> variable_to_supernode_position_;
   int num_columns() const { return num_columns_; }
   double coeff(int i, int j) const;
 
@@ -111,9 +109,12 @@ struct TriangularMatrixWorkspace {
     return get_size_aligned(supernode_size.at(i) * separators.at(i).size());
   }
 
+  double* LookupAddress(int r, int c);
 
   int num_columns_;
   std::vector<std::vector<int>> snodes;
+  std::vector<int> variable_to_supernode_;
+  std::vector<int> variable_to_supernode_position_;
 };
 
 }  // namespace conex

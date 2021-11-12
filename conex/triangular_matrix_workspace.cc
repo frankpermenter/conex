@@ -4,27 +4,20 @@ namespace conex {
 
 using T = TriangularMatrixWorkspace;
 
-namespace {
-template <typename T>
-int LookupSuperNode(const T& o, int index, int start) {
-  return o.variable_to_supernode_[index];
-}
+double* TriangularMatrixWorkspace::LookupAddress(int r, int c) {
+  int node = variable_to_supernode_[c];
+  int node_r = variable_to_supernode_[r];
 
-template <typename T>
-double* LookupAddress(T& o, int r, int c) {
-  int node = LookupSuperNode(o, c, 0);
-  int node_r = LookupSuperNode(o, r, 0);
-
-  int j = o.variable_to_supernode_position_[c];
+  int j = variable_to_supernode_position_[c];
   if (node == node_r) {
-    int i = o.variable_to_supernode_position_[r];
-    return &o.diagonal[node](i, j);
+    int i = variable_to_supernode_position_[r];
+    return &diagonal[node](i, j);
   }
 
   int cnt = 0;
-  for (auto si : o.separators[node]) {
+  for (auto si : separators[node]) {
     if (si == r) {
-      return &o.off_diagonal[node](j, cnt);
+      return &off_diagonal[node](j, cnt);
     }
     cnt++;
   }
@@ -32,7 +25,6 @@ double* LookupAddress(T& o, int r, int c) {
       "Specified entry of sparse matrix is not accessible.");
 }
 
-}  // namespace
 
 TriangularMatrixWorkspace::TriangularMatrixWorkspace(
     const std::vector<Clique>& cliques, const std::vector<int>& supernode_size_)
@@ -158,7 +150,7 @@ void TriangularMatrixWorkspace::S_S(int clique, std::vector<double*>* y) {
   int cnt = 0;
   for (size_t j = 0; j < s.size(); j++) {
     for (size_t i = j; i < s.size(); i++) {
-      (*y)[cnt++] = LookupAddress(*this, s[i], s[j]);
+      (*y)[cnt++] = LookupAddress(s[i], s[j]);
     }
   }
 }
