@@ -101,15 +101,14 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
   for (cnt = 0; cnt < num_block_columns_; cnt++) {
     for (int i = 0; i < block_column_size_.at(cnt) - 1; i++) {
       // Within block column order nodes by when they enter
-      if (variable_to_entering_block_column_[var] > variable_to_entering_block_column_[var + 1]) {
+      if (variable_to_entering_block_column_[var] >
+          variable_to_entering_block_column_[var + 1]) {
         throw std::runtime_error("Block columns not properly ordered");
       }
       var++;
     }
-      var++;
+    var++;
   }
-
-
 
   // TODO(FrankPermenter): Remove this.
   for (auto& l : column_intersections) {

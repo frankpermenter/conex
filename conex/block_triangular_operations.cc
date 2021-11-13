@@ -6,8 +6,8 @@ namespace conex {
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
-using std::vector;
 using std::pair;
+using std::vector;
 using T = BlockTriangularOperations;
 namespace {
 
@@ -186,29 +186,63 @@ void T::ApplyBlockInverseInPlace(const TriangularMatrixWorkspace& mat,
   mat.diagonal.back().triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
 }
 
-vector<pair<int, int>> GetBlocks(const vector<int>& rows,  
-                                 const vector<int>& variable_to_diagonal_block) {
+// For each element of rows, decide if consecutive elements are in same diagonal
+// block.  If supernodes are sorted by their entering column, then the
+// non_zero_rows in column C_i that exit in column C_j will be contiguous.
+//
+// Pf:
+//
+// Suppose (i, j) exit in the same block column J
+// and appear in block column I and assume j > i.  Since they exit
+// in the same column, all k \in [i, j]  also exit
+// in this column. Further, enter(k) < enter(j).  Hence,
+// all rows k between (i, j) appear in I.
+//
+// Note that non-zero rows that exist in different blocks
+// J_1 and J_2 need not be contiguous as illustrated in
+// the following example
+//
+//
+//  *                      C1;R1         C2;R2      C3;R3
+//  * *                 (1, 2; 3, 5),  (3, 4; 5),  (5, 6;)
+//  * * *
+//      * *
+//  * * * * *
+//          * *
+//
+//  Here rows 3, 5 \in R1 are not contig., but they exit
+//  in different rows.
+struct BatchUpdateBlocks {
+  int exiting_column_block = 0;
+  int offset = 0;
+  int size = 0;
+};
+vector<BatchUpdateBlocks> GetBlocks(
+    const vector<int>& rows, const vector<int>& variable_to_diagonal_block,
+    const vector<int>& variable_to_diagonal_block_position) {
+  vector<BatchUpdateBlocks> pairs;
+  pairs.push_back({});
 
-  vector<pair<int, int>> pairs;
-  pairs.emplace_back(0, 0);
+  pairs.back().exiting_column_block = variable_to_diagonal_block[rows[0]];
+  pairs.back().offset = variable_to_diagonal_block_position[rows[0]];
+  pairs.back().size = 1;
 
-  pairs.back().first = variable_to_diagonal_block[rows[0]];
-  pairs.back().second = 1; 
-  
   for (size_t i = 1; i < rows.size(); i++) {
     int block = variable_to_diagonal_block[rows[i]];
-    if (pairs.back().first == block) {
-      pairs.back().second++;
+    if (pairs.back().exiting_column_block == block) {
+      pairs.back().size++;
     } else {
-      pairs.emplace_back(0, 0);
-      pairs.back().first = block; 
-      pairs.back().second = 1; 
+      pairs.push_back({});
+      pairs.back().exiting_column_block = block;
+      pairs.back().offset = variable_to_diagonal_block_position[rows[i]];
+      pairs.back().size = 1;
     }
   }
   return pairs;
 }
 
-bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* C) {
+bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* C,
+                             bool use_batch_update) {
   assert(C->diagonal.size() == C->off_diagonal.size());
   auto& llts = C->llts;
   if (llts.size() > 0) {
@@ -228,18 +262,21 @@ bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* C) {
       llts.emplace_back(x);
     }
 
-    bool use_batch_update = true;
     if (C->off_diagonal[i].size() > 0) {
       llts.back().matrixL().solveInPlace(C->off_diagonal[i]);
       auto& temp = C->off_diagonal[i];
 
       if (use_batch_update) {
-        auto blocks = GetBlocks(C->non_zero_rows_.at(i), C->variable_to_diagonal_block_);
+        auto blocks =
+            GetBlocks(C->non_zero_rows_.at(i), C->variable_to_diagonal_block_,
+                      C->variable_to_diagonal_block_position_);
         int offset = 0;
         for (auto b : blocks) {
-          MatrixXd G = temp.middleCols(offset, b.second).transpose() * temp.middleCols(offset, b.second);
-          C->diagonal[b.first].topLeftCorner(b.second, b.second) -= G; 
-          offset += b.second;
+          MatrixXd G = temp.middleCols(offset, b.size).transpose() *
+                       temp.middleCols(offset, b.size);
+          C->diagonal[b.exiting_column_block].block(b.offset, b.offset, b.size,
+                                                    b.size) -= G;
+          offset += b.size;
         }
       }
 
@@ -247,11 +284,12 @@ bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* C) {
       const auto& s_s = C->scatter_destination_pointers[i];
       for (int k = 0; k < temp.cols(); k++) {
         for (int j = k; j < temp.cols(); j++) {
-          if (!use_batch_update || (C->variable_to_diagonal_block_[C->non_zero_rows_[i][k]] !=
-                                   C->variable_to_diagonal_block_[C->non_zero_rows_[i][j]])) {
-             *s_s[index] -= temp.col(k).dot(temp.col(j));
-          } 
-           index++;
+          if (!use_batch_update ||
+              (C->variable_to_diagonal_block_[C->non_zero_rows_[i][k]] !=
+               C->variable_to_diagonal_block_[C->non_zero_rows_[i][j]])) {
+            *s_s[index] -= temp.col(k).dot(temp.col(j));
+          }
+          index++;
         }
       }
     }
@@ -265,7 +303,6 @@ void T::ApplyBlockInverseOfMTranspose(
     const std::vector<Eigen::RLDLT<Eigen::Ref<MatrixXd>>> factorization,
     VectorXd* y) {
   PartitionVectorIterator ypart(*y, mat.num_columns(), mat.block_column_size_);
-  // mat.diagonal.back().triangularView<Eigen::Lower>().transpose().solveInPlace(ypart.b_i());
   factorization.back().matrixL().transpose().solveInPlace(ypart.b_i());
   Eigen::PermutationMatrix<-1> P0(factorization.back().transpositionsP());
   ypart.b_i() = P0.transpose() * ypart.b_i();

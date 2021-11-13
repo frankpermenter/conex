@@ -11,7 +11,8 @@ struct BlockTriangularOperations {
                                        Eigen::VectorXd* b);
   static void ApplyBlockInverseOfTransposeInPlace(
       const TriangularMatrixWorkspace& L, Eigen::VectorXd* b);
-  static bool BlockCholeskyInPlace(TriangularMatrixWorkspace* mat);
+  static bool BlockCholeskyInPlace(TriangularMatrixWorkspace* mat,
+                                   bool use_batch_update = false);
   static bool BlockLDLTInPlace(
       TriangularMatrixWorkspace* mat,
       std::vector<Eigen::RLDLT<Eigen::Ref<Eigen::MatrixXd>>>* factorization);

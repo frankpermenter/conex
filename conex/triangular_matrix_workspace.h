@@ -113,6 +113,8 @@ struct TriangularMatrixWorkspace {
   }
 
   std::vector<int> variable_to_diagonal_block_;
+  std::vector<int> variable_to_diagonal_block_position_;
+
  private:
   // TODO(FrankPermenter): Remove this method.
   void S_S(int clique, std::vector<double*>*);
@@ -130,7 +132,6 @@ struct TriangularMatrixWorkspace {
 
   int num_columns_;
   int num_block_columns_;
-  std::vector<int> variable_to_diagonal_block_position_;
   std::vector<int> variable_to_entering_block_column_;
 };
 

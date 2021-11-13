@@ -1,4 +1,5 @@
 #include "conex/block_triangular_operations.h"
+#include "conex/clique_ordering.h"
 #include "conex/supernodal_solver.h"
 
 #include "gtest/gtest.h"
@@ -11,22 +12,35 @@ using B = BlockTriangularOperations;
 
 namespace {
 
-std::vector<int> SupernodeSize(std::vector<Clique>& cliques) {
+std::vector<int> SupernodeSize(std::vector<Clique>& cliques,
+                               const std::vector<int>& tree_in = {}) {
   std::vector<int> y;
-  for (size_t j = 0; j < cliques.size() - 1; j++) {
-    std::vector<int> temp;
-    IntersectionOfSorted(cliques.at(j), cliques.at(j + 1), &temp);
-    y.push_back(cliques.at(j).size() - temp.size());
+  std::vector<int> tree = tree_in;
+
+  if (tree.size() == 0) {
+    tree.resize(cliques.size());
+    std::iota(tree.begin(), tree.end() - 1, 1);
+    tree.back() = -1;
   }
-  y.push_back(cliques.back().size());
+
+  for (size_t j = 0; j < cliques.size(); j++) {
+    std::vector<int> temp;
+    if (tree.at(j) >= 0) {
+      IntersectionOfSorted(cliques.at(j), cliques.at(tree.at(j)), &temp);
+      y.push_back(cliques.at(j).size() - temp.size());
+    } else {
+      y.push_back(cliques.at(j).size());
+    }
+  }
   return y;
 }
 
 SparseTriangularMatrix MakeSparseTriangularMatrix(
-    int N, const std::vector<Clique>& cliques_) {
+    int N, const std::vector<Clique>& cliques_,
+    const std::vector<int>& tree = {}) {
   auto cliques = cliques_;
   Sort(&cliques);
-  auto supernode_size = SupernodeSize(cliques);
+  auto supernode_size = SupernodeSize(cliques, tree);
   auto mat = SparseTriangularMatrix(N, cliques, supernode_size);
 
   mat.SetConstant(1);
@@ -52,8 +66,9 @@ int GetMax(const std::vector<Clique>& cliques) {
   return max;
 }
 
-void DoCholeskyTest(const std::vector<Clique>& cliques) {
-  auto mat = MakeSparseTriangularMatrix(GetMax(cliques) + 1, cliques);
+void DoCholeskyTest(const std::vector<Clique>& cliques,
+                    const std::vector<int> tree = {}) {
+  auto mat = MakeSparseTriangularMatrix(GetMax(cliques) + 1, cliques, tree);
 
   Eigen::MatrixXd x = mat.MakeDenseMatrix();
   Eigen::LLT<MatrixXd> llt(x);
@@ -67,9 +82,12 @@ void DoCholeskyTest(const std::vector<Clique>& cliques) {
 }
 
 }  // namespace
-GTEST_TEST(LowerTri, Cholesky) {
 
+GTEST_TEST(LowerTri, Cholesky) {
+  std::vector<int> tree{2, 2, -1};
+  DoCholeskyTest({{0, 1, 2, 7, 8, 9}, {3, 4, 5, 6, 8, 9}, {7, 8, 9}}, tree);
   DoCholeskyTest({{0, 1, 2, 3, 5, 6}, {1, 2, 3, 4, 5, 6}, {5, 6, 7}});
+
   DoCholeskyTest({{0, 1, 2, 3, 5}, {3, 4, 5, 6}, {5, 6, 7}});
   DoCholeskyTest({{0, 1, 2}, {2}});
   DoCholeskyTest({{0, 1, 3}, {1, 2, 3}, {3, 4, 5}});
