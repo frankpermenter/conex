@@ -98,12 +98,14 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
   }
 
   var = 0;
+  sorted_by_entering_columns = true;
   for (cnt = 0; cnt < num_block_columns_; cnt++) {
     for (int i = 0; i < block_column_size_.at(cnt) - 1; i++) {
       // Within block column order nodes by when they enter
       if (variable_to_entering_block_column_[var] >
           variable_to_entering_block_column_[var + 1]) {
-        throw std::runtime_error("Block columns not properly ordered");
+        // throw std::runtime_error("Block columns not properly ordered");
+        sorted_by_entering_columns = false;
       }
       var++;
     }

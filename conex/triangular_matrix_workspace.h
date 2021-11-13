@@ -114,6 +114,7 @@ struct TriangularMatrixWorkspace {
 
   std::vector<int> variable_to_diagonal_block_;
   std::vector<int> variable_to_diagonal_block_position_;
+  bool sorted_by_entering_columns = false;
 
  private:
   // TODO(FrankPermenter): Remove this method.

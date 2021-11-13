@@ -243,6 +243,11 @@ vector<BatchUpdateBlocks> GetBlocks(
 
 bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* C,
                              bool use_batch_update) {
+  if (use_batch_update && !C->sorted_by_entering_columns) {
+    throw std::runtime_error(
+        "Cannot do batch updates: supernodes are"
+        "not sorted by entering block column.");
+  }
   assert(C->diagonal.size() == C->off_diagonal.size());
   auto& llts = C->llts;
   if (llts.size() > 0) {

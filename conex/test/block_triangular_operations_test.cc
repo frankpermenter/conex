@@ -66,8 +66,9 @@ int GetMax(const std::vector<Clique>& cliques) {
   return max;
 }
 
-void DoCholeskyTest(const std::vector<Clique>& cliques,
-                    const std::vector<int> tree = {}) {
+void DoCholeskyTestHelper(const std::vector<Clique>& cliques,
+                    const std::vector<int> tree,
+                    bool use_batch_updates) {
   auto mat = MakeSparseTriangularMatrix(GetMax(cliques) + 1, cliques, tree);
 
   Eigen::MatrixXd x = mat.MakeDenseMatrix();
@@ -75,10 +76,18 @@ void DoCholeskyTest(const std::vector<Clique>& cliques,
   MatrixXd L = llt.matrixL();
   EXPECT_TRUE(llt.info() == Eigen::Success);
 
-  B::BlockCholeskyInPlace(&mat.workspace_);
+  B::BlockCholeskyInPlace(&mat.workspace_, use_batch_updates);
   MatrixXd error = mat.MakeDenseMatrix() - L;
   error = error.triangularView<Eigen::Lower>();
+
+
   EXPECT_NEAR(error.norm(), 0, 1e-12);
+}
+
+void DoCholeskyTest(const std::vector<Clique>& cliques,
+                    const std::vector<int> tree = {}) {
+  DoCholeskyTestHelper(cliques,  tree, true);
+  DoCholeskyTestHelper(cliques,  tree, false);
 }
 
 }  // namespace
@@ -93,6 +102,10 @@ GTEST_TEST(LowerTri, Cholesky) {
   DoCholeskyTest({{0, 1, 3}, {1, 2, 3}, {3, 4, 5}});
   DoCholeskyTest({{0, 1, 2}, {1, 2, 3}, {3, 4, 2}});
   DoCholeskyTest({{0, 1}, {2, 3}, {3, 4}, {5, 6, 7}, {7, 8, 9, 10}});
+
+  // The batch update should cause exception since
+  // entering_col(5) < entering_col(4).
+  EXPECT_THROW(DoCholeskyTest({{0, 1, 2, 3, 5}, {1, 2, 3, 4, 5, 6}}), std::runtime_error);
 }
 
 void DoInverseTest(const std::vector<Clique>& cliques) {
