@@ -65,7 +65,6 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
   //  column_intersection(I)(J) = list of (i, j) pairs, where
   //  i \in I,
   //  j \in non_zero_rows_(J)(j)
-
   int J = 0;
   for (auto& sep_i : non_zero_rows_) {
     int seperator_size = cliques.at(J).size() - block_column_size_.at(J);
@@ -82,8 +81,7 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
       if (J > I) {
         throw std::runtime_error(
             "This variable has already been eliminated. The input cliques do "
-            "not "
-            "satisfy the running intersection property.");
+            "not satisfy the running intersection property.");
       }
 
       // Create list for this separator if supernode doesn't have one.
@@ -98,6 +96,20 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
     }
     J++;
   }
+
+  var = 0;
+  for (cnt = 0; cnt < num_block_columns_; cnt++) {
+    for (int i = 0; i < block_column_size_.at(cnt) - 1; i++) {
+      // Within block column order nodes by when they enter
+      if (variable_to_entering_block_column_[var] > variable_to_entering_block_column_[var + 1]) {
+        throw std::runtime_error("Block columns not properly ordered");
+      }
+      var++;
+    }
+      var++;
+  }
+
+
 
   // TODO(FrankPermenter): Remove this.
   for (auto& l : column_intersections) {

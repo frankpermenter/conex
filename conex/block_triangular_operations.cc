@@ -6,7 +6,8 @@ namespace conex {
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
-
+using std::vector;
+using std::pair;
 using T = BlockTriangularOperations;
 namespace {
 
@@ -115,12 +116,11 @@ class PartitionVectorIterator {
 //        U_1 R_1 R_1
 //            U_2 R_2
 //                U_3
-//
+// y_{N} --> when does y enter?
 void T::ApplyBlockInverseOfTransposeInPlace(
     const TriangularMatrixWorkspace& mat, VectorXd* y) {
   PartitionVectorIterator y_partitioned(*y, mat.num_columns(),
                                         mat.block_column_size_);
-
   PartitionVectorIterator b_partitioned(*y, mat.num_columns(),
                                         mat.block_column_size_);
   for (int k = static_cast<int>(mat.diagonal.size() - 1); k > 0; k--) {
@@ -186,6 +186,28 @@ void T::ApplyBlockInverseInPlace(const TriangularMatrixWorkspace& mat,
   mat.diagonal.back().triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
 }
 
+vector<pair<int, int>> GetBlocks(const vector<int>& rows,  
+                                 const vector<int>& variable_to_diagonal_block) {
+
+  vector<pair<int, int>> pairs;
+  pairs.emplace_back(0, 0);
+
+  pairs.back().first = variable_to_diagonal_block[rows[0]];
+  pairs.back().second = 1; 
+  
+  for (size_t i = 1; i < rows.size(); i++) {
+    int block = variable_to_diagonal_block[rows[i]];
+    if (pairs.back().first == block) {
+      pairs.back().second++;
+    } else {
+      pairs.emplace_back(0, 0);
+      pairs.back().first = block; 
+      pairs.back().second = 1; 
+    }
+  }
+  return pairs;
+}
+
 bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* C) {
   assert(C->diagonal.size() == C->off_diagonal.size());
   auto& llts = C->llts;
@@ -206,16 +228,30 @@ bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* C) {
       llts.emplace_back(x);
     }
 
-    // Construction of [n, s] block
+    bool use_batch_update = true;
     if (C->off_diagonal[i].size() > 0) {
       llts.back().matrixL().solveInPlace(C->off_diagonal[i]);
       auto& temp = C->off_diagonal[i];
+
+      if (use_batch_update) {
+        auto blocks = GetBlocks(C->non_zero_rows_.at(i), C->variable_to_diagonal_block_);
+        int offset = 0;
+        for (auto b : blocks) {
+          MatrixXd G = temp.middleCols(offset, b.second).transpose() * temp.middleCols(offset, b.second);
+          C->diagonal[b.first].topLeftCorner(b.second, b.second) -= G; 
+          offset += b.second;
+        }
+      }
 
       int index = 0;
       const auto& s_s = C->scatter_destination_pointers[i];
       for (int k = 0; k < temp.cols(); k++) {
         for (int j = k; j < temp.cols(); j++) {
-          *s_s[index++] -= temp.col(k).dot(temp.col(j));
+          if (!use_batch_update || (C->variable_to_diagonal_block_[C->non_zero_rows_[i][k]] !=
+                                   C->variable_to_diagonal_block_[C->non_zero_rows_[i][j]])) {
+             *s_s[index] -= temp.col(k).dot(temp.col(j));
+          } 
+           index++;
         }
       }
     }
@@ -333,7 +369,6 @@ bool T::BlockLDLTInPlace(
     }
     Eigen::PermutationMatrix<-1> P(llts[i].transpositionsP());
 
-    //   Q^T = inv(D_1) inv(L) inv(P)  * off_diag
     if (C->off_diagonal[i].size() > 0) {
       C->off_diagonal[i] = P * C->off_diagonal[i];
       llts.back().matrixL().solveInPlace(C->off_diagonal[i]);

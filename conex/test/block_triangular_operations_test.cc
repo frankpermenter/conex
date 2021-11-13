@@ -68,11 +68,13 @@ void DoCholeskyTest(const std::vector<Clique>& cliques) {
 
 }  // namespace
 GTEST_TEST(LowerTri, Cholesky) {
+
+  DoCholeskyTest({{0, 1, 2, 3, 5, 6}, {1, 2, 3, 4, 5, 6}, {5, 6, 7}});
+  DoCholeskyTest({{0, 1, 2, 3, 5}, {3, 4, 5, 6}, {5, 6, 7}});
   DoCholeskyTest({{0, 1, 2}, {2}});
-  DoCholeskyTest({{0, 1, 2, 4, 7}, {3, 4}, {5, 6, 7}});
-  DoCholeskyTest({{0, 1, 5}, {1, 2, 5}, {3, 4, 5}});
+  DoCholeskyTest({{0, 1, 3}, {1, 2, 3}, {3, 4, 5}});
   DoCholeskyTest({{0, 1, 2}, {1, 2, 3}, {3, 4, 2}});
-  DoCholeskyTest({{0, 1}, {2, 4}, {3, 4}, {5, 6, 7}, {7, 8, 9, 10}});
+  DoCholeskyTest({{0, 1}, {2, 3}, {3, 4}, {5, 6, 7}, {7, 8, 9, 10}});
 }
 
 void DoInverseTest(const std::vector<Clique>& cliques) {
@@ -88,7 +90,7 @@ void DoInverseTest(const std::vector<Clique>& cliques) {
 }
 
 GTEST_TEST(LowerTri, InverseTest) {
-  DoInverseTest({{0, 1, 2, 3, 6}, {3, 4, 5}});
+  DoInverseTest({{0, 1, 2, 3, 4}, {3, 4, 5}});
   DoInverseTest({{0, 1, 2, 3}});
   DoInverseTest({{0, 1, 2, 3}, {3, 4}, {4, 5, 6}});
 }
@@ -106,8 +108,8 @@ void DoInverseOfTransposeTest(const std::vector<Clique>& cliques) {
 }
 
 GTEST_TEST(LowerTri, InverseOfTranspose) {
-  DoInverseOfTransposeTest({{0, 1, 2, 5}, {3, 4, 5}});
-  DoInverseOfTransposeTest({{0, 1, 2, 5}, {3, 4, 5}, {5, 6}});
+  DoInverseOfTransposeTest({{0, 1, 2, 3}, {3, 4, 5}});
+  DoInverseOfTransposeTest({{0, 1, 2, 3}, {3, 4, 5}, {5, 6}});
   DoInverseOfTransposeTest({{0, 1, 2, 3}});
 }
 
@@ -149,17 +151,16 @@ GTEST_TEST(LowerTri, LDLT) {
   bool diagonal = true;
   DoLDLTTest(diagonal, {{0, 1}});
   DoLDLTTest(diagonal, {{0, 1, 2}, {2}});
-  DoLDLTTest(diagonal, {{0, 1, 2, 4, 7}, {3, 4}, {5, 6, 7}});
-  DoLDLTTest(diagonal, {{0, 1, 5}, {1, 2, 5}, {3, 4, 5}});
-  DoLDLTTest(diagonal, {{0, 1, 2}, {1, 2, 3}, {3, 4, 2}});
-  DoLDLTTest(diagonal, {{0, 1}, {2, 4}, {3, 4}, {5, 6, 7}, {7, 8, 9, 10}});
-
+  DoLDLTTest(diagonal, {{0, 1, 2, 3, 4}, {3, 4}, {5, 6, 7}});
+  DoLDLTTest(diagonal, {{0, 1, 3}, {1, 2, 3}, {3, 4, 5}});
+  DoLDLTTest(diagonal, {{0, 1, 2}, {1, 2, 3}, {2, 3, 4}});
+  DoLDLTTest(diagonal, {{0, 1}, {2, 3}, {3, 4}, {5, 6, 7}, {7, 8, 9, 10}});
   diagonal = false;
   DoLDLTTest(diagonal, {{0, 1, 2}, {2}});
-  DoLDLTTest(diagonal, {{0, 1, 2, 4, 7}, {3, 4}, {5, 6, 7}});
-  DoLDLTTest(diagonal, {{0, 1, 5}, {1, 2, 5}, {3, 4, 5}});
-  DoLDLTTest(diagonal, {{0, 1, 2}, {1, 2, 3}, {3, 4, 2}});
-  DoLDLTTest(diagonal, {{0, 1}, {2, 4}, {3, 4}, {5, 6, 7}, {7, 8, 9, 10}});
+  DoLDLTTest(diagonal, {{0, 1, 2, 3, 5}, {3, 4, 5}, {5, 6, 7}});
+  DoLDLTTest(diagonal, {{0, 1, 3}, {1, 2, 3}, {3, 4, 5}});
+  DoLDLTTest(diagonal, {{0, 1, 2}, {1, 2, 3}, {2, 3, 4}});
+  DoLDLTTest(diagonal, {{0, 1}, {2, 3}, {3, 4}, {5, 6, 7}, {7, 8, 9, 10}});
 }
 
 }  // namespace conex
