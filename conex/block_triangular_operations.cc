@@ -296,6 +296,9 @@ void GetRectangularBlocks(
     int j_size = blocks.at(j).size;
     int j_offset = offsets(blocks.at(j).exiting_column_block, i);
     for (size_t k = j + 1; k < blocks.size(); k++) {
+      if (blocks.at(k).exiting_column_block == blocks.at(j).exiting_column_block) {
+        throw std::runtime_error("Sparse matrix is malformed.");
+      }
       int k_size = blocks.at(k).size;
       int k_offset = offsets(blocks.at(k).exiting_column_block, i);
       int destination_offset = offsets(blocks.at(k).exiting_column_block, 
@@ -304,7 +307,7 @@ void GetRectangularBlocks(
         throw std::runtime_error("Sparse matrix is malformed.");
       }
 
-      X->off_diagonal.at(blocks.at(j).exiting_column_block).topRows(j_size).middleCols(destination_offset, k_size) -= R.middleCols(j_offset, j_size) * R.middleCols(k_offset, k_size).transpose();
+      X->off_diagonal.at(blocks.at(j).exiting_column_block).topRows(j_size).middleCols(destination_offset, k_size) -= R.middleCols(j_offset, j_size).transpose()    * R.middleCols(k_offset, k_size);
     }
   }
 }

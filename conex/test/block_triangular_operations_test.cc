@@ -78,11 +78,6 @@ void DoCholeskyTestHelper(const std::vector<Clique>& cliques,
   B::BlockCholeskyInPlace(&mat.workspace_, use_batch_updates);
   MatrixXd error = mat.MakeDenseMatrix() - L;
   error = error.triangularView<Eigen::Lower>();
-  DUMP(cliques);
-  DUMP(mat.MakeDenseMatrix() );
-  DUMP(L);
-
-  DUMP(error.norm());
   EXPECT_NEAR(error.norm(), 0, 1e-12);
 }
 
@@ -91,16 +86,14 @@ void DoCholeskyTest(const std::vector<Clique>& cliques,
   std::srand(1);
   DoCholeskyTestHelper(cliques, tree, true);
   std::srand(1);
-  //DoCholeskyTestHelper(cliques, tree, false);
+  DoCholeskyTestHelper(cliques, tree, false);
 }
 
 }  // namespace
 
 GTEST_TEST(LowerTri, Cholesky) {
 
-  //DoCholeskyTest({{0, 1, 2, 3, 5}, {3, 4, 5, 6}, {5, 6, 7}});
   DoCholeskyTest({{0, 1, 2, 3, 5}, {3, 4, 5, 6}, {5, 6, 7}});
-  return;
   // Illustrates we can inject non-zero rows arbitrarily.
   // Row 3 is inserted inbetween 2 and 4.
   DoCholeskyTest({{0, 1, 2, 4}, {1, 2, 3, 4}, {2, 3, 4}, {3, 4}, {4}});
