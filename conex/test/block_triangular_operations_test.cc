@@ -92,7 +92,6 @@ void DoCholeskyTest(const std::vector<Clique>& cliques,
 }  // namespace
 
 GTEST_TEST(LowerTri, Cholesky) {
-
   DoCholeskyTest({{0, 1, 2, 3, 5}, {3, 4, 5, 6}, {5, 6, 7}});
   // Illustrates we can inject non-zero rows arbitrarily.
   // Row 3 is inserted inbetween 2 and 4.

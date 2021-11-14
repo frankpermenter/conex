@@ -242,8 +242,8 @@ vector<BatchUpdateBlocks> GetBlocks(
   return pairs;
 }
 
-//  we want to update the sub-matrix R_j_exit_col(I) with  R_i_I R_i_I.transpose()
-//  This matrix has structure:
+//  we want to update the sub-matrix R_j_exit_col(I) with  R_i_I
+//  R_i_I.transpose() This matrix has structure:
 //
 //    exit_col(I) = [ I, ..., ],
 //
@@ -257,36 +257,37 @@ vector<BatchUpdateBlocks> GetBlocks(
 //  So we need to know where exit_col(J) and exit_col(K)  start
 //  inside of non_zero_rows_(E)).
 
-
 // Helper function for computing the off-diagonal part of
-//    
+//
 //     C - B(LL^T)^{-1} B^T.
 //
 //  where C is bottom-right submatrix S_{i+1}. The inputs
 //  are a lower triangular matrix X whose block column i
 //  contains the factorization L and matrices L^{-1} B,
-//  and columns j > i contain C.  Letting R^T denote L^{-1} B, 
+//  and columns j > i contain C.  Letting R^T denote L^{-1} B,
 //  and I, J, K, L the  block columns of X, we will update
 //  data in column J using
 //  I       J     K      L
 //  L       R_j   R_k    R_l
-//  R^T_j   C_jj  C_jk   C_jl  
-//  R^T_k   
-//  R^T_l   
+//  R^T_j   C_jj  C_jk   C_jl
+//  R^T_k
+//  R^T_l
 //
-//  
+//
 //  subsets J and K that are non-zero in I.
 //  Hence, to perform the update
 //
 //    C_{jk} -= R_j R^T_k where j, k denote
 //
-//  we need to extract the columns R_j and R_k from R and the submatrix C_jk  from C_{JK}.
-//  The column position of R_k in R is given by offsets(k, i) and the column
-//  position of C_{jk} in C_J is given by offsets(k, j). 
+//  we need to extract the columns R_j and R_k from R and the submatrix C_jk
+//  from C_{JK}. The column position of R_k in R is given by offsets(k, i) and
+//  the column position of C_{jk} in C_J is given by offsets(k, j).
 //
 void GetRectangularBlocks(
-    TriangularMatrixWorkspace* X, const int i, 
-    const vector<BatchUpdateBlocks> blocks, const Eigen::MatrixXd& offsets /* (i, j) entry: where row i starts in column j*/) {
+    TriangularMatrixWorkspace* X, const int i,
+    const vector<BatchUpdateBlocks> blocks,
+    const Eigen::MatrixXd&
+        offsets /* (i, j) entry: where row i starts in column j*/) {
   auto& R = X->off_diagonal.at(i);
 
   // Loop over the non-zero block rows of R^T.
@@ -296,22 +297,26 @@ void GetRectangularBlocks(
     int j_size = blocks.at(j).size;
     int j_offset = offsets(blocks.at(j).exiting_column_block, i);
     for (size_t k = j + 1; k < blocks.size(); k++) {
-      if (blocks.at(k).exiting_column_block == blocks.at(j).exiting_column_block) {
+      if (blocks.at(k).exiting_column_block ==
+          blocks.at(j).exiting_column_block) {
         throw std::runtime_error("Sparse matrix is malformed.");
       }
       int k_size = blocks.at(k).size;
       int k_offset = offsets(blocks.at(k).exiting_column_block, i);
-      int destination_offset = offsets(blocks.at(k).exiting_column_block, 
+      int destination_offset = offsets(blocks.at(k).exiting_column_block,
                                        blocks.at(j).exiting_column_block);
       if (destination_offset < 0) {
         throw std::runtime_error("Sparse matrix is malformed.");
       }
 
-      X->off_diagonal.at(blocks.at(j).exiting_column_block).topRows(j_size).middleCols(destination_offset, k_size) -= R.middleCols(j_offset, j_size).transpose()    * R.middleCols(k_offset, k_size);
+      X->off_diagonal.at(blocks.at(j).exiting_column_block)
+          .topRows(j_size)
+          .middleCols(destination_offset, k_size) -=
+          R.middleCols(j_offset, j_size).transpose() *
+          R.middleCols(k_offset, k_size);
     }
   }
 }
-
 
 // Recursively compute LL^T transform of input matrix X.
 // We recursively update a principal submatrix S_i.
@@ -324,9 +329,9 @@ void GetRectangularBlocks(
 //
 // Letting L = llt(A).matrixL, we update S_i with
 //
-//  S_i = [L, 
+//  S_i = [L,
 //         (L^{-1} B)^T   C - B(LL^T)^{-1} B^T
-//         
+//
 //  We then set S_{i+1} = C - B(LL^T)^{-1} B^T and repeat.
 bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* X,
                              bool use_batch_update) {
