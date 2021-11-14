@@ -97,6 +97,20 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
     J++;
   }
 
+  // Build M(i, j): the smallest element k in
+  // non_zero_row_(j) satisfying exiting_column(k) = i.
+  nonzero_row_offsets_.resize(num_block_columns_, num_block_columns_);
+  nonzero_row_offsets_.setConstant(-1);
+
+  for (size_t j = 0; j < non_zero_rows_.size(); j++) {
+    for (size_t k = 0; k < non_zero_rows_.at(j).size(); k++) {
+      int i = variable_to_diagonal_block_[non_zero_rows_.at(j).at(k)];
+      if (nonzero_row_offsets_(i, j) == -1) {
+        nonzero_row_offsets_(i, j) = k;
+      }
+    }
+  }
+
   var = 0;
   sorted_by_entering_columns = true;
   for (cnt = 0; cnt < num_block_columns_; cnt++) {

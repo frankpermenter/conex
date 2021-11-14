@@ -67,8 +67,7 @@ int GetMax(const std::vector<Clique>& cliques) {
 }
 
 void DoCholeskyTestHelper(const std::vector<Clique>& cliques,
-                    const std::vector<int> tree,
-                    bool use_batch_updates) {
+                          const std::vector<int> tree, bool use_batch_updates) {
   auto mat = MakeSparseTriangularMatrix(GetMax(cliques) + 1, cliques, tree);
 
   Eigen::MatrixXd x = mat.MakeDenseMatrix();
@@ -79,25 +78,40 @@ void DoCholeskyTestHelper(const std::vector<Clique>& cliques,
   B::BlockCholeskyInPlace(&mat.workspace_, use_batch_updates);
   MatrixXd error = mat.MakeDenseMatrix() - L;
   error = error.triangularView<Eigen::Lower>();
+  DUMP(cliques);
+  DUMP(mat.MakeDenseMatrix() );
+  DUMP(L);
 
-
+  DUMP(error.norm());
   EXPECT_NEAR(error.norm(), 0, 1e-12);
 }
 
 void DoCholeskyTest(const std::vector<Clique>& cliques,
                     const std::vector<int> tree = {}) {
-  DoCholeskyTestHelper(cliques,  tree, true);
-  DoCholeskyTestHelper(cliques,  tree, false);
+  std::srand(1);
+  DoCholeskyTestHelper(cliques, tree, true);
+  std::srand(1);
+  //DoCholeskyTestHelper(cliques, tree, false);
 }
 
 }  // namespace
 
 GTEST_TEST(LowerTri, Cholesky) {
+
+  //DoCholeskyTest({{0, 1, 2, 3, 5}, {3, 4, 5, 6}, {5, 6, 7}});
+  DoCholeskyTest({{0, 1, 2, 3, 5}, {3, 4, 5, 6}, {5, 6, 7}});
+  return;
+  // Illustrates we can inject non-zero rows arbitrarily.
+  // Row 3 is inserted inbetween 2 and 4.
+  DoCholeskyTest({{0, 1, 2, 4}, {1, 2, 3, 4}, {2, 3, 4}, {3, 4}, {4}});
+
+  // Injects row 2 on top of (3, 4) at some block column onto
+  DoCholeskyTest({{0, 1, 3, 4}, {1, 2, 3, 4}, {2, 3, 4, 5}, {3, 4, 5}});
+
   std::vector<int> tree{2, 2, -1};
   DoCholeskyTest({{0, 1, 2, 7, 8, 9}, {3, 4, 5, 6, 8, 9}, {7, 8, 9}}, tree);
   DoCholeskyTest({{0, 1, 2, 3, 5, 6}, {1, 2, 3, 4, 5, 6}, {5, 6, 7}});
 
-  DoCholeskyTest({{0, 1, 2, 3, 5}, {3, 4, 5, 6}, {5, 6, 7}});
   DoCholeskyTest({{0, 1, 2}, {2}});
   DoCholeskyTest({{0, 1, 3}, {1, 2, 3}, {3, 4, 5}});
   DoCholeskyTest({{0, 1, 2}, {1, 2, 3}, {3, 4, 2}});
@@ -105,7 +119,8 @@ GTEST_TEST(LowerTri, Cholesky) {
 
   // The batch update should cause exception since
   // entering_col(5) < entering_col(4).
-  EXPECT_THROW(DoCholeskyTest({{0, 1, 2, 3, 5}, {1, 2, 3, 4, 5, 6}}), std::runtime_error);
+  EXPECT_THROW(DoCholeskyTest({{0, 1, 2, 3, 5}, {1, 2, 3, 4, 5, 6}}),
+               std::runtime_error);
 }
 
 void DoInverseTest(const std::vector<Clique>& cliques) {

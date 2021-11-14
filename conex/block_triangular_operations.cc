@@ -217,6 +217,7 @@ struct BatchUpdateBlocks {
   int offset = 0;
   int size = 0;
 };
+//
 vector<BatchUpdateBlocks> GetBlocks(
     const vector<int>& rows, const vector<int>& variable_to_diagonal_block,
     const vector<int>& variable_to_diagonal_block_position) {
@@ -241,22 +242,105 @@ vector<BatchUpdateBlocks> GetBlocks(
   return pairs;
 }
 
-bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* C,
+//  we want to update the sub-matrix R_j_exit_col(I) with  R_i_I R_i_I.transpose()
+//  This matrix has structure:
+//
+//    exit_col(I) = [ I, ..., ],
+//
+// i.e., we know that I will be the first set of columns.
+//
+//  so to perform the block updates, we need the offsets of J and K inside
+//  of non_zero_rows(exit_col(I)).  Letting E = exit_col(I),
+//
+//  R_E^T = [  ..., (R_J_E)^T, ... , (R_K_E)^T, ...  ].
+//
+//  So we need to know where exit_col(J) and exit_col(K)  start
+//  inside of non_zero_rows_(E)).
+
+
+// Helper function for computing the off-diagonal part of
+//    
+//     C - B(LL^T)^{-1} B^T.
+//
+//  where C is bottom-right submatrix S_{i+1}. The inputs
+//  are a lower triangular matrix X whose block column i
+//  contains the factorization L and matrices L^{-1} B,
+//  and columns j > i contain C.  Letting R^T denote L^{-1} B, 
+//  and I, J, K, L the  block columns of X, we will update
+//  data in column J using
+//  I       J     K      L
+//  L       R_j   R_k    R_l
+//  R^T_j   C_jj  C_jk   C_jl  
+//  R^T_k   
+//  R^T_l   
+//
+//  
+//  subsets J and K that are non-zero in I.
+//  Hence, to perform the update
+//
+//    C_{jk} -= R_j R^T_k where j, k denote
+//
+//  we need to extract the columns R_j and R_k from R and the submatrix C_jk  from C_{JK}.
+//  The column position of R_k in R is given by offsets(k, i) and the column
+//  position of C_{jk} in C_J is given by offsets(k, j). 
+//
+void GetRectangularBlocks(
+    TriangularMatrixWorkspace* X, const int i, 
+    const vector<BatchUpdateBlocks> blocks, const Eigen::MatrixXd& offsets /* (i, j) entry: where row i starts in column j*/) {
+  auto& R = X->off_diagonal.at(i);
+
+  // Loop over the non-zero block rows of R^T.
+  // The size records the number of rows and the
+  // offset the offset in block column I.
+  for (size_t j = 0; j < blocks.size(); j++) {
+    int j_size = blocks.at(j).size;
+    int j_offset = offsets(blocks.at(j).exiting_column_block, i);
+    for (size_t k = j + 1; k < blocks.size(); k++) {
+      int k_size = blocks.at(k).size;
+      int k_offset = offsets(blocks.at(k).exiting_column_block, i);
+      int destination_offset = offsets(blocks.at(k).exiting_column_block, 
+                                       blocks.at(j).exiting_column_block);
+      if (destination_offset < 0) {
+        throw std::runtime_error("Sparse matrix is malformed.");
+      }
+
+      X->off_diagonal.at(blocks.at(j).exiting_column_block).topRows(j_size).middleCols(destination_offset, k_size) -= R.middleCols(j_offset, j_size) * R.middleCols(k_offset, k_size).transpose();
+    }
+  }
+}
+
+
+// Recursively compute LL^T transform of input matrix X.
+// We recursively update a principal submatrix S_i.
+// Initialiing S_i = X, we partition S_i as
+//
+//  S_i = [A,  B^T
+//         B,   C]
+//
+//  where A.cols() = X.diagonal.at(i).cols().
+//
+// Letting L = llt(A).matrixL, we update S_i with
+//
+//  S_i = [L, 
+//         (L^{-1} B)^T   C - B(LL^T)^{-1} B^T
+//         
+//  We then set S_{i+1} = C - B(LL^T)^{-1} B^T and repeat.
+bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* X,
                              bool use_batch_update) {
-  if (use_batch_update && !C->sorted_by_entering_columns) {
+  if (use_batch_update && !X->sorted_by_entering_columns) {
     throw std::runtime_error(
         "Cannot do batch updates: supernodes are"
         "not sorted by entering block column.");
   }
-  assert(C->diagonal.size() == C->off_diagonal.size());
-  auto& llts = C->llts;
+  assert(X->diagonal.size() == X->off_diagonal.size());
+  auto& llts = X->llts;
   if (llts.size() > 0) {
     llts.clear();
   }
-  for (size_t i = 0; i < C->diagonal.size(); i++) {
+  for (size_t i = 0; i < X->diagonal.size(); i++) {
     // In place LLT of [n, n] block
-    if (C->diagonal[i].size() > 0) {
-      llts.emplace_back(C->diagonal[i]);
+    if (X->diagonal[i].size() > 0) {
+      llts.emplace_back(X->diagonal[i]);
       if (llts.back().info() != Eigen::Success) {
         return false;
       }
@@ -267,34 +351,32 @@ bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* C,
       llts.emplace_back(x);
     }
 
-    if (C->off_diagonal[i].size() > 0) {
-      llts.back().matrixL().solveInPlace(C->off_diagonal[i]);
-      auto& temp = C->off_diagonal[i];
+    if (X->off_diagonal[i].size() > 0) {
+      llts.back().matrixL().solveInPlace(X->off_diagonal[i]);
+      auto& temp = X->off_diagonal[i];
 
       if (use_batch_update) {
         auto blocks =
-            GetBlocks(C->non_zero_rows_.at(i), C->variable_to_diagonal_block_,
-                      C->variable_to_diagonal_block_position_);
+            GetBlocks(X->non_zero_rows_.at(i), X->variable_to_diagonal_block_,
+                      X->variable_to_diagonal_block_position_);
         int offset = 0;
         for (auto b : blocks) {
           MatrixXd G = temp.middleCols(offset, b.size).transpose() *
                        temp.middleCols(offset, b.size);
-          C->diagonal[b.exiting_column_block].block(b.offset, b.offset, b.size,
+          X->diagonal[b.exiting_column_block].block(b.offset, b.offset, b.size,
                                                     b.size) -= G;
           offset += b.size;
         }
+        GetRectangularBlocks(X, i, blocks, X->nonzero_row_offsets_);
       }
 
-      int index = 0;
-      const auto& s_s = C->scatter_destination_pointers[i];
-      for (int k = 0; k < temp.cols(); k++) {
-        for (int j = k; j < temp.cols(); j++) {
-          if (!use_batch_update ||
-              (C->variable_to_diagonal_block_[C->non_zero_rows_[i][k]] !=
-               C->variable_to_diagonal_block_[C->non_zero_rows_[i][j]])) {
-            *s_s[index] -= temp.col(k).dot(temp.col(j));
+      if (!use_batch_update) {
+        int index = 0;
+        const auto& s_s = X->scatter_destination_pointers[i];
+        for (int k = 0; k < temp.cols(); k++) {
+          for (int j = k; j < temp.cols(); j++) {
+            *s_s[index++] -= temp.col(k).dot(temp.col(j));
           }
-          index++;
         }
       }
     }

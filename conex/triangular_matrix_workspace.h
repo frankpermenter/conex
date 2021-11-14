@@ -116,6 +116,10 @@ struct TriangularMatrixWorkspace {
   std::vector<int> variable_to_diagonal_block_position_;
   bool sorted_by_entering_columns = false;
 
+  // (i, j) entry is the smallest element k in
+  // non_zero_row_(j) satisfying exiting_column(k) = i.
+  Eigen::MatrixXd nonzero_row_offsets_;
+
  private:
   // TODO(FrankPermenter): Remove this method.
   void S_S(int clique, std::vector<double*>*);
@@ -134,6 +138,8 @@ struct TriangularMatrixWorkspace {
   int num_columns_;
   int num_block_columns_;
   std::vector<int> variable_to_entering_block_column_;
+
+
 };
 
 }  // namespace conex
