@@ -116,7 +116,6 @@ class PartitionVectorIterator {
 //        U_1 R_1 R_1
 //            U_2 R_2
 //                U_3
-// y_{N} --> when does y enter?
 void T::ApplyBlockInverseOfTransposeInPlace(
     const TriangularMatrixWorkspace& mat, VectorXd* y) {
   PartitionVectorIterator y_partitioned(*y, mat.num_columns(),
@@ -186,17 +185,22 @@ void T::ApplyBlockInverseInPlace(const TriangularMatrixWorkspace& mat,
   mat.diagonal.back().triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
 }
 
-// For each element of rows, decide if consecutive elements are in same diagonal
-// block.  If supernodes are sorted by their entering column, then the
-// non_zero_rows in column C_i that exit in column C_j will be contiguous.
+// Let supernodes be sorted by their entering column.
+// If (i, j) both exit in J and enter in I, then  
+// so do all k \in A:= [i, i+1, i+2, ..., j]. Hence,
+// if a block column B contains (i, j) and  I < B < root, then
+// B contains A. 
 //
 // Pf:
 //
 // Suppose (i, j) exit in the same block column J
-// and appear in block column I and assume j > i.  Since they exit
+// and enter in block column I and assume j > i.  Since they exit
 // in the same column, all k \in [i, j]  also exit
-// in this column. Further, enter(k) < enter(j).  Hence,
-// all rows k between (i, j) appear in I.
+// in this column. Further, enter(i) <= enter(k) <= enter(j).  Hence,
+// all rows k between (i, j) enter in I.
+// That B contains A follows by the RIP.
+//
+//
 //
 // Note that non-zero rows that exist in different blocks
 // J_1 and J_2 need not be contiguous as illustrated in

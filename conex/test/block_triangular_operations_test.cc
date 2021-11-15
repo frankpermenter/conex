@@ -91,12 +91,37 @@ void DoCholeskyTest(const std::vector<Clique>& cliques,
 
 }  // namespace
 
+/* When the clique tree has multiple leafs, 
+ * we cannot guarantee variables with the
+ * same exiting block column will be grouped
+ * contiguously in all branches.   
+*/  
+GTEST_TEST(LowerTriMultipleLeafNodes, Cholesky) {
+/*
+         3 4 5 
+     /     |     \
+   0 3 4  1 3 5   2 3 5
+*/
+  //DoCholeskyTest({{0, 3, 4}, {1, 3, 5}, {2, 3, 5}, {3, 4, 5}},    {3, 3, 3, -1} /*tree*/      );
+  DoCholeskyTest({{0, 3, 4}, {1, 3, 4}, {2, 3, 4}, {3, 4, 5}},    {3, 3, 3, -1} /*tree*/      );
+
+  
+/*
+         4 5 6
+     /     |    \
+   0 4 5  2 4 6   3 5 6
+           |          
+          1 4 6
+*/
+  DoCholeskyTest({{0, 4, 5}, {1, 4, 6}, {2, 4, 6}, {3, 5, 6},  {4, 5, 6} },    {4, 2, 4, 4, -1} /*tree*/      );
+  return;
+}
 GTEST_TEST(LowerTri, Cholesky) {
-  DoCholeskyTest({{0, 1, 2, 3, 5}, {3, 4, 5, 6}, {5, 6, 7}});
   // Illustrates we can inject non-zero rows arbitrarily.
-  // Row 3 is inserted inbetween 2 and 4.
+  // At second clique, row 3 is inserted in between rows 2 and 4.
   DoCholeskyTest({{0, 1, 2, 4}, {1, 2, 3, 4}, {2, 3, 4}, {3, 4}, {4}});
 
+  DoCholeskyTest({{0, 1, 2, 3, 5}, {3, 4, 5, 6}, {5, 6, 7}});
   // Injects row 2 on top of (3, 4) at some block column onto
   DoCholeskyTest({{0, 1, 3, 4}, {1, 2, 3, 4}, {2, 3, 4, 5}, {3, 4, 5}});
 
