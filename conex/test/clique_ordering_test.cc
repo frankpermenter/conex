@@ -1,13 +1,14 @@
 #include "conex/clique_ordering.h"
+
+#include <algorithm>
+
 #include "conex/debug_macros.h"
 
 #include "gtest/gtest.h"
 
-#include "conex/block_triangular_operations.h"
-#include "conex/supernodal_solver.h"
+#include "conex/tree_utils.h"
 
 namespace conex {
-using Eigen::MatrixXd;
 using std::vector;
 
 std::vector<int> Union(const vector<std::vector<int>>& v) {

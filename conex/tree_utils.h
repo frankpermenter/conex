@@ -10,6 +10,13 @@ constexpr int N = 5;
 
 namespace conex {
 
+std::vector<int> UnionOfSorted(const std::vector<int>& x1,
+                               const std::vector<int>& x2);
+void Sort(std::vector<std::vector<int>>* path);
+
+void IntersectionOfSorted(const std::vector<int>& v1,
+                          const std::vector<int>& v2, std::vector<int>* v3);
+
 struct RootedTree {
   RootedTree(int number_of_nodes)
       : parent(number_of_nodes), height(number_of_nodes) {}

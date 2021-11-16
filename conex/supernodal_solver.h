@@ -9,9 +9,6 @@
 
 namespace conex {
 
-std::vector<int> UnionOfSorted(const std::vector<int>& x1,
-                               const std::vector<int>& x2);
-
 // TODO(FrankPermenter): Deprecate this struct.
 struct MatrixData {
   std::vector<std::vector<int>> cliques;
@@ -77,6 +74,7 @@ class SparseTriangularMatrix {
     Initialize(&workspace_, memory_.data());
   }
 
+
   SparseTriangularMatrix(int N_, const std::vector<std::vector<int>>& cliques,
                          const std::vector<int>& supernode_sizes)
       : SparseTriangularMatrix(
@@ -128,10 +126,6 @@ class SparseTriangularMatrix {
 
 std::vector<std::vector<int>> Permute(std::vector<std::vector<int>>& path,
                                       std::vector<int>& permutation);
-void Sort(std::vector<std::vector<int>>* path);
-
-void IntersectionOfSorted(const std::vector<int>& v1,
-                          const std::vector<int>& v2, std::vector<int>* v3);
 
 namespace TriangularMatrixOperations {
 void CholeskyInPlace(SparseTriangularMatrix* mat);

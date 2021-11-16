@@ -4,12 +4,12 @@
 #include <stack>
 
 #include "conex/debug_macros.h"
-#include "conex/supernodal_solver.h"
 
 namespace conex {
 
 using std::vector;
 using Cliques = vector<vector<int>>;
+using Clique = vector<int>;
 
 namespace {
 
@@ -117,7 +117,9 @@ int PickCliqueOrderHelper(const std::vector<std::vector<int>>& cliques_sorted,
   auto& intersections = *intersections_ptr;
   size_t n = cliques_sorted.size();
   Weight edge_weights(n, intersections, cliques_sorted, valid_leaf);
-  assert(root_in < static_cast<int>(n));
+  if (root_in > static_cast<int>(n)) {
+    throw std::runtime_error("Specified root node does not exit in tree.");
+  }
 
   vector<int> visited(n, 0);
 

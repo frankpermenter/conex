@@ -186,10 +186,10 @@ void T::ApplyBlockInverseInPlace(const TriangularMatrixWorkspace& mat,
 }
 
 // Let supernodes be sorted by their entering column.
-// If (i, j) both exit in J and enter in I, then  
+// If (i, j) both exit in J and enter in I, then
 // so do all k \in A:= [i, i+1, i+2, ..., j]. Hence,
 // if a block column B contains (i, j) and  I < B < root, then
-// B contains A. 
+// B contains A.
 //
 // Pf:
 //
@@ -287,7 +287,7 @@ vector<BatchUpdateBlocks> GetBlocks(
 //  from C_{JK}. The column position of R_k in R is given by offsets(k, i) and
 //  the column position of C_{jk} in C_J is given by offsets(k, j).
 //
-void GetRectangularBlocks(
+void DoBatchOffDiagUpdate(
     TriangularMatrixWorkspace* X, const int i,
     const vector<BatchUpdateBlocks> blocks,
     const Eigen::MatrixXd&
@@ -322,6 +322,44 @@ void GetRectangularBlocks(
   }
 }
 
+void DoScalarOffDiagUpdate(TriangularMatrixWorkspace* X,
+                           const MatrixXd& non_zero_rows,
+                           int exiting_block_column) {
+  int index = 0;
+  const auto& temp = non_zero_rows;
+  const auto& s_s = X->scatter_destination_pointers[exiting_block_column];
+  for (int k = 0; k < temp.cols(); k++) {
+    for (int j = k; j < temp.cols(); j++) {
+      if (X->variable_to_diagonal_block_[X->non_zero_rows_[exiting_block_column]
+                                                          [k]] !=
+          X->variable_to_diagonal_block_[X->non_zero_rows_[exiting_block_column]
+                                                          [j]]) {
+        *s_s[index] -= temp.col(k).dot(temp.col(j));
+      }
+      index++;
+    }
+  }
+}
+
+void DoScalarDiagUpdate(TriangularMatrixWorkspace* X,
+                        const MatrixXd& non_zero_rows,
+                        int exiting_block_column) {
+  int index = 0;
+  const auto& temp = non_zero_rows;
+  const auto& s_s = X->scatter_destination_pointers[exiting_block_column];
+  for (int k = 0; k < temp.cols(); k++) {
+    for (int j = k; j < temp.cols(); j++) {
+      if (X->variable_to_diagonal_block_[X->non_zero_rows_[exiting_block_column]
+                                                          [k]] ==
+          X->variable_to_diagonal_block_[X->non_zero_rows_[exiting_block_column]
+                                                          [j]]) {
+        *s_s[index] -= temp.col(k).dot(temp.col(j));
+      }
+      index++;
+    }
+  }
+}
+
 // Recursively compute LL^T transform of input matrix X.
 // We recursively update a principal submatrix S_i.
 // Initialiing S_i = X, we partition S_i as
@@ -349,6 +387,10 @@ bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* X,
   if (llts.size() > 0) {
     llts.clear();
   }
+
+  bool batch_diagonal_update = false;
+  bool batch_off_diagonal_update = use_batch_update;
+
   for (size_t i = 0; i < X->diagonal.size(); i++) {
     // In place LLT of [n, n] block
     if (X->diagonal[i].size() > 0) {
@@ -367,10 +409,11 @@ bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* X,
       llts.back().matrixL().solveInPlace(X->off_diagonal[i]);
       auto& temp = X->off_diagonal[i];
 
-      if (use_batch_update) {
-        auto blocks =
-            GetBlocks(X->non_zero_rows_.at(i), X->variable_to_diagonal_block_,
-                      X->variable_to_diagonal_block_position_);
+      auto blocks =
+          GetBlocks(X->non_zero_rows_.at(i), X->variable_to_diagonal_block_,
+                    X->variable_to_diagonal_block_position_);
+
+      if (batch_diagonal_update) {
         int offset = 0;
         for (auto b : blocks) {
           MatrixXd G = temp.middleCols(offset, b.size).transpose() *
@@ -379,17 +422,13 @@ bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* X,
                                                     b.size) -= G;
           offset += b.size;
         }
-        GetRectangularBlocks(X, i, blocks, X->nonzero_row_offsets_);
+      } else {
+        DoScalarDiagUpdate(X, temp, i);
       }
-
-      if (!use_batch_update) {
-        int index = 0;
-        const auto& s_s = X->scatter_destination_pointers[i];
-        for (int k = 0; k < temp.cols(); k++) {
-          for (int j = k; j < temp.cols(); j++) {
-            *s_s[index++] -= temp.col(k).dot(temp.col(j));
-          }
-        }
+      if (batch_off_diagonal_update) {
+        DoBatchOffDiagUpdate(X, i, blocks, X->nonzero_row_offsets_);
+      } else {
+        DoScalarOffDiagUpdate(X, temp, i);
       }
     }
   }

@@ -11,12 +11,19 @@ namespace conex {
 
 using Clique = std::vector<int>;
 
+struct CliqueTree {
+  std::vector<std::vector<int>> cliques;
+  std::vector<int> parent_in_tree;
+};
+
 struct TriangularMatrixWorkspace {
   // Inputs: a list of cliques satisfying the running intersection property
   // given in elimination order. The first N_i elements are supernodes of
   // clique i, where N = supernode_size.at(i)
   TriangularMatrixWorkspace(const std::vector<std::vector<int>>& cliques,
                             const std::vector<int>& supernode_size);
+
+  TriangularMatrixWorkspace(const CliqueTree& clique_tree);
 
   // We store a triangular matrix T using a collection of square matrices
   // D_i on the diagonal and matrices R_i below the diagonal.
@@ -56,8 +63,17 @@ struct TriangularMatrixWorkspace {
                             const std::vector<std::vector<int>>& non_zero_rows)
       : TriangularMatrixWorkspace(GetCliques(diagonal_size, non_zero_rows),
                                   diagonal_size) {}
+
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>> diagonal;
+  std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>& diagonal_blocks() {
+    return diagonal;
+  }
+
   std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>> off_diagonal;
+  std::vector<Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>>&
+  off_diagonal_blocks() {
+    return off_diagonal;
+  }
 
   // For each off diagonal matrix R_i, scatter_destination_pointers.at(i)
   // contains the addresses of the non-zero elements of T that
@@ -113,6 +129,7 @@ struct TriangularMatrixWorkspace {
   }
 
   std::vector<int> variable_to_diagonal_block_;
+  std::vector<int> junction_tree_parent_;
   std::vector<int> variable_to_diagonal_block_position_;
   bool sorted_by_entering_columns = false;
 

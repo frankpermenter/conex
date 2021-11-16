@@ -205,8 +205,25 @@ cc_test(
     srcs = ["test/block_triangular_operations_test.cc"],
     copts = ["-Iexternal/gtest/include -O0"],
     deps = [
-        "supernodal_solver",
+        "block_triangular_matrix",
         "@gtest//:main",
+    ],
+)
+
+cc_library(
+    name = "clique_ordering",
+    srcs = [
+        "clique_ordering.cc",
+        "debug_macros.h",
+    ],
+    hdrs = [
+        "clique_ordering.h",
+    ],
+    copts = COPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        "tree_utils",
+        "@eigen",
     ],
 )
 
@@ -215,7 +232,7 @@ cc_test(
     srcs = ["test/clique_ordering_test.cc"],
     copts = ["-Iexternal/gtest/include -O0"],
     deps = [
-        "supernodal_solver",
+        "clique_ordering",
         "@gtest//:main",
     ],
 )
@@ -226,16 +243,6 @@ cc_test(
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "supernodal_solver",
-        "@gtest//:main",
-    ],
-)
-
-cc_test(
-    name = "tree_utils_test",
-    srcs = ["test/tree_utils_test.cc"],
-    copts = ["-Iexternal/gtest/include"],
-    deps = [
-        "tree_utils",
         "@gtest//:main",
     ],
 )
@@ -254,22 +261,41 @@ cc_library(
     deps = ["@eigen"],
 )
 
+cc_test(
+    name = "tree_utils_test",
+    srcs = ["test/tree_utils_test.cc"],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "tree_utils",
+        "@gtest//:main",
+    ],
+)
+
 cc_library(
-    name = "supernodal_solver",
+    name = "block_triangular_matrix",
     srcs = [
         "RLDLT.h",
         "block_triangular_operations.cc",
-        "clique_ordering.cc",
+        "memory_utils.h",
+        "triangular_matrix_workspace.cc",
+    ],
+    hdrs = [
+        "block_triangular_operations.h",
+        "triangular_matrix_workspace.h",
+    ],
+    deps = ["tree_utils"],
+)
+
+cc_library(
+    name = "supernodal_solver",
+    srcs = [
         "debug_macros.h",
         "equality_constraint.cc",
         "kkt_solver.cc",
         "supernodal_assembler.cc",
         "supernodal_solver.cc",
-        "triangular_matrix_workspace.cc",
     ],
     hdrs = [
-        "block_triangular_operations.h",
-        "clique_ordering.h",
         "constraint.h",
         "constraint_manager.h",
         "debug_macros.h",
@@ -283,12 +309,13 @@ cc_library(
         "supernodal_assembler.h",
         "supernodal_cholesky_data.h",
         "supernodal_solver.h",
-        "triangular_matrix_workspace.h",
         "workspace.h",
     ],
     copts = COPTS,
     visibility = ["//visibility:public"],
     deps = [
+        "block_triangular_matrix",
+        "clique_ordering",
         "tree_utils",
         "@eigen",
     ],

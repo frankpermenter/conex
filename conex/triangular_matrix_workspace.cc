@@ -1,8 +1,40 @@
 #include "conex/triangular_matrix_workspace.h"
+#include "conex/tree_utils.h"
 
 namespace conex {
 
+namespace {
+
+std::vector<int> GetSupernodeSize(const std::vector<Clique>& cliques,
+                                  const std::vector<int>& tree_in = {}) {
+  std::vector<int> y;
+  std::vector<int> tree = tree_in;
+
+  if (tree.size() == 0) {
+    tree.resize(cliques.size());
+    std::iota(tree.begin(), tree.end() - 1, 1);
+    tree.back() = -1;
+  }
+
+  for (size_t j = 0; j < cliques.size(); j++) {
+    std::vector<int> temp;
+    if (tree.at(j) >= 0) {
+      IntersectionOfSorted(cliques.at(j), cliques.at(tree.at(j)), &temp);
+      y.push_back(cliques.at(j).size() - temp.size());
+    } else {
+      y.push_back(cliques.at(j).size());
+    }
+  }
+  return y;
+}
+
+}  // namespace
+
 using T = TriangularMatrixWorkspace;
+
+T::TriangularMatrixWorkspace(const CliqueTree& tree)
+    : TriangularMatrixWorkspace(
+          tree.cliques, GetSupernodeSize(tree.cliques, tree.parent_in_tree)) {}
 
 double* TriangularMatrixWorkspace::LookupAddress(int r, int c) {
   int node = variable_to_diagonal_block_[c];
