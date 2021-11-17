@@ -34,7 +34,13 @@ using T = TriangularMatrixWorkspace;
 
 T::TriangularMatrixWorkspace(const CliqueTree& tree)
     : TriangularMatrixWorkspace(
-          tree.cliques, GetSupernodeSize(tree.cliques, tree.parent_in_tree)) {}
+          tree.cliques, GetSupernodeSize(tree.cliques, tree.parent_in_tree.parent)) { }
+
+//T::TriangularMatrixWorkspace(const JunctionTree& tree)
+//    : TriangularMatrixWorkspace(
+//          tree.cliques, GetSupernodeSize(tree.cliques, tree.parent_in_tree)) {}
+//
+
 
 double* TriangularMatrixWorkspace::LookupAddress(int r, int c) {
   int node = variable_to_diagonal_block_[c];
@@ -57,16 +63,33 @@ double* TriangularMatrixWorkspace::LookupAddress(int r, int c) {
       "Specified entry of sparse matrix is not accessible.");
 }
 
+
+RootedTree MakePath(int length) {
+  RootedTree tree(length);
+  for (int i = 0; i < length - 1; i++) {
+    tree.parent[i] = i + 1;
+  }
+  tree.parent.back() = -1;
+  return tree;
+}
+
 TriangularMatrixWorkspace::TriangularMatrixWorkspace(
     const std::vector<Clique>& cliques,
-    const std::vector<int>& block_column_size__)
-    : block_column_size_(block_column_size__) {
+    const std::vector<int>& block_column_size,
+    const RootedTree& parent_in_tree)
+    : block_column_size_(block_column_size) {
   num_block_columns_ = cliques.size();
   num_columns_ =
       std::accumulate(block_column_size_.begin(), block_column_size_.end(), 0);
   variable_to_diagonal_block_.resize(num_columns_);
   variable_to_diagonal_block_position_.resize(num_columns_);
   variable_to_entering_block_column_.resize(num_columns_);
+
+
+  clique_tree_ = parent_in_tree;
+  if (clique_tree_.parent.size() == 0) {
+    clique_tree_ = MakePath(cliques.size());
+  }
 
   int cnt = 0;
   int var = 0;

@@ -46,4 +46,36 @@ std::vector<int> UnionOfSorted(const std::vector<int>& x1,
   return y;
 }
 
+std::vector<int> NumberOfChildren(const RootedTree& tree) {
+  std::vector<int> num_children(tree.NumberOfNodes(), 0);
+  for (auto p : tree.parent) {
+    if (p >= 0) {
+      num_children.at(p)++;
+    }
+  }
+  return num_children;
+}
+
+std::vector<int> GetUnvisitedRootNodes(const RootedTree& d,
+                                       const vector<int>& visited) {
+  vector<int> nodes;
+  for (int i = 0; i < d.NumberOfNodes(); i++) {
+    if (visited.at(i) == 0 && d.parent.at(i) == -1) {
+      nodes.push_back(i);
+    }
+  }
+  return nodes;
+}
+
+vector<int> GetUnvisitedLeafNode(const std::vector<int>& num_children,
+                                 const std::vector<int>& visited) {
+  std::vector<int> leaf_nodes;
+  for (size_t i = 0; i < num_children.size(); i++) {
+    if (num_children[i] == 0 && visited[i] == 0) {
+      leaf_nodes.push_back(i);
+    }
+  }
+  return leaf_nodes;
+}
+
 }  // namespace conex

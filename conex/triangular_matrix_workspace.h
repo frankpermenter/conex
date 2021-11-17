@@ -6,6 +6,7 @@
 
 #include "conex/debug_macros.h"
 #include "conex/memory_utils.h"
+#include "conex/tree_utils.h"
 
 namespace conex {
 
@@ -13,17 +14,26 @@ using Clique = std::vector<int>;
 
 struct CliqueTree {
   std::vector<std::vector<int>> cliques;
-  std::vector<int> parent_in_tree;
+  RootedTree parent_in_tree;
 };
+
+//class JunctionTree {
+//  std::vector<std::vector<int>> supernodes;
+//  std::vector<std::vector<int>> separators;
+//  std::vector<int> parent_in_tree;
+//};
+
 
 struct TriangularMatrixWorkspace {
   // Inputs: a list of cliques satisfying the running intersection property
   // given in elimination order. The first N_i elements are supernodes of
   // clique i, where N = supernode_size.at(i)
   TriangularMatrixWorkspace(const std::vector<std::vector<int>>& cliques,
-                            const std::vector<int>& supernode_size);
+                            const std::vector<int>& supernode_size,
+                            const RootedTree& clique_tree = {});
 
   TriangularMatrixWorkspace(const CliqueTree& clique_tree);
+//  TriangularMatrixWorkspace(const JunctionTree& clique_tree);
 
   // We store a triangular matrix T using a collection of square matrices
   // D_i on the diagonal and matrices R_i below the diagonal.
@@ -136,6 +146,7 @@ struct TriangularMatrixWorkspace {
   // (i, j) entry is the smallest element k in
   // non_zero_row_(j) satisfying exiting_column(k) = i.
   Eigen::MatrixXd nonzero_row_offsets_;
+  RootedTree clique_tree_; 
 
  private:
   // TODO(FrankPermenter): Remove this method.

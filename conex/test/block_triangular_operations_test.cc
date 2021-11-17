@@ -32,9 +32,9 @@ void InitializeToTestValues(TriangularMatrixWorkspace* mat) {
 }
 
 void DoCholeskyTestHelper(const std::vector<Clique>& cliques,
-                          const std::vector<int> tree, bool use_batch_updates) {
+                          const std::vector<int>& tree, bool parallel) {
   CliqueTree clique_tree;
-  clique_tree.parent_in_tree = tree;
+  clique_tree.parent_in_tree.parent = tree;
   clique_tree.cliques = cliques;
   TriangularMatrixWorkspace mat(clique_tree);
   Allocator allocate(&mat);
@@ -47,12 +47,16 @@ void DoCholeskyTestHelper(const std::vector<Clique>& cliques,
   Eigen::MatrixXd x = mat.MakeDenseMatrix();
   Eigen::LLT<MatrixXd> llt(x);
 
-  DUMP(x);
-  MatrixXd L = llt.matrixL();
+  MatrixXd L_ref = llt.matrixL();
   EXPECT_TRUE(llt.info() == Eigen::Success);
 
-  B::BlockCholeskyInPlace(&mat, use_batch_updates);
-  MatrixXd error = mat.MakeDenseMatrix() - L;
+  if (parallel) {
+    B::ParallelBlockCholeskyInPlace(&mat, /* max threads*/ 1);
+  } else {
+    B::BlockCholeskyInPlace(&mat, false /*use_batch_updates*/);
+  }
+  MatrixXd L_calc = mat.MakeDenseMatrix();
+  MatrixXd error = L_calc - L_ref;
   error = error.triangularView<Eigen::Lower>();
   EXPECT_NEAR(error.norm(), 0, 1e-12);
 }
@@ -73,7 +77,6 @@ void DoCholeskyTest(const std::vector<Clique>& cliques,
  * contiguously in all branches.
  */
 GTEST_TEST(LowerTriMultipleLeafNodes, Cholesky) {
-  return;
   /*
             3 4 5
          /    |     \
@@ -94,9 +97,12 @@ GTEST_TEST(LowerTriMultipleLeafNodes, Cholesky) {
   DoCholeskyTest(
       {{0, 4, 5}, {1, 4, 6}, {2, 4, 6}, {3, 5, 6}, {4, 5, 6}, {5, 6, 7}},
       {4, 2, 4, 4, 5, -1} /*tree*/);
-  throw "sfsdf";
 }
 GTEST_TEST(LowerTri, Cholesky) {
+
+
+  DoCholeskyTest({{0, 1}, {2, 3}, {3, 4}, {5, 6, 7}, {7, 8, 9, 10}});
+
   // Illustrates we can inject non-zero rows arbitrarily.
   // At second clique, row 3 is inserted in between rows 2 and 4.
   DoCholeskyTest({{0, 1, 2, 4}, {1, 2, 3, 4}, {2, 3, 4}, {3, 4}, {4}});
@@ -112,18 +118,12 @@ GTEST_TEST(LowerTri, Cholesky) {
   DoCholeskyTest({{0, 1, 2}, {2}});
   DoCholeskyTest({{0, 1, 3}, {1, 2, 3}, {3, 4, 5}});
   DoCholeskyTest({{0, 1, 2}, {1, 2, 3}, {3, 4, 2}});
-  DoCholeskyTest({{0, 1}, {2, 3}, {3, 4}, {5, 6, 7}, {7, 8, 9, 10}});
-
-  // The batch update should cause exception since
-  // entering_col(5) < entering_col(4).
-  EXPECT_THROW(DoCholeskyTest({{0, 1, 2, 3, 5}, {1, 2, 3, 4, 5, 6}}),
-               std::runtime_error);
 }
 
 void DoInverseTest(const std::vector<Clique>& cliques,
                    std::vector<int> tree = {}) {
   CliqueTree clique_tree;
-  clique_tree.parent_in_tree = tree;
+  clique_tree.parent_in_tree.parent = tree;
   clique_tree.cliques = cliques;
   TriangularMatrixWorkspace mat(clique_tree);
   Allocator allocate(&mat);
@@ -147,7 +147,7 @@ GTEST_TEST(LowerTri, InverseTest) {
 void DoInverseOfTransposeTest(const std::vector<Clique>& cliques,
                               const std::vector<int>& tree = {}) {
   CliqueTree clique_tree;
-  clique_tree.parent_in_tree = tree;
+  clique_tree.parent_in_tree.parent = tree;
   clique_tree.cliques = cliques;
   TriangularMatrixWorkspace mat(clique_tree);
   Allocator allocate(&mat);
@@ -171,7 +171,7 @@ GTEST_TEST(LowerTri, InverseOfTranspose) {
 void DoLDLTTest(bool diagonal, const std::vector<Clique>& cliques,
                 const std::vector<int>& tree = {}) {
   CliqueTree clique_tree;
-  clique_tree.parent_in_tree = tree;
+  clique_tree.parent_in_tree.parent = tree;
   clique_tree.cliques = cliques;
   TriangularMatrixWorkspace mat(clique_tree);
   Allocator allocate(&mat);

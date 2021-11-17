@@ -276,9 +276,13 @@ cc_library(
     srcs = [
         "RLDLT.h",
         "block_triangular_operations.cc",
+        "parallel_block_triangular_operations.cc",
         "memory_utils.h",
         "triangular_matrix_workspace.cc",
+        "tree_traversal.h",
     ],
+    copts = COPTS + ["-fopenmp"],
+    linkopts = ["-fopenmp"],
     hdrs = [
         "block_triangular_operations.h",
         "triangular_matrix_workspace.h",
@@ -486,6 +490,25 @@ cc_test(
         "@gtest//:main",
     ],
 )
+
+
+cc_binary(
+    name = "tree_traversal_test",
+    srcs = [
+        "test/tree_traversal_test.cc",
+        "tree_traversal.cc",
+        "tree_traversal.h",
+    ],
+    copts = [
+        "-g",
+        "-fopenmp",
+    ],
+    linkopts = ["-fopenmp"],
+    deps = [
+        "tree_utils",
+    ],
+)
+
 
 cc_binary(
     name = "solver_failures",
