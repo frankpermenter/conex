@@ -24,6 +24,101 @@ struct CliqueTree {
 //};
 
 
+// A square lower-triangular matrix whose rows and columns are partitioned into
+// sets C_0, C_1, ..., C_N whose scalar entries satisfy the following
+// property:
+//
+//  (P1) If (i, j) is non-zero, then (i, k) is nonzero for all j <= k <= i. 
+//  (P2) If (i, j) is non-zero and i \in C_m, then (k, j) is nonzero for all k \in C_m
+//  satisfying k < i.
+//
+//
+// Valid Examples:
+//
+//   * *                * *               *  
+//   * *                * *               * * 
+//       * *            * * * *               * 
+//       * *            * * * *               * *
+//   * * * * * *            * * * *       * * * * * * 
+//   * * * * * *            * * * *           * * * * 
+//       (A)               (B)               (C)
+//
+//
+// Invalid Examples:
+//
+//   * *                    *  
+//   * *                      * 
+//       * *                   * 
+//       * *                   * *
+//   * *    * *                * * * * 
+//   * *    * *            * * * * * * 
+//
+//   (Bottom two rows      (Bottom left corner 
+//    violates P1)          violates P2).
+//              
+//   
+// To construct such a matrix, we take a list v of triplets
+// {(i, j), s}, indicating that s new rows of block row i
+// are non-zero starting at the beginning of block column j
+//
+// Inputs for the example matrices A, B, C are:
+//
+//  v_A = (0, 2), 2 
+//  v_B = (0, 1), 2;  (2, 1), 2
+//  v_C = (0, 2), 1;  (2, 1), 1
+//
+// We assume the tripets are sorted by the block column index.
+struct SimpleTriangularMatrixTriplet {
+  SimpleTriangularMatrixTriplet(int row, int col, int size) : 
+      block_row(row), block_col(col),  num_rows_entering(size) {}
+  int block_row;
+  int block_col;
+  int num_rows_entering;
+};
+class SimpleTriangularMatrix {
+ public:
+  SimpleTriangularMatrix(const std::vector<int>& block_column_sizes,   
+                         const std::vector<SimpleTriangularMatrixTriplet>& 
+                         input_triplets_sorted_by_column);
+
+  // Computes (*this) -= lower_tri(R^T R ) where R is a compatible block matrix.
+  // The vector input_block_info provides a vector of pairs r, where r.first
+  // specifies the block number and r.second specifies the number of non-zero
+  // columns in that block. These non-zero columns are contiguous and start at
+  // the beginning of the block.  The are provided by the matrix Rdata, which
+  // satisfies R.data.cols() = sum( r.second : r \in input_block_info).
+  void DecrementByRRt(const Eigen::MatrixXd& Rdata, 
+                   const std::vector<std::pair<int, int>>& input_block_info);
+  Eigen::MatrixXd MakeDenseMatrix() const;
+  void SetConstant(double c) { 
+    for (auto& d : diagonal_blocks_) {
+      d.setConstant(c); 
+    }
+    for (auto& d : off_diagonal_blocks_) {
+      d.setConstant(c); 
+    }
+  }
+
+ private: 
+  std::vector<Eigen::MatrixXd> diagonal_blocks_;
+  vector<Eigen::MatrixXd> off_diagonal_blocks_;
+  vector<vector<std::pair<int, int>>> offsets_;
+  vector<int> block_column_sizes_; 
+  vector<SimpleTriangularMatrixTriplet> off_diagonal_triplets_; 
+  int num_blocks_;
+  int num_cols_ = 0;
+
+  class LLT {
+    LLT(SimpleTriangularMatrix& matrix) : matrix_(matrix) {}
+   private:
+    SimpleTriangularMatrix& matrix_;
+    void SchurComplementInPlace(int i, int triplet_offset);
+    vector<int> internal_offsets_;
+  };
+  friend class LLT;
+};
+
+
 struct TriangularMatrixWorkspace {
   // Inputs: a list of cliques satisfying the running intersection property
   // given in elimination order. The first N_i elements are supernodes of

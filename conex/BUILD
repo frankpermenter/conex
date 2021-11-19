@@ -1,7 +1,7 @@
 COPTS = [
-    "-DEIGEN_NO_DEBUG",
-    "-DNDEBUG",
-    "-O3",
+    #"-DEIGEN_NO_DEBUG",
+    #"-DNDEBUG",
+    #"-O3",
     #    "-ffast-math",
 ]
 
@@ -489,6 +489,18 @@ cc_test(
         "conex_lib",
         "@gtest//:main",
     ],
+)
+
+cc_test(
+ name = "simple_triangular_matrix_test",
+ srcs = [
+     "test/simple_triangular_matrix_test.cc",
+ ],
+ copts = ["-Iexternal/gtest/include"],
+ deps = [
+    "@gtest//:main",
+     "block_triangular_matrix",
+ ],
 )
 
 

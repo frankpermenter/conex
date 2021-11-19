@@ -1,7 +1,11 @@
 #include "conex/triangular_matrix_workspace.h"
-#include "conex/tree_utils.h"
 
+
+#include <numeric>
+
+#include "conex/tree_utils.h"
 namespace conex {
+using Eigen::MatrixXd;
 
 namespace {
 
@@ -28,9 +32,152 @@ std::vector<int> GetSupernodeSize(const std::vector<Clique>& cliques,
   return y;
 }
 
+
+using BlockData = std::vector<std::pair<int, int>>;
+
+class BlockMatrix {
+ public:
+  BlockMatrix(Eigen::MatrixXd& X, 
+              const BlockData& blocks) : X_(X), blocks_(blocks) {}
+
+  BlockMatrix(Eigen::MatrixXd& X, 
+              const BlockData& blocks, int initial_index) : X_(X), blocks_(blocks) {
+    for (int i = 0; i < initial_index; i++) {
+      GotoNextBlock();
+    }
+  }
+
+  //void CurrentBlock() { return X.middleCols(offset, size); }
+  //void SetBlock(int i) { return X; }
+  void GotoNextBlock() { 
+    current_block_offset_ += blocks_.at(current_block_index_).second;
+    current_block_index_++;
+  }
+  void GotoBlock(int i) {
+    while (blocks_.at(current_block_offset_).first != i ) {
+      GotoNextBlock();
+    }
+  }
+  int CurrentBlockNumber() {
+    return blocks_.at(current_block_index_).first;
+  }
+
+  int CurrentBlockSize() {
+    return blocks_.at(current_block_index_).second;
+  }
+
+  Eigen::Ref<MatrixXd> CurrentBlock() {
+    return X_.middleCols(current_block_offset_, CurrentBlockSize());
+  }
+  MatrixXd& X_;
+  const BlockData& blocks_;
+  int current_block_offset_ = 0;
+  int current_block_index_ = 0;
+};
+
+
 }  // namespace
 
 using T = TriangularMatrixWorkspace;
+using S = SimpleTriangularMatrix;
+  S::SimpleTriangularMatrix(const std::vector<int>& block_column_sizes,   
+                            const std::vector<SimpleTriangularMatrixTriplet>& input_triplets) :
+  block_column_sizes_(block_column_sizes), off_diagonal_triplets_(input_triplets)
+{
+    num_cols_ = std::accumulate(block_column_sizes.begin(), block_column_sizes.end(), 0);
+    num_blocks_ = block_column_sizes.size();
+    diagonal_blocks_.resize(num_blocks_);
+    off_diagonal_blocks_.resize(num_blocks_ - 1);
+    for (int i = 0; i < num_blocks_; i++) {
+      diagonal_blocks_[i].resize(block_column_sizes[i], block_column_sizes[i]);
+    }
+
+    std::vector<int> off_diagonal_size(num_blocks_ - 1, 0);
+    for (auto s : input_triplets) {
+      for (int i = s.block_col; i < s.block_row; i++) {
+        off_diagonal_size.at(i) += s.num_rows_entering;
+      }
+    }
+    for (size_t i = 0; i < block_column_sizes.size() - 1; i++) {
+      off_diagonal_blocks_[i].resize(block_column_sizes[i], off_diagonal_size[i]);
+    }
+  }
+
+
+MatrixXd S::MakeDenseMatrix() const {
+  MatrixXd M(num_cols_, num_cols_); M.setZero();
+  int offset = 0;
+  for (size_t i = 0; i < block_column_sizes_.size(); i++) {
+    M.block(offset, offset, block_column_sizes_[i], block_column_sizes_[i]) = diagonal_blocks_.at(i);
+    offset += block_column_sizes_[i];
+  }
+
+  std::vector<int> global_offsets(num_blocks_, 0);
+  std::partial_sum(block_column_sizes_.begin(), block_column_sizes_.end() - 1,   global_offsets.begin() + 1);
+
+  vector<int> internal_offsets(num_blocks_, 0);
+  for (auto s : off_diagonal_triplets_) {
+    for (int i = s.block_col; i < s.block_row; i++) {
+      int size = s.num_rows_entering;
+      int offset = internal_offsets.at(s.block_row);
+      int r = global_offsets.at(s.block_row) + offset;
+      M.block(r, global_offsets.at(i), size, block_column_sizes_.at(i)) = 
+          off_diagonal_blocks_.at(i).middleCols(offset, size).transpose();
+    }
+    internal_offsets.at(s.block_row) += s.num_rows_entering;
+  }
+  return M;
+}
+
+//    BlockMatrix R(Rdata, input_block_info);
+//    auto& off_diagonal_blocks = off_diagonal_blocks_;
+//    auto& diagonal_blocks = diagonal_blocks_;
+//    BlockMatrix input_i(Rdata, input_block_info);
+//    for (size_t i = 0; i < input_block_info.size(); i++) {
+//      int size_i = input_i.CurrentBlockSize();
+//      BlockMatrix output(off_diagonal_blocks.at(input_i.CurrentBlockNumber()), offsets_.at(input_i.CurrentBlockNumber()));
+//      BlockMatrix input_j(Rdata, input_block_info, i+1); 
+//      for (size_t j = i+1; j < input_block_info.size(); j++) {
+//        output.GotoBlock(input_j.CurrentBlockNumber());
+//        output.CurrentBlock().topRows(size_i) 
+//            -=  input_i.CurrentBlock().transpose() * input_j.CurrentBlock(); 
+//        input_j.GotoNextBlock();
+//      }
+//
+//      diagonal_blocks.at(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i)
+//            -=  input_i.CurrentBlock().transpose()  * input_i.CurrentBlock();
+//    }
+//    input_i.GotoNextBlock();
+
+
+//  vector<int> internal_offsets(matrix_.num_blocks_, 0);
+//  int i = 0;
+//  for (i = triplet_offset; i < matrix_.off_diagonal_triplets_.size(); i++) {
+//    const auto& si = matrix_.off_diagonal_triplets_.at(i);
+//    if (si.block_col != block) {
+//      break;
+//    }
+//    for (int j = triplet_offset + 1; j < matrix_.off_diagonal_triplets_.size(); j++) {
+//      const auto& sj = matrix_.off_diagonal_triplets_.at(j);
+//      if (sj.block_col != block) {
+//        break;
+//      }
+//      int num_rows = internal_offsets.at(i);
+//    }
+//  }
+
+
+// Replace bottom right corner C_22 with  C22 - C12' inv(C11) C12.
+// We assume that (C11)^{-1/2} C12 has already been computed
+// and stored in the block C12.  The full matrix C starts 
+// at the diagonal block (i, i). 
+void S::LLT::SchurComplementInPlace(int block) {
+  for (size_t i = 0; i < active_blocks.size(): i++) {
+    for (size_t j = i + 1; j < active_blocks.size(): j++) {
+      off_diagonal.at(block).
+    }
+  }
+}
 
 T::TriangularMatrixWorkspace(const CliqueTree& tree)
     : TriangularMatrixWorkspace(
@@ -62,7 +209,6 @@ double* TriangularMatrixWorkspace::LookupAddress(int r, int c) {
   throw std::runtime_error(
       "Specified entry of sparse matrix is not accessible.");
 }
-
 
 RootedTree MakePath(int length) {
   RootedTree tree(length);
@@ -173,7 +319,6 @@ TriangularMatrixWorkspace::TriangularMatrixWorkspace(
       // Within block column order nodes by when they enter
       if (variable_to_entering_block_column_[var] >
           variable_to_entering_block_column_[var + 1]) {
-        // throw std::runtime_error("Block columns not properly ordered");
         sorted_by_entering_columns = false;
       }
       var++;

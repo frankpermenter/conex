@@ -58,10 +58,22 @@ class ParallelCholesky : TreeTraversalBase {
       if (llts.size() > 0) {
         llts.clear();
       }
+      number_of_children_ = NumberOfChildren(matrix->clique_tree_);
     }
   void Factor() {  TreeTraversalBase::TraverseFromLeaves(); }
  private:
-  int DoNodeOperation(int node) override { 
+  int RootOfDepthFirstSearchChain(int node) const {
+    int parent = node;
+    while(1) {
+      if (parent == -1 || number_of_children_.at(parent) > 1) {
+        return parent;
+      }  else {
+        parent = X->clique_tree_.parent.at(parent); 
+      }
+    }
+  }
+
+  int DoScalarLLT(int node) {
     int i = node;
     if (X->diagonal[i].size() > 0) {
       X->llts.emplace_back(X->diagonal[i]);
@@ -78,13 +90,40 @@ class ParallelCholesky : TreeTraversalBase {
     if (X->off_diagonal[i].size() > 0) {
       X->llts.back().matrixL().solveInPlace(X->off_diagonal[i]);
       auto& temp = X->off_diagonal[i];
-
       DoScalarDiagUpdate(X, temp, i);
       DoScalarOffDiagUpdate(X, temp, i);
     }
     return 0;
   }
+
+  int DoBatchLLT(int node) {
+    int i = node;
+    if (X->diagonal[i].size() > 0) {
+      X->llts.emplace_back(X->diagonal[i]);
+      if (X->llts.back().info() != Eigen::Success) {
+        return false;
+      }
+    } else {
+      // Dummy decomposition. Needed to make Eigen's Lapack interface happy.
+      MatrixXd x(1, 1);
+      x(0) = 1;
+      X->llts.emplace_back(x);
+    }
+
+    if (X->off_diagonal[i].size() > 0) {
+    }
+    return 0;
+  }
+
+
+
+
+  int DoNodeOperation(int node) override { 
+    return DoScalarLLT(node);
+  }
+
   TriangularMatrixWorkspace* X;
+  std::vector<int> number_of_children_; 
 };
 
 bool T::ParallelBlockCholeskyInPlace(TriangularMatrixWorkspace* X, int max_threads) {

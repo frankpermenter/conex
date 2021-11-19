@@ -246,40 +246,27 @@ vector<BatchUpdateBlocks> GetBlocks(
   return pairs;
 }
 
-//  we want to update the sub-matrix R_j_exit_col(I) with  R_i_I
-//  R_i_I.transpose() This matrix has structure:
-//
-//    exit_col(I) = [ I, ..., ],
-//
-// i.e., we know that I will be the first set of columns.
-//
-//  so to perform the block updates, we need the offsets of J and K inside
-//  of non_zero_rows(exit_col(I)).  Letting E = exit_col(I),
-//
-//  R_E^T = [  ..., (R_J_E)^T, ... , (R_K_E)^T, ...  ].
-//
-//  So we need to know where exit_col(J) and exit_col(K)  start
-//  inside of non_zero_rows_(E)).
 
 // Helper function for computing the off-diagonal part of
 //
 //     C - B(LL^T)^{-1} B^T.
 //
-//  where C is bottom-right submatrix S_{i+1}. The inputs
-//  are a lower triangular matrix X whose block column i
-//  contains the factorization L and matrices L^{-1} B,
-//  and columns j > i contain C.  Letting R^T denote L^{-1} B,
-//  and I, J, K, L the  block columns of X, we will update
-//  data in column J using
+// where S_i is the "active" submatrix in the LLT decomposion, i.e.,
+//
+//  S_i = [A,  B^T
+//         B,   C]
+//
+//  and L = llt(A).matrixL. The inputs
+//  are a symmetric matrix X whose first block column I
+//  contains the factorization L and matrices R = (L^{-1} B)^T.
+//  and bottom right corner contains C, i.e., X has structure:
 //  I       J     K      L
 //  L       R_j   R_k    R_l
 //  R^T_j   C_jj  C_jk   C_jl
 //  R^T_k
 //  R^T_l
 //
-//
-//  subsets J and K that are non-zero in I.
-//  Hence, to perform the update
+//  To perform the update
 //
 //    C_{jk} -= R_j R^T_k where j, k denote
 //
@@ -405,6 +392,7 @@ bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* X,
       llts.emplace_back(x);
     }
 
+    // 
     if (X->off_diagonal[i].size() > 0) {
       llts.back().matrixL().solveInPlace(X->off_diagonal[i]);
       auto& temp = X->off_diagonal[i];
@@ -413,6 +401,9 @@ bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* X,
           GetBlocks(X->non_zero_rows_.at(i), X->variable_to_diagonal_block_,
                     X->variable_to_diagonal_block_position_);
 
+      // Partition non_zero_rows by their exiting columns, e.g.,
+      //  non_zero_rows = {I, J, K}.  If I are contiguous columns
+      //  in exit_column(I), we can do a batch update.
       if (batch_diagonal_update) {
         int offset = 0;
         for (auto b : blocks) {
@@ -425,6 +416,10 @@ bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* X,
       } else {
         DoScalarDiagUpdate(X, temp, i);
       }
+
+      // Partition non_zero_rows by their exiting columns, e.g.,
+      //  non_zero_rows = {I, J, K}.  If I are contiguous rows
+      //  of non_zero_rows(J), in exit_column(I), we can do a batch update.
       if (batch_off_diagonal_update) {
         DoBatchOffDiagUpdate(X, i, blocks, X->nonzero_row_offsets_);
       } else {
