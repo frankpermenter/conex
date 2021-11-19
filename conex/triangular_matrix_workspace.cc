@@ -49,17 +49,27 @@ class BlockMatrix {
 
   //void CurrentBlock() { return X.middleCols(offset, size); }
   //void SetBlock(int i) { return X; }
-  void GotoNextBlock() { 
+  bool GotoNextBlock() { 
     current_block_offset_ += blocks_.at(current_block_index_).second;
     current_block_index_++;
+
+    if (current_block_index_ >= static_cast<int>(blocks_.size())) {
+      return true;
+    }
+    return false;
   }
   void GotoBlock(int i) {
-    while (blocks_.at(current_block_offset_).first != i ) {
+    while (blocks_.at(current_block_offset_).first != i) {
       GotoNextBlock();
     }
   }
+
   int CurrentBlockNumber() {
     return blocks_.at(current_block_index_).first;
+  }
+
+  int CurrentBlockOffset() {
+    return current_block_offset_; 
   }
 
   int CurrentBlockSize() {
@@ -69,39 +79,49 @@ class BlockMatrix {
   Eigen::Ref<MatrixXd> CurrentBlock() {
     return X_.middleCols(current_block_offset_, CurrentBlockSize());
   }
+
   MatrixXd& X_;
   const BlockData& blocks_;
-  int current_block_offset_ = 0;
+  size_t current_block_offset_ = 0;
   int current_block_index_ = 0;
 };
-
-
 }  // namespace
 
 using T = TriangularMatrixWorkspace;
 using S = SimpleTriangularMatrix;
   S::SimpleTriangularMatrix(const std::vector<int>& block_column_sizes,   
                             const std::vector<SimpleTriangularMatrixTriplet>& input_triplets) :
-  block_column_sizes_(block_column_sizes), off_diagonal_triplets_(input_triplets)
-{
-    num_cols_ = std::accumulate(block_column_sizes.begin(), block_column_sizes.end(), 0);
-    num_blocks_ = block_column_sizes.size();
-    diagonal_blocks_.resize(num_blocks_);
-    off_diagonal_blocks_.resize(num_blocks_ - 1);
-    for (int i = 0; i < num_blocks_; i++) {
-      diagonal_blocks_[i].resize(block_column_sizes[i], block_column_sizes[i]);
-    }
+  block_column_sizes_(block_column_sizes), off_diagonal_triplets_(input_triplets) {
 
-    std::vector<int> off_diagonal_size(num_blocks_ - 1, 0);
-    for (auto s : input_triplets) {
-      for (int i = s.block_col; i < s.block_row; i++) {
-        off_diagonal_size.at(i) += s.num_rows_entering;
-      }
-    }
-    for (size_t i = 0; i < block_column_sizes.size() - 1; i++) {
-      off_diagonal_blocks_[i].resize(block_column_sizes[i], off_diagonal_size[i]);
+  num_cols_ = std::accumulate(block_column_sizes.begin(), block_column_sizes.end(), 0);
+  num_blocks_ = block_column_sizes.size();
+  diagonal_blocks_.resize(num_blocks_);
+  off_diagonal_blocks_.resize(num_blocks_ - 1);
+  for (int i = 0; i < num_blocks_; i++) {
+    diagonal_blocks_[i].resize(block_column_sizes[i], block_column_sizes[i]);
+  }
+
+  std::vector<int> off_diagonal_size(num_blocks_ - 1, 0);
+  Eigen::MatrixXi M(num_blocks_, num_blocks_); M.setZero();
+  for (auto s : input_triplets) {
+    for (int i = s.block_col; i < s.block_row; i++) {
+      off_diagonal_size.at(i) += s.num_rows_entering;
+      M(s.block_row, i) += s.num_rows_entering;
     }
   }
+  for (size_t i = 0; i < block_column_sizes.size() - 1; i++) {
+    off_diagonal_blocks_[i].resize(block_column_sizes[i], off_diagonal_size[i]);
+  }
+
+  off_diagonal_partition_.resize(num_blocks_);
+  for (int i = 0; i < M.cols() - 1; i++) {
+    for (int j = i+1; j < M.rows(); j++) {
+      if (M(j, i) > 0) {
+        off_diagonal_partition_.at(i).emplace_back(j, M(j, i));
+      }
+    }
+  }
+}
 
 
 MatrixXd S::MakeDenseMatrix() const {
@@ -115,17 +135,19 @@ MatrixXd S::MakeDenseMatrix() const {
   std::vector<int> global_offsets(num_blocks_, 0);
   std::partial_sum(block_column_sizes_.begin(), block_column_sizes_.end() - 1,   global_offsets.begin() + 1);
 
-  vector<int> internal_offsets(num_blocks_, 0);
-  for (auto s : off_diagonal_triplets_) {
-    for (int i = s.block_col; i < s.block_row; i++) {
-      int size = s.num_rows_entering;
-      int offset = internal_offsets.at(s.block_row);
-      int r = global_offsets.at(s.block_row) + offset;
-      M.block(r, global_offsets.at(i), size, block_column_sizes_.at(i)) = 
-          off_diagonal_blocks_.at(i).middleCols(offset, size).transpose();
+  for (size_t i = 0; i < block_column_sizes_.size() - 1; i++) {
+    if (off_diagonal_partition_.at(i).size() > 0) {
+      MatrixXd data = off_diagonal_blocks_.at(i);
+      BlockMatrix block(data, off_diagonal_partition_.at(i));
+      do { 
+      int row_block = block.CurrentBlockNumber();
+      MatrixXd b = block.CurrentBlock().transpose(); 
+      M.block(global_offsets.at(row_block),  global_offsets.at(i),  b.rows(), b.cols() ) = b;
+      } while (!block.GotoNextBlock());
     }
-    internal_offsets.at(s.block_row) += s.num_rows_entering;
+    
   }
+  
   return M;
 }
 
@@ -172,12 +194,137 @@ MatrixXd S::MakeDenseMatrix() const {
 // and stored in the block C12.  The full matrix C starts 
 // at the diagonal block (i, i). 
 void S::LLT::SchurComplementInPlace(int block) {
-  for (size_t i = 0; i < active_blocks.size(): i++) {
-    for (size_t j = i + 1; j < active_blocks.size(): j++) {
-      off_diagonal.at(block).
-    }
+  auto Rdata = matrix_.off_diagonal_blocks_.at(block);
+  if (Rdata.size() == 0) {
+    return;
   }
+  const BlockData& input_block_info = matrix_.off_diagonal_partition_.at(block); 
+  BlockMatrix R(Rdata, input_block_info);
+  auto& off_diagonal_blocks = matrix_.off_diagonal_blocks_;
+  auto& diagonal_blocks = matrix_.diagonal_blocks_;
+  BlockMatrix input_i(Rdata, input_block_info);
+  for (size_t i = 0; i < input_block_info.size() - 1; i++) {
+    int size_i = input_i.CurrentBlockSize();
+    BlockMatrix output(off_diagonal_blocks.at(input_i.CurrentBlockNumber()), 
+                       matrix_.off_diagonal_partition_.at(input_i.CurrentBlockNumber()));
+    BlockMatrix input_j(Rdata, input_block_info, i+1); 
+    for (size_t j = i + 1; j < input_block_info.size(); j++) {
+      int size_j = input_j.CurrentBlockSize();
+      output.GotoBlock(input_j.CurrentBlockNumber());
+      output.CurrentBlock().topLeftCorner(size_i, size_j)
+          -=  input_i.CurrentBlock().transpose() * input_j.CurrentBlock(); 
+      input_j.GotoNextBlock();
+    }
+
+    diagonal_blocks.at(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i)
+          -=  input_i.CurrentBlock().transpose()  * input_i.CurrentBlock();
+    input_i.GotoNextBlock();
+  }
+  int size_i = input_i.CurrentBlockSize();
+  diagonal_blocks.at(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i)
+        -=  input_i.CurrentBlock().transpose()  * input_i.CurrentBlock();
+
+  
 }
+
+
+// Each block column has 
+//
+//      T1  C2  C3
+//   T1
+//   T2 
+//   T3     
+//   T4
+//
+//
+//   P T inv(C) (T P)^T
+//     
+//  We want to undo column permutation
+//  1   2 3 4
+//  * 
+//       * 
+//       * * 
+//  C31  * * * 
+//  C41  * * * 
+//
+//  To scatter C1 * inv(C1) * C1', we need to
+//  know the columns
+//
+//
+//   C31 (C31)^T,  
+//   C41 (C31)^T, 
+//
+//
+//  C1
+//  C2  
+//  C7
+//  C6
+//  C5
+//
+// In loop, compute
+//  C2 C1'             
+//  C7
+//  C6
+//  C5
+//
+//  C7 C2'
+//  C6
+//  C5
+//
+//
+//  C6 C7'
+//  C5
+//
+//  *
+//    * 
+//  * * *
+//    * * * 
+//  * * * * *
+//  * * * * * *
+//
+//   
+//  d0 
+//     d1
+//  r2 r2  d2
+//             d3
+//  r4 r4  r4  r4  d4
+//  r5 r5  r5  r5  r5
+//     r3  r3
+//         r5_2
+//
+//
+// Scatter for d1:
+//
+//   r4 r2
+//   r5 
+//   r3
+//
+//   r5 r4
+//   r3
+//    
+//   r3 r5
+//
+//  Off diagonal:  
+//    Partition as
+//
+//    ri
+//    rj
+//    rk
+//
+//  with i > j > k.  Compute
+//
+//  r_i r_
+//
+//  d0 
+//     d1
+//  r2 r2  d2
+//             d3
+//  r4 r4  r4  r4  d4
+//     r5  r5  r5  r5  r5
+//  r6 r6  r6  r6  r6  r6 r6 
+//
+//  (0, 2, 4, 6) - (1, 2, 4, 5, 6) -  (2, 4, 5, 6) - (3, 4, 5, 6) - ( 4, 5, 6, 7)  - (6, 7, 8)
+//}
 
 T::TriangularMatrixWorkspace(const CliqueTree& tree)
     : TriangularMatrixWorkspace(

@@ -99,6 +99,18 @@ class SimpleTriangularMatrix {
     }
   }
 
+
+  class LLT {
+   public:
+    LLT(SimpleTriangularMatrix& matrix) : matrix_(matrix) {}
+    void SchurComplementInPlace(int i);
+   private:
+    SimpleTriangularMatrix& matrix_;
+    vector<int> internal_offsets_;
+  };
+
+  LLT llt() { return LLT(*this); }
+
  private: 
   std::vector<Eigen::MatrixXd> diagonal_blocks_;
   vector<Eigen::MatrixXd> off_diagonal_blocks_;
@@ -107,14 +119,8 @@ class SimpleTriangularMatrix {
   vector<SimpleTriangularMatrixTriplet> off_diagonal_triplets_; 
   int num_blocks_;
   int num_cols_ = 0;
+  std::vector<std::vector<std::pair<int, int>>> off_diagonal_partition_;
 
-  class LLT {
-    LLT(SimpleTriangularMatrix& matrix) : matrix_(matrix) {}
-   private:
-    SimpleTriangularMatrix& matrix_;
-    void SchurComplementInPlace(int i, int triplet_offset);
-    vector<int> internal_offsets_;
-  };
   friend class LLT;
 };
 

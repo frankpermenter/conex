@@ -496,7 +496,7 @@ cc_test(
  srcs = [
      "test/simple_triangular_matrix_test.cc",
  ],
- copts = ["-Iexternal/gtest/include"],
+ copts = ["-Iexternal/gtest/include", "-g"],
  deps = [
     "@gtest//:main",
      "block_triangular_matrix",
