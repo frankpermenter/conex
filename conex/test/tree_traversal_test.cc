@@ -39,9 +39,10 @@ void DoFactorInParallel() {
 class NodePrinter final : public conex::TreeTraversalBase {
  public:
   NodePrinter(RootedTree* tree) : TreeTraversalBase(tree) {}
+
  private:
   int DoNodeOperation(int node) override {
-    std::cout << "\nParent: " << tree_ptr_->parent.at(node) << "Node: " << node; 
+    std::cout << "\nParent: " << tree_ptr_->parent.at(node) << "Node: " << node;
     return node;
   }
 };
@@ -66,7 +67,6 @@ int main(int argc, char** argv) {
   tree.height = vector<int>{0, 1, 2, 1, 2, 3, 4, 5};
   node_printer.TraverseFromRoot();
   node_printer.TraverseFromLeaves();
-
 
   return 0;
 }

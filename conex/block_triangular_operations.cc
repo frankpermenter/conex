@@ -246,7 +246,6 @@ vector<BatchUpdateBlocks> GetBlocks(
   return pairs;
 }
 
-
 // Helper function for computing the off-diagonal part of
 //
 //     C - B(LL^T)^{-1} B^T.
@@ -392,7 +391,7 @@ bool T::BlockCholeskyInPlace(TriangularMatrixWorkspace* X,
       llts.emplace_back(x);
     }
 
-    // 
+    //
     if (X->off_diagonal[i].size() > 0) {
       llts.back().matrixL().solveInPlace(X->off_diagonal[i]);
       auto& temp = X->off_diagonal[i];

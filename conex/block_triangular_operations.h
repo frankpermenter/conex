@@ -43,7 +43,8 @@ struct BlockTriangularOperations {
     ApplyBlockInverseOfTransposeInPlace(mat, y);
   }
 
-  static bool ParallelBlockCholeskyInPlace(TriangularMatrixWorkspace* X, int max_threads);
+  static bool ParallelBlockCholeskyInPlace(TriangularMatrixWorkspace* X,
+                                           int max_threads);
 };
 
 }  // namespace conex

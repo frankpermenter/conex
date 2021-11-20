@@ -9,7 +9,8 @@ void TraverseFromLeafs(const RootedTree& d);
 
 class TreeTraversalBase {
  public:
-  TreeTraversalBase(const RootedTree* tree, int max_threads = 4) : tree_ptr_(tree) {}
+  TreeTraversalBase(const RootedTree* tree, int max_threads = 4)
+      : tree_ptr_(tree) {}
 
   void TraverseFromRoot() {
     auto d = *tree_ptr_;
@@ -28,7 +29,7 @@ class TreeTraversalBase {
     } while (root_nodes.size() > 0);
   }
 
-  void TraverseFromLeaves()  {
+  void TraverseFromLeaves() {
     auto d = *tree_ptr_;
     bool parallelism_enabled = true;
     auto num_children = NumberOfChildren(d);
@@ -49,7 +50,7 @@ class TreeTraversalBase {
 
  private:
   virtual int DoNodeOperation(int node) = 0;
-  void VisitPostOrder(int starting_node, std::vector<int>* visited, 
+  void VisitPostOrder(int starting_node, std::vector<int>* visited,
                       std::vector<int>* num_children) {
     int node = starting_node;
     auto d = *tree_ptr_;
@@ -85,10 +86,10 @@ class TreeTraversalBase {
       }
     }
   }
+
  protected:
   const RootedTree* tree_ptr_ = nullptr;
   const int num_threads_ = 1;
 };
-
 
 }  // namespace conex

@@ -17,69 +17,68 @@ struct CliqueTree {
   RootedTree parent_in_tree;
 };
 
-//class JunctionTree {
+// class JunctionTree {
 //  std::vector<std::vector<int>> supernodes;
 //  std::vector<std::vector<int>> separators;
 //  std::vector<int> parent_in_tree;
 //};
 
-
 // A square lower-triangular matrix whose rows and columns are partitioned into
 // sets C_0, C_1, ..., C_N whose scalar entries satisfy the following
 // property:
 //
-//  (P1) If (i, j) is non-zero, then (i, k) is nonzero for all j <= k <= i. 
-//  (P2) If (i, j) is non-zero and i \in C_m, then (k, j) is nonzero for all k \in C_m
-//  satisfying k < i.
+//  (P1) If (i, j) is non-zero, then (i, k) is nonzero for all j <= k <= i.
+//  (P2) If (i, j) is non-zero and i \in C_m, then (k, j) is nonzero for all k
+//  \in C_m satisfying k < i.
 //
 //
 // Valid Examples:
 //
-//   * *                * *               *  
-//   * *                * *               * * 
-//       * *            * * * *               * 
+//   * *                * *               *
+//   * *                * *               * *
+//       * *            * * * *               *
 //       * *            * * * *               * *
-//   * * * * * *            * * * *       * * * * * * 
-//   * * * * * *            * * * *           * * * * 
+//   * * * * * *            * * * *       * * * * * *
+//   * * * * * *            * * * *           * * * *
 //       (A)               (B)               (C)
 //
 //
 // Invalid Examples:
 //
-//   * *                    *  
-//   * *                      * 
-//       * *                   * 
+//   * *                    *
+//   * *                      *
+//       * *                   *
 //       * *                   * *
-//   * *    * *                * * * * 
-//   * *    * *            * * * * * * 
+//   * *    * *                * * * *
+//   * *    * *            * * * * * *
 //
-//   (Bottom two rows      (Bottom left corner 
+//   (Bottom two rows      (Bottom left corner
 //    violates P1)          violates P2).
-//              
-//   
+//
+//
 // To construct such a matrix, we take a list v of triplets
 // {(i, j), s}, indicating that s new rows of block row i
 // are non-zero starting at the beginning of block column j
 //
 // Inputs for the example matrices A, B, C are:
 //
-//  v_A = (0, 2), 2 
+//  v_A = (0, 2), 2
 //  v_B = (0, 1), 2;  (2, 1), 2
 //  v_C = (0, 2), 1;  (2, 1), 1
 //
 // We assume the tripets are sorted by the block column index.
 struct SimpleTriangularMatrixTriplet {
-  SimpleTriangularMatrixTriplet(int row, int col, int size) : 
-      block_row(row), block_col(col),  num_rows_entering(size) {}
+  SimpleTriangularMatrixTriplet(int row, int col, int size)
+      : block_row(row), block_col(col), num_rows_entering(size) {}
   int block_row;
   int block_col;
   int num_rows_entering;
 };
 class SimpleTriangularMatrix {
  public:
-  SimpleTriangularMatrix(const std::vector<int>& block_column_sizes,   
-                         const std::vector<SimpleTriangularMatrixTriplet>& 
-                         input_triplets_sorted_by_column);
+  SimpleTriangularMatrix(const std::vector<int>& block_column_sizes,
+                         const std::vector<SimpleTriangularMatrixTriplet>&
+                             input_triplets_sorted_by_column);
 
   // Computes (*this) -= lower_tri(R^T R ) where R is a compatible block matrix.
   // The vector input_block_info provides a vector of pairs r, where r.first
@@ -87,43 +86,78 @@ class SimpleTriangularMatrix {
   // columns in that block. These non-zero columns are contiguous and start at
   // the beginning of the block.  The are provided by the matrix Rdata, which
   // satisfies R.data.cols() = sum( r.second : r \in input_block_info).
-  void DecrementByRRt(const Eigen::MatrixXd& Rdata, 
-                   const std::vector<std::pair<int, int>>& input_block_info);
+  void DecrementByRRt(const Eigen::MatrixXd& Rdata,
+                      const std::vector<std::pair<int, int>>& input_block_info);
   Eigen::MatrixXd MakeDenseMatrix() const;
-  void SetConstant(double c) { 
+  void SetConstant(double c) {
     for (auto& d : diagonal_blocks_) {
-      d.setConstant(c); 
+      d.setConstant(c);
     }
     for (auto& d : off_diagonal_blocks_) {
-      d.setConstant(c); 
+      d.setConstant(c);
     }
   }
 
+  void AssembleFromCompressedColumns(const vector<Eigen::MatrixXd>& x) {
+    if (x.size() != block_column_sizes_.size()) {
+      throw std::runtime_error("Incorrect number of block columns provided.");
+    }
+    for (size_t i = 0; i < x.size() - 1; i++) {
+      if (diagonal_blocks_.at(i).rows() + off_diagonal_blocks_.at(i).cols() !=
+          x.at(i).rows()) {
+        throw std::runtime_error("Incorrect number of block rows provided.");
+      }
+      if (diagonal_blocks_.at(i).cols() != x.at(i).cols()) {
+        throw std::runtime_error("Size of block column is incorrect.");
+      }
+      diagonal_blocks_.at(i) = x.at(i).topRows(block_column_sizes_[i]);
+      if (off_diagonal_blocks_.at(i).size() > 0) {
+        off_diagonal_blocks_.at(i) =
+            x.at(i).bottomRows(off_diagonal_blocks_.at(i).cols()).transpose();
+      }
+    }
+    diagonal_blocks_.back() = x.back();
+  }
 
   class LLT {
    public:
-    LLT(SimpleTriangularMatrix& matrix) : matrix_(matrix) {}
-    void SchurComplementInPlace(int i);
+    void compute() {
+      llt_of_diag_.clear();
+      for (int i = 0; i < matrix_.num_blocks_ - 1; i++) {
+        llt_of_diag_.emplace_back(matrix_.diagonal_blocks_[i]);
+        if (matrix_.off_diagonal_blocks_[i].size() > 0) {
+          llt_of_diag_.back().matrixL().solveInPlace(
+              matrix_.off_diagonal_blocks_[i]);
+          SchurComplementInPlace(i);
+        }
+      }
+      llt_of_diag_.emplace_back(matrix_.diagonal_blocks_.back());
+    }
+
    private:
+    LLT(SimpleTriangularMatrix* matrix) : matrix_(*matrix) {
+      llt_of_diag_.reserve(matrix_.num_blocks_);
+    }
+    void SchurComplementInPlace(int i);
     SimpleTriangularMatrix& matrix_;
-    vector<int> internal_offsets_;
+    vector<Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>>> llt_of_diag_;
+    friend class SimpleTriangularMatrix;
   };
 
-  LLT llt() { return LLT(*this); }
+  LLT llt() { return LLT(this); }
 
- private: 
+ private:
   std::vector<Eigen::MatrixXd> diagonal_blocks_;
   vector<Eigen::MatrixXd> off_diagonal_blocks_;
   vector<vector<std::pair<int, int>>> offsets_;
-  vector<int> block_column_sizes_; 
-  vector<SimpleTriangularMatrixTriplet> off_diagonal_triplets_; 
+  vector<int> block_column_sizes_;
+  vector<SimpleTriangularMatrixTriplet> off_diagonal_triplets_;
   int num_blocks_;
   int num_cols_ = 0;
   std::vector<std::vector<std::pair<int, int>>> off_diagonal_partition_;
 
   friend class LLT;
 };
-
 
 struct TriangularMatrixWorkspace {
   // Inputs: a list of cliques satisfying the running intersection property
@@ -134,7 +168,7 @@ struct TriangularMatrixWorkspace {
                             const RootedTree& clique_tree = {});
 
   TriangularMatrixWorkspace(const CliqueTree& clique_tree);
-//  TriangularMatrixWorkspace(const JunctionTree& clique_tree);
+  //  TriangularMatrixWorkspace(const JunctionTree& clique_tree);
 
   // We store a triangular matrix T using a collection of square matrices
   // D_i on the diagonal and matrices R_i below the diagonal.
@@ -247,7 +281,7 @@ struct TriangularMatrixWorkspace {
   // (i, j) entry is the smallest element k in
   // non_zero_row_(j) satisfying exiting_column(k) = i.
   Eigen::MatrixXd nonzero_row_offsets_;
-  RootedTree clique_tree_; 
+  RootedTree clique_tree_;
 
  private:
   // TODO(FrankPermenter): Remove this method.

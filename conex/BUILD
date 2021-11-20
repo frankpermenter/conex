@@ -276,17 +276,17 @@ cc_library(
     srcs = [
         "RLDLT.h",
         "block_triangular_operations.cc",
-        "parallel_block_triangular_operations.cc",
         "memory_utils.h",
-        "triangular_matrix_workspace.cc",
+        "parallel_block_triangular_operations.cc",
         "tree_traversal.h",
+        "triangular_matrix_workspace.cc",
     ],
-    copts = COPTS + ["-fopenmp"],
-    linkopts = ["-fopenmp"],
     hdrs = [
         "block_triangular_operations.h",
         "triangular_matrix_workspace.h",
     ],
+    copts = COPTS + ["-fopenmp"],
+    linkopts = ["-fopenmp"],
     deps = ["tree_utils"],
 )
 
@@ -492,17 +492,19 @@ cc_test(
 )
 
 cc_test(
- name = "simple_triangular_matrix_test",
- srcs = [
-     "test/simple_triangular_matrix_test.cc",
- ],
- copts = ["-Iexternal/gtest/include", "-g"],
- deps = [
-    "@gtest//:main",
-     "block_triangular_matrix",
- ],
+    name = "simple_triangular_matrix_test",
+    srcs = [
+        "test/simple_triangular_matrix_test.cc",
+    ],
+    copts = [
+        "-Iexternal/gtest/include",
+        "-g",
+    ],
+    deps = [
+        "block_triangular_matrix",
+        "@gtest//:main",
+    ],
 )
-
 
 cc_binary(
     name = "tree_traversal_test",
@@ -520,7 +522,6 @@ cc_binary(
         "tree_utils",
     ],
 )
-
 
 cc_binary(
     name = "solver_failures",

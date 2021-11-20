@@ -48,27 +48,28 @@ void DoScalarDiagUpdate(TriangularMatrixWorkspace* X,
   }
 }
 
-} // namespace 
+}  // namespace
 
 class ParallelCholesky : TreeTraversalBase {
  public:
-  ParallelCholesky(TriangularMatrixWorkspace* matrix, int max_processors) : TreeTraversalBase(&matrix->clique_tree_, max_processors), 
-    X(matrix) {
-      auto& llts = X->llts;
-      if (llts.size() > 0) {
-        llts.clear();
-      }
-      number_of_children_ = NumberOfChildren(matrix->clique_tree_);
+  ParallelCholesky(TriangularMatrixWorkspace* matrix, int max_processors)
+      : TreeTraversalBase(&matrix->clique_tree_, max_processors), X(matrix) {
+    auto& llts = X->llts;
+    if (llts.size() > 0) {
+      llts.clear();
     }
-  void Factor() {  TreeTraversalBase::TraverseFromLeaves(); }
+    number_of_children_ = NumberOfChildren(matrix->clique_tree_);
+  }
+  void Factor() { TreeTraversalBase::TraverseFromLeaves(); }
+
  private:
   int RootOfDepthFirstSearchChain(int node) const {
     int parent = node;
-    while(1) {
+    while (1) {
       if (parent == -1 || number_of_children_.at(parent) > 1) {
         return parent;
-      }  else {
-        parent = X->clique_tree_.parent.at(parent); 
+      } else {
+        parent = X->clique_tree_.parent.at(parent);
       }
     }
   }
@@ -115,21 +116,17 @@ class ParallelCholesky : TreeTraversalBase {
     return 0;
   }
 
-
-
-
-  int DoNodeOperation(int node) override { 
-    return DoScalarLLT(node);
-  }
+  int DoNodeOperation(int node) override { return DoScalarLLT(node); }
 
   TriangularMatrixWorkspace* X;
-  std::vector<int> number_of_children_; 
+  std::vector<int> number_of_children_;
 };
 
-bool T::ParallelBlockCholeskyInPlace(TriangularMatrixWorkspace* X, int max_threads) {
+bool T::ParallelBlockCholeskyInPlace(TriangularMatrixWorkspace* X,
+                                     int max_threads) {
   ParallelCholesky cholesky(X, max_threads);
   cholesky.Factor();
   return true;
 }
 
-} // namespace conex
+}  // namespace conex

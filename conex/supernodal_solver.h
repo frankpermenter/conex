@@ -74,7 +74,6 @@ class SparseTriangularMatrix {
     Initialize(&workspace_, memory_.data());
   }
 
-
   SparseTriangularMatrix(int N_, const std::vector<std::vector<int>>& cliques,
                          const std::vector<int>& supernode_sizes)
       : SparseTriangularMatrix(

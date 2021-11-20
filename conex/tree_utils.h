@@ -30,7 +30,6 @@ struct RootedTree {
 vector<int> PathInTree(int x, int y, const std::vector<int>& tree,
                        const std::vector<int>& height);
 
-
 std::vector<int> NumberOfChildren(const RootedTree& tree);
 
 std::vector<int> GetUnvisitedRootNodes(const RootedTree& d,
@@ -38,7 +37,5 @@ std::vector<int> GetUnvisitedRootNodes(const RootedTree& d,
 
 vector<int> GetUnvisitedLeafNode(const std::vector<int>& num_children,
                                  const std::vector<int>& visited);
-
-
 
 }  // namespace conex
