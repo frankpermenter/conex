@@ -291,6 +291,55 @@ cc_library(
 )
 
 cc_library(
+    name = "simple_triangular_matrix",
+    srcs = [
+        "simple_triangular_matrix.cc",
+#        "triangular_matrix_star.cc",
+    ],
+    hdrs = [
+        "simple_triangular_matrix.h",
+        "triangular_matrix_star.h",
+    ],
+    copts = COPTS,
+    linkopts = ["-fopenmp"],
+    deps = ["tree_utils"],
+)
+
+
+#cc_test(
+#    name = "triangular_matrix_star_test",
+#    srcs = [
+#        "test/triangular_matrix_star_test.cc",
+#    ],
+#    copts = [
+#        "-Iexternal/gtest/include",
+#        "-g",
+#    ],
+#    deps = [
+#        "simple_triangular_matrix",
+#        "@gtest//:main",
+#    ],
+#)
+
+cc_test(
+    name = "simple_triangular_matrix_test",
+    srcs = [
+        "test/simple_triangular_matrix_test.cc",
+    ],
+    copts = [
+        "-Iexternal/gtest/include",
+        "-g",
+    ],
+    deps = [
+        "simple_triangular_matrix",
+        "@gtest//:main",
+    ],
+)
+
+
+
+
+cc_library(
     name = "supernodal_solver",
     srcs = [
         "debug_macros.h",
@@ -491,20 +540,6 @@ cc_test(
     ],
 )
 
-cc_test(
-    name = "simple_triangular_matrix_test",
-    srcs = [
-        "test/simple_triangular_matrix_test.cc",
-    ],
-    copts = [
-        "-Iexternal/gtest/include",
-        "-g",
-    ],
-    deps = [
-        "block_triangular_matrix",
-        "@gtest//:main",
-    ],
-)
 
 cc_binary(
     name = "tree_traversal_test",
