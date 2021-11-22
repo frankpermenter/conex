@@ -236,9 +236,10 @@ class TriangularMatrixDirectSum {
       int block_size = mat.cols() - last_block;
 
       MatrixXd Mi = mat.MakeDenseMatrix();
+      
       M.block(offset, offset, block_size, block_size) = Mi.topLeftCorner(block_size, block_size);
       M.block(common_block_offset, offset, last_block, block_size) = Mi.bottomLeftCorner(last_block, block_size);
-      M.block(common_block_offset, common_block_offset, last_block, block_size) += Mi.bottomRightCorner(last_block, last_block);
+      M.block(common_block_offset, common_block_offset, last_block, last_block) += mat.diagonal_blocks().back(); 
       i++;
       offset += block_size;
     }
