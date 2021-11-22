@@ -186,100 +186,34 @@ GTEST_TEST(SimpleTri, DontFactorLastBlock) {
   EXPECT_NEAR(error.norm(), 0, 1e-12);
 }
 
-class TriangularMatrixDirectSum {
- public:
-  TriangularMatrixDirectSum(std::vector<SimpleTriangularMatrix>& matrices) : matrices_(matrices) {}
-  std::vector<SimpleTriangularMatrix>& matrices_;
 
-  MatrixXd MakeDenseMatrix() {
-    auto& matrices = matrices_;
-    int common_block_offset = 0;
-    int common_block_size = 0;
-    for (const auto& mat : matrices) {
-      common_block_offset += mat.cols() - mat.block_sizes().back();
-      if (mat.block_sizes().back() > common_block_size) {
-        common_block_size = mat.block_sizes().back();
-      }
-    }
-    int size = common_block_offset + common_block_size;
-    MatrixXd M(size, size); M.setZero();
-    int i = 0; 
-    int offset = 0; 
-    for (const auto& mat : matrices) {
-      int last_block = mat.block_sizes().back();
-      int block_size = mat.cols() - last_block;
-
-      MatrixXd Mi = mat.MakeDenseMatrix();
-      
-      M.block(offset, offset, block_size, block_size) = Mi.topLeftCorner(block_size, block_size);
-      M.block(common_block_offset, offset, last_block, block_size) = Mi.bottomLeftCorner(last_block, block_size);
-      M.block(common_block_offset, common_block_offset, last_block, last_block) += mat.diagonal_blocks().back(); 
-      i++;
-      offset += block_size;
-    }
-
-    return M;
-  }
-
-  class LLT {
-   public:
-    bool compute() {
-      auto& matrices = matrix_.matrices_;
-      int common_block_offset = 0;
-      int common_block_size = 0;
-      for (const auto& mat : matrices) {
-        common_block_offset += mat.cols() - mat.block_sizes().back();
-        if (mat.block_sizes().back() > common_block_size) {
-          common_block_size = mat.block_sizes().back();
-        }
-      }
-
-      common_block_.resize(common_block_size, common_block_size);
-      common_block_.setZero();
-
-      for (auto& mat : matrices) {
-        auto llt = mat.llt();
-        llt.compute(false);
-      }
-
-      for (const auto& mat : matrices) {
-        int last_block = mat.block_sizes().back();
-        common_block_.topLeftCorner(last_block, last_block) += mat.diagonal_blocks().back(); 
-      }
-      llt_of_diag_.emplace_back(common_block_);
-      return true;
-    }
-
-    Eigen::MatrixXd matrixL() { 
-      MatrixXd L = matrix_.MakeDenseMatrix();
-      int common_block_size = common_block_.rows();
-      L.bottomRightCorner(common_block_size, common_block_size) = llt_of_diag_.back().matrixL();
-      return L;
-    }
-   private:
-    LLT(TriangularMatrixDirectSum* matrix) : matrix_(*matrix) { }
-    bool ready() { return true; }
-    TriangularMatrixDirectSum& matrix_;
-    std::vector<Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>>> llt_of_diag_;
-    Eigen::MatrixXd common_block_;
-    friend class TriangularMatrixDirectSum;
-    bool factorization_ready_ = false;
-  };
-
-  LLT llt() { return LLT(this); }
-};
-
-// Builds a triangular matrices from a direct sum.
 GTEST_TEST(SimpleTri, DirectSum) {
 
   // clang-format off
-  MatrixXd Ref(4, 4);
-  Ref << 4, 0, 0, 0,
-         1, 4, 0, 0,
-         1, 1, 2, 0,
-         1, 1, 1, 2;
+  MatrixXd L1(4, 2);
+  MatrixXd R1(2, 2);
+  L1 << 20, 0, 
+        2, 20, 
+        4, 4, 
+        4, 4;
+  R1 << 20, 2,
+        2, 20;
+  vector<MatrixXd> cols_1(2); 
+  cols_1.at(0) = L1;
+  cols_1.at(1) = R1;
+
+  MatrixXd L2(4, 2);
+  MatrixXd R2(2, 2);
+  L2 << 20, 0, 
+       -2, 20, 
+        4, 4, 
+        0, 4;
+  R2 << 22, 2,
+        2, 22;
+  vector<MatrixXd> cols_2(2); 
+  cols_2.at(0) = L2;
+  cols_2.at(1) = R2;
   // clang-format on
-  Ref += 10 * MatrixXd::Identity(Ref.rows(), Ref.rows());
 
   std::vector<int> block_sizes{2, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{1, 0, 2}};
@@ -287,32 +221,43 @@ GTEST_TEST(SimpleTri, DirectSum) {
   vector<SimpleTriangularMatrix> mats;
   mats.emplace_back(block_sizes, triplets);
   mats.emplace_back(block_sizes, triplets);
-  mats.at(0).AssembleFromCompressedColumns(GetCompressedBlockColumns(Ref, block_sizes));
-  mats.at(1).AssembleFromCompressedColumns(GetCompressedBlockColumns(Ref, block_sizes));
+  mats.at(0).AssembleFromCompressedColumns(cols_1);
+  mats.at(1).AssembleFromCompressedColumns(cols_2);
 
   // clang-format off
-  MatrixXd data_2(5, 5);
-  data_2 << 4, 0, 0, 0, 0,
-            1, 4, 0, 0, 0,
-            1, 1, 2, 0, 0,
-            1, 1, 1, 2, 0,
-            0, 0, 1, 2, 2;
+  MatrixXd L3(4, 2);
+  MatrixXd R3(3, 3);
+  L3 << 30, 0, 
+       -3, 30, 
+        4, 4, 
+        0, 4;
+  R3 << 33, 3, 3,
+        3, 33, 2,
+        3, 2, 55;
+
+  vector<MatrixXd> cols_3(2); 
+  cols_3.at(0) = L3;
+  cols_3.at(1) = R3;
   // clang-format on
-  data_2 += 10 * MatrixXd::Identity(data_2.rows(), data_2.rows());
 
   std::vector<int> block_sizes_2{2, 3};
   std::vector<SimpleTriangularMatrixTriplet> triplets_2{{1, 0, 2}};
   mats.emplace_back(block_sizes_2, triplets_2);
-  mats.at(2).AssembleFromCompressedColumns(GetCompressedBlockColumns(data_2, block_sizes_2));
-
-
-
-
-
+  mats.at(2).AssembleFromCompressedColumns(cols_3);
 
   TriangularMatrixDirectSum mat(mats);
   MatrixXd full_mat = mat.MakeDenseMatrix();
-  DUMP(full_mat);
+
+  // full_mat = L1
+  //               L2
+  //                  L3
+  //            L1 L2 L3  R1 + R2 + R3
+  // Easy sanity check.
+  // double squared_norm = full_mat.leftCols(block_sizes.at(0) * 2 + block_sizes_2.at(0)).squaredNorm();
+  // EXPECT_NEAR(L1.squaredNorm() + L2.squaredNorm() + L3.squaredNorm(), squared_norm, 1e-12);
+  // double sum = R1.colwise().sum().sum() + R2.colwise().sum().sum() + R3.colwise().sum().sum();
+  // EXPECT_NEAR(sum, full_mat.bottomRightCorner(block_sizes_2.back(), block_sizes_2.back()).colwise().sum().sum(), 1e-12);
+
   auto llt = mat.llt();
   llt.compute();
   MatrixXd llt_ref = Eigen::LLT<MatrixXd>(full_mat).matrixL();
