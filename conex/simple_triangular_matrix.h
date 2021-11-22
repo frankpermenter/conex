@@ -96,43 +96,11 @@ class SimpleTriangularMatrix {
   }
 
 
-
-
-  void IncrementDiagonalBlockColumns(const Eigen::MatrixXd& x, int block, 
-                                     int column_start) {
-    if (diagonal_blocks_.at(block).rows()  != x.rows()) { 
-      throw std::runtime_error("Incorrect of rows provided.");
-    }
-    if (diagonal_blocks_.at(block).cols() < column_start + x.cols()) { 
-      throw std::runtime_error("Incorrect of columns provided.");
-    }
-    DoIncrementDiagonalBlockColumns(x, block, column_start);
-  }
-
-  void IncrementOffDiagonalBlockColumns(const Eigen::MatrixXd& x, int block, 
-                                       int column_start) {
-    if (off_diagonal_blocks_.at(block).cols() != x.rows()) { 
-      throw std::runtime_error("Incorrect of rows provided.");
-    }
-    if (off_diagonal_blocks_.at(block).rows() < column_start + x.cols()) { 
-      throw std::runtime_error("Incorrect of columns provided.");
-    }
-    DoIncrementOffDiagonalBlockColumns(x, block, column_start);
-  }
-
-
-  // We partition the input matrix x as
-  //
-  // X = [ D1,
-  //       R1_1, D2,
-  //       R2_1, R1_2,  D3]
-  //       R3_1, R2_2,  R1_3]
-  //
-  // Here
-  void IncrementSubmatrix(const Eigen::MatrixXd& x, 
-                          std::vector<std::pair<int, int>> diagonal_blocks,
-                          std::vector<std::pair<int, int>> row_partition);
-
+  /* Increments a submatrix X of the full matrix T. The block X_{ij} is assigned
+   * to T.block(partition.at(i).first, partition.at(j).first,
+   * partition.at(i).first, partition.at(j).second).  */  
+  void IncrementSubmatrix(const Eigen::MatrixXd& X, 
+                          const std::vector<std::pair<int, int>>& partition);
 
   const std::vector<Eigen::MatrixXd>& diagonal_blocks() const { return diagonal_blocks_; }
 
@@ -156,10 +124,6 @@ class SimpleTriangularMatrix {
   LLT llt() { return LLT(this); }
 
  private:
-  void DoIncrementDiagonalBlockColumns(const Eigen::MatrixXd& x, 
-                                       int block, int column_start);
-  void DoIncrementOffDiagonalBlockColumns(const Eigen::MatrixXd& x, int block, 
-                                      int column_start);
 
   std::vector<Eigen::MatrixXd> diagonal_blocks_;
   std::vector<Eigen::MatrixXd> off_diagonal_blocks_;
@@ -167,6 +131,9 @@ class SimpleTriangularMatrix {
   std::vector<SimpleTriangularMatrixTriplet> off_diagonal_triplets_;
   int num_blocks_;
   int num_cols_ = 0;
+
+  // Indicates that block column i contains off_diagonal_partition_.at(i).second
+  // rows of block row off_diagonal_partition_.at(i).first.
   std::vector<std::vector<std::pair<int, int>>> off_diagonal_partition_;
 
   friend class LLT;
