@@ -186,32 +186,6 @@ GTEST_TEST(SimpleTri, DontFactorLastBlock) {
   EXPECT_NEAR(error.norm(), 0, 1e-12);
 }
 
-
-class TriangularMatrix {
-  std::vector<int> tree;
-  std::vector<int> subtree_roots;
-
-  //      1
-  //   2     3
-  //   4     5
-  //  6 7    8 
-  //
-  //  
-  //  SimpleTriangularMatrix:  DS(1,  LastClique( LastClique( Path(2, LastClique( DS(4, {6, 7}))),    )
-  //
-  //
-  //  Tri = DS   if children > 1
-  //  Tri = Simp if children > 1
-
-};
-
-
-class DS {
-
-};
-
-
-// T
 class TriangularMatrixDirectSum {
  public:
   TriangularMatrixDirectSum(std::vector<SimpleTriangularMatrix>& matrices) : matrices_(matrices) {}
@@ -297,7 +271,6 @@ class TriangularMatrixDirectSum {
 
 // Builds a triangular matrices from a direct sum.
 GTEST_TEST(SimpleTri, DirectSum) {
-  vector<int> master_block_sizes{2, 2, 3};
 
   // clang-format off
   MatrixXd Ref(4, 4);
@@ -310,21 +283,40 @@ GTEST_TEST(SimpleTri, DirectSum) {
 
   std::vector<int> block_sizes{2, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{1, 0, 2}};
+
   vector<SimpleTriangularMatrix> mats;
   mats.emplace_back(block_sizes, triplets);
   mats.emplace_back(block_sizes, triplets);
   mats.at(0).AssembleFromCompressedColumns(GetCompressedBlockColumns(Ref, block_sizes));
   mats.at(1).AssembleFromCompressedColumns(GetCompressedBlockColumns(Ref, block_sizes));
 
+  // clang-format off
+  MatrixXd data_2(5, 5);
+  data_2 << 4, 0, 0, 0, 0,
+            1, 4, 0, 0, 0,
+            1, 1, 2, 0, 0,
+            1, 1, 1, 2, 0,
+            0, 0, 1, 2, 2;
+  // clang-format on
+  data_2 += 10 * MatrixXd::Identity(data_2.rows(), data_2.rows());
+
+  std::vector<int> block_sizes_2{2, 3};
+  std::vector<SimpleTriangularMatrixTriplet> triplets_2{{1, 0, 2}};
+  mats.emplace_back(block_sizes_2, triplets_2);
+  mats.at(2).AssembleFromCompressedColumns(GetCompressedBlockColumns(data_2, block_sizes_2));
+
+
+
+
+
+
   TriangularMatrixDirectSum mat(mats);
   MatrixXd full_mat = mat.MakeDenseMatrix();
+  DUMP(full_mat);
   auto llt = mat.llt();
   llt.compute();
   MatrixXd llt_ref = Eigen::LLT<MatrixXd>(full_mat).matrixL();
   EXPECT_NEAR((llt.matrixL() - llt_ref).norm(), 0, 1e-12);
 }
-
-
-
 
 }  // namespace conex
