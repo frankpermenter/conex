@@ -56,7 +56,6 @@ void DoTest(const std::vector<int>& block_sizes,
 }
 
 }  // namespace
-#if 0
 GTEST_TEST(SimpleTri, Construct) {
   std::vector<int> block_sizes{2, 2, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
@@ -269,36 +268,6 @@ GTEST_TEST(SimpleTri, DirectSum) {
   EXPECT_NEAR((llt.matrixL() - llt_ref).norm(), 0, 1e-12);
 }
 
-GTEST_TEST(SimpleTri, DontFactorLastBlock) {
-  std::vector<int> block_sizes{2, 2};
-  MatrixXd R11(2, 2); 
-  MatrixXd R21(2, 2);
-  MatrixXd R22(2, 2);
-  MatrixXd Ref(4, 4);
-  // clang-format off
-  R11 << 2, 1, 
-         1, 2;
-  R21 << .1, 1, 
-         1, .1;
-  R22 << 2, 1, 
-         1, 4;
-  Ref <<  R11, R21.transpose() * 0,
-          R21, R22; 
-  // clang-format on
-  std::vector<SimpleTriangularMatrixTriplet> triplets{ {1, 0, 2} };
-  SimpleTriangularMatrix mat(block_sizes, triplets);
-  mat.AssembleFromCompressedColumns(
-      GetCompressedBlockColumns(Ref, block_sizes));
-  auto llt = mat.llt();
-  llt.compute(false);
-  auto M = mat.MakeDenseMatrix();
-  MatrixXd last_block_ref = R22 - R21 * R11.inverse() * R21.transpose();
-  MatrixXd last_block_calc = M.bottomRightCorner(block_sizes.back(), block_sizes.back()); 
-  MatrixXd error = (last_block_ref - last_block_calc).triangularView<Eigen::Lower>();
-  EXPECT_NEAR(error.norm(), 0, 1e-12);
-}
-
-#endif
 
 GTEST_TEST(SimpleTri, IncrementSubmatrix) {
   // **   
@@ -317,7 +286,7 @@ GTEST_TEST(SimpleTri, IncrementSubmatrix) {
   // x = x11 0
   //      0  0
   //     x12 0  x22
-  std::vector<std::pair<int, int>> submatrix_partition{{0, 2},   {1, 2}};
+  std::vector<std::pair<int, int>> submatrix_partition{{0, 2},   {2, 2}};
   MatrixXd x(4, 4);
   x << 1, 0, 1, 3,
        1, 2, 3, 4,

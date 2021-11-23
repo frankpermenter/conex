@@ -28,13 +28,7 @@ template <typename T>
 class BlockMatrix {
  public:
   BlockMatrix(const Eigen::Ref<T>& X, const BlockData& blocks)
-      : X_(X), blocks_(blocks) {
-      for (auto& b : blocks) {
-        DUMP(b.first);
-        DUMP(b.second);
-      }
-      
-      }
+      : X_(X), blocks_(blocks) { }
 
   BlockMatrix(const Eigen::Ref<T>& X, const BlockData& blocks,
               int initial_index)
@@ -55,9 +49,7 @@ class BlockMatrix {
   }
 
   void GotoBlock(int i) {
-    DUMP(i);
-    DUMP(blocks_.at(current_block_offset_).first);
-    while (blocks_.at(current_block_offset_).first != i) {
+    while (blocks_.at(current_block_index_).first != i) {
       GotoNextBlock();
     }
   }
@@ -202,16 +194,30 @@ bool S::LLT::compute(bool factor_last_block) {
   return true;
 }
 
+std::vector<std::pair<int,int>> GetPartition(const std::vector<std::pair<int, int>>& partition, int start) {
+
+  std::vector<std::pair<int, int>> y;
+  for (size_t i = start; start < partition.size(); i++) {
+    y.push_back(partition.at(i));
+  }
+  return y;
+}
 void S::IncrementSubmatrix(const Eigen::MatrixXd& x, 
                            const std::vector<std::pair<int, int>>& partition) {
+
   int offset = 0;
-  for (size_t i = 0; i < partition.size(); i++) {
+
+
+  for (size_t i = 0; i < partition.size() - 1; i++) {
     const auto& d = partition.at(i);
+
     diagonal_blocks_.at(d.first).topLeftCorner(d.second, d.second) += x.block(offset, offset, 
-                                                                             d.second, d.second);
+                                                                           d.second, d.second);
+
     int r_offset = offset + d.second;
 
-    BlockMatrix<MatrixXd> blocks(off_diagonal_blocks_.at(d.first), off_diagonal_partition_.at(d.first));
+    BlockMatrix<MatrixXd> blocks(off_diagonal_blocks_.at(d.first), 
+                                 off_diagonal_partition_.at(d.first));
     for (size_t j = i+1; j < partition.size(); j++) {
       auto&o = partition.at(j);
       blocks.GotoBlock(o.first);
@@ -222,6 +228,11 @@ void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
 
     offset += d.second;
   }
+
+  const auto& d = partition.back();
+  diagonal_blocks_.at(d.first).topLeftCorner(d.second, d.second) += x.block(offset, offset, 
+                                                                           d.second, d.second);
+
 }
 
 using D = TriangularMatrixDirectSum;
