@@ -11,7 +11,12 @@ namespace conex {
 
 using Eigen::MatrixXd;
 using std::vector;
+
 namespace {
+
+MatrixXd LowerTri(const Eigen::MatrixXd& x) {
+  return x.triangularView<Eigen::Lower>();
+}
 
 vector<Eigen::MatrixXd> GetCompressedBlockColumns(
     const MatrixXd& Ref, const std::vector<int> block_sizes) {
@@ -278,27 +283,63 @@ GTEST_TEST(SimpleTri, IncrementSubmatrix) {
   // ** ** ***
   //       ***
   std::vector<int> block_sizes{2, 2, 3};
-  std::vector<SimpleTriangularMatrixTriplet> triplets{ {1, 0, 2},  {2, 0, 2} };
+  std::vector<SimpleTriangularMatrixTriplet> triplets{{1, 0, 2},  {2, 0, 3}};
 
   SimpleTriangularMatrix mat(block_sizes, triplets);
-  mat.SetConstant(1);
+  mat.SetConstant(0);
 
   // x = x11 0
   //      0  0
   //     x12 0  x22
-  std::vector<std::pair<int, int>> submatrix_partition{{0, 2},   {2, 2}};
-  MatrixXd x(4, 4);
-  x << 1, 0, 1, 3,
-       1, 2, 3, 4,
-       1, 3, 4, 4,
-       3, 4, 4, 5;
-  DUMP(mat.MakeDenseMatrix());
-  mat.IncrementSubmatrix(x, submatrix_partition);
-  DUMP(mat.MakeDenseMatrix());
+  std::vector<std::pair<int, int>> submatrix_partition{{0, 1},   {2, 3}};
+  MatrixXd submatrix(4, 4);
 
+  // clang-format off
+  submatrix << 1, 0, 0, 0,
+               1, 2, 0, 0,
+               1, 3, 4, 4,
+               3, 4, 4, 5;
+  // clang-format on
+  mat.IncrementSubmatrix(submatrix, submatrix_partition);
+  MatrixXd X_calc = mat.MakeDenseMatrix(); 
+  MatrixXd X_ref(7, 7); 
+  // clang-format off
+  X_ref << 1, 0, 0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0, 0, 0, 
+           1, 0, 0, 0, 2, 0, 0, 
+           1, 0, 0, 0, 3, 4, 4, 
+           3, 0, 0, 0, 4, 4, 5;
+  // clang-format on
+  EXPECT_NEAR((X_ref - mat.MakeDenseMatrix()).norm(), 0, 1e-15); 
+
+  submatrix_partition.at(0) = std::pair<int, int>(1, 1);
+  mat.IncrementSubmatrix(submatrix, submatrix_partition);
+  // clang-format off
+  X_ref << 1, 0, 0, 0, 0, 0, 0,
+           0, 0, 0, 0, 0, 0, 0,
+           0, 0, 1, 0, 0, 0, 0,
+           0, 0, 0, 0, 0, 0, 0, 
+           1, 0, 1, 0, 4, 0, 0, 
+           1, 0, 1, 0, 6, 8, 8, 
+           3, 0, 3, 0, 8, 8, 10;
+  // clang-format on
+  EXPECT_NEAR((X_ref - mat.MakeDenseMatrix()).norm(), 0, 1e-15); 
+
+  submatrix_partition.at(0) = std::pair<int, int>(0, 2);
+  submatrix_partition.at(1) = std::pair<int, int>(1, 2);
+  mat.IncrementSubmatrix(submatrix, submatrix_partition);
+  // clang-format off
+  X_ref << 2, 0, 0, 0, 0, 0, 0,
+           1, 2, 0, 0, 0, 0, 0,
+           1, 3, 5, 0, 0, 0, 0,
+           3, 4, 4, 5, 0, 0, 0, 
+           1, 0, 1, 0, 4, 0, 0, 
+           1, 0, 1, 0, 6, 8, 8, 
+           3, 0, 3, 0, 8, 8, 10;
+  // clang-format on
+  EXPECT_NEAR(LowerTri(X_ref - mat.MakeDenseMatrix()).norm(), 0, 1e-15); 
 }
-
-
-
 
 }  // namespace conex

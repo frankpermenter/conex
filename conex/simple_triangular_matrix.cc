@@ -194,14 +194,6 @@ bool S::LLT::compute(bool factor_last_block) {
   return true;
 }
 
-std::vector<std::pair<int,int>> GetPartition(const std::vector<std::pair<int, int>>& partition, int start) {
-
-  std::vector<std::pair<int, int>> y;
-  for (size_t i = start; start < partition.size(); i++) {
-    y.push_back(partition.at(i));
-  }
-  return y;
-}
 void S::IncrementSubmatrix(const Eigen::MatrixXd& x, 
                            const std::vector<std::pair<int, int>>& partition) {
 

@@ -98,9 +98,12 @@ class SimpleTriangularMatrix {
 
   /* Increments a submatrix X of the full matrix T. The block X_{ij} is assigned
    * to T.block(partition.at(i).first, partition.at(j).first,
-   * partition.at(i).first, partition.at(j).second).  */  
+   * partition.at(i).first, partition.at(j).second).  
+   * We assume that the partition is sorted by partition.at(:).first.
+   * */  
+
   void IncrementSubmatrix(const Eigen::MatrixXd& X, 
-                          const std::vector<std::pair<int, int>>& partition);
+                          const std::vector<std::pair<int, int>>& partition_sorted_by_block);
 
   const std::vector<Eigen::MatrixXd>& diagonal_blocks() const { return diagonal_blocks_; }
 
