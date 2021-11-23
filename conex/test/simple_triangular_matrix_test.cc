@@ -273,7 +273,7 @@ GTEST_TEST(SimpleTri, DirectSum) {
   EXPECT_NEAR((llt.matrixL() - llt_ref).norm(), 0, 1e-12);
 }
 
-
+#if 0
 GTEST_TEST(SimpleTri, IncrementSubmatrix) {
   // **   
   // **  
@@ -341,5 +341,32 @@ GTEST_TEST(SimpleTri, IncrementSubmatrix) {
   // clang-format on
   EXPECT_NEAR(LowerTri(X_ref - mat.MakeDenseMatrix()).norm(), 0, 1e-15); 
 }
+#endif 
+
+
+GTEST_TEST(GeneralMatrix, AssemblyandFactorization) {
+
+  // diag
+  //      diag
+  //           diag
+  // ***  ***  ***  diag
+  //                     diag
+  //                          diag
+  std::vector<int> block_sizes{3, 2, 3};
+  std::vector<SimpleTriangularMatrixTriplet> triplets{{1, 0, 2},  {2, 0, 3}};
+
+  vector<SimpleTriangularMatrix> mats;
+  mats.emplace_back(block_sizes, triplets);
+  mats.emplace_back(block_sizes, triplets);
+  mats.emplace_back(block_sizes, triplets);
+  TriangularMatrixDirectSum mat_1(mats);
+
+  SimpleTriangularMatrix mat_2(block_sizes, triplets);
+  DUMP(mat_1.root_matrix());
+  mat_2.IncrementSubmatrix(mat_1.root_matrix(), {std::pair<int, int>(0, 3)});
+
+
+}
+
 
 }  // namespace conex

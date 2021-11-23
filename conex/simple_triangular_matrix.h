@@ -175,7 +175,7 @@ class SimpleTriangularMatrix {
  */
 class TriangularMatrixDirectSum {
  public:
-  TriangularMatrixDirectSum(std::vector<SimpleTriangularMatrix>& matrices) : matrices_(matrices) {}
+  TriangularMatrixDirectSum(std::vector<SimpleTriangularMatrix>& matrices);
   Eigen::MatrixXd MakeDenseMatrix();
 
   class LLT {
@@ -185,17 +185,19 @@ class TriangularMatrixDirectSum {
    private:
     LLT(TriangularMatrixDirectSum* matrix) : matrix_(*matrix) { }
     bool ready() { return factorization_ready_; }
-    const Eigen::MatrixXd& root() { return common_block_; }
+    const Eigen::MatrixXd& root_matrix() { return matrix_.common_block_; }
     TriangularMatrixDirectSum& matrix_;
     std::vector<Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>>> llt_of_diag_;
-    Eigen::MatrixXd common_block_;
     bool factorization_ready_ = false;
     friend class TriangularMatrixDirectSum;
   };
 
   LLT llt() { return LLT(this); }
+  Eigen::MatrixXd& root_matrix() { return common_block_; }
+  const Eigen::MatrixXd& root_matrix() const { return common_block_; }
  private:
   std::vector<SimpleTriangularMatrix>& matrices_;
+  Eigen::MatrixXd common_block_;
 };
 
 }  // namespace conex

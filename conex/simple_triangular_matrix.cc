@@ -198,8 +198,6 @@ void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
                            const std::vector<std::pair<int, int>>& partition) {
 
   int offset = 0;
-
-
   for (size_t i = 0; i < partition.size() - 1; i++) {
     const auto& d = partition.at(i);
 
@@ -259,19 +257,20 @@ MatrixXd D::MakeDenseMatrix() {
     return M;
   }
 
-bool D::LLT::compute(bool factor_last_block) {
-  auto& matrices = matrix_.matrices_;
-  int common_block_offset = 0;
+D::TriangularMatrixDirectSum(std::vector<SimpleTriangularMatrix>& matrices) : matrices_(matrices) {
   int common_block_size = 0;
   for (const auto& mat : matrices) {
-    common_block_offset += mat.cols() - mat.block_sizes().back();
     if (mat.block_sizes().back() > common_block_size) {
       common_block_size = mat.block_sizes().back();
     }
   }
-
   common_block_.resize(common_block_size, common_block_size);
   common_block_.setZero();
+}
+
+bool D::LLT::compute(bool factor_last_block) {
+  auto& matrices = matrix_.matrices_;
+  auto& common_block_ = matrix_.root_matrix();
 
   for (auto& mat : matrices) {
     auto llt = mat.llt();
@@ -292,7 +291,7 @@ bool D::LLT::compute(bool factor_last_block) {
 
 MatrixXd D::LLT::matrixL() { 
   MatrixXd L = matrix_.MakeDenseMatrix();
-  int common_block_size = common_block_.rows();
+  int common_block_size = matrix_.common_block_.rows();
   L.bottomRightCorner(common_block_size, common_block_size) = llt_of_diag_.back().matrixL();
   return L;
 }
