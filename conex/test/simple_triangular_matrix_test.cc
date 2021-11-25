@@ -422,51 +422,67 @@ GTEST_TEST(SimpleTri, IncrementSubmatrix) {
 }
 #endif
 
-vector<int> PermuteClique(const std::vector<int> clique,
-                          const std::vector<int> permutation) {
 
-  vector<int> variable_to_elimination_position(permutation.size());
-  for (size_t i = 0; i < permutation.size(); i++) {
-    variable_to_elimination_position.at(permutation.at(i)) = i;
-  }
+void DoBlockCholeskyTest(const Eigen::MatrixXd& M,
+                         const vector<std::vector<int>>& cliques) {
+  int num_vars = M.rows();
 
-  vector<int> y(clique.size());
-  for (size_t i = 0; i < clique.size(); i++) {
-    y.at(i) = variable_to_elimination_position.at(clique.at(i));
-  }
-  std::sort(y.begin(), y.end());
-  return y;
-}
-vector<Eigen::MatrixXd> GetCompressedBlockColumns(
-    const MatrixXd& M, const std::vector<int> permutation,
-    const vector<std::vector<int>> clique, const std::vector<int> block_sizes) {
-  int num_vars = permutation.size();
-  Eigen::PermutationMatrix<-1> P(num_vars);
-  P.indices() = Eigen::Map<const Eigen::VectorXi>(permutation.data(), num_vars);
-  MatrixXd data = P.transpose() * M * P;
-  vector<MatrixXd> columns(clique.size());
-  int offset = 0;
-  for (size_t i = 0; i < clique.size(); i++) {
-    vector<int> c = PermuteClique(clique.at(i), permutation);
-    columns.at(i).resize(c.size(), block_sizes.at(i));
-    int r = 0; 
-    for (auto row : c) {
-      columns.at(i).row(r) =
-          data.block(row, offset, 1, block_sizes.at(i));
-      r++;
+  int num_cliques = cliques.size();
+  std::vector<int> enter(num_vars, -1);
+  std::vector<int> exit(num_vars, -1);
+  std::vector<int> block_sizes(num_cliques);
+  std::vector<int> permutation(num_vars);
+  for (size_t i = 0; i < cliques.size(); i++) {
+    for (auto n : cliques.at(i)) {
+      if (enter.at(n) == -1) {
+        enter.at(n) = i;
+        exit.at(n) = i;
+      } else {
+        exit.at(n) = i;
+      }
     }
-    offset += block_sizes.at(i);
   }
-  return columns;
+
+  BlockSparseSymmetricMatrix b(cliques.size(), enter, exit);
+  b.SetFromDenseMatrix(M);
+  auto llt_calc = b.llt(); llt_calc.compute();
+
+  Eigen::LLT<MatrixXd> llt_ref((llt_calc.matrixP().transpose()*M * llt_calc.matrixP()));
+  MatrixXd L_ref = llt_ref.matrixL();
+
+  MatrixXd error = LowerTri(llt_calc.matrixL() - L_ref);
+  EXPECT_NEAR(error.norm(), 0, 1e-14);
 }
 
-GTEST_TEST(LowerTri, AssembleFromCliques) {
+
+GTEST_TEST(BlockSymmetricMatrixCholesky, BlockDiag) {
+  vector<vector<int>> cliques{ {0, 3}, { 1, 2}};
+  MatrixXd M(4, 4);
+  M << 9, 0, 0, 1, 
+       0, 9, 2, 0, 
+       0, 2, 9, 0, 
+       1, 0, 0, 9;
+  DoBlockCholeskyTest(M, cliques);
+}
+
+GTEST_TEST(BlockSymmetricMatrixCholesky, Arrow) {
+  vector<vector<int>> cliques{ {0, 1}, { 1, 2, 3}, {1, 5}, {1, 4} };
+  MatrixXd M(6, 6);
+  M << 9, 0, 0, 0, 0, 0, 
+       1, 9, 0, 0, 0, 0, 
+       0, 2, 9, 0, 0, 0, 
+       0, 2, 2, 9, 0, 0,
+       0, 3, 0, 0, 9, 0,
+       0, 4, 0, 0, 0, 9;
+  DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
+}
+
+GTEST_TEST(BlockSymmetricMatrixCholesky, MassMatrix) {
   vector<vector<int>> cliques{{0, 1, 2, 3, 4, 5, 18, 19, 20, 21},
                               {0, 1, 2, 3, 4, 5, 14, 15, 16, 17},
                               {0, 1, 2, 3, 4, 5, 10, 11, 12, 13},
                               {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}};
   int num_vars = 22;
-  int num_cliques = cliques.size();
 
   MatrixXd M(num_vars, num_vars);
   M << 0.0134083, 0.000148945, 0.000261851, 0, -0.0608643, 0.0115304,
@@ -521,35 +537,7 @@ GTEST_TEST(LowerTri, AssembleFromCliques) {
       2.61943e-08, 0.000136541, 8.17987e-05, 1.182e-05, 2.1e-09, 1.17762e-05,
       1.01724e-06, -7.32747e-19, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       -1.29971e-08, 1.182e-05, 1.182e-05, 1.182e-05;
-  // Sort by earliest exiting clique, break ties with entering.
-  std::vector<int> enter(num_vars, -1);
-  std::vector<int> exit(num_vars, -1);
-  std::vector<int> block_sizes(num_cliques);
-  std::vector<int> permutation(num_vars);
-  std::iota(permutation.begin(), permutation.end(), 0);
-  for (size_t i = 0; i < cliques.size(); i++) {
-    for (auto n : cliques.at(i)) {
-      if (enter.at(n) == -1) {
-        enter.at(n) = i;
-        exit.at(n) = i;
-      } else {
-        exit.at(n) = i;
-      }
-    }
-  }
-
-  BlockSparseSymmetricMatrix b(cliques.size(), enter, exit);
-  b.SetFromDenseMatrix(M);
-  auto llt_2 = b.llt(); llt_2.compute();
-
-  Eigen::LLT<MatrixXd> llt_ref((llt_2.matrixP().transpose()*M * llt_2.matrixP()));
-  MatrixXd L_ref = llt_ref.matrixL();
-
-  MatrixXd error_2 = LowerTri(llt_2.matrixL() - L_ref);
-
-  EXPECT_NEAR(error_2.norm(), 0, 1e-14);
-
-
+  DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
 }
 
 }  // namespace conex
