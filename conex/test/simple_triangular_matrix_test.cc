@@ -538,39 +538,16 @@ GTEST_TEST(LowerTri, AssembleFromCliques) {
     }
   }
 
-  for (auto i : exit) {
-    block_sizes.at(i)++;
-  }
-
-  std::vector<SimpleTriangularMatrixTriplet> triplets;
-  for (int i = 0; i < num_vars; i++) {
-    if (enter.at(i) != exit.at(i)) {
-      triplets.push_back({exit.at(i), enter.at(i), 1});
-    }
-  }
-
-  std::sort(permutation.begin(), permutation.end(),
-            [enter, exit](const int& i, const int& j) {
-              return (exit[i] < exit[j]) ||
-                     (exit[i] == exit[j] && enter[i] < enter[j]);
-            });
-
-  Eigen::PermutationMatrix<-1> P(num_vars);
-  P.indices() = Eigen::Map<Eigen::VectorXi>(permutation.data(), num_vars);
-  SimpleTriangularMatrix mat(block_sizes, triplets);
-
-  Eigen::LLT<MatrixXd> llt_ref((P.transpose()*M * P));
-  mat.AssembleFromDenseMatrix(P.transpose()*M * P);
-  auto llt = mat.llt(); llt.compute();
-  MatrixXd L_ref = llt_ref.matrixL();
-  MatrixXd error = LowerTri(llt.matrixL() - L_ref);
-
   BlockSparseSymmetricMatrix b(cliques.size(), enter, exit);
   b.SetFromDenseMatrix(M);
   auto llt_2 = b.llt(); llt_2.compute();
+
+  Eigen::LLT<MatrixXd> llt_ref((llt_2.matrixP().transpose()*M * llt_2.matrixP()));
+  MatrixXd L_ref = llt_ref.matrixL();
+
   MatrixXd error_2 = LowerTri(llt_2.matrixL() - L_ref);
+
   EXPECT_NEAR(error_2.norm(), 0, 1e-14);
-  EXPECT_NEAR(error.norm(), 0, 1e-14);
 
 
 }
