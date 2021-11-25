@@ -63,6 +63,10 @@ class SimpleTriangularMatrix {
                          const std::vector<SimpleTriangularMatrixTriplet>&
                              input_triplets_sorted_by_column);
 
+  SimpleTriangularMatrix(const std::vector<int>& enter,
+                         const std::vector<int>& exit);
+
+
   Eigen::MatrixXd MakeDenseMatrix() const;
   void SetConstant(double c) {
     for (auto& d : diagonal_blocks_) {
@@ -127,6 +131,7 @@ class SimpleTriangularMatrix {
   class LLT {
    public:
     bool compute(bool factor_last_block = true);
+    Eigen::MatrixXd matrixL() { return matrix_.MakeDenseMatrix();  };
 
    private:
     LLT(SimpleTriangularMatrix* matrix) : matrix_(*matrix) {
@@ -136,7 +141,6 @@ class SimpleTriangularMatrix {
     bool ready() { return factorization_ready_; }
     SimpleTriangularMatrix& matrix_;
     std::vector<Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>>> llt_of_diag_;
-    Eigen::MatrixXd matrixL() { return matrix_.MakeDenseMatrix();  };
     friend class SimpleTriangularMatrix;
     bool factorization_ready_ = false;
   };
@@ -216,5 +220,27 @@ class TriangularMatrixDirectSum {
   std::vector<SimpleTriangularMatrix>& matrices_;
   Eigen::MatrixXd common_block_;
 };
+
+class BlockSparseSymmetricMatrix {
+  BlockSparseSymmetricMatrix(
+  const int num_blocks, 
+  const std::vector<int>& start_block,
+  const std::vector<int>& end_block);
+
+  void SetFromDenseMatrix(const Eigen::MatrixXd&A ) {
+    //auto y = GetCompressedBlockColumns(A, elimination_position_to_variable_, 
+    //                                   cliques, block_sizes_);
+    //lower_triangular_matrix_.AssembleFromCompressedColumns(y);
+  }
+
+  auto llt() { return lower_triangular_matrix_.llt(); }
+  private:
+   std::vector<int> block_sizes_;
+   std::vector<int> elimination_position_to_variable_;
+   SimpleTriangularMatrix lower_triangular_matrix_;
+};
+
+
+
 
 }  // namespace conex

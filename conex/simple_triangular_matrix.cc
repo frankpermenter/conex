@@ -22,6 +22,41 @@ vector<size_t> sort_indexes(const vector<T>& v) {
   return indices;
 }
 
+struct TriangularMatrixInputs {
+  TriangularMatrixInputs(int num_cliques, int num_vars) : 
+      elimination_position_to_variable(num_vars),
+      block_sizes(num_cliques, 0) {
+        
+      }
+  std::vector<int> block_sizes;
+  std::vector<int> triplets; 
+  std::vector<int> elimination_position_to_variable;
+};
+
+std::vector<int> CalculateBlockSizes(int num_blocks,
+                  const std::vector<int>& enter, 
+                  const std::vector<int>& exit) {
+
+  std::vector<int> block_sizes(num_blocks, 0);
+  for (auto i : exit) {
+    block_sizes.at(i)++;
+  }
+  return block_sizes;
+}
+
+std::vector<SimpleTriangularMatrixTriplet> MakeTripets(
+                const std::vector<int>& enter, 
+                const std::vector<int>& exit) {
+
+  std::vector<SimpleTriangularMatrixTriplet> triplets;
+  for (size_t i = 0; i < exit.size(); i++) {
+    if (enter.at(i) != exit.at(i)) {
+      triplets.push_back({exit.at(i), enter.at(i), 1});
+    }
+  }
+  return triplets;
+}
+
 
 using BlockData = std::vector<std::pair<int, int>>;
 template <typename T>
@@ -71,6 +106,23 @@ class BlockMatrix {
 };
 }  // namespace
 
+
+BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(
+  const int num_blocks, 
+  const std::vector<int>& start_block,
+  const std::vector<int>& end_block) : 
+    block_sizes_(CalculateBlockSizes(num_blocks, start_block, end_block)),
+    elimination_position_to_variable_(start_block.size()),
+    lower_triangular_matrix_(block_sizes_, MakeTripets(start_block, end_block)) {
+
+  std::iota(elimination_position_to_variable_.begin(), elimination_position_to_variable_.end(), 0);
+  std::sort(elimination_position_to_variable_.begin(), 
+            elimination_position_to_variable_.end(),
+            [start_block, end_block](const int& i, const int& j) {
+              return (end_block[i] < end_block[j]) ||
+                     (end_block[i] == end_block[j] && start_block[i] < start_block[j]);
+            });
+}
 
 
 S::SimpleTriangularMatrix(
