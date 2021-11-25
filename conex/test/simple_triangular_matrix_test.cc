@@ -426,7 +426,7 @@ vector<int> PermuteClique(const std::vector<int> clique,
                           const std::vector<int> permutation) {
 
   vector<int> variable_to_elimination_position(permutation.size());
-  for (int i = 0; i < permutation.size(); i++) {
+  for (size_t i = 0; i < permutation.size(); i++) {
     variable_to_elimination_position.at(permutation.at(i)) = i;
   }
 
@@ -446,7 +446,7 @@ vector<Eigen::MatrixXd> GetCompressedBlockColumns(
   MatrixXd data = P.transpose() * M * P;
   vector<MatrixXd> columns(clique.size());
   int offset = 0;
-  for (int i = 0; i < clique.size(); i++) {
+  for (size_t i = 0; i < clique.size(); i++) {
     vector<int> c = PermuteClique(clique.at(i), permutation);
     columns.at(i).resize(c.size(), block_sizes.at(i));
     int r = 0; 
@@ -543,7 +543,7 @@ GTEST_TEST(LowerTri, AssembleFromCliques) {
   }
 
   std::vector<SimpleTriangularMatrixTriplet> triplets;
-  for (size_t i = 0; i < num_vars; i++) {
+  for (int i = 0; i < num_vars; i++) {
     if (enter.at(i) != exit.at(i)) {
       triplets.push_back({exit.at(i), enter.at(i), 1});
     }
@@ -560,11 +560,19 @@ GTEST_TEST(LowerTri, AssembleFromCliques) {
   SimpleTriangularMatrix mat(block_sizes, triplets);
 
   Eigen::LLT<MatrixXd> llt_ref((P.transpose()*M * P));
-  auto y = GetCompressedBlockColumns(M, permutation, cliques, block_sizes);
-  mat.AssembleFromCompressedColumns(y);
+  mat.AssembleFromDenseMatrix(P.transpose()*M * P);
   auto llt = mat.llt(); llt.compute();
   MatrixXd L_ref = llt_ref.matrixL();
   MatrixXd error = LowerTri(llt.matrixL() - L_ref);
+
+  BlockSparseSymmetricMatrix b(cliques.size(), enter, exit);
+  b.SetFromDenseMatrix(M);
+  auto llt_2 = b.llt(); llt_2.compute();
+  MatrixXd error_2 = LowerTri(llt_2.matrixL() - L_ref);
+  EXPECT_NEAR(error_2.norm(), 0, 1e-14);
+  EXPECT_NEAR(error.norm(), 0, 1e-14);
+
+
 }
 
 }  // namespace conex

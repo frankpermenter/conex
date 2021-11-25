@@ -101,6 +101,9 @@ class SimpleTriangularMatrix {
     diagonal_blocks_.back() = x.back();
   }
 
+  void AssembleFromDenseMatrix(const Eigen::MatrixXd& A);
+
+
 
   /* Increments a submatrix X of the full matrix T. The block X_{ij} is assigned
    * to T.block(partition.at(i).first, partition.at(j).first,
@@ -222,22 +225,46 @@ class TriangularMatrixDirectSum {
 };
 
 class BlockSparseSymmetricMatrix {
+ public:
   BlockSparseSymmetricMatrix(
   const int num_blocks, 
   const std::vector<int>& start_block,
   const std::vector<int>& end_block);
 
-  void SetFromDenseMatrix(const Eigen::MatrixXd&A ) {
-    //auto y = GetCompressedBlockColumns(A, elimination_position_to_variable_, 
-    //                                   cliques, block_sizes_);
-    //lower_triangular_matrix_.AssembleFromCompressedColumns(y);
+  void SetFromDenseMatrix(const Eigen::MatrixXd& M) {
+    int num_vars = elimination_position_to_variable_.size();
+    Eigen::PermutationMatrix<-1> P(num_vars);
+    P.indices() = Eigen::Map<const Eigen::VectorXi>(elimination_position_to_variable_.data(), num_vars);
+    lower_triangular_matrix_.AssembleFromDenseMatrix(P.transpose()*M * P);
   }
 
-  auto llt() { return lower_triangular_matrix_.llt(); }
+  class LLT {
+   public:
+    bool compute()  {
+      return llt_.compute(); 
+    }
+    Eigen::PermutationMatrix<-1> matrixP() {
+      Eigen::PermutationMatrix<-1> P(matrix_.elimination_position_to_variable_.size());
+      P.indices() = Eigen::Map<const Eigen::VectorXi>(matrix_.elimination_position_to_variable_.data(), 
+                                                      matrix_.elimination_position_to_variable_.size());
+      return P;
+    }
+    Eigen::MatrixXd matrixL() { return llt_.matrixL(); }
+   private:
+    LLT(BlockSparseSymmetricMatrix* matrix) : matrix_(*matrix), 
+    llt_(matrix_.lower_triangular_matrix_.llt()) { }
+    friend class BlockSparseSymmetricMatrix;
+    BlockSparseSymmetricMatrix& matrix_;
+    SimpleTriangularMatrix::LLT llt_;
+  };
+
+  LLT llt() { return LLT(this); }
   private:
    std::vector<int> block_sizes_;
    std::vector<int> elimination_position_to_variable_;
    SimpleTriangularMatrix lower_triangular_matrix_;
+
+  friend class LLT;
 };
 
 

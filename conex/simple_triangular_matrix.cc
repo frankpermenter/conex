@@ -107,6 +107,8 @@ class BlockMatrix {
 }  // namespace
 
 
+
+
 BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(
   const int num_blocks, 
   const std::vector<int>& start_block,
@@ -346,6 +348,27 @@ MatrixXd D::LLT::matrixL() {
   int common_block_size = matrix_.common_block_.rows();
   L.bottomRightCorner(common_block_size, common_block_size) = llt_of_diag_.back().matrixL();
   return L;
+}
+
+
+void S::AssembleFromDenseMatrix(const Eigen::MatrixXd& A) {
+  int c = 0;
+
+  std::vector<int> global_offsets(num_blocks_, 0);
+  std::partial_sum(block_column_sizes_.begin(), block_column_sizes_.end() - 1,
+                   global_offsets.begin() + 1);
+
+  for (size_t i = 0; i < block_column_sizes_.size(); i++) {
+    int csize = block_column_sizes_.at(i);
+    diagonal_blocks_.at(i) = A.block(c, c, csize, csize);
+    int r = 0;
+    for (auto& row : off_diagonal_partition_.at(i)) {
+      int r_offset = global_offsets.at(row.first);
+      off_diagonal_blocks_.at(i).middleCols(r, row.second) = A.block(r_offset, c, row.second, csize).transpose();
+      r += row.second;
+    }
+    c += csize;
+  }
 }
 
 }  // namespace conex
