@@ -56,11 +56,11 @@ std::vector<int> NumberOfChildren(const RootedTree& tree) {
   return num_children;
 }
 
-std::vector<int> GetUnvisitedRootNodes(const RootedTree& d,
+std::vector<int> GetUnvisitedRootNodes(const vector<int>& parent,
                                        const vector<int>& visited) {
   vector<int> nodes;
-  for (int i = 0; i < d.NumberOfNodes(); i++) {
-    if (visited.at(i) == 0 && d.parent.at(i) == -1) {
+  for (size_t i = 0; i < parent.size(); i++) {
+    if (visited.at(i) == 0 && parent.at(i) == -1) {
       nodes.push_back(i);
     }
   }

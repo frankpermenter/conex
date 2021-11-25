@@ -2,6 +2,8 @@
 
 #include <Eigen/Dense>
 
+#include "conex/debug_macros.h"
+
 namespace conex {
 // A square lower-triangular matrix whose rows and columns are partitioned into
 // sets C_0, C_1, ..., C_N whose scalar entries satisfy the following
@@ -104,6 +106,21 @@ class SimpleTriangularMatrix {
 
   void IncrementSubmatrix(const Eigen::MatrixXd& X, 
                           const std::vector<std::pair<int, int>>& partition_sorted_by_block);
+
+  void ComputeRootSchurComplement(Eigen::MatrixXd* X) {
+    llt().compute(false);
+    *X = diagonal_blocks().back();
+  }
+
+  void IncrementLeafSubmatrix(const Eigen::MatrixXd& submatrix) {
+    std::vector<std::pair<int, int>> submatrix_partition;
+    submatrix_partition.push_back(std::pair<int, int>(0,  diagonal_blocks_.at(0).rows()  ));
+    //for (auto e : off_diagonal_partition_.at(0)) {
+    //  submatrix_partition.push_back(e);
+    //}
+    IncrementSubmatrix(submatrix, submatrix_partition);
+  }
+
 
   const std::vector<Eigen::MatrixXd>& diagonal_blocks() const { return diagonal_blocks_; }
 

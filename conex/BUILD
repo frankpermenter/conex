@@ -293,6 +293,7 @@ cc_library(
 cc_library(
     name = "simple_triangular_matrix",
     srcs = [
+        "tree_traversal.h",
         "simple_triangular_matrix.cc",
 #        "triangular_matrix_star.cc",
     ],
@@ -300,8 +301,7 @@ cc_library(
         "simple_triangular_matrix.h",
         "triangular_matrix_star.h",
     ],
-    copts = COPTS,
-    linkopts = ["-fopenmp"],
+    copts = ["-fopenmp"],
     deps = ["tree_utils"],
 )
 
@@ -328,8 +328,10 @@ cc_test(
     ],
     copts = [
         "-Iexternal/gtest/include",
+        "-fopenmp",
         "-g",
     ],
+    linkopts = ["-fopenmp"],
     deps = [
         "simple_triangular_matrix",
         "@gtest//:main",

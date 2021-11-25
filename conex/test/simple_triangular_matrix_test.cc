@@ -1,6 +1,7 @@
 #include "conex/simple_triangular_matrix.h"
 #include "conex/tree_utils.h"
 #include "conex/debug_macros.h"
+#include "conex/tree_traversal.h"
 
 #include <numeric>
 
@@ -11,6 +12,72 @@ namespace conex {
 
 using Eigen::MatrixXd;
 using std::vector;
+
+#if 0
+
+
+class ParseTreeData {
+  struct SimpleTriangularMatrixData {
+    std::vector<int> entering_block;
+    std::vector<int> exiting_block;
+    int num_blocks = 0;
+  };
+
+  struct DirectSumTriangularMatrixData {
+    vector<int> children;
+  };
+  // Root = DS
+  //  
+  //
+  //     C
+  //  D  D  D
+  //  D  D  D
+  //  D  D  D 
+
+ public:
+  ParseTreeData(RootedTree* tree, std::vector<vector<int>>* cliques) : tree_(tree), 
+    cliques_(cliques) {}
+
+  void BuildCompressedTree() {
+    std::vector<int> num_children = NumberOfChildren(*tree_);
+    std::vector<int> merged_tree_parent = GetRootNodes(*tree_);
+    std::stack<int> root_stack;
+    for (auto r: merged_tree_parent) {
+      root_stack.push(r);
+    }
+    vector<vector<int>> paths;
+    vector<int> path_parents;
+    while (root_stack.size() > 0) {
+      int root = root_stack.top();
+      root_stack.pop();
+
+      vector<int> children = GetChildren(*tree_, root);
+      for (auto& c : children) {
+        std::vector<int> path; 
+        path.push_back(root);
+        path.push_back(c);
+        auto descendants = GetChildren(*tree_, c);
+        while (descendants.size() == 1) {
+          path.push_back(descendants.back());
+          descendants = GetChildren(*tree_, path.back());
+        }
+        if (descendants.size() > 1) {
+          for (auto s : descendants) {
+            root_stack.push(s);
+          }
+        }
+        paths.push_back(path);
+        path_parents.push_back(root);
+      }
+    }
+  }
+
+ private:
+  RootedTree* tree_;
+  vector<vector<int>>* cliques_;
+  vector<SimpleTriangularMatrixData> simple_matrices_;
+  vector<DirectSumTriangularMatrixData> direct_sum_;
+};
 
 namespace {
 
@@ -273,7 +340,6 @@ GTEST_TEST(SimpleTri, DirectSum) {
   EXPECT_NEAR((llt.matrixL() - llt_ref).norm(), 0, 1e-12);
 }
 
-#if 0
 GTEST_TEST(SimpleTri, IncrementSubmatrix) {
   // **   
   // **  
@@ -344,29 +410,45 @@ GTEST_TEST(SimpleTri, IncrementSubmatrix) {
 #endif 
 
 
-GTEST_TEST(GeneralMatrix, AssemblyandFactorization) {
+GTEST_TEST(LowerTri, AssembleFromCliques) {
+  vector<vector<int>> cliques{ {0, 2, 4},  {1,  4}, {3, 2, 4} };
+  // Sort by earliest exiting clique, break ties with entering.
+  std::vector<int> enter(5, -1);
+  std::vector<int> exit(5, -1);
+  std::vector<int> block_sizes(3);
+  std::vector<int> permutation(5); std::iota(permutation.begin(), permutation.end(), 0);
+  for (size_t i = 0; i < cliques.size(); i++) {
+    for (auto n : cliques.at(i)) {
+      if (enter.at(n) == -1) {
+        enter.at(n) = i;
+        exit.at(n) = i;
+      } else {
+        exit.at(n) = i;
+      }
+    }
+  }
 
-  // diag
-  //      diag
-  //           diag
-  // ***  ***  ***  diag
-  //                     diag
-  //                          diag
-  std::vector<int> block_sizes{3, 2, 3};
-  std::vector<SimpleTriangularMatrixTriplet> triplets{{1, 0, 2},  {2, 0, 3}};
+  for (auto i : exit) {
+    block_sizes.at(i)++; 
+  }
+  
+  std::vector<SimpleTriangularMatrixTriplet> triplets;
+  for (size_t i = 0; i < 5; i++  ) {
+    if (enter.at(i) != exit.at(i)) {
+      triplets.push_back({exit.at(i), enter.at(i), 1});
+    }
+  }
 
-  vector<SimpleTriangularMatrix> mats;
-  mats.emplace_back(block_sizes, triplets);
-  mats.emplace_back(block_sizes, triplets);
-  mats.emplace_back(block_sizes, triplets);
-  TriangularMatrixDirectSum mat_1(mats);
+  MatrixXd M(cliques.size(), cliques.size()); M.setZero();
 
-  SimpleTriangularMatrix mat_2(block_sizes, triplets);
-  DUMP(mat_1.root_matrix());
-  mat_2.IncrementSubmatrix(mat_1.root_matrix(), {std::pair<int, int>(0, 3)});
+  std::sort(permutation.begin(), permutation.end(), 
+            [enter, exit](const int& i, const int& j) { 
+            return (exit[i] < exit[j]) || (exit[i] == exit[j] && enter[i] < enter[j]);
+            });
 
-
+  SimpleTriangularMatrix mat(block_sizes, triplets);
+  mat.SetConstant(1);
+  DUMP(mat.MakeDenseMatrix());
 }
 
-
-}  // namespace conex
+} // namespace conex

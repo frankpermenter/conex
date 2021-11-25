@@ -46,10 +46,39 @@ class TreeTraversalBase {
     } while (leaf_nodes.size() > 0);
   }
 
+  void TraversePathsFromLeaves() {
+    auto d = *tree_ptr_;
+    bool parallelism_enabled = true;
+    auto num_children = NumberOfChildren(d);
+    std::vector<int> leaf_nodes;
+    vector<int> visited(d.NumberOfNodes(), 0);
+    omp_set_num_threads(num_threads_);
+    int cnt = 0;
+    do {
+      cnt++;
+      leaf_nodes = GetUnvisitedLeafNode(num_children, visited);
+      int N = leaf_nodes.size();
+#pragma omp parallel for if (parallelism_enabled)
+      for (int n = 0; n < N; ++n) {
+        int root = VisitPaths(leaf_nodes[n], &visited, &num_children);
+        DoPathCleanup(root);
+        num_children[root] = 0;
+      }
+      if (cnt > 3) {
+        return;
+      }
+    } while (leaf_nodes.size() > 0);
+  }
+
+
+
+
   virtual ~TreeTraversalBase() = default;
 
  private:
-  virtual int DoNodeOperation(int node) = 0;
+  virtual int DoNodeOperation(int node) { return 0; }
+  virtual int DoPathOperation(int start, int node) { return 0; }
+  virtual int DoPathCleanup(int root) { return 0; }
   void VisitPostOrder(int starting_node, std::vector<int>* visited,
                       std::vector<int>* num_children) {
     int node = starting_node;
@@ -70,6 +99,26 @@ class TreeTraversalBase {
       }
     }
   }
+
+  int VisitPaths(int starting_node, std::vector<int>* visited,
+                      std::vector<int>* num_children) {
+    int node = starting_node;
+    auto d = *tree_ptr_;
+    while (1) {
+      int parent_node = d.parent.at(node);
+      (*visited)[node]++;
+      DoPathOperation(starting_node, node);
+      if (parent_node == -1 || (*num_children)[node] > 1) {
+        break;
+      } else {
+        node = parent_node;
+      }
+    }
+    return node;
+  }
+
+
+
   void VisitDepthFirst(int starting_node, vector<int>* visited) {
     auto d = *tree_ptr_;
     std::stack<size_t> node_stack;
