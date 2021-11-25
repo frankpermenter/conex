@@ -13,90 +13,11 @@ namespace conex {
 using Eigen::MatrixXd;
 using std::vector;
 
+namespace {
+
 MatrixXd LowerTri(const Eigen::MatrixXd& x) {
   return x.triangularView<Eigen::Lower>();
 }
-MatrixXd SparsityPattern(const Eigen::MatrixXd& x) {
-  MatrixXd y = x;
-  y.setZero();
-  for (int i = 0; i < y.rows(); i++) {
-    for (int j = 0; j < y.cols(); j++) {
-      if (std::fabs(x(i, j)) > 1e-18) {
-        y(i, j) = 1;
-      }
-    }
-  }
-  return y;
-}
-
-#if 0
-
-
-class ParseTreeData {
-  struct SimpleTriangularMatrixData {
-    std::vector<int> entering_block;
-    std::vector<int> exiting_block;
-    int num_blocks = 0;
-  };
-
-  struct DirectSumTriangularMatrixData {
-    vector<int> children;
-  };
-  // Root = DS
-  //
-  //
-  //     C
-  //  D  D  D
-  //  D  D  D
-  //  D  D  D
-
- public:
-  ParseTreeData(RootedTree* tree, std::vector<vector<int>>* cliques) : tree_(tree),
-    cliques_(cliques) {}
-
-  void BuildCompressedTree() {
-    std::vector<int> num_children = NumberOfChildren(*tree_);
-    std::vector<int> merged_tree_parent = GetRootNodes(*tree_);
-    std::stack<int> root_stack;
-    for (auto r: merged_tree_parent) {
-      root_stack.push(r);
-    }
-    vector<vector<int>> paths;
-    vector<int> path_parents;
-    while (root_stack.size() > 0) {
-      int root = root_stack.top();
-      root_stack.pop();
-
-      vector<int> children = GetChildren(*tree_, root);
-      for (auto& c : children) {
-        std::vector<int> path;
-        path.push_back(root);
-        path.push_back(c);
-        auto descendants = GetChildren(*tree_, c);
-        while (descendants.size() == 1) {
-          path.push_back(descendants.back());
-          descendants = GetChildren(*tree_, path.back());
-        }
-        if (descendants.size() > 1) {
-          for (auto s : descendants) {
-            root_stack.push(s);
-          }
-        }
-        paths.push_back(path);
-        path_parents.push_back(root);
-      }
-    }
-  }
-
- private:
-  RootedTree* tree_;
-  vector<vector<int>>* cliques_;
-  vector<SimpleTriangularMatrixData> simple_matrices_;
-  vector<DirectSumTriangularMatrixData> direct_sum_;
-};
-
-namespace {
-
 
 vector<Eigen::MatrixXd> GetCompressedBlockColumns(
     const MatrixXd& Ref, const std::vector<int> block_sizes) {
@@ -420,8 +341,6 @@ GTEST_TEST(SimpleTri, IncrementSubmatrix) {
   // clang-format on
   EXPECT_NEAR(LowerTri(X_ref - mat.MakeDenseMatrix()).norm(), 0, 1e-15);
 }
-#endif
-
 
 void DoBlockCholeskyTest(const Eigen::MatrixXd& M,
                          const vector<std::vector<int>>& cliques) {
