@@ -103,4 +103,29 @@ GTEST_TEST(TreeUtils, TestPath2) {
   EXPECT_EQ(p2, path_ref);
 }
 
+GTEST_TEST(TreeUtils, PartitionIntoPaths) {
+  RootedTree r(7);
+  /*
+       0
+    3    1 
+          2
+           4
+         5   6
+  */
+
+                             //0  1  2  3  4  5  6
+  r.parent = std::vector<int>{-1, 0, 1, 0, 2, 4, 4};
+  auto y = PartitionIntoPaths(r);
+  EXPECT_EQ(y.size(), 4u);
+  vector<int> path_ref_0{0, 3};
+  vector<int> path_ref_1{0, 1, 2, 4};
+  vector<int> path_ref_3{4, 5};
+  vector<int> path_ref_2{4, 6};
+
+  EXPECT_EQ(y.at(0), path_ref_0);
+  EXPECT_EQ(y.at(1), path_ref_1);
+  EXPECT_EQ(y.at(2), path_ref_2);
+  EXPECT_EQ(y.at(3), path_ref_3);
+}
+
 }  // namespace conex
