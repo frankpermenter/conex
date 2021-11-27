@@ -267,6 +267,8 @@ class BlockSparseSymmetricMatrix {
   friend class LLT;
 };
 
+BlockSparseSymmetricMatrix MakeBlockSparseMatrix(const Eigen::MatrixXd& M, 
+                                                        const std::vector<std::vector<int>>& cliques);
 
 
 

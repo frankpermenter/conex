@@ -107,6 +107,30 @@ class BlockMatrix {
 }  // namespace
 
 
+BlockSparseSymmetricMatrix MakeBlockSparseMatrix(const Eigen::MatrixXd& M, 
+                                                        const vector<vector<int>>& cliques) {
+
+  int num_vars = M.rows();
+
+  int num_cliques = cliques.size();
+  std::vector<int> enter(num_vars, -1);
+  std::vector<int> exit(num_vars, -1);
+  std::vector<int> block_sizes(num_cliques);
+  for (size_t i = 0; i < cliques.size(); i++) {
+    for (auto n : cliques.at(i)) {
+      if (enter.at(n) == -1) {
+        enter.at(n) = i;
+        exit.at(n) = i;
+      } else {
+        exit.at(n) = i;
+      }
+    }
+  }
+
+  BlockSparseSymmetricMatrix mat(cliques.size(), enter, exit);
+  mat.SetFromDenseMatrix(M);
+  return mat;
+}
 
 
 BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(

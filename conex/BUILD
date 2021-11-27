@@ -299,10 +299,10 @@ cc_library(
     ],
     hdrs = [
         "simple_triangular_matrix.h",
-        "triangular_matrix_star.h",
     ],
-    copts = ["-fopenmp"],
+    copts = ["-fopenmp", "-O3", "-DEIGEN_NO_DEBUG", "-ffast-math"],
     deps = ["tree_utils"],
+    visibility = ["//visibility:public"],
 )
 
 
@@ -326,11 +326,8 @@ cc_test(
     srcs = [
         "test/simple_triangular_matrix_test.cc",
     ],
-    copts = [
-        "-Iexternal/gtest/include",
-        "-fopenmp",
-        "-g",
-    ],
+    copts = [ "-Iexternal/gtest/include",
+        "-fopenmp", "-O3", "-DEIGEN_NO_DEBUG", "-ffast-math"],
     linkopts = ["-fopenmp"],
     deps = [
         "simple_triangular_matrix",
