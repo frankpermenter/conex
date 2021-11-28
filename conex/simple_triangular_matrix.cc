@@ -272,7 +272,7 @@ void PartialDenseCholeskyInPlace(Eigen::Ref<MatrixXd> Ain,
                                  Eigen::Ref<MatrixXd> Bt) {
   const int n = Ain.rows();
 
-  Eigen::MatrixXd B = Bt.transpose();
+  Eigen::MatrixXd B = Bt; 
   Eigen::MatrixXd A = Ain; 
 
   // Divide column k of by sqrt(A(k, k)) and
@@ -289,17 +289,17 @@ void PartialDenseCholeskyInPlace(Eigen::Ref<MatrixXd> Ain,
       }
     }
 
-    for (int i = 0; i < B.rows(); i++) {
-      B(i, k) /= a;
-      const double b_ik = B(i, k);
+    for (int i = 0; i < B.cols(); i++) {
+      B(k, i) /= a;
+      const double b_ik = B(k, i);
       for (int j = k + 1; j < n; j++) {
-        B(i, j) -= b_ik * A(j, k);
+        B(j, i) -= b_ik * A(j, k);
       }
     }
 
   }
   DUMP(A);
-  DUMP(B.transpose());
+  DUMP(B);
 }
 
 
