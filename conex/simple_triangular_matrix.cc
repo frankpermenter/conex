@@ -1,3 +1,4 @@
+#define EIGEN_RUNTIME_NO_MALLOC
 #define CONEX_ENABLE_TIMER 0
 #include "conex/simple_triangular_matrix.h"
 #include "conex/debug_macros.h"
@@ -216,19 +217,18 @@ MatrixXd S::MakeDenseMatrix() const {
 // and stored in the block C12.  The full matrix C starts
 // at the diagonal block (i, i).
 void S::LLT::SchurComplementInPlace(int block) {
-  auto& Rdata = matrix_.off_diagonal_blocks_.at(block);
-  if (Rdata.size() == 0) {
+  if (matrix_.off_diagonal_blocks(block).size() == 0) {
     return;
   }
   const BlockData& input_block_info = matrix_.off_diagonal_partition_.at(block);
 
-  BlockMatrix<MatrixXd> input_i(Rdata, input_block_info);
+  BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block), input_block_info);
   for (size_t i = 0; i < input_block_info.size() - 1; i++) {
     int size_i = input_i.CurrentBlockSize();
     BlockMatrix<MatrixXd> output(
         matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
         matrix_.off_diagonal_partition_.at(input_i.CurrentBlockNumber()));
-    BlockMatrix<MatrixXd> input_j(Rdata, input_block_info, i + 1);
+    BlockMatrix<MatrixXd> input_j(matrix_.off_diagonal_blocks(block), input_block_info, i + 1);
     for (size_t j = i + 1; j < input_block_info.size(); j++) {
       int size_j = input_j.CurrentBlockSize();
       output.GotoBlock(input_j.CurrentBlockNumber());
@@ -265,7 +265,6 @@ void PartialDenseCholeskyInPlace(Eigen::MatrixXd* Ainout) {
   auto& A = *Ainout;
   const int cols = A.cols();
   const int rows = A.rows();
-  // 
   for (int k = 0; k < cols; k++) {
     double a = sqrt(A(k, k)); 
     for (int i = k; i < rows; i++) {
@@ -277,10 +276,8 @@ void PartialDenseCholeskyInPlace(Eigen::MatrixXd* Ainout) {
   }
 }
 
-
-
-void EigenDenseCholeskyInPlace(Eigen::MatrixXd* Ainout) {
-  Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>> mat(*Ainout);
+void EigenDenseCholeskyInPlace(Eigen::Ref<Eigen::MatrixXd> A) {
+  Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>> mat(A);
 }
 
 void DenseLDLTInPlace(Eigen::MatrixXd* Ainout) {
@@ -302,7 +299,6 @@ void DenseLDLTInPlace(Eigen::MatrixXd* Ainout) {
 bool S::LLT::compute(bool factor_last_block) {
 
  //START_TIMER("INSIDE")
-//  llt_of_diag_.clear();
   for (int i = 0; i < matrix_.num_blocks_ - 1; i++) {
     //llt_of_diag_.emplace_back(matrix_.diagonal_blocks(i));
 #if 0
@@ -318,7 +314,8 @@ bool S::LLT::compute(bool factor_last_block) {
     END_TIMER
 #endif
     START_TIMER("LLT")
-    DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
+    //DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
+    EigenDenseCholeskyInPlace(matrix_.diagonal_blocks(i));
     END_TIMER
 
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
@@ -332,7 +329,6 @@ bool S::LLT::compute(bool factor_last_block) {
     }
   }
   if (factor_last_block) {
-//    llt_of_diag_.emplace_back(matrix_.diagonal_blocks_.back());
     START_TIMER("LLT")
     DenseCholeskyInPlace(matrix_.diagonal_blocks(matrix_.num_blocks_ - 1));
     END_TIMER

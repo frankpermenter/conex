@@ -69,11 +69,11 @@ class SimpleTriangularMatrix {
 
 
   Eigen::MatrixXd MakeDenseMatrix() const;
-  Eigen::Ref<const Eigen::MatrixXd> diagonal_blocks(int i) const { return diagonal_blocks_.at(i); }
-  Eigen::Ref<Eigen::MatrixXd> diagonal_blocks(int i) { return diagonal_blocks_.at(i); }
+  Eigen::Ref<const Eigen::MatrixXd> diagonal_blocks(int i) const { return diagonal_blocks_[i]; }
+  Eigen::Ref<Eigen::MatrixXd> diagonal_blocks(int i) { return diagonal_blocks_[i]; }
 
-  Eigen::Ref<Eigen::MatrixXd> off_diagonal_blocks(int i) { return off_diagonal_blocks_.at(i); }
-  Eigen::Ref<const Eigen::MatrixXd> off_diagonal_blocks(int i) const { return off_diagonal_blocks_.at(i); }
+  Eigen::Ref<const Eigen::MatrixXd> off_diagonal_blocks(int i) const { return off_diagonal_blocks_[i]; }
+  Eigen::Ref<Eigen::MatrixXd> off_diagonal_blocks(int i) { return off_diagonal_blocks_[i]; }
 
   void SetConstant(double c) {
     for (int i = 0; i < num_blocks_; ++i) {
