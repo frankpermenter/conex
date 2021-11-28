@@ -1,3 +1,4 @@
+#pragma once
 #include <vector>
 
 #include <Eigen/Dense>
@@ -240,16 +241,14 @@ class BlockSparseSymmetricMatrix {
 
   class LLT {
    public:
-    bool compute()  {
-      return llt_.compute(); 
-    }
+    bool compute();
     Eigen::PermutationMatrix<-1> matrixP() {
       Eigen::PermutationMatrix<-1> P(matrix_.elimination_position_to_variable_.size());
       P.indices() = Eigen::Map<const Eigen::VectorXi>(matrix_.elimination_position_to_variable_.data(), 
                                                       matrix_.elimination_position_to_variable_.size());
       return P;
     }
-    Eigen::MatrixXd matrixL() { return llt_.matrixL(); }
+    Eigen::MatrixXd matrixL() { return llt_.matrixL().triangularView<Eigen::Lower>(); }
    private:
     LLT(BlockSparseSymmetricMatrix* matrix) : matrix_(*matrix), 
     llt_(matrix_.lower_triangular_matrix_.llt()) { }

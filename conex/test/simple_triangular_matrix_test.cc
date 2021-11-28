@@ -1,3 +1,4 @@
+#define CONEX_ENABLE_TIMER 1
 #include "conex/simple_triangular_matrix.h"
 #include "conex/debug_macros.h"
 #include "conex/tree_traversal.h"
@@ -13,11 +14,33 @@ namespace conex {
 using Eigen::MatrixXd;
 using std::vector;
 
+
 namespace {
 
 MatrixXd LowerTri(const Eigen::MatrixXd& x) {
   return x.triangularView<Eigen::Lower>();
 }
+
+void DoBlockCholeskyTest(const Eigen::MatrixXd& M,
+                         const vector<std::vector<int>>& cliques) {
+  auto b = MakeBlockSparseMatrix(M, cliques);
+  auto llt_calc = b.llt(); llt_calc.compute();
+
+  Eigen::LLT<MatrixXd> llt_ref((llt_calc.matrixP().transpose()*M * llt_calc.matrixP()));
+  MatrixXd L_ref = llt_ref.matrixL();
+
+  MatrixXd error = LowerTri(llt_calc.matrixL() - L_ref);
+  EXPECT_NEAR(error.norm(), 0, 1e-14);
+  return;
+  bool success = true;
+  auto Mcopy = M;
+  START_TIMER(Dense)
+  Eigen::LLT<Eigen::Ref<MatrixXd>> llt_dense(Mcopy);
+  success = llt_dense.info();
+  END_TIMER
+}
+
+
 
 vector<Eigen::MatrixXd> GetCompressedBlockColumns(
     const MatrixXd& Ref, const std::vector<int> block_sizes) {
@@ -45,23 +68,25 @@ vector<Eigen::MatrixXd> GetCompressedBlockColumns(
 void DoTest(const std::vector<int>& block_sizes,
             const std::vector<SimpleTriangularMatrixTriplet>& triplets,
             const MatrixXd& Ref) {
+  const double eps = 1e-14;
   SimpleTriangularMatrix mat(block_sizes, triplets);
   mat.AssembleFromCompressedColumns(
       GetCompressedBlockColumns(Ref, block_sizes));
 
-  EXPECT_NEAR((mat.MakeDenseMatrix() - Ref).norm(), 0, 1e-15);
+  EXPECT_NEAR((mat.MakeDenseMatrix() - Ref).norm(), 0, eps);
 
 
-  EXPECT_NEAR((mat.MakeDenseMatrix() - Ref).norm(), 0, 1e-15);
+  EXPECT_NEAR((mat.MakeDenseMatrix() - Ref).norm(), 0, eps);
   SimpleTriangularMatrix::LLT llt = mat.llt();
   llt.compute();
   MatrixXd llt_calc = mat.MakeDenseMatrix();
   MatrixXd llt_ref = Eigen::LLT<MatrixXd>(Ref).matrixL();
   MatrixXd error = (llt_calc - llt_ref).triangularView<Eigen::Lower>();
-  EXPECT_NEAR(error.norm(), 0, 1e-15);
+  EXPECT_NEAR(error.norm(), 0, eps);
 }
 
 }  // namespace
+#if 1
 GTEST_TEST(SimpleTri, Construct) {
   std::vector<int> block_sizes{2, 2, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
@@ -342,47 +367,8 @@ GTEST_TEST(SimpleTri, IncrementSubmatrix) {
   EXPECT_NEAR(LowerTri(X_ref - mat.MakeDenseMatrix()).norm(), 0, 1e-15);
 }
 
-void DoBlockCholeskyTest(const Eigen::MatrixXd& M,
-                         const vector<std::vector<int>>& cliques) {
-  int num_vars = M.rows();
-
-  int num_cliques = cliques.size();
-  std::vector<int> enter(num_vars, -1);
-  std::vector<int> exit(num_vars, -1);
-  std::vector<int> block_sizes(num_cliques);
-  std::vector<int> permutation(num_vars);
-  for (size_t i = 0; i < cliques.size(); i++) {
-    for (auto n : cliques.at(i)) {
-      if (enter.at(n) == -1) {
-        enter.at(n) = i;
-        exit.at(n) = i;
-      } else {
-        exit.at(n) = i;
-      }
-    }
-  }
-
-  BlockSparseSymmetricMatrix b(cliques.size(), enter, exit);
-  b.SetFromDenseMatrix(M);
-  auto llt_calc = b.llt(); llt_calc.compute();
-
-  Eigen::LLT<MatrixXd> llt_ref((llt_calc.matrixP().transpose()*M * llt_calc.matrixP()));
-  MatrixXd L_ref = llt_ref.matrixL();
-
-  MatrixXd error = LowerTri(llt_calc.matrixL() - L_ref);
-  EXPECT_NEAR(error.norm(), 0, 1e-14);
-}
 
 
-GTEST_TEST(BlockSymmetricMatrixCholesky, BlockDiag) {
-  vector<vector<int>> cliques{ {0, 3}, { 1, 2}};
-  MatrixXd M(4, 4);
-  M << 9, 0, 0, 1, 
-       0, 9, 2, 0, 
-       0, 2, 9, 0, 
-       1, 0, 0, 9;
-  DoBlockCholeskyTest(M, cliques);
-}
 
 GTEST_TEST(BlockSymmetricMatrixCholesky, Arrow) {
   vector<vector<int>> cliques{ {0, 1}, { 1, 2, 3}, {1, 5}, {1, 4} };
@@ -396,6 +382,7 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, Arrow) {
   DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
 }
 
+#endif
 GTEST_TEST(BlockSymmetricMatrixCholesky, MassMatrix) {
   vector<vector<int>> cliques{{0, 1, 2, 3, 4, 5, 18, 19, 20, 21},
                               {0, 1, 2, 3, 4, 5, 14, 15, 16, 17},
@@ -458,5 +445,31 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, MassMatrix) {
       -1.29971e-08, 1.182e-05, 1.182e-05, 1.182e-05;
   DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
 }
+#if 0
+GTEST_TEST(BlockSymmetricMatrixCholesky, BlockDiag) {
+  vector<vector<int>> cliques{ {0, 3}, { 1, 2}};
+  MatrixXd M(4, 4);
+  M << 9, 0, 0, 1, 
+       0, 9, 2, 0, 
+       0, 2, 9, 0, 
+       1, 0, 0, 9;
 
+  int size_blocks = 700;
+  cliques.clear();
+  cliques.resize(2);
+  for (int i = 0; i < size_blocks; i++) {
+    cliques.at(0).push_back(i);
+    cliques.at(1).push_back(i + size_blocks);
+  }
+  M.resize(size_blocks*2, size_blocks*2);
+  M.topLeftCorner(size_blocks, size_blocks).setIdentity();
+  M.bottomRightCorner(size_blocks, size_blocks).setIdentity(); 
+
+
+  DoBlockCholeskyTest(M, cliques);
+  DoBlockCholeskyTest(M, cliques);
+  DoBlockCholeskyTest(M, cliques);
+  DoBlockCholeskyTest(M, cliques);
+}
+#endif
 }  // namespace conex

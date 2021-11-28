@@ -1,3 +1,4 @@
+#define CONEX_ENABLE_TIMER 1
 #include "conex/simple_triangular_matrix.h"
 #include "conex/debug_macros.h"
 
@@ -21,17 +22,6 @@ vector<size_t> sort_indexes(const vector<T>& v) {
 
   return indices;
 }
-
-struct TriangularMatrixInputs {
-  TriangularMatrixInputs(int num_cliques, int num_vars) : 
-      elimination_position_to_variable(num_vars),
-      block_sizes(num_cliques, 0) {
-        
-      }
-  std::vector<int> block_sizes;
-  std::vector<int> triplets; 
-  std::vector<int> elimination_position_to_variable;
-};
 
 std::vector<int> CalculateBlockSizes(int num_blocks,
                   const std::vector<int>& enter, 
@@ -84,16 +74,16 @@ class BlockMatrix {
   }
 
   void GotoBlock(int i) {
-    while (blocks_.at(current_block_index_).first != i) {
+    while (blocks_[current_block_index_].first != i) {
       GotoNextBlock();
     }
   }
 
-  int CurrentBlockNumber() { return blocks_.at(current_block_index_).first; }
+  int CurrentBlockNumber() { return blocks_[current_block_index_].first; }
 
   int CurrentBlockOffset() { return current_block_offset_; }
 
-  int CurrentBlockSize() { return blocks_.at(current_block_index_).second; }
+  int CurrentBlockSize() { return blocks_[current_block_index_].second; }
 
   Eigen::Ref<T> CurrentBlock() {
     return X_.middleCols(current_block_offset_, CurrentBlockSize());
@@ -109,7 +99,6 @@ class BlockMatrix {
 
 BlockSparseSymmetricMatrix MakeBlockSparseMatrix(const Eigen::MatrixXd& M, 
                                                         const vector<vector<int>>& cliques) {
-
   int num_vars = M.rows();
 
   int num_cliques = cliques.size();
@@ -132,6 +121,10 @@ BlockSparseSymmetricMatrix MakeBlockSparseMatrix(const Eigen::MatrixXd& M,
   return mat;
 }
 
+bool BlockSparseSymmetricMatrix::LLT::compute() {
+  llt_.compute();  
+  return true;
+}
 
 BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(
   const int num_blocks, 
@@ -234,41 +227,70 @@ void S::LLT::SchurComplementInPlace(int block) {
   for (size_t i = 0; i < input_block_info.size() - 1; i++) {
     int size_i = input_i.CurrentBlockSize();
     BlockMatrix<MatrixXd> output(
-        off_diagonal_blocks.at(input_i.CurrentBlockNumber()),
+        off_diagonal_blocks[input_i.CurrentBlockNumber()],
         matrix_.off_diagonal_partition_.at(input_i.CurrentBlockNumber()));
     BlockMatrix<MatrixXd> input_j(Rdata, input_block_info, i + 1);
     for (size_t j = i + 1; j < input_block_info.size(); j++) {
       int size_j = input_j.CurrentBlockSize();
       output.GotoBlock(input_j.CurrentBlockNumber());
-      output.CurrentBlock().topLeftCorner(size_i, size_j) -=
+      output.CurrentBlock().topLeftCorner(size_i, size_j).noalias() -=
           input_i.CurrentBlock().transpose() * input_j.CurrentBlock();
       input_j.GotoNextBlock();
     }
 
-    diagonal_blocks.at(input_i.CurrentBlockNumber())
-        .topLeftCorner(size_i, size_i) -=
+    diagonal_blocks[input_i.CurrentBlockNumber()]
+        .topLeftCorner(size_i, size_i).noalias() -=
         input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
     input_i.GotoNextBlock();
   }
   int size_i = input_i.CurrentBlockSize();
   diagonal_blocks.at(input_i.CurrentBlockNumber())
-      .topLeftCorner(size_i, size_i) -=
+      .topLeftCorner(size_i, size_i).noalias() -=
       input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
 }
 
+void DenseCholeskyInPlace(Eigen::MatrixXd* Ainout) {
+  auto& A = *Ainout;
+  const int n = A.rows();
+  for (int k = 0; k < n; k++) {
+    double a = sqrt(A(k, k)); 
+    for (int i = k; i < n; i++) {
+      A(i, k) /= a;
+      for (int j = k + 1; j <= i; j++) {
+        A(i, j) -= A(i, k) * A(j, k);
+      }
+    }
+  }
+}
+
+
 bool S::LLT::compute(bool factor_last_block) {
-  llt_of_diag_.clear();
+
+ //START_TIMER("INSIDE")
+//  llt_of_diag_.clear();
   for (int i = 0; i < matrix_.num_blocks_ - 1; i++) {
-    llt_of_diag_.emplace_back(matrix_.diagonal_blocks_[i]);
+    //llt_of_diag_.emplace_back(matrix_.diagonal_blocks_[i]);
+    START_TIMER("LLT")
+    DenseCholeskyInPlace(&matrix_.diagonal_blocks_[i]);
+    END_TIMER
+
     if (matrix_.off_diagonal_blocks_[i].size() > 0) {
-      llt_of_diag_.back().matrixL().solveInPlace(
+    START_TIMER("Solve")
+      matrix_.diagonal_blocks_[i].triangularView<Eigen::Lower>().solveInPlace(
           matrix_.off_diagonal_blocks_[i]);
-      SchurComplementInPlace(i);
+    END_TIMER
+    START_TIMER("Scatter")
+    SchurComplementInPlace(i);
+    END_TIMER
     }
   }
   if (factor_last_block) {
-    llt_of_diag_.emplace_back(matrix_.diagonal_blocks_.back());
+//    llt_of_diag_.emplace_back(matrix_.diagonal_blocks_.back());
+    START_TIMER("LLT")
+    DenseCholeskyInPlace(&matrix_.diagonal_blocks_.back());
+    END_TIMER
   }
+  //END_TIMER
   return true;
 }
 
@@ -279,7 +301,7 @@ void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
   for (size_t i = 0; i < partition.size() - 1; i++) {
     const auto& d = partition.at(i);
 
-    diagonal_blocks_.at(d.first).topLeftCorner(d.second, d.second) += x.block(offset, offset, 
+    diagonal_blocks_.at(d.first).topLeftCorner(d.second, d.second).noalias() += x.block(offset, offset, 
                                                                            d.second, d.second);
 
     int r_offset = offset + d.second;
@@ -289,7 +311,7 @@ void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
     for (size_t j = i+1; j < partition.size(); j++) {
       auto&o = partition.at(j);
       blocks.GotoBlock(o.first);
-      blocks.CurrentBlock().leftCols(o.second).topRows(d.second) += 
+      blocks.CurrentBlock().leftCols(o.second).topRows(d.second).noalias() += 
           x.block(r_offset, offset, o.second, d.second).transpose();
       r_offset += o.second;
     }
@@ -298,7 +320,7 @@ void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
   }
 
   const auto& d = partition.back();
-  diagonal_blocks_.at(d.first).topLeftCorner(d.second, d.second) += x.block(offset, offset, 
+  diagonal_blocks_.at(d.first).topLeftCorner(d.second, d.second).noalias() += x.block(offset, offset, 
                                                                            d.second, d.second);
 
 }
