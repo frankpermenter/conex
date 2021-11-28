@@ -1,4 +1,4 @@
-#define CONEX_ENABLE_TIMER 1
+#define CONEX_ENABLE_TIMER 0
 #include "conex/simple_triangular_matrix.h"
 #include "conex/debug_macros.h"
 
@@ -263,6 +263,43 @@ void DenseCholeskyInPlace(Eigen::MatrixXd* Ainout) {
   }
 }
 
+void PartialDenseCholeskyInPlace(Eigen::MatrixXd* Ainout) {
+  auto& A = *Ainout;
+  const int cols = A.cols();
+  const int rows = A.rows();
+  // 
+  for (int k = 0; k < cols; k++) {
+    double a = sqrt(A(k, k)); 
+    for (int i = k; i < rows; i++) {
+      A(i, k) /= a;
+      for (int j = k + 1; j < std::min(i + 1, cols); j++) {
+        A(i, j) -= A(i, k) * A(j, k);
+      }
+    }
+  }
+}
+
+
+
+void EigenDenseCholeskyInPlace(Eigen::MatrixXd* Ainout) {
+  Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>> mat(*Ainout);
+}
+
+void DenseLDLTInPlace(Eigen::MatrixXd* Ainout) {
+  auto& A = *Ainout;
+  const int n = A.rows();
+  Eigen::VectorXd d(n);
+  for (int k = 0; k < n; k++) {
+    d(k) = A(k, k);
+    for (int i = k; i < n; i++) {
+      for (int j = k + 1; j <= i; j++) {
+        A(i, j) -= A(i, k) * A(j, k) / d(k);
+      }
+    }
+  }
+  d = d.array().sqrt();
+  A = A * d.cwiseInverse().asDiagonal();
+}
 
 bool S::LLT::compute(bool factor_last_block) {
 
@@ -270,6 +307,18 @@ bool S::LLT::compute(bool factor_last_block) {
 //  llt_of_diag_.clear();
   for (int i = 0; i < matrix_.num_blocks_ - 1; i++) {
     //llt_of_diag_.emplace_back(matrix_.diagonal_blocks_[i]);
+#if 0
+    int r1 = matrix_.diagonal_blocks_[i].rows();
+    int r2 = matrix_.off_diagonal_blocks_[i].rows();
+    MatrixXd T(r1 + r2, matrix_.diagonal_blocks_[i].cols());
+    T.topRows(r1) = matrix_.diagonal_blocks_[i];
+    if (r2 > 0) {
+      T.bottomRows(r2) = matrix_.off_diagonal_blocks_[i];
+    }
+    START_TIMER("Trap LLT")
+    PartialDenseCholeskyInPlace(&T);
+    END_TIMER
+#endif
     START_TIMER("LLT")
     DenseCholeskyInPlace(&matrix_.diagonal_blocks_[i]);
     END_TIMER

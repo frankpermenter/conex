@@ -40,7 +40,7 @@ namespace conex {
 #define END_TIMER                                                            \
   auto stop1 = std::chrono::high_resolution_clock::now();                    \
   std::cout << " "                                                           \
-            << std::chrono::duration_cast<std::chrono::microseconds>(stop1 - \
+            << std::chrono::duration_cast<std::chrono::nanoseconds>(stop1 - \
                                                                      start1) \
                    .count()                                                  \
             << ", " << std::endl;                                                         \
