@@ -69,12 +69,18 @@ class SimpleTriangularMatrix {
 
 
   Eigen::MatrixXd MakeDenseMatrix() const;
+  Eigen::Ref<const Eigen::MatrixXd> diagonal_blocks(int i) const { return diagonal_blocks_.at(i); }
+  Eigen::Ref<Eigen::MatrixXd> diagonal_blocks(int i) { return diagonal_blocks_.at(i); }
+
+  Eigen::Ref<Eigen::MatrixXd> off_diagonal_blocks(int i) { return off_diagonal_blocks_.at(i); }
+  Eigen::Ref<const Eigen::MatrixXd> off_diagonal_blocks(int i) const { return off_diagonal_blocks_.at(i); }
+
   void SetConstant(double c) {
-    for (auto& d : diagonal_blocks_) {
-      d.setConstant(c);
+    for (int i = 0; i < num_blocks_; ++i) {
+      diagonal_blocks(i).setConstant(c);
     }
-    for (auto& d : off_diagonal_blocks_) {
-      d.setConstant(c);
+    for (int i = 0; i < num_blocks_-1; ++i) {
+      off_diagonal_blocks(i).setConstant(c);
     }
   }
 
@@ -86,20 +92,20 @@ class SimpleTriangularMatrix {
       throw std::runtime_error("Incorrect number of block columns provided.");
     }
     for (size_t i = 0; i < x.size() - 1; i++) {
-      if (diagonal_blocks_.at(i).rows() + off_diagonal_blocks_.at(i).cols() !=
+      if (diagonal_blocks(i).rows() + off_diagonal_blocks(i).cols() !=
           x.at(i).rows()) {
         throw std::runtime_error("Incorrect number of block rows provided.");
       }
-      if (diagonal_blocks_.at(i).cols() != x.at(i).cols()) {
+      if (diagonal_blocks(i).cols() != x.at(i).cols()) {
         throw std::runtime_error("Size of block column is incorrect.");
       }
-      diagonal_blocks_.at(i) = x.at(i).topRows(block_column_sizes_[i]);
-      if (off_diagonal_blocks_.at(i).size() > 0) {
-        off_diagonal_blocks_.at(i) =
-            x.at(i).bottomRows(off_diagonal_blocks_.at(i).cols()).transpose();
+      diagonal_blocks(i) = x.at(i).topRows(block_column_sizes_[i]);
+      if (off_diagonal_blocks(i).size() > 0) {
+        off_diagonal_blocks(i) =
+            x.at(i).bottomRows(off_diagonal_blocks(i).cols()).transpose();
       }
     }
-    diagonal_blocks_.back() = x.back();
+    diagonal_blocks(x.size() - 1) = x.back();
   }
 
   void AssembleFromDenseMatrix(const Eigen::MatrixXd& A);
