@@ -86,7 +86,7 @@ void DoTest(const std::vector<int>& block_sizes,
 }
 
 }  // namespace
-#if 1
+#if 0
 GTEST_TEST(SimpleTri, Construct) {
   std::vector<int> block_sizes{2, 2, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
@@ -443,6 +443,9 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, MassMatrix) {
       2.61943e-08, 0.000136541, 8.17987e-05, 1.182e-05, 2.1e-09, 1.17762e-05,
       1.01724e-06, -7.32747e-19, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       -1.29971e-08, 1.182e-05, 1.182e-05, 1.182e-05;
+  DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
+  DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
+  DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
   DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
 }
 #if 0

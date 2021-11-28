@@ -1,5 +1,4 @@
-#define EIGEN_RUNTIME_NO_MALLOC
-#define CONEX_ENABLE_TIMER 0
+#define CONEX_ENABLE_TIMER 1
 #include "conex/simple_triangular_matrix.h"
 #include "conex/debug_macros.h"
 
@@ -269,6 +268,42 @@ void DenseCholeskyInPlace(Eigen::Ref<MatrixXd> A) {
   }
 }
 
+void PartialDenseCholeskyInPlace(Eigen::Ref<MatrixXd> Ain,
+                                 Eigen::Ref<MatrixXd> Bt) {
+  const int n = Ain.rows();
+
+  Eigen::MatrixXd B = Bt.transpose();
+  Eigen::MatrixXd A = Ain; 
+
+  // Divide column k of by sqrt(A(k, k)) and
+  // then subtract a_{k+1}:end, k} a_{k+1}:end, k}^T from bottom
+  // right corner.
+  for (int k = 0; k < n; k++) {
+    double a = sqrt(A(k, k)); 
+    // Subtract a_i a_j
+    for (int i = k; i < n; i++) {
+      A(i, k) /= a;
+      const double a_ik = A(i, k);
+      for (int j = k + 1; j <= i; j++) {
+        A(i, j) -= a_ik * A(j, k);
+      }
+    }
+
+    for (int i = 0; i < B.rows(); i++) {
+      B(i, k) /= a;
+      const double b_ik = B(i, k);
+      for (int j = k + 1; j < n; j++) {
+        B(i, j) -= b_ik * A(j, k);
+      }
+    }
+
+  }
+  DUMP(A);
+  DUMP(B.transpose());
+}
+
+
+
 void PartialDenseCholeskyInPlace(Eigen::MatrixXd* Ainout) {
   auto& A = *Ainout;
   const int cols = A.cols();
@@ -322,8 +357,10 @@ bool S::LLT::compute(bool factor_last_block) {
     END_TIMER
 #endif
     START_TIMER("LLT")
-    //DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
-    EigenDenseCholeskyInPlace(matrix_.diagonal_blocks(i));
+
+    PartialDenseCholeskyInPlace(matrix_.diagonal_blocks(i), matrix_.off_diagonal_blocks(i));
+    DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
+    //EigenDenseCholeskyInPlace(matrix_.diagonal_blocks(i));
     END_TIMER
 
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
@@ -335,6 +372,8 @@ bool S::LLT::compute(bool factor_last_block) {
     SchurComplementInPlace(i);
     END_TIMER
     }
+    DUMP(matrix_.diagonal_blocks(i));
+    DUMP(matrix_.off_diagonal_blocks(i));
   }
   if (factor_last_block) {
     START_TIMER("LLT")
