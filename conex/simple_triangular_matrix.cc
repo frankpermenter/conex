@@ -396,7 +396,7 @@ MatrixXd D::MakeDenseMatrix() {
       
       M.block(offset, offset, block_size, block_size) = Mi.topLeftCorner(block_size, block_size);
       M.block(common_block_offset, offset, last_block, block_size) = Mi.bottomLeftCorner(last_block, block_size);
-      M.block(common_block_offset, common_block_offset, last_block, last_block) += mat.diagonal_blocks().back(); 
+      M.block(common_block_offset, common_block_offset, last_block, last_block) += mat.diagonal_blocks(mat.num_blocks() - 1); 
       i++;
       offset += block_size;
     }
@@ -426,7 +426,7 @@ bool D::LLT::compute(bool factor_last_block) {
 
   for (const auto& mat : matrices) {
     int last_block = mat.block_sizes().back();
-    common_block_.topLeftCorner(last_block, last_block) += mat.diagonal_blocks().back(); 
+    common_block_.topLeftCorner(last_block, last_block) += mat.diagonal_blocks(mat.num_blocks()-1); 
   }
 
   if (factor_last_block) {
@@ -442,7 +442,6 @@ MatrixXd D::LLT::matrixL() {
   L.bottomRightCorner(common_block_size, common_block_size) = llt_of_diag_.back().matrixL();
   return L;
 }
-
 
 void S::AssembleFromDenseMatrix(const Eigen::MatrixXd& A) {
   int c = 0;

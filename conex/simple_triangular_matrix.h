@@ -86,6 +86,7 @@ class SimpleTriangularMatrix {
 
   int cols() const { return num_cols_; }
   std::vector<int> block_sizes() const { return block_column_sizes_; }
+  int num_blocks() const { return num_blocks_; }
 
   void AssembleFromCompressedColumns(const std::vector<Eigen::MatrixXd>& x) {
     if (x.size() != block_column_sizes_.size()) {
@@ -123,7 +124,7 @@ class SimpleTriangularMatrix {
 
   void ComputeRootSchurComplement(Eigen::MatrixXd* X) {
     llt().compute(false);
-    *X = diagonal_blocks().back();
+    *X = diagonal_blocks(num_blocks_ - 1);
   }
 
   void IncrementLeafSubmatrix(const Eigen::MatrixXd& submatrix) {
@@ -135,8 +136,6 @@ class SimpleTriangularMatrix {
     IncrementSubmatrix(submatrix, submatrix_partition);
   }
 
-
-  const std::vector<Eigen::MatrixXd>& diagonal_blocks() const { return diagonal_blocks_; }
 
   class LLT {
    public:
