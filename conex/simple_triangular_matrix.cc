@@ -248,8 +248,7 @@ void S::LLT::SchurComplementInPlace(int block) {
       input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
 }
 
-void DenseCholeskyInPlace(Eigen::MatrixXd* Ainout) {
-  auto& A = *Ainout;
+void DenseCholeskyInPlace(Eigen::Ref<MatrixXd> A) {
   const int n = A.rows();
   for (int k = 0; k < n; k++) {
     double a = sqrt(A(k, k)); 
@@ -305,27 +304,27 @@ bool S::LLT::compute(bool factor_last_block) {
  //START_TIMER("INSIDE")
 //  llt_of_diag_.clear();
   for (int i = 0; i < matrix_.num_blocks_ - 1; i++) {
-    //llt_of_diag_.emplace_back(matrix_.diagonal_blocks_[i]);
+    //llt_of_diag_.emplace_back(matrix_.diagonal_blocks(i));
 #if 0
-    int r1 = matrix_.diagonal_blocks_[i].rows();
-    int r2 = matrix_.off_diagonal_blocks_[i].rows();
-    MatrixXd T(r1 + r2, matrix_.diagonal_blocks_[i].cols());
-    T.topRows(r1) = matrix_.diagonal_blocks_[i];
+    int r1 = matrix_.diagonal_blocks(i).rows();
+    int r2 = matrix_.off_diagonal_blocks(i).rows();
+    MatrixXd T(r1 + r2, matrix_.diagonal_blocks(i).cols());
+    T.topRows(r1) = matrix_.diagonal_blocks(i);
     if (r2 > 0) {
-      T.bottomRows(r2) = matrix_.off_diagonal_blocks_[i];
+      T.bottomRows(r2) = matrix_.off_diagonal_blocks(i);
     }
     START_TIMER("Trap LLT")
     PartialDenseCholeskyInPlace(&T);
     END_TIMER
 #endif
     START_TIMER("LLT")
-    DenseCholeskyInPlace(&matrix_.diagonal_blocks_[i]);
+    DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
     END_TIMER
 
-    if (matrix_.off_diagonal_blocks_[i].size() > 0) {
+    if (matrix_.off_diagonal_blocks(i).size() > 0) {
     START_TIMER("Solve")
-      matrix_.diagonal_blocks_[i].triangularView<Eigen::Lower>().solveInPlace(
-          matrix_.off_diagonal_blocks_[i]);
+      matrix_.diagonal_blocks(i).triangularView<Eigen::Lower>().solveInPlace(
+          matrix_.off_diagonal_blocks(i));
     END_TIMER
     START_TIMER("Scatter")
     SchurComplementInPlace(i);
@@ -335,7 +334,7 @@ bool S::LLT::compute(bool factor_last_block) {
   if (factor_last_block) {
 //    llt_of_diag_.emplace_back(matrix_.diagonal_blocks_.back());
     START_TIMER("LLT")
-    DenseCholeskyInPlace(&matrix_.diagonal_blocks_.back());
+    DenseCholeskyInPlace(matrix_.diagonal_blocks(matrix_.num_blocks_ - 1));
     END_TIMER
   }
   //END_TIMER
