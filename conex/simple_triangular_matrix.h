@@ -58,6 +58,7 @@ struct SimpleTriangularMatrixTriplet {
   int num_rows_entering;
 };
 
+#define USE_SEPARATE_STORAGE 1
 class SimpleTriangularMatrix {
  public:
   SimpleTriangularMatrix(const std::vector<int>& block_column_sizes,
@@ -69,11 +70,22 @@ class SimpleTriangularMatrix {
 
 
   Eigen::MatrixXd MakeDenseMatrix() const;
+#if USE_SEPARATE_STORAGE
   Eigen::Ref<const Eigen::MatrixXd> diagonal_blocks(int i) const { return diagonal_blocks_[i]; }
   Eigen::Ref<Eigen::MatrixXd> diagonal_blocks(int i) { return diagonal_blocks_[i]; }
 
   Eigen::Ref<const Eigen::MatrixXd> off_diagonal_blocks(int i) const { return off_diagonal_blocks_[i]; }
   Eigen::Ref<Eigen::MatrixXd> off_diagonal_blocks(int i) { return off_diagonal_blocks_[i]; }
+#else
+
+  Eigen::Ref<const Eigen::MatrixXd> diagonal_blocks(int i) const { return block_columns_[i].topRows(block_column_sizes_[i]); }
+  Eigen::Ref<Eigen::MatrixXd> diagonal_blocks(int i) { return block_columns_[i].topRows(block_column_sizes_[i]); }
+
+  auto off_diagonal_blocks(int i) const { return block_columns_[i].bottomRows(block_columns_[i].rows() -  block_column_sizes_[i]); }
+  auto off_diagonal_blocks(int i) { return block_columns_[i].bottomRows(block_columns_[i].rows() -  block_column_sizes_[i]); }
+#endif
+
+
 
   void SetConstant(double c) {
     for (int i = 0; i < num_blocks_; ++i) {
@@ -87,14 +99,23 @@ class SimpleTriangularMatrix {
   int cols() const { return num_cols_; }
   std::vector<int> block_sizes() const { return block_column_sizes_; }
   int num_blocks() const { return num_blocks_; }
+#if USE_SEPARATE_STORAGE
+  int num_off_diagonal_rows(int i) const { 
+  return off_diagonal_blocks_.at(i).cols(); 
+  } 
+#else
+  int num_off_diagonal_rows(int i) const { 
+    return block_columns_.at(i).rows() - block_columns_.at(i).cols(); 
+  } 
+#endif
 
   void AssembleFromCompressedColumns(const std::vector<Eigen::MatrixXd>& x) {
     if (x.size() != block_column_sizes_.size()) {
       throw std::runtime_error("Incorrect number of block columns provided.");
     }
     for (size_t i = 0; i < x.size() - 1; i++) {
-      if (diagonal_blocks(i).rows() + off_diagonal_blocks(i).cols() !=
-          x.at(i).rows()) {
+      if (block_column_sizes_.at(i) + num_off_diagonal_rows(i) 
+          != x.at(i).rows()) {
         throw std::runtime_error("Incorrect number of block rows provided.");
       }
       if (diagonal_blocks(i).cols() != x.at(i).cols()) {
@@ -129,7 +150,7 @@ class SimpleTriangularMatrix {
 
   void IncrementLeafSubmatrix(const Eigen::MatrixXd& submatrix) {
     std::vector<std::pair<int, int>> submatrix_partition;
-    submatrix_partition.push_back(std::pair<int, int>(0,  diagonal_blocks_.at(0).rows()  ));
+    submatrix_partition.push_back(std::pair<int, int>(0,  diagonal_blocks(0).rows()  ));
     //for (auto e : off_diagonal_partition_.at(0)) {
     //  submatrix_partition.push_back(e);
     //}
@@ -158,8 +179,14 @@ class SimpleTriangularMatrix {
 
  private:
 
+#if USE_SEPARATE_STORAGE
   std::vector<Eigen::MatrixXd> diagonal_blocks_;
   std::vector<Eigen::MatrixXd> off_diagonal_blocks_;
+#else
+  std::vector<Eigen::MatrixXd> block_columns_;
+#endif
+
+
   std::vector<int> block_column_sizes_;
   std::vector<SimpleTriangularMatrixTriplet> off_diagonal_triplets_;
   int num_blocks_;
@@ -169,7 +196,6 @@ class SimpleTriangularMatrix {
   // rows of block row off_diagonal_partition_.at(i).first.
   std::vector<std::vector<std::pair<int, int>>> off_diagonal_partition_;
 
-  friend class LLT;
 };
 
 

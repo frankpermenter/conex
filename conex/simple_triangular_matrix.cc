@@ -153,13 +153,8 @@ S::SimpleTriangularMatrix(
   num_cols_ =
       std::accumulate(block_column_sizes.begin(), block_column_sizes.end(), 0);
   num_blocks_ = block_column_sizes.size();
-  diagonal_blocks_.resize(num_blocks_);
-  off_diagonal_blocks_.resize(num_blocks_ - 1);
-  for (int i = 0; i < num_blocks_; i++) {
-    diagonal_blocks_[i].resize(block_column_sizes[i], block_column_sizes[i]);
-  }
 
-  std::vector<int> off_diagonal_size(num_blocks_ - 1, 0);
+  std::vector<int> off_diagonal_size(num_blocks_, 0);
   Eigen::MatrixXi M(num_blocks_, num_blocks_);
   M.setZero();
   for (auto s : input_triplets) {
@@ -168,9 +163,22 @@ S::SimpleTriangularMatrix(
       M(s.block_row, i) += s.num_rows_entering;
     }
   }
+
+#if USE_SEPARATE_STORAGE
+  diagonal_blocks_.resize(num_blocks_);
+  off_diagonal_blocks_.resize(num_blocks_ - 1);
+  for (int i = 0; i < num_blocks_; i++) {
+    diagonal_blocks_[i].resize(block_column_sizes[i], block_column_sizes[i]);
+  }
   for (size_t i = 0; i < block_column_sizes.size() - 1; i++) {
     off_diagonal_blocks_[i].resize(block_column_sizes[i], off_diagonal_size[i]);
   }
+#else
+  block_columns_.resize(num_blocks_);
+  for (int i = 0; i < num_blocks_; i++) {
+    block_columns_[i].resize(block_column_sizes[i] + off_diagonal_size[i], block_column_sizes[i]);
+  }
+#endif
 
   off_diagonal_partition_.resize(num_blocks_);
   for (int i = 0; i < M.cols() - 1; i++) {
@@ -220,7 +228,7 @@ void S::LLT::SchurComplementInPlace(int block) {
   if (matrix_.off_diagonal_blocks(block).size() == 0) {
     return;
   }
-  const BlockData& input_block_info = matrix_.off_diagonal_partition_.at(block);
+  const BlockData& input_block_info = matrix_.off_diagonal_partition_[block];
 
   BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block), input_block_info);
   for (size_t i = 0; i < input_block_info.size() - 1; i++) {
@@ -344,12 +352,12 @@ void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
   for (size_t i = 0; i < partition.size() - 1; i++) {
     const auto& d = partition.at(i);
 
-    diagonal_blocks_.at(d.first).topLeftCorner(d.second, d.second).noalias() += x.block(offset, offset, 
+    diagonal_blocks(d.first).topLeftCorner(d.second, d.second).noalias() += x.block(offset, offset, 
                                                                            d.second, d.second);
 
     int r_offset = offset + d.second;
 
-    BlockMatrix<MatrixXd> blocks(off_diagonal_blocks_.at(d.first), 
+    BlockMatrix<MatrixXd> blocks(off_diagonal_blocks(d.first), 
                                  off_diagonal_partition_.at(d.first));
     for (size_t j = i+1; j < partition.size(); j++) {
       auto&o = partition.at(j);
@@ -363,7 +371,7 @@ void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
   }
 
   const auto& d = partition.back();
-  diagonal_blocks_.at(d.first).topLeftCorner(d.second, d.second).noalias() += x.block(offset, offset, 
+  diagonal_blocks(d.first).topLeftCorner(d.second, d.second).noalias() += x.block(offset, offset, 
                                                                            d.second, d.second);
 
 }
