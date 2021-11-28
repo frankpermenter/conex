@@ -187,7 +187,7 @@ MatrixXd S::MakeDenseMatrix() const {
   int offset = 0;
   for (size_t i = 0; i < block_column_sizes_.size(); i++) {
     M.block(offset, offset, block_column_sizes_[i], block_column_sizes_[i]) =
-        diagonal_blocks_.at(i);
+        diagonal_blocks(i);
     offset += block_column_sizes_[i];
   }
 
@@ -197,7 +197,7 @@ MatrixXd S::MakeDenseMatrix() const {
 
   for (size_t i = 0; i < block_column_sizes_.size() - 1; i++) {
     if (off_diagonal_partition_.at(i).size() > 0) {
-      BlockMatrix<const MatrixXd> block(off_diagonal_blocks_.at(i),
+      BlockMatrix<const MatrixXd> block(off_diagonal_blocks(i),
                                         off_diagonal_partition_.at(i));
       do {
         int row_block = block.CurrentBlockNumber();
@@ -221,13 +221,12 @@ void S::LLT::SchurComplementInPlace(int block) {
     return;
   }
   const BlockData& input_block_info = matrix_.off_diagonal_partition_.at(block);
-  auto& off_diagonal_blocks = matrix_.off_diagonal_blocks_;
-  auto& diagonal_blocks = matrix_.diagonal_blocks_;
+
   BlockMatrix<MatrixXd> input_i(Rdata, input_block_info);
   for (size_t i = 0; i < input_block_info.size() - 1; i++) {
     int size_i = input_i.CurrentBlockSize();
     BlockMatrix<MatrixXd> output(
-        off_diagonal_blocks[input_i.CurrentBlockNumber()],
+        matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
         matrix_.off_diagonal_partition_.at(input_i.CurrentBlockNumber()));
     BlockMatrix<MatrixXd> input_j(Rdata, input_block_info, i + 1);
     for (size_t j = i + 1; j < input_block_info.size(); j++) {
@@ -238,13 +237,13 @@ void S::LLT::SchurComplementInPlace(int block) {
       input_j.GotoNextBlock();
     }
 
-    diagonal_blocks[input_i.CurrentBlockNumber()]
+    matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
         .topLeftCorner(size_i, size_i).noalias() -=
         input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
     input_i.GotoNextBlock();
   }
   int size_i = input_i.CurrentBlockSize();
-  diagonal_blocks.at(input_i.CurrentBlockNumber())
+  matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
       .topLeftCorner(size_i, size_i).noalias() -=
       input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
 }
@@ -455,11 +454,11 @@ void S::AssembleFromDenseMatrix(const Eigen::MatrixXd& A) {
 
   for (size_t i = 0; i < block_column_sizes_.size(); i++) {
     int csize = block_column_sizes_.at(i);
-    diagonal_blocks_.at(i) = A.block(c, c, csize, csize);
+    diagonal_blocks(i) = A.block(c, c, csize, csize);
     int r = 0;
     for (auto& row : off_diagonal_partition_.at(i)) {
       int r_offset = global_offsets.at(row.first);
-      off_diagonal_blocks_.at(i).middleCols(r, row.second) = A.block(r_offset, c, row.second, csize).transpose();
+      off_diagonal_blocks(i).middleCols(r, row.second) = A.block(r_offset, c, row.second, csize).transpose();
       r += row.second;
     }
     c += csize;
