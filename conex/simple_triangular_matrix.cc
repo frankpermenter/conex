@@ -312,7 +312,7 @@ void DenseCholeskyInPlaceUpperTriScalar(Eigen::Ref<MatrixXd> A) {
   const int n = A.rows();
   auto& U = A;
   for (int k = n - 1; k > 0; k--) {
-    U.col(k).head(n).array() /= std::sqrt(A(k, k));
+    U.col(k).head(k+1).array() /= std::sqrt(A(k, k));
     for (int j = k - 1; j >= 0; j--) {
       for (int i = j; i >= 0; i--) {
         U(i, j) -= U(i, k) * U(j, k);
