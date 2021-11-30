@@ -308,7 +308,7 @@ void DenseCholeskyInPlaceUpperTriVect(Eigen::Ref<MatrixXd> A) {
 }
 
 
-void DenseCholeskyInPlaceUpperTriScalar(Eigen::Ref<MatrixXd> A) {
+void DenseCholeskyInPlaceUpperTriPartialVect(Eigen::Ref<MatrixXd> A) {
   const int n = A.rows();
   auto& U = A;
   for (int k = n - 1; k >= 0; k--) {
@@ -335,6 +335,37 @@ void DenseCholeskyInPlaceUpperTriScalar(Eigen::Ref<MatrixXd> A) {
   //}
 
 }
+
+
+void DenseCholeskyInPlaceUpperTriScalar(Eigen::Ref<MatrixXd> A) {
+  const int n = A.rows();
+  auto& U = A;
+  for (int k = n - 1; k >= 0; k--) {
+    const double a_kk_sqrt_inv = 1.0/std::sqrt(U(k, k));
+    U(k, k) *= a_kk_sqrt_inv;
+    for (int j = k - 1; j >= 0; j--) {
+      const double a = U(j, k) * a_kk_sqrt_inv * a_kk_sqrt_inv;
+      for (int i = j; i >= 0; i--) {
+        U(i, j) -= U(i, k) *  a;
+      }
+      U(j, k) *= a_kk_sqrt_inv;
+    }
+  }
+
+
+  //for (int k = n - 1; k >= 0; --k) {
+  //  const double a_kk_inv = 1.0 / A(k, k);
+  //  for (int i = k - 1; i >= 0; --i) {
+  //    const double a = A(k, i) * a_kk_inv;
+  //    for (int j = i; j >= 0; j--) {
+  //      A(i, j) -= a * A(k, j);
+  //    }
+  //    A(k, i) = a * std::sqrt(a);
+  //  }
+  //}
+
+}
+
 
 
 
@@ -416,7 +447,6 @@ bool S::LLT::compute(bool factor_last_block) {
     END_TIMER
 
     MatrixXd U = A.triangularView<Eigen::Upper>();
-    DUMP(U);
     MatrixXd Aref = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
     Validate(U, Aref);
 
@@ -425,12 +455,19 @@ bool S::LLT::compute(bool factor_last_block) {
     DenseCholeskyInPlaceUpperTriScalar(A4);
     END_TIMER
     U = A4.triangularView<Eigen::Upper>();
-    DUMP(U);
     Validate(U, Aref);
 
     MatrixXd A5 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
+    START_TIMER(UUT_PartialVect)
+    DenseCholeskyInPlaceUpperTriPartialVect(A5);
+    END_TIMER
+    U = A5.triangularView<Eigen::Upper>();
+    Validate(U, Aref);
+
+
+    MatrixXd A6 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
     START_TIMER(LtDL)
-    CalcDenseLtdlInPlace(A5);
+    CalcDenseLtdlInPlace(A6);
     END_TIMER
 
     MatrixXd A2 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
