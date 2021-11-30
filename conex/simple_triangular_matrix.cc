@@ -257,13 +257,15 @@ void S::LLT::SchurComplementInPlace(int block) {
 void CalcDenseLtdlInPlace(Eigen::Ref<MatrixXd> A) {
   const int n = A.rows();
   for (int k = n - 1; k >= 0; --k) {
-    const double a_kk_inv = 1.0 / A(k, k);
+    const double a_kk_inv = 1.0/A(k, k);
+    const double a_kk_sqrt_inv = std::sqrt(a_kk_inv); 
+    A(k, k) *= a_kk_sqrt_inv;
     for (int i = k - 1; i >= 0; --i) {
       const double a = A(k, i) * a_kk_inv;
       for (int j = i; j >= 0; j--) {
         A(i, j) -= a * A(k, j);
       }
-      A(k, i) = a / std::sqrt(a);
+      A(k, i) *= a_kk_sqrt_inv;
     }
   }
 }
@@ -312,7 +314,8 @@ void DenseCholeskyInPlaceUpperTriPartialVect(Eigen::Ref<MatrixXd> A) {
   const int n = A.rows();
   auto& U = A;
   for (int k = n - 1; k >= 0; k--) {
-    const double a_kk_sqrt_inv = 1.0/std::sqrt(U(k, k));
+    const double a_kk_inv = 1.0/U(k, k);
+    const double a_kk_sqrt_inv = std::sqrt(a_kk_inv); 
     U.col(k).head(k).array() *= a_kk_sqrt_inv;
     U(k, k) *= a_kk_sqrt_inv;
     for (int j = k - 1; j >= 0; j--) {
@@ -323,46 +326,38 @@ void DenseCholeskyInPlaceUpperTriPartialVect(Eigen::Ref<MatrixXd> A) {
   }
 
 
-  //for (int k = n - 1; k >= 0; --k) {
-  //  const double a_kk_inv = 1.0 / A(k, k);
-  //  for (int i = k - 1; i >= 0; --i) {
-  //    const double a = A(k, i) * a_kk_inv;
-  //    for (int j = i; j >= 0; j--) {
-  //      A(i, j) -= a * A(k, j);
-  //    }
-  //    A(k, i) = a * std::sqrt(a);
-  //  }
-  //}
-
 }
 
 
 void DenseCholeskyInPlaceUpperTriScalar(Eigen::Ref<MatrixXd> A) {
   const int n = A.rows();
-  auto& U = A;
   for (int k = n - 1; k >= 0; k--) {
-    const double a_kk_sqrt_inv = 1.0/std::sqrt(U(k, k));
-    U(k, k) *= a_kk_sqrt_inv;
+    const double a_kk_inv = 1.0/A(k, k);
+    const double a_kk_sqrt_inv = std::sqrt(a_kk_inv); 
+    A(k, k) *= a_kk_sqrt_inv;
     for (int j = k - 1; j >= 0; j--) {
-      const double a = U(j, k) * a_kk_sqrt_inv * a_kk_sqrt_inv;
+      const double a = A(j, k) * a_kk_inv;
       for (int i = j; i >= 0; i--) {
-        U(i, j) -= U(i, k) *  a;
+        A(i, j) -= A(i, k) *  a;
       }
-      U(j, k) *= a_kk_sqrt_inv;
+      A(j, k) *= a_kk_sqrt_inv;
     }
   }
 
-
-  //for (int k = n - 1; k >= 0; --k) {
-  //  const double a_kk_inv = 1.0 / A(k, k);
-  //  for (int i = k - 1; i >= 0; --i) {
-  //    const double a = A(k, i) * a_kk_inv;
-  //    for (int j = i; j >= 0; j--) {
-  //      A(i, j) -= a * A(k, j);
-  //    }
-  //    A(k, i) = a * std::sqrt(a);
-  //  }
-  //}
+// Faster! Why?
+//  const int n = A.rows();
+//  for (int k = n - 1; k >= 0; --k) {
+//    const double a_kk_inv = 1.0/A(k, k);
+//    const double a_kk_sqrt_inv = std::sqrt(a_kk_inv); 
+//    A(k, k) *= a_kk_sqrt_inv;
+//    for (int j = k - 1; j >= 0; --j) {
+//      const double a = A(k, j) * a_kk_jnv;
+//      for (int i = j; i >= 0; i--) {
+//        A(j, i) -= a * A(k, i);
+//      }
+//      A(k, j) *= a_kk_sqrt_jnv;
+//    }
+//  }
 
 }
 
@@ -441,14 +436,16 @@ bool Validate(const MatrixXd& U, const MatrixXd A) {
 bool S::LLT::compute(bool factor_last_block) {
   // START_TIMER("INSIDE")
   for (int i = 0; i < matrix_.num_blocks_ - 1; i++) {
-    MatrixXd A = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
-    START_TIMER(UUT_Vect)
-    DenseCholeskyInPlaceUpperTriVect(A);
-    END_TIMER
-
-    MatrixXd U = A.triangularView<Eigen::Upper>();
     MatrixXd Aref = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
-    Validate(U, Aref);
+    MatrixXd U;
+
+    //MatrixXd A = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
+    //START_TIMER(UUT_Vect)
+    //DenseCholeskyInPlaceUpperTriVect(A);
+    //END_TIMER
+
+    //U = A.triangularView<Eigen::Upper>();
+    //Validate(U, Aref);
 
     MatrixXd A4 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
     START_TIMER(UUT_Scalar)
@@ -457,24 +454,25 @@ bool S::LLT::compute(bool factor_last_block) {
     U = A4.triangularView<Eigen::Upper>();
     Validate(U, Aref);
 
-    MatrixXd A5 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
-    START_TIMER(UUT_PartialVect)
-    DenseCholeskyInPlaceUpperTriPartialVect(A5);
-    END_TIMER
-    U = A5.triangularView<Eigen::Upper>();
-    Validate(U, Aref);
-
+    //MatrixXd A5 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
+    //START_TIMER(UUT_PartialVect)
+    //DenseCholeskyInPlaceUpperTriPartialVect(A5);
+    //END_TIMER
+    //U = A5.triangularView<Eigen::Upper>();
+    //Validate(U, Aref);
 
     MatrixXd A6 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
     START_TIMER(LtDL)
     CalcDenseLtdlInPlace(A6);
     END_TIMER
+    U = A6.triangularView<Eigen::Lower>();
+    Validate(U.transpose(), Aref);
 
-    MatrixXd A2 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
-    START_TIMER(UUT_DenseChol)
-    DenseCholeskyInPlace(A2);
-    END_TIMER
-    MatrixXd U2 = A2.triangularView<Eigen::Lower>();
+    //MatrixXd A2 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
+    //START_TIMER(UUT_DenseChol)
+    //DenseCholeskyInPlace(A2);
+    //END_TIMER
+    //MatrixXd U2 = A2.triangularView<Eigen::Lower>();
 
     MatrixXd B = matrix_.diagonal_blocks(i);
 
