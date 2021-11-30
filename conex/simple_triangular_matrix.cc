@@ -255,16 +255,56 @@ void S::LLT::SchurComplementInPlace(int block) {
       input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
 }
 
+void CalcDenseLtdlInPlace(Eigen::Ref<MatrixXd> A) {
+  const int n = A.rows();
+  for (int k = n - 1; k >= 0; --k) {
+    const double a_kk_inv = 1.0 / A(k, k);
+    for (int i = k - 1; i >= 0; --i) {
+      const double a = A(k, i) * a_kk_inv;
+      for (int j = i; j >= 0; j--) {
+        A(i, j) -= a * A(k, j);
+      }
+      A(k, i) = a;
+    }
+  }
+}
+
+
 void DenseCholeskyInPlace(Eigen::Ref<MatrixXd> A) {
   const int n = A.rows();
   for (int k = 0; k < n; k++) {
-    double a = sqrt(A(k, k)); 
+    const double a = sqrt(A(k, k)); 
     for (int i = k; i < n; i++) {
       A(i, k) /= a;
       for (int j = k + 1; j <= i; j++) {
         A(i, j) -= A(i, k) * A(j, k);
       }
     }
+  }
+}
+
+// Factor as U U^T where U is upper triangular.
+//
+// For upper-triangular U = [u0, u1, u2], the product U U^T
+// decomposes as 
+//
+//     u_0u^T_0  u_1u^T_1   u_2u^T_2
+//  A = * 0 0     * * 0     * * *
+//      0 0 0  +  * * 0  +  * * *
+//      0 0 0     0 0 0     * * *
+//
+//  So, we compute the
+void DenseCholeskyInPlaceUpperTri(Eigen::Ref<MatrixXd> A) {
+  const int n = A.rows();
+  auto& U = A;
+  U.col(n-1).head(n).array() /= std::sqrt(A(n-1, n-1));
+  for (int k = n - 1; k > 0; k--) {
+    for (int j = k - 1; j >= 0; j--) {
+      for (int i = j; i >= 0; i--) {
+        U(i, j) -= U(i, k) * U(j, k);
+      }
+    }
+    U.col(k-1).head(k).array() /= std::sqrt(A(k-1, k-1));
   }
 }
 
@@ -338,21 +378,25 @@ bool S::LLT::compute(bool factor_last_block) {
 
  //START_TIMER("INSIDE")
   for (int i = 0; i < matrix_.num_blocks_ - 1; i++) {
-    //llt_of_diag_.emplace_back(matrix_.diagonal_blocks(i));
-#if 0
-    int r1 = matrix_.diagonal_blocks(i).rows();
-    int r2 = matrix_.off_diagonal_blocks(i).rows();
-    MatrixXd T(r1 + r2, matrix_.diagonal_blocks(i).cols());
-    T.topRows(r1) = matrix_.diagonal_blocks(i);
-    if (r2 > 0) {
-      T.bottomRows(r2) = matrix_.off_diagonal_blocks(i);
-    }
-    START_TIMER("Trap LLT")
-    PartialDenseCholeskyInPlace(&T);
-    END_TIMER
-#endif
-    START_TIMER("LLT")
 
+
+    MatrixXd A = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
+    DUMP(A);
+    START_TIMER(UUT_Vect)
+    DenseCholeskyInPlaceUpperTri(A);
+    END_TIMER
+    MatrixXd U = A.triangularView<Eigen::Upper>();
+    DUMP(U * U.transpose());
+
+    MatrixXd A2 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
+    START_TIMER(UUT_Scalar)
+    DenseCholeskyInPlace(A2);
+    END_TIMER
+    MatrixXd U2 = A2.triangularView<Eigen::Lower>();
+
+    MatrixXd B = matrix_.diagonal_blocks(i);
+
+    START_TIMER("LLT")
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
     PartialDenseCholeskyInPlace(matrix_.diagonal_blocks(i), matrix_.off_diagonal_blocks(i));
     } else {
