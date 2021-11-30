@@ -448,26 +448,30 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, MassMatrix) {
   DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
   DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
 }
-#if 0
+#if 1
 GTEST_TEST(BlockSymmetricMatrixCholesky, BlockDiag) {
-  vector<vector<int>> cliques{ {0, 3}, { 1, 2}};
-  MatrixXd M(4, 4);
-  M << 9, 0, 0, 1, 
-       0, 9, 2, 0, 
-       0, 2, 9, 0, 
-       1, 0, 0, 9;
+  vector<vector<int>> cliques;
 
-  int size_blocks = 700;
+  int size_blocks = 15;
+  int num_blocks = 7;
   cliques.clear();
-  cliques.resize(2);
-  for (int i = 0; i < size_blocks; i++) {
-    cliques.at(0).push_back(i);
-    cliques.at(1).push_back(i + size_blocks);
-  }
-  M.resize(size_blocks*2, size_blocks*2);
-  M.topLeftCorner(size_blocks, size_blocks).setIdentity();
-  M.bottomRightCorner(size_blocks, size_blocks).setIdentity(); 
+  cliques.resize(num_blocks);
 
+  for (int i = 0; i < size_blocks; i++) {
+    for (int j = 0; j < num_blocks; j++) {
+      cliques.at(j).push_back(i + j * size_blocks);
+    }
+  }
+
+  MatrixXd M(num_blocks * size_blocks, num_blocks * size_blocks);
+  M.setZero();
+  for (int j = 0; j < num_blocks; j++) {
+    MatrixXd Mi(size_blocks, size_blocks);
+    Mi.setRandom();
+    MatrixXd Mt = Mi.transpose();
+    Mi = Mi * Mt;
+    M.block(j*size_blocks, j * size_blocks, size_blocks, size_blocks) = Mi;
+  }
 
   DoBlockCholeskyTest(M, cliques);
   DoBlockCholeskyTest(M, cliques);
