@@ -311,15 +311,16 @@ void DenseCholeskyInPlaceUpperTriVect(Eigen::Ref<MatrixXd> A) {
 void DenseCholeskyInPlaceUpperTriScalar(Eigen::Ref<MatrixXd> A) {
   const int n = A.rows();
   auto& U = A;
-  for (int k = n - 1; k > 0; k--) {
-    U.col(k).head(k+1).array() /= std::sqrt(A(k, k));
+  for (int k = n - 1; k >= 0; k--) {
+    const double a_kk_sqrt_inv = 1.0/std::sqrt(U(k, k));
+    U.col(k).head(k).array() *= a_kk_sqrt_inv;
+    U(k, k) *= a_kk_sqrt_inv;
     for (int j = k - 1; j >= 0; j--) {
       for (int i = j; i >= 0; i--) {
         U(i, j) -= U(i, k) * U(j, k);
       }
     }
   }
-  U(0, 0) /= std::sqrt(U(0, 0));
 
 
   //for (int k = n - 1; k >= 0; --k) {
@@ -415,6 +416,7 @@ bool S::LLT::compute(bool factor_last_block) {
     END_TIMER
 
     MatrixXd U = A.triangularView<Eigen::Upper>();
+    DUMP(U);
     MatrixXd Aref = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
     Validate(U, Aref);
 
@@ -423,6 +425,7 @@ bool S::LLT::compute(bool factor_last_block) {
     DenseCholeskyInPlaceUpperTriScalar(A4);
     END_TIMER
     U = A4.triangularView<Eigen::Upper>();
+    DUMP(U);
     Validate(U, Aref);
 
     MatrixXd A5 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
