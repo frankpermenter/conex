@@ -353,8 +353,11 @@ bool S::LLT::compute(bool factor_last_block) {
 #endif
     START_TIMER("LLT")
 
+    if (matrix_.off_diagonal_blocks(i).size() > 0) {
     PartialDenseCholeskyInPlace(matrix_.diagonal_blocks(i), matrix_.off_diagonal_blocks(i));
- //   DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
+    } else {
+    DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
+    }
     //EigenDenseCholeskyInPlace(matrix_.diagonal_blocks(i));
     END_TIMER
 
