@@ -268,12 +268,9 @@ void DenseCholeskyInPlace(Eigen::Ref<MatrixXd> A) {
   }
 }
 
-void PartialDenseCholeskyInPlace(Eigen::Ref<MatrixXd> Ain,
-                                 Eigen::Ref<MatrixXd> Bt) {
-  const int n = Ain.rows();
-
-  Eigen::MatrixXd B = Bt; 
-  Eigen::MatrixXd A = Ain; 
+void PartialDenseCholeskyInPlace(Eigen::Ref<MatrixXd> A,
+                                 Eigen::Ref<MatrixXd> B) {
+  const int n = A.rows();
 
   // Divide column k of by sqrt(A(k, k)) and
   // then subtract a_{k+1}:end, k} a_{k+1}:end, k}^T from bottom
@@ -298,8 +295,6 @@ void PartialDenseCholeskyInPlace(Eigen::Ref<MatrixXd> Ain,
     }
 
   }
-  DUMP(A);
-  DUMP(B);
 }
 
 
@@ -359,21 +354,19 @@ bool S::LLT::compute(bool factor_last_block) {
     START_TIMER("LLT")
 
     PartialDenseCholeskyInPlace(matrix_.diagonal_blocks(i), matrix_.off_diagonal_blocks(i));
-    DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
+ //   DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
     //EigenDenseCholeskyInPlace(matrix_.diagonal_blocks(i));
     END_TIMER
 
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
-    START_TIMER("Solve")
-      matrix_.diagonal_blocks(i).triangularView<Eigen::Lower>().solveInPlace(
-          matrix_.off_diagonal_blocks(i));
-    END_TIMER
+    //START_TIMER("Solve")
+    //  matrix_.diagonal_blocks(i).triangularView<Eigen::Lower>().solveInPlace(
+    //      matrix_.off_diagonal_blocks(i));
+    //END_TIMER
     START_TIMER("Scatter")
     SchurComplementInPlace(i);
     END_TIMER
     }
-    DUMP(matrix_.diagonal_blocks(i));
-    DUMP(matrix_.off_diagonal_blocks(i));
   }
   if (factor_last_block) {
     START_TIMER("LLT")
