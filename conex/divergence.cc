@@ -48,7 +48,6 @@ bool InLimits(double x, double lower, double upper) {
 bool SolveQuadratic(double a, double b, double n, double c,
                     std::pair<double, double>* sol) {
   double under_radical = b * b + 2 * b * c + c * c - 4 * a * n;
-  std::pair<double, double> solution;
   sol->first = (b + c + std::sqrt(under_radical)) / (2 * a);
   sol->second = (b + c - std::sqrt(under_radical)) / (2 * a);
 

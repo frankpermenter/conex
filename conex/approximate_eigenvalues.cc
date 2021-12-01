@@ -1,5 +1,7 @@
 #include "conex/approximate_eigenvalues.h"
 
+#include <vector>
+
 namespace conex {
 
 using Eigen::MatrixXd;
