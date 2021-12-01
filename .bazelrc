@@ -5,6 +5,10 @@ build --copt="-fPIC"
 build --copt="-DEIGEN_NO_DEBUG"
 build --copt="-DNDEBUG"
 
+build:asan --copt="-O0"
+build:asan --copt="-fsanitize=address"
+build:asan --linkopt="-fsanitize=address"
+
 build:benchmark --copt="-g"
 build:benchmark --copt="-fno-omit-frame-pointer"
 
