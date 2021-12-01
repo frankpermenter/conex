@@ -50,6 +50,7 @@ gazelle_dependencies()
 
 http_archive(
     name = "com_google_protobuf",
+    sha256 = "b1a420c188e4141021896e6a4e50a9217e6f4c738c2e169239e5ad462f017290",
     strip_prefix = "protobuf-master",
     urls = ["https://github.com/protocolbuffers/protobuf/archive/master.zip"],
 )
