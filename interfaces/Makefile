@@ -43,13 +43,13 @@ OBJECTS := $(SOURCES:.cc=.o)
 libsource: $(SOURCES:.cc=.o)
 
 conex.o: conex.h conex.cc
-	g++ -c $(CPPFLAGS) -I${EIGEN} -I $(CONEX) conex.cc
+	$(CXX) -c $(CPPFLAGS) -I${EIGEN} -I $(CONEX) conex.cc
 
 libconex.so:  conex.o libsource
-	g++ -static-libstdc++ -Wl,--exclude-libs,ALL -Wl,--gc-sections -shared -o libconex.so conex.o $(OBJECTS) $(LFLAGS)
+	$(CXX) -static-libstdc++ -Wl,--exclude-libs,ALL -Wl,--gc-sections -shared -o libconex.so conex.o $(OBJECTS) $(LFLAGS)
 
 main: libconex.so
-	g++ -L./ test/test_app.cc -lconex 
+	$(CXX) -L./ test/test_app.cc -lconex 
 
 .PHONY: clean
 
