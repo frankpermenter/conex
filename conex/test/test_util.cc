@@ -47,8 +47,7 @@ vector<SparseMatrixTuple> GetRandomTuples(int n, int m) {
   vector<SparseMatrixTuple> myVect;
 
   if (m > .5 * n * n + .5 * n) {
-    bool valid_inputs = false;
-    assert(valid_inputs);
+    throw std::runtime_error("Number of requested matrices is too large.");
   }
 
   Eigen::Matrix<double, -1, -1> Mask =

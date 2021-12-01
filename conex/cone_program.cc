@@ -284,7 +284,6 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 
   StepOptions newton_step_parameters;
   newton_step_parameters.affine = 0;
-  IterationStats stats;
   newton_step_parameters.inv_sqrt_mu = 0;
   newton_step_parameters.affine = false;
 
