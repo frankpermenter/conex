@@ -43,7 +43,7 @@ OBJECTS := $(SOURCES:.cc=.o)
 libsource: $(SOURCES:.cc=.o)
 
 conex.o: conex.h conex.cc
-	g++ -c $(CPPFLAGS) -I${EIGEN_DIR} -I $(CONEX) conex.cc
+	g++ -c $(CPPFLAGS) -I${EIGEN} -I $(CONEX) conex.cc
 
 libconex.so:  conex.o libsource
 	g++ -static-libstdc++ -Wl,--exclude-libs,ALL -Wl,--gc-sections -shared -o libconex.so conex.o $(OBJECTS) $(LFLAGS)
