@@ -124,7 +124,10 @@ class SupernodalAssemblerStatic : public SupernodalAssemblerBase {
   SupernodalAssemblerStatic(){};
   SupernodalAssemblerStatic(const Eigen::MatrixXd& A) : A_(A) {}
 
-  virtual void SetDenseData() override { submatrix_data_.G = A_; }
+  virtual void SetDenseData() override {
+    submatrix_data_.setZero();
+    submatrix_data_.G = A_;
+  }
   Eigen::MatrixXd A_;
 };
 
