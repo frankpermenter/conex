@@ -84,9 +84,21 @@ void DoTest(const std::vector<int>& block_sizes,
   SimpleTriangularMatrix::LLT llt = mat.llt();
   llt.compute();
   MatrixXd llt_calc = mat.MakeDenseMatrix();
-  MatrixXd llt_ref = Eigen::LLT<MatrixXd>(Ref).matrixL();
-  MatrixXd error = (llt_calc - llt_ref).triangularView<Eigen::Lower>();
+  MatrixXd L_ref = Eigen::LLT<MatrixXd>(Ref).matrixL();
+  MatrixXd error = (llt_calc - L_ref).triangularView<Eigen::Lower>();
   EXPECT_NEAR(error.norm(), 0, eps);
+
+
+  VectorXd x;
+  x.setLinSpaced(L_ref.cols(), -1, 1.1);
+  VectorXd Lx = L_ref * x;
+  llt.ApplyInverseOfL(&Lx);
+  EXPECT_NEAR( (Lx - x).norm(), 0, 1e-12);
+
+  VectorXd Ltx = L_ref.transpose() * x;
+  llt.ApplyInverseOfLt(&Ltx);
+  EXPECT_NEAR((Ltx - x).norm(), 0, 1e-12);
+
 }
 
 }  // namespace
