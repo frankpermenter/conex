@@ -13,6 +13,52 @@ using S = SimpleTriangularMatrix;
 using std::vector;
 
 namespace {
+
+class PartitionVectorIterator {
+ public:
+  PartitionVectorIterator(VectorXd& b, int N, const std::vector<int>& sizes)
+      : b_(b), N_(N), sizes_(sizes) {
+    Reset();
+  }
+
+  Eigen::Ref<VectorXd> b_i() { return b_.segment(start_i, size_i); }
+  Eigen::Ref<VectorXd> b_i_plus_1() {
+    return b_.segment(start_i_plus_1, size_i_plus_1);
+  }
+  void Reset() {
+    i_ = sizes_.size() - 1;
+    size_i = sizes_[i_];
+    start_i = N_ - size_i;
+  }
+  void Decrement() {
+    start_i_plus_1 = start_i;
+    size_i_plus_1 = size_i;
+    i_--;
+    size_i = sizes_[i_];
+    start_i = start_i_plus_1 - size_i;
+  }
+
+  int i_ = 0;
+  int start_i_plus_1;
+  int start_i;
+  int size_i_plus_1;
+  int size_i;
+  VectorXd& b_;
+  const int N_;
+  const std::vector<int>& sizes_;
+  void Set(int i) {
+    if (i < 0) {
+      assert(0);
+    }
+    if (i > i_) {
+      assert(0);
+    }
+    while (i < i_) {
+      Decrement();
+    }
+  }
+};
+
 class PartitionVectorForwardIterator {
  public:
   PartitionVectorForwardIterator(VectorXd& b, const std::vector<int>& sizes)
@@ -389,6 +435,50 @@ void S::LLT::ApplyInverseOfL(VectorXd* y) {
   }
   matrix_.diagonal_blocks(matrix_.num_blocks_ -1).triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
 }
+
+void S::LLT::ApplyInverseOfLt(VectorXd* y) {
+  PartitionVectorIterator y_partitioned(*y, y->rows(),
+                                        matrix_.block_sizes());
+  PartitionVectorForwardIterator b_partitioned(*y, matrix_.block_sizes());
+  for (int k = static_cast<int>(matrix_.num_blocks() - 1); k > 0; k--) {
+    if (matrix_.diagonal_blocks(k).size() == 0) {
+      y_partitioned.Decrement();
+      continue;
+    }
+    matrix_.diagonal_blocks(k).triangularView<Eigen::Lower>().transpose().solveInPlace(
+        y_partitioned.b_i());
+
+    b_partitioned.Reset();
+
+    int global_offset = 0;
+    for (int j = 0; j < k; j++) {
+      int size = 0;
+      int offset = 0;
+      for (auto a : matrix_.off_diagonal_partition_.at(j))  {
+        if (a.first == k) {
+          size = a.second;
+          break;
+        } else {
+          offset += a.second;
+        }
+      }
+
+      y->middleRows(global_offset, matrix_.block_sizes().at(j))-= matrix_.off_diagonal_blocks(j).middleCols(offset, size) 
+                                                                   * y_partitioned.b_i().head(size);
+      b_partitioned.Increment();
+      global_offset += matrix_.block_sizes().at(j);
+    }
+
+    y_partitioned.Decrement();
+  }
+  if (matrix_.diagonal_blocks(0).size() > 0) {
+    matrix_.diagonal_blocks(0).triangularView<Eigen::Lower>().transpose().solveInPlace(
+        y_partitioned.b_i());
+  }
+}
+
+
+
 
 
 using D = TriangularMatrixDirectSum;

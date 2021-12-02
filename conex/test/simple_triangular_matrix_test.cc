@@ -38,6 +38,10 @@ void DoBlockCholeskyTest(const Eigen::MatrixXd& M,
   VectorXd Lx = L_ref * x;
   llt_calc.ApplyInverseOfL(&Lx);
   EXPECT_NEAR( (Lx - x).norm(), 0, 1e-12);
+
+  VectorXd Ltx = L_ref.transpose() * x;
+  llt_calc.ApplyInverseOfLt(&Ltx);
+  EXPECT_NEAR((Ltx - x).norm(), 0, 1e-12);
 }
 
 

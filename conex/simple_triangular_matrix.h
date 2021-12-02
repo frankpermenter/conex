@@ -163,6 +163,7 @@ class SimpleTriangularMatrix {
     bool compute(bool factor_last_block = true);
     Eigen::MatrixXd matrixL() { return matrix_.MakeDenseMatrix();  };
     void ApplyInverseOfL(Eigen::VectorXd* y);
+    void ApplyInverseOfLt(Eigen::VectorXd* y);
 
    private:
     LLT(SimpleTriangularMatrix* matrix) : matrix_(*matrix) {
@@ -275,6 +276,7 @@ class BlockSparseSymmetricMatrix {
    public:
     bool compute();
     void ApplyInverseOfL(Eigen::VectorXd* y) { llt_.ApplyInverseOfL(y); }
+    void ApplyInverseOfLt(Eigen::VectorXd* y) { llt_.ApplyInverseOfLt(y); }
     Eigen::PermutationMatrix<-1> matrixP() {
       Eigen::PermutationMatrix<-1> P(matrix_.elimination_position_to_variable_.size());
       P.indices() = Eigen::Map<const Eigen::VectorXi>(matrix_.elimination_position_to_variable_.data(), 
