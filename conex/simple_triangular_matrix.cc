@@ -1,5 +1,6 @@
 #define CONEX_ENABLE_TIMER 1
 #include "conex/simple_triangular_matrix.h"
+#include "conex/dense_triangular_factorizations.h"
 #include "conex/debug_macros.h"
 
 #include <numeric>
@@ -7,10 +8,56 @@
 namespace conex {
 
 using Eigen::MatrixXd;
+using Eigen::VectorXd;
 using S = SimpleTriangularMatrix;
 using std::vector;
 
 namespace {
+class PartitionVectorForwardIterator {
+ public:
+  PartitionVectorForwardIterator(VectorXd& b, const std::vector<int>& sizes)
+      : b_(b), sizes_(sizes) {
+    Reset();
+  }
+
+  Eigen::Ref<VectorXd> b_i() { return b_.segment(start_i, size_i); }
+  Eigen::Ref<VectorXd> b_i_minus_1() {
+    return b_.segment(start_i_minus_1, size_i_minus_1);
+  }
+
+  void Reset() {
+    i_ = 0;
+    size_i = sizes_[i_];
+    start_i = 0;
+  }
+  void Increment() {
+    start_i_minus_1 = start_i;
+    size_i_minus_1 = size_i;
+    i_++;
+    size_i = sizes_[i_];
+    start_i = start_i_minus_1 + size_i_minus_1;
+  }
+
+  int i_ = 0;
+  int start_i_minus_1;
+  int start_i;
+  int size_i_minus_1;
+  int size_i;
+  VectorXd& b_;
+  const std::vector<int>& sizes_;
+  void Set(int i) {
+    if (i > 0) {
+      assert(0);
+    }
+    if (i < i_) {
+      assert(0);
+    }
+    while (i > i_) {
+      Increment();
+    }
+  }
+};
+
 
 template <typename T>
 vector<size_t> sort_indexes(const vector<T>& v) {
@@ -254,254 +301,23 @@ void S::LLT::SchurComplementInPlace(int block) {
       .noalias() -= input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
 }
 
-void CalcDenseLtdlInPlace(Eigen::Ref<MatrixXd> A) {
-  const int n = A.rows();
-  for (int k = n - 1; k >= 0; --k) {
-    const double a_kk_inv = 1.0/A(k, k);
-    const double a_kk_sqrt_inv = std::sqrt(a_kk_inv); 
-    A(k, k) *= a_kk_sqrt_inv;
-    for (int i = k - 1; i >= 0; --i) {
-      const double a = A(k, i) * a_kk_inv;
-      for (int j = i; j >= 0; j--) {
-        A(i, j) -= a * A(k, j);
-      }
-      A(k, i) *= a_kk_sqrt_inv;
-    }
-  }
-}
-
-void DenseCholeskyInPlace(Eigen::Ref<MatrixXd> A) {
-  const int n = A.rows();
-  for (int k = 0; k < n; k++) {
-    const double a = sqrt(A(k, k));
-    for (int i = k; i < n; i++) {
-      A(i, k) /= a;
-      for (int j = k + 1; j <= i; j++) {
-        A(i, j) -= A(i, k) * A(j, k);
-      }
-    }
-  }
-}
-
-// Factor as U U^T where U is upper triangular.
-//
-// For upper-triangular U = [u0, u1, u2], the product U U^T
-// decomposes as
-//
-//     u_0u^T_0  u_1u^T_1   u_2u^T_2
-//  A = * 0 0     * * 0     * * *
-//      0 0 0  +  * * 0  +  * * *
-//      0 0 0     0 0 0     * * *
-//
-//  So, we compute the
-void DenseCholeskyInPlaceUpperTriVect(Eigen::Ref<MatrixXd> A) {
-  const int n = A.rows();
-  auto& U = A;
-  for (int k = n - 1; k > 0; k--) {
- // U.col(n - 1).head(n).array() /= std::sqrt(A(n - 1, n - 1));
-    auto Uk = U.col(k);
-    Uk /= std::sqrt(A(k, k));
-    for (int j = k - 1; j >= 0; j--) {
-      U.col(j).head(k) -= Uk.head(k) * U(j, k);
-    }
-    //U.col(k - 1).head(k).array() /= std::sqrt(A(k - 1, k - 1));
-  }
-  U(0, 0) /= std::sqrt(U(0, 0));
-}
-
-
-void DenseCholeskyInPlaceUpperTriPartialVect(Eigen::Ref<MatrixXd> A) {
-  const int n = A.rows();
-  auto& U = A;
-  for (int k = n - 1; k >= 0; k--) {
-    const double a_kk_inv = 1.0/U(k, k);
-    const double a_kk_sqrt_inv = std::sqrt(a_kk_inv); 
-    U.col(k).head(k).array() *= a_kk_sqrt_inv;
-    U(k, k) *= a_kk_sqrt_inv;
-    for (int j = k - 1; j >= 0; j--) {
-      for (int i = j; i >= 0; i--) {
-        U(i, j) -= U(i, k) * U(j, k);
-      }
-    }
-  }
-}
-
-#define Adata(i, j) *(base + i * n + j)
-void DenseCholeskyInPlaceUpperTriScalar(Eigen::Ref<MatrixXd> A) {
-  const int n = A.rows();
-  double* base = A.data();
-  for (int k = n - 1; k >= 0; k--) {
-    const double a_kk_inv = 1.0/Adata(k, k);
-    const double a_kk_sqrt_inv = std::sqrt(a_kk_inv); 
-    Adata(k, k) *= a_kk_sqrt_inv;
-    for (int j = k - 1; j >= 0; j--) {
-      const double a = Adata(j, k) * a_kk_inv;
-      // Inner loop down rows
-      for (int i = j; i >= 0; i--) {
-        Adata(i, j) -= Adata(i, k) *  a;
-      }
-      Adata(j, k) *= a_kk_sqrt_inv;
-    }
-  }
-
-// Faster! Why?
-//  const int n = A.rows();
-//  for (int k = n - 1; k >= 0; --k) {
-//    const double a_kk_inv = 1.0/A(k, k);
-//    const double a_kk_sqrt_inv = std::sqrt(a_kk_inv); 
-//    A(k, k) *= a_kk_sqrt_inv;
-//    for (int j = k - 1; j >= 0; --j) {
-//      const double a = A(k, j) * a_kk_jnv;
-//      for (int i = j; i >= 0; i--) {
-//        A(j, i) -= a * A(k, i);
-//      }
-//      A(k, j) *= a_kk_sqrt_jnv;
-//    }
-//  }
-
-}
-
-
-
-
-void PartialDenseCholeskyInPlace(Eigen::Ref<MatrixXd> A,
-                                 Eigen::Ref<MatrixXd> B) {
-  const int n = A.rows();
-
-  // Divide column k of by sqrt(A(k, k)) and
-  // then subtract a_{k+1}:end, k} a_{k+1}:end, k}^T from bottom
-  // right corner.
-  for (int k = 0; k < n; k++) {
-    double a = sqrt(A(k, k));
-    // Subtract a_i a_j
-    for (int i = k; i < n; i++) {
-      A(i, k) /= a;
-      const double a_ik = A(i, k);
-      for (int j = k + 1; j <= i; j++) {
-        A(i, j) -= a_ik * A(j, k);
-      }
-    }
-
-    for (int i = 0; i < B.cols(); i++) {
-      B(k, i) /= a;
-      const double b_ik = B(k, i);
-      for (int j = k + 1; j < n; j++) {
-        B(j, i) -= b_ik * A(j, k);
-      }
-    }
-  }
-}
-
-void PartialDenseCholeskyInPlace(Eigen::MatrixXd* Ainout) {
-  auto& A = *Ainout;
-  const int cols = A.cols();
-  const int rows = A.rows();
-  for (int k = 0; k < cols; k++) {
-    double a = sqrt(A(k, k));
-    for (int i = k; i < rows; i++) {
-      A(i, k) /= a;
-      for (int j = k + 1; j < std::min(i + 1, cols); j++) {
-        A(i, j) -= A(i, k) * A(j, k);
-      }
-    }
-  }
-}
-
-void EigenDenseCholeskyInPlace(Eigen::Ref<Eigen::MatrixXd> A) {
-  Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>> mat(A);
-}
-
-void DenseLDLTInPlace(Eigen::MatrixXd* Ainout) {
-  auto& A = *Ainout;
-  const int n = A.rows();
-  Eigen::VectorXd d(n);
-  for (int k = 0; k < n; k++) {
-    d(k) = A(k, k);
-    for (int i = k; i < n; i++) {
-      for (int j = k + 1; j <= i; j++) {
-        A(i, j) -= A(i, k) * A(j, k) / d(k);
-      }
-    }
-  }
-  d = d.array().sqrt();
-  A = A * d.cwiseInverse().asDiagonal();
-}
-
-bool Validate(const MatrixXd& U, const MatrixXd A) {
-  if ((U * U.transpose() - A).norm() > 1e-12) {
-    throw "failed";
-  }
-}
 
 bool S::LLT::compute(bool factor_last_block) {
-  // START_TIMER("INSIDE")
   for (int i = 0; i < matrix_.num_blocks_ - 1; i++) {
-    MatrixXd Aref = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
-    MatrixXd U;
-
-    //MatrixXd A = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
-    //START_TIMER(UUT_Vect)
-    //DenseCholeskyInPlaceUpperTriVect(A);
-    //END_TIMER
-
-    //U = A.triangularView<Eigen::Upper>();
-    //Validate(U, Aref);
-
-    MatrixXd A4 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
-    START_TIMER(UUT_Scalar)
-    DenseCholeskyInPlaceUpperTriScalar(A4);
-    END_TIMER
-    U = A4.triangularView<Eigen::Lower>();
-    Validate(U.transpose(), Aref);
-
-
-
-    MatrixXd A5 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
-    START_TIMER(UUT_PartialVect)
-    EigenDenseCholeskyInPlace(A5);
-    END_TIMER
-    U = A5.triangularView<Eigen::Lower>();
-    Validate(U, Aref);
-
-    MatrixXd A6 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
-    START_TIMER(LtDL)
-    CalcDenseLtdlInPlace(A6);
-    END_TIMER
-    U = A6.triangularView<Eigen::Lower>();
-    Validate(U.transpose(), Aref);
-
-    //MatrixXd A2 = matrix_.diagonal_blocks(i).selfadjointView<Eigen::Lower>();
-    //START_TIMER(UUT_DenseChol)
-    //DenseCholeskyInPlace(A2);
-    //END_TIMER
-    //MatrixXd U2 = A2.triangularView<Eigen::Lower>();
-
-    MatrixXd B = matrix_.diagonal_blocks(i);
-
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
       PartialDenseCholeskyInPlace(matrix_.diagonal_blocks(i),
                                   matrix_.off_diagonal_blocks(i));
     } else {
       DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
     }
-    // EigenDenseCholeskyInPlace(matrix_.diagonal_blocks(i));
 
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
-      // START_TIMER("Solve")
-      //  matrix_.diagonal_blocks(i).triangularView<Eigen::Lower>().solveInPlace(
-      //      matrix_.off_diagonal_blocks(i));
-      // END_TIMER
-      START_TIMER("Scatter")
       SchurComplementInPlace(i);
-      END_TIMER
     }
   }
   if (factor_last_block) {
-    START_TIMER("LLT")
     DenseCholeskyInPlace(matrix_.diagonal_blocks(matrix_.num_blocks_ - 1));
-    END_TIMER
   }
-  // END_TIMER
   return true;
 }
 
@@ -533,6 +349,47 @@ void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
   diagonal_blocks(d.first).topLeftCorner(d.second, d.second).noalias() +=
       x.block(offset, offset, d.second, d.second);
 }
+
+std::vector<int> NonzeroRows(const SimpleTriangularMatrix& matrix, 
+                             vector<std::pair<int, int>>& partition) {
+
+  std::vector<int> global_offsets(matrix.num_blocks(), 0);
+  std::partial_sum(matrix.block_sizes().begin(), matrix.block_sizes().end() - 1,
+                   global_offsets.begin() + 1);
+
+  std::vector<int> y;
+  for (auto v : partition) {
+    int offset = global_offsets.at(v.first);
+    for (int i = offset; i < offset + v.second; i++) {
+      y.push_back(i);
+    }
+  }
+  return y;
+}
+
+void S::LLT::ApplyInverseOfL(VectorXd* y) {
+  PartitionVectorForwardIterator ypart(*y, matrix_.block_column_sizes_);
+
+  for (int i = 0; i < matrix_.num_blocks() - 1; i++) {
+    if (matrix_.diagonal_blocks(i).size() == 0) {
+      ypart.Increment();
+      continue;
+    }
+    matrix_.diagonal_blocks(i).triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
+    if (matrix_.off_diagonal_blocks(i).size() > 0) {
+      VectorXd temporary =
+          matrix_.off_diagonal_blocks(i).transpose() * ypart.b_i();
+      int cnt = 0;
+      for (auto si : NonzeroRows(matrix_, matrix_.off_diagonal_partition_.at(i))) {
+        (*y)(si) -= temporary(cnt);
+        cnt++;
+      }
+    }
+    ypart.Increment();
+  }
+  matrix_.diagonal_blocks(matrix_.num_blocks_ -1).triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
+}
+
 
 using D = TriangularMatrixDirectSum;
 MatrixXd D::MakeDenseMatrix() {

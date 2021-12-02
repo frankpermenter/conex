@@ -294,8 +294,8 @@ cc_library(
     name = "simple_triangular_matrix",
     srcs = [
         "tree_traversal.h",
+        "dense_triangular_factorizations.h",
         "simple_triangular_matrix.cc",
-#        "triangular_matrix_star.cc",
     ],
     hdrs = [
         "simple_triangular_matrix.h",

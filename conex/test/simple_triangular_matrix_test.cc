@@ -12,6 +12,7 @@
 namespace conex {
 
 using Eigen::MatrixXd;
+using Eigen::VectorXd;
 using std::vector;
 
 
@@ -31,13 +32,12 @@ void DoBlockCholeskyTest(const Eigen::MatrixXd& M,
 
   MatrixXd error = LowerTri(llt_calc.matrixL() - L_ref);
   EXPECT_NEAR(error.norm(), 0, 1e-14);
-  return;
-  bool success = true;
-  auto Mcopy = M;
-  START_TIMER(Dense)
-  Eigen::LLT<Eigen::Ref<MatrixXd>> llt_dense(Mcopy);
-  success = llt_dense.info();
-  END_TIMER
+
+  VectorXd x;
+  x.setLinSpaced(L_ref.cols(), -1, 1.1);
+  VectorXd Lx = L_ref * x;
+  llt_calc.ApplyInverseOfL(&Lx);
+  EXPECT_NEAR( (Lx - x).norm(), 0, 1e-12);
 }
 
 
@@ -452,8 +452,8 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, MassMatrix) {
 GTEST_TEST(BlockSymmetricMatrixCholesky, BlockDiag) {
   vector<vector<int>> cliques;
 
-  int size_blocks = 15;
-  int num_blocks = 7;
+  int size_blocks = 4;
+  int num_blocks = 4;
   cliques.clear();
   cliques.resize(num_blocks);
 
