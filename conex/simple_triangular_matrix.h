@@ -162,16 +162,23 @@ class SimpleTriangularMatrix {
         throw std::runtime_error("Requested matrix not ready.");
       }
       Eigen::MatrixXd L = matrix_.MakeDenseMatrix();  
+
+      //Eigen::VectorXd d_sqrt = L.diagonal();
+      //L = L * d_sqrt.cwiseInverse().asDiagonal();
+
       if (vector_d_computed_) {
         L.diagonal().array() = 1;
       }
+
+
       return L;
     };
     Eigen::VectorXd vectorD() { 
-      //if (vector_d_computed_ != true) {
-      //  throw std::runtime_error("Requested matrix not ready.");
-      //}
-      return matrix_.MakeDenseMatrix().diagonal();  
+      Eigen::MatrixXd L = matrix_.MakeDenseMatrix();  
+      //Eigen::VectorXd d_sqrt = L.diagonal();
+      //return d_sqrt.cwiseProduct(d_sqrt);
+
+       return matrix_.MakeDenseMatrix().diagonal();  
     };
     void ApplyInverseOfL(Eigen::VectorXd* y);
     void ApplyInverseOfLt(Eigen::VectorXd* y);

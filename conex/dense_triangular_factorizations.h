@@ -203,46 +203,77 @@ void DenseLDLTInPlace(Eigen::Ref<Eigen::MatrixXd> A) {
 //  }
 //}
 
+//void PartialDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
+//                                 Eigen::Ref<MatrixXd> B) {
+//  const int n = A.rows();
+//
+//  // Divide column k of by sqrt(A(k, k)) and
+//  // then subtract a_{k+1}:end, k} a_{k+1}:end, k}^T from bottom
+//  // right corner.
+//  for (int k = 0; k < n; k++) {
+//    double a = sqrt(std::fabs(A(k, k)));
+//    // Subtract a_i a_j
+//    for (int i = k; i < n; i++) {
+//      A(i, k) /= a;
+//      const double a_ik = A(i, k);
+//      for (int j = k + 1; j <= i; j++) {
+//        A(i, j) -= a_ik * A(j, k);
+//      }
+//    }
+//
+//    for (int i = 0; i < B.cols(); i++) {
+//      B(k, i) /= a;
+//      const double b_ik = B(k, i);
+//      for (int j = k + 1; j < n; j++) {
+//        B(j, i) -= b_ik * A(j, k);
+//      }
+//    }
+//  }
+//
+//  Eigen::VectorXd d_sqrt = A.diagonal();
+//  DUMP(d_sqrt.minCoeff());
+//  if (d_sqrt.minCoeff() <= 0) {
+//    throw std::runtime_error("DFAIL");
+//  }
+//  A = A * d_sqrt.cwiseInverse().asDiagonal();
+//  if (B.cols() > 0) {
+//    B =  d_sqrt.cwiseInverse().asDiagonal()  * B;
+//  }
+//  A.diagonal() = d_sqrt.cwiseProduct(d_sqrt);
+//
+//}
+
 void PartialDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
                                  Eigen::Ref<MatrixXd> B) {
+//  PartialDenseCholeskyInPlace(A, B);
+//  return;
   const int n = A.rows();
 
   // Divide column k of by sqrt(A(k, k)) and
   // then subtract a_{k+1}:end, k} a_{k+1}:end, k}^T from bottom
   // right corner.
   for (int k = 0; k < n; k++) {
-    double a = sqrt(std::fabs(A(k, k)));
-    // Subtract a_i a_j
     for (int i = k; i < n; i++) {
-      A(i, k) /= a;
-      const double a_ik = A(i, k);
-      for (int j = k + 1; j <= i; j++) {
-        A(i, j) -= a_ik * A(j, k);
+
+      if (i != k) {
+        A(i, k) =  A(i, k) / A(k, k);
       }
+
+      for (int j = k + 1; j <= i; j++) {
+        A(i, j) -=   A(k, k) * A(i, k)   * A(j, k);
+      }
+
     }
 
     for (int i = 0; i < B.cols(); i++) {
-      B(k, i) /= a;
-      const double b_ik = B(k, i);
+      const double b = B(k, i) / A(k, k);
       for (int j = k + 1; j < n; j++) {
-        B(j, i) -= b_ik * A(j, k);
+        B(j, i) -= b * A(j, k);
       }
+      B(k, i) = b;
     }
   }
-
-  Eigen::VectorXd d_sqrt = A.diagonal();
-  DUMP(d_sqrt.minCoeff());
-  if (d_sqrt.minCoeff() <= 0) {
-    throw std::runtime_error("DFAIL");
-  }
-  A = A * d_sqrt.cwiseInverse().asDiagonal();
-  if (B.cols() > 0) {
-    B =  d_sqrt.cwiseInverse().asDiagonal()  * B;
-  }
-  A.diagonal() = d_sqrt.cwiseProduct(d_sqrt);
-
 }
-
 
 
 
