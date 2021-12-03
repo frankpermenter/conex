@@ -434,7 +434,11 @@ void S::LLT::ApplyInverseOfL(VectorXd* y) {
       ypart.Increment();
       continue;
     }
-    matrix_.diagonal_blocks(i).triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
+    if (vector_d_computed_) {
+      matrix_.diagonal_blocks(i).triangularView<Eigen::UnitLower>().solveInPlace(ypart.b_i());
+    } else {
+      matrix_.diagonal_blocks(i).triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
+    }
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
       VectorXd temporary =
           matrix_.off_diagonal_blocks(i).transpose() * ypart.b_i();
@@ -446,7 +450,11 @@ void S::LLT::ApplyInverseOfL(VectorXd* y) {
     }
     ypart.Increment();
   }
+    if (vector_d_computed_) {
+  matrix_.diagonal_blocks(matrix_.num_blocks_ -1).triangularView<Eigen::UnitLower>().solveInPlace(ypart.b_i());
+    } else {
   matrix_.diagonal_blocks(matrix_.num_blocks_ -1).triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
+    }
 }
 
 void S::LLT::ApplyInverseOfLt(VectorXd* y) {
@@ -458,8 +466,14 @@ void S::LLT::ApplyInverseOfLt(VectorXd* y) {
       y_partitioned.Decrement();
       continue;
     }
-    matrix_.diagonal_blocks(k).triangularView<Eigen::Lower>().transpose().solveInPlace(
-        y_partitioned.b_i());
+
+    if (vector_d_computed_) {
+      matrix_.diagonal_blocks(k).triangularView<Eigen::UnitLower>().transpose().solveInPlace(
+          y_partitioned.b_i());
+    } else {
+      matrix_.diagonal_blocks(k).triangularView<Eigen::Lower>().transpose().solveInPlace(
+          y_partitioned.b_i());
+    }
 
     b_partitioned.Reset();
 
@@ -485,8 +499,13 @@ void S::LLT::ApplyInverseOfLt(VectorXd* y) {
     y_partitioned.Decrement();
   }
   if (matrix_.diagonal_blocks(0).size() > 0) {
-    matrix_.diagonal_blocks(0).triangularView<Eigen::Lower>().transpose().solveInPlace(
+    if (vector_d_computed_) {
+    matrix_.diagonal_blocks(0).triangularView<Eigen::UnitLower>().transpose().solveInPlace(
         y_partitioned.b_i());
+    } else {
+      matrix_.diagonal_blocks(0).triangularView<Eigen::Lower>().transpose().solveInPlace(
+        y_partitioned.b_i());
+    }
   }
 }
 
