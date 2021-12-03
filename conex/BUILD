@@ -300,7 +300,7 @@ cc_library(
     hdrs = [
         "simple_triangular_matrix.h",
     ],
-    copts = ["-fopenmp", "-O3", "-DEIGEN_NO_DEBUG", "-ffast-math"],
+    copts = ["-fopenmp"],
     deps = ["tree_utils"],
     visibility = ["//visibility:public"],
 )

@@ -371,7 +371,7 @@ bool S::LLT::compute(bool factor_last_block) {
       PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i), empty);
   }
   factorization_ready_ = true;
-  vector_d_computed_ = false;
+  vector_d_computed_ = true;
   return true;
 }
 
