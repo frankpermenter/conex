@@ -132,14 +132,11 @@ class SimpleTriangularMatrix {
 
   void AssembleFromDenseMatrix(const Eigen::MatrixXd& A);
 
-
-
   /* Increments a submatrix X of the full matrix T. The block X_{ij} is assigned
    * to T.block(partition.at(i).first, partition.at(j).first,
    * partition.at(i).first, partition.at(j).second).  
    * We assume that the partition is sorted by partition.at(:).first.
    * */  
-
   void IncrementSubmatrix(const Eigen::MatrixXd& X, 
                           const std::vector<std::pair<int, int>>& partition_sorted_by_block);
 
@@ -157,11 +154,28 @@ class SimpleTriangularMatrix {
     IncrementSubmatrix(submatrix, submatrix_partition);
   }
 
-
   class LLT {
    public:
     bool compute(bool factor_last_block = true);
-    Eigen::MatrixXd matrixL() { return matrix_.MakeDenseMatrix();  };
+    Eigen::MatrixXd matrixL() { 
+      if (factorization_ready_ != true) {
+        throw std::runtime_error("Requested matrix not ready.");
+      }
+      Eigen::MatrixXd L = matrix_.MakeDenseMatrix();  
+      if (vector_d_computed_) {
+     //   L.diagonal().array() = 1;
+      }
+      return L;
+    };
+    Eigen::VectorXd vectorD() { 
+      Eigen::VectorXd d =  matrix_.MakeDenseMatrix().diagonal();  
+      d.setConstant(1);
+      return d;
+      //if (vector_d_computed_ != true) {
+      //  throw std::runtime_error("Requested matrix not ready.");
+      //}
+      //return matrix_.MakeDenseMatrix().diagonal();  
+    };
     void ApplyInverseOfL(Eigen::VectorXd* y);
     void ApplyInverseOfLt(Eigen::VectorXd* y);
 
@@ -175,6 +189,7 @@ class SimpleTriangularMatrix {
     std::vector<Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>>> llt_of_diag_;
     friend class SimpleTriangularMatrix;
     bool factorization_ready_ = false;
+    bool vector_d_computed_ = false;
   };
 
   LLT llt() { return LLT(this); }
@@ -201,62 +216,6 @@ class SimpleTriangularMatrix {
 };
 
 
-/* Builds a triangular matrix whose clique tree
- is a star.  We construct it from a collection of triangular
- matrices whose bottom right submatrix overlap.
- For instance, for example the star graph
-
-       R
-    /  |   \
-  L1   L2  L3 
-
- we take as input matrices
-
- T1 = L1
-      L1 R_1
-
- T2 = L2
-      L2 R_2
- 
- T3 = L3
-      L3 R_3
-
- as construct:
-  
-  L1
-     L2
-        L3
-  L1 L2 L3 (R_1 + R_2 + R_3)
-
- The matrices L_i and R_i are padded with zeros
- to have the same number of rows.
- */
-class TriangularMatrixDirectSum {
- public:
-  TriangularMatrixDirectSum(std::vector<SimpleTriangularMatrix>& matrices);
-  Eigen::MatrixXd MakeDenseMatrix();
-
-  class LLT {
-   public:
-    bool compute(bool factor_last_block = true);
-    Eigen::MatrixXd matrixL();
-   private:
-    LLT(TriangularMatrixDirectSum* matrix) : matrix_(*matrix) { }
-    bool ready() { return factorization_ready_; }
-    const Eigen::MatrixXd& root_matrix() { return matrix_.common_block_; }
-    TriangularMatrixDirectSum& matrix_;
-    std::vector<Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>>> llt_of_diag_;
-    bool factorization_ready_ = false;
-    friend class TriangularMatrixDirectSum;
-  };
-
-  LLT llt() { return LLT(this); }
-  Eigen::MatrixXd& root_matrix() { return common_block_; }
-  const Eigen::MatrixXd& root_matrix() const { return common_block_; }
- private:
-  std::vector<SimpleTriangularMatrix>& matrices_;
-  Eigen::MatrixXd common_block_;
-};
 
 class BlockSparseSymmetricMatrix {
  public:
@@ -284,6 +243,7 @@ class BlockSparseSymmetricMatrix {
       return P;
     }
     Eigen::MatrixXd matrixL() { return llt_.matrixL().triangularView<Eigen::Lower>(); }
+    Eigen::VectorXd vectorD() { return llt_.vectorD(); } 
    private:
     LLT(BlockSparseSymmetricMatrix* matrix) : matrix_(*matrix), 
     llt_(matrix_.lower_triangular_matrix_.llt()) { }

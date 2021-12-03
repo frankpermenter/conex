@@ -44,6 +44,36 @@ void DoBlockCholeskyTest(const Eigen::MatrixXd& M,
   EXPECT_NEAR((Ltx - x).norm(), 0, 1e-12);
 }
 
+void DoBlockLDLTTest(const Eigen::MatrixXd& M,
+                         const vector<std::vector<int>>& cliques) {
+  auto b = MakeBlockSparseMatrix(M, cliques);
+  auto llt_calc = b.llt(); llt_calc.compute();
+
+  MatrixXd L = llt_calc.matrixL();
+  MatrixXd D = llt_calc.vectorD().asDiagonal();
+  DUMP(L);
+  DUMP(D);
+
+  MatrixXd M_permuted = llt_calc.matrixP().transpose()*M * llt_calc.matrixP();
+
+
+  DUMP(M_permuted - L*D*L.transpose());
+  //EXPECT_NEAR( (M_permuted - L*D*L.transpose()).norm(), 0);
+  return;
+
+  VectorXd x;
+  x.setLinSpaced(L.cols(), -1, 1.1);
+  VectorXd Lx = L * x;
+  llt_calc.ApplyInverseOfL(&Lx);
+  EXPECT_NEAR( (Lx - x).norm(), 0, 1e-12);
+
+  VectorXd Ltx = L.transpose() * x;
+  llt_calc.ApplyInverseOfLt(&Ltx);
+  EXPECT_NEAR((Ltx - x).norm(), 0, 1e-12);
+}
+
+
+
 
 
 vector<Eigen::MatrixXd> GetCompressedBlockColumns(
@@ -102,7 +132,7 @@ void DoTest(const std::vector<int>& block_sizes,
 }
 
 }  // namespace
-#if 1
+#if 0
 GTEST_TEST(SimpleTri, Construct) {
   std::vector<int> block_sizes{2, 2, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
@@ -296,23 +326,23 @@ GTEST_TEST(SimpleTri, DirectSum) {
   mats.emplace_back(block_sizes_2, triplets_2);
   mats.at(2).AssembleFromCompressedColumns(cols_3);
 
-  TriangularMatrixDirectSum mat(mats);
-  MatrixXd full_mat = mat.MakeDenseMatrix();
+  //TriangularMatrixDirectSum mat(mats);
+  //MatrixXd full_mat = mat.MakeDenseMatrix();
 
-  // full_mat = L1
-  //               L2
-  //                  L3
-  //            L1 L2 L3  R1 + R2 + R3
-  // Easy sanity check.
-  double squared_norm = full_mat.leftCols(block_sizes.at(0) * 2 + block_sizes_2.at(0)).squaredNorm();
-  EXPECT_NEAR(L1.squaredNorm() + L2.squaredNorm() + L3.squaredNorm(), squared_norm, 1e-12);
-  double sum = R1.colwise().sum().sum() + R2.colwise().sum().sum() + R3.colwise().sum().sum();
-  EXPECT_NEAR(sum, full_mat.bottomRightCorner(block_sizes_2.back(), block_sizes_2.back()).colwise().sum().sum(), 1e-12);
+  //// full_mat = L1
+  ////               L2
+  ////                  L3
+  ////            L1 L2 L3  R1 + R2 + R3
+  //// Easy sanity check.
+  //double squared_norm = full_mat.leftCols(block_sizes.at(0) * 2 + block_sizes_2.at(0)).squaredNorm();
+  //EXPECT_NEAR(L1.squaredNorm() + L2.squaredNorm() + L3.squaredNorm(), squared_norm, 1e-12);
+  //double sum = R1.colwise().sum().sum() + R2.colwise().sum().sum() + R3.colwise().sum().sum();
+  //EXPECT_NEAR(sum, full_mat.bottomRightCorner(block_sizes_2.back(), block_sizes_2.back()).colwise().sum().sum(), 1e-12);
 
-  auto llt = mat.llt();
-  llt.compute();
-  MatrixXd llt_ref = Eigen::LLT<MatrixXd>(full_mat).matrixL();
-  EXPECT_NEAR((llt.matrixL() - llt_ref).norm(), 0, 1e-12);
+  //auto llt = mat.llt();
+  //llt.compute();
+  //MatrixXd llt_ref = Eigen::LLT<MatrixXd>(full_mat).matrixL();
+  //EXPECT_NEAR((llt.matrixL() - llt_ref).norm(), 0, 1e-12);
 }
 
 GTEST_TEST(SimpleTri, IncrementSubmatrix) {
@@ -399,6 +429,7 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, Arrow) {
 }
 
 #endif
+#if 0
 GTEST_TEST(BlockSymmetricMatrixCholesky, MassMatrix) {
   vector<vector<int>> cliques{{0, 1, 2, 3, 4, 5, 18, 19, 20, 21},
                               {0, 1, 2, 3, 4, 5, 14, 15, 16, 17},
@@ -464,6 +495,7 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, MassMatrix) {
   DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
   DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
 }
+#endif
 #if 1
 GTEST_TEST(BlockSymmetricMatrixCholesky, BlockDiag) {
   vector<vector<int>> cliques;
@@ -489,10 +521,8 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, BlockDiag) {
     M.block(j*size_blocks, j * size_blocks, size_blocks, size_blocks) = Mi;
   }
 
-  DoBlockCholeskyTest(M, cliques);
-  DoBlockCholeskyTest(M, cliques);
-  DoBlockCholeskyTest(M, cliques);
-  DoBlockCholeskyTest(M, cliques);
+  //DoBlockCholeskyTest(M, cliques);
+  DoBlockLDLTTest(M, cliques);
 }
 #endif
 }  // namespace conex

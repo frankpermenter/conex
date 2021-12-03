@@ -351,21 +351,32 @@ void S::LLT::SchurComplementInPlace(int block) {
 bool S::LLT::compute(bool factor_last_block) {
   for (int i = 0; i < matrix_.num_blocks_ - 1; i++) {
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
-      PartialDenseCholeskyInPlace(matrix_.diagonal_blocks(i),
+      PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i),
                                   matrix_.off_diagonal_blocks(i));
     } else {
-      DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
-    }
+      //DenseLDLTInPlace(matrix_.diagonal_blocks(i));
 
+      PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i),
+                                  matrix_.off_diagonal_blocks(i));
+    }
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
       SchurComplementInPlace(i);
     }
   }
   if (factor_last_block) {
-    DenseCholeskyInPlace(matrix_.diagonal_blocks(matrix_.num_blocks_ - 1));
+    //DenseLDLTInPlace(matrix_.diagonal_blocks(matrix_.num_blocks_ - 1));
+
+      int i = matrix_.num_blocks_ - 1;
+      Eigen::MatrixXd empty(0, 0);
+      PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i), empty);
   }
+  factorization_ready_ = true;
+  vector_d_computed_ = true;
   return true;
 }
+
+
+
 
 void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
                            const std::vector<std::pair<int, int>>& partition) {
@@ -475,88 +486,6 @@ void S::LLT::ApplyInverseOfLt(VectorXd* y) {
     matrix_.diagonal_blocks(0).triangularView<Eigen::Lower>().transpose().solveInPlace(
         y_partitioned.b_i());
   }
-}
-
-
-
-
-
-using D = TriangularMatrixDirectSum;
-MatrixXd D::MakeDenseMatrix() {
-  using Eigen::MatrixXd;
-  auto& matrices = matrices_;
-  int common_block_offset = 0;
-  int common_block_size = 0;
-  for (const auto& mat : matrices) {
-    common_block_offset += mat.cols() - mat.block_sizes().back();
-    if (mat.block_sizes().back() > common_block_size) {
-      common_block_size = mat.block_sizes().back();
-    }
-  }
-  int size = common_block_offset + common_block_size;
-  MatrixXd M(size, size);
-  M.setZero();
-  int i = 0;
-  int offset = 0;
-  for (const auto& mat : matrices) {
-    int last_block = mat.block_sizes().back();
-    int block_size = mat.cols() - last_block;
-
-    MatrixXd Mi = mat.MakeDenseMatrix();
-
-    M.block(offset, offset, block_size, block_size) =
-        Mi.topLeftCorner(block_size, block_size);
-    M.block(common_block_offset, offset, last_block, block_size) =
-        Mi.bottomLeftCorner(last_block, block_size);
-    M.block(common_block_offset, common_block_offset, last_block, last_block) +=
-        mat.diagonal_blocks(mat.num_blocks() - 1);
-    i++;
-    offset += block_size;
-  }
-
-  return M;
-}
-
-D::TriangularMatrixDirectSum(std::vector<SimpleTriangularMatrix>& matrices)
-    : matrices_(matrices) {
-  int common_block_size = 0;
-  for (const auto& mat : matrices) {
-    if (mat.block_sizes().back() > common_block_size) {
-      common_block_size = mat.block_sizes().back();
-    }
-  }
-  common_block_.resize(common_block_size, common_block_size);
-  common_block_.setZero();
-}
-
-bool D::LLT::compute(bool factor_last_block) {
-  auto& matrices = matrix_.matrices_;
-  auto& common_block_ = matrix_.root_matrix();
-
-  for (auto& mat : matrices) {
-    auto llt = mat.llt();
-    llt.compute(false);
-  }
-
-  for (const auto& mat : matrices) {
-    int last_block = mat.block_sizes().back();
-    common_block_.topLeftCorner(last_block, last_block) +=
-        mat.diagonal_blocks(mat.num_blocks() - 1);
-  }
-
-  if (factor_last_block) {
-    llt_of_diag_.emplace_back(common_block_);
-  }
-  factorization_ready_ = true;
-  return true;
-}
-
-MatrixXd D::LLT::matrixL() {
-  MatrixXd L = matrix_.MakeDenseMatrix();
-  int common_block_size = matrix_.common_block_.rows();
-  L.bottomRightCorner(common_block_size, common_block_size) =
-      llt_of_diag_.back().matrixL();
-  return L;
 }
 
 void S::AssembleFromDenseMatrix(const Eigen::MatrixXd& A) {
