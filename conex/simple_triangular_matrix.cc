@@ -318,6 +318,8 @@ void S::LLT::SchurComplementInPlace(int block) {
   }
   const BlockData& input_block_info = matrix_.off_diagonal_partition_[block];
 
+  MatrixXd D = matrix_.diagonal_blocks(block).diagonal().asDiagonal();
+
   BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
                                 input_block_info);
   for (size_t i = 0; i < input_block_info.size() - 1; i++) {
@@ -331,20 +333,20 @@ void S::LLT::SchurComplementInPlace(int block) {
       int size_j = input_j.CurrentBlockSize();
       output.GotoBlock(input_j.CurrentBlockNumber());
       output.CurrentBlock().topLeftCorner(size_i, size_j).noalias() -=
-          input_i.CurrentBlock().transpose() * input_j.CurrentBlock();
+          input_i.CurrentBlock().transpose() * D * input_j.CurrentBlock();
       input_j.GotoNextBlock();
     }
 
     matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
         .topLeftCorner(size_i, size_i)
         .noalias() -=
-        input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
+        input_i.CurrentBlock().transpose() * D * input_i.CurrentBlock();
     input_i.GotoNextBlock();
   }
   int size_i = input_i.CurrentBlockSize();
   matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
       .topLeftCorner(size_i, size_i)
-      .noalias() -= input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
+      .noalias() -= input_i.CurrentBlock().transpose() * D * input_i.CurrentBlock();
 }
 
 

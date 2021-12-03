@@ -266,11 +266,10 @@ void PartialDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
     }
 
     for (int i = 0; i < B.cols(); i++) {
-      const double b = B(k, i) / A(k, k);
+      B(k, i) = B(k, i) / A(k, k);
       for (int j = k + 1; j < n; j++) {
-        B(j, i) -= b * A(j, k);
+        B(j, i) -=  A(k, k) * B(k, i)   * A(j, k);
       }
-      B(k, i) = b;
     }
   }
 }

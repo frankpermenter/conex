@@ -58,7 +58,7 @@ void DoBlockLDLTTest(const Eigen::MatrixXd& M,
 
   MatrixXd M_permuted = llt_calc.matrixP().transpose()*M * llt_calc.matrixP();
   DUMP(M_permuted - L*D*L.transpose());
-  //EXPECT_NEAR( (M_permuted - L*D*L.transpose()).norm(), 0);
+  EXPECT_NEAR( LowerTri(M_permuted - L*D*L.transpose()).norm(), 0, 1e-10);
   return;
 
   VectorXd x;
@@ -429,7 +429,7 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, Arrow) {
 }
 
 #endif
-#if 0
+#if 1
 GTEST_TEST(BlockSymmetricMatrixCholesky, MassMatrix) {
   vector<vector<int>> cliques{{0, 1, 2, 3, 4, 5, 18, 19, 20, 21},
                               {0, 1, 2, 3, 4, 5, 14, 15, 16, 17},
