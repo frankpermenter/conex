@@ -163,17 +163,14 @@ class SimpleTriangularMatrix {
       }
       Eigen::MatrixXd L = matrix_.MakeDenseMatrix();  
       if (vector_d_computed_) {
-     //   L.diagonal().array() = 1;
+        //L.diagonal().array() = 1;
       }
       return L;
     };
     Eigen::VectorXd vectorD() { 
-      Eigen::VectorXd d =  matrix_.MakeDenseMatrix().diagonal();  
-      d.setConstant(1);
-      return d;
-      //if (vector_d_computed_ != true) {
-      //  throw std::runtime_error("Requested matrix not ready.");
-      //}
+      if (vector_d_computed_ != true) {
+        throw std::runtime_error("Requested matrix not ready.");
+      }
       //return matrix_.MakeDenseMatrix().diagonal();  
     };
     void ApplyInverseOfL(Eigen::VectorXd* y);

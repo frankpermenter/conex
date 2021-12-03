@@ -178,33 +178,66 @@ void DenseLDLTInPlace(Eigen::Ref<Eigen::MatrixXd> A) {
 }
 
 
+//void PartialDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
+//                                 Eigen::Ref<MatrixXd> B) {
+//  const int n = A.rows();
+//
+//  // Divide column k of by sqrt(A(k, k)) and
+//  // then subtract a_{k+1}:end, k} a_{k+1}:end, k}^T from bottom
+//  // right corner.
+//  for (int k = 0; k < n; k++) {
+//    for (int i = k + 1; i < n; i++) {
+//      for (int j = k + 1; j <= i; j++) {
+//        A(i, j) -=  A(i, k)  * A(j, k);
+//      }
+//      A(i, k) /=  A(k, k);
+//    }
+//
+//    for (int i = 0; i < B.cols(); i++) {
+//      const double b = B(k, i) / A(k, k);
+//      for (int j = k + 1; j < n; j++) {
+//        B(j, i) -= b * A(j, k);
+//      }
+//      B(k, i) = b;
+//    }
+//  }
+//}
+
 void PartialDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
                                  Eigen::Ref<MatrixXd> B) {
-  PartialDenseCholeskyInPlace(A, B);
-  return;
   const int n = A.rows();
 
   // Divide column k of by sqrt(A(k, k)) and
   // then subtract a_{k+1}:end, k} a_{k+1}:end, k}^T from bottom
   // right corner.
   for (int k = 0; k < n; k++) {
+    double a = sqrt(A(k, k));
+    // Subtract a_i a_j
     for (int i = k; i < n; i++) {
-      const double a = A(i, k) / A(k, k);
+      A(i, k) /= a;
+      const double a_ik = A(i, k);
       for (int j = k + 1; j <= i; j++) {
-        A(i, j) -= a * A(j, k);
-      }
-
-      if (i != k) {
-      A(i, k) = a;
+        A(i, j) -= a_ik * A(j, k);
       }
     }
 
     for (int i = 0; i < B.cols(); i++) {
-      const double b = B(k, i) / A(k, k);
+      B(k, i) /= a;
+      const double b_ik = B(k, i);
       for (int j = k + 1; j < n; j++) {
-        B(j, i) -= b * A(j, k);
+        B(j, i) -= b_ik * A(j, k);
       }
-      B(k, i) = b;
     }
   }
+
+  //Eigen::VectorXd d_sqrt = A.diagonal();
+  //A = A * d_sqrt.cwiseInverse();
+  //B = B * d_sqrt.cwiseInverse();
+  //DUMP(A);
+  //A.diagonal() = d_sqrt * d_sqrt;
+
 }
+
+
+
+

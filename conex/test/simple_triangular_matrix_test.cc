@@ -51,12 +51,16 @@ void DoBlockLDLTTest(const Eigen::MatrixXd& M,
 
   MatrixXd L = llt_calc.matrixL();
   MatrixXd D = llt_calc.vectorD().asDiagonal();
+  MatrixXd P = llt_calc.matrixP();
+  DUMP(P);
   DUMP(L);
   DUMP(D);
 
   MatrixXd M_permuted = llt_calc.matrixP().transpose()*M * llt_calc.matrixP();
+  DUMP(M_permuted);
 
 
+  DUMP(M_permuted - L*L.transpose());
   DUMP(M_permuted - L*D*L.transpose());
   //EXPECT_NEAR( (M_permuted - L*D*L.transpose()).norm(), 0);
   return;
@@ -501,7 +505,7 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, BlockDiag) {
   vector<vector<int>> cliques;
 
   int size_blocks = 4;
-  int num_blocks = 4;
+  int num_blocks = 2;
   cliques.clear();
   cliques.resize(num_blocks);
 
