@@ -211,7 +211,7 @@ void PartialDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
   // then subtract a_{k+1}:end, k} a_{k+1}:end, k}^T from bottom
   // right corner.
   for (int k = 0; k < n; k++) {
-    double a = sqrt(A(k, k));
+    double a = sqrt(std::fabs(A(k, k)));
     // Subtract a_i a_j
     for (int i = k; i < n; i++) {
       A(i, k) /= a;
@@ -231,9 +231,13 @@ void PartialDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
   }
 
   Eigen::VectorXd d_sqrt = A.diagonal();
+  DUMP(d_sqrt.minCoeff());
+  if (d_sqrt.minCoeff() <= 0) {
+    throw std::runtime_error("DFAIL");
+  }
   A = A * d_sqrt.cwiseInverse().asDiagonal();
   if (B.cols() > 0) {
-    B = B * d_sqrt.cwiseInverse().asDiagonal();
+    B =  d_sqrt.cwiseInverse().asDiagonal()  * B;
   }
   A.diagonal() = d_sqrt.cwiseProduct(d_sqrt);
 
