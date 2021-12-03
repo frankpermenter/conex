@@ -433,7 +433,7 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, Arrow) {
 }
 
 #endif
-#if 0
+#if 1
 GTEST_TEST(BlockSymmetricMatrixCholesky, MassMatrix) {
   vector<vector<int>> cliques{{0, 1, 2, 3, 4, 5, 18, 19, 20, 21},
                               {0, 1, 2, 3, 4, 5, 14, 15, 16, 17},
@@ -494,10 +494,7 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, MassMatrix) {
       2.61943e-08, 0.000136541, 8.17987e-05, 1.182e-05, 2.1e-09, 1.17762e-05,
       1.01724e-06, -7.32747e-19, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
       -1.29971e-08, 1.182e-05, 1.182e-05, 1.182e-05;
-  DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
-  DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
-  DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
-  DoBlockCholeskyTest(M.selfadjointView<Eigen::Lower>(), cliques); 
+  DoBlockLDLTTest(M, cliques);
 }
 #endif
 #if 1
