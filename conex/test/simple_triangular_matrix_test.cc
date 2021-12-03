@@ -126,7 +126,7 @@ void DoTest(const std::vector<int>& block_sizes,
 }
 
 }  // namespace
-#if 0
+#if 1
 GTEST_TEST(SimpleTri, Construct) {
   std::vector<int> block_sizes{2, 2, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
