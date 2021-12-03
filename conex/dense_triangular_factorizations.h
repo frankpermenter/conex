@@ -233,7 +233,6 @@ void PartialDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
   //Eigen::VectorXd d_sqrt = A.diagonal();
   //A = A * d_sqrt.cwiseInverse();
   //B = B * d_sqrt.cwiseInverse();
-  //DUMP(A);
   //A.diagonal() = d_sqrt * d_sqrt;
 
 }
