@@ -318,41 +318,67 @@ void S::LLT::SchurComplementInPlace(int block) {
   }
   const BlockData& input_block_info = matrix_.off_diagonal_partition_[block];
  
-  MatrixXd D;
   if (vector_d_computed_) {
-    D = matrix_.diagonal_blocks(block).diagonal().asDiagonal();
-  } else {
-    D = matrix_.diagonal_blocks(block).diagonal().asDiagonal();
-    D.setIdentity();
-  }
+    const MatrixXd& D = matrix_.diagonal_blocks(block).diagonal().asDiagonal();
+   
+    BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
+                                  input_block_info);
 
-  BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
-                                input_block_info);
-  for (size_t i = 0; i < input_block_info.size() - 1; i++) {
-    int size_i = input_i.CurrentBlockSize();
-    BlockMatrix<MatrixXd> output(
-        matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
-        matrix_.off_diagonal_partition_.at(input_i.CurrentBlockNumber()));
-    BlockMatrix<MatrixXd> input_j(matrix_.off_diagonal_blocks(block),
-                                  input_block_info, i + 1);
-    for (size_t j = i + 1; j < input_block_info.size(); j++) {
-      int size_j = input_j.CurrentBlockSize();
-      output.GotoBlock(input_j.CurrentBlockNumber());
-      output.CurrentBlock().topLeftCorner(size_i, size_j).noalias() -=
-          input_i.CurrentBlock().transpose() * D * input_j.CurrentBlock();
-      input_j.GotoNextBlock();
+    for (size_t i = 0; i < input_block_info.size() - 1; i++) {
+      int size_i = input_i.CurrentBlockSize();
+      BlockMatrix<MatrixXd> output(
+          matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
+          matrix_.off_diagonal_partition_.at(input_i.CurrentBlockNumber()));
+      BlockMatrix<MatrixXd> input_j(matrix_.off_diagonal_blocks(block),
+                                    input_block_info, i + 1);
+      for (size_t j = i + 1; j < input_block_info.size(); j++) {
+        int size_j = input_j.CurrentBlockSize();
+        output.GotoBlock(input_j.CurrentBlockNumber());
+        output.CurrentBlock().topLeftCorner(size_i, size_j).noalias() -=
+            input_i.CurrentBlock().transpose() * D * input_j.CurrentBlock();
+        input_j.GotoNextBlock();
+      }
+
+      matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
+          .topLeftCorner(size_i, size_i)
+          .noalias() -=
+          input_i.CurrentBlock().transpose() * D * input_i.CurrentBlock();
+      input_i.GotoNextBlock();
     }
-
+    int size_i = input_i.CurrentBlockSize();
     matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
         .topLeftCorner(size_i, size_i)
-        .noalias() -=
-        input_i.CurrentBlock().transpose() * D * input_i.CurrentBlock();
-    input_i.GotoNextBlock();
+        .noalias() -= input_i.CurrentBlock().transpose() * D * input_i.CurrentBlock();
+  } else {
+    BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
+                                  input_block_info);
+
+    for (size_t i = 0; i < input_block_info.size() - 1; i++) {
+      int size_i = input_i.CurrentBlockSize();
+      BlockMatrix<MatrixXd> output(
+          matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
+          matrix_.off_diagonal_partition_.at(input_i.CurrentBlockNumber()));
+      BlockMatrix<MatrixXd> input_j(matrix_.off_diagonal_blocks(block),
+                                    input_block_info, i + 1);
+      for (size_t j = i + 1; j < input_block_info.size(); j++) {
+        int size_j = input_j.CurrentBlockSize();
+        output.GotoBlock(input_j.CurrentBlockNumber());
+        output.CurrentBlock().topLeftCorner(size_i, size_j).noalias() -=
+            input_i.CurrentBlock().transpose()  * input_j.CurrentBlock();
+        input_j.GotoNextBlock();
+      }
+
+      matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
+          .topLeftCorner(size_i, size_i)
+          .noalias() -=
+          input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
+      input_i.GotoNextBlock();
+    }
+    int size_i = input_i.CurrentBlockSize();
+    matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
+        .topLeftCorner(size_i, size_i)
+        .noalias() -= input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
   }
-  int size_i = input_i.CurrentBlockSize();
-  matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
-      .topLeftCorner(size_i, size_i)
-      .noalias() -= input_i.CurrentBlock().transpose() * D * input_i.CurrentBlock();
 }
 
 
@@ -424,23 +450,6 @@ void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
       x.block(offset, offset, d.second, d.second);
 }
 
-std::vector<int> NonzeroRows(const SimpleTriangularMatrix& matrix, 
-                             vector<std::pair<int, int>>& partition) {
-
-  std::vector<int> global_offsets(matrix.num_blocks(), 0);
-  std::partial_sum(matrix.block_sizes().begin(), matrix.block_sizes().end() - 1,
-                   global_offsets.begin() + 1);
-
-  std::vector<int> y;
-  for (auto v : partition) {
-    int offset = global_offsets.at(v.first);
-    for (int i = offset; i < offset + v.second; i++) {
-      y.push_back(i);
-    }
-  }
-  return y;
-}
-
 void S::LLT::ApplyInverseOfL(VectorXd* y) {
   PartitionVectorForwardIterator ypart(*y, matrix_.block_column_sizes_);
 
@@ -455,22 +464,28 @@ void S::LLT::ApplyInverseOfL(VectorXd* y) {
       matrix_.diagonal_blocks(i).triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
     }
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
-      VectorXd temporary =
-          matrix_.off_diagonal_blocks(i).transpose() * ypart.b_i();
-      int cnt = 0;
-      for (auto si : NonzeroRows(matrix_, matrix_.off_diagonal_partition_.at(i))) {
-        (*y)(si) -= temporary(cnt);
-        cnt++;
-      }
+      BlockMatrix block(matrix_.off_diagonal_blocks(i), matrix_.off_diagonal_partition_.at(i));
+      do {
+        int row_block = block.CurrentBlockNumber();
+        int num_rows = block.CurrentBlockSize();
+        y->middleRows(global_offsets_.at(row_block), num_rows) -= block.CurrentBlock().transpose() * ypart.b_i();
+      } while (!block.GotoNextBlock());
     }
     ypart.Increment();
   }
-    if (vector_d_computed_) {
-  matrix_.diagonal_blocks(matrix_.num_blocks_ -1).triangularView<Eigen::UnitLower>().solveInPlace(ypart.b_i());
-    } else {
-  matrix_.diagonal_blocks(matrix_.num_blocks_ -1).triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
-    }
+  if (vector_d_computed_) {
+    matrix_.diagonal_blocks(matrix_.num_blocks_ -1).triangularView<Eigen::UnitLower>().solveInPlace(ypart.b_i());
+  } else {
+    matrix_.diagonal_blocks(matrix_.num_blocks_ -1).triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
+  }
 }
+
+S::LLT::LLT(SimpleTriangularMatrix* matrix) : matrix_(*matrix), 
+       global_offsets_(matrix_.num_blocks()) {
+      std::partial_sum(matrix_.block_sizes().begin(), matrix_.block_sizes().end() - 1,
+                       global_offsets_.begin() + 1);
+
+    }
 
 void S::LLT::ApplyInverseOfLt(VectorXd* y) {
   PartitionVectorIterator y_partitioned(*y, y->rows(),
@@ -492,7 +507,6 @@ void S::LLT::ApplyInverseOfLt(VectorXd* y) {
 
     b_partitioned.Reset();
 
-    int global_offset = 0;
     for (int j = 0; j < k; j++) {
       int size = 0;
       int offset = 0;
@@ -505,10 +519,9 @@ void S::LLT::ApplyInverseOfLt(VectorXd* y) {
         }
       }
 
-      y->middleRows(global_offset, matrix_.block_sizes().at(j))-= matrix_.off_diagonal_blocks(j).middleCols(offset, size) 
+      y->middleRows(global_offsets_.at(j), matrix_.block_sizes().at(j))-= matrix_.off_diagonal_blocks(j).middleCols(offset, size) 
                                                                    * y_partitioned.b_i().head(size);
       b_partitioned.Increment();
-      global_offset += matrix_.block_sizes().at(j);
     }
 
     y_partitioned.Decrement();

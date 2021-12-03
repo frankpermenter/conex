@@ -184,13 +184,13 @@ class SimpleTriangularMatrix {
     void ApplyInverseOfLt(Eigen::VectorXd* y);
 
    private:
-    LLT(SimpleTriangularMatrix* matrix) : matrix_(*matrix) {
-      llt_of_diag_.reserve(matrix_.num_blocks_);
-    }
+    LLT(SimpleTriangularMatrix* matrix);
+    
     void SchurComplementInPlace(int i);
     bool ready() { return factorization_ready_; }
     SimpleTriangularMatrix& matrix_;
     std::vector<Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>>> llt_of_diag_;
+    std::vector<int> global_offsets_;
     friend class SimpleTriangularMatrix;
     bool factorization_ready_ = false;
     bool vector_d_computed_ = false;
@@ -216,6 +216,8 @@ class SimpleTriangularMatrix {
   // Indicates that block column i contains off_diagonal_partition_.at(i).second
   // rows of block row off_diagonal_partition_.at(i).first.
   std::vector<std::vector<std::pair<int, int>>> off_diagonal_partition_;
+
+
 
 };
 
