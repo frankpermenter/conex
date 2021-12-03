@@ -156,7 +156,7 @@ class SimpleTriangularMatrix {
 
   class LLT {
    public:
-    bool compute(bool factor_last_block = true);
+    bool compute(bool factor_last_block = true, bool compute_ldlt = false);
     Eigen::MatrixXd matrixL() { 
       if (factorization_ready_ != true) {
         throw std::runtime_error("Requested matrix not ready.");
@@ -237,7 +237,7 @@ class BlockSparseSymmetricMatrix {
 
   class LLT {
    public:
-    bool compute();
+    bool compute(bool compute_ldlt = false);
     void ApplyInverseOfL(Eigen::VectorXd* y) { llt_.ApplyInverseOfL(y); }
     void ApplyInverseOfLt(Eigen::VectorXd* y) { llt_.ApplyInverseOfLt(y); }
     Eigen::PermutationMatrix<-1> matrixP() {

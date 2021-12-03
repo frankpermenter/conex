@@ -209,8 +209,8 @@ BlockSparseSymmetricMatrix MakeBlockSparseMatrix(
   return mat;
 }
 
-bool BlockSparseSymmetricMatrix::LLT::compute() {
-  llt_.compute();
+bool BlockSparseSymmetricMatrix::LLT::compute(bool compute_ldlt) {
+  llt_.compute(true /*factor last block*/, compute_ldlt);
   return true;
 }
 
@@ -317,8 +317,14 @@ void S::LLT::SchurComplementInPlace(int block) {
     return;
   }
   const BlockData& input_block_info = matrix_.off_diagonal_partition_[block];
-
-  MatrixXd D = matrix_.diagonal_blocks(block).diagonal().asDiagonal();
+ 
+  MatrixXd D;
+  if (vector_d_computed_) {
+    D = matrix_.diagonal_blocks(block).diagonal().asDiagonal();
+  } else {
+    D = matrix_.diagonal_blocks(block).diagonal().asDiagonal();
+    D.setIdentity();
+  }
 
   BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
                                 input_block_info);
@@ -350,30 +356,39 @@ void S::LLT::SchurComplementInPlace(int block) {
 }
 
 
-bool S::LLT::compute(bool factor_last_block) {
+bool S::LLT::compute(bool factor_last_block, bool compute_ldlt) {
+  vector_d_computed_ = compute_ldlt;
   for (int i = 0; i < matrix_.num_blocks_ - 1; i++) {
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
-      PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i),
-                                  matrix_.off_diagonal_blocks(i));
+      if (compute_ldlt) {
+        PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i),
+                                    matrix_.off_diagonal_blocks(i));
+      } else {
+        PartialDenseCholeskyInPlace(matrix_.diagonal_blocks(i),
+                                    matrix_.off_diagonal_blocks(i));
+      }
     } else {
-      //DenseLDLTInPlace(matrix_.diagonal_blocks(i));
-
-      PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i),
-                                  matrix_.off_diagonal_blocks(i));
+      if (compute_ldlt) {
+        PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i),
+                                    matrix_.off_diagonal_blocks(i));
+      } else {
+        DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
+      }
     }
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
       SchurComplementInPlace(i);
     }
   }
   if (factor_last_block) {
-    //DenseLDLTInPlace(matrix_.diagonal_blocks(matrix_.num_blocks_ - 1));
-
-      int i = matrix_.num_blocks_ - 1;
-      Eigen::MatrixXd empty(0, 0);
-      PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i), empty);
+      if (compute_ldlt) {
+        int i = matrix_.num_blocks_ - 1;
+        Eigen::MatrixXd empty(0, 0);
+        PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i), empty);
+      } else {
+        DenseCholeskyInPlace(matrix_.diagonal_blocks(matrix_.num_blocks_ - 1));
+      }
   }
   factorization_ready_ = true;
-  vector_d_computed_ = true;
   return true;
 }
 
