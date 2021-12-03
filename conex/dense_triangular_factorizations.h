@@ -58,7 +58,7 @@ void DenseCholeskyInPlaceUpperTriVect(Eigen::Ref<MatrixXd> A) {
 }
 
 
-void DenseCholeskyInPlaceUpperTriPartialVect(Eigen::Ref<MatrixXd> A) {
+void DenseCholeskyInPlaceUpperTriRectangularVect(Eigen::Ref<MatrixXd> A) {
   const int n = A.rows();
   auto& U = A;
   for (int k = n - 1; k >= 0; k--) {
@@ -112,7 +112,7 @@ void DenseCholeskyInPlaceUpperTriScalar(Eigen::Ref<MatrixXd> A) {
 
 
 
-void PartialDenseCholeskyInPlace(Eigen::Ref<MatrixXd> A,
+void RectangularDenseCholeskyInPlace(Eigen::Ref<MatrixXd> A,
                                  Eigen::Ref<MatrixXd> B) {
   const int n = A.rows();
 
@@ -144,12 +144,11 @@ void PartialDenseCholeskyInPlace(Eigen::Ref<MatrixXd> A,
 
 
 
-void PartialDenseCholeskyInPlace(Eigen::MatrixXd* Ainout) {
+void RectangularDenseCholeskyInPlace(Eigen::MatrixXd* Ainout) {
   auto& A = *Ainout;
   const int cols = A.cols();
   const int rows = A.rows();
   for (int k = 0; k < cols; k++) {
-    double a = sqrt(A(k, k));
     for (int i = k; i < rows; i++) {
       for (int j = k + 1; j < std::min(i + 1, cols); j++) {
         A(i, j) -= A(i, k) * A(j, k);
@@ -178,7 +177,7 @@ void DenseLDLTInPlace(Eigen::Ref<Eigen::MatrixXd> A) {
 }
 
 
-//void PartialDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
+//void RectangularDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
 //                                 Eigen::Ref<MatrixXd> B) {
 //  const int n = A.rows();
 //
@@ -203,7 +202,7 @@ void DenseLDLTInPlace(Eigen::Ref<Eigen::MatrixXd> A) {
 //  }
 //}
 
-//void PartialDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
+//void RectangularDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
 //                                 Eigen::Ref<MatrixXd> B) {
 //  const int n = A.rows();
 //
@@ -243,9 +242,9 @@ void DenseLDLTInPlace(Eigen::Ref<Eigen::MatrixXd> A) {
 //
 //}
 
-void PartialDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
+void RectangularDenseLDLTInPlace(Eigen::Ref<MatrixXd> A,
                                  Eigen::Ref<MatrixXd> B) {
-//  PartialDenseCholeskyInPlace(A, B);
+//  RectangularDenseCholeskyInPlace(A, B);
 //  return;
   const int n = A.rows();
 

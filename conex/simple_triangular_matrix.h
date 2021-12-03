@@ -85,8 +85,6 @@ class SimpleTriangularMatrix {
   auto off_diagonal_blocks(int i) { return block_columns_[i].bottomRows(block_columns_[i].rows() -  block_column_sizes_[i]); }
 #endif
 
-
-
   void SetConstant(double c) {
     for (int i = 0; i < num_blocks_; ++i) {
       diagonal_blocks(i).setConstant(c);
@@ -157,31 +155,32 @@ class SimpleTriangularMatrix {
   class LLT {
    public:
     bool compute(bool factor_last_block = true, bool compute_ldlt = false);
-    Eigen::MatrixXd matrixL() { 
+    Eigen::MatrixXd matrixL() const { 
       if (factorization_ready_ != true) {
         throw std::runtime_error("Requested matrix not ready.");
       }
       Eigen::MatrixXd L = matrix_.MakeDenseMatrix();  
-
-      //Eigen::VectorXd d_sqrt = L.diagonal();
-      //L = L * d_sqrt.cwiseInverse().asDiagonal();
-
       if (vector_d_computed_) {
         L.diagonal().array() = 1;
       }
-
-
       return L;
     };
-    Eigen::VectorXd vectorD() { 
+    Eigen::VectorXd vectorD() const { 
       Eigen::MatrixXd L = matrix_.MakeDenseMatrix();  
-      //Eigen::VectorXd d_sqrt = L.diagonal();
-      //return d_sqrt.cwiseProduct(d_sqrt);
-
-       return matrix_.MakeDenseMatrix().diagonal();  
+      return matrix_.MakeDenseMatrix().diagonal();  
     };
-    void ApplyInverseOfL(Eigen::VectorXd* y);
-    void ApplyInverseOfLt(Eigen::VectorXd* y);
+    void ApplyInverseOfL(Eigen::VectorXd* y) const;
+    void ApplyInverseOfLt(Eigen::VectorXd* y) const;
+    void SolveInPlace(Eigen::VectorXd* y) const {
+      if (vector_d_computed_) {
+          ApplyInverseOfL(y);
+          *y = y->cwiseQuotient(vectorD());
+          ApplyInverseOfLt(y);
+      } else {
+          ApplyInverseOfL(y);
+          ApplyInverseOfLt(y);
+      }
+    }
 
    private:
     LLT(SimpleTriangularMatrix* matrix);
@@ -242,7 +241,7 @@ class BlockSparseSymmetricMatrix {
     bool compute(bool compute_ldlt = false);
     void ApplyInverseOfL(Eigen::VectorXd* y) { llt_.ApplyInverseOfL(y); }
     void ApplyInverseOfLt(Eigen::VectorXd* y) { llt_.ApplyInverseOfLt(y); }
-    Eigen::PermutationMatrix<-1> matrixP() {
+    Eigen::PermutationMatrix<-1> matrixP() const {
       Eigen::PermutationMatrix<-1> P(matrix_.elimination_position_to_variable_.size());
       P.indices() = Eigen::Map<const Eigen::VectorXi>(matrix_.elimination_position_to_variable_.data(), 
                                                       matrix_.elimination_position_to_variable_.size());
@@ -250,6 +249,11 @@ class BlockSparseSymmetricMatrix {
     }
     Eigen::MatrixXd matrixL() { return llt_.matrixL().triangularView<Eigen::Lower>(); }
     Eigen::VectorXd vectorD() { return llt_.vectorD(); } 
+    void SolveInPlace(Eigen::VectorXd* y) const {
+      Eigen::VectorXd y_permuted = matrixP().transpose() * (*y);
+      llt_.SolveInPlace(&y_permuted);
+      *y = matrixP() * y_permuted;
+    }
    private:
     LLT(BlockSparseSymmetricMatrix* matrix) : matrix_(*matrix), 
     llt_(matrix_.lower_triangular_matrix_.llt()) { }

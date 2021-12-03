@@ -16,7 +16,7 @@ namespace {
 
 class PartitionVectorIterator {
  public:
-  PartitionVectorIterator(VectorXd& b, int N, const std::vector<int>& sizes)
+  PartitionVectorIterator(VectorXd& b, int N, const vector<int>& sizes)
       : b_(b), N_(N), sizes_(sizes) {
     Reset();
   }
@@ -45,7 +45,7 @@ class PartitionVectorIterator {
   int size_i;
   VectorXd& b_;
   const int N_;
-  const std::vector<int>& sizes_;
+  const vector<int>& sizes_;
   void Set(int i) {
     if (i < 0) {
       assert(0);
@@ -61,7 +61,7 @@ class PartitionVectorIterator {
 
 class PartitionVectorForwardIterator {
  public:
-  PartitionVectorForwardIterator(VectorXd& b, const std::vector<int>& sizes)
+  PartitionVectorForwardIterator(VectorXd& b, const vector<int>& sizes)
       : b_(b), sizes_(sizes) {
     Reset();
   }
@@ -90,7 +90,7 @@ class PartitionVectorForwardIterator {
   int size_i_minus_1;
   int size_i;
   VectorXd& b_;
-  const std::vector<int>& sizes_;
+  const vector<int>& sizes_;
   void Set(int i) {
     if (i > 0) {
       assert(0);
@@ -116,28 +116,28 @@ vector<size_t> sort_indexes(const vector<T>& v) {
   return indices;
 }
 
-std::vector<int> CalculateBlockSizes(int num_blocks,
-                                     const std::vector<int>& enter,
-                                     const std::vector<int>& exit) {
-  std::vector<int> block_sizes(num_blocks, 0);
+vector<int> CalculateBlockSizes(int num_blocks,
+                                     const vector<int>& enter,
+                                     const vector<int>& exit) {
+  vector<int> block_sizes(num_blocks, 0);
   for (auto i : exit) {
-    block_sizes.at(i)++;
+    block_sizes[i]++;
   }
   return block_sizes;
 }
 
-std::vector<SimpleTriangularMatrixTriplet> MakeTripets(
-    const std::vector<int>& enter, const std::vector<int>& exit) {
-  std::vector<SimpleTriangularMatrixTriplet> triplets;
+vector<SimpleTriangularMatrixTriplet> MakeTripets(
+    const vector<int>& enter, const vector<int>& exit) {
+  vector<SimpleTriangularMatrixTriplet> triplets;
   for (size_t i = 0; i < exit.size(); i++) {
-    if (enter.at(i) != exit.at(i)) {
-      triplets.push_back({exit.at(i), enter.at(i), 1});
+    if (enter[i] != exit[i]) {
+      triplets.push_back({exit[i], enter[i], 1});
     }
   }
   return triplets;
 }
 
-using BlockData = std::vector<std::pair<int, int>>;
+using BlockData = vector<std::pair<int, int>>;
 template <typename T>
 class BlockMatrix {
  public:
@@ -153,7 +153,7 @@ class BlockMatrix {
   }
 
   bool GotoNextBlock() {
-    current_block_offset_ += blocks_.at(current_block_index_).second;
+    current_block_offset_ += blocks_[current_block_index_].second;
     current_block_index_++;
 
     if (current_block_index_ >= static_cast<int>(blocks_.size())) {
@@ -186,15 +186,15 @@ class BlockMatrix {
 }  // namespace
 
 BlockSparseSymmetricMatrix MakeBlockSparseMatrix(
-    const Eigen::MatrixXd& M, const vector<vector<int>>& cliques) {
+    const MatrixXd& M, const vector<vector<int>>& cliques) {
   int num_vars = M.rows();
 
   int num_cliques = cliques.size();
-  std::vector<int> enter(num_vars, -1);
-  std::vector<int> exit(num_vars, -1);
-  std::vector<int> block_sizes(num_cliques);
+  vector<int> enter(num_vars, -1);
+  vector<int> exit(num_vars, -1);
+  vector<int> block_sizes(num_cliques);
   for (size_t i = 0; i < cliques.size(); i++) {
-    for (auto n : cliques.at(i)) {
+    for (auto n : cliques[i]) {
       if (enter.at(n) == -1) {
         enter.at(n) = i;
         exit.at(n) = i;
@@ -215,8 +215,8 @@ bool BlockSparseSymmetricMatrix::LLT::compute(bool compute_ldlt) {
 }
 
 BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(
-    const int num_blocks, const std::vector<int>& start_block,
-    const std::vector<int>& end_block)
+    const int num_blocks, const vector<int>& start_block,
+    const vector<int>& end_block)
     : block_sizes_(CalculateBlockSizes(num_blocks, start_block, end_block)),
       elimination_position_to_variable_(start_block.size()),
       lower_triangular_matrix_(block_sizes_,
@@ -233,20 +233,20 @@ BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(
 }
 
 S::SimpleTriangularMatrix(
-    const std::vector<int>& block_column_sizes,
-    const std::vector<SimpleTriangularMatrixTriplet>& input_triplets)
+    const vector<int>& block_column_sizes,
+    const vector<SimpleTriangularMatrixTriplet>& input_triplets)
     : block_column_sizes_(block_column_sizes),
       off_diagonal_triplets_(input_triplets) {
   num_cols_ =
       std::accumulate(block_column_sizes.begin(), block_column_sizes.end(), 0);
   num_blocks_ = block_column_sizes.size();
 
-  std::vector<int> off_diagonal_size(num_blocks_, 0);
+  vector<int> off_diagonal_size(num_blocks_, 0);
   Eigen::MatrixXi M(num_blocks_, num_blocks_);
   M.setZero();
   for (auto s : input_triplets) {
     for (int i = s.block_col; i < s.block_row; i++) {
-      off_diagonal_size.at(i) += s.num_rows_entering;
+      off_diagonal_size[i] += s.num_rows_entering;
       M(s.block_row, i) += s.num_rows_entering;
     }
   }
@@ -272,7 +272,7 @@ S::SimpleTriangularMatrix(
   for (int i = 0; i < M.cols() - 1; i++) {
     for (int j = i + 1; j < M.rows(); j++) {
       if (M(j, i) > 0) {
-        off_diagonal_partition_.at(i).emplace_back(j, M(j, i));
+        off_diagonal_partition_[i].emplace_back(j, M(j, i));
       }
     }
   }
@@ -288,19 +288,19 @@ MatrixXd S::MakeDenseMatrix() const {
     offset += block_column_sizes_[i];
   }
 
-  std::vector<int> global_offsets(num_blocks_, 0);
+  vector<int> global_offsets(num_blocks_, 0);
   std::partial_sum(block_column_sizes_.begin(), block_column_sizes_.end() - 1,
                    global_offsets.begin() + 1);
 
   for (size_t i = 0; i < block_column_sizes_.size() - 1; i++) {
-    if (off_diagonal_partition_.at(i).size() > 0) {
+    if (off_diagonal_partition_[i].size() > 0) {
       BlockMatrix<const MatrixXd> block(off_diagonal_blocks(i),
-                                        off_diagonal_partition_.at(i));
+                                        off_diagonal_partition_[i]);
       do {
         int row_block = block.CurrentBlockNumber();
         int num_rows = block.CurrentBlockSize();
-        M.block(global_offsets.at(row_block), global_offsets.at(i), num_rows,
-                block_column_sizes_.at(i)) = block.CurrentBlock().transpose();
+        M.block(global_offsets[row_block], global_offsets[i], num_rows,
+                block_column_sizes_[i]) = block.CurrentBlock().transpose();
       } while (!block.GotoNextBlock());
     }
   }
@@ -328,7 +328,7 @@ void S::LLT::SchurComplementInPlace(int block) {
       int size_i = input_i.CurrentBlockSize();
       BlockMatrix<MatrixXd> output(
           matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
-          matrix_.off_diagonal_partition_.at(input_i.CurrentBlockNumber()));
+          matrix_.off_diagonal_partition_[input_i.CurrentBlockNumber()]);
       BlockMatrix<MatrixXd> input_j(matrix_.off_diagonal_blocks(block),
                                     input_block_info, i + 1);
       for (size_t j = i + 1; j < input_block_info.size(); j++) {
@@ -357,7 +357,7 @@ void S::LLT::SchurComplementInPlace(int block) {
       int size_i = input_i.CurrentBlockSize();
       BlockMatrix<MatrixXd> output(
           matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
-          matrix_.off_diagonal_partition_.at(input_i.CurrentBlockNumber()));
+          matrix_.off_diagonal_partition_[input_i.CurrentBlockNumber()]);
       BlockMatrix<MatrixXd> input_j(matrix_.off_diagonal_blocks(block),
                                     input_block_info, i + 1);
       for (size_t j = i + 1; j < input_block_info.size(); j++) {
@@ -381,21 +381,20 @@ void S::LLT::SchurComplementInPlace(int block) {
   }
 }
 
-
 bool S::LLT::compute(bool factor_last_block, bool compute_ldlt) {
   vector_d_computed_ = compute_ldlt;
   for (int i = 0; i < matrix_.num_blocks_ - 1; i++) {
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
       if (compute_ldlt) {
-        PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i),
+        RectangularDenseLDLTInPlace(matrix_.diagonal_blocks(i),
                                     matrix_.off_diagonal_blocks(i));
       } else {
-        PartialDenseCholeskyInPlace(matrix_.diagonal_blocks(i),
+        RectangularDenseCholeskyInPlace(matrix_.diagonal_blocks(i),
                                     matrix_.off_diagonal_blocks(i));
       }
     } else {
       if (compute_ldlt) {
-        PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i),
+        RectangularDenseLDLTInPlace(matrix_.diagonal_blocks(i),
                                     matrix_.off_diagonal_blocks(i));
       } else {
         DenseCholeskyInPlace(matrix_.diagonal_blocks(i));
@@ -408,8 +407,8 @@ bool S::LLT::compute(bool factor_last_block, bool compute_ldlt) {
   if (factor_last_block) {
       if (compute_ldlt) {
         int i = matrix_.num_blocks_ - 1;
-        Eigen::MatrixXd empty(0, 0);
-        PartialDenseLDLTInPlace(matrix_.diagonal_blocks(i), empty);
+        MatrixXd empty(0, 0);
+        RectangularDenseLDLTInPlace(matrix_.diagonal_blocks(i), empty);
       } else {
         DenseCholeskyInPlace(matrix_.diagonal_blocks(matrix_.num_blocks_ - 1));
       }
@@ -418,14 +417,11 @@ bool S::LLT::compute(bool factor_last_block, bool compute_ldlt) {
   return true;
 }
 
-
-
-
-void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
-                           const std::vector<std::pair<int, int>>& partition) {
+void S::IncrementSubmatrix(const MatrixXd& x,
+                           const vector<std::pair<int, int>>& partition) {
   int offset = 0;
   for (size_t i = 0; i < partition.size() - 1; i++) {
-    const auto& d = partition.at(i);
+    const auto& d = partition[i];
 
     diagonal_blocks(d.first).topLeftCorner(d.second, d.second).noalias() +=
         x.block(offset, offset, d.second, d.second);
@@ -433,9 +429,9 @@ void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
     int r_offset = offset + d.second;
 
     BlockMatrix<MatrixXd> blocks(off_diagonal_blocks(d.first),
-                                 off_diagonal_partition_.at(d.first));
+                                 off_diagonal_partition_[d.first]);
     for (size_t j = i + 1; j < partition.size(); j++) {
-      auto& o = partition.at(j);
+      auto& o = partition[j];
       blocks.GotoBlock(o.first);
       blocks.CurrentBlock().leftCols(o.second).topRows(d.second).noalias() +=
           x.block(r_offset, offset, o.second, d.second).transpose();
@@ -450,7 +446,7 @@ void S::IncrementSubmatrix(const Eigen::MatrixXd& x,
       x.block(offset, offset, d.second, d.second);
 }
 
-void S::LLT::ApplyInverseOfL(VectorXd* y) {
+void S::LLT::ApplyInverseOfL(VectorXd* y) const {
   PartitionVectorForwardIterator ypart(*y, matrix_.block_column_sizes_);
 
   for (int i = 0; i < matrix_.num_blocks() - 1; i++) {
@@ -464,11 +460,11 @@ void S::LLT::ApplyInverseOfL(VectorXd* y) {
       matrix_.diagonal_blocks(i).triangularView<Eigen::Lower>().solveInPlace(ypart.b_i());
     }
     if (matrix_.off_diagonal_blocks(i).size() > 0) {
-      BlockMatrix block(matrix_.off_diagonal_blocks(i), matrix_.off_diagonal_partition_.at(i));
+      BlockMatrix block(matrix_.off_diagonal_blocks(i), matrix_.off_diagonal_partition_[i]);
       do {
         int row_block = block.CurrentBlockNumber();
         int num_rows = block.CurrentBlockSize();
-        y->middleRows(global_offsets_.at(row_block), num_rows) -= block.CurrentBlock().transpose() * ypart.b_i();
+        y->middleRows(global_offsets_[row_block], num_rows) -= block.CurrentBlock().transpose() * ypart.b_i();
       } while (!block.GotoNextBlock());
     }
     ypart.Increment();
@@ -487,7 +483,7 @@ S::LLT::LLT(SimpleTriangularMatrix* matrix) : matrix_(*matrix),
 
     }
 
-void S::LLT::ApplyInverseOfLt(VectorXd* y) {
+void S::LLT::ApplyInverseOfLt(VectorXd* y) const {
   PartitionVectorIterator y_partitioned(*y, y->rows(),
                                         matrix_.block_sizes());
   PartitionVectorForwardIterator b_partitioned(*y, matrix_.block_sizes());
@@ -510,7 +506,7 @@ void S::LLT::ApplyInverseOfLt(VectorXd* y) {
     for (int j = 0; j < k; j++) {
       int size = 0;
       int offset = 0;
-      for (auto a : matrix_.off_diagonal_partition_.at(j))  {
+      for (auto a : matrix_.off_diagonal_partition_[j])  {
         if (a.first == k) {
           size = a.second;
           break;
@@ -519,7 +515,7 @@ void S::LLT::ApplyInverseOfLt(VectorXd* y) {
         }
       }
 
-      y->middleRows(global_offsets_.at(j), matrix_.block_sizes().at(j))-= matrix_.off_diagonal_blocks(j).middleCols(offset, size) 
+      y->middleRows(global_offsets_[j], matrix_.block_sizes()[j])-= matrix_.off_diagonal_blocks(j).middleCols(offset, size) 
                                                                    * y_partitioned.b_i().head(size);
       b_partitioned.Increment();
     }
@@ -537,19 +533,19 @@ void S::LLT::ApplyInverseOfLt(VectorXd* y) {
   }
 }
 
-void S::AssembleFromDenseMatrix(const Eigen::MatrixXd& A) {
+void S::AssembleFromDenseMatrix(const MatrixXd& A) {
   int c = 0;
 
-  std::vector<int> global_offsets(num_blocks_, 0);
+  vector<int> global_offsets(num_blocks_, 0);
   std::partial_sum(block_column_sizes_.begin(), block_column_sizes_.end() - 1,
                    global_offsets.begin() + 1);
 
   for (size_t i = 0; i < block_column_sizes_.size(); i++) {
-    int csize = block_column_sizes_.at(i);
+    int csize = block_column_sizes_[i];
     diagonal_blocks(i) = A.block(c, c, csize, csize);
     int r = 0;
-    for (auto& row : off_diagonal_partition_.at(i)) {
-      int r_offset = global_offsets.at(row.first);
+    for (auto& row : off_diagonal_partition_[i]) {
+      int r_offset = global_offsets[row.first];
       off_diagonal_blocks(i).middleCols(r, row.second) =
           A.block(r_offset, c, row.second, csize).transpose();
       r += row.second;
