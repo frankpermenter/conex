@@ -320,11 +320,12 @@ class WeightedInnerProducts : public InnerProducts {
  public:
   WeightedInnerProducts(const T& D) : D_(D) {} 
   void DecrementInnerProduct(const MatrixXd& X, const MatrixXd& Y, Eigen::Ref<MatrixXd> Z) override {
-    Z -= X.transpose() * D_ * Y;
+    Z -= X.transpose() * (D_.asDiagonal() * Y);
   }
  private:
-  const T& D_;
+  Eigen::Ref<const VectorXd> D_;
 };
+
 // Replace bottom right corner C_22 with  C22 - C12' inv(C11) C12.
 // We assume that (C11)^{-1/2} C12 has already been computed
 // and stored in the block C12.  The full matrix C starts
@@ -337,13 +338,11 @@ void S::LLT::SchurComplementInPlace(int block) {
  
   InnerProducts unweighted_inner_product;
 
-  const MatrixXd& D = matrix_.diagonal_blocks(block).diagonal().asDiagonal();
-  WeightedInnerProducts weighted_inner_product(D);
+  WeightedInnerProducts weighted_inner_product(matrix_.diagonal_blocks(block).diagonal());
   InnerProducts* inner_product = &unweighted_inner_product;
   if (vector_d_computed_) {
     inner_product = &weighted_inner_product;
   }
-   
 
   BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
                                 input_block_info);
