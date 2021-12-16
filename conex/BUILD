@@ -326,8 +326,7 @@ cc_test(
     srcs = [
         "test/simple_triangular_matrix_test.cc",
     ],
-    copts = [ "-Iexternal/gtest/include",
-        "-fopenmp", "-O3", "-DEIGEN_NO_DEBUG", "-ffast-math"],
+    copts = [ "-Iexternal/gtest/include", "-fopenmp"],
     linkopts = ["-fopenmp"],
     deps = [
         "simple_triangular_matrix",

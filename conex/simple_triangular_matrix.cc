@@ -308,6 +308,23 @@ MatrixXd S::MakeDenseMatrix() const {
   return M;
 }
 
+class InnerProducts {
+ public:
+  virtual void DecrementInnerProduct(const MatrixXd& X, const MatrixXd& Y, Eigen::Ref<MatrixXd> Z) {
+    Z -= X.transpose() * Y;
+  }
+};
+
+template<typename T>
+class WeightedInnerProducts : public InnerProducts {
+ public:
+  WeightedInnerProducts(const T& D) : D_(D) {} 
+  void DecrementInnerProduct(const MatrixXd& X, const MatrixXd& Y, Eigen::Ref<MatrixXd> Z) override {
+    Z -= X.transpose() * D_ * Y;
+  }
+ private:
+  const T& D_;
+};
 // Replace bottom right corner C_22 with  C22 - C12' inv(C11) C12.
 // We assume that (C11)^{-1/2} C12 has already been computed
 // and stored in the block C12.  The full matrix C starts
@@ -350,6 +367,9 @@ void S::LLT::SchurComplementInPlace(int block) {
         .topLeftCorner(size_i, size_i)
         .noalias() -= input_i.CurrentBlock().transpose() * D * input_i.CurrentBlock();
   } else {
+    InnerProducts unweighted_inner_product;
+    InnerProducts* inner_product = &unweighted_inner_product;
+
     BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
                                   input_block_info);
 
@@ -363,21 +383,25 @@ void S::LLT::SchurComplementInPlace(int block) {
       for (size_t j = i + 1; j < input_block_info.size(); j++) {
         int size_j = input_j.CurrentBlockSize();
         output.GotoBlock(input_j.CurrentBlockNumber());
-        output.CurrentBlock().topLeftCorner(size_i, size_j).noalias() -=
-            input_i.CurrentBlock().transpose()  * input_j.CurrentBlock();
+
+        inner_product->DecrementInnerProduct(
+            input_i.CurrentBlock(), input_j.CurrentBlock(),
+            output.CurrentBlock().topLeftCorner(size_i, size_j));
+
         input_j.GotoNextBlock();
       }
 
-      matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
-          .topLeftCorner(size_i, size_i)
-          .noalias() -=
-          input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
+    inner_product->DecrementInnerProduct(input_i.CurrentBlock(), input_i.CurrentBlock(),
+        matrix_.diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
+
+
       input_i.GotoNextBlock();
     }
     int size_i = input_i.CurrentBlockSize();
-    matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
-        .topLeftCorner(size_i, size_i)
-        .noalias() -= input_i.CurrentBlock().transpose() * input_i.CurrentBlock();
+
+    inner_product->DecrementInnerProduct(input_i.CurrentBlock(), input_i.CurrentBlock(), matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
+      .topLeftCorner(size_i, size_i));
+
   }
 }
 
