@@ -1,4 +1,6 @@
+
 #pragma once
+#define EIGEN_RUNTIME_NO_MALLOC
 #include <vector>
 
 #include <Eigen/Dense>

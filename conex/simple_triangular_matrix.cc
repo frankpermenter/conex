@@ -1,4 +1,6 @@
 #define CONEX_ENABLE_TIMER 1
+#define EIGEN_RUNTIME_NO_MALLOC
+
 #include "conex/simple_triangular_matrix.h"
 #include "conex/dense_triangular_factorizations.h"
 #include "conex/debug_macros.h"
@@ -9,6 +11,7 @@ namespace conex {
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+using Eigen::Ref;
 using S = SimpleTriangularMatrix;
 using std::vector;
 
@@ -310,8 +313,8 @@ MatrixXd S::MakeDenseMatrix() const {
 
 class InnerProducts {
  public:
-  virtual void DecrementInnerProduct(const MatrixXd& X, const MatrixXd& Y, Eigen::Ref<MatrixXd> Z) {
-    Z -= X.transpose() * Y;
+  virtual void DecrementInnerProduct(const Ref<const MatrixXd> X, Ref<const MatrixXd> Y, Eigen::Ref<MatrixXd> Z) {
+    Z.noalias() -= X.transpose() * Y;
   }
 };
 
@@ -319,8 +322,8 @@ template<typename T>
 class WeightedInnerProducts : public InnerProducts {
  public:
   WeightedInnerProducts(const T& D) : D_(D) {} 
-  void DecrementInnerProduct(const MatrixXd& X, const MatrixXd& Y, Eigen::Ref<MatrixXd> Z) override {
-    Z -= X.transpose() * (D_.asDiagonal() * Y);
+  void DecrementInnerProduct(const Ref<const MatrixXd> X, Ref<const MatrixXd> Y, Eigen::Ref<MatrixXd> Z) override {
+    Z.noalias() -= X.transpose() * (D_.asDiagonal() * Y);
   }
  private:
   Eigen::Ref<const VectorXd> D_;
@@ -342,6 +345,8 @@ void S::LLT::SchurComplementInPlace(int block) {
   InnerProducts* inner_product = &unweighted_inner_product;
   if (vector_d_computed_) {
     inner_product = &weighted_inner_product;
+  } else {
+    Eigen::internal::set_is_malloc_allowed(false);
   }
 
   BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
@@ -365,7 +370,7 @@ void S::LLT::SchurComplementInPlace(int block) {
       input_j.GotoNextBlock();
     }
 
-  inner_product->DecrementInnerProduct(input_i.CurrentBlock(), input_i.CurrentBlock(),
+    inner_product->DecrementInnerProduct(input_i.CurrentBlock(), input_i.CurrentBlock(),
       matrix_.diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
 
 
@@ -375,6 +380,8 @@ void S::LLT::SchurComplementInPlace(int block) {
 
   inner_product->DecrementInnerProduct(input_i.CurrentBlock(), input_i.CurrentBlock(), matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
     .topLeftCorner(size_i, size_i));
+
+    Eigen::internal::set_is_malloc_allowed(true);
 }
 
 bool S::LLT::compute(bool factor_last_block, bool compute_ldlt) {
