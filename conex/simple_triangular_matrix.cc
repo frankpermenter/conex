@@ -313,7 +313,6 @@ void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix& matrix_,
 
 }
 
-
 S::SimpleTriangularMatrix(
     const vector<int>& block_column_sizes,
     const vector<SimpleTriangularMatrixTriplet>& input_triplets)
