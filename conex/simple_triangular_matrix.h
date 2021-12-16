@@ -229,15 +229,13 @@ class SubmatrixUpdate {
   void UpdateSubmatrix(SimpleTriangularMatrix& matrix_, 
                        Eigen::Ref<const Eigen::MatrixXd> input, 
                        int column_block);
+
+  virtual ~SubmatrixUpdate() = default;
  private:
   virtual void DoUpdateOperation(const Eigen::Ref<const Eigen::MatrixXd> X, 
-                                     Eigen::Ref<const Eigen::MatrixXd> Y, 
-                                     Eigen::Ref<Eigen::MatrixXd> Z) {
-    Z.noalias() -= X.transpose() * Y;
-  }
-
+                                 int, int, int, int,
+                                     Eigen::Ref<Eigen::MatrixXd> Z) = 0;
 };
-
 
 
 

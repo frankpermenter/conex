@@ -17,10 +17,13 @@ using std::vector;
 
 namespace {
 
-
 class InnerProducts : public SubmatrixUpdate {
  public:
-  void DoUpdateOperation(const Ref<const MatrixXd> X, Ref<const MatrixXd> Y, Eigen::Ref<MatrixXd> Z) override {
+  void DoUpdateOperation(const Ref<const MatrixXd> input, int r, 
+                         int num_row, int c, int num_col, Eigen::Ref<MatrixXd> Z) override {
+
+    Ref<const MatrixXd> X = input.middleCols(r, num_row);
+    Ref<const MatrixXd> Y = input.middleCols(c, num_col);
     Z.noalias() -= X.transpose()  * Y;
   }
 };
@@ -29,7 +32,11 @@ class WeightedInnerProducts : public SubmatrixUpdate {
  public:
   template<typename T>
   WeightedInnerProducts(const T& D) : D_(D) {} 
-  void DoUpdateOperation(const Ref<const MatrixXd> X, Ref<const MatrixXd> Y, Eigen::Ref<MatrixXd> Z) override {
+  void DoUpdateOperation(const Ref<const MatrixXd> input, int r, 
+                         int num_row, int c, int num_col, Eigen::Ref<MatrixXd> Z) override {
+
+    Ref<const MatrixXd> X = input.middleCols(r, num_row);
+    Ref<const MatrixXd> Y = input.middleCols(c, num_col);
     Z.noalias() -= X.transpose() * (D_.asDiagonal() * Y);
   }
  private:
@@ -275,23 +282,34 @@ void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix& matrix_,
         int size_j = input_j.CurrentBlockSize();
         output.GotoBlock(input_j.CurrentBlockNumber());
 
-        this->DoUpdateOperation(
-            input_i.CurrentBlock(), input_j.CurrentBlock(),
+        this->DoUpdateOperation(partitioned_input,
+            input_i.CurrentBlockOffset(), 
+            input_i.CurrentBlockSize(),
+            input_j.CurrentBlockOffset(), 
+            input_j.CurrentBlockSize(),
             output.CurrentBlock().topLeftCorner(size_i, size_j));
 
         input_j.GotoNextBlock();
       }
 
-      this->DoUpdateOperation(input_i.CurrentBlock(), input_i.CurrentBlock(),
+        this->DoUpdateOperation(partitioned_input,
+            input_i.CurrentBlockOffset(), 
+            input_i.CurrentBlockSize(),
+            input_i.CurrentBlockOffset(), 
+            input_i.CurrentBlockSize(),
         matrix_.diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
 
 
       input_i.GotoNextBlock();
     }
 
-  int size_i = input_i.CurrentBlockSize();
-  this->DoUpdateOperation(input_i.CurrentBlock(), input_i.CurrentBlock(), matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
-    .topLeftCorner(size_i, size_i));
+    int size_i = input_i.CurrentBlockSize();
+        this->DoUpdateOperation(partitioned_input,
+            input_i.CurrentBlockOffset(), 
+            input_i.CurrentBlockSize(),
+            input_i.CurrentBlockOffset(), 
+            input_i.CurrentBlockSize(),
+                          matrix_.diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
 
 }
 
