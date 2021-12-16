@@ -258,17 +258,18 @@ BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(
             });
 }
 
-void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix& matrix_, int block) {
+void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix& matrix_, 
+                                      Ref<const MatrixXd> partitioned_input,
+                                      int block) {
     const BlockData& input_block_info = matrix_.off_diagonal_partition_[block];
-    BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
-                                  input_block_info);
+    BlockMatrix<const MatrixXd> input_i(partitioned_input, input_block_info);
 
     for (size_t i = 0; i < input_block_info.size() - 1; i++) {
       int size_i = input_i.CurrentBlockSize();
       BlockMatrix<MatrixXd> output(
           matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
           matrix_.off_diagonal_partition_[input_i.CurrentBlockNumber()]);
-      BlockMatrix<MatrixXd> input_j(matrix_.off_diagonal_blocks(block),
+      BlockMatrix<const MatrixXd> input_j(partitioned_input,
                                     input_block_info, i + 1);
       for (size_t j = i + 1; j < input_block_info.size(); j++) {
         int size_j = input_j.CurrentBlockSize();
@@ -382,11 +383,15 @@ void S::LLT::SchurComplementInPlace(int block) {
   }
   if (vector_d_computed_) {
     WeightedInnerProducts weighted_inner_product(matrix_.diagonal_blocks(block).diagonal());
-    weighted_inner_product.UpdateSubmatrix(matrix_, block);
+    weighted_inner_product.UpdateSubmatrix(matrix_, 
+                                           matrix_.off_diagonal_blocks(block),
+                                           block);
   } else {
     Eigen::internal::set_is_malloc_allowed(false);
     InnerProducts weighted_inner_product;
-    weighted_inner_product.UpdateSubmatrix(matrix_, block);
+    weighted_inner_product.UpdateSubmatrix(matrix_, 
+                                           matrix_.off_diagonal_blocks(block),
+                                           block);
     Eigen::internal::set_is_malloc_allowed(true);
   }
 }

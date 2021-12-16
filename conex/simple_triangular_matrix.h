@@ -226,7 +226,9 @@ class SimpleTriangularMatrix {
 
 class SubmatrixUpdate {
  public:
-  void UpdateSubmatrix(SimpleTriangularMatrix& matrix_, int block);
+  void UpdateSubmatrix(SimpleTriangularMatrix& matrix_, 
+                       Eigen::Ref<const Eigen::MatrixXd> input, 
+                       int column_block);
  private:
   virtual void DoUpdateOperation(const Eigen::Ref<const Eigen::MatrixXd> X, 
                                      Eigen::Ref<const Eigen::MatrixXd> Y, 
