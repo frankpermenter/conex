@@ -199,6 +199,8 @@ class SimpleTriangularMatrix {
 
   LLT llt() { return LLT(this); }
 
+  friend class SubmatrixUpdate;
+
  private:
 
 #if USE_SEPARATE_STORAGE
@@ -222,14 +224,33 @@ class SimpleTriangularMatrix {
 
 };
 
+class SubmatrixUpdate {
+ public:
+  void UpdateSubmatrix(SimpleTriangularMatrix& matrix_, int block);
+ private:
+  virtual void DoUpdateOperation(const Eigen::Ref<const Eigen::MatrixXd> X, 
+                                     Eigen::Ref<const Eigen::MatrixXd> Y, 
+                                     Eigen::Ref<Eigen::MatrixXd> Z) {
+    Z.noalias() -= X.transpose() * Y;
+  }
+
+};
 
 
+
+
+// A symmetric matrix whose columns are partitioned into a set of classes
+// specified by 'variable_to_class.' The classes are also ordered.  The non-zero rows of
+// each class are specified using this ordering.  Specifically, row i is nonzero
+// on each class k in between starting_class_of_row(i) and variable_to_class(i).  There exist a
+// permutation P for which lower_tri(M) is a simple triangular matrix. See
+// simple_triangular_matrix.h.
 class BlockSparseSymmetricMatrix {
  public:
   BlockSparseSymmetricMatrix(
-  const int num_blocks, 
-  const std::vector<int>& start_block,
-  const std::vector<int>& end_block);
+  const int num_classes, 
+  const std::vector<int>& starting_class_of_row,
+  const std::vector<int>& variable_to_class);
 
   void SetFromDenseMatrix(const Eigen::MatrixXd& M) {
     int num_vars = elimination_position_to_variable_.size();
@@ -238,6 +259,13 @@ class BlockSparseSymmetricMatrix {
     lower_triangular_matrix_.AssembleFromDenseMatrix(P.transpose()*M * P);
   }
 
+  Eigen::MatrixXd MakeDenseMatrix() const {
+    Eigen::PermutationMatrix<-1> P(elimination_position_to_variable_.size());
+    P.indices() = Eigen::Map<const Eigen::VectorXi>(elimination_position_to_variable_.data(), 
+                                                    elimination_position_to_variable_.size());
+    Eigen::MatrixXd mat = lower_triangular_matrix_.MakeDenseMatrix().selfadjointView<Eigen::Lower>();
+    return P * mat * P.transpose(); 
+  }
   class LLT {
    public:
     bool compute(bool compute_ldlt = false);

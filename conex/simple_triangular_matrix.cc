@@ -17,6 +17,26 @@ using std::vector;
 
 namespace {
 
+
+class InnerProducts : public SubmatrixUpdate {
+ public:
+  void DoUpdateOperation(const Ref<const MatrixXd> X, Ref<const MatrixXd> Y, Eigen::Ref<MatrixXd> Z) override {
+    Z.noalias() -= X.transpose()  * Y;
+  }
+};
+
+class WeightedInnerProducts : public SubmatrixUpdate {
+ public:
+  template<typename T>
+  WeightedInnerProducts(const T& D) : D_(D) {} 
+  void DoUpdateOperation(const Ref<const MatrixXd> X, Ref<const MatrixXd> Y, Eigen::Ref<MatrixXd> Z) override {
+    Z.noalias() -= X.transpose() * (D_.asDiagonal() * Y);
+  }
+ private:
+  Eigen::Ref<const VectorXd> D_;
+};
+
+
 class PartitionVectorIterator {
  public:
   PartitionVectorIterator(VectorXd& b, int N, const vector<int>& sizes)
@@ -186,6 +206,9 @@ class BlockMatrix {
   size_t current_block_offset_ = 0;
   int current_block_index_ = 0;
 };
+
+
+
 }  // namespace
 
 BlockSparseSymmetricMatrix MakeBlockSparseMatrix(
@@ -234,6 +257,43 @@ BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(
                       start_block[i] < start_block[j]);
             });
 }
+
+void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix& matrix_, int block) {
+    const BlockData& input_block_info = matrix_.off_diagonal_partition_[block];
+    BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
+                                  input_block_info);
+
+    for (size_t i = 0; i < input_block_info.size() - 1; i++) {
+      int size_i = input_i.CurrentBlockSize();
+      BlockMatrix<MatrixXd> output(
+          matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
+          matrix_.off_diagonal_partition_[input_i.CurrentBlockNumber()]);
+      BlockMatrix<MatrixXd> input_j(matrix_.off_diagonal_blocks(block),
+                                    input_block_info, i + 1);
+      for (size_t j = i + 1; j < input_block_info.size(); j++) {
+        int size_j = input_j.CurrentBlockSize();
+        output.GotoBlock(input_j.CurrentBlockNumber());
+
+        this->DoUpdateOperation(
+            input_i.CurrentBlock(), input_j.CurrentBlock(),
+            output.CurrentBlock().topLeftCorner(size_i, size_j));
+
+        input_j.GotoNextBlock();
+      }
+
+      this->DoUpdateOperation(input_i.CurrentBlock(), input_i.CurrentBlock(),
+        matrix_.diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
+
+
+      input_i.GotoNextBlock();
+    }
+
+  int size_i = input_i.CurrentBlockSize();
+  this->DoUpdateOperation(input_i.CurrentBlock(), input_i.CurrentBlock(), matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
+    .topLeftCorner(size_i, size_i));
+
+}
+
 
 S::SimpleTriangularMatrix(
     const vector<int>& block_column_sizes,
@@ -311,23 +371,6 @@ MatrixXd S::MakeDenseMatrix() const {
   return M;
 }
 
-class InnerProducts {
- public:
-  virtual void DecrementInnerProduct(const Ref<const MatrixXd> X, Ref<const MatrixXd> Y, Eigen::Ref<MatrixXd> Z) {
-    Z.noalias() -= X.transpose() * Y;
-  }
-};
-
-template<typename T>
-class WeightedInnerProducts : public InnerProducts {
- public:
-  WeightedInnerProducts(const T& D) : D_(D) {} 
-  void DecrementInnerProduct(const Ref<const MatrixXd> X, Ref<const MatrixXd> Y, Eigen::Ref<MatrixXd> Z) override {
-    Z.noalias() -= X.transpose() * (D_.asDiagonal() * Y);
-  }
- private:
-  Eigen::Ref<const VectorXd> D_;
-};
 
 // Replace bottom right corner C_22 with  C22 - C12' inv(C11) C12.
 // We assume that (C11)^{-1/2} C12 has already been computed
@@ -337,51 +380,15 @@ void S::LLT::SchurComplementInPlace(int block) {
   if (matrix_.off_diagonal_blocks(block).size() == 0) {
     return;
   }
-  const BlockData& input_block_info = matrix_.off_diagonal_partition_[block];
- 
-  InnerProducts unweighted_inner_product;
-
-  WeightedInnerProducts weighted_inner_product(matrix_.diagonal_blocks(block).diagonal());
-  InnerProducts* inner_product = &unweighted_inner_product;
   if (vector_d_computed_) {
-    inner_product = &weighted_inner_product;
+    WeightedInnerProducts weighted_inner_product(matrix_.diagonal_blocks(block).diagonal());
+    weighted_inner_product.UpdateSubmatrix(matrix_, block);
   } else {
     Eigen::internal::set_is_malloc_allowed(false);
-  }
-
-  BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
-                                input_block_info);
-
-  for (size_t i = 0; i < input_block_info.size() - 1; i++) {
-    int size_i = input_i.CurrentBlockSize();
-    BlockMatrix<MatrixXd> output(
-        matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
-        matrix_.off_diagonal_partition_[input_i.CurrentBlockNumber()]);
-    BlockMatrix<MatrixXd> input_j(matrix_.off_diagonal_blocks(block),
-                                  input_block_info, i + 1);
-    for (size_t j = i + 1; j < input_block_info.size(); j++) {
-      int size_j = input_j.CurrentBlockSize();
-      output.GotoBlock(input_j.CurrentBlockNumber());
-
-      inner_product->DecrementInnerProduct(
-          input_i.CurrentBlock(), input_j.CurrentBlock(),
-          output.CurrentBlock().topLeftCorner(size_i, size_j));
-
-      input_j.GotoNextBlock();
-    }
-
-    inner_product->DecrementInnerProduct(input_i.CurrentBlock(), input_i.CurrentBlock(),
-      matrix_.diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
-
-
-    input_i.GotoNextBlock();
-  }
-  int size_i = input_i.CurrentBlockSize();
-
-  inner_product->DecrementInnerProduct(input_i.CurrentBlock(), input_i.CurrentBlock(), matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
-    .topLeftCorner(size_i, size_i));
-
+    InnerProducts weighted_inner_product;
+    weighted_inner_product.UpdateSubmatrix(matrix_, block);
     Eigen::internal::set_is_malloc_allowed(true);
+  }
 }
 
 bool S::LLT::compute(bool factor_last_block, bool compute_ldlt) {
