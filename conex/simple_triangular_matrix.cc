@@ -335,74 +335,47 @@ void S::LLT::SchurComplementInPlace(int block) {
   }
   const BlockData& input_block_info = matrix_.off_diagonal_partition_[block];
  
+  InnerProducts unweighted_inner_product;
+
+  const MatrixXd& D = matrix_.diagonal_blocks(block).diagonal().asDiagonal();
+  WeightedInnerProducts weighted_inner_product(D);
+  InnerProducts* inner_product = &unweighted_inner_product;
   if (vector_d_computed_) {
-    const MatrixXd& D = matrix_.diagonal_blocks(block).diagonal().asDiagonal();
-   
-    BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
-                                  input_block_info);
-
-    for (size_t i = 0; i < input_block_info.size() - 1; i++) {
-      int size_i = input_i.CurrentBlockSize();
-      BlockMatrix<MatrixXd> output(
-          matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
-          matrix_.off_diagonal_partition_[input_i.CurrentBlockNumber()]);
-      BlockMatrix<MatrixXd> input_j(matrix_.off_diagonal_blocks(block),
-                                    input_block_info, i + 1);
-      for (size_t j = i + 1; j < input_block_info.size(); j++) {
-        int size_j = input_j.CurrentBlockSize();
-        output.GotoBlock(input_j.CurrentBlockNumber());
-        output.CurrentBlock().topLeftCorner(size_i, size_j).noalias() -=
-            input_i.CurrentBlock().transpose() * D * input_j.CurrentBlock();
-        input_j.GotoNextBlock();
-      }
-
-      matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
-          .topLeftCorner(size_i, size_i)
-          .noalias() -=
-          input_i.CurrentBlock().transpose() * D * input_i.CurrentBlock();
-      input_i.GotoNextBlock();
-    }
-    int size_i = input_i.CurrentBlockSize();
-    matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
-        .topLeftCorner(size_i, size_i)
-        .noalias() -= input_i.CurrentBlock().transpose() * D * input_i.CurrentBlock();
-  } else {
-    InnerProducts unweighted_inner_product;
-    InnerProducts* inner_product = &unweighted_inner_product;
-
-    BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
-                                  input_block_info);
-
-    for (size_t i = 0; i < input_block_info.size() - 1; i++) {
-      int size_i = input_i.CurrentBlockSize();
-      BlockMatrix<MatrixXd> output(
-          matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
-          matrix_.off_diagonal_partition_[input_i.CurrentBlockNumber()]);
-      BlockMatrix<MatrixXd> input_j(matrix_.off_diagonal_blocks(block),
-                                    input_block_info, i + 1);
-      for (size_t j = i + 1; j < input_block_info.size(); j++) {
-        int size_j = input_j.CurrentBlockSize();
-        output.GotoBlock(input_j.CurrentBlockNumber());
-
-        inner_product->DecrementInnerProduct(
-            input_i.CurrentBlock(), input_j.CurrentBlock(),
-            output.CurrentBlock().topLeftCorner(size_i, size_j));
-
-        input_j.GotoNextBlock();
-      }
-
-    inner_product->DecrementInnerProduct(input_i.CurrentBlock(), input_i.CurrentBlock(),
-        matrix_.diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
-
-
-      input_i.GotoNextBlock();
-    }
-    int size_i = input_i.CurrentBlockSize();
-
-    inner_product->DecrementInnerProduct(input_i.CurrentBlock(), input_i.CurrentBlock(), matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
-      .topLeftCorner(size_i, size_i));
-
+    inner_product = &weighted_inner_product;
   }
+   
+
+  BlockMatrix<MatrixXd> input_i(matrix_.off_diagonal_blocks(block),
+                                input_block_info);
+
+  for (size_t i = 0; i < input_block_info.size() - 1; i++) {
+    int size_i = input_i.CurrentBlockSize();
+    BlockMatrix<MatrixXd> output(
+        matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
+        matrix_.off_diagonal_partition_[input_i.CurrentBlockNumber()]);
+    BlockMatrix<MatrixXd> input_j(matrix_.off_diagonal_blocks(block),
+                                  input_block_info, i + 1);
+    for (size_t j = i + 1; j < input_block_info.size(); j++) {
+      int size_j = input_j.CurrentBlockSize();
+      output.GotoBlock(input_j.CurrentBlockNumber());
+
+      inner_product->DecrementInnerProduct(
+          input_i.CurrentBlock(), input_j.CurrentBlock(),
+          output.CurrentBlock().topLeftCorner(size_i, size_j));
+
+      input_j.GotoNextBlock();
+    }
+
+  inner_product->DecrementInnerProduct(input_i.CurrentBlock(), input_i.CurrentBlock(),
+      matrix_.diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
+
+
+    input_i.GotoNextBlock();
+  }
+  int size_i = input_i.CurrentBlockSize();
+
+  inner_product->DecrementInnerProduct(input_i.CurrentBlock(), input_i.CurrentBlock(), matrix_.diagonal_blocks(input_i.CurrentBlockNumber())
+    .topLeftCorner(size_i, size_i));
 }
 
 bool S::LLT::compute(bool factor_last_block, bool compute_ldlt) {
