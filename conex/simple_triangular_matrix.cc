@@ -19,27 +19,32 @@ namespace {
 
 class InnerProducts : public SubmatrixUpdate {
  public:
-  void DoUpdateOperation(const Ref<const MatrixXd> input, int r, 
+  InnerProducts(Ref<const MatrixXd> input) : input_(input) {}
+  void DoUpdateOperation(int r, 
                          int num_row, int c, int num_col, Eigen::Ref<MatrixXd> Z) override {
 
-    Ref<const MatrixXd> X = input.middleCols(r, num_row);
-    Ref<const MatrixXd> Y = input.middleCols(c, num_col);
+    Ref<const MatrixXd> X = input_.middleCols(r, num_row);
+    Ref<const MatrixXd> Y = input_.middleCols(c, num_col);
     Z.noalias() -= X.transpose()  * Y;
   }
+ private:
+  Ref<const MatrixXd> input_;
 };
 
 class WeightedInnerProducts : public SubmatrixUpdate {
  public:
   template<typename T>
-  WeightedInnerProducts(const T& D) : D_(D) {} 
-  void DoUpdateOperation(const Ref<const MatrixXd> input, int r, 
+  WeightedInnerProducts(Ref<const MatrixXd> input,
+      const T& D) : input_(input), D_(D) {} 
+  void DoUpdateOperation(int r, 
                          int num_row, int c, int num_col, Eigen::Ref<MatrixXd> Z) override {
 
-    Ref<const MatrixXd> X = input.middleCols(r, num_row);
-    Ref<const MatrixXd> Y = input.middleCols(c, num_col);
+    Ref<const MatrixXd> X = input_.middleCols(r, num_row);
+    Ref<const MatrixXd> Y = input_.middleCols(c, num_col);
     Z.noalias() -= X.transpose() * (D_.asDiagonal() * Y);
   }
  private:
+  Ref<const MatrixXd> input_;
   Eigen::Ref<const VectorXd> D_;
 };
 
@@ -215,6 +220,48 @@ class BlockMatrix {
 };
 
 
+class BlockIterator {
+ public:
+  BlockIterator(const BlockData& blocks) :  blocks_(blocks) {}
+
+  BlockIterator(const BlockData& blocks,
+              int initial_index)
+      :  blocks_(blocks) {
+    for (int i = 0; i < initial_index; i++) {
+      GotoNextBlock();
+    }
+  }
+
+  bool GotoNextBlock() {
+    current_block_offset_ += blocks_[current_block_index_].second;
+    current_block_index_++;
+
+    if (current_block_index_ >= static_cast<int>(blocks_.size())) {
+      return true;
+    }
+    return false;
+  }
+
+  void GotoBlock(int i) {
+    while (blocks_[current_block_index_].first != i) {
+      GotoNextBlock();
+    }
+  }
+
+  int CurrentBlockNumber() { return blocks_[current_block_index_].first; }
+
+  int CurrentBlockOffset() { return current_block_offset_; }
+
+  int CurrentBlockSize() { return blocks_[current_block_index_].second; }
+
+
+  const BlockData& blocks_;
+  size_t current_block_offset_ = 0;
+  int current_block_index_ = 0;
+};
+
+
+
 
 }  // namespace
 
@@ -266,23 +313,21 @@ BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(
 }
 
 void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix& matrix_, 
-                                      Ref<const MatrixXd> partitioned_input,
                                       int block) {
     const BlockData& input_block_info = matrix_.off_diagonal_partition_[block];
-    BlockMatrix<const MatrixXd> input_i(partitioned_input, input_block_info);
+    BlockIterator input_i(input_block_info);
 
     for (size_t i = 0; i < input_block_info.size() - 1; i++) {
       int size_i = input_i.CurrentBlockSize();
       BlockMatrix<MatrixXd> output(
           matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
           matrix_.off_diagonal_partition_[input_i.CurrentBlockNumber()]);
-      BlockMatrix<const MatrixXd> input_j(partitioned_input,
-                                    input_block_info, i + 1);
+      BlockIterator input_j(input_block_info, i + 1);
       for (size_t j = i + 1; j < input_block_info.size(); j++) {
         int size_j = input_j.CurrentBlockSize();
         output.GotoBlock(input_j.CurrentBlockNumber());
 
-        this->DoUpdateOperation(partitioned_input,
+        this->DoUpdateOperation(
             input_i.CurrentBlockOffset(), 
             input_i.CurrentBlockSize(),
             input_j.CurrentBlockOffset(), 
@@ -292,8 +337,7 @@ void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix& matrix_,
         input_j.GotoNextBlock();
       }
 
-        this->DoUpdateOperation(partitioned_input,
-            input_i.CurrentBlockOffset(), 
+        this->DoUpdateOperation(input_i.CurrentBlockOffset(), 
             input_i.CurrentBlockSize(),
             input_i.CurrentBlockOffset(), 
             input_i.CurrentBlockSize(),
@@ -304,7 +348,7 @@ void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix& matrix_,
     }
 
     int size_i = input_i.CurrentBlockSize();
-        this->DoUpdateOperation(partitioned_input,
+        this->DoUpdateOperation(
             input_i.CurrentBlockOffset(), 
             input_i.CurrentBlockSize(),
             input_i.CurrentBlockOffset(), 
@@ -399,16 +443,14 @@ void S::LLT::SchurComplementInPlace(int block) {
     return;
   }
   if (vector_d_computed_) {
-    WeightedInnerProducts weighted_inner_product(matrix_.diagonal_blocks(block).diagonal());
-    weighted_inner_product.UpdateSubmatrix(matrix_, 
-                                           matrix_.off_diagonal_blocks(block),
-                                           block);
+    WeightedInnerProducts weighted_inner_product(
+        matrix_.off_diagonal_blocks(block),
+        matrix_.diagonal_blocks(block).diagonal());
+    weighted_inner_product.UpdateSubmatrix(matrix_, block);
   } else {
     Eigen::internal::set_is_malloc_allowed(false);
-    InnerProducts weighted_inner_product;
-    weighted_inner_product.UpdateSubmatrix(matrix_, 
-                                           matrix_.off_diagonal_blocks(block),
-                                           block);
+    InnerProducts weighted_inner_product(matrix_.off_diagonal_blocks(block));
+    weighted_inner_product.UpdateSubmatrix(matrix_, block);
     Eigen::internal::set_is_malloc_allowed(true);
   }
 }

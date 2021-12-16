@@ -227,17 +227,12 @@ class SimpleTriangularMatrix {
 class SubmatrixUpdate {
  public:
   void UpdateSubmatrix(SimpleTriangularMatrix& matrix_, 
-                       Eigen::Ref<const Eigen::MatrixXd> input, 
                        int column_block);
 
   virtual ~SubmatrixUpdate() = default;
  private:
-  virtual void DoUpdateOperation(const Eigen::Ref<const Eigen::MatrixXd> X, 
-                                 int, int, int, int,
-                                     Eigen::Ref<Eigen::MatrixXd> Z) = 0;
+  virtual void DoUpdateOperation(int, int, int, int, Eigen::Ref<Eigen::MatrixXd> Z) = 0;
 };
-
-
 
 // A symmetric matrix whose columns are partitioned into a set of classes
 // specified by 'variable_to_class.' The classes are also ordered.  The non-zero rows of
