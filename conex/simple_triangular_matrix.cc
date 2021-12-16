@@ -312,16 +312,16 @@ BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(
             });
 }
 
-void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix& matrix_, 
+void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix* matrix, 
                                       int block) {
-    const BlockData& input_block_info = matrix_.off_diagonal_partition_[block];
+    const BlockData& input_block_info = matrix->off_diagonal_partition_[block];
     BlockIterator input_i(input_block_info);
 
     for (size_t i = 0; i < input_block_info.size() - 1; i++) {
       int size_i = input_i.CurrentBlockSize();
       BlockMatrix<MatrixXd> output(
-          matrix_.off_diagonal_blocks(input_i.CurrentBlockNumber()),
-          matrix_.off_diagonal_partition_[input_i.CurrentBlockNumber()]);
+          matrix->off_diagonal_blocks(input_i.CurrentBlockNumber()),
+          matrix->off_diagonal_partition_[input_i.CurrentBlockNumber()]);
       BlockIterator input_j(input_block_info, i + 1);
       for (size_t j = i + 1; j < input_block_info.size(); j++) {
         int size_j = input_j.CurrentBlockSize();
@@ -341,8 +341,7 @@ void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix& matrix_,
             input_i.CurrentBlockSize(),
             input_i.CurrentBlockOffset(), 
             input_i.CurrentBlockSize(),
-        matrix_.diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
-
+        matrix->diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
 
       input_i.GotoNextBlock();
     }
@@ -353,7 +352,7 @@ void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix& matrix_,
             input_i.CurrentBlockSize(),
             input_i.CurrentBlockOffset(), 
             input_i.CurrentBlockSize(),
-                          matrix_.diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
+                          matrix->diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
 
 }
 
@@ -446,11 +445,11 @@ void S::LLT::SchurComplementInPlace(int block) {
     WeightedInnerProducts weighted_inner_product(
         matrix_.off_diagonal_blocks(block),
         matrix_.diagonal_blocks(block).diagonal());
-    weighted_inner_product.UpdateSubmatrix(matrix_, block);
+    weighted_inner_product.UpdateSubmatrix(&matrix_, block);
   } else {
     Eigen::internal::set_is_malloc_allowed(false);
     InnerProducts weighted_inner_product(matrix_.off_diagonal_blocks(block));
-    weighted_inner_product.UpdateSubmatrix(matrix_, block);
+    weighted_inner_product.UpdateSubmatrix(&matrix_, block);
     Eigen::internal::set_is_malloc_allowed(true);
   }
 }

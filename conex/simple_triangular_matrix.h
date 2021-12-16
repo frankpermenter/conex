@@ -1,4 +1,3 @@
-
 #pragma once
 #define EIGEN_RUNTIME_NO_MALLOC
 #include <vector>
@@ -226,7 +225,7 @@ class SimpleTriangularMatrix {
 
 class SubmatrixUpdate {
  public:
-  void UpdateSubmatrix(SimpleTriangularMatrix& matrix_, 
+  void UpdateSubmatrix(SimpleTriangularMatrix* matrix, 
                        int column_block);
 
   virtual ~SubmatrixUpdate() = default;
