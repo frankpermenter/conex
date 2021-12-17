@@ -286,6 +286,8 @@ class BlockSparseSymmetricMatrix {
     SimpleTriangularMatrix::LLT llt_;
   };
 
+  void SetConstant(double value) { lower_triangular_matrix_.SetConstant(value); }
+  SimpleTriangularMatrix& storage() { return lower_triangular_matrix_; };
   LLT llt() { return LLT(this); }
   private:
    std::vector<int> block_sizes_;
@@ -298,6 +300,14 @@ class BlockSparseSymmetricMatrix {
 BlockSparseSymmetricMatrix MakeBlockSparseMatrix(const Eigen::MatrixXd& M, 
                                                         const std::vector<std::vector<int>>& cliques);
 
+void IncrementDenseSubmatrixWithInnerProducts(Eigen::Ref<const Eigen::MatrixXd> vectors, 
+                                              SimpleTriangularMatrix* matrix,
+                                              int block);
+
+
+void IncrementDenseSubmatrixFromMatrix(Eigen::Ref<const Eigen::MatrixXd> input, 
+                                       SimpleTriangularMatrix* matrix,
+                                       int block);
 
 
 }  // namespace conex

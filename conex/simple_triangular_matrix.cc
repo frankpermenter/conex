@@ -20,16 +20,44 @@ namespace {
 class InnerProducts : public SubmatrixUpdate {
  public:
   InnerProducts(Ref<const MatrixXd> input) : input_(input) {}
-  void DoUpdateOperation(int r, 
-                         int num_row, int c, int num_col, Eigen::Ref<MatrixXd> Z) override {
+  void DoUpdateOperation(int row_offset, 
+                         int num_row, int col_offset, int num_col, Eigen::Ref<MatrixXd> Z) override {
 
-    Ref<const MatrixXd> X = input_.middleCols(r, num_row);
-    Ref<const MatrixXd> Y = input_.middleCols(c, num_col);
+    Ref<const MatrixXd> X = input_.middleCols(row_offset, num_row);
+    Ref<const MatrixXd> Y = input_.middleCols(col_offset, num_col);
     Z.noalias() -= X.transpose()  * Y;
   }
  private:
   Ref<const MatrixXd> input_;
 };
+
+class IncrementByMatrix : public SubmatrixUpdate {
+ public:
+  IncrementByMatrix(Ref<const MatrixXd> input) : input_(input) {}
+  void DoUpdateOperation(int row_offset, 
+                         int num_row, int col_offset, int num_col, Eigen::Ref<MatrixXd> Z) override {
+    Z.noalias() += input_.block(row_offset, col_offset, num_row,  num_col);
+  }
+ private:
+  Ref<const MatrixXd> input_;
+};
+
+class IncrementByDotProduct : public SubmatrixUpdate {
+ public:
+  IncrementByDotProduct(Ref<const MatrixXd> input) : input_(input) {}
+  void DoUpdateOperation(int r, 
+                         int num_row, int c, int num_col, Eigen::Ref<MatrixXd> Z) override {
+
+    Ref<const MatrixXd> X = input_.middleCols(r, num_row);
+    Ref<const MatrixXd> Y = input_.middleCols(c, num_col);
+    Z.noalias() += X.transpose()  * Y;
+  }
+ private:
+  Ref<const MatrixXd> input_;
+};
+
+
+
 
 class WeightedInnerProducts : public SubmatrixUpdate {
  public:
@@ -624,6 +652,48 @@ void S::AssembleFromDenseMatrix(const MatrixXd& A) {
       r += row.second;
     }
     c += csize;
+  }
+}
+
+void IncrementDenseSubmatrixWithInnerProducts(Ref<const MatrixXd> vectors, 
+                                            SimpleTriangularMatrix* matrix,
+                                            int block) {
+  int n = matrix->block_sizes()[block];
+  int m = 0; 
+  if (block < matrix->num_blocks() - 1) {
+    m = matrix->num_off_diagonal_rows(block);
+  }
+  if (m > 0) {
+    IncrementByDotProduct ip(vectors);
+    ip.UpdateSubmatrix(matrix, block);
+  }
+  
+  if (n > 0) {
+    matrix->diagonal_blocks(block) = vectors.leftCols(n).transpose() * vectors.leftCols(n);
+    if (m > 0) {
+      matrix->off_diagonal_blocks(block) = vectors.leftCols(n).transpose() * vectors.rightCols(m);
+    }
+  }
+}
+
+void IncrementDenseSubmatrixFromMatrix(Ref<const MatrixXd> input, 
+                                       SimpleTriangularMatrix* matrix,
+                                       int block) {
+  int n = matrix->block_sizes()[block];
+  int m = 0; 
+  if (block < matrix->num_blocks() - 1) {
+    m = matrix->num_off_diagonal_rows(block);
+  }
+  if (m > 0) {
+    IncrementByMatrix ip(input);
+    ip.UpdateSubmatrix(matrix, block);
+  }
+  
+  if (n > 0) {
+    matrix->diagonal_blocks(block) = input.topLeftCorner(n, n);
+    if (m > 0) {
+      matrix->off_diagonal_blocks(block) = input.bottomLeftCorner(m, n).transpose();
+    }
   }
 }
 

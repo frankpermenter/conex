@@ -42,6 +42,23 @@ void DoBlockCholeskyTest(const Eigen::MatrixXd& M,
   VectorXd Ltx = L_ref.transpose() * x;
   llt_calc.ApplyInverseOfLt(&Ltx);
   EXPECT_NEAR((Ltx - x).norm(), 0, 1e-12);
+
+  for (size_t i = 0; i < cliques.size(); i++) {
+    b.SetConstant(0);
+    int n = cliques.at(i).size();
+    MatrixXd V = MatrixXd::Random(4, n);
+    IncrementDenseSubmatrixWithInnerProducts(V, &b.storage(), i);
+  }
+
+  for (size_t i = 0; i < cliques.size(); i++) {
+    b.SetConstant(0);
+    int n = cliques.at(i).size();
+    MatrixXd V = MatrixXd::Random(n, n);
+    V.diagonal().setConstant(4);
+    IncrementDenseSubmatrixFromMatrix(V, &b.storage(), i);
+  }
+
+
 }
 
 void DoBlockLDLTTest(const Eigen::MatrixXd& M,
