@@ -59,6 +59,7 @@ struct SimpleTriangularMatrixTriplet {
   int num_rows_entering;
 };
 
+
 #define USE_SEPARATE_STORAGE 1
 class SimpleTriangularMatrix {
  public:
@@ -233,18 +234,19 @@ class SubmatrixUpdate {
   virtual void DoUpdateOperation(int, int, int, int, Eigen::Ref<Eigen::MatrixXd> Z) = 0;
 };
 
-// A symmetric matrix whose columns are partitioned into a set of classes
-// specified by 'variable_to_class.' The classes are also ordered.  The non-zero rows of
-// each class are specified using this ordering.  Specifically, row i is nonzero
-// on each class k in between starting_class_of_row(i) and variable_to_class(i).  There exist a
-// permutation P for which lower_tri(M) is a simple triangular matrix. See
-// simple_triangular_matrix.h.
+// A symmetric matrix whose rows are partitioned into a set of classes \{0, 1,
+// num_classes - 1}.  Column j is non-zero on row i if
+//
+//    variable_to_starting_class(j) <= class(i) <= variable_to_exiting_class(j)
+//
+// Equivalently, there exist a permutation P for which lower_tri(M) is a
+// conex::SimpleTriangularMatrix. 
 class BlockSparseSymmetricMatrix {
  public:
   BlockSparseSymmetricMatrix(
   const int num_classes, 
-  const std::vector<int>& starting_class_of_row,
-  const std::vector<int>& variable_to_class);
+  const std::vector<int>& variable_to_starting_class,
+  const std::vector<int>& variable_to_exiting_class);
 
   void SetFromDenseMatrix(const Eigen::MatrixXd& M) {
     int num_vars = elimination_position_to_variable_.size();
@@ -292,7 +294,10 @@ class BlockSparseSymmetricMatrix {
   private:
    std::vector<int> block_sizes_;
    std::vector<int> elimination_position_to_variable_;
+   std::vector<int> variable_to_start_class_;
+   std::vector<int> variable_to_exiting_class_;
    SimpleTriangularMatrix lower_triangular_matrix_;
+   bool IsVariableIEliminatedBeforeJ(int i, int j) const;
 
   friend class LLT;
 };

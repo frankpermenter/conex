@@ -322,21 +322,27 @@ bool BlockSparseSymmetricMatrix::LLT::compute(bool compute_ldlt) {
   return true;
 }
 
+bool BlockSparseSymmetricMatrix::IsVariableIEliminatedBeforeJ(int i, int j) const {
+  return (variable_to_exiting_class_[i] < variable_to_exiting_class_[j]) ||
+         (variable_to_exiting_class_[i] == variable_to_exiting_class_[j] &&
+          variable_to_start_class_[i] < variable_to_start_class_[j]);
+}
+
 BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(
     const int num_blocks, const vector<int>& start_block,
     const vector<int>& end_block)
     : block_sizes_(CalculateBlockSizes(num_blocks, start_block, end_block)),
       elimination_position_to_variable_(start_block.size()),
+      variable_to_start_class_(start_block),
+      variable_to_exiting_class_(end_block),
       lower_triangular_matrix_(block_sizes_,
                                MakeTripets(start_block, end_block)) {
   std::iota(elimination_position_to_variable_.begin(),
             elimination_position_to_variable_.end(), 0);
   std::sort(elimination_position_to_variable_.begin(),
             elimination_position_to_variable_.end(),
-            [start_block, end_block](const int& i, const int& j) {
-              return (end_block[i] < end_block[j]) ||
-                     (end_block[i] == end_block[j] &&
-                      start_block[i] < start_block[j]);
+            [*this](const int& i, const int& j) {
+            return this->IsVariableIEliminatedBeforeJ(i, j);
             });
 }
 
