@@ -144,10 +144,8 @@ void DoAssemblyTest(const std::vector<int>& block_sizes,
   SimpleTriangularMatrix mat(block_sizes, triplets);
   mat.SetConstant(0);
 
-  DUMP(block_sizes);
-  MatrixXd ref = mat.MakeDenseMatrix();
   vector<int> variables;
-  int offset = 0;
+  int offset = 1;
   for (auto b : block_sizes) {
     variables.push_back(offset);
     offset += b;
@@ -155,11 +153,14 @@ void DoAssemblyTest(const std::vector<int>& block_sizes,
   vector<SimpleTriangularMatrix::VariableSegment> partition;
   mat.GetBlockPartitionOfVariables(variables, &partition);
   for (auto& p : partition) {
-    mat.diagonal_blocks(p.block).diagonal().segment(p.offset, p.size).setConstant(p.block + 1.0);
+    mat.diagonal_blocks(p.block).diagonal().segment(p.offset, p.size).setConstant(1);
   }
   MatrixXd matrix = mat.MakeDenseMatrix();
-  DUMP(mat.off_diagonal_blocks(1, 2));
-  DUMP(mat.off_diagonal_blocks(0, 2));
+  MatrixXd ref = matrix * 0;
+  for (auto v: variables) {
+    ref(v, v) = 1; 
+  }
+  EXPECT_EQ((matrix - ref).norm(), 0.0);
 }
 
 

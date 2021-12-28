@@ -806,15 +806,14 @@ void S::GetBlockPartitionOfVariables(const std::vector<int>& variables_sorted_in
 
 std::pair<int, int> S::GetColumnBlockAndPositionOfVariable(int var, int start_block) const {
     std::pair<int, int> y;
-    int& block = y.first;
-    int& pos = y.second;
-
-    block = start_block;
     int offset = 0;
     int next_offset = 0;
-    DUMP(var);
     bool found = false;
-    for (size_t i = 0; i < block_column_sizes_.size(); ++i) {
+    for (size_t i = 0; i < start_block; i++) {
+      offset += block_column_sizes_[i];
+    }
+
+    for (size_t i = start_block; i < block_column_sizes_.size(); ++i) {
       next_offset = offset + block_column_sizes_[i];
       if (var < next_offset) {
         found = true;
