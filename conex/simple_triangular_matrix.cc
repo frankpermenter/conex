@@ -225,14 +225,14 @@ class BlockMatrix {
   //  return false;
   //}
 
-  //bool GotoBlock(int i) {
-  //  while (blocks_.at(current_block_index_).first != i) {
-  //    if (!GotoNextBlock()) {
-  //      return false;
-  //    }
-  //  }
-  //  return true;
-  //}
+  bool GotoBlock(int i) {
+    while (blocks_.at(current_block_index_).first != i) {
+      if (GotoNextBlock()) {
+        return false;
+      }
+    }
+    return true;
+  }
 
   bool GotoNextBlock() {
     current_block_offset_ += blocks_[current_block_index_].second;
@@ -244,11 +244,11 @@ class BlockMatrix {
     return false;
   }
 
-  void GotoBlock(int i) {
-    while (blocks_[current_block_index_].first != i) {
-      GotoNextBlock();
-    }
-  }
+  //void GotoBlock(int i) {
+  //  while (blocks_[current_block_index_].first != i) {
+  //    GotoNextBlock();
+  //  }
+  //}
 
 
 
