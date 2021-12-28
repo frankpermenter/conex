@@ -83,10 +83,6 @@ void DoBlockLDLTTest(const Eigen::MatrixXd& M,
   EXPECT_NEAR((Ltx - x).norm(), 0, 1e-12);
 }
 
-
-
-
-
 vector<Eigen::MatrixXd> GetCompressedBlockColumns(
     const MatrixXd& Ref, const std::vector<int> block_sizes) {
   vector<Eigen::MatrixXd> y(block_sizes.size());
@@ -145,11 +141,16 @@ void DoAssemblyTest(const std::vector<int>& block_sizes,
   mat.SetConstant(0);
 
   vector<int> variables;
-  int offset = 1;
+  int offset = 0;
   for (auto b : block_sizes) {
-    variables.push_back(offset);
+    for (int i = 0; i < b; i++) {
+      if ((i % 3) != 0 ) {
+        variables.push_back(offset + i);
+      }
+    }
     offset += b;
   }
+
   vector<SimpleTriangularMatrix::VariableSegment> partition;
   mat.GetBlockPartitionOfVariables(variables, &partition);
   for (auto& p : partition) {
@@ -169,7 +170,7 @@ void DoAssemblyTest(const std::vector<int>& block_sizes,
 }  // namespace
 
 GTEST_TEST(SimpleTri, Assembly) {
-  std::vector<int> block_sizes{2, 2, 2};
+  std::vector<int> block_sizes{3, 8, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
   DoAssemblyTest(block_sizes, triplets);
 }

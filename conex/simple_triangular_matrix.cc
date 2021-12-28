@@ -813,7 +813,7 @@ std::pair<int, int> S::GetColumnBlockAndPositionOfVariable(int var, int start_bl
       offset += block_column_sizes_[i];
     }
 
-    for (size_t i = start_block; i < block_column_sizes_.size(); ++i) {
+    for (size_t i = static_cast<int>(start_block); i < block_column_sizes_.size(); ++i) {
       next_offset = offset + block_column_sizes_[i];
       if (var < next_offset) {
         found = true;
@@ -830,8 +830,5 @@ std::pair<int, int> S::GetColumnBlockAndPositionOfVariable(int var, int start_bl
     }
     return y; 
 }
-
-
-
 
 }  // namespace conex
