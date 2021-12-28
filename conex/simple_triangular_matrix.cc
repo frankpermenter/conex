@@ -791,15 +791,25 @@ void S::GetBlockPartitionOfVariables(const std::vector<int>& variables_sorted_in
   segments->reserve(variables_sorted_increasing.size());
   segments->emplace_back(GetColumnBlockAndPositionOfVariable(current_var, 0).first,
                          GetColumnBlockAndPositionOfVariable(current_var, 0).second, 1);
+
+  int current_block_end = std::accumulate(block_column_sizes_.begin(),
+                                          block_column_sizes_.begin() 
+                                          + segments->back().block + 1, 
+                                          0);
+
   for (size_t i = 1; i < variables_sorted_increasing.size(); i++) {
     current_var = variables_sorted_increasing[i];
-    auto block_and_offset = GetColumnBlockAndPositionOfVariable(current_var, segments->back().block);
-    if (segments->back().block == block_and_offset.first &&
-        segments->back().offset + 1 == block_and_offset.second) {
-        segments->back().size++;
-    } else {
-      segments->emplace_back(block_and_offset.first, block_and_offset.second, 1);
+    if (current_var == variables_sorted_increasing[i - 1] + 1 && 
+        current_var < current_block_end) {
+      segments->back().size++;
+      continue;
     }
+    auto block_and_offset = GetColumnBlockAndPositionOfVariable(current_var, segments->back().block);
+    segments->emplace_back(block_and_offset.first, block_and_offset.second, 1);
+    current_block_end = std::accumulate(block_column_sizes_.begin(),
+                                          block_column_sizes_.begin() 
+                                          + segments->back().block + 1, 
+                                          0);
   }
 }
 
@@ -809,7 +819,7 @@ std::pair<int, int> S::GetColumnBlockAndPositionOfVariable(int var, int start_bl
     int offset = 0;
     int next_offset = 0;
     bool found = false;
-    for (size_t i = 0; i < start_block; i++) {
+    for (int i = 0; i < start_block; i++) {
       offset += block_column_sizes_[i];
     }
 
