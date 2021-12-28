@@ -120,7 +120,6 @@ void DoTest(const std::vector<int>& block_sizes,
 
   EXPECT_NEAR((mat.MakeDenseMatrix() - Ref).norm(), 0, eps);
 
-
   EXPECT_NEAR((mat.MakeDenseMatrix() - Ref).norm(), 0, eps);
   SimpleTriangularMatrix::LLT llt = mat.llt();
   llt.compute();
@@ -128,7 +127,6 @@ void DoTest(const std::vector<int>& block_sizes,
   MatrixXd L_ref = Eigen::LLT<MatrixXd>(Ref).matrixL();
   MatrixXd error = (llt_calc - L_ref).triangularView<Eigen::Lower>();
   EXPECT_NEAR(error.norm(), 0, eps);
-
 
   VectorXd x;
   x.setLinSpaced(L_ref.cols(), -1, 1.1);
@@ -139,11 +137,44 @@ void DoTest(const std::vector<int>& block_sizes,
   VectorXd Ltx = L_ref.transpose() * x;
   llt.ApplyInverseOfLt(&Ltx);
   EXPECT_NEAR((Ltx - x).norm(), 0, 1e-12);
-
 }
 
+void DoAssemblyTest(const std::vector<int>& block_sizes,
+            const std::vector<SimpleTriangularMatrixTriplet>& triplets) {
+  SimpleTriangularMatrix mat(block_sizes, triplets);
+  mat.SetConstant(0);
+
+  DUMP(block_sizes);
+  MatrixXd ref = mat.MakeDenseMatrix();
+  vector<int> variables;
+  int offset = 0;
+  for (auto b : block_sizes) {
+    variables.push_back(offset);
+    offset += b;
+  }
+  vector<SimpleTriangularMatrix::VariableSegment> partition;
+  mat.GetBlockPartitionOfVariables(variables, &partition);
+  for (auto& p : partition) {
+    mat.diagonal_blocks(p.block).diagonal().segment(p.offset, p.size).setConstant(p.block + 1.0);
+  }
+  MatrixXd matrix = mat.MakeDenseMatrix();
+  DUMP(mat.off_diagonal_blocks(0, 2));
+  DUMP(mat.off_diagonal_blocks(1, 2));
+}
+
+
+
+
 }  // namespace
-#if 1
+
+GTEST_TEST(SimpleTri, Assembly) {
+  std::vector<int> block_sizes{2, 2, 2};
+  std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 1, 2}};
+  DoAssemblyTest(block_sizes, triplets);
+}
+
+
+#if 0
 GTEST_TEST(SimpleTri, Construct) {
   std::vector<int> block_sizes{2, 2, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};

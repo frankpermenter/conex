@@ -87,6 +87,9 @@ class SimpleTriangularMatrix {
   auto off_diagonal_blocks(int i) { return block_columns_[i].bottomRows(block_columns_[i].rows() -  block_column_sizes_[i]); }
 #endif
 
+  Eigen::Ref<Eigen::MatrixXd> submatrix(int i, int j);
+  Eigen::Ref<const Eigen::MatrixXd> submatrix(int i, int j) const;
+
   void SetConstant(double c) {
     for (int i = 0; i < num_blocks_; ++i) {
       diagonal_blocks(i).setConstant(c);
@@ -95,6 +98,10 @@ class SimpleTriangularMatrix {
       off_diagonal_blocks(i).setConstant(c);
     }
   }
+
+  Eigen::Ref<Eigen::MatrixXd> off_diagonal_blocks(int i, int j);
+
+
 
   int cols() const { return num_cols_; }
   const std::vector<int>& block_sizes() const { return block_column_sizes_; }
@@ -130,6 +137,18 @@ class SimpleTriangularMatrix {
     diagonal_blocks(x.size() - 1) = x.back();
   }
 
+  std::pair<int, int> GetColumnBlockAndPositionOfVariable(int var, int start_block) const;
+
+  struct VariableSegment {
+    int block = 0;
+    int offset = 0;
+    int size = 0;
+    VariableSegment(int i, int j, int k) : block(i), offset(j), size(k) {}
+  };
+
+  void GetBlockPartitionOfVariables(const std::vector<int>& variables_sorted_increasing,
+                                    std::vector<VariableSegment>* segments);
+
   void AssembleFromDenseMatrix(const Eigen::MatrixXd& A);
 
   /* Increments a submatrix X of the full matrix T. The block X_{ij} is assigned
@@ -147,10 +166,7 @@ class SimpleTriangularMatrix {
 
   void IncrementLeafSubmatrix(const Eigen::MatrixXd& submatrix) {
     std::vector<std::pair<int, int>> submatrix_partition;
-    submatrix_partition.push_back(std::pair<int, int>(0,  diagonal_blocks(0).rows()  ));
-    //for (auto e : off_diagonal_partition_.at(0)) {
-    //  submatrix_partition.push_back(e);
-    //}
+    submatrix_partition.push_back(std::pair<int, int>(0,  diagonal_blocks(0).rows()));
     IncrementSubmatrix(submatrix, submatrix_partition);
   }
 
@@ -219,9 +235,6 @@ class SimpleTriangularMatrix {
   // Indicates that block column i contains off_diagonal_partition_.at(i).second
   // rows of block row off_diagonal_partition_.at(i).first.
   std::vector<std::vector<std::pair<int, int>>> off_diagonal_partition_;
-
-
-
 };
 
 class SubmatrixUpdate {
@@ -262,6 +275,7 @@ class BlockSparseSymmetricMatrix {
     Eigen::MatrixXd mat = lower_triangular_matrix_.MakeDenseMatrix().selfadjointView<Eigen::Lower>();
     return P * mat * P.transpose(); 
   }
+
   class LLT {
    public:
     bool compute(bool compute_ldlt = false);
@@ -288,6 +302,8 @@ class BlockSparseSymmetricMatrix {
     SimpleTriangularMatrix::LLT llt_;
   };
 
+  std::vector<int> SortByEliminationOrder(const std::vector<int>& x);
+
   void SetConstant(double value) { lower_triangular_matrix_.SetConstant(value); }
   SimpleTriangularMatrix& storage() { return lower_triangular_matrix_; };
   LLT llt() { return LLT(this); }
@@ -298,6 +314,7 @@ class BlockSparseSymmetricMatrix {
    std::vector<int> variable_to_exiting_class_;
    SimpleTriangularMatrix lower_triangular_matrix_;
    bool IsVariableIEliminatedBeforeJ(int i, int j) const;
+   std::vector<int> RankByEliminationOrder(const std::vector<int>& x);
 
   friend class LLT;
 };

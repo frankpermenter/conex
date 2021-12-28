@@ -215,6 +215,25 @@ class BlockMatrix {
     }
   }
 
+  //bool GotoNextBlock() {
+  //  current_block_offset_ += blocks_[current_block_index_].second;
+  //  current_block_index_++;
+
+  //  if (current_block_index_ < static_cast<int>(blocks_.size())) {
+  //    return true;
+  //  }
+  //  return false;
+  //}
+
+  //bool GotoBlock(int i) {
+  //  while (blocks_.at(current_block_index_).first != i) {
+  //    if (!GotoNextBlock()) {
+  //      return false;
+  //    }
+  //  }
+  //  return true;
+  //}
+
   bool GotoNextBlock() {
     current_block_offset_ += blocks_[current_block_index_].second;
     current_block_index_++;
@@ -230,6 +249,8 @@ class BlockMatrix {
       GotoNextBlock();
     }
   }
+
+
 
   int CurrentBlockNumber() { return blocks_[current_block_index_].first; }
 
@@ -346,6 +367,28 @@ BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(
             });
 }
 
+vector<int> BlockSparseSymmetricMatrix::RankByEliminationOrder(const std::vector<int>& x) {
+  vector<int> y(x.size());
+  std::iota(y.begin(),
+            y.end(), 0);
+  std::sort(y.begin(),
+            y.end(),
+            [*this, x](const int& i, const int& j) {
+            return this->IsVariableIEliminatedBeforeJ(x[i], x[j]);
+            });
+  return y;
+}
+
+vector<int> BlockSparseSymmetricMatrix::SortByEliminationOrder(const std::vector<int>& x) {
+  vector<int> y = x;
+  std::sort(y.begin(),
+            y.end(),
+            [*this, x](const int& i, const int& j) {
+            return this->IsVariableIEliminatedBeforeJ(x[i], x[j]);
+            });
+  return y;
+}
+
 void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix* matrix, 
                                       int block) {
     const BlockData& input_block_info = matrix->off_diagonal_partition_[block];
@@ -388,6 +431,17 @@ void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix* matrix,
             input_i.CurrentBlockSize(),
                           matrix->diagonal_blocks(input_i.CurrentBlockNumber()).topLeftCorner(size_i, size_i));
 
+}
+
+Eigen::Ref<MatrixXd> S::off_diagonal_blocks(int i, int j) {
+  BlockMatrix<MatrixXd> output(
+      off_diagonal_blocks(i),
+      off_diagonal_partition_.at(i));
+  //DUMP(output.GotoBlock(j));
+  //if (!output.GotoBlock(j)) {
+  //  throw std::runtime_error("Block not accesible.");
+  //}
+  return output.CurrentBlock(); 
 }
 
 S::SimpleTriangularMatrix(
@@ -466,7 +520,6 @@ MatrixXd S::MakeDenseMatrix() const {
   return M;
 }
 
-
 // Replace bottom right corner C_22 with  C22 - C12' inv(C11) C12.
 // We assume that (C11)^{-1/2} C12 has already been computed
 // and stored in the block C12.  The full matrix C starts
@@ -475,6 +528,7 @@ void S::LLT::SchurComplementInPlace(int block) {
   if (matrix_.off_diagonal_blocks(block).size() == 0) {
     return;
   }
+  const MatrixXd test = matrix_.diagonal_blocks(block);
   if (vector_d_computed_) {
     WeightedInnerProducts weighted_inner_product(
         matrix_.off_diagonal_blocks(block),
@@ -702,5 +756,94 @@ void IncrementDenseSubmatrixFromMatrix(Ref<const MatrixXd> input,
     }
   }
 }
+
+Eigen::Ref<Eigen::MatrixXd> S::submatrix(int i, int j)  {
+  if (i == j) {
+    return diagonal_blocks(i);
+  } else {
+  int r = i;
+  int c = j;
+  if (r > c) {
+    std::swap(r, c);
+  }
+  BlockMatrix<MatrixXd> output(
+      off_diagonal_blocks(i),
+      off_diagonal_partition_[i]);
+  //if (!output.GotoBlock(j)) {
+  //  throw std::runtime_error("Block not accesible.");
+  //}
+  return output.CurrentBlock();
+  }
+}
+
+Eigen::Ref<const Eigen::MatrixXd> S::submatrix(int i, int j) const {
+  if (i == j) {
+    return diagonal_blocks(i);
+  } else {
+  int r = i;
+  int c = j;
+  if (r > c) {
+    std::swap(r, c);
+  }
+  BlockMatrix<const MatrixXd> output(
+      off_diagonal_blocks(i),
+      off_diagonal_partition_[i]);
+  //if (!output.GotoBlock(j)) {
+  //  throw std::runtime_error("Block not accesible.");
+  //}
+  return output.CurrentBlock();
+  }
+}
+
+void S::GetBlockPartitionOfVariables(const std::vector<int>& variables_sorted_increasing,
+                         std::vector<VariableSegment>* segments)  {
+  int current_var = variables_sorted_increasing[0];
+  segments->clear();
+  segments->reserve(variables_sorted_increasing.size());
+  segments->emplace_back(GetColumnBlockAndPositionOfVariable(current_var, 0).first,
+                         GetColumnBlockAndPositionOfVariable(current_var, 0).second, 1);
+  for (size_t i = 1; i < variables_sorted_increasing.size(); i++) {
+    current_var = variables_sorted_increasing[i];
+    auto block_and_offset = GetColumnBlockAndPositionOfVariable(current_var, segments->back().block);
+    if (segments->back().block == block_and_offset.first &&
+        segments->back().offset + 1 == block_and_offset.second) {
+        segments->back().size++;
+    } else {
+      segments->emplace_back(block_and_offset.first, block_and_offset.second, 1);
+    }
+  }
+}
+
+
+std::pair<int, int> S::GetColumnBlockAndPositionOfVariable(int var, int start_block) const {
+    std::pair<int, int> y;
+    int& block = y.first;
+    int& pos = y.second;
+
+    block = start_block;
+    int offset = 0;
+    int next_offset = 0;
+    DUMP(var);
+    bool found = false;
+    for (size_t i = 0; i < block_column_sizes_.size(); ++i) {
+      next_offset = offset + block_column_sizes_[i];
+      if (var < next_offset) {
+        found = true;
+        y.second = var - offset;
+        y.first = i;
+        break;
+      } else {
+        offset = next_offset;
+      }
+    }
+
+    if (!found) {
+      throw std::runtime_error("Cannot find variable.");
+    }
+    return y; 
+}
+
+
+
 
 }  // namespace conex
