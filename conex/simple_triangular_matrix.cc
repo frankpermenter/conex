@@ -205,7 +205,11 @@ template <typename T>
 class BlockMatrix {
  public:
   BlockMatrix(const Eigen::Ref<T>& X, const BlockData& blocks)
-      : X_(X), blocks_(blocks) {}
+      : X_(X), blocks_(blocks) {
+    if (blocks_.size() == 0) {
+      throw std::runtime_error("Block data is empty");
+    }
+  }
 
   BlockMatrix(const Eigen::Ref<T>& X, const BlockData& blocks,
               int initial_index)
@@ -214,16 +218,6 @@ class BlockMatrix {
       GotoNextBlock();
     }
   }
-
-  //bool GotoNextBlock() {
-  //  current_block_offset_ += blocks_[current_block_index_].second;
-  //  current_block_index_++;
-
-  //  if (current_block_index_ < static_cast<int>(blocks_.size())) {
-  //    return true;
-  //  }
-  //  return false;
-  //}
 
   bool GotoBlock(int i) {
     while (blocks_.at(current_block_index_).first != i) {
@@ -243,14 +237,6 @@ class BlockMatrix {
     }
     return false;
   }
-
-  //void GotoBlock(int i) {
-  //  while (blocks_[current_block_index_].first != i) {
-  //    GotoNextBlock();
-  //  }
-  //}
-
-
 
   int CurrentBlockNumber() { return blocks_[current_block_index_].first; }
 
@@ -434,13 +420,16 @@ void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix* matrix,
 }
 
 Eigen::Ref<MatrixXd> S::off_diagonal_blocks(int i, int j) {
+  if (off_diagonal_partition_.at(i).size() == 0 && (i != j)) {
+    throw std::runtime_error("Block not accesible.");
+  }
   BlockMatrix<MatrixXd> output(
       off_diagonal_blocks(i),
       off_diagonal_partition_.at(i));
-  //DUMP(output.GotoBlock(j));
-  //if (!output.GotoBlock(j)) {
-  //  throw std::runtime_error("Block not accesible.");
-  //}
+
+  if (!output.GotoBlock(j)) {
+    throw std::runtime_error("Block not accesible.");
+  }
   return output.CurrentBlock(); 
 }
 

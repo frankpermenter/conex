@@ -158,8 +158,8 @@ void DoAssemblyTest(const std::vector<int>& block_sizes,
     mat.diagonal_blocks(p.block).diagonal().segment(p.offset, p.size).setConstant(p.block + 1.0);
   }
   MatrixXd matrix = mat.MakeDenseMatrix();
-  DUMP(mat.off_diagonal_blocks(0, 2));
   DUMP(mat.off_diagonal_blocks(1, 2));
+  DUMP(mat.off_diagonal_blocks(0, 2));
 }
 
 
@@ -169,7 +169,7 @@ void DoAssemblyTest(const std::vector<int>& block_sizes,
 
 GTEST_TEST(SimpleTri, Assembly) {
   std::vector<int> block_sizes{2, 2, 2};
-  std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 1, 2}};
+  std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
   DoAssemblyTest(block_sizes, triplets);
 }
 
