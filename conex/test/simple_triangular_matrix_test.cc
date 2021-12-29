@@ -224,11 +224,9 @@ GTEST_TEST(SimpleTri, Assembly) {
   std::vector<int> block_sizes{3, 8, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
   DoAssemblyTest(block_sizes, triplets);
-
   vector<vector<int>> cliques{{0, 1}, {1, 2, 3}, {1, 4, 5}, {1, 4, 6}};
   DoCliqueAssemblyTest(cliques);
-  DoCliqueAssemblyTest( {{0, 2, 3, 6},  {1, 4, 5}, {1, 4, 6}});
-
+  DoCliqueAssemblyTest({{0, 2, 3, 6},  {1, 4, 5}, {1, 4, 6}});
 }
 
 
