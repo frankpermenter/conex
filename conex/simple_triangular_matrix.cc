@@ -375,6 +375,18 @@ vector<int> BlockSparseSymmetricMatrix::SortByEliminationOrder(const std::vector
   return y;
 }
 
+vector<int> BlockSparseSymmetricMatrix::GetEliminationPosition(const std::vector<int>& x) {
+  Eigen::PermutationMatrix<-1> Pt(elimination_position_to_variable_.size());
+  Eigen::PermutationMatrix<-1> P = Pt.transpose();
+  vector<int> y(x.size());
+  for (size_t i = 0; i < x.size(); i++) {
+    y.at(i) = P.indices()(i);
+  }
+  return y;
+}
+
+
+
 void SubmatrixUpdate::UpdateSubmatrix(SimpleTriangularMatrix* matrix, 
                                       int block) {
     const BlockData& input_block_info = matrix->off_diagonal_partition_[block];

@@ -276,6 +276,19 @@ class BlockSparseSymmetricMatrix {
     return P * mat * P.transpose(); 
   }
 
+  struct VariablePartition {
+    std::vector<int> permutation;
+    std::vector<SimpleTriangularMatrix::VariableSegment> partition;
+  };
+  VariablePartition GetBlockPartitionOfVariables(const std::vector<int>& variables) {
+    VariablePartition y;
+    y.permutation = RankByEliminationOrder(variables);
+    std::vector<int> vars = GetEliminationPosition(variables);
+    lower_triangular_matrix_.GetBlockPartitionOfVariables(vars, &y.partition);
+    return y;
+  }
+
+
   class LLT {
    public:
     bool compute(bool compute_ldlt = false);
@@ -303,6 +316,7 @@ class BlockSparseSymmetricMatrix {
   };
 
   std::vector<int> SortByEliminationOrder(const std::vector<int>& x);
+  std::vector<int> GetEliminationPosition(const std::vector<int>& x);
 
   void SetConstant(double value) { lower_triangular_matrix_.SetConstant(value); }
   SimpleTriangularMatrix& storage() { return lower_triangular_matrix_; };
