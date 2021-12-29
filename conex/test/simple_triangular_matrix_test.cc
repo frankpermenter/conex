@@ -174,9 +174,6 @@ void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques, int N) {
     auto p = matrix.GetBlockPartitionOfVariables(cliques.at(k));
     auto partition = p.partition;
 
-    //std::vector<int> vars = matrix.GetEliminationPosition(cliques.at(k));
-    //std::vector<SimpleTriangularMatrix::VariableSegment> partition;
-    //mat.GetBlockPartitionOfVariables(vars, &partition);
 
     for (auto pi : partition) {
       for (auto pj : partition) {
