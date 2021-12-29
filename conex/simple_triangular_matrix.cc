@@ -369,8 +369,8 @@ vector<int> BlockSparseSymmetricMatrix::SortByEliminationOrder(const std::vector
   vector<int> y = x;
   std::sort(y.begin(),
             y.end(),
-            [*this, x](const int& i, const int& j) {
-            return this->IsVariableIEliminatedBeforeJ(x[i], x[j]);
+            [*this](const int& i, const int& j) {
+            return this->IsVariableIEliminatedBeforeJ(i, j);
             });
   return y;
 }
@@ -857,5 +857,17 @@ std::pair<int, int> S::GetColumnBlockAndPositionOfVariable(int var, int start_bl
     }
     return y; 
 }
+
+using B = BlockSparseSymmetricMatrix;
+B::VariablePartition B::GetBlockPartitionOfVariables(const std::vector<int>& variables) const {
+    VariablePartition y;
+    y.permutation = RankByEliminationOrder(variables);
+    std::vector<int> vars = GetEliminationPosition(variables);
+    std::sort(vars.begin(), vars.end());
+    lower_triangular_matrix_.GetBlockPartitionOfVariables(vars, &y.partition);
+    return y;
+  }
+
+
 
 }  // namespace conex

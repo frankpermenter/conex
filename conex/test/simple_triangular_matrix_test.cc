@@ -168,7 +168,9 @@ void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques, int N) {
   Eigen::MatrixXd M = Eigen::MatrixXd::Zero(N, N);
   auto matrix = MakeBlockSparseMatrix(M, cliques);
   auto& mat = matrix.storage();
-  mat.SetConstant(0);
+  mat.SetConstant(2);
+  DUMP(mat.MakeDenseMatrix());
+  //mat.SetConstant(0);
   for (size_t k = 0; k < cliques.size(); k++) {
     auto p = matrix.GetBlockPartitionOfVariables(cliques.at(k));
     auto partition = p.partition;
@@ -183,9 +185,12 @@ void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques, int N) {
         if (i == j) {
           mat.diagonal_blocks(i).block(pi.offset, pj.offset, pi.size, pj.size).setConstant(i + 1);
         } else {
-          DUMP(mat.off_diagonal_blocks(i, j));
-          DUMP(i);
-          DUMP(j);
+          mat.off_diagonal_blocks(i, j).setConstant(-1);
+          //DUMP(mat.MakeDenseMatrix());
+          std::vector<SimpleTriangularMatrix::VariableSegment> part;
+          mat.GetBlockPartitionOfVariables({4}, &part);
+          //DUMP(part.at(0).offset);
+          //DUMP(part.at(0).block);
           mat.off_diagonal_blocks(i, j).block(pi.offset, pj.offset, pi.size, pj.size).setConstant(i + 1);
         }
       }
@@ -204,8 +209,8 @@ GTEST_TEST(SimpleTri, Assembly) {
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
   DoAssemblyTest(block_sizes, triplets);
 
-  //vector<vector<int>> cliques{ {0, 1}, { 1, 2, 3}, {1, 4, 5}, {1, 4, 6} };
-  vector<vector<int>> cliques{ {0, 1, 2, 3, 4}, {2, 3, 4, 5, 6}};
+  vector<vector<int>> cliques{ {0, 1}, { 1, 2, 3}, {1, 4, 5}, {1, 4, 6} };
+  //vector<vector<int>> cliques{ {0, 1, 2, 3, 4}, {2, 3, 4, 5, 6}};
   DoCliqueAssemblyTest(cliques, 7);
 }
 

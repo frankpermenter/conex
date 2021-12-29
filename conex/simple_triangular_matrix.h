@@ -280,14 +280,7 @@ class BlockSparseSymmetricMatrix {
     std::vector<int> permutation;
     std::vector<SimpleTriangularMatrix::VariableSegment> partition;
   };
-  VariablePartition GetBlockPartitionOfVariables(const std::vector<int>& variables) const {
-    VariablePartition y;
-    y.permutation = RankByEliminationOrder(variables);
-    std::vector<int> vars = GetEliminationPosition(variables);
-    std::sort(vars.begin(), vars.end());
-    lower_triangular_matrix_.GetBlockPartitionOfVariables(vars, &y.partition);
-    return y;
-  }
+  VariablePartition GetBlockPartitionOfVariables(const std::vector<int>& variables) const;
 
 
   class LLT {
