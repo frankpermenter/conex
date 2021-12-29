@@ -171,12 +171,13 @@ void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques, int N) {
   mat.SetConstant(1);
   DUMP(mat.MakeDenseMatrix());
   for (size_t k = 0; k < cliques.size(); k++) {
-    //auto p = matrix.GetBlockPartitionOfVariables(cliques.at(k));
-    //auto partition = p.partition;
+    auto p = matrix.GetBlockPartitionOfVariables(cliques.at(k));
+    auto partition = p.partition;
 
-    std::vector<int> vars = matrix.GetEliminationPosition(cliques.at(k));
-    std::vector<SimpleTriangularMatrix::VariableSegment> partition;
-    mat.GetBlockPartitionOfVariables(vars, &partition);
+    //std::vector<int> vars = matrix.GetEliminationPosition(cliques.at(k));
+    //std::vector<SimpleTriangularMatrix::VariableSegment> partition;
+    //mat.GetBlockPartitionOfVariables(vars, &partition);
+
     for (auto pi : partition) {
       for (auto pj : partition) {
         int i = pi.block;

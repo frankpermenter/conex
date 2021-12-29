@@ -147,7 +147,7 @@ class SimpleTriangularMatrix {
   };
 
   void GetBlockPartitionOfVariables(const std::vector<int>& variables_sorted_increasing,
-                                    std::vector<VariableSegment>* segments);
+                                    std::vector<VariableSegment>* segments) const;
 
   void AssembleFromDenseMatrix(const Eigen::MatrixXd& A);
 
@@ -280,7 +280,7 @@ class BlockSparseSymmetricMatrix {
     std::vector<int> permutation;
     std::vector<SimpleTriangularMatrix::VariableSegment> partition;
   };
-  VariablePartition GetBlockPartitionOfVariables(const std::vector<int>& variables) {
+  VariablePartition GetBlockPartitionOfVariables(const std::vector<int>& variables) const {
     VariablePartition y;
     y.permutation = RankByEliminationOrder(variables);
     std::vector<int> vars = GetEliminationPosition(variables);
@@ -315,8 +315,8 @@ class BlockSparseSymmetricMatrix {
     SimpleTriangularMatrix::LLT llt_;
   };
 
-  std::vector<int> SortByEliminationOrder(const std::vector<int>& x);
-  std::vector<int> GetEliminationPosition(const std::vector<int>& x);
+  std::vector<int> SortByEliminationOrder(const std::vector<int>& x) const;
+  std::vector<int> GetEliminationPosition(const std::vector<int>& x) const;
 
   void SetConstant(double value) { lower_triangular_matrix_.SetConstant(value); }
   SimpleTriangularMatrix& storage() { return lower_triangular_matrix_; };
@@ -328,7 +328,7 @@ class BlockSparseSymmetricMatrix {
    std::vector<int> variable_to_exiting_class_;
    SimpleTriangularMatrix lower_triangular_matrix_;
    bool IsVariableIEliminatedBeforeJ(int i, int j) const;
-   std::vector<int> RankByEliminationOrder(const std::vector<int>& x);
+   std::vector<int> RankByEliminationOrder(const std::vector<int>& x) const;
 
   friend class LLT;
 };

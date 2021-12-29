@@ -353,7 +353,7 @@ BlockSparseSymmetricMatrix::BlockSparseSymmetricMatrix(
             });
 }
 
-vector<int> BlockSparseSymmetricMatrix::RankByEliminationOrder(const std::vector<int>& x) {
+vector<int> BlockSparseSymmetricMatrix::RankByEliminationOrder(const std::vector<int>& x) const {
   vector<int> y(x.size());
   std::iota(y.begin(),
             y.end(), 0);
@@ -365,7 +365,7 @@ vector<int> BlockSparseSymmetricMatrix::RankByEliminationOrder(const std::vector
   return y;
 }
 
-vector<int> BlockSparseSymmetricMatrix::SortByEliminationOrder(const std::vector<int>& x) {
+vector<int> BlockSparseSymmetricMatrix::SortByEliminationOrder(const std::vector<int>& x) const {
   vector<int> y = x;
   std::sort(y.begin(),
             y.end(),
@@ -375,12 +375,17 @@ vector<int> BlockSparseSymmetricMatrix::SortByEliminationOrder(const std::vector
   return y;
 }
 
-vector<int> BlockSparseSymmetricMatrix::GetEliminationPosition(const std::vector<int>& x) {
-  Eigen::PermutationMatrix<-1> Pt(elimination_position_to_variable_.size());
-  Eigen::PermutationMatrix<-1> P = Pt.transpose();
-  vector<int> y(x.size());
-  for (size_t i = 0; i < x.size(); i++) {
-    y.at(i) = P.indices()(i);
+vector<int> BlockSparseSymmetricMatrix::GetEliminationPosition(const std::vector<int>& x) const {
+  vector<int> y = SortByEliminationOrder(x);
+  int j = 0;
+  for (size_t i = 0; i < elimination_position_to_variable_.size(); i++) {
+    if (elimination_position_to_variable_.at(i) == y.at(j)) {
+      y.at(j) = i;
+      j++;
+      if (j >= y.size()) {
+        break;
+      }
+    }
   }
   return y;
 }
@@ -797,7 +802,7 @@ Eigen::Ref<const Eigen::MatrixXd> S::submatrix(int i, int j) const {
 }
 
 void S::GetBlockPartitionOfVariables(const std::vector<int>& variables_sorted_increasing,
-                         std::vector<VariableSegment>* segments)  {
+                         std::vector<VariableSegment>* segments)  const {
   int current_var = variables_sorted_increasing[0];
   segments->clear();
   segments->reserve(variables_sorted_increasing.size());
