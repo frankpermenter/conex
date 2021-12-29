@@ -168,29 +168,32 @@ void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques, int N) {
   Eigen::MatrixXd M = Eigen::MatrixXd::Zero(N, N);
   auto matrix = MakeBlockSparseMatrix(M, cliques);
   auto& mat = matrix.storage();
-  mat.SetConstant(1);
-  DUMP(mat.MakeDenseMatrix());
+  mat.SetConstant(0);
   for (size_t k = 0; k < cliques.size(); k++) {
     auto p = matrix.GetBlockPartitionOfVariables(cliques.at(k));
     auto partition = p.partition;
-
-
     for (auto pi : partition) {
       for (auto pj : partition) {
         int i = pi.block;
         int j = pj.block;
         if (i > j) {
+          std::swap(pi, pj);
           std::swap(i, j);
         }
         if (i == j) {
-          continue;
+          mat.diagonal_blocks(i).block(pi.offset, pj.offset, pi.size, pj.size).setConstant(i + 1);
+        } else {
+          DUMP(mat.off_diagonal_blocks(i, j));
+          DUMP(pi.offset);
+          DUMP(pj.offset);
+          DUMP(pi.size);
+          DUMP(pj.size);
+          mat.off_diagonal_blocks(i, j).block(pi.offset, pj.offset, pi.size, pj.size).setConstant(i + 1);
         }
-        DUMP(i);
-        DUMP(j);
-        DUMP(mat.off_diagonal_blocks(i, j));
       }
     }
   }
+  DUMP(mat.MakeDenseMatrix());
 }
 
 }  // namespace
