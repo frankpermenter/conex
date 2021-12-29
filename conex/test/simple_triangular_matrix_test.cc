@@ -18,6 +18,32 @@ using std::vector;
 
 namespace {
 
+int GetMaxElement(const vector<vector<int>>& cliques) {
+  int max = cliques.at(0).at(0);
+  for (const auto& c : cliques) {
+    for (const auto ci : c) {
+      if (ci > max) {
+        max = ci;
+      }
+    }
+  }
+  return max;
+}
+
+MatrixXd AddUnitSubmatrices(const vector<vector<int>>& cliques) {
+  int n = GetMaxElement(cliques) + 1;
+  MatrixXd M(n, n);
+  M.setZero();
+  for (const auto& clique : cliques) {
+    for (const auto r : clique) {
+      for (const auto c : clique) {
+        M(c, r) += 1;
+      }
+    }
+  }
+  return M;
+}
+
 MatrixXd LowerTri(const Eigen::MatrixXd& x) {
   return x.triangularView<Eigen::Lower>();
 }
@@ -164,13 +190,12 @@ void DoAssemblyTest(const std::vector<int>& block_sizes,
   EXPECT_EQ((matrix - ref).norm(), 0.0);
 }
 
-void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques, int N) {
+void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques) {
+  int N = GetMaxElement(cliques) + 1;
   Eigen::MatrixXd M = Eigen::MatrixXd::Zero(N, N);
   auto matrix = MakeBlockSparseMatrix(M, cliques);
   auto& mat = matrix.storage();
-  mat.SetConstant(2);
-  DUMP(mat.MakeDenseMatrix());
-  //mat.SetConstant(0);
+  mat.SetConstant(0);
   for (size_t k = 0; k < cliques.size(); k++) {
     auto p = matrix.GetBlockPartitionOfVariables(cliques.at(k));
     auto partition = p.partition;
@@ -179,29 +204,20 @@ void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques, int N) {
         int i = pi.block;
         int j = pj.block;
         if (i > j) {
-          std::swap(pi, pj);
-          std::swap(i, j);
+          continue;
         }
         if (i == j) {
-          mat.diagonal_blocks(i).block(pi.offset, pj.offset, pi.size, pj.size).setConstant(i + 1);
+          mat.diagonal_blocks(i).block(pi.offset, pj.offset, pi.size, pj.size).array() += 1;
         } else {
-          mat.off_diagonal_blocks(i, j).setConstant(-1);
-          //DUMP(mat.MakeDenseMatrix());
-          std::vector<SimpleTriangularMatrix::VariableSegment> part;
-          mat.GetBlockPartitionOfVariables({4}, &part);
-          //DUMP(part.at(0).offset);
-          //DUMP(part.at(0).block);
-          mat.off_diagonal_blocks(i, j).block(pi.offset, pj.offset, pi.size, pj.size).setConstant(i + 1);
+          mat.off_diagonal_blocks(i, j).block(pi.offset, pj.offset, pi.size, pj.size).array() += 1;
         }
       }
     }
   }
-  DUMP(mat.MakeDenseMatrix());
+  EXPECT_EQ((matrix.MakeDenseMatrix() - AddUnitSubmatrices(cliques)).norm(), 0);
 }
 
 }  // namespace
-
-
 
 
 GTEST_TEST(SimpleTri, Assembly) {
@@ -209,13 +225,14 @@ GTEST_TEST(SimpleTri, Assembly) {
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
   DoAssemblyTest(block_sizes, triplets);
 
-  vector<vector<int>> cliques{ {0, 1}, { 1, 2, 3}, {1, 4, 5}, {1, 4, 6} };
-  //vector<vector<int>> cliques{ {0, 1, 2, 3, 4}, {2, 3, 4, 5, 6}};
-  DoCliqueAssemblyTest(cliques, 7);
+  vector<vector<int>> cliques{{0, 1}, {1, 2, 3}, {1, 4, 5}, {1, 4, 6}};
+  DoCliqueAssemblyTest(cliques);
+  DoCliqueAssemblyTest( {{0, 2, 3, 6},  {1, 4, 5}, {1, 4, 6}});
+
 }
 
 
-#if 0
+#if 1
 GTEST_TEST(SimpleTri, Construct) {
   std::vector<int> block_sizes{2, 2, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
