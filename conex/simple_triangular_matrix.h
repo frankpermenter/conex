@@ -284,6 +284,7 @@ class BlockSparseSymmetricMatrix {
     VariablePartition y;
     y.permutation = RankByEliminationOrder(variables);
     std::vector<int> vars = GetEliminationPosition(variables);
+    std::sort(vars.begin(), vars.end());
     lower_triangular_matrix_.GetBlockPartitionOfVariables(vars, &y.partition);
     return y;
   }

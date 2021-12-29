@@ -184,10 +184,8 @@ void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques, int N) {
           mat.diagonal_blocks(i).block(pi.offset, pj.offset, pi.size, pj.size).setConstant(i + 1);
         } else {
           DUMP(mat.off_diagonal_blocks(i, j));
-          DUMP(pi.offset);
-          DUMP(pj.offset);
-          DUMP(pi.size);
-          DUMP(pj.size);
+          DUMP(i);
+          DUMP(j);
           mat.off_diagonal_blocks(i, j).block(pi.offset, pj.offset, pi.size, pj.size).setConstant(i + 1);
         }
       }
