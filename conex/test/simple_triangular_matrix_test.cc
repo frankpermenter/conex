@@ -249,10 +249,8 @@ void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques) {
   mat.SetConstant(0);
   vector<Assembler> assembler(cliques.size());
   for (size_t k = 0; k < cliques.size(); k++) {
-    BlockSparseSymmetricMatrix::VariablePartition p 
-        = matrix.GetBlockPartitionOfVariables(cliques.at(k));
-    vector<int> supernodes;
-    assembler.at(k).AssignStorage(mat, p, supernodes);
+    auto p = clique_sum.GetBlockPartitionOfClique(k);
+    assembler.at(k).AssignStorage(mat, p.partition, p.block_supernodes);
   }
 
   for (size_t k = 0; k < cliques.size(); k++) {

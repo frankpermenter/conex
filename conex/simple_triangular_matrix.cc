@@ -883,7 +883,19 @@ B::VariablePartition B::GetBlockPartitionOfVariables(const std::vector<int>& var
 using C = SparseCliqueSum;
 
 C::SparseCliqueSum(const std::vector<std::vector<int>>& cliques) :
+  cliques_(cliques),
   num_vars_(GetMaxElement(cliques) + 1),
   data_(GetEnterAndExit(num_vars_, cliques)),
   matrix_(num_vars_, data_.enter, data_.exit) {}
+
+
+C::CliquePartition C::GetBlockPartitionOfClique(int k) const {
+  CliquePartition y;
+  y.partition = matrix_.GetBlockPartitionOfVariables(cliques_.at(k));
+  return y;
+}
+
+
 }  // namespace conex
+
+
