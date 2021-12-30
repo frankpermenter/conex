@@ -254,6 +254,10 @@ class SubmatrixUpdate {
 //
 // Equivalently, there exist a permutation P for which lower_tri(M) is a
 // conex::SimpleTriangularMatrix. 
+
+
+
+
 class BlockSparseSymmetricMatrix {
  public:
   BlockSparseSymmetricMatrix(
@@ -330,6 +334,19 @@ class BlockSparseSymmetricMatrix {
 BlockSparseSymmetricMatrix MakeBlockSparseMatrix(const Eigen::MatrixXd& M, 
                                                         const std::vector<std::vector<int>>& cliques);
 
+
+class SparseCliqueSum : public BlockSparseSymmetricMatrix {
+ public:
+  class CliquePartition {
+    VariablePartition partition;
+    std::vector<int> block_supernodes;
+  };
+  SparseCliqueSum(std::vector<std::vector<int>> cliques);
+  CliquePartition GetBlockPartitionOfClique(int k);
+  std::vector<int> cliques_;
+};
+
+
 void IncrementDenseSubmatrixWithInnerProducts(Eigen::Ref<const Eigen::MatrixXd> vectors, 
                                               SimpleTriangularMatrix* matrix,
                                               int block);
@@ -338,6 +355,7 @@ void IncrementDenseSubmatrixWithInnerProducts(Eigen::Ref<const Eigen::MatrixXd> 
 void IncrementDenseSubmatrixFromMatrix(Eigen::Ref<const Eigen::MatrixXd> input, 
                                        SimpleTriangularMatrix* matrix,
                                        int block);
+
 
 
 }  // namespace conex

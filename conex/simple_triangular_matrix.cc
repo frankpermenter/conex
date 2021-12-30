@@ -295,6 +295,28 @@ class BlockIterator {
   int current_block_index_ = 0;
 };
 
+class EnterAndExitColumns {
+ public:
+  EnterAndExitColumns(int num_vars) : enter(num_vars, -1), exit(num_vars, -1) {}
+  vector<int> enter;
+  vector<int> exit;
+};
+EnterAndExitColumns GetEnterAndExit(
+    int num_vars, 
+    std::vector<std::vector<int>> cliques) {
+  EnterAndExitColumns y(num_vars);
+  for (size_t i = 0; i < cliques.size(); i++) {
+    for (auto n : cliques[i]) {
+      if (y.enter.at(n) == -1) {
+        y.enter.at(n) = i;
+        y.exit.at(n) = i;
+      } else {
+        y.exit.at(n) = i;
+      }
+    }
+  }
+  return y; 
+}
 
 
 
@@ -303,23 +325,9 @@ class BlockIterator {
 BlockSparseSymmetricMatrix MakeBlockSparseMatrix(
     const MatrixXd& M, const vector<vector<int>>& cliques) {
   int num_vars = M.rows();
+  EnterAndExitColumns col = GetEnterAndExit(num_vars, cliques);
 
-  int num_cliques = cliques.size();
-  vector<int> enter(num_vars, -1);
-  vector<int> exit(num_vars, -1);
-  vector<int> block_sizes(num_cliques);
-  for (size_t i = 0; i < cliques.size(); i++) {
-    for (auto n : cliques[i]) {
-      if (enter.at(n) == -1) {
-        enter.at(n) = i;
-        exit.at(n) = i;
-      } else {
-        exit.at(n) = i;
-      }
-    }
-  }
-
-  BlockSparseSymmetricMatrix mat(cliques.size(), enter, exit);
+  BlockSparseSymmetricMatrix mat(cliques.size(), col.enter, col.exit);
   mat.SetFromDenseMatrix(M);
   return mat;
 }
@@ -377,7 +385,7 @@ vector<int> BlockSparseSymmetricMatrix::SortByEliminationOrder(const std::vector
 
 vector<int> BlockSparseSymmetricMatrix::GetEliminationPosition(const std::vector<int>& x) const {
   vector<int> y = SortByEliminationOrder(x);
-  int j = 0;
+  size_t j = 0;
   for (size_t i = 0; i < elimination_position_to_variable_.size(); i++) {
     if (elimination_position_to_variable_.at(i) == y.at(j)) {
       y.at(j) = i;
@@ -868,6 +876,9 @@ B::VariablePartition B::GetBlockPartitionOfVariables(const std::vector<int>& var
     return y;
   }
 
-
+//using C = SparseCliqueSum;
+//C::SparseCliqueSum(  ) {
+//
+//}
 
 }  // namespace conex

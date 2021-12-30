@@ -194,15 +194,17 @@ void DoAssemblyTest(const std::vector<int>& block_sizes,
 class Assembler {
  public:
   void AssignStorage(SimpleTriangularMatrix& matrix, BlockSparseSymmetricMatrix::VariablePartition
-                     partition) {
+                     partition,
+                     std::vector<int> block_supernodes) {
     matrix_ = &matrix;
     partition_ = std::move(partition);
+    supernodes_ = std::move(block_supernodes);
   }
   void Assemble() {
     DoAssemble();
   }
  private:
-  virtual void DoAssemble() {
+  virtual void DoAssemble() const {
     for (auto pi : partition_.partition) {
       for (auto pj : partition_.partition) {
         int i = pi.block;
@@ -226,28 +228,35 @@ class Assembler {
       }
     }
   }
-  bool InitializeBlock(int) {
-    return false; 
+  bool InitializeBlock(int i) const {
+    if (supernodes_.size() == 0 || i != supernodes_.at(i)) {
+      return false; 
+    } else {
+      return true;
+    }
   }
   SimpleTriangularMatrix* matrix_ = nullptr;
   BlockSparseSymmetricMatrix::VariablePartition partition_; 
+  std::vector<int> supernodes_;
 };
-
 
 void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques) {
   int N = GetMaxElement(cliques) + 1;
   Eigen::MatrixXd M = Eigen::MatrixXd::Zero(N, N);
+  //SparseCliqueSum matrix(cliques);
   auto matrix = MakeBlockSparseMatrix(M, cliques);
   auto& mat = matrix.storage();
   mat.SetConstant(0);
   vector<Assembler> assembler(cliques.size());
   for (size_t k = 0; k < cliques.size(); k++) {
-    auto p = matrix.GetBlockPartitionOfVariables(cliques.at(k));
-    assembler.at(k).AssignStorage(mat, p);
+    BlockSparseSymmetricMatrix::VariablePartition p 
+        = matrix.GetBlockPartitionOfVariables(cliques.at(k));
+    //auto p = matrix.GetBlockPartitionOfClique(k);
+    vector<int> supernodes;
+    assembler.at(k).AssignStorage(mat, p, supernodes);
   }
 
   for (size_t k = 0; k < cliques.size(); k++) {
-    auto p = matrix.GetBlockPartitionOfVariables(cliques.at(k));
     assembler.at(k).Assemble();
   }
 
