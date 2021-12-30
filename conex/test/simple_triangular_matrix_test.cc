@@ -229,7 +229,7 @@ class Assembler {
     }
   }
   bool InitializeBlock(int i) const {
-    if (supernodes_.size() == 0 || i != supernodes_.at(i)) {
+    if (supernodes_.size() == 0 || i != supernodes_.at(0)) {
       return false; 
     } else {
       return true;
@@ -253,7 +253,7 @@ void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques) {
     assembler.at(k).AssignStorage(mat, p.partition, p.block_supernodes);
   }
 
-  for (size_t k = 0; k < cliques.size(); k++) {
+  for (int k = static_cast<int>(cliques.size() - 1); k >= 0;  k--) {
     assembler.at(k).Assemble();
   }
 

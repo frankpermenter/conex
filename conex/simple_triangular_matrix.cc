@@ -892,6 +892,7 @@ C::SparseCliqueSum(const std::vector<std::vector<int>>& cliques) :
 C::CliquePartition C::GetBlockPartitionOfClique(int k) const {
   CliquePartition y;
   y.partition = matrix_.GetBlockPartitionOfVariables(cliques_.at(k));
+  y.block_supernodes.push_back(k);
   return y;
 }
 
