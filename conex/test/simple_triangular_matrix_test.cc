@@ -210,10 +210,18 @@ class Assembler {
         if (i > j) {
           continue;
         }
-        if (i == j) {
-          matrix_->diagonal_blocks(i).block(pi.offset, pj.offset, pi.size, pj.size).array() += 1;
+        if (InitializeBlock(i)) {
+          if (i == j) {
+            matrix_->diagonal_blocks(i).block(pi.offset, pj.offset, pi.size, pj.size).array() = 1;
+          } else {
+            matrix_->off_diagonal_blocks(i, j).block(pi.offset, pj.offset, pi.size, pj.size).array() = 1;
+          }
         } else {
-          matrix_->off_diagonal_blocks(i, j).block(pi.offset, pj.offset, pi.size, pj.size).array() += 1;
+          if (i == j) {
+            matrix_->diagonal_blocks(i).block(pi.offset, pj.offset, pi.size, pj.size).array() += 1;
+          } else {
+            matrix_->off_diagonal_blocks(i, j).block(pi.offset, pj.offset, pi.size, pj.size).array() += 1;
+          }
         }
       }
     }
