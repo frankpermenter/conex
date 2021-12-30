@@ -335,15 +335,24 @@ BlockSparseSymmetricMatrix MakeBlockSparseMatrix(const Eigen::MatrixXd& M,
                                                         const std::vector<std::vector<int>>& cliques);
 
 
-class SparseCliqueSum : public BlockSparseSymmetricMatrix {
+class SparseCliqueSum  {
  public:
   class CliquePartition {
-    VariablePartition partition;
+    BlockSparseSymmetricMatrix::VariablePartition partition;
     std::vector<int> block_supernodes;
   };
-  SparseCliqueSum(std::vector<std::vector<int>> cliques);
+  SparseCliqueSum(const std::vector<std::vector<int>>& cliques);
   CliquePartition GetBlockPartitionOfClique(int k);
   std::vector<int> cliques_;
+  class EnterAndExitColumns {
+   public:
+    EnterAndExitColumns(int num_vars) : enter(num_vars, -1), exit(num_vars, -1) {}
+    std::vector<int> enter;
+    std::vector<int> exit;
+  };
+  int num_vars_;
+  EnterAndExitColumns data_;
+  BlockSparseSymmetricMatrix matrix_;
 };
 
 

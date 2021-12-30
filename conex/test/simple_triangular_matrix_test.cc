@@ -243,8 +243,8 @@ class Assembler {
 void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques) {
   int N = GetMaxElement(cliques) + 1;
   Eigen::MatrixXd M = Eigen::MatrixXd::Zero(N, N);
-  //SparseCliqueSum matrix(cliques);
-  auto matrix = MakeBlockSparseMatrix(M, cliques);
+  SparseCliqueSum clique_sum(cliques);
+  auto& matrix = clique_sum.matrix_; 
   auto& mat = matrix.storage();
   mat.SetConstant(0);
   vector<Assembler> assembler(cliques.size());
