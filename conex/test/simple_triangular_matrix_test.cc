@@ -244,14 +244,13 @@ void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques) {
   int N = GetMaxElement(cliques) + 1;
   Eigen::MatrixXd M = Eigen::MatrixXd::Zero(N, N);
   SparseCliqueSum clique_sum(cliques);
-  auto& matrix = clique_sum.matrix_; 
+  auto& matrix = clique_sum.matrix(); 
   auto& mat = matrix.storage();
   mat.SetConstant(0);
   vector<Assembler> assembler(cliques.size());
   for (size_t k = 0; k < cliques.size(); k++) {
     BlockSparseSymmetricMatrix::VariablePartition p 
         = matrix.GetBlockPartitionOfVariables(cliques.at(k));
-    //auto p = matrix.GetBlockPartitionOfClique(k);
     vector<int> supernodes;
     assembler.at(k).AssignStorage(mat, p, supernodes);
   }

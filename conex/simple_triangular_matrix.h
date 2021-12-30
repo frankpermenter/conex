@@ -260,6 +260,14 @@ class SubmatrixUpdate {
 
 class BlockSparseSymmetricMatrix {
  public:
+
+  class EnterAndExitColumns {
+   public:
+    EnterAndExitColumns(int num_vars) : enter(num_vars, -1), exit(num_vars, -1) {}
+    std::vector<int> enter;
+    std::vector<int> exit;
+  };
+
   BlockSparseSymmetricMatrix(
   const int num_classes, 
   const std::vector<int>& variable_to_starting_class,
@@ -341,17 +349,16 @@ class SparseCliqueSum  {
     BlockSparseSymmetricMatrix::VariablePartition partition;
     std::vector<int> block_supernodes;
   };
+
   SparseCliqueSum(const std::vector<std::vector<int>>& cliques);
   CliquePartition GetBlockPartitionOfClique(int k);
+
+  BlockSparseSymmetricMatrix& matrix() { return matrix_; }
+
+ private:
   std::vector<int> cliques_;
-  class EnterAndExitColumns {
-   public:
-    EnterAndExitColumns(int num_vars) : enter(num_vars, -1), exit(num_vars, -1) {}
-    std::vector<int> enter;
-    std::vector<int> exit;
-  };
   int num_vars_;
-  EnterAndExitColumns data_;
+  BlockSparseSymmetricMatrix::EnterAndExitColumns data_;
   BlockSparseSymmetricMatrix matrix_;
 };
 

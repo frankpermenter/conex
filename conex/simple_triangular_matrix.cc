@@ -295,10 +295,10 @@ class BlockIterator {
   int current_block_index_ = 0;
 };
 
-SparseCliqueSum::EnterAndExitColumns GetEnterAndExit(
+BlockSparseSymmetricMatrix::EnterAndExitColumns GetEnterAndExit(
     int num_vars, 
     std::vector<std::vector<int>> cliques) {
-  SparseCliqueSum::EnterAndExitColumns y(num_vars);
+  BlockSparseSymmetricMatrix::EnterAndExitColumns y(num_vars);
   for (size_t i = 0; i < cliques.size(); i++) {
     for (auto n : cliques[i]) {
       if (y.enter.at(n) == -1) {
