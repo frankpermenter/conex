@@ -190,30 +190,59 @@ void DoAssemblyTest(const std::vector<int>& block_sizes,
   EXPECT_EQ((matrix - ref).norm(), 0.0);
 }
 
-void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques) {
-  int N = GetMaxElement(cliques) + 1;
-  Eigen::MatrixXd M = Eigen::MatrixXd::Zero(N, N);
-  auto matrix = MakeBlockSparseMatrix(M, cliques);
-  auto& mat = matrix.storage();
-  mat.SetConstant(0);
-  for (size_t k = 0; k < cliques.size(); k++) {
-    auto p = matrix.GetBlockPartitionOfVariables(cliques.at(k));
-    auto partition = p.partition;
-    for (auto pi : partition) {
-      for (auto pj : partition) {
+
+class Assembler {
+ public:
+  void AssignStorage(SimpleTriangularMatrix& matrix, BlockSparseSymmetricMatrix::VariablePartition
+                     partition) {
+    matrix_ = &matrix;
+    partition_ = std::move(partition);
+  }
+  void Assemble() {
+    DoAssemble();
+  }
+ private:
+  virtual void DoAssemble() {
+    for (auto pi : partition_.partition) {
+      for (auto pj : partition_.partition) {
         int i = pi.block;
         int j = pj.block;
         if (i > j) {
           continue;
         }
         if (i == j) {
-          mat.diagonal_blocks(i).block(pi.offset, pj.offset, pi.size, pj.size).array() += 1;
+          matrix_->diagonal_blocks(i).block(pi.offset, pj.offset, pi.size, pj.size).array() += 1;
         } else {
-          mat.off_diagonal_blocks(i, j).block(pi.offset, pj.offset, pi.size, pj.size).array() += 1;
+          matrix_->off_diagonal_blocks(i, j).block(pi.offset, pj.offset, pi.size, pj.size).array() += 1;
         }
       }
     }
   }
+  bool InitializeBlock(int) {
+    return false; 
+  }
+  SimpleTriangularMatrix* matrix_ = nullptr;
+  BlockSparseSymmetricMatrix::VariablePartition partition_; 
+};
+
+
+void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques) {
+  int N = GetMaxElement(cliques) + 1;
+  Eigen::MatrixXd M = Eigen::MatrixXd::Zero(N, N);
+  auto matrix = MakeBlockSparseMatrix(M, cliques);
+  auto& mat = matrix.storage();
+  mat.SetConstant(0);
+  vector<Assembler> assembler(cliques.size());
+  for (size_t k = 0; k < cliques.size(); k++) {
+    auto p = matrix.GetBlockPartitionOfVariables(cliques.at(k));
+    assembler.at(k).AssignStorage(mat, p);
+  }
+
+  for (size_t k = 0; k < cliques.size(); k++) {
+    auto p = matrix.GetBlockPartitionOfVariables(cliques.at(k));
+    assembler.at(k).Assemble();
+  }
+
   EXPECT_EQ((matrix.MakeDenseMatrix() - AddUnitSubmatrices(cliques)).norm(), 0);
 }
 
@@ -230,7 +259,7 @@ GTEST_TEST(SimpleTri, Assembly) {
 }
 
 
-#if 1
+#if 0
 GTEST_TEST(SimpleTri, Construct) {
   std::vector<int> block_sizes{2, 2, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
