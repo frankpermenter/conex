@@ -263,6 +263,8 @@ void DoCliqueAssemblyTest(const std::vector<std::vector<int>>& cliques) {
 }  // namespace
 
 
+//  (x1, x2, x3) - (l1, x2, x3) - 
+
 GTEST_TEST(SimpleTri, Assembly) {
   std::vector<int> block_sizes{3, 8, 2};
   std::vector<SimpleTriangularMatrixTriplet> triplets{{2, 0, 2}};
@@ -270,6 +272,7 @@ GTEST_TEST(SimpleTri, Assembly) {
   vector<vector<int>> cliques{{0, 1}, {1, 2, 3}, {1, 4, 5}, {1, 4, 6}};
   DoCliqueAssemblyTest(cliques);
   DoCliqueAssemblyTest({{0, 2, 3, 6},  {1, 4, 5}, {1, 4, 6}});
+  DoCliqueAssemblyTest({{0, 1, 2, 3},  {0, 1, 2, 3, 4}, {1, 2, 3, 4}});
 }
 
 
@@ -662,5 +665,16 @@ GTEST_TEST(BlockSymmetricMatrixCholesky, BlockDiag) {
   //DoBlockCholeskyTest(M, cliques);
   DoBlockLDLTTest(M, cliques);
 }
+
+
+// Pick clique order:
+//
+//   SN(C_i) \ge NumEq(C_i)
+//
+// SN denotes the non-dual variables that are supernodes.
+//
+//
+
+
 #endif
 }  // namespace conex
