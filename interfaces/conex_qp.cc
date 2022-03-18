@@ -127,7 +127,8 @@ int CONEX_QP_GetCanonicalProblemData(const double* quadratic_cost_matrix,
       Map(inequality_matrix, num_row_ineq, num_vars),
       Map(inequality_lower_bound, num_row_ineq_lb, 1),
       Map(inequality_upper_bound, num_row_ineq_ub, 1), &data.A,
-      &affine_term_ineq, &data.B, &affine_term_eq);
+      &affine_term_ineq, &data.B, &affine_term_eq,
+      false);
 
   if (affine_term_ineq.rows() > 0) {
     data.b = affine_term_ineq;
@@ -193,7 +194,9 @@ int CONEX_QP_Solver(const double* quadratic_cost_matrix, int num_row,
       Map(inequality_matrix, num_row_ineq, num_vars),
       Map(inequality_lower_bound, num_row_ineq_lb, 1),
       Map(inequality_upper_bound, num_row_ineq_ub, 1), &data.A,
-      &affine_term_ineq, &data.B, &affine_term_eq);
+      &affine_term_ineq, &data.B, &affine_term_eq,
+      config_input->enable_rescaling);
+
 
   if (affine_term_ineq.rows() > 0) {
     data.b = affine_term_ineq;

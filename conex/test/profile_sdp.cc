@@ -10,8 +10,8 @@ using DenseMatrix = Eigen::MatrixXd;
 namespace conex {
 void TestSDP(int i) {
   SolverConfiguration config;
-  int n = 300;
-  int m = 50;
+  int n = 50;
+  int m = .5 * (n*n-n) - 1;
   auto constraints2 = GetRandomDenseMatrices(n, m);
 
   DenseMatrix affine2 = Eigen::MatrixXd::Identity(n, n);

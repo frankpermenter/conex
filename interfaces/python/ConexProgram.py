@@ -61,6 +61,11 @@ def ConexGetQuadraticProgramData(quadratic_cost_matrix,
                     inequality_matrix,
                     inequality_upper_bound,
                     inequality_lower_bound):
+
+    inequality_lower_bound = np.squeeze(np.array(inequality_lower_bound[:])).transpose()
+    inequality_upper_bound = np.squeeze(np.array(inequality_upper_bound[:])).transpose()
+    cost_vector = np.squeeze(np.array(cost_vector[:])).transpose()
+
     wrapper = conex
     m = quadratic_cost_matrix.shape[0]
 
@@ -92,6 +97,11 @@ def ConexSolveQuadraticProgram(quadratic_cost_matrix,
                     inequality_upper_bound,
                     inequality_lower_bound,
                     config):
+
+    inequality_lower_bound = np.squeeze(np.array(inequality_lower_bound[:])).transpose()
+    inequality_upper_bound = np.squeeze(np.array(inequality_upper_bound[:])).transpose()
+    cost_vector = np.squeeze(np.array(cost_vector[:])).transpose()
+
     wrapper = conex
     m = quadratic_cost_matrix.shape[0]
     solution = np.ones(m).astype(real)
@@ -105,7 +115,6 @@ def ConexSolveQuadraticProgram(quadratic_cost_matrix,
                     config, 
                     solution, 
                     stats)
-
 
     return solution, status, stats
 

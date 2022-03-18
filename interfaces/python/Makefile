@@ -9,7 +9,8 @@ _conex.so: numpy.i ../libconex.so conex.i
 	python3 dependencies/setup.py build
 	#python2.7 dependencies/setup.py build
 	#cp build/lib.linux-x86_64-2.7/*.so .
-	cp build/lib.linux-x86_64-3.7/*.so .
+	#cp build/lib.linux-x86_64-3.7/*.so .
+	cp build/lib.linux-x86_64-3.6/*.so .
 
 .PHONY: clean
 

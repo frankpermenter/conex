@@ -464,7 +464,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     REPORT(cx);
     kkt_error = std::fabs(cx - by - s_dot_x) / s_dot_x;
     REPORT(kkt_error);
-    REPORT(residual);
+    //REPORT(residual);
 
     prog.stats->num_iter = i + 1;
     prog.stats->sqrt_inv_mu[i] = newton_step_parameters.inv_sqrt_mu;

@@ -104,6 +104,21 @@ ScaledData VariableScaling(ProblemData& data) {
   return data_scaled;
 }
 
+bool HaveSameSign(const VectorXd& x, const VectorXd& y) {
+  if (x.size() != y.size()) {
+    return false;
+  }
+  
+  for (int i = 0; i < x.size(); i++) {
+    if (x(i) > 0 && y(i) < 0) {
+      return false;
+    }
+    if (x(i) < 0 && y(i) > 0) {
+      return false;
+    }
+  }
+  return true;
+}
 
 
 Solution LogspaceIPMHelper(const ProblemData& data_rescaled,
@@ -142,6 +157,8 @@ Solution LogspaceIPMHelper(const ProblemData& data_rescaled,
   int status = CONEX_LOGSPACE_IPM_UNKNOWN;
   int i = 0;
   bool target_gap_reached = false;
+  VectorXd d_last;
+  VectorXd d_last_last;
   for (; i < options.maximum_iterations; i++) {
     adjust_theta = adjust_theta && theta > 1e-15;
     double k = 1;
@@ -350,16 +367,21 @@ Solution LogspaceIPMHelper(const ProblemData& data_rescaled,
     Direction dir = NewtonDirection(data_theta, v.expv, 1);
     enable_rapid_mu = dir.dlambda_times_d_slack < options.endgame_rescaling_threshold;
 
-
     bool quadratic_convergence = false;
-    if (enable_rapid_mu) {
+
+
+    bool have_same_sign = HaveSameSign(d, d_last) && HaveSameSign(d_last_last, d_last);
+    d_last_last = d_last;
+    d_last = d;
+    if (have_same_sign) {
       if (!adjust_theta) {
         quadratic_convergence = true;
         int n = v.expv.rows();
         //double scale = 2 - mean_scaling * 1.0/10; 
 
         for (int i = 0; i < n; i++) {
-          if (v.expv(i) > 1) {
+          //if (v.expv(i) > 1) {
+          if (d(i) > 0) {
             v.expv(i) *= options.endgame_rescaling_factor;
           } else {
             v.expv(i) /= options.endgame_rescaling_factor;
@@ -376,9 +398,8 @@ Solution LogspaceIPMHelper(const ProblemData& data_rescaled,
       d = d * stepsize;
     }
 
-      VectorXd expd = d.array().exp();
-      v.expv = v.expv.cwiseProduct(expd);
-
+    VectorXd expd = d.array().exp();
+    v.expv = v.expv.cwiseProduct(expd);
 
     //  k e^a = e^a (1+d1)
     //  k e^{-b} = e^{-b} (1-d2)
