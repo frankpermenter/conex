@@ -69,10 +69,14 @@ inline std::ostream& operator<<(std::ostream& os, const std::pair<T1, T2>& P) {
 
 template <typename T>
 inline std::ostream& operator<<(std::ostream& os, const std::vector<T>& P) {
-  os << "\n--\n";
-  for (auto e : P) {
-    os << e << "\n-\n";
+  os << "\n{";
+  if (P.size() > 0) {
+    os << P.at(0);
   }
+  for (size_t i = 1; i < P.size(); i++) {
+    os << "," << P.at(i);
+  }
+  os << "}\n";
   return os;
 }
 
