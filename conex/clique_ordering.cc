@@ -96,12 +96,14 @@ class Weight {
                            &intersections_(active, i));
     }
     size_t weight = intersections_(active, i).size();
-    if (valid_leaf_.size() > 0) {
-      if (!valid_leaf_.at(i)) {
-        weight += 1e4;
-      }
-      if (!valid_leaf_.at(active)) {
-        weight += 1e4;
+    if (weight > 0) {
+      if (valid_leaf_.size() > 0) {
+        // Guarantee illegal leaf-nodes obtain largest weight so we
+        // process them sooner.
+        const int weight_offset = num_nodes_ + 1;
+        if (!valid_leaf_.at(i)) {
+          weight += weight_offset;
+        }
       }
     }
     return weight;
