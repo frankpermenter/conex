@@ -308,9 +308,15 @@ struct rldlt_inplace<Lower> {
     bool found_zero_pivot = false;
     bool ret = true;
     const double regularization_value = 1e-9;
+#if CONEX_REPORT_REGULARIZATION_FAILURE
+    bool report_regularization = false;
+#endif
 
     if (size <= 1) {
       if (std::fabs(mat.coeff(0, 0)) < regularization_value) {
+#if CONEX_REPORT_REGULARIZATION_FAILURE
+        report_regularization = true;
+#endif
         if (mat.coeff(0, 0) < 0) {
           mat.coeffRef(0, 0) = -regularization_value;
         } else {
@@ -384,6 +390,9 @@ struct rldlt_inplace<Lower> {
       if (!pivot_is_valid) {
         pivot_is_valid = true;
         ret = false;
+#if CONEX_REPORT_REGULARIZATION_FAILURE
+        report_regularization = true;
+#endif
         if (mat.coeffRef(k, k) < 0) {
           mat.coeffRef(k, k) = -(1e-9);
         } else {
@@ -427,6 +436,11 @@ struct rldlt_inplace<Lower> {
       }
     }
 
+#if CONEX_REPORT_REGULARIZATION_FAILURE
+    if (report_regularization) {
+      std::cerr << "\nWarning: LDLT required regularization." << std::endl;
+    }
+#endif
     return ret;
   }
 

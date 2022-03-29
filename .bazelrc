@@ -17,6 +17,7 @@ build:debug --copt="-O0"
 build:debug -c dbg
 build:debug --javacopt="-g"
 build:debug --strip="never"
+build:debug --copt="-DCONEX_REPORT_REGULARIZATION_FAILURE"
 
 build:blas --copt="-DEIGEN_USE_BLAS"
 build:blas --linkopt="-lblas"

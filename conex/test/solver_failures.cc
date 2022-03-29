@@ -44,6 +44,174 @@ void EqualityConstraintFailingLDLT() {
   DUMP(solution);
 }
 
+void IncrementSubVector(const std::vector<int>& cliques, const VectorXd& x,
+                        VectorXd* y) {
+  int i = 0;
+  for (auto e : cliques) {
+    (*y)(e) += x(i++);
+  }
+}
+
+void EqualityConstraintForceEqualityConstraintsToLeafNodes2() {
+  int num_vars = 6;
+
+  std::vector<std::vector<int>> cliques{
+      {0, 3, 4}, {1, 2, 5}, {0, 1, 2, 3}}; /* equality*/
+
+  MatrixXd B1(1, 2);
+  B1 << 1, -1;
+
+  MatrixXd A1(2, 3);
+  A1 << 1, 2, 3, -1, -2, -3;
+  VectorXd b1 = A1.transpose() * VectorXd::Constant(3, 1);
+
+  MatrixXd A2(2, 3);
+  A2 << 3, 1, 5, -3, -4, -5;
+  VectorXd b2 = A2.transpose() * VectorXd::Constant(3, 1);
+
+  MatrixXd B2(2, 4);
+  B2 << 0, 0, 1, -1, 1, -1, 0, 0;
+  VectorXd linear_cost(num_vars);
+
+  linear_cost.setConstant(0);
+  IncrementSubVector(cliques.at(0), b1, &linear_cost);
+  IncrementSubVector(cliques.at(1), b2, &linear_cost);
+
+  VectorXd solution(num_vars);
+
+  Program prog(num_vars);
+  prog.AddConstraint(LinearConstraint{A1, VectorXd::Constant(2, 100)},
+                     cliques.at(0));
+  prog.AddConstraint(LinearConstraint{A2, VectorXd::Constant(2, 100)},
+                     cliques.at(1));
+  prog.AddConstraint(EqualityConstraints{B2, VectorXd::Zero(2)}, cliques.at(2));
+
+  conex::SolverConfiguration config;
+  config.max_iterations = 1;
+  Solve(linear_cost, prog, config, solution.data());
+}
+
+void EqualityConstraintForceEqualityConstraintsToLeafNodes(
+    bool failure_from_fill_in) {
+  int num_vars = 6;
+
+  std::vector<std::vector<int>> cliques;
+  if (failure_from_fill_in) {
+    /* Cliques an internal clique tree with nodes:
+     *
+     *   {0 1 equality_dual_var_1}
+     *   {0 3 4}
+     *   {1 2 5}
+     *   {2 3 equality_dual_var_2}
+     *
+     *        {0 1 equality_dual_var_1} + {3}
+     *        /                 \
+     *   {0 3 4} + {3}      {1 2 5} + {3}
+     *                            \
+     *                 {2 3 equality_dual_var_2}
+     *
+     * Here the +{3} indicates fill-in. We also see that equality_dual_var_2 is
+     * the only supernode of {2 3 equality_dual_var_2}, which causes the LDLT
+     * factorization to fail.
+     *
+     *  */
+    cliques = std::vector<std::vector<int>>{{0, 1}, /* equality*/
+                                            {0, 3, 4},
+                                            {1, 2, 5},
+                                            {2, 3}}; /* equality*/
+  } else {
+    /* In this simpler example, the same issue arises, even without fill-in.*/
+    cliques = std::vector<std::vector<int>>{{0, 1}, /* equality*/
+                                            {0, 2, 3},
+                                            {3, 4, 5},
+                                            {4, 5}}; /* equality*/
+  }
+
+  MatrixXd B1(1, 2);
+  B1 << 1, -1;
+
+  MatrixXd A1(2, 3);
+  A1 << 1, 2, 3, -1, -2, -3;
+  VectorXd b1 = A1.transpose() * VectorXd::Constant(3, 1);
+
+  MatrixXd A2(2, 3);
+  A2 << 3, 1, 5, -3, -4, -5;
+  VectorXd b2 = A2.transpose() * VectorXd::Constant(3, 1);
+
+  MatrixXd B2(1, 2);
+  B2 << 1, -1;
+  VectorXd linear_cost(num_vars);
+
+  linear_cost.setConstant(0);
+  IncrementSubVector(cliques.at(1), b1, &linear_cost);
+  IncrementSubVector(cliques.at(2), b2, &linear_cost);
+
+  VectorXd solution(num_vars);
+
+  Program prog(num_vars);
+  prog.AddConstraint(EqualityConstraints{B1, VectorXd::Zero(1)}, cliques.at(0));
+  prog.AddConstraint(LinearConstraint{A1, VectorXd::Constant(2, 100)},
+                     cliques.at(1));
+  prog.AddConstraint(LinearConstraint{A2, VectorXd::Constant(2, 100)},
+                     cliques.at(2));
+  prog.AddConstraint(EqualityConstraints{B2, VectorXd::Zero(1)}, cliques.at(3));
+
+  conex::SolverConfiguration config;
+  config.max_iterations = 2;
+  Solve(linear_cost, prog, config, solution.data());
+}
+
+/* Illustrate problem: we must eliminate dual variables before we eliminate
+ * variables with no quadratic term. The following generates clique tree:
+ *
+ * {0, 2, 3}
+ *     |
+ * {3, 4, 5}
+ *     |
+ * {0, 1, 4, 5, dual, dual}.
+ *
+ * To avoid LDLT failure, the last clique must be permuted as:
+ *
+ * {0, dual, 1, 4, 5, dual}
+ *
+ * */
+void EqualityConstraintsNoQuadraticPenalty() {
+  int num_vars = 6;
+
+  std::vector<std::vector<int>> cliques{{0, 2, 3}, {3, 4, 5}};
+  std::vector<int> clique_eq{0, 1, 4, 5};
+
+  MatrixXd B1(1, 2);
+  B1 << 1, -1;
+
+  MatrixXd A1(2, 3);
+  A1 << 1, 2, 3, -1, -2, -3;
+  VectorXd b1 = A1.transpose() * VectorXd::Constant(3, 1);
+
+  MatrixXd A2(2, 3);
+  A2 << 3, 1, 5, -3, -4, -5;
+  VectorXd b2 = A2.transpose() * VectorXd::Constant(3, 1);
+  VectorXd linear_cost(num_vars);
+  linear_cost.setConstant(0);
+  IncrementSubVector(cliques.at(0), b1, &linear_cost);
+  IncrementSubVector(cliques.at(1), b2, &linear_cost);
+
+  VectorXd solution(num_vars);
+
+  Program prog(num_vars);
+  MatrixXd B(2, 4);
+  B << 1, -1, 0, 0, 0, 0, 1, -1;
+  prog.AddConstraint(EqualityConstraints{B, VectorXd::Zero(2)}, clique_eq);
+  prog.AddConstraint(LinearConstraint{A1, VectorXd::Constant(2, 100)},
+                     cliques.at(0));
+  prog.AddConstraint(LinearConstraint{A2, VectorXd::Constant(2, 100)},
+                     cliques.at(1));
+
+  conex::SolverConfiguration config;
+  config.max_iterations = 2;
+  Solve(linear_cost, prog, config, solution.data());
+}
+
 // The centering parameter moves around.
 void DoBadInitialization(bool fail) {
   int num_vars = 5;
@@ -251,6 +419,11 @@ void LPFailSlater(int number_of_implicit_equations) {
 }  // namespace conex
 
 int main() {
+  conex::EqualityConstraintForceEqualityConstraintsToLeafNodes(
+      false /*fill-in induced failure*/);
+  conex::EqualityConstraintsNoQuadraticPenalty();
+  conex::EqualityConstraintForceEqualityConstraintsToLeafNodes(
+      true /*fill-in induced failure*/);
   conex::EqualityConstraintFailingLDLT();
   conex::MPCFailingLDLT().Run(true /*trigger fail*/);
   srand(0);
