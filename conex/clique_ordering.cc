@@ -59,17 +59,16 @@ class SymmetricMatrix {
 };
 
 using Edge = std::pair<int, int>;
-vector<int> GetMaxWeightedDegreeNode(
-    int n, const vector<Edge>& edges,
-    const SymmetricMatrix<vector<int>>& intersections) {
+vector<int> GetNodeDegrees(int n, const vector<Edge>& edges,
+                           const SymmetricMatrix<vector<int>>& intersections) {
   vector<int> weights(n);
   for (auto& w : weights) {
     w = 0;
   }
 
   for (auto& e : edges) {
-    weights.at(e.first) += intersections(e.first, e.second).size();
-    weights.at(e.second) += intersections(e.first, e.second).size();
+    weights[e.first] += intersections(e.first, e.second).size();
+    weights[e.second] += intersections(e.first, e.second).size();
   }
   return weights;
 }
@@ -193,7 +192,7 @@ int PickCliqueOrderHelper(const std::vector<std::vector<int>>& cliques_sorted,
     }
   }
 
-  auto weights = GetMaxWeightedDegreeNode(n, edges, intersections);
+  auto weights = GetNodeDegrees(n, edges, intersections);
   int root_node = std::distance(
       weights.begin(),
       std::max_element(weights.begin(), weights.begin() + weights.size()));

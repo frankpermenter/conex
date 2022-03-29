@@ -8,7 +8,7 @@ mydir=$(dirname $(realpath $0))
 [[ $PWD != $mydir ]] && { echo "Error: Script cannot be run from different directory."; exit 1; }
 
 
-bazel_config=blas
+bazel_config=debug
 bazel run //:buildifier --config=$bazel_config
 find ./conex/ -iname *.h -o -iname *.cc | xargs clang-format -i
 find ./interfaces/ -iname *.h -o -iname *.cc | xargs clang-format -i
