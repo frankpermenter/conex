@@ -142,7 +142,7 @@ int PickCliqueOrderHelper(const std::vector<std::vector<int>>& cliques_sorted,
     if (visited.at(active) == 0) {
       order->push_back(active);
       visited.at(active) = 1;
-      tree.parent.at(active) = active;
+      tree.parent.at(active) = -1;
       tree.height.at(active) = 0;
     }
 
