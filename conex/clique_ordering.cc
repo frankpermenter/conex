@@ -150,12 +150,12 @@ int PickCliqueOrderHelper(const std::vector<std::vector<int>>& cliques_sorted,
     size_t max_weight = 1;
     vector<int> argmax;
     for (size_t i = 0; i < cliques_sorted.size(); i++) {
-      if (i == active) {
+      if (i == active || visited.at(i) == 1) {
         continue;
       }
 
       auto current_weight = edge_weights.get_weight(active, i);
-      if (current_weight >= max_weight && !visited.at(i)) {
+      if (current_weight >= max_weight) {
         if (current_weight > max_weight) {
           argmax.clear();
           max_weight = current_weight;
