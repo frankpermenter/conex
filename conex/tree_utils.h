@@ -17,7 +17,10 @@ struct RootedTree {
   std::vector<int> height;
 };
 
-vector<int> PathInTree(int x, int y, const std::vector<int>& tree,
-                       const std::vector<int>& height);
+/* Given a union of disjoint rooted trees (forest), we return the list of nodes
+ * on the unique path between x and y. Throws an exception if no path exists.
+ * The last element of the list is the node closest to the root. */
+vector<int> PathInForest(int x, int y, const std::vector<int>& tree,
+                         const std::vector<int>& height);
 
 }  // namespace conex

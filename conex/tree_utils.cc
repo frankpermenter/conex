@@ -8,16 +8,21 @@ using std::vector;
 
 namespace conex {
 
-vector<int> PathInTree(int x, int y, const std::vector<int>& tree,
-                       const std::vector<int>& depth) {
+vector<int> PathInForest(int x, int y, const std::vector<int>& parent,
+                         const std::vector<int>& distance_from_root) {
   std::vector<int> path;
   while (x != y) {
-    if (depth[x] < depth[y]) {
+    if (distance_from_root[x] + distance_from_root[y] == 0) {
+      throw std::runtime_error(
+          "Path does not exist. Points lie in disjoint trees.");
+    }
+
+    if (distance_from_root[x] < distance_from_root[y]) {
       path.push_back(y);
-      y = tree.at(y);
+      y = parent.at(y);
     } else {
       path.push_back(x);
-      x = tree.at(x);
+      x = parent.at(x);
     }
   }
   path.push_back(x);

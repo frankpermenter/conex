@@ -278,8 +278,8 @@ void FillIn(const RootedTree& tree, int num_variables,
     for (int v : supernodes->at(order.at(i))) {
       const bool variable_already_eliminated = eliminated.at(v) < num_cliques;
       if (variable_already_eliminated) {
-        auto fill_in =
-            PathInTree(order.at(i), eliminated.at(v), tree.parent, tree.height);
+        auto fill_in = PathInForest(order.at(i), eliminated.at(v), tree.parent,
+                                    tree.height);
         for (size_t j = 0; j < fill_in.size() - 1; j++) {
           auto e = fill_in.at(j);
           separators->at(e) = UnionOfSorted(separators->at(e), {v});

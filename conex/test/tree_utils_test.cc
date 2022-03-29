@@ -81,12 +81,12 @@ GTEST_TEST(TreeUtils, TestPath1) {
   auto A = TestGraph();
   int root = 0;
   auto tree = GetSpanningTree(A, root);
-  auto p1 = PathInTree(4, 0, tree.parent, tree.height);
+  auto p1 = PathInForest(4, 0, tree.parent, tree.height);
   vector<int> path_ref{4, 3, 0};
   EXPECT_EQ(p1, path_ref);
 
   path_ref = vector<int>{4, 2, 3, 1, 0};
-  auto p2 = PathInTree(4, 2, tree.parent, tree.height);
+  auto p2 = PathInForest(4, 2, tree.parent, tree.height);
   EXPECT_EQ(p2, path_ref);
 }
 
@@ -94,12 +94,12 @@ GTEST_TEST(TreeUtils, TestPath2) {
   auto A = TestGraph();
   int root = 4;
   auto tree = GetSpanningTree(A, root);
-  auto p1 = PathInTree(0, 4, tree.parent, tree.height);
+  auto p1 = PathInForest(0, 4, tree.parent, tree.height);
   vector<int> path_ref{0, 3, 4};
   EXPECT_EQ(p1, path_ref);
 
   path_ref = vector<int>{2, 1, 0, 3, 4};
-  auto p2 = PathInTree(2, 4, tree.parent, tree.height);
+  auto p2 = PathInForest(2, 4, tree.parent, tree.height);
   EXPECT_EQ(p2, path_ref);
 }
 
