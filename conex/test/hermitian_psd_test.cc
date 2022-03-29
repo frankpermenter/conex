@@ -101,9 +101,9 @@ class TestCases : public testing::Test {
 
 TYPED_TEST_CASE(TestCases, JordanTypes);
 TYPED_TEST(TestCases, SolveRandomInstances) {
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 2; i++) {
     if (!std::is_same<typename TestFixture::Type, Octonions>::value) {
-      TestFixture::SolveRandomInstances(3 + i * 40, 2 + 3 * i);
+      TestFixture::SolveRandomInstances(3 + i, 2 + 3 * i);
     } else {
       TestFixture::SolveRandomInstances(3, 2 + 3 * i);
     }
