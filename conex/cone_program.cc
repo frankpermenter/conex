@@ -36,7 +36,7 @@ void GetWeightedSlackEigenvalues(ConstraintManager<Container>* constraints,
   p->lambda_max = -30000;
   p->lambda_min = 30000;
   int i = 0;
-  for (auto& ci : constraints->eqs) {
+  for (auto& ci : constraints->positive_definite_blocks_) {
     auto ysegment = Vars(y, constraints->cliques.at(i));
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
                                                   ysegment.size(), 1);
@@ -97,11 +97,11 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
         prog.kkt_system_manager_.cliques, prog.kkt_system_manager_.dual_vars);
 
     kkt.clear();
-    for (auto& c : prog.kkt_system_manager_.eqs) {
+    for (auto& c : prog.kkt_system_manager_.positive_definite_blocks_) {
       c.supernodal_assembler.Reset();
     }
 
-    for (auto& c : prog.kkt_system_manager_.eqs) {
+    for (auto& c : prog.kkt_system_manager_.positive_definite_blocks_) {
       c.supernodal_assembler.workspace_ = &c.constraint;
       kkt.push_back(&c.supernodal_assembler);
     }
@@ -134,7 +134,7 @@ double ComputeMuFromLineSearch(ConstraintManager<Container>& constraints,
   LineSearchOutput output;
 
   int i = 0;
-  for (auto& ci : constraints.eqs) {
+  for (auto& ci : constraints.positive_definite_blocks_) {
     LineSearchOutput output_i;
     auto ysegment1 = Vars(*y0, constraints.cliques.at(i));
     auto ysegment2 = Vars(y1, constraints.cliques.at(i));

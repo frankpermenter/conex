@@ -62,7 +62,7 @@ class ConstraintManager {
     if (!IsUnique(max_number_of_variables_, variables)) {
       return CONEX_FAILURE;
     }
-    eqs.emplace_back(x, variables.size());
+    positive_definite_blocks_.emplace_back(x, variables.size());
     cliques.push_back(variables);
     dual_vars.push_back({});
     return CONEX_SUCCESS;
@@ -74,7 +74,7 @@ class ConstraintManager {
       return CONEX_FAILURE;
     }
     const int m = x.SizeOfDualVariable();
-    eqs.emplace_back(x, m + variables.size());
+    positive_definite_blocks_.emplace_back(x, m + variables.size());
     cliques.push_back(variables);
     dual_vars.push_back({});
     for (int i = 0; i < m; i++) {
@@ -95,7 +95,7 @@ class ConstraintManager {
   }
 
   // Use a list so that we do not trigger reallocations.
-  std::list<Container> eqs;
+  std::list<Container> positive_definite_blocks_;
   std::vector<std::vector<int>> cliques;
   std::vector<std::vector<int>> dual_vars;
 
@@ -109,7 +109,7 @@ void AssembleSchurComplementResiduals(ConstraintManager<Container>* kkt,
                                       SchurComplementSystem* s) {
   s->setZero();
   int i = 0;
-  for (auto& ci : kkt->eqs) {
+  for (auto& ci : kkt->positive_definite_blocks_) {
     auto* rhs_i = &ci.supernodal_assembler.submatrix_data_;
     s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
     s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;

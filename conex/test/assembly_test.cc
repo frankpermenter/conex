@@ -147,7 +147,7 @@ GTEST_TEST(LDLT, TestAssembly) {
   ldlt.compute(T);
 
   SupernodalKKTSolver solver(prog.cliques, prog.dual_vars);
-  solver.Bind(GetPointers(prog.eqs));
+  solver.Bind(GetPointers(prog.positive_definite_blocks_));
   Eigen::VectorXd AW(n + m);
   Eigen::VectorXd AQc(n + m);
   double c_inner_product_w;
@@ -177,7 +177,7 @@ GTEST_TEST(LDLT, Benchmark2) {
   BuildLQRProblem(N, &prog);
 
   SupernodalKKTSolver solver(prog.cliques, prog.dual_vars);
-  solver.Bind(GetPointers(prog.eqs));
+  solver.Bind(GetPointers(prog.positive_definite_blocks_));
   Eigen::VectorXd AW(prog.SizeOfKKTSystem());
   Eigen::VectorXd AQc(prog.SizeOfKKTSystem());
   double c_inner_product_w;
@@ -205,7 +205,7 @@ GTEST_TEST(Assemble, VariablesSpecifiedOutOfOrder) {
   prog.AddConstraint(SupernodalAssemblerStatic{Q}, vector{1, 0, 2});
 
   SupernodalKKTSolver solver(prog.cliques, prog.dual_vars);
-  solver.Bind(GetPointers(prog.eqs));
+  solver.Bind(GetPointers(prog.positive_definite_blocks_));
   Eigen::VectorXd AW(prog.SizeOfKKTSystem());
   Eigen::VectorXd AQc(prog.SizeOfKKTSystem());
   double c_inner_product_w;

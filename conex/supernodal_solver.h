@@ -35,28 +35,28 @@ MatrixData GetData(const std::vector<Clique>& cliques,
 
 template <typename T>
 inline void DoBind(const MatrixData& data, TriangularMatrixWorkspace& workspace,
-                   const std::vector<T*>& eqs) {
+                   const std::vector<T*>& positive_definite_blocks_) {
   auto& sn = data.supernodes_original_labels;
   auto& sep = data.separators_original_labels;
 
-  for (int e = static_cast<int>(eqs.size()) - 1; e >= 0; e--) {
+  for (int e = static_cast<int>(positive_definite_blocks_.size()) - 1; e >= 0; e--) {
     int i = data.clique_order.at(e);
 
     if (sn.at(e).size() > 0) {
       auto blockD = BuildBlock(&sn.at(e), workspace.diagonal.at(e).data());
-      eqs.at(i)->BindDiagonalBlock(&blockD);
+      positive_definite_blocks_.at(i)->BindDiagonalBlock(&blockD);
     }
 
     if (sep.at(e).size() > 0 && sn.at(e).size() > 0) {
       auto block = BuildBlock(&sn.at(e), &sep.at(e),
                               workspace.off_diagonal.at(e).data());
-      eqs.at(i)->BindOffDiagonalBlock(&block);
+      positive_definite_blocks_.at(i)->BindOffDiagonalBlock(&block);
     }
 
     if (workspace.seperator_diagonal.at(e).size() > 0) {
       auto block = BuildBlock(&sep.at(e), &sep.at(e),
                               &workspace.seperator_diagonal.at(e));
-      eqs.at(i)->BindOffDiagonalBlock(&block);
+      positive_definite_blocks_.at(i)->BindOffDiagonalBlock(&block);
     }
   }
 }
