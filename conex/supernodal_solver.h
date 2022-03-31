@@ -39,7 +39,8 @@ inline void DoBind(const MatrixData& data, TriangularMatrixWorkspace& workspace,
   auto& sn = data.supernodes_original_labels;
   auto& sep = data.separators_original_labels;
 
-  for (int e = static_cast<int>(positive_definite_blocks_.size()) - 1; e >= 0; e--) {
+  for (int e = static_cast<int>(positive_definite_blocks_.size()) - 1; e >= 0;
+       e--) {
     int i = data.clique_order.at(e);
 
     if (sn.at(e).size() > 0) {

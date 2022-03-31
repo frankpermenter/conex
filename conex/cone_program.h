@@ -75,7 +75,7 @@ inline void PrepareStep(ConstraintManager<Container>* kkt,
   info->normsqrd = 0;
   info->norminfd = -1;
   int i = 0;
-  for (auto& ci : kkt->positive_definite_blocks_) {
+  for (auto& ci : kkt->inequality_constraints()) {
     // TODO(FrankPermenter): Remove creation of these maps.
     auto ysegment = Vars(y, kkt->cliques.at(i));
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
@@ -120,7 +120,7 @@ class Program {
   template <typename T>
   void GetDualVariable(int i, T* xi) {
     int cnt = 0;
-    for (auto& ci : kkt_system_manager_.positive_definite_blocks_) {
+    for (auto& ci : kkt_system_manager_.inequality_constraints()) {
       if (cnt == i) {
         ci.constraint.get_dual_variable(xi->data());
         if (!status_.primal_infeasible) {
@@ -135,7 +135,7 @@ class Program {
 
   int GetDualVariableSize(int i) {
     int cnt = 0;
-    for (auto& ci : kkt_system_manager_.positive_definite_blocks_) {
+    for (auto& ci : kkt_system_manager_.inequality_constraints()) {
       if (cnt == i) {
         return ci.constraint.dual_variable_size();
       }
@@ -148,7 +148,7 @@ class Program {
                                        int row, int col,
                                        int hyper_complex_dim) {
     int cnt = 0;
-    for (auto& ci : kkt_system_manager_.positive_definite_blocks_) {
+    for (auto& ci : kkt_system_manager_.inequality_constraints()) {
       if (cnt == i) {
         return UpdateLinearOperator(&ci.constraint, value, variable, row, col,
                                     hyper_complex_dim);
@@ -161,7 +161,7 @@ class Program {
   int UpdateAffineTermOfConstraint(int i, double value, int row, int col,
                                    int hyper_complex_dim) {
     int cnt = 0;
-    for (auto& ci : kkt_system_manager_.positive_definite_blocks_) {
+    for (auto& ci : kkt_system_manager_.inequality_constraints()) {
       if (cnt == i) {
         return UpdateAffineTerm(&ci.constraint, value, row, col,
                                 hyper_complex_dim);
@@ -173,7 +173,7 @@ class Program {
 
   void InitializeWorkspace() {
     workspaces.clear();
-    for (auto& c : kkt_system_manager_.positive_definite_blocks_) {
+    for (auto& c : kkt_system_manager_.inequality_constraints()) {
       workspaces.push_back(c.constraint.workspace());
       workspaces.emplace_back(&c.supernodal_assembler.submatrix_data_);
     }
@@ -193,7 +193,8 @@ class Program {
     if constexpr (!std::is_same<T, EqualityConstraints>::value) {
       bool result = kkt_system_manager_.AddConstraint<T>(std::forward<T>(d));
       if (result == CONEX_SUCCESS) {
-        constraints_.push_back(&kkt_system_manager_.positive_definite_blocks_.back().constraint);
+        constraints_.push_back(
+            &kkt_system_manager_.inequality_constraints().back().constraint);
       }
       return result;
     } else {
@@ -208,7 +209,8 @@ class Program {
       bool result =
           kkt_system_manager_.AddConstraint<T>(std::forward<T>(d), variables);
       if (result == CONEX_SUCCESS) {
-        constraints_.push_back(&kkt_system_manager_.positive_definite_blocks_.back().constraint);
+        constraints_.push_back(
+            &kkt_system_manager_.inequality_constraints().back().constraint);
       }
       return result;
     } else {
@@ -217,7 +219,9 @@ class Program {
     }
   }
 
-  int NumberOfConstraints() { return kkt_system_manager_.positive_definite_blocks_.size(); }
+  int NumberOfConstraints() {
+    return kkt_system_manager_.inequality_constraints().size();
+  }
   ConexStatus Status() { return status_; }
 
   ConstraintManager<Container> kkt_system_manager_;
