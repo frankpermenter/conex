@@ -440,6 +440,26 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "conjugate_gradient_solvers",
+    srcs = ["conjugate_gradient_solvers.cc"],
+    hdrs = ["conjugate_gradient_solvers.h"],
+    deps = [
+        "supernodal_solver",
+    ],
+)
+
+cc_test(
+    name = "conjugate_gradient_solvers_test",
+    srcs = ["test/conjugate_gradient_solvers_test.cc"],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "conjugate_gradient_solvers",
+        "core",
+        "@gtest//:main",
+    ],
+)
+
 cc_binary(
     name = "solver_failures",
     srcs = ["test/solver_failures.cc"],

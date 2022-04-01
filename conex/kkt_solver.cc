@@ -115,6 +115,19 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
       Eigen::Map<Eigen::MatrixXi>(data.permutation_inverse.data(), data.N, 1);
 }
 
+T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques)
+    : cliques_(cliques),
+      dual_variables_(cliques.size()),
+      data(GetData(cliques, is_empty(dual_variables_),
+                   GetRootNode(cliques, dual_variables_))),
+      mat(data),
+      Pt(data.N),
+      b_permuted_(data.N) {
+  RelabelCliques(&data);
+  Pt.indices() =
+      Eigen::Map<Eigen::MatrixXi>(data.permutation_inverse.data(), data.N, 1);
+}
+
 T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
                        int num_vars, const std::vector<int>& order,
                        const std::vector<std::vector<int>>& supernodes,

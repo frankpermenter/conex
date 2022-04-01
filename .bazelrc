@@ -2,8 +2,8 @@ build --action_env=LIBRARY_PATH
 build --cxxopt='-std=c++17'
 build --copt="-O3"
 build --copt="-fPIC"
-build --copt="-DEIGEN_NO_DEBUG"
-build --copt="-DNDEBUG"
+#build --copt="-DEIGEN_NO_DEBUG"
+#build --copt="-DNDEBUG"
 
 build:asan --copt="-O0"
 build:asan --copt="-fsanitize=address"

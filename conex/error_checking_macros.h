@@ -11,9 +11,9 @@ namespace conex {
     return CONEX_FAILURE;                                                      \
   }
 
-#define CONEX_DEMAND(x, msg)      \
-  if (!(x)) {                     \
-    throw std::runtime_error(msg) \
+#define CONEX_DEMAND(x, msg)       \
+  if (!(x)) {                      \
+    throw std::runtime_error(msg); \
   }
 
 }  // namespace conex
