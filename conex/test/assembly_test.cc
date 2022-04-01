@@ -16,56 +16,11 @@
 
 namespace conex {
 
-class Container {
- public:
-  Container(const SupernodalAssemblerStatic& x, int num_vars)
-      : kkt_(x), kkt_ptr(&kkt_) {
-    Init(num_vars);
-  }
-
-  Container(const EqualityConstraints& x, int num_vars)
-      : eq(x),
-        eq_constraint(std::make_unique<Constraint>(&eq)),
-        eq_assembler(num_vars, eq_constraint.get()),
-        kkt_ptr(&eq_assembler) {
-    Init(num_vars);
-  }
-
-  void Init(int num_vars) {
-    kkt_ptr->SetNumberOfVariables(num_vars);
-    memory.resize(SizeOf(*kkt_ptr->GetWorkspace()));
-    Initialize(kkt_ptr->GetWorkspace(), memory.data());
-  }
-
-  using T = Container;
-  Container(const Container&) = delete;
-  Container(Container&&) = delete;
-  Container& operator=(const Container&) = delete;
-  Container& operator=(Container&&) = delete;
-
-  Eigen::VectorXd memory;
-  SupernodalAssemblerStatic kkt_;
-
-  EqualityConstraints eq;
-  std::unique_ptr<Constraint> eq_constraint;
-  SupernodalAssembler eq_assembler;
-
-  SupernodalAssemblerBase* kkt_ptr;
-};
-
-std::vector<SupernodalAssemblerBase*> GetPointers(std::list<Container>& r) {
-  std::vector<SupernodalAssemblerBase*> y;
-  for (auto& ri : r) {
-    y.push_back(ri.kkt_ptr);
-  }
-  return y;
-}
-
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::vector;
 
-void BuildLQRProblem(int N, ConstraintManager<Container>* prg) {
+void BuildLQRProblem(int N, ConstraintManager* prg) {
   auto& prog = *prg;
   Eigen::MatrixXd Qi = Eigen::MatrixXd::Identity(3, 3) * 2;
 
@@ -94,15 +49,15 @@ void BuildLQRProblem(int N, ConstraintManager<Container>* prg) {
     prog.AddEqualityConstraint(EqualityConstraints{Ai * (i + 2), bi * (i + 2)},
                                vars);
   }
-
-  prog.AddConstraint(SupernodalAssemblerStatic{Qi}, vector{0, 1, 2});
+  prog.AddQuadraticCost(Qi, vector{0, 1, 2});
 
   o = 3;
   for (int i = 0; i < N; i++) {
     vector vars{o, 1 + o, 2 + o};
     o += 3;
-    prog.AddConstraint(SupernodalAssemblerStatic{Qi}, vars);
+    prog.AddQuadraticCost(Qi, vars);
   }
+  prog.InitializeWorkspace();
 }
 
 GTEST_TEST(LDLT, TestAssembly) {
@@ -131,8 +86,11 @@ GTEST_TEST(LDLT, TestAssembly) {
 
   int N = 2;
 
-  ConstraintManager<Container> prog;
+  ConstraintManager prog;
   BuildLQRProblem(N, &prog);
+  SupernodalKKTSolver solver(prog.cliques, prog.dual_vars);
+  solver.Bind(prog.supernodal_assemblers_ptr_);
+  solver.Assemble();
 
   EXPECT_EQ(n + m, prog.SizeOfKKTSystem());
   MatrixXd T(n + m, n + m);
@@ -146,8 +104,6 @@ GTEST_TEST(LDLT, TestAssembly) {
   VectorXd yref;
   ldlt.compute(T);
 
-  SupernodalKKTSolver solver(prog.cliques, prog.dual_vars);
-  solver.Bind(GetPointers(prog.inequality_constraints()));
   Eigen::VectorXd AW(n + m);
   Eigen::VectorXd AQc(n + m);
   double c_inner_product_w;
@@ -173,11 +129,11 @@ GTEST_TEST(LDLT, Benchmark2) {
 
   int N = 40;
 
-  ConstraintManager<Container> prog;
+  ConstraintManager prog;
   BuildLQRProblem(N, &prog);
 
   SupernodalKKTSolver solver(prog.cliques, prog.dual_vars);
-  solver.Bind(GetPointers(prog.inequality_constraints()));
+  solver.Bind(prog.supernodal_assemblers_ptr_);
   Eigen::VectorXd AW(prog.SizeOfKKTSystem());
   Eigen::VectorXd AQc(prog.SizeOfKKTSystem());
   double c_inner_product_w;
@@ -196,16 +152,17 @@ GTEST_TEST(LDLT, Benchmark2) {
 GTEST_TEST(Assemble, VariablesSpecifiedOutOfOrder) {
   MatrixXd Q = MatrixXd::Identity(3, 3);
 
-  ConstraintManager<Container> prog;
+  ConstraintManager prog;
   prog.SetNumberOfVariables(4);
   Q << 1, 0, 0, 0, 0, 0, 0, 0, 3;
 
-  prog.AddConstraint(SupernodalAssemblerStatic{Q}, vector{1, 0, 3});
+  prog.AddQuadraticCost(Q, vector{1, 0, 3});
   Q << 1, 0, 0, 0, 0, 0, 0, 0, 2;
-  prog.AddConstraint(SupernodalAssemblerStatic{Q}, vector{1, 0, 2});
+  prog.AddQuadraticCost(Q, vector{1, 0, 2});
 
+  prog.InitializeWorkspace();
   SupernodalKKTSolver solver(prog.cliques, prog.dual_vars);
-  solver.Bind(GetPointers(prog.inequality_constraints()));
+  solver.Bind(prog.supernodal_assemblers_ptr_);
   Eigen::VectorXd AW(prog.SizeOfKKTSystem());
   Eigen::VectorXd AQc(prog.SizeOfKKTSystem());
   double c_inner_product_w;

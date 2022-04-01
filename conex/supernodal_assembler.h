@@ -53,6 +53,9 @@ inline OffDiagonalBlock BuildBlock(const std::vector<int>* r,
 // is store in an Eigen::Map.
 class SupernodalAssemblerBase {
  public:
+  SupernodalAssemblerBase(int n) { SetNumberOfVariables(n); }
+  SupernodalAssemblerBase(){};
+
   // Entries of diagonal block to update
   void BindDiagonalBlock(const DiagonalBlock* data);
   // Entries of off diagonal block to update
@@ -104,31 +107,67 @@ class SupernodalAssemblerBase {
 
 class SupernodalAssembler : public SupernodalAssemblerBase {
  public:
-  SupernodalAssembler(int num_variables, Constraint* W) {
+  SupernodalAssembler(int num_variables, Constraint* W)
+      : SupernodalAssemblerBase(num_variables) {
     workspace_ = W;
-    num_variables_ = num_variables;
     assert(W);
   }
   virtual void SetDenseData() {
+    if (!submatrix_data_.initialized) {
+#if CONEX_DEBUG_MESSAGES
+      std::cerr << "Performing self initialization of SupernodalAssembler. Did "
+                   "you forget to initialize workspace?";
+#endif
+      Workspace workspace = Workspace(&submatrix_data_);
+      memory_.resize(SizeOf(workspace));
+      Initialize(&workspace, memory_.data());
+    }
+
     if (workspace_) {
       ConstructSchurComplementSystem(workspace_, true, &submatrix_data_);
+    } else {
+      throw std::runtime_error("Supernodal assembler data source is not set.");
     }
   }
 
   SupernodalAssembler(){};
   Constraint* workspace_ = NULL;
+  Eigen::VectorXd memory_;
 };
 
 class SupernodalAssemblerStatic : public SupernodalAssemblerBase {
  public:
-  SupernodalAssemblerStatic(){};
-  SupernodalAssemblerStatic(const Eigen::MatrixXd& A) : A_(A) {}
+  SupernodalAssemblerStatic(const Eigen::MatrixXd& A)
+      : SupernodalAssemblerBase(A.rows()), A_(A) {
+    if (A_.rows() != A.cols()) {
+      throw std::runtime_error("Static assembler requires square matrix");
+    }
+  }
+
+  int UpdateMatrix(double value, int row, int col) {
+    CONEX_DEMAND(row < A_.rows() && col < A_.cols(),
+                 "Indices are out of bounds.");
+
+    A_(row, col) = value;
+    return CONEX_SUCCESS;
+  }
 
   virtual void SetDenseData() override {
+    if (!submatrix_data_.initialized) {
+#if CONEX_DEBUG_MESSAGES
+      std::cerr
+          << "Performing self initialization of SupernodalAssemblerStatic. Did "
+             "you forget to initialize workspace?";
+#endif
+      Workspace workspace = Workspace(&submatrix_data_);
+      memory_.resize(SizeOf(workspace));
+      Initialize(&workspace, memory_.data());
+    }
     submatrix_data_.setZero();
     submatrix_data_.G = A_;
   }
   Eigen::MatrixXd A_;
+  Eigen::VectorXd memory_;
 };
 
 }  // namespace conex

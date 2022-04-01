@@ -57,6 +57,12 @@ void T::SetLowerTri(const int* r, int sizer, const int* c, int sizec,
 }
 
 double T::GetCoeff(int i, int j) {
+  if (i >= submatrix_data_.G.rows()) {
+    throw std::runtime_error("Requested eliminate is out of bounds.");
+  }
+  if (j >= submatrix_data_.G.rows()) {
+    throw std::runtime_error("Requested eliminate is out of bounds.");
+  }
   bool fill_in = (i < 0) || (j < 0);
   if (fill_in) {
     // Fill in is
@@ -70,6 +76,9 @@ double T::GetCoeff(int i, int j) {
 }
 
 void T::BindDiagonalBlock(const DiagonalBlock* data) {
+  if (!submatrix_data_.initialized) {
+    throw std::runtime_error("Assembler not initialized.");
+  }
   if (diag.size() > 0) {
     throw std::runtime_error("Cannot bind multiple diagonal blocks");
   }
@@ -93,6 +102,10 @@ void T::BindDiagonalBlock(const DiagonalBlock* data) {
 }
 
 void T::BindOffDiagonalBlock(const OffDiagonalBlock* data) {
+  if (!submatrix_data_.initialized) {
+    throw std::runtime_error("Assembler not initialized.");
+  }
+
   if (data->stride != -1) {
     off_diag.push_back(*data);
   } else {

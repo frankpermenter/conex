@@ -13,8 +13,8 @@ cc_library(
 )
 
 cc_test(
-    name = "lp",
-    srcs = glob(["test/test_lp.cc"]),
+    name = "linear_constraint_test",
+    srcs = glob(["test/linear_constraint_test.cc"]),
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "core",

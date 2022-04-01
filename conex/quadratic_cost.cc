@@ -2,7 +2,7 @@
 #include "conex/newton_step.h"
 
 namespace conex {
-
+#if 0
 namespace {
 struct WorkspaceQuadraticFunction {
   using DenseMatrix = Eigen::MatrixXd;
@@ -69,10 +69,10 @@ class QuadraticFunction {
   WorkspaceQuadraticFunction* workspace() { return &workspace_; }
 };
 }  // namespace
-
+#endif
 void AddQuadraticCost(conex::Program* conex_prog, const Eigen::MatrixXd& Qi,
                       const std::vector<int>& z) {
-  conex_prog->AddConstraint(QuadraticFunction{Qi}, z);
+  conex_prog->AddQuadraticCost(Qi, z);
 }
 
 }  // namespace conex

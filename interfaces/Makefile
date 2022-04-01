@@ -37,7 +37,7 @@ SOURCES = approximate_eigenvalues.cc \
 
 OBJECTS := $(SOURCES:.cc=.o)
 
-%.o : $(CONEX)/conex/%.cc
+%.o : $(CONEX)/conex/%.cc $(CONEX)/conex/%.h
 	$(CXX) -c $(CPPFLAGS_LIBRARY) -fvisibility=hidden $< 
 
 libsource: $(SOURCES:.cc=.o)

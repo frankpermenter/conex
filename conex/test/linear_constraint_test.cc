@@ -1,9 +1,9 @@
+#include "conex/linear_constraint.h"
 #include <stdlib.h>
 #include <iostream>
 #include <memory>
 #include "conex/cone_program.h"
 #include "conex/constraint.h"
-#include "conex/linear_constraint.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
@@ -28,6 +28,9 @@ int DoRandomDenseTest(const SolverConfiguration& config, int number_of_tests,
 
     Program prog(num_variables);
     prog.AddConstraint(linear_constraint);
+    //    prog.AddConstraint((linear_constraint), {0, 1, 2, 3, 4});
+    // prog.AddConstraint(LinearConstraint{num_constraints, &Alinear,
+    // &Clinear});
 
     VectorXd x0 = VectorXd::Random(num_constraints, 1);
     x0 = x0.array().abs();
@@ -88,6 +91,7 @@ GTEST_TEST(LP, Dense) {
   EXPECT_LE(num_iter_line_search, num_iter_div_no_rescale);
   EXPECT_LE(num_iter_line_search, num_iter_line_search_no_rescale);
 }
+
 Eigen::VectorXd ExtractVars(const Eigen::VectorXd& x,
                             std::vector<int> indices) {
   Eigen::VectorXd z(indices.size());

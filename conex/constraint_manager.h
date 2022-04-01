@@ -23,7 +23,6 @@ inline int IsUnique(int N, const std::vector<int>& x) {
   return true;
 }
 
-template <typename Container>
 class ConstraintManager {
  public:
   ConstraintManager(int max_number_of_variables)
@@ -53,7 +52,7 @@ class ConstraintManager {
     for (size_t i = 0; i < clique.size(); i++) {
       clique[i] = i;
     }
-    AddConstraint(x, clique);
+    AddConstraint(std::forward<T>(x), clique);
     return CONEX_SUCCESS;
   }
 
@@ -62,7 +61,30 @@ class ConstraintManager {
     if (!IsUnique(max_number_of_variables_, variables)) {
       return CONEX_FAILURE;
     }
-    inequality_constraints_.emplace_back(x, variables.size());
+
+    inequality_constraints_.push_back(x);
+    constraints_.emplace_back(
+        std::any_cast<typename std::remove_reference<T>::type>(
+            &inequality_constraints_.back()));
+    supernodal_assemblers_.emplace_back(variables.size(), &constraints_.back());
+    supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
+
+    cliques.push_back(variables);
+    dual_vars.push_back({});
+
+    cone_inequalities_.push_back(&constraints_.back());
+    return CONEX_SUCCESS;
+  }
+
+  template <typename T>
+  bool AddQuadraticCost(const T& Qi, const std::vector<int>& variables) {
+    if (!IsUnique(max_number_of_variables_, variables)) {
+      return CONEX_FAILURE;
+    }
+
+    static_supernodal_assemblers_.emplace_back(Qi);
+    supernodal_assemblers_ptr_.push_back(&static_supernodal_assemblers_.back());
+
     cliques.push_back(variables);
     dual_vars.push_back({});
     return CONEX_SUCCESS;
@@ -74,7 +96,14 @@ class ConstraintManager {
       return CONEX_FAILURE;
     }
     const int m = x.SizeOfDualVariable();
-    inequality_constraints_.emplace_back(x, m + variables.size());
+
+    inequality_constraints_.push_back(x);
+    constraints_.emplace_back(
+        std::any_cast<EqualityConstraints>(&inequality_constraints_.back()));
+    supernodal_assemblers_.emplace_back(variables.size() + m,
+                                        &constraints_.back());
+    supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
+
     cliques.push_back(variables);
     dual_vars.push_back({});
     for (int i = 0; i < m; i++) {
@@ -83,6 +112,17 @@ class ConstraintManager {
     }
     dual_variable_start_ += m;
     return CONEX_SUCCESS;
+  }
+
+  std::vector<Workspace> workspace() {
+    std::vector<Workspace> workspaces;
+    for (auto& c : constraints_) {
+      workspaces.push_back(c.workspace());
+    }
+    for (auto& c : supernodal_assemblers_ptr_) {
+      workspaces.emplace_back(&c->submatrix_data_);
+    }
+    return workspaces;
   }
 
   bool AddEqualityConstraint(EqualityConstraints&& x) {
@@ -94,27 +134,44 @@ class ConstraintManager {
     return CONEX_SUCCESS;
   }
 
-  std::list<Container>& inequality_constraints() {
-    return inequality_constraints_;
+  void InitializeWorkspace() {
+    auto workspaces = workspace();
+    auto size = SizeOf(workspaces);
+    if (size > workspace_memory_.size()) {
+      workspace_memory_.resize(size);
+    }
+    Initialize(&workspaces, workspace_memory_.data());
   }
+
+  std::vector<Constraint*>& cone_inequalities() { return cone_inequalities_; }
 
   // Use a list so that we do not trigger reallocations.
   std::vector<std::vector<int>> cliques;
   std::vector<std::vector<int>> dual_vars;
 
+  std::vector<Constraint*> cone_inequalities_;
+  std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;
+
+  // Stores type-erased interface
+  std::list<Constraint> constraints_;
+  std::list<SupernodalAssembler> supernodal_assemblers_;
+  std::list<SupernodalAssemblerStatic> static_supernodal_assemblers_;
+
  private:
-  std::list<Container> inequality_constraints_;
+  // Stores the provided constraint.
+  std::list<std::any> inequality_constraints_;
+
   int max_number_of_variables_ = 0;
   int dual_variable_start_ = 0;
+  Eigen::VectorXd workspace_memory_;
 };
 
-template <typename Container>
-void AssembleSchurComplementResiduals(ConstraintManager<Container>* kkt,
-                                      SchurComplementSystem* s) {
+inline void AssembleSchurComplementResiduals(ConstraintManager* kkt,
+                                             SchurComplementSystem* s) {
   s->setZero();
   int i = 0;
-  for (auto& ci : kkt->inequality_constraints()) {
-    auto* rhs_i = &ci.supernodal_assembler.submatrix_data_;
+  for (auto& ci : kkt->supernodal_assemblers_) {
+    auto* rhs_i = &ci.submatrix_data_;
     s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
     s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
     int cnt = 0;

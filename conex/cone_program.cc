@@ -28,20 +28,19 @@ void SetIdentity(std::vector<T*>* c) {
   }
 }
 
-void GetWeightedSlackEigenvalues(ConstraintManager<Container>* constraints,
-                                 const Ref& y, double c_weight,
-                                 WeightedSlackEigenvalues* p) {
+void GetWeightedSlackEigenvalues(ConstraintManager* constraints, const Ref& y,
+                                 double c_weight, WeightedSlackEigenvalues* p) {
   p->frobenius_norm_squared = 0;
   p->trace = 0;
   p->lambda_max = -30000;
   p->lambda_min = 30000;
   int i = 0;
-  for (auto& ci : constraints->inequality_constraints()) {
+  for (auto& ci : constraints->cone_inequalities_) {
     auto ysegment = Vars(y, constraints->cliques.at(i));
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
                                                   ysegment.size(), 1);
     WeightedSlackEigenvalues temp;
-    GetWeightedSlackEigenvalues(&ci.constraint, z, c_weight, &temp);
+    GetWeightedSlackEigenvalues(ci, z, c_weight, &temp);
 
     if (p->lambda_max < temp.lambda_max) {
       p->lambda_max = temp.lambda_max;
@@ -89,7 +88,7 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
     if (config.initialization_mode == CONEX_INITIALIZATION_MODE_COLDSTART) {
       prog.stats->b_scaling() = 1;
       prog.stats->c_scaling() = 1;
-      SetIdentity(&prog.constraints_);
+      SetIdentity(&prog.kkt_system_manager_.cone_inequalities_);
     }
 
     START_TIMER(Sparsity Analysis);
@@ -97,15 +96,11 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
         prog.kkt_system_manager_.cliques, prog.kkt_system_manager_.dual_vars);
 
     kkt.clear();
-    for (auto& c : prog.kkt_system_manager_.inequality_constraints()) {
-      c.supernodal_assembler.Reset();
+    for (auto& c : prog.kkt_system_manager_.supernodal_assemblers_ptr_) {
+      c->Reset();
     }
 
-    for (auto& c : prog.kkt_system_manager_.inequality_constraints()) {
-      c.supernodal_assembler.workspace_ = &c.constraint;
-      kkt.push_back(&c.supernodal_assembler);
-    }
-    solver->Bind(kkt);
+    solver->Bind(prog.kkt_system_manager_.supernodal_assemblers_ptr_);
     END_TIMER
   }
   return true;
@@ -115,7 +110,7 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
 //            (b * b_scaling + prog.sys.AQc * c_scaling) -
 //        2 * prog.sys.AW;
 
-double ComputeMuFromLineSearch(ConstraintManager<Container>& constraints,
+double ComputeMuFromLineSearch(ConstraintManager& constraints,
                                std::unique_ptr<SupernodalKKTSolver>& solver,
                                double dinf_upper_bound, const DenseMatrix& AQc,
                                double c_weight, const DenseMatrix& b,
@@ -134,13 +129,13 @@ double ComputeMuFromLineSearch(ConstraintManager<Container>& constraints,
   LineSearchOutput output;
 
   int i = 0;
-  for (auto& ci : constraints.inequality_constraints()) {
+  for (auto& ci : constraints.cone_inequalities_) {
     LineSearchOutput output_i;
     auto ysegment1 = Vars(*y0, constraints.cliques.at(i));
     auto ysegment2 = Vars(y1, constraints.cliques.at(i));
     Ref z1(ysegment1.data(), ysegment1.rows(), 1);
     Ref z2(ysegment2.data(), ysegment2.rows(), 1);
-    bool failure = PerformLineSearch(&ci.constraint, params, z1, z2, &output_i);
+    bool failure = PerformLineSearch(ci, params, z1, z2, &output_i);
     if (failure) {
       return -1;
     }
@@ -170,7 +165,7 @@ double MinimizeNormInf(WeightedSlackEigenvalues& p) {
   }
   return y;
 }
-double ComputeMuFromDivergence(ConstraintManager<Container>& constraints,
+double ComputeMuFromDivergence(ConstraintManager& constraints,
                                std::unique_ptr<SupernodalKKTSolver>& solver,
                                const DenseMatrix& AQc, double c_weight,
                                const DenseMatrix& b,
@@ -241,7 +236,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 
   VectorXd bin = -prog.linear_cost_;
 
-  auto& constraints = prog.constraints_;
+  auto& constraints = prog.kkt_system_manager_.cone_inequalities_;
   auto& solver = prog.solver;
   prog.status_.solved = 0;
   prog.status_.primal_infeasible = 0;
@@ -360,7 +355,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
       if (i == 0 &&
           config.initialization_mode == CONEX_INITIALIZATION_MODE_WARMSTART) {
         PRINTSTATUS("Aborting warmstart...");
-        SetIdentity(&prog.constraints_);
+        SetIdentity(&constraints);
         warmstart_aborted = true;
         continue;
       }
@@ -428,10 +423,10 @@ bool Solve(Program& prog, const SolverConfiguration& config,
         (config.initialization_mode == CONEX_INITIALIZATION_MODE_WARMSTART) &&
         info.norminfd >= config.warmstart_abort_threshold) {
       PRINTSTATUS("Aborting warmstart...");
-      SetIdentity(&prog.constraints_);
+      SetIdentity(&constraints);
       warmstart_aborted = true;
     } else {
-      TakeStep(&prog.constraints_, newton_step_parameters);
+      TakeStep(&constraints, newton_step_parameters);
     }
     END_TIMER
 
@@ -553,9 +548,24 @@ bool Solve(const DenseMatrix& b, Program& prog,
 bool Program::AddQuadraticCost(const DenseMatrix& Q,
                                const std::vector<int>& vars) {
   contains_quadratic_costs_ = true;
-  conex::AddQuadraticCost(this, Q, vars);
+  kkt_system_manager_.AddQuadraticCost(Q, vars);
   bool failure = false;
   return failure;
+}
+
+int Program::NumberOfQuadraticCosts() const {
+  return kkt_system_manager_.static_supernodal_assemblers_.size();
+}
+
+int Program::UpdateQuadraticCost(int cost_id, double value, int row, int col) {
+  int cnt = 0;
+  for (auto c : kkt_system_manager_.static_supernodal_assemblers_) {
+    if (cnt == cost_id) {
+      return c.UpdateMatrix(value, row, col);
+    }
+    cnt++;
+  }
+  CONEX_DEMAND(false, "Invalid Quadratic Cost ID.");
 }
 
 bool Program::AddQuadraticCost(const Eigen::MatrixXd& Q) {

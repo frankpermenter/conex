@@ -15,6 +15,11 @@ void ConstructSchurComplementSystem(EqualityConstraints* o, bool initialize,
   auto& sys = *sys_;
   auto& A_ = o->A_;
   auto& b_ = o->b_;
+
+  if (!sys_->initialized) {
+    throw std::runtime_error("Schur complement workspace is not initialized");
+  }
+
   if (initialize) {
     sys.setZero();
     sys.G.bottomLeftCorner(A_.rows(), A_.cols()) = A_;

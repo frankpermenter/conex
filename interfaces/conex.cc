@@ -330,13 +330,12 @@ CONEX_STATUS CONEX_NewLinearInequality(void* program, int num_rows,
 
 CONEX_STATUS CONEX_NewQuadraticCost(void* p, int* constraint_id) {
   CONEX_DEMAND(constraint_id, "Received output null pointer.");
-
   Program* prg;
   SAFER_CAST_TO_Program(p, prg);
   int n = prg->GetNumberOfVariables();
   Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(n, n);
   bool status = prg->AddQuadraticCost(Q);
-  *constraint_id = prg->NumberOfConstraints() - 1;
+  *constraint_id = prg->NumberOfQuadraticCosts() - 1;
   return status;
 }
 
@@ -353,23 +352,22 @@ CONEX_STATUS CONEX_AddQuadraticCost(void* p, const double* A, int Ar, int Ac) {
   return status;
 }
 
-CONEX_STATUS CONEX_UpdateQuadraticCostMatrix(void* p, int constraint,
-                                             double value, int row, int col) {
+CONEX_STATUS CONEX_UpdateQuadraticCostMatrix(void* p, int cost_id, double value,
+                                             int row, int col) {
   Program* prg;
   SAFER_CAST_TO_Program(p, prg);
-  CONEX_DEMAND(constraint < prg->NumberOfConstraints(), "Invalid Constraint.");
-  return prg->UpdateAffineTermOfConstraint(constraint, value, row, col,
-                                           0 /*hyper complex dimension*/);
+  return prg->UpdateQuadraticCost(cost_id, value, row, col);
 }
 
-CONEX_STATUS CONEX_UpdateLinearOperator(void* p, int constraint, double value,
-                                        int variable, int row, int col,
-                                        int hyper_complex_dim) {
+CONEX_STATUS CONEX_UpdateLinearOperator(void* p, int constraint_id,
+                                        double value, int variable, int row,
+                                        int col, int hyper_complex_dim) {
   Program* prg;
   SAFER_CAST_TO_Program(p, prg);
-  CONEX_DEMAND(constraint < prg->NumberOfConstraints(), "Invalid Constraint.");
-  return prg->UpdateLinearOperatorOfConstraint(constraint, value, variable, row,
-                                               col, hyper_complex_dim);
+  CONEX_DEMAND(constraint_id < prg->NumberOfConstraints(),
+               "Invalid Constraint ID.");
+  return prg->UpdateLinearOperatorOfConstraint(constraint_id, value, variable,
+                                               row, col, hyper_complex_dim);
 }
 
 CONEX_STATUS CONEX_UpdateAffineTerm(void* p, int constraint, double value,

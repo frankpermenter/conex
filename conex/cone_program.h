@@ -44,18 +44,6 @@ struct ConexStatus {
   int dual_infeasible = 0;
 };
 
-class Container {
- public:
-  template <typename T>
-  Container(const T& x, int num_vars)
-      : obj(x), constraint(std::any_cast<T>(&obj)) {
-    supernodal_assembler.SetNumberOfVariables(num_vars);
-  }
-  std::any obj;
-  Constraint constraint;
-  SupernodalAssembler supernodal_assembler;
-};
-
 inline Eigen::VectorXd Vars(const Eigen::VectorXd& x,
                             std::vector<int> indices) {
   Eigen::VectorXd z(indices.size());
@@ -66,7 +54,7 @@ inline Eigen::VectorXd Vars(const Eigen::VectorXd& x,
   return z;
 }
 
-inline void PrepareStep(ConstraintManager<Container>* kkt,
+inline void PrepareStep(ConstraintManager* kkt,
                         const StepOptions& newton_step_parameters, const Ref& y,
                         StepInfo* info) {
   StepInfo info_i;
@@ -75,12 +63,12 @@ inline void PrepareStep(ConstraintManager<Container>* kkt,
   info->normsqrd = 0;
   info->norminfd = -1;
   int i = 0;
-  for (auto& ci : kkt->inequality_constraints()) {
+  for (auto& ci : kkt->constraints_) {
     // TODO(FrankPermenter): Remove creation of these maps.
     auto ysegment = Vars(y, kkt->cliques.at(i));
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
                                                   ysegment.size(), 1);
-    PrepareStep(&ci.constraint, newton_step_parameters, z, &info_i);
+    PrepareStep(&ci, newton_step_parameters, z, &info_i);
     if (info_i.norminfd > info->norminfd) {
       info->norminfd = info_i.norminfd;
     }
@@ -120,9 +108,9 @@ class Program {
   template <typename T>
   void GetDualVariable(int i, T* xi) {
     int cnt = 0;
-    for (auto& ci : kkt_system_manager_.inequality_constraints()) {
+    for (auto& ci : kkt_system_manager_.constraints_) {
       if (cnt == i) {
-        ci.constraint.get_dual_variable(xi->data());
+        ci.get_dual_variable(xi->data());
         if (!status_.primal_infeasible) {
           xi->array() /=
               (stats->sqrt_inv_mu[stats->num_iter - 1] * stats->b_scaling());
@@ -135,9 +123,9 @@ class Program {
 
   int GetDualVariableSize(int i) {
     int cnt = 0;
-    for (auto& ci : kkt_system_manager_.inequality_constraints()) {
+    for (auto& ci : kkt_system_manager_.constraints_) {
       if (cnt == i) {
-        return ci.constraint.dual_variable_size();
+        return ci.dual_variable_size();
       }
       cnt++;
     }
@@ -148,9 +136,9 @@ class Program {
                                        int row, int col,
                                        int hyper_complex_dim) {
     int cnt = 0;
-    for (auto& ci : kkt_system_manager_.inequality_constraints()) {
+    for (auto& ci : kkt_system_manager_.constraints_) {
       if (cnt == i) {
-        return UpdateLinearOperator(&ci.constraint, value, variable, row, col,
+        return UpdateLinearOperator(&ci, value, variable, row, col,
                                     hyper_complex_dim);
       }
       cnt++;
@@ -161,10 +149,9 @@ class Program {
   int UpdateAffineTermOfConstraint(int i, double value, int row, int col,
                                    int hyper_complex_dim) {
     int cnt = 0;
-    for (auto& ci : kkt_system_manager_.inequality_constraints()) {
+    for (auto& ci : kkt_system_manager_.constraints_) {
       if (cnt == i) {
-        return UpdateAffineTerm(&ci.constraint, value, row, col,
-                                hyper_complex_dim);
+        return UpdateAffineTerm(&ci, value, row, col, hyper_complex_dim);
       }
       cnt++;
     }
@@ -172,11 +159,8 @@ class Program {
   }
 
   void InitializeWorkspace() {
-    workspaces.clear();
-    for (auto& c : kkt_system_manager_.inequality_constraints()) {
-      workspaces.push_back(c.constraint.workspace());
-      workspaces.emplace_back(&c.supernodal_assembler.submatrix_data_);
-    }
+    workspaces = kkt_system_manager_.workspace();
+
     workspaces.emplace_back(stats.get());
     workspaces.emplace_back(&sys);
     auto size = SizeOf(workspaces);
@@ -193,8 +177,6 @@ class Program {
     if constexpr (!std::is_same<T, EqualityConstraints>::value) {
       bool result = kkt_system_manager_.AddConstraint<T>(std::forward<T>(d));
       if (result == CONEX_SUCCESS) {
-        constraints_.push_back(
-            &kkt_system_manager_.inequality_constraints().back().constraint);
       }
       return result;
     } else {
@@ -208,10 +190,6 @@ class Program {
     if constexpr (!std::is_same<T, EqualityConstraints>::value) {
       bool result =
           kkt_system_manager_.AddConstraint<T>(std::forward<T>(d), variables);
-      if (result == CONEX_SUCCESS) {
-        constraints_.push_back(
-            &kkt_system_manager_.inequality_constraints().back().constraint);
-      }
       return result;
     } else {
       return kkt_system_manager_.AddEqualityConstraint(
@@ -219,13 +197,10 @@ class Program {
     }
   }
 
-  int NumberOfConstraints() {
-    return kkt_system_manager_.inequality_constraints().size();
-  }
+  int NumberOfConstraints() { return kkt_system_manager_.constraints_.size(); }
   ConexStatus Status() { return status_; }
 
-  ConstraintManager<Container> kkt_system_manager_;
-  std::vector<Constraint*> constraints_;
+  ConstraintManager kkt_system_manager_;
   SchurComplementSystem sys;
   std::unique_ptr<WorkspaceStats> stats;
   std::vector<Workspace> workspaces;
@@ -238,10 +213,13 @@ class Program {
   ConexStatus status_;
 
   bool AddLinearCost(const Eigen::VectorXd& b);
+  void ClearLinearCosts();
   bool AddQuadraticCost(const Eigen::MatrixXd& Q,
                         const std::vector<int>& variables);
   bool AddQuadraticCost(const Eigen::MatrixXd& Q);
-  void ClearLinearCosts();
+
+  int UpdateQuadraticCost(int cost_id, double value, int row, int col);
+  int NumberOfQuadraticCosts() const;
 
   Eigen::VectorXd linear_cost_;
 };

@@ -133,6 +133,9 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
 void T::Assemble(Eigen::VectorXd* AW, Eigen::VectorXd* AQc,
                  double* inner_product_of_c_and_w) {
   if (AW->rows() != SizeOfSystem() || AQc->rows() != SizeOfSystem()) {
+    DUMP(AW->rows());
+    DUMP(SizeOfSystem());
+    DUMP(AQc->rows());
     throw std::runtime_error(
         "Cannot assemble system data: invalid output dimensions.");
   }
