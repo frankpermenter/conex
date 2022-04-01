@@ -84,6 +84,7 @@ inline void TakeStep(std::vector<Constraint*>* constraints,
   }
 }
 
+using KKTSolver = SupernodalKKTSolver;
 class Program {
  public:
   Program(int number_of_variables) {
@@ -97,6 +98,7 @@ class Program {
   }
 
   void SetNumberOfVariables(int m) {
+    CONEX_DEMAND(m >= 0, "Number of variables must be nonnegative.");
     kkt_system_manager_.SetNumberOfVariables(m);
     linear_cost_ = Eigen::VectorXd::Zero(m);
   }
@@ -200,18 +202,6 @@ class Program {
   int NumberOfConstraints() { return kkt_system_manager_.constraints_.size(); }
   ConexStatus Status() { return status_; }
 
-  ConstraintManager kkt_system_manager_;
-  SchurComplementSystem sys;
-  std::unique_ptr<WorkspaceStats> stats;
-  std::vector<Workspace> workspaces;
-  std::unique_ptr<SupernodalKKTSolver> solver;
-  std::vector<SupernodalAssemblerBase*> kkt;
-  Eigen::VectorXd memory_;
-  Eigen::VectorXd* workspace_data_;
-  bool is_initialized = false;
-  bool contains_quadratic_costs_ = false;
-  ConexStatus status_;
-
   bool AddLinearCost(const Eigen::VectorXd& b);
   void ClearLinearCosts();
   bool AddQuadraticCost(const Eigen::MatrixXd& Q,
@@ -220,6 +210,29 @@ class Program {
 
   int UpdateQuadraticCost(int cost_id, double value, int row, int col);
   int NumberOfQuadraticCosts() const;
+
+  friend DenseMatrix GetFeasibleObjective(Program* prog);
+  friend bool Solve(Program& prog, const SolverConfiguration& config,
+                    double* primal_variable);
+  friend bool Solve(const DenseMatrix& b, Program& prog,
+                    const SolverConfiguration& config, double* primal_variable);
+  friend bool Initialize(Program& prog, const SolverConfiguration& config);
+
+  Eigen::VectorXd* workspace_memory() { return workspace_data_; }
+
+  const WorkspaceStats& statistics() const { return *stats; }
+
+ private:
+  ConstraintManager kkt_system_manager_;
+  SchurComplementSystem sys;
+  std::unique_ptr<WorkspaceStats> stats;
+  std::vector<Workspace> workspaces;
+  std::unique_ptr<SupernodalKKTSolver> solver;
+  Eigen::VectorXd memory_;
+  Eigen::VectorXd* workspace_data_;
+  bool is_initialized = false;
+  bool contains_quadratic_costs_ = false;
+  ConexStatus status_;
 
   Eigen::VectorXd linear_cost_;
 };

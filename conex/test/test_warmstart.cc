@@ -68,7 +68,7 @@ GTEST_TEST(Warmstart, TestWorkspaceInitialization) {
   config.final_centering_tolerance = .01;
   Solve(b, prog, config, y.data());
 
-  Program prog2(m, &prog.memory_);
+  Program prog2(m, prog.workspace_memory());
   prog2.AddConstraint(LMI);
   prog2.AddConstraint(linear_constraint);
   config.initialization_mode = CONEX_INITIALIZATION_MODE_WARMSTART;

@@ -92,7 +92,7 @@ struct WorkspaceStats {
     }
   }
 
-  bool IsInitialized() { return initialized; }
+  bool IsInitialized() const { return initialized; }
 
   double* sqrt_inv_mu;
   double* norm_inf_d;

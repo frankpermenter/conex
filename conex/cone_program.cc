@@ -79,7 +79,6 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
       config.initialization_mode == CONEX_INITIALIZATION_MODE_COLDSTART) {
     prog.stats = std::make_unique<WorkspaceStats>(config.max_iterations);
     auto& solver = prog.solver;
-    auto& kkt = prog.kkt;
 
     prog.sys.m_ = prog.kkt_system_manager_.SizeOfKKTSystem();
     prog.sys.residual_only_ = true;
@@ -95,7 +94,6 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
     solver = std::make_unique<SupernodalKKTSolver>(
         prog.kkt_system_manager_.cliques, prog.kkt_system_manager_.dual_vars);
 
-    kkt.clear();
     for (auto& c : prog.kkt_system_manager_.supernodal_assemblers_ptr_) {
       c->Reset();
     }

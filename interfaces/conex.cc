@@ -16,20 +16,9 @@
 
 #include "conex/error_checking_macros.h"
 
-// TODO(FrankPermenter): check for null pointers.
-#define SAFER_CAST_TO_Program(x, prog)                                      \
-  CONEX_RETURN_ON_FAIL(x, "Program pointer is null.");                      \
-  prog = static_cast<Program*>(x);                                          \
-  if (prog->is_initialized) {                                               \
-    if (prog->NumberOfConstraints() + 2 !=                                  \
-        static_cast<int>(prog->workspaces.size())) {                        \
-      CONEX_RETURN_ON_FAIL(false, "Program corrupted or invalid pointer."); \
-    }                                                                       \
-  } else {                                                                  \
-    if (prog->workspaces.size() != 0 || prog->NumberOfConstraints() < 0) {  \
-      CONEX_RETURN_ON_FAIL(false, "Program corrupted or invalid pointer."); \
-    }                                                                       \
-  }                                                                         \
+#define SAFER_CAST_TO_Program(x, prog)                 \
+  CONEX_RETURN_ON_FAIL(x, "Program pointer is null."); \
+  prog = static_cast<Program*>(x);                     \
   CONEX_RETURN_ON_FAIL(prog, "Program corrupted or invalid pointer.");
 
 using DenseMatrix = Eigen::MatrixXd;
@@ -264,23 +253,24 @@ void CONEX_GetIterationStats(void* prog, CONEX_IterationStats* stats,
   }
 
   auto& program = *reinterpret_cast<Program*>(prog);
+  const auto& iter_stats = program.statistics();
 
-  if (!program.stats->IsInitialized()) {
+  if (!iter_stats.IsInitialized()) {
     std::cerr << "No statistics available.";
     return;
   }
 
   int iter_num = iter_num_circular;
   if (iter_num_circular < 0) {
-    iter_num = program.stats->num_iter + iter_num_circular;
+    iter_num = program.statistics().num_iter + iter_num_circular;
   }
 
-  if ((program.stats->num_iter <= iter_num) || (iter_num < 0)) {
+  if ((iter_stats.num_iter <= iter_num) || (iter_num < 0)) {
     std::cerr << "Specified iteration is out of bounds.";
     return;
   }
-  stats->mu = 1.0 / (program.stats->sqrt_inv_mu[iter_num] *
-                     program.stats->sqrt_inv_mu[iter_num]);
+  stats->mu = 1.0 / (iter_stats.sqrt_inv_mu[iter_num] *
+                     iter_stats.sqrt_inv_mu[iter_num]);
   stats->iteration_number = iter_num;
 }
 
