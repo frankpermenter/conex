@@ -32,8 +32,8 @@ class QuadraticFunction {
 
   friend bool UpdateAffineTerm(QuadraticFunction* o, double val, int r, int c,
                                int dim) {
-    CONEX_DEMAND(dim == 0, "Quadratic cost must be real valued matrix.");
-    CONEX_DEMAND(r < o->A_.rows() && c < o->A_.cols(), "Index out of bounds");
+    CONEX_RETURN_ON_FAIL(dim == 0, "Quadratic cost must be real valued matrix.");
+    CONEX_RETURN_ON_FAIL(r < o->A_.rows() && c < o->A_.cols(), "Index out of bounds");
     o->A_(r, c) = val;
     return CONEX_SUCCESS;
   }

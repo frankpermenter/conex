@@ -248,11 +248,12 @@ template void ConstructSchurComplementSystem(
 template <typename H>
 bool UpdateLinearOperator(HermitianPsdConstraint<H>* o, double val, int var,
                           int r, int c, int dim) {
-  CONEX_DEMAND(dim < H::HyperComplexDimension(),
-               "Complex dimension out of bounds.");
-  CONEX_DEMAND(r < o->rank_ && c < o->rank_, "Matrix dimension out of bounds.");
-  CONEX_DEMAND(!(val != 0 && r == c && dim > 0),
-               "Imaginary components must be skew-symmetric.");
+  CONEX_RETURN_ON_FAIL(dim < H::HyperComplexDimension(),
+                       "Complex dimension out of bounds.");
+  CONEX_RETURN_ON_FAIL(r < o->rank_ && c < o->rank_,
+                       "Matrix dimension out of bounds.");
+  CONEX_RETURN_ON_FAIL(!(val != 0 && r == c && dim > 0),
+                       "Imaginary components must be skew-symmetric.");
 
   using T = HermitianPsdConstraint<H>;
   if constexpr (std::is_same<T, Octonions>::value) {
@@ -285,11 +286,12 @@ template bool UpdateLinearOperator(HermitianPsdConstraint<Octonions>* o,
 template <typename H>
 bool UpdateAffineTerm(HermitianPsdConstraint<H>* o, double val, int r, int c,
                       int dim) {
-  CONEX_DEMAND(dim < H::HyperComplexDimension(),
-               "Complex dimension out of bounds.");
-  CONEX_DEMAND(r < o->rank_ && c < o->rank_, "Matrix dimension out of bounds.");
-  CONEX_DEMAND(!(val != 0 && r == c && dim > 0),
-               "Imaginary components must be skew-symmetric.");
+  CONEX_RETURN_ON_FAIL(dim < H::HyperComplexDimension(),
+                       "Complex dimension out of bounds.");
+  CONEX_RETURN_ON_FAIL(r < o->rank_ && c < o->rank_,
+                       "Matrix dimension out of bounds.");
+  CONEX_RETURN_ON_FAIL(!(val != 0 && r == c && dim > 0),
+                       "Imaginary components must be skew-symmetric.");
 
   using T = HermitianPsdConstraint<H>;
   if constexpr (std::is_same<T, Octonions>::value) {

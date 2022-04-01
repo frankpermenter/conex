@@ -12,19 +12,20 @@ namespace conex {
 
 template <typename T>
 bool UpdateLinearOperator(T*, double, int, int, int, int) {
-  CONEX_DEMAND(false,
-               "Constraint does not support updates of linear operator.");
+  CONEX_RETURN_ON_FAIL(
+      false, "Constraint does not support updates of linear operator.");
 }
 
 template <typename T>
 bool UpdateAffineTerm(T*, double, int, int, int) {
-  CONEX_DEMAND(false, "Constraint does not support updates of affine term.");
+  CONEX_RETURN_ON_FAIL(false,
+                       "Constraint does not support updates of affine term.");
 }
 
 template <typename T>
 bool PerformLineSearch(T*, const LineSearchParameters&, const Ref&, const Ref&,
                        LineSearchOutput*) {
-  CONEX_DEMAND(false, "Constraint does not support line search.");
+  CONEX_RETURN_ON_FAIL(false, "Constraint does not support line search.");
 }
 
 // template <typename T>

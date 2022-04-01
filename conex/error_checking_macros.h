@@ -5,18 +5,15 @@ namespace conex {
 
 // TODO(FrankPermenter): return conex error codes on failure.
 
-#if 0
-#define CONEX_DEMAND(x, msg)                          \
-  if (!(x)) {                                         \
-    std::cout << "Conex error: " << msg << std::endl; \
-    return 1;                                         \
-  }
-#else
-#define CONEX_DEMAND(x, msg)                                                   \
+#define CONEX_RETURN_ON_FAIL(x, msg)                                           \
   if (!(x)) {                                                                  \
     std::cerr << __FILE__ << " line " << __LINE__ << ": " << msg << std::endl; \
-    return 1;                                                                  \
+    return CONEX_FAILURE;                                                      \
   }
-#endif
+
+#define CONEX_DEMAND(x, msg)      \
+  if (!(x)) {                     \
+    throw std::runtime_error(msg) \
+  }
 
 }  // namespace conex

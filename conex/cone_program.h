@@ -129,7 +129,7 @@ class Program {
       }
       cnt++;
     }
-    CONEX_DEMAND(false, "Invalid Constraint");
+    CONEX_RETURN_ON_FAIL(false, "Invalid Constraint");
   }
 
   int UpdateLinearOperatorOfConstraint(int i, double value, int variable,
@@ -143,7 +143,7 @@ class Program {
       }
       cnt++;
     }
-    CONEX_DEMAND(false, "Invalid Constraint");
+    CONEX_RETURN_ON_FAIL(false, "Invalid Constraint");
   }
 
   int UpdateAffineTermOfConstraint(int i, double value, int row, int col,
@@ -155,7 +155,7 @@ class Program {
       }
       cnt++;
     }
-    CONEX_DEMAND(false, "Invalid Constraint");
+    CONEX_RETURN_ON_FAIL(false, "Invalid Constraint");
   }
 
   void InitializeWorkspace() {

@@ -313,10 +313,10 @@ void ConservativeResizeHelper(T* constraint_matrix_, int var, int rows) {
 
 bool UpdateLinearOperator(SOCConstraint* o, double val, int var, int r, int c,
                           int dim) {
-  CONEX_DEMAND(dim == 0, "Complex second-order cone not supported.");
-  CONEX_DEMAND(c == 0, "Second-order constraint is not matrix valued.");
-  CONEX_DEMAND(r <= o->n_, "Row index out of bounds.");
-  CONEX_DEMAND((var >= 0) && (r >= 0), "Indices cannot be negative.");
+  CONEX_RETURN_ON_FAIL(dim == 0, "Complex second-order cone not supported.");
+  CONEX_RETURN_ON_FAIL(c == 0, "Second-order constraint is not matrix valued.");
+  CONEX_RETURN_ON_FAIL(r <= o->n_, "Row index out of bounds.");
+  CONEX_RETURN_ON_FAIL((var >= 0) && (r >= 0), "Indices cannot be negative.");
 
   ConservativeResizeHelper(&o->constraint_matrix_, var, o->n_ + 1);
   o->constraint_matrix_(r, var) = val;
@@ -324,10 +324,10 @@ bool UpdateLinearOperator(SOCConstraint* o, double val, int var, int r, int c,
 }
 
 bool UpdateAffineTerm(SOCConstraint* o, double val, int r, int c, int dim) {
-  CONEX_DEMAND(dim == 0, "Complex second-order cone not supported.");
-  CONEX_DEMAND(c == 0, "Second-order constraint is not matrix valued.");
-  CONEX_DEMAND(r <= o->n_, "Row index out of bounds.");
-  CONEX_DEMAND(r >= 0, "Indices cannot be negative.");
+  CONEX_RETURN_ON_FAIL(dim == 0, "Complex second-order cone not supported.");
+  CONEX_RETURN_ON_FAIL(c == 0, "Second-order constraint is not matrix valued.");
+  CONEX_RETURN_ON_FAIL(r <= o->n_, "Row index out of bounds.");
+  CONEX_RETURN_ON_FAIL(r >= 0, "Indices cannot be negative.");
 
   ConservativeResizeHelper(&o->constraint_affine_, 0, o->n_ + 1);
   o->constraint_affine_(r) = val;

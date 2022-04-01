@@ -17,20 +17,20 @@
 #include "conex/error_checking_macros.h"
 
 // TODO(FrankPermenter): check for null pointers.
-#define SAFER_CAST_TO_Program(x, prog)                                     \
-  CONEX_DEMAND(x, "Program pointer is null.");                             \
-  prog = static_cast<Program*>(x);                                         \
-  if (prog->is_initialized) {                                              \
-    if (prog->NumberOfConstraints() + 2 !=                                 \
-        static_cast<int>(prog->workspaces.size())) {                       \
-      CONEX_DEMAND(false, "Program corrupted or invalid pointer.");        \
-    }                                                                      \
-  } else {                                                                 \
-    if (prog->workspaces.size() != 0 || prog->NumberOfConstraints() < 0) { \
-      CONEX_DEMAND(false, "Program corrupted or invalid pointer.");        \
-    }                                                                      \
-  }                                                                        \
-  CONEX_DEMAND(prog, "Program corrupted or invalid pointer.");
+#define SAFER_CAST_TO_Program(x, prog)                                      \
+  CONEX_RETURN_ON_FAIL(x, "Program pointer is null.");                      \
+  prog = static_cast<Program*>(x);                                          \
+  if (prog->is_initialized) {                                               \
+    if (prog->NumberOfConstraints() + 2 !=                                  \
+        static_cast<int>(prog->workspaces.size())) {                        \
+      CONEX_RETURN_ON_FAIL(false, "Program corrupted or invalid pointer."); \
+    }                                                                       \
+  } else {                                                                  \
+    if (prog->workspaces.size() != 0 || prog->NumberOfConstraints() < 0) {  \
+      CONEX_RETURN_ON_FAIL(false, "Program corrupted or invalid pointer."); \
+    }                                                                       \
+  }                                                                         \
+  CONEX_RETURN_ON_FAIL(prog, "Program corrupted or invalid pointer.");
 
 using DenseMatrix = Eigen::MatrixXd;
 using conex::DenseLMIConstraint;
@@ -287,11 +287,11 @@ void CONEX_GetIterationStats(void* prog, CONEX_IterationStats* stats,
 CONEX_STATUS CONEX_NewLinearMatrixInequality(void* p, int order,
                                              int hyper_complex_dim,
                                              int* constraint_id) {
-  CONEX_DEMAND(order >= 1, "Invalid LMI dimensions.");
-  CONEX_DEMAND(constraint_id, "Received output null pointer.");
-  CONEX_DEMAND(hyper_complex_dim == 1 || hyper_complex_dim == 2 ||
-                   hyper_complex_dim == 4 || hyper_complex_dim == 8,
-               "Hypercomplex dimension must be 1, 2, 4, or 8.");
+  CONEX_RETURN_ON_FAIL(order >= 1, "Invalid LMI dimensions.");
+  CONEX_RETURN_ON_FAIL(constraint_id, "Received output null pointer.");
+  CONEX_RETURN_ON_FAIL(hyper_complex_dim == 1 || hyper_complex_dim == 2 ||
+                           hyper_complex_dim == 4 || hyper_complex_dim == 8,
+                       "Hypercomplex dimension must be 1, 2, 4, or 8.");
 
   Program* prg;
   SAFER_CAST_TO_Program(p, prg);
@@ -307,8 +307,8 @@ CONEX_STATUS CONEX_NewLinearMatrixInequality(void* p, int order,
       prg->AddConstraint(HermitianPsdConstraint<conex::Quaternions>(order));
       break;
     case 8:
-      CONEX_DEMAND(order <= 3,
-                   "Order of octonion algebra cannot be greater than 3.");
+      CONEX_RETURN_ON_FAIL(
+          order <= 3, "Order of octonion algebra cannot be greater than 3.");
       prg->AddConstraint(HermitianPsdConstraint<conex::Octonions>(order));
   }
   *constraint_id = prg->NumberOfConstraints() - 1;
@@ -317,7 +317,7 @@ CONEX_STATUS CONEX_NewLinearMatrixInequality(void* p, int order,
 
 CONEX_STATUS CONEX_NewLinearInequality(void* program, int num_rows,
                                        int* constraint_id) {
-  CONEX_DEMAND(constraint_id, "Received output null pointer.");
+  CONEX_RETURN_ON_FAIL(constraint_id, "Received output null pointer.");
   Program* prg;
   SAFER_CAST_TO_Program(program, prg);
   int n = prg->GetNumberOfVariables();
@@ -329,7 +329,7 @@ CONEX_STATUS CONEX_NewLinearInequality(void* program, int num_rows,
 }
 
 CONEX_STATUS CONEX_NewQuadraticCost(void* p, int* constraint_id) {
-  CONEX_DEMAND(constraint_id, "Received output null pointer.");
+  CONEX_RETURN_ON_FAIL(constraint_id, "Received output null pointer.");
   Program* prg;
   SAFER_CAST_TO_Program(p, prg);
   int n = prg->GetNumberOfVariables();
@@ -364,8 +364,8 @@ CONEX_STATUS CONEX_UpdateLinearOperator(void* p, int constraint_id,
                                         int col, int hyper_complex_dim) {
   Program* prg;
   SAFER_CAST_TO_Program(p, prg);
-  CONEX_DEMAND(constraint_id < prg->NumberOfConstraints(),
-               "Invalid Constraint ID.");
+  CONEX_RETURN_ON_FAIL(constraint_id < prg->NumberOfConstraints(),
+                       "Invalid Constraint ID.");
   return prg->UpdateLinearOperatorOfConstraint(constraint_id, value, variable,
                                                row, col, hyper_complex_dim);
 }
@@ -374,17 +374,18 @@ CONEX_STATUS CONEX_UpdateAffineTerm(void* p, int constraint, double value,
                                     int row, int col, int hyper_complex_dim) {
   Program* prg;
   SAFER_CAST_TO_Program(p, prg);
-  CONEX_DEMAND(constraint < prg->NumberOfConstraints(), "Invalid Constraint.");
+  CONEX_RETURN_ON_FAIL(constraint < prg->NumberOfConstraints(),
+                       "Invalid Constraint.");
   return prg->UpdateAffineTermOfConstraint(constraint, value, row, col,
                                            hyper_complex_dim);
 }
 
 CONEX_STATUS CONEX_NewLorentzConeConstraint(void* p, int order,
                                             int* constraint_id) {
-  CONEX_DEMAND(
+  CONEX_RETURN_ON_FAIL(
       order >= 1,
       "Received invalid n. Second order cone must have order (n + 1) >= 2.");
-  CONEX_DEMAND(constraint_id, "Received output null pointer.");
+  CONEX_RETURN_ON_FAIL(constraint_id, "Received output null pointer.");
 
   Program* prg;
   SAFER_CAST_TO_Program(p, prg);
@@ -395,11 +396,12 @@ CONEX_STATUS CONEX_NewLorentzConeConstraint(void* p, int order,
 }
 
 CONEX_STATUS CONEX_SetNumberOfVariables(void* p, int number_of_variables) {
-  CONEX_DEMAND(number_of_variables >= 1, "Number of variables must be > 0.");
+  CONEX_RETURN_ON_FAIL(number_of_variables >= 1,
+                       "Number of variables must be > 0.");
   Program* prg;
   SAFER_CAST_TO_Program(p, prg);
-  CONEX_DEMAND(prg->GetNumberOfVariables() == 0,
-               "Number of variables already set.");
+  CONEX_RETURN_ON_FAIL(prg->GetNumberOfVariables() == 0,
+                       "Number of variables already set.");
   prg->SetNumberOfVariables(number_of_variables);
   return CONEX_SUCCESS;
 }

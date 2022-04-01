@@ -145,8 +145,8 @@ class SupernodalAssemblerStatic : public SupernodalAssemblerBase {
   }
 
   int UpdateMatrix(double value, int row, int col) {
-    CONEX_DEMAND(row < A_.rows() && col < A_.cols(),
-                 "Indices are out of bounds.");
+    CONEX_RETURN_ON_FAIL(row < A_.rows() && col < A_.cols(),
+                         "Indices are out of bounds.");
 
     A_(row, col) = value;
     return CONEX_SUCCESS;

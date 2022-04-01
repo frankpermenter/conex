@@ -219,20 +219,22 @@ void ApplyLimits(double* x, double lb, double ub) {
 }
 
 bool Program::AddLinearCost(const VectorXd& b) {
-  CONEX_DEMAND(GetNumberOfVariables() == b.rows(),
-               "Cost vector dimension does not equal number of variables");
+  CONEX_RETURN_ON_FAIL(
+      GetNumberOfVariables() == b.rows(),
+      "Cost vector dimension does not equal number of variables");
   linear_cost_ += b;
-  return true;
+  return CONEX_SUCCESS;
 }
 
 void Program::ClearLinearCosts() { linear_cost_.setZero(); }
 
 bool Solve(Program& prog, const SolverConfiguration& config,
            double* primal_variable) {
-  CONEX_DEMAND(prog.contains_quadratic_costs_ == false ||
-                   (config.enable_line_search && !config.enable_rescaling),
-               "Must enable line search and disable rescaling for problems "
-               "with quadratic costs.");
+  CONEX_RETURN_ON_FAIL(
+      prog.contains_quadratic_costs_ == false ||
+          (config.enable_line_search && !config.enable_rescaling),
+      "Must enable line search and disable rescaling for problems "
+      "with quadratic costs.");
 
   VectorXd bin = -prog.linear_cost_;
 
@@ -378,8 +380,9 @@ bool Solve(Program& prog, const SolverConfiguration& config,
       }
 
       if (temp < 0) {
-        CONEX_DEMAND(!prog.contains_quadratic_costs_,
-                     "Solver terminating with error: line-search failed.");
+        CONEX_RETURN_ON_FAIL(
+            !prog.contains_quadratic_costs_,
+            "Solver terminating with error: line-search failed.");
         temp = ComputeMuFromDivergence(prog.kkt_system_manager_, solver,
                                        prog.sys.AQc * c_scaling, c_scaling,
                                        b * b_scaling, config, rankK, &y);
@@ -565,12 +568,12 @@ int Program::UpdateQuadraticCost(int cost_id, double value, int row, int col) {
     }
     cnt++;
   }
-  CONEX_DEMAND(false, "Invalid Quadratic Cost ID.");
+  CONEX_RETURN_ON_FAIL(false, "Invalid Quadratic Cost ID.");
 }
 
 bool Program::AddQuadraticCost(const Eigen::MatrixXd& Q) {
-  CONEX_DEMAND(Q.rows() == GetNumberOfVariables(),
-               "Order of matrix must equal number of variables.");
+  CONEX_RETURN_ON_FAIL(Q.rows() == GetNumberOfVariables(),
+                       "Order of matrix must equal number of variables.");
   std::vector<int> variables(GetNumberOfVariables());
   for (int i = 0; i < GetNumberOfVariables(); i++) {
     variables[i] = i;

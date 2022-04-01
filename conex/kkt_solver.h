@@ -18,6 +18,8 @@ class SupernodalKKTSolver {
   SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
                       const std::vector<std::vector<int>>& dual_vars);
 
+  SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques);
+
   SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
                       int num_vars, const std::vector<int>& order,
                       const std::vector<std::vector<int>>& supernodes,
