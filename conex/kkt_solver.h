@@ -45,7 +45,7 @@ class SupernodalKKTSolver {
   Eigen::VectorXd Solve(const Eigen::VectorXd& b) const;
   void SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b) const;
   Eigen::MatrixXd KKTMatrix() const;
-  int SizeOfSystem() { return Pt.rows(); }
+  int SizeOfSystem() const { return Pt.rows(); }
 
  private:
   void RelabelCliques(MatrixData* data_ptr);

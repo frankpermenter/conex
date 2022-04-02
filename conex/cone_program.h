@@ -8,7 +8,7 @@
 #include "conex/supernodal_assembler.h"
 #include "workspace.h"
 
-#define USE_SUPERNODAL_SOLVER 1
+#define USE_SUPERNODAL_SOLVER 0
 
 namespace conex {
 

@@ -76,7 +76,7 @@ bool T::Factor() {
   }
   factored_ = true;
   assembled_ = false;
-  return CONEX_SUCCESS;
+  return true;
 }
 
 void T::Assemble() {
@@ -85,19 +85,20 @@ void T::Assemble() {
   assembled_ = true;
 }
 
-Eigen::VectorXd T::EvaluateEquationOperator(const Eigen::VectorXd& residual) {
+Eigen::VectorXd T::EvaluateEquationOperator(
+    const Eigen::VectorXd& residual) const {
   return SparseMatrixProduct(non_zero_columns_of_B_, entries_of_B_, residual);
 }
 
 Eigen::VectorXd T::EvaluateEquationOperatorTranspose(
-    const Eigen::VectorXd& residual) {
+    const Eigen::VectorXd& residual) const {
   int num_cols_of_B = inverse_of_G_.SizeOfSystem();
   return SparseTransposeProduct(non_zero_columns_of_B_, entries_of_B_,
                                 num_cols_of_B, residual);
 }
 
 Eigen::VectorXd T::SchurComplementConjugateGradientSolver(
-    const Eigen::VectorXd& residual) {
+    const Eigen::VectorXd& residual) const {
   ConstrainedLeastSquaresConjugateGradientSolverConfig config;
   auto f = [this](const VectorXd& s) -> VectorXd {
     return EvaluateEquationOperator(
@@ -107,6 +108,11 @@ Eigen::VectorXd T::SchurComplementConjugateGradientSolver(
   int num_rows = residual.rows();
   VectorXd s(num_rows);
   s.setZero();
+
+  if (num_rows == 0) {
+    return s;
+  }
+
   {
     VectorXd r(num_rows);
     r = residual;
@@ -130,8 +136,18 @@ Eigen::VectorXd T::SchurComplementConjugateGradientSolver(
   return s;
 }
 
+void T::SolveInPlace(Ref* y) const {
+  VectorXd f = y->topRows(number_of_variables());
+  VectorXd g = y->bottomRows(number_of_equations());
+  VectorXd s1;
+  VectorXd s2;
+  Solve(f, g, &s1, &s2, false);
+  y->topRows(number_of_variables()) = s1;
+  y->bottomRows(number_of_equations()) = s2;
+}
+
 void T::Solve(const VectorXd& f, const VectorXd& g, VectorXd* y, VectorXd* z,
-              bool use_llt) {
+              bool use_llt) const {
   CONEX_DEMAND(factored_, "System has not been factored.");
   VectorXd Ginv_f = inverse_of_G_.Solve(f);
   int num_columns_of_B = f.rows();

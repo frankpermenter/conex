@@ -10,6 +10,8 @@
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+using std::vector;
+
 namespace conex {
 
 double CalcMinMu(double lambda_max, double, WeightedSlackEigenvalues* p) {
@@ -95,15 +97,19 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
     solver = std::make_unique<KKTSolver>(prog.kkt_system_manager_.cliques,
                                          prog.kkt_system_manager_.dual_vars);
 #else
-    solver = std::make_unique<KKTSolver>(prog.kkt_system_manager_.cliques,
-                                         prog.kkt_system_manager_.dual_vars);
+    solver = std::make_unique<KKTSolver>(
+        prog.kkt_system_manager_.cliques,
+        prog.kkt_system_manager_.supernodal_assemblers_ptr_,
+        vector<vector<int> >(), vector<vector<double> >());
 #endif
 
     for (auto& c : prog.kkt_system_manager_.supernodal_assemblers_ptr_) {
       c->Reset();
     }
 
+#if USE_SUPERNODAL_SOLVER
     solver->Bind(prog.kkt_system_manager_.supernodal_assemblers_ptr_);
+#endif
     END_TIMER
   }
   return true;
@@ -537,14 +543,9 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 DenseMatrix GetFeasibleObjective(Program* prg) {
   auto& prog = *prg;
   Initialize(prog, SolverConfiguration());
-  // AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
-  // return .5 * prog.sys.AW;
-  Eigen::VectorXd AW(prog.kkt_system_manager_.SizeOfKKTSystem());
-  Eigen::VectorXd AQc(prog.kkt_system_manager_.SizeOfKKTSystem());
-  double inner_product_of_c_and_w;
-  prog.solver->Assemble(&AW, &AQc, &inner_product_of_c_and_w);
-
-  return .5 * AW;
+  prog.solver->Assemble();
+  AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
+  return .5 * prog.sys.AW;
 }
 
 bool Solve(const DenseMatrix& b, Program& prog,
