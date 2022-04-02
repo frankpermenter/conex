@@ -537,8 +537,14 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 DenseMatrix GetFeasibleObjective(Program* prg) {
   auto& prog = *prg;
   Initialize(prog, SolverConfiguration());
-  AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
-  return .5 * prog.sys.AW;
+  // AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
+  // return .5 * prog.sys.AW;
+  Eigen::VectorXd AW(prog.kkt_system_manager_.SizeOfKKTSystem());
+  Eigen::VectorXd AQc(prog.kkt_system_manager_.SizeOfKKTSystem());
+  double inner_product_of_c_and_w;
+  prog.solver->Assemble(&AW, &AQc, &inner_product_of_c_and_w);
+
+  return .5 * AW;
 }
 
 bool Solve(const DenseMatrix& b, Program& prog,
