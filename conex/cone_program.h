@@ -8,6 +8,8 @@
 #include "conex/supernodal_assembler.h"
 #include "workspace.h"
 
+#define USE_SUPERNODAL_SOLVER 1
+
 namespace conex {
 
 enum : int {
@@ -84,8 +86,6 @@ inline void TakeStep(std::vector<Constraint*>* constraints,
     TakeStep(c, newton_step_parameters);
   }
 }
-
-#define USE_SUPERNODAL_SOLVER 1
 
 #if USE_SUPERNODAL_SOLVER
 using KKTSolver = SupernodalKKTSolver;
