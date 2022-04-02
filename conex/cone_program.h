@@ -1,4 +1,5 @@
 #pragma once
+#include "conex/conjugate_gradient_solvers.h"
 #include "conex/constraint.h"
 #include "conex/constraint_manager.h"
 #include "conex/equality_constraint.h"
@@ -84,7 +85,14 @@ inline void TakeStep(std::vector<Constraint*>* constraints,
   }
 }
 
+#define USE_SUPERNODAL_SOLVER 1
+
+#if USE_SUPERNODAL_SOLVER
 using KKTSolver = SupernodalKKTSolver;
+#else
+using KKTSolver = ConstrainedLeastSquaresConjugateGradientSolver;
+#endif
+
 class Program {
  public:
   Program(int number_of_variables) {
@@ -227,7 +235,7 @@ class Program {
   SchurComplementSystem sys;
   std::unique_ptr<WorkspaceStats> stats;
   std::vector<Workspace> workspaces;
-  std::unique_ptr<SupernodalKKTSolver> solver;
+  std::unique_ptr<KKTSolver> solver;
   Eigen::VectorXd memory_;
   Eigen::VectorXd* workspace_data_;
   bool is_initialized = false;

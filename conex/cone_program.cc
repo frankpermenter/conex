@@ -91,8 +91,13 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
     }
 
     START_TIMER(Sparsity Analysis);
-    solver = std::make_unique<SupernodalKKTSolver>(
-        prog.kkt_system_manager_.cliques, prog.kkt_system_manager_.dual_vars);
+#if USE_SUPERNODAL_SOLVER
+    solver = std::make_unique<KKTSolver>(prog.kkt_system_manager_.cliques,
+                                         prog.kkt_system_manager_.dual_vars);
+#else
+    solver = std::make_unique<KKTSolver>(prog.kkt_system_manager_.cliques,
+                                         prog.kkt_system_manager_.dual_vars);
+#endif
 
     for (auto& c : prog.kkt_system_manager_.supernodal_assemblers_ptr_) {
       c->Reset();
@@ -109,7 +114,7 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
 //        2 * prog.sys.AW;
 
 double ComputeMuFromLineSearch(ConstraintManager& constraints,
-                               std::unique_ptr<SupernodalKKTSolver>& solver,
+                               std::unique_ptr<KKTSolver>& solver,
                                double dinf_upper_bound, const DenseMatrix& AQc,
                                double c_weight, const DenseMatrix& b,
                                const DenseMatrix& AW, Ref* y0) {
@@ -164,7 +169,7 @@ double MinimizeNormInf(WeightedSlackEigenvalues& p) {
   return y;
 }
 double ComputeMuFromDivergence(ConstraintManager& constraints,
-                               std::unique_ptr<SupernodalKKTSolver>& solver,
+                               std::unique_ptr<KKTSolver>& solver,
                                const DenseMatrix& AQc, double c_weight,
                                const DenseMatrix& b,
                                const SolverConfiguration& config, int rankK,
@@ -294,9 +299,12 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   auto& c_scaling = prog.stats->c_scaling();
   auto& b_scaling = prog.stats->b_scaling();
 
+#if USE_SUPERNODAL_SOLVER
   solver->SetIterativeRefinementIterations(
       config.iterative_refinement_iterations);
   solver->SetSolverMode(config.kkt_solver);
+#endif
+
   if (config.initialization_mode) {
     PRINTSTATUS("Warmstarting...");
     initial_centering_steps = config.initial_centering_steps_warmstart;
@@ -493,18 +501,17 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     prog.status_.solved = true;
   }
   if (config.prepare_dual_variables) {
-    DenseMatrix y2;
     solver->Assemble();
     AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
     solver->Factor();
     DenseMatrix bres =
         newton_step_parameters.inv_sqrt_mu * b * b_scaling - 1 * prog.sys.AW;
-    y2 = solver->Solve(bres);
+    Ref y2map(bres.data(), bres.rows(), bres.cols());
+    solver->SolveInPlace(&y2map);
 
     newton_step_parameters.affine = true;
     newton_step_parameters.e_weight = 0;
     newton_step_parameters.c_weight = 0;
-    Ref y2map(y2.data(), y2.rows(), y2.cols());
     StepInfo info;
     PrepareStep(&prog.kkt_system_manager_, newton_step_parameters, y2map,
                 &info);
@@ -530,13 +537,8 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 DenseMatrix GetFeasibleObjective(Program* prg) {
   auto& prog = *prg;
   Initialize(prog, SolverConfiguration());
-
-  Eigen::VectorXd AW(prog.kkt_system_manager_.SizeOfKKTSystem());
-  Eigen::VectorXd AQc(prog.kkt_system_manager_.SizeOfKKTSystem());
-  double inner_product_of_c_and_w;
-  prog.solver->Assemble(&AW, &AQc, &inner_product_of_c_and_w);
-
-  return .5 * AW;
+  AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
+  return .5 * prog.sys.AW;
 }
 
 bool Solve(const DenseMatrix& b, Program& prog,

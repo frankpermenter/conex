@@ -29,12 +29,19 @@ class ConstrainedLeastSquaresConjugateGradientSolver {
       const std::vector<std::vector<int>>& non_zero_columns_of_B,
       const std::vector<std::vector<double>>& entries_of_B);
 
+  ConstrainedLeastSquaresConjugateGradientSolver(
+      const std::vector<std::vector<int>>& cliques_of_G,
+      const std::vector<std::vector<int>>& dual_vars);
+
   bool Factor();
 
   void Assemble();
+  void Bind(std::vector<SupernodalAssemblerBase*>&);
 
   void Solve(const Eigen::VectorXd& f, const Eigen::VectorXd& g,
              Eigen::VectorXd* y, Eigen::VectorXd* z, bool use_llt);
+
+  void SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b) const;
 
   Eigen::MatrixXd KKTMatrix();
 
