@@ -19,7 +19,6 @@ cc_test(
     deps = [
         "core",
         "linear_constraint",
-        "supernodal_solver",
         "@gtest//:main",
     ],
 )
@@ -304,6 +303,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "divergence",
+        ":conjugate_gradient_solvers",
         ":supernodal_solver",
         "@eigen",
     ],
@@ -455,7 +455,6 @@ cc_test(
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conjugate_gradient_solvers",
-        "core",
         "@gtest//:main",
     ],
 )
