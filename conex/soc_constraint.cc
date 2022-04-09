@@ -473,7 +473,6 @@ bool PerformLineSearch(SOCConstraint* o, const LineSearchParameters& params,
   dt.w0 = d1.w0 - d0.w0;
   dt.w1 = d1.w1 - d0.w1;
 
-
   GetMinSqrtMu(params.dinf_upper_bound, d0, dt, output);
   bool failure = false;
   // if (success == -1) {

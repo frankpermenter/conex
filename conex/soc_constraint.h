@@ -7,8 +7,8 @@ class SOCConstraint {
   using StorageType = DenseMatrix;
 
  public:
-  template <typename T>
-  SOCConstraint(const T& constraint_matrix, const T& constraint_affine)
+  template <typename T1, typename T2>
+  SOCConstraint(const T1& constraint_matrix, const T2& constraint_affine)
       : workspace_(constraint_matrix.rows() - 1),
         constraint_matrix_(constraint_matrix),
         constraint_affine_(constraint_affine) {

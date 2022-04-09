@@ -115,7 +115,7 @@ ProblemData ProblemDataWithSolution(int n, int num_ineqs) {
 }
 
 void SolveQPInstance(ProblemData& data, const SolverConfiguration& config,
-                     bool print_stats = false) {
+                     bool add_quadratic_constraint = false) {
   int num_vars = data.A.cols();
   Program prog(num_vars);
   VectorXd solution(num_vars);
@@ -130,16 +130,51 @@ void SolveQPInstance(ProblemData& data, const SolverConfiguration& config,
   // Ax <= b.
   prog.AddConstraint(LinearConstraint(-data.A, data.b), vars);
 
+  double norm_bound = 1.0;
+  if (add_quadratic_constraint) {
+    int n = vars.size();
+    MatrixXd A_socp = MatrixXd::Zero(n + 1, n);
+    A_socp.bottomRows(n) = MatrixXd::Identity(n, n);
+    VectorXd c_socp(n + 1);
+    c_socp.setZero(0);
+    c_socp(0) = norm_bound;
+    prog.AddConstraint(SOCConstraint(A_socp, c_socp), vars);
+  }
+
   bool error = !Solve(prog, config, solution.data());
-  EXPECT_NEAR((solution - data.optimal_x).norm(), 0.0, 1e-9);
-  EXPECT_NEAR((data.A * solution + data.b - data.optimal_slack).norm(), 0.0,
-              1e-9);
+  if (add_quadratic_constraint) {
+    EXPECT_TRUE(solution.norm() <= norm_bound + 1e-9);
+  } else {
+    EXPECT_NEAR((solution - data.optimal_x).norm(), 0.0, 1e-9);
+    EXPECT_NEAR((data.A * solution + data.b - data.optimal_slack).norm(), 0.0,
+                1e-9);
+  }
   EXPECT_EQ(error, false);
 }
 
 }  // namespace conex
 
 void SolveRandomQP(int num_vars, int num_ineqs) {
+  conex::SolverConfiguration config;
+
+  config.enable_line_search = true;
+  config.initial_centering_steps_coldstart = 0;
+  config.enable_rescaling = false;
+  config.inv_sqrt_mu_max = 2e5;
+  config.max_iterations = 30;
+  config.final_centering_tolerance = 1.05;
+  config.final_centering_steps = 0;
+  config.minimum_mu = 0;
+  config.kkt_error_tolerance = 1e45;
+  config.dinf_upper_bound = 1;
+  config.prepare_dual_variables = 1;
+
+  conex::ProblemData data = conex::ProblemDataWithSolution(num_vars, num_ineqs);
+
+  conex::SolveQPInstance(data, config);
+}
+
+void SolveRandomQCQP(int num_vars, int num_ineqs) {
   conex::SolverConfiguration config;
 
   config.enable_line_search = true;
@@ -175,4 +210,10 @@ GTEST_TEST(RandomQP, Large) {
   int num_vars = 50;
   int num_ineqs = 70;
   SolveRandomQP(num_vars, num_ineqs);
+}
+
+GTEST_TEST(RandomQCQP, Small) {
+  int num_vars = 5;
+  int num_ineqs = 10;
+  SolveRandomQCQP(num_vars, num_ineqs);
 }
