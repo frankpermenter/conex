@@ -42,10 +42,16 @@ class SOCConstraint {
   friend bool UpdateAffineTerm(SOCConstraint* o, double val, int r, int c,
                                int dim);
 
+  friend bool PerformLineSearch(SOCConstraint* o,
+                                const LineSearchParameters& params,
+                                const Ref& y0, const Ref& y1,
+                                LineSearchOutput* output);
+
  private:
   void ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y, Ref* minus_s);
   void GeodesicUpdate(const Ref& S, StepInfo* data);
   void AffineUpdate(const Ref& S);
+  Eigen::VectorXd BuildNewtonDirection(double c_weight, const Ref& y);
 
   WorkspaceSOC workspace_;
   DenseMatrix constraint_matrix_;
