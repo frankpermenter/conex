@@ -216,6 +216,15 @@ void ApplyLimits(double* x, double lb, double ub) {
   }
 }
 
+bool Program::AddLinearCost(const VectorXd& b, const std::vector<int>& vars) {
+  CONEX_DEMAND(vars.size() == b.rows(),
+               "Cost vector dimension does not equal number of variables");
+  int cnt = 0;
+  for (auto i : vars) {
+    linear_cost_(i) += b(cnt++);
+  }
+  return false;
+}
 bool Program::AddLinearCost(const VectorXd& b) {
   CONEX_RETURN_ON_FAIL(
       GetNumberOfVariables() == b.rows(),

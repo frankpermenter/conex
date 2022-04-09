@@ -203,6 +203,8 @@ class Program {
   ConexStatus Status() { return status_; }
 
   bool AddLinearCost(const Eigen::VectorXd& b);
+  bool AddLinearCost(const Eigen::VectorXd& b,
+                     const std::vector<int>& variables);
   void ClearLinearCosts();
   bool AddQuadraticCost(const Eigen::MatrixXd& Q,
                         const std::vector<int>& variables);
