@@ -154,10 +154,18 @@ GTEST_TEST(Assemble, VariablesSpecifiedOutOfOrder) {
 
   ConstraintManager prog;
   prog.SetNumberOfVariables(4);
-  Q << 1, 0, 0, 0, 0, 0, 0, 0, 3;
+  // clang-format off
+  Q << 1, 0, 0,
+       0, 0, 0,
+       0, 0, 3;
+  // clang-format on
 
   prog.AddQuadraticCost(Q, vector{1, 0, 3});
-  Q << 1, 0, 0, 0, 0, 0, 0, 0, 2;
+  // clang-format off
+  Q << 1, 0, 0,
+       0, 0, 0,
+       0, 0, 2;
+  // clang-format on
   prog.AddQuadraticCost(Q, vector{1, 0, 2});
 
   prog.InitializeWorkspace();
