@@ -20,14 +20,15 @@ void ConstructSchurComplementSystem(EqualityConstraints* o, bool initialize,
     throw std::runtime_error("Schur complement workspace is not initialized");
   }
 
+  // Fills lower-triangular part of
+  //    0 A'
+  //    A 0
   if (initialize) {
     sys.setZero();
     sys.G.bottomLeftCorner(A_.rows(), A_.cols()) = A_;
-    sys.G.topRightCorner(A_.cols(), A_.rows()) = A_.transpose();
     sys.AQc.bottomRows(A_.rows()) = b_;
   } else {
     sys.G.bottomLeftCorner(A_.rows(), A_.cols()) += A_;
-    sys.G.topRightCorner(A_.cols(), A_.rows()) += A_.transpose();
     sys.AQc.bottomRows(A_.rows()) += b_;
   }
 }
