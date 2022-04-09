@@ -149,14 +149,14 @@ class ConstraintManager {
 
   std::vector<Constraint*>& cone_inequalities() { return cone_inequalities_; }
 
-  // Use a list so that we do not trigger reallocations.
   std::vector<std::vector<int>> cliques;
   std::vector<std::vector<int>> dual_vars;
 
   std::vector<Constraint*> cone_inequalities_;
   std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;
 
-  // Stores type-erased interface
+  // Stores type-erased interface.
+  // Use a list so that we do not trigger reallocations.
   std::list<Constraint> constraints_;
   std::list<SupernodalAssembler> supernodal_assemblers_;
   std::list<SupernodalAssemblerStatic> static_supernodal_assemblers_;
