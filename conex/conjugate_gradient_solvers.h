@@ -34,21 +34,35 @@ class ConstrainedLeastSquaresConjugateGradientSolver {
   void Assemble();
 
   void Solve(const Eigen::VectorXd& f, const Eigen::VectorXd& g,
-             Eigen::VectorXd* y, Eigen::VectorXd* z, bool use_llt);
+             Eigen::VectorXd* y, Eigen::VectorXd* z, bool use_llt) const;
 
-  Eigen::MatrixXd KKTMatrix();
+  void SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b) const;
+
+  Eigen::VectorXd Solve(const Eigen::VectorXd& f) {
+    using Eigen::VectorXd;
+    VectorXd y = f;
+    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> ymap(y.data(), y.rows(), 1);
+    SolveInPlace(&ymap);
+    return ymap;
+  }
+
+  Eigen::VectorXd EvaluateEquationOperator(const Eigen::VectorXd& d) const;
+  Eigen::VectorXd EvaluateEquationOperatorTranspose(
+      const Eigen::VectorXd& d) const;
+  Eigen::MatrixXd KKTMatrix(bool permute_to_elimination_order = false);
+  SupernodalKKTSolver inverse_of_G_;
+  int number_of_equations() const { return non_zero_columns_of_B_.size(); }
 
  private:
-  SupernodalKKTSolver inverse_of_G_;
   bool factored_ = false;
   bool assembled_ = false;
-  const std::vector<std::vector<int>> non_zero_columns_of_B_;
-  const std::vector<std::vector<double>> entries_of_B_;
+  std::vector<std::vector<int>> non_zero_columns_of_B_;
+  std::vector<std::vector<double>> entries_of_B_;
+  int number_of_variables() const { return inverse_of_G_.SizeOfSystem(); }
 
   Eigen::VectorXd SchurComplementConjugateGradientSolver(
-      const Eigen::VectorXd& x);
-  Eigen::VectorXd EvaluateEquationOperator(const Eigen::VectorXd& d);
-  Eigen::VectorXd EvaluateEquationOperatorTranspose(const Eigen::VectorXd& d);
+      const Eigen::VectorXd& x) const;
+  Eigen::VectorXd ApplyPreconditioner(const Eigen::VectorXd& x) const;
 };
 
 }  // namespace conex
