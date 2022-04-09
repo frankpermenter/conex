@@ -108,11 +108,14 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
       data(GetData(cliques, is_empty(dual_vars),
                    GetRootNode(cliques, dual_vars))),
       mat(data),
-      Pt(data.N),
+      permutation_from_elimination_order_(data.N),
+      permutation_to_elimination_order_(data.N),
       b_permuted_(data.N) {
   RelabelCliques(&data);
-  Pt.indices() =
+  permutation_from_elimination_order_.indices() =
       Eigen::Map<Eigen::MatrixXi>(data.permutation_inverse.data(), data.N, 1);
+  permutation_to_elimination_order_.indices() =
+      Eigen::Map<Eigen::MatrixXi>(data.permutation.data(), data.N, 1);
 }
 
 T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques)
@@ -121,11 +124,14 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques)
       data(GetData(cliques, is_empty(dual_variables_),
                    GetRootNode(cliques, dual_variables_))),
       mat(data),
-      Pt(data.N),
+      permutation_from_elimination_order_(data.N),
+      permutation_to_elimination_order_(data.N),
       b_permuted_(data.N) {
   RelabelCliques(&data);
-  Pt.indices() =
+  permutation_from_elimination_order_.indices() =
       Eigen::Map<Eigen::MatrixXi>(data.permutation_inverse.data(), data.N, 1);
+  permutation_to_elimination_order_.indices() =
+      Eigen::Map<Eigen::MatrixXi>(data.permutation.data(), data.N, 1);
 }
 
 T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
@@ -136,19 +142,19 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
       dual_variables_(vector<vector<int>>(cliques.size())),
       data(SupernodesToData(num_vars, order, supernodes, separators)),
       mat(data),
-      Pt(data.N),
+      permutation_from_elimination_order_(data.N),
+      permutation_to_elimination_order_(data.N),
       b_permuted_(data.N) {
   RelabelCliques(&data);
-  Pt.indices() =
+  permutation_from_elimination_order_.indices() =
       Eigen::Map<Eigen::MatrixXi>(data.permutation_inverse.data(), data.N, 1);
+  permutation_to_elimination_order_.indices() =
+      Eigen::Map<Eigen::MatrixXi>(data.permutation.data(), data.N, 1);
 }
 
 void T::Assemble(Eigen::VectorXd* AW, Eigen::VectorXd* AQc,
                  double* inner_product_of_c_and_w) {
   if (AW->rows() != SizeOfSystem() || AQc->rows() != SizeOfSystem()) {
-    DUMP(AW->rows());
-    DUMP(SizeOfSystem());
-    DUMP(AQc->rows());
     throw std::runtime_error(
         "Cannot assemble system data: invalid output dimensions.");
   }
@@ -214,12 +220,18 @@ bool T::Factor() {
   }
 }
 
-Eigen::VectorXd T::Solve(const Eigen::VectorXd& b) const {
-  assert(b.rows() == Pt.rows());
+Eigen::VectorXd T::Solve(const Eigen::VectorXd& b,
+                         bool permute_to_elimination_order) const {
+  CONEX_ASSERT(b.rows() == permutation_to_elimination_order_.rows(),
+               "Incompatiable dimensions.");
 
   bool use_qr = mode_ == CONEX_QR_FACTORIZATION;
   if (!use_qr) {
-    b_permuted_ = Pt.transpose() * b;
+    if (permute_to_elimination_order) {
+      b_permuted_ = permutation_to_elimination_order() * b;
+    } else {
+      b_permuted_ = b;
+    }
     if (use_cholesky_) {
       BlockTriangularOperations::SolveInPlaceCholesky(mat.workspace_,
                                                       &b_permuted_);
@@ -227,15 +239,20 @@ Eigen::VectorXd T::Solve(const Eigen::VectorXd& b) const {
       BlockTriangularOperations::SolveInPlaceLDLT(mat.workspace_, factorization,
                                                   &b_permuted_);
     }
-    return Pt * b_permuted_;
+    if (permute_to_elimination_order) {
+      return permutation_from_elimination_order() * b_permuted_;
+    } else {
+      return b_permuted_;
+    }
   } else {
     return qr_decomp_.solve(b);
   }
 }
 
-void T::SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b) const {
+void T::SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
+                     bool permute_to_elimination_order) const {
   bool use_qr = mode_ == CONEX_QR_FACTORIZATION;
-  if (b->rows() != Pt.rows()) {
+  if (b->rows() != permutation_from_elimination_order().rows()) {
     throw std::runtime_error(
         "Supernodal solver input error: invalid dimensions.");
   }
@@ -250,7 +267,12 @@ void T::SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b) const {
   if (iterative_refinement_iterations_ > 0) {
     total_residual = *b;
   }
-  b_permuted_ = Pt.transpose() * (*b);
+
+  if (permute_to_elimination_order) {
+    b_permuted_ = permutation_to_elimination_order() * (*b);
+  } else {
+    b_permuted_ = (*b);
+  }
 
   if (use_cholesky_) {
     BlockTriangularOperations::SolveInPlaceCholesky(mat.workspace_,
@@ -260,11 +282,19 @@ void T::SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b) const {
                                                 &b_permuted_);
   }
 
-  *b = Pt * b_permuted_;
+  if (permute_to_elimination_order) {
+    *b = permutation_from_elimination_order() * b_permuted_;
+  } else {
+    *b = b_permuted_;
+  }
   for (int i = 0; i < iterative_refinement_iterations_; i++) {
+    if (permute_to_elimination_order) {
+      // TODO(FrankPermenter): remove requirement.
+      std::runtime_error("Iterative refinement requires permutation.");
+    }
     auto& y = *b;
     const VectorXd residual = total_residual - kkt_matrix_ * y;
-    b_permuted_ = Pt.transpose() * (residual);
+    b_permuted_ = permutation_to_elimination_order() * (residual);
     if (use_cholesky_) {
       BlockTriangularOperations::SolveInPlaceCholesky(mat.workspace_,
                                                       &b_permuted_);
@@ -272,16 +302,21 @@ void T::SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b) const {
       BlockTriangularOperations::SolveInPlaceLDLT(mat.workspace_, factorization,
                                                   &b_permuted_);
     }
-    VectorXd temp = Pt * b_permuted_;
+    VectorXd temp = permutation_from_elimination_order() * b_permuted_;
     y += temp;
   }
   return;
 }
 
-Eigen::MatrixXd T::KKTMatrix() const {
+Eigen::MatrixXd T::KKTMatrix(bool permute_to_elimination_order) const {
   Eigen::MatrixXd G =
       TriangularMatrixOperations::ToDense(mat).selfadjointView<Eigen::Lower>();
-  return Pt * G * Pt.transpose();
+  if (permute_to_elimination_order) {
+    return G;
+  } else {
+    return permutation_from_elimination_order() * G *
+           permutation_to_elimination_order();
+  }
 }
 
 }  // namespace conex

@@ -42,10 +42,19 @@ class SupernodalKKTSolver {
   }
   void SetSolverMode(int mode) { mode_ = mode; }
   bool Factor();
-  Eigen::VectorXd Solve(const Eigen::VectorXd& b) const;
-  void SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b) const;
-  Eigen::MatrixXd KKTMatrix() const;
-  int SizeOfSystem() { return Pt.rows(); }
+  Eigen::VectorXd Solve(const Eigen::VectorXd& b,
+                        bool permute_to_elimination_order = true) const;
+  void SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
+                    bool permute_to_elimination_order = true) const;
+  Eigen::MatrixXd KKTMatrix(bool permute_to_elimination_order = false) const;
+  int SizeOfSystem() const { return permutation_to_elimination_order_.rows(); }
+  const Eigen::PermutationMatrix<-1>& permutation_to_elimination_order() const {
+    return permutation_to_elimination_order_;
+  }
+  const Eigen::PermutationMatrix<-1>& permutation_from_elimination_order()
+      const {
+    return permutation_from_elimination_order_;
+  }
 
  private:
   void RelabelCliques(MatrixData* data_ptr);
@@ -56,7 +65,8 @@ class SupernodalKKTSolver {
   MatrixData data;
   SparseTriangularMatrix mat;
   std::vector<Eigen::RLDLT<Eigen::Ref<Eigen::MatrixXd>>> factorization;
-  Eigen::PermutationMatrix<-1> Pt;
+  Eigen::PermutationMatrix<-1> permutation_from_elimination_order_;
+  Eigen::PermutationMatrix<-1> permutation_to_elimination_order_;
   mutable Eigen::VectorXd b_permuted_;
   std::vector<SupernodalAssemblerBase*> assembler;
   bool factorization_regularized_ = false;
