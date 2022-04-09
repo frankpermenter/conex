@@ -217,7 +217,7 @@ void ApplyLimits(double* x, double lb, double ub) {
 }
 
 bool Program::AddLinearCost(const VectorXd& b, const std::vector<int>& vars) {
-  CONEX_DEMAND(vars.size() == b.rows(),
+  CONEX_DEMAND(static_cast<int>(vars.size()) == b.rows(),
                "Cost vector dimension does not equal number of variables");
   int cnt = 0;
   for (auto i : vars) {
@@ -502,18 +502,16 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     prog.status_.solved = true;
   }
   if (config.prepare_dual_variables) {
-    DenseMatrix y2;
     solver->Assemble();
     AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
     solver->Factor();
     DenseMatrix bres =
         newton_step_parameters.inv_sqrt_mu * b * b_scaling - 1 * prog.sys.AW;
-    y2 = solver->Solve(bres);
-
+    Ref y2map(bres.data(), bres.rows(), bres.cols());
+    solver->SolveInPlace(&y2map);
     newton_step_parameters.affine = true;
     newton_step_parameters.e_weight = 0;
     newton_step_parameters.c_weight = 0;
-    Ref y2map(y2.data(), y2.rows(), y2.cols());
     StepInfo info;
     PrepareStep(&prog.kkt_system_manager_, newton_step_parameters, y2map,
                 &info);
@@ -539,13 +537,9 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 DenseMatrix GetFeasibleObjective(Program* prg) {
   auto& prog = *prg;
   Initialize(prog, SolverConfiguration());
-
-  Eigen::VectorXd AW(prog.kkt_system_manager_.SizeOfKKTSystem());
-  Eigen::VectorXd AQc(prog.kkt_system_manager_.SizeOfKKTSystem());
-  double inner_product_of_c_and_w;
-  prog.solver->Assemble(&AW, &AQc, &inner_product_of_c_and_w);
-
-  return .5 * AW;
+  prog.solver->Assemble();
+  AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
+  return .5 * prog.sys.AW;
 }
 
 bool Solve(const DenseMatrix& b, Program& prog,
