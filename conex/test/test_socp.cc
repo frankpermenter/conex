@@ -61,6 +61,11 @@ int DoMain() {
     prog1.AddConstraint(soc_constraint_with_squareroot);
     DenseMatrix y1(n, 1);
     Solve(b, prog1, config, y1.data());
+    DenseMatrix y1_ls(n, 1);
+    config.enable_line_search = 1;
+    Solve(b, prog1, config, y1_ls.data());
+    config.enable_line_search = 0;
+    EXPECT_NEAR((y1 - y1_ls).norm(), 0, 1e-6);
 
     Program prog2(n);
     prog2.AddConstraint(lmi_constraint);
