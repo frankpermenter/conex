@@ -88,7 +88,7 @@ GTEST_TEST(LDLT, TestAssembly) {
 
   ConstraintManager prog;
   BuildLQRProblem(N, &prog);
-  SupernodalKKTSolver solver(prog.cliques,
+  SupernodalKKTSolver solver(prog.variables(),
                              prog.equality_constraint_multipliers());
   solver.Bind(prog.clique_assemblers());
   solver.Assemble();
@@ -133,7 +133,7 @@ GTEST_TEST(LDLT, Benchmark2) {
   ConstraintManager prog;
   BuildLQRProblem(N, &prog);
 
-  SupernodalKKTSolver solver(prog.cliques,
+  SupernodalKKTSolver solver(prog.variables(),
                              prog.equality_constraint_multipliers());
   solver.Bind(prog.clique_assemblers());
   Eigen::VectorXd AW(prog.SizeOfKKTSystem());
@@ -171,7 +171,7 @@ GTEST_TEST(Assemble, VariablesSpecifiedOutOfOrder) {
   prog.AddQuadraticCost(Q, vector{1, 0, 2});
 
   prog.InitializeWorkspace();
-  SupernodalKKTSolver solver(prog.cliques,
+  SupernodalKKTSolver solver(prog.variables(),
                              prog.equality_constraint_multipliers());
   solver.Bind(prog.clique_assemblers());
   Eigen::VectorXd AW(prog.SizeOfKKTSystem());

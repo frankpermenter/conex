@@ -69,7 +69,7 @@ class ConstraintManager {
     supernodal_assemblers_.emplace_back(variables.size(), &constraints_.back());
     supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
 
-    cliques.push_back(variables);
+    cliques_.push_back(variables);
     dual_vars_.push_back({});
 
     cone_inequalities_.push_back(&constraints_.back());
@@ -85,7 +85,7 @@ class ConstraintManager {
     quadratic_costs_.emplace_back(Qi);
     supernodal_assemblers_ptr_.push_back(&quadratic_costs_.back());
 
-    cliques.push_back(variables);
+    cliques_.push_back(variables);
     dual_vars_.push_back({});
     return CONEX_SUCCESS;
   }
@@ -101,10 +101,10 @@ class ConstraintManager {
 
     supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
 
-    cliques.push_back(variables);
+    cliques_.push_back(variables);
     dual_vars_.push_back({});
     for (int i = 0; i < m; i++) {
-      cliques.back().push_back(i + dual_variable_start_);
+      cliques_.back().push_back(i + dual_variable_start_);
       dual_vars_.back().push_back(i + dual_variable_start_);
     }
     dual_variable_start_ += m;
@@ -145,8 +145,6 @@ class ConstraintManager {
     return supernodal_assemblers_ptr_;
   }
 
-  std::vector<std::vector<int>> cliques;
-
   std::list<SupernodalAssemblerStatic>& quadratic_costs() {
     return quadratic_costs_;
   }
@@ -163,8 +161,11 @@ class ConstraintManager {
     return dual_vars_;
   }
 
+  const std::vector<std::vector<int>>& variables() const { return cliques_; }
+
  private:
   std::vector<std::vector<int>> dual_vars_;
+  std::vector<std::vector<int>> cliques_;
   std::list<SupernodalAssembler> supernodal_assemblers_;
   std::list<SupernodalAssemblerStatic> quadratic_costs_;
   std::list<SupernodalAssemblerEqualities> equality_constraints_;

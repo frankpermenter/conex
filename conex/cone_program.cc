@@ -35,7 +35,7 @@ inline void PrepareStep(ConstraintManager* kkt,
   int i = 0;
   for (auto& ci : kkt->cone_inequalities()) {
     // TODO(FrankPermenter): Remove creation of these maps.
-    auto ysegment = Vars(y, kkt->cliques.at(i));
+    auto ysegment = Vars(y, kkt->variables().at(i));
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
                                                   ysegment.size(), 1);
     PrepareStep(ci, newton_step_parameters, z, &info_i);
@@ -63,7 +63,7 @@ void AssembleSchurComplementResiduals(ConstraintManager* kkt,
     s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
     s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
     int cnt = 0;
-    for (auto k : kkt->cliques.at(i)) {
+    for (auto k : kkt->variables().at(i)) {
       s->AW(k) += rhs_i->AW(cnt);
       s->AQc(k) += rhs_i->AQc(cnt);
       cnt++;
@@ -87,7 +87,7 @@ void GetWeightedSlackEigenvalues(ConstraintManager* constraints, const Ref& y,
   p->lambda_min = 30000;
   int i = 0;
   for (auto& ci : constraints->cone_inequalities()) {
-    auto ysegment = Vars(y, constraints->cliques.at(i));
+    auto ysegment = Vars(y, constraints->variables().at(i));
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
                                                   ysegment.size(), 1);
     WeightedSlackEigenvalues temp;
@@ -150,8 +150,8 @@ double ComputeMuFromLineSearch(ConstraintManager& constraints,
   int i = 0;
   for (auto& ci : constraints.cone_inequalities()) {
     LineSearchOutput output_i;
-    auto ysegment1 = Vars(*y0, constraints.cliques.at(i));
-    auto ysegment2 = Vars(y1, constraints.cliques.at(i));
+    auto ysegment1 = Vars(*y0, constraints.variables().at(i));
+    auto ysegment2 = Vars(y1, constraints.variables().at(i));
     Ref z1(ysegment1.data(), ysegment1.rows(), 1);
     Ref z2(ysegment2.data(), ysegment2.rows(), 1);
     bool failure = PerformLineSearch(ci, params, z1, z2, &output_i);
@@ -257,7 +257,7 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
 
     START_TIMER(Sparsity Analysis);
     solver = std::make_unique<SupernodalKKTSolver>(
-        prog.kkt_system_manager_.cliques,
+        prog.kkt_system_manager_.variables(),
         prog.kkt_system_manager_.equality_constraint_multipliers());
     solver->Bind(prog.kkt_system_manager_.clique_assemblers());
     END_TIMER

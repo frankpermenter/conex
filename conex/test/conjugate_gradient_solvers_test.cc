@@ -51,7 +51,7 @@ GTEST_TEST(ConjugateGradient, TrivalExample) {
 
   BlockSparseMatrix B_sparse = MakeBlockSparseMatrix(B);
   ConstrainedLeastSquaresConjugateGradientSolver solver(
-      prog.cliques, prog.clique_assemblers(), B_sparse.non_zero_columns,
+      prog.variables(), prog.clique_assemblers(), B_sparse.non_zero_columns,
       B_sparse.entries);
 
   VectorXd f(num_vars);
