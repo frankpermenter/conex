@@ -151,8 +151,6 @@ class ConstraintManager {
 
   std::vector<std::vector<int>> cliques;
   std::vector<std::vector<int>> dual_vars;
-
-  std::vector<Constraint*> cone_inequalities_;
   std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;
 
   // Stores type-erased interface.
@@ -165,27 +163,11 @@ class ConstraintManager {
   // Stores the provided constraint.
   std::list<std::any> inequality_constraints_;
 
+  std::vector<Constraint*> cone_inequalities_;
+
   int max_number_of_variables_ = 0;
   int dual_variable_start_ = 0;
   Eigen::VectorXd workspace_memory_;
 };
-
-inline void AssembleSchurComplementResiduals(ConstraintManager* kkt,
-                                             SchurComplementSystem* s) {
-  s->setZero();
-  int i = 0;
-  for (auto& ci : kkt->supernodal_assemblers_) {
-    auto* rhs_i = &ci.submatrix_data_;
-    s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
-    s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
-    int cnt = 0;
-    for (auto k : kkt->cliques.at(i)) {
-      s->AW(k) += rhs_i->AW(cnt);
-      s->AQc(k) += rhs_i->AQc(cnt);
-      cnt++;
-    }
-    i++;
-  }
-}
 
 }  // namespace conex

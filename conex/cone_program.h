@@ -9,6 +9,7 @@
 
 namespace conex {
 
+using KKTSolver = SupernodalKKTSolver;
 enum : int {
   CONEX_INITIALIZATION_MODE_COLDSTART = 0,
   CONEX_INITIALIZATION_MODE_WARMSTART = 1,
@@ -84,7 +85,6 @@ inline void TakeStep(std::vector<Constraint*>* constraints,
   }
 }
 
-using KKTSolver = SupernodalKKTSolver;
 class Program {
  public:
   Program(int number_of_variables) {
@@ -125,9 +125,9 @@ class Program {
 
   int GetDualVariableSize(int i) {
     int cnt = 0;
-    for (auto& ci : kkt_system_manager_.constraints_) {
+    for (auto& ci : kkt_system_manager_.cone_inequalities()) {
       if (cnt == i) {
-        return ci.dual_variable_size();
+        return ci->dual_variable_size();
       }
       cnt++;
     }
@@ -135,30 +135,10 @@ class Program {
   }
 
   int UpdateLinearOperatorOfConstraint(int i, double value, int variable,
-                                       int row, int col,
-                                       int hyper_complex_dim) {
-    int cnt = 0;
-    for (auto& ci : kkt_system_manager_.constraints_) {
-      if (cnt == i) {
-        return UpdateLinearOperator(&ci, value, variable, row, col,
-                                    hyper_complex_dim);
-      }
-      cnt++;
-    }
-    CONEX_RETURN_ON_FAIL(false, "Invalid Constraint");
-  }
+                                       int row, int col, int hyper_complex_dim);
 
   int UpdateAffineTermOfConstraint(int i, double value, int row, int col,
-                                   int hyper_complex_dim) {
-    int cnt = 0;
-    for (auto& ci : kkt_system_manager_.constraints_) {
-      if (cnt == i) {
-        return UpdateAffineTerm(&ci, value, row, col, hyper_complex_dim);
-      }
-      cnt++;
-    }
-    CONEX_RETURN_ON_FAIL(false, "Invalid Constraint");
-  }
+                                   int hyper_complex_dim);
 
   void InitializeWorkspace() {
     workspaces = kkt_system_manager_.workspace();
@@ -199,7 +179,9 @@ class Program {
     }
   }
 
-  int NumberOfConstraints() { return kkt_system_manager_.constraints_.size(); }
+  int NumberOfConstraints() {
+    return kkt_system_manager_.cone_inequalities().size();
+  }
   ConexStatus Status() { return status_; }
 
   bool AddLinearCost(const Eigen::VectorXd& b);
@@ -229,7 +211,7 @@ class Program {
   SchurComplementSystem sys;
   std::unique_ptr<WorkspaceStats> stats;
   std::vector<Workspace> workspaces;
-  std::unique_ptr<SupernodalKKTSolver> solver;
+  std::unique_ptr<KKTSolver> solver;
   Eigen::VectorXd memory_;
   Eigen::VectorXd* workspace_data_;
   bool is_initialized = false;
