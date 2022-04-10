@@ -258,7 +258,7 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
     START_TIMER(Sparsity Analysis);
     solver = std::make_unique<SupernodalKKTSolver>(
         prog.kkt_system_manager_.cliques, prog.kkt_system_manager_.dual_vars);
-    solver->Bind(prog.kkt_system_manager_.supernodal_assemblers_ptr_);
+    solver->Bind(prog.kkt_system_manager_.clique_assemblers());
     END_TIMER
     solver->SetIterativeRefinementIterations(
         config.iterative_refinement_iterations);

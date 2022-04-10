@@ -148,10 +148,12 @@ class ConstraintManager {
   }
 
   std::vector<Constraint*>& cone_inequalities() { return cone_inequalities_; }
+  std::vector<SupernodalAssemblerBase*>& clique_assemblers() {
+    return supernodal_assemblers_ptr_;
+  }
 
   std::vector<std::vector<int>> cliques;
   std::vector<std::vector<int>> dual_vars;
-  std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;
 
   // Stores type-erased interface.
   // Use a list so that we do not trigger reallocations.
@@ -163,6 +165,7 @@ class ConstraintManager {
   // Stores the provided constraint.
   std::list<std::any> inequality_constraints_;
   std::vector<Constraint*> cone_inequalities_;
+  std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;
 
   int max_number_of_variables_ = 0;
   int dual_variable_start_ = 0;
