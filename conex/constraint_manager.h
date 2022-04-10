@@ -66,10 +66,10 @@ class ConstraintManager {
       return CONEX_FAILURE;
     }
 
-    inequality_constraints_.push_back(x);
+    type_erased_assemblers_.push_back(x);
     constraints_.emplace_back(
         std::any_cast<typename std::remove_reference<T>::type>(
-            &inequality_constraints_.back()));
+            &type_erased_assemblers_.back()));
     supernodal_assemblers_.emplace_back(variables.size(), &constraints_.back());
     supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
 
@@ -101,9 +101,9 @@ class ConstraintManager {
     }
     const int m = x.SizeOfDualVariable();
 
-    inequality_constraints_.push_back(x);
+    type_erased_assemblers_.push_back(x);
     constraints_.emplace_back(
-        std::any_cast<EqualityConstraints>(&inequality_constraints_.back()));
+        std::any_cast<EqualityConstraints>(&type_erased_assemblers_.back()));
     supernodal_assemblers_.emplace_back(variables.size() + m,
                                         &constraints_.back());
     supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
@@ -162,8 +162,9 @@ class ConstraintManager {
   std::list<SupernodalAssemblerStatic> static_supernodal_assemblers_;
 
  private:
-  // Stores the provided constraint.
-  std::list<std::any> inequality_constraints_;
+  // Because the Constraint forwarding class receives a pointer,
+  // we create an std::any array to store the actual class.
+  std::list<std::any> type_erased_assemblers_;
   std::vector<Constraint*> cone_inequalities_;
   std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;
 
