@@ -246,8 +246,8 @@ template void ConstructSchurComplementSystem(
     SchurComplementSystem* sys);
 
 template <typename H>
-bool UpdateLinearOperator(HermitianPsdConstraint<H>* o, double val, int var,
-                          int r, int c, int dim) {
+CONEX_STATUS UpdateLinearOperator(HermitianPsdConstraint<H>* o, double val,
+                                  int var, int r, int c, int dim) {
   CONEX_RETURN_ON_FAIL(dim < H::HyperComplexDimension(),
                        "Complex dimension out of bounds.");
   CONEX_RETURN_ON_FAIL(r < o->rank_ && c < o->rank_,
@@ -274,18 +274,22 @@ bool UpdateLinearOperator(HermitianPsdConstraint<H>* o, double val, int var,
   return CONEX_SUCCESS;
 }
 
-template bool UpdateLinearOperator(HermitianPsdConstraint<Complex>* o,
-                                   double val, int var, int r, int c, int dim);
-template bool UpdateLinearOperator(HermitianPsdConstraint<Real>* o, double val,
-                                   int var, int r, int c, int dim);
-template bool UpdateLinearOperator(HermitianPsdConstraint<Quaternions>* o,
-                                   double val, int var, int r, int c, int dim);
-template bool UpdateLinearOperator(HermitianPsdConstraint<Octonions>* o,
-                                   double val, int var, int r, int c, int dim);
+template CONEX_STATUS UpdateLinearOperator(HermitianPsdConstraint<Complex>* o,
+                                           double val, int var, int r, int c,
+                                           int dim);
+template CONEX_STATUS UpdateLinearOperator(HermitianPsdConstraint<Real>* o,
+                                           double val, int var, int r, int c,
+                                           int dim);
+template CONEX_STATUS UpdateLinearOperator(
+    HermitianPsdConstraint<Quaternions>* o, double val, int var, int r, int c,
+    int dim);
+template CONEX_STATUS UpdateLinearOperator(HermitianPsdConstraint<Octonions>* o,
+                                           double val, int var, int r, int c,
+                                           int dim);
 
 template <typename H>
-bool UpdateAffineTerm(HermitianPsdConstraint<H>* o, double val, int r, int c,
-                      int dim) {
+CONEX_STATUS UpdateAffineTerm(HermitianPsdConstraint<H>* o, double val, int r,
+                              int c, int dim) {
   CONEX_RETURN_ON_FAIL(dim < H::HyperComplexDimension(),
                        "Complex dimension out of bounds.");
   CONEX_RETURN_ON_FAIL(r < o->rank_ && c < o->rank_,
@@ -314,13 +318,13 @@ bool UpdateAffineTerm(HermitianPsdConstraint<H>* o, double val, int r, int c,
   return CONEX_SUCCESS;
 }
 
-template bool UpdateAffineTerm(HermitianPsdConstraint<Complex>* o, double val,
-                               int r, int c, int dim);
-template bool UpdateAffineTerm(HermitianPsdConstraint<Real>* o, double val,
-                               int r, int c, int dim);
-template bool UpdateAffineTerm(HermitianPsdConstraint<Quaternions>* o,
-                               double val, int r, int c, int dim);
-template bool UpdateAffineTerm(HermitianPsdConstraint<Octonions>* o, double val,
-                               int r, int c, int dim);
+template CONEX_STATUS UpdateAffineTerm(HermitianPsdConstraint<Complex>* o,
+                                       double val, int r, int c, int dim);
+template CONEX_STATUS UpdateAffineTerm(HermitianPsdConstraint<Real>* o,
+                                       double val, int r, int c, int dim);
+template CONEX_STATUS UpdateAffineTerm(HermitianPsdConstraint<Quaternions>* o,
+                                       double val, int r, int c, int dim);
+template CONEX_STATUS UpdateAffineTerm(HermitianPsdConstraint<Octonions>* o,
+                                       double val, int r, int c, int dim);
 
 }  // namespace conex

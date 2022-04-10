@@ -1,5 +1,6 @@
 #include "conex/soc_constraint.h"
 #include "conex/error_checking_macros.h"
+#include "conex/error_codes.h"
 #include "conex/newton_step.h"
 
 namespace conex {
@@ -522,8 +523,8 @@ void ConservativeResizeHelper(T* constraint_matrix_, int var, int rows) {
   }
 }
 
-bool UpdateLinearOperator(SOCConstraint* o, double val, int var, int r, int c,
-                          int dim) {
+CONEX_STATUS UpdateLinearOperator(SOCConstraint* o, double val, int var, int r,
+                                  int c, int dim) {
   CONEX_RETURN_ON_FAIL(dim == 0, "Complex second-order cone not supported.");
   CONEX_RETURN_ON_FAIL(c == 0, "Second-order constraint is not matrix valued.");
   CONEX_RETURN_ON_FAIL(r <= o->n_, "Row index out of bounds.");
@@ -534,7 +535,8 @@ bool UpdateLinearOperator(SOCConstraint* o, double val, int var, int r, int c,
   return CONEX_SUCCESS;
 }
 
-bool UpdateAffineTerm(SOCConstraint* o, double val, int r, int c, int dim) {
+CONEX_STATUS UpdateAffineTerm(SOCConstraint* o, double val, int r, int c,
+                              int dim) {
   CONEX_RETURN_ON_FAIL(dim == 0, "Complex second-order cone not supported.");
   CONEX_RETURN_ON_FAIL(c == 0, "Second-order constraint is not matrix valued.");
   CONEX_RETURN_ON_FAIL(r <= o->n_, "Row index out of bounds.");

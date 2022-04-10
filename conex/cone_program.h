@@ -94,11 +94,12 @@ class Program {
     CONEX_RETURN_ON_FAIL(false, "Invalid Constraint");
   }
 
-  int UpdateLinearOperatorOfConstraint(int i, double value, int variable,
-                                       int row, int col, int hyper_complex_dim);
+  CONEX_STATUS UpdateLinearOperatorOfConstraint(int i, double value,
+                                                int variable, int row, int col,
+                                                int hyper_complex_dim);
 
-  int UpdateAffineTermOfConstraint(int i, double value, int row, int col,
-                                   int hyper_complex_dim);
+  CONEX_STATUS UpdateAffineTermOfConstraint(int i, double value, int row,
+                                            int col, int hyper_complex_dim);
 
   void InitializeWorkspace() {
     workspaces = kkt_system_manager_.workspace();
@@ -115,12 +116,9 @@ class Program {
   }
 
   template <typename T>
-  bool AddConstraint(T&& d) {
+  CONEX_ID AddConstraint(T&& d) {
     if constexpr (!std::is_same<T, EqualityConstraints>::value) {
-      bool result = kkt_system_manager_.AddConstraint<T>(std::forward<T>(d));
-      if (result == CONEX_SUCCESS) {
-      }
-      return result;
+      return kkt_system_manager_.AddConstraint<T>(std::forward<T>(d));
     } else {
       return kkt_system_manager_.AddEqualityConstraint(
           std::forward<EqualityConstraints>(d));
@@ -128,11 +126,10 @@ class Program {
   }
 
   template <typename T>
-  bool AddConstraint(T&& d, const std::vector<int>& variables) {
+  CONEX_ID AddConstraint(T&& d, const std::vector<int>& variables) {
     if constexpr (!std::is_same<T, EqualityConstraints>::value) {
-      bool result =
-          kkt_system_manager_.AddConstraint<T>(std::forward<T>(d), variables);
-      return result;
+      return kkt_system_manager_.AddConstraint<T>(std::forward<T>(d),
+                                                  variables);
     } else {
       return kkt_system_manager_.AddEqualityConstraint(
           std::forward<EqualityConstraints>(d), variables);
@@ -148,9 +145,9 @@ class Program {
   bool AddLinearCost(const Eigen::VectorXd& b,
                      const std::vector<int>& variables);
   void ClearLinearCosts();
-  bool AddQuadraticCost(const Eigen::MatrixXd& Q,
-                        const std::vector<int>& variables);
-  bool AddQuadraticCost(const Eigen::MatrixXd& Q);
+  CONEX_ID AddQuadraticCost(const Eigen::MatrixXd& Q,
+                            const std::vector<int>& variables);
+  CONEX_ID AddQuadraticCost(const Eigen::MatrixXd& Q);
 
   int UpdateQuadraticCost(int cost_id, double value, int row, int col);
   int NumberOfQuadraticCosts() const;

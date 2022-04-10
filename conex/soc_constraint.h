@@ -1,3 +1,4 @@
+#include "conex/error_codes.h"
 #include "conex/newton_step.h"
 #include "conex/workspace_soc.h"
 
@@ -37,10 +38,10 @@ class SOCConstraint {
   friend void ConstructSchurComplementSystem(SOCConstraint* o, bool initialize,
                                              SchurComplementSystem* sys);
 
-  friend bool UpdateLinearOperator(SOCConstraint* o, double val, int var, int r,
-                                   int c, int dim);
-  friend bool UpdateAffineTerm(SOCConstraint* o, double val, int r, int c,
-                               int dim);
+  friend CONEX_STATUS UpdateLinearOperator(SOCConstraint* o, double val,
+                                           int var, int r, int c, int dim);
+  friend CONEX_STATUS UpdateAffineTerm(SOCConstraint* o, double val, int r,
+                                       int c, int dim);
 
   friend bool PerformLineSearch(SOCConstraint* o,
                                 const LineSearchParameters& params,

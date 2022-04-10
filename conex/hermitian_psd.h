@@ -1,6 +1,7 @@
 #pragma once
 #include <Eigen/Dense>
 
+#include "conex/error_codes.h"
 #include "conex/jordan_matrix_algebra.h"
 #include "conex/newton_step.h"
 #include "conex/workspace.h"
@@ -76,12 +77,13 @@ class HermitianPsdConstraint {
                                              SchurComplementSystem* sys);
 
   template <typename H>
-  friend bool UpdateLinearOperator(HermitianPsdConstraint<H>* o, double val,
-                                   int var, int r, int c, int dim);
+  friend CONEX_STATUS UpdateLinearOperator(HermitianPsdConstraint<H>* o,
+                                           double val, int var, int r, int c,
+                                           int dim);
 
   template <typename H>
-  friend bool UpdateAffineTerm(HermitianPsdConstraint<H>* o, double val, int r,
-                               int c, int dim);
+  friend CONEX_STATUS UpdateAffineTerm(HermitianPsdConstraint<H>* o, double val,
+                                       int r, int c, int dim);
 
  private:
   int rank_;

@@ -204,8 +204,8 @@ void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
   }
 }
 
-bool UpdateLinearOperator(LinearConstraint* o, double val, int var, int r,
-                          int c, int dim) {
+CONEX_STATUS UpdateLinearOperator(LinearConstraint* o, double val, int var,
+                                  int r, int c, int dim) {
   CONEX_RETURN_ON_FAIL(dim == 0, "Complex linear constraints not supported.");
   CONEX_RETURN_ON_FAIL(c == 0, "Linear constraint is not matrix valued.");
   CONEX_RETURN_ON_FAIL(r < o->constraint_matrix_.rows(),
@@ -216,7 +216,8 @@ bool UpdateLinearOperator(LinearConstraint* o, double val, int var, int r,
   return CONEX_SUCCESS;
 }
 
-bool UpdateAffineTerm(LinearConstraint* o, double val, int r, int c, int dim) {
+CONEX_STATUS UpdateAffineTerm(LinearConstraint* o, double val, int r, int c,
+                              int dim) {
   CONEX_RETURN_ON_FAIL(dim == 0, "Complex linear cone not supported.");
   CONEX_RETURN_ON_FAIL(c == 0, "Linear constraint is not matrix valued.");
   CONEX_RETURN_ON_FAIL(r < o->constraint_matrix_.rows(),

@@ -34,8 +34,10 @@ TEST(TestArguments, AddLMI) {
 
 TEST(TestArguments, UpdateLMI) {
   void* p = CONEX_CreateConeProgram();
+  int num_vars = 4;
+  int status = CONEX_SetNumberOfVariables(p, num_vars);
+  EXPECT_EQ(CONEX_SUCCESS, status);
 
-  int status;
   int constraint_id = 0;
   int constraint_id_2 = 0;
   int order = 2;
@@ -98,7 +100,6 @@ TEST(TestArguments, SetVariables) {
 TEST(TestArguments, UpdateQuadraticCost) {
   int num_vars = 4;
   void* p = CONEX_CreateConeProgram();
-
   int status = CONEX_SetNumberOfVariables(p, num_vars);
   EXPECT_EQ(CONEX_SUCCESS, status);
 

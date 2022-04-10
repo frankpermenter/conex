@@ -68,10 +68,10 @@ class LinearConstraint {
                                              SchurComplementSystem* sys);
   friend bool TakeStep(LinearConstraint*, const StepOptions&);
 
-  friend bool UpdateLinearOperator(LinearConstraint* o, double val, int var,
-                                   int r, int c, int dim);
-  friend bool UpdateAffineTerm(LinearConstraint* o, double val, int r, int c,
-                               int dim);
+  friend CONEX_STATUS UpdateLinearOperator(LinearConstraint* o, double val,
+                                           int var, int r, int c, int dim);
+  friend CONEX_STATUS UpdateAffineTerm(LinearConstraint* o, double val, int r,
+                                       int c, int dim);
 
  private:
   void ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y, Ref* minus_s);

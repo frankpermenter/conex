@@ -5,19 +5,20 @@
 #include <Eigen/Dense>
 
 #include "conex/error_checking_macros.h"
+#include "conex/error_codes.h"
 #include "conex/newton_step.h"
 #include "conex/workspace.h"
 
 namespace conex {
 
 template <typename T>
-bool UpdateLinearOperator(T*, double, int, int, int, int) {
+CONEX_STATUS UpdateLinearOperator(T*, double, int, int, int, int) {
   CONEX_RETURN_ON_FAIL(
       false, "Constraint does not support updates of linear operator.");
 }
 
 template <typename T>
-bool UpdateAffineTerm(T*, double, int, int, int) {
+CONEX_STATUS UpdateAffineTerm(T*, double, int, int, int) {
   CONEX_RETURN_ON_FAIL(false,
                        "Constraint does not support updates of affine term.");
 }
@@ -83,14 +84,15 @@ class Constraint {
 
   int number_of_variables() { return model->do_number_of_variables(); }
 
-  friend bool UpdateLinearOperator(Constraint* o, double val, int var, int row,
-                                   int col, int hyper_complex_dim) {
+  friend CONEX_STATUS UpdateLinearOperator(Constraint* o, double val, int var,
+                                           int row, int col,
+                                           int hyper_complex_dim) {
     return o->model->do_update_linear_operator(val, var, row, col,
                                                hyper_complex_dim);
   }
 
-  friend bool UpdateAffineTerm(Constraint* o, double val, int row, int col,
-                               int hyper_complex_dim) {
+  friend CONEX_STATUS UpdateAffineTerm(Constraint* o, double val, int row,
+                                       int col, int hyper_complex_dim) {
     return o->model->do_update_affine_term(val, row, col, hyper_complex_dim);
   }
 
@@ -119,10 +121,11 @@ class Constraint {
     virtual bool do_take_step(const StepOptions&) = 0;
     virtual int do_dual_variable_size() = 0;
     virtual int do_number_of_variables() = 0;
-    virtual bool do_update_linear_operator(double val, int var, int row,
-                                           int col, int hyper_complex_dim) = 0;
-    virtual bool do_update_affine_term(double val, int row, int col,
-                                       int hyper_complex_dim) = 0;
+    virtual CONEX_STATUS do_update_linear_operator(double val, int var, int row,
+                                                   int col,
+                                                   int hyper_complex_dim) = 0;
+    virtual CONEX_STATUS do_update_affine_term(double val, int row, int col,
+                                               int hyper_complex_dim) = 0;
 
     virtual bool do_perform_line_search(const LineSearchParameters& params,
                                         const Ref& y0, const Ref& y1,
@@ -167,13 +170,14 @@ class Constraint {
       return data->workspace()->W.rows() * data->workspace()->W.cols();
     }
 
-    bool do_update_linear_operator(double val, int var, int row, int col,
-                                   int hyper_complex_dim) override {
+    CONEX_STATUS do_update_linear_operator(double val, int var, int row,
+                                           int col,
+                                           int hyper_complex_dim) override {
       return UpdateLinearOperator(data, val, var, row, col, hyper_complex_dim);
     }
 
-    bool do_update_affine_term(double val, int row, int col,
-                               int hyper_complex_dim) override {
+    CONEX_STATUS do_update_affine_term(double val, int row, int col,
+                                       int hyper_complex_dim) override {
       return UpdateAffineTerm(data, val, row, col, hyper_complex_dim);
     }
 

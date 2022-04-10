@@ -143,9 +143,7 @@ int CONEX_AddDenseLMIConstraint(void* prog, const double* A, int Ar, int Ac,
 
   DenseLMIConstraint T3{n, Avect, Cmap};
   auto& program = *reinterpret_cast<Program*>(prog);
-  int constraint_id = program.NumberOfConstraints();
-  program.AddConstraint(T3);
-  return constraint_id;
+  return program.AddConstraint(T3);
 }
 
 int CONEX_AddSparseLMIConstraint(void* prog, const double* A, int Ar, int Ac,
@@ -171,9 +169,7 @@ int CONEX_AddSparseLMIConstraint(void* prog, const double* A, int Ar, int Ac,
 
   conex::DenseLMIConstraint T3{Avect, Cmap};
   auto& program = *reinterpret_cast<Program*>(prog);
-  int constraint_id = program.NumberOfConstraints();
-  program.AddConstraint(T3, variables);
-  return constraint_id;
+  return program.AddConstraint(T3, variables);
 }
 
 int CONEX_AddLinearInequalities(void* prog, const double* A, int Ar, int Ac,
@@ -204,7 +200,9 @@ int CONEX_AddLinearInequalities(void* prog, const double* A, int Ar, int Ac,
 }
 int CONEX_AddDenseLinearConstraint(void* prog, const double* A, int Ar, int Ac,
                                    const double* c, int cr) {
-  assert(Ar == cr);
+  CONEX_RETURN_ON_FAIL(
+      Ar == cr,
+      "Inequality matrix and affine term must have same number of rows.");
 
   int n = Ar;
   int m = Ac;
@@ -212,9 +210,7 @@ int CONEX_AddDenseLinearConstraint(void* prog, const double* A, int Ar, int Ac,
   conex::LinearConstraint T3{n, m, A, c};
   auto& program = *reinterpret_cast<Program*>(prog);
 
-  int constraint_id = program.NumberOfConstraints();
-  program.AddConstraint(T3);
-  return constraint_id;
+  return program.AddConstraint(T3);
 }
 
 void CONEX_SetDefaultOptions(CONEX_SolverConfiguration* c) {
@@ -288,20 +284,24 @@ CONEX_STATUS CONEX_NewLinearMatrixInequality(void* p, int order,
 
   switch (hyper_complex_dim) {
     case 1:
-      prg->AddConstraint(HermitianPsdConstraint<conex::Real>(order));
+      *constraint_id =
+          prg->AddConstraint(HermitianPsdConstraint<conex::Real>(order));
       break;
     case 2:
-      prg->AddConstraint(HermitianPsdConstraint<conex::Complex>(order));
+      *constraint_id =
+          prg->AddConstraint(HermitianPsdConstraint<conex::Complex>(order));
       break;
     case 4:
-      prg->AddConstraint(HermitianPsdConstraint<conex::Quaternions>(order));
+      *constraint_id =
+          prg->AddConstraint(HermitianPsdConstraint<conex::Quaternions>(order));
       break;
     case 8:
       CONEX_RETURN_ON_FAIL(
           order <= 3, "Order of octonion algebra cannot be greater than 3.");
-      prg->AddConstraint(HermitianPsdConstraint<conex::Octonions>(order));
+      *constraint_id =
+          prg->AddConstraint(HermitianPsdConstraint<conex::Octonions>(order));
   }
-  *constraint_id = prg->NumberOfConstraints() - 1;
+  CONEX_RETURN_ON_FAIL(*constraint_id >= 0, "Failed to add constraint.");
   return CONEX_SUCCESS;
 }
 
@@ -313,9 +313,9 @@ CONEX_STATUS CONEX_NewLinearInequality(void* program, int num_rows,
   int n = prg->GetNumberOfVariables();
   Eigen::MatrixXd A = Eigen::MatrixXd::Zero(num_rows, n);
   Eigen::MatrixXd b = Eigen::MatrixXd::Zero(num_rows, 1);
-  bool status = prg->AddConstraint(LinearConstraint{A, b});
-  *constraint_id = prg->NumberOfConstraints() - 1;
-  return status;
+  *constraint_id = prg->AddConstraint(LinearConstraint{A, b});
+  CONEX_RETURN_ON_FAIL(*constraint_id >= 0, "Failed to add constraint.");
+  return CONEX_SUCCESS;
 }
 
 CONEX_STATUS CONEX_NewQuadraticCost(void* p, int* constraint_id) {
@@ -324,9 +324,9 @@ CONEX_STATUS CONEX_NewQuadraticCost(void* p, int* constraint_id) {
   SAFER_CAST_TO_Program(p, prg);
   int n = prg->GetNumberOfVariables();
   Eigen::MatrixXd Q = Eigen::MatrixXd::Zero(n, n);
-  bool status = prg->AddQuadraticCost(Q);
-  *constraint_id = prg->NumberOfQuadraticCosts() - 1;
-  return status;
+  *constraint_id = prg->AddQuadraticCost(Q);
+  CONEX_RETURN_ON_FAIL(*constraint_id >= 0, "Failed to add constraint.");
+  return CONEX_SUCCESS;
 }
 
 CONEX_STATUS CONEX_AddQuadraticCost(void* p, const double* A, int Ar, int Ac) {
@@ -337,8 +337,9 @@ CONEX_STATUS CONEX_AddQuadraticCost(void* p, const double* A, int Ar, int Ac) {
 
   Eigen::Map<const DenseMatrix> input(A, Ar, Ac);
   NonZeroSubMat(input, &vars, &Q);
-  bool status = prg->AddQuadraticCost(Q, vars);
-  return status;
+  int id = prg->AddQuadraticCost(Q, vars);
+  CONEX_RETURN_ON_FAIL(id >= 0, "Failed to add constraint.");
+  return CONEX_SUCCESS;
 }
 
 CONEX_STATUS CONEX_UpdateQuadraticCostMatrix(void* p, int cost_id, double value,
@@ -355,6 +356,9 @@ CONEX_STATUS CONEX_UpdateLinearOperator(void* p, int constraint_id,
   SAFER_CAST_TO_Program(p, prg);
   CONEX_RETURN_ON_FAIL(constraint_id < prg->NumberOfConstraints(),
                        "Invalid Constraint ID.");
+  int n = prg->GetNumberOfVariables();
+  CONEX_RETURN_ON_FAIL(variable < n,
+                       "Specified column exceeds number of variables.");
   return prg->UpdateLinearOperatorOfConstraint(constraint_id, value, variable,
                                                row, col, hyper_complex_dim);
 }

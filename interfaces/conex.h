@@ -5,7 +5,7 @@ extern "C" {
 #endif
 
 typedef int CONEX_STATUS;
-enum { CONEX_SUCCESS = 0, CONEX_FAILURE = 1 };
+enum { CONEX_SUCCESS = 0, CONEX_FAILURE = -1 };
 
 typedef struct {
   int prepare_dual_variables;

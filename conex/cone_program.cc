@@ -607,12 +607,10 @@ bool Solve(const DenseMatrix& b, Program& prog,
   return Solve(prog, config, primal_variable);
 }
 
-bool Program::AddQuadraticCost(const DenseMatrix& Q,
-                               const std::vector<int>& vars) {
+CONEX_ID Program::AddQuadraticCost(const DenseMatrix& Q,
+                                   const std::vector<int>& vars) {
   contains_quadratic_costs_ = true;
-  kkt_system_manager_.AddQuadraticCost(Q, vars);
-  bool failure = false;
-  return failure;
+  return kkt_system_manager_.AddQuadraticCost(Q, vars);
 }
 
 int Program::NumberOfQuadraticCosts() const {
@@ -630,7 +628,7 @@ int Program::UpdateQuadraticCost(int cost_id, double value, int row, int col) {
   CONEX_RETURN_ON_FAIL(false, "Invalid Quadratic Cost ID.");
 }
 
-bool Program::AddQuadraticCost(const Eigen::MatrixXd& Q) {
+CONEX_ID Program::AddQuadraticCost(const Eigen::MatrixXd& Q) {
   CONEX_RETURN_ON_FAIL(Q.rows() == GetNumberOfVariables(),
                        "Order of matrix must equal number of variables.");
   std::vector<int> variables(GetNumberOfVariables());
