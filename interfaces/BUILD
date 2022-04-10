@@ -1,5 +1,37 @@
+cc_library(
+    name = "libconex",
+    srcs = ["conex.cc"],
+    hdrs = ["conex.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//conex:conex_lib",
+        "@eigen",
+    ],
+)
+
 cc_test(
     name = "interface_test",
+    srcs = ["test/interface_test.cc"],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "libconex",
+        "@gtest//:main",
+    ],
+)
+
+cc_test(
+    name = "interface_test_soc",
+    srcs = ["test/interface_test_soc.cc"],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "libconex",
+        "@gtest//:main",
+    ],
+)
+
+# The same tests but against .so built by the custom Makefile
+cc_test(
+    name = "interface_lib_test",
     srcs = [
         "conex.h",
         "test/interface_test.cc",
@@ -12,7 +44,7 @@ cc_test(
 )
 
 cc_test(
-    name = "interface_test_soc",
+    name = "interface_lib_test_soc",
     srcs = [
         "conex.h",
         "test/interface_test_soc.cc",
