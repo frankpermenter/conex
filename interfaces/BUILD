@@ -20,8 +20,8 @@ cc_test(
 )
 
 cc_test(
-    name = "interface_test_soc",
-    srcs = ["test/interface_test_soc.cc"],
+    name = "interface_test_lmi",
+    srcs = ["test/interface_test_lmi.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "libconex",
@@ -44,10 +44,10 @@ cc_test(
 )
 
 cc_test(
-    name = "interface_lib_test_soc",
+    name = "interface_lib_test_lmi",
     srcs = [
         "conex.h",
-        "test/interface_test_soc.cc",
+        "test/interface_test_lmi.cc",
     ],
     copts = ["-Iexternal/gtest/include"],
     linkopts = ["-lconex"],
