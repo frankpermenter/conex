@@ -45,16 +45,6 @@ struct ConexStatus {
   int dual_infeasible = 0;
 };
 
-inline Eigen::VectorXd Vars(const Eigen::VectorXd& x,
-                            std::vector<int> indices) {
-  Eigen::VectorXd z(indices.size());
-  int cnt = 0;
-  for (auto i : indices) {
-    z(cnt++) = x(i);
-  }
-  return z;
-}
-
 class Program {
  public:
   Program(int number_of_variables) {

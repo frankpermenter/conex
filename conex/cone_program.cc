@@ -14,6 +14,16 @@ namespace conex {
 
 namespace {
 
+inline Eigen::VectorXd Vars(const Eigen::VectorXd& x,
+                            std::vector<int> indices) {
+  Eigen::VectorXd z(indices.size());
+  int cnt = 0;
+  for (auto i : indices) {
+    z(cnt++) = x(i);
+  }
+  return z;
+}
+
 inline void PrepareStep(ConstraintManager* kkt,
                         const StepOptions& newton_step_parameters, const Ref& y,
                         StepInfo* info) {
