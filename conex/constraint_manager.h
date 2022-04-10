@@ -97,12 +97,9 @@ class ConstraintManager {
     }
     const int m = x.SizeOfDualVariable();
 
-    constraint_storage_.push_back(x);
-    constraints_.emplace_back(
-        std::any_cast<EqualityConstraints>(&constraint_storage_.back()));
-    supernodal_assemblers_.emplace_back(variables.size() + m,
-                                        &constraints_.back());
-    supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
+    equality_constraints_.emplace_back(x.A_, x.b_);
+
+    supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
 
     cliques.push_back(variables);
     dual_vars.push_back({});
@@ -161,6 +158,7 @@ class ConstraintManager {
  private:
   std::list<SupernodalAssembler> supernodal_assemblers_;
   std::list<SupernodalAssemblerStatic> quadratic_costs_;
+  std::list<SupernodalAssemblerEqualities> equality_constraints_;
 
   // Stores and owns the constraints.
   std::list<std::any> constraint_storage_;

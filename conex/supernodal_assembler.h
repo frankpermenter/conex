@@ -67,6 +67,10 @@ class SupernodalAssemblerBase {
     direct_update = false;
   }
 
+  virtual bool IsDynamic() { return false; }
+  virtual bool IsPositiveDefinite() { return true; }
+  virtual bool NumberOfEqualities() { return 0; }
+
   void UpdateBlocks();
   virtual void SetDenseData() = 0;
 
@@ -112,6 +116,11 @@ class SupernodalAssembler : public SupernodalAssemblerBase {
     workspace_ = W;
     assert(W);
   }
+
+  virtual bool IsDynamic() { return true; }
+  virtual bool IsPositiveDefinite() { return true; }
+  virtual bool NumberOfEqualities() { return 0; }
+
   virtual void SetDenseData() {
     if (!submatrix_data_.initialized) {
 #if CONEX_DEBUG_MESSAGES
@@ -167,6 +176,46 @@ class SupernodalAssemblerStatic : public SupernodalAssemblerBase {
     submatrix_data_.G = A_;
   }
   Eigen::MatrixXd A_;
+  Eigen::VectorXd memory_;
+};
+
+class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
+ public:
+  SupernodalAssemblerEqualities(const Eigen::MatrixXd& A,
+                                const Eigen::VectorXd& b)
+      : SupernodalAssemblerBase(A.rows() + A.cols()), A_(A), b_(b) {}
+
+  int UpdateMatrix(double value, int row, int col) {
+    CONEX_RETURN_ON_FAIL(row < A_.rows() && col < A_.cols(),
+                         "Indices are out of bounds.");
+
+    A_(row, col) = value;
+    return CONEX_SUCCESS;
+  }
+
+  virtual bool IsDynamic() { return false; }
+  virtual bool IsPositiveDefinite() { return false; }
+  virtual bool NumberOfEqualities() { return A_.rows(); }
+
+  virtual void SetDenseData() override {
+    if (!submatrix_data_.initialized) {
+#if CONEX_DEBUG_MESSAGES
+      std::cerr
+          << "Performing self initialization of SupernodalAssemblerStatic. Did "
+             "you forget to initialize workspace?";
+#endif
+      Workspace workspace = Workspace(&submatrix_data_);
+      memory_.resize(SizeOf(workspace));
+      Initialize(&workspace, memory_.data());
+    }
+    submatrix_data_.setZero();
+    submatrix_data_.G.bottomLeftCorner(A_.rows(), A_.cols()) = A_;
+    submatrix_data_.AQc.bottomRows(A_.rows()) = b_;
+  }
+
+ private:
+  Eigen::MatrixXd A_;
+  Eigen::VectorXd b_;
   Eigen::VectorXd memory_;
 };
 
