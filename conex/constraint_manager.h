@@ -162,7 +162,6 @@ class ConstraintManager {
  private:
   // Stores the provided constraint.
   std::list<std::any> inequality_constraints_;
-
   std::vector<Constraint*> cone_inequalities_;
 
   int max_number_of_variables_ = 0;

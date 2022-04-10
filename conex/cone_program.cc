@@ -13,6 +13,37 @@ using Eigen::VectorXd;
 namespace conex {
 
 namespace {
+
+inline void PrepareStep(ConstraintManager* kkt,
+                        const StepOptions& newton_step_parameters, const Ref& y,
+                        StepInfo* info) {
+  StepInfo info_i;
+  info_i.normsqrd = 0;
+  info_i.norminfd = 0;
+  info->normsqrd = 0;
+  info->norminfd = -1;
+  int i = 0;
+  for (auto& ci : kkt->cone_inequalities()) {
+    // TODO(FrankPermenter): Remove creation of these maps.
+    auto ysegment = Vars(y, kkt->cliques.at(i));
+    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
+                                                  ysegment.size(), 1);
+    PrepareStep(ci, newton_step_parameters, z, &info_i);
+    if (info_i.norminfd > info->norminfd) {
+      info->norminfd = info_i.norminfd;
+    }
+    info->normsqrd += info_i.normsqrd;
+    i++;
+  }
+}
+
+inline void TakeStep(std::vector<Constraint*>* constraints,
+                     const StepOptions& newton_step_parameters) {
+  for (auto& c : *constraints) {
+    TakeStep(c, newton_step_parameters);
+  }
+}
+
 void AssembleSchurComplementResiduals(ConstraintManager* kkt,
                                       SchurComplementSystem* s) {
   s->setZero();
