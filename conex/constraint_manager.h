@@ -62,10 +62,10 @@ class ConstraintManager {
       return CONEX_FAILURE;
     }
 
-    type_erased_constraints_.push_back(x);
+    constraint_storage_.push_back(x);
     constraints_.emplace_back(
         std::any_cast<typename std::remove_reference<T>::type>(
-            &type_erased_constraints_.back()));
+            &constraint_storage_.back()));
     supernodal_assemblers_.emplace_back(variables.size(), &constraints_.back());
     supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
 
@@ -97,9 +97,9 @@ class ConstraintManager {
     }
     const int m = x.SizeOfDualVariable();
 
-    type_erased_constraints_.push_back(x);
+    constraint_storage_.push_back(x);
     constraints_.emplace_back(
-        std::any_cast<EqualityConstraints>(&type_erased_constraints_.back()));
+        std::any_cast<EqualityConstraints>(&constraint_storage_.back()));
     supernodal_assemblers_.emplace_back(variables.size() + m,
                                         &constraints_.back());
     supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
@@ -150,18 +150,21 @@ class ConstraintManager {
 
   std::vector<std::vector<int>> cliques;
   std::vector<std::vector<int>> dual_vars;
-
-  // Stores type-erased interface.
-  // Use a list so that we do not trigger reallocations.
   std::list<SupernodalAssembler> supernodal_assemblers_;
   std::list<SupernodalAssemblerStatic> static_supernodal_assemblers_;
 
  private:
-  // Because the Constraint forwarding class receives a pointer,
-  // we create an std::any array to store the actual class.
-  std::list<std::any> type_erased_constraints_;
+  // Stores and owns the constraints.
+  std::list<std::any> constraint_storage_;
+
+  // Provides type-erased interface to constraints.
+  // forwards to objects in constraint_storage_.
   std::list<Constraint> constraints_;
+
+  // Provides random access to constraints_.
   std::vector<Constraint*> cone_inequalities_;
+
+  // Provides type-erased interface to supernodal assemblers.
   std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;
 
   int max_number_of_variables_ = 0;
