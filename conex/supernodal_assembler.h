@@ -53,7 +53,10 @@ inline OffDiagonalBlock BuildBlock(const std::vector<int>* r,
 // is store in an Eigen::Map.
 class SupernodalAssemblerBase {
  public:
-  SupernodalAssemblerBase(int n) { SetNumberOfVariables(n); }
+  SupernodalAssemblerBase(const std::vector<int>& shared_variables,
+                          int num_private) {
+    SetVariables(shared_variables, num_private);
+  }
   SupernodalAssemblerBase(){};
 
   // Entries of diagonal block to update
@@ -69,15 +72,15 @@ class SupernodalAssemblerBase {
 
   virtual bool IsDynamic() { return false; }
   virtual bool IsPositiveDefinite() { return true; }
-  virtual bool NumberOfEqualities() { return 0; }
+  virtual bool NumberOfAuxiliaryVariables() { return 0; }
 
   void UpdateBlocks();
   virtual void SetDenseData() = 0;
 
   int NumberOfVariables() { return num_variables_; };
-  void SetNumberOfVariables(int n) {
-    num_variables_ = n;
-    submatrix_data_.m_ = n;
+  void SetVariables(const std::vector<int>& variables, int num_private) {
+    num_variables_ = variables.size() + num_private;
+    submatrix_data_.m_ = num_variables_;
   };
 
   SchurComplementSystem* submatrix_data() { return &submatrix_data_; }
@@ -111,15 +114,15 @@ class SupernodalAssemblerBase {
 
 class SupernodalAssembler : public SupernodalAssemblerBase {
  public:
-  SupernodalAssembler(int num_variables, Constraint* W)
-      : SupernodalAssemblerBase(num_variables) {
+  SupernodalAssembler(const std::vector<int>& variables, Constraint* W)
+      : SupernodalAssemblerBase(variables, 0 /*no private variables*/) {
     workspace_ = W;
     assert(W);
   }
 
   virtual bool IsDynamic() { return true; }
   virtual bool IsPositiveDefinite() { return true; }
-  virtual bool NumberOfEqualities() { return 0; }
+  virtual bool NumberOfAuxiliaryVariables() { return 0; }
 
   virtual void SetDenseData() {
     if (!submatrix_data_.initialized) {
@@ -146,8 +149,9 @@ class SupernodalAssembler : public SupernodalAssemblerBase {
 
 class SupernodalAssemblerStatic : public SupernodalAssemblerBase {
  public:
-  SupernodalAssemblerStatic(const Eigen::MatrixXd& A)
-      : SupernodalAssemblerBase(A.rows()), A_(A) {
+  SupernodalAssemblerStatic(const Eigen::MatrixXd& A,
+                            const std::vector<int>& variables)
+      : SupernodalAssemblerBase(variables, 0 /*no private variables*/), A_(A) {
     if (A_.rows() != A.cols()) {
       throw std::runtime_error("Static assembler requires square matrix");
     }
@@ -182,8 +186,9 @@ class SupernodalAssemblerStatic : public SupernodalAssemblerBase {
 class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
  public:
   SupernodalAssemblerEqualities(const Eigen::MatrixXd& A,
-                                const Eigen::VectorXd& b)
-      : SupernodalAssemblerBase(A.rows() + A.cols()), A_(A), b_(b) {}
+                                const Eigen::VectorXd& b,
+                                const std::vector<int>& variables)
+      : SupernodalAssemblerBase(variables, A.rows()), A_(A), b_(b) {}
 
   int UpdateMatrix(double value, int row, int col) {
     CONEX_RETURN_ON_FAIL(row < A_.rows() && col < A_.cols(),
@@ -195,14 +200,14 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
 
   virtual bool IsDynamic() { return false; }
   virtual bool IsPositiveDefinite() { return false; }
-  virtual bool NumberOfEqualities() { return A_.rows(); }
+  virtual bool NumberOfAuxiliaryVariables() { return A_.rows(); }
 
   virtual void SetDenseData() override {
     if (!submatrix_data_.initialized) {
 #if CONEX_DEBUG_MESSAGES
-      std::cerr
-          << "Performing self initialization of SupernodalAssemblerStatic. Did "
-             "you forget to initialize workspace?";
+      std::cerr << "Performing self initialization of "
+                   "SupernodalAssemblerStatic. Did "
+                   "you forget to initialize workspace?";
 #endif
       Workspace workspace = Workspace(&submatrix_data_);
       memory_.resize(SizeOf(workspace));

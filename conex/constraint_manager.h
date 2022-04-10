@@ -66,7 +66,7 @@ class ConstraintManager {
     constraints_.emplace_back(
         std::any_cast<typename std::remove_reference<T>::type>(
             &constraint_storage_.back()));
-    supernodal_assemblers_.emplace_back(variables.size(), &constraints_.back());
+    supernodal_assemblers_.emplace_back(variables, &constraints_.back());
     supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
 
     cliques_.push_back(variables);
@@ -82,7 +82,7 @@ class ConstraintManager {
       return CONEX_FAILURE;
     }
 
-    quadratic_costs_.emplace_back(Qi);
+    quadratic_costs_.emplace_back(Qi, variables);
     supernodal_assemblers_ptr_.push_back(&quadratic_costs_.back());
 
     cliques_.push_back(variables);
@@ -97,7 +97,7 @@ class ConstraintManager {
     }
     const int m = x.SizeOfDualVariable();
 
-    equality_constraints_.emplace_back(x.A_, x.b_);
+    equality_constraints_.emplace_back(x.A_, x.b_, variables);
 
     supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
 
