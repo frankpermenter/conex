@@ -637,27 +637,20 @@ bool Program::AddQuadraticCost(const Eigen::MatrixXd& Q) {
 int Program::UpdateLinearOperatorOfConstraint(int i, double value, int variable,
                                               int row, int col,
                                               int hyper_complex_dim) {
-  int cnt = 0;
-  for (auto& ci : kkt_system_manager_.constraints_) {
-    if (cnt == i) {
-      return UpdateLinearOperator(&ci, value, variable, row, col,
-                                  hyper_complex_dim);
-    }
-    cnt++;
-  }
-  CONEX_RETURN_ON_FAIL(false, "Invalid Constraint");
+  CONEX_RETURN_ON_FAIL(
+      i < static_cast<int>(kkt_system_manager_.cone_inequalities().size()),
+      "Invalid Constraint");
+  return UpdateLinearOperator(kkt_system_manager_.cone_inequalities().at(i),
+                              value, variable, row, col, hyper_complex_dim);
 }
 
 int Program::UpdateAffineTermOfConstraint(int i, double value, int row, int col,
                                           int hyper_complex_dim) {
-  int cnt = 0;
-  for (auto& ci : kkt_system_manager_.constraints_) {
-    if (cnt == i) {
-      return UpdateAffineTerm(&ci, value, row, col, hyper_complex_dim);
-    }
-    cnt++;
-  }
-  CONEX_RETURN_ON_FAIL(false, "Invalid Constraint");
+  CONEX_RETURN_ON_FAIL(
+      i < static_cast<int>(kkt_system_manager_.cone_inequalities().size()),
+      "Invalid Constraint");
+  return UpdateAffineTerm(kkt_system_manager_.cone_inequalities().at(i), value,
+                          row, col, hyper_complex_dim);
 }
 
 }  // namespace conex
