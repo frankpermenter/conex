@@ -332,7 +332,6 @@ CONEX_STATUS CONEX_NewQuadraticCost(void* p, int* constraint_id) {
 CONEX_STATUS CONEX_AddQuadraticCost(void* p, const double* A, int Ar, int Ac) {
   Program* prg;
   SAFER_CAST_TO_Program(p, prg);
-  int n = prg->GetNumberOfVariables();
   Eigen::MatrixXd Q;
   std::vector<int> vars;
 

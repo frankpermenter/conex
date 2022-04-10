@@ -38,10 +38,6 @@ class ConstraintManager {
 
   int GetNumberOfVariables() { return max_number_of_variables_; }
 
-  std::vector<SupernodalAssemblerBase*>& CliqueAssemblers() {
-    return supernodal_assemblers_ptr_;
-  }
-
   int SizeOfKKTSystem() {
     int num_dual_vars = 0;
     for (auto dv : dual_vars) {
