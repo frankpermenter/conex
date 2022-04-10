@@ -153,7 +153,6 @@ class ConstraintManager {
 
   // Stores type-erased interface.
   // Use a list so that we do not trigger reallocations.
-  std::list<Constraint> constraints_;
   std::list<SupernodalAssembler> supernodal_assemblers_;
   std::list<SupernodalAssemblerStatic> static_supernodal_assemblers_;
 
@@ -161,6 +160,7 @@ class ConstraintManager {
   // Because the Constraint forwarding class receives a pointer,
   // we create an std::any array to store the actual class.
   std::list<std::any> type_erased_constraints_;
+  std::list<Constraint> constraints_;
   std::vector<Constraint*> cone_inequalities_;
   std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;
 
