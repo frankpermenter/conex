@@ -58,8 +58,8 @@ void AssembleSchurComplementResiduals(ConstraintManager* kkt,
                                       SchurComplementSystem* s) {
   s->setZero();
   int i = 0;
-  for (auto& ci : kkt->supernodal_assemblers_) {
-    auto* rhs_i = &ci.submatrix_data_;
+  for (auto& ci : kkt->clique_assemblers()) {
+    auto* rhs_i = &ci->submatrix_data_;
     s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
     s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
     int cnt = 0;
@@ -610,12 +610,12 @@ bool Program::AddQuadraticCost(const DenseMatrix& Q,
 }
 
 int Program::NumberOfQuadraticCosts() const {
-  return kkt_system_manager_.static_supernodal_assemblers_.size();
+  return kkt_system_manager_.quadratic_costs().size();
 }
 
 int Program::UpdateQuadraticCost(int cost_id, double value, int row, int col) {
   int cnt = 0;
-  for (auto c : kkt_system_manager_.static_supernodal_assemblers_) {
+  for (auto c : kkt_system_manager_.quadratic_costs()) {
     if (cnt == cost_id) {
       return c.UpdateMatrix(value, row, col);
     }

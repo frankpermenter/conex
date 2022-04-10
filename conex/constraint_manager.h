@@ -82,8 +82,8 @@ class ConstraintManager {
       return CONEX_FAILURE;
     }
 
-    static_supernodal_assemblers_.emplace_back(Qi);
-    supernodal_assemblers_ptr_.push_back(&static_supernodal_assemblers_.back());
+    quadratic_costs_.emplace_back(Qi);
+    supernodal_assemblers_ptr_.push_back(&quadratic_costs_.back());
 
     cliques.push_back(variables);
     dual_vars.push_back({});
@@ -150,10 +150,18 @@ class ConstraintManager {
 
   std::vector<std::vector<int>> cliques;
   std::vector<std::vector<int>> dual_vars;
-  std::list<SupernodalAssembler> supernodal_assemblers_;
-  std::list<SupernodalAssemblerStatic> static_supernodal_assemblers_;
+
+  std::list<SupernodalAssemblerStatic>& quadratic_costs() {
+    return quadratic_costs_;
+  }
+  const std::list<SupernodalAssemblerStatic>& quadratic_costs() const {
+    return quadratic_costs_;
+  }
 
  private:
+  std::list<SupernodalAssembler> supernodal_assemblers_;
+  std::list<SupernodalAssemblerStatic> quadratic_costs_;
+
   // Stores and owns the constraints.
   std::list<std::any> constraint_storage_;
 
