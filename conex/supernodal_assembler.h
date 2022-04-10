@@ -80,10 +80,10 @@ class SupernodalAssemblerBase {
     submatrix_data_.m_ = n;
   };
 
-  WorkspaceSchurComplement submatrix_data_;
-  SchurComplementSystem* GetWorkspace() { return &submatrix_data_; }
+  SchurComplementSystem* submatrix_data() { return &submatrix_data_; }
 
  protected:
+  WorkspaceSchurComplement submatrix_data_;
   double GetCoeff(int i, int j);
 
   void Increment(const int* r, int sizer, const int* c, int sizec,

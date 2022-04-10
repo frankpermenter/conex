@@ -152,37 +152,6 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
       Eigen::Map<Eigen::MatrixXi>(data.permutation.data(), data.N, 1);
 }
 
-void T::Assemble(Eigen::VectorXd* AW, Eigen::VectorXd* AQc,
-                 double* inner_product_of_c_and_w) {
-  if (AW->rows() != SizeOfSystem() || AQc->rows() != SizeOfSystem()) {
-    throw std::runtime_error(
-        "Cannot assemble system data: invalid output dimensions.");
-  }
-  const auto& cliques = cliques_;
-
-  for (int e = static_cast<int>(cliques.size()) - 1; e >= 0; e--) {
-    int i = data.clique_order.at(e);
-    assembler.at(i)->UpdateBlocks();
-  }
-
-  if (AW && AQc && inner_product_of_c_and_w) {
-    AW->setZero();
-    AQc->setZero();
-    *inner_product_of_c_and_w = 0;
-    for (int e = static_cast<int>(cliques.size()) - 1; e >= 0; e--) {
-      int i = data.clique_order.at(e);
-      auto* rhs_i = assembler.at(i)->GetWorkspace();
-      *inner_product_of_c_and_w += rhs_i->inner_product_of_w_and_c;
-      int cnt = 0;
-      for (auto k : cliques.at(i)) {
-        (*AW)(k) += rhs_i->AW(cnt);
-        (*AQc)(k) += rhs_i->AQc(cnt);
-        cnt++;
-      }
-    }
-  }
-}
-
 void T::Assemble() {
   const auto& cliques = cliques_;
   for (int e = static_cast<int>(cliques.size()) - 1; e >= 0; e--) {

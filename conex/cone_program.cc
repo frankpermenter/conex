@@ -59,7 +59,7 @@ void AssembleSchurComplementResiduals(ConstraintManager* kkt,
   s->setZero();
   int i = 0;
   for (auto& ci : kkt->clique_assemblers()) {
-    auto* rhs_i = &ci->submatrix_data_;
+    auto* rhs_i = ci->submatrix_data();
     s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
     s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
     int cnt = 0;

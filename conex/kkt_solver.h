@@ -34,8 +34,6 @@ class SupernodalKKTSolver {
     }
   }
 
-  void Assemble(Eigen::VectorXd* AW, Eigen::VectorXd* AWc,
-                double* inner_product_of_c_and_w);
   void Assemble();
   void SetIterativeRefinementIterations(int x) {
     iterative_refinement_iterations_ = x;

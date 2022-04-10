@@ -105,15 +105,9 @@ GTEST_TEST(LDLT, TestAssembly) {
   VectorXd yref;
   ldlt.compute(T);
 
-  Eigen::VectorXd AW(n + m);
-  Eigen::VectorXd AQc(n + m);
-  double c_inner_product_w;
-  solver.Assemble(&AW, &AQc, &c_inner_product_w);
+  solver.Assemble();
 
   MatrixXd error = (solver.KKTMatrix() - T);
-  EXPECT_EQ(error.norm(), 0);
-
-  error = (AQc - b);
   EXPECT_EQ(error.norm(), 0);
 
   solver.Factor();
@@ -136,10 +130,7 @@ GTEST_TEST(LDLT, Benchmark2) {
   SupernodalKKTSolver solver(prog.variables(),
                              prog.equality_constraint_multipliers());
   solver.Bind(prog.clique_assemblers());
-  Eigen::VectorXd AW(prog.SizeOfKKTSystem());
-  Eigen::VectorXd AQc(prog.SizeOfKKTSystem());
-  double c_inner_product_w;
-  solver.Assemble(&AW, &AQc, &c_inner_product_w);
+  solver.Assemble();
   Eigen::MatrixXd T = solver.KKTMatrix().selfadjointView<Eigen::Lower>();
 
   Eigen::VectorXd b(prog.SizeOfKKTSystem());
@@ -174,10 +165,7 @@ GTEST_TEST(Assemble, VariablesSpecifiedOutOfOrder) {
   SupernodalKKTSolver solver(prog.variables(),
                              prog.equality_constraint_multipliers());
   solver.Bind(prog.clique_assemblers());
-  Eigen::VectorXd AW(prog.SizeOfKKTSystem());
-  Eigen::VectorXd AQc(prog.SizeOfKKTSystem());
-  double c_inner_product_w;
-  solver.Assemble(&AW, &AQc, &c_inner_product_w);
+  solver.Assemble();
   auto M = solver.KKTMatrix();
   Eigen::VectorXd expected(4);
   expected << 0, 2, 2, 3;

@@ -117,7 +117,7 @@ class ConstraintManager {
       workspaces.push_back(c.workspace());
     }
     for (auto& c : supernodal_assemblers_ptr_) {
-      workspaces.emplace_back(&c->submatrix_data_);
+      workspaces.emplace_back(c->submatrix_data());
     }
     return workspaces;
   }
