@@ -70,9 +70,10 @@ class SupernodalAssemblerBase {
     direct_update = false;
   }
 
-  virtual bool IsDynamic() { return false; }
-  virtual bool IsPositiveDefinite() { return true; }
-  virtual bool NumberOfAuxiliaryVariables() { return 0; }
+  virtual bool is_dynamic() { return false; }
+  virtual bool is_positive_definite() { return true; }
+  virtual int number_of_auxiliary_variables() { return 0; }
+  virtual std::vector<int> variables() const { return variables_; }
 
   void UpdateBlocks();
   virtual void SetDenseData() = 0;
@@ -81,6 +82,7 @@ class SupernodalAssemblerBase {
   void SetVariables(const std::vector<int>& variables, int num_private) {
     num_variables_ = variables.size() + num_private;
     submatrix_data_.m_ = num_variables_;
+    variables_ = variables;
   };
 
   SchurComplementSystem* submatrix_data() { return &submatrix_data_; }
@@ -104,6 +106,7 @@ class SupernodalAssemblerBase {
 
   void Scatter(const int* r, int sizer, const int* c, int sizec, double** data);
   int num_variables_;
+  std::vector<int> variables_;
 
   bool direct_update = false;
   std::vector<DiagonalBlock> diag;
@@ -120,9 +123,10 @@ class SupernodalAssembler : public SupernodalAssemblerBase {
     assert(W);
   }
 
-  virtual bool IsDynamic() { return true; }
-  virtual bool IsPositiveDefinite() { return true; }
-  virtual bool NumberOfAuxiliaryVariables() { return 0; }
+  virtual bool is_dynamic() override { return true; }
+  virtual bool is_positive_definite() override { return true; }
+  virtual int number_of_auxiliary_variables() override { return 0; }
+  Constraint* constraint() { return workspace_; }
 
   virtual void SetDenseData() {
     if (!submatrix_data_.initialized) {
@@ -198,9 +202,9 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
     return CONEX_SUCCESS;
   }
 
-  virtual bool IsDynamic() { return false; }
-  virtual bool IsPositiveDefinite() { return false; }
-  virtual bool NumberOfAuxiliaryVariables() { return A_.rows(); }
+  virtual bool is_dynamic() override { return false; }
+  virtual bool is_positive_definite() override { return false; }
+  virtual int number_of_auxiliary_variables() override { return A_.rows(); }
 
   virtual void SetDenseData() override {
     if (!submatrix_data_.initialized) {

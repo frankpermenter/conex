@@ -2,6 +2,7 @@
 
 #include <any>
 #include <list>
+#include <numeric>
 #include "conex/equality_constraint.h"
 
 #include "conex/error_checking_macros.h"
@@ -40,11 +41,11 @@ class ConstraintManager {
   int GetNumberOfVariables() { return max_number_of_variables_; }
 
   int SizeOfKKTSystem() {
-    int num_dual_vars = 0;
-    for (auto dv : dual_vars_) {
-      num_dual_vars += dv.size();
+    int num_aux_vars = 0;
+    for (auto e : supernodal_assemblers_ptr_) {
+      num_aux_vars += e->number_of_auxiliary_variables();
     }
-    return max_number_of_variables_ + num_dual_vars;
+    return max_number_of_variables_ + num_aux_vars;
   };
 
   template <typename T>
@@ -69,9 +70,6 @@ class ConstraintManager {
     supernodal_assemblers_.emplace_back(variables, &constraints_.back());
     supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
 
-    cliques_.push_back(variables);
-    dual_vars_.push_back({});
-
     cone_inequalities_.push_back(&constraints_.back());
     return constraints_.size() - 1;
   }
@@ -85,8 +83,6 @@ class ConstraintManager {
     quadratic_costs_.emplace_back(Qi, variables);
     supernodal_assemblers_ptr_.push_back(&quadratic_costs_.back());
 
-    cliques_.push_back(variables);
-    dual_vars_.push_back({});
     return quadratic_costs_.size() - 1;
   }
 
@@ -95,19 +91,11 @@ class ConstraintManager {
     if (!IsUnique(max_number_of_variables_, variables)) {
       return CONEX_FAILURE;
     }
-    const int m = x.SizeOfDualVariable();
 
     equality_constraints_.emplace_back(x.A_, x.b_, variables);
 
     supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
 
-    cliques_.push_back(variables);
-    dual_vars_.push_back({});
-    for (int i = 0; i < m; i++) {
-      cliques_.back().push_back(i + dual_variable_start_);
-      dual_vars_.back().push_back(i + dual_variable_start_);
-    }
-    dual_variable_start_ += m;
     return equality_constraints_.size() - 1;
   }
 
@@ -157,14 +145,35 @@ class ConstraintManager {
   }
 
   const std::vector<std::vector<int>>& equality_constraint_multipliers() const {
+    int offset = max_number_of_variables_;
+    dual_vars_.clear();
+    for (auto e : supernodal_assemblers_ptr_) {
+      int n = e->number_of_auxiliary_variables();
+      std::vector<int> temp(n);
+      std::iota(temp.begin(), temp.end(), offset);
+      dual_vars_.push_back(temp);
+      offset += n;
+    }
     return dual_vars_;
   }
 
-  const std::vector<std::vector<int>>& variables() const { return cliques_; }
+  const std::vector<std::vector<int>>& variables() const {
+    cliques_.clear();
+    std::vector<std::vector<int>> dual_vars = equality_constraint_multipliers();
+    int i = 0;
+    for (auto e : supernodal_assemblers_ptr_) {
+      cliques_.push_back({});
+      auto& c = cliques_.back();
+      c = e->variables();
+      c.insert(c.end(), dual_vars.at(i).begin(), dual_vars.at(i).end());
+      i++;
+    }
+    return cliques_;
+  }
 
  private:
-  std::vector<std::vector<int>> dual_vars_;
-  std::vector<std::vector<int>> cliques_;
+  mutable std::vector<std::vector<int>> dual_vars_;
+  mutable std::vector<std::vector<int>> cliques_;
   std::list<SupernodalAssembler> supernodal_assemblers_;
   std::list<SupernodalAssemblerStatic> quadratic_costs_;
   std::list<SupernodalAssemblerEqualities> equality_constraints_;
