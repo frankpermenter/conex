@@ -8,18 +8,6 @@ using Eigen::VectorXd;
 using std::vector;
 namespace {
 
-std::vector<int> ConcatFirstN(const std::vector<int>& a, int N,
-                              const std::vector<int>& b) {
-  std::vector<int> y;
-  for (int i = 0; i < N; i++) {
-    y.push_back(a.at(i));
-  }
-  for (size_t j = 0; j < b.size(); j++) {
-    y.push_back(b.at(j));
-  }
-  return y;
-}
-
 std::vector<int> ReplaceWithPosition(const std::vector<int>& a,
                                      const std::vector<int>& b,
                                      bool label_fill_in) {
@@ -53,17 +41,13 @@ void T::RelabelCliques(MatrixData* data_ptr) {
   for (int e = 0; e < static_cast<int>(cliques.size()); e++) {
     // Here we assume that dual variables are at end of clique.
     int j = data.clique_order.at(e);
-    auto labels = ConcatFirstN(
-        cliques_.at(j), cliques_.at(j).size() - dual_variables_.at(j).size(),
-        dual_variables_.at(j));
+    data.supernodes_original_labels.at(e) = ReplaceWithPosition(
+        data.supernodes_original_labels.at(e), cliques_.at(j),
+        /*!found = fill in*/ true);
 
-    data.supernodes_original_labels.at(e) =
-        ReplaceWithPosition(data.supernodes_original_labels.at(e), labels,
-                            /*!found = fill in*/ true);
-
-    data.separators_original_labels.at(e) =
-        ReplaceWithPosition(data.separators_original_labels.at(e), labels,
-                            /*!found = fill in*/ true);
+    data.separators_original_labels.at(e) = ReplaceWithPosition(
+        data.separators_original_labels.at(e), cliques_.at(j),
+        /*!found = fill in*/ true);
   }
 }
 
