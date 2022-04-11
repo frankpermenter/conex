@@ -78,6 +78,17 @@ class SupernodalAssemblerBase {
   void UpdateBlocks();
   virtual void SetDenseData() = 0;
 
+  Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> Subvector(
+      const Eigen::MatrixXd& x) {
+    ysegment.resize(variables_.size(), 1);
+    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
+                                                  ysegment.size(), 1);
+    int cnt = 0;
+    for (auto i : variables_) {
+      z(cnt++) = x(i);
+    }
+    return z;
+  }
   int NumberOfVariables() { return num_variables_; };
   void SetVariables(const std::vector<int>& variables, int num_private) {
     num_variables_ = variables.size() + num_private;
@@ -89,6 +100,7 @@ class SupernodalAssemblerBase {
 
  protected:
   WorkspaceSchurComplement submatrix_data_;
+  Eigen::VectorXd ysegment;
   double GetCoeff(int i, int j);
 
   void Increment(const int* r, int sizer, const int* c, int sizec,

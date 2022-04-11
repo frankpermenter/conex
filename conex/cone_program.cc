@@ -34,11 +34,8 @@ inline void PrepareStep(ConstraintManager* kkt,
   info->norminfd = -1;
   int i = 0;
   for (auto& ci : kkt->cone_inequalities()) {
-    // TODO(FrankPermenter): Remove creation of these maps.
-    auto ysegment = Vars(y, kkt->variables().at(i));
-    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
-                                                  ysegment.size(), 1);
-    PrepareStep(ci->constraint(), newton_step_parameters, z, &info_i);
+    PrepareStep(ci->constraint(), newton_step_parameters, ci->Subvector(y),
+                &info_i);
     if (info_i.norminfd > info->norminfd) {
       info->norminfd = info_i.norminfd;
     }
