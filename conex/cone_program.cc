@@ -15,7 +15,7 @@ namespace conex {
 namespace {
 
 inline Eigen::VectorXd Vars(const Eigen::VectorXd& x,
-                            std::vector<int> indices) {
+                            const std::vector<int>& indices) {
   Eigen::VectorXd z(indices.size());
   int cnt = 0;
   for (auto i : indices) {
@@ -63,7 +63,7 @@ void AssembleSchurComplementResiduals(ConstraintManager* kkt,
     s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
     s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
     int cnt = 0;
-    for (auto k : kkt->variables().at(i)) {
+    for (const auto& k : kkt->variables().at(i)) {
       s->AW(k) += rhs_i->AW(cnt);
       s->AQc(k) += rhs_i->AQc(cnt);
       cnt++;
