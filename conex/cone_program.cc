@@ -50,12 +50,20 @@ void AssembleSchurComplementResiduals(ConstraintManager* kkt,
     s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
     s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
     int cnt = 0;
-    for (const auto& k : kkt->variables().at(i)) {
+
+    for (const auto& k : ci->variables()) {
       s->AW(k) += rhs_i->AW(cnt);
       s->AQc(k) += rhs_i->AQc(cnt);
       cnt++;
     }
     i++;
+  }
+
+  int offset = kkt->GetNumberOfVariables();
+  for (auto& eq : kkt->equality_constraints()) {
+    int num_eq = eq.affine_term().rows();
+    s->AQc.middleRows(offset, num_eq) = eq.affine_term();
+    offset += num_eq;
   }
 }
 

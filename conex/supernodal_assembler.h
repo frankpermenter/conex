@@ -214,6 +214,8 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
     return CONEX_SUCCESS;
   }
 
+  const Eigen::VectorXd& affine_term() const { return b_; }
+
   virtual bool is_dynamic() override { return false; }
   virtual bool is_positive_definite() override { return false; }
   virtual int number_of_auxiliary_variables() override { return A_.rows(); }
