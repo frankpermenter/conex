@@ -14,16 +14,6 @@ namespace conex {
 
 namespace {
 
-inline Eigen::VectorXd Vars(const Eigen::VectorXd& x,
-                            const std::vector<int>& indices) {
-  Eigen::VectorXd z(indices.size());
-  int cnt = 0;
-  for (auto i : indices) {
-    z(cnt++) = x(i);
-  }
-  return z;
-}
-
 inline void PrepareStep(ConstraintManager* kkt,
                         const StepOptions& newton_step_parameters, const Ref& y,
                         StepInfo* info) {
@@ -84,11 +74,9 @@ void GetWeightedSlackEigenvalues(ConstraintManager* constraints, const Ref& y,
   p->lambda_min = 30000;
   int i = 0;
   for (auto& ci : constraints->cone_inequalities()) {
-    auto ysegment = Vars(y, constraints->variables().at(i));
-    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
-                                                  ysegment.size(), 1);
     WeightedSlackEigenvalues temp;
-    GetWeightedSlackEigenvalues(ci->constraint(), z, c_weight, &temp);
+    GetWeightedSlackEigenvalues(ci->constraint(), ci->Subvector(y), c_weight,
+                                &temp);
 
     if (p->lambda_max < temp.lambda_max) {
       p->lambda_max = temp.lambda_max;
@@ -147,8 +135,8 @@ double ComputeMuFromLineSearch(ConstraintManager& constraints,
   int i = 0;
   for (auto& ci : constraints.cone_inequalities()) {
     LineSearchOutput output_i;
-    auto ysegment1 = Vars(*y0, constraints.variables().at(i));
-    auto ysegment2 = Vars(y1, constraints.variables().at(i));
+    Eigen::MatrixXd ysegment1 = ci->Subvector(*y0);
+    Eigen::MatrixXd ysegment2 = ci->Subvector(y1);
     Ref z1(ysegment1.data(), ysegment1.rows(), 1);
     Ref z2(ysegment2.data(), ysegment2.rows(), 1);
     bool failure =
