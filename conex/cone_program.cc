@@ -38,7 +38,7 @@ inline void PrepareStep(ConstraintManager* kkt,
     auto ysegment = Vars(y, kkt->variables().at(i));
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
                                                   ysegment.size(), 1);
-    PrepareStep(ci, newton_step_parameters, z, &info_i);
+    PrepareStep(ci->constraint(), newton_step_parameters, z, &info_i);
     if (info_i.norminfd > info->norminfd) {
       info->norminfd = info_i.norminfd;
     }
@@ -47,10 +47,10 @@ inline void PrepareStep(ConstraintManager* kkt,
   }
 }
 
-inline void TakeStep(std::vector<Constraint*>* constraints,
+inline void TakeStep(std::vector<SupernodalAssembler*>* constraints,
                      const StepOptions& newton_step_parameters) {
   for (auto& c : *constraints) {
-    TakeStep(c, newton_step_parameters);
+    TakeStep(c->constraint(), newton_step_parameters);
   }
 }
 
@@ -75,7 +75,7 @@ void AssembleSchurComplementResiduals(ConstraintManager* kkt,
 template <typename T>
 void SetIdentity(std::vector<T*>* c) {
   for (auto& ci : *c) {
-    SetIdentity(ci);
+    SetIdentity(ci->constraint());
   }
 }
 
@@ -91,7 +91,7 @@ void GetWeightedSlackEigenvalues(ConstraintManager* constraints, const Ref& y,
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
                                                   ysegment.size(), 1);
     WeightedSlackEigenvalues temp;
-    GetWeightedSlackEigenvalues(ci, z, c_weight, &temp);
+    GetWeightedSlackEigenvalues(ci->constraint(), z, c_weight, &temp);
 
     if (p->lambda_max < temp.lambda_max) {
       p->lambda_max = temp.lambda_max;
@@ -110,7 +110,7 @@ template <typename T>
 int Rank(const std::vector<T*>& c) {
   int rank = 0;
   for (const auto& ci : c) {
-    rank += Rank(*ci);
+    rank += Rank(*ci->constraint());
   }
   return rank;
 }
@@ -154,7 +154,8 @@ double ComputeMuFromLineSearch(ConstraintManager& constraints,
     auto ysegment2 = Vars(y1, constraints.variables().at(i));
     Ref z1(ysegment1.data(), ysegment1.rows(), 1);
     Ref z2(ysegment2.data(), ysegment2.rows(), 1);
-    bool failure = PerformLineSearch(ci, params, z1, z2, &output_i);
+    bool failure =
+        PerformLineSearch(ci->constraint(), params, z1, z2, &output_i);
     if (failure) {
       return -1;
     }
@@ -644,8 +645,9 @@ int Program::UpdateLinearOperatorOfConstraint(int i, double value, int variable,
   CONEX_RETURN_ON_FAIL(
       i < static_cast<int>(kkt_system_manager_.cone_inequalities().size()),
       "Invalid Constraint");
-  return UpdateLinearOperator(kkt_system_manager_.cone_inequalities().at(i),
-                              value, variable, row, col, hyper_complex_dim);
+  return UpdateLinearOperator(
+      kkt_system_manager_.cone_inequalities().at(i)->constraint(), value,
+      variable, row, col, hyper_complex_dim);
 }
 
 int Program::UpdateAffineTermOfConstraint(int i, double value, int row, int col,
@@ -653,8 +655,9 @@ int Program::UpdateAffineTermOfConstraint(int i, double value, int row, int col,
   CONEX_RETURN_ON_FAIL(
       i < static_cast<int>(kkt_system_manager_.cone_inequalities().size()),
       "Invalid Constraint");
-  return UpdateAffineTerm(kkt_system_manager_.cone_inequalities().at(i), value,
-                          row, col, hyper_complex_dim);
+  return UpdateAffineTerm(
+      kkt_system_manager_.cone_inequalities().at(i)->constraint(), value, row,
+      col, hyper_complex_dim);
 }
 
 }  // namespace conex

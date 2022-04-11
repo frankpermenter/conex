@@ -72,7 +72,7 @@ class Program {
     int cnt = 0;
     for (auto& ci : kkt_system_manager_.cone_inequalities()) {
       if (cnt == i) {
-        ci->get_dual_variable(xi->data());
+        ci->constraint()->get_dual_variable(xi->data());
         if (!status_.primal_infeasible) {
           xi->array() /=
               (stats->sqrt_inv_mu[stats->num_iter - 1] * stats->b_scaling());
@@ -87,7 +87,7 @@ class Program {
     int cnt = 0;
     for (auto& ci : kkt_system_manager_.cone_inequalities()) {
       if (cnt == i) {
-        return ci->dual_variable_size();
+        return ci->constraint()->dual_variable_size();
       }
       cnt++;
     }

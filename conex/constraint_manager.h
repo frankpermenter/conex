@@ -71,6 +71,7 @@ class ConstraintManager {
     supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
 
     cone_inequalities_.push_back(&constraints_.back());
+    cone_inequality_assemblers_.push_back(&supernodal_assemblers_.back());
     return constraints_.size() - 1;
   }
 
@@ -127,7 +128,9 @@ class ConstraintManager {
     Initialize(&workspaces, workspace_memory_.data());
   }
 
-  std::vector<Constraint*>& cone_inequalities() { return cone_inequalities_; }
+  std::vector<SupernodalAssembler*>& cone_inequalities() {
+    return cone_inequality_assemblers_;
+  }
   std::vector<SupernodalAssemblerBase*>& clique_assemblers() {
     return supernodal_assemblers_ptr_;
   }
@@ -187,6 +190,7 @@ class ConstraintManager {
 
   // Provides random access to constraints_.
   std::vector<Constraint*> cone_inequalities_;
+  std::vector<SupernodalAssembler*> cone_inequality_assemblers_;
 
   // Provides type-erased interface to supernodal assemblers.
   std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;
