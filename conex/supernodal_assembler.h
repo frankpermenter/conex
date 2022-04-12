@@ -89,11 +89,19 @@ class SupernodalAssemblerBase {
     }
     return z;
   }
+
   int NumberOfVariables() { return num_variables_; };
+
+  // TODO(frankpermenter): deprecate this method. It
+  // is currently used by Drake.
+  void SetNumberOfVariables(int num_variables) {
+    num_variables_ = num_variables;
+    submatrix_data_.m_ = num_variables;
+  };
+
   void SetVariables(const std::vector<int>& variables, int num_private) {
-    num_variables_ = variables.size() + num_private;
-    submatrix_data_.m_ = num_variables_;
     variables_ = variables;
+    SetNumberOfVariables(variables.size() + num_private);
   };
 
   SchurComplementSystem* submatrix_data() { return &submatrix_data_; }
