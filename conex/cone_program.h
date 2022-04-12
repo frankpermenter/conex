@@ -29,7 +29,7 @@ class Program {
     linear_cost_ = Eigen::VectorXd::Zero(m);
   }
 
-  int GetNumberOfVariables() {
+  int GetNumberOfVariables() const {
     return kkt_system_manager_.GetNumberOfVariables();
   }
 
@@ -128,6 +128,10 @@ class Program {
   Eigen::VectorXd* workspace_memory() { return workspace_data_; }
 
   const WorkspaceStats& statistics() const { return *stats; }
+
+  const ConstraintManager& constraint_manager() const {
+    return kkt_system_manager_;
+  };
 
  private:
   ConstraintManager kkt_system_manager_;

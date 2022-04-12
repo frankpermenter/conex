@@ -38,9 +38,9 @@ class ConstraintManager {
     dual_variable_start_ = N;
   }
 
-  int GetNumberOfVariables() { return max_number_of_variables_; }
+  int GetNumberOfVariables() const { return max_number_of_variables_; }
 
-  int SizeOfKKTSystem() {
+  int SizeOfKKTSystem() const {
     int num_aux_vars = 0;
     for (auto e : supernodal_assemblers_ptr_) {
       num_aux_vars += e->number_of_auxiliary_variables();
@@ -128,10 +128,15 @@ class ConstraintManager {
     Initialize(&workspaces, workspace_memory_.data());
   }
 
+  const std::vector<SupernodalAssembler*>& cone_inequalities() const {
+    return cone_inequality_assemblers_;
+  }
+
   std::vector<SupernodalAssembler*>& cone_inequalities() {
     return cone_inequality_assemblers_;
   }
-  std::vector<SupernodalAssemblerBase*>& clique_assemblers() {
+
+  const std::vector<SupernodalAssemblerBase*>& clique_assemblers() const {
     return supernodal_assemblers_ptr_;
   }
 
