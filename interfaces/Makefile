@@ -27,6 +27,7 @@ SOURCES = approximate_eigenvalues.cc \
 	  hermitian_psd.cc \
 	  supernodal_assembler.cc \
 	  kkt_solver.cc \
+	  kkt_solver_factory.cc \
 	  linear_constraint.cc \
 	  psd_constraint.cc \
 	  quadratic_cone_constraint.cc \

@@ -247,6 +247,27 @@ cc_library(
 )
 
 cc_library(
+    name = "solver_configuration",
+    hdrs = ["conex.h"],
+)
+
+cc_library(
+    name = "kkt_solver_interface",
+    hdrs = ["kkt_solver_interface.h"],
+)
+
+cc_library(
+    name = "kkt_solver_factory",
+    srcs = ["kkt_solver_factory.cc"],
+    hdrs = ["kkt_solver_factory.h"],
+    deps = [
+        "conjugate_gradient_solvers",
+        "kkt_solver_interface",
+        "supernodal_solver",
+    ],
+)
+
+cc_library(
     name = "supernodal_solver",
     srcs = [
         "RLDLT.h",
@@ -269,6 +290,7 @@ cc_library(
         "error_checking_macros.h",
         "error_codes.h",
         "kkt_solver.h",
+        "kkt_solver_factory.h",
         "kkt_solver_interface.h",
         "linear_workspace.h",
         "memory_utils.h",
@@ -281,7 +303,8 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "tree_utils",
+        ":solver_configuration",
+        ":tree_utils",
         "@eigen",
     ],
 )
@@ -308,8 +331,10 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "divergence",
         ":conjugate_gradient_solvers",
+        ":divergence",
+        ":kkt_solver_factory",
+        ":solver_configuration",
         ":supernodal_solver",
         "@eigen",
     ],
@@ -402,16 +427,17 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "approximate_eigenvalues",
-        "core",
-        "divergence",
-        "exponential_map",
-        "exponential_map_pade",
-        "jordan_matrix_algebra",
-        "linear_constraint",
-        "semidefinite_constraints",
-        "socp_constraints",
-        "supernodal_solver",
+        ":approximate_eigenvalues",
+        ":core",
+        ":divergence",
+        ":exponential_map",
+        ":exponential_map_pade",
+        ":jordan_matrix_algebra",
+        ":linear_constraint",
+        ":semidefinite_constraints",
+        ":socp_constraints",
+        ":solver_configuration",
+        ":supernodal_solver",
         "@eigen",
     ],
 )
