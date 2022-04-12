@@ -115,7 +115,7 @@ Eigen::VectorXd T::ApplyPreconditioner(const Eigen::VectorXd& x) const {
 Eigen::VectorXd T::SchurComplementConjugateGradientSolver(
     const Eigen::VectorXd& rhs) const {
   ConstrainedLeastSquaresConjugateGradientSolverConfig config;
-  config.iteration_limit = rhs.rows() * 2;
+  config.iteration_limit = rhs.rows();
 
   auto f = [this](const VectorXd& s) -> VectorXd {
     return EvaluateEquationOperator(inverse_of_G_.Solve(
