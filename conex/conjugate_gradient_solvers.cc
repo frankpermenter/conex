@@ -72,20 +72,9 @@ T::ConstrainedLeastSquaresConjugateGradientSolver(
   }
 }
 
-bool T::Factor() {
-  if (!inverse_of_G_.Factor()) {
-    std::runtime_error("Failed to factor KKT system");
-  }
-  factored_ = true;
-  assembled_ = false;
-  return true;
-}
+bool T::DoFactor() { return inverse_of_G_.Factor(); }
 
-void T::Assemble() {
-  factored_ = false;
-  inverse_of_G_.Assemble();
-  assembled_ = true;
-}
+void T::DoAssemble() { inverse_of_G_.Assemble(); }
 
 Eigen::VectorXd T::EvaluateEquationOperator(
     const Eigen::VectorXd& residual) const {
@@ -182,7 +171,8 @@ Eigen::VectorXd T::SchurComplementConjugateGradientSolver(
 
 namespace conex {
 
-void T::SolveInPlace(Ref* y) const {
+void T::DoSolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* y,
+                       bool permutation_to_elimination_order) const {
   VectorXd f = y->topRows(number_of_variables());
   VectorXd g = y->bottomRows(number_of_equations());
   VectorXd s1;
@@ -194,8 +184,6 @@ void T::SolveInPlace(Ref* y) const {
 
 void T::Solve(const VectorXd& fin, const VectorXd& g, VectorXd* y, VectorXd* z,
               bool use_llt) const {
-  CONEX_DEMAND(factored_, "System has not been factored.");
-
   VectorXd f_permuted = inverse_of_G_.permutation_to_elimination_order() * fin;
 
   VectorXd Ginv_f = inverse_of_G_.Solve(f_permuted, false /*permute*/);
@@ -228,9 +216,7 @@ void T::Solve(const VectorXd& fin, const VectorXd& g, VectorXd* y, VectorXd* z,
   *y = inverse_of_G_.permutation_from_elimination_order() * (*y);
 }
 
-MatrixXd T::KKTMatrix(bool permute_to_elimination_order) {
-  CONEX_DEMAND(assembled_,
-               "System has not been assembled or is factored in place.");
+MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
   MatrixXd G = inverse_of_G_.KKTMatrix(permute_to_elimination_order);
   MatrixXd B = MakeDenseMatrix(non_zero_columns_of_B_, entries_of_B_, G.cols());
   if (!permute_to_elimination_order) {

@@ -98,8 +98,12 @@ GTEST_TEST(QR, SuccessWithDependentInequalityColumns) {
   config.kkt_solver = CONEX_QR_FACTORIZATION;
   Eigen::MatrixXd A(3, 4);
   Eigen::VectorXd c(3);
-  A << 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0;
+  // clang-format off
+  A << 1, 0, 0, 0,
+       1, 0, 0, 0,
+       1, 0, 0, 0;
   c << 1, 1, 1;
+  // clang-format on
 
   Program prog(4);
   prog.AddConstraint(LinearConstraint{A, c});
@@ -118,13 +122,24 @@ GTEST_TEST(QR, SuccessWithDependentEquations) {
   auto config = GetConfiguration();
   Eigen::MatrixXd A(3, 4);
   Eigen::VectorXd c(3);
-  A << 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0;
+  // clang-format off
+  A << 1, 0, 0, 
+       0, 1, 0, 
+       0, 0, 1, 
+       0, 0, 0;
   c << 1, 1, 1;
+  // clang-format on
 
   MatrixXd B(5, 4);
   VectorXd d(5);
-  B << 1, -1, 0, 0, 1, -1, 0, 0, 2, -2, 0, 0, 3, -3, 0, 0, 1, -1, 0, 0;
+  // clang-format off
+  B << 1, -1, 0, 0,
+       1, -1, 0, 0,
+       2, -2, 0, 0,
+       3, -3, 0, 0,
+       1, -1, 0, 0;
   d << 0, 0, 0, 0, 0;
+  // clang-format on
 
   Program prog(4);
   prog.AddConstraint(LinearConstraint{A, c});

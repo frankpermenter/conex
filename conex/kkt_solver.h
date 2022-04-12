@@ -2,6 +2,7 @@
 #include "constraint_manager.h"
 
 #include "conex/RLDLT.h"
+#include "conex/kkt_solver_interface.h"
 #include "conex/supernodal_assembler.h"
 #include "conex/supernodal_solver.h"
 
@@ -13,8 +14,9 @@ enum : int {
   CONEX_QR_FACTORIZATION = 2,
 };
 
-class SupernodalKKTSolver {
+class SupernodalKKTSolver : public KKTSolverBase {
  public:
+  SupernodalKKTSolver(ConstraintManager* manager);
   SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
                       const std::vector<std::vector<int>>& dual_vars);
 
@@ -34,17 +36,13 @@ class SupernodalKKTSolver {
     }
   }
 
-  void Assemble();
   void SetIterativeRefinementIterations(int x) {
     iterative_refinement_iterations_ = x;
   }
   void SetSolverMode(int mode) { mode_ = mode; }
-  bool Factor();
+
   Eigen::VectorXd Solve(const Eigen::VectorXd& b,
                         bool permute_to_elimination_order = true) const;
-  void SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
-                    bool permute_to_elimination_order = true) const;
-  Eigen::MatrixXd KKTMatrix(bool permute_to_elimination_order = false) const;
   int SizeOfSystem() const { return permutation_to_elimination_order_.rows(); }
   const Eigen::PermutationMatrix<-1>& permutation_to_elimination_order() const {
     return permutation_to_elimination_order_;
@@ -55,6 +53,12 @@ class SupernodalKKTSolver {
   }
 
  private:
+  void DoAssemble() override;
+  bool DoFactor() override;
+  void DoSolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
+                      bool permute_to_elimination_order) const override;
+  Eigen::MatrixXd DoKKTMatrix(bool permute_to_elimination_order) const override;
+
   void RelabelCliques(MatrixData* data_ptr);
   bool use_cholesky_ = false;
   // Copies of inputs.

@@ -85,6 +85,23 @@ vector<int> is_empty(const vector<std::vector<int>>& vect) {
   return y;
 }
 
+T::SupernodalKKTSolver(ConstraintManager* c)
+    : cliques_(c->variables()),
+      dual_variables_(c->equality_constraint_multipliers()),
+      data(GetData(cliques_, is_empty(dual_variables_),
+                   GetRootNode(cliques_, dual_variables_))),
+      mat(data),
+      permutation_from_elimination_order_(data.N),
+      permutation_to_elimination_order_(data.N),
+      b_permuted_(data.N) {
+  RelabelCliques(&data);
+  permutation_from_elimination_order_.indices() =
+      Eigen::Map<Eigen::MatrixXi>(data.permutation_inverse.data(), data.N, 1);
+  permutation_to_elimination_order_.indices() =
+      Eigen::Map<Eigen::MatrixXi>(data.permutation.data(), data.N, 1);
+  Bind(c->clique_assemblers());
+}
+
 T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
                        const std::vector<std::vector<int>>& dual_vars)
     : cliques_(cliques),
@@ -136,7 +153,7 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
       Eigen::Map<Eigen::MatrixXi>(data.permutation.data(), data.N, 1);
 }
 
-void T::Assemble() {
+void T::DoAssemble() {
   const auto& cliques = cliques_;
   for (int e = static_cast<int>(cliques.size()) - 1; e >= 0; e--) {
     int i = data.clique_order.at(e);
@@ -144,11 +161,11 @@ void T::Assemble() {
   }
 }
 
-bool T::Factor() {
+bool T::DoFactor() {
   // TODO(FrankPermenter): save a sparse copy of the matrix instead.
   bool use_qr = mode_ == CONEX_QR_FACTORIZATION;
   if (iterative_refinement_iterations_ > 0 || use_qr) {
-    kkt_matrix_ = KKTMatrix();
+    kkt_matrix_ = DoKKTMatrix(false /*permute to elimination order*/);
   }
 
   if (!use_qr) {
@@ -202,8 +219,8 @@ Eigen::VectorXd T::Solve(const Eigen::VectorXd& b,
   }
 }
 
-void T::SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
-                     bool permute_to_elimination_order) const {
+void T::DoSolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
+                       bool permute_to_elimination_order) const {
   bool use_qr = mode_ == CONEX_QR_FACTORIZATION;
   if (b->rows() != permutation_from_elimination_order().rows()) {
     throw std::runtime_error(
@@ -261,7 +278,7 @@ void T::SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
   return;
 }
 
-Eigen::MatrixXd T::KKTMatrix(bool permute_to_elimination_order) const {
+Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
   Eigen::MatrixXd G =
       TriangularMatrixOperations::ToDense(mat).selfadjointView<Eigen::Lower>();
   if (permute_to_elimination_order) {

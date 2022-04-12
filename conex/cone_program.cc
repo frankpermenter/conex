@@ -123,7 +123,7 @@ void ConstructSchurComplementSystem(std::vector<T*>* c, bool initialize,
 //        2 * prog.sys.AW;
 
 double ComputeMuFromLineSearch(ConstraintManager& constraints,
-                               std::unique_ptr<SupernodalKKTSolver>& solver,
+                               std::unique_ptr<KKTSolverBase>& solver,
                                double dinf_upper_bound, const DenseMatrix& AQc,
                                double c_weight, const DenseMatrix& b,
                                const DenseMatrix& AW, Ref* y0) {
@@ -179,7 +179,7 @@ double MinimizeNormInf(WeightedSlackEigenvalues& p) {
   return y;
 }
 double ComputeMuFromDivergence(ConstraintManager& constraints,
-                               std::unique_ptr<KKTSolver>& solver,
+                               std::unique_ptr<KKTSolverBase>& solver,
                                const DenseMatrix& AQc, double c_weight,
                                const DenseMatrix& b,
                                const SolverConfiguration& config, int rankK,
@@ -250,21 +250,14 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
     }
 
     START_TIMER(Sparsity Analysis);
-    if (prog.kkt_system_manager_.equality_constraints().size() > 0) {
-      solver = std::make_unique<SupernodalKKTSolver>(
-          prog.kkt_system_manager_.variables(),
-          prog.kkt_system_manager_.equality_constraint_multipliers());
-    } else {
-      solver = std::make_unique<SupernodalKKTSolver>(
-          prog.kkt_system_manager_.variables());
-    }
-    solver->Bind(prog.kkt_system_manager_.clique_assemblers());
-    END_TIMER
-    solver->SetIterativeRefinementIterations(
+    auto solver_temp =
+        std::make_unique<SupernodalKKTSolver>(&prog.kkt_system_manager_);
+    solver_temp->SetIterativeRefinementIterations(
         config.iterative_refinement_iterations);
-    solver->SetSolverMode(config.kkt_solver);
+    solver_temp->SetSolverMode(config.kkt_solver);
+    solver = std::move(solver_temp);
+    END_TIMER
   }
-
   return true;
 }
 
@@ -286,9 +279,6 @@ bool Program::AddLinearCost(const VectorXd& b) {
 }
 
 void Program::ClearLinearCosts() { linear_cost_.setZero(); }
-
-void SolveHelper(Program& prog, KKTSolver* kkt_solver,
-                 const SolverConfiguration& config, double* primal_variable) {}
 
 bool Solve(Program& prog, const SolverConfiguration& config,
            double* primal_variable) {

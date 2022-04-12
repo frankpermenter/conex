@@ -1,5 +1,6 @@
 #pragma once
 #include "conex/kkt_solver.h"
+#include "conex/kkt_solver_interface.h"
 #include "conex/supernodal_assembler.h"
 
 namespace conex {
@@ -21,7 +22,7 @@ struct ConstrainedLeastSquaresConjugateGradientSolverConfig {
   int iteration_limit = 10;
 };
 
-class ConstrainedLeastSquaresConjugateGradientSolver {
+class ConstrainedLeastSquaresConjugateGradientSolver : public KKTSolverBase {
  public:
   ConstrainedLeastSquaresConjugateGradientSolver(
       const std::vector<std::vector<int>>& cliques_of_G,
@@ -29,14 +30,8 @@ class ConstrainedLeastSquaresConjugateGradientSolver {
       const std::vector<std::vector<int>>& non_zero_columns_of_B,
       const std::vector<std::vector<double>>& entries_of_B);
 
-  bool Factor();
-
-  void Assemble();
-
   void Solve(const Eigen::VectorXd& f, const Eigen::VectorXd& g,
              Eigen::VectorXd* y, Eigen::VectorXd* z, bool use_llt) const;
-
-  void SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b) const;
 
   Eigen::VectorXd Solve(const Eigen::VectorXd& f) {
     using Eigen::VectorXd;
@@ -49,13 +44,16 @@ class ConstrainedLeastSquaresConjugateGradientSolver {
   Eigen::VectorXd EvaluateEquationOperator(const Eigen::VectorXd& d) const;
   Eigen::VectorXd EvaluateEquationOperatorTranspose(
       const Eigen::VectorXd& d) const;
-  Eigen::MatrixXd KKTMatrix(bool permute_to_elimination_order = false);
   SupernodalKKTSolver inverse_of_G_;
   int number_of_equations() const { return non_zero_columns_of_B_.size(); }
 
  private:
-  bool factored_ = false;
-  bool assembled_ = false;
+  void DoAssemble() override;
+  bool DoFactor() override;
+  void DoSolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
+                      bool permute_to_elimination_order) const override;
+  Eigen::MatrixXd DoKKTMatrix(bool permute_to_elimination_order) const override;
+
   std::vector<std::vector<int>> non_zero_columns_of_B_;
   std::vector<std::vector<double>> entries_of_B_;
   int number_of_variables() const { return inverse_of_G_.SizeOfSystem(); }

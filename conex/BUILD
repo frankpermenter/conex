@@ -264,6 +264,7 @@ cc_library(
         "error_checking_macros.h",
         "error_codes.h",
         "kkt_solver.h",
+        "kkt_solver_interface.h",
         "linear_workspace.h",
         "memory_utils.h",
         "newton_step.h",

@@ -9,7 +9,6 @@
 
 namespace conex {
 
-using KKTSolver = SupernodalKKTSolver;
 enum : int {
   CONEX_INITIALIZATION_MODE_COLDSTART = 0,
   CONEX_INITIALIZATION_MODE_WARMSTART = 1,
@@ -168,7 +167,7 @@ class Program {
   SchurComplementSystem sys;
   std::unique_ptr<WorkspaceStats> stats;
   std::vector<Workspace> workspaces;
-  std::unique_ptr<KKTSolver> solver;
+  std::unique_ptr<KKTSolverBase> solver;
   Eigen::VectorXd memory_;
   Eigen::VectorXd* workspace_data_;
   bool is_initialized = false;
