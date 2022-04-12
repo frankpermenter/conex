@@ -1,5 +1,4 @@
 #pragma once
-#include "constraint_manager.h"
 
 #include "conex/RLDLT.h"
 #include "conex/kkt_solver_interface.h"
@@ -16,7 +15,6 @@ enum : int {
 
 class SupernodalKKTSolver : public KKTSolverBase {
  public:
-  SupernodalKKTSolver(ConstraintManager* manager);
   SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
                       const std::vector<std::vector<int>>& dual_vars);
 

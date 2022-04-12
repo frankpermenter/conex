@@ -85,23 +85,6 @@ vector<int> is_empty(const vector<std::vector<int>>& vect) {
   return y;
 }
 
-T::SupernodalKKTSolver(ConstraintManager* c)
-    : cliques_(c->variables()),
-      dual_variables_(c->equality_constraint_multipliers()),
-      data(GetData(cliques_, is_empty(dual_variables_),
-                   GetRootNode(cliques_, dual_variables_))),
-      mat(data),
-      permutation_from_elimination_order_(data.N),
-      permutation_to_elimination_order_(data.N),
-      b_permuted_(data.N) {
-  RelabelCliques(&data);
-  permutation_from_elimination_order_.indices() =
-      Eigen::Map<Eigen::MatrixXi>(data.permutation_inverse.data(), data.N, 1);
-  permutation_to_elimination_order_.indices() =
-      Eigen::Map<Eigen::MatrixXi>(data.permutation.data(), data.N, 1);
-  Bind(c->clique_assemblers());
-}
-
 T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
                        const std::vector<std::vector<int>>& dual_vars)
     : cliques_(cliques),

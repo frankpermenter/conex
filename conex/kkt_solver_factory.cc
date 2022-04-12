@@ -3,13 +3,18 @@
 #include "conex/kkt_solver.h"
 
 namespace conex {
+using std::vector;
 
 std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
-    ConstraintManager* kkt, const SolverConfiguration& config) {
-  auto solver_temp = std::make_unique<SupernodalKKTSolver>(kkt);
+    ConstraintManager* c, const SolverConfiguration& config) {
+  vector<vector<int>> cliques = c->variables();
+  vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
+
+  auto solver_temp = std::make_unique<SupernodalKKTSolver>(cliques, dual_vars);
   solver_temp->SetIterativeRefinementIterations(
       config.iterative_refinement_iterations);
   solver_temp->SetSolverMode(config.kkt_solver);
+  solver_temp->Bind(c->clique_assemblers());
   return solver_temp;
 }
 
@@ -27,7 +32,7 @@ std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
       equality_constraints.columns.push_back(eq.variables());
     }
   }
-  std::vector<std::vector<int> > cliques_of_G;
+  std::vector<std::vector<int>> cliques_of_G;
   std::vector<SupernodalAssemblerBase*> clique_assemblers_of_G;
   for (const auto& c : kkt->clique_assemblers()) {
     if (c->is_positive_definite()) {
