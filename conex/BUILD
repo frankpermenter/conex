@@ -1,3 +1,5 @@
+load("test.bzl", "conex_cc_test")
+
 cc_library(
     name = "test_util",
     srcs = glob(["test/test_util.cc"]),
@@ -12,7 +14,7 @@ cc_library(
     ],
 )
 
-cc_test(
+conex_cc_test(
     name = "linear_constraint_test",
     srcs = glob(["test/linear_constraint_test.cc"]),
     copts = ["-Iexternal/gtest/include"],
@@ -23,7 +25,7 @@ cc_test(
     ],
 )
 
-cc_test(
+conex_cc_test(
     name = "hermitian_psd_test",
     srcs = glob(["test/hermitian_psd_test.cc"]),
     copts = ["-Iexternal/gtest/include"],
@@ -34,7 +36,7 @@ cc_test(
     ],
 )
 
-cc_test(
+conex_cc_test(
     name = "sdp",
     srcs = glob(["test/test_sdp.cc"]),
     copts = ["-Iexternal/gtest/include"],
@@ -48,7 +50,10 @@ cc_test(
 
 cc_binary(
     name = "psdp",
-    srcs = glob(["test/profile_sdp.cc"]),
+    srcs = [
+        "test/default_solver_config.h",
+        "test/profile_sdp.cc",
+    ],
     deps = [
         "conex_lib",
         "test_util",
@@ -56,7 +61,7 @@ cc_binary(
     ],
 )
 
-cc_test(
+conex_cc_test(
     name = "socp",
     srcs = glob(["test/test_socp.cc"]),
     copts = ["-Iexternal/gtest/include"],
@@ -76,9 +81,9 @@ cc_test(
     ],
 )
 
-cc_test(
+conex_cc_test(
     name = "warmstart",
-    srcs = glob(["test/test_warmstart.cc"]),
+    srcs = ["test/test_warmstart.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
@@ -178,7 +183,7 @@ cc_library(
     ],
 )
 
-cc_test(
+conex_cc_test(
     name = "supernodal_solver_test",
     srcs = ["test/supernodal_solver_test.cc"],
     copts = ["-Iexternal/gtest/include"],
@@ -208,7 +213,7 @@ cc_test(
     ],
 )
 
-cc_test(
+conex_cc_test(
     name = "assembly_test",
     srcs = ["test/assembly_test.cc"],
     copts = ["-Iexternal/gtest/include"],
@@ -411,9 +416,11 @@ cc_library(
     ],
 )
 
-cc_test(
+conex_cc_test(
     name = "equality_constraints_test",
-    srcs = glob(["test/equality_constraints_test.cc"]),
+    srcs = [
+        "test/equality_constraints_test.cc",
+    ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
@@ -421,7 +428,7 @@ cc_test(
     ],
 )
 
-cc_test(
+conex_cc_test(
     name = "quadratic_objective_test",
     srcs = glob(["test/quadratic_objective_test.cc"]),
     copts = ["-Iexternal/gtest/include"],
@@ -433,7 +440,10 @@ cc_test(
 
 cc_test(
     name = "kkt_solver_options_test",
-    srcs = glob(["test/kkt_solver_options_test.cc"]),
+    srcs = [
+        "test/default_solver_config.h",
+        "test/kkt_solver_options_test.cc",
+    ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
@@ -459,6 +469,22 @@ cc_test(
         "@gtest//:main",
     ],
 )
+
+#conex_cc_test(
+#    name = "cg_equality_constraints_test",
+#    srcs = [
+#        "test/default_solver_config.h",
+#        "test/equality_constraints_test.cc",
+#    ],
+#    copts = [
+#        "-Iexternal/gtest/include",
+#        #  "-DCONEX_TEST_CG",
+#    ],
+#    deps = [
+#        "conex_lib",
+#        "@gtest//:main",
+#    ],
+#)
 
 cc_binary(
     name = "solver_failures",

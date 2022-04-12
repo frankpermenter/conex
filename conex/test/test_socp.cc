@@ -5,6 +5,7 @@
 #include "conex/dense_lmi_constraint.h"
 #include "conex/quadratic_cone_constraint.h"
 #include "conex/soc_constraint.h"
+#include "conex/test/default_solver_config.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
@@ -14,7 +15,7 @@ using DenseMatrix = Eigen::MatrixXd;
 
 int DoMain() {
   int n = 3;
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   config.inv_sqrt_mu_max = 10000;
 
   std::vector<Eigen::MatrixXd> A;

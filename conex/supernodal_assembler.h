@@ -215,6 +215,7 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
   }
 
   const Eigen::VectorXd& affine_term() const { return b_; }
+  const Eigen::MatrixXd& constraint_matrix() const { return A_; }
 
   virtual bool is_dynamic() override { return false; }
   virtual bool is_positive_definite() override { return false; }

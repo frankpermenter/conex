@@ -16,6 +16,7 @@ all: libconex.so
 SOURCES = approximate_eigenvalues.cc \
 	  block_triangular_operations.cc \
 	  clique_ordering.cc \
+	  conjugate_gradient_solvers.cc \
 	  cone_program.cc \
 	  quadratic_cost.cc \
 	  dense_lmi_constraint.cc \

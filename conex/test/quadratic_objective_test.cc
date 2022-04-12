@@ -7,6 +7,7 @@
 #include "conex/linear_constraint.h"
 #include "conex/quadratic_cone_constraint.h"
 #include "conex/soc_constraint.h"
+#include "conex/test/default_solver_config.h"
 
 namespace conex {
 
@@ -155,7 +156,7 @@ void SolveQPInstance(ProblemData& data, const SolverConfiguration& config,
 }  // namespace conex
 
 void SolveRandomQP(int num_vars, int num_ineqs) {
-  conex::SolverConfiguration config;
+  conex::SolverConfiguration config = conex::DefaultTestConfiguration();
 
   config.enable_line_search = true;
   config.initial_centering_steps_coldstart = 0;
@@ -175,7 +176,7 @@ void SolveRandomQP(int num_vars, int num_ineqs) {
 }
 
 void SolveRandomQCQP(int num_vars, int num_ineqs) {
-  conex::SolverConfiguration config;
+  conex::SolverConfiguration config = conex::DefaultTestConfiguration();
 
   config.enable_line_search = true;
   config.initial_centering_steps_coldstart = 0;

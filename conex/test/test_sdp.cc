@@ -2,6 +2,7 @@
 #include "conex/constraint.h"
 #include "conex/dense_lmi_constraint.h"
 #include "conex/linear_constraint.h"
+#include "conex/test/default_solver_config.h"
 #include "conex/test/test_util.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
@@ -61,7 +62,7 @@ int TestDiagonalSDP() {
   srand(1);
   int n = 5;
   int m = 2;
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   config.inv_sqrt_mu_max = 25000;
   config.prepare_dual_variables = true;
 
@@ -110,7 +111,7 @@ GTEST_TEST(SDP, DiagonalSDP) {
 }
 
 GTEST_TEST(SDP, SparseAndDenseAgree) {
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
 
   std::vector<int> variables_2{0, 2, 4, 6, 7, 8};
   std::vector<int> variables_1{1, 3, 5};
@@ -168,7 +169,7 @@ GTEST_TEST(SDP, SparseAndDenseAgree) {
 }
 
 int TestSDP(int n, int m) {
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   auto constraints2 = GetRandomDenseMatrices(n, m);
 
   DenseMatrix affine2 = Eigen::MatrixXd::Identity(n, n);

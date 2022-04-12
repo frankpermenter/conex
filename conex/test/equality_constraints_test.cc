@@ -1,6 +1,7 @@
 #include "conex/cone_program.h"
 #include "conex/equality_constraint.h"
 #include "conex/linear_constraint.h"
+#include "conex/test/default_solver_config.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
@@ -44,12 +45,13 @@ GTEST_TEST(EqualityConstraints, Basic) {
   linear_cost = A.transpose() * optimal_dual;
 
   VectorXd solution(num_vars);
-  Solve(linear_cost, prog, conex::SolverConfiguration(), solution.data());
+  Solve(linear_cost, prog, DefaultTestConfiguration(), solution.data());
 
-  EXPECT_NEAR((eq * solution - eq_affine).norm(), 0, 1e-5);
-  EXPECT_NEAR((solution - optimal_y).norm(), 0, 1e-5);
+  EXPECT_NEAR((eq * solution - eq_affine).norm(), 0,
+              DefaultEqualityConstraintTolerance());
+  EXPECT_NEAR((solution - optimal_y).norm(), 0,
+              DefaultEqualityConstraintTolerance());
 }
-
 void DoManySeparate(bool separate) {
   int num_vars = 10;
   int num_inequalities = num_vars + 10;
@@ -80,18 +82,17 @@ void DoManySeparate(bool separate) {
   MatrixXd eq = MatrixXd::Zero(num_equalities, num_vars);
   Eigen::MatrixXd Bi(1, 3);
   Bi << 1, 2, 3;
+  MatrixXd eq_affine(num_equalities, 1);
   for (int i = 0; i < num_equalities; i++) {
     std::vector<int> vars{0, i + 1, num_vars - 1};
     for (size_t j = 0; j < vars.size(); j++) {
       eq(i, vars.at(j)) = Bi(0, j);
     }
+    eq_affine(i) = eq.row(i) * optimal_y;
     if (separate) {
-      prog.AddConstraint(EqualityConstraints{Bi, eq.row(i) * optimal_y}, vars);
+      prog.AddConstraint(EqualityConstraints{Bi, eq_affine.row(i)}, vars);
     }
   }
-
-  MatrixXd eq_affine(num_equalities, 1);
-  eq_affine = eq * optimal_y;
 
   if (!separate) {
     prog.AddConstraint(EqualityConstraints{eq, eq_affine});
@@ -101,9 +102,8 @@ void DoManySeparate(bool separate) {
   linear_cost = A.transpose() * optimal_dual;
 
   VectorXd solution(num_vars);
-  auto config = conex::SolverConfiguration();
+  SolverConfiguration config = DefaultTestConfiguration();
   config.final_centering_steps = 10;
-
   config.initial_centering_steps_coldstart = 0;
   config.max_iterations = 40;
   config.divergence_upper_bound = .5;
@@ -122,7 +122,7 @@ GTEST_TEST(EqualityConstraints, ManyConstraints) {
 }
 
 GTEST_TEST(EqualityConstraints, ManySeparateConstraints) {
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 1; i++) {
     srand(i);
     DoManySeparate(true /* split constraints*/);
   }

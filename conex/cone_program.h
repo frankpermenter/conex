@@ -12,6 +12,10 @@ namespace conex {
 enum : int {
   CONEX_INITIALIZATION_MODE_COLDSTART = 0,
   CONEX_INITIALIZATION_MODE_WARMSTART = 1,
+  CONEX_KKT_SOLVER_LLT = 0,
+  CONEX_KKT_SOLVER_LDLT = 1,
+  CONEX_KKT_SOLVER_QR = 2,
+  CONEX_KKT_SOLVER_CG = 3,
 };
 
 struct SolverConfiguration {
@@ -32,7 +36,7 @@ struct SolverConfiguration {
   int max_iterations = 25;
   double infeasibility_threshold = 1e5;
   double kkt_error_tolerance = 1e10;
-  int kkt_solver = 0; /* 0 = LLT, 1 = LDLT, 2 = QR*/
+  int kkt_solver = CONEX_KKT_SOLVER_LLT;
   int enable_rescaling = 1;
   int iterative_refinement_iterations = 0;
 };

@@ -4,6 +4,7 @@
 #include <memory>
 #include "conex/cone_program.h"
 #include "conex/constraint.h"
+#include "conex/test/default_solver_config.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
@@ -56,7 +57,7 @@ int DoRandomDenseTest(const SolverConfiguration& config, int number_of_tests,
 }
 
 GTEST_TEST(LP, Dense) {
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
   config.inv_sqrt_mu_max = 5e5;
   config.divergence_upper_bound = 1000;
@@ -139,7 +140,7 @@ Eigen::VectorXd SolveSparseHelper(bool sparse) {
   double eps = 1e-8;
   using Eigen::MatrixXd;
   using std::vector;
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
   config.final_centering_tolerance = 1;
   config.divergence_upper_bound = 1e4;
@@ -235,7 +236,7 @@ Eigen::VectorXd SolveFillIn(bool sparse) {
   double eps = 1e-8;
   using Eigen::MatrixXd;
   using std::vector;
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
   config.divergence_upper_bound = 10000;
   config.final_centering_tolerance = 1;
@@ -319,7 +320,7 @@ GTEST_TEST(LP, SparseWithFillIn) {
 }
 
 void DoRandomPrimalFailsSlater(double distance_to_infeasible) {
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
   config.inv_sqrt_mu_max = 10000;
   config.maximum_mu = 10000000;
@@ -385,7 +386,7 @@ GTEST_TEST(LP, RandomPrimal) {
 }
 
 void DoRandomDualFailsSlater(double distance_to_infeasible) {
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
   config.inv_sqrt_mu_max = 10000;
   config.divergence_upper_bound = 10000;

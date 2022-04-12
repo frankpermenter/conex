@@ -6,6 +6,8 @@
 
 namespace conex {
 
+SolverConfiguration DefaultTestConfiguration() { return SolverConfiguration(); }
+
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
@@ -86,7 +88,7 @@ void EqualityConstraintForceEqualityConstraintsToLeafNodes2() {
                      cliques.at(1));
   prog.AddConstraint(EqualityConstraints{B2, VectorXd::Zero(2)}, cliques.at(2));
 
-  conex::SolverConfiguration config;
+  conex::SolverConfiguration config = DefaultTestConfiguration();
   config.max_iterations = 1;
   Solve(linear_cost, prog, config, solution.data());
 }
@@ -156,7 +158,7 @@ void EqualityConstraintForceEqualityConstraintsToLeafNodes(
                      cliques.at(2));
   prog.AddConstraint(EqualityConstraints{B2, VectorXd::Zero(1)}, cliques.at(3));
 
-  conex::SolverConfiguration config;
+  conex::SolverConfiguration config = DefaultTestConfiguration();
   config.max_iterations = 2;
   Solve(linear_cost, prog, config, solution.data());
 }
@@ -207,7 +209,7 @@ void EqualityConstraintsNoQuadraticPenalty() {
   prog.AddConstraint(LinearConstraint{A2, VectorXd::Constant(2, 100)},
                      cliques.at(1));
 
-  conex::SolverConfiguration config;
+  conex::SolverConfiguration config = DefaultTestConfiguration();
   config.max_iterations = 2;
   Solve(linear_cost, prog, config, solution.data());
 }
@@ -375,7 +377,7 @@ class MPCFailingLDLT {
 
 void LPFailSlater(int number_of_implicit_equations) {
   double distance_to_infeasible = 0;
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
   config.inv_sqrt_mu_max = 100;
   config.final_centering_tolerance = 1;

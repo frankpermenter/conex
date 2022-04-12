@@ -5,6 +5,7 @@
 #include "conex/constraint.h"
 #include "conex/equality_constraint.h"
 #include "conex/linear_constraint.h"
+#include "conex/test/default_solver_config.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
@@ -14,7 +15,7 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
 auto GetConfiguration() {
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
   config.inv_sqrt_mu_max = 5e5;
   config.divergence_upper_bound = 1000;

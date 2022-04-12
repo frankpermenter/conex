@@ -5,6 +5,7 @@
 #include "conex/debug_macros.h"
 #include "conex/dense_lmi_constraint.h"
 #include "conex/linear_constraint.h"
+#include "conex/test/default_solver_config.h"
 #include "conex/test/test_util.h"
 
 namespace conex {
@@ -12,7 +13,7 @@ namespace conex {
 using Eigen::MatrixXd;
 
 GTEST_TEST(Warmstart, AgreesWithFullSolveIfNoDataIsChanged) {
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   config.inv_sqrt_mu_max = 10000000;
   config.final_centering_steps = 0;
   int num_iters = 10;
@@ -80,7 +81,7 @@ GTEST_TEST(Warmstart, TestWorkspaceInitialization) {
 
 /*
 GTEST_TEST(Warmstart, ObjectivePertubation) {
-  SolverConfiguration config;
+  SolverConfiguration config=DefaultTestConfiguration();
   config.inv_sqrt_mu_max = 1000;
   config.final_centering_steps = 0;
   config.divergence_upper_bound = 10000;

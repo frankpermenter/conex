@@ -18,6 +18,12 @@ namespace conex {
 // This solver is useful when evaluation of B, B' and inv(G) is
 // inexpensive.
 
+struct SparseEqualityConstraints {
+  std::vector<std::vector<int>> columns;
+  std::vector<std::vector<double>> matrix_entries;
+  std::vector<double> affine_term;
+};
+
 struct ConstrainedLeastSquaresConjugateGradientSolverConfig {
   int iteration_limit = 10;
 };

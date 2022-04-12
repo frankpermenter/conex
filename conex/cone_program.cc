@@ -1,4 +1,5 @@
 #include "conex/cone_program.h"
+#include "conex/conjugate_gradient_solvers.h"
 #include "conex/kkt_solver.h"
 
 #include <vector>
@@ -250,12 +251,42 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
     }
 
     START_TIMER(Sparsity Analysis);
-    auto solver_temp =
-        std::make_unique<SupernodalKKTSolver>(&prog.kkt_system_manager_);
-    solver_temp->SetIterativeRefinementIterations(
-        config.iterative_refinement_iterations);
-    solver_temp->SetSolverMode(config.kkt_solver);
-    solver = std::move(solver_temp);
+    if (config.kkt_solver != CONEX_KKT_SOLVER_CG) {
+      auto solver_temp =
+          std::make_unique<SupernodalKKTSolver>(&prog.kkt_system_manager_);
+      solver_temp->SetIterativeRefinementIterations(
+          config.iterative_refinement_iterations);
+      solver_temp->SetSolverMode(config.kkt_solver);
+      solver = std::move(solver_temp);
+    } else {
+      SparseEqualityConstraints equality_constraints;
+      for (const auto& eq : prog.kkt_system_manager_.equality_constraints()) {
+        const MatrixXd& A = eq.constraint_matrix();
+        for (int i = 0; i < A.rows(); i++) {
+          std::vector<double> entries;
+          for (int j = 0; j < A.cols(); j++) {
+            entries.push_back(A(i, j));
+          }
+          equality_constraints.matrix_entries.push_back(entries);
+          equality_constraints.columns.push_back(eq.variables());
+        }
+      }
+      std::vector<std::vector<int> > cliques_of_G;
+      std::vector<SupernodalAssemblerBase*> clique_assemblers_of_G;
+      for (const auto& c : prog.kkt_system_manager_.clique_assemblers()) {
+        if (c->is_positive_definite()) {
+          cliques_of_G.push_back(c->variables());
+          clique_assemblers_of_G.push_back(c);
+        }
+      }
+      auto solver_temp =
+          std::make_unique<ConstrainedLeastSquaresConjugateGradientSolver>(
+              cliques_of_G, clique_assemblers_of_G,
+              equality_constraints.columns,
+              equality_constraints.matrix_entries);
+
+      solver = std::move(solver_temp);
+    }
     END_TIMER
   }
   return true;

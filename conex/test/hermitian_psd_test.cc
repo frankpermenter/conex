@@ -1,5 +1,6 @@
 #include "conex/hermitian_psd.h"
 #include "conex/dense_lmi_constraint.h"
+#include "conex/test/default_solver_config.h"
 
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
@@ -24,7 +25,7 @@ std::vector<MatrixXd> ToMat(const std::vector<Real::Matrix>& x) {
 int CompareRealHermitianWithLMI(int rank, int dim) {
   using T = Real;
   using Matrix = typename T::Matrix;
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   config.inv_sqrt_mu_max = std::sqrt(1.0 / 1e-4);
   config.final_centering_tolerance = 1e-8;
   config.prepare_dual_variables = true;
@@ -69,7 +70,7 @@ class TestCases : public testing::Test {
 
   void DoSolve(int rank, int m) {
     using Matrix = typename T::Matrix;
-    SolverConfiguration config;
+    SolverConfiguration config = DefaultTestConfiguration();
 
     config.inv_sqrt_mu_max = 1000;
     config.final_centering_steps = 4;

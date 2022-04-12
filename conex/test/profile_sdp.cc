@@ -2,6 +2,7 @@
 #include "conex/constraint.h"
 #include "conex/dense_lmi_constraint.h"
 #include "conex/linear_constraint.h"
+#include "conex/test/default_solver_config.h"
 #include "conex/test/test_util.h"
 #include <Eigen/Dense>
 
@@ -9,7 +10,7 @@ using DenseMatrix = Eigen::MatrixXd;
 
 namespace conex {
 void TestSDP(int i) {
-  SolverConfiguration config;
+  SolverConfiguration config = DefaultTestConfiguration();
   int n = 300;
   int m = 50;
   auto constraints2 = GetRandomDenseMatrices(n, m);
