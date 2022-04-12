@@ -273,6 +273,32 @@ bool Program::AddLinearCost(const VectorXd& b) {
   return CONEX_SUCCESS;
 }
 
+std::string ToString(int solver_type) {
+  switch (solver_type) {
+    case CONEX_KKT_SOLVER_LLT:
+    case CONEX_KKT_SOLVER_LDLT:
+      return "Cholesky";
+    case CONEX_KKT_SOLVER_CG:
+      return "Conjugate Gradient";
+    case CONEX_KKT_SOLVER_QR:
+      return "QR Factorization";
+  }
+  return "";
+}
+void PrintSummary(const Program& prog, const SolverConfiguration& config) {
+  std::cout << "  Variables:" << prog.GetNumberOfVariables() << std::endl;
+  std::cout << "  Equality Constraints: "
+            << prog.constraint_manager().equality_constraints().size()
+            << std::endl;
+  std::cout << "  Cone Inequalities: "
+            << prog.constraint_manager().cone_inequalities().size()
+            << std::endl;
+  std::cout << "  Quadratic Costs: "
+            << prog.constraint_manager().quadratic_costs().size() << std::endl;
+
+  std::cout << "  KKT Solver: " << ToString(config.kkt_solver) << std::endl;
+}
+
 void Program::ClearLinearCosts() { linear_cost_.setZero(); }
 
 bool Solve(Program& prog, const SolverConfiguration& config,
@@ -314,6 +340,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     return prog.status_.solved;
   }
 
+  PrintSummary(prog, config);
   Initialize(prog, config);
   std::cout << "\n";
 
