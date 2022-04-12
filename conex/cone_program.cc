@@ -45,7 +45,7 @@ void AssembleSchurComplementResiduals(ConstraintManager* kkt,
                                       SchurComplementSystem* s) {
   s->setZero();
   int i = 0;
-  for (auto& ci : kkt->clique_assemblers()) {
+  for (auto& ci : kkt->cone_inequalities()) {
     auto* rhs_i = ci->submatrix_data();
     s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
     s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
@@ -516,7 +516,6 @@ bool Solve(Program& prog, const SolverConfiguration& config,
          prog.sys.AQc.col(0).dot(y.col(0)) -
          newton_step_parameters.inv_sqrt_mu *
              prog.sys.inner_product_of_c_and_Qc * c_scaling;
-
     cx /= (newton_step_parameters.inv_sqrt_mu * b_scaling);
 
     double mu = 1.0 / (newton_step_parameters.inv_sqrt_mu);
