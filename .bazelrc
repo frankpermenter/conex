@@ -1,4 +1,5 @@
 build --action_env=LIBRARY_PATH
+build --action_env=LD_LIBRARY_PATH
 build --cxxopt='-std=c++17'
 build --copt="-O3"
 build --copt="-fPIC"
