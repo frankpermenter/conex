@@ -70,9 +70,9 @@ class SupernodalAssemblerBase {
     direct_update = false;
   }
 
-  virtual bool is_dynamic() { return false; }
-  virtual bool is_positive_definite() { return true; }
-  virtual int number_of_auxiliary_variables() { return 0; }
+  virtual bool is_dynamic() const { return false; }
+  virtual bool is_positive_definite() const { return true; }
+  virtual int number_of_auxiliary_variables() const { return 0; }
   virtual std::vector<int> variables() const { return variables_; }
 
   void UpdateBlocks();
@@ -143,9 +143,9 @@ class SupernodalAssembler : public SupernodalAssemblerBase {
     assert(W);
   }
 
-  virtual bool is_dynamic() override { return true; }
-  virtual bool is_positive_definite() override { return true; }
-  virtual int number_of_auxiliary_variables() override { return 0; }
+  virtual bool is_dynamic() const override { return true; }
+  virtual bool is_positive_definite() const override { return true; }
+  virtual int number_of_auxiliary_variables() const override { return 0; }
   Constraint* constraint() { return workspace_; }
 
   virtual void SetDenseData() {
@@ -225,9 +225,11 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
   const Eigen::VectorXd& affine_term() const { return b_; }
   const Eigen::MatrixXd& constraint_matrix() const { return A_; }
 
-  virtual bool is_dynamic() override { return false; }
-  virtual bool is_positive_definite() override { return false; }
-  virtual int number_of_auxiliary_variables() override { return A_.rows(); }
+  virtual bool is_dynamic() const override { return false; }
+  virtual bool is_positive_definite() const override { return false; }
+  virtual int number_of_auxiliary_variables() const override {
+    return A_.rows();
+  }
 
   virtual void SetDenseData() override {
     if (!submatrix_data_.initialized) {

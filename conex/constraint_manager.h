@@ -42,7 +42,7 @@ class ConstraintManager {
 
   int SizeOfKKTSystem() const {
     int num_aux_vars = 0;
-    for (auto e : supernodal_assemblers_ptr_) {
+    for (const auto& e : supernodal_assemblers_ptr_) {
       num_aux_vars += e->number_of_auxiliary_variables();
     }
     return max_number_of_variables_ + num_aux_vars;
