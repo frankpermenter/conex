@@ -87,7 +87,7 @@ class ConstraintManager {
     return quadratic_costs_.size() - 1;
   }
 
-  CONEX_ID AddEqualityConstraint(EqualityConstraints&& x,
+  CONEX_ID AddEqualityConstraint(const EqualityConstraints& x,
                                  const std::vector<int>& variables) {
     if (!IsUnique(max_number_of_variables_, variables)) {
       return CONEX_FAILURE;
@@ -111,12 +111,12 @@ class ConstraintManager {
     return workspaces;
   }
 
-  CONEX_ID AddEqualityConstraint(EqualityConstraints&& x) {
+  CONEX_ID AddEqualityConstraint(const EqualityConstraints& x) {
     std::vector<int> clique(max_number_of_variables_);
     for (size_t i = 0; i < clique.size(); i++) {
       clique[i] = i;
     }
-    return AddEqualityConstraint(std::forward<EqualityConstraints>(x), clique);
+    return AddEqualityConstraint(x, clique);
   }
 
   void InitializeWorkspace() {

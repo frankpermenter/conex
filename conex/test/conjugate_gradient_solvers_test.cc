@@ -2,6 +2,7 @@
 #include "gtest/gtest.h"
 
 #include "conex/constraint_manager.h"
+#include "conex/kkt_solver_factory.h"
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {
@@ -78,4 +79,39 @@ GTEST_TEST(ConjugateGradient, TrivalExample) {
   }
 }
 
+// Build a system whose top left corner is indefinite,
+// i.e.,:
+//
+// * 0 * *
+// 0 0 * *
+// * * 0 0
+// * * 0 0.
+//
+GTEST_TEST(ConjugateGradient, IndefiniteExample) {
+  int num_vars = 4;
+  int num_eq = 2;
+  ConstraintManager prog;
+  prog.SetNumberOfVariables(num_vars);
+  MatrixXd Q1(2, 2);
+  // clang-format off
+  Q1 << 5, 2, 
+        2, 1;
+  // clang-format on
+  prog.AddQuadraticCost(Q1, {0, 1});
+  prog.InitializeWorkspace();
+
+  MatrixXd B(num_eq, num_vars);
+  // clang-format off
+  B << 1, 0, 0, 1, 
+       0, 1, 1, 0;
+  // clang-format on
+  //
+  EqualityConstraints eq{B, VectorXd::Zero(2)};
+  prog.AddEqualityConstraint(eq);
+  prog.InitializeWorkspace();
+  SolverConfiguration config;
+  config.kkt_solver = CONEX_KKT_SOLVER_CG;
+  EXPECT_THROW({ KKTSolverFactory::create_unique(&prog, config); },
+               std::runtime_error);
+}
 }  // namespace conex

@@ -492,6 +492,7 @@ cc_test(
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conjugate_gradient_solvers",
+        "kkt_solver_factory",
         "@gtest//:main",
     ],
 )

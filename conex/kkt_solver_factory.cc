@@ -5,6 +5,11 @@
 namespace conex {
 using std::vector;
 
+void IncrementSubvector(std::vector<int>* y, const std::vector<int>& indices) {
+  for (auto i : indices) {
+    y->at(i)++;
+  }
+}
 std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
   vector<vector<int>> cliques = c->variables();
@@ -34,12 +39,27 @@ std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
   }
   std::vector<std::vector<int>> cliques_of_G;
   std::vector<SupernodalAssemblerBase*> clique_assemblers_of_G;
+  std::vector<int> degree(kkt->GetNumberOfVariables(), 0);
   for (const auto& c : kkt->clique_assemblers()) {
     if (c->is_positive_definite()) {
       cliques_of_G.push_back(c->variables());
       clique_assemblers_of_G.push_back(c);
+      IncrementSubvector(&degree, c->variables());
+      CONEX_DEMAND(
+          c->number_of_auxiliary_variables() == 0,
+          "Auxiliary variables only supported for equality constraints");
     }
   }
+  for (const auto d : degree) {
+    CONEX_DEMAND(d > 0,
+                 "Primal schur-complement matrix is not positive definite.  "
+                 "Please presolve variables using equality constraints or add "
+                 "inequalities/quadratic penalty terms.");
+  }
+  int number_of_equations =
+      kkt->SizeOfKKTSystem() - kkt->GetNumberOfVariables();
+  CONEX_DEMAND(number_of_equations == equality_constraints.columns.size(),
+               "KKT system is malformed");
   return std::make_unique<ConstrainedLeastSquaresConjugateGradientSolver>(
       cliques_of_G, clique_assemblers_of_G, equality_constraints.columns,
       equality_constraints.matrix_entries);
