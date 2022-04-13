@@ -173,6 +173,11 @@ namespace conex {
 
 void T::DoSolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* y,
                        bool permutation_to_elimination_order) const {
+  if (y->rows() != number_of_variables() + number_of_equations()) {
+    throw std::runtime_error(
+        "Cannot perform solve in place. Input dimensions disagree with system "
+        "size.");
+  }
   VectorXd f = y->topRows(number_of_variables());
   VectorXd g = y->bottomRows(number_of_equations());
   VectorXd s1;

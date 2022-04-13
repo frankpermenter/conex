@@ -20,7 +20,8 @@ std::vector<int> ReplaceWithPosition(const std::vector<int>& a,
       if (label_fill_in) {
         y.push_back(-1);
       } else {
-        assert(0);
+        throw std::runtime_error(
+            "Variable does not belong to clique assembler.");
       }
     }
   }
