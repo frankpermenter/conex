@@ -391,13 +391,13 @@ MatrixData SupernodesToData(int num_vars, const std::vector<int>& order,
                             const std::vector<std::vector<int>>& separators) {
   MatrixData d;
   d.clique_order = order;
-  d.permutation.resize(num_vars);
-  d.permutation_inverse.resize(num_vars);
+  d.variable_to_elimination_position.resize(num_vars);
+  d.elimination_position_to_variable.resize(num_vars);
   int i = 0;
   for (auto& e : order) {
     for (auto& sn_ii : supernodes.at(e)) {
-      d.permutation_inverse.at(i) = sn_ii;
-      d.permutation.at(sn_ii) = i;
+      d.elimination_position_to_variable.at(i) = sn_ii;
+      d.variable_to_elimination_position.at(sn_ii) = i;
       i++;
     }
   }
@@ -410,22 +410,24 @@ MatrixData SupernodesToData(int num_vars, const std::vector<int>& order,
   i = 0;
   for (auto e : order) {
     d.cliques.at(i) = supernodes.at(e);
-
-    auto temp = Relabel(separators.at(e), d.permutation);
+    auto temp = Relabel(separators.at(e), d.variable_to_elimination_position);
     std::sort(temp.begin(), temp.end());
-    auto sep = Relabel(temp, d.permutation_inverse);
+    auto seperators_in_elimination_order =
+        Relabel(temp, d.elimination_position_to_variable);
 
-    for (auto si : sep) {
+    for (auto si : seperators_in_elimination_order) {
       d.cliques.at(i).push_back(si);
     }
-    d.cliques.at(i) = Relabel(d.cliques.at(i), d.permutation);
+    d.cliques.at(i) =
+        Relabel(d.cliques.at(i), d.variable_to_elimination_position);
     supernode_size.at(i) = supernodes.at(e).size();
 
     d.supernodes_original_labels.at(i) = supernodes.at(e);
-    d.separators_original_labels.at(i) = sep;
+    d.separators_original_labels.at(i) = seperators_in_elimination_order;
 
     i++;
   }
+
   d.N = std::accumulate(supernode_size.begin(), supernode_size.end(), 0);
   return d;
 }

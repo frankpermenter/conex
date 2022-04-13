@@ -97,10 +97,10 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
       permutation_to_elimination_order_(data.N),
       b_permuted_(data.N) {
   RelabelCliques(&data);
-  permutation_from_elimination_order_.indices() =
-      Eigen::Map<Eigen::MatrixXi>(data.permutation_inverse.data(), data.N, 1);
-  permutation_to_elimination_order_.indices() =
-      Eigen::Map<Eigen::MatrixXi>(data.permutation.data(), data.N, 1);
+  permutation_from_elimination_order_.indices() = Eigen::Map<Eigen::MatrixXi>(
+      data.elimination_position_to_variable.data(), data.N, 1);
+  permutation_to_elimination_order_.indices() = Eigen::Map<Eigen::MatrixXi>(
+      data.variable_to_elimination_position.data(), data.N, 1);
 }
 
 T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques)
@@ -113,10 +113,10 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques)
       permutation_to_elimination_order_(data.N),
       b_permuted_(data.N) {
   RelabelCliques(&data);
-  permutation_from_elimination_order_.indices() =
-      Eigen::Map<Eigen::MatrixXi>(data.permutation_inverse.data(), data.N, 1);
-  permutation_to_elimination_order_.indices() =
-      Eigen::Map<Eigen::MatrixXi>(data.permutation.data(), data.N, 1);
+  permutation_from_elimination_order_.indices() = Eigen::Map<Eigen::MatrixXi>(
+      data.elimination_position_to_variable.data(), data.N, 1);
+  permutation_to_elimination_order_.indices() = Eigen::Map<Eigen::MatrixXi>(
+      data.variable_to_elimination_position.data(), data.N, 1);
 }
 
 T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
@@ -131,10 +131,10 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
       permutation_to_elimination_order_(data.N),
       b_permuted_(data.N) {
   RelabelCliques(&data);
-  permutation_from_elimination_order_.indices() =
-      Eigen::Map<Eigen::MatrixXi>(data.permutation_inverse.data(), data.N, 1);
-  permutation_to_elimination_order_.indices() =
-      Eigen::Map<Eigen::MatrixXi>(data.permutation.data(), data.N, 1);
+  permutation_from_elimination_order_.indices() = Eigen::Map<Eigen::MatrixXi>(
+      data.elimination_position_to_variable.data(), data.N, 1);
+  permutation_to_elimination_order_.indices() = Eigen::Map<Eigen::MatrixXi>(
+      data.variable_to_elimination_position.data(), data.N, 1);
 }
 
 void T::DoAssemble() {

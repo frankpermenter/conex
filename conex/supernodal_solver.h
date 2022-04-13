@@ -16,14 +16,16 @@ std::vector<int> UnionOfSorted(const std::vector<int>& x1,
 
 // TODO(FrankPermenter): Deprecate this struct.
 struct MatrixData {
-  std::vector<std::vector<int>> cliques;
+  // The input to the clique assemblers.
   std::vector<std::vector<int>> supernodes_original_labels;
   std::vector<std::vector<int>> separators_original_labels;
+
+  // The input the the triangular matrix data structure.
+  std::vector<std::vector<int>> cliques;
   std::vector<int> supernode_size;
-  std::vector<int> permutation;
-  // The map from supernode to original variable.
-  std::vector<int> permutation_inverse;
-  // The map from clique (with fill-in) to original clique.
+  std::vector<int> variable_to_elimination_position;
+  std::vector<int> elimination_position_to_variable;
+  // The map from elimination position to clique.
   std::vector<int> clique_order;
   int N;
 };
