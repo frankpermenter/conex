@@ -212,7 +212,10 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
   SupernodalAssemblerEqualities(const Eigen::MatrixXd& A,
                                 const Eigen::VectorXd& b,
                                 const std::vector<int>& variables)
-      : SupernodalAssemblerBase(variables, A.rows()), A_(A), b_(b) {}
+      : SupernodalAssemblerBase(variables, A.rows()), A_(A), b_(b) {
+    CONEX_ASSERT(A.cols() == static_cast<int>(variables.size()),
+                 "Number of columns must match number of variables");
+  }
 
   int UpdateMatrix(double value, int row, int col) {
     CONEX_RETURN_ON_FAIL(row < A_.rows() && col < A_.cols(),
