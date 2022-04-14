@@ -1,10 +1,11 @@
-#include "conex/error_codes.h"
+#include "conex/constraint_interface.h"
+#include "conex/error_checking_macros.h"
 #include "conex/newton_step.h"
 #include "conex/workspace_soc.h"
 
 namespace conex {
 
-class SOCConstraint {
+class SOCConstraint : public ConstraintBase {
   using StorageType = DenseMatrix;
 
  public:
@@ -13,9 +14,11 @@ class SOCConstraint {
       : workspace_(constraint_matrix.rows() - 1),
         constraint_matrix_(constraint_matrix),
         constraint_affine_(constraint_affine) {
-    assert(constraint_matrix_.rows() == constraint_affine_.rows());
+    CONEX_DEMAND(constraint_matrix_.rows() == constraint_affine_.rows(),
+                 "Invalid SOC problem data.");
   }
 
+  void accept(Visitor* v) override { v->visit(*this); }
   // Lorentz cone a subset of R^(n+1).
   SOCConstraint(int n) : workspace_(n), n_(n) {}
 
@@ -47,6 +50,9 @@ class SOCConstraint {
                                 const LineSearchParameters& params,
                                 const Ref& y0, const Ref& y1,
                                 LineSearchOutput* output);
+
+  DenseMatrix constraint_matrix() const { return constraint_matrix_; }
+  DenseMatrix affine_term() const { return constraint_affine_; }
 
  private:
   void ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y, Ref* minus_s);

@@ -1,4 +1,5 @@
 #pragma once
+#include "conex/constraint_interface.h"
 #include "newton_step.h"
 #include "psd_constraint.h"
 
@@ -11,6 +12,12 @@ class MatrixLMIConstraint : public PsdConstraint {
                       const DenseMatrix& constraint_affine);
 
   Eigen::MatrixXd constraint_matrices_vect_;
+
+  const std::vector<DenseMatrix> constraint_matrices() const {
+    return constraint_matrices_;
+  }
+  const DenseMatrix affine_term() const { return constraint_affine_; }
+
   const std::vector<DenseMatrix> constraint_matrices_;
   const DenseMatrix constraint_affine_;
 
@@ -35,6 +42,8 @@ class DenseLMIConstraint final : public MatrixLMIConstraint {
   friend void ConstructSchurComplementSystem(DenseLMIConstraint* o,
                                              bool initialize,
                                              SchurComplementSystem* sys);
+
+  void accept(Visitor* v) override { v->visit(*this); }
 
  private:
   void ComputeNegativeSlack(double k, const Ref& y, Ref* s) override;

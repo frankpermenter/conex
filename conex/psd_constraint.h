@@ -1,8 +1,9 @@
 #pragma once
 #include <Eigen/Dense>
 
-#include "newton_step.h"
-#include "workspace.h"
+#include "conex/constraint_interface.h"
+#include "conex/newton_step.h"
+#include "conex/workspace.h"
 
 namespace conex {
 
@@ -24,11 +25,7 @@ struct WorkspaceDensePSD {
     new (&o->temp_2) Map(data + 2 * get_size_aligned(n * n), n, n);
   }
 
-  friend void print(const WorkspaceDensePSD& o) {
-    DUMP(o.W);
-    DUMP(o.temp_1);
-    DUMP(o.temp_2);
-  }
+  friend void print(const WorkspaceDensePSD& o) {}
 
   Eigen::Map<DenseMatrix, Eigen::Aligned> W{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> temp_1{NULL, 0, 0};
@@ -36,7 +33,7 @@ struct WorkspaceDensePSD {
   int n_;
 };
 
-class PsdConstraint {
+class PsdConstraint : public ConstraintBase {
  public:
   friend void SetIdentity(PsdConstraint* o);
   friend int Rank(const PsdConstraint& o) { return o.workspace_.n_; };
@@ -61,7 +58,7 @@ class PsdConstraint {
   virtual double EvalDualObjective(const Ref& W) = 0;
   virtual void ComputeAW(int i, const Ref& W, Ref* AW, Ref* WAW) = 0;
   virtual void ComputeNegativeSlack(double k, const Ref& y, Ref* s) = 0;
-  virtual ~PsdConstraint(){};
+  virtual ~PsdConstraint() = default;
 };
 
 }  // namespace conex

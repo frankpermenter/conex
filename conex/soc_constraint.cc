@@ -317,11 +317,7 @@ DenseMatrix Sqrt(double x0, const DenseMatrix& x) {
   spec.Compute(z);
   auto ev = spec.Eigenvalues();
 
-  if (ev.minCoeff() < 0) {
-    DUMP(ev);
-    DUMP(z);
-    assert(0);
-  }
+  CONEX_DEMAND(ev.minCoeff() > 0, "Sqrt failed: element not in cone");
 
   DenseMatrix zsqrt = std::sqrt(ev(0, 0)) * spec.Idempotent(0) +
                       std::sqrt(ev(1, 0)) * spec.Idempotent(1);
@@ -406,11 +402,9 @@ bool TakeStep(SOCConstraint* o, const StepOptions& opt) {
   *o->workspace_.W0 = wn(0, 0);
   o->workspace_.W1 = wn.bottomRows(n - 1);
 
-  if (o->workspace_.W1.norm() > *o->workspace_.W0) {
-    DUMP(o->workspace_.W1.norm());
-    DUMP(o->workspace_.W0);
-    assert(0);
-  }
+  CONEX_ASSERT(o->workspace_.W1.norm() <= *o->workspace_.W0,
+               "Element not in cone.");
+
   return true;
 }
 

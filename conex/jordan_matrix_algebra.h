@@ -1,6 +1,5 @@
 #pragma once
 #include "conex/debug_macros.h"
-//#include "conex/eigen_decomp.h"
 #include <Eigen/Dense>
 
 namespace conex {

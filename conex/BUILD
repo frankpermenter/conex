@@ -215,9 +215,13 @@ cc_test(
 
 conex_cc_test(
     name = "assembly_test",
-    srcs = ["test/assembly_test.cc"],
+    srcs = [
+        "test/assembly_test.cc",
+    ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
+        "constraint_interface",
+        "kkt_solver_interface",
         "supernodal_solver",
         "@gtest//:main",
     ],
@@ -253,17 +257,32 @@ cc_library(
 
 cc_library(
     name = "kkt_solver_interface",
-    hdrs = ["kkt_solver_interface.h"],
+    hdrs = [
+        "constraint_manager.h",
+        "kkt_solver_interface.h",
+        "supernodal_assembler.h",
+    ],
 )
 
 cc_library(
     name = "kkt_solver_factory",
-    srcs = ["kkt_solver_factory.cc"],
+    srcs = [
+        "kkt_solver_factory.cc",
+    ],
     hdrs = ["kkt_solver_factory.h"],
     deps = [
         "conjugate_gradient_solvers",
+        "constraint_interface",
         "kkt_solver_interface",
         "supernodal_solver",
+    ],
+)
+
+cc_library(
+    name = "error_checking",
+    hdrs = [
+        "error_checking_macros.h",
+        "error_codes.h",
     ],
 )
 
@@ -274,7 +293,6 @@ cc_library(
         "block_triangular_operations.cc",
         "clique_ordering.cc",
         "debug_macros.h",
-        "equality_constraint.cc",
         "kkt_solver.cc",
         "supernodal_assembler.cc",
         "supernodal_solver.cc",
@@ -283,18 +301,12 @@ cc_library(
     hdrs = [
         "block_triangular_operations.h",
         "clique_ordering.h",
-        "constraint.h",
-        "constraint_manager.h",
         "debug_macros.h",
-        "equality_constraint.h",
-        "error_checking_macros.h",
-        "error_codes.h",
         "kkt_solver.h",
         "kkt_solver_factory.h",
         "kkt_solver_interface.h",
         "linear_workspace.h",
         "memory_utils.h",
-        "newton_step.h",
         "supernodal_assembler.h",
         "supernodal_cholesky_data.h",
         "supernodal_solver.h",
@@ -303,8 +315,11 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":solver_configuration",
-        ":tree_utils",
+        "constraint_interface",
+        "equality_constraint",
+        "error_checking",
+        "solver_configuration",
+        "tree_utils",
         "@eigen",
     ],
 )
@@ -318,10 +333,8 @@ cc_library(
     hdrs = [
         "cone_program.h",
         "constraint.h",
-        "constraint_manager.h",
+        "constraint_interface.h",
         "debug_macros.h",
-        "error_checking_macros.h",
-        "error_codes.h",
         "memory_utils.h",
         "newton_step.h",
         "quadratic_cost.h",
@@ -333,9 +346,26 @@ cc_library(
     deps = [
         ":conjugate_gradient_solvers",
         ":divergence",
+        ":equality_constraint",
+        ":error_checking",
         ":kkt_solver_factory",
         ":solver_configuration",
         ":supernodal_solver",
+        "@eigen",
+    ],
+)
+
+cc_library(
+    name = "equality_constraint",
+    srcs = [
+        "equality_constraint.cc",
+    ],
+    hdrs = [
+        "equality_constraint.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "constraint_interface",
         "@eigen",
     ],
 )
@@ -351,7 +381,8 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "core",
+        "constraint_interface",
+        "error_checking",
         "@eigen",
     ],
 )
@@ -371,7 +402,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "approximate_eigenvalues",
-        "core",
+        "constraint_interface",
+        "error_checking",
         "exponential_map",
         "exponential_map_pade",
         "jordan_matrix_algebra",
@@ -408,7 +440,8 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "core",
+        "constraint_interface",
+        "error_checking",
         "@eigen",
     ],
 )
@@ -422,22 +455,24 @@ cc_library(
         "error_checking_macros.h",
         "error_codes.h",
         "memory_utils.h",
-        "newton_step.h",
+        "supernodal_assembler.h",
         "workspace.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":approximate_eigenvalues",
-        ":core",
-        ":divergence",
-        ":exponential_map",
-        ":exponential_map_pade",
-        ":jordan_matrix_algebra",
-        ":linear_constraint",
-        ":semidefinite_constraints",
-        ":socp_constraints",
-        ":solver_configuration",
-        ":supernodal_solver",
+        "approximate_eigenvalues",
+        "constraint_interface",
+        "core",
+        "divergence",
+        "equality_constraint",
+        "exponential_map",
+        "exponential_map_pade",
+        "jordan_matrix_algebra",
+        "linear_constraint",
+        "semidefinite_constraints",
+        "socp_constraints",
+        "solver_configuration",
+        "supernodal_solver",
         "@eigen",
     ],
 )
@@ -449,7 +484,9 @@ conex_cc_test(
     ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
-        "conex_lib",
+        ":core",
+        ":equality_constraint",
+        ":linear_constraint",
         "@gtest//:main",
     ],
 )
@@ -497,26 +534,59 @@ cc_test(
     ],
 )
 
-#conex_cc_test(
-#    name = "cg_equality_constraints_test",
-#    srcs = [
-#        "test/default_solver_config.h",
-#        "test/equality_constraints_test.cc",
-#    ],
-#    copts = [
-#        "-Iexternal/gtest/include",
-#        #  "-DCONEX_TEST_CG",
-#    ],
-#    deps = [
-#        "conex_lib",
-#        "@gtest//:main",
-#    ],
-#)
-
 cc_binary(
     name = "solver_failures",
     srcs = ["test/solver_failures.cc"],
     deps = [
         "conex_lib",
+    ],
+)
+
+cc_library(
+    name = "constraint_interface",
+    hdrs = [
+        "constraint.h",
+        "constraint_interface.h",
+        "memory_utils.h",
+        "newton_step.h",
+        "supernodal_assembler.h",
+        "supernodal_cholesky_data.h",
+        "workspace.h",
+    ],
+)
+
+cc_library(
+    name = "serializer",
+    srcs = [
+        "json_parser.cc",
+        "json_parser.h",
+        "serialize.cc",
+        "serialize.h",
+    ],
+    deps = [
+        "equality_constraint",
+        "error_checking",
+        "linear_constraint",
+        "semidefinite_constraints",
+        "socp_constraints",
+        "@eigen",
+    ],
+)
+
+cc_test(
+    name = "serialize_test",
+    srcs = [
+        "test/serialize_test.cc",
+    ],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "linear_constraint",
+        "socp_constraints",
+        "semidefinite_constraints",
+        "serializer",
+        #        "semidefinite_constraints",
+        "equality_constraint",
+        "@eigen",
+        "@gtest//:main",
     ],
 )
