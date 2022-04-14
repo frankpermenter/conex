@@ -520,3 +520,18 @@ cc_binary(
         "conex_lib",
     ],
 )
+
+cc_test(
+    name = "serialize_test",
+    srcs = [
+        "test/serialize.cc",
+        "test/serialize.h",
+        "test/serialize_test.cc",
+    ],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "core",
+        "@eigen",
+        "@gtest//:main",
+    ],
+)
