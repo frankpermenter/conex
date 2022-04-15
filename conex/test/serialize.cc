@@ -5,13 +5,13 @@
 using std::vector;
 namespace conex {
 
-std::string MakeJsonString(const Json::Value& val) {
-  std::string output = val.data.string;
-  if (val.data.children.size() > 0) {
+std::string ConvertToJsonString(const Json::Value& val) {
+  std::string output = val.value();
+  if (val.children().size() > 0) {
     output += "{ ";
-    for (auto& v : val.data.children) {
+    for (auto& v : val.children()) {
       output =
-          output + "  \"" + v.first + "\" : " + MakeJsonString(v.second) + " ,";
+          output + "  \"" + v.first + "\" : " + ConvertToJsonString(v.second) + " ,";
     }
     output.pop_back(); /* remove last "," */
     output += "} ";
@@ -38,15 +38,15 @@ std::string MatrixToJsonLeaf(const Eigen::MatrixXd& value) {
 
 Value MatrixToJson(const Eigen::MatrixXd& value) {
   Value v;
-  v.data.children["cols"] = to_string(value.cols());
-  v.data.children["rows"] = to_string(value.rows());
-  v.data.children["data"] = MatrixToInitializerString(value);
+  v.children()["cols"] = to_string(value.cols());
+  v.children()["rows"] = to_string(value.rows());
+  v.children()["data"] = MatrixToInitializerString(value);
   return v;
 }
 
 template <>
 int ConstructFromString<int>(const Value& value) {
-  return stoi(value.data.string);
+  return stoi(value.value());
 }
 
 template <>
@@ -61,19 +61,19 @@ int StringToType<int>(const std::string& input) {
 
 template <>
 std::string ConstructFromString<std::string>(const Value& value) {
-  return value.data.string;
+  return value.value();
 }
 
 template <>
 std::vector<int> ConstructFromString<std::vector<int>>(const Value& value) {
-  return CommaSeparatedStringToVector<int>(value.data.string);
+  return CommaSeparatedStringToVector<int>(value.value());
 }
 
 template <>
 Eigen::MatrixXd ConstructFromString<Eigen::MatrixXd>(const Value& value) {
-  std::string data = value.data.children.at("data").data.string;
-  int rows = stoi(value.data.children.at("rows").data.string);
-  int cols = stoi(value.data.children.at("cols").data.string);
+  std::string data = value.children().at("data").value();
+  int rows = stoi(value.children().at("rows").value());
+  int cols = stoi(value.children().at("cols").value());
   std::vector<double> matrix_data = CommaSeparatedStringToVector<double>(data);
   if (rows * cols != static_cast<int>(matrix_data.size())) {
     throw std::runtime_error("Invalid data.");
@@ -85,7 +85,7 @@ template <>
 vector<Eigen::MatrixXd> ConstructFromString<vector<Eigen::MatrixXd>>(
     const Value& value) {
   vector<Eigen::MatrixXd> y;
-  for (const auto& v : value.data.children) {
+  for (const auto& v : value.children()) {
     y.push_back(ConstructFromString<Eigen::MatrixXd>(v.second));
   }
   return y;
@@ -105,7 +105,7 @@ bool ReadNextToken(const std::string& string, size_t start, size_t* token_start,
   return *end != string::npos && *token_start != string::npos;
 }
 
-Json::Value MakeValue(const std::string& json) {
+Json::Value ParseJsonString(const std::string& json) {
   size_t token_end = string::npos;
   size_t token_start = 0;
   size_t next_search_start = 0;
@@ -170,13 +170,13 @@ Json::Value MakeValue(const std::string& json) {
       throw std::runtime_error("bad");
     }
     if (has_multiple_children.at(token_to_parent.at(token_id))) {
-      current_node->data.children[tokens.at(token_id)];
+      current_node->children()[tokens.at(token_id)];
       // Attach node to parent using token name, but
       // node pointer to global table using unique token-id.
       parent_nodes[token_id] =
-          &current_node->data.children[tokens.at(token_id)];
+          &current_node->children()[tokens.at(token_id)];
     } else {
-      current_node->data.string = tokens.at(token_id);
+      current_node->value() = tokens.at(token_id);
     }
   }
   return root;

@@ -27,18 +27,21 @@ constexpr void for_sequence(std::integer_sequence<T, S...>, F&& f) {
 namespace Json {
 struct Value;
 
-struct ValueData {
-  std::map<std::string, Value> children;
-  std::string string = "";
-};
 
 std::string jsonString(const std::string& field, const std::string& value);
 
 std::string MatrixToJsonLeaf(const Eigen::MatrixXd& value);
 
 Value MatrixToJson(const Eigen::MatrixXd& value);
+
 struct Value {
-  ValueData data;
+ private:
+  struct ValueData {
+    std::map<std::string, Value> children;
+    std::string string = "";
+   friend Value;
+  };
+ public:
 
   Value& operator[](std::string name) { return data.children[std::move(name)]; }
 
@@ -48,11 +51,10 @@ struct Value {
     if (it != data.children.end()) {
       return it->second;
     }
-
     throw;
   }
 
-  Value& operator=(std::string value) {
+  Value& operator=(const std::string& value) {
     data.string = value;
     return *this;
   }
@@ -85,7 +87,6 @@ struct Value {
   }
 
   Value& operator=(const vector<Eigen::MatrixXd>& value) {
-    // { num_row { }, num_col {}, data : [   ]  },
     int i = 0;
     Value constraint_matrices;
     for (auto& v : value) {
@@ -96,6 +97,14 @@ struct Value {
     data = constraint_matrices.data;
     return *this;
   }
+  
+  std::map<std::string, Value>& children() { return data.children; }
+  const std::map<std::string, Value>& children() const { return data.children; }
+
+  std::string& value() { return data.string; }
+  const std::string& value() const { return data.string; }
+ private:
+  ValueData data;
 };
 
 template <typename T>
@@ -181,7 +190,7 @@ Json::Value toJson(const T& object) {
   return data;
 }
 
-std::string MakeJsonString(const Json::Value& val);
-Json::Value MakeValue(const std::string& json);
+std::string ConvertToJsonString(const Json::Value& val);
+Json::Value ParseJsonString(const std::string& json);
 
 }  // namespace conex

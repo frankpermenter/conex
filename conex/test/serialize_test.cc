@@ -24,8 +24,8 @@ bool IsEqual(const std::vector<MatrixXd>& m1, const std::vector<MatrixXd>& m2) {
 struct ConstraintBase {
   Json::Value serialize() {
     Json::Value value;
-    value.data.children["data"] = generate_json();
-    value.data.children["id"].data.string = to_string(type_id());
+    value.children()["data"] = generate_json();
+    value.children()["id"].value() = to_string(type_id());
     return value;
   }
 
@@ -77,7 +77,7 @@ struct ConstraintTwo : ConstraintBase {
 
 std::unique_ptr<ConstraintBase> create_from_json(const Json::Value& value,
                                                  int constraint_type) {
-  // switch (string_to_id.at(value.data.children.at("type").data.string)) {
+  // switch (string_to_id.at(value.children().at("type").value())) {
   switch (constraint_type) {
     case ConstraintOneID: {
       Constraint constraint = fromJson<conex::Constraint>(value);
@@ -118,7 +118,7 @@ GTEST_TEST(Serialize, ConvertProgram) {
 
   Json::Value program;
   for (size_t i = 0; i < constraints.size(); ++i) {
-    program.data.children["constraints"].data.children[to_string(i)] =
+    program.children()["constraints"].children()[to_string(i)] =
         constraints.at(i)->serialize();
   }
 
@@ -126,10 +126,10 @@ GTEST_TEST(Serialize, ConvertProgram) {
 
   std::vector<std::unique_ptr<ConstraintBase>> constraints_deserialize(2);
   for (size_t i = 0; i < constraints.size(); ++i) {
-    const auto& all_constraints = program.data.children.at("constraints");
-    const auto& constraint_i = all_constraints.data.children.at(to_string(i));
-    const auto& id = constraint_i.data.children.at("id").data.string;
-    const auto& data = constraint_i.data.children.at("data");
+    const auto& all_constraints = program.children().at("constraints");
+    const auto& constraint_i = all_constraints.children().at(to_string(i));
+    const auto& id = constraint_i.children().at("id").value();
+    const auto& data = constraint_i.children().at("data");
     constraints_deserialize.at(i) = create_from_json(data, stoi(id));
   }
 }
@@ -147,8 +147,8 @@ GTEST_TEST(Serialize, ConvertConstraint) {
   EXPECT_EQ(constraint.variables, constraint_from_json.variables);
   EXPECT_EQ(constraint.order, constraint_from_json.order);
 
-  std::string jsonString = MakeJsonString(jsonConstraint);
-  Json::Value jsonConstraintFromString = MakeValue(jsonString);
+  std::string jsonString = ConvertToJsonString(jsonConstraint);
+  Json::Value jsonConstraintFromString = ParseJsonString(jsonString);
 
   Constraint constraint_from_json_string =
       fromJson<conex::Constraint>(jsonConstraintFromString);
