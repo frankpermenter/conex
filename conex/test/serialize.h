@@ -41,7 +41,6 @@ struct Value {
 
   const Value& operator[](std::string name) const {
     auto it = data.children.find(std::move(name));
-
     if (it != data.children.end()) {
       return it->second;
     }
@@ -49,21 +48,25 @@ struct Value {
   }
 
   Value& operator=(const std::string& value) {
+    CONEX_ASSERT(is_scalar() || is_empty(), "Json data is malformed.");
     data.string = value;
     return *this;
   }
 
   Value& operator=(int value) {
+    CONEX_ASSERT(is_scalar() || is_empty(), "Json data is malformed.");
     data.string = std::to_string(value);
     return *this;
   }
 
   Value& operator=(double value) {
+    CONEX_ASSERT(is_scalar() || is_empty(), "Json data is malformed.");
     data.string = std::to_string(value);
     return *this;
   }
 
   Value& operator=(const std::vector<int>& v) {
+    CONEX_ASSERT(is_scalar() || is_empty(), "Json data is malformed.");
     std::stringstream buffer;
     if (v.size() > 0) {
       buffer << v.at(0);
@@ -76,11 +79,13 @@ struct Value {
   }
 
   Value& operator=(const Eigen::MatrixXd& value) {
+    CONEX_ASSERT(is_empty(), "Json data is malformed.");
     data = MatrixToJson(value).data;
     return *this;
   }
 
   Value& operator=(const vector<Eigen::MatrixXd>& value) {
+    CONEX_ASSERT(is_empty(), "Json data is malformed.");
     int i = 0;
     Value constraint_matrices;
     for (auto& v : value) {
@@ -103,6 +108,7 @@ struct Value {
   }
 
   bool is_scalar() const { return data.children.size() == 0; }
+  bool is_empty() const { return data.children.size() == 0 && data.string.length() == 0; }
 
   std::string& value() { 
     CONEX_ASSERT(data.children.size() == 0, "Json data is malformed.");
