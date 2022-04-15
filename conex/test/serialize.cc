@@ -6,7 +6,7 @@ using std::vector;
 namespace conex {
 
 std::string ConvertToJsonString(const Value& val) {
-  if (val.children().size() > 0) {
+  if (!val.is_scalar()) {
     std::string output = "{ ";
     for (auto& v : val.children()) {
       output += "  \"" + v.first + "\" : " + ConvertToJsonString(v.second) + " ,";

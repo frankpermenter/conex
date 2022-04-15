@@ -3,6 +3,7 @@
 #include <map>
 #include <tuple>
 #include "conex/debug_macros.h"
+#include "conex/error_checking_macros.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
@@ -91,21 +92,24 @@ struct Value {
     return *this;
   }
   
-  std::map<std::string, Value>& children() { return data.children; }
-  const std::map<std::string, Value>& children() const { return data.children; }
+  std::map<std::string, Value>& children() { 
+    CONEX_ASSERT(data.string.length() == 0, "Json data is malformed.");
+    return data.children; 
+  }
+
+  const std::map<std::string, Value>& children() const {
+    CONEX_ASSERT(data.string.length() == 0, "Json data is malformed.");
+    return data.children; 
+  }
+
+  bool is_scalar() const { return data.children.size() == 0; }
 
   std::string& value() { 
-    if (data.children.size() != 0)  {
-      DUMP(data.string);
-      throw;
-    }
+    CONEX_ASSERT(data.children.size() == 0, "Json data is malformed.");
     return data.string; 
   }
   const std::string& value() const { 
-    if (data.children.size() != 0 && data.string.length() != 0)  {
-      DUMP(data.string);
-      throw;
-    }
+    CONEX_ASSERT(data.children.size() == 0, "Json data is malformed.");
     return data.string; 
   }
  private:
