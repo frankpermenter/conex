@@ -22,15 +22,8 @@ constexpr void for_sequence(std::integer_sequence<T, S...>, F&& f) {
                  0};
 }
 
-// Sample implementation of a json-like data structure. It is only there for the
-// example to compile and actually produce a testable output
-namespace Json {
 struct Value;
 
-
-std::string jsonString(const std::string& field, const std::string& value);
-
-std::string MatrixToJsonLeaf(const Eigen::MatrixXd& value);
 
 Value MatrixToJson(const Eigen::MatrixXd& value);
 
@@ -42,7 +35,7 @@ struct Value {
    friend Value;
   };
  public:
-
+ 
   Value& operator[](std::string name) { return data.children[std::move(name)]; }
 
   const Value& operator[](std::string name) const {
@@ -101,8 +94,20 @@ struct Value {
   std::map<std::string, Value>& children() { return data.children; }
   const std::map<std::string, Value>& children() const { return data.children; }
 
-  std::string& value() { return data.string; }
-  const std::string& value() const { return data.string; }
+  std::string& value() { 
+    if (data.children.size() != 0)  {
+      DUMP(data.string);
+      throw;
+    }
+    return data.string; 
+  }
+  const std::string& value() const { 
+    if (data.children.size() != 0 && data.string.length() != 0)  {
+      DUMP(data.string);
+      throw;
+    }
+    return data.string; 
+  }
  private:
   ValueData data;
 };
@@ -123,9 +128,8 @@ std::vector<T> CommaSeparatedStringToVector(const std::string& input) {
 }
 
 template <typename T>
-T ConstructFromString(const Value&);
+T ConstructObjectFromJson(const Value&);
 
-}  // namespace Json
 
 template <typename Class, typename T>
 struct PropertyImpl {
@@ -147,7 +151,7 @@ constexpr auto property(T Class::*member, const char* name) {
 
 // unserialize function
 template <typename T>
-T fromJson(const Json::Value& data) {
+T fromJson(const Value& data) {
   T object;
 
   // We first get the number of properties
@@ -163,7 +167,7 @@ T fromJson(const Json::Value& data) {
 
     // set the value to the member
     object.*(property.member) =
-        Json::ConstructFromString<Type>(data[property.name]);
+        ConstructObjectFromJson<Type>(data[property.name]);
   });
 
   return object;
@@ -173,8 +177,8 @@ template <typename T>
 std::string ObjectName();
 
 template <typename T>
-Json::Value toJson(const T& object) {
-  Json::Value data;
+Value toJson(const T& object) {
+  Value data;
   // We first get the number of properties
   constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
 
@@ -190,7 +194,7 @@ Json::Value toJson(const T& object) {
   return data;
 }
 
-std::string ConvertToJsonString(const Json::Value& val);
-Json::Value ParseJsonString(const std::string& json);
+std::string ConvertToJsonString(const Value& val);
+Value ParseJsonString(const std::string& json);
 
 }  // namespace conex

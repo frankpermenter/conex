@@ -5,24 +5,21 @@
 using std::vector;
 namespace conex {
 
-std::string ConvertToJsonString(const Json::Value& val) {
-  std::string output = val.value();
+std::string ConvertToJsonString(const Value& val) {
   if (val.children().size() > 0) {
-    output += "{ ";
+    std::string output = "{ ";
     for (auto& v : val.children()) {
-      output =
-          output + "  \"" + v.first + "\" : " + ConvertToJsonString(v.second) + " ,";
+      output += "  \"" + v.first + "\" : " + ConvertToJsonString(v.second) + " ,";
     }
     output.pop_back(); /* remove last "," */
     output += "} ";
+    return output;
   } else {
-    output = "\"" + output + "\"";
+    return "\"" + val.value() + "\"";
   }
-  return output;
 }
 
-namespace Json {
-
+namespace {
 std::string MatrixToInitializerString(const Eigen::MatrixXd& value) {
   Eigen::IOFormat CommaInitFmt(Eigen::StreamPrecision, Eigen::DontAlignCols,
                                ", ", ", ", "", "", "", "");
@@ -30,10 +27,6 @@ std::string MatrixToInitializerString(const Eigen::MatrixXd& value) {
   buffer << value.format(CommaInitFmt);
   return buffer.str();
 }
-
-std::string MatrixToJsonLeaf(const Eigen::MatrixXd& value) {
-  return to_string(value.rows()) + "," + to_string(value.cols()) + "," +
-         MatrixToInitializerString(value);
 }
 
 Value MatrixToJson(const Eigen::MatrixXd& value) {
@@ -45,7 +38,7 @@ Value MatrixToJson(const Eigen::MatrixXd& value) {
 }
 
 template <>
-int ConstructFromString<int>(const Value& value) {
+int ConstructObjectFromJson<int>(const Value& value) {
   return stoi(value.value());
 }
 
@@ -60,20 +53,20 @@ int StringToType<int>(const std::string& input) {
 }
 
 template <>
-std::string ConstructFromString<std::string>(const Value& value) {
+std::string ConstructObjectFromJson<std::string>(const Value& value) {
   return value.value();
 }
 
 template <>
-std::vector<int> ConstructFromString<std::vector<int>>(const Value& value) {
+std::vector<int> ConstructObjectFromJson<std::vector<int>>(const Value& value) {
   return CommaSeparatedStringToVector<int>(value.value());
 }
 
 template <>
-Eigen::MatrixXd ConstructFromString<Eigen::MatrixXd>(const Value& value) {
-  std::string data = value.children().at("data").value();
-  int rows = stoi(value.children().at("rows").value());
-  int cols = stoi(value.children().at("cols").value());
+Eigen::MatrixXd ConstructObjectFromJson<Eigen::MatrixXd>(const Value& value) {
+  std::string data = value["data"].value();
+  int rows = stoi(value["rows"].value());
+  int cols = stoi(value["cols"].value());
   std::vector<double> matrix_data = CommaSeparatedStringToVector<double>(data);
   if (rows * cols != static_cast<int>(matrix_data.size())) {
     throw std::runtime_error("Invalid data.");
@@ -82,21 +75,20 @@ Eigen::MatrixXd ConstructFromString<Eigen::MatrixXd>(const Value& value) {
 }
 
 template <>
-vector<Eigen::MatrixXd> ConstructFromString<vector<Eigen::MatrixXd>>(
+vector<Eigen::MatrixXd> ConstructObjectFromJson<vector<Eigen::MatrixXd>>(
     const Value& value) {
   vector<Eigen::MatrixXd> y;
   for (const auto& v : value.children()) {
-    y.push_back(ConstructFromString<Eigen::MatrixXd>(v.second));
+    y.push_back(ConstructObjectFromJson<Eigen::MatrixXd>(v.second));
   }
   return y;
 }
 
 template <>
-Eigen::VectorXd ConstructFromString<Eigen::VectorXd>(const Value& value) {
-  return ConstructFromString<Eigen::MatrixXd>(value);
+Eigen::VectorXd ConstructObjectFromJson<Eigen::VectorXd>(const Value& value) {
+  return ConstructObjectFromJson<Eigen::MatrixXd>(value);
 }
 
-}  // namespace Json
 
 bool ReadNextToken(const std::string& string, size_t start, size_t* token_start,
                    size_t* end) {
@@ -105,7 +97,7 @@ bool ReadNextToken(const std::string& string, size_t start, size_t* token_start,
   return *end != string::npos && *token_start != string::npos;
 }
 
-Json::Value ParseJsonString(const std::string& json) {
+Value ParseJsonString(const std::string& json) {
   size_t token_end = string::npos;
   size_t token_start = 0;
   size_t next_search_start = 0;
@@ -161,8 +153,8 @@ Json::Value ParseJsonString(const std::string& json) {
   }
 
   // Encode tree using a linked-list.
-  Json::Value root;
-  std::map<int, Json::Value*> parent_nodes;
+  Value root;
+  std::map<int, Value*> parent_nodes;
   parent_nodes[-1] = &root;
   for (size_t token_id = 0; token_id < tokens.size(); token_id++) {
     auto current_node = parent_nodes.at(token_to_parent.at(token_id));
