@@ -5,6 +5,24 @@
 using std::vector;
 namespace conex {
 
+namespace {
+std::string MatrixToInitializerString(const Eigen::MatrixXd& value) {
+  Eigen::IOFormat CommaInitFmt(Eigen::StreamPrecision, Eigen::DontAlignCols,
+                               ", ", ", ", "", "", "", "");
+  std::stringstream buffer;
+  buffer << value.format(CommaInitFmt);
+  return buffer.str();
+}
+
+Value MatrixToJson(const Eigen::MatrixXd& value) {
+  Value v;
+  v.children()["cols"] = ConvertToJson(to_string(value.cols()));
+  v.children()["rows"] = ConvertToJson(to_string(value.rows()));
+  v.children()["data"] = ConvertToJson(MatrixToInitializerString(value));
+  return v;
+}
+}
+
 Value ConvertToJson(const std::string& value) {
   Value y;
   y.value() = value;
@@ -68,23 +86,7 @@ std::string ConvertToJsonString(const Value& val) {
   }
 }
 
-namespace {
-std::string MatrixToInitializerString(const Eigen::MatrixXd& value) {
-  Eigen::IOFormat CommaInitFmt(Eigen::StreamPrecision, Eigen::DontAlignCols,
-                               ", ", ", ", "", "", "", "");
-  std::stringstream buffer;
-  buffer << value.format(CommaInitFmt);
-  return buffer.str();
-}
-}
 
-Value MatrixToJson(const Eigen::MatrixXd& value) {
-  Value v;
-  v.children()["cols"] = ConvertToJson(to_string(value.cols()));
-  v.children()["rows"] = ConvertToJson(to_string(value.rows()));
-  v.children()["data"] = ConvertToJson(MatrixToInitializerString(value));
-  return v;
-}
 
 template <>
 int ConstructObjectFromJson<int>(const Value& value) {

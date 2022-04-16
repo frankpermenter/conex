@@ -23,14 +23,6 @@ constexpr void for_sequence(std::integer_sequence<T, S...>, F&& f) {
                  0};
 }
 
-struct Value;
-
-
-
-
-
-Value MatrixToJson(const Eigen::MatrixXd& value);
-
 struct Value {
  private:
   struct ValueData {
