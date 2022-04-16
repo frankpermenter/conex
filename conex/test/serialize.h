@@ -26,46 +26,46 @@ constexpr void for_sequence(std::integer_sequence<T, S...>, F&& f) {
 struct Value {
  private:
   struct ValueData {
-    std::map<std::string, Value> children;
-    std::string string = "";
+    std::map<std::string, Value> members;
+    std::string value = "";
    friend Value;
   };
  public:
 
-  bool is_scalar() const { return data.children.size() == 0; }
-  bool is_struct() const { return data.string.length() == 0; }
-  bool is_empty() const { return data.children.size() == 0 && data.string.length() == 0; }
+  bool is_scalar() const { return data_.members.size() == 0; }
+  bool is_struct() const { return data_.value.length() == 0; }
+  bool is_empty() const { return data_.members.size() == 0 && data_.value.length() == 0; }
 
-  Value& operator[](std::string name) { return data.children[std::move(name)]; }
+  Value& operator[](std::string name) { return data_.members[std::move(name)]; }
 
   const Value& operator[](std::string name) const {
-    auto it = data.children.find(std::move(name));
-    if (it != data.children.end()) {
+    auto it = data_.members.find(std::move(name));
+    if (it != data_.members.end()) {
       return it->second;
     }
     throw;
   }
   
-  std::map<std::string, Value>& children() { 
+  std::map<std::string, Value>& members() { 
     CONEX_ASSERT(is_struct(), "Object is scalar.");
-    return data.children; 
+    return data_.members; 
   }
 
-  const std::map<std::string, Value>& children() const {
+  const std::map<std::string, Value>& members() const {
     CONEX_ASSERT(is_struct(), "Object is scalar.");
-    return data.children; 
+    return data_.members; 
   }
 
   std::string& value() { 
     CONEX_ASSERT(is_scalar(), "Object is struct.");
-    return data.string; 
+    return data_.value; 
   }
   const std::string& value() const { 
     CONEX_ASSERT(is_scalar(), "Object is struct.");
-    return data.string; 
+    return data_.value; 
   }
  private:
-  ValueData data;
+  ValueData data_;
 };
 
 Value ConvertToJson(const std::string& value);

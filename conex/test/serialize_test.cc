@@ -24,8 +24,8 @@ bool IsEqual(const std::vector<MatrixXd>& m1, const std::vector<MatrixXd>& m2) {
 struct ConstraintBase {
   Value serialize() {
     Value value;
-    value.children()["data"] = generate_json();
-    value.children()["id"].value() = to_string(type_id());
+    value["data"] = generate_json();
+    value["id"].value() = to_string(type_id());
     return value;
   }
 
@@ -127,16 +127,16 @@ GTEST_TEST(Serialize, ConvertProgram) {
 
   Value program;
   for (size_t i = 0; i < constraints.size(); ++i) {
-    program.children()["constraints"].children()[to_string(i)] =
+    program["constraints"][to_string(i)] =
         constraints.at(i)->serialize();
   }
 
   std::vector<std::unique_ptr<ConstraintBase>> constraints_deserialize(2);
   for (size_t i = 0; i < constraints.size(); ++i) {
-    const auto& all_constraints = program.children().at("constraints");
-    const auto& constraint_i = all_constraints.children().at(to_string(i));
-    const auto& id = constraint_i.children().at("id").value();
-    const auto& data = constraint_i.children().at("data");
+    const auto& all_constraints = program["constraints"];
+    const auto& constraint_i = all_constraints[to_string(i)];
+    const auto& id = constraint_i["id"].value();
+    const auto& data = constraint_i["data"];
     constraints_deserialize.at(i) = create_from_json(data, stoi(id));
   }
   

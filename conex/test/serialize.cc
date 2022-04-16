@@ -46,9 +46,9 @@ std::string MatrixToInitializerString(const Eigen::MatrixXd& value) {
 
 Value MatrixToJson(const Eigen::MatrixXd& value) {
   Value v;
-  v.children()["cols"] = ConvertToJson(to_string(value.cols()));
-  v.children()["rows"] = ConvertToJson(to_string(value.rows()));
-  v.children()["data"] = ConvertToJson(MatrixToInitializerString(value));
+  v["cols"] = ConvertToJson(to_string(value.cols()));
+  v["rows"] = ConvertToJson(to_string(value.rows()));
+  v["data"] = ConvertToJson(MatrixToInitializerString(value));
   return v;
 }
 }
@@ -105,7 +105,7 @@ Value ConvertToJson(const vector<Eigen::MatrixXd>& value) {
 std::string ConvertToJsonString(const Value& val) {
   if (!val.is_scalar()) {
     std::string output = "{ ";
-    for (auto& v : val.children()) {
+    for (auto& v : val.members()) {
       output += "  \"" + v.first + "\" : " + ConvertToJsonString(v.second) + " ,";
     }
     output.pop_back(); /* remove last "," */
@@ -148,7 +148,7 @@ template <>
 vector<Eigen::MatrixXd> ConstructObjectFromJson<vector<Eigen::MatrixXd>>(
     const Value& value) {
   vector<Eigen::MatrixXd> y;
-  for (const auto& v : value.children()) {
+  for (const auto& v : value.members()) {
     y.push_back(ConstructObjectFromJson<Eigen::MatrixXd>(v.second));
   }
   return y;
@@ -175,8 +175,8 @@ Value ParseJsonString(const std::string& json) {
   std::vector<string> tokens;
   std::vector<int> token_to_parent;
   std::stack<int> parent;
-  std::map<int, bool> has_multiple_children;
-  has_multiple_children[-1] = true;
+  std::map<int, bool> has_multiple_members;
+  has_multiple_members[-1] = true;
 
   // Build a tree of tokens, i.e., quote delimited strings in input.
   // The following patterns indicate parent child relationships:
@@ -200,9 +200,9 @@ Value ParseJsonString(const std::string& json) {
       switch (json[current_position]) {
         case ' ':
           break;
-        // Indicates multiple children
+        // Indicates multiple members
         case '{':
-          has_multiple_children[parent.top()] = true;
+          has_multiple_members[parent.top()] = true;
           break;
         //  a : { b, c, d }
         case '}':
@@ -214,10 +214,10 @@ Value ParseJsonString(const std::string& json) {
             // We have reached end of string.
           }
           break;
-        // (parent : children)
+        // (parent : members)
         case ':':
           parent.push(tokens.size() - 1);
-          has_multiple_children[parent.top()] = false;
+          has_multiple_members[parent.top()] = false;
       }
       current_position++;
     }
@@ -232,12 +232,12 @@ Value ParseJsonString(const std::string& json) {
     if (!current_node) {
       throw std::runtime_error("bad");
     }
-    if (has_multiple_children.at(token_to_parent.at(token_id))) {
-      current_node->children()[tokens.at(token_id)];
+    if (has_multiple_members.at(token_to_parent.at(token_id))) {
+      current_node->members()[tokens.at(token_id)];
       // Attach node to parent using token name, but
       // node pointer to global table using unique token-id.
       parent_nodes[token_id] =
-          &current_node->children()[tokens.at(token_id)];
+          &current_node->members()[tokens.at(token_id)];
     } else {
       current_node->value() = tokens.at(token_id);
     }
