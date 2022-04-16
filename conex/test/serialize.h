@@ -3,8 +3,9 @@
 #include "conex/test/test_constraint.h"
 
 namespace conex {
-class Visitor;
 
+class Data;
+class DataTwo;
 
 class Serializer : Visitor {
  public:
@@ -14,12 +15,12 @@ class Serializer : Visitor {
     }
     return json_;
   }
-
   void visit(const Data&) override;  
   void visit(const DataTwo&) override;
  private:
    JsonObject json_;
 };
+
 
 
 } // namespace
