@@ -22,8 +22,8 @@ bool IsEqual(const std::vector<MatrixXd>& m1, const std::vector<MatrixXd>& m2) {
 }
 
 struct ConstraintBase {
-  Value serialize() {
-    Value value;
+  JsonObject serialize() {
+    JsonObject value;
     value["data"] = generate_json();
     value["id"].value() = to_string(type_id());
     return value;
@@ -32,7 +32,7 @@ struct ConstraintBase {
   virtual ~ConstraintBase() = default;
 
  private:
-  virtual Value generate_json() = 0;
+  virtual JsonObject generate_json() = 0;
   virtual int type_id() = 0;
 };
 
@@ -56,7 +56,7 @@ struct Constraint : ConstraintBase {
                       property(&Constraint::variables, "variables"));
 
  private:
-  Value generate_json() override { return toJson(*this); }
+  JsonObject generate_json() override { return toJson(*this); }
   int type_id() override { return ConstraintOneID; }
 };
 
@@ -71,11 +71,11 @@ struct ConstraintTwo : ConstraintBase {
                       property(&ConstraintTwo::variables, "variables"));
 
  private:
-  Value generate_json() override { return toJson(*this); }
+  JsonObject generate_json() override { return toJson(*this); }
   int type_id() override { return ConstraintTwoID; }
 };
 
-std::unique_ptr<ConstraintBase> create_from_json(const Value& value,
+std::unique_ptr<ConstraintBase> create_from_json(const JsonObject& value,
                                                  int constraint_type) {
   // switch (string_to_id.at(value.children().at("type").value())) {
   switch (constraint_type) {
@@ -131,7 +131,7 @@ GTEST_TEST(Serialize, TestVirtualInterfaces) {
   constraints.emplace_back(new Constraint(std::move(MakeConstraint())));
   constraints.emplace_back(new ConstraintTwo(std::move(MakeConstraintTwo())));
 
-  Value program;
+  JsonObject program;
   for (size_t i = 0; i < constraints.size(); ++i) {
     program["constraints"][to_string(i)] =
         constraints.at(i)->serialize();
@@ -154,13 +154,13 @@ GTEST_TEST(Serialize, TestVirtualInterfaces) {
 
 GTEST_TEST(Serialize, ConvertConstraint) {
   Constraint constraint = MakeConstraint();
-  Value jsonConstraint = toJson(constraint);
+  JsonObject jsonConstraint = toJson(constraint);
   Constraint constraint_from_json = fromJson<conex::Constraint>(jsonConstraint);
 
   CompareConstraints1(constraint, constraint_from_json);
 
   std::string jsonString = ConvertToJsonString(jsonConstraint);
-  Value jsonConstraintFromString = ParseJsonString(jsonString);
+  JsonObject jsonConstraintFromString = ParseJsonString(jsonString);
 
   Constraint constraint_from_json_string =
       fromJson<conex::Constraint>(jsonConstraintFromString);

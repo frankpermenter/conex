@@ -23,55 +23,59 @@ constexpr void for_sequence(std::integer_sequence<T, S...>, F&& f) {
                  0};
 }
 
-struct Value {
+// Utility class for parsing/emiting JSON strings.  Used to 
+// store list of key-value pairs.  Since values can be either strings
+// or more key-value pairs, we allow this object to behave like
+// either depending on context.
+class JsonObject {
  public:
-  bool is_scalar() const { return members_.size() == 0; }
-  bool is_struct() const { return value_.length() == 0; }
-  bool is_empty() const { return members_.size() == 0 && value_.length() == 0; }
+  bool is_string() const { return map_.size() == 0; }
+  bool is_map() const { return value_.length() == 0; }
+  bool is_empty() const { return map_.size() == 0 && value_.length() == 0; }
 
-  Value& operator[](std::string name) { return members_[std::move(name)]; }
+  JsonObject& operator[](std::string name) { return map_[std::move(name)]; }
 
-  const Value& operator[](std::string name) const {
-    auto it = members_.find(std::move(name));
-    if (it != members_.end()) {
+  const JsonObject& operator[](std::string name) const {
+    auto it = map_.find(std::move(name));
+    if (it != map_.end()) {
       return it->second;
     }
     throw;
   }
   
-  std::map<std::string, Value>& members() { 
-    CONEX_ASSERT(is_struct(), "Object is scalar.");
-    return members_; 
+  std::map<std::string, JsonObject>& as_map() { 
+    CONEX_ASSERT(is_map(), "Object is string.");
+    return map_; 
   }
 
-  const std::map<std::string, Value>& members() const {
-    CONEX_ASSERT(is_struct(), "Object is scalar.");
-    return members_; 
+  const std::map<std::string, JsonObject>& as_map() const {
+    CONEX_ASSERT(is_map(), "Object is string.");
+    return map_; 
   }
 
   std::string& value() { 
-    CONEX_ASSERT(is_scalar(), "Object is struct.");
+    CONEX_ASSERT(is_string(), "Object is map.");
     return value_; 
   }
   const std::string& value() const { 
-    CONEX_ASSERT(is_scalar(), "Object is struct.");
+    CONEX_ASSERT(is_string(), "Object is map.");
     return value_; 
   }
  private:
-   std::map<std::string, Value> members_;
+   std::map<std::string, JsonObject> map_;
    std::string value_ = "";
 };
 
-Value ConvertToJson(const std::string& value);
-Value ConvertToJson(int value);
-Value ConvertToJson(double value);
-Value ConvertToJson(const std::vector<int>& v);
-Value ConvertToJson(const Eigen::MatrixXd& value);
-Value ConvertToJson(const vector<Eigen::MatrixXd>& value);
+JsonObject ConvertToJson(const std::string& value);
+JsonObject ConvertToJson(int value);
+JsonObject ConvertToJson(double value);
+JsonObject ConvertToJson(const std::vector<int>& v);
+JsonObject ConvertToJson(const Eigen::MatrixXd& value);
+JsonObject ConvertToJson(const vector<Eigen::MatrixXd>& value);
 
 
 template <typename T>
-T ConstructObjectFromJson(const Value&);
+T ConstructObjectFromJson(const JsonObject&);
 
 template <typename Class, typename T>
 struct PropertyImpl {
@@ -93,7 +97,7 @@ constexpr auto property(T Class::*member, const char* name) {
 
 // unserialize function
 template <typename T>
-T fromJson(const Value& data) {
+T fromJson(const JsonObject& data) {
   T object;
 
   // We first get the number of properties
@@ -116,8 +120,8 @@ T fromJson(const Value& data) {
 }
 
 template <typename T>
-Value toJson(const T& object) {
-  Value data;
+JsonObject toJson(const T& object) {
+  JsonObject data;
   // We first get the number of properties
   constexpr auto kNumProperties = std::tuple_size<decltype(T::properties)>::value;
 
@@ -130,7 +134,7 @@ Value toJson(const T& object) {
   return data;
 }
 
-std::string ConvertToJsonString(const Value& val);
-Value ParseJsonString(const std::string& json);
+std::string ConvertToJsonString(const JsonObject& val);
+JsonObject ParseJsonString(const std::string& json);
 
 }  // namespace conex

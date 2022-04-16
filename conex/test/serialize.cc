@@ -44,8 +44,8 @@ std::string MatrixToInitializerString(const Eigen::MatrixXd& value) {
   return buffer.str();
 }
 
-Value MatrixToJson(const Eigen::MatrixXd& value) {
-  Value v;
+JsonObject MatrixToJson(const Eigen::MatrixXd& value) {
+  JsonObject v;
   v["cols"] = ConvertToJson(to_string(value.cols()));
   v["rows"] = ConvertToJson(to_string(value.rows()));
   v["data"] = ConvertToJson(MatrixToInitializerString(value));
@@ -53,26 +53,26 @@ Value MatrixToJson(const Eigen::MatrixXd& value) {
 }
 }
 
-Value ConvertToJson(const std::string& value) {
-  Value y;
+JsonObject ConvertToJson(const std::string& value) {
+  JsonObject y;
   y.value() = value;
   return y;
 }
 
-Value ConvertToJson(int value) {
-  Value y;
+JsonObject ConvertToJson(int value) {
+  JsonObject y;
   y.value() = std::to_string(value);
   return y;
 }
 
-Value ConvertToJson(double value) {
-  Value y;
+JsonObject ConvertToJson(double value) {
+  JsonObject y;
   y.value() = std::to_string(value);
   return y;
 }
 
-Value ConvertToJson(const std::vector<int>& v) {
-  Value y;
+JsonObject ConvertToJson(const std::vector<int>& v) {
+  JsonObject y;
   std::stringstream buffer;
   if (v.size() > 0) {
     buffer << v.at(0);
@@ -84,13 +84,13 @@ Value ConvertToJson(const std::vector<int>& v) {
   return y;
 }
 
-Value ConvertToJson(const Eigen::MatrixXd& value) {
+JsonObject ConvertToJson(const Eigen::MatrixXd& value) {
   return MatrixToJson(value);
 }
 
-Value ConvertToJson(const vector<Eigen::MatrixXd>& value) {
+JsonObject ConvertToJson(const vector<Eigen::MatrixXd>& value) {
   int i = 0;
-  Value constraint_matrices;
+  JsonObject constraint_matrices;
   for (auto& v : value) {
     constraint_matrices[to_string(i)] = MatrixToJson(v);
     i++;
@@ -101,11 +101,10 @@ Value ConvertToJson(const vector<Eigen::MatrixXd>& value) {
 
 
 
-
-std::string ConvertToJsonString(const Value& val) {
-  if (!val.is_scalar()) {
+std::string ConvertToJsonString(const JsonObject& val) {
+  if (val.is_map()) {
     std::string output = "{ ";
-    for (auto& v : val.members()) {
+    for (auto& v : val.as_map()) {
       output += "  \"" + v.first + "\" : " + ConvertToJsonString(v.second) + " ,";
     }
     output.pop_back(); /* remove last "," */
@@ -118,22 +117,22 @@ std::string ConvertToJsonString(const Value& val) {
 
 
 template <>
-int ConstructObjectFromJson<int>(const Value& value) {
+int ConstructObjectFromJson<int>(const JsonObject& value) {
   return stoi(value.value());
 }
 
 template <>
-std::string ConstructObjectFromJson<std::string>(const Value& value) {
+std::string ConstructObjectFromJson<std::string>(const JsonObject& value) {
   return value.value();
 }
 
 template <>
-std::vector<int> ConstructObjectFromJson<std::vector<int>>(const Value& value) {
+std::vector<int> ConstructObjectFromJson<std::vector<int>>(const JsonObject& value) {
   return CommaSeparatedStringToVector<int>(value.value());
 }
 
 template <>
-Eigen::MatrixXd ConstructObjectFromJson<Eigen::MatrixXd>(const Value& value) {
+Eigen::MatrixXd ConstructObjectFromJson<Eigen::MatrixXd>(const JsonObject& value) {
   std::string data = value["data"].value();
   int rows = stoi(value["rows"].value());
   int cols = stoi(value["cols"].value());
@@ -146,21 +145,23 @@ Eigen::MatrixXd ConstructObjectFromJson<Eigen::MatrixXd>(const Value& value) {
 
 template <>
 vector<Eigen::MatrixXd> ConstructObjectFromJson<vector<Eigen::MatrixXd>>(
-    const Value& value) {
+    const JsonObject& value) {
   vector<Eigen::MatrixXd> y;
-  for (const auto& v : value.members()) {
+  for (const auto& v : value.as_map()) {
     y.push_back(ConstructObjectFromJson<Eigen::MatrixXd>(v.second));
   }
   return y;
 }
 
 template <>
-Eigen::VectorXd ConstructObjectFromJson<Eigen::VectorXd>(const Value& value) {
+Eigen::VectorXd ConstructObjectFromJson<Eigen::VectorXd>(const JsonObject& value) {
   return ConstructObjectFromJson<Eigen::MatrixXd>(value);
 }
 
 namespace {
-bool ReadNextToken(const std::string& string, size_t start, size_t* token_start,
+
+// Find next quote delimited string.
+bool FindNextToken(const std::string& string, size_t start, size_t* token_start,
                    size_t* end) {
   *token_start = string.find("\"", start);
   *end = string.find("\"", *token_start + 1);
@@ -168,22 +169,25 @@ bool ReadNextToken(const std::string& string, size_t start, size_t* token_start,
 }
 }
 
-Value ParseJsonString(const std::string& json) {
+JsonObject ParseJsonString(const std::string& json) {
   size_t token_end = string::npos;
   size_t token_start = 0;
   size_t next_search_start = 0;
   std::vector<string> tokens;
   std::vector<int> token_to_parent;
   std::stack<int> parent;
-  std::map<int, bool> has_multiple_members;
-  has_multiple_members[-1] = true;
+  std::map<int, bool> has_multiple_children;
+  has_multiple_children[-1] = true;
 
-  // Build a tree of tokens, i.e., quote delimited strings in input.
-  // The following patterns indicate parent child relationships:
+  // Parse quote delimited substrings ("tokens") in input and arrange them in 
+  // a tree.  The following patterns indicate parent-child relationships:
   //
-  // parent_token : child_token,
-  // parent_token : { child_token, child_token, ..., child_token  }
-  while (ReadNextToken(json, next_search_start, &token_start, &token_end)) {
+  // "parent" : "child",
+  // "parent" : { "child" : "grand_child" , "child" : { "grand_child" : "great_grand_child" }}
+  //
+  // To parse, we do depth-first search, pushing onto the stack when ":" is
+  // encountered, and popping when "," or "}".
+  while (FindNextToken(json, next_search_start, &token_start, &token_end)) {
     tokens.push_back(json.substr(token_start + 1, token_end - token_start - 1));
     next_search_start = token_end + 1;
     if (parent.size() == 0) {
@@ -192,21 +196,30 @@ Value ParseJsonString(const std::string& json) {
       token_to_parent.push_back(parent.top());
     }
 
+    // Read ahead in string to determine if current token
+    // is the next parent or the last child of the current parent.
     size_t current_position = token_end + 1;
     while (1) {
       if (json[current_position] == '\"' || current_position >= json.length()) {
+        next_search_start = current_position;
         break;
       }
+
       switch (json[current_position]) {
         case ' ':
           break;
-        // Indicates multiple members
-        case '{':
-          has_multiple_members[parent.top()] = true;
+        // Current token is the next parent.
+        case ':':
+          parent.push(tokens.size() - 1);
+          has_multiple_children[parent.top()] = false; /* default assumption*/
           break;
-        //  a : { b, c, d }
+        // Current token has multiple children.
+        case '{':
+          has_multiple_children[parent.top()] = true;
+          break;
+
+        // Current token is the last child.
         case '}':
-        //  a : b, or
         case ',':
           if (parent.size() > 0) {
             parent.pop();
@@ -214,30 +227,25 @@ Value ParseJsonString(const std::string& json) {
             // We have reached end of string.
           }
           break;
-        // (parent : members)
-        case ':':
-          parent.push(tokens.size() - 1);
-          has_multiple_members[parent.top()] = false;
       }
       current_position++;
     }
   }
 
-  // Encode tree using a linked-list.
-  Value root;
-  std::map<int, Value*> parent_nodes;
+  // Record tree into a JsonObject. If child nodes are in a struct { } 
+  // std::map<string, JsonObject> in the second.
+  JsonObject root;
+  std::map<int, JsonObject*> parent_nodes;
   parent_nodes[-1] = &root;
   for (size_t token_id = 0; token_id < tokens.size(); token_id++) {
     auto current_node = parent_nodes.at(token_to_parent.at(token_id));
-    if (!current_node) {
-      throw std::runtime_error("bad");
-    }
-    if (has_multiple_members.at(token_to_parent.at(token_id))) {
-      current_node->members()[tokens.at(token_id)];
+    CONEX_ASSERT(current_node, "Invalid JSON input.");
+    if (has_multiple_children.at(token_to_parent.at(token_id))) {
+      current_node->as_map()[tokens.at(token_id)];
       // Attach node to parent using token name, but
       // node pointer to global table using unique token-id.
       parent_nodes[token_id] =
-          &current_node->members()[tokens.at(token_id)];
+          &current_node->as_map()[tokens.at(token_id)];
     } else {
       current_node->value() = tokens.at(token_id);
     }
