@@ -111,6 +111,15 @@ Constraint MakeConstraint() {
   return constraint;
 }
 
+
+void CompareConstraints1(const Constraint& x, const Constraint& y) {
+  EXPECT_EQ((x.matrix - y.matrix).norm(), 0);
+  EXPECT_EQ((x.affine_term - y.affine_term).norm(), 0);
+  EXPECT_EQ(x.variables, y.variables);
+  EXPECT_EQ(x.order, y.order);
+  EXPECT_TRUE( IsEqual(y.matrices, x.matrices));
+}
+
 GTEST_TEST(Serialize, ConvertProgram) {
   std::vector<std::unique_ptr<ConstraintBase>> constraints;
   constraints.emplace_back(new Constraint(std::move(MakeConstraint())));
@@ -122,8 +131,6 @@ GTEST_TEST(Serialize, ConvertProgram) {
         constraints.at(i)->serialize();
   }
 
-  // Value jsonConstraintFromString = MakeValue(MakeJsonString(program));
-
   std::vector<std::unique_ptr<ConstraintBase>> constraints_deserialize(2);
   for (size_t i = 0; i < constraints.size(); ++i) {
     const auto& all_constraints = program.children().at("constraints");
@@ -132,6 +139,9 @@ GTEST_TEST(Serialize, ConvertProgram) {
     const auto& data = constraint_i.children().at("data");
     constraints_deserialize.at(i) = create_from_json(data, stoi(id));
   }
+  
+  CompareConstraints1(*dynamic_cast<Constraint*>(constraints_deserialize.at(0).get()), 
+                      MakeConstraint());
 }
 
 GTEST_TEST(Serialize, ConvertConstraint) {
@@ -139,29 +149,15 @@ GTEST_TEST(Serialize, ConvertConstraint) {
   Value jsonConstraint = toJson(constraint);
   Constraint constraint_from_json = fromJson<conex::Constraint>(jsonConstraint);
 
-  EXPECT_TRUE(IsEqual(constraint_from_json.matrices, constraint.matrices));
-
-  EXPECT_EQ((constraint.matrix - constraint_from_json.matrix).norm(), 0);
-  EXPECT_EQ((constraint.affine_term - constraint_from_json.affine_term).norm(),
-            0);
-  EXPECT_EQ(constraint.variables, constraint_from_json.variables);
-  EXPECT_EQ(constraint.order, constraint_from_json.order);
+  CompareConstraints1(constraint, constraint_from_json);
 
   std::string jsonString = ConvertToJsonString(jsonConstraint);
   Value jsonConstraintFromString = ParseJsonString(jsonString);
 
   Constraint constraint_from_json_string =
       fromJson<conex::Constraint>(jsonConstraintFromString);
+  CompareConstraints1(constraint, constraint_from_json_string);
 
-  EXPECT_EQ((constraint.matrix - constraint_from_json_string.matrix).norm(), 0);
-  EXPECT_EQ(
-      (constraint.affine_term - constraint_from_json_string.affine_term).norm(),
-      0);
-  EXPECT_EQ(constraint.variables, constraint_from_json_string.variables);
-  EXPECT_EQ(constraint.order, constraint_from_json_string.order);
-
-  EXPECT_TRUE(
-      IsEqual(constraint_from_json_string.matrices, constraint.matrices));
 }
 
 }  // namespace conex

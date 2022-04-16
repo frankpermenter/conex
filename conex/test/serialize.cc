@@ -6,6 +6,36 @@ using std::vector;
 namespace conex {
 
 namespace {
+
+template <typename T>
+std::string ObjectName();
+
+template <typename T>
+T StringToType(const std::string&);
+
+template <>
+double StringToType<double>(const std::string& input) {
+  return stod(input);
+}
+
+template <>
+int StringToType<int>(const std::string& input) {
+  return stoi(input);
+}
+
+
+template <typename T>
+std::vector<T> CommaSeparatedStringToVector(const std::string& input) {
+  std::stringstream ss(input);
+  std::vector<T> result;
+  while (ss.good()) {
+    string substr;
+    getline(ss, substr, ',');
+    result.push_back(StringToType<T>(substr));
+  }
+  return result;
+}
+
 std::string MatrixToInitializerString(const Eigen::MatrixXd& value) {
   Eigen::IOFormat CommaInitFmt(Eigen::StreamPrecision, Eigen::DontAlignCols,
                                ", ", ", ", "", "", "", "");
@@ -87,20 +117,9 @@ std::string ConvertToJsonString(const Value& val) {
 }
 
 
-
 template <>
 int ConstructObjectFromJson<int>(const Value& value) {
   return stoi(value.value());
-}
-
-template <>
-double StringToType<double>(const std::string& input) {
-  return stod(input);
-}
-
-template <>
-int StringToType<int>(const std::string& input) {
-  return stoi(input);
 }
 
 template <>
@@ -140,11 +159,13 @@ Eigen::VectorXd ConstructObjectFromJson<Eigen::VectorXd>(const Value& value) {
   return ConstructObjectFromJson<Eigen::MatrixXd>(value);
 }
 
+namespace {
 bool ReadNextToken(const std::string& string, size_t start, size_t* token_start,
                    size_t* end) {
   *token_start = string.find("\"", start);
   *end = string.find("\"", *token_start + 1);
   return *end != string::npos && *token_start != string::npos;
+}
 }
 
 Value ParseJsonString(const std::string& json) {

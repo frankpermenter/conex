@@ -36,7 +36,6 @@ struct Value {
   bool is_struct() const { return data.string.length() == 0; }
   bool is_empty() const { return data.children.size() == 0 && data.string.length() == 0; }
 
-
   Value& operator[](std::string name) { return data.children[std::move(name)]; }
 
   const Value& operator[](std::string name) const {
@@ -76,24 +75,9 @@ Value ConvertToJson(const std::vector<int>& v);
 Value ConvertToJson(const Eigen::MatrixXd& value);
 Value ConvertToJson(const vector<Eigen::MatrixXd>& value);
 
-template <typename T>
-T StringToType(const std::string&);
-
-template <typename T>
-std::vector<T> CommaSeparatedStringToVector(const std::string& input) {
-  std::stringstream ss(input);
-  std::vector<T> result;
-  while (ss.good()) {
-    string substr;
-    getline(ss, substr, ',');
-    result.push_back(StringToType<T>(substr));
-  }
-  return result;
-}
 
 template <typename T>
 T ConstructObjectFromJson(const Value&);
-
 
 template <typename Class, typename T>
 struct PropertyImpl {
@@ -138,20 +122,14 @@ T fromJson(const Value& data) {
 }
 
 template <typename T>
-std::string ObjectName();
-
-template <typename T>
 Value toJson(const T& object) {
   Value data;
   // We first get the number of properties
-  constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
+  constexpr auto kNumProperties = std::tuple_size<decltype(T::properties)>::value;
 
-  // We iterate on the index sequence of size `nbProperties`
-  for_sequence(std::make_index_sequence<nbProperties>{}, [&](auto i) {
-    // get the property
+  // Convert each property to a JSON string and store in struct.
+  for_sequence(std::make_index_sequence<kNumProperties>{}, [&](auto i) {
     constexpr auto property = std::get<i>(T::properties);
-
-    // set the value to the member
     data[property.name] = ConvertToJson(object.*(property.member));
   });
 
