@@ -11,6 +11,18 @@ namespace conex {
 
 class Visitor;
 
+class Data;
+class DataTwo;
+
+class Visitor {
+ public:
+  virtual void visit(const Data&) = 0;
+  virtual void visit(const DataTwo&) = 0;
+  virtual ~Visitor() = default;
+ private:
+};
+
+
 struct DataBase {
   JsonObject serialize() {
     JsonObject value;
@@ -27,12 +39,7 @@ struct DataBase {
   virtual int type_id() const = 0;
 };
 
-
-
-class Data;
-class DataTwo;
-
-class Visitor {
+class Serializer : Visitor {
  public:
   JsonObject GenerateJsonObject(const std::vector<std::unique_ptr<DataBase>>& constraints) {
     for (auto& c : constraints) {
@@ -42,8 +49,8 @@ class Visitor {
     //DUMP(ConvertToJsonString(json_));
   }
 
-  void visit(const Data&);  
-  void visit(const DataTwo&);
+  void visit(const Data&) override;  
+  void visit(const DataTwo&) override;
  private:
    JsonObject json_;
 };
@@ -60,7 +67,6 @@ bool IsEqual(const std::vector<MatrixXd>& m1, const std::vector<MatrixXd>& m2) {
   }
   return true;
 }
-
 
 enum : int {
   DataOneID = 0,
@@ -118,7 +124,7 @@ struct Data : DataBase {
   int type_id() const override { return DataOneID; }
 };
 
-void Visitor::visit(const Data& data) {
+void Serializer::visit(const Data& data) {
   JsonObject value;
   value["data"] = toJson(data);
   value["id"].value() = to_string(DataOneID);
@@ -143,7 +149,7 @@ struct DataTwo : DataBase {
   int type_id() const override { return DataTwoID; }
 };
 
-void Visitor::visit(const DataTwo& data) {
+void Serializer::visit(const DataTwo& data) {
   JsonObject value;
   value["data"] = toJson(data);
   value["id"].value() = to_string(DataTwoID);
@@ -210,7 +216,7 @@ GTEST_TEST(Serialize, TestVirtualInterfaces) {
   constraints.emplace_back(new DataTwo(std::move(MakeDataTwo())));
 
   JsonObject program;
-  Visitor serialize;
+  Serializer serialize;
   program["constraints"] = serialize.GenerateJsonObject(constraints);
 
   std::vector<std::unique_ptr<DataBase>> constraints_deserialize(2);
