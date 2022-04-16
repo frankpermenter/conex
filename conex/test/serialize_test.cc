@@ -112,6 +112,12 @@ Constraint MakeConstraint() {
 }
 
 
+void CompareConstraints2(const ConstraintTwo& x, const ConstraintTwo& y) {
+  EXPECT_EQ((x.matrix - y.matrix).norm(), 0);
+  EXPECT_EQ(x.variables, y.variables);
+  EXPECT_EQ(x.order, y.order);
+}
+
 void CompareConstraints1(const Constraint& x, const Constraint& y) {
   EXPECT_EQ((x.matrix - y.matrix).norm(), 0);
   EXPECT_EQ((x.affine_term - y.affine_term).norm(), 0);
@@ -120,7 +126,7 @@ void CompareConstraints1(const Constraint& x, const Constraint& y) {
   EXPECT_TRUE( IsEqual(y.matrices, x.matrices));
 }
 
-GTEST_TEST(Serialize, ConvertProgram) {
+GTEST_TEST(Serialize, TestVirtualInterfaces) {
   std::vector<std::unique_ptr<ConstraintBase>> constraints;
   constraints.emplace_back(new Constraint(std::move(MakeConstraint())));
   constraints.emplace_back(new ConstraintTwo(std::move(MakeConstraintTwo())));
@@ -142,6 +148,8 @@ GTEST_TEST(Serialize, ConvertProgram) {
   
   CompareConstraints1(*dynamic_cast<Constraint*>(constraints_deserialize.at(0).get()), 
                       MakeConstraint());
+  CompareConstraints2(*dynamic_cast<ConstraintTwo*>(constraints_deserialize.at(1).get()), 
+                      MakeConstraintTwo());
 }
 
 GTEST_TEST(Serialize, ConvertConstraint) {
