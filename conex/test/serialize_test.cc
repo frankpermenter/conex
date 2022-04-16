@@ -9,6 +9,39 @@
 
 namespace conex {
 
+
+
+// Data Factory
+//  
+//  Transformation:
+//
+//   1)  json -> Data               (serializer)
+//   2)  Data -> InterfacePointer   (factory?)
+//   3)  InterfacePointer -> json.
+//
+// Implementations:
+//  1)  switch json[type_id]:
+//         case type_id:
+//            data  = Make<Data>(json[data])
+//
+//  2) InterfacePointer* Factory(Data) { return Object(Data) }  // overload on DataStructType.
+//     
+//  3a)   class Object : InterfacePointer
+//       generate_json() { to_json(Data) }   )
+//
+//    So, class must know about data and serializer.
+//
+//
+//
+//  3b) class VisitorI
+//        visit(Data A);
+//        visit(Data B);
+//        visit(Data C);
+//        visit(Data D);
+//
+
+
+
 class Visitor;
 
 class Data;
@@ -24,19 +57,8 @@ class Visitor {
 
 
 struct DataBase {
-  JsonObject serialize() {
-    JsonObject value;
-    value["data"] = generate_json();
-    value["id"].value() = to_string(type_id());
-    return value;
-  }
-
   virtual ~DataBase() = default;
-
   virtual void accept(Visitor*) = 0;
- private:
-  virtual JsonObject generate_json() = 0;
-  virtual int type_id() const = 0;
 };
 
 class Serializer : Visitor {
@@ -73,37 +95,6 @@ enum : int {
   DataTwoID = 1,
 };
 
-
-// Data Factory
-//  
-//  Transformation:
-//
-//   1)  json -> Data               (serializer)
-//   2)  Data -> InterfacePointer   (factory?)
-//   3)  InterfacePointer -> json.
-//
-// Implementations:
-//  1)  switch json[type_id]:
-//         case type_id:
-//            data  = Make<Data>(json[data])
-//
-//  2) InterfacePointer* Factory(Data) { return Object(Data) }  // overload on DataStructType.
-//     
-//  3a)   class Object : InterfacePointer
-//       generate_json() { to_json(Data) }   )
-//
-//    So, class must know about data and serializer.
-//
-//
-//
-//  3b) class VisitorI
-//        visit(Data A);
-//        visit(Data B);
-//        visit(Data C);
-//        visit(Data D);
-//
-
-
 struct Data : DataBase {
   int order;
   std::vector<int> variables;
@@ -118,10 +109,7 @@ struct Data : DataBase {
                       MakeProperty(&Data::affine_term, "affine_term"),
                       MakeProperty(&Data::variables, "variables"));
 
- private:
-  JsonObject generate_json() override { return toJson(*this); }
   void accept(Visitor * v) override { return v->visit(*this); }
-  int type_id() const override { return DataOneID; }
 };
 
 void Serializer::visit(const Data& data) {
@@ -143,10 +131,7 @@ struct DataTwo : DataBase {
                       MakeProperty(&DataTwo::matrix, "matrix"),
                       MakeProperty(&DataTwo::variables, "variables"));
 
- private:
   void accept(Visitor * v) override { return v->visit(*this); }
-  JsonObject generate_json() override { return toJson(*this); }
-  int type_id() const override { return DataTwoID; }
 };
 
 void Serializer::visit(const DataTwo& data) {
@@ -218,6 +203,7 @@ GTEST_TEST(Serialize, TestVirtualInterfaces) {
   JsonObject program;
   Serializer serialize;
   program["constraints"] = serialize.GenerateJsonObject(constraints);
+
 
   std::vector<std::unique_ptr<DataBase>> constraints_deserialize(2);
   for (size_t i = 0; i < constraints.size(); ++i) {
