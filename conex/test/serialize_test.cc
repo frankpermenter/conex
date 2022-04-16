@@ -5,9 +5,9 @@
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
-#include "data.h"
+#include "test_constraint.h"
+#include "json_parser.h"
 #include "serialize.h"
-#include "constraint.h"
 
 namespace conex {
 
