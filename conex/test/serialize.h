@@ -15,6 +15,7 @@ using std::vector;
 
 namespace conex {
 
+
 // Utility class for parsing/emiting JSON strings.  Used to 
 // store list of key-value pairs.  Since values can be either strings
 // or more key-value pairs, we allow this object to behave like
@@ -77,45 +78,27 @@ constexpr void for_sequence(std::integer_sequence<T, S...>, F&& f) {
 template <typename T>
 T ConstructObjectFromJson(const JsonObject&);
 
-template <typename Class, typename T>
-struct Property {
-  constexpr Property(T Class::*aMember, const char* aName)
-      : member{aMember}, name{aName} {}
 
-  using Type = T;
 
-  T Class::*member;
-  const char* name;
-};
-
-template <typename Class, typename T>
-constexpr auto MakeProperty(T Class::*member, const char* name) {
-  return Property<Class, T>{member, name};
-}
 
 // unserialize function
 template <typename T>
 T fromJson(const JsonObject& data) {
   T object;
+  constexpr auto properties = T::properties;
 
   // We expect T has a tuple called "properties" indicating which
   // members should be serialized.
-  constexpr auto kNumProperties = std::tuple_size<decltype(T::properties)>::value;
+  constexpr auto kNumProperties = std::tuple_size<decltype(properties)>::value;
 
   // Convert each property to a JSON string and store in struct.
   for_sequence(std::make_index_sequence<kNumProperties>{}, [&](auto i) {
-    // get the property
-    constexpr auto property = std::get<i>(T::properties);
-
-    // get the type of the property
+    constexpr auto property = std::get<i>(properties);
     using Type = typename decltype(property)::Type;
-
-    // set the value to the member
-    object.*(property.member) =
-        ConstructObjectFromJson<Type>(data[property.name]);
+    object.*(property.member) = ConstructObjectFromJson<Type>(data[property.name]);
   });
 
-  return object;
+  return object; 
 }
 
 template <typename T>

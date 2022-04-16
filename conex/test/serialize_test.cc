@@ -5,77 +5,38 @@
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
+#include "data.h"
 #include "serialize.h"
+#include "constraint.h"
 
 namespace conex {
 
-
-
 // Data Factory
 //  
-//  Transformation:
+// Transformation:
 //
 //   1)  json -> Data               (serializer)
 //   2)  Data -> InterfacePointer   (factory?)
 //   3)  InterfacePointer -> json.
 //
 // Implementations:
-//  1)  switch json[type_id]:
-//         case type_id:
-//            data  = Make<Data>(json[data])
 //
-//  2) InterfacePointer* Factory(Data) { return Object(Data) }  // overload on DataStructType.
+//   1) switch json[type_id]:
+//        case type_id:
+//           data  = Make<Data>(json[data])
+//
+//   2) InterfacePointer* Factory(Data) { return Object(Data) }  // overload on DataStructType.
 //     
-//  3a)   class Object : InterfacePointer
+//   3a) class Object : InterfacePointer
 //       generate_json() { to_json(Data) }   )
 //
-//    So, class must know about data and serializer.
+//       So, class must know about data and serializer.
 //
-//
-//
-//  3b) class VisitorI
+//   3b) class VisitorI
 //        visit(Data A);
 //        visit(Data B);
 //        visit(Data C);
 //        visit(Data D);
-//
-
-
-
-class Visitor;
-
-class Data;
-class DataTwo;
-
-class Visitor {
- public:
-  virtual void visit(const Data&) = 0;
-  virtual void visit(const DataTwo&) = 0;
-  virtual ~Visitor() = default;
- private:
-};
-
-
-struct DataBase {
-  virtual ~DataBase() = default;
-  virtual void accept(Visitor*) = 0;
-};
-
-class Serializer : Visitor {
- public:
-  JsonObject GenerateJsonObject(const std::vector<std::unique_ptr<DataBase>>& constraints) {
-    for (auto& c : constraints) {
-      c->accept(this);
-    }
-    return json_;
-    //DUMP(ConvertToJsonString(json_));
-  }
-
-  void visit(const Data&) override;  
-  void visit(const DataTwo&) override;
- private:
-   JsonObject json_;
-};
 
 using Eigen::MatrixXd;
 bool IsEqual(const std::vector<MatrixXd>& m1, const std::vector<MatrixXd>& m2) {
@@ -90,63 +51,11 @@ bool IsEqual(const std::vector<MatrixXd>& m1, const std::vector<MatrixXd>& m2) {
   return true;
 }
 
-enum : int {
-  DataOneID = 0,
-  DataTwoID = 1,
-};
-
-struct Data : DataBase {
-  int order;
-  std::vector<int> variables;
-  Eigen::MatrixXd matrix;
-  vector<Eigen::MatrixXd> matrices;
-  Eigen::VectorXd affine_term;
-
-  constexpr static auto properties =
-      std::make_tuple(MakeProperty(&Data::order, "order"),
-                      MakeProperty(&Data::matrix, "matrix"),
-                      MakeProperty(&Data::matrices, "matrices"),
-                      MakeProperty(&Data::affine_term, "affine_term"),
-                      MakeProperty(&Data::variables, "variables"));
-
-  void accept(Visitor * v) override { return v->visit(*this); }
-};
-
-void Serializer::visit(const Data& data) {
-  JsonObject value;
-  value["data"] = toJson(data);
-  value["id"].value() = to_string(DataOneID);
-  int i = json_.as_map().size();
-  json_[ to_string(i)] = value;
-}
-
-
-struct DataTwo : DataBase {
-  int order;
-  std::vector<int> variables;
-  Eigen::MatrixXd matrix;
-
-  constexpr static auto properties =
-      std::make_tuple(MakeProperty(&DataTwo::order, "order"),
-                      MakeProperty(&DataTwo::matrix, "matrix"),
-                      MakeProperty(&DataTwo::variables, "variables"));
-
-  void accept(Visitor * v) override { return v->visit(*this); }
-};
-
-void Serializer::visit(const DataTwo& data) {
-  JsonObject value;
-  value["data"] = toJson(data);
-  value["id"].value() = to_string(DataTwoID);
-  int i = json_.as_map().size();
-  json_[ to_string(i)] = value;
-}
 
 
 
 std::unique_ptr<DataBase> create_from_json(const JsonObject& value,
                                                  int constraint_type) {
-  // switch (string_to_id.at(value.children().at("type").value())) {
   switch (constraint_type) {
     case DataOneID: {
       Data constraint = fromJson<conex::Data>(value);
@@ -180,7 +89,6 @@ Data MakeData() {
   return constraint;
 }
 
-
 void CompareData2(const DataTwo& x, const DataTwo& y) {
   EXPECT_EQ((x.matrix - y.matrix).norm(), 0);
   EXPECT_EQ(x.variables, y.variables);
@@ -204,7 +112,6 @@ GTEST_TEST(Serialize, TestVirtualInterfaces) {
   Serializer serialize;
   program["constraints"] = serialize.GenerateJsonObject(constraints);
 
-
   std::vector<std::unique_ptr<DataBase>> constraints_deserialize(2);
   for (size_t i = 0; i < constraints.size(); ++i) {
     const auto& all_constraints = program["constraints"];
@@ -218,7 +125,6 @@ GTEST_TEST(Serialize, TestVirtualInterfaces) {
                       MakeData());
   CompareData2(*dynamic_cast<DataTwo*>(constraints_deserialize.at(1).get()), 
                       MakeDataTwo());
-
 }
 
 GTEST_TEST(Serialize, ConvertData) {
@@ -234,7 +140,6 @@ GTEST_TEST(Serialize, ConvertData) {
   Data constraint_from_json_string =
       fromJson<conex::Data>(jsonDataFromString);
   CompareData1(constraint, constraint_from_json_string);
-
 }
 
 }  // namespace conex

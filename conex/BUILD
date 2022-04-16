@@ -525,7 +525,10 @@ cc_test(
     name = "serialize_test",
     srcs = [
         "test/serialize.cc",
+        "test/data.h",
         "test/serialize.h",
+        "test/constraint.h",
+        "test/constraint.cc",
         "test/serialize_test.cc",
     ],
     copts = ["-Iexternal/gtest/include"],

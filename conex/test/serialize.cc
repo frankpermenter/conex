@@ -23,7 +23,6 @@ int StringToType<int>(const std::string& input) {
   return stoi(input);
 }
 
-
 template <typename T>
 std::vector<T> CommaSeparatedStringToVector(const std::string& input) {
   std::stringstream ss(input);
@@ -97,9 +96,6 @@ JsonObject ConvertToJson(const vector<Eigen::MatrixXd>& value) {
   }
   return constraint_matrices;
 }
-
-
-
 
 std::string ConvertToJsonString(const JsonObject& val) {
   if (val.is_map()) {
@@ -216,7 +212,6 @@ JsonObject ParseJsonString(const std::string& json) {
         case '{':
           has_multiple_children[parent.top()] = true;
           break;
-
         // Current token is the last child.
         case '}':
         case ',':
@@ -250,5 +245,9 @@ JsonObject ParseJsonString(const std::string& json) {
   }
   return json_root;
 }
+
+
+
+
 
 }  // namespace conex
