@@ -189,7 +189,6 @@ JsonObject ParseJsonString(const std::string& json) {
   // encountered, and popping when "," or "}".
   while (FindNextToken(json, next_search_start, &token_start, &token_end)) {
     tokens.push_back(json.substr(token_start + 1, token_end - token_start - 1));
-    next_search_start = token_end + 1;
     if (parent.size() == 0) {
       token_to_parent.push_back(-1);
     } else {
@@ -232,25 +231,24 @@ JsonObject ParseJsonString(const std::string& json) {
     }
   }
 
-  // Record tree into a JsonObject. If child nodes are in a struct { } 
-  // std::map<string, JsonObject> in the second.
-  JsonObject root;
-  std::map<int, JsonObject*> parent_nodes;
-  parent_nodes[-1] = &root;
+  // Record tree into a JsonObject. 
+  JsonObject json_root;
+  std::map<int, JsonObject*> token_id_to_json_object;
+  token_id_to_json_object[-1] = &json_root;
   for (size_t token_id = 0; token_id < tokens.size(); token_id++) {
-    auto current_node = parent_nodes.at(token_to_parent.at(token_id));
-    CONEX_ASSERT(current_node, "Invalid JSON input.");
+    auto current_parent = token_id_to_json_object.at(token_to_parent.at(token_id));
+    CONEX_ASSERT(current_parent, "Invalid JSON input.");
     if (has_multiple_children.at(token_to_parent.at(token_id))) {
-      current_node->as_map()[tokens.at(token_id)];
+      current_parent->as_map()[tokens.at(token_id)];
       // Attach node to parent using token name, but
       // node pointer to global table using unique token-id.
-      parent_nodes[token_id] =
-          &current_node->as_map()[tokens.at(token_id)];
+      token_id_to_json_object[token_id] =
+          &current_parent->as_map()[tokens.at(token_id)];
     } else {
-      current_node->value() = tokens.at(token_id);
+      current_parent->value() = tokens.at(token_id);
     }
   }
-  return root;
+  return json_root;
 }
 
 }  // namespace conex

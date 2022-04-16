@@ -15,14 +15,6 @@ using std::vector;
 
 namespace conex {
 
-// sequence for
-template <typename T, T... S, typename F>
-constexpr void for_sequence(std::integer_sequence<T, S...>, F&& f) {
-  using unpack_t = int[];
-  (void)unpack_t{(static_cast<void>(f(std::integral_constant<T, S>{})), 0)...,
-                 0};
-}
-
 // Utility class for parsing/emiting JSON strings.  Used to 
 // store list of key-value pairs.  Since values can be either strings
 // or more key-value pairs, we allow this object to behave like
@@ -74,12 +66,20 @@ JsonObject ConvertToJson(const Eigen::MatrixXd& value);
 JsonObject ConvertToJson(const vector<Eigen::MatrixXd>& value);
 
 
+// sequence for
+template <typename T, T... S, typename F>
+constexpr void for_sequence(std::integer_sequence<T, S...>, F&& f) {
+  using unpack_t = int[];
+  (void)unpack_t{(static_cast<void>(f(std::integral_constant<T, S>{})), 0)...,
+                 0};
+}
+
 template <typename T>
 T ConstructObjectFromJson(const JsonObject&);
 
 template <typename Class, typename T>
-struct PropertyImpl {
-  constexpr PropertyImpl(T Class::*aMember, const char* aName)
+struct Property {
+  constexpr Property(T Class::*aMember, const char* aName)
       : member{aMember}, name{aName} {}
 
   using Type = T;
@@ -88,11 +88,9 @@ struct PropertyImpl {
   const char* name;
 };
 
-// One could overload this function to accept both a getter and a setter instead
-// of a member.
 template <typename Class, typename T>
-constexpr auto property(T Class::*member, const char* name) {
-  return PropertyImpl<Class, T>{member, name};
+constexpr auto MakeProperty(T Class::*member, const char* name) {
+  return Property<Class, T>{member, name};
 }
 
 // unserialize function
@@ -100,11 +98,12 @@ template <typename T>
 T fromJson(const JsonObject& data) {
   T object;
 
-  // We first get the number of properties
-  constexpr auto nbProperties = std::tuple_size<decltype(T::properties)>::value;
+  // We expect T has a tuple called "properties" indicating which
+  // members should be serialized.
+  constexpr auto kNumProperties = std::tuple_size<decltype(T::properties)>::value;
 
-  // We iterate on the index sequence of size `nbProperties`
-  for_sequence(std::make_index_sequence<nbProperties>{}, [&](auto i) {
+  // Convert each property to a JSON string and store in struct.
+  for_sequence(std::make_index_sequence<kNumProperties>{}, [&](auto i) {
     // get the property
     constexpr auto property = std::get<i>(T::properties);
 
