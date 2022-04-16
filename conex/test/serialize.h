@@ -26,6 +26,9 @@ constexpr void for_sequence(std::integer_sequence<T, S...>, F&& f) {
 struct Value;
 
 
+
+
+
 Value MatrixToJson(const Eigen::MatrixXd& value);
 
 struct Value {
@@ -36,7 +39,12 @@ struct Value {
    friend Value;
   };
  public:
- 
+
+  bool is_scalar() const { return data.children.size() == 0; }
+  bool is_struct() const { return data.string.length() == 0; }
+  bool is_empty() const { return data.children.size() == 0 && data.string.length() == 0; }
+
+
   Value& operator[](std::string name) { return data.children[std::move(name)]; }
 
   const Value& operator[](std::string name) const {
@@ -46,81 +54,35 @@ struct Value {
     }
     throw;
   }
-
-  Value& operator=(const std::string& value) {
-    CONEX_ASSERT(is_scalar() || is_empty(), "Json data is malformed.");
-    data.string = value;
-    return *this;
-  }
-
-  Value& operator=(int value) {
-    CONEX_ASSERT(is_scalar() || is_empty(), "Json data is malformed.");
-    data.string = std::to_string(value);
-    return *this;
-  }
-
-  Value& operator=(double value) {
-    CONEX_ASSERT(is_scalar() || is_empty(), "Json data is malformed.");
-    data.string = std::to_string(value);
-    return *this;
-  }
-
-  Value& operator=(const std::vector<int>& v) {
-    CONEX_ASSERT(is_scalar() || is_empty(), "Json data is malformed.");
-    std::stringstream buffer;
-    if (v.size() > 0) {
-      buffer << v.at(0);
-      for (auto i = v.begin() + 1; i != v.end(); ++i) {
-        buffer << "," << *i;
-      }
-    }
-    data.string = buffer.str();
-    return *this;
-  }
-
-  Value& operator=(const Eigen::MatrixXd& value) {
-    CONEX_ASSERT(is_empty(), "Json data is malformed.");
-    data = MatrixToJson(value).data;
-    return *this;
-  }
-
-  Value& operator=(const vector<Eigen::MatrixXd>& value) {
-    CONEX_ASSERT(is_empty(), "Json data is malformed.");
-    int i = 0;
-    Value constraint_matrices;
-    for (auto& v : value) {
-      constraint_matrices.data.children[to_string(i)].data =
-          MatrixToJson(v).data;
-      i++;
-    }
-    data = constraint_matrices.data;
-    return *this;
-  }
   
   std::map<std::string, Value>& children() { 
-    CONEX_ASSERT(data.string.length() == 0, "Json data is malformed.");
+    CONEX_ASSERT(is_struct(), "Object is scalar.");
     return data.children; 
   }
 
   const std::map<std::string, Value>& children() const {
-    CONEX_ASSERT(data.string.length() == 0, "Json data is malformed.");
+    CONEX_ASSERT(is_struct(), "Object is scalar.");
     return data.children; 
   }
 
-  bool is_scalar() const { return data.children.size() == 0; }
-  bool is_empty() const { return data.children.size() == 0 && data.string.length() == 0; }
-
   std::string& value() { 
-    CONEX_ASSERT(data.children.size() == 0, "Json data is malformed.");
+    CONEX_ASSERT(is_scalar(), "Object is struct.");
     return data.string; 
   }
   const std::string& value() const { 
-    CONEX_ASSERT(data.children.size() == 0, "Json data is malformed.");
+    CONEX_ASSERT(is_scalar(), "Object is struct.");
     return data.string; 
   }
  private:
   ValueData data;
 };
+
+Value ConvertToJson(const std::string& value);
+Value ConvertToJson(int value);
+Value ConvertToJson(double value);
+Value ConvertToJson(const std::vector<int>& v);
+Value ConvertToJson(const Eigen::MatrixXd& value);
+Value ConvertToJson(const vector<Eigen::MatrixXd>& value);
 
 template <typename T>
 T StringToType(const std::string&);
@@ -198,7 +160,7 @@ Value toJson(const T& object) {
     constexpr auto property = std::get<i>(T::properties);
 
     // set the value to the member
-    data[property.name] = object.*(property.member);
+    data[property.name] = ConvertToJson(object.*(property.member));
   });
 
   return data;

@@ -5,6 +5,55 @@
 using std::vector;
 namespace conex {
 
+Value ConvertToJson(const std::string& value) {
+  Value y;
+  y.value() = value;
+  return y;
+}
+
+Value ConvertToJson(int value) {
+  Value y;
+  y.value() = std::to_string(value);
+  return y;
+}
+
+Value ConvertToJson(double value) {
+  Value y;
+  y.value() = std::to_string(value);
+  return y;
+}
+
+Value ConvertToJson(const std::vector<int>& v) {
+  Value y;
+  std::stringstream buffer;
+  if (v.size() > 0) {
+    buffer << v.at(0);
+    for (auto i = v.begin() + 1; i != v.end(); ++i) {
+      buffer << "," << *i;
+    }
+  }
+  y.value() = buffer.str(); 
+  return y;
+}
+
+Value ConvertToJson(const Eigen::MatrixXd& value) {
+  return MatrixToJson(value);
+}
+
+Value ConvertToJson(const vector<Eigen::MatrixXd>& value) {
+  int i = 0;
+  Value constraint_matrices;
+  for (auto& v : value) {
+    constraint_matrices[to_string(i)] = MatrixToJson(v);
+    i++;
+  }
+  return constraint_matrices;
+}
+
+
+
+
+
 std::string ConvertToJsonString(const Value& val) {
   if (!val.is_scalar()) {
     std::string output = "{ ";
@@ -31,9 +80,9 @@ std::string MatrixToInitializerString(const Eigen::MatrixXd& value) {
 
 Value MatrixToJson(const Eigen::MatrixXd& value) {
   Value v;
-  v.children()["cols"] = to_string(value.cols());
-  v.children()["rows"] = to_string(value.rows());
-  v.children()["data"] = MatrixToInitializerString(value);
+  v.children()["cols"] = ConvertToJson(to_string(value.cols()));
+  v.children()["rows"] = ConvertToJson(to_string(value.rows()));
+  v.children()["data"] = ConvertToJson(MatrixToInitializerString(value));
   return v;
 }
 
@@ -88,7 +137,6 @@ template <>
 Eigen::VectorXd ConstructObjectFromJson<Eigen::VectorXd>(const Value& value) {
   return ConstructObjectFromJson<Eigen::MatrixXd>(value);
 }
-
 
 bool ReadNextToken(const std::string& string, size_t start, size_t* token_start,
                    size_t* end) {
