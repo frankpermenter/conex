@@ -528,6 +528,7 @@ cc_test(
         "test/json_parser.h",
         "test/serialize.cc",
         "test/serialize.h",
+        "test/visitor.h",
         "test/serialize_test.cc",
         "test/test_constraint.h",
     ],

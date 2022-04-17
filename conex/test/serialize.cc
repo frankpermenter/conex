@@ -94,4 +94,20 @@ void Serializer::visit(const DataTwo& data) {
   json_[to_string(i)] = value;
 }
 
+void Serializer::visit(const Constraint& data) {
+  JsonObject value;
+  value["data"] = toJson(data.GetParameters());
+  value["id"].value() = to_string(DataOneID);
+  int i = json_.as_map().size();
+  json_[to_string(i)] = value;
+}
+
+void Serializer::visit(const ConstraintTwo& data) {
+  JsonObject value;
+  value["data"] = toJson(data.GetParameters());
+  value["id"].value() = to_string(DataTwoID);
+  int i = json_.as_map().size();
+  json_[to_string(i)] = value;
+}
+
 }  // namespace conex

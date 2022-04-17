@@ -8,7 +8,7 @@ class Visitor;
 class Serializer : Visitor {
  public:
   JsonObject GenerateJsonObject(
-      const std::vector<std::unique_ptr<DataBase>>& constraints) {
+      const std::vector<std::unique_ptr<Serializable>>& constraints) {
     for (auto& c : constraints) {
       c->accept(this);
     }

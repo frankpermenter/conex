@@ -11,34 +11,6 @@
 
 namespace conex {
 
-// Data Factory
-//
-// Transformation:
-//
-//   1)  json -> Data               (serializer)
-//   2)  Data -> InterfacePointer   (factory?)
-//   3)  InterfacePointer -> json.
-//
-// Implementations:
-//
-//   1) switch json[type_id]:
-//        case type_id:
-//           data  = Make<Data>(json[data])
-//
-//   2) InterfacePointer* Factory(Data) { return Object(Data) }  // overload on
-//   DataStructType.
-//
-//   3a) class Object : InterfacePointer
-//       generate_json() { to_json(Data) }   )
-//
-//       So, class must know about data and serializer.
-//
-//   3b) class VisitorI
-//        visit(Data A);
-//        visit(Data B);
-//        visit(Data C);
-//        visit(Data D);
-
 using Eigen::MatrixXd;
 bool IsEqual(const std::vector<MatrixXd>& m1, const std::vector<MatrixXd>& m2) {
   if (m1.size() != m2.size()) {
@@ -52,7 +24,7 @@ bool IsEqual(const std::vector<MatrixXd>& m1, const std::vector<MatrixXd>& m2) {
   return true;
 }
 
-std::unique_ptr<DataBase> create_from_json(const JsonObject& value,
+std::unique_ptr<ConstraintBase> create_from_json(const JsonObject& value,
                                            int constraint_type) {
   switch (constraint_type) {
     case DataOneID: {
@@ -102,7 +74,7 @@ void CompareData1(const Data& x, const Data& y) {
 }
 
 GTEST_TEST(Serialize, TestVirtualInterfaces) {
-  std::vector<std::unique_ptr<DataBase>> constraints;
+  std::vector<std::unique_ptr<ConstraintBase>> constraints;
   constraints.emplace_back(new Data(std::move(MakeData())));
   constraints.emplace_back(new DataTwo(std::move(MakeDataTwo())));
 
@@ -110,7 +82,7 @@ GTEST_TEST(Serialize, TestVirtualInterfaces) {
   Serializer serialize;
   program["constraints"] = serialize.GenerateJsonObject(constraints);
 
-  std::vector<std::unique_ptr<DataBase>> constraints_deserialize(2);
+  std::vector<std::unique_ptr<ConstraintBase>> constraints_deserialize(2);
   for (size_t i = 0; i < constraints.size(); ++i) {
     const auto& all_constraints = program["constraints"];
     const auto& constraint_i = all_constraints[to_string(i)];
