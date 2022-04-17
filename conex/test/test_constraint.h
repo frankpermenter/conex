@@ -16,10 +16,6 @@ class DataTwo;
 class ConstraintTwo;
 class ConstraintOne;
 
-enum : int {
-  DataOneID = 0,
-  DataTwoID = 1,
-};
 
 
 

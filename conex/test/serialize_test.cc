@@ -26,15 +26,20 @@ bool IsEqual(const std::vector<MatrixXd>& m1, const std::vector<MatrixXd>& m2) {
 }
 
 std::unique_ptr<ConstraintBase> create_from_json(const JsonObject& value,
-                                           int constraint_type) {
+                                           std::string constraint) {
+  IDs constraint_type =  static_cast<IDs>(stoi(constraint));
   switch (constraint_type) {
-    case DataOneID: {
+    case IDs::DataOne: {
       Data constraint = fromJson<conex::Data>(value);
       return std::make_unique<Data>(std::move(constraint));
     }
-    case DataTwoID: {
+    case IDs::DataTwo: {
       DataTwo constraint = fromJson<conex::DataTwo>(value);
       return std::make_unique<DataTwo>(std::move(constraint));
+    }
+    case IDs::LinearConstraint: {
+      LinearConstraint constraint = fromJson<conex::LinearConstraint>(value);
+      return std::make_unique<LinearConstraint>(std::move(constraint));
     }
   }
   throw;
@@ -67,6 +72,8 @@ LinearConstraint MakeLinearConstraint() {
     A.row(i).setLinSpaced(A.cols(), -1, 1);
   }
   C.setLinSpaced(A.rows(), -1, 1);
+  DUMP(A);
+  DUMP(C);
   return LinearConstraint(A, C);
 }
 
@@ -85,29 +92,42 @@ void CompareData1(const Data& x, const Data& y) {
   EXPECT_TRUE(IsEqual(y.matrices, x.matrices));
 }
 
+void CompareLinearConstraint(const ConstraintBase* x_ptr, 
+                             const ConstraintBase* y_ptr) {
+  const auto& x = *dynamic_cast<const LinearConstraint*>(x_ptr);
+  const auto& y = *dynamic_cast<const LinearConstraint*>(y_ptr);
+  DUMP(x.constraint_matrix());
+  DUMP(y.constraint_matrix());
+  EXPECT_EQ((x.constraint_matrix() - y.constraint_matrix()).norm(), 0);
+  EXPECT_EQ((x.affine_term() - y.affine_term()).norm(), 0);
+}
+
+
 GTEST_TEST(Serialize, TestVirtualInterfaces) {
   std::vector<std::unique_ptr<ConstraintBase>> constraints;
   constraints.emplace_back(new Data(std::move(MakeData())));
   constraints.emplace_back(new DataTwo(std::move(MakeDataTwo())));
-  //constraints.emplace_back(new LinearConstraint(std::move(MakeLinearConstraint())));
+  constraints.emplace_back(new LinearConstraint(std::move(MakeLinearConstraint())));
 
   JsonObject program;
   Serializer serialize;
   program["constraints"] = serialize.GenerateJsonObject(constraints);
 
-  std::vector<std::unique_ptr<ConstraintBase>> constraints_deserialize(2);
+  std::vector<std::unique_ptr<ConstraintBase>> constraints_deserialize;
   for (size_t i = 0; i < constraints.size(); ++i) {
     const auto& all_constraints = program["constraints"];
     const auto& constraint_i = all_constraints[to_string(i)];
     const auto& id = constraint_i["id"].value();
     const auto& data = constraint_i["data"];
-    constraints_deserialize.at(i) = create_from_json(data, stoi(id));
+    constraints_deserialize.push_back(create_from_json(data, id));
   }
 
   CompareData1(*dynamic_cast<Data*>(constraints_deserialize.at(0).get()),
                MakeData());
   CompareData2(*dynamic_cast<DataTwo*>(constraints_deserialize.at(1).get()),
                MakeDataTwo());
+
+  CompareLinearConstraint(constraints_deserialize.at(2).get(), constraints.at(2).get());
 }
 
 GTEST_TEST(Serialize, ConvertData) {

@@ -8,6 +8,17 @@ class ConstraintOne;
 class LinearConstraint;
 class SOCConstraint;
 
+enum class IDs: int {
+ DataOne = 0,
+ DataTwo = 1,
+ ConstraintTwo = 2,
+ ConstraintOne = 3,
+ LinearConstraint = 4,
+ SOCConstraint = 5,
+};
+
+
+
 // Visit existing objects and serialize them.
 class Visitor {
  public:

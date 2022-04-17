@@ -4,6 +4,7 @@
 #include "conex/linear_constraint.h"
 #include "conex/soc_constraint.h"
 
+using Eigen::MatrixXd;
 namespace conex {
 namespace {
 template <typename Class, typename T>
@@ -77,13 +78,19 @@ JsonObject toJson(const T& input) {
 template Data fromJson<Data>(const JsonObject& data);
 template DataTwo fromJson<DataTwo>(const JsonObject& data);
 
+
+
+
 template JsonObject toJson<Data>(const Data& input);
 template JsonObject toJson<DataTwo>(const DataTwo& input);
 
+std::string enum_to_string(IDs e) {
+  return to_string(static_cast<int>(e));
+}
 void Serializer::visit(const Data& data) {
   JsonObject value;
   value["data"] = toJson(data);
-  value["id"].value() = to_string(DataOneID);
+  value["id"].value() = enum_to_string(IDs::DataOne);
   int i = json_.as_map().size();
   json_[to_string(i)] = value;
 }
@@ -91,7 +98,7 @@ void Serializer::visit(const Data& data) {
 void Serializer::visit(const DataTwo& data) {
   JsonObject value;
   value["data"] = toJson(data);
-  value["id"].value() = to_string(DataTwoID);
+  value["id"].value() = enum_to_string(IDs::DataTwo);
   int i = json_.as_map().size();
   json_[to_string(i)] = value;
 }
@@ -99,33 +106,48 @@ void Serializer::visit(const DataTwo& data) {
 void Serializer::visit(const ConstraintOne& data) {
   JsonObject value;
   value["data"] = toJson(data.GetParameters());
-  value["id"].value() = to_string(DataOneID);
+  value["id"].value() = enum_to_string(IDs::DataOne);
   int i = json_.as_map().size();
   json_[to_string(i)] = value;
 }
+
+
+
 
 void Serializer::visit(const ConstraintTwo& data) {
   JsonObject value;
   value["data"] = toJson(data.GetParameters());
-  value["id"].value() = to_string(DataTwoID);
+  value["id"].value() = enum_to_string(IDs::DataTwo);
   int i = json_.as_map().size();
   json_[to_string(i)] = value;
 }
 
+// Linear Constraint //
 void Serializer::visit(const LinearConstraint& data) {
   JsonObject value;
   value["data"]["constraint_matrix"] = ConvertToJson(data.constraint_matrix());
-  value["data"]["upper_bound"] = ConvertToJson(data.constraint_matrix());
-  value["id"].value() = to_string(DataTwoID);
+  DUMP(value["data"]["constraint_matrix"]["data"].value());
+  value["data"]["upper_bound"] = ConvertToJson(data.affine_term());
+  value["id"].value() = enum_to_string(IDs::LinearConstraint);
   int i = json_.as_map().size();
   json_[to_string(i)] = value;
 }
+
+template<> LinearConstraint fromJson<LinearConstraint>(const JsonObject& data) {
+  auto matrix = ConstructObjectFromJson<MatrixXd>(data["constraint_matrix"]);
+  auto affine = ConstructObjectFromJson<MatrixXd>(data["upper_bound"]);
+  DUMP(affine);
+  DUMP(matrix);
+  return LinearConstraint(matrix, affine);
+}
+
+
 
 void Serializer::visit(const SOCConstraint& data) {
   JsonObject value;
   value["data"]["constraint_matrix"] = ConvertToJson(data.constraint_matrix());
   value["data"]["upper_bound"] = ConvertToJson(data.constraint_matrix());
-  value["id"].value() = to_string(DataTwoID);
+  value["id"].value() = enum_to_string(IDs::SOCConstraint);
   int i = json_.as_map().size();
   json_[to_string(i)] = value;
 }

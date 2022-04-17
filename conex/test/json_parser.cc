@@ -138,7 +138,12 @@ Eigen::MatrixXd ConstructObjectFromJson<Eigen::MatrixXd>(
   if (rows * cols != static_cast<int>(matrix_data.size())) {
     throw std::runtime_error("Invalid data.");
   }
-  return Eigen::Map<const Eigen::MatrixXd>(matrix_data.data(), rows, cols);
+  bool convert_row_to_column_major = true;
+  if (convert_row_to_column_major) {
+    return Eigen::Map<const Eigen::MatrixXd>(matrix_data.data(), cols, rows).transpose();
+  } else {
+    return Eigen::Map<const Eigen::MatrixXd>(matrix_data.data(), rows, cols);
+  }
 }
 
 template <>
