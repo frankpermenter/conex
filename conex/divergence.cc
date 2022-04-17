@@ -16,8 +16,8 @@ namespace {
 //
 //      solve ((a*x^2 + b*x + c)/(2-x*d) -k, x)
 double SolveRationalEquation(double a, double b, double c, double d, double k) {
-  double under_radical =
-      b * b - 4 * a * c + 8 * a * k + 2 * b * d * k + std::pow(d * k, 2);
+  double under_radical = b * b - 4 * a * c + 8 * a * k + 2 * b * d * k +
+                         std::pow(d * k, 2);  // NOLINT
   double x2 = -(b + d * k - std::sqrt(under_radical)) / (2 * a);
   return x2;
 }
@@ -31,7 +31,7 @@ double InverseLambdaMaxBranch(double divergence_upper_bound,
   double d = p.lambda_max;
 
   double x = SolveRationalEquation(a, b, c, d, divergence_upper_bound);
-  double lower_bound = 2.0 / (p.lambda_max + p.lambda_min);
+  double lower_bound = 2.0 / (p.lambda_max + p.lambda_min);  // NOLINT
 
   double k = -1;
   if (x >= lower_bound) {
@@ -48,14 +48,12 @@ bool InLimits(double x, double lower, double upper) {
 bool SolveQuadratic(double a, double b, double n, double c,
                     std::pair<double, double>* sol) {
   double under_radical = b * b + 2 * b * c + c * c - 4 * a * n;
-  sol->first = (b + c + std::sqrt(under_radical)) / (2 * a);
-  sol->second = (b + c - std::sqrt(under_radical)) / (2 * a);
-
-  if (under_radical < 0) {
-    return false;
-  } else {
+  if (under_radical >= 0 && a > 0) {
+    sol->first = (b + c + std::sqrt(under_radical)) / (2 * a);
+    sol->second = (b + c - std::sqrt(under_radical)) / (2 * a);
     return true;
   }
+  return false;
 }
 
 // TODO(FrankPermenter): Analyze if both solutions of Quadratic
@@ -63,7 +61,7 @@ bool SolveQuadratic(double a, double b, double n, double c,
 double InverseLambdaMinBranch(double divergence_upper_bound,
                               const WeightedSlackEigenvalues& p) {
   double lower_bound = 0;
-  double upper_bound = 2.0 / (p.lambda_max + p.lambda_min);
+  double upper_bound = 2.0 / (p.lambda_max + p.lambda_min);  // NOLINT
   double k = -1;
   std::pair<double, double> k2;
   if (SolveQuadratic(p.frobenius_norm_squared / p.lambda_min,
@@ -81,15 +79,12 @@ double InverseLambdaMinBranch(double divergence_upper_bound,
   return k;
 }
 
-bool BoundIsFinite(double k, WeightedSlackEigenvalues& p) {
+bool BoundIsFinite(double k, const WeightedSlackEigenvalues& p) {
   double norm_inf = std::fabs(k * p.lambda_max - 1);
   if (norm_inf < std::fabs(k * p.lambda_min - 1)) {
     norm_inf = std::fabs(k * p.lambda_min - 1);
   }
-  if (norm_inf < 1) {
-    return 1;
-  }
-  return 0;
+  return norm_inf < 1;
 }
 
 double DivergenceUpperBoundInverse(double divergence_upper_bound,

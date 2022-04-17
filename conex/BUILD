@@ -524,12 +524,12 @@ cc_binary(
 cc_test(
     name = "serialize_test",
     srcs = [
-        "test/serialize.cc",
-        "test/test_constraint.h",
-        "test/serialize.h",
-        "test/json_parser.h",
         "test/json_parser.cc",
+        "test/json_parser.h",
+        "test/serialize.cc",
+        "test/serialize.h",
         "test/serialize_test.cc",
+        "test/test_constraint.h",
     ],
     copts = ["-Iexternal/gtest/include"],
     deps = [

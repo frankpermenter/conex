@@ -50,7 +50,7 @@ JsonObject MatrixToJson(const Eigen::MatrixXd& value) {
   v["data"] = ConvertToJson(MatrixToInitializerString(value));
   return v;
 }
-}
+}  // namespace
 
 JsonObject ConvertToJson(const std::string& value) {
   JsonObject y;
@@ -79,7 +79,7 @@ JsonObject ConvertToJson(const std::vector<int>& v) {
       buffer << "," << *i;
     }
   }
-  y.value() = buffer.str(); 
+  y.value() = buffer.str();
   return y;
 }
 
@@ -101,7 +101,8 @@ std::string ConvertToJsonString(const JsonObject& val) {
   if (val.is_map()) {
     std::string output = "{ ";
     for (auto& v : val.as_map()) {
-      output += "  \"" + v.first + "\" : " + ConvertToJsonString(v.second) + " ,";
+      output +=
+          "  \"" + v.first + "\" : " + ConvertToJsonString(v.second) + " ,";
     }
     output.pop_back(); /* remove last "," */
     output += "} ";
@@ -110,7 +111,6 @@ std::string ConvertToJsonString(const JsonObject& val) {
     return "\"" + val.value() + "\"";
   }
 }
-
 
 template <>
 int ConstructObjectFromJson<int>(const JsonObject& value) {
@@ -123,12 +123,14 @@ std::string ConstructObjectFromJson<std::string>(const JsonObject& value) {
 }
 
 template <>
-std::vector<int> ConstructObjectFromJson<std::vector<int>>(const JsonObject& value) {
+std::vector<int> ConstructObjectFromJson<std::vector<int>>(
+    const JsonObject& value) {
   return CommaSeparatedStringToVector<int>(value.value());
 }
 
 template <>
-Eigen::MatrixXd ConstructObjectFromJson<Eigen::MatrixXd>(const JsonObject& value) {
+Eigen::MatrixXd ConstructObjectFromJson<Eigen::MatrixXd>(
+    const JsonObject& value) {
   std::string data = value["data"].value();
   int rows = stoi(value["rows"].value());
   int cols = stoi(value["cols"].value());
@@ -150,7 +152,8 @@ vector<Eigen::MatrixXd> ConstructObjectFromJson<vector<Eigen::MatrixXd>>(
 }
 
 template <>
-Eigen::VectorXd ConstructObjectFromJson<Eigen::VectorXd>(const JsonObject& value) {
+Eigen::VectorXd ConstructObjectFromJson<Eigen::VectorXd>(
+    const JsonObject& value) {
   return ConstructObjectFromJson<Eigen::MatrixXd>(value);
 }
 
@@ -163,7 +166,7 @@ bool FindNextToken(const std::string& string, size_t start, size_t* token_start,
   *end = string.find("\"", *token_start + 1);
   return *end != string::npos && *token_start != string::npos;
 }
-}
+}  // namespace
 
 JsonObject ParseJsonString(const std::string& json) {
   size_t token_end = string::npos;
@@ -175,11 +178,12 @@ JsonObject ParseJsonString(const std::string& json) {
   std::map<int, bool> has_multiple_children;
   has_multiple_children[-1] = true;
 
-  // Parse quote delimited substrings ("tokens") in input and arrange them in 
+  // Parse quote delimited substrings ("tokens") in input and arrange them in
   // a tree.  The following patterns indicate parent-child relationships:
   //
   // "parent" : "child",
-  // "parent" : { "child" : "grand_child" , "child" : { "grand_child" : "great_grand_child" }}
+  // "parent" : { "child" : "grand_child" , "child" : { "grand_child" :
+  // "great_grand_child" }}
   //
   // To parse, we do depth-first search, pushing onto the stack when ":" is
   // encountered, and popping when "," or "}".
@@ -226,12 +230,13 @@ JsonObject ParseJsonString(const std::string& json) {
     }
   }
 
-  // Record tree into a JsonObject. 
+  // Record tree into a JsonObject.
   JsonObject json_root;
   std::map<int, JsonObject*> token_id_to_json_object;
   token_id_to_json_object[-1] = &json_root;
   for (size_t token_id = 0; token_id < tokens.size(); token_id++) {
-    auto current_parent = token_id_to_json_object.at(token_to_parent.at(token_id));
+    auto current_parent =
+        token_id_to_json_object.at(token_to_parent.at(token_id));
     CONEX_ASSERT(current_parent, "Invalid JSON input.");
     if (has_multiple_children.at(token_to_parent.at(token_id))) {
       current_parent->as_map()[tokens.at(token_id)];
@@ -245,9 +250,5 @@ JsonObject ParseJsonString(const std::string& json) {
   }
   return json_root;
 }
-
-
-
-
 
 }  // namespace conex

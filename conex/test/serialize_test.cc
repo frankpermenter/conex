@@ -5,14 +5,14 @@
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
-#include "test_constraint.h"
 #include "json_parser.h"
 #include "serialize.h"
+#include "test_constraint.h"
 
 namespace conex {
 
 // Data Factory
-//  
+//
 // Transformation:
 //
 //   1)  json -> Data               (serializer)
@@ -25,8 +25,9 @@ namespace conex {
 //        case type_id:
 //           data  = Make<Data>(json[data])
 //
-//   2) InterfacePointer* Factory(Data) { return Object(Data) }  // overload on DataStructType.
-//     
+//   2) InterfacePointer* Factory(Data) { return Object(Data) }  // overload on
+//   DataStructType.
+//
 //   3a) class Object : InterfacePointer
 //       generate_json() { to_json(Data) }   )
 //
@@ -51,11 +52,8 @@ bool IsEqual(const std::vector<MatrixXd>& m1, const std::vector<MatrixXd>& m2) {
   return true;
 }
 
-
-
-
 std::unique_ptr<DataBase> create_from_json(const JsonObject& value,
-                                                 int constraint_type) {
+                                           int constraint_type) {
   switch (constraint_type) {
     case DataOneID: {
       Data constraint = fromJson<conex::Data>(value);
@@ -100,7 +98,7 @@ void CompareData1(const Data& x, const Data& y) {
   EXPECT_EQ((x.affine_term - y.affine_term).norm(), 0);
   EXPECT_EQ(x.variables, y.variables);
   EXPECT_EQ(x.order, y.order);
-  EXPECT_TRUE( IsEqual(y.matrices, x.matrices));
+  EXPECT_TRUE(IsEqual(y.matrices, x.matrices));
 }
 
 GTEST_TEST(Serialize, TestVirtualInterfaces) {
@@ -120,11 +118,11 @@ GTEST_TEST(Serialize, TestVirtualInterfaces) {
     const auto& data = constraint_i["data"];
     constraints_deserialize.at(i) = create_from_json(data, stoi(id));
   }
-  
-  CompareData1(*dynamic_cast<Data*>(constraints_deserialize.at(0).get()), 
-                      MakeData());
-  CompareData2(*dynamic_cast<DataTwo*>(constraints_deserialize.at(1).get()), 
-                      MakeDataTwo());
+
+  CompareData1(*dynamic_cast<Data*>(constraints_deserialize.at(0).get()),
+               MakeData());
+  CompareData2(*dynamic_cast<DataTwo*>(constraints_deserialize.at(1).get()),
+               MakeDataTwo());
 }
 
 GTEST_TEST(Serialize, ConvertData) {
@@ -137,8 +135,7 @@ GTEST_TEST(Serialize, ConvertData) {
   std::string jsonString = ConvertToJsonString(jsonData);
   JsonObject jsonDataFromString = ParseJsonString(jsonString);
 
-  Data constraint_from_json_string =
-      fromJson<conex::Data>(jsonDataFromString);
+  Data constraint_from_json_string = fromJson<conex::Data>(jsonDataFromString);
   CompareData1(constraint, constraint_from_json_string);
 }
 

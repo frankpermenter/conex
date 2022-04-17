@@ -31,7 +31,7 @@ struct WorkspaceSOC {
     DUMP(o.temp3_1);
   }
 
-  double* W0;
+  double* W0 = nullptr;
   double d0;
   double wsqrt_q1_norm_sqr;
   // TODO(FrankPermenter): Reduce number of temporaries.
