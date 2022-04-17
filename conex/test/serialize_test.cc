@@ -8,6 +8,7 @@
 #include "json_parser.h"
 #include "serialize.h"
 #include "test_constraint.h"
+#include "conex/linear_constraint.h"
 
 namespace conex {
 
@@ -59,6 +60,17 @@ Data MakeData() {
   return constraint;
 }
 
+LinearConstraint MakeLinearConstraint() {
+  Eigen::MatrixXd A(3, 5);
+  Eigen::VectorXd C(3);
+  for (int i = 0; i < 3; i++) {
+    A.row(i).setLinSpaced(A.cols(), -1, 1);
+  }
+  C.setLinSpaced(A.rows(), -1, 1);
+  return LinearConstraint(A, C);
+}
+
+
 void CompareData2(const DataTwo& x, const DataTwo& y) {
   EXPECT_EQ((x.matrix - y.matrix).norm(), 0);
   EXPECT_EQ(x.variables, y.variables);
@@ -77,6 +89,7 @@ GTEST_TEST(Serialize, TestVirtualInterfaces) {
   std::vector<std::unique_ptr<ConstraintBase>> constraints;
   constraints.emplace_back(new Data(std::move(MakeData())));
   constraints.emplace_back(new DataTwo(std::move(MakeDataTwo())));
+  //constraints.emplace_back(new LinearConstraint(std::move(MakeLinearConstraint())));
 
   JsonObject program;
   Serializer serialize;

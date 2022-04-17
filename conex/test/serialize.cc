@@ -1,6 +1,8 @@
 #include "conex/test/serialize.h"
 #include "conex/test/json_parser.h"
 #include "conex/test/test_constraint.h"
+#include "conex/linear_constraint.h"
+#include "conex/soc_constraint.h"
 
 namespace conex {
 namespace {
@@ -94,7 +96,7 @@ void Serializer::visit(const DataTwo& data) {
   json_[to_string(i)] = value;
 }
 
-void Serializer::visit(const Constraint& data) {
+void Serializer::visit(const ConstraintOne& data) {
   JsonObject value;
   value["data"] = toJson(data.GetParameters());
   value["id"].value() = to_string(DataOneID);
@@ -109,5 +111,24 @@ void Serializer::visit(const ConstraintTwo& data) {
   int i = json_.as_map().size();
   json_[to_string(i)] = value;
 }
+
+void Serializer::visit(const LinearConstraint& data) {
+  JsonObject value;
+  value["data"]["constraint_matrix"] = ConvertToJson(data.constraint_matrix());
+  value["data"]["upper_bound"] = ConvertToJson(data.constraint_matrix());
+  value["id"].value() = to_string(DataTwoID);
+  int i = json_.as_map().size();
+  json_[to_string(i)] = value;
+}
+
+void Serializer::visit(const SOCConstraint& data) {
+  JsonObject value;
+  value["data"]["constraint_matrix"] = ConvertToJson(data.constraint_matrix());
+  value["data"]["upper_bound"] = ConvertToJson(data.constraint_matrix());
+  value["id"].value() = to_string(DataTwoID);
+  int i = json_.as_map().size();
+  json_[to_string(i)] = value;
+}
+
 
 }  // namespace conex

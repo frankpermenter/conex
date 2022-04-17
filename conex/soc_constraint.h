@@ -48,6 +48,8 @@ class SOCConstraint {
                                 const Ref& y0, const Ref& y1,
                                 LineSearchOutput* output);
 
+  DenseMatrix constraint_matrix() const { return constraint_matrix_; }
+  DenseMatrix affine_term() const { return constraint_matrix_; }
  private:
   void ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y, Ref* minus_s);
   void GeodesicUpdate(const Ref& S, StepInfo* data);

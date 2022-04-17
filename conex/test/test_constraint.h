@@ -2,7 +2,8 @@
 #include <vector>
 #include <Eigen/Dense>
 #include <memory>
-#include "conex/test/visitor.h"
+#include "conex/visitor.h"
+#include "conex/constraint_interface.h"
 namespace conex {
 
 // Serializable = DoGetData(Constraint)
@@ -13,7 +14,7 @@ namespace conex {
 class Data;
 class DataTwo;
 class ConstraintTwo;
-class Constraint;
+class ConstraintOne;
 
 enum : int {
   DataOneID = 0,
@@ -21,10 +22,6 @@ enum : int {
 };
 
 
-class ConstraintBase {
- public:
-  virtual void accept(Visitor*) = 0;
-};
 
 struct Data : ConstraintBase {
   int order;
@@ -36,7 +33,7 @@ struct Data : ConstraintBase {
   void accept(Visitor* v) override { v->visit(*this); }
 };
 
-class Constraint : ConstraintBase {
+class ConstraintOne : ConstraintBase {
  public:
   const Data& GetParameters() const { return data_; }
   virtual void accept(Visitor*) = 0;

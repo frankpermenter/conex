@@ -1,7 +1,8 @@
 #pragma once
 #include "conex/test/json_parser.h"
 #include "conex/test/test_constraint.h"
-#include "conex/test/visitor.h"
+#include "conex/visitor.h"
+#include "conex/constraint_interface.h"
 
 namespace conex {
 
@@ -19,8 +20,10 @@ class Serializer : Visitor {
 
   void visit(const Data&) override;
   void visit(const DataTwo&) override;
-  void visit(const Constraint&) override;
+  void visit(const ConstraintOne&) override;
   void visit(const ConstraintTwo&) override;
+  void visit(const LinearConstraint&) override;
+  void visit(const SOCConstraint&) override;
 
  private:
   JsonObject json_;
