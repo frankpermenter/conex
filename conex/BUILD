@@ -256,6 +256,8 @@ cc_library(
     hdrs = ["kkt_solver_interface.h"],
 )
 
+
+
 cc_library(
     name = "kkt_solver_factory",
     srcs = ["kkt_solver_factory.cc"],
@@ -265,6 +267,12 @@ cc_library(
         "kkt_solver_interface",
         "supernodal_solver",
     ],
+)
+
+
+cc_library(
+    name = "error_checking",
+    hdrs = ["error_checking_macros.h", "error_codes.h"]
 )
 
 cc_library(
@@ -287,8 +295,6 @@ cc_library(
         "constraint_manager.h",
         "debug_macros.h",
         "equality_constraint.h",
-        "error_checking_macros.h",
-        "error_codes.h",
         "kkt_solver.h",
         "kkt_solver_factory.h",
         "kkt_solver_interface.h",
@@ -305,6 +311,7 @@ cc_library(
     deps = [
         ":solver_configuration",
         ":tree_utils",
+        ":error_checking",
         "@eigen",
     ],
 )
@@ -321,8 +328,6 @@ cc_library(
         "constraint_manager.h",
         "constraint_interface.h",
         "debug_macros.h",
-        "error_checking_macros.h",
-        "error_codes.h",
         "memory_utils.h",
         "newton_step.h",
         "quadratic_cost.h",
@@ -338,6 +343,7 @@ cc_library(
         ":kkt_solver_factory",
         ":solver_configuration",
         ":supernodal_solver",
+        ":error_checking",
         "@eigen",
     ],
 )
@@ -523,23 +529,47 @@ cc_binary(
     ],
 )
 
-cc_test(
-    name = "serialize_test",
+cc_library(
+    name = "visitor_interface",
+    hdrs = ["visitor.h"],
+    deps = ["constraint_interface"]
+)
+
+cc_library(
+    name = "constraint_interface",
+    hdrs = ["constraint_interface.h"],
+)
+
+cc_library(
+    name = "serializer",
     srcs = [
         "test/json_parser.cc",
         "test/json_parser.h",
         "test/serialize.cc",
         "test/serialize.h",
+    ],
+    deps = [ "@eigen", "visitor_interface", 
+            "error_checking" ,  
+            "linear_constraint", 
+            "semidefinite_constraints", 
+            "socp_constraints"]
+)
+
+cc_test(
+    name = "serialize_test",
+    srcs = [
         "test/serialize_test.cc",
-        "test/test_constraint.h",
     ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "core",
         "linear_constraint",
         "socp_constraints",
+         "semidefinite_constraints", 
+        "serializer",
 #        "semidefinite_constraints",
         "@eigen",
         "@gtest//:main",
     ],
 )
+

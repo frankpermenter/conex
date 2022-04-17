@@ -1,21 +1,25 @@
-#include "conex/error_codes.h"
+#include "conex/error_checking_macros.h"
 #include "conex/newton_step.h"
 #include "conex/workspace_soc.h"
+#include "conex/constraint_interface.h"
 
 namespace conex {
 
-class SOCConstraint {
+class SOCConstraint : public ConstraintBase {
   using StorageType = DenseMatrix;
 
  public:
   template <typename T1, typename T2>
-  SOCConstraint(const T1& constraint_matrix, const T2& constraint_affine)
+  SOCConstraint(const T1& constraint_matrix, 
+                const T2& constraint_affine)
       : workspace_(constraint_matrix.rows() - 1),
         constraint_matrix_(constraint_matrix),
         constraint_affine_(constraint_affine) {
-    assert(constraint_matrix_.rows() == constraint_affine_.rows());
+    CONEX_DEMAND(constraint_matrix_.rows() == constraint_affine_.rows(),
+                 "Invalid SOC problem data.");
   }
 
+  void accept(Visitor* v) override { v->visit(*this); }
   // Lorentz cone a subset of R^(n+1).
   SOCConstraint(int n) : workspace_(n), n_(n) {}
 

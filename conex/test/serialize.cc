@@ -1,132 +1,25 @@
 #include "conex/test/serialize.h"
 #include "conex/test/json_parser.h"
-#include "conex/test/test_constraint.h"
 #include "conex/linear_constraint.h"
 #include "conex/soc_constraint.h"
+#include "conex/equality_constraint.h"
+#include "conex/psd_constraint.h"
+#include "conex/equality_constraint.h"
+#include "conex/quadratic_cone_constraint.h"
 
 using Eigen::MatrixXd;
+
 namespace conex {
 namespace {
-template <typename Class, typename T>
-struct Property {
-  constexpr Property(T Class::*aMember, const char* aName)
-      : member{aMember}, name{aName} {}
-
-  using Type = T;
-
-  T Class::*member;
-  const char* name;
-};
-
-template <typename Class, typename T>
-constexpr auto MakeProperty(T Class::*member, const char* name) {
-  return Property<Class, T>{member, name};
-}
-
-template<typename T>
-constexpr auto GetTupleData() { 
-  if constexpr(std::is_same<T, DataTwo>::value) {
-     return std::make_tuple(MakeProperty(&DataTwo::order, "order"),
-                      MakeProperty(&DataTwo::matrix, "matrix"),
-                      MakeProperty(&DataTwo::variables, "variables"));
-  }
-  if constexpr(std::is_same<T, Data>::value) {
-    return std::make_tuple(MakeProperty(&Data::order, "order"),
-                    MakeProperty(&Data::matrix, "matrix"),
-                    MakeProperty(&Data::matrices, "matrices"),
-                    MakeProperty(&Data::affine_term, "affine_term"),
-                    MakeProperty(&Data::variables, "variables"));
-  }
-}
-
-} // namespace
-
-template <typename T>
-T fromJson(const JsonObject& data) {
-  T object;
-  constexpr auto properties = GetTupleData<T>(); 
-
-  // We expect T has a tuple called "properties" indicating which
-  // members should be serialized.
-  constexpr auto kNumProperties = std::tuple_size<decltype(properties)>::value;
-
-  // Use factory function ConstructObjectFromJson<Type> to construct object
-  // from type.
-  for_sequence(std::make_index_sequence<kNumProperties>{}, [&](auto i) {
-    constexpr auto property = std::get<i>(properties);
-    using Type = typename decltype(property)::Type;
-    object.*(property.member) =
-        ConstructObjectFromJson<Type>(data[property.name]);
-  });
-
-  return object;
-}
-
-template<typename T>
-JsonObject toJson(const T& input) {
-  JsonObject output;
-  constexpr auto properties = GetTupleData<T>();
-  constexpr auto kNumProperties = std::tuple_size<decltype(properties)>::value;
-  // Convert each property to a JSON string and store in struct.
-  for_sequence(std::make_index_sequence<kNumProperties>{}, [&](auto i) {
-    constexpr auto property = std::get<i>(properties);
-    output[property.name] = ConvertToJson(input.*(property.member));
-  });
-  return output;
-}
-
-template Data fromJson<Data>(const JsonObject& data);
-template DataTwo fromJson<DataTwo>(const JsonObject& data);
-
-
-
-
-template JsonObject toJson<Data>(const Data& input);
-template JsonObject toJson<DataTwo>(const DataTwo& input);
-
 std::string enum_to_string(IDs e) {
   return to_string(static_cast<int>(e));
 }
-void Serializer::visit(const Data& data) {
-  JsonObject value;
-  value["data"] = toJson(data);
-  value["id"].value() = enum_to_string(IDs::DataOne);
-  int i = json_.as_map().size();
-  json_[to_string(i)] = value;
 }
 
-void Serializer::visit(const DataTwo& data) {
-  JsonObject value;
-  value["data"] = toJson(data);
-  value["id"].value() = enum_to_string(IDs::DataTwo);
-  int i = json_.as_map().size();
-  json_[to_string(i)] = value;
-}
-
-void Serializer::visit(const ConstraintOne& data) {
-  JsonObject value;
-  value["data"] = toJson(data.GetParameters());
-  value["id"].value() = enum_to_string(IDs::DataOne);
-  int i = json_.as_map().size();
-  json_[to_string(i)] = value;
-}
-
-
-
-
-void Serializer::visit(const ConstraintTwo& data) {
-  JsonObject value;
-  value["data"] = toJson(data.GetParameters());
-  value["id"].value() = enum_to_string(IDs::DataTwo);
-  int i = json_.as_map().size();
-  json_[to_string(i)] = value;
-}
-
-// Linear Constraint //
+// Linear Constraint //////////////////////////////////////////////
 void Serializer::visit(const LinearConstraint& data) {
   JsonObject value;
   value["data"]["constraint_matrix"] = ConvertToJson(data.constraint_matrix());
-  DUMP(value["data"]["constraint_matrix"]["data"].value());
   value["data"]["upper_bound"] = ConvertToJson(data.affine_term());
   value["id"].value() = enum_to_string(IDs::LinearConstraint);
   int i = json_.as_map().size();
@@ -136,13 +29,10 @@ void Serializer::visit(const LinearConstraint& data) {
 template<> LinearConstraint fromJson<LinearConstraint>(const JsonObject& data) {
   auto matrix = ConstructObjectFromJson<MatrixXd>(data["constraint_matrix"]);
   auto affine = ConstructObjectFromJson<MatrixXd>(data["upper_bound"]);
-  DUMP(affine);
-  DUMP(matrix);
   return LinearConstraint(matrix, affine);
 }
 
-
-
+// SOC Constraint //////////////////////////////////////////////
 void Serializer::visit(const SOCConstraint& data) {
   JsonObject value;
   value["data"]["constraint_matrix"] = ConvertToJson(data.constraint_matrix());
@@ -151,6 +41,30 @@ void Serializer::visit(const SOCConstraint& data) {
   int i = json_.as_map().size();
   json_[to_string(i)] = value;
 }
+
+template<> SOCConstraint fromJson<SOCConstraint>(const JsonObject& data) {
+  auto matrix = ConstructObjectFromJson<MatrixXd>(data["constraint_matrix"]);
+  auto affine = ConstructObjectFromJson<MatrixXd>(data["upper_bound"]);
+  return SOCConstraint(matrix, affine);
+}
+
+// Equality Constraint //////////////////////////////////////////////
+void Serializer::visit(const EqualityConstraints& data) {
+  JsonObject value;
+  value["data"]["constraint_matrix"] = ConvertToJson(data.constraint_matrix());
+  value["data"]["affine_term"] = ConvertToJson(data.constraint_matrix());
+  value["id"].value() = enum_to_string(IDs::SOCConstraint);
+  int i = json_.as_map().size();
+  json_[to_string(i)] = value;
+}
+
+template<> EqualityConstraints fromJson<EqualityConstraints>(const JsonObject& data) {
+  auto matrix = ConstructObjectFromJson<MatrixXd>(data["constraint_matrix"]);
+  auto affine = ConstructObjectFromJson<MatrixXd>(data["upper_bound"]);
+  return EqualityConstraints(matrix, affine);
+}
+
+
 
 
 }  // namespace conex

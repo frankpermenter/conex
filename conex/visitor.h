@@ -1,36 +1,37 @@
 #pragma once
 namespace conex {
 
-class Data;
-class DataTwo;
-class ConstraintTwo;
-class ConstraintOne;
 class LinearConstraint;
 class SOCConstraint;
+class EqualityConstraints;
+class QuadraticConstraintBase;
+class MatrixLMIConstraint;
+
+template <typename T> 
+class HermitianPsdConstraint;
+
+template <int dimension>
+class MatrixAlgebra;
+
+using RealHermitianPsdConstraint = HermitianPsdConstraint<MatrixAlgebra<1>>;
+using ComplexHermitianPsdConstraint = HermitianPsdConstraint<MatrixAlgebra<2>>;
+using QuaternicHermitianPsdConstraint = HermitianPsdConstraint<MatrixAlgebra<4>>;
+using OctonicHermitianPsdConstraint = HermitianPsdConstraint<MatrixAlgebra<8>>;
 
 enum class IDs: int {
- DataOne = 0,
- DataTwo = 1,
- ConstraintTwo = 2,
- ConstraintOne = 3,
- LinearConstraint = 4,
- SOCConstraint = 5,
+ LinearConstraint = 0,
+ SOCConstraint = 1,
+ RealHermitianPsdConstraint = 2,
+ ComplexHermitianPsdConstraint = 3,
 };
-
-
 
 // Visit existing objects and serialize them.
 class Visitor {
  public:
-  virtual void visit(const Data&) = 0;
-  virtual void visit(const DataTwo&) = 0;
-  virtual void visit(const ConstraintOne&) = 0;
-  virtual void visit(const ConstraintTwo&) = 0;
-
   virtual void visit(const LinearConstraint&) = 0;
   virtual void visit(const SOCConstraint&) = 0;
+  virtual void visit(const EqualityConstraints&) = 0;
   virtual ~Visitor() = default;
 };
-
 
 } // namespace conex

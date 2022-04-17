@@ -6,7 +6,6 @@
 
 #include <Eigen/Dense>
 
-#include "conex/debug_macros.h"
 #include "conex/error_checking_macros.h"
 #include "gtest/gtest.h"
 
