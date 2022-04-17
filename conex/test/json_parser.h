@@ -77,7 +77,6 @@ constexpr void for_sequence(std::integer_sequence<T, S...>, F&& f) {
 template <typename T>
 T ConstructObjectFromJson(const JsonObject&);
 
-
 std::string ConvertToJsonString(const JsonObject& val);
 JsonObject ParseJsonString(const std::string& json);
 

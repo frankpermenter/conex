@@ -140,7 +140,8 @@ Eigen::MatrixXd ConstructObjectFromJson<Eigen::MatrixXd>(
   }
   bool convert_row_to_column_major = true;
   if (convert_row_to_column_major) {
-    return Eigen::Map<const Eigen::MatrixXd>(matrix_data.data(), cols, rows).transpose();
+    return Eigen::Map<const Eigen::MatrixXd>(matrix_data.data(), cols, rows)
+        .transpose();
   } else {
     return Eigen::Map<const Eigen::MatrixXd>(matrix_data.data(), rows, cols);
   }

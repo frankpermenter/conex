@@ -1,7 +1,8 @@
 #pragma once
 
 #include <vector>
-#include "supernodal_assembler.h"
+#include "conex/constraint_interface.h"
+#include "conex/newton_step.h"
 #include <Eigen/Dense>
 
 namespace conex {
@@ -17,8 +18,9 @@ struct WorkspaceEqualityConstraints {
   Eigen::Map<DenseMatrix, Eigen::Aligned> W{NULL, 0, 0};
 };
 
-class EqualityConstraints {
+class EqualityConstraints : public ConstraintBase {
  public:
+  void accept(Visitor* v) override { v->visit(*this); }
   EqualityConstraints(){};
   EqualityConstraints(const Eigen::MatrixXd& A, const Eigen::MatrixXd& b);
 

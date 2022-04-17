@@ -10,7 +10,6 @@
 #include "conex/conex.h"
 
 namespace conex {
-
 class Program {
  public:
   Program(int number_of_variables) {

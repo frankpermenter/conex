@@ -1,5 +1,5 @@
 #pragma once
-#include "debug_macros.h"
+#include <iostream>
 #include "memory_utils.h"
 #include <Eigen/Dense>
 
@@ -88,9 +88,9 @@ struct WorkspaceSchurComplement {
   }
 
   friend void print(const WorkspaceSchurComplement& o) {
-    DUMP(o.initialized);
-    DUMP(o.AW);
-    DUMP(o.AQc);
+    std::cout << o.initialized << std::endl;
+    std::cout << o.AW << std::endl;
+    std::cout << o.AQc << std::endl;
   }
 
   void InitializeWorkspace(double* data) { Initialize(this, data); }

@@ -7,7 +7,7 @@ class EqualityConstraints;
 class QuadraticConstraintBase;
 class MatrixLMIConstraint;
 
-template <typename T> 
+template <typename T>
 class HermitianPsdConstraint;
 
 template <int dimension>
@@ -15,14 +15,15 @@ class MatrixAlgebra;
 
 using RealHermitianPsdConstraint = HermitianPsdConstraint<MatrixAlgebra<1>>;
 using ComplexHermitianPsdConstraint = HermitianPsdConstraint<MatrixAlgebra<2>>;
-using QuaternicHermitianPsdConstraint = HermitianPsdConstraint<MatrixAlgebra<4>>;
+using QuaternicHermitianPsdConstraint =
+    HermitianPsdConstraint<MatrixAlgebra<4>>;
 using OctonicHermitianPsdConstraint = HermitianPsdConstraint<MatrixAlgebra<8>>;
 
-enum class IDs: int {
- LinearConstraint = 0,
- SOCConstraint = 1,
- RealHermitianPsdConstraint = 2,
- ComplexHermitianPsdConstraint = 3,
+enum class IDs : int {
+  LinearConstraint = 0,
+  SOCConstraint = 1,
+  RealHermitianPsdConstraint = 2,
+  ComplexHermitianPsdConstraint = 3,
 };
 
 // Visit existing objects and serialize them.
@@ -34,4 +35,4 @@ class Visitor {
   virtual ~Visitor() = default;
 };
 
-} // namespace conex
+}  // namespace conex

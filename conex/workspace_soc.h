@@ -23,13 +23,7 @@ struct WorkspaceSOC {
     o->W0 = data + 4 * get_size_aligned(n);
   }
 
-  friend void print(const WorkspaceSOC& o) {
-    DUMP(o.W0);
-    DUMP(o.W1);
-    DUMP(o.temp1_1);
-    DUMP(o.temp2_1);
-    DUMP(o.temp3_1);
-  }
+  friend void print(const WorkspaceSOC& o) {}
 
   double* W0 = nullptr;
   double d0;

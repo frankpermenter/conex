@@ -1,23 +1,20 @@
 #pragma once
-#include <vector>
-#include <Eigen/Dense>
 #include <memory>
-#include "conex/visitor.h"
+#include <vector>
 #include "conex/constraint_interface.h"
+#include "conex/visitor.h"
+#include <Eigen/Dense>
 namespace conex {
 
 // Serializable = DoGetData(Constraint)
 // Serializable( accept(  ) )
-// 
+//
 // Serialize can implement a virtual.
 
 class Data;
 class DataTwo;
 class ConstraintTwo;
 class ConstraintOne;
-
-
-
 
 struct Data : ConstraintBase {
   int order;
@@ -33,6 +30,7 @@ class ConstraintOne : ConstraintBase {
  public:
   const Data& GetParameters() const { return data_; }
   virtual void accept(Visitor*) = 0;
+
  private:
   Data data_;
 };
@@ -47,11 +45,10 @@ struct DataTwo : ConstraintBase {
 class ConstraintTwo : ConstraintBase {
  public:
   const DataTwo& GetParameters() const { return data_; }
+
  private:
   DataTwo data_;
   virtual void accept(Visitor*) = 0;
 };
-
-
 
 }  // namespace conex

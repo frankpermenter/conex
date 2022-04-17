@@ -1,7 +1,7 @@
+#include "conex/constraint_interface.h"
 #include "conex/error_checking_macros.h"
 #include "conex/newton_step.h"
 #include "conex/workspace_soc.h"
-#include "conex/constraint_interface.h"
 
 namespace conex {
 
@@ -10,8 +10,7 @@ class SOCConstraint : public ConstraintBase {
 
  public:
   template <typename T1, typename T2>
-  SOCConstraint(const T1& constraint_matrix, 
-                const T2& constraint_affine)
+  SOCConstraint(const T1& constraint_matrix, const T2& constraint_affine)
       : workspace_(constraint_matrix.rows() - 1),
         constraint_matrix_(constraint_matrix),
         constraint_affine_(constraint_affine) {
@@ -54,6 +53,7 @@ class SOCConstraint : public ConstraintBase {
 
   DenseMatrix constraint_matrix() const { return constraint_matrix_; }
   DenseMatrix affine_term() const { return constraint_matrix_; }
+
  private:
   void ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y, Ref* minus_s);
   void GeodesicUpdate(const Ref& S, StepInfo* data);

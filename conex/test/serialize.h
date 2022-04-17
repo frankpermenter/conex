@@ -1,7 +1,6 @@
 #pragma once
-#include "conex/test/json_parser.h"
-#include "conex/visitor.h"
 #include "conex/constraint_interface.h"
+#include "conex/test/json_parser.h"
 
 namespace conex {
 
@@ -25,12 +24,11 @@ class Serializer : Visitor {
   JsonObject json_;
 };
 
-template<typename T>
+template <typename T>
 T fromJson(const JsonObject& data);
 
 template <typename T>
 JsonObject toJson(const T& object);
-
 
 std::unique_ptr<ConstraintBase> MakeConstraintFromJSON(const JsonObject& value);
 }  // namespace conex

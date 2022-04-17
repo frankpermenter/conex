@@ -1,9 +1,8 @@
 #pragma once
-#include "conex/constraint.h"
-#include "conex/newton_step.h"
+#include "conex/constraint_interface.h"
+#include "conex/error_checking_macros.h"
 #include "conex/newton_step.h"
 #include "linear_workspace.h"
-#include "conex/constraint_interface.h"
 
 namespace conex {
 
@@ -75,8 +74,9 @@ class LinearConstraint : public ConstraintBase {
                                            int var, int r, int c, int dim);
   friend CONEX_STATUS UpdateAffineTerm(LinearConstraint* o, double val, int r,
                                        int c, int dim);
-   DenseMatrix constraint_matrix() const { return constraint_matrix_; }
-   DenseMatrix affine_term() const { return constraint_affine_; }
+  DenseMatrix constraint_matrix() const { return constraint_matrix_; }
+  DenseMatrix affine_term() const { return constraint_affine_; }
+
  private:
   void ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y, Ref* minus_s);
   void GeodesicUpdate(const Ref& S, StepInfo* data);

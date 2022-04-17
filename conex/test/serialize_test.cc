@@ -5,10 +5,11 @@
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
-#include "json_parser.h"
-#include "serialize.h"
+#include "conex/equality_constraint.h"
 #include "conex/linear_constraint.h"
 #include "conex/soc_constraint.h"
+#include "json_parser.h"
+#include "serialize.h"
 
 namespace conex {
 
@@ -25,20 +26,19 @@ bool IsEqual(const std::vector<MatrixXd>& m1, const std::vector<MatrixXd>& m2) {
   return true;
 }
 
-
-template<typename T>
-T MakeMatrixConstraint() {
+template <typename T>
+T MakeMatrixConstraint(int value) {
   Eigen::MatrixXd A(3, 5);
   Eigen::VectorXd C(3);
   for (int i = 0; i < 3; i++) {
-    A.row(i).setLinSpaced(A.cols(), -1, 1);
+    A.row(i).setLinSpaced(A.cols(), -value, value);
   }
-  C.setLinSpaced(A.rows(), -1, 1);
+  C.setLinSpaced(A.rows(), -value, value);
   return T(A, C);
 }
 
-template<typename T>
-void CompareMatrixConstraint(const ConstraintBase* x_ptr, 
+template <typename T>
+void CompareMatrixConstraint(const ConstraintBase* x_ptr,
                              const ConstraintBase* y_ptr) {
   const auto& x = *dynamic_cast<const T*>(x_ptr);
   const auto& y = *dynamic_cast<const T*>(y_ptr);
@@ -48,8 +48,12 @@ void CompareMatrixConstraint(const ConstraintBase* x_ptr,
 
 GTEST_TEST(Serialize, TestVirtualInterfaces) {
   std::vector<std::unique_ptr<ConstraintBase>> constraints;
-  constraints.emplace_back(new LinearConstraint(std::move(MakeMatrixConstraint<LinearConstraint>())));
-  constraints.emplace_back(new SOCConstraint(std::move(MakeMatrixConstraint<SOCConstraint>())));
+  constraints.emplace_back(new LinearConstraint(
+      std::move(MakeMatrixConstraint<LinearConstraint>(1))));
+  constraints.emplace_back(
+      new SOCConstraint(std::move(MakeMatrixConstraint<SOCConstraint>(2))));
+  //  constraints.emplace_back(new EqualityConstraints(
+  //      std::move(MakeMatrixConstraint<EqualityConstraints>(3))));
 
   JsonObject program;
   Serializer serialize;
@@ -63,9 +67,11 @@ GTEST_TEST(Serialize, TestVirtualInterfaces) {
   }
 
   int i = 0;
-  CompareMatrixConstraint<LinearConstraint>(constraints_deserialize.at(i).get(), constraints.at(i).get());
+  CompareMatrixConstraint<LinearConstraint>(constraints_deserialize.at(i).get(),
+                                            constraints.at(i).get());
   i++;
-  CompareMatrixConstraint<SOCConstraint>(constraints_deserialize.at(i).get(), constraints.at(i).get());
+  CompareMatrixConstraint<SOCConstraint>(constraints_deserialize.at(i).get(),
+                                         constraints.at(i).get());
 }
 
 }  // namespace conex
