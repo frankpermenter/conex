@@ -31,4 +31,6 @@ T fromJson(const JsonObject& data);
 template <typename T>
 JsonObject toJson(const T& object);
 
+
+std::unique_ptr<ConstraintBase> MakeConstraintFromJSON(const JsonObject& value);
 }  // namespace conex

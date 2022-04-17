@@ -25,65 +25,31 @@ bool IsEqual(const std::vector<MatrixXd>& m1, const std::vector<MatrixXd>& m2) {
   return true;
 }
 
-std::unique_ptr<ConstraintBase> create_from_json(const JsonObject& value,
-                                           std::string constraint) {
-  IDs constraint_type =  static_cast<IDs>(stoi(constraint));
-  switch (constraint_type) {
-    case IDs::LinearConstraint: {
-      LinearConstraint constraint = fromJson<conex::LinearConstraint>(value);
-      return std::make_unique<LinearConstraint>(std::move(constraint));
-    }
-    case IDs::SOCConstraint: {
-      SOCConstraint constraint = fromJson<conex::SOCConstraint>(value);
-      return std::make_unique<SOCConstraint>(std::move(constraint));
-    }
-  }
 
-}
-
-
-LinearConstraint MakeLinearConstraint() {
+template<typename T>
+T MakeMatrixConstraint() {
   Eigen::MatrixXd A(3, 5);
   Eigen::VectorXd C(3);
   for (int i = 0; i < 3; i++) {
     A.row(i).setLinSpaced(A.cols(), -1, 1);
   }
   C.setLinSpaced(A.rows(), -1, 1);
-  return LinearConstraint(A, C);
+  return T(A, C);
 }
 
-SOCConstraint MakeSOCConstraint() {
-  Eigen::MatrixXd A(3, 5);
-  Eigen::VectorXd C(3);
-  for (int i = 0; i < 3; i++) {
-    A.row(i).setLinSpaced(A.cols(), -1, 1);
-  }
-  C.setLinSpaced(A.rows(), -1, 1);
-  return SOCConstraint(A, C);
-}
-
-
-void CompareLinearConstraint(const ConstraintBase* x_ptr, 
+template<typename T>
+void CompareMatrixConstraint(const ConstraintBase* x_ptr, 
                              const ConstraintBase* y_ptr) {
-  const auto& x = *dynamic_cast<const LinearConstraint*>(x_ptr);
-  const auto& y = *dynamic_cast<const LinearConstraint*>(y_ptr);
+  const auto& x = *dynamic_cast<const T*>(x_ptr);
+  const auto& y = *dynamic_cast<const T*>(y_ptr);
   EXPECT_EQ((x.constraint_matrix() - y.constraint_matrix()).norm(), 0);
   EXPECT_EQ((x.affine_term() - y.affine_term()).norm(), 0);
 }
-
-void CompareSOCConstraint(const ConstraintBase* x_ptr, 
-                             const ConstraintBase* y_ptr) {
-  const auto& x = *dynamic_cast<const SOCConstraint*>(x_ptr);
-  const auto& y = *dynamic_cast<const SOCConstraint*>(y_ptr);
-  EXPECT_EQ((x.constraint_matrix() - y.constraint_matrix()).norm(), 0);
-  EXPECT_EQ((x.affine_term() - y.affine_term()).norm(), 0);
-}
-
 
 GTEST_TEST(Serialize, TestVirtualInterfaces) {
   std::vector<std::unique_ptr<ConstraintBase>> constraints;
-  constraints.emplace_back(new LinearConstraint(std::move(MakeLinearConstraint())));
-  constraints.emplace_back(new SOCConstraint(std::move(MakeSOCConstraint())));
+  constraints.emplace_back(new LinearConstraint(std::move(MakeMatrixConstraint<LinearConstraint>())));
+  constraints.emplace_back(new SOCConstraint(std::move(MakeMatrixConstraint<SOCConstraint>())));
 
   JsonObject program;
   Serializer serialize;
@@ -93,15 +59,13 @@ GTEST_TEST(Serialize, TestVirtualInterfaces) {
   for (size_t i = 0; i < constraints.size(); ++i) {
     const auto& all_constraints = program["constraints"];
     const auto& constraint_i = all_constraints[to_string(i)];
-    const auto& id = constraint_i["id"].value();
-    const auto& data = constraint_i["data"];
-    constraints_deserialize.push_back(create_from_json(data, id));
+    constraints_deserialize.push_back(MakeConstraintFromJSON(constraint_i));
   }
 
   int i = 0;
-  CompareLinearConstraint(constraints_deserialize.at(i).get(), constraints.at(i).get());
+  CompareMatrixConstraint<LinearConstraint>(constraints_deserialize.at(i).get(), constraints.at(i).get());
   i++;
-  CompareSOCConstraint(constraints_deserialize.at(i).get(), constraints.at(i).get());
+  CompareMatrixConstraint<SOCConstraint>(constraints_deserialize.at(i).get(), constraints.at(i).get());
 }
 
 }  // namespace conex

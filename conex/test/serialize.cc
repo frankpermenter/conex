@@ -66,5 +66,18 @@ template<> EqualityConstraints fromJson<EqualityConstraints>(const JsonObject& d
 
 
 
-
+std::unique_ptr<ConstraintBase> MakeConstraintFromJSON(const JsonObject& value) {
+  IDs constraint_type =  static_cast<IDs>(stoi(value["id"].value()));
+  switch (constraint_type) {
+    case IDs::LinearConstraint: {
+      LinearConstraint constraint = fromJson<conex::LinearConstraint>(value["data"]);
+      return std::make_unique<LinearConstraint>(std::move(constraint));
+    }
+    case IDs::SOCConstraint: {
+      SOCConstraint constraint = fromJson<conex::SOCConstraint>(value["data"]);
+      return std::make_unique<SOCConstraint>(std::move(constraint));
+    }
+  }
+  throw std::runtime_error("Failed to parse JSON");
+}
 }  // namespace conex
