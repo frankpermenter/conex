@@ -15,54 +15,9 @@ struct Property {
   const char* name;
 };
 
-
-
 template <typename Class, typename T>
 constexpr auto MakeProperty(T Class::*member, const char* name) {
   return Property<Class, T>{member, name};
-}
-
-#if 0
-template<typename T, typename T2>
-std::map<string, T2 T::*> ItemsToSerialize();
-
-    ///return std::make_tuple(MakeProperty(&Data::order, "order"),
-    ///                MakeProperty(&Data::matrix, "matrix"),
-    ///                MakeProperty(&Data::matrices, "matrices"),
-    ///                MakeProperty(&Data::affine_term, "affine_term"),
-    ///                MakeProperty(&Data::variables, "variables"));
-}
-
-template<>
-  constexpr auto ItemsToSerialize<DataBase>() {
-     return std::make_tuple(MakeProperty(&DataTwo::order, "order"),
-                      MakeProperty(&DataTwo::matrix, "matrix"),
-                      MakeProperty(&DataTwo::variables, "variables"));
-}
-
-
-template <typename T>
-JsonObject toJson(const T& object) {
-  JsonObject data;
-
-  constexpr auto properties = ItemsToSerialize<T>();
-  constexpr auto kNumProperties = std::tuple_size<decltype(properties)>::value;
-  // Convert each property to a JSON string and store in struct.
-  for_sequence(std::make_index_sequence<kNumProperties>{}, [&](auto i) {
-    constexpr auto property = std::get<i>(properties);
-    data[property.name] = ConvertToJson(object.*(property.member));
-  });
-  return data;
-}
-#endif
-
-
-constexpr auto GetTupleData() { 
-    return std::make_tuple(MakeProperty(&Data::order, "order"),
-                    MakeProperty(&Data::matrix, "matrix"),
-                    MakeProperty(&Data::matrices, "matrices"),
-                    MakeProperty(&Data::affine_term, "affine_term"),
-                    MakeProperty(&Data::variables, "variables"));
 }
 
 template<typename T>
@@ -80,10 +35,6 @@ constexpr auto GetTupleData() {
                     MakeProperty(&Data::variables, "variables"));
   }
 }
-
-
-
-// unserialize function
 
 } // namespace
 
@@ -121,13 +72,11 @@ JsonObject toJson(const T& input) {
   return output;
 }
 
-
 template Data fromJson<Data>(const JsonObject& data);
 template DataTwo fromJson<DataTwo>(const JsonObject& data);
 
 template JsonObject toJson<Data>(const Data& input);
 template JsonObject toJson<DataTwo>(const DataTwo& input);
-
 
 void Serializer::visit(const Data& data) {
   JsonObject value;
