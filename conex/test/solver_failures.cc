@@ -447,9 +447,62 @@ void LPFailSlater(int number_of_implicit_equations) {
   DenseMatrix y(m, 1);
   Solve(b, prog, config, y.data());
 }
+
+// Builds the program with x1 = x2 constraint
+// with no quadratic penalty or inequality on x2 if
+// regularization_used = true. This leads to regularization
+// in the LDLT factorization.
+VectorXd SimpleBadLDLTHelper(const VectorXd& linear_cost,
+                             bool require_regularation) {
+  Program prog(2);
+  DenseMatrix A(1, 2);
+  A << 1, 0;
+  DenseMatrix c(1, 1);
+  c << 1;
+  DenseMatrix B(1, 2);
+  B << 1, -1;
+  DenseMatrix f(1, 1);
+  f << 0;
+  DenseMatrix Q(2, 2);
+  Q << 1, 0, 0, 1;
+  if (require_regularation) {
+    Q(1, 1) = 0;
+  }
+
+  prog.AddConstraint(LinearConstraint(A, c));
+  prog.AddConstraint(EqualityConstraints(B, f));
+  prog.AddQuadraticCost(Q);
+  prog.AddLinearCost(linear_cost);
+  VectorXd y(2);
+  SolverConfiguration config;
+  config.enable_rescaling = 0;
+  config.enable_line_search = 1;
+  config.verbose = 1;
+  Solve(prog, config, y.data());
+  return y;
+}
+// Shows effect of LDLT regularization on solution.
+void SimpleBadLDLT() {
+  double value = 100;
+  VectorXd linear_cost(2);
+  // Solve problem with x1 = x2 constraint, moving the
+  // linear cost from variable x2 to variable x1.
+  for (int i = 0; i < 2; i++) {
+    linear_cost << 0, -value;
+    VectorXd sol1 =
+        SimpleBadLDLTHelper(linear_cost, /*require regularation*/ i == 1);
+    linear_cost << -value, 0;
+    VectorXd sol2 =
+        SimpleBadLDLTHelper(linear_cost, /*require regularation*/ i == 1);
+    DUMP(sol1 - sol2);
+  }
+}
+
 }  // namespace conex
 
 int main() {
+  conex::SimpleBadLDLT();
+  return 0;
   conex::EqualityConstraintForceEqualityConstraintsToLeafNodes(
       false /*fill-in induced failure*/);
   conex::EqualityConstraintsNoQuadraticPenalty();
