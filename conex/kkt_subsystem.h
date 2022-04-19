@@ -115,12 +115,12 @@ class KKTSubsystem {
     for (auto child : children_) {
       child->MakeKKTMatrix(full_matrix);
     }
-    for (int j = 0; j < supernodes_.size(); j++) {
-      for (int i = 0; i < supernodes_.size(); i++) {
+    for (size_t j = 0; j < supernodes_.size(); j++) {
+      for (size_t i = 0; i < supernodes_.size(); i++) {
         full_matrix->coeffRef(supernodes_.at(i), supernodes_.at(j)) =
             supernode_submatrix_(i, j);
       }
-      for (int i = 0; i < separators_.size(); i++) {
+      for (size_t i = 0; i < separators_.size(); i++) {
         full_matrix->coeffRef(separators_.at(i), supernodes_.at(j)) =
             separator_rows_(i, j);
       }
@@ -160,6 +160,32 @@ class KKTSubsystem {
 
   bool IsRoot() const; 
 
+
+  KKTSubsystem* parent_ = nullptr;
+  std::vector<KKTSubsystem*> children_;
+  Eigen::MatrixXd separator_schur_complement_;
+  Eigen::MatrixXd supernode_submatrix_;
+  Eigen::MatrixXd separator_rows_;
+
+ private:
+  std::vector<int> separators_;
+  std::vector<int> supernodes_;
+  std::vector<int> variables_;
+
+  Eigen::MatrixXd SeparatorRows(const Eigen::MatrixXd& x) const;
+  void IncrementSupernodeColumn(const Eigen::MatrixXd source_data,
+                                const std::vector<int>& source_column_labels,
+                                int source_column_index);
+  size_t GetSupernodePosition(int global_label);
+  size_t GetSeparatorPosition(int global_label);
+  void DoScatterSeparatorSubmatrix() {
+    if (parent_) {
+      parent_->IncrementSubmatrix(separator_schur_complement_, separators_,
+                                  0 /*start index*/);
+    }
+  }
+
+
   void IncrementSubmatrix(const Eigen::MatrixXd& S,
                           const std::vector<int>& vars, size_t start_index) {
     if (start_index > vars.size()) {
@@ -182,34 +208,6 @@ class KKTSubsystem {
       parent_->IncrementSubmatrix(S, vars, col_index);
     }
   }
-
-  void DoScatterSeparatorSubmatrix() {
-    if (parent_) {
-      parent_->IncrementSubmatrix(separator_schur_complement_, separators_,
-                                  0 /*start index*/);
-    }
-  }
-
-  KKTSubsystem* parent_ = nullptr;
-  std::vector<KKTSubsystem*> children_;
-  Eigen::MatrixXd separator_schur_complement_;
-  Eigen::MatrixXd supernode_submatrix_;
-  Eigen::MatrixXd separator_rows_;
-
- private:
-  std::vector<int> separators_;
-  std::vector<int> supernodes_;
-  std::vector<int> variables_;
- public:
-
-
- private:
-  Eigen::MatrixXd SeparatorRows(const Eigen::MatrixXd& x) const;
-  void IncrementSupernodeColumn(const Eigen::MatrixXd source_data,
-                                const std::vector<int>& source_column_labels,
-                                int source_column_index);
-  size_t GetSupernodePosition(size_t global_label);
-  size_t GetSeparatorPosition(size_t global_label);
 };
 
 }  // namespace conex
