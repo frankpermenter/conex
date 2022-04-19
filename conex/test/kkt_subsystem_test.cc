@@ -15,9 +15,7 @@ class KKTSystem {
  public:
   void SolveInPlace(Eigen::MatrixXd* x) {
     root->ApplyInverseOfLeftFactor(x);
-    DUMP(*x);
     root->ApplyInverseOfRightFactor(x);
-    DUMP(*x);
   }
   KKTSubsystem* root;
 };
@@ -43,13 +41,18 @@ class QuadraticCost : public KKTSubsystem {
   }
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(Eigen::Ref<MatrixXd> y) override {
-    DUMP(y);
+    if (schur_complement_mode_) {
+     llt_.solveInPlace(y);
+    } else {
      llt_.matrixL().solveInPlace(y);
+    }
   }
 
   void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(Eigen::Ref<MatrixXd> y) override {
-    DUMP(y);
-     llt_.matrixL().transpose().solveInPlace(y);
+    if (schur_complement_mode_) {
+      return;
+    }
+    llt_.matrixL().transpose().solveInPlace(y);
   }
 
   void DoComputeSeparatorSchurComplement() override {
@@ -57,7 +60,8 @@ class QuadraticCost : public KKTSubsystem {
     separator_schur_complement_ -=  separator_rows_ * llt_.solve(separator_rows_.transpose());
   }
 
-  Eigen::LLT<Eigen::MatrixXd> llt_;
+  bool schur_complement_mode_ = true;
+  Eigen::LDLT<Eigen::MatrixXd> llt_;
   Eigen::MatrixXd Q_in_elimination_order_;
   Eigen::MatrixXd Q_;
   Eigen::MatrixXd separator_rows_left_factor_;
