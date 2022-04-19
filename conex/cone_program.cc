@@ -319,16 +319,17 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   bool max_iters_reached = true;
 
 #if CONEX_VERBOSE
-  std::cout.precision(2);
-  std::cout << std::scientific;
-  std::cout << "Starting the Conex optimizer...\n";
-#endif
-
+  if (config.verbose) {
+    std::cout.precision(2);
+    std::cout << std::scientific;
+    std::cout << "Starting the Conex optimizer...\n";
 #ifdef EIGEN_USE_MKL_ALL
-  std::cout << "...MKL Enabled\n";
+    std::cout << "...MKL Enabled\n";
 #endif
 #ifdef EIGEN_USE_BLAS
-  std::cout << "...BLAS Enabled\n";
+    std::cout << "...BLAS Enabled\n";
+#endif
+  }
 #endif
 
   int m = bin.rows();
@@ -339,10 +340,11 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     ynan.array() = bin.array() * std::numeric_limits<double>::infinity();
     return prog.status_.solved;
   }
-
-  PrintSummary(prog, config);
+  if (config.verbose) {
+    PrintSummary(prog, config);
+    std::cout << "\n";
+  }
   Initialize(prog, config);
-  std::cout << "\n";
 
   Eigen::MatrixXd ydata(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
   Eigen::Map<DenseMatrix> yout(primal_variable, m, 1);
@@ -381,10 +383,12 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     }
 
 #if CONEX_VERBOSE
-    if (i < 10) {
-      std::cout << "i:  " << i << ", ";
-    } else {
-      std::cout << "i: " << i << ", ";
+    if (config.verbose) {
+      if (i < 10) {
+        std::cout << "i:  " << i << ", ";
+      } else {
+        std::cout << "i: " << i << ", ";
+      }
     }
 #endif
     bool final_centering =
@@ -524,21 +528,23 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     double s_dot_x = mu * (rankK - d_2 * d_2) / (b_scaling * c_scaling);
 
     mu = mu / (c_scaling * b_scaling);
-    REPORT(mu);
-    REPORT(d_2);
-    REPORT(d_inf);
-    if (!prog.contains_quadratic_costs_) {
-      REPORT(by);
-      REPORT(cx);
-      kkt_error = std::fabs(cx - by - s_dot_x) / s_dot_x;
-      REPORT(kkt_error);
+#if CONEX_VERBOSE
+    if (config.verbose) {
+      REPORT(mu);
+      REPORT(d_2);
+      REPORT(d_inf);
+      if (!prog.contains_quadratic_costs_) {
+        REPORT(by);
+        REPORT(cx);
+        kkt_error = std::fabs(cx - by - s_dot_x) / s_dot_x;
+        REPORT(kkt_error);
+      }
     }
+    std::cout << std::endl;
+#endif
 
     prog.stats->num_iter = i + 1;
     prog.stats->sqrt_inv_mu[i] = newton_step_parameters.inv_sqrt_mu;
-#if CONEX_VERBOSE
-    std::cout << std::endl;
-#endif
 
     if (final_centering ||
         newton_step_parameters.inv_sqrt_mu >= inv_sqrt_mu_max) {

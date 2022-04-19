@@ -589,3 +589,21 @@ cc_test(
         "@gtest//:main",
     ],
 )
+
+
+cc_test(
+    name = "kkt_subsystem_test",
+    srcs = [
+        "test/kkt_subsystem.h",
+        "test/kkt_subsystem_test.cc",
+        "debug_macros.h",
+    ],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        ":error_checking",
+        "@eigen",
+        "@gtest//:main",
+    ],
+)
+
+
