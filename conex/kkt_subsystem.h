@@ -101,54 +101,20 @@ class KKTSubsystem {
     parent_ = parent;
   }
 
-  void Assemble() {
-    DoInitialize();
-    for (auto child : children_) {
-      child->Assemble();
-    }
-    if (!IsRoot()) {
-      DoScatterSeparatorSubmatrix();
-    }
-  }
+  void Assemble();
 
-  void MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
-    for (auto child : children_) {
-      child->MakeKKTMatrix(full_matrix);
-    }
-    for (size_t j = 0; j < supernodes_.size(); j++) {
-      for (size_t i = 0; i < supernodes_.size(); i++) {
-        full_matrix->coeffRef(supernodes_.at(i), supernodes_.at(j)) =
-            supernode_submatrix_(i, j);
-      }
-      for (size_t i = 0; i < separators_.size(); i++) {
-        full_matrix->coeffRef(separators_.at(i), supernodes_.at(j)) =
-            separator_rows_(i, j);
-      }
-    }
-  }
-
-  void AssembleAndFactor() {
-    DoInitialize();
-    for (auto child : children_) {
-      child->AssembleAndFactor();
-    }
-    DoEliminateSupernodeColumns();
-    DoComputeSeparatorSchurComplement();
-    if (!IsRoot()) {
-      DoScatterSeparatorSubmatrix();
-    }
-  }
+  void MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const;
+  void AssembleAndFactor();
 
   KKTSubsystem* parent() const { return parent_; }
-  Eigen::MatrixXd SeparatorSchurComplement();
-  void SetSupernodeColumns(const Eigen::MatrixXd& submatrix,
-                           std::vector<int>& rows, std::vector<int>& cols);
 
   void ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x);
   void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x);
 
  protected:
-
+  Eigen::MatrixXd SeparatorSchurComplement();
+  void SetSupernodeColumns(const Eigen::MatrixXd& submatrix,
+                           std::vector<int>& rows, std::vector<int>& cols);
 
   virtual void DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
@@ -157,9 +123,7 @@ class KKTSubsystem {
   virtual void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
       Eigen::Ref<Eigen::MatrixXd> y) = 0;
 
-
-  bool IsRoot() const; 
-
+  bool IsRoot() const;
 
   KKTSubsystem* parent_ = nullptr;
   std::vector<KKTSubsystem*> children_;
@@ -184,7 +148,6 @@ class KKTSubsystem {
                                   0 /*start index*/);
     }
   }
-
 
   void IncrementSubmatrix(const Eigen::MatrixXd& S,
                           const std::vector<int>& vars, size_t start_index) {
