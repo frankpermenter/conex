@@ -121,7 +121,6 @@ class KKTSubsystem {
     virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(Eigen::Ref<Eigen::MatrixXd> y) = 0;
     virtual void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(Eigen::Ref<Eigen::MatrixXd> y) = 0;
 
-
     void IncrementSubmatrix(const Eigen::MatrixXd& S, 
                             const std::vector<int>& vars, size_t start_index) {
       if (start_index > vars.size()) {
