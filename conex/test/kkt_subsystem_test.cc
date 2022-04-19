@@ -1,5 +1,4 @@
-
-#include "conex/test/kkt_subsystem.h"
+#include "conex/kkt_subsystem.h"
 #include <iostream>
 #include <map>
 #include <tuple>

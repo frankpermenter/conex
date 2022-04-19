@@ -590,16 +590,32 @@ cc_test(
     ],
 )
 
+cc_library(
+  name = "kkt_subsystem",
+  srcs = [
+      "debug_macros.h",
+      "kkt_subsystem.cc",
+      "kkt_subsystem.h",
+  ],
+  copts = ["-Iexternal/gtest/include"],
+  deps = [
+      ":error_checking",
+      ":kkt_solver_interface",
+      "@eigen",
+      "@gtest//:main",
+  ],
+)
+
 cc_test(
     name = "kkt_subsystem_test",
     srcs = [
         "debug_macros.h",
         "kkt_solver_interface.h",
-        "test/kkt_subsystem.h",
         "test/kkt_subsystem_test.cc",
     ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
+        "kkt_subsystem",
         ":error_checking",
         "@eigen",
         "@gtest//:main",

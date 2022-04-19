@@ -144,13 +144,21 @@ class KKTSubsystem {
   void SetSupernodeColumns(const Eigen::MatrixXd& submatrix,
                            std::vector<int>& rows, std::vector<int>& cols);
 
+  void ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x);
+  void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x);
+
  protected:
+
+
   virtual void DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
   virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<Eigen::MatrixXd> y) = 0;
   virtual void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
       Eigen::Ref<Eigen::MatrixXd> y) = 0;
+
+
+  bool IsRoot() const; 
 
   void IncrementSubmatrix(const Eigen::MatrixXd& S,
                           const std::vector<int>& vars, size_t start_index) {
@@ -194,99 +202,14 @@ class KKTSubsystem {
   std::vector<int> variables_;
  public:
 
-  //  L
-  //  SR^{-1}  D
-  void ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) {
-    for (auto child : children_) {
-      child->ApplyInverseOfLeftFactor(x);
-    }
 
-    Eigen::Ref<Eigen::MatrixXd> ref = x.middleRows(
-        supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
-    DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(ref);
-
-    if (separators_.size() > 0) {
-      // Compute S R^{-1} ref
-      Eigen::MatrixXd temp = ref;
-      DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
-      Eigen::MatrixXd residual = separator_rows_ * temp;
-      for (int i = 0; i < residual.rows(); i++) {
-        x.row(separators_[i]) -= residual.row(i);
-      }
-    }
-  }
-
-  Eigen::MatrixXd SeparatorRows(const Eigen::MatrixXd& x) {
-    Eigen::MatrixXd separator_rows_of_x(separators_.size(), x.cols());
-    for (int i = 0; i < separator_rows_of_x.rows(); i++) {
-      separator_rows_of_x.row(i) = x.row(separators_[i]);
-    }
-    return separator_rows_of_x;
-  }
-
-  bool IsRoot() const { return parent_ == nullptr; }
-
-  //    L
-  // SL^T{-1}   R
-  //
-  //  L^T  L^{-1} S^T
-  //       R
-  void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) {
-    Eigen::Ref<Eigen::MatrixXd> ref = x.middleRows(
-        supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
-    if (!IsRoot()) {
-      // Subtract L^{-1} S^T
-      Eigen::MatrixXd temp = separator_rows_.transpose() * SeparatorRows(x);
-      DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(temp);
-      ref.noalias() -= temp;
-    }
-
-    DoApplyInverseOfRightFactorOfSupernodeSubmatrix(ref);
-    for (auto child : children_) {
-      child->ApplyInverseOfRightFactor(x);
-    }
-  }
-
+ private:
+  Eigen::MatrixXd SeparatorRows(const Eigen::MatrixXd& x) const;
   void IncrementSupernodeColumn(const Eigen::MatrixXd source_data,
                                 const std::vector<int>& source_column_labels,
-                                int source_column_index) {
-    int local_column_index =
-        GetSupernodePosition(source_column_labels.at(source_column_index));
-    size_t i = source_column_index;
-    for (; i < source_column_labels.size(); i++) {
-      if (source_column_labels.at(i) > supernodes_.back()) {
-        break;
-      }
-      int local_row = GetSupernodePosition(source_column_labels.at(i));
-      supernode_submatrix_(local_row, local_column_index) +=
-          source_data(i, source_column_index);
-    }
-
-    for (; i < source_column_labels.size(); i++) {
-      if (source_column_labels.at(i) > separators_.back()) {
-        break;
-      }
-      int local_row = GetSeparatorPosition(source_column_labels.at(i));
-      supernode_submatrix_(local_row, local_column_index) +=
-          source_data(i, source_column_index);
-    }
-  }
-  size_t GetSupernodePosition(size_t global_label) {
-    for (size_t i = 0; i < supernodes_.size(); ++i) {
-      if (supernodes_.at(i) == global_label) {
-        return i;
-      }
-    }
-    throw;
-  }
-  size_t GetSeparatorPosition(size_t global_label) {
-    for (size_t i = 0; i < separators_.size(); ++i) {
-      if (separators_.at(i) == global_label) {
-        return i;
-      }
-    }
-    throw;
-  }
+                                int source_column_index);
+  size_t GetSupernodePosition(size_t global_label);
+  size_t GetSeparatorPosition(size_t global_label);
 };
 
 }  // namespace conex
