@@ -128,12 +128,12 @@ double ComputeMuFromLineSearch(ConstraintManager& constraints,
                                double c_weight, const DenseMatrix& b,
                                const DenseMatrix& AW, Ref* y0) {
   *y0 = -2 * AW;
-  solver->SolveInPlace(y0);
+  solver->SolveInPlace(*y0);
 
   VectorXd y1_data(b.rows());
   Ref y1(y1_data.data(), b.rows(), 1);
   y1 = AQc + b - 2 * AW;
-  solver->SolveInPlace(&y1);
+  solver->SolveInPlace(y1);
   LineSearchParameters params;
   params.c0_weight = c_weight * 0;
   params.c1_weight = c_weight * 1;
@@ -186,7 +186,7 @@ double ComputeMuFromDivergence(ConstraintManager& constraints,
                                Ref* workspace_y) {
   WeightedSlackEigenvalues mu_param;
   *workspace_y = AQc - b;
-  solver->SolveInPlace(workspace_y);
+  solver->SolveInPlace(*workspace_y);
   GetWeightedSlackEigenvalues(&constraints, *workspace_y, c_weight, &mu_param);
   mu_param.rank = rankK;
 
@@ -482,7 +482,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
             (b * b_scaling + prog.sys.AQc * c_scaling) -
         2 * prog.sys.AW;
     START_TIMER(Solve)
-    solver->SolveInPlace(&y);
+    solver->SolveInPlace(y);
     END_TIMER
 
     newton_step_parameters.e_weight = 1;
@@ -577,7 +577,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     DenseMatrix bres =
         newton_step_parameters.inv_sqrt_mu * b * b_scaling - 1 * prog.sys.AW;
     Ref y2map(bres.data(), bres.rows(), bres.cols());
-    solver->SolveInPlace(&y2map);
+    solver->SolveInPlace(y2map);
     newton_step_parameters.affine = true;
     newton_step_parameters.e_weight = 0;
     newton_step_parameters.c_weight = 0;

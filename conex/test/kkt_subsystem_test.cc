@@ -1,18 +1,18 @@
 
+#include "conex/test/kkt_subsystem.h"
 #include <iostream>
 #include <map>
 #include <tuple>
 #include "conex/debug_macros.h"
-#include "conex/test/kkt_subsystem.h"
+#include "conex/kkt_solver_interface.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
-using Eigen::VectorXd;
 using Eigen::MatrixXd;
+using Eigen::VectorXd;
 namespace conex {
 
-
-MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix, 
+MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix,
                             const MatrixXd& sub_matrix,
                             const std::vector<int>& c) {
   MatrixXd y = full_matrix;
@@ -28,25 +28,25 @@ MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix,
   return y;
 }
 
-
-class KKTSystem {
+class KKTSystem : public KKTSolverBase {
  public:
-  void SolveInPlace(Eigen::MatrixXd* x) {
-    root_->ApplyInverseOfLeftFactor(x);
-    root_->ApplyInverseOfRightFactor(x);
+  void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
+                      bool permute_to_elimination_order) const {
+    root_->ApplyInverseOfLeftFactor(b);
+    root_->ApplyInverseOfRightFactor(b);
   }
 
-  void Assemble() {
-    root_->Assemble();
-  }
+  void DoAssemble() override { root_->Assemble(); }
 
-  void Factor() {
+  bool DoFactor() override {
     root_->AssembleAndFactor();
+    return true;
   }
 
-  Eigen::MatrixXd KKTMatrix() const {
+  Eigen::MatrixXd DoKKTMatrix(bool permute_to_elimination_order = true) const {
     int num_vars = root_->supernodes().back() + 1;
-    MatrixXd M(num_vars, num_vars); M.setZero();
+    MatrixXd M(num_vars, num_vars);
+    M.setZero();
     root_->MakeKKTMatrix(&M);
     return M.selfadjointView<Eigen::Lower>();
   }
@@ -57,39 +57,40 @@ using Eigen::MatrixXd;
 
 class QuadraticCost : public KKTSubsystem {
  public:
-  QuadraticCost(Eigen::MatrixXd Q, std::vector<int> vars) : KKTSubsystem(vars), 
-      Q_(Q)  {}
+  QuadraticCost(Eigen::MatrixXd Q, std::vector<int> vars)
+      : KKTSubsystem(vars), Q_(Q) {}
 
   void DoInitialize() override {
-     Q_in_elimination_order_  = Q_;
-     int n1 = supernodes_.size();
-     int n2 = separators_.size();
-     supernode_submatrix_ = Q_in_elimination_order_.topLeftCorner(n1, n1);
-     separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
-     separator_schur_complement_ = Q_in_elimination_order_.bottomRightCorner(n2, n2);
+    Q_in_elimination_order_ = Q_;
+    int n1 = supernodes_.size();
+    int n2 = separators_.size();
+    supernode_submatrix_ = Q_in_elimination_order_.topLeftCorner(n1, n1);
+    separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
+    separator_schur_complement_ =
+        Q_in_elimination_order_.bottomRightCorner(n2, n2);
   }
 
   void DoEliminateSupernodeColumns() override {
-     llt_.compute(supernode_submatrix_);
+    llt_.compute(supernode_submatrix_);
   }
 
   MatrixXd DoGetSupernodeColumns() const override {
-    MatrixXd cols(supernodes_.size() + separators_.size(),
-                  supernodes_.size());
-    cols << supernode_submatrix_, 
-             separator_rows_;
+    MatrixXd cols(supernodes_.size() + separators_.size(), supernodes_.size());
+    cols << supernode_submatrix_, separator_rows_;
     return cols;
   }
 
-  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(Eigen::Ref<MatrixXd> y) override {
+  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) override {
     if (schur_complement_mode_) {
-     llt_.solveInPlace(y);
+      llt_.solveInPlace(y);
     } else {
-     llt_.matrixL().solveInPlace(y);
+      llt_.matrixL().solveInPlace(y);
     }
   }
 
-  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(Eigen::Ref<MatrixXd> y) override {
+  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) override {
     if (schur_complement_mode_) {
       return;
     }
@@ -98,7 +99,8 @@ class QuadraticCost : public KKTSubsystem {
 
   void DoComputeSeparatorSchurComplement() override {
     int n2 = separators_.size();
-    separator_schur_complement_ -=  separator_rows_ * llt_.solve(separator_rows_.transpose());
+    separator_schur_complement_ -=
+        separator_rows_ * llt_.solve(separator_rows_.transpose());
   }
 
   bool schur_complement_mode_ = true;
@@ -107,7 +109,6 @@ class QuadraticCost : public KKTSubsystem {
   Eigen::MatrixXd Q_;
   Eigen::MatrixXd separator_rows_left_factor_;
 };
-
 
 // 1 1 1
 // 1 1 1
@@ -152,34 +153,33 @@ GTEST_TEST(KKTSubsystem, TestConstruction) {
 }
 #endif
 
-
-
-// 1 1 1 
+// 1 1 1
 // 1 1 1
 // 1 1 1 1 0
 //   0 1 1 1
 // 0 0 0 1 1
 GTEST_TEST(KKTSubsystem, TestTrivialExample) {
-
   int num_vars = 5;
   MatrixXd full_matrix = MatrixXd::Zero(num_vars, num_vars);
   std::vector<int> vars{0, 1, 2};
   Eigen::MatrixXd Q1(3, 3);
-  Q1 << 50, 2, 3, 
-        2, 10, 4, 
-        3, 4, 10;
-  QuadraticCost q1(Q1, vars); q1.SetSeparators({2}); q1.SetSupernodes({0, 1});
+  Q1 << 50, 2, 3, 2, 10, 4, 3, 4, 10;
+  QuadraticCost q1(Q1, vars);
+  q1.SetSeparators({2});
+  q1.SetSupernodes({0, 1});
   full_matrix = IncrementSubmatrix(full_matrix, Q1, vars);
 
   std::vector<int> vars_2{2, 3};
   Eigen::MatrixXd Q2(2, 2);
-  Q2 << 5, 2,
-        2, 5;
-  QuadraticCost q2(Q2, vars_2); q2.SetSupernodes({2}); q2.SetSeparators({3});
+  Q2 << 5, 2, 2, 5;
+  QuadraticCost q2(Q2, vars_2);
+  q2.SetSupernodes({2});
+  q2.SetSeparators({3});
   full_matrix = IncrementSubmatrix(full_matrix, Q2, vars_2);
 
   std::vector<int> vars_3{3, 4};
-  QuadraticCost q3(Q2, vars_3); q3.SetSupernodes({3, 4});
+  QuadraticCost q3(Q2, vars_3);
+  q3.SetSupernodes({3, 4});
   full_matrix = IncrementSubmatrix(full_matrix, Q2, vars_3);
 
   q1.DoInitialize();
@@ -198,24 +198,14 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   system.Assemble();
   EXPECT_NEAR((system.KKTMatrix() - full_matrix).norm(), 0, 1e-14);
 
-
   Eigen::LLT<Eigen::MatrixXd> llt(full_matrix);
   Eigen::MatrixXd L = llt.matrixL();
   VectorXd x_ref(num_vars);
   x_ref.setLinSpaced(5, -1, 1);
   MatrixXd b = full_matrix * x_ref;
   system.Factor();
-  system.SolveInPlace(&b);
+  system.SolveInPlace(b);
   EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
 }
 
-
-
-
-
-
-
-
-
-
-} // namespace conex
+}  // namespace conex

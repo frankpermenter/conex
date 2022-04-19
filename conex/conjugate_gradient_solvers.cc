@@ -171,20 +171,20 @@ Eigen::VectorXd T::SchurComplementConjugateGradientSolver(
 
 namespace conex {
 
-void T::DoSolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* y,
+void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> y,
                        bool permutation_to_elimination_order) const {
-  if (y->rows() != number_of_variables() + number_of_equations()) {
+  if (y.rows() != number_of_variables() + number_of_equations()) {
     throw std::runtime_error(
         "Cannot perform solve in place. Input dimensions disagree with system "
         "size.");
   }
-  VectorXd f = y->topRows(number_of_variables());
-  VectorXd g = y->bottomRows(number_of_equations());
+  VectorXd f = y.topRows(number_of_variables());
+  VectorXd g = y.bottomRows(number_of_equations());
   VectorXd s1;
   VectorXd s2;
   Solve(f, g, &s1, &s2, /*use llt*/ false);
-  y->topRows(number_of_variables()) = s1;
-  y->bottomRows(number_of_equations()) = s2;
+  y.topRows(number_of_variables()) = s1;
+  y.bottomRows(number_of_equations()) = s2;
 }
 
 void T::Solve(const VectorXd& fin, const VectorXd& g, VectorXd* y, VectorXd* z,

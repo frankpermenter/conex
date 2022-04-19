@@ -22,7 +22,7 @@ class KKTSolverBase {
     return factored_;
   }
 
-  void SolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
+  void SolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                     bool permute_to_elimination_order = true) const {
     CONEX_DEMAND(factored_, "System has not been factored.");
     DoSolveInPlace(b, permute_to_elimination_order);
@@ -38,7 +38,7 @@ class KKTSolverBase {
  private:
   virtual void DoAssemble() = 0;
   virtual bool DoFactor() = 0;
-  virtual void DoSolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
+  virtual void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                               bool permute_to_elimination_order) const = 0;
   virtual Eigen::MatrixXd DoKKTMatrix(
       bool permute_to_elimination_order) const = 0;
