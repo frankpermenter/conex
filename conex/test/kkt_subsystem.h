@@ -100,13 +100,19 @@ class KKTSubsystem {
     parent_ = parent;
   }
 
-  void MakeKKTMatrix(Eigen::MatrixXd* full_matrix) {
+  void Assemble() {
     DoInitialize();
     for (auto child : children_) {
-      child->MakeKKTMatrix(full_matrix);
+      child->Assemble();
     }
     if (!IsRoot()) {
       DoScatterSeparatorSubmatrix();
+    }
+  }
+
+  void MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
+    for (auto child : children_) {
+      child->MakeKKTMatrix(full_matrix);
     }
     Eigen::MatrixXd X = DoGetSupernodeColumns();
     for (int j = 0; j < supernodes_.size(); j++) {
@@ -120,6 +126,7 @@ class KKTSubsystem {
   }
 
   void AssembleAndFactor() {
+    DoInitialize();
     for (auto child : children_) {
       child->AssembleAndFactor();
     }
@@ -136,7 +143,7 @@ class KKTSubsystem {
  protected:
     virtual void DoEliminateSupernodeColumns() = 0;
     virtual void DoComputeSeparatorSchurComplement() = 0;
-    virtual Eigen::MatrixXd DoGetSupernodeColumns() = 0;
+    virtual Eigen::MatrixXd DoGetSupernodeColumns() const = 0;
     virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(Eigen::Ref<Eigen::MatrixXd> y) = 0;
     virtual void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(Eigen::Ref<Eigen::MatrixXd> y) = 0;
 

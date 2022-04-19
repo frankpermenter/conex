@@ -35,11 +35,16 @@ class KKTSystem {
     root_->ApplyInverseOfLeftFactor(x);
     root_->ApplyInverseOfRightFactor(x);
   }
+
+  void Assemble() {
+    root_->Assemble();
+  }
+
   void Factor() {
     root_->AssembleAndFactor();
   }
 
-  Eigen::MatrixXd KKTMatrix() {
+  Eigen::MatrixXd KKTMatrix() const {
     int num_vars = root_->supernodes().back() + 1;
     MatrixXd M(num_vars, num_vars); M.setZero();
     root_->MakeKKTMatrix(&M);
@@ -68,7 +73,7 @@ class QuadraticCost : public KKTSubsystem {
      llt_.compute(supernode_submatrix_);
   }
 
-  MatrixXd DoGetSupernodeColumns() override {
+  MatrixXd DoGetSupernodeColumns() const override {
     MatrixXd cols(supernodes_.size() + separators_.size(),
                   supernodes_.size());
     cols << supernode_submatrix_, 
@@ -177,8 +182,6 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   QuadraticCost q3(Q2, vars_3); q3.SetSupernodes({3, 4});
   full_matrix = IncrementSubmatrix(full_matrix, Q2, vars_3);
 
-  DUMP(full_matrix);
-
   q1.DoInitialize();
   q2.DoInitialize();
   q3.DoInitialize();
@@ -192,7 +195,8 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   KKTSystem system;
   system.root_ = &q3;
 
-  //EXPECT_NEAR( (system.KKTMatrix() - full_matrix).norm(), 0, 1e-14);
+  system.Assemble();
+  EXPECT_NEAR((system.KKTMatrix() - full_matrix).norm(), 0, 1e-14);
 
 
   Eigen::LLT<Eigen::MatrixXd> llt(full_matrix);
@@ -203,7 +207,6 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   system.Factor();
   system.SolveInPlace(&b);
   EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
-
 }
 
 
