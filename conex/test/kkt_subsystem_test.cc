@@ -7,7 +7,17 @@
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
+using Eigen::VectorXd;
+using Eigen::MatrixXd;
 namespace conex {
+
+class KKTSystem {
+  Eigen::VectorXd SolveInPlace(Eigen::MatrixXd& x) {
+    root->ApplyInverseOfLeftFactor(&x);
+    root->ApplyInverseOfRightFactor(&x);
+  }
+  KKTSubsystem* root;
+};
 
 using Eigen::MatrixXd;
 
@@ -26,8 +36,15 @@ class QuadraticCost : public KKTSubsystem {
   }
 
   void DoEliminateSupernodeColumns() override {
-     int n1 = supernodes_.size();
      llt_.compute(supernode_submatrix_);
+  }
+
+  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(Eigen::Ref<MatrixXd> y) override {
+     llt_.matrixL().solveInPlace(y);
+  }
+
+  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(Eigen::Ref<MatrixXd> y) override {
+     llt_.matrixL().transpose().solveInPlace(y);
   }
 
   void DoComputeSeparatorSchurComplement() override {
@@ -69,10 +86,10 @@ GTEST_TEST(KKTSubsystem, TestConstruction) {
   Eigen::LLT<Eigen::MatrixXd> llt(Q_full);
   Eigen::MatrixXd L = llt.matrixL();
   DUMP(L);
-  //DUMP(MatrixXd(q1.llt_.matrixL()));
-  //DUMP(MatrixXd(q2.llt_.matrixL()));;
+  VectorXd x_ref(5);
+  VectorXd b = Q_full * x_ref;
 
 
 }
 
-};
+} // namespace conex

@@ -69,6 +69,9 @@
 //  - Left multiply by E^{-1} 
 //  - Right multiply by F^{-1} 
 //  - Construct: K_{S} F^{-1} E^{-1} K_S^T
+
+
+
 namespace conex {
 class KKTSubsystem {
  public:
@@ -104,33 +107,10 @@ class KKTSubsystem {
       DoEliminateSupernodeColumns();
       DoComputeSeparatorSchurComplement(); 
     }
-    if (parent_) {
+    if (!IsRoot()) {
       DoScatterSeparatorSubmatrix();
     }
   }
-
-  void IncrementSubmatrix(const Eigen::MatrixXd& S, const std::vector<int>& vars, size_t start_index) {
-    if (start_index > vars.size()) {
-      return;
-    }
-
-    size_t col_index = start_index;
-
-    CONEX_ASSERT(vars.at(col_index) >= supernodes_.at(0), "Submatrix has been eliminated." ); 
-    for (; col_index < vars.size(); col_index++)  {
-      if (vars.at(col_index) > supernodes_.back()) {
-        // The remaining columns must belong to our parent.
-        break;
-      }
-      IncrementSupernodeColumn(S,  vars, col_index);
-    }
-
-    if (col_index < vars.size()) {
-      CONEX_DEMAND(parent_, "Parent pointer is null.");
-      parent_->IncrementSubmatrix(S, vars, col_index);
-    }
-  }
-
 
 
   Eigen::MatrixXd SeparatorSchurComplement();
@@ -138,6 +118,33 @@ class KKTSubsystem {
  protected:
     virtual void DoEliminateSupernodeColumns() = 0;
     virtual void DoComputeSeparatorSchurComplement() = 0;
+    virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(Eigen::Ref<Eigen::MatrixXd> y) = 0;
+    virtual void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(Eigen::Ref<Eigen::MatrixXd> y) = 0;
+
+
+    void IncrementSubmatrix(const Eigen::MatrixXd& S, 
+                            const std::vector<int>& vars, size_t start_index) {
+      if (start_index > vars.size()) {
+        return;
+      }
+
+      size_t col_index = start_index;
+
+      CONEX_ASSERT(vars.at(col_index) >= supernodes_.at(0), "Submatrix has been eliminated." ); 
+      for (; col_index < vars.size(); col_index++)  {
+        if (vars.at(col_index) > supernodes_.back()) {
+          // The remaining columns must belong to our parent.
+          break;
+        }
+        IncrementSupernodeColumn(S,  vars, col_index);
+      }
+
+      if (col_index < vars.size()) {
+        CONEX_DEMAND(parent_, "Parent pointer is null.");
+        parent_->IncrementSubmatrix(S, vars, col_index);
+      }
+    }
+
     void DoScatterSeparatorSubmatrix() {
       if (parent_) {
         parent_->IncrementSubmatrix(separator_schur_complement_, separators_,  0 /*start index*/);
@@ -154,26 +161,67 @@ class KKTSubsystem {
     Eigen::MatrixXd  supernode_submatrix_;
     Eigen::MatrixXd  separator_rows_;
 
+   //  L 
+   //  R  D
+   void ApplyInverseOfLeftFactor(Eigen::MatrixXd* x) {
+      for (auto child : children_ ) {
+        ApplyInverseOfLeftFactor(x);
+      }
+      Eigen::Ref<Eigen::MatrixXd> ref = x->middleRows(supernodes_.at(0),  
+                                        supernodes_.back() -supernodes_.at(0) + 1);
+      DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(ref);
+      Eigen::MatrixXd residual = separator_rows_ * ref; 
+      for (int i = 0; i < residual.rows(); i++) {
+        x->row(separators_[i]) -= residual.row(i);
+      }
+   }
+
+   Eigen::MatrixXd SeparatorRows(Eigen::MatrixXd* x) {
+      Eigen::MatrixXd separator_rows_of_x(separators_.size(), x->cols()); 
+      for (int i = 0; i < separator_rows_of_x.rows(); i++) {
+        separator_rows_of_x.row(i) = x->row(separators_[i]); 
+      }
+      return separator_rows_of_x;
+   }
+
+   bool IsRoot() const {
+    return parent_ == nullptr;
+   }
+
+   //  L^T  S^T
+   //       R
+   void ApplyInverseOfRightFactor(Eigen::MatrixXd* x) {
+      Eigen::Ref<Eigen::MatrixXd> ref = x->middleRows(supernodes_.at(0),  
+                                        supernodes_.back() -supernodes_.at(0) + 1);
+      if (!IsRoot()) {
+        ref.noalias() -= separator_rows_.transpose() * SeparatorRows(x);
+      }
+      DoApplyInverseOfRightFactorOfSupernodeSubmatrix(ref);
+      for (auto child : children_ ) {
+        ApplyInverseOfRightFactor(x);
+      }
+   }
+
     void IncrementSupernodeColumn(const Eigen::MatrixXd source_data, 
                                     const std::vector<int>& source_column_labels,
                                     int source_column_index) {
-        int local_column_index = GetSupernodePosition(source_column_labels.at(source_column_index));
-        size_t i = source_column_index;
-        for (; i < source_column_labels.size(); i++) {
-          if (source_column_labels.at(i) > supernodes_.back()) {
-            break;
-          }
-          int local_row = GetSupernodePosition(source_column_labels.at(i));
-          supernode_submatrix_(local_row, local_column_index) += source_data(i, source_column_index);
+      int local_column_index = GetSupernodePosition(source_column_labels.at(source_column_index));
+      size_t i = source_column_index;
+      for (; i < source_column_labels.size(); i++) {
+        if (source_column_labels.at(i) > supernodes_.back()) {
+          break;
         }
+        int local_row = GetSupernodePosition(source_column_labels.at(i));
+        supernode_submatrix_(local_row, local_column_index) += source_data(i, source_column_index);
+      }
 
-        for (; i < source_column_labels.size(); i++) {
-          if (source_column_labels.at(i) > separators_.back()) {
-            break;
-          }
-          int local_row = GetSeparatorPosition(source_column_labels.at(i));
-          supernode_submatrix_(local_row, local_column_index) += source_data(i, source_column_index);
+      for (; i < source_column_labels.size(); i++) {
+        if (source_column_labels.at(i) > separators_.back()) {
+          break;
         }
+        int local_row = GetSeparatorPosition(source_column_labels.at(i));
+        supernode_submatrix_(local_row, local_column_index) += source_data(i, source_column_index);
+      }
     }
     size_t GetSupernodePosition(size_t global_label) {
       for (size_t i = 0; i < supernodes_.size(); ++i) {
@@ -192,5 +240,11 @@ class KKTSubsystem {
       throw;
     }
 };
+
+
+
+
+
+
 }
 // namespace conex
