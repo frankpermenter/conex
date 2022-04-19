@@ -75,7 +75,7 @@ class QuadraticCost : public KKTSubsystem {
   }
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) override {
+      Eigen::Ref<MatrixXd> y) const override {
     if (schur_complement_mode_) {
       llt_.solveInPlace(y);
     } else {
@@ -84,7 +84,7 @@ class QuadraticCost : public KKTSubsystem {
   }
 
   void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) override {
+      Eigen::Ref<MatrixXd> y) const override {
     if (schur_complement_mode_) {
       return;
     }
@@ -96,8 +96,8 @@ class QuadraticCost : public KKTSubsystem {
         separator_rows_ * llt_.solve(separator_rows_.transpose());
   }
 
-  bool schur_complement_mode_ = true;
-  Eigen::LDLT<Eigen::MatrixXd> llt_;
+  bool schur_complement_mode_ = false;
+  Eigen::LLT<Eigen::MatrixXd> llt_;
   Eigen::MatrixXd Q_in_elimination_order_;
   Eigen::MatrixXd Q_;
   Eigen::MatrixXd separator_rows_left_factor_;
@@ -199,6 +199,7 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   system.Factor();
   system.SolveInPlace(b);
   EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
+  DUMP(x_ref);
 }
 
 }  // namespace conex

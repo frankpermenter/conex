@@ -5,24 +5,25 @@ using Eigen::VectorXd;
 namespace conex {
 
 using T = KKTSubsystem;
+
 //  L
 //  SR^{-1}  D
-void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) {
+void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   for (auto child : children_) {
     child->ApplyInverseOfLeftFactor(x);
   }
 
-  Eigen::Ref<Eigen::MatrixXd> ref = x.middleRows(
+  Eigen::Ref<Eigen::MatrixXd> x_supernodes = x.middleRows(
       supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
-  DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(ref);
 
+  DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(x_supernodes);
+
+  // Subtract  separator_rows * LeftFactor^{-1} * x_{supernodes}
   if (separators_.size() > 0) {
-    // Compute S R^{-1} ref
-    Eigen::MatrixXd temp = ref;
+    Eigen::MatrixXd temp = x_supernodes;
     DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
-    Eigen::MatrixXd residual = separator_rows_ * temp;
-    for (int i = 0; i < residual.rows(); i++) {
-      x.row(separators_[i]) -= residual.row(i);
+    for (int i = 0; i < separator_rows_.rows(); i++) {
+      x.row(separators_[i]) -= separator_rows_.row(i) * temp;
     }
   }
 }
@@ -37,11 +38,10 @@ Eigen::MatrixXd T::SeparatorRows(const Eigen::MatrixXd& x) const {
 
 bool T::IsRoot() const { return parent_ == nullptr; }
 
-void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) {
+void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   Eigen::Ref<Eigen::MatrixXd> ref = x.middleRows(
       supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
-  if (!IsRoot()) {
-    // Subtract L^{-1} S^T
+  if (separators_.size() > 0) {
     Eigen::MatrixXd temp = separator_rows_.transpose() * SeparatorRows(x);
     DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(temp);
     ref.noalias() -= temp;

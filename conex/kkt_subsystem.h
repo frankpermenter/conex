@@ -108,8 +108,8 @@ class KKTSubsystem {
 
   KKTSubsystem* parent() const { return parent_; }
 
-  void ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x);
-  void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x);
+  void ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
+  void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
 
  protected:
   Eigen::MatrixXd SeparatorSchurComplement();
@@ -119,9 +119,9 @@ class KKTSubsystem {
   virtual void DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
   virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
-      Eigen::Ref<Eigen::MatrixXd> y) = 0;
+      Eigen::Ref<Eigen::MatrixXd> y) const = 0;
   virtual void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
-      Eigen::Ref<Eigen::MatrixXd> y) = 0;
+      Eigen::Ref<Eigen::MatrixXd> y) const = 0;
 
   bool IsRoot() const;
 
@@ -136,6 +136,7 @@ class KKTSubsystem {
   std::vector<int> supernodes_;
   std::vector<int> variables_;
 
+  void InplaceLeftMultiplyBySeparatorRowsTimesInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd>& temp) const;
   Eigen::MatrixXd SeparatorRows(const Eigen::MatrixXd& x) const;
   void IncrementSupernodeColumn(const Eigen::MatrixXd source_data,
                                 const std::vector<int>& source_column_labels,
