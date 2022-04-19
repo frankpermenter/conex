@@ -79,6 +79,7 @@ class KKTSubsystem {
 
   virtual void DoInitialize() = 0;
   const std::vector<int>& shared_variables() const;
+  const std::vector<int>& supernodes() { return supernodes_; }
   void AddVariables(const std::vector<int>& i);
   void SetSeparators(const std::vector<int>& separators) { 
     separators_ = separators; 
@@ -93,31 +94,49 @@ class KKTSubsystem {
     child->SetParent(this);
   }
 
-  void SetParent(KKTSubsystem* child) {
-    CONEX_DEMAND(child, "Received nullptr");
+  void SetParent(KKTSubsystem* parent) {
+    CONEX_DEMAND(parent, "Received nullptr");
     CONEX_DEMAND(parent_ == nullptr, "Parent already assigned.");
-    parent_ = child;
+    parent_ = parent;
   }
 
-  void AssembleAndFactor(bool only_assemble = false) {
+  void MakeKKTMatrix(Eigen::MatrixXd* full_matrix) {
+    DoInitialize();
     for (auto child : children_) {
-      child->AssembleAndFactor(only_assemble);
+      child->MakeKKTMatrix(full_matrix);
     }
-    if (!only_assemble) {
-      DoEliminateSupernodeColumns();
-      DoComputeSeparatorSchurComplement(); 
+    if (!IsRoot()) {
+      DoScatterSeparatorSubmatrix();
     }
+    Eigen::MatrixXd X = DoGetSupernodeColumns();
+    for (int j = 0; j < supernodes_.size(); j++) {
+      for (int i = 0; i <  supernodes_.size(); i++) {
+        full_matrix->coeffRef(supernodes_.at(i), supernodes_.at(j)) = supernode_submatrix_(i, j);
+      }
+      for (int i = 0; i <  separators_.size(); i++) {
+        full_matrix->coeffRef(separators_.at(i), supernodes_.at(j)) = separator_rows_(i, j);
+      }
+    }
+  }
+
+  void AssembleAndFactor() {
+    for (auto child : children_) {
+      child->AssembleAndFactor();
+    }
+    DoEliminateSupernodeColumns();
+    DoComputeSeparatorSchurComplement(); 
     if (!IsRoot()) {
       DoScatterSeparatorSubmatrix();
     }
   }
 
-
+  KKTSubsystem* parent() const { return parent_; }
   Eigen::MatrixXd SeparatorSchurComplement();
   void SetSupernodeColumns(const Eigen::MatrixXd& submatrix, std::vector<int>&rows, std::vector<int>&cols);
  protected:
     virtual void DoEliminateSupernodeColumns() = 0;
     virtual void DoComputeSeparatorSchurComplement() = 0;
+    virtual Eigen::MatrixXd DoGetSupernodeColumns() = 0;
     virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(Eigen::Ref<Eigen::MatrixXd> y) = 0;
     virtual void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(Eigen::Ref<Eigen::MatrixXd> y) = 0;
 
@@ -128,7 +147,6 @@ class KKTSubsystem {
       }
 
       size_t col_index = start_index;
-
       CONEX_ASSERT(vars.at(col_index) >= supernodes_.at(0), "Submatrix has been eliminated." ); 
       for (; col_index < vars.size(); col_index++)  {
         if (vars.at(col_index) > supernodes_.back()) {
@@ -171,12 +189,14 @@ class KKTSubsystem {
                                         supernodes_.back() -supernodes_.at(0) + 1);
       DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(ref);
 
-      // Inverse of right factor
-      Eigen::MatrixXd temp = ref;
-      DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
-      Eigen::MatrixXd residual = separator_rows_ * temp;
-      for (int i = 0; i < residual.rows(); i++) {
-        x->row(separators_[i]) -= residual.row(i);
+      if (separators_.size()  > 0) {
+        // Compute S R^{-1} ref 
+        Eigen::MatrixXd temp = ref;
+        DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
+        Eigen::MatrixXd residual = separator_rows_ * temp;
+        for (int i = 0; i < residual.rows(); i++) {
+          x->row(separators_[i]) -= residual.row(i);
+        }
       }
    }
 
