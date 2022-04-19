@@ -13,10 +13,11 @@ namespace conex {
 
 class KKTSystem {
  public:
-  Eigen::VectorXd SolveInPlace(Eigen::MatrixXd* x) {
+  void SolveInPlace(Eigen::MatrixXd* x) {
     root->ApplyInverseOfLeftFactor(x);
     DUMP(*x);
     root->ApplyInverseOfRightFactor(x);
+    DUMP(*x);
   }
   KKTSubsystem* root;
 };
@@ -59,6 +60,7 @@ class QuadraticCost : public KKTSubsystem {
   Eigen::LLT<Eigen::MatrixXd> llt_;
   Eigen::MatrixXd Q_in_elimination_order_;
   Eigen::MatrixXd Q_;
+  Eigen::MatrixXd separator_rows_left_factor_;
 };
 
 

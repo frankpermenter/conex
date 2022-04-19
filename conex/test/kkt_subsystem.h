@@ -162,16 +162,20 @@ class KKTSubsystem {
     Eigen::MatrixXd  separator_rows_;
 
    //  L 
-   //  R  D
+   //  SR^{-1}  D
    void ApplyInverseOfLeftFactor(Eigen::MatrixXd* x) {
       for (auto child : children_ ) {
         child->ApplyInverseOfLeftFactor(x);
       }
+
       Eigen::Ref<Eigen::MatrixXd> ref = x->middleRows(supernodes_.at(0),  
                                         supernodes_.back() -supernodes_.at(0) + 1);
       DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(ref);
-      DoApplyInverseOfRightFactorOfSupernodeSubmatrix(ref);
-      Eigen::MatrixXd residual = separator_rows_ * ref; 
+
+      // Inverse of right factor
+      Eigen::MatrixXd temp = ref;
+      DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
+      Eigen::MatrixXd residual = separator_rows_ * temp;
       for (int i = 0; i < residual.rows(); i++) {
         x->row(separators_[i]) -= residual.row(i);
       }
@@ -198,9 +202,12 @@ class KKTSubsystem {
       Eigen::Ref<Eigen::MatrixXd> ref = x->middleRows(supernodes_.at(0),  
                                         supernodes_.back() -supernodes_.at(0) + 1);
       if (!IsRoot()) {
-        ref.noalias() -= separator_rows_.transpose() * SeparatorRows(x);
+        // Subtract L^{-1} S^T 
+        Eigen::MatrixXd temp = separator_rows_.transpose() * SeparatorRows(x);
+        DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(temp);
+        ref.noalias() -= temp; 
       }
-      DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(ref);
+
       DoApplyInverseOfRightFactorOfSupernodeSubmatrix(ref);
       for (auto child : children_ ) {
         child->ApplyInverseOfRightFactor(x);
