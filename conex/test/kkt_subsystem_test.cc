@@ -61,9 +61,10 @@ class QuadraticCost : public KKTSubsystem {
       : KKTSubsystem(vars), Q_(Q) {}
 
   void DoInitialize() override {
+    KKTSubsystem::DoInitialize();
     Q_in_elimination_order_ = Q_;
-    int n1 = supernodes_.size();
-    int n2 = separators_.size();
+    int n1 = supernode_submatrix_.rows();
+    int n2 = separator_rows_.rows();
     supernode_submatrix_ = Q_in_elimination_order_.topLeftCorner(n1, n1);
     separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
     separator_schur_complement_ =
@@ -72,12 +73,6 @@ class QuadraticCost : public KKTSubsystem {
 
   void DoEliminateSupernodeColumns() override {
     llt_.compute(supernode_submatrix_);
-  }
-
-  MatrixXd DoGetSupernodeColumns() const override {
-    MatrixXd cols(supernodes_.size() + separators_.size(), supernodes_.size());
-    cols << supernode_submatrix_, separator_rows_;
-    return cols;
   }
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
@@ -98,7 +93,6 @@ class QuadraticCost : public KKTSubsystem {
   }
 
   void DoComputeSeparatorSchurComplement() override {
-    int n2 = separators_.size();
     separator_schur_complement_ -=
         separator_rows_ * llt_.solve(separator_rows_.transpose());
   }

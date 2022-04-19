@@ -75,7 +75,10 @@ class KKTSubsystem {
  public:
   KKTSubsystem(const std::vector<int>& vars) : variables_(vars) {}
 
-  virtual void DoInitialize() = 0;
+  virtual void DoInitialize() {
+    supernode_submatrix_.resize(supernodes_.size(), supernodes_.size());
+    separator_rows_.resize(separators_.size(), supernodes_.size());
+  }
   const std::vector<int>& shared_variables() const;
   const std::vector<int>& supernodes() { return supernodes_; }
   void AddVariables(const std::vector<int>& i);
@@ -112,7 +115,6 @@ class KKTSubsystem {
     for (auto child : children_) {
       child->MakeKKTMatrix(full_matrix);
     }
-    Eigen::MatrixXd X = DoGetSupernodeColumns();
     for (int j = 0; j < supernodes_.size(); j++) {
       for (int i = 0; i < supernodes_.size(); i++) {
         full_matrix->coeffRef(supernodes_.at(i), supernodes_.at(j)) =
@@ -145,7 +147,6 @@ class KKTSubsystem {
  protected:
   virtual void DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
-  virtual Eigen::MatrixXd DoGetSupernodeColumns() const = 0;
   virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<Eigen::MatrixXd> y) = 0;
   virtual void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
@@ -181,16 +182,17 @@ class KKTSubsystem {
     }
   }
 
-  std::vector<int> separators_;
-  std::vector<int> supernodes_;
-  std::vector<int> variables_;
   KKTSubsystem* parent_ = nullptr;
   std::vector<KKTSubsystem*> children_;
   Eigen::MatrixXd separator_schur_complement_;
-
- public:
   Eigen::MatrixXd supernode_submatrix_;
   Eigen::MatrixXd separator_rows_;
+
+ private:
+  std::vector<int> separators_;
+  std::vector<int> supernodes_;
+  std::vector<int> variables_;
+ public:
 
   //  L
   //  SR^{-1}  D
