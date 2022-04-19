@@ -12,9 +12,11 @@ using Eigen::MatrixXd;
 namespace conex {
 
 class KKTSystem {
-  Eigen::VectorXd SolveInPlace(Eigen::MatrixXd& x) {
-    root->ApplyInverseOfLeftFactor(&x);
-    root->ApplyInverseOfRightFactor(&x);
+ public:
+  Eigen::VectorXd SolveInPlace(Eigen::MatrixXd* x) {
+    root->ApplyInverseOfLeftFactor(x);
+    DUMP(*x);
+    root->ApplyInverseOfRightFactor(x);
   }
   KKTSubsystem* root;
 };
@@ -40,10 +42,12 @@ class QuadraticCost : public KKTSubsystem {
   }
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(Eigen::Ref<MatrixXd> y) override {
+    DUMP(y);
      llt_.matrixL().solveInPlace(y);
   }
 
   void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(Eigen::Ref<MatrixXd> y) override {
+    DUMP(y);
      llt_.matrixL().transpose().solveInPlace(y);
   }
 
@@ -75,8 +79,7 @@ GTEST_TEST(KKTSubsystem, TestConstruction) {
   q2.DoInitialize();
 
   q2.AddChild(&q1);
-
-  q2.AssembleAndFactor(true);
+  q2.AssembleAndFactor();
 
   Eigen::MatrixXd Q_full(5, 5);
   Q_full.setZero();
@@ -87,9 +90,13 @@ GTEST_TEST(KKTSubsystem, TestConstruction) {
   Eigen::MatrixXd L = llt.matrixL();
   DUMP(L);
   VectorXd x_ref(5);
-  VectorXd b = Q_full * x_ref;
-
-
+  x_ref.setLinSpaced(5, -1, 1);
+  MatrixXd b = Q_full * x_ref;
+  DUMP(L.triangularView<Eigen::Lower>().solve(b));
+  KKTSystem system;
+  system.root = &q2;
+  system.SolveInPlace(&b);
+  DUMP(b);
 }
 
 } // namespace conex
