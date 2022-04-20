@@ -157,4 +157,19 @@ void T::Assemble() {
   }
 }
 
+double& T::submatrix(int i, int j) {
+  if (j > i) { std::swap(i, j); }
+  int num_supernodes = supernode_submatrix_.rows();
+  if (i < num_supernodes && j < num_supernodes) {
+    return supernode_submatrix_(i, j);    
+  } else {
+    if (j < num_supernodes) {
+      return separator_rows_(i - num_supernodes, j);    
+    } else {
+      return separator_schur_complement_(i - num_supernodes, j - num_supernodes);    
+    }
+  }
+}
+
+
 }  // namespace conex

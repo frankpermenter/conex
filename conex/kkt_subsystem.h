@@ -71,23 +71,69 @@
 //  - Construct: K_{S} F^{-1} E^{-1} K_S^T
 
 namespace conex {
+
+// 
+//
+//   KKTSystem
+//
+//      MakeTree(subsystem_shared_variables)
+//      returns: elimination tree, 
+//               fill-in.
+//               post-ordering.
+//
+//              subsystem.Assemble(fill_in, ordering)
+//
+//      Solve(Residual) {  subsystem.Factor(); 
+//                         subsystem.LeftFactorInverse, 
+//                         subsystem.RightFactorInverse }
+//
+//
+//      Solve(dual_weight) {  subsystem.Factor(); 
+//                         subsystem.LeftFactorInverse, 
+//                         subsystem.RightFactorInverse }
+//
+//    private:
+//
+//     linear_cost_;
+//     subsystems_;
+//     tree_;
+// 
+
+
 class KKTSubsystem {
  public:
-  KKTSubsystem(const std::vector<int>& vars) : variables_(vars) {}
+  KKTSubsystem(const std::vector<int>& shared_assembler_variables,
+               int number_of_private_variables) 
+               : variables_(shared_assembler_variables), 
+                 number_of_private_variables_(number_of_private_variables) {}
 
   virtual void DoInitialize() {
     supernode_submatrix_.resize(supernodes_.size(), supernodes_.size());
     separator_rows_.resize(separators_.size(), supernodes_.size());
     separator_schur_complement_.resize(separators_.size(), separators_.size());
   }
+
   const std::vector<int>& shared_variables() const;
   const std::vector<int>& supernodes() { return supernodes_; }
+
   void AddVariables(const std::vector<int>& i);
   void SetSeparators(const std::vector<int>& separators) {
     separators_ = separators;
   };
+
   void SetSupernodes(const std::vector<int>& supernodes) {
     supernodes_ = supernodes;
+  };
+
+  void SetPostOrdering(const std::vector<int>& shared_variable_to_elimination_position) {
+    for (auto& s : supernodes_) {
+      s = shared_variable_to_elimination_position.at(s);
+    }
+    for (auto& e : supernodes_) {
+      e = shared_variable_to_elimination_position.at(e);
+    }
+    std::sort(supernodes_.begin(), supernodes_.end());
+    std::sort(separators_.begin(), separators_.end());
   };
 
   void AddChild(KKTSubsystem* child) {
@@ -133,18 +179,23 @@ class KKTSubsystem {
   Eigen::MatrixXd separator_rows_;
 
   std::vector<int>& variable_to_local_elimination_rank()  {
-    input_variable_to_elimination_position_.clear();
-    for (int i = 0; i < variables_.size(); i++) {
-      input_variable_to_elimination_position_.push_back(i);
+    variable_to_elimination_position_.clear();
+    for (size_t i = 0; i < variables_.size(); i++) {
+      variable_to_elimination_position_.push_back(i);
     }
-    return input_variable_to_elimination_position_;
+    return variable_to_elimination_position_;
   }
 
+  double& submatrix(int i, int j);
+
  private:
+  // separators_ and supernodes_ are disjoint and their
+  // union is a subset of shared_assembler_variables_
   std::vector<int> separators_;
   std::vector<int> supernodes_;
   std::vector<int> variables_;
-  std::vector<int> input_variable_to_elimination_position_;
+  std::vector<int> variable_to_elimination_position_;
+  int number_of_private_variables_ = 0;
 
   void InplaceLeftMultiplyBySeparatorRowsTimesInverseOfRightFactor(
       Eigen::Ref<Eigen::MatrixXd>& temp) const;

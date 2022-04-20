@@ -10,7 +10,7 @@
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {
-#define CONEX_NOOP(x)
+#define CONEX_NOOP(x) (void) x;
 MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix,
                             const MatrixXd& sub_matrix,
                             const std::vector<int>& c) {
@@ -110,30 +110,13 @@ class QuadraticCost : public LLTSolver {
     } else {
       AssignSubmatrix(Q_, variable_to_local_elimination_rank());
     }
-
-  }
-
-  
-  double& coeff(int i, int j) {
-    if (j > i) { std::swap(i, j); }
-    int num_supernodes = supernode_submatrix_.rows();
-    int num_separators = separator_rows_.rows();
-    if (i < num_supernodes && j < num_supernodes) {
-      return supernode_submatrix_(i, j);    
-    } else {
-      if (j < num_supernodes) {
-        return separator_rows_(i - num_supernodes, j);    
-      } else {
-        return separator_schur_complement_(i - num_supernodes, j - num_supernodes);    
-      }
-    }
   }
 
   void AssignSubmatrix(const Eigen::MatrixXd& Q, 
                        const std::vector<int>& input_to_destination) {
     for (int i = 0; i < Q.rows(); i++) {
       for (int j = 0; j < Q.cols(); j++) {
-        coeff(i, j) = Q(input_to_destination.at(i),  input_to_destination.at(j));
+        submatrix(i, j) = Q(input_to_destination.at(i),  input_to_destination.at(j));
       }
     }
   }
