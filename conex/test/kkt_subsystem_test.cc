@@ -10,7 +10,7 @@
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {
-
+#define CONEX_NOOP(x)
 MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix,
                             const MatrixXd& sub_matrix,
                             const std::vector<int>& c) {
@@ -65,7 +65,7 @@ class CholeskySolver : public KKTSubsystem {
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
-    if constexpr (!schur_complement_mode) {
+    if constexpr (schur_complement_mode) {
       llt_.solveInPlace(y);
     } else {
       llt_.matrixL().solveInPlace(y);
@@ -75,6 +75,7 @@ class CholeskySolver : public KKTSubsystem {
   void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
     if constexpr (schur_complement_mode) {
+      CONEX_NOOP(y);
       return;
     } else {
       llt_.matrixL().transpose().solveInPlace(y);
@@ -97,46 +98,48 @@ class QuadraticCost : public LLTSolver {
 
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
-    Q_in_elimination_order_ = Q_;
-    int n1 = supernode_submatrix_.rows();
-    int n2 = separator_rows_.rows();
-    supernode_submatrix_ = Q_in_elimination_order_.topLeftCorner(n1, n1);
-    separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
-    separator_schur_complement_ =
-        Q_in_elimination_order_.bottomRightCorner(n2, n2);
-  }
-
-  void DoEliminateSupernodeColumns() override {
-    llt_.compute(supernode_submatrix_);
-  }
-
-  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    if (schur_complement_mode_) {
-      llt_.solveInPlace(y);
+    bool enable_block_transfer = false;
+    if (enable_block_transfer) {
+      Q_in_elimination_order_ = Q_;
+      int n1 = supernode_submatrix_.rows();
+      int n2 = separator_rows_.rows();
+      supernode_submatrix_ = Q_in_elimination_order_.topLeftCorner(n1, n1);
+      separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
+      separator_schur_complement_ =
+          Q_in_elimination_order_.bottomRightCorner(n2, n2);
     } else {
-      llt_.matrixL().solveInPlace(y);
+      AssignSubmatrix(Q_, variable_to_local_elimination_rank());
+    }
+
+  }
+
+  
+  double& coeff(int i, int j) {
+    if (j > i) { std::swap(i, j); }
+    int num_supernodes = supernode_submatrix_.rows();
+    int num_separators = separator_rows_.rows();
+    if (i < num_supernodes && j < num_supernodes) {
+      return supernode_submatrix_(i, j);    
+    } else {
+      if (j < num_supernodes) {
+        return separator_rows_(i - num_supernodes, j);    
+      } else {
+        return separator_schur_complement_(i - num_supernodes, j - num_supernodes);    
+      }
     }
   }
 
-  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    if (schur_complement_mode_) {
-      return;
+  void AssignSubmatrix(const Eigen::MatrixXd& Q, 
+                       const std::vector<int>& input_to_destination) {
+    for (int i = 0; i < Q.rows(); i++) {
+      for (int j = 0; j < Q.cols(); j++) {
+        coeff(i, j) = Q(input_to_destination.at(i),  input_to_destination.at(j));
+      }
     }
-    llt_.matrixL().transpose().solveInPlace(y);
   }
 
-  void DoComputeSeparatorSchurComplement() override {
-    separator_schur_complement_ -=
-        separator_rows_ * llt_.solve(separator_rows_.transpose());
-  }
-
-  bool schur_complement_mode_ = false;
-  Eigen::LLT<Eigen::MatrixXd> llt_;
   Eigen::MatrixXd Q_in_elimination_order_;
   Eigen::MatrixXd Q_;
-  Eigen::MatrixXd separator_rows_left_factor_;
 };
 
 // 1 1 1

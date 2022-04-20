@@ -78,6 +78,7 @@ class KKTSubsystem {
   virtual void DoInitialize() {
     supernode_submatrix_.resize(supernodes_.size(), supernodes_.size());
     separator_rows_.resize(separators_.size(), supernodes_.size());
+    separator_schur_complement_.resize(separators_.size(), separators_.size());
   }
   const std::vector<int>& shared_variables() const;
   const std::vector<int>& supernodes() { return supernodes_; }
@@ -131,10 +132,19 @@ class KKTSubsystem {
   Eigen::MatrixXd supernode_submatrix_;
   Eigen::MatrixXd separator_rows_;
 
+  std::vector<int>& variable_to_local_elimination_rank()  {
+    input_variable_to_elimination_position_.clear();
+    for (int i = 0; i < variables_.size(); i++) {
+      input_variable_to_elimination_position_.push_back(i);
+    }
+    return input_variable_to_elimination_position_;
+  }
+
  private:
   std::vector<int> separators_;
   std::vector<int> supernodes_;
   std::vector<int> variables_;
+  std::vector<int> input_variable_to_elimination_position_;
 
   void InplaceLeftMultiplyBySeparatorRowsTimesInverseOfRightFactor(
       Eigen::Ref<Eigen::MatrixXd>& temp) const;
