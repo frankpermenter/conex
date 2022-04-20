@@ -6,19 +6,29 @@ namespace conex {
 
 using T = KKTSubsystem;
 
-//  L
-//  SR^{-1}  D
+// Iterate from the leafs of the tree upwards using recursion.
+// At each leaf, we consider the triangular system
+//
+//  L           [x_supernodes] = b_[supernodes]
+//  SR^{-1}  D  [x_seperator]    b_[separator]
+//
+// We then do one iteration of forward substitution
+//
+//  x_supernodes = L^{-1} b_supernodes
+//  b_[separator] -=   SR^{-1} [x_supernodes]
 void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
+
+  // Do recursion all the way down to a leaf node.
   for (auto child : children_) {
     child->ApplyInverseOfLeftFactor(x);
   }
 
+  // We have reached leaf. So solve for x_supernode in place.
   Eigen::Ref<Eigen::MatrixXd> x_supernodes = x.middleRows(
       supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
-
   DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(x_supernodes);
 
-  // Subtract  separator_rows * LeftFactor^{-1} * x_{supernodes}
+  // Update residual via separator_rows * LeftFactor^{-1} * x_{supernodes}
   if (separators_.size() > 0) {
     Eigen::MatrixXd temp = x_supernodes;
     DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
@@ -38,16 +48,31 @@ Eigen::MatrixXd T::SeparatorRows(const Eigen::MatrixXd& x) const {
 
 bool T::IsRoot() const { return parent_ == nullptr; }
 
+
+// Iterate from the root of the tree downwards using depth-first search. At each
+// node, we consider the triangular system
+//
+//  R    L^{-1} S^T          [x_supernodes] = b_[supernodes]
+//            R_{seperator}  [x_separator]    b_[separator]
+//
+// Since we have already solved for x_separator, we first
+// update the residual via
+//
+//  b_[supernodes] -=  L^{-1} S^T [x_separator]
+//
+// We then compute x_supernodes = R^{-1} b_supernodes.
 void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
-  Eigen::Ref<Eigen::MatrixXd> ref = x.middleRows(
+  Eigen::Ref<Eigen::MatrixXd> x_supernodes = x.middleRows(
       supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
+
+  // Update residual using x_separator computed by ascendants in tree.
   if (separators_.size() > 0) {
     Eigen::MatrixXd temp = separator_rows_.transpose() * SeparatorRows(x);
     DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(temp);
-    ref.noalias() -= temp;
+    x_supernodes.noalias() -= temp;
   }
 
-  DoApplyInverseOfRightFactorOfSupernodeSubmatrix(ref);
+  DoApplyInverseOfRightFactorOfSupernodeSubmatrix(x_supernodes);
   for (auto child : children_) {
     child->ApplyInverseOfRightFactor(x);
   }
@@ -109,6 +134,7 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
     }
   }
 }
+
 void T::AssembleAndFactor() {
   DoInitialize();
   for (auto child : children_) {
