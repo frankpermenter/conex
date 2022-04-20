@@ -610,13 +610,13 @@ cc_test(
     name = "kkt_subsystem_test",
     srcs = [
         "debug_macros.h",
-        "kkt_solver_interface.h",
         "test/kkt_subsystem_test.cc",
     ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "kkt_subsystem",
         ":error_checking",
+        ":kkt_solver_interface",
         "@eigen",
         "@gtest//:main",
     ],

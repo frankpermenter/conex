@@ -136,7 +136,8 @@ class KKTSubsystem {
   std::vector<int> supernodes_;
   std::vector<int> variables_;
 
-  void InplaceLeftMultiplyBySeparatorRowsTimesInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd>& temp) const;
+  void InplaceLeftMultiplyBySeparatorRowsTimesInverseOfRightFactor(
+      Eigen::Ref<Eigen::MatrixXd>& temp) const;
   Eigen::MatrixXd SeparatorRows(const Eigen::MatrixXd& x) const;
   void IncrementSupernodeColumn(const Eigen::MatrixXd source_data,
                                 const std::vector<int>& source_column_labels,

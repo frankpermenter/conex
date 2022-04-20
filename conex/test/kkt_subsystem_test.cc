@@ -27,7 +27,7 @@ MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix,
   return y;
 }
 
-class KKTSystem : public KKTSolverBase {
+class TreeSolver : public KKTSolverBase {
  public:
   void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                       bool permute_to_elimination_order) const {
@@ -146,17 +146,16 @@ GTEST_TEST(KKTSubsystem, TestConstruction) {
 }
 #endif
 
-// 1 1 1
-// 1 1 1
-// 1 1 1 1 0
-//   0 1 1 1
-// 0 0 0 1 1
 GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   int num_vars = 5;
   MatrixXd full_matrix = MatrixXd::Zero(num_vars, num_vars);
   std::vector<int> vars{0, 1, 2};
   Eigen::MatrixXd Q1(3, 3);
-  Q1 << 50, 2, 3, 2, 10, 4, 3, 4, 10;
+  // clang-format off
+  Q1 << 50, 2, 3,
+        2, 10, 4,
+        3, 4, 10;
+  // clang-format on
   QuadraticCost q1(Q1, vars);
   q1.SetSeparators({2});
   q1.SetSupernodes({0, 1});
@@ -164,7 +163,10 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
 
   std::vector<int> vars_2{2, 3};
   Eigen::MatrixXd Q2(2, 2);
-  Q2 << 5, 2, 2, 5;
+  // clang-format off
+  Q2 << 5, 2, 
+        2, 5;
+  // clang-format on
   QuadraticCost q2(Q2, vars_2);
   q2.SetSupernodes({2});
   q2.SetSeparators({3});
@@ -185,7 +187,7 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   EXPECT_EQ(q1.parent(), &q2);
   EXPECT_EQ(q2.parent(), &q3);
 
-  KKTSystem system;
+  TreeSolver system;
   system.root_ = &q3;
 
   system.Assemble();
@@ -199,7 +201,6 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   system.Factor();
   system.SolveInPlace(b);
   EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
-  DUMP(x_ref);
 }
 
 }  // namespace conex
