@@ -54,10 +54,46 @@ class TreeSolver : public KKTSolverBase {
 
 using Eigen::MatrixXd;
 
-class QuadraticCost : public KKTSubsystem {
+template<typename FactorizationMethod, bool schur_complement_mode>
+class CholeskySolver : public KKTSubsystem {
+ public:
+  CholeskySolver(std::vector<int> vars) : KKTSubsystem(vars) {}
+
+  void DoEliminateSupernodeColumns() override {
+    llt_.compute(supernode_submatrix_);
+  }
+
+  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    if constexpr (!schur_complement_mode) {
+      llt_.solveInPlace(y);
+    } else {
+      llt_.matrixL().solveInPlace(y);
+    }
+  }
+
+  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    if constexpr (schur_complement_mode) {
+      return;
+    } else {
+      llt_.matrixL().transpose().solveInPlace(y);
+    }
+  }
+
+  void DoComputeSeparatorSchurComplement() override {
+    separator_schur_complement_ -=
+        separator_rows_ * llt_.solve(separator_rows_.transpose());
+  }
+
+  FactorizationMethod llt_;
+};
+
+using LLTSolver = CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, true>;
+class QuadraticCost : public LLTSolver {
  public:
   QuadraticCost(Eigen::MatrixXd Q, std::vector<int> vars)
-      : KKTSubsystem(vars), Q_(Q) {}
+      : LLTSolver(vars), Q_(Q) {}
 
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
