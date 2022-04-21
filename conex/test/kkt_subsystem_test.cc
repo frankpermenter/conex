@@ -127,11 +127,12 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite>  {
   }
   void AssignSubmatrix(const Eigen::MatrixXd& source, 
                        Eigen::Ref<Eigen::MatrixXd> destination,
-                       const std::vector<int>& destination_to_source_index) {
+                       const std::vector<int>& source_to_dest_index) {
+    destination.setZero();
     for (int i = 0; i < source.rows(); i++) {
       for (int j = 0; j < source.cols(); j++) {
-        destination(i, j) = source(destination_to_source_index.at(i),  
-                                   destination_to_source_index.at(j));
+            destination(source_to_dest_index.at(i), 
+                        source_to_dest_index.at(j)) = source(i, j);
       }
     }
   }
