@@ -48,6 +48,31 @@ namespace conex {
         roots_.push_back(subsystems_.at(i));
       }
     }
+#if 1
+    for (size_t i = 0; i < parent.size(); ++i) {
+      if (parent[i] > 0) {
+        std::vector<int> v1 = subsystems_.at(parent[i])->shared_variables();
+        std::vector<int> v2 = subsystems_.at(i)->shared_variables();
+        std::sort(v1.begin(), v1.end());
+        std::sort(v2.begin(), v2.end());
+        std::vector<int> separators; 
+        std::set_intersection(v1.begin(), v1.end(),
+                          v2.begin(), v2.end(),
+                          std::back_inserter(separators));
+        subsystems_.at(i)->SetSeparators(separators);
+
+        std::vector<int> supernodes; 
+        std::set_difference(v2.begin(), v2.end(),
+                            separators.begin(), separators.end(),
+                          std::back_inserter(supernodes));
+        subsystems_.at(i)->SetSupernodes(supernodes);
+      } else {
+        std::vector<int> v2 = subsystems_.at(i)->shared_variables();
+        std::sort(v2.begin(), v2.end());
+        subsystems_.at(i)->SetSupernodes(v2);
+      }
+    }
+#endif
 
     for (auto r : indefinite_subsystems_) {
       if (!r->ValidateRoot()) {
