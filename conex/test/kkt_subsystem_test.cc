@@ -162,28 +162,63 @@ class CholeskySolver : public KKTSubsystem {
   FactorizationMethod llt_;
 };
 
-using LLTSolver = CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, true>;
-class QuadraticCost : public LLTSolver {
+class LUSolver : public KKTSubsystem {
  public:
-  QuadraticCost(Eigen::MatrixXd Q, std::vector<int> vars)
-      : LLTSolver(vars), Q_(Q) {}
+  LUSolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
+
+  void DoEliminateSupernodeColumns() override {
+    lu_.compute(supernode_submatrix_);
+  }
+
+  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+      y = lu_.solve(y);
+  }
+
+  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+      CONEX_NOOP(y);
+  }
+
+  void DoComputeSeparatorSchurComplement() override {
+    separator_schur_complement_ -=
+        separator_rows_ * lu_.solve(separator_rows_.transpose());
+  }
+
+  Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
+};
+
+using LLTSolver = CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, true>;
+
+
+template<bool is_positive_definite>
+using FactorizationMethod = typename std::conditional<is_positive_definite, LLTSolver, LUSolver>::type;
+//class Base {};
+
+template<bool is_positive_definite>
+class StaticSubsystem : public FactorizationMethod<is_positive_definite>  {
+  using Base = FactorizationMethod<is_positive_definite>;
+ public:
+  StaticSubsystem(Eigen::MatrixXd Q, std::vector<int> vars)
+      : Base(vars), Q_(Q) {}
 
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
-    int n1 = supernode_submatrix_.rows();
-    int n2 = separator_rows_.rows();
+    int n1 = Base::supernode_submatrix_.rows();
+    int n2 = Base::separator_rows_.rows();
     Q_in_elimination_order_.resize(n1 + n2, n1 + n2);
-    AssignSubmatrix(Q_, Q_in_elimination_order_, variable_to_local_elimination_rank());
+    AssignSubmatrix(Q_, Q_in_elimination_order_, Base::variable_to_local_elimination_rank());
     DoAssemble();
   }
 
  private:
+
   void DoAssemble() {
-    int n1 = supernode_submatrix_.rows();
-    int n2 = separator_rows_.rows();
-    supernode_submatrix_ = Q_in_elimination_order_.topLeftCorner(n1, n1);
-    separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
-    separator_schur_complement_ =
+    int n1 = Base::supernode_submatrix_.rows();
+    int n2 = Base::separator_rows_.rows();
+    Base::supernode_submatrix_ = Q_in_elimination_order_.topLeftCorner(n1, n1);
+    Base::separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
+    Base::separator_schur_complement_ =
         Q_in_elimination_order_.bottomRightCorner(n2, n2);
   }
   void AssignSubmatrix(const Eigen::MatrixXd& source, 
@@ -244,6 +279,7 @@ GTEST_TEST(KKTSubsystem, TestConstruction) {
 }
 #endif
 
+template<typename StaticAssemblerType>
 void DoTestTrivalExample(const std::vector<int>& v) {
   int num_vars = 5;
   std::vector<int> vars{v[0], v[1], v[2]};
@@ -254,7 +290,7 @@ void DoTestTrivalExample(const std::vector<int>& v) {
         2, 10, 4,
         3, 4, 10;
   // clang-format on
-  QuadraticCost q1(Q1, vars);
+  StaticAssemblerType q1(Q1, vars);
   q1.SetSeparators({v[2]});
   q1.SetSupernodes({v[0], v[1]});
   full_matrix = IncrementSubmatrix(full_matrix, Q1, vars);
@@ -265,13 +301,13 @@ void DoTestTrivalExample(const std::vector<int>& v) {
   Q2 << 5, 2, 
         2, 5;
   // clang-format on
-  QuadraticCost q2(Q2, vars_2);
+  StaticAssemblerType q2(Q2, vars_2);
   q2.SetSupernodes({v[2]});
   q2.SetSeparators({v[3]});
   full_matrix = IncrementSubmatrix(full_matrix, Q2, vars_2);
 
   std::vector<int> vars_3{v[3], v[4]};
-  QuadraticCost q3(Q2, vars_3);
+  StaticAssemblerType q3(Q2, vars_3);
   q3.SetSupernodes({v[3], v[4]});
   full_matrix = IncrementSubmatrix(full_matrix, Q2, vars_3);
 
@@ -304,16 +340,19 @@ void DoTestTrivalExample(const std::vector<int>& v) {
 
 GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrder) {
   std::vector<int> v{0, 1, 2, 3, 4};
-  DoTestTrivalExample(v);
+  DoTestTrivalExample<StaticSubsystem<true>>(v);
+  DoTestTrivalExample<StaticSubsystem<false>>(v);
 }
 GTEST_TEST(KKTSubsystem, TestTrivialExampleArbitrarilyPermutedOrder) {
   std::vector<int> v{2, 0, 1, 4, 3};
-  DoTestTrivalExample(v);
+  DoTestTrivalExample<StaticSubsystem<true>>(v);
+  DoTestTrivalExample<StaticSubsystem<false>>(v);
 }
 
 GTEST_TEST(KKTSubsystem, TestTrivialExampleReverseOrder) {
   std::vector<int> v{4, 3, 2, 1, 0};
-  DoTestTrivalExample(v);
+  DoTestTrivalExample<StaticSubsystem<true>>(v);
+  DoTestTrivalExample<StaticSubsystem<false>>(v);
 }
 
 
