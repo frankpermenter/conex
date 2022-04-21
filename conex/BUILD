@@ -596,6 +596,7 @@ cc_library(
         "debug_macros.h",
         "kkt_subsystem.cc",
         "kkt_subsystem.h",
+        "kkt_tree_solver.h",
     ],
     copts = ["-Iexternal/gtest/include"],
     deps = [

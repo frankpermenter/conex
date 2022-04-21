@@ -1,7 +1,8 @@
+#pragma once
 #include <vector>
-#include "conex/error_checking_macros.h"
 #include <Eigen/Dense>
 
+#include "conex/error_checking_macros.h"
 #include "conex/debug_macros.h"
 // A KKT sub-system is a symmetric system of linear equations of the
 // form:
