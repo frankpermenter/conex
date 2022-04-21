@@ -60,6 +60,15 @@ class TreeSolver : public KKTSolverBase {
         roots_.push_back(subsystems_.at(i));
       }
     }
+    // Post-order
+    std::vector<int> variable_to_elimination_position(number_of_variables());
+    int first = 0;
+    for (auto r : roots_) {
+      r->ComputePostOrdering(first, &variable_to_elimination_position);
+    }
+    for (auto s : subsystems_) {
+      s->SetVariableOrdering(variable_to_elimination_position);
+    }
   }
 
   int number_of_variables() const {
@@ -138,15 +147,12 @@ class QuadraticCost : public LLTSolver {
     KKTSubsystem::DoInitialize();
     int n1 = supernode_submatrix_.rows();
     int n2 = separator_rows_.rows();
-
-    supernode_submatrix_.resize(n1, n1);
-    separator_rows_.resize(n2, n1);
     Q_in_elimination_order_.resize(n1 + n2, n1 + n2);
-
     AssignSubmatrix(Q_, Q_in_elimination_order_, variable_to_local_elimination_rank());
     DoAssemble();
   }
 
+ private:
   void DoAssemble() {
     int n1 = supernode_submatrix_.rows();
     int n2 = separator_rows_.rows();
@@ -155,17 +161,18 @@ class QuadraticCost : public LLTSolver {
     separator_schur_complement_ =
         Q_in_elimination_order_.bottomRightCorner(n2, n2);
   }
-
   void AssignSubmatrix(const Eigen::MatrixXd& source, 
                        Eigen::Ref<Eigen::MatrixXd> destination,
                        const std::vector<int>& destination_to_source_index) {
+    DUMP(destination_to_source_index);
     for (int i = 0; i < source.rows(); i++) {
       for (int j = 0; j < source.cols(); j++) {
-        destination(i, j) = source(destination_to_source_index.at(i),  destination_to_source_index.at(j));
+        destination(i, j) = source(destination_to_source_index.at(i),  
+                                   destination_to_source_index.at(j));
       }
     }
   }
-
+ private:
   Eigen::MatrixXd Q_in_elimination_order_;
   Eigen::MatrixXd Q_;
 };
@@ -255,10 +262,8 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   q2.DoInitialize();
   q3.DoInitialize();
 
-
   EXPECT_EQ(q1.parent(), &q2);
   EXPECT_EQ(q2.parent(), &q3);
-
 
   system.Assemble();
   DUMP(system.KKTMatrix());

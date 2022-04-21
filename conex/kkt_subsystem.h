@@ -123,6 +123,60 @@ class KKTSubsystem {
     supernodes_ = supernodes;
   };
 
+  int ComputePostOrdering(int offset, std::vector<int>* variable_to_elimination_position) {
+    for (auto& child : children_) {
+      offset = child->ComputePostOrdering(offset, variable_to_elimination_position);
+    }
+    for (auto& s : supernodes_) {
+      variable_to_elimination_position->at(s) = offset++;
+    }
+    return offset;
+  };
+
+  void SetVariableOrdering(const std::vector<int>& shared_variable_to_elimination_position) {
+    for (auto& s : supernodes_) {
+      s = shared_variable_to_elimination_position.at(s);
+    }
+    for (auto& e : separators_) {
+      e = shared_variable_to_elimination_position.at(e);
+    }
+    std::sort(supernodes_.begin(), supernodes_.end());
+    std::sort(separators_.begin(), separators_.end());
+
+    std::vector<int> variable_elimination_position = variables_;
+    for (auto& v : variable_elimination_position) {
+      v = shared_variable_to_elimination_position.at(v);
+    }
+    
+    variable_to_local_elimination_position_.resize(variables_.size());
+    for (int i = 0; i < variables_.size(); i++) {
+      bool found = false;
+      for (int j = 0; j < supernodes_.size(); j++) {
+        if (variable_elimination_position.at(i) == supernodes_.at(j)) {
+          variable_to_local_elimination_position_.at(i) = j;
+          found = true;
+          break;
+        }
+      }
+      if (found) {
+        continue;
+      }
+      for (int j = 0; j < separators_.size(); j++) {
+        if (variable_elimination_position.at(i) == separators_.at(j)) {
+          variable_to_local_elimination_position_.at(i) = j + supernodes_.size();
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        throw;
+      }
+    }
+    
+
+  };
+
+
   void SetPostOrdering(const std::vector<int>& shared_variable_to_elimination_position) {
     for (auto& s : supernodes_) {
       s = shared_variable_to_elimination_position.at(s);
@@ -176,11 +230,12 @@ class KKTSubsystem {
   Eigen::MatrixXd separator_rows_;
 
   std::vector<int>& variable_to_local_elimination_rank()  {
-    variable_to_elimination_position_.clear();
-    for (size_t i = 0; i < variables_.size(); i++) {
-      variable_to_elimination_position_.push_back(i);
-    }
-    return variable_to_elimination_position_;
+    return variable_to_local_elimination_position_;
+    //variable_to_elimination_position_.clear();
+    //for (size_t i = 0; i < variables_.size(); i++) {
+    //  variable_to_elimination_position_.push_back(i);
+    //}
+    //return variable_to_elimination_position_;
   }
 
   double& submatrix(int i, int j);
@@ -191,7 +246,7 @@ class KKTSubsystem {
   std::vector<int> separators_;
   std::vector<int> supernodes_;
   std::vector<int> variables_;
-  std::vector<int> variable_to_elimination_position_;
+  std::vector<int> variable_to_local_elimination_position_;
   int number_of_private_variables_ = 0;
 
   void InplaceLeftMultiplyBySeparatorRowsTimesInverseOfRightFactor(
