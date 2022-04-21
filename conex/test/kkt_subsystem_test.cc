@@ -32,9 +32,9 @@ MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix,
 class TreeSolver : public KKTSolverBase {
  public:
   void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
-                      bool permute_to_elimination_order) const {
+                      bool in_original_order) const {
 
-    if (permute_to_elimination_order) {
+    if (in_original_order) {
       Eigen::PermutationMatrix<-1> P(number_of_variables());
       P.indices() = Eigen::Map<const Eigen::VectorXi>(variable_to_elimination_position_.data(),
                                          number_of_variables());
@@ -46,7 +46,7 @@ class TreeSolver : public KKTSolverBase {
       root->ApplyInverseOfRightFactor(b);
     }
 
-    if (permute_to_elimination_order) {
+    if (in_original_order) {
       Eigen::PermutationMatrix<-1> P(number_of_variables());
       P.indices() = Eigen::Map<const Eigen::VectorXi>(variable_to_elimination_position_.data(),
                                          number_of_variables());
@@ -244,11 +244,10 @@ GTEST_TEST(KKTSubsystem, TestConstruction) {
 }
 #endif
 
-GTEST_TEST(KKTSubsystem, TestTrivialExample) {
-  std::vector<int> v{0, 1, 4, 3, 2};
+void DoTestTrivalExample(const std::vector<int>& v) {
   int num_vars = 5;
-  MatrixXd full_matrix = MatrixXd::Zero(num_vars, num_vars);
   std::vector<int> vars{v[0], v[1], v[2]};
+  MatrixXd full_matrix = MatrixXd::Zero(num_vars, num_vars);
   Eigen::MatrixXd Q1(3, 3);
   // clang-format off
   Q1 << 50, 2, 3,
@@ -291,8 +290,6 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   EXPECT_EQ(q2.parent(), &q3);
 
   system.Assemble();
-  DUMP(system.KKTMatrix());
-  DUMP(full_matrix);
   EXPECT_NEAR((system.KKTMatrix() - full_matrix).norm(), 0, 1e-14);
 
   Eigen::LLT<Eigen::MatrixXd> llt(full_matrix);
@@ -304,5 +301,20 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   system.SolveInPlace(b);
   EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
 }
+
+GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrder) {
+  std::vector<int> v{0, 1, 2, 3, 4};
+  DoTestTrivalExample(v);
+}
+GTEST_TEST(KKTSubsystem, TestTrivialExampleArbitrarilyPermutedOrder) {
+  std::vector<int> v{2, 0, 1, 4, 3};
+  DoTestTrivalExample(v);
+}
+
+GTEST_TEST(KKTSubsystem, TestTrivialExampleReverseOrder) {
+  std::vector<int> v{4, 3, 2, 1, 0};
+  DoTestTrivalExample(v);
+}
+
 
 }  // namespace conex
