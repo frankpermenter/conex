@@ -597,6 +597,7 @@ cc_library(
         "kkt_subsystem.cc",
         "kkt_subsystem.h",
         "kkt_tree_solver.h",
+        "kkt_tree_solver.cc",
     ],
     copts = ["-Iexternal/gtest/include"],
     deps = [

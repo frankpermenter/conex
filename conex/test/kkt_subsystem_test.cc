@@ -217,7 +217,7 @@ void DoTestTrivalExample(const std::vector<int>& v) {
   q3.SetSupernodes({v[3], v[4]});
   full_matrix = IncrementSubmatrix(full_matrix, Q2, vars_3);
 
-  TreeSolver system;
+  SymmetricLinearSystemTreeSolver system;
   system.AddSubsystem(&q1);
   system.AddSubsystem(&q2);
   system.AddSubsystem(&q3);

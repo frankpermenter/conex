@@ -150,9 +150,9 @@ class KKTSubsystem {
     }
     
     variable_to_local_elimination_position_.resize(variables_.size());
-    for (int i = 0; i < variables_.size(); i++) {
+    for (size_t i = 0; i < variables_.size(); i++) {
       bool found = false;
-      for (int j = 0; j < supernodes_.size(); j++) {
+      for (size_t j = 0; j < supernodes_.size(); j++) {
         if (variable_elimination_position.at(i) == supernodes_.at(j)) {
           variable_to_local_elimination_position_.at(i) = j;
           found = true;
@@ -162,7 +162,7 @@ class KKTSubsystem {
       if (found) {
         continue;
       }
-      for (int j = 0; j < separators_.size(); j++) {
+      for (size_t j = 0; j < separators_.size(); j++) {
         if (variable_elimination_position.at(i) == separators_.at(j)) {
           variable_to_local_elimination_position_.at(i) = j + supernodes_.size();
           found = true;
