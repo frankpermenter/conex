@@ -33,9 +33,24 @@ class TreeSolver : public KKTSolverBase {
  public:
   void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                       bool permute_to_elimination_order) const {
+
+    if (permute_to_elimination_order) {
+      Eigen::PermutationMatrix<-1> P(number_of_variables());
+      P.indices() = Eigen::Map<const Eigen::VectorXi>(variable_to_elimination_position_.data(),
+                                         number_of_variables());
+      b = P * b;
+    }
+
     for (auto root : roots_) {
       root->ApplyInverseOfLeftFactor(b);
       root->ApplyInverseOfRightFactor(b);
+    }
+
+    if (permute_to_elimination_order) {
+      Eigen::PermutationMatrix<-1> P(number_of_variables());
+      P.indices() = Eigen::Map<const Eigen::VectorXi>(variable_to_elimination_position_.data(),
+                                         number_of_variables());
+      b = P.transpose() * b;
     }
   }
 
@@ -61,13 +76,13 @@ class TreeSolver : public KKTSolverBase {
       }
     }
     // Post-order
-    std::vector<int> variable_to_elimination_position(number_of_variables());
+    variable_to_elimination_position_.resize(number_of_variables());
     int first = 0;
     for (auto r : roots_) {
-      r->ComputePostOrdering(first, &variable_to_elimination_position);
+      r->ComputePostOrdering(first, &variable_to_elimination_position_);
     }
     for (auto s : subsystems_) {
-      s->SetVariableOrdering(variable_to_elimination_position);
+      s->SetVariableOrdering(variable_to_elimination_position_);
     }
   }
 
@@ -82,21 +97,31 @@ class TreeSolver : public KKTSolverBase {
     }
     return max + 1;
   }
+
   Eigen::MatrixXd DoKKTMatrix(bool permute_to_elimination_order = true) const {
     int num_vars = number_of_variables(); 
     MatrixXd M(num_vars, num_vars);
     M.setZero();
     for (auto root : roots_) {
       root->MakeKKTMatrix(&M);
+      M = M.selfadjointView<Eigen::Lower>();
     }
-    return M.selfadjointView<Eigen::Lower>();
+    if (permute_to_elimination_order) {
+      return M;
+    }
+    Eigen::PermutationMatrix<-1> P(number_of_variables());
+    P.indices() = Eigen::Map<const Eigen::VectorXi>(variable_to_elimination_position_.data(),
+                                       number_of_variables());
+    return P.transpose() * M * P;
   }
 
   void AddSubsystem(KKTSubsystem* system) { 
     subsystems_.push_back(system);
   }
+ private:
   std::vector<KKTSubsystem*> roots_;
   std::vector<KKTSubsystem*> subsystems_;
+  std::vector<int> variable_to_elimination_position_;
 };
 
 using Eigen::MatrixXd;
@@ -164,7 +189,6 @@ class QuadraticCost : public LLTSolver {
   void AssignSubmatrix(const Eigen::MatrixXd& source, 
                        Eigen::Ref<Eigen::MatrixXd> destination,
                        const std::vector<int>& destination_to_source_index) {
-    DUMP(destination_to_source_index);
     for (int i = 0; i < source.rows(); i++) {
       for (int j = 0; j < source.cols(); j++) {
         destination(i, j) = source(destination_to_source_index.at(i),  
@@ -221,9 +245,10 @@ GTEST_TEST(KKTSubsystem, TestConstruction) {
 #endif
 
 GTEST_TEST(KKTSubsystem, TestTrivialExample) {
+  std::vector<int> v{0, 1, 4, 3, 2};
   int num_vars = 5;
   MatrixXd full_matrix = MatrixXd::Zero(num_vars, num_vars);
-  std::vector<int> vars{0, 1, 2};
+  std::vector<int> vars{v[0], v[1], v[2]};
   Eigen::MatrixXd Q1(3, 3);
   // clang-format off
   Q1 << 50, 2, 3,
@@ -231,24 +256,24 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
         3, 4, 10;
   // clang-format on
   QuadraticCost q1(Q1, vars);
-  q1.SetSeparators({2});
-  q1.SetSupernodes({0, 1});
+  q1.SetSeparators({v[2]});
+  q1.SetSupernodes({v[0], v[1]});
   full_matrix = IncrementSubmatrix(full_matrix, Q1, vars);
 
-  std::vector<int> vars_2{2, 3};
+  std::vector<int> vars_2{v[2], v[3]};
   Eigen::MatrixXd Q2(2, 2);
   // clang-format off
   Q2 << 5, 2, 
         2, 5;
   // clang-format on
   QuadraticCost q2(Q2, vars_2);
-  q2.SetSupernodes({2});
-  q2.SetSeparators({3});
+  q2.SetSupernodes({v[2]});
+  q2.SetSeparators({v[3]});
   full_matrix = IncrementSubmatrix(full_matrix, Q2, vars_2);
 
-  std::vector<int> vars_3{3, 4};
+  std::vector<int> vars_3{v[3], v[4]};
   QuadraticCost q3(Q2, vars_3);
-  q3.SetSupernodes({3, 4});
+  q3.SetSupernodes({v[3], v[4]});
   full_matrix = IncrementSubmatrix(full_matrix, Q2, vars_3);
 
   TreeSolver system;
@@ -267,6 +292,7 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
 
   system.Assemble();
   DUMP(system.KKTMatrix());
+  DUMP(full_matrix);
   EXPECT_NEAR((system.KKTMatrix() - full_matrix).norm(), 0, 1e-14);
 
   Eigen::LLT<Eigen::MatrixXd> llt(full_matrix);
