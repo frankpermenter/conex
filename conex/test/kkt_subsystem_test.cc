@@ -11,6 +11,7 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {
 #define CONEX_NOOP(x) (void) x;
+namespace {
 MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix,
                             const MatrixXd& sub_matrix,
                             const std::vector<int>& c) {
@@ -26,34 +27,66 @@ MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix,
   }
   return y;
 }
+}
 
 class TreeSolver : public KKTSolverBase {
  public:
   void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                       bool permute_to_elimination_order) const {
-    root_->ApplyInverseOfLeftFactor(b);
-    root_->ApplyInverseOfRightFactor(b);
+    for (auto root : roots_) {
+      root->ApplyInverseOfLeftFactor(b);
+      root->ApplyInverseOfRightFactor(b);
+    }
   }
 
-  void DoAssemble() override { root_->Assemble(); }
+  void DoAssemble() override { 
+    for (auto root : roots_) {
+      root->Assemble(); 
+    }
+  }
 
   bool DoFactor() override {
-    root_->AssembleAndFactor();
+    for (auto root : roots_) {
+      root->AssembleAndFactor();
+    }
     return true;
   }
 
+  void MakeTree(std::vector<int> parent) {
+    for (size_t i = 0; i < parent.size(); ++i) {
+      if (parent[i] > 0) {
+        subsystems_.at(parent[i])->AddChild(subsystems_.at(i));
+      } else {
+        roots_.push_back(subsystems_.at(i));
+      }
+    }
+  }
+
+  int number_of_variables() const {
+    int max = 0;
+    for (auto s : subsystems_) {
+      const auto& sn =  s->supernodes();
+      double max_s = *std::max_element(sn.begin(), sn.end());
+      if (max_s > max) {
+        max = max_s;
+      }
+    }
+    return max + 1;
+  }
   Eigen::MatrixXd DoKKTMatrix(bool permute_to_elimination_order = true) const {
-    int num_vars = root_->supernodes().back() + 1;
+    int num_vars = number_of_variables(); 
     MatrixXd M(num_vars, num_vars);
     M.setZero();
-    root_->MakeKKTMatrix(&M);
+    for (auto root : roots_) {
+      root->MakeKKTMatrix(&M);
+    }
     return M.selfadjointView<Eigen::Lower>();
   }
 
   void AddSubsystem(KKTSubsystem* system) { 
     subsystems_.push_back(system);
   }
-  KKTSubsystem* root_;
+  std::vector<KKTSubsystem*> roots_;
   std::vector<KKTSubsystem*> subsystems_;
 };
 
@@ -103,25 +136,32 @@ class QuadraticCost : public LLTSolver {
 
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
-    bool enable_block_transfer = false;
-    if (enable_block_transfer) {
-      Q_in_elimination_order_ = Q_;
-      int n1 = supernode_submatrix_.rows();
-      int n2 = separator_rows_.rows();
-      supernode_submatrix_ = Q_in_elimination_order_.topLeftCorner(n1, n1);
-      separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
-      separator_schur_complement_ =
-          Q_in_elimination_order_.bottomRightCorner(n2, n2);
-    } else {
-      AssignSubmatrix(Q_, variable_to_local_elimination_rank());
-    }
+    int n1 = supernode_submatrix_.rows();
+    int n2 = separator_rows_.rows();
+
+    supernode_submatrix_.resize(n1, n1);
+    separator_rows_.resize(n2, n1);
+    Q_in_elimination_order_.resize(n1 + n2, n1 + n2);
+
+    AssignSubmatrix(Q_, Q_in_elimination_order_, variable_to_local_elimination_rank());
+    DoAssemble();
   }
 
-  void AssignSubmatrix(const Eigen::MatrixXd& Q, 
-                       const std::vector<int>& input_to_destination) {
-    for (int i = 0; i < Q.rows(); i++) {
-      for (int j = 0; j < Q.cols(); j++) {
-        submatrix(i, j) = Q(input_to_destination.at(i),  input_to_destination.at(j));
+  void DoAssemble() {
+    int n1 = supernode_submatrix_.rows();
+    int n2 = separator_rows_.rows();
+    supernode_submatrix_ = Q_in_elimination_order_.topLeftCorner(n1, n1);
+    separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
+    separator_schur_complement_ =
+        Q_in_elimination_order_.bottomRightCorner(n2, n2);
+  }
+
+  void AssignSubmatrix(const Eigen::MatrixXd& source, 
+                       Eigen::Ref<Eigen::MatrixXd> destination,
+                       const std::vector<int>& destination_to_source_index) {
+    for (int i = 0; i < source.rows(); i++) {
+      for (int j = 0; j < source.cols(); j++) {
+        destination(i, j) = source(destination_to_source_index.at(i),  destination_to_source_index.at(j));
       }
     }
   }
@@ -204,23 +244,24 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   q3.SetSupernodes({3, 4});
   full_matrix = IncrementSubmatrix(full_matrix, Q2, vars_3);
 
-  q1.DoInitialize();
-  q2.DoInitialize();
-  q3.DoInitialize();
-
-  q2.AddChild(&q1);
-  q3.AddChild(&q2);
-
-  EXPECT_EQ(q1.parent(), &q2);
-  EXPECT_EQ(q2.parent(), &q3);
-
   TreeSolver system;
   system.AddSubsystem(&q1);
   system.AddSubsystem(&q2);
   system.AddSubsystem(&q3);
-  system.root_ = &q3;
+  std::vector<int> parent{1, 2, -1};
+  system.MakeTree(parent);
+
+  q1.DoInitialize();
+  q2.DoInitialize();
+  q3.DoInitialize();
+
+
+  EXPECT_EQ(q1.parent(), &q2);
+  EXPECT_EQ(q2.parent(), &q3);
+
 
   system.Assemble();
+  DUMP(system.KKTMatrix());
   EXPECT_NEAR((system.KKTMatrix() - full_matrix).norm(), 0, 1e-14);
 
   Eigen::LLT<Eigen::MatrixXd> llt(full_matrix);

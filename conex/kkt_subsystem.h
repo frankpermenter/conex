@@ -72,8 +72,6 @@
 
 namespace conex {
 
-// 
-//
 //   KKTSystem
 //
 //      MakeTree(subsystem_shared_variables)
@@ -159,7 +157,6 @@ class KKTSubsystem {
   void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
 
  protected:
-  Eigen::MatrixXd SeparatorSchurComplement();
   void SetSupernodeColumns(const Eigen::MatrixXd& submatrix,
                            std::vector<int>& rows, std::vector<int>& cols);
 
