@@ -211,10 +211,31 @@ class KKTSubsystem {
   void ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
   void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
 
+
+  void IsDefiniteInSubtree(const std::vector<int>& vars,  
+                           std::vector<int>*degree) const {
+    DoIsDefinite(vars, degree);
+    for (auto c : children_) {
+      c->IsDefiniteInSubtree(supernodes_, degree);
+    }
+  }
+
+  bool ValidateRoot() const {
+    std::vector<int> is_definite(supernode_submatrix_.size());
+    IsDefiniteInSubtree(supernodes_, &is_definite);
+    for (auto c : is_definite) {
+      if (!c) {
+        return false;
+      }
+    }
+    return true;
+  }
+
  protected:
   void SetSupernodeColumns(const Eigen::MatrixXd& submatrix,
                            std::vector<int>& rows, std::vector<int>& cols);
 
+  void DoIsDefinite(const std::vector<int>& vars, std::vector<int>* degree) const {} 
   virtual void DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
   virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(

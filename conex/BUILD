@@ -612,6 +612,7 @@ cc_test(
     name = "kkt_subsystem_test",
     srcs = [
         "debug_macros.h",
+        "RLDLT.h",
         "test/kkt_subsystem_test.cc",
     ],
     copts = ["-Iexternal/gtest/include"],

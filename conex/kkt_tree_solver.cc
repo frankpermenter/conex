@@ -48,6 +48,13 @@ namespace conex {
         roots_.push_back(subsystems_.at(i));
       }
     }
+
+    for (auto r : indefinite_subsystems_) {
+      if (!r->ValidateRoot()) {
+        throw std::runtime_error("Invalid tree: zero pivot detected.");
+      }
+    }
+
     // Post-order
     variable_to_elimination_position_.resize(number_of_variables());
     int first = 0;

@@ -5,6 +5,7 @@
 #include "conex/debug_macros.h"
 #include "conex/kkt_solver_interface.h"
 #include "conex/kkt_tree_solver.h"
+#include "conex/RLDLT.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
@@ -94,12 +95,10 @@ class LUSolver : public KKTSubsystem {
   Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
 };
 
-using LLTSolver = CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, true>;
-
+using LLTSolver = CholeskySolver<Eigen::RLDLT<Eigen::MatrixXd>, true>;
 
 template<bool is_positive_definite>
 using FactorizationMethod = typename std::conditional<is_positive_definite, LLTSolver, LUSolver>::type;
-//class Base {};
 
 template<bool is_positive_definite>
 class StaticSubsystem : public FactorizationMethod<is_positive_definite>  {
@@ -118,7 +117,6 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite>  {
   }
 
  private:
-
   void DoAssemble() {
     int n1 = Base::supernode_submatrix_.rows();
     int n2 = Base::separator_rows_.rows();
@@ -142,49 +140,6 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite>  {
   Eigen::MatrixXd Q_;
 };
 
-// 1 1 1
-// 1 1 1
-// 1 1 1 1 1
-//     1 1 1
-//     1 1 1
-#if 0
-GTEST_TEST(KKTSubsystem, TestConstruction) {
-
-  std::vector<int> vars{0, 1, 2};
-  Eigen::MatrixXd Q(3, 3);
-  Q << 10, 2, 3,
-       2, 10, 4,
-       3, 4, 10;
-  QuadraticCost q1(Q, vars); q1.SetSeparators({2}); q1.SetSupernodes({0, 1});
-
-  std::vector<int> vars_2{2, 3, 4};
-  QuadraticCost q2(Q, vars); q2.SetSupernodes({2, 3, 4});
-
-  q1.DoInitialize();
-  q2.DoInitialize();
-
-  q2.AddChild(&q1);
-  q2.AssembleAndFactor(true);
-  return;
-
-  Eigen::MatrixXd Q_full(5, 5);
-  Q_full.setZero();
-  Q_full.topLeftCorner(3, 3) = Q;
-  Q_full.bottomRightCorner(3, 3) += Q;
-  DUMP(Q_full);
-  Eigen::LLT<Eigen::MatrixXd> llt(Q_full);
-  Eigen::MatrixXd L = llt.matrixL();
-  DUMP(L);
-  VectorXd x_ref(5);
-  x_ref.setLinSpaced(5, -1, 1);
-  MatrixXd b = Q_full * x_ref;
-  DUMP(L.triangularView<Eigen::Lower>().solve(b));
-  KKTSystem system; system.root = &q2;
-  system.SolveInPlace(&b);
-  DUMP(b);
-}
-#endif
-
 template<typename StaticAssemblerType>
 void DoTestTrivalExample(const std::vector<int>& v) {
   int num_vars = 5;
@@ -195,20 +150,23 @@ void DoTestTrivalExample(const std::vector<int>& v) {
   Q1 << 50, 2, 3,
         2, 10, 4,
         3, 4, 10;
+  Q1 << 1, 1, 1,
+        1, 1, 1,
+        1, 1, 0;
   // clang-format on
   StaticAssemblerType q1(Q1, vars);
-  q1.SetSeparators({v[2]});
-  q1.SetSupernodes({v[0], v[1]});
+  q1.SetSeparators({v[1]});
+  q1.SetSupernodes({v[0], v[2]});
   full_matrix = IncrementSubmatrix(full_matrix, Q1, vars);
 
-  std::vector<int> vars_2{v[2], v[3]};
+  std::vector<int> vars_2{v[1], v[3]};
   Eigen::MatrixXd Q2(2, 2);
   // clang-format off
   Q2 << 5, 2, 
         2, 5;
   // clang-format on
   StaticAssemblerType q2(Q2, vars_2);
-  q2.SetSupernodes({v[2]});
+  q2.SetSupernodes({v[1]});
   q2.SetSeparators({v[3]});
   full_matrix = IncrementSubmatrix(full_matrix, Q2, vars_2);
 
@@ -244,10 +202,53 @@ void DoTestTrivalExample(const std::vector<int>& v) {
   EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
 }
 
+template<typename StaticAssemblerType>
+void DoFailLDLT(bool expect_fail) {
+  int num_vars = 3;
+  std::vector<int> vars{0, 1, 2};
+  MatrixXd full_matrix = MatrixXd::Zero(num_vars, num_vars);
+  Eigen::MatrixXd Q1(3, 3);
+  // clang-format off
+  Q1 << 1, 0,  1,
+        0, 0, -1,
+        1, -1, 0;
+  // clang-format on
+  StaticAssemblerType q1(Q1, vars);
+  q1.SetSupernodes({0,1,2});
+  full_matrix = IncrementSubmatrix(full_matrix, Q1, vars);
+
+  SymmetricLinearSystemTreeSolver system;
+  system.AddSubsystem(&q1);
+  std::vector<int> parent{-1};
+  system.MakeTree(parent);
+
+  q1.DoInitialize();
+
+  VectorXd x_ref(num_vars);
+  x_ref.setLinSpaced(num_vars, -1, 1);
+  MatrixXd b = full_matrix * x_ref;
+  system.Factor();
+  system.SolveInPlace(b);
+
+  if (expect_fail) {
+    EXPECT_TRUE((x_ref - b).norm() > 1e-7);
+  } else {
+    EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
+  }
+}
+
+GTEST_TEST(KKTSubsystem, FailLDLT) {
+  DoFailLDLT<StaticSubsystem<true>>(true /*expect_fail*/);
+  DoFailLDLT<StaticSubsystem<false>>(false /*expect_fail*/);
+}
+
+
 GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrder) {
   std::vector<int> v{0, 1, 2, 3, 4};
-  DoTestTrivalExample<StaticSubsystem<true>>(v);
+  //DoTestTrivalExample<StaticSubsystem<true>>(v);
   DoTestTrivalExample<StaticSubsystem<false>>(v);
+  DoTestTrivalExample<StaticSubsystem<true>>(v);
+
 }
 GTEST_TEST(KKTSubsystem, TestTrivialExampleArbitrarilyPermutedOrder) {
   std::vector<int> v{2, 0, 1, 4, 3};
@@ -260,6 +261,5 @@ GTEST_TEST(KKTSubsystem, TestTrivialExampleReverseOrder) {
   DoTestTrivalExample<StaticSubsystem<true>>(v);
   DoTestTrivalExample<StaticSubsystem<false>>(v);
 }
-
 
 }  // namespace conex
