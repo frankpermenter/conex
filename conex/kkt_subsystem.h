@@ -106,13 +106,15 @@ class KKTSubsystem {
                : variables_(shared_assembler_variables), 
                  number_of_private_variables_(number_of_private_variables) {}
 
+  std::vector<int> separators() const { return separators_; }
+  std::vector<int> supernodes() const { return supernodes_; }
   virtual void DoInitialize() {
     supernode_submatrix_.resize(supernodes_.size(), supernodes_.size());
     separator_rows_.resize(separators_.size(), supernodes_.size());
     separator_schur_complement_.resize(separators_.size(), separators_.size());
   }
 
-  const std::vector<int>& shared_variables() const;
+  const std::vector<int>& shared_variables() const { return variables_; }
   const std::vector<int>& supernodes() { return supernodes_; }
 
   void AddVariables(const std::vector<int>& i);
