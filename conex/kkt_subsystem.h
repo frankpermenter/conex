@@ -124,70 +124,12 @@ class KKTSubsystem {
     supernodes_ = supernodes;
   };
 
-  int ComputePostOrdering(int offset, std::vector<int>* variable_to_elimination_position) {
-    for (auto& child : children_) {
-      offset = child->ComputePostOrdering(offset, variable_to_elimination_position);
-    }
-    for (auto& s : supernodes_) {
-      variable_to_elimination_position->at(s) = offset++;
-    }
-    return offset;
-  };
 
-  void SetVariableOrdering(const std::vector<int>& shared_variable_to_elimination_position) {
-    for (auto& s : supernodes_) {
-      s = shared_variable_to_elimination_position.at(s);
-    }
-    for (auto& e : separators_) {
-      e = shared_variable_to_elimination_position.at(e);
-    }
-    std::sort(supernodes_.begin(), supernodes_.end());
-    std::sort(separators_.begin(), separators_.end());
+  int ComputePostOrdering(int offset, std::vector<int>* variable_to_elimination_position);
 
-    std::vector<int> variable_elimination_position = variables_;
-    for (auto& v : variable_elimination_position) {
-      v = shared_variable_to_elimination_position.at(v);
-    }
-    
-    variable_to_local_elimination_position_.resize(variables_.size());
-    for (size_t i = 0; i < variables_.size(); i++) {
-      bool found = false;
-      for (size_t j = 0; j < supernodes_.size(); j++) {
-        if (variable_elimination_position.at(i) == supernodes_.at(j)) {
-          variable_to_local_elimination_position_.at(i) = j;
-          found = true;
-          break;
-        }
-      }
-      if (found) {
-        continue;
-      }
-      for (size_t j = 0; j < separators_.size(); j++) {
-        if (variable_elimination_position.at(i) == separators_.at(j)) {
-          variable_to_local_elimination_position_.at(i) = j + supernodes_.size();
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        throw;
-      }
-    }
-    
+  void SetVariableOrdering(const std::vector<int>& shared_variable_to_elimination_position);
+  void SetPostOrdering(const std::vector<int>& shared_variable_to_elimination_position);
 
-  };
-
-
-  void SetPostOrdering(const std::vector<int>& shared_variable_to_elimination_position) {
-    for (auto& s : supernodes_) {
-      s = shared_variable_to_elimination_position.at(s);
-    }
-    for (auto& e : supernodes_) {
-      e = shared_variable_to_elimination_position.at(e);
-    }
-    std::sort(supernodes_.begin(), supernodes_.end());
-    std::sort(separators_.begin(), separators_.end());
-  };
 
   void AddChild(KKTSubsystem* child) {
     CONEX_DEMAND(child, "Received nullptr");
@@ -267,7 +209,7 @@ class KKTSubsystem {
   // union is a subset of shared_assembler_variables_
   std::vector<int> separators_;
   std::vector<int> supernodes_;
-  std::vector<int> variables_;
+  const std::vector<int> variables_;
   std::vector<int> variable_to_local_elimination_position_;
   int number_of_private_variables_ = 0;
 
