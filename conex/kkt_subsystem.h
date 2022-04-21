@@ -81,7 +81,7 @@ namespace conex {
 //               fill-in.
 //               post-ordering.
 //
-//              subsystem.Assemble(fill_in, ordering)
+//      subsystem.Assemble(fill_in, ordering)
 //
 //      Solve(Residual) {  subsystem.Factor(); 
 //                         subsystem.LeftFactorInverse, 

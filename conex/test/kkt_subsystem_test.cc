@@ -49,7 +49,12 @@ class TreeSolver : public KKTSolverBase {
     root_->MakeKKTMatrix(&M);
     return M.selfadjointView<Eigen::Lower>();
   }
+
+  void AddSubsystem(KKTSubsystem* system) { 
+    subsystems_.push_back(system);
+  }
   KKTSubsystem* root_;
+  std::vector<KKTSubsystem*> subsystems_;
 };
 
 using Eigen::MatrixXd;
@@ -57,7 +62,7 @@ using Eigen::MatrixXd;
 template<typename FactorizationMethod, bool schur_complement_mode>
 class CholeskySolver : public KKTSubsystem {
  public:
-  CholeskySolver(std::vector<int> vars) : KKTSubsystem(vars) {}
+  CholeskySolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
 
   void DoEliminateSupernodeColumns() override {
     llt_.compute(supernode_submatrix_);
@@ -210,6 +215,9 @@ GTEST_TEST(KKTSubsystem, TestTrivialExample) {
   EXPECT_EQ(q2.parent(), &q3);
 
   TreeSolver system;
+  system.AddSubsystem(&q1);
+  system.AddSubsystem(&q2);
+  system.AddSubsystem(&q3);
   system.root_ = &q3;
 
   system.Assemble();
