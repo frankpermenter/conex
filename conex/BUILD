@@ -596,8 +596,8 @@ cc_library(
         "debug_macros.h",
         "kkt_subsystem.cc",
         "kkt_subsystem.h",
-        "kkt_tree_solver.h",
         "kkt_tree_solver.cc",
+        "kkt_tree_solver.h",
     ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
@@ -611,8 +611,8 @@ cc_library(
 cc_test(
     name = "kkt_subsystem_test",
     srcs = [
-        "debug_macros.h",
         "RLDLT.h",
+        "debug_macros.h",
         "test/kkt_subsystem_test.cc",
     ],
     copts = ["-Iexternal/gtest/include"],

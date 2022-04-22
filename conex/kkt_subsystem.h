@@ -2,8 +2,8 @@
 #include <vector>
 #include <Eigen/Dense>
 
-#include "conex/error_checking_macros.h"
 #include "conex/debug_macros.h"
+#include "conex/error_checking_macros.h"
 // A KKT sub-system is a symmetric system of linear equations of the
 // form:
 //
@@ -76,19 +76,19 @@ namespace conex {
 //   KKTSystem
 //
 //      MakeTree(subsystem_shared_variables)
-//      returns: elimination tree, 
+//      returns: elimination tree,
 //               fill-in.
 //               post-ordering.
 //
 //      subsystem.Assemble(fill_in, ordering)
 //
-//      Solve(Residual) {  subsystem.Factor(); 
-//                         subsystem.LeftFactorInverse, 
+//      Solve(Residual) {  subsystem.Factor();
+//                         subsystem.LeftFactorInverse,
 //                         subsystem.RightFactorInverse }
 //
 //
-//      Solve(dual_weight) {  subsystem.Factor(); 
-//                         subsystem.LeftFactorInverse, 
+//      Solve(dual_weight) {  subsystem.Factor();
+//                         subsystem.LeftFactorInverse,
 //                         subsystem.RightFactorInverse }
 //
 //    private:
@@ -96,18 +96,18 @@ namespace conex {
 //     linear_cost_;
 //     subsystems_;
 //     tree_;
-// 
-
+//
 
 class KKTSubsystem {
  public:
   KKTSubsystem(const std::vector<int>& shared_assembler_variables,
-               int number_of_private_variables) 
-               : variables_(shared_assembler_variables), 
-                 number_of_private_variables_(number_of_private_variables) {}
+               int number_of_private_variables)
+      : variables_(shared_assembler_variables),
+        number_of_private_variables_(number_of_private_variables) {}
 
   std::vector<int> separators() const { return separators_; }
   std::vector<int> supernodes() const { return supernodes_; }
+
   virtual void DoInitialize() {
     supernode_submatrix_.resize(supernodes_.size(), supernodes_.size());
     separator_rows_.resize(separators_.size(), supernodes_.size());
@@ -115,9 +115,7 @@ class KKTSubsystem {
   }
 
   const std::vector<int>& shared_variables() const { return variables_; }
-  const std::vector<int>& supernodes() { return supernodes_; }
 
-  void AddVariables(const std::vector<int>& i);
   void SetSeparators(const std::vector<int>& separators) {
     separators_ = separators;
   };
@@ -126,12 +124,13 @@ class KKTSubsystem {
     supernodes_ = supernodes;
   };
 
+  int ComputePostOrdering(int offset,
+                          std::vector<int>* variable_to_elimination_position);
 
-  int ComputePostOrdering(int offset, std::vector<int>* variable_to_elimination_position);
-
-  void SetVariableOrdering(const std::vector<int>& shared_variable_to_elimination_position);
-  void SetPostOrdering(const std::vector<int>& shared_variable_to_elimination_position);
-
+  void SetVariableOrdering(
+      const std::vector<int>& shared_variable_to_elimination_position);
+  void SetPostOrdering(
+      const std::vector<int>& shared_variable_to_elimination_position);
 
   void AddChild(KKTSubsystem* child) {
     CONEX_DEMAND(child, "Received nullptr");
@@ -155,15 +154,23 @@ class KKTSubsystem {
   void ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
   void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
 
-
-  void IsDefiniteInSubtree(const std::vector<int>& vars,  
-                           std::vector<int>*degree) const {
+  void IsDefiniteInSubtree(const std::vector<int>& vars,
+                           std::vector<int>* degree) const {
     DoIsDefinite(vars, degree);
     for (auto c : children_) {
       c->IsDefiniteInSubtree(supernodes_, degree);
     }
   }
 
+  // A root is valid if the 
+  //    Q  B^T
+  //    B
+  // is compatible with strict convexity.  For this, we require that
+  //   
+  // nnz(diag(Q)) + rows(B) >= rows(Q).
+  // nnz(diag(Q))
+  //
+  // the rank_upper_bound(Q) + rows(B) >= 0
   bool ValidateRoot() const {
     std::vector<int> is_definite(supernode_submatrix_.size());
     IsDefiniteInSubtree(supernodes_, &is_definite);
@@ -174,12 +181,20 @@ class KKTSubsystem {
     }
     return true;
   }
+  Eigen::MatrixXd supernode_submatrix() { return supernode_submatrix_; }
+  Eigen::MatrixXd separator_schur_complement() { return separator_schur_complement_; }
+  Eigen::MatrixXd separator_rows() { return separator_rows_; }
+
+  void Reset() {
+    parent_ = nullptr;
+    children_.clear();
+  }
 
  protected:
   void SetSupernodeColumns(const Eigen::MatrixXd& submatrix,
                            std::vector<int>& rows, std::vector<int>& cols);
 
-  void DoIsDefinite(const std::vector<int>& vars, std::vector<int>* degree) const {} 
+  virtual void DoIsDefinite(const std::vector<int>& vars, std::vector<int>* degree) const {}
   virtual void DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
   virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
@@ -195,20 +210,20 @@ class KKTSubsystem {
   Eigen::MatrixXd supernode_submatrix_;
   Eigen::MatrixXd separator_rows_;
 
-  std::vector<int>& variable_to_local_elimination_rank()  {
+  std::vector<int>& variable_to_local_elimination_rank() {
     return variable_to_local_elimination_position_;
-    //variable_to_elimination_position_.clear();
-    //for (size_t i = 0; i < variables_.size(); i++) {
+    // variable_to_elimination_position_.clear();
+    // for (size_t i = 0; i < variables_.size(); i++) {
     //  variable_to_elimination_position_.push_back(i);
     //}
-    //return variable_to_elimination_position_;
+    // return variable_to_elimination_position_;
   }
 
   double& submatrix(int i, int j);
 
  private:
   // separators_ and supernodes_ are disjoint and their
-  // union is a subset of shared_assembler_variables_
+  // union contains variables_
   std::vector<int> separators_;
   std::vector<int> supernodes_;
   const std::vector<int> variables_;
@@ -221,37 +236,18 @@ class KKTSubsystem {
   void IncrementSupernodeColumn(const Eigen::MatrixXd source_data,
                                 const std::vector<int>& source_column_labels,
                                 int source_column_index);
+
   size_t GetSupernodePosition(int global_label);
   size_t GetSeparatorPosition(int global_label);
   void DoScatterSeparatorSubmatrix() {
-    if (parent_) {
+    if (parent_ && separators_.size() > 0) {
       parent_->IncrementSubmatrix(separator_schur_complement_, separators_,
                                   0 /*start index*/);
     }
   }
 
   void IncrementSubmatrix(const Eigen::MatrixXd& S,
-                          const std::vector<int>& vars, size_t start_index) {
-    if (start_index > vars.size()) {
-      return;
-    }
-
-    size_t col_index = start_index;
-    CONEX_ASSERT(vars.at(col_index) >= supernodes_.at(0),
-                 "Submatrix has been eliminated.");
-    for (; col_index < vars.size(); col_index++) {
-      if (vars.at(col_index) > supernodes_.back()) {
-        // The remaining columns must belong to our parent.
-        break;
-      }
-      IncrementSupernodeColumn(S, vars, col_index);
-    }
-
-    if (col_index < vars.size()) {
-      CONEX_DEMAND(parent_, "Parent pointer is null.");
-      parent_->IncrementSubmatrix(S, vars, col_index);
-    }
-  }
+                          const std::vector<int>& vars, size_t start_index);
 };
 
 }  // namespace conex

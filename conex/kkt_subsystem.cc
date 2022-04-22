@@ -17,10 +17,12 @@ using T = KKTSubsystem;
 //  x_supernodes = L^{-1} b_supernodes
 //  b_[separator] -=   SR^{-1} [x_supernodes]
 void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
-
   // Do recursion all the way down to a leaf node.
   for (auto child : children_) {
     child->ApplyInverseOfLeftFactor(x);
+  }
+  if (supernodes_.size() == 0) {
+    return;
   }
 
   // We have reached leaf. So solve for x_supernode in place.
@@ -48,7 +50,6 @@ Eigen::MatrixXd T::SeparatorRows(const Eigen::MatrixXd& x) const {
 
 bool T::IsRoot() const { return parent_ == nullptr; }
 
-
 // Iterate from the root of the tree downwards using depth-first search. At each
 // node, we consider the triangular system
 //
@@ -62,17 +63,19 @@ bool T::IsRoot() const { return parent_ == nullptr; }
 //
 // We then compute x_supernodes = R^{-1} b_supernodes.
 void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
-  Eigen::Ref<Eigen::MatrixXd> x_supernodes = x.middleRows(
-      supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
+  if (supernodes_.size() > 0) {
+    Eigen::Ref<Eigen::MatrixXd> x_supernodes = x.middleRows(
+        supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
 
-  // Update residual using x_separator computed by ascendants in tree.
-  if (separators_.size() > 0) {
-    Eigen::MatrixXd temp = separator_rows_.transpose() * SeparatorRows(x);
-    DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(temp);
-    x_supernodes.noalias() -= temp;
+    // Update residual using x_separator computed by ascendants in tree.
+    if (separators_.size() > 0) {
+      Eigen::MatrixXd temp = separator_rows_.transpose() * SeparatorRows(x);
+      DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(temp);
+      x_supernodes.noalias() -= temp;
+    }
+    DoApplyInverseOfRightFactorOfSupernodeSubmatrix(x_supernodes);
   }
 
-  DoApplyInverseOfRightFactorOfSupernodeSubmatrix(x_supernodes);
   for (auto child : children_) {
     child->ApplyInverseOfRightFactor(x);
   }
@@ -158,83 +161,108 @@ void T::Assemble() {
 }
 
 double& T::submatrix(int i, int j) {
-  if (j > i) { std::swap(i, j); }
+  if (j > i) {
+    std::swap(i, j);
+  }
   int num_supernodes = supernode_submatrix_.rows();
   if (i < num_supernodes && j < num_supernodes) {
-    return supernode_submatrix_(i, j);    
+    return supernode_submatrix_(i, j);
   } else {
     if (j < num_supernodes) {
-      return separator_rows_(i - num_supernodes, j);    
+      return separator_rows_(i - num_supernodes, j);
     } else {
-      return separator_schur_complement_(i - num_supernodes, j - num_supernodes);    
+      return separator_schur_complement_(i - num_supernodes,
+                                         j - num_supernodes);
     }
   }
 }
 
-  int T::ComputePostOrdering(int offset, std::vector<int>* variable_to_elimination_position) {
-    for (auto& child : children_) {
-      offset = child->ComputePostOrdering(offset, variable_to_elimination_position);
-    }
-    for (auto& s : supernodes_) {
-      variable_to_elimination_position->at(s) = offset++;
-    }
-    return offset;
-  };
+int T::ComputePostOrdering(int offset,
+                           std::vector<int>* variable_to_elimination_position) {
+  for (auto& child : children_) {
+    offset =
+        child->ComputePostOrdering(offset, variable_to_elimination_position);
+  }
+  for (auto& s : supernodes_) {
+    variable_to_elimination_position->at(s) = offset++;
+  }
+  return offset;
+};
 
-  void T::SetVariableOrdering(const std::vector<int>& shared_variable_to_elimination_position) {
-    for (auto& s : supernodes_) {
-      s = shared_variable_to_elimination_position.at(s);
-    }
-    for (auto& e : separators_) {
-      e = shared_variable_to_elimination_position.at(e);
-    }
-    std::sort(supernodes_.begin(), supernodes_.end());
-    std::sort(separators_.begin(), separators_.end());
+void T::SetVariableOrdering(
+    const std::vector<int>& shared_variable_to_elimination_position) {
+  for (auto& s : supernodes_) {
+    s = shared_variable_to_elimination_position.at(s);
+  }
+  for (auto& e : separators_) {
+    e = shared_variable_to_elimination_position.at(e);
+  }
+  std::sort(supernodes_.begin(), supernodes_.end());
+  std::sort(separators_.begin(), separators_.end());
 
-    std::vector<int> variable_elimination_position = variables_;
-    for (auto& v : variable_elimination_position) {
-      v = shared_variable_to_elimination_position.at(v);
-    }
-    
-    variable_to_local_elimination_position_.resize(variables_.size());
-    for (size_t i = 0; i < variables_.size(); i++) {
-      bool found = false;
-      for (size_t j = 0; j < supernodes_.size(); j++) {
-        if (variable_elimination_position.at(i) == supernodes_.at(j)) {
-          variable_to_local_elimination_position_.at(i) = j;
-          found = true;
-          break;
-        }
-      }
-      if (found) {
-        continue;
-      }
-      for (size_t j = 0; j < separators_.size(); j++) {
-        if (variable_elimination_position.at(i) == separators_.at(j)) {
-          variable_to_local_elimination_position_.at(i) = j + supernodes_.size();
-          found = true;
-          break;
-        }
-      }
-      if (!found) {
-        throw;
+  std::vector<int> variable_elimination_position = variables_;
+  for (auto& v : variable_elimination_position) {
+    v = shared_variable_to_elimination_position.at(v);
+  }
+
+  variable_to_local_elimination_position_.resize(variables_.size());
+  for (size_t i = 0; i < variables_.size(); i++) {
+    bool found = false;
+    for (size_t j = 0; j < supernodes_.size(); j++) {
+      if (variable_elimination_position.at(i) == supernodes_.at(j)) {
+        variable_to_local_elimination_position_.at(i) = j;
+        found = true;
+        break;
       }
     }
-    
-
-  };
-
-
-  void T::SetPostOrdering(const std::vector<int>& shared_variable_to_elimination_position) {
-    for (auto& s : supernodes_) {
-      s = shared_variable_to_elimination_position.at(s);
+    if (found) {
+      continue;
     }
-    for (auto& e : supernodes_) {
-      e = shared_variable_to_elimination_position.at(e);
+    for (size_t j = 0; j < separators_.size(); j++) {
+      if (variable_elimination_position.at(i) == separators_.at(j)) {
+        variable_to_local_elimination_position_.at(i) = j + supernodes_.size();
+        found = true;
+        break;
+      }
     }
-    std::sort(supernodes_.begin(), supernodes_.end());
-    std::sort(separators_.begin(), separators_.end());
-  };
+    if (!found) {
+      throw;
+    }
+  }
+};
 
+void T::SetPostOrdering(
+    const std::vector<int>& shared_variable_to_elimination_position) {
+  for (auto& s : supernodes_) {
+    s = shared_variable_to_elimination_position.at(s);
+  }
+  for (auto& e : supernodes_) {
+    e = shared_variable_to_elimination_position.at(e);
+  }
+  std::sort(supernodes_.begin(), supernodes_.end());
+  std::sort(separators_.begin(), separators_.end());
+};
 
+  void T::IncrementSubmatrix(const Eigen::MatrixXd& S,
+                          const std::vector<int>& vars, size_t start_index) {
+    if (start_index > vars.size()) {
+      return;
+    }
+
+    size_t col_index = start_index;
+    CONEX_ASSERT(vars.at(col_index) >= supernodes_.at(0),
+                 "Submatrix has been eliminated.");
+    for (; col_index < vars.size(); col_index++) {
+      if (vars.at(col_index) > supernodes_.back()) {
+        // The remaining columns must belong to our parent.
+        break;
+      }
+      IncrementSupernodeColumn(S, vars, col_index);
+    }
+
+    if (col_index < vars.size()) {
+      CONEX_DEMAND(parent_, "Parent pointer is null.");
+      parent_->IncrementSubmatrix(S, vars, col_index);
+    }
+  }
 }  // namespace conex
