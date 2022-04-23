@@ -235,7 +235,8 @@ void DoFailLDLT(bool expect_fail) {
     EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
   }
 }
-#if 0
+
+#if 1
 GTEST_TEST(KKTSubsystem, FailLDLT) {
   DoFailLDLT<StaticSubsystem<true>>(true /*expect_fail*/);
   DoFailLDLT<StaticSubsystem<false>>(false /*expect_fail*/);
@@ -267,7 +268,7 @@ template <typename StaticAssemblerType>
 void DoBadRoot() {
 
   int num_vars = 3;
-  Eigen::MatrixXd full_matrix(num_vars, num_vars);
+  Eigen::MatrixXd full_matrix(num_vars, num_vars); full_matrix.setZero();
 
   // clang-format off
   std::vector<int> vars1{0, 1};
