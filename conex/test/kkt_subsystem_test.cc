@@ -293,6 +293,12 @@ void DoBadRoot() {
   system.MakeTree(parent_zero_pivot_error);
   }, std::runtime_error);
 
+  system.RepairTreeInPlace(&parent_zero_pivot_error);
+  EXPECT_NO_THROW( {
+  system.MakeTree(parent_zero_pivot_error);
+  });
+
+
   std::vector<int> parent_self_parent_error{0, 1};
   EXPECT_THROW( {
   system.MakeTree(parent_self_parent_error);

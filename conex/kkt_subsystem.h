@@ -181,6 +181,7 @@ class KKTSubsystem {
     }
     return true;
   }
+
   Eigen::MatrixXd supernode_submatrix() { return supernode_submatrix_; }
   Eigen::MatrixXd separator_schur_complement() { return separator_schur_complement_; }
   Eigen::MatrixXd separator_rows() { return separator_rows_; }

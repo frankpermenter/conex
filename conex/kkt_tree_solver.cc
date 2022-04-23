@@ -38,7 +38,7 @@ bool T::DoFactor() {
   return true;
 }
 
-void T::MakeTree(std::vector<int> parent) {
+void T::MakeTreeHelper(const std::vector<int>& parent) {
   CONEX_DEMAND(parent.size() == subsystems_.size(), "Size of parent vector must equal number of subsystems.");
   roots_.clear();
   for (auto s : subsystems_) {
@@ -46,13 +46,14 @@ void T::MakeTree(std::vector<int> parent) {
   }
   for (size_t i = 0; i < parent.size(); ++i) {
     if (parent[i] >= 0) {
-      CONEX_DEMAND(parent[i] != i, "Tree is malformed: node cannot be own parent.");
+      CONEX_DEMAND(parent[i] != static_cast<int>(i), "Tree is malformed: node cannot be own parent.");
       subsystems_.at(parent[i])->AddChild(subsystems_.at(i));
     } else {
       roots_.push_back(subsystems_.at(i));
     }
   }
 
+  // Set supernodes from parent.
   for (size_t i = 0; i < parent.size(); ++i) {
     if (parent[i] >= 0) {
       std::vector<int> v1 = subsystems_.at(parent[i])->shared_variables();
@@ -84,15 +85,50 @@ void T::MakeTree(std::vector<int> parent) {
   for (auto s : subsystems_) {
     s->SetVariableOrdering(variable_to_elimination_position_);
   }
+}
 
+bool T::CheckForZeroPivot(const std::vector<int>& parent, 
+                          std::vector<int>* index_of_zero_pivot) {
+  index_of_zero_pivot->clear();
+  MakeTreeHelper(parent);
   Assemble();
+  int i = 0; 
   for (auto r : subsystems_) {
     if (r->supernodes().size() > 0) {
       Eigen::MatrixXd T = r->supernode_submatrix();
       T = T.cwiseProduct(T);
       bool zero_pivot = T.colwise().sum().minCoeff() == 0;
       if (zero_pivot) {
-        throw std::runtime_error("Invalid tree: zero pivot detected.");
+        index_of_zero_pivot->push_back(i);
+      }
+    }
+    i++;
+  }
+  return index_of_zero_pivot->size() > 0;
+}
+
+void T::MakeTree(const std::vector<int>& parent) {
+  MakeTreeHelper(parent);
+  std::vector<int> index_of_zero_pivot;
+  if (CheckForZeroPivot(parent, &index_of_zero_pivot)) {
+    throw std::runtime_error("Invalid tree: zero pivot detected.");
+  }
+}
+
+void T::RepairTreeInPlace(std::vector<int>* parent_ptr) {
+  auto& parent = *parent_ptr;
+  bool regenerate = true;
+  std::vector<int> zero_pivot_indices;
+  while (regenerate) {
+    regenerate = false;
+    bool zero_pivot = CheckForZeroPivot(parent, &zero_pivot_indices);
+    if (zero_pivot) {
+      for (auto i : zero_pivot_indices) {
+        int parent_index = parent[i];
+        int parent_of_parent = parent[parent_index];
+        parent[i] = parent_of_parent;
+        parent[parent_index] = i;
+        regenerate = true;
       }
     }
   }
