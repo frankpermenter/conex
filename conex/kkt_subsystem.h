@@ -98,6 +98,8 @@ namespace conex {
 //     tree_;
 //
 
+
+
 class KKTSubsystem {
  public:
   KKTSubsystem(const std::vector<int>& shared_assembler_variables,
@@ -129,8 +131,9 @@ class KKTSubsystem {
 
   void SetVariableOrdering(
       const std::vector<int>& shared_variable_to_elimination_position);
-  void SetPostOrdering(
-      const std::vector<int>& shared_variable_to_elimination_position);
+
+//  void SetPostOrdering(
+//      const std::vector<int>& shared_variable_to_elimination_position);
 
   void AddChild(KKTSubsystem* child) {
     CONEX_DEMAND(child, "Received nullptr");
@@ -155,34 +158,6 @@ class KKTSubsystem {
   void ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
   void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
 
-  void IsDefiniteInSubtree(const std::vector<int>& vars,
-                           std::vector<int>* degree) const {
-    DoIsDefinite(vars, degree);
-    for (auto c : children_) {
-      c->IsDefiniteInSubtree(supernodes_, degree);
-    }
-  }
-
-  // A root is valid if the 
-  //    Q  B^T
-  //    B
-  // is compatible with strict convexity.  For this, we require that
-  //   
-  // nnz(diag(Q)) + rows(B) >= rows(Q).
-  // nnz(diag(Q))
-  //
-  // the rank_upper_bound(Q) + rows(B) >= 0
-  bool ValidateRoot() const {
-    std::vector<int> is_definite(supernode_submatrix_.size());
-    IsDefiniteInSubtree(supernodes_, &is_definite);
-    for (auto c : is_definite) {
-      if (!c) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   Eigen::MatrixXd supernode_submatrix() { return supernode_submatrix_; }
   Eigen::MatrixXd separator_schur_complement() { return separator_schur_complement_; }
   Eigen::MatrixXd separator_rows() { return separator_rows_; }
@@ -193,10 +168,7 @@ class KKTSubsystem {
   }
 
  protected:
-  void SetSupernodeColumns(const Eigen::MatrixXd& submatrix,
-                           std::vector<int>& rows, std::vector<int>& cols);
 
-  virtual void DoIsDefinite(const std::vector<int>& vars, std::vector<int>* degree) const {}
   virtual void DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
   virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
@@ -214,14 +186,9 @@ class KKTSubsystem {
 
   std::vector<int>& variable_to_local_elimination_rank() {
     return variable_to_local_elimination_position_;
-    // variable_to_elimination_position_.clear();
-    // for (size_t i = 0; i < variables_.size(); i++) {
-    //  variable_to_elimination_position_.push_back(i);
-    //}
-    // return variable_to_elimination_position_;
   }
 
-  double& submatrix(int i, int j);
+//  double& submatrix(int i, int j);
 
  private:
 

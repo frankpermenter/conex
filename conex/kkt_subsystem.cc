@@ -160,22 +160,22 @@ void T::Assemble() {
   }
 }
 
-double& T::submatrix(int i, int j) {
-  if (j > i) {
-    std::swap(i, j);
-  }
-  int num_supernodes = supernode_submatrix_.rows();
-  if (i < num_supernodes && j < num_supernodes) {
-    return supernode_submatrix_(i, j);
-  } else {
-    if (j < num_supernodes) {
-      return separator_rows_(i - num_supernodes, j);
-    } else {
-      return separator_schur_complement_(i - num_supernodes,
-                                         j - num_supernodes);
-    }
-  }
-}
+//double& T::submatrix(int i, int j) {
+//  if (j > i) {
+//    std::swap(i, j);
+//  }
+//  int num_supernodes = supernode_submatrix_.rows();
+//  if (i < num_supernodes && j < num_supernodes) {
+//    return supernode_submatrix_(i, j);
+//  } else {
+//    if (j < num_supernodes) {
+//      return separator_rows_(i - num_supernodes, j);
+//    } else {
+//      return separator_schur_complement_(i - num_supernodes,
+//                                         j - num_supernodes);
+//    }
+//  }
+//}
 
 int T::ComputePostOrdering(int offset,
                            std::vector<int>* variable_to_elimination_position) {
@@ -231,17 +231,17 @@ void T::SetVariableOrdering(
   }
 };
 
-void T::SetPostOrdering(
-    const std::vector<int>& shared_variable_to_elimination_position) {
-  for (auto& s : supernodes_) {
-    s = shared_variable_to_elimination_position.at(s);
-  }
-  for (auto& e : supernodes_) {
-    e = shared_variable_to_elimination_position.at(e);
-  }
-  std::sort(supernodes_.begin(), supernodes_.end());
-  std::sort(separators_.begin(), separators_.end());
-};
+//void T::SetPostOrdering(
+//    const std::vector<int>& shared_variable_to_elimination_position) {
+//  for (auto& s : supernodes_) {
+//    s = shared_variable_to_elimination_position.at(s);
+//  }
+//  for (auto& e : supernodes_) {
+//    e = shared_variable_to_elimination_position.at(e);
+//  }
+//  std::sort(supernodes_.begin(), supernodes_.end());
+//  std::sort(separators_.begin(), separators_.end());
+//};
 
   void T::IncrementSubmatrix(const Eigen::MatrixXd& S,
                           const std::vector<int>& vars, size_t start_index) {

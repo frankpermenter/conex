@@ -71,13 +71,13 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
                           RootedTree* tree_ptr) {
   auto& tree = *tree_ptr;
   auto& intersections = *intersections_ptr;
-  size_t n = subsystems.size();
+  int n = subsystems.size();
   Weight edge_weights(intersections, subsystems);
-  CONEX_ASSERT(root_in < static_cast<int>(n), "Invalid root node.");
+  CONEX_ASSERT(root_in < n, "Invalid root node.");
 
   vector<int> visited(n, 0);
 
-  std::stack<size_t> node_stack;
+  std::stack<int> node_stack;
   int root = root_in;
   if (root < 0) {
     root = 0;
@@ -86,7 +86,7 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
   node_stack.push(root);
   int num_visited = 0;
   while (num_visited < n) {
-    size_t active = node_stack.top();
+    int active = node_stack.top();
     if (visited.at(active) == 0) {
       visited.at(active) = 1;
       tree.parent.at(active) = -1;
@@ -95,7 +95,7 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
     // Find unvisited neighbor with maximum weight.
     size_t max_weight = 1;
     vector<int> argmax;
-    for (size_t i = 0; i < n; i++) {
+    for (int i = 0; i < n; i++) {
       if (i == active || visited.at(i) == 1) {
         continue;
       }
@@ -130,14 +130,14 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
       //                  V
       //                  V
       if (validate_leaf_nodes) {
-        int final_leaf_position = static_cast<int>(active);
+        int final_leaf_position = active;
         while (!subsystems.at(final_leaf_position)->is_valid_leaf()) {
           final_leaf_position = tree.parent.at(final_leaf_position);
           if (final_leaf_position == -1) {
             throw std::runtime_error("System is not full rank.");
           }
         }
-        if (active != static_cast<int>(final_leaf_position)) {
+        if (active != final_leaf_position) {
           tree.SwapPositions(active, final_leaf_position);
         }
       }
