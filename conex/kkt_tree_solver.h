@@ -7,10 +7,19 @@ namespace conex {
 
 class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
  public:
-  void MakeTree(const std::vector<int>& subsystem_to_parent_subsystem);
+  void MakeTree(const std::vector<int>& 
+                subsystem_to_parent_subsystem,
+                bool check_for_zero_pivots = true);
   int number_of_variables() const;
   void AddSubsystem(KKTSubsystem* system);
   void RepairTreeInPlace(std::vector<int>* parent_ptr);
+  
+  struct Options {
+    bool validate_leaf_nodes = false;
+    bool check_for_zero_pivots = false;
+    int root_node = 0;
+  };
+  void Finalize(const Options& options);
 
  private:
   void MakeTreeHelper(const std::vector<int>& subsystem_to_parent_subsystem);

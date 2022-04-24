@@ -1,6 +1,167 @@
 #include "conex/kkt_tree_solver.h"
+#include "conex/tree_utils.h"
 
 namespace conex {
+
+void IntersectionOfSorted(const std::vector<int>& v1,
+                          const std::vector<int>& v2, std::vector<int>* v3) {
+  v3->clear();
+  std::set_intersection(v1.begin(), v1.end(), v2.begin(), v2.end(),
+                        back_inserter(*v3));
+}
+
+int LinearIndex(int i, int j, int n) {
+  if (i > j) {
+    return j * n + i;
+  } else {
+    return i * n + j;
+  }
+}
+
+int GetUnvisited(const std::vector<int>& x) {
+  int cnt = 0;
+  for (auto xi : x) {
+    if (xi == 0) {
+      return cnt;
+    }
+    cnt++;
+  }
+  return -1;
+}
+template <typename T>
+class SymmetricMatrix {
+ public:
+  SymmetricMatrix(int n) : n_(n), data_(n * n) {}
+  vector<int>& operator()(int a, int b) {
+    return data_.at(LinearIndex(a, b, n_));
+  }
+  const vector<int>& operator()(int a, int b) const {
+    return data_.at(LinearIndex(a, b, n_));
+  }
+  int n_;
+  vector<T> data_;
+};
+
+class Weight {
+ public:
+  Weight(SymmetricMatrix<vector<int>>& intersections,
+         const vector<KKTSubsystem*>& cliques_sorted) 
+      : 
+        intersections_(intersections),
+        subsystems_(cliques_sorted) {}
+  int num_nodes_;
+  SymmetricMatrix<vector<int>>& intersections_;
+  const vector<KKTSubsystem*>& subsystems_;
+
+  size_t get_weight(int active, int i) {
+    // Weight is the size of intersection.
+    if (intersections_(active, i).size() == 0) {
+      IntersectionOfSorted(subsystems_.at(active)->shared_variables(), 
+                           subsystems_.at(i)->shared_variables(),
+                           &intersections_(active, i));
+    }
+    return intersections_(active, i).size();
+  }
+};
+
+int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
+                          int root_in,
+                          bool validate_leaf_nodes,
+                          SymmetricMatrix<vector<int>>* intersections_ptr,
+                          RootedTree* tree_ptr) {
+  auto& tree = *tree_ptr;
+  auto& intersections = *intersections_ptr;
+  size_t n = subsystems.size();
+  Weight edge_weights(intersections, subsystems);
+  CONEX_ASSERT(root_in < static_cast<int>(n), "Invalid root node.");
+
+  vector<int> visited(n, 0);
+
+  std::stack<size_t> node_stack;
+  int root = root_in;
+  if (root < 0) {
+    root = 0;
+  }
+
+  node_stack.push(root);
+  int num_visited = 0;
+  while (num_visited < n) {
+    size_t active = node_stack.top();
+    if (visited.at(active) == 0) {
+      visited.at(active) = 1;
+      tree.parent.at(active) = -1;
+    }
+
+    // Find unvisited neighbor with maximum weight.
+    size_t max_weight = 1;
+    vector<int> argmax;
+    for (size_t i = 0; i < n; i++) {
+      if (i == active || visited.at(i) == 1) {
+        continue;
+      }
+
+      auto current_weight = edge_weights.get_weight(active, i);
+      if (current_weight >= max_weight) {
+        if (current_weight > max_weight) {
+          argmax.clear();
+          max_weight = current_weight;
+        }
+        argmax.push_back(i);
+      }
+    }
+
+    for (auto e : argmax) {
+      node_stack.push(e);
+      visited.at(e) = 1;
+      tree.parent.at(e) = active;
+    }
+
+    // Process leaf node.
+    if (argmax.size() == 0) {
+      // If node is invalid leaf node, move it up the
+      // tree until a valid leaf is reached.  This
+      // leads to the following transformation:
+      //
+      //     R            I*
+      //    I  V          I
+      //    I  V   =>     I 
+      //   *I  V          R
+      //                  V
+      //                  V
+      //                  V
+      if (validate_leaf_nodes) {
+        int final_leaf_position = static_cast<int>(active);
+        while (!subsystems.at(final_leaf_position)->is_valid_leaf()) {
+          final_leaf_position = tree.parent.at(final_leaf_position);
+          if (final_leaf_position == -1) {
+            throw std::runtime_error("System is not full rank.");
+          }
+        }
+        if (active != static_cast<int>(final_leaf_position)) {
+          tree.SwapPositions(active, final_leaf_position);
+        }
+      }
+
+      node_stack.pop();
+      if (node_stack.size() == 0) {
+        auto node = GetUnvisited(visited);
+        if (node == -1) {
+          break;
+        } else {
+          node_stack.push(node);
+        }
+      }
+    }
+  }
+  return -1;
+}
+
+}
+
+
+namespace conex {
+
+
 using T = SymmetricLinearSystemTreeSolver;
 
 void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
@@ -36,6 +197,15 @@ bool T::DoFactor() {
     root->AssembleAndFactor();
   }
   return true;
+}
+
+void T::Finalize(const Options& options) {
+  RootedTree tree(subsystems_.size());
+  SymmetricMatrix<vector<int>> intersections(subsystems_.size());
+  PickCliqueOrderHelper(subsystems_, options.root_node, 
+                                      options.validate_leaf_nodes,
+                                     &intersections, &tree);
+  MakeTree(tree.parent, options.check_for_zero_pivots);
 }
 
 void T::MakeTreeHelper(const std::vector<int>& parent) {
@@ -107,11 +277,13 @@ bool T::CheckForZeroPivot(const std::vector<int>& parent,
   return index_of_zero_pivot->size() > 0;
 }
 
-void T::MakeTree(const std::vector<int>& parent) {
+void T::MakeTree(const std::vector<int>& parent, bool check_for_zero_pivot) {
   MakeTreeHelper(parent);
-  std::vector<int> index_of_zero_pivot;
-  if (CheckForZeroPivot(parent, &index_of_zero_pivot)) {
-    throw std::runtime_error("Invalid tree: zero pivot detected.");
+  if (check_for_zero_pivot){
+    std::vector<int> index_of_zero_pivot;
+    if (CheckForZeroPivot(parent, &index_of_zero_pivot)) {
+      throw std::runtime_error("Invalid tree: zero pivot detected.");
+    }
   }
 }
 

@@ -1,11 +1,11 @@
 #include "conex/tree_utils.h"
+#include "conex/error_checking_macros.h"
 #include "assert.h"
 #include <stack>
 #include <vector>
 
 using std::array;
-using std::vector;
-
+using std::vector; 
 namespace conex {
 
 vector<int> PathInForest(int x, int y, const std::vector<int>& parent,
@@ -28,5 +28,48 @@ vector<int> PathInForest(int x, int y, const std::vector<int>& parent,
   path.push_back(x);
   return path;
 }
+
+void RootedTree::SwapPositions(int node1, int node2) {
+  CONEX_ASSERT(node1 < static_cast<int>(parent.size()), "Specified index is out of bounds.");
+  CONEX_ASSERT(node2 < static_cast<int>(parent.size()), "Specified index is out of bounds.");
+
+  if (node1 == node2) {
+    return;
+  }
+
+// Case One: one node is a parent of the other:
+// swap(B, C)
+//  A      A
+//  B      C
+//  C      B
+  if (parent[node1] == node2) {
+    int grand_parent = parent[node2];
+    parent[node2] = node1;
+    parent[node1] = grand_parent;
+    return;
+  } 
+  if (parent[node2] == node1) {
+    int grand_parent = parent[node1];
+    parent[node1] = node2;
+    parent[node2] = grand_parent;
+    return;
+  } 
+
+// Case Two:  !(Case One):
+//
+// swap(B, D):
+//
+//  A      A
+//  B      D
+//  C      C
+//  D      B  
+//
+// The parent of B becomes the parent of D,
+// the parent of D becomes the parent of B.
+  std::swap(parent[node1], parent[node2]);
+}
+
+
+
 
 }  // namespace conex

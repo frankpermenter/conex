@@ -120,6 +120,7 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite> {
   }
 
  private:
+  bool DoIsValidLeaf() override { return Q_.diagonal().norm() > 0; }
   void DoAssemble() {
     int n1 = Base::supernode_submatrix_.rows();
     int n2 = Base::separator_rows_.rows();
@@ -261,6 +262,15 @@ GTEST_TEST(KKTSubsystem, TestTrivialExampleReverseOrder) {
 }
 #endif
 
+std::vector<std::unique_ptr<KKTSubsystem>> MakeTestSystem(std::vector<Eigen::MatrixXd>& matrices, 
+                                                          const std::vector<std::vector<int>>& vars) {
+  std::vector<std::unique_ptr<KKTSubsystem>> subsystems;
+  for (size_t i = 0; i < matrices.size(); i++) {
+    subsystems.emplace_back(std::make_unique<StaticSubsystem<false>>(matrices.at(i), vars.at(i)));
+  }
+  return subsystems;
+}
+
 // x1, x2
 //
 // x1, x2, lambda
@@ -299,7 +309,6 @@ void DoBadRoot() {
   system.MakeTree(parent_zero_pivot_error);
   });
 
-
   std::vector<int> parent_self_parent_error{0, 1};
   EXPECT_THROW( {
   system.MakeTree(parent_self_parent_error);
@@ -309,7 +318,6 @@ void DoBadRoot() {
   EXPECT_NO_THROW( {
   system.MakeTree(parent_valid);
   });
-
 
   q1.DoInitialize();
   q2.DoInitialize();
@@ -327,5 +335,49 @@ GTEST_TEST(KKTSubsystem, DoBadRootNode) {
   DoBadRoot<StaticSubsystem<false>>();
 }
 
+GTEST_TEST(KKTSubsystem, TreeRepair) {
+  //
+  //          {0, 1, 2}
+  //  {1, 2, 6}        {2, 3, 4, 5}
+  // clang-format off
+  std::vector<int> vars1{0, 1, 2};
+  Eigen::MatrixXd Q1 = Eigen::MatrixXd::Identity(vars1.size(), vars1.size());
+  StaticSubsystem<false> q1(Q1, vars1);
+
+  std::vector<int> vars2{1, 2, 6};
+  Eigen::MatrixXd Q2(3, 3);
+  Q2 << 0, 0, 1,
+        0, 0, 1,
+        1, 1, 0;
+  StaticSubsystem<false> q2(Q2, vars2);
+
+  Eigen::MatrixXd Q3(4, 4);
+  Q3 << 1, 0, 1, 1,
+        0, 1, 1, 1,
+        1, 1, 1, 1,
+        1, 1, 1, 1;
+  StaticSubsystem<false> q3(Q3, {0, 3,4,5});
+  // clang-format on
+
+  SymmetricLinearSystemTreeSolver system;
+  system.AddSubsystem(&q1);
+  system.AddSubsystem(&q2);
+  system.AddSubsystem(&q3);
+  SymmetricLinearSystemTreeSolver::Options options;
+  options.validate_leaf_nodes = false;
+  options.check_for_zero_pivots = true;
+  options.root_node = 0;
+  EXPECT_THROW({
+  system.Finalize(options);
+  },  std::runtime_error);
+
+  options.check_for_zero_pivots = false;
+  EXPECT_NO_THROW({system.Finalize(options);});
+
+  options.check_for_zero_pivots = true;
+  options.validate_leaf_nodes = true;
+  system.Finalize(options);
+  EXPECT_NO_THROW({system.Finalize(options);});
+}
 
 }  // namespace conex

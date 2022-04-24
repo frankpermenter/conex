@@ -247,7 +247,7 @@ cc_library(
         "tree_utils.h",
     ],
     visibility = ["//visibility:public"],
-    deps = ["@eigen"],
+    deps = ["@eigen",  ":error_checking"],
 )
 
 cc_library(
@@ -603,6 +603,7 @@ cc_library(
     deps = [
         ":error_checking",
         ":kkt_solver_interface",
+        "tree_utils",
         "@eigen",
         "@gtest//:main",
     ],

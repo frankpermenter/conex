@@ -12,9 +12,12 @@ namespace conex {
 
 struct RootedTree {
   RootedTree(int number_of_nodes)
-      : parent(number_of_nodes), height(number_of_nodes) {}
+      : parent(number_of_nodes) {}
+  void SwapPositions(int node1, int node2);
   std::vector<int> parent;
-  std::vector<int> height;
+  int height();
+ private:
+  std::vector<int> height_;
 };
 
 /* Given a union of disjoint rooted trees (forest), we return the list of nodes

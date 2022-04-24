@@ -343,4 +343,26 @@ void PickCliqueOrder(const vector<vector<int>>& cliques_sorted, int root,
                   separators, post_order_pointer);
 }
 
+
+
+
+void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
+                     const vector<int>& valid_leaf, 
+                     int root,
+                     RootedTree* tree, 
+                     vector<vector<int>>* supernodes,
+                     vector<vector<int>>* separators) {
+  size_t n = cliques_sorted.size();
+  std::vector<int> order;
+  GetCliqueEliminationOrder(cliques_sorted, valid_leaf, root, &order, supernodes,
+                            separators, tree);
+  int num_vars = GetMax(cliques_sorted) + 1;
+  FillIn(*tree, num_vars, order, supernodes, separators);
+}
+
+
+
+
+
+
 }  // namespace conex

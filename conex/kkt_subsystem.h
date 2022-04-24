@@ -145,6 +145,7 @@ class KKTSubsystem {
   }
 
   void Assemble();
+  bool is_valid_leaf() { return DoIsValidLeaf(); }
 
   void MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const;
   void AssembleAndFactor();
@@ -223,6 +224,11 @@ class KKTSubsystem {
   double& submatrix(int i, int j);
 
  private:
+
+  virtual bool DoIsValidLeaf() {
+    return true;
+  }
+
   // separators_ and supernodes_ are disjoint and their
   // union contains variables_
   std::vector<int> separators_;
