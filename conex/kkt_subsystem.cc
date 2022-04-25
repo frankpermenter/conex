@@ -1,5 +1,7 @@
 #include "conex/kkt_subsystem.h"
 
+#include "conex/debug_macros.h"
+
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {
@@ -128,6 +130,9 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   }
   for (size_t j = 0; j < supernodes_.size(); j++) {
     for (size_t i = 0; i < supernodes_.size(); i++) {
+      DUMP(i);
+      DUMP(j);
+      DUMP(supernode_submatrix_(i, j));
       full_matrix->coeffRef(supernodes_.at(i), supernodes_.at(j)) =
           supernode_submatrix_(i, j);
     }
@@ -230,18 +235,6 @@ void T::SetVariableOrdering(
     }
   }
 };
-
-//void T::SetPostOrdering(
-//    const std::vector<int>& shared_variable_to_elimination_position) {
-//  for (auto& s : supernodes_) {
-//    s = shared_variable_to_elimination_position.at(s);
-//  }
-//  for (auto& e : supernodes_) {
-//    e = shared_variable_to_elimination_position.at(e);
-//  }
-//  std::sort(supernodes_.begin(), supernodes_.end());
-//  std::sort(separators_.begin(), separators_.end());
-//};
 
   void T::IncrementSubmatrix(const Eigen::MatrixXd& S,
                           const std::vector<int>& vars, size_t start_index) {

@@ -73,33 +73,6 @@
 
 namespace conex {
 
-//   KKTSystem
-//
-//      MakeTree(subsystem_shared_variables)
-//      returns: elimination tree,
-//               fill-in.
-//               post-ordering.
-//
-//      subsystem.Assemble(fill_in, ordering)
-//
-//      Solve(Residual) {  subsystem.Factor();
-//                         subsystem.LeftFactorInverse,
-//                         subsystem.RightFactorInverse }
-//
-//
-//      Solve(dual_weight) {  subsystem.Factor();
-//                         subsystem.LeftFactorInverse,
-//                         subsystem.RightFactorInverse }
-//
-//    private:
-//
-//     linear_cost_;
-//     subsystems_;
-//     tree_;
-//
-
-
-
 class KKTSubsystem {
  public:
   KKTSubsystem(const std::vector<int>& shared_assembler_variables,
@@ -110,11 +83,6 @@ class KKTSubsystem {
   std::vector<int> separators() const { return separators_; }
   std::vector<int> supernodes() const { return supernodes_; }
 
-  virtual void DoInitialize() {
-    supernode_submatrix_.resize(supernodes_.size(), supernodes_.size());
-    separator_rows_.resize(separators_.size(), supernodes_.size());
-    separator_schur_complement_.resize(separators_.size(), separators_.size());
-  }
 
   const std::vector<int>& shared_variables() const { return variables_; }
 
@@ -131,9 +99,6 @@ class KKTSubsystem {
 
   void SetVariableOrdering(
       const std::vector<int>& shared_variable_to_elimination_position);
-
-//  void SetPostOrdering(
-//      const std::vector<int>& shared_variable_to_elimination_position);
 
   void AddChild(KKTSubsystem* child) {
     CONEX_DEMAND(child, "Received nullptr");
@@ -169,6 +134,11 @@ class KKTSubsystem {
 
  protected:
 
+  virtual void DoInitialize() {
+    supernode_submatrix_.resize(supernodes_.size(), supernodes_.size());
+    separator_rows_.resize(separators_.size(), supernodes_.size());
+    separator_schur_complement_.resize(separators_.size(), separators_.size());
+  }
   virtual void DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
   virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
@@ -187,8 +157,6 @@ class KKTSubsystem {
   std::vector<int>& variable_to_local_elimination_rank() {
     return variable_to_local_elimination_position_;
   }
-
-//  double& submatrix(int i, int j);
 
  private:
 

@@ -625,3 +625,17 @@ cc_test(
         "@gtest//:main",
     ],
 )
+
+
+cc_test(
+    name = "kkt_tree_solver",
+    srcs = [ "test/kkt_tree_solver.cc",
+    ],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "kkt_subsystem",
+        ":error_checking",
+        "@eigen",
+        "@gtest//:main",
+    ],
+)

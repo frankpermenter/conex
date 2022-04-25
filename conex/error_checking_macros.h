@@ -16,6 +16,13 @@ namespace conex {
     throw std::runtime_error(msg); \
   }
 
+#define CONEX_CHECK(x)       \
+  if (!(x)) {                      \
+    throw std::runtime_error(std::string("Condition failed:\n")+ #x ); \
+  }
+
+
+
 #ifdef NDEBUG
 #define CONEX_ASSERT(x, msg)  // NOOP
 #else
