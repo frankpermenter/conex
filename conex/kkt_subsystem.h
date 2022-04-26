@@ -106,11 +106,6 @@ class KKTSubsystem {
     child->SetParent(this);
   }
 
-  void SetParent(KKTSubsystem* parent) {
-    CONEX_DEMAND(parent, "Received nullptr");
-    CONEX_DEMAND(parent_ == nullptr, "Parent already assigned.");
-    parent_ = parent;
-  }
 
   void Assemble();
   bool is_valid_leaf() { return DoIsValidLeaf(); }
@@ -159,6 +154,12 @@ class KKTSubsystem {
   }
 
  private:
+
+  void SetParent(KKTSubsystem* parent) {
+    CONEX_DEMAND(parent, "Received nullptr");
+    CONEX_DEMAND(parent_ == nullptr, "Parent already assigned.");
+    parent_ = parent;
+  }
 
   virtual bool DoIsValidLeaf() {
     return true;

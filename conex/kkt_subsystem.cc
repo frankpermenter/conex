@@ -240,6 +240,9 @@ void T::SetVariableOrdering(
     }
 
     size_t col_index = start_index;
+    DUMP(supernodes_);
+    DUMP(vars);
+    DUMP(vars.at(col_index));
     CONEX_ASSERT(vars.at(col_index) >= supernodes_.at(0),
                  "Submatrix has been eliminated.");
     for (; col_index < vars.size(); col_index++) {
