@@ -115,62 +115,149 @@ struct NodeData {
   VariableIDs variable_ids;
 };
 
+
+struct Variables {
+  std::vector<int> flow_variable;
+  // Map incoming edge label to spatial variable
+  std::vector<std::vector<int>> incoming_spatial_flow_variable;
+  std::vector<std::vector<int>> outgoing_spatial_flow_variable;
+  std::vector<std::vector<int>> node_to_conversation_of_spatial_flow_multiplier; 
+  std::vector<int> node_to_conversation_of_flow_multiplier; 
+};
+
+
+struct Node {
+  std::vector<int> incoming_edges;
+  std::vector<int> outgoing_edges;
+  int spatial_dimension;
+
+  int parent_in_spanning_tree = 0;
+  std::vector<int> children_in_spanning_tree;
+  Variables ids;
+};
+
+class Graph {
+ public:
+  Graph(std::vector<Node> nodes) : nodes_(std::move(nodes)) {}
+
+
+  void AssignEliminationOrder() {
+    int offset = 0;
+    for (auto& root : roots_) {
+      offset = AssignEliminationOrderHelper(root, offset);
+    }
+  }
+
+  // Do a pass to assign elimination position to each variable
+  int AssignEliminationOrderHelper(int node_index,  int offset) {
+
+    for (auto& child : nodes_.at(node_index).children_in_spanning_tree) {
+      offset = AssignEliminationOrderHelper(child, offset);
+    }
+
+    // Assign variable 
+    for (auto e : nodes_.at(node_index).incoming_edges) {
+      // Spatial y_e
+      for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
+        ids_.outgoing_spatial_flow_variable.at(e).push_back(offset);
+        offset++;
+      }
+      // Spatial z_e
+      for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
+        ids_.incoming_spatial_flow_variable.at(e).push_back(offset);
+        offset++;
+      }
+      ids_.flow_variable.at(node_index) = e;
+      offset++; // phi_e
+    }
+
+    for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
+      ids_.node_to_conversation_of_spatial_flow_multiplier.at(node_index).push_back(offset);
+      offset++; 
+    }
+    ids_.node_to_conversation_of_flow_multiplier.at(node_index) = offset;
+  }
+
+  void BuildSpanningTree(int root) {
+    std::vector<int> visited(nodes_.size(), 0);
+
+    int parent = root;
+    roots_.push_back(root);
+    visited.at(parent) = 1;
+    nodes_[parent].parent_in_spanning_tree = -1;
+
+    std::stack<int> nodes_to_visit;
+    while (nodes_to_visit.size() > 0) {
+      parent = nodes_to_visit.top(); nodes_to_visit.pop();
+      for (auto& child : nodes_.at(parent).outgoing_edges) {
+        if (visited.at(child) == 0) {
+          visited.at(child) = 1;
+          nodes_.at(child).parent_in_spanning_tree = parent;
+          nodes_.at(parent).children_in_spanning_tree.push_back(child);
+          nodes_to_visit.push(child);
+        }
+      }
+    }
+  }
+
+  NodeData BuildNodeData(int node_index)  {
+    NodeData data;
+  }
+
+  std::vector<int> roots_;
+  std::vector<Node> nodes_;
+  Variables ids_;
+};
+
+
+
+
+
+
+
+
+
 class ConvexSetNode : public LUSolver {
  public:
-  static std::vector<int> ConcatenateVariablesInLocalOrdering(const VariableIDs& ids) {
+  static std::vector<int> ConcatenateVariablesInLocalOrdering(const Graph& graph, const int node_index) {
+    auto ids = graph.ids_;
     std::vector<int> variables;
-    for (const auto& y_e : ids.outgoing_spatial_flow) {
+    auto& node = graph.nodes_.at(node_index);
+    for (auto e : node.incoming_edges) {
+      auto& y_e = ids.outgoing_spatial_flow_variable.at(e);
       variables.insert(variables.end(), y_e.begin(), y_e.end());
-    }
-    for (const auto& y_e : ids.incoming_spatial_flow) {
-      variables.insert(variables.end(), y_e.begin(), y_e.end());
-    }
-    variables.insert(variables.end(), ids.incoming_flows.begin(), 
-                     ids.incoming_flows.end()); 
-    variables.insert(variables.end(), ids.conversation_of_spatial_flow_multiplier.begin(), 
-                     ids.conversation_of_spatial_flow_multiplier.end()); 
-    variables.push_back(ids.conversation_of_flow_multiplier);
-    for (const auto& z_e : ids.outgoing_spatial_flow_separator) {
+      auto& z_e = ids.incoming_spatial_flow_variable.at(e);
       variables.insert(variables.end(), z_e.begin(), z_e.end());
+      variables.push_back(ids.flow_variable.at(e));
     }
-    variables.insert(variables.end(), ids.outgoing_flows.begin(), 
-                     ids.outgoing_flows.end()); 
+    auto& lam_1 = ids.node_to_conversation_of_spatial_flow_multiplier.at(node_index);
+    variables.insert(variables.end(), lam_1.begin(), lam_1.end());
+    variables.push_back(ids.node_to_conversation_of_flow_multiplier.at(node_index));
+
+    for (auto e : node.outgoing_edges) {
+      auto& y_e = ids.outgoing_spatial_flow_variable.at(e);
+      variables.insert(variables.end(), y_e.begin(), y_e.end());
+      variables.push_back(ids.flow_variable.at(e));
+    }
     return variables;
   }
 
-  ConvexSetNode(const NodeData& data) : LUSolver(ConcatenateVariablesInLocalOrdering(data.variable_ids)) {
-    const auto& ids = data.variable_ids;
-    num_incoming = ids.incoming_flows.size();
-    num_outgoing = ids.outgoing_flows.size();
-    spatial_dim = ids.conversation_of_spatial_flow_multiplier.size();
+  ConvexSetNode(const Graph& graph, const int node_index) : LUSolver(ConcatenateVariablesInLocalOrdering(graph, node_index)) {
+
+    auto& node = graph.nodes_.at(node_index);
+    const auto& variables = shared_variables();
+    int num_supernodes = node.incoming_edges.size() * (2 * node.spatial_dimension + 1) + node.spatial_dimension + 1;
+    int num_separator_no_fill = node.outgoing_edges.size() * (node.spatial_dimension + 1);
 
     std::vector<int> supernodes;
+    supernodes.insert(supernodes.begin(), variables.begin(), variables.begin()  + num_supernodes);
+
     std::vector<int> separators;
+    separators.insert(separators.begin(), variables.begin() + num_supernodes, variables.end());
 
-    for (auto e : ids.outgoing_spatial_flow) {
-      supernodes.insert(supernodes.end(), e.begin(), e.end());
-    }
-    for (auto e : ids.incoming_spatial_flow) {
-      supernodes.insert(supernodes.end(), e.begin(), e.end());
-    }
-    supernodes.insert(supernodes.end(), ids.incoming_flows.begin(), ids.incoming_flows.end());
-    supernodes.insert(supernodes.end(), ids.conversation_of_spatial_flow_multiplier.begin(), 
-                                        ids.conversation_of_spatial_flow_multiplier.end());
-    supernodes.push_back(ids.conversation_of_flow_multiplier);
-
-
-    for (auto e : ids.outgoing_spatial_flow_separator) {
-      separators.insert(separators.end(), e.begin(), e.end());
-    }
-    separators.insert(separators.end(), ids.outgoing_flows.begin(), ids.outgoing_flows.end());
-
-
-    SetSeparators(separators);
     SetSupernodes(supernodes);
+    SetSeparators(separators);
 
-    CONEX_CHECK(ids.incoming_flows.size() == ids.incoming_spatial_flow.size());
-    CONEX_CHECK(ids.outgoing_flows.size() == ids.outgoing_spatial_flow_separator.size());
-    CONEX_CHECK(ids.outgoing_flows.size() == ids.outgoing_spatial_flow.size());
   }
 
   int num_variables() {
@@ -303,99 +390,6 @@ class ConvexSetNode : public LUSolver {
 //
 
 
-struct Variables {
-  std::vector<int> flow_variable;
-  // Map incoming edge label to spatial variable
-  std::vector<std::vector<int>> incoming_spatial_flow_variable;
-  std::vector<std::vector<int>> outgoing_spatial_flow_variable;
-  std::vector<std::vector<int>> node_to_conversation_of_spatial_flow_multiplier; 
-  std::vector<int> node_to_conversation_of_flow_multiplier; 
-};
-
-
-struct Node {
-  std::vector<int> incoming_edges;
-  std::vector<int> outgoing_edges;
-  int spatial_dimension;
-
-  int parent_in_spanning_tree = 0;
-  std::vector<int> children_in_spanning_tree;
-  Variables ids;
-};
-
-class Graph {
- public:
-  Graph(std::vector<Node> nodes) : nodes_(std::move(nodes)) {}
-
-
-  void AssignEliminationOrder() {
-    int offset = 0;
-    for (auto& root : roots_) {
-      offset = AssignEliminationOrderHelper(root, offset);
-    }
-  }
-
-  // Do a pass to assign elimination position to each variable
-  int AssignEliminationOrderHelper(int node_index,  int offset) {
-
-    for (auto& child : nodes_.at(node_index).children_in_spanning_tree) {
-      offset = AssignEliminationOrderHelper(child, offset);
-    }
-
-    // Assign variable 
-    for (auto e : nodes_.at(node_index).incoming_edges) {
-      // Spatial y_e
-      for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
-        ids_.outgoing_spatial_flow_variable.at(e).push_back(offset);
-        offset++;
-      }
-      // Spatial z_e
-      for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
-        ids_.incoming_spatial_flow_variable.at(e).push_back(offset);
-        offset++;
-      }
-      ids_.flow_variable.at(node_index) = e;
-      offset++; // phi_e
-    }
-
-    for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
-      ids_.node_to_conversation_of_spatial_flow_multiplier.at(node_index).push_back(offset);
-      offset++; 
-    }
-    ids_.node_to_conversation_of_flow_multiplier.at(node_index) = offset;
-  }
-
-  void BuildSpanningTree(int root) {
-    std::vector<int> visited(nodes_.size(), 0);
-
-    int parent = root;
-    roots_.push_back(root);
-    visited.at(parent) = 1;
-    nodes_[parent].parent_in_spanning_tree = -1;
-
-    std::stack<int> nodes_to_visit;
-    while (nodes_to_visit.size() > 0) {
-      parent = nodes_to_visit.top(); nodes_to_visit.pop();
-      for (auto& child : nodes_.at(parent).outgoing_edges) {
-        if (visited.at(child) == 0) {
-          visited.at(child) = 1;
-          nodes_.at(child).parent_in_spanning_tree = parent;
-          nodes_.at(parent).children_in_spanning_tree.push_back(child);
-          nodes_to_visit.push(child);
-        }
-      }
-    }
-  }
-
-  NodeData BuildNodeData(int node_index)  {
-    NodeData data;
-  }
-
-  std::vector<int> roots_;
-  std::vector<Node> nodes_;
-  Variables ids_;
-};
-
 
 Graph MakeGraph() {
   Node n1;
@@ -434,10 +428,8 @@ GTEST_TEST(GraphOfConvexSets, PrintSparsity) {
   //node_data.variable_ids.outgoing_spatial_flow_separator = std::vector<std::vector<int>>{  {23, 24, 25}, {26, 27, 28}, {29, 30, 31}  };
 
   Graph graph = MakeGraph();
-  NodeData node_data;
-  auto ids = node_data.variable_ids;
 
-  ConvexSetNode node(node_data);
+  ConvexSetNode node(graph, 0);
   node.Assemble();
   MatrixXd supernode_submatrix = node.MakeSuperNodeSubmatrix();
 
