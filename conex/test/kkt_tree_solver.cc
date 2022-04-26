@@ -2,6 +2,8 @@
 #include "conex/kkt_subsystem.h"
 #include "conex/error_checking_macros.h"
 #include <Eigen/Dense>
+#include <map>
+#include <stack>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -57,25 +59,45 @@ class LUSolver : public KKTSubsystem {
 //
 // Sparsity of KKT submatrix:
 //
-//        ye  ye  zf   zf  phif phif  lam  ze  ze   phie
+// ye      *                         I   
+// ye         *                      I
+// zf              *                -1  
+// zf                 *             -1  
+// phif            *  *    *  *        -1
+// phif            *  *    *  *        -1
 //
-//        *                            
-//            *
-//                *                   
-//                     *              
-//                *    0    *  *
-//                0    *    *  *
-//
-// lam    I   I   -I   -I              0   
-// lam                    -1  -1       0       
+// lam    I   I  -I  -I               0   
+// lam                    -1  -1      0             1
 //
 // ze     *   0    0                
-// ze     0   *         0
-// phie                     *  *      1
+// ze     0   *       0
+// phie   *   *             *  *      1
 //
 //  We eliminate incoming spatial z,
 //  outgoing spatial y, outgoing flows phi. 
 //
+
+
+//        ye  ye  zf  zf  phif phif  lam  ze  ze   phie
+//
+// ye      *                            
+// ye         *
+// zf              *                   
+// zf                 *              
+// phif            *  *    *  *
+// phif            *  *    *  *
+//
+// lam    I   I  -I  -I               0   
+// lam                    -1  -1      0       
+//
+// ze     *   0    0                
+// ze     0   *       0
+// phie   *   *             *  *      1
+
+
+// Cliques:
+//  
+//  y z 
 
 struct VariableIDs {
   std::vector<int> incoming_flows;
@@ -247,10 +269,6 @@ class ConvexSetNode : public LUSolver {
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     auto data = MakeSeperatorMatrix();
-    DUMP(data.cols());
-    DUMP(data.rows());
-    DUMP(separator_rows_.rows());
-    DUMP(separator_rows_.cols());
     CONEX_CHECK(data.rows() == separator_rows_.rows());
     CONEX_CHECK(data.cols() == separator_rows_.cols());
     separator_rows_ = data;
@@ -266,32 +284,158 @@ class ConvexSetNode : public LUSolver {
   int num_outgoing = 0;
 };
 
+//  
+//  Given node elimination sequence
+//   (Out-going y)  (In coming z) (Incoming Flow) 
+//   
+//   Elimination order:
+//
+//    (ye, ze, phie)_{incoming edges}, conservation of flow multipliers, 
+//
+//   Equations: grad_{ye, ze, phie} = 0, 
+//   conservation of flow: ze + yf = 0. phie + phif = 0
+//
+//   Separators: yf and phif of out-going edges.
+//
+
+// To assign variables, use DFS. 
+//
+//
+
+
+struct Variables {
+  std::vector<int> flow_variable;
+  // Map incoming edge label to spatial variable
+  std::vector<std::vector<int>> incoming_spatial_flow_variable;
+  std::vector<std::vector<int>> outgoing_spatial_flow_variable;
+  std::vector<std::vector<int>> node_to_conversation_of_spatial_flow_multiplier; 
+  std::vector<int> node_to_conversation_of_flow_multiplier; 
+};
+
+
+struct Node {
+  std::vector<int> incoming_edges;
+  std::vector<int> outgoing_edges;
+  int spatial_dimension;
+
+  int parent_in_spanning_tree = 0;
+  std::vector<int> children_in_spanning_tree;
+  Variables ids;
+};
+
+class Graph {
+ public:
+  Graph(std::vector<Node> nodes) : nodes_(std::move(nodes)) {}
+
+
+  void AssignEliminationOrder() {
+    int offset = 0;
+    for (auto& root : roots_) {
+      offset = AssignEliminationOrderHelper(root, offset);
+    }
+  }
+
+  // Do a pass to assign elimination position to each variable
+  int AssignEliminationOrderHelper(int node_index,  int offset) {
+
+    for (auto& child : nodes_.at(node_index).children_in_spanning_tree) {
+      offset = AssignEliminationOrderHelper(child, offset);
+    }
+
+    // Assign variable 
+    for (auto e : nodes_.at(node_index).incoming_edges) {
+      // Spatial y_e
+      for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
+        ids_.outgoing_spatial_flow_variable.at(e).push_back(offset);
+        offset++;
+      }
+      // Spatial z_e
+      for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
+        ids_.incoming_spatial_flow_variable.at(e).push_back(offset);
+        offset++;
+      }
+      ids_.flow_variable.at(node_index) = e;
+      offset++; // phi_e
+    }
+
+    for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
+      ids_.node_to_conversation_of_spatial_flow_multiplier.at(node_index).push_back(offset);
+      offset++; 
+    }
+    ids_.node_to_conversation_of_flow_multiplier.at(node_index) = offset;
+  }
+
+  void BuildSpanningTree(int root) {
+    std::vector<int> visited(nodes_.size(), 0);
+
+    int parent = root;
+    roots_.push_back(root);
+    visited.at(parent) = 1;
+    nodes_[parent].parent_in_spanning_tree = -1;
+
+    std::stack<int> nodes_to_visit;
+    while (nodes_to_visit.size() > 0) {
+      parent = nodes_to_visit.top(); nodes_to_visit.pop();
+      for (auto& child : nodes_.at(parent).outgoing_edges) {
+        if (visited.at(child) == 0) {
+          visited.at(child) = 1;
+          nodes_.at(child).parent_in_spanning_tree = parent;
+          nodes_.at(parent).children_in_spanning_tree.push_back(child);
+          nodes_to_visit.push(child);
+        }
+      }
+    }
+  }
+
+  NodeData BuildNodeData(int node_index)  {
+    NodeData data;
+  }
+
+  std::vector<int> roots_;
+  std::vector<Node> nodes_;
+  Variables ids_;
+};
+
+
+Graph MakeGraph() {
+  Node n1;
+  Node n2;
+  Node n3;
+
+  std::vector<Node> nodes(3);
+  nodes[0].outgoing_edges.push_back(1); 
+  nodes[1].outgoing_edges.push_back(2);
+
+  int i = 0;
+  for (auto& n : nodes) {
+    for (auto& e : n.outgoing_edges) {
+      nodes[e].incoming_edges.push_back(i);
+    }
+    i++;
+  }
+
+  Graph graph(nodes);
+  graph.BuildSpanningTree(0);
+  graph.AssignEliminationOrder();
+  return graph;
+}
+
 GTEST_TEST(GraphOfConvexSets, PrintSparsity) {
-  //Eigen::MatrixXd M(5, 5);
-  //M << 1, 0, 0, 0, 1, 
-  //     0, 1, 0, 0, 1, 
-  //     0, 0, 1, 0, -1, 
-  //     0, 0, 0, 1, -1,
-  //    1, 1, -1, -1, 0;
+  //NodeData node_data;
+  //// The 
+  //node_data.variable_ids.outgoing_spatial_flow = std::vector<std::vector<int>>{{5, 6, 7}, {8, 9, 10}, {11, 12, 13}};
+  //node_data.variable_ids.incoming_spatial_flow = std::vector<std::vector<int>>{{14, 15, 16}, {17, 18, 19}};
+  //node_data.variable_ids.incoming_flows = std::vector{0, 1};
 
-  //Eigen::MatrixXd B(2, 5);
+  //node_data.variable_ids.conversation_of_spatial_flow_multiplier = std::vector<int>{{20, 21, 22}};
+  //node_data.variable_ids.conversation_of_flow_multiplier = 32; 
 
-  //B << 0, 0, 1, 0, 0,
-  //     0, 0, 0, 1, 0;
+  //node_data.variable_ids.outgoing_flows = std::vector{2, 3, 4};
+  //node_data.variable_ids.outgoing_spatial_flow_separator = std::vector<std::vector<int>>{  {23, 24, 25}, {26, 27, 28}, {29, 30, 31}  };
 
-  //Eigen::LDLT<Eigen::MatrixXd> llt(M);
-  //DUMP(B* MatrixXd(llt.solve(B.transpose())));
-
+  Graph graph = MakeGraph();
   NodeData node_data;
-
-  node_data.variable_ids.incoming_flows = std::vector{0, 1};
-  node_data.variable_ids.outgoing_flows = std::vector{2, 3, 4};
-  node_data.variable_ids.outgoing_spatial_flow = std::vector<std::vector<int>>{{5, 6, 7}, {8, 9, 10}, {11, 12, 13}};
-  node_data.variable_ids.incoming_spatial_flow = std::vector<std::vector<int>>{ {14, 15, 16}, {17, 18, 19}  };
-  node_data.variable_ids.conversation_of_spatial_flow_multiplier = std::vector<int>{  {20, 21, 22}  };
-  node_data.variable_ids.outgoing_spatial_flow_separator = std::vector<std::vector<int>>{  {23, 24, 25}, {26, 27, 28}, {29, 30, 31}  };
-  node_data.variable_ids.conversation_of_flow_multiplier = 32; 
-
+  auto ids = node_data.variable_ids;
 
   ConvexSetNode node(node_data);
   node.Assemble();
@@ -299,15 +443,6 @@ GTEST_TEST(GraphOfConvexSets, PrintSparsity) {
 
   MatrixXd temp(33, 33);
   node.MakeKKTMatrix(&temp);
-  DUMP(temp);
-  return;
-
-  DUMP(supernode_submatrix);
-  Eigen::LDLT<Eigen::MatrixXd> llt(supernode_submatrix);
-  Eigen::MatrixXd factor = llt.matrixL();
-  DUMP(node.MakeSeperatorMatrix());
-  Eigen::MatrixXd seperator = node.MakeSeperatorMatrix();
-  DUMP(seperator * MatrixXd(llt.solve(seperator.transpose())));
 }
 
 

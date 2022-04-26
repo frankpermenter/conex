@@ -130,9 +130,6 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   }
   for (size_t j = 0; j < supernodes_.size(); j++) {
     for (size_t i = 0; i < supernodes_.size(); i++) {
-      DUMP(i);
-      DUMP(j);
-      DUMP(supernode_submatrix_(i, j));
       full_matrix->coeffRef(supernodes_.at(i), supernodes_.at(j)) =
           supernode_submatrix_(i, j);
     }
