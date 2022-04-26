@@ -154,6 +154,7 @@ void T::AssembleAndFactor() {
 
 void T::Assemble() {
   DoInitialize();
+  DUMP(children_.size());
   for (auto child : children_) {
     child->Assemble();
   }

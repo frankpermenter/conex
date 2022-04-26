@@ -4,6 +4,7 @@
 #include <Eigen/Dense>
 #include <map>
 #include <stack>
+#include <memory>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -203,9 +204,9 @@ class Graph {
     nodes_to_visit.push(parent);
     while (nodes_to_visit.size() > 0) {
       parent = nodes_to_visit.top(); nodes_to_visit.pop();
-      for (auto& e : nodes_.at(parent).outgoing_edges) {
-        CONEX_CHECK(edges_.at(e).source == parent);
-        int child = edges_.at(e).sink;
+      for (auto& e : nodes_.at(parent).incoming_edges) {
+        CONEX_CHECK(edges_.at(e).sink == parent);
+        int child = edges_.at(e).source;
         if (visited.at(child) == 0) {
           visited.at(child) = 1;
           nodes_.at(child).parent_in_spanning_tree = parent;
@@ -213,6 +214,9 @@ class Graph {
           nodes_to_visit.push(child);
         }
       }
+    }
+    for (auto node_visited : visited) {
+      CONEX_CHECK(node_visited == 1);
     }
   }
 
@@ -262,10 +266,16 @@ class ConvexSetNode : public LUSolver {
     supernodes.insert(supernodes.begin(), variables.begin(), variables.begin()  + num_supernodes);
 
     std::vector<int> separators;
+    DUMP(num_supernodes);
+    DUMP(variables);
     separators.insert(separators.begin(), variables.begin() + num_supernodes, variables.end());
 
     SetSupernodes(supernodes);
     SetSeparators(separators);
+    DUMP("HEHEH");
+    DUMP(separators);
+    DUMP(supernodes);
+    DUMP("HEHEH");
     num_incoming = node.incoming_edges.size();
     num_outgoing = node.outgoing_edges.size();
     spatial_dim = node.spatial_dimension;
@@ -350,10 +360,6 @@ class ConvexSetNode : public LUSolver {
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     auto data = MakeSeperatorMatrix();
-    DUMP(data);
-    DUMP(separator_rows_);
-    DUMP(separators());
-    DUMP(supernodes());
     CONEX_CHECK(data.rows() == separator_rows_.rows());
     CONEX_CHECK(data.cols() == separator_rows_.cols());
     separator_rows_ = data;
@@ -362,11 +368,8 @@ class ConvexSetNode : public LUSolver {
     CONEX_CHECK(data.rows() == supernode_submatrix_.rows());
     CONEX_CHECK(data.cols() == supernode_submatrix_.cols());
     supernode_submatrix_ = data; 
-    Eigen::LDLT<MatrixXd> llt(supernode_submatrix_);
-    CONEX_CHECK(llt.info() == Eigen::Success);
-    DUMP(separator_rows_ * llt.solve(separator_rows_.transpose()));
-    DUMP(supernode_submatrix_);
-    DUMP(separator_rows_);
+    //Eigen::LDLT<MatrixXd> llt(supernode_submatrix_);
+    //CONEX_CHECK(llt.info() == Eigen::Success);
   }
 
   int spatial_dim = 0;
@@ -399,8 +402,8 @@ Graph MakePath(int num_edges, int spatial_dim) {
   std::vector<Edge> edges(num_edges);
   int i = 0;
   for (auto& e : edges) {
-    e.source = i;
-    e.sink = i + 1;
+    e.sink = i;
+    e.source = i + 1;
     i++;
   }
 
@@ -426,30 +429,29 @@ GTEST_TEST(GraphOfConvexSets, PrintSparsity) {
   int num_edges = 3;
   int dim = 2;
   Graph graph = MakePath(num_edges, dim);
-  std::vector<ConvexSetNode> nodes;
+  std::vector<std::unique_ptr<ConvexSetNode>> nodes(num_edges + 1);
   for (int i = 0; i < num_edges + 1; i++) {
-    nodes.emplace_back(graph, i);
+    nodes.at(i) = std::make_unique<ConvexSetNode>(graph, i);
   }
 
   int i = 0;
   std::vector<int> roots;
   for (auto& n : graph.nodes_) {
     int parent = n.parent_in_spanning_tree;
-    if (parent > 0) {
-      nodes.at(parent).AddChild(&nodes.at(i));
+    if (parent >= 0) {
+      nodes.at(parent)->AddChild(nodes.at(i).get());
     } else {
       roots.push_back(i);
     }
     i++;
   }
 
-  nodes.at(roots.at(0)).Assemble();
-
+  nodes.at(roots.at(0))->Assemble();
 
   int vars_per_node = (2*dim + 1) + (dim + 1); 
   MatrixXd temp(vars_per_node  * num_edges, vars_per_node  * num_edges);
 
-  nodes.at(roots.at(0)).MakeKKTMatrix(&temp);
+  nodes.at(roots.at(0))->MakeKKTMatrix(&temp);
   DUMP(temp);
 }
 
