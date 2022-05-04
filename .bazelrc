@@ -1,7 +1,7 @@
 build --action_env=LIBRARY_PATH
 build --action_env=LD_LIBRARY_PATH
 build --cxxopt='-std=c++17'
-build --copt="-O3"
+build --copt="-O2"
 build --copt="-fPIC"
 #build --copt="-DEIGEN_NO_DEBUG"
 #build --copt="-DNDEBUG"
@@ -10,8 +10,14 @@ build:asan --copt="-O0"
 build:asan --copt="-fsanitize=address"
 build:asan --linkopt="-fsanitize=address"
 
-build:benchmark --copt="-g"
+build:benchmark --copt="-pg"
+build:benchmark --linkopt="-pg"
+build:benchmark --strip="never"
 build:benchmark --copt="-fno-omit-frame-pointer"
+build:benchmark --copt="-DEIGEN_NO_DEBUG"
+build:benchmark --copt="-DNDEBUG"
+#build:benchmark --copt="-DEIGEN_USE_BLAS"
+#build:benchmark --linkopt="-lblas"
 
 build:debug --copt="-g"
 build:debug --copt="-O0"
