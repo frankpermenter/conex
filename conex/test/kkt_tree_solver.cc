@@ -220,10 +220,6 @@ class Graph {
     }
   }
 
-  NodeData BuildNodeData(int node_index)  {
-    NodeData data;
-  }
-
   std::vector<int> roots_;
   std::vector<Node> nodes_;
   std::vector<Edge> edges_;

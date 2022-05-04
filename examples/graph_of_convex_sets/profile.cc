@@ -117,6 +117,8 @@ for (int i = 0; i < 100; i++) {
   END_LOG_TIMER(stats.factor_time)
 }
 
+bool only_custom = false;
+if (!only_custom) {
   system_using_custom_assemblers.Assemble();
   Eigen::MatrixXd M = system_using_custom_assemblers.KKTMatrix(true);
   VectorXd x; x.setLinSpaced(M.cols(), -1, 1);
@@ -127,8 +129,6 @@ for (int i = 0; i < 100; i++) {
   END_LOG_TIMER(stats.solve_time)
   EXPECT_NEAR( (y-x).norm(), 0, 1e-12);
 
-bool only_custom = false;
-if (!only_custom) {
   Eigen::LDLT<Eigen::MatrixXd> llt;
   y = M * x;
   START_LOG_TIMER

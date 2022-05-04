@@ -142,8 +142,8 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   }
 }
 
+bool left_looking = true;
 void T::AssembleAndFactor() {
-  bool left_looking = true;
   DoInitialize();
   for (auto child : children_) {
     child->AssembleAndFactor();
@@ -160,7 +160,6 @@ void T::AssembleAndFactor() {
 }
 
 void T::Assemble() {
-  bool left_looking = true;
   DoInitialize();
   for (auto child : children_) {
     child->Assemble();
@@ -307,10 +306,5 @@ void T::ProvideColumnUpdate(const std::vector<int>& target_supernodes,
                            target_supernode_submatrix, target_separator_rows);
   }
 }
-
-
-
-
-
 
 }  // namespace conex

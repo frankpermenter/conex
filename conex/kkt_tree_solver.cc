@@ -4,6 +4,7 @@
 
 namespace conex {
 
+namespace {
 class DistanceToRootRecursion{
  public:
   DistanceToRootRecursion(const std::vector<int>& parent) : parent_(parent),
@@ -230,9 +231,8 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
   return -1;
 }
 
-}  // namespace conex
+}  // namespace 
 
-namespace conex {
 
 using T = SymmetricLinearSystemTreeSolver;
 
@@ -262,6 +262,7 @@ void T::DoAssemble() {
   for (auto root : roots_) {
     root->Assemble();
   }
+
 }
 
 bool T::DoFactor() {

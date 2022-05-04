@@ -160,8 +160,8 @@ void DoTestTrivalExample(const std::vector<int>& v) {
         2, 10, 4,
         3, 4, 10;
   Q1 << 1, 1, 1,
-        1, 1, 1,
-        1, 1, 0;
+        1, 2, 1,
+        1, 1, 3;
   // clang-format on
   StaticAssemblerType q1(Q1, vars);
   full_matrix = IncrementSubmatrix(full_matrix, Q1, vars);
