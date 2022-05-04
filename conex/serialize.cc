@@ -1,4 +1,5 @@
 #include "conex/serialize.h"
+
 #include "conex/dense_lmi_constraint.h"
 #include "conex/equality_constraint.h"
 #include "conex/json_parser.h"

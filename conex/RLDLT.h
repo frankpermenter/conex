@@ -87,7 +87,6 @@ class RLDLT {
    */
   RLDLT()
       : m_matrix(),
-        m_transpositions(),
         m_sign(internal::ZeroSign),
         m_isInitialized(false) {}
 
@@ -99,7 +98,6 @@ class RLDLT {
    */
   explicit RLDLT(Index size)
       : m_matrix(size, size),
-        m_transpositions(size),
         m_temporary(size),
         m_sign(internal::ZeroSign),
         m_isInitialized(false) {}
@@ -113,7 +111,6 @@ class RLDLT {
   template <typename InputType>
   explicit RLDLT(const EigenBase<InputType>& matrix)
       : m_matrix(matrix.rows(), matrix.cols()),
-        m_transpositions(matrix.rows()),
         m_temporary(matrix.rows()),
         m_sign(internal::ZeroSign),
         m_isInitialized(false) {
@@ -130,7 +127,6 @@ class RLDLT {
   template <typename InputType>
   explicit RLDLT(EigenBase<InputType>& matrix)
       : m_matrix(matrix.derived()),
-        m_transpositions(matrix.rows()),
         m_temporary(matrix.rows()),
         m_sign(internal::ZeroSign),
         m_isInitialized(false) {
@@ -157,8 +153,7 @@ class RLDLT {
   /** \returns the permutation matrix P as a transposition sequence.
    */
   inline const TranspositionType& transpositionsP() const {
-    eigen_assert(m_isInitialized && "RLDLT is not initialized.");
-    return m_transpositions;
+    throw "Not available";
   }
 
   /** \returns the coefficients of the diagonal matrix D */
@@ -281,7 +276,6 @@ class RLDLT {
    */
   MatrixType m_matrix;
   RealScalar m_l1_norm;
-  TranspositionType m_transpositions;
   TmpMatrixType m_temporary;
   internal::SignMatrix m_sign;
   bool m_isInitialized;
@@ -296,13 +290,11 @@ struct rldlt_inplace;
 
 template <>
 struct rldlt_inplace<Lower> {
-  template <typename MatrixType, typename TranspositionType, typename Workspace>
-  static bool unblocked(MatrixType& mat, TranspositionType& transpositions,
-                        Workspace& temp, SignMatrix& sign) {
+  template <typename MatrixType,  typename Workspace>
+  static bool unblocked(MatrixType& mat, Workspace& temp, SignMatrix& sign) {
     using std::abs;
     typedef typename MatrixType::Scalar Scalar;
     typedef typename MatrixType::RealScalar RealScalar;
-    typedef typename TranspositionType::StorageIndex IndexType;
     eigen_assert(mat.rows() == mat.cols());
     const Index size = mat.rows();
     bool found_zero_pivot = false;
@@ -323,7 +315,6 @@ struct rldlt_inplace<Lower> {
           mat.coeffRef(0, 0) = regularization_value;
         }
       }
-      transpositions.setIdentity();
       if (size == 0)
         sign = ZeroSign;
       else if (numext::real(mat.coeff(0, 0)) > static_cast<RealScalar>(0))
@@ -340,28 +331,9 @@ struct rldlt_inplace<Lower> {
       Index index_of_biggest_in_corner;
       mat.diagonal().tail(size - k).cwiseAbs().maxCoeff(
           &index_of_biggest_in_corner);
-      index_of_biggest_in_corner += k;
+      //index_of_biggest_in_corner += k;
+      index_of_biggest_in_corner = k;
 
-      transpositions.coeffRef(k) = IndexType(index_of_biggest_in_corner);
-      if (k != index_of_biggest_in_corner) {
-        // apply the transposition while taking care to consider only
-        // the lower triangular part
-        Index s = size - index_of_biggest_in_corner -
-                  1;  // trailing size after the biggest element
-        mat.row(k).head(k).swap(mat.row(index_of_biggest_in_corner).head(k));
-        mat.col(k).tail(s).swap(mat.col(index_of_biggest_in_corner).tail(s));
-        std::swap(mat.coeffRef(k, k), mat.coeffRef(index_of_biggest_in_corner,
-                                                   index_of_biggest_in_corner));
-        for (Index i = k + 1; i < index_of_biggest_in_corner; ++i) {
-          Scalar tmp = mat.coeffRef(i, k);
-          mat.coeffRef(i, k) =
-              numext::conj(mat.coeffRef(index_of_biggest_in_corner, i));
-          mat.coeffRef(index_of_biggest_in_corner, i) = numext::conj(tmp);
-        }
-        if (NumTraits<Scalar>::IsComplex)
-          mat.coeffRef(index_of_biggest_in_corner, k) =
-              numext::conj(mat.coeff(index_of_biggest_in_corner, k));
-      }
 
       // partition the matrix:
       //       A00 |  -  |  -
@@ -407,7 +379,6 @@ struct rldlt_inplace<Lower> {
         // zero.
         sign = ZeroSign;
         for (Index j = 0; j < size; ++j) {
-          transpositions.coeffRef(j) = IndexType(j);
           ret =
               ret && (mat.col(j).tail(size - j - 1).array() == Scalar(0)).all();
         }
@@ -573,13 +544,12 @@ RLDLT<MatrixType, _UpLo>& RLDLT<MatrixType, _UpLo>::compute(
     if (abs_col_sum > m_l1_norm) m_l1_norm = abs_col_sum;
   }
 
-  m_transpositions.resize(size);
   m_isInitialized = false;
   m_temporary.resize(size);
   m_sign = internal::ZeroSign;
 
   m_regularization_used = !internal::rldlt_inplace<UpLo>::unblocked(
-      m_matrix, m_transpositions, m_temporary, m_sign);
+      m_matrix,  m_temporary, m_sign);
 
   m_info = Success;
   m_isInitialized = true;
@@ -597,23 +567,19 @@ template <typename Derived>
 RLDLT<MatrixType, _UpLo>& RLDLT<MatrixType, _UpLo>::rankUpdate(
     const MatrixBase<Derived>& w,
     const typename RLDLT<MatrixType, _UpLo>::RealScalar& sigma) {
-  typedef typename TranspositionType::StorageIndex IndexType;
   const Index size = w.rows();
   if (m_isInitialized) {
     eigen_assert(m_matrix.rows() == size);
   } else {
     m_matrix.resize(size, size);
     m_matrix.setZero();
-    m_transpositions.resize(size);
-    for (Index i = 0; i < size; i++)
-      m_transpositions.coeffRef(i) = IndexType(i);
+
     m_temporary.resize(size);
     m_sign = sigma >= 0 ? internal::PositiveSemiDef : internal::NegativeSemiDef;
     m_isInitialized = true;
   }
 
-  internal::rldlt_inplace<UpLo>::update(m_matrix, m_transpositions, m_temporary,
-                                        w, sigma);
+  internal::rldlt_inplace<UpLo>::update(m_matrix,  m_temporary, w, sigma);
 
   return *this;
 }
@@ -624,8 +590,7 @@ template <typename RhsType, typename DstType>
 void RLDLT<_MatrixType, _UpLo>::_solve_impl(const RhsType& rhs,
                                             DstType& dst) const {
   eigen_assert(rhs.rows() == rows());
-  // dst = P b
-  dst = m_transpositions * rhs;
+  dst =  rhs;
 
   // dst = L^-1 (P b)
   matrixL().solveInPlace(dst);
@@ -653,11 +618,8 @@ void RLDLT<_MatrixType, _UpLo>::_solve_impl(const RhsType& rhs,
       dst.row(i).setZero();
   }
 
-  // dst = L^-T (D^-1 L^-1 P b)
   matrixU().solveInPlace(dst);
 
-  // dst = P^-1 (L^-T D^-1 L^-1 P b) = A^-1 b
-  dst = m_transpositions.transpose() * dst;
 }
 #endif
 

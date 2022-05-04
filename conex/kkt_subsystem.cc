@@ -103,25 +103,27 @@ void T::IncrementSupernodeColumn(const Eigen::MatrixXd source_data,
       break;
     }
     int local_row = GetSeparatorPosition(source_column_labels.at(i));
-    supernode_submatrix_(local_row, local_column_index) +=
+    separator_rows_(local_row, local_column_index) +=
         source_data(i, source_column_index);
   }
 }
-size_t T::GetSupernodePosition(int global_label) {
+
+int T::GetSupernodePosition(int global_label) {
   for (size_t i = 0; i < supernodes_.size(); ++i) {
     if (supernodes_.at(i) == global_label) {
       return i;
     }
   }
-  throw;
+  return -1;
 }
-size_t T::GetSeparatorPosition(int global_label) {
+
+int T::GetSeparatorPosition(int global_label) {
   for (size_t i = 0; i < separators_.size(); ++i) {
     if (separators_.at(i) == global_label) {
       return i;
     }
   }
-  throw;
+  return -1;
 }
 
 void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
@@ -130,55 +132,48 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   }
   for (size_t j = 0; j < supernodes_.size(); j++) {
     for (size_t i = 0; i < supernodes_.size(); i++) {
-      full_matrix->coeffRef(supernodes_.at(i), supernodes_.at(j)) =
+      (*full_matrix)(supernodes_.at(i), supernodes_.at(j)) =
           supernode_submatrix_(i, j);
     }
     for (size_t i = 0; i < separators_.size(); i++) {
-      full_matrix->coeffRef(separators_.at(i), supernodes_.at(j)) =
+      (*full_matrix)(separators_.at(i), supernodes_.at(j)) =
           separator_rows_(i, j);
     }
   }
 }
 
 void T::AssembleAndFactor() {
+  bool left_looking = true;
   DoInitialize();
   for (auto child : children_) {
     child->AssembleAndFactor();
+    if (left_looking) {
+      child->ProvideColumnUpdate(supernodes_, separators_,
+                                 supernode_submatrix_, separator_rows_);
+    }
   }
   DoEliminateSupernodeColumns();
   DoComputeSeparatorSchurComplement();
-  if (!IsRoot()) {
+  if (!IsRoot() && !left_looking) {
     DoScatterSeparatorSubmatrix();
   }
 }
 
 void T::Assemble() {
+  bool left_looking = true;
   DoInitialize();
-  DUMP(children_.size());
   for (auto child : children_) {
     child->Assemble();
+    if (left_looking) {
+      child->ProvideColumnUpdate(supernodes_, separators_,
+                                 supernode_submatrix_, separator_rows_);
+    }
   }
-  if (!IsRoot()) {
+
+  if (!IsRoot() && !left_looking) {
     DoScatterSeparatorSubmatrix();
   }
 }
-
-//double& T::submatrix(int i, int j) {
-//  if (j > i) {
-//    std::swap(i, j);
-//  }
-//  int num_supernodes = supernode_submatrix_.rows();
-//  if (i < num_supernodes && j < num_supernodes) {
-//    return supernode_submatrix_(i, j);
-//  } else {
-//    if (j < num_supernodes) {
-//      return separator_rows_(i - num_supernodes, j);
-//    } else {
-//      return separator_schur_complement_(i - num_supernodes,
-//                                         j - num_supernodes);
-//    }
-//  }
-//}
 
 int T::ComputePostOrdering(int offset,
                            std::vector<int>* variable_to_elimination_position) {
@@ -234,29 +229,88 @@ void T::SetVariableOrdering(
   }
 };
 
-  void T::IncrementSubmatrix(const Eigen::MatrixXd& S,
-                          const std::vector<int>& vars, size_t start_index) {
-    if (start_index > vars.size()) {
-      return;
-    }
+void T::IncrementSubmatrix(const Eigen::MatrixXd& S,
+                           const std::vector<int>& vars, size_t start_index) {
+  if (start_index > vars.size()) {
+    return;
+  }
 
-    size_t col_index = start_index;
-    DUMP(supernodes_);
-    DUMP(vars);
-    DUMP(vars.at(col_index));
-    CONEX_ASSERT(vars.at(col_index) >= supernodes_.at(0),
-                 "Submatrix has been eliminated.");
-    for (; col_index < vars.size(); col_index++) {
-      if (vars.at(col_index) > supernodes_.back()) {
-        // The remaining columns must belong to our parent.
-        break;
+  size_t col_index = start_index;
+  CONEX_ASSERT(vars.at(col_index) >= supernodes_.at(0),
+               "Submatrix has been eliminated.");
+  for (; col_index < vars.size(); col_index++) {
+    if (vars.at(col_index) > supernodes_.back()) {
+      // The remaining columns must belong to our parent.
+      break;
+    }
+    IncrementSupernodeColumn(S, vars, col_index);
+  }
+
+  if (col_index < vars.size()) {
+    CONEX_DEMAND(parent_, "Parent pointer is null.");
+    parent_->IncrementSubmatrix(S, vars, col_index);
+  }
+}
+
+void T::DoScatterSeparatorSubmatrix() {
+  if (parent_ && separators_.size() > 0) {
+    parent_->IncrementSubmatrix(separator_schur_complement_, separators_,
+                                0 /*start index*/);
+  }
+}
+
+void T::ProvideColumnUpdate(const std::vector<int>& target_supernodes, 
+                              const std::vector<int>& target_separators,   
+                              Eigen::Ref<MatrixXd> target_supernode_submatrix, 
+                              Eigen::Ref<MatrixXd> target_separator_rows) {
+  if (separators_.size() == 0 ||  target_supernodes.at(0) > separators_.back()) {
+    return;
+  }
+
+  for (size_t i = 0;  i < target_supernodes.size(); i++) {
+    int local_position_i = GetSeparatorPosition(target_supernodes.at(i));
+    if (local_position_i == -1) {
+      continue;
+    }
+    for (size_t j = i;  j < target_supernodes.size(); j++) {
+      int local_position_j = GetSeparatorPosition(target_supernodes.at(j));
+      if (local_position_j == -1) {
+        continue;
       }
-      IncrementSupernodeColumn(S, vars, col_index);
+      if (local_position_j < local_position_i) {
+      // we can't swap without invalidating beginning of loop.
+      throw;
+      }
+      target_supernode_submatrix(j, i) += separator_schur_complement_(local_position_j, 
+                                                                    local_position_i);
     }
 
-    if (col_index < vars.size()) {
-      CONEX_DEMAND(parent_, "Parent pointer is null.");
-      parent_->IncrementSubmatrix(S, vars, col_index);
+    if (target_separators.size() == 0 ||  target_separators.at(0) > separators_.back()) {
+      continue;
+    }
+
+    for (size_t j = 0;  j < target_separators.size(); j++) {
+      int local_position_j = GetSeparatorPosition(target_separators.at(j));
+      if (local_position_j == -1) {
+        continue;
+      }
+      if (local_position_j < local_position_i) {
+      throw;
+      }
+      target_separator_rows(j, i) += separator_schur_complement_(local_position_j, 
+                                                                 local_position_i);
     }
   }
+
+  for (auto& c : children_) {
+    c->ProvideColumnUpdate(target_supernodes, target_separators, 
+                           target_supernode_submatrix, target_separator_rows);
+  }
+}
+
+
+
+
+
+
 }  // namespace conex

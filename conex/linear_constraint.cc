@@ -1,4 +1,5 @@
 #include "linear_constraint.h"
+
 #include "newton_step.h"
 
 namespace conex {

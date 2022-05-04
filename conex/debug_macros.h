@@ -16,7 +16,7 @@ namespace conex {
 #endif
 
 #ifndef CONEX_ENABLE_TIMER
-#define CONEX_ENABLE_TIMER 0
+#define CONEX_ENABLE_TIMER 1
 #endif
 
 #if CONEX_VERBOSE
@@ -29,6 +29,15 @@ namespace conex {
             << " " << x << ", ";
 
 #define PRINTSTATUS(x) std::cout << "Status: " << x << "\n\n";
+
+
+#define START_LOG_TIMER \
+  {                                                          \
+    auto start1 = std::chrono::high_resolution_clock::now(); \
+
+#define END_LOG_TIMER(x)                                                            \
+  auto stop1 = std::chrono::high_resolution_clock::now();                    \
+   x =  std::chrono::duration_cast<std::chrono::microseconds>(stop1 - start1).count(); }
 
 #if CONEX_ENABLE_TIMER
 #define START_TIMER(x)                                       \

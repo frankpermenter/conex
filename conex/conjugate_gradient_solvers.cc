@@ -1,4 +1,5 @@
 #include "conex/conjugate_gradient_solvers.h"
+
 #include "conex/error_checking_macros.h"
 
 using Eigen::MatrixXd;

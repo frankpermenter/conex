@@ -1,7 +1,9 @@
 #include "conex/kkt_subsystem.h"
+
 #include <iostream>
 #include <map>
 #include <tuple>
+
 #include "conex/RLDLT.h"
 #include "conex/debug_macros.h"
 #include "conex/kkt_solver_interface.h"
@@ -129,6 +131,7 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite> {
     Base::separator_schur_complement_ =
         Q_in_elimination_order_.bottomRightCorner(n2, n2);
   }
+
   void AssignSubmatrix(const Eigen::MatrixXd& source,
                        Eigen::Ref<Eigen::MatrixXd> destination,
                        const std::vector<int>& source_to_dest_index) {
@@ -181,7 +184,7 @@ void DoTestTrivalExample(const std::vector<int>& v) {
   system.AddSubsystem(&q2);
   system.AddSubsystem(&q3);
   std::vector<int> parent{1, 2, -1};
-  system.MakeTree(parent);
+  system.Finalize(parent);
 
   q1.DoInitialize();
   q2.DoInitialize();
@@ -220,7 +223,8 @@ void DoFailLDLT(bool expect_fail) {
   SymmetricLinearSystemTreeSolver system;
   system.AddSubsystem(&q1);
   std::vector<int> parent{-1};
-  system.MakeTree(parent);
+  Options options; 
+  system.Finalize(parent, false);
 
   q1.DoInitialize();
 
@@ -237,7 +241,6 @@ void DoFailLDLT(bool expect_fail) {
   }
 }
 
-#if 1
 GTEST_TEST(KKTSubsystem, FailLDLT) {
   DoFailLDLT<StaticSubsystem<true>>(true /*expect_fail*/);
   DoFailLDLT<StaticSubsystem<false>>(false /*expect_fail*/);
@@ -260,25 +263,23 @@ GTEST_TEST(KKTSubsystem, TestTrivialExampleReverseOrder) {
   DoTestTrivalExample<StaticSubsystem<true>>(v);
   DoTestTrivalExample<StaticSubsystem<false>>(v);
 }
-#endif
 
-std::vector<std::unique_ptr<KKTSubsystem>> MakeTestSystem(std::vector<Eigen::MatrixXd>& matrices, 
-                                                          const std::vector<std::vector<int>>& vars) {
+std::vector<std::unique_ptr<KKTSubsystem>> MakeTestSystem(
+    std::vector<Eigen::MatrixXd>& matrices,
+    const std::vector<std::vector<int>>& vars) {
   std::vector<std::unique_ptr<KKTSubsystem>> subsystems;
   for (size_t i = 0; i < matrices.size(); i++) {
-    subsystems.emplace_back(std::make_unique<StaticSubsystem<false>>(matrices.at(i), vars.at(i)));
+    subsystems.emplace_back(
+        std::make_unique<StaticSubsystem<false>>(matrices.at(i), vars.at(i)));
   }
   return subsystems;
 }
 
-// x1, x2
-//
-// x1, x2, lambda
 template <typename StaticAssemblerType>
 void DoBadRoot() {
-
   int num_vars = 3;
-  Eigen::MatrixXd full_matrix(num_vars, num_vars); full_matrix.setZero();
+  Eigen::MatrixXd full_matrix(num_vars, num_vars);
+  full_matrix.setZero();
 
   // clang-format off
   std::vector<int> vars1{0, 1};
@@ -300,24 +301,15 @@ void DoBadRoot() {
   system.AddSubsystem(&q2);
 
   std::vector<int> parent_zero_pivot_error{-1, 0};
-  EXPECT_THROW( {
-  system.MakeTree(parent_zero_pivot_error);
-  }, std::runtime_error);
-
-  system.RepairTreeInPlace(&parent_zero_pivot_error);
-  EXPECT_NO_THROW( {
-  system.MakeTree(parent_zero_pivot_error);
-  });
+  EXPECT_THROW({ system.Finalize(parent_zero_pivot_error); },
+               std::runtime_error);
 
   std::vector<int> parent_self_parent_error{0, 1};
-  EXPECT_THROW( {
-  system.MakeTree(parent_self_parent_error);
-  }, std::runtime_error);
+  EXPECT_THROW({ system.Finalize(parent_self_parent_error); },
+               std::runtime_error);
 
   std::vector<int> parent_valid{1, -1};
-  EXPECT_NO_THROW( {
-  system.MakeTree(parent_valid);
-  });
+  EXPECT_NO_THROW({ system.Finalize(parent_valid); });
 
   q1.DoInitialize();
   q2.DoInitialize();
@@ -331,15 +323,102 @@ void DoBadRoot() {
   EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
 }
 
-GTEST_TEST(KKTSubsystem, DoBadRootNode) {
-  DoBadRoot<StaticSubsystem<false>>();
+GTEST_TEST(KKTSubsystem, DoBadRootNode) { DoBadRoot<StaticSubsystem<false>>(); }
+
+
+GTEST_TEST(KKTSubsystem, TreeFillIn) {
+  //    {4, 5, 6}
+  //    {3, 4, 6}
+  //    {0, 1, 2, 3, 5}        
+
+  std::vector<int> supernode_reference_1{4, 5, 6};
+  std::vector<int> supernode_reference_2{3};
+  std::vector<int> supernode_reference_3{0, 1, 2};
+
+  std::vector<int> separator_reference_1{};
+  std::vector<int> separator_reference_2{4, 5, 6};
+  std::vector<int> separator_reference_3{3, 5};
+
+  int num_vars = 7;
+  Eigen::MatrixXd full_matrix(num_vars, num_vars);
+  full_matrix.setZero();
+
+  std::vector<int> vars1{4, 5, 6};
+  Eigen::MatrixXd Q1 = Eigen::MatrixXd::Identity(vars1.size(), vars1.size());
+  full_matrix = IncrementSubmatrix(full_matrix, Q1, vars1);
+  StaticSubsystem<false> q1(Q1, vars1);
+
+  std::vector<int> vars2{3, 4, 6};
+  Eigen::MatrixXd Q2(3, 3);
+  //clang-format off
+  Q2 << 0, 0, 0,
+        0, 0, 0,
+        0, 0, 0;
+  // clang-format on
+  full_matrix = IncrementSubmatrix(full_matrix, Q2, vars2);
+  StaticSubsystem<false> q2(Q2, vars2);
+
+  Eigen::MatrixXd Q3(5, 5);
+  //clang-format off
+  Q3 << 1, 1, 1, 1, 1,
+        1, 2, 1, 1, 1,
+        1, 1, 3, 1, 1,
+        1, 1, 1, 4, 1,
+        1, 1, 1, 1, 5;
+  // clang-format on
+  std::vector<int> vars3{0, 1, 2, 3, 5};
+  StaticSubsystem<false> q3(Q3, vars3);
+  full_matrix = IncrementSubmatrix(full_matrix, Q3, vars3);
+
+  SymmetricLinearSystemTreeSolver system;
+  system.AddSubsystem(&q1);
+  system.AddSubsystem(&q2);
+  system.AddSubsystem(&q3);
+  Options options;
+  options.validate_leaf_nodes = true;
+  options.root_node = 0;
+
+  EXPECT_NO_THROW({ system.Finalize(options); });
+
+  EXPECT_EQ(q1.parent(), nullptr);
+  EXPECT_EQ(q2.parent(), &q1);
+  EXPECT_EQ(q3.parent(), &q2);
+
+  EXPECT_EQ(q1.supernodes(), supernode_reference_1);
+  EXPECT_EQ(q2.supernodes(), supernode_reference_2);
+  EXPECT_EQ(q3.supernodes(), supernode_reference_3);
+
+  EXPECT_EQ(q1.separators(), separator_reference_1);
+  EXPECT_EQ(q2.separators(), separator_reference_2);
+  EXPECT_EQ(q3.separators(), separator_reference_3);
+
+  options.check_for_zero_pivots = false;
+  options.validate_leaf_nodes = true;
+  system.Finalize(options);
+  EXPECT_NO_THROW({ system.Finalize(options); });
+  system.Assemble();
+  EXPECT_NEAR((system.KKTMatrix() - full_matrix).norm(), 0, 1e-14);
 }
 
+
 GTEST_TEST(KKTSubsystem, TreeRepair) {
-  //
-  //          {0, 1, 2}
-  //  {1, 2, 6}        {2, 3, 4, 5}
-  // clang-format off
+/*
+
+The initial spanning tree of the clique
+intersection graph is:
+
+           {0, 1, 2}
+   {1, 2, 6}      {2, 3, 4, 5}
+
+The node {1, 2, 6} is an invalid leaf.  This triggers
+a reorganization
+
+          {1, 2, 6} 
+          {0, 1, 2}
+        {2, 3, 4, 5}
+
+*/
+
   std::vector<int> vars1{0, 1, 2};
   Eigen::MatrixXd Q1 = Eigen::MatrixXd::Identity(vars1.size(), vars1.size());
   StaticSubsystem<false> q1(Q1, vars1);
@@ -349,35 +428,43 @@ GTEST_TEST(KKTSubsystem, TreeRepair) {
   Q2 << 0, 0, 1,
         0, 0, 1,
         1, 1, 0;
-  StaticSubsystem<false> q2(Q2, vars2);
+  StaticSubsystem<false> invalid_leaf(Q2, vars2);
 
   Eigen::MatrixXd Q3(4, 4);
   Q3 << 1, 0, 1, 1,
         0, 1, 1, 1,
         1, 1, 1, 1,
         1, 1, 1, 1;
-  StaticSubsystem<false> q3(Q3, {0, 3,4,5});
+  StaticSubsystem<false> q3(Q3, {0, 3, 4, 5});
   // clang-format on
 
   SymmetricLinearSystemTreeSolver system;
   system.AddSubsystem(&q1);
-  system.AddSubsystem(&q2);
+  system.AddSubsystem(&invalid_leaf);
   system.AddSubsystem(&q3);
-  SymmetricLinearSystemTreeSolver::Options options;
+  Options options;
   options.validate_leaf_nodes = false;
   options.check_for_zero_pivots = true;
   options.root_node = 0;
-  EXPECT_THROW({
-  system.Finalize(options);
-  },  std::runtime_error);
+  EXPECT_THROW({ system.Finalize(options); }, std::runtime_error);
+  EXPECT_EQ(invalid_leaf.parent(),  &q1);
+  EXPECT_EQ(q3.parent(), &q1);
+  EXPECT_EQ(q1.parent(), nullptr);
 
   options.check_for_zero_pivots = false;
-  EXPECT_NO_THROW({system.Finalize(options);});
+  EXPECT_NO_THROW({ system.Finalize(options); });
 
   options.check_for_zero_pivots = true;
   options.validate_leaf_nodes = true;
   system.Finalize(options);
-  EXPECT_NO_THROW({system.Finalize(options);});
+
+/* Verify tree has be properly reorganized */
+  EXPECT_EQ(invalid_leaf.parent(),  nullptr);
+  EXPECT_EQ(q1.parent(), &invalid_leaf);
+  EXPECT_EQ(q3.parent(), &q1);
+
+  EXPECT_NO_THROW({ system.Finalize(options); });
 }
+
 
 }  // namespace conex

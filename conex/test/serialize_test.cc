@@ -1,16 +1,17 @@
+#include "conex/serialize.h"
+
 #include <iostream>
 #include <map>
 #include <tuple>
-#include "conex/debug_macros.h"
-#include "gtest/gtest.h"
-#include <Eigen/Dense>
 
+#include "conex/debug_macros.h"
 #include "conex/dense_lmi_constraint.h"
 #include "conex/equality_constraint.h"
 #include "conex/json_parser.h"
 #include "conex/linear_constraint.h"
-#include "conex/serialize.h"
 #include "conex/soc_constraint.h"
+#include "gtest/gtest.h"
+#include <Eigen/Dense>
 
 namespace conex {
 

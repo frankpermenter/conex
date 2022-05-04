@@ -2,10 +2,9 @@
 #include <numeric>
 #include <vector>
 
-#include <Eigen/Dense>
-
 #include "conex/supernodal_assembler.h"
 #include "conex/triangular_matrix_workspace.h"
+#include <Eigen/Dense>
 
 namespace conex {
 

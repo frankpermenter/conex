@@ -1,11 +1,10 @@
 #include "conex/cone_program.h"
-#include "conex/kkt_solver_factory.h"
 
 #include <vector>
 
 #include "conex/divergence.h"
+#include "conex/kkt_solver_factory.h"
 #include "conex/newton_step.h"
-
 #include "conex/quadratic_cost.h"
 
 using Eigen::MatrixXd;

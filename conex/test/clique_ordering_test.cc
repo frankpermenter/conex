@@ -1,10 +1,9 @@
 #include "conex/clique_ordering.h"
-#include "conex/debug_macros.h"
-
-#include "gtest/gtest.h"
 
 #include "conex/block_triangular_operations.h"
+#include "conex/debug_macros.h"
 #include "conex/supernodal_solver.h"
+#include "gtest/gtest.h"
 
 namespace conex {
 using Eigen::MatrixXd;

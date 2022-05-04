@@ -1,9 +1,9 @@
 #include "conex/supernodal_solver.h"
-#include "conex/clique_ordering.h"
 
 #include <iostream>
 #include <map>
 
+#include "conex/clique_ordering.h"
 #include <Eigen/Dense>
 
 namespace conex {

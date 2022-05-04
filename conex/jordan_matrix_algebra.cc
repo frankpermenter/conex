@@ -1,4 +1,5 @@
 #include "conex/jordan_matrix_algebra.h"
+
 #include "conex/debug_macros.h"
 //#include "conex/eigen_decomp.h"
 

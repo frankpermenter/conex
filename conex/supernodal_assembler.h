@@ -1,11 +1,10 @@
 #pragma once
 #include <vector>
 
-#include <Eigen/Dense>
-
 #include "conex/constraint.h"
 #include "conex/newton_step.h"
 #include "conex/supernodal_cholesky_data.h"
+#include <Eigen/Dense>
 
 namespace conex {
 

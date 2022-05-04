@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+
 #include "conex/constraint_interface.h"
 #include "conex/newton_step.h"
 #include <Eigen/Dense>

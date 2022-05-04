@@ -1,8 +1,8 @@
 #include "conex/conjugate_gradient_solvers.h"
-#include "gtest/gtest.h"
 
 #include "conex/constraint_manager.h"
 #include "conex/kkt_solver_factory.h"
+#include "gtest/gtest.h"
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {

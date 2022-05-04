@@ -1,8 +1,7 @@
 #pragma once
-#include <Eigen/Dense>
-
 #include "conex/error_checking_macros.h"
-
+#include <Eigen/Dense>
+#include <iostream>
 namespace conex {
 
 class KKTSolverBase {

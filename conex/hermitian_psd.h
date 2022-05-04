@@ -1,10 +1,9 @@
 #pragma once
-#include <Eigen/Dense>
-
 #include "conex/error_codes.h"
 #include "conex/jordan_matrix_algebra.h"
 #include "conex/newton_step.h"
 #include "conex/workspace.h"
+#include <Eigen/Dense>
 
 namespace conex {
 

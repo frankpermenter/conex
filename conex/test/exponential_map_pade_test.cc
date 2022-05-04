@@ -1,11 +1,9 @@
-#include "gtest/gtest.h"
-
 #include "conex/exponential_map_pade.h"
 
+#include "conex/debug_macros.h"
+#include "gtest/gtest.h"
 #include <Eigen/Dense>
 #include <unsupported/Eigen/MatrixFunctions>
-
-#include "conex/debug_macros.h"
 
 namespace conex {
 

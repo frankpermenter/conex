@@ -1,7 +1,79 @@
 #include "conex/kkt_tree_solver.h"
+
 #include "conex/tree_utils.h"
 
 namespace conex {
+
+class DistanceToRootRecursion{
+ public:
+  DistanceToRootRecursion(const std::vector<int>& parent) : parent_(parent),
+  distance_(parent.size(), -1) {}
+  int ComputeDistanceToRootHelper(int i) {
+    if (distance_[i] >= 0) {
+      return distance_[i];
+    } else {
+     int distance_of_new = 0;
+      if (parent_.at(i) != -1) {
+        distance_of_new = 1 + ComputeDistanceToRootHelper(parent_.at(i)); 
+      }
+      distance_[i] = distance_of_new;
+      return distance_[i];
+    }
+  }
+  std::vector<int> Compute() {
+    for (size_t i = 0; i < parent_.size(); i++) {
+      ComputeDistanceToRootHelper(i);
+    }
+    return distance_;
+  }
+ private:
+  std::vector<int> parent_;
+  std::vector<int> distance_;
+};
+
+std::vector<int> ComputeDistanceToRoot(const std::vector<int>& parent) {
+  std::vector<int> distance_to_root;
+  return DistanceToRootRecursion(parent).Compute();
+}
+
+void FillIn(std::vector<int> system_to_parent, int num_variables,
+            std::vector<KKTSubsystem*>* systems) {
+
+  std::vector<int> system_to_distance_to_root = ComputeDistanceToRoot(system_to_parent);
+  std::vector<int> eliminated(num_variables, -1);
+
+  // Detect if variable is a supernode of clique i and
+  // clique j.  If so, apply running intersection property
+  // to the path from clique i and to clique j:
+  //  1) Make a supernode of the clique closest to the root.
+  //  2) Make a separator of all other cliques.
+  for (size_t i = 0; i < systems->size(); ++i) {
+    for (int v : systems->at(i)->supernodes()) {
+      const bool variable_already_eliminated = eliminated.at(v) > -1;
+      if (variable_already_eliminated) {
+        auto path_in_tree = PathInForest(i, eliminated.at(v), system_to_parent, 
+                                                         system_to_distance_to_root);
+        for (size_t j = 0; j < path_in_tree.size() - 1; j++) {
+          auto e = path_in_tree.at(j);
+          systems->at(e)->AddSeparator(v);
+        }
+        eliminated.at(v) = path_in_tree.back();
+      } else {
+        eliminated.at(v) = i;
+      }
+    }
+  }
+
+  for (auto& s : *systems) {
+    s->SetSupernodes({});
+  }
+
+  for (size_t i = 0; i < eliminated.size(); i++) {
+    if (eliminated.at(i) != -1) {
+      systems->at(eliminated.at(i))->AddSupernode(i);
+    }
+  }
+}
 
 void IntersectionOfSorted(const std::vector<int>& v1,
                           const std::vector<int>& v2, std::vector<int>* v3) {
@@ -45,10 +117,8 @@ class SymmetricMatrix {
 class Weight {
  public:
   Weight(SymmetricMatrix<vector<int>>& intersections,
-         const vector<KKTSubsystem*>& cliques_sorted) 
-      : 
-        intersections_(intersections),
-        subsystems_(cliques_sorted) {}
+         const vector<KKTSubsystem*>& cliques_sorted)
+      : intersections_(intersections), subsystems_(cliques_sorted) {}
   int num_nodes_;
   SymmetricMatrix<vector<int>>& intersections_;
   const vector<KKTSubsystem*>& subsystems_;
@@ -56,7 +126,7 @@ class Weight {
   size_t get_weight(int active, int i) {
     // Weight is the size of intersection.
     if (intersections_(active, i).size() == 0) {
-      IntersectionOfSorted(subsystems_.at(active)->shared_variables(), 
+      IntersectionOfSorted(subsystems_.at(active)->shared_variables(),
                            subsystems_.at(i)->shared_variables(),
                            &intersections_(active, i));
     }
@@ -64,9 +134,11 @@ class Weight {
   }
 };
 
+/* 
+Visit nodes of clique intersection graph using weighted DFS.
+*/
 int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
-                          int root_in,
-                          bool validate_leaf_nodes,
+                          int root_in, bool validate_leaf_nodes,
                           SymmetricMatrix<vector<int>>* intersections_ptr,
                           RootedTree* tree_ptr) {
   auto& tree = *tree_ptr;
@@ -76,7 +148,6 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
   CONEX_ASSERT(root_in < n, "Invalid root node.");
 
   vector<int> visited(n, 0);
-
   std::stack<int> node_stack;
   int root = root_in;
   if (root < 0) {
@@ -86,9 +157,10 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
   node_stack.push(root);
   int num_visited = 0;
   while (num_visited < n) {
-    int active = node_stack.top();
+    int active = node_stack.top(); 
     if (visited.at(active) == 0) {
       visited.at(active) = 1;
+      num_visited++;
       tree.parent.at(active) = -1;
     }
 
@@ -113,18 +185,20 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
     for (auto e : argmax) {
       node_stack.push(e);
       visited.at(e) = 1;
+      num_visited++;
       tree.parent.at(e) = active;
     }
 
     // Process leaf node.
     if (argmax.size() == 0) {
+      node_stack.pop();
       // If node is invalid leaf node, move it up the
       // tree until a valid leaf is reached.  This
       // leads to the following transformation:
       //
       //     R            I*
       //    I  V          I
-      //    I  V   =>     I 
+      //    I  V   =>     I
       //   *I  V          R
       //                  V
       //                  V
@@ -142,7 +216,6 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
         }
       }
 
-      node_stack.pop();
       if (node_stack.size() == 0) {
         auto node = GetUnvisited(visited);
         if (node == -1) {
@@ -153,14 +226,13 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
       }
     }
   }
+  DUMP(tree.parent);
   return -1;
 }
 
-}
-
+}  // namespace conex
 
 namespace conex {
-
 
 using T = SymmetricLinearSystemTreeSolver;
 
@@ -202,27 +274,32 @@ bool T::DoFactor() {
 void T::Finalize(const Options& options) {
   RootedTree tree(subsystems_.size());
   SymmetricMatrix<vector<int>> intersections(subsystems_.size());
-  PickCliqueOrderHelper(subsystems_, options.root_node, 
-                                      options.validate_leaf_nodes,
-                                     &intersections, &tree);
-  MakeTree(tree.parent, options.check_for_zero_pivots);
+  PickCliqueOrderHelper(subsystems_, options.root_node,
+                        options.validate_leaf_nodes, &intersections, &tree);
+  Finalize(tree.parent, options.check_for_zero_pivots);
 }
 
-void T::MakeTreeHelper(const std::vector<int>& parent) {
-  CONEX_DEMAND(parent.size() == subsystems_.size(), "Size of parent vector must equal number of subsystems.");
+void T::SetEliminationTree(const std::vector<int>& parent) {
   roots_.clear();
   for (auto s : subsystems_) {
     s->Reset();
   }
   for (size_t i = 0; i < parent.size(); ++i) {
     if (parent[i] >= 0) {
-      CONEX_DEMAND(parent[i] != static_cast<int>(i), "Tree is malformed: node cannot be own parent.");
+      CONEX_DEMAND(parent[i] != static_cast<int>(i),
+                   "Tree is malformed: node cannot be own parent.");
       subsystems_.at(parent[i])->AddChild(subsystems_.at(i));
     } else {
       roots_.push_back(subsystems_.at(i));
     }
   }
+}
 
+void T::FinalizeHelper(const std::vector<int>& parent) {
+  CONEX_DEMAND(parent.size() == subsystems_.size(),
+               "Size of parent vector must equal number of subsystems.");
+
+  SetEliminationTree(parent);
   // Set supernodes from parent.
   for (size_t i = 0; i < parent.size(); ++i) {
     if (parent[i] >= 0) {
@@ -243,8 +320,11 @@ void T::MakeTreeHelper(const std::vector<int>& parent) {
       std::vector<int> v2 = subsystems_.at(i)->shared_variables();
       std::sort(v2.begin(), v2.end());
       subsystems_.at(i)->SetSupernodes(v2);
+      subsystems_.at(i)->SetSeparators({});
     }
   }
+
+ FillIn(parent, number_of_variables(), &subsystems_);
 
   // Post-order
   variable_to_elimination_position_.resize(number_of_variables());
@@ -257,16 +337,16 @@ void T::MakeTreeHelper(const std::vector<int>& parent) {
   }
 }
 
-bool T::CheckForZeroPivot(const std::vector<int>& parent, 
+bool T::CheckForZeroPivot(const std::vector<int>& parent,
                           std::vector<int>* index_of_zero_pivot) {
   index_of_zero_pivot->clear();
-  MakeTreeHelper(parent);
+  FinalizeHelper(parent);
   Assemble();
-  int i = 0; 
+  int i = 0;
   for (auto r : subsystems_) {
     if (r->supernodes().size() > 0) {
-      Eigen::MatrixXd T = r->supernode_submatrix();
-      T = T.cwiseProduct(T);
+      Eigen::MatrixXd T = r->supernode_submatrix().selfadjointView<Eigen::Lower>();
+      T = T.transpose() * T;
       bool zero_pivot = T.colwise().sum().minCoeff() == 0;
       if (zero_pivot) {
         index_of_zero_pivot->push_back(i);
@@ -277,31 +357,12 @@ bool T::CheckForZeroPivot(const std::vector<int>& parent,
   return index_of_zero_pivot->size() > 0;
 }
 
-void T::MakeTree(const std::vector<int>& parent, bool check_for_zero_pivot) {
-  MakeTreeHelper(parent);
-  if (check_for_zero_pivot){
+void T::Finalize(const std::vector<int>& parent, bool check_for_zero_pivot) {
+  FinalizeHelper(parent);
+  if (check_for_zero_pivot) {
     std::vector<int> index_of_zero_pivot;
     if (CheckForZeroPivot(parent, &index_of_zero_pivot)) {
       throw std::runtime_error("Invalid tree: zero pivot detected.");
-    }
-  }
-}
-
-void T::RepairTreeInPlace(std::vector<int>* parent_ptr) {
-  auto& parent = *parent_ptr;
-  bool regenerate = true;
-  std::vector<int> zero_pivot_indices;
-  while (regenerate) {
-    regenerate = false;
-    bool zero_pivot = CheckForZeroPivot(parent, &zero_pivot_indices);
-    if (zero_pivot) {
-      for (auto i : zero_pivot_indices) {
-        int parent_index = parent[i];
-        int parent_of_parent = parent[parent_index];
-        parent[i] = parent_of_parent;
-        parent[parent_index] = i;
-        regenerate = true;
-      }
     }
   }
 }

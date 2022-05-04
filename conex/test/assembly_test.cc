@@ -1,18 +1,15 @@
 #include <any>
+#include <chrono>
 
+#include "conex/block_triangular_operations.h"
 #include "conex/clique_ordering.h"
 #include "conex/constraint_manager.h"
 #include "conex/debug_macros.h"
-#include "conex/kkt_solver.h"
-
-#include "gtest/gtest.h"
-
-#include "conex/block_triangular_operations.h"
 #include "conex/equality_constraint.h"
+#include "conex/kkt_solver.h"
 #include "conex/supernodal_assembler.h"
 #include "conex/supernodal_solver.h"
-
-#include <chrono>
+#include "gtest/gtest.h"
 
 namespace conex {
 

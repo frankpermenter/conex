@@ -1,6 +1,6 @@
 #include "conex/block_triangular_operations.h"
-#include "conex/supernodal_solver.h"
 
+#include "conex/supernodal_solver.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 

@@ -1,6 +1,7 @@
 #define EIGEN_RUNTIME_NO_MALLOC
 
 #include "conex/quadratic_cone_constraint.h"
+
 #include "conex/newton_step.h"
 
 namespace conex {

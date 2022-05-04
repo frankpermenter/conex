@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+
 #include "conex/RLDLT.h"
 #include "conex/triangular_matrix_workspace.h"
 #include <Eigen/Dense>

@@ -247,7 +247,10 @@ cc_library(
         "tree_utils.h",
     ],
     visibility = ["//visibility:public"],
-    deps = ["@eigen",  ":error_checking"],
+    deps = [
+        ":error_checking",
+        "@eigen",
+    ],
 )
 
 cc_library(
@@ -284,6 +287,7 @@ cc_library(
         "error_checking_macros.h",
         "error_codes.h",
     ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -591,22 +595,24 @@ cc_test(
 )
 
 cc_library(
-    name = "kkt_subsystem",
+    name = "kkt_tree_solver",
     srcs = [
         "debug_macros.h",
         "kkt_subsystem.cc",
         "kkt_subsystem.h",
         "kkt_tree_solver.cc",
         "kkt_tree_solver.h",
+        "RLDLT.h",
     ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
+        "tree_utils",
         ":error_checking",
         ":kkt_solver_interface",
-        "tree_utils",
         "@eigen",
         "@gtest//:main",
     ],
+    visibility = ["//visibility:public"],
 )
 
 cc_test(
@@ -618,23 +624,9 @@ cc_test(
     ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
-        "kkt_subsystem",
+        "kkt_tree_solver",
         ":error_checking",
         ":kkt_solver_interface",
-        "@eigen",
-        "@gtest//:main",
-    ],
-)
-
-
-cc_test(
-    name = "kkt_tree_solver",
-    srcs = [ "test/kkt_tree_solver.cc",
-    ],
-    copts = ["-Iexternal/gtest/include"],
-    deps = [
-        "kkt_subsystem",
-        ":error_checking",
         "@eigen",
         "@gtest//:main",
     ],

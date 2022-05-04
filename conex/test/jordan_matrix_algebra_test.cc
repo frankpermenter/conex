@@ -1,10 +1,9 @@
 #include "conex/jordan_matrix_algebra.h"
 
-#include "gtest/gtest.h"
-#include <Eigen/Dense>
-
 #include "conex/debug_macros.h"
 #include "conex/test/test_util.h"
+#include "gtest/gtest.h"
+#include <Eigen/Dense>
 
 namespace conex {
 

@@ -1,6 +1,8 @@
 #include <stdlib.h>
+
 #include <iostream>
 #include <memory>
+
 #include "conex/cone_program.h"
 #include "conex/constraint.h"
 #include "conex/equality_constraint.h"

@@ -1,9 +1,9 @@
 #pragma once
 #include <vector>
-#include <Eigen/Dense>
 
 #include "conex/debug_macros.h"
 #include "conex/error_checking_macros.h"
+#include <Eigen/Dense>
 // A KKT sub-system is a symmetric system of linear equations of the
 // form:
 //
@@ -83,16 +83,23 @@ class KKTSubsystem {
   std::vector<int> separators() const { return separators_; }
   std::vector<int> supernodes() const { return supernodes_; }
 
-
   const std::vector<int>& shared_variables() const { return variables_; }
 
   void SetSeparators(const std::vector<int>& separators) {
     separators_ = separators;
-  };
+  }
 
   void SetSupernodes(const std::vector<int>& supernodes) {
     supernodes_ = supernodes;
   };
+
+  void AddSupernode(int i) {
+    supernodes_.push_back(i);
+  }
+
+  void AddSeparator(int i) {
+    separators_.push_back(i);
+  }
 
   int ComputePostOrdering(int offset,
                           std::vector<int>* variable_to_elimination_position);
@@ -106,7 +113,6 @@ class KKTSubsystem {
     child->SetParent(this);
   }
 
-
   void Assemble();
   bool is_valid_leaf() { return DoIsValidLeaf(); }
 
@@ -119,7 +125,9 @@ class KKTSubsystem {
   void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
 
   Eigen::MatrixXd supernode_submatrix() { return supernode_submatrix_; }
-  Eigen::MatrixXd separator_schur_complement() { return separator_schur_complement_; }
+  Eigen::MatrixXd separator_schur_complement() {
+    return separator_schur_complement_;
+  }
   Eigen::MatrixXd separator_rows() { return separator_rows_; }
 
   void Reset() {
@@ -128,7 +136,6 @@ class KKTSubsystem {
   }
 
  protected:
-
   virtual void DoInitialize() {
     supernode_submatrix_.resize(supernodes_.size(), supernodes_.size());
     separator_rows_.resize(separators_.size(), supernodes_.size());
@@ -153,17 +160,20 @@ class KKTSubsystem {
     return variable_to_local_elimination_position_;
   }
 
- private:
+  void ProvideColumnUpdate(const std::vector<int>& target_supernodes, 
+                           const std::vector<int>& target_separators,   
+                           Eigen::Ref<Eigen::MatrixXd> supernode_submatrix, 
+                           Eigen::Ref<Eigen::MatrixXd> separator_rows);
 
+
+ private:
   void SetParent(KKTSubsystem* parent) {
     CONEX_DEMAND(parent, "Received nullptr");
     CONEX_DEMAND(parent_ == nullptr, "Parent already assigned.");
     parent_ = parent;
   }
 
-  virtual bool DoIsValidLeaf() {
-    return true;
-  }
+  virtual bool DoIsValidLeaf() { return true; }
 
   // separators_ and supernodes_ are disjoint and their
   // union contains variables_
@@ -180,17 +190,14 @@ class KKTSubsystem {
                                 const std::vector<int>& source_column_labels,
                                 int source_column_index);
 
-  size_t GetSupernodePosition(int global_label);
-  size_t GetSeparatorPosition(int global_label);
-  void DoScatterSeparatorSubmatrix() {
-    if (parent_ && separators_.size() > 0) {
-      parent_->IncrementSubmatrix(separator_schur_complement_, separators_,
-                                  0 /*start index*/);
-    }
-  }
+  int GetSupernodePosition(int global_label);
+  int GetSeparatorPosition(int global_label);
+  void DoScatterSeparatorSubmatrix();
 
   void IncrementSubmatrix(const Eigen::MatrixXd& S,
                           const std::vector<int>& vars, size_t start_index);
+
+
 };
 
 }  // namespace conex

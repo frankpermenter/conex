@@ -21,12 +21,9 @@ void PickCliqueOrder(
     std::vector<std::vector<int>>* separators,
     std::vector<std::vector<std::vector<int>>>* post_ordering = NULL);
 
-void PickCliqueOrder(
-    const std::vector<std::vector<int>>& cliques_sorted, int root,
-    RootedTree* order, 
-    std::vector<std::vector<int>>* supernodes,
-    std::vector<std::vector<int>>* separators);
-
-
+void PickCliqueOrder(const std::vector<std::vector<int>>& cliques_sorted,
+                     int root, RootedTree* order,
+                     std::vector<std::vector<int>>* supernodes,
+                     std::vector<std::vector<int>>* separators);
 
 }  // namespace conex

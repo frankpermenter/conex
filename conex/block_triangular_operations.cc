@@ -1,4 +1,5 @@
 #include "conex/block_triangular_operations.h"
+
 #include "conex/RLDLT.h"
 #include "conex/debug_macros.h"
 
