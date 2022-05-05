@@ -9,6 +9,7 @@ class KKTSolverBase {
   void Assemble() {
     DoAssemble();
     assembled_ = true;
+    factored_ = false;
   }
 
   bool Factor() {

@@ -4,6 +4,6 @@
 
 namespace conex {
 
-ConvexSetNode MakeConvexSetNode(const Graph& graph, int node_index);
+std::unique_ptr<ConvexSetNode> MakeConvexSetNode(const Graph& graph, int node_index);
 
 }

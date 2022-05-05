@@ -185,11 +185,19 @@ struct ConvexSetNodeParameters {
   std::vector<int> outgoing_edge_start_positions;
 };
 
+#define CONEX_NO_COPY_NO_MOVE(T)\
+T(const T&) = delete;\
+T(T&&) = delete;\
+T& operator=(const T&) = delete;\
+T& operator=(T&&) = delete;\
+
 class ConvexSetNode : public KKTSubsystem {
  public:
+  CONEX_NO_COPY_NO_MOVE(ConvexSetNode)
 
   ConvexSetNode(const std::vector<int>& scalar_variables, 
                 const ConvexSetNodeParameters& parameters);
+
 
   int num_supernodes() { return supernodes().size(); }
   int num_separators() { return separators().size(); }
@@ -308,7 +316,7 @@ class ConvexSetNode : public KKTSubsystem {
   }
 
  private:
-  using FactorizationType = CholeskySolver<Eigen::RLDLT<Eigen::MatrixXd>, false>;
+  using FactorizationType = CholeskySolver<Eigen::RLDLT<Eigen::MatrixXd>, true>;
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     auto data = MakeSeperatorMatrix();

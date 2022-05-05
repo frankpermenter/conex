@@ -22,11 +22,16 @@ class CholeskySolver {
     if (llt_.info() != Eigen::Success) {
       throw std::runtime_error("Factorization failed.");
     }
+    factored_ = true;
     Eigen::internal::set_is_malloc_allowed(true);
   }
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const {
+    CONEX_CHECK(factored_);
+    if (llt_.info() != Eigen::Success) {
+      throw std::runtime_error("Factorization failed.");
+    }
     if constexpr (schur_complement_mode) {
       llt_.solveInPlace(y);
     } else {
@@ -36,6 +41,7 @@ class CholeskySolver {
 
   void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const {
+    CONEX_CHECK(factored_);
     if constexpr (schur_complement_mode) {
       CONEX_NOOP(y);
       return;
@@ -74,6 +80,7 @@ class CholeskySolver {
   Eigen::Ref<Eigen::MatrixXd> separator_rows_; 
   Eigen::Ref<Eigen::MatrixXd> separator_schur_complement_; 
   FactorizationMethod llt_;
+  bool factored_ = false;
 };
 
 } // namespace conex

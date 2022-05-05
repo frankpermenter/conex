@@ -46,7 +46,7 @@ void PrepareInputs(
 
 } // namespace 
 
-ConvexSetNode MakeConvexSetNode(const Graph& graph, int node_index) {
+std::unique_ptr<ConvexSetNode> MakeConvexSetNode(const Graph& graph, int node_index) {
   ConvexSetNodeParameters params;
   std::vector<int> variables;
   PrepareInputs(graph, node_index, &variables, &params);
@@ -54,7 +54,7 @@ ConvexSetNode MakeConvexSetNode(const Graph& graph, int node_index) {
   params.num_incoming = node.incoming_edges.size();
   params.num_outgoing = node.outgoing_edges.size();
   params.spatial_dimension = node.spatial_dimension;
-  return ConvexSetNode(variables, params);
+  return std::make_unique<ConvexSetNode>(variables, params);
 }
 
 } // namespace conex

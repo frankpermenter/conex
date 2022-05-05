@@ -26,7 +26,7 @@ Time Verify(const GraphData& data,
   std::vector<std::unique_ptr<StaticSubsystem>> static_subsystems(num_nodes);
 
   for (int i = 0; i < num_nodes; i++) {
-    nodes.at(i) = std::make_unique<ConvexSetNode>(std::move(MakeConvexSetNode(graph, i)));
+    nodes.at(i) = MakeConvexSetNode(graph, i);
   }
 
   for (int i = 0; i < num_nodes; i++) {
@@ -92,12 +92,15 @@ Time Profile(const GraphData& data,
   graph.IdentifyFillInEdges();
 
   int num_nodes = graph.nodes_.size();
+
   std::vector<std::unique_ptr<ConvexSetNode>> nodes(num_nodes);
   std::vector<std::unique_ptr<StaticSubsystem>> static_subsystems(num_nodes);
 
   for (int i = 0; i < num_nodes; i++) {
-    nodes.at(i) = std::make_unique<ConvexSetNode>(std::move(MakeConvexSetNode(graph, i)));
+    nodes.at(i) = MakeConvexSetNode(graph, i);
   }
+
+
 
   for (int i = 0; i < num_nodes; i++) {
     static_subsystems.at(i) = std::make_unique<StaticSubsystem>(nodes.at(i)->Submatrix(), nodes.at(i)->shared_variables());
@@ -121,17 +124,20 @@ if (!only_custom) {
   Eigen::MatrixXd M = system_using_custom_assemblers.KKTMatrix(true);
   VectorXd x; x.setLinSpaced(M.cols(), -1, 1);
   VectorXd y = M * x;
+  VectorXd b = y;
 
   START_LOG_TIMER
+  system_using_custom_assemblers.Factor();
   system_using_custom_assemblers.SolveInPlace(y, false);
   END_LOG_TIMER(stats.solve_time)
   EXPECT_NEAR( (y-x).norm(), 0, 1e-12);
 
-  Eigen::LDLT<Eigen::MatrixXd> llt;
+  Eigen::RLDLT<Eigen::MatrixXd> llt;
   y = M * x;
   START_LOG_TIMER
     llt.compute(M);
   END_LOG_TIMER(stats.factor_time_dense);
+  DUMP(MatrixXd(llt.matrixL()));
 
   Eigen::MatrixXd M_lower = M.triangularView<Eigen::Lower>();
 
