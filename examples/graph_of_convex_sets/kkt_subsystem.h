@@ -2,45 +2,12 @@
 #include <Eigen/Dense>
 
 #include "conex/kkt_subsystem.h"
+#include "conex/cholesky_solvers.h"
 #include "conex/RLDLT.h"
 //#include "directed_graph.h"
 
 namespace conex {
 using Eigen::MatrixXd;
-constexpr int schur_complement_mode = true;
-class CholeskySolver : public KKTSubsystem {
- public:
-  CholeskySolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
-
-  void DoEliminateSupernodeColumns() override {
-    llt_.compute(supernode_submatrix_);
-  }
-
-  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    if constexpr (schur_complement_mode) {
-      llt_.solveInPlace(y);
-    } else {
-      llt_.matrixL().solveInPlace(y);
-    }
-  }
-
-  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    if constexpr (schur_complement_mode) {
-      (void) y;
-      return;
-    } else {
-      llt_.matrixL().transpose().solveInPlace(y);
-    }
-  }
-
-  void DoComputeSeparatorSchurComplement() override;
-
-  Eigen::RLDLT<Eigen::MatrixXd> llt_;
-  Eigen::Matrix<double, -1, -1, Eigen::RowMajor> temp_row_major_;
-};
-
 
 class LUSolver : public KKTSubsystem {
  public:
@@ -227,6 +194,24 @@ class ConvexSetNode : public KKTSubsystem {
   int num_supernodes() { return supernodes().size(); }
   int num_separators() { return separators().size(); }
 
+  void DoEliminateSupernodeColumns() override {
+    factorization_->DoEliminateSupernodeColumns();
+  }
+
+  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    factorization_->DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(y);
+  }
+
+  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    factorization_->DoApplyInverseOfRightFactorOfSupernodeSubmatrix(y);
+  }
+
+  void DoComputeSeparatorSchurComplement() override {
+    factorization_->DoComputeSeparatorSchurComplement();
+  }
+
   Eigen::MatrixXd MakeSuperNodeSubmatrix() {
     Eigen::MatrixXd Q(num_supernodes(), num_supernodes());
     Q.setZero();
@@ -297,7 +282,7 @@ class ConvexSetNode : public KKTSubsystem {
       Q(offset_row, offset_col) = -1;
       offset_row += spatial_dim;
     }
-    Q.setConstant(-.01);
+ //   Q.setConstant(-.01);
     return Q;
   }
 
@@ -318,12 +303,12 @@ class ConvexSetNode : public KKTSubsystem {
       Q(offset_row, offset_col) = -1;
       offset_row += spatial_dim + 1;
     }
-    Q.setConstant(-.01);
+//    Q.setConstant(-.01);
     return Q;
   }
 
-
  private:
+  using FactorizationType = CholeskySolver<Eigen::RLDLT<Eigen::MatrixXd>, false>;
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     auto data = MakeSeperatorMatrix();
@@ -336,12 +321,14 @@ class ConvexSetNode : public KKTSubsystem {
     CONEX_CHECK(data.cols() == supernode_submatrix_.cols());
     supernode_submatrix_ = data;
     separator_schur_complement_.setZero();
+    factorization_ = std::make_unique<FactorizationType>(supernode_submatrix_, separator_rows_, separator_schur_complement_);
   }
 
   int spatial_dim = 0;
   int num_incoming = 0;
   int num_outgoing = 0;
   ConvexSetNodeParameters params_;
+  std::unique_ptr<FactorizationType> factorization_;
 };
 
 } // namespace conex

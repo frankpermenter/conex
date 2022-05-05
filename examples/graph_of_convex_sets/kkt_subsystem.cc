@@ -37,47 +37,26 @@ std::vector<int> ConcatenateVariablesInLocalOrdering(
 }
 #endif
 using T = ConvexSetNode;
-  T::ConvexSetNode(const std::vector<int>& variables, 
-                   const ConvexSetNodeParameters& params) : 
-                   CholeskySolver(variables), params_(params) {
-    int num_supernodes =
-        params.num_incoming * (2 * params.spatial_dimension + 1) +
-        params.spatial_dimension + 1;
 
-    std::vector<int> supernodes;
-    supernodes.insert(supernodes.begin(), variables.begin(),
-                      variables.begin() + num_supernodes);
+T::ConvexSetNode(const std::vector<int>& variables, 
+                 const ConvexSetNodeParameters& params) : 
+                 KKTSubsystem(variables, 0), params_(params) {
+  int num_supernodes =
+      params.num_incoming * (2 * params.spatial_dimension + 1) +
+      params.spatial_dimension + 1;
 
-    std::vector<int> separators;
-    separators.insert(separators.begin(), variables.begin() + num_supernodes,
-                      variables.end());
-    SetSupernodes(supernodes);
-    SetSeparators(separators);
-    num_incoming = params.num_incoming; 
-    num_outgoing = params.num_outgoing;
-    spatial_dim = params.spatial_dimension;
-  }
+  std::vector<int> supernodes;
+  supernodes.insert(supernodes.begin(), variables.begin(),
+                    variables.begin() + num_supernodes);
 
-void CholeskySolver::DoComputeSeparatorSchurComplement() {
-  if (temp_row_major_.size() == 0) {
-    temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
-  } 
-  if (separator_rows_.size() > 0) {
-    Eigen::internal::set_is_malloc_allowed(false);
-  // Use row major storage since we are operating on transpose.
-  // This allows the compiler to remove a copy.
-    temp_row_major_ = llt_.solve(separator_rows_.transpose());
-    #if 0
-    separator_schur_complement_.noalias() -= separator_rows_ * temp_row_major_;
-    #else 
-    int n = separator_schur_complement_.rows();
-    for (int j = 0; j < temp_row_major_.cols(); j++) {
-      separator_schur_complement_.col(j).tail(n - j) -= separator_rows_.bottomRows(n - j) * temp_row_major_.col(j);
-    }
-    #endif
-    Eigen::internal::set_is_malloc_allowed(true);
-  }
+  std::vector<int> separators;
+  separators.insert(separators.begin(), variables.begin() + num_supernodes,
+                    variables.end());
+  SetSupernodes(supernodes);
+  SetSeparators(separators);
+  num_incoming = params.num_incoming; 
+  num_outgoing = params.num_outgoing;
+  spatial_dim = params.spatial_dimension;
 }
-
 
 } // namespace conex
