@@ -600,6 +600,7 @@ cc_library(
         "debug_macros.h",
         "kkt_subsystem.cc",
         "kkt_subsystem.h",
+        "cholesky_solvers.h",
         "kkt_tree_solver.cc",
         "kkt_tree_solver.h",
         "RLDLT.h",

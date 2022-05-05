@@ -218,7 +218,7 @@ struct ConvexSetNodeParameters {
   std::vector<int> outgoing_edge_start_positions;
 };
 
-class ConvexSetNode : public CholeskySolver {
+class ConvexSetNode : public KKTSubsystem {
  public:
 
   ConvexSetNode(const std::vector<int>& scalar_variables, 
@@ -297,6 +297,7 @@ class ConvexSetNode : public CholeskySolver {
       Q(offset_row, offset_col) = -1;
       offset_row += spatial_dim;
     }
+    Q.setConstant(-.01);
     return Q;
   }
 
@@ -317,6 +318,7 @@ class ConvexSetNode : public CholeskySolver {
       Q(offset_row, offset_col) = -1;
       offset_row += spatial_dim + 1;
     }
+    Q.setConstant(-.01);
     return Q;
   }
 

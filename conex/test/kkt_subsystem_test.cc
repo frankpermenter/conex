@@ -7,6 +7,7 @@
 #include "conex/RLDLT.h"
 #include "conex/debug_macros.h"
 #include "conex/kkt_solver_interface.h"
+#include "conex/cholesky_solvers.h"
 #include "conex/kkt_tree_solver.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
@@ -35,41 +36,6 @@ MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix,
 
 using Eigen::MatrixXd;
 
-template <typename FactorizationMethod, bool schur_complement_mode>
-class CholeskySolver : public KKTSubsystem {
- public:
-  CholeskySolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
-
-  void DoEliminateSupernodeColumns() override {
-    llt_.compute(supernode_submatrix_);
-  }
-
-  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    if constexpr (schur_complement_mode) {
-      llt_.solveInPlace(y);
-    } else {
-      llt_.matrixL().solveInPlace(y);
-    }
-  }
-
-  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    if constexpr (schur_complement_mode) {
-      CONEX_NOOP(y);
-      return;
-    } else {
-      llt_.matrixL().transpose().solveInPlace(y);
-    }
-  }
-
-  void DoComputeSeparatorSchurComplement() override {
-    separator_schur_complement_ -=
-        separator_rows_ * llt_.solve(separator_rows_.transpose());
-  }
-
-  FactorizationMethod llt_;
-};
 
 class LUSolver : public KKTSubsystem {
  public:
