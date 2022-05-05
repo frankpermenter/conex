@@ -220,7 +220,7 @@ GraphData GenerateRandomDAG(int num_nodes, double edge_density) {
 
 
 void DoTest(int num_nodes, int spatial_dim, Time* stats_ptr) {
-  double edge_density = 0;
+  double edge_density = 1;
   auto& stats = *stats_ptr;
 
   GraphData graph = GenerateRandomDAG(num_nodes, edge_density);
@@ -230,8 +230,8 @@ void DoTest(int num_nodes, int spatial_dim, Time* stats_ptr) {
   stats = Profile(graph, {});
 
   std::cout << "\n nodes: " << num_nodes << ", Spatial dim: " << spatial_dim
-            //<< ", AMD fill-in: " <<  (double) stats.non_zeros_amd/stats.non_zeros_lower_tri << ", " 
-            //<< ", AMD solve: " <<  stats.factor_time_amd << ", " 
+            << ", AMD fill-in: " <<  (double) stats.non_zeros_amd/stats.non_zeros_lower_tri << ", " 
+            << ", AMD solve: " <<  stats.factor_time_amd << ", " 
 
             << ", Nat fill-in: " <<  (double) stats.non_zeros_natural/stats.non_zeros_lower_tri << ", "
             << ", Nat solve: " <<  stats.factor_time_natural 
@@ -254,11 +254,12 @@ stats.factor_time_natural = 0;
 stats.factor_time = 0;
 for (int i = 0; i < 10; i++) {
   Time stats_i;
-  DoTest(4, 2, &stats_i);
+  DoTest(9, 2, &stats_i);
   stats.factor_time_natural += stats_i.factor_time_natural;
   stats.factor_time += stats_i.factor_time;
 }
 DUMP(stats.factor_time_natural);
+DUMP(stats.factor_time_amd);
 DUMP(stats.factor_time);
 }
 

@@ -10,8 +10,7 @@ namespace conex {
 using Eigen::MatrixXd;
 
 class LUSolver : public KKTSubsystem {
- public:
-  LUSolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
+ public: LUSolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
 
   void DoEliminateSupernodeColumns() override {
     lu_.compute(supernode_submatrix_.selfadjointView<Eigen::Lower>());
@@ -290,7 +289,7 @@ class ConvexSetNode : public KKTSubsystem {
       Q(offset_row, offset_col) = -1;
       offset_row += spatial_dim;
     }
- //   Q.setConstant(-.01);
+//    Q.setConstant(-.01);
     return Q;
   }
 
@@ -311,7 +310,7 @@ class ConvexSetNode : public KKTSubsystem {
       Q(offset_row, offset_col) = -1;
       offset_row += spatial_dim + 1;
     }
-//    Q.setConstant(-.01);
+ //   Q.setConstant(-.01);
     return Q;
   }
 

@@ -26,8 +26,6 @@ class RecursiveTopologicalSort {
      temporary_mark_.at(n) = 1;
 
      for (auto& e : nodes_.at(n).outgoing_edges) {
-     }
-     for (auto& e : nodes_.at(n).outgoing_edges) {
        visit(edges_.at(e).sink);
      }
      temporary_mark_.at(n) = 0;

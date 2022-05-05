@@ -137,7 +137,6 @@ if (!only_custom) {
   START_LOG_TIMER
     llt.compute(M);
   END_LOG_TIMER(stats.factor_time_dense);
-  DUMP(MatrixXd(llt.matrixL()));
 
   Eigen::MatrixXd M_lower = M.triangularView<Eigen::Lower>();
 
@@ -148,7 +147,6 @@ if (!only_custom) {
   Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>, Eigen::Lower, 
                         Eigen::NaturalOrdering<int>> llt_sparse;
 
-  DUMP(MatrixXd(Msparse));
   START_LOG_TIMER
     llt_sparse.compute(Msparse);
   END_LOG_TIMER(stats.factor_time_natural);
