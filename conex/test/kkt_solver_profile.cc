@@ -327,9 +327,9 @@ GTEST_TEST(KKTSubsystem, BlockDiagonal) {
 GTEST_TEST(KKTSubsystem, CliqueIntersectionGraphIsPath) {
   TestSystem test;
   BlockDiagonalMatrixParameters p;
-  p.block_size = 50;
-  p.num_blocks = 20;
-  p.overlap = 2;
+  p.block_size = 100;
+  p.num_blocks = 10;
+  p.overlap = 31;
   test.Initialize(p);
   auto& system = test.system;
   auto& full_matrix = test.full_matrix;

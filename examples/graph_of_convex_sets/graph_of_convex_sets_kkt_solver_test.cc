@@ -254,7 +254,7 @@ stats.factor_time_natural = 0;
 stats.factor_time = 0;
 for (int i = 0; i < 10; i++) {
   Time stats_i;
-  DoTest(10, 30, &stats_i);
+  DoTest(4, 2, &stats_i);
   stats.factor_time_natural += stats_i.factor_time_natural;
   stats.factor_time += stats_i.factor_time;
 }

@@ -110,12 +110,10 @@ Time Profile(const GraphData& data,
 
   system_using_custom_assemblers.SetEliminationTree(graph.node_to_parent_in_spanning_tree());
 
-for (int i = 0; i < 100; i++) {
-  START_LOG_TIMER
   system_using_custom_assemblers.Assemble();
+  START_LOG_TIMER
   system_using_custom_assemblers.Factor();
   END_LOG_TIMER(stats.factor_time)
-}
 
 bool only_custom = false;
 if (!only_custom) {
@@ -144,11 +142,13 @@ if (!only_custom) {
   Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>, Eigen::Lower, 
                         Eigen::NaturalOrdering<int>> llt_sparse;
 
+  DUMP(MatrixXd(Msparse));
   START_LOG_TIMER
     llt_sparse.compute(Msparse);
   END_LOG_TIMER(stats.factor_time_natural);
-   Eigen::SparseMatrix<double> factor = llt_sparse.matrixL();
-    stats.non_zeros_natural = factor.nonZeros();
+
+  Eigen::SparseMatrix<double> factor = llt_sparse.matrixL();
+   stats.non_zeros_natural = factor.nonZeros();
 
   Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>, Eigen::Lower> llt_amd;
   START_LOG_TIMER
