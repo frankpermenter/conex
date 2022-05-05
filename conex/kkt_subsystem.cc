@@ -174,6 +174,20 @@ void T::Assemble() {
   }
 }
 
+void T::Factor() {
+  for (auto& child : children_) {
+    child->Factor();
+    if (left_looking) {
+      child->ProvideColumnUpdate(supernodes_, separators_,
+                                 supernode_submatrix_, separator_rows_);
+    }
+  }
+  DoEliminateSupernodeColumns();
+  DoComputeSeparatorSchurComplement();
+  if (!IsRoot() && !left_looking) {
+    DoScatterSeparatorSubmatrix();
+  }
+}
 int T::ComputePostOrdering(int offset,
                            std::vector<int>* variable_to_elimination_position) {
   for (auto& child : children_) {

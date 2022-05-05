@@ -631,3 +631,19 @@ cc_test(
         "@gtest//:main",
     ],
 )
+cc_test(
+    name = "kkt_solver_profile",
+    srcs = [
+        "RLDLT.h",
+        "debug_macros.h",
+        "test/kkt_solver_profile.cc",
+    ],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "kkt_tree_solver",
+        ":error_checking",
+        ":kkt_solver_interface",
+        "@eigen",
+        "@gtest//:main",
+    ],
+)
