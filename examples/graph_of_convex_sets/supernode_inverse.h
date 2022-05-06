@@ -49,6 +49,7 @@ class SupernodeSubmatrix  {
   bool Factor() { return tree_solver_->Factor(); }
   void SolveInPlace(Eigen::Ref<Eigen::MatrixXd> x) { return tree_solver_->SolveInPlace(x); }
   void SetData(Eigen::Ref<Eigen::MatrixXd> full_matrix);
+  Eigen::MatrixXd MakeKKTMatrix() const { return tree_solver_->KKTMatrix(); }
  private:
   std::vector<std::unique_ptr<IncomingSpatialVariableBlock>> incoming_blocks_;
   std::unique_ptr<DenseBlock> dense_block_;

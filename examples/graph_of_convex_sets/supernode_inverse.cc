@@ -63,14 +63,31 @@ class IncomingSpatialVariableBlock : public IncomingSpatialVariableBlockBase  {
     std::iota(supernodes.begin(), supernodes.end(), SupernodeGlobalOffset(p, edge_number));
     SetSupernodes(supernodes);
 
+    seperator_global_offset_1_ = EdgeSeparatorGlobalOffset(p, edge_number);
+    seperator_global_size_1_ = p.spatial_dimension + 1;
     std::vector<int> separators(NumberOfSeparators(p));
-    std::iota(separators.begin(), separators.begin() + p.spatial_dimension + 1, 
-    EdgeSeparatorGlobalOffset(p, edge_number));
+    std::iota(separators.begin(), separators.begin() + seperator_global_size_1_, seperator_global_offset_1_);
+
+    seperator_global_offset_2_ = p.num_edges * (2 * p.spatial_dimension + 1);
+    seperator_global_size_2_ = p.spatial_dimension;
+    std::iota(separators.begin() + seperator_global_size_1_, separators.end(), seperator_global_offset_2_);
 
     SetSupernodes(supernodes);
     SetSeparators(separators);
     Initialize();
   }
+  void SetData(Eigen::Ref<MatrixXd> full_matrix) {
+    int offset = supernodes().at(0);
+    int size_super = supernodes().size();
+    supernode_submatrix_ = full_matrix.block(offset, offset, size_super, size_super);
+
+    separator_rows_.topRows(seperator_global_size_1_) = full_matrix.block(seperator_global_offset_1_ , offset, seperator_global_size_1_, size_super);
+    separator_rows_.bottomRows(seperator_global_size_2_) = full_matrix.block(seperator_global_offset_2_ , offset, seperator_global_size_2_, size_super);
+  }
+   int seperator_global_offset_1_ = 0;
+   int seperator_global_size_1_ = 0;
+   int seperator_global_offset_2_ = 0;
+   int seperator_global_size_2_ = 0;
 };
 
 
@@ -80,6 +97,7 @@ using T = SupernodeSubmatrix;
 T::~SupernodeSubmatrix() {}
 
 T::SupernodeSubmatrix(const Parameters& p) : incoming_blocks_(p.num_edges) {
+  CONEX_CHECK(p.num_edges > 0 && p.spatial_dimension > 0);
   tree_solver_ = std::make_unique<SymmetricLinearSystemTreeSolver>();
   for (int i = 0; i < p.num_edges; i++) {
     incoming_blocks_.at(i) = std::make_unique<IncomingSpatialVariableBlock>(p, i);
@@ -95,7 +113,9 @@ T::SupernodeSubmatrix(const Parameters& p) : incoming_blocks_(p.num_edges) {
 }
 
 void T::SetData(Eigen::Ref<Eigen::MatrixXd> full_matrix) {
-
+  for (auto& i : incoming_blocks_) {
+    i->SetData(full_matrix);
+  }
 }
 
 } // namespace conex
