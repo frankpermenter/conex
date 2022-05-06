@@ -40,6 +40,8 @@ T::ConvexSetNode(const std::vector<int>& variables,
                     variables.end());
   SetSupernodes(supernodes);
   SetSeparators(separators);
+  CONEX_CHECK(is_sequential(supernodes));
+  CONEX_CHECK(is_sorted_ascending(separators));
   num_incoming = params.num_incoming; 
   num_outgoing = params.num_outgoing;
   spatial_dim = params.spatial_dimension;
