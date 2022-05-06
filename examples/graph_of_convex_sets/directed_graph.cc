@@ -63,16 +63,19 @@ int T::AssignEliminationOrderHelper(int node_index, int offset) {
     offset = AssignEliminationOrderHelper(child, offset);
   }
 
+  for (auto e : nodes_.at(node_index).incoming_edges) {
+    // Spatial z_e
+    for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
+      ids_.edge_to_incoming_spatial_flow_variable.at(e).push_back(offset);
+      offset++;
+    }
+  }
+
   // Assign variable
   for (auto e : nodes_.at(node_index).incoming_edges) {
     // Spatial y_e
     for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
       ids_.edge_to_outgoing_spatial_flow_variable.at(e).push_back(offset);
-      offset++;
-    }
-    // Spatial z_e
-    for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
-      ids_.edge_to_incoming_spatial_flow_variable.at(e).push_back(offset);
       offset++;
     }
     ids_.edge_to_flow_variable.at(e) = offset;

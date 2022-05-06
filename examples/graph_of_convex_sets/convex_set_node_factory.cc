@@ -11,15 +11,17 @@ void PrepareInputs(
   auto ids = graph.ids_;
 
   auto& node = graph.nodes_.at(node_index);
+
   for (auto e : node.incoming_edges) {
-
-    params->outgoing_spatial_flow_of_incoming_edge_start_positions.push_back(variables->size());
-    auto& y_e = ids.edge_to_outgoing_spatial_flow_variable.at(e);
-    variables->insert(variables->end(), y_e.begin(), y_e.end());
-
     params->incoming_spatial_flow_start_positions.push_back(variables->size());
     auto& z_e = ids.edge_to_incoming_spatial_flow_variable.at(e);
     variables->insert(variables->end(), z_e.begin(), z_e.end());
+  }
+
+  for (auto e : node.incoming_edges) {
+    params->outgoing_spatial_flow_of_incoming_edge_start_positions.push_back(variables->size());
+    auto& y_e = ids.edge_to_outgoing_spatial_flow_variable.at(e);
+    variables->insert(variables->end(), y_e.begin(), y_e.end());
     
     params->incoming_flow_start_positions.push_back(variables->size());
     variables->push_back(ids.edge_to_flow_variable.at(e));
