@@ -111,6 +111,8 @@ T::ConvexSetNode(const std::vector<int>& variables,
       Q(offset_row, offset_col) = 10 + i;
       offset_col += 2 * spatial_dim + 1;
     }
+    DUMP(Q);
+    throw;
     return Q;
   }
 
