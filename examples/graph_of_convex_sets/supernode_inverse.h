@@ -31,13 +31,11 @@ namespace conex {
 using IncomingSpatialVariableBlockBase = 
 KKTCholeskySystem<CholeskySolver<Eigen::LLT<MatrixXd>, true>>;
 
-
 class DenseBlock;
 class IncomingSpatialVariableBlock;
 
-class SupernodeSubmatrix  {
+class SupernodeSubmatrix {
  public:
-
   struct Parameters {
     int num_edges;
     int spatial_dimension;
@@ -49,7 +47,8 @@ class SupernodeSubmatrix  {
   bool Factor() { return tree_solver_->Factor(); }
   void SolveInPlace(Eigen::Ref<Eigen::MatrixXd> x) { return tree_solver_->SolveInPlace(x); }
   void SetData(Eigen::Ref<Eigen::MatrixXd> full_matrix);
-  Eigen::MatrixXd MakeKKTMatrix() const { return tree_solver_->KKTMatrix(); }
+  Eigen::MatrixXd MakeKKTMatrix() const { return tree_solver_->KKTMatrix(true /*no permutation*/); }
+
  private:
   std::vector<std::unique_ptr<IncomingSpatialVariableBlock>> incoming_blocks_;
   std::unique_ptr<DenseBlock> dense_block_;

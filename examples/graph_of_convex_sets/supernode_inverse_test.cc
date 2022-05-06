@@ -34,14 +34,13 @@ GTEST_TEST(SupernodeSubmatrix, MakeKKTMatrix) {
            0,       0,     0,       0,      0,      0,           10,            0,            0,           11,    0,    0,  0;
 
   SupernodeSubmatrix::Parameters p;
-  p.num_edges = 3;
+  p.num_edges = 2;
   p.spatial_dimension = 2;
   SupernodeSubmatrix solver(p);
   solver.SetData(ref);
   MatrixXd x_calc = solver.MakeKKTMatrix();
-  DUMP(x_calc);
-  EXPECT_NEAR((x_calc - ref).norm(), 0, 1e-14);
-
+  MatrixXd error = (x_calc - ref).selfadjointView<Eigen::Lower>();
+  EXPECT_NEAR((error).norm(), 0, 1e-14);
 }
 
 

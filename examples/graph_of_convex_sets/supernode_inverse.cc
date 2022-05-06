@@ -32,6 +32,9 @@ KKTCholeskySystem<CholeskySolver<Eigen::RLDLT<MatrixXd>, true>>;
 } // namespace
 
 class DenseBlock : public DenseBlockBase {
+
+CONEX_NO_COPY_NO_MOVE(DenseBlock)
+
  public:
   using FactorizationMethod = CholeskySolver<Eigen::RLDLT<MatrixXd>, true>;
   DenseBlock(const Parameters& p) {
@@ -41,9 +44,13 @@ class DenseBlock : public DenseBlockBase {
     SetSupernodes(supernodes);
     Initialize();
   }
+  void SetData(Eigen::Ref<MatrixXd> full_matrix) {
+    supernode_submatrix_ = full_matrix.bottomRightCorner(supernodes().size(), supernodes().size());
+  }
 };
 
 class IncomingSpatialVariableBlock : public IncomingSpatialVariableBlockBase  {
+CONEX_NO_COPY_NO_MOVE(IncomingSpatialVariableBlock)
  public:
 
   static int SupernodeGlobalOffset(const Parameters& p, int edge_number) {
@@ -72,28 +79,24 @@ class IncomingSpatialVariableBlock : public IncomingSpatialVariableBlockBase  {
     seperator_global_size_2_ = p.spatial_dimension;
     std::iota(separators.begin() + seperator_global_size_1_, separators.end(), seperator_global_offset_2_);
 
-    SetSupernodes(supernodes);
     SetSeparators(separators);
     Initialize();
   }
-  void SetData(Eigen::Ref<MatrixXd> full_matrix) {
-    int offset = supernodes().at(0);
-    int size_super = supernodes().size();
-    supernode_submatrix_ = full_matrix.block(offset, offset, size_super, size_super);
 
-    separator_rows_.topRows(seperator_global_size_1_) = full_matrix.block(seperator_global_offset_1_ , offset, seperator_global_size_1_, size_super);
-    separator_rows_.bottomRows(seperator_global_size_2_) = full_matrix.block(seperator_global_offset_2_ , offset, seperator_global_size_2_, size_super);
-  }
+   void SetData(Eigen::Ref<MatrixXd> full_matrix) {
+     int offset = supernodes().at(0);
+     int size_super = supernodes().size();
+     supernode_submatrix_ = full_matrix.block(offset, offset, size_super, size_super);
+     separator_rows_.topRows(seperator_global_size_1_) = full_matrix.block(seperator_global_offset_1_ , offset, seperator_global_size_1_, size_super);
+     separator_rows_.bottomRows(seperator_global_size_2_) = full_matrix.block(seperator_global_offset_2_ , offset, seperator_global_size_2_, size_super);
+   }
    int seperator_global_offset_1_ = 0;
    int seperator_global_size_1_ = 0;
    int seperator_global_offset_2_ = 0;
    int seperator_global_size_2_ = 0;
 };
 
-
 using T = SupernodeSubmatrix;
-
-
 T::~SupernodeSubmatrix() {}
 
 T::SupernodeSubmatrix(const Parameters& p) : incoming_blocks_(p.num_edges) {
@@ -109,13 +112,15 @@ T::SupernodeSubmatrix(const Parameters& p) : incoming_blocks_(p.num_edges) {
   }
   std::vector<int> node_to_parent(incoming_blocks_.size() + 1, 0);
   node_to_parent.at(0) = -1;
-  tree_solver_->Finalize(node_to_parent);
+  tree_solver_->SetEliminationTree(node_to_parent);
 }
 
 void T::SetData(Eigen::Ref<Eigen::MatrixXd> full_matrix) {
   for (auto& i : incoming_blocks_) {
     i->SetData(full_matrix);
   }
+  dense_block_->SetData(full_matrix);
+  tree_solver_->Assemble();
 }
 
 } // namespace conex
