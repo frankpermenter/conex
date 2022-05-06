@@ -31,9 +31,9 @@ namespace conex {
 using IncomingSpatialVariableBlockBase = 
 KKTCholeskySystem<CholeskySolver<Eigen::LLT<MatrixXd>, true>>;
 
-using DenseBlockBase = 
-KKTCholeskySystem<CholeskySolver<Eigen::RLDLT<MatrixXd>, true>>;
 
+class DenseBlock;
+class IncomingSpatialVariableBlock;
 
 class SupernodeSubmatrix  {
  public:
@@ -44,12 +44,14 @@ class SupernodeSubmatrix  {
   };
 
   SupernodeSubmatrix(const Parameters& params);
+  ~SupernodeSubmatrix();
+
   bool Factor() { return tree_solver_->Factor(); }
   void SolveInPlace(Eigen::Ref<Eigen::MatrixXd> x) { return tree_solver_->SolveInPlace(x); }
   void SetData(Eigen::Ref<Eigen::MatrixXd> full_matrix);
  private:
-  std::vector<std::unique_ptr<IncomingSpatialVariableBlockBase>> incoming_blocks_;
-  std::unique_ptr<DenseBlockBase> dense_block_;
+  std::vector<std::unique_ptr<IncomingSpatialVariableBlock>> incoming_blocks_;
+  std::unique_ptr<DenseBlock> dense_block_;
   std::unique_ptr<SymmetricLinearSystemTreeSolver> tree_solver_;
   Parameters params_;
 };

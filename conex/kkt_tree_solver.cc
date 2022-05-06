@@ -358,6 +358,7 @@ bool T::CheckForZeroPivot(const std::vector<int>& parent,
 }
 
 void T::Finalize(const std::vector<int>& parent, bool check_for_zero_pivot) {
+  CONEX_CHECK(subsystems_.size() == parent.size());
   FinalizeHelper(parent);
   if (check_for_zero_pivot) {
     std::vector<int> index_of_zero_pivot;
@@ -398,6 +399,6 @@ Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
   return P.transpose() * M * P;
 }
 
-void T::AddSubsystem(KKTSubsystem* system) { subsystems_.push_back(system); }
+void T::AddSubsystem(KKTSubsystem* system) { CONEX_CHECK(system != nullptr); subsystems_.push_back(system); }
 
 }  // namespace conex

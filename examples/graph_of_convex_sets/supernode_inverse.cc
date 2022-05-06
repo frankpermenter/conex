@@ -24,6 +24,25 @@ int NumberOfSeparators(const Parameters& p) {
   return p.spatial_dimension * 2 + 1;
 }
 
+
+using DenseBlockBase = 
+KKTCholeskySystem<CholeskySolver<Eigen::RLDLT<MatrixXd>, true>>;
+
+
+} // namespace
+
+class DenseBlock : public DenseBlockBase {
+ public:
+  using FactorizationMethod = CholeskySolver<Eigen::RLDLT<MatrixXd>, true>;
+  DenseBlock(const Parameters& p) {
+    int offset = p.spatial_dimension * p.num_edges; 
+    std::vector<int> supernodes((p.spatial_dimension + 1) * (p.num_edges + 1));
+    std::iota(supernodes.begin(), supernodes.end(), offset);
+    SetSupernodes(supernodes);
+    Initialize();
+  }
+};
+
 class IncomingSpatialVariableBlock : public IncomingSpatialVariableBlockBase  {
  public:
 
@@ -54,33 +73,25 @@ class IncomingSpatialVariableBlock : public IncomingSpatialVariableBlockBase  {
   }
 };
 
-class DenseBlock : public DenseBlockBase {
- public:
-  using FactorizationMethod = CholeskySolver<Eigen::RLDLT<MatrixXd>, true>;
-  DenseBlock(int num_edges,  int spatial_dimension) {
-    int offset = spatial_dimension * num_edges; 
-    std::vector<int> supernodes((spatial_dimension + 1) * (num_edges + 1));
-    std::iota(supernodes.begin(), supernodes.end(), offset);
-    SetSupernodes(supernodes);
-    Initialize();
-  }
-};
-} // namespace
 
 using T = SupernodeSubmatrix;
+
+
+T::~SupernodeSubmatrix() {}
+
 T::SupernodeSubmatrix(const Parameters& p) : incoming_blocks_(p.num_edges) {
   tree_solver_ = std::make_unique<SymmetricLinearSystemTreeSolver>();
-  auto& tree_solver = *dynamic_cast<SymmetricLinearSystemTreeSolver*>(tree_solver_.get());
   for (int i = 0; i < p.num_edges; i++) {
     incoming_blocks_.at(i) = std::make_unique<IncomingSpatialVariableBlock>(p, i);
   }
-  tree_solver.AddSubsystem(dense_block_.get());
+  dense_block_ = std::make_unique<DenseBlock>(p);
+  tree_solver_->AddSubsystem(dense_block_.get());
   for (int i = 0; i < p.num_edges; i++) {
-    tree_solver.AddSubsystem(incoming_blocks_.at(i).get());
+    tree_solver_->AddSubsystem(incoming_blocks_.at(i).get());
   }
   std::vector<int> node_to_parent(incoming_blocks_.size() + 1, 0);
   node_to_parent.at(0) = -1;
-  tree_solver.Finalize(node_to_parent);
+  tree_solver_->Finalize(node_to_parent);
 }
 
 void T::SetData(Eigen::Ref<Eigen::MatrixXd> full_matrix) {

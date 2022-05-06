@@ -19,6 +19,7 @@ namespace conex {
 
 #define CONEX_CHECK(x)                                                 \
   if (!(x)) {                                                          \
+    std::cerr << __FILE__ << " line " << __LINE__ << ": "  << std::endl; \
     throw std::runtime_error(std::string("Condition failed:\n") + #x); \
   }
 
