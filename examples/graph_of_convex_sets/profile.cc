@@ -94,16 +94,9 @@ Time Profile(const GraphData& data,
   int num_nodes = graph.nodes_.size();
 
   std::vector<std::unique_ptr<ConvexSetNode>> nodes(num_nodes);
-  std::vector<std::unique_ptr<StaticSubsystem>> static_subsystems(num_nodes);
 
   for (int i = 0; i < num_nodes; i++) {
     nodes.at(i) = MakeConvexSetNode(graph, i);
-  }
-
-
-
-  for (int i = 0; i < num_nodes; i++) {
-    static_subsystems.at(i) = std::make_unique<StaticSubsystem>(nodes.at(i)->Submatrix(), nodes.at(i)->shared_variables());
   }
 
   SymmetricLinearSystemTreeSolver system_using_custom_assemblers;
