@@ -101,11 +101,29 @@ T::ConvexSetNode(const std::vector<int>& variables,
       spatial_dim, spatial_dim).setConstant(.01);
 
       Q.block(params_.incoming_spatial_flow_start_positions.at(i), 
-             params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i),
+              params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i),
       spatial_dim, spatial_dim).setConstant(.01); 
 
       Q(params_.incoming_flow_start_positions.at(i), 
         params_.incoming_flow_start_positions.at(i)) = 100;
+
+
+      Q.block(params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
+              params_.incoming_flow_start_positions.at(i), 
+              spatial_dim, 1).setConstant(0.01);
+
+      Q.block(params_.incoming_spatial_flow_start_positions.at(i), 
+              params_.incoming_flow_start_positions.at(i), 
+              spatial_dim, 1).setConstant(0.01);
+
+      Q.block(params_.incoming_flow_start_positions.at(i), 
+              params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
+              1, spatial_dim).setConstant(0.01);
+
+      Q.block(params_.incoming_flow_start_positions.at(i), 
+              params_.incoming_spatial_flow_start_positions.at(i), 
+              1,  spatial_dim).setConstant(0.01);
+
     }
     
 

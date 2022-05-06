@@ -209,6 +209,7 @@ class ConvexSetNode : public KKTSubsystem {
   int num_separators() { return separators().size(); }
 
   void DoEliminateSupernodeColumns() override {
+  DUMP(supernode_submatrix_);
     factorization_->DoEliminateSupernodeColumns();
   }
 
