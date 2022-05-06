@@ -27,8 +27,7 @@ void PrepareInputs(
     variables->push_back(ids.edge_to_flow_variable.at(e));
   }
 
-  auto& lam_1 =
-      ids.node_to_conversation_of_spatial_flow_multiplier.at(node_index);
+  auto& lam_1 = ids.node_to_conversation_of_spatial_flow_multiplier.at(node_index);
   params->conservation_of_spatial_flow_multiplier_position = variables->size();
   variables->insert(variables->end(), lam_1.begin(), lam_1.end());
 
