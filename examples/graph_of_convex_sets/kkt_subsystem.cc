@@ -3,6 +3,25 @@
 #define CONEX_ENABLE_TIMER 1
 
 namespace conex {
+namespace {
+
+  bool is_sequential(std::vector<int> n) {
+    for (size_t i = 1; i < n.size(); i++) {
+      if (n[i] - n[i-1] != 1) {
+        return false;
+      }
+    }
+    return true;
+  }
+  bool is_sorted_ascending(std::vector<int> n) {
+    for (size_t i = 1; i < n.size(); i++) {
+      if (n[i] - n[i-1] <= 0) {
+        return false;
+      }
+    }
+    return true;
+  }
+} // namespace
 using T = ConvexSetNode;
 
 T::ConvexSetNode(const std::vector<int>& variables, 
