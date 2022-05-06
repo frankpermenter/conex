@@ -21,7 +21,7 @@ void PrepareInputs(
     auto& z_e = ids.edge_to_incoming_spatial_flow_variable.at(e);
     variables->insert(variables->end(), z_e.begin(), z_e.end());
     
-    params->incoming_spatial_flow_start_positions.push_back(variables->size());
+    params->incoming_flow_start_positions.push_back(variables->size());
     variables->push_back(ids.edge_to_flow_variable.at(e));
   }
 

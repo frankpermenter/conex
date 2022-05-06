@@ -84,35 +84,45 @@ T::ConvexSetNode(const std::vector<int>& variables,
     int offset = 0;
 
     // Fill y_e, z_e, phi_e all incoming e.
+    MatrixXd edge_hessian(spatial_dim, spatial_dim);
+    edge_hessian.setConstant(.01);
+    edge_hessian.diagonal().array() += 1;
     for (int i = 0; i < num_incoming; i++) {
       Q.block(params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
-      params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
-      spatial_dim * 2 + 1, spatial_dim * 2 + 1)
-          .setConstant(.01);
-      Q.block(offset, offset, spatial_dim * 2 + 1, spatial_dim * 2 + 1)
-          .diagonal()
-          .setConstant(1);
-      offset += 2 * spatial_dim + 1;
-      Q(offset - 1, offset - 1) = 100;
+              params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
+      spatial_dim, spatial_dim) = edge_hessian;
+
+      Q.block(params_.incoming_spatial_flow_start_positions.at(i), 
+              params_.incoming_spatial_flow_start_positions.at(i),
+      spatial_dim, spatial_dim) = edge_hessian;
+
+      Q.block(params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
+              params_.incoming_spatial_flow_start_positions.at(i), 
+      spatial_dim, spatial_dim).setConstant(.01);
+
+      Q.block(params_.incoming_spatial_flow_start_positions.at(i), 
+             params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i),
+      spatial_dim, spatial_dim).setConstant(.01); 
+
+      Q(params_.incoming_flow_start_positions.at(i), 
+        params_.incoming_flow_start_positions.at(i)) = 100;
     }
+    
 
     // Spatial flow
-    int offset_row = offset;
     int offset_col = spatial_dim;
     for (int i = 0; i < num_incoming; i++) {
-      Q.block(offset_row, offset_col, spatial_dim, spatial_dim).setIdentity();
+      Q.block(params_.conservation_of_spatial_flow_multiplier_position, 
+              offset_col, spatial_dim, spatial_dim).setIdentity();
       offset_col += 2 * spatial_dim + 1;
     }
 
-    offset_row += spatial_dim;
     offset_col = 2 * spatial_dim;
     // Flow conservation
     for (int i = 0; i < num_incoming; i++) {
-      Q(offset_row, offset_col) = 10 + i;
+      Q(params_.conservation_of_flow_multiplier_position, offset_col) = 10 + i;
       offset_col += 2 * spatial_dim + 1;
     }
-    DUMP(Q);
-    throw;
     return Q;
   }
 
