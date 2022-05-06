@@ -262,7 +262,6 @@ void T::DoAssemble() {
   for (auto root : roots_) {
     root->Assemble();
   }
-
 }
 
 bool T::DoFactor() {

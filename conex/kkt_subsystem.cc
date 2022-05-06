@@ -83,7 +83,7 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   }
 }
 
-void T::IncrementSupernodeColumn(const Eigen::MatrixXd source_data,
+void T::IncrementSupernodeColumn(const Eigen::MatrixXd& source_data,
                                  const std::vector<int>& source_column_labels,
                                  int source_column_index) {
   int local_column_index =

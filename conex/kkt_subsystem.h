@@ -80,6 +80,8 @@ class KKTSubsystem {
       : variables_(shared_assembler_variables),
         number_of_private_variables_(number_of_private_variables) {}
 
+  KKTSubsystem() : variables_({}), number_of_private_variables_(0) {}
+
   std::vector<int> separators() const { return separators_; }
   std::vector<int> supernodes() const { return supernodes_; }
 
@@ -104,8 +106,7 @@ class KKTSubsystem {
   int ComputePostOrdering(int offset,
                           std::vector<int>* variable_to_elimination_position);
 
-  void SetVariableOrdering(
-      const std::vector<int>& shared_variable_to_elimination_position);
+  void SetVariableOrdering(const std::vector<int>& variable_to_elimination_position);
 
   void AddChild(KKTSubsystem* child) {
     CONEX_DEMAND(child, "Received nullptr");
@@ -187,7 +188,7 @@ class KKTSubsystem {
   void InplaceLeftMultiplyBySeparatorRowsTimesInverseOfRightFactor(
       Eigen::Ref<Eigen::MatrixXd>& temp) const;
   Eigen::MatrixXd SeparatorRows(const Eigen::MatrixXd& x) const;
-  void IncrementSupernodeColumn(const Eigen::MatrixXd source_data,
+  void IncrementSupernodeColumn(const Eigen::MatrixXd& source_data,
                                 const std::vector<int>& source_column_labels,
                                 int source_column_index);
 
@@ -197,8 +198,6 @@ class KKTSubsystem {
 
   void IncrementSubmatrix(const Eigen::MatrixXd& S,
                           const std::vector<int>& vars, size_t start_index);
-
-
 };
 
 }  // namespace conex

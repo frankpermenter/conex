@@ -32,3 +32,17 @@ cc_test(
         "@gtest//:main",
     ],
 )
+
+
+cc_test(
+    name = "supernode_submatrix_test",
+    srcs = [ "supernode_inverse_test.cc", 
+    "supernode_inverse.cc", "supernode_inverse.h", 
+    "kkt_subsystem.h"],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "//conex:error_checking",
+        "//conex:kkt_tree_solver",
+        "@gtest//:main",
+    ],
+)

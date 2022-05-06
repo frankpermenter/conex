@@ -1,3 +1,4 @@
+#pragma once
 #include "conex/kkt_subsystem.h"
 
 namespace conex {
