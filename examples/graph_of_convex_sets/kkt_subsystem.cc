@@ -110,18 +110,15 @@ T::ConvexSetNode(const std::vector<int>& variables,
     
 
     // Spatial flow
-    int offset_col = spatial_dim;
     for (int i = 0; i < num_incoming; i++) {
       Q.block(params_.conservation_of_spatial_flow_multiplier_position, 
-              offset_col, spatial_dim, spatial_dim).setIdentity();
-      offset_col += 2 * spatial_dim + 1;
+              params_.incoming_spatial_flow_start_positions.at(i), spatial_dim, spatial_dim).setIdentity();
     }
 
-    offset_col = 2 * spatial_dim;
     // Flow conservation
     for (int i = 0; i < num_incoming; i++) {
-      Q(params_.conservation_of_flow_multiplier_position, offset_col) = 10 + i;
-      offset_col += 2 * spatial_dim + 1;
+      Q(params_.conservation_of_flow_multiplier_position,  
+        params_.incoming_flow_start_positions.at(i)) = 10 + i;
     }
     return Q;
   }
