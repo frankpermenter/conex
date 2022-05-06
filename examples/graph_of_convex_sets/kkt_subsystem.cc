@@ -40,19 +40,16 @@ T::ConvexSetNode(const std::vector<int>& variables,
     Eigen::MatrixXd Q(num_separators(), num_supernodes());
     Q.setZero();
     // Set col to spatial flow multiplier.
-    int offset_col = (2 * spatial_dim + 1) * num_incoming;
     for (int i = 0; i < num_outgoing; i++) {
-      Q.block(params_.outgoing_spatial_flow_start_positions.at(i), offset_col, spatial_dim, spatial_dim)
+      Q.block(params_.outgoing_spatial_flow_start_positions.at(i), 
+         params_.conservation_of_spatial_flow_multiplier_position, spatial_dim, spatial_dim)
           .diagonal()
           .setConstant(-2);
     }
 
-    // Update col to flow multiplier.
-    offset_col += spatial_dim;
-
     for (int i = 0; i < num_outgoing; i++) {
       int offset_row = params_.outgoing_flow_start_positions.at(i); 
-      Q(offset_row, offset_col) = -1;
+      Q(offset_row, params_.conservation_of_flow_multiplier_position) = -1;
       offset_row += spatial_dim;
     }
 //    Q.setConstant(-.01);

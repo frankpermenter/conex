@@ -187,6 +187,8 @@ struct ConvexSetNodeParameters {
   std::vector<int> incoming_spatial_flow_start_positions;
   std::vector<int> outgoing_spatial_flow_of_incoming_edge_start_positions;
   std::vector<int> incoming_flow_start_positions;
+  int conservation_of_flow_multiplier_position;
+  int conservation_of_spatial_flow_multiplier_position;
 };
 
 #define CONEX_NO_COPY_NO_MOVE(T)\
