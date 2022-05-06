@@ -57,6 +57,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
   }
 
   Eigen::MatrixXd T::MakeSeperatorMatrixNoFill() {
+  throw std::runtime_error("Obsolete function.");
     Eigen::MatrixXd Q(num_separators(), num_supernodes());
     Q.setZero();
     int offset_row = 0;
@@ -84,7 +85,9 @@ T::ConvexSetNode(const std::vector<int>& variables,
 
     // Fill y_e, z_e, phi_e all incoming e.
     for (int i = 0; i < num_incoming; i++) {
-      Q.block(offset, offset, spatial_dim * 2 + 1, spatial_dim * 2 + 1)
+      Q.block(params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
+      params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
+      spatial_dim * 2 + 1, spatial_dim * 2 + 1)
           .setConstant(.01);
       Q.block(offset, offset, spatial_dim * 2 + 1, spatial_dim * 2 + 1)
           .diagonal()
