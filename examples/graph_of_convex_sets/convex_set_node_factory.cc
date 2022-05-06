@@ -4,7 +4,6 @@ namespace conex {
 
 namespace {
 
-
 void PrepareInputs(
     const Graph& graph, const int node_index, 
     std::vector<int>* variables,
@@ -19,6 +18,7 @@ void PrepareInputs(
     variables->insert(variables->end(), z_e.begin(), z_e.end());
     variables->push_back(ids.edge_to_flow_variable.at(e));
   }
+
   auto& lam_1 =
       ids.node_to_conversation_of_spatial_flow_multiplier.at(node_index);
   variables->insert(variables->end(), lam_1.begin(), lam_1.end());
@@ -38,7 +38,8 @@ void PrepareInputs(
     variables->push_back(ids.edge_to_flow_variable.at(e));
     if (std::find(node.outgoing_edges.begin(), node.outgoing_edges.end(), e) !=
         node.outgoing_edges.end()) {
-      params->outgoing_edge_start_positions.push_back(offset);
+      params->outgoing_spatial_flow_start_positions.push_back(offset);
+      params->outgoing_flow_start_positions.push_back(offset + y_e.size());
     }
     offset += y_e.size() + 1;
   }

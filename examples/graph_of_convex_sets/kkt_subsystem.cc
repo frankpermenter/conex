@@ -42,7 +42,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
     // Set col to spatial flow multiplier.
     int offset_col = (2 * spatial_dim + 1) * num_incoming;
     for (int i = 0; i < num_outgoing; i++) {
-      Q.block(params_.outgoing_edge_start_positions.at(i), offset_col, spatial_dim, spatial_dim)
+      Q.block(params_.outgoing_spatial_flow_start_positions.at(i), offset_col, spatial_dim, spatial_dim)
           .diagonal()
           .setConstant(-2);
     }
@@ -51,7 +51,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
     offset_col += spatial_dim;
 
     for (int i = 0; i < num_outgoing; i++) {
-      int offset_row = params_.outgoing_edge_start_positions.at(i) + spatial_dim;
+      int offset_row = params_.outgoing_flow_start_positions.at(i); 
       Q(offset_row, offset_col) = -1;
       offset_row += spatial_dim;
     }
