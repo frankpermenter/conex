@@ -102,7 +102,6 @@ T::ConvexSetNode(const std::vector<int>& variables,
   Eigen::MatrixXd T::MakeSuperNodeSubmatrix() {
     Eigen::MatrixXd Q(num_supernodes(), num_supernodes());
     Q.setZero();
-    int offset = 0;
 
     // Fill y_e, z_e, phi_e all incoming e.
     MatrixXd edge_hessian(spatial_dim, spatial_dim);

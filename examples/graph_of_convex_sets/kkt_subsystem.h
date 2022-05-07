@@ -198,34 +198,6 @@ T& operator=(const T&) = delete;\
 T& operator=(T&&) = delete;\
 
 
-template<typename FactorizationType>
-class KKTCholeskySystem : public KKTSubsystem {
- public:
-  void DoEliminateSupernodeColumns() override {
-    factorization_->DoEliminateSupernodeColumns();
-  }
-
-  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    factorization_->DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(y);
-  }
-
-  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    factorization_->DoApplyInverseOfRightFactorOfSupernodeSubmatrix(y);
-  }
-
-  void DoComputeSeparatorSchurComplement() override {
-    factorization_->DoComputeSeparatorSchurComplement();
-  }
-  void Initialize() {
-    KKTSubsystem::DoInitialize();
-    factorization_ = std::make_unique<FactorizationType>(supernode_submatrix_, 
-    separator_rows_, separator_schur_complement_);
-  }
- protected:
-  std::unique_ptr<FactorizationType> factorization_;
-};
 
 
 

@@ -42,6 +42,7 @@ class LUSolver : public KKTSubsystem {
   LUSolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
 
   void DoEliminateSupernodeColumns() override {
+  DUMP(supernode_submatrix_);
     lu_.compute(supernode_submatrix_);
   }
 
@@ -63,7 +64,7 @@ class LUSolver : public KKTSubsystem {
   Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
 };
 
-using LLTSolver = CholeskySolver<Eigen::RLDLT<Eigen::MatrixXd>, true>;
+using LLTSolver = KKTCholeskySystem<CholeskySolver<Eigen::RLDLT<Eigen::MatrixXd>, true>>;
 
 template <bool is_positive_definite>
 using FactorizationMethod =
@@ -76,9 +77,8 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite> {
  public:
   StaticSubsystem(Eigen::MatrixXd Q, std::vector<int> vars)
       : Base(vars), Q_(Q) {}
-
   void DoInitialize() override {
-    KKTSubsystem::DoInitialize();
+    Base::DoInitialize();
     int n1 = Base::supernode_submatrix_.rows();
     int n2 = Base::separator_rows_.rows();
     Q_in_elimination_order_.resize(n1 + n2, n1 + n2);
@@ -152,18 +152,10 @@ void DoTestTrivalExample(const std::vector<int>& v) {
   std::vector<int> parent{1, 2, -1};
   system.Finalize(parent);
 
-  q1.DoInitialize();
-  q2.DoInitialize();
-  q3.DoInitialize();
-
-  EXPECT_EQ(q1.parent(), &q2);
-  EXPECT_EQ(q2.parent(), &q3);
 
   system.Assemble();
   EXPECT_NEAR((system.KKTMatrix() - full_matrix).norm(), 0, 1e-14);
 
-  Eigen::LLT<Eigen::MatrixXd> llt(full_matrix);
-  Eigen::MatrixXd L = llt.matrixL();
   VectorXd x_ref(num_vars);
   x_ref.setLinSpaced(5, -1, 1);
   MatrixXd b = full_matrix * x_ref;
@@ -212,12 +204,19 @@ GTEST_TEST(KKTSubsystem, FailLDLT) {
   DoFailLDLT<StaticSubsystem<false>>(false /*expect_fail*/);
 }
 
-GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrder) {
+GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrderLDLT) {
   std::vector<int> v{0, 1, 2, 3, 4};
-  // DoTestTrivalExample<StaticSubsystem<true>>(v);
+  DUMP("IN TRIVIAL");
   DoTestTrivalExample<StaticSubsystem<false>>(v);
+  throw;
+}
+
+GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrderLLT) {
+  std::vector<int> v{0, 1, 2, 3, 4};
   DoTestTrivalExample<StaticSubsystem<true>>(v);
 }
+
+
 GTEST_TEST(KKTSubsystem, TestTrivialExampleArbitrarilyPermutedOrder) {
   std::vector<int> v{2, 0, 1, 4, 3};
   DoTestTrivalExample<StaticSubsystem<true>>(v);

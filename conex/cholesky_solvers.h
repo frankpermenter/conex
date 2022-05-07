@@ -72,7 +72,7 @@ class CholeskySolver {
   }
 
   bool OnlyLowerTriangularPart(int num_vectors, int cost_of_inner_product) {
-    return true;
+    return false;
     //return num_vectors * cost_of_inner_product > 100; 
   }
 
@@ -83,5 +83,39 @@ class CholeskySolver {
   FactorizationMethod llt_;
   bool factored_ = false;
 };
+
+template<typename FactorizationType>
+class KKTCholeskySystem : public KKTSubsystem {
+ public:
+  KKTCholeskySystem() {}
+  KKTCholeskySystem(const std::vector<int>& vars) : KKTSubsystem(vars, 0) {}
+  void DoEliminateSupernodeColumns() override {
+  DUMP(supernode_submatrix_);
+    factorization_->DoEliminateSupernodeColumns();
+  }
+
+  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    factorization_->DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(y);
+  }
+
+  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    factorization_->DoApplyInverseOfRightFactorOfSupernodeSubmatrix(y);
+  }
+
+  void DoComputeSeparatorSchurComplement() override {
+    factorization_->DoComputeSeparatorSchurComplement();
+  }
+  void DoInitialize() override {
+    KKTSubsystem::DoInitialize();
+    factorization_ = std::make_unique<FactorizationType>(supernode_submatrix_, 
+    separator_rows_, separator_schur_complement_);
+  }
+ protected:
+  std::unique_ptr<FactorizationType> factorization_;
+};
+
+
 
 } // namespace conex
