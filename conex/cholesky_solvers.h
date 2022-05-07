@@ -80,7 +80,7 @@ class CholeskySolver {
 
   Eigen::Matrix<double, -1, -1, Eigen::RowMajor> temp_row_major_;
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix_; 
-  Eigen::Ref<Eigen::MatrixXd> separator_rows_; 
+  Eigen::Ref<Eigen::MatrixXd> separator_rows_;
   Eigen::Ref<Eigen::MatrixXd> separator_schur_complement_; 
   FactorizationMethod llt_;
   bool factored_ = false;
@@ -111,7 +111,7 @@ class KKTCholeskySystem : public KKTSubsystem {
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     factorization_ = std::make_unique<FactorizationType>(supernode_submatrix(), 
-    separator_rows_, separator_schur_complement_);
+    separator_rows(), separator_schur_complement_);
   }
  protected:
   std::unique_ptr<FactorizationType> factorization_;
@@ -138,7 +138,7 @@ class LUSolver : public KKTSubsystem {
 
   void DoComputeSeparatorSchurComplement() override {
     separator_schur_complement_ -=
-        separator_rows_ * lu_.solve(separator_rows_.transpose());
+        separator_rows() * lu_.solve(separator_rows().transpose());
   }
 
   Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
@@ -161,7 +161,7 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite> {
   void DoInitialize() override {
     Base::DoInitialize();
     int n1 = Base::supernode_submatrix().rows();
-    int n2 = Base::separator_rows_.rows();
+    int n2 = Base::separator_rows().rows();
     Q_in_elimination_order_.resize(n1 + n2, n1 + n2);
     AssignSubmatrix(Q_, Q_in_elimination_order_,
                     Base::variable_to_local_elimination_rank());
@@ -172,9 +172,9 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite> {
   bool DoIsValidLeaf() override { return Q_.diagonal().norm() > 0; }
   void DoAssemble() {
     int n1 = Base::supernode_submatrix().rows();
-    int n2 = Base::separator_rows_.rows();
+    int n2 = Base::separator_rows().rows();
     Base::supernode_submatrix() = Q_in_elimination_order_.topLeftCorner(n1, n1);
-    Base::separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
+    Base::separator_rows() = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
     Base::separator_schur_complement_ =
         Q_in_elimination_order_.bottomRightCorner(n2, n2);
   }

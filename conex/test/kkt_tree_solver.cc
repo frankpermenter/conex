@@ -35,13 +35,13 @@ class LUSolver : public KKTSubsystem {
 
   void DoComputeSeparatorSchurComplement() override {
     separator_schur_complement_ -=
-        separator_rows_ * lu_.solve(separator_rows_.transpose());
+        separator_rows() * lu_.solve(separator_rows().transpose());
   }
 
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     int n1 = supernode_submatrix().rows();
-    int n2 = separator_rows_.rows();
+    int n2 = separator_rows().rows();
   }
 
   Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
@@ -356,9 +356,9 @@ class ConvexSetNode : public LUSolver {
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     auto data = MakeSeperatorMatrix();
-    CONEX_CHECK(data.rows() == separator_rows_.rows());
-    CONEX_CHECK(data.cols() == separator_rows_.cols());
-    separator_rows_ = data;
+    CONEX_CHECK(data.rows() == separator_rows().rows());
+    CONEX_CHECK(data.cols() == separator_rows().cols());
+    separator_rows() = data;
 
     data = MakeSuperNodeSubmatrix();
     CONEX_CHECK(data.rows() == supernode_submatrix().rows());

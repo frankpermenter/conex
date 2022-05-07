@@ -50,7 +50,7 @@ class LUSolver : public KKTSubsystem {
 
   void DoComputeSeparatorSchurComplement() override {
     separator_schur_complement_ -=
-        separator_rows_ * lu_.solve(separator_rows_.transpose());
+        separator_rows() * lu_.solve(separator_rows().transpose());
   }
 
   void DoInitialize() override {
@@ -70,7 +70,7 @@ class StaticSubsystem : public LUSolver {
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     int n1 = Base::supernode_submatrix().rows();
-    int n2 = Base::separator_rows_.rows();
+    int n2 = Base::separator_rows().rows();
     Q_in_elimination_order_.resize(n1 + n2, n1 + n2);
     AssignSubmatrix(Q_, Q_in_elimination_order_,
                     Base::variable_to_local_elimination_rank());
@@ -83,9 +83,9 @@ class StaticSubsystem : public LUSolver {
   bool DoIsValidLeaf() override { return Q_.diagonal().norm() > 0; }
   void DoAssemble() {
     int n1 = Base::supernode_submatrix().rows();
-    int n2 = Base::separator_rows_.rows();
+    int n2 = Base::separator_rows().rows();
     Base::supernode_submatrix() = Q_in_elimination_order_.topLeftCorner(n1, n1);
-    Base::separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
+    Base::separator_rows() = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
     Base::separator_schur_complement_ =
         Q_in_elimination_order_.bottomRightCorner(n2, n2);
   }
@@ -297,9 +297,9 @@ class ConvexSetNode : public LUSolver {
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     auto data = MakeSeperatorMatrix();
-    CONEX_CHECK(data.rows() == separator_rows_.rows());
-    CONEX_CHECK(data.cols() == separator_rows_.cols());
-    separator_rows_ = data;
+    CONEX_CHECK(data.rows() == separator_rows().rows());
+    CONEX_CHECK(data.cols() == separator_rows().cols());
+    separator_rows() = data;
 
     data = MakeSuperNodeSubmatrix();
     CONEX_CHECK(data.rows() == supernode_submatrix().rows());

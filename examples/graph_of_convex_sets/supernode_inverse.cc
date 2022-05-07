@@ -87,8 +87,8 @@ CONEX_NO_COPY_NO_MOVE(IncomingSpatialVariableBlock)
      int offset = supernodes().at(0);
      int size_super = supernodes().size();
      supernode_submatrix() = full_matrix.block(offset, offset, size_super, size_super);
-     separator_rows_.topRows(seperator_global_size_1_) = full_matrix.block(seperator_global_offset_1_ , offset, seperator_global_size_1_, size_super);
-     separator_rows_.bottomRows(seperator_global_size_2_) = full_matrix.block(seperator_global_offset_2_ , offset, seperator_global_size_2_, size_super);
+     separator_rows().topRows(seperator_global_size_1_) = full_matrix.block(seperator_global_offset_1_ , offset, seperator_global_size_1_, size_super);
+     separator_rows().bottomRows(seperator_global_size_2_) = full_matrix.block(seperator_global_offset_2_ , offset, seperator_global_size_2_, size_super);
    }
    int seperator_global_offset_1_ = 0;
    int seperator_global_size_1_ = 0;

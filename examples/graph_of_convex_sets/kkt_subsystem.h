@@ -183,16 +183,16 @@ class ConvexSetNode : public KKTSubsystem {
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     auto data = MakeSeperatorMatrix();
-    CONEX_CHECK(data.rows() == separator_rows_.rows());
-    CONEX_CHECK(data.cols() == separator_rows_.cols());
-    separator_rows_ = data;
+    CONEX_CHECK(data.rows() == separator_rows().rows());
+    CONEX_CHECK(data.cols() == separator_rows().cols());
+    separator_rows() = data;
 
     data = MakeSuperNodeSubmatrix();
     CONEX_CHECK(data.rows() == supernode_submatrix().rows());
     CONEX_CHECK(data.cols() == supernode_submatrix().cols());
     supernode_submatrix() = data;
     separator_schur_complement_.setZero();
-    factorization_ = std::make_unique<FactorizationType>(supernode_submatrix(), separator_rows_, separator_schur_complement_);
+    factorization_ = std::make_unique<FactorizationType>(supernode_submatrix(), separator_rows(), separator_schur_complement_);
   }
 
   int spatial_dim = 0;

@@ -36,8 +36,8 @@ void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   if (separators_.size() > 0) {
     Eigen::MatrixXd temp = x_supernodes;
     DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
-    for (int i = 0; i < separator_rows_.rows(); i++) {
-      x.row(separators_[i]) -= separator_rows_.row(i) * temp;
+    for (int i = 0; i < separator_rows().rows(); i++) {
+      x.row(separators_[i]) -= separator_rows().row(i) * temp;
     }
   }
 }
@@ -71,7 +71,7 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
 
     // Update residual using x_separator computed by ascendants in tree.
     if (separators_.size() > 0) {
-      Eigen::MatrixXd temp = separator_rows_.transpose() * SeparatorRows(x);
+      Eigen::MatrixXd temp = separator_rows().transpose() * SeparatorRows(x);
       DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(temp);
       x_supernodes.noalias() -= temp;
     }
@@ -103,7 +103,7 @@ void T::IncrementSupernodeColumn(const Eigen::MatrixXd& source_data,
       break;
     }
     int local_row = GetSeparatorPosition(source_column_labels.at(i));
-    separator_rows_(local_row, local_column_index) +=
+    separator_rows()(local_row, local_column_index) +=
         source_data(i, source_column_index);
   }
 }
@@ -137,7 +137,7 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
     }
     for (size_t i = 0; i < separators_.size(); i++) {
       (*full_matrix)(separators_.at(i), supernodes_.at(j)) =
-          separator_rows_(i, j);
+          separator_rows()(i, j);
     }
   }
 }
@@ -151,7 +151,7 @@ bool T::AssembleAndFactor() {
     }
     if (left_looking) {
       child->ProvideColumnUpdate(supernodes_, separators_,
-                                 supernode_submatrix(), separator_rows_);
+                                 supernode_submatrix(), separator_rows());
     }
   }
   if (!DoEliminateSupernodeColumns()) {
@@ -170,7 +170,7 @@ void T::Assemble() {
     child->Assemble();
     if (left_looking) {
       child->ProvideColumnUpdate(supernodes_, separators_,
-                                 supernode_submatrix(), separator_rows_);
+                                 supernode_submatrix(), separator_rows());
     }
   }
 
@@ -186,7 +186,7 @@ bool T::Factor() {
     }
     if (left_looking) {
       child->ProvideColumnUpdate(supernodes_, separators_,
-                                 supernode_submatrix(), separator_rows_);
+                                 supernode_submatrix(), separator_rows());
     }
   }
   if (!DoEliminateSupernodeColumns()) {
