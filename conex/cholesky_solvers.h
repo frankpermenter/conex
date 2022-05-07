@@ -144,4 +144,57 @@ class LUSolver : public KKTSubsystem {
   Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
 };
 
+
+
+using LLTSolver = KKTCholeskySystem<CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, false>>;
+template <bool is_positive_definite>
+using FactorizationMethod =
+    typename std::conditional<is_positive_definite, LLTSolver, LUSolver>::type;
+
+template <bool is_positive_definite>
+class StaticSubsystem : public FactorizationMethod<is_positive_definite> {
+  using Base = FactorizationMethod<is_positive_definite>;
+
+ public:
+  StaticSubsystem(Eigen::MatrixXd Q, std::vector<int> vars)
+      : Base(vars), Q_(Q) {}
+  void DoInitialize() override {
+    Base::DoInitialize();
+    int n1 = Base::supernode_submatrix_.rows();
+    int n2 = Base::separator_rows_.rows();
+    Q_in_elimination_order_.resize(n1 + n2, n1 + n2);
+    AssignSubmatrix(Q_, Q_in_elimination_order_,
+                    Base::variable_to_local_elimination_rank());
+    DoAssemble();
+  }
+
+ private:
+  bool DoIsValidLeaf() override { return Q_.diagonal().norm() > 0; }
+  void DoAssemble() {
+    int n1 = Base::supernode_submatrix_.rows();
+    int n2 = Base::separator_rows_.rows();
+    Base::supernode_submatrix_ = Q_in_elimination_order_.topLeftCorner(n1, n1);
+    Base::separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
+    Base::separator_schur_complement_ =
+        Q_in_elimination_order_.bottomRightCorner(n2, n2);
+  }
+
+  void AssignSubmatrix(const Eigen::MatrixXd& source,
+                       Eigen::Ref<Eigen::MatrixXd> destination,
+                       const std::vector<int>& source_to_dest_index) {
+    destination.setZero();
+    for (int i = 0; i < source.rows(); i++) {
+      for (int j = 0; j < source.cols(); j++) {
+        destination(source_to_dest_index.at(i), source_to_dest_index.at(j)) =
+            source(i, j);
+      }
+    }
+  }
+
+ private:
+  Eigen::MatrixXd Q_in_elimination_order_;
+  Eigen::MatrixXd Q_;
+};
+
+
 } // namespace conex

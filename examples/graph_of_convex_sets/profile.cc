@@ -9,6 +9,7 @@
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {
+using StaticAssembler = StaticSubsystem<false>;
 Time Verify(const GraphData& data,
   std::vector<int> node_to_parent_in_spanning_tree_reference,
             int spatial_dim) {
@@ -23,14 +24,14 @@ Time Verify(const GraphData& data,
 
   int num_nodes = graph.nodes_.size();
   std::vector<std::unique_ptr<ConvexSetNode>> nodes(num_nodes);
-  std::vector<std::unique_ptr<StaticSubsystem>> static_subsystems(num_nodes);
+  std::vector<std::unique_ptr<StaticAssembler>> static_subsystems(num_nodes);
 
   for (int i = 0; i < num_nodes; i++) {
     nodes.at(i) = MakeConvexSetNode(graph, i);
   }
 
   for (int i = 0; i < num_nodes; i++) {
-    static_subsystems.at(i) = std::make_unique<StaticSubsystem>(nodes.at(i)->Submatrix(), nodes.at(i)->shared_variables());
+    static_subsystems.at(i) = std::make_unique<StaticAssembler>(nodes.at(i)->Submatrix(), nodes.at(i)->shared_variables());
   }
 
   SymmetricLinearSystemTreeSolver system_using_custom_assemblers;
