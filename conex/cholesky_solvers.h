@@ -9,9 +9,9 @@ using Eigen::VectorXd;
 template <typename FactorizationMethod, bool schur_complement_mode>
 class CholeskySolver {
  public:
-  CholeskySolver(Eigen::MatrixXd& supernode_submatrix,  
-                 Eigen::MatrixXd& separator_rows,
-                 Eigen::MatrixXd& separator_schur_complement) :  
+  CholeskySolver(Eigen::Ref<Eigen::MatrixXd> supernode_submatrix,  
+                 Eigen::Ref<Eigen::MatrixXd> separator_rows,
+                 Eigen::Ref<Eigen::MatrixXd> separator_schur_complement) :  
                  supernode_submatrix_(supernode_submatrix),
                  separator_rows_(separator_rows),
                  separator_schur_complement_(separator_schur_complement),
@@ -110,7 +110,7 @@ class KKTCholeskySystem : public KKTSubsystem {
   }
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
-    factorization_ = std::make_unique<FactorizationType>(supernode_submatrix_, 
+    factorization_ = std::make_unique<FactorizationType>(supernode_submatrix(), 
     separator_rows_, separator_schur_complement_);
   }
  protected:
@@ -122,7 +122,7 @@ class LUSolver : public KKTSubsystem {
   LUSolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
 
   bool DoEliminateSupernodeColumns() override {
-    lu_.compute(supernode_submatrix_);
+    lu_.compute(supernode_submatrix());
     return lu_.determinant() != 0;
   }
 
@@ -160,7 +160,7 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite> {
       : Base(vars), Q_(Q) {}
   void DoInitialize() override {
     Base::DoInitialize();
-    int n1 = Base::supernode_submatrix_.rows();
+    int n1 = Base::supernode_submatrix().rows();
     int n2 = Base::separator_rows_.rows();
     Q_in_elimination_order_.resize(n1 + n2, n1 + n2);
     AssignSubmatrix(Q_, Q_in_elimination_order_,
@@ -171,9 +171,9 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite> {
  private:
   bool DoIsValidLeaf() override { return Q_.diagonal().norm() > 0; }
   void DoAssemble() {
-    int n1 = Base::supernode_submatrix_.rows();
+    int n1 = Base::supernode_submatrix().rows();
     int n2 = Base::separator_rows_.rows();
-    Base::supernode_submatrix_ = Q_in_elimination_order_.topLeftCorner(n1, n1);
+    Base::supernode_submatrix() = Q_in_elimination_order_.topLeftCorner(n1, n1);
     Base::separator_rows_ = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
     Base::separator_schur_complement_ =
         Q_in_elimination_order_.bottomRightCorner(n2, n2);

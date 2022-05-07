@@ -21,7 +21,7 @@ class LUSolver : public KKTSubsystem {
  public:
   LUSolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
 
-  void DoEliminateSupernodeColumns() override { lu_.compute(supernode_submatrix_); }
+  void DoEliminateSupernodeColumns() override { lu_.compute(supernode_submatrix()); }
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
@@ -40,7 +40,7 @@ class LUSolver : public KKTSubsystem {
 
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
-    int n1 = supernode_submatrix_.rows();
+    int n1 = supernode_submatrix().rows();
     int n2 = separator_rows_.rows();
   }
 
@@ -361,10 +361,10 @@ class ConvexSetNode : public LUSolver {
     separator_rows_ = data;
 
     data = MakeSuperNodeSubmatrix();
-    CONEX_CHECK(data.rows() == supernode_submatrix_.rows());
-    CONEX_CHECK(data.cols() == supernode_submatrix_.cols());
-    supernode_submatrix_ = data; 
-    //Eigen::LDLT<MatrixXd> llt(supernode_submatrix_);
+    CONEX_CHECK(data.rows() == supernode_submatrix().rows());
+    CONEX_CHECK(data.cols() == supernode_submatrix().cols());
+    supernode_submatrix() = data; 
+    //Eigen::LDLT<MatrixXd> llt(supernode_submatrix());
     //CONEX_CHECK(llt.info() == Eigen::Success);
   }
 

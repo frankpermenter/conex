@@ -94,7 +94,7 @@ void T::IncrementSupernodeColumn(const Eigen::MatrixXd& source_data,
       break;
     }
     int local_row = GetSupernodePosition(source_column_labels.at(i));
-    supernode_submatrix_(local_row, local_column_index) +=
+    supernode_submatrix()(local_row, local_column_index) +=
         source_data(i, source_column_index);
   }
 
@@ -133,7 +133,7 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   for (size_t j = 0; j < supernodes_.size(); j++) {
     for (size_t i = 0; i < supernodes_.size(); i++) {
       (*full_matrix)(supernodes_.at(i), supernodes_.at(j)) =
-          supernode_submatrix_(i, j);
+          supernode_submatrix()(i, j);
     }
     for (size_t i = 0; i < separators_.size(); i++) {
       (*full_matrix)(separators_.at(i), supernodes_.at(j)) =
@@ -151,7 +151,7 @@ bool T::AssembleAndFactor() {
     }
     if (left_looking) {
       child->ProvideColumnUpdate(supernodes_, separators_,
-                                 supernode_submatrix_, separator_rows_);
+                                 supernode_submatrix(), separator_rows_);
     }
   }
   if (!DoEliminateSupernodeColumns()) {
@@ -170,7 +170,7 @@ void T::Assemble() {
     child->Assemble();
     if (left_looking) {
       child->ProvideColumnUpdate(supernodes_, separators_,
-                                 supernode_submatrix_, separator_rows_);
+                                 supernode_submatrix(), separator_rows_);
     }
   }
 
@@ -186,7 +186,7 @@ bool T::Factor() {
     }
     if (left_looking) {
       child->ProvideColumnUpdate(supernodes_, separators_,
-                                 supernode_submatrix_, separator_rows_);
+                                 supernode_submatrix(), separator_rows_);
     }
   }
   if (!DoEliminateSupernodeColumns()) {

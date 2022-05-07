@@ -188,11 +188,11 @@ class ConvexSetNode : public KKTSubsystem {
     separator_rows_ = data;
 
     data = MakeSuperNodeSubmatrix();
-    CONEX_CHECK(data.rows() == supernode_submatrix_.rows());
-    CONEX_CHECK(data.cols() == supernode_submatrix_.cols());
-    supernode_submatrix_ = data;
+    CONEX_CHECK(data.rows() == supernode_submatrix().rows());
+    CONEX_CHECK(data.cols() == supernode_submatrix().cols());
+    supernode_submatrix() = data;
     separator_schur_complement_.setZero();
-    factorization_ = std::make_unique<FactorizationType>(supernode_submatrix_, separator_rows_, separator_schur_complement_);
+    factorization_ = std::make_unique<FactorizationType>(supernode_submatrix(), separator_rows_, separator_schur_complement_);
   }
 
   int spatial_dim = 0;

@@ -45,7 +45,7 @@ CONEX_NO_COPY_NO_MOVE(DenseBlock)
     DoInitialize();
   }
   void SetData(Eigen::Ref<MatrixXd> full_matrix) {
-    supernode_submatrix_ = full_matrix.bottomRightCorner(supernodes().size(), supernodes().size());
+    supernode_submatrix() = full_matrix.bottomRightCorner(supernodes().size(), supernodes().size());
   }
 };
 
@@ -86,7 +86,7 @@ CONEX_NO_COPY_NO_MOVE(IncomingSpatialVariableBlock)
    void SetData(Eigen::Ref<MatrixXd> full_matrix) {
      int offset = supernodes().at(0);
      int size_super = supernodes().size();
-     supernode_submatrix_ = full_matrix.block(offset, offset, size_super, size_super);
+     supernode_submatrix() = full_matrix.block(offset, offset, size_super, size_super);
      separator_rows_.topRows(seperator_global_size_1_) = full_matrix.block(seperator_global_offset_1_ , offset, seperator_global_size_1_, size_super);
      separator_rows_.bottomRows(seperator_global_size_2_) = full_matrix.block(seperator_global_offset_2_ , offset, seperator_global_size_2_, size_super);
    }
