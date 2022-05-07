@@ -73,7 +73,17 @@
 
 namespace conex {
 
-class KKTSubsystem {
+class KKTSubsystemBase {
+ public:
+  virtual Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() = 0;
+  virtual Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() = 0;
+  virtual Eigen::Ref<Eigen::MatrixXd> separator_rows() = 0;
+  virtual Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const = 0;
+  virtual Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement() const = 0;
+  virtual Eigen::Ref<const Eigen::MatrixXd> separator_rows() const = 0; 
+};
+
+class KKTSubsystem : KKTSubsystemBase {
  public:
   KKTSubsystem(const std::vector<int>& shared_assembler_variables,
                int number_of_private_variables)
@@ -126,17 +136,20 @@ class KKTSubsystem {
   void ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
   void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
 
-  Eigen::MatrixXd supernode_submatrix() { return supernode_submatrix_; }
-  Eigen::MatrixXd separator_schur_complement() {
-    return separator_schur_complement_;
-  }
-  Eigen::MatrixXd separator_rows() { return separator_rows_; }
-
   void Reset() {
     parent_ = nullptr;
     children_.clear();
   }
 
+  Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override { return supernode_submatrix_; }
+  Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override { 
+      return separator_schur_complement_; }
+  Eigen::Ref<Eigen::MatrixXd> separator_rows() override { return separator_rows_; }
+
+  Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const override { return supernode_submatrix_; }
+  Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement() const override { 
+      return separator_schur_complement_; }
+  Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override { return separator_rows_; }
  protected:
   virtual void DoInitialize() {
     supernode_submatrix_.resize(supernodes_.size(), supernodes_.size());
@@ -188,6 +201,8 @@ class KKTSubsystem {
   void InplaceLeftMultiplyBySeparatorRowsTimesInverseOfRightFactor(
       Eigen::Ref<Eigen::MatrixXd>& temp) const;
   Eigen::MatrixXd SeparatorRows(const Eigen::MatrixXd& x) const;
+
+
   void IncrementSupernodeColumn(const Eigen::MatrixXd& source_data,
                                 const std::vector<int>& source_column_labels,
                                 int source_column_index);
