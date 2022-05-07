@@ -42,7 +42,7 @@ CONEX_NO_COPY_NO_MOVE(DenseBlock)
     std::vector<int> supernodes((p.spatial_dimension + 1) * (p.num_edges + 1));
     std::iota(supernodes.begin(), supernodes.end(), offset);
     SetSupernodes(supernodes);
-    Initialize();
+    DoInitialize();
   }
   void SetData(Eigen::Ref<MatrixXd> full_matrix) {
     supernode_submatrix_ = full_matrix.bottomRightCorner(supernodes().size(), supernodes().size());
@@ -80,7 +80,7 @@ CONEX_NO_COPY_NO_MOVE(IncomingSpatialVariableBlock)
     std::iota(separators.begin() + seperator_global_size_1_, separators.end(), seperator_global_offset_2_);
 
     SetSeparators(separators);
-    Initialize();
+    DoInitialize();
   }
 
    void SetData(Eigen::Ref<MatrixXd> full_matrix) {

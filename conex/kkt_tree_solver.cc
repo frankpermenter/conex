@@ -263,17 +263,20 @@ void T::DoAssemble() {
   }
 }
 
-
-bool T::AssembleAndFactor() {
+bool T::DoAssembleAndFactor() {
   for (auto root : roots_) {
-    root->AssembleAndFactor();
+    if (!root->AssembleAndFactor()) {
+      return false;
+    }
   }
   return true;
 }
 
 bool T::DoFactor() {
   for (auto root : roots_) {
-    root->Factor();
+    if (!root->Factor()) {
+      return false;
+    }
   }
   return true;
 }

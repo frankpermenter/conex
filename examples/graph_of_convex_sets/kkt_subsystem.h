@@ -9,35 +9,6 @@
 namespace conex {
 using Eigen::MatrixXd;
 
-class LUSolver : public KKTSubsystem {
- public: LUSolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
-
-  void DoEliminateSupernodeColumns() override {
-    lu_.compute(supernode_submatrix_.selfadjointView<Eigen::Lower>());
-  }
-
-  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
-      Eigen::Ref<Eigen::MatrixXd> y) const override {
-    y = lu_.solve(y);
-  }
-
-  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
-      Eigen::Ref<Eigen::MatrixXd> y) const override {
-    (void)y;  // NOOP
-  }
-
-  void DoComputeSeparatorSchurComplement() override {
-    separator_schur_complement_ -=
-        separator_rows_ * lu_.solve(separator_rows_.transpose());
-  }
-
-  void DoInitialize() override {
-    KKTSubsystem::DoInitialize();
-  }
-
-  Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
-};
-
 class StaticSubsystem : public LUSolver {
   using Base = LUSolver; 
 
@@ -212,8 +183,8 @@ class ConvexSetNode : public KKTSubsystem {
   int num_supernodes() { return supernodes().size(); }
   int num_separators() { return separators().size(); }
 
-  void DoEliminateSupernodeColumns() override {
-    factorization_->DoEliminateSupernodeColumns();
+  bool DoEliminateSupernodeColumns() override {
+    return factorization_->DoEliminateSupernodeColumns();
   }
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(

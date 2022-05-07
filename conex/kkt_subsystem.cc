@@ -142,21 +142,26 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   }
 }
 
-bool left_looking = true;
-void T::AssembleAndFactor() {
+bool left_looking = false;
+bool T::AssembleAndFactor() {
   DoInitialize();
   for (auto child : children_) {
-    child->AssembleAndFactor();
+    if (!child->AssembleAndFactor()) {
+      return false;
+    }
     if (left_looking) {
       child->ProvideColumnUpdate(supernodes_, separators_,
                                  supernode_submatrix_, separator_rows_);
     }
   }
-  DoEliminateSupernodeColumns();
+  if (!DoEliminateSupernodeColumns()) {
+    return false;
+  }
   DoComputeSeparatorSchurComplement();
   if (!IsRoot() && !left_looking) {
     DoScatterSeparatorSubmatrix();
   }
+  return true;
 }
 
 void T::Assemble() {
@@ -174,20 +179,30 @@ void T::Assemble() {
   }
 }
 
-void T::Factor() {
+bool T::Factor() {
   for (auto& child : children_) {
-    child->Factor();
+    if (!child->Factor()) {
+      return false;
+    }
     if (left_looking) {
       child->ProvideColumnUpdate(supernodes_, separators_,
                                  supernode_submatrix_, separator_rows_);
     }
   }
-  DoEliminateSupernodeColumns();
+  if (!DoEliminateSupernodeColumns()) {
+    return false;
+  }
+  // We assume that Assemble() has been called and already
+  // scattered the separator sub-matrix.
+  separator_schur_complement_.setZero();
   DoComputeSeparatorSchurComplement();
   if (!IsRoot() && !left_looking) {
     DoScatterSeparatorSubmatrix();
   }
+  return true;
 }
+
+
 int T::ComputePostOrdering(int offset,
                            std::vector<int>* variable_to_elimination_position) {
   for (auto& child : children_) {

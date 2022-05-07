@@ -17,14 +17,16 @@ class CholeskySolver {
                  separator_schur_complement_(separator_schur_complement),
                  llt_(supernode_submatrix.rows()) {}
 
-  void DoEliminateSupernodeColumns() {
+  bool DoEliminateSupernodeColumns() {
     Eigen::internal::set_is_malloc_allowed(false);
     llt_.compute(supernode_submatrix_);
     if (llt_.info() != Eigen::Success) {
-      throw std::runtime_error("Factorization failed.");
+      factored_ = false;
+    } else {
+      factored_ = true;
     }
-    factored_ = true;
     Eigen::internal::set_is_malloc_allowed(true);
+    return factored_;
   }
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
@@ -89,9 +91,8 @@ class KKTCholeskySystem : public KKTSubsystem {
  public:
   KKTCholeskySystem() {}
   KKTCholeskySystem(const std::vector<int>& vars) : KKTSubsystem(vars, 0) {}
-  void DoEliminateSupernodeColumns() override {
-  DUMP(supernode_submatrix_);
-    factorization_->DoEliminateSupernodeColumns();
+  bool DoEliminateSupernodeColumns() override {
+    return factorization_->DoEliminateSupernodeColumns();
   }
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
@@ -116,6 +117,31 @@ class KKTCholeskySystem : public KKTSubsystem {
   std::unique_ptr<FactorizationType> factorization_;
 };
 
+class LUSolver : public KKTSubsystem {
+ public:
+  LUSolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
 
+  bool DoEliminateSupernodeColumns() override {
+    lu_.compute(supernode_submatrix_);
+    return lu_.determinant() != 0;
+  }
+
+  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    y = lu_.solve(y);
+  }
+
+  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    CONEX_NOOP(y);
+  }
+
+  void DoComputeSeparatorSchurComplement() override {
+    separator_schur_complement_ -=
+        separator_rows_ * lu_.solve(separator_rows_.transpose());
+  }
+
+  Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
+};
 
 } // namespace conex

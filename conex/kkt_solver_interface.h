@@ -12,7 +12,18 @@ class KKTSolverBase {
     factored_ = false;
   }
 
+  bool AssembleAndFactor() {
+      assembled_ = false;
+      factored_ = false;
+    if (DoAssembleAndFactor()) {
+      assembled_ = true;
+      factored_ = true;
+    } 
+    return assembled_ && factored_;
+  }
+
   bool Factor() {
+    CONEX_DEMAND(assembled_, "System has not been assembled.");
     assembled_ = false;
     if (DoFactor()) {
       factored_ = true;
@@ -38,6 +49,7 @@ class KKTSolverBase {
  private:
   virtual void DoAssemble() = 0;
   virtual bool DoFactor() = 0;
+  virtual bool DoAssembleAndFactor() { DoAssemble(); return DoFactor(); }
   virtual void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                               bool permute_to_elimination_order) const = 0;
   virtual Eigen::MatrixXd DoKKTMatrix(

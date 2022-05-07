@@ -37,33 +37,7 @@ MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix,
 using Eigen::MatrixXd;
 
 
-class LUSolver : public KKTSubsystem {
- public:
-  LUSolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
-
-  void DoEliminateSupernodeColumns() override {
-    lu_.compute(supernode_submatrix_);
-  }
-
-  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    y = lu_.solve(y);
-  }
-
-  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    CONEX_NOOP(y);
-  }
-
-  void DoComputeSeparatorSchurComplement() override {
-    separator_schur_complement_ -=
-        separator_rows_ * lu_.solve(separator_rows_.transpose());
-  }
-
-  Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
-};
-
-using LLTSolver = KKTCholeskySystem<CholeskySolver<Eigen::RLDLT<Eigen::MatrixXd>, true>>;
+using LLTSolver = KKTCholeskySystem<CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, false>>;
 
 template <bool is_positive_definite>
 using FactorizationMethod =
@@ -124,14 +98,11 @@ void DoTestTrivalExample(const std::vector<int>& v) {
   Q1 << 50, 2, 3,
         2, 10, 4,
         3, 4, 10;
-  Q1 << 1, 1, 1,
-        1, 2, 1,
-        1, 1, 3;
   // clang-format on
   StaticAssemblerType q1(Q1, vars);
   full_matrix = IncrementSubmatrix(full_matrix, Q1, vars);
 
-  std::vector<int> vars_2{v[1], v[3]};
+  std::vector<int> vars_2{v[2], v[3]};
   Eigen::MatrixXd Q2(2, 2);
   // clang-format off
   Q2 << 5, 2, 
@@ -151,7 +122,6 @@ void DoTestTrivalExample(const std::vector<int>& v) {
   std::vector<int> parent{1, 2, -1};
   system.Finalize(parent);
 
-
   system.Assemble();
   EXPECT_NEAR((system.KKTMatrix() - full_matrix).norm(), 0, 1e-14);
 
@@ -159,7 +129,12 @@ void DoTestTrivalExample(const std::vector<int>& v) {
   x_ref.setLinSpaced(5, -1, 1);
   MatrixXd b = full_matrix * x_ref;
   system.Factor();
+  system.SolveInPlace(b);
+  EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
+
+
   system.AssembleAndFactor();
+  b = full_matrix * x_ref;
   system.SolveInPlace(b);
   EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
 }
@@ -184,29 +159,27 @@ void DoFailLDLT(bool expect_fail) {
   Options options; 
   system.Finalize(parent, false);
 
-  q1.DoInitialize();
-
   VectorXd x_ref(num_vars);
   x_ref.setLinSpaced(num_vars, -1, 1);
   MatrixXd b = full_matrix * x_ref;
-  system.Factor();
-  system.SolveInPlace(b);
 
-  if (expect_fail) {
-    EXPECT_TRUE((x_ref - b).norm() > 1e-7);
-  } else {
-    EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
+  bool success = system.AssembleAndFactor();
+  EXPECT_EQ(success, !expect_fail);
+  if (!expect_fail) {
+    system.SolveInPlace(b);
+    EXPECT_TRUE((x_ref - b).norm() < 1e-7);
   }
+}
+
+
+GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrderLDLT) {
+  std::vector<int> v{0, 1, 2, 3, 4};
+  DoTestTrivalExample<StaticSubsystem<false>>(v);
 }
 
 GTEST_TEST(KKTSubsystem, FailLDLT) {
   DoFailLDLT<StaticSubsystem<true>>(true /*expect_fail*/);
   DoFailLDLT<StaticSubsystem<false>>(false /*expect_fail*/);
-}
-
-GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrderLDLT) {
-  std::vector<int> v{0, 1, 2, 3, 4};
-  DoTestTrivalExample<StaticSubsystem<false>>(v);
 }
 
 GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrderLLT) {
@@ -274,15 +247,12 @@ void DoBadRoot() {
   std::vector<int> parent_valid{1, -1};
   EXPECT_NO_THROW({ system.Finalize(parent_valid); });
 
-  q1.DoInitialize();
-  q2.DoInitialize();
-
   VectorXd x_ref(num_vars);
   x_ref.setLinSpaced(num_vars, -1, 1);
   MatrixXd b = full_matrix * x_ref;
+  system.Assemble();
   system.Factor();
   system.SolveInPlace(b);
-
   EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
 }
 

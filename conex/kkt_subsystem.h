@@ -115,11 +115,11 @@ class KKTSubsystem {
   }
 
   void Assemble();
-  void Factor();
+  bool Factor();
   bool is_valid_leaf() { return DoIsValidLeaf(); }
 
   void MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const;
-  void AssembleAndFactor();
+  bool AssembleAndFactor();
 
   KKTSubsystem* parent() const { return parent_; }
 
@@ -143,7 +143,7 @@ class KKTSubsystem {
     separator_rows_.resize(separators_.size(), supernodes_.size());
     separator_schur_complement_.resize(separators_.size(), separators_.size());
   }
-  virtual void DoEliminateSupernodeColumns() = 0;
+  virtual bool DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
   virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<Eigen::MatrixXd> y) const = 0;
