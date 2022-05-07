@@ -18,6 +18,13 @@ using T = KKTSubsystemBase;
 //
 //  x_supernodes = L^{-1} b_supernodes
 //  b_[separator] -=   SR^{-1} [x_supernodes]
+void T::DoMultiplyAndDecrementByOffDiagonalSubMatrix(
+    Eigen::Ref<MatrixXd> output,  Eigen::Ref<const MatrixXd> input) const {
+  for (int i = 0; i < separator_rows().rows(); i++) {
+    output.row(separators()[i]) -= separator_rows().row(i) * input;
+  }
+}
+
 void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   // Do recursion all the way down to a leaf node.
   for (auto child : children_) {
@@ -36,9 +43,7 @@ void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   if (separators_.size() > 0) {
     Eigen::MatrixXd temp = x_supernodes;
     DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
-    for (int i = 0; i < separator_rows().rows(); i++) {
-      x.row(separators_[i]) -= separator_rows().row(i) * temp;
-    }
+    DoMultiplyAndDecrementByOffDiagonalSubMatrix(x, temp);
   }
 }
 
@@ -51,6 +56,7 @@ Eigen::MatrixXd T::SeparatorRows(const Eigen::MatrixXd& x) const {
 }
 
 bool T::IsRoot() const { return parent_ == nullptr; }
+
 
 // Iterate from the root of the tree downwards using depth-first search. At each
 // node, we consider the triangular system
@@ -202,7 +208,6 @@ bool T::Factor() {
   return true;
 }
 
-
 int T::ComputePostOrdering(int offset,
                            std::vector<int>* variable_to_elimination_position) {
   for (auto& child : children_) {
@@ -287,10 +292,13 @@ void T::DoScatterSeparatorSubmatrix() {
   }
 }
 
+// Update target columns with local separator schur complement information.
+// We update target column i if their is a local separator pair (j, i), 
+// with (j \ge i).
 void T::ProvideColumnUpdate(const std::vector<int>& target_supernodes, 
-                              const std::vector<int>& target_separators,   
-                              Eigen::Ref<MatrixXd> target_supernode_submatrix, 
-                              Eigen::Ref<MatrixXd> target_separator_rows) {
+                            const std::vector<int>& target_separators,   
+                            Eigen::Ref<MatrixXd> target_supernode_submatrix, 
+                            Eigen::Ref<MatrixXd> target_separator_rows) {
   if (separators_.size() == 0 ||  target_supernodes.at(0) > separators_.back()) {
     return;
   }

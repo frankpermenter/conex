@@ -190,6 +190,8 @@ class KKTSubsystemBase {
   void DoScatterSeparatorSubmatrix();
   void IncrementSubmatrix(const Eigen::MatrixXd& S,
                           const std::vector<int>& vars, size_t start_index);
+  void DoMultiplyAndDecrementByOffDiagonalSubMatrix(
+    Eigen::Ref<Eigen::MatrixXd> output,  Eigen::Ref<const Eigen::MatrixXd> input) const;
 };
 
 class KKTSubsystem : public KKTSubsystemBase {
