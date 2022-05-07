@@ -6,7 +6,7 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {
 
-using T = KKTSubsystem;
+using T = KKTSubsystemBase;
 
 // Iterate from the leafs of the tree upwards using recursion.
 // At each leaf, we consider the triangular system
