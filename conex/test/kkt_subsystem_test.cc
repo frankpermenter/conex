@@ -42,7 +42,6 @@ class LUSolver : public KKTSubsystem {
   LUSolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
 
   void DoEliminateSupernodeColumns() override {
-  DUMP(supernode_submatrix_);
     lu_.compute(supernode_submatrix_);
   }
 
@@ -160,6 +159,7 @@ void DoTestTrivalExample(const std::vector<int>& v) {
   x_ref.setLinSpaced(5, -1, 1);
   MatrixXd b = full_matrix * x_ref;
   system.Factor();
+  system.AssembleAndFactor();
   system.SolveInPlace(b);
   EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
 }
@@ -206,9 +206,7 @@ GTEST_TEST(KKTSubsystem, FailLDLT) {
 
 GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrderLDLT) {
   std::vector<int> v{0, 1, 2, 3, 4};
-  DUMP("IN TRIVIAL");
   DoTestTrivalExample<StaticSubsystem<false>>(v);
-  throw;
 }
 
 GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrderLLT) {

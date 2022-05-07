@@ -227,7 +227,6 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
       }
     }
   }
-  DUMP(tree.parent);
   return -1;
 }
 
@@ -262,6 +261,14 @@ void T::DoAssemble() {
   for (auto root : roots_) {
     root->Assemble();
   }
+}
+
+
+bool T::AssembleAndFactor() {
+  for (auto root : roots_) {
+    root->AssembleAndFactor();
+  }
+  return true;
 }
 
 bool T::DoFactor() {

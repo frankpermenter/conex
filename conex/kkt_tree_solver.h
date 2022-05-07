@@ -25,6 +25,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
                 bool check_for_zero_pivots = true);
 
   std::vector<int> subsystem_to_parent() { return subsystem_to_parent_; }
+  bool AssembleAndFactor();
  private:
   void FinalizeHelper(const std::vector<int>& subsystem_to_parent_subsystem);
   Eigen::MatrixXd DoKKTMatrix(
