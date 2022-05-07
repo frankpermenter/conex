@@ -27,8 +27,6 @@ int NumberOfSeparators(const Parameters& p) {
 
 using DenseBlockBase = 
 KKTCholeskySystem<CholeskySolver<Eigen::RLDLT<MatrixXd>, true>>;
-
-
 } // namespace
 
 class DenseBlock : public DenseBlockBase {

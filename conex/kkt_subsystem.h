@@ -73,7 +73,6 @@
 
 namespace conex {
 
-
 class KKTSubsystemBase {
  public:
   KKTSubsystemBase(const std::vector<int>& shared_assembler_variables,
@@ -93,7 +92,7 @@ class KKTSubsystemBase {
   virtual Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement() const = 0;
   virtual Eigen::Ref<const Eigen::MatrixXd> separator_rows() const = 0; 
 
-  virtual void DoInitialize() = 0;
+  virtual void DoInitialize() {};
 
   const std::vector<int>& shared_variables() const { return variables_; }
 
@@ -163,8 +162,6 @@ class KKTSubsystemBase {
                            Eigen::Ref<Eigen::MatrixXd> supernode_submatrix, 
                            Eigen::Ref<Eigen::MatrixXd> separator_rows);
 
-
- protected:
   void SetParent(KKTSubsystemBase* parent) {
     CONEX_DEMAND(parent, "Received nullptr");
     CONEX_DEMAND(parent_ == nullptr, "Parent already assigned.");
@@ -181,8 +178,6 @@ class KKTSubsystemBase {
   std::vector<int> variable_to_local_elimination_position_;
   int number_of_private_variables_ = 0;
 
-  void InplaceLeftMultiplyBySeparatorRowsTimesInverseOfRightFactor(
-      Eigen::Ref<Eigen::MatrixXd>& temp) const;
   Eigen::MatrixXd SeparatorRows(const Eigen::MatrixXd& x) const;
 
 
@@ -193,7 +188,6 @@ class KKTSubsystemBase {
   int GetSupernodePosition(int global_label);
   int GetSeparatorPosition(int global_label);
   void DoScatterSeparatorSubmatrix();
-
   void IncrementSubmatrix(const Eigen::MatrixXd& S,
                           const std::vector<int>& vars, size_t start_index);
 };
@@ -211,6 +205,7 @@ class KKTSubsystem : public KKTSubsystemBase {
     separator_rows_.resize(separators_.size(), supernodes_.size());
     separator_schur_complement_.resize(separators_.size(), separators_.size());
   }
+
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override { return supernode_submatrix_; }
   Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override { 
       return separator_schur_complement_; }

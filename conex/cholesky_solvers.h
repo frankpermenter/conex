@@ -7,7 +7,7 @@ namespace conex {
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 template <typename FactorizationMethod, bool schur_complement_mode>
-class CholeskySolver {
+class CholeskySolver : public KKTSubsystemBase {
  public:
   CholeskySolver(Eigen::Ref<Eigen::MatrixXd> supernode_submatrix,  
                  Eigen::Ref<Eigen::MatrixXd> separator_rows,
@@ -17,7 +17,19 @@ class CholeskySolver {
                  separator_schur_complement_(separator_schur_complement),
                  llt_(supernode_submatrix.rows()) {}
 
-  bool DoEliminateSupernodeColumns() {
+    
+  Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override { return supernode_submatrix_; }
+  Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override { 
+      return separator_schur_complement_; }
+  Eigen::Ref<Eigen::MatrixXd> separator_rows() override { return separator_rows_; }
+
+  Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const override { return supernode_submatrix_; }
+  Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement() const override { 
+      return separator_schur_complement_; }
+  Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override { return separator_rows_; }
+
+
+  bool DoEliminateSupernodeColumns() override {
     Eigen::internal::set_is_malloc_allowed(false);
     llt_.compute(supernode_submatrix_);
     if (llt_.info() != Eigen::Success) {
@@ -30,7 +42,7 @@ class CholeskySolver {
   }
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const {
+      Eigen::Ref<MatrixXd> y) const override {
     CONEX_CHECK(factored_);
     if (llt_.info() != Eigen::Success) {
       throw std::runtime_error("Factorization failed.");
@@ -43,7 +55,7 @@ class CholeskySolver {
   }
 
   void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const {
+      Eigen::Ref<MatrixXd> y) const override {
     CONEX_CHECK(factored_);
     if constexpr (schur_complement_mode) {
       CONEX_NOOP(y);
@@ -53,7 +65,7 @@ class CholeskySolver {
     }
   }
 
-  void DoComputeSeparatorSchurComplement() {
+  void DoComputeSeparatorSchurComplement() override {
     if (temp_row_major_.size() == 0) {
       temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
     } 
