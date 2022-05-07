@@ -194,7 +194,7 @@ bool T::Factor() {
   }
   // We assume that Assemble() has been called and already
   // scattered the separator sub-matrix.
-  separator_schur_complement_.setZero();
+  separator_schur_complement().setZero();
   DoComputeSeparatorSchurComplement();
   if (!IsRoot() && !left_looking) {
     DoScatterSeparatorSubmatrix();
@@ -282,7 +282,7 @@ void T::IncrementSubmatrix(const Eigen::MatrixXd& S,
 
 void T::DoScatterSeparatorSubmatrix() {
   if (parent_ && separators_.size() > 0) {
-    parent_->IncrementSubmatrix(separator_schur_complement_, separators_,
+    parent_->IncrementSubmatrix(separator_schur_complement(), separators_,
                                 0 /*start index*/);
   }
 }
@@ -309,7 +309,7 @@ void T::ProvideColumnUpdate(const std::vector<int>& target_supernodes,
       // we can't swap without invalidating beginning of loop.
       throw;
       }
-      target_supernode_submatrix(j, i) += separator_schur_complement_(local_position_j, 
+      target_supernode_submatrix(j, i) += separator_schur_complement()(local_position_j, 
                                                                     local_position_i);
     }
 
@@ -325,7 +325,7 @@ void T::ProvideColumnUpdate(const std::vector<int>& target_supernodes,
       if (local_position_j < local_position_i) {
       throw;
       }
-      target_separator_rows(j, i) += separator_schur_complement_(local_position_j, 
+      target_separator_rows(j, i) += separator_schur_complement()(local_position_j, 
                                                                  local_position_i);
     }
   }

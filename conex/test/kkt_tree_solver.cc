@@ -34,7 +34,7 @@ class LUSolver : public KKTSubsystem {
   }
 
   void DoComputeSeparatorSchurComplement() override {
-    separator_schur_complement_ -=
+    separator_schur_complement() -=
         separator_rows() * lu_.solve(separator_rows().transpose());
   }
 

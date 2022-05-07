@@ -111,7 +111,7 @@ class KKTCholeskySystem : public KKTSubsystem {
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     factorization_ = std::make_unique<FactorizationType>(supernode_submatrix(), 
-    separator_rows(), separator_schur_complement_);
+    separator_rows(), separator_schur_complement());
   }
  protected:
   std::unique_ptr<FactorizationType> factorization_;
@@ -137,7 +137,7 @@ class LUSolver : public KKTSubsystem {
   }
 
   void DoComputeSeparatorSchurComplement() override {
-    separator_schur_complement_ -=
+    separator_schur_complement() -=
         separator_rows() * lu_.solve(separator_rows().transpose());
   }
 
@@ -175,7 +175,7 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite> {
     int n2 = Base::separator_rows().rows();
     Base::supernode_submatrix() = Q_in_elimination_order_.topLeftCorner(n1, n1);
     Base::separator_rows() = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
-    Base::separator_schur_complement_ =
+    Base::separator_schur_complement() =
         Q_in_elimination_order_.bottomRightCorner(n2, n2);
   }
 
