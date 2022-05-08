@@ -153,7 +153,7 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   }
 }
 
-bool left_looking = false;
+bool left_looking = true;
 bool T::AssembleAndFactor() {
   DoInitialize();
   for (auto child : children_) {
@@ -161,8 +161,7 @@ bool T::AssembleAndFactor() {
       return false;
     }
     if (left_looking) {
-      child->ProvideColumnUpdate(supernodes_, separators_,
-                                 supernode_submatrix(), separator_rows());
+      child->ProvideColumnUpdate(this);
     }
   }
   if (!DoEliminateSupernodeColumns()) {
@@ -180,8 +179,7 @@ void T::Assemble() {
   for (auto child : children_) {
     child->Assemble();
     if (left_looking) {
-      child->ProvideColumnUpdate(supernodes_, separators_,
-                                 supernode_submatrix(), separator_rows());
+      child->ProvideColumnUpdate(this);
     }
   }
 
@@ -196,8 +194,7 @@ bool T::Factor() {
       return false;
     }
     if (left_looking) {
-      child->ProvideColumnUpdate(supernodes_, separators_,
-                                 supernode_submatrix(), separator_rows());
+      child->ProvideColumnUpdate(this);
     }
   }
   if (!DoEliminateSupernodeColumns()) {
@@ -300,10 +297,11 @@ void T::DoScatterSeparatorSubmatrix() {
 // Update target columns with local separator schur complement information.
 // We update target column i if their is a local separator pair (j, i), 
 // with (j \ge i).
-void T::ProvideColumnUpdate(const std::vector<int>& target_supernodes, 
-                            const std::vector<int>& target_separators,   
-                            Eigen::Ref<MatrixXd> target_supernode_submatrix, 
-                            Eigen::Ref<MatrixXd> target_separator_rows) {
+void T::ProvideColumnUpdate(KKTSubsystemBase* target) {
+  const std::vector<int>& target_supernodes = target->supernodes();
+  const std::vector<int>& target_separators = target->separators();
+  Eigen::Ref<MatrixXd> target_supernode_submatrix = target->supernode_submatrix();
+  Eigen::Ref<MatrixXd> target_separator_rows = target->separator_rows();
   if (separators_.size() == 0 ||  target_supernodes.at(0) > separators_.back()) {
     return;
   }
@@ -344,8 +342,7 @@ void T::ProvideColumnUpdate(const std::vector<int>& target_supernodes,
   }
 
   for (auto& c : children_) {
-    c->ProvideColumnUpdate(target_supernodes, target_separators, 
-                           target_supernode_submatrix, target_separator_rows);
+    c->ProvideColumnUpdate(target);
   }
 }
 

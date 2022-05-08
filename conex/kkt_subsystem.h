@@ -147,6 +147,11 @@ class KKTSubsystemBase {
       Eigen::Ref<Eigen::MatrixXd> y) const = 0;
   virtual void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
       Eigen::Ref<Eigen::MatrixXd> y) const = 0;
+  virtual void DoMultiplyAndDecrementByOffDiagonalSubMatrix(
+    Eigen::Ref<Eigen::MatrixXd> output,  Eigen::Ref<const Eigen::MatrixXd> input) const;
+
+  virtual void DoMultiplyByTransposeOfOffDiagonalSubMatrix(
+    Eigen::MatrixXd* output,  Eigen::Ref<const Eigen::MatrixXd> input) const;
 
   bool IsRoot() const;
 
@@ -157,10 +162,7 @@ class KKTSubsystemBase {
     return variable_to_local_elimination_position_;
   }
 
-  void ProvideColumnUpdate(const std::vector<int>& target_supernodes, 
-                           const std::vector<int>& target_separators,   
-                           Eigen::Ref<Eigen::MatrixXd> supernode_submatrix, 
-                           Eigen::Ref<Eigen::MatrixXd> separator_rows);
+  void ProvideColumnUpdate(KKTSubsystemBase* target);
 
   void SetParent(KKTSubsystemBase* parent) {
     CONEX_DEMAND(parent, "Received nullptr");
@@ -190,11 +192,6 @@ class KKTSubsystemBase {
   void DoScatterSeparatorSubmatrix();
   void IncrementSubmatrix(const Eigen::MatrixXd& S,
                           const std::vector<int>& vars, size_t start_index);
-  virtual void DoMultiplyAndDecrementByOffDiagonalSubMatrix(
-    Eigen::Ref<Eigen::MatrixXd> output,  Eigen::Ref<const Eigen::MatrixXd> input) const;
-
-  virtual void DoMultiplyByTransposeOfOffDiagonalSubMatrix(
-    Eigen::MatrixXd* output,  Eigen::Ref<const Eigen::MatrixXd> input) const;
 };
 
 class KKTSubsystem : public KKTSubsystemBase {
