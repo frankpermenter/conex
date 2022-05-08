@@ -11,13 +11,24 @@ using T = KKTSubsystemBase;
 
 namespace {
 
+Eigen::MatrixXd Submatrix(const Eigen::MatrixXd& x, 
+                          const std::vector<int>& rows) {
+  Eigen::MatrixXd separator_rows_of_x(rows.size(), x.cols());
+  for (int i = 0; i < separator_rows_of_x.rows(); i++) {
+    separator_rows_of_x.row(i) = x.row(rows[i]);
+  }
+  return separator_rows_of_x;
+}
+
+
+
 KKTSubsystemBase::Offset GetOverlappingSegment(const std::vector<int>& supernodes_, 
                           const std::vector<int>& variables,
-                          int global_label) {
+                          size_t global_label) {
   KKTSubsystemBase::Offset y{0, 0, 0};
   y.second = global_label;
   size_t start = 0;
-  int size = 0;
+  size_t size = 0;
   for (; start < supernodes_.size(); ++start) {
     if (supernodes_.at(start) == variables.at(global_label)) {
       size = 1;
@@ -88,19 +99,12 @@ void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   }
 }
 
-Eigen::MatrixXd T::SeparatorRows(const Eigen::MatrixXd& x) const {
-  Eigen::MatrixXd separator_rows_of_x(separators_.size(), x.cols());
-  for (int i = 0; i < separator_rows_of_x.rows(); i++) {
-    separator_rows_of_x.row(i) = x.row(separators_[i]);
-  }
-  return separator_rows_of_x;
-}
 
 bool T::IsRoot() const { return parent_ == nullptr; }
 
 void T::DoMultiplyByTransposeOfOffDiagonalSubMatrix(
     Eigen::MatrixXd* output,  Eigen::Ref<const Eigen::MatrixXd> input) const {
-  *output = separator_rows().transpose() * SeparatorRows(input);
+  *output = separator_rows().transpose() * Submatrix(input, separators_);
 }
 
 // Iterate from the root of the tree downwards using depth-first search. At each
@@ -156,18 +160,8 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
       break;
     }
   }
-  #if 0
-  for (size_t index = source_separator_index; index < source_column_labels.size(); index++) {
-    auto local_row =  GetOverlappingSegment(separators_, source_column_labels, index);
-    if (local_row.size != 0) {
-      int size = 1;
-      local_separator_to_source_separator_[source].push_back({local_row.first, index, size});
-    } else {
-      throw;
-    }
-  }
-  #else
-  int index = source_separator_index;
+
+  size_t index = source_separator_index;
   while (index < source_column_labels.size())  {
     auto local_row = GetOverlappingSegment(separators_, source_column_labels, index);
     if (local_row.size != 0) {
@@ -175,14 +169,9 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
       index += local_row.size;
     } else {
       // By the running intersection property, all separators must be present.
-      throw;
+      std::runtime_error("Tree fails the running intersection property.");
     }
   }
-  #endif
-
-
-
-
 
   if (source_separator_index < source_column_labels.size()) {
     CONEX_DEMAND(parent_, "Parent pointer is null.");
@@ -190,18 +179,6 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
   }
 }
 
-
-
-int T::GetSupernodePosition(const std::vector<int>& variables, int global_label) {
-throw;
-  return -1; // GetOverlappingSegment(supernodes_, variables, global_label);
-}
-
-int T::GetSeparatorPosition(const std::vector<int>& variables,   int global_label) {
-throw;
-  return  -1; 
-  //GetOverlappingSegment(separators_, variables, global_label);
-}
 
 void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   for (auto child : children_) {

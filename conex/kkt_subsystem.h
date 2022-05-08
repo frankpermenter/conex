@@ -77,11 +77,10 @@ namespace conex {
 class KKTSubsystemBase {
  public:
   KKTSubsystemBase(const std::vector<int>& shared_assembler_variables,
-               int number_of_private_variables)
-      : variables_(shared_assembler_variables),
-        number_of_private_variables_(number_of_private_variables) {}
+               int )
+      : variables_(shared_assembler_variables) {}
 
-  KKTSubsystemBase() : variables_({}), number_of_private_variables_(0) {}
+  KKTSubsystemBase() : variables_({}) {}
 
   std::vector<int> separators() const { return separators_; }
   std::vector<int> supernodes() const { return supernodes_; }
@@ -154,7 +153,7 @@ class KKTSubsystemBase {
     return local_separator_to_source_separator_.at(source);
   }
 
- protected:
+ private:
   virtual bool DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
   virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
@@ -172,11 +171,6 @@ class KKTSubsystemBase {
   KKTSubsystemBase* parent_ = nullptr;
   std::vector<KKTSubsystemBase*> children_;
 
-  std::vector<int>& variable_to_local_elimination_rank() {
-    return variable_to_local_elimination_position_;
-  }
-
-
 
   void ProvideColumnUpdate(KKTSubsystemBase* target);
   void ReceiveColumnUpdate(const KKTSubsystemBase* source, size_t start_index_of_source);
@@ -190,31 +184,22 @@ class KKTSubsystemBase {
   virtual bool DoIsValidLeaf() { return true; }
 
   void DoComputeOffsets();
-  // separators_ and supernodes_ are disjoint and their
-  // union contains variables_
-  std::vector<int> separators_;
-  std::vector<int> supernodes_;
-  const std::vector<int> variables_;
+
   std::vector<int> variable_to_local_elimination_position_;
-  int number_of_private_variables_ = 0;
 
-  Eigen::MatrixXd SeparatorRows(const Eigen::MatrixXd& x) const;
-
-
-
-
-  int GetSupernodePosition(const std::vector<int>& variables, int global_label);
-  int GetSeparatorPosition(const std::vector<int>& variables, int global_label);
   void DoScatterSeparatorSubmatrix();
 
   // We are given a submatrix with arbitrary labels.
-
   void ComputeOffsets(const KKTSubsystemBase* source, int source_separators_start);
-
-
   std::map<const KKTSubsystemBase*, std::vector<Offset>> local_supernode_to_source_separator_;
   std::map<const KKTSubsystemBase*, std::vector<Offset>> local_separator_to_source_separator_;
-
+protected:
+  std::vector<int>& variable_to_local_elimination_rank() {
+    return variable_to_local_elimination_position_;
+  }
+  std::vector<int> separators_;
+  std::vector<int> supernodes_;
+  const std::vector<int> variables_;
 };
 
 class KKTSubsystem : public KKTSubsystemBase {
