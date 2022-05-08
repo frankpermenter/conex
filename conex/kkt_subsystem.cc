@@ -11,9 +11,11 @@ using T = KKTSubsystemBase;
 
 namespace {
 
-int GetOverlappingSegment(const std::vector<int>& supernodes_, 
+KKTSubsystemBase::Offset GetOverlappingSegment(const std::vector<int>& supernodes_, 
                           const std::vector<int>& variables,
                           int global_label) {
+  KKTSubsystemBase::Offset y{0, 0, 0};
+  y.second = global_label;
   size_t start = 0;
   int size = 0;
   for (; start < supernodes_.size(); ++start) {
@@ -28,10 +30,10 @@ int GetOverlappingSegment(const std::vector<int>& supernodes_,
            supernodes_.at(start + size) == variables.at(global_label + size)) {
       size++;
     }
-    return start;
-  }  else {
-    return -1;
-  }
+    y.first = start;
+    y.size = size;
+  } 
+  return y;
 }
 
 
@@ -144,22 +146,23 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
   if (local_separator_to_source_separator_[source].size() > 0) {
     return;
   }
-  for (; source_separator_index < source_column_labels.size(); source_separator_index++) {
+
+  while (source_separator_index < source_column_labels.size())  {
     size_t i = source_separator_index;
-    int local_row =  GetOverlappingSegment(supernodes_, source_column_labels, i);
-    if (local_row != -1) {
-      int size = 1;
-      local_supernode_to_source_separator_[source].push_back({local_row, i, size});
+    auto local_row = GetOverlappingSegment(supernodes_, source_column_labels, i);
+    if (local_row.size != 0) {
+      local_supernode_to_source_separator_[source].push_back(local_row);
+      source_separator_index += local_row.size;
     } else {
       break;
     }
   }
 
   for (size_t index = source_separator_index; index < source_column_labels.size(); index++) {
-    int local_row =  GetOverlappingSegment(separators_, source_column_labels, index);
-    if (local_row != -1) {
+    auto local_row =  GetOverlappingSegment(separators_, source_column_labels, index);
+    if (local_row.size != 0) {
       int size = 1;
-      local_separator_to_source_separator_[source].push_back({local_row, index, size});
+      local_separator_to_source_separator_[source].push_back({local_row.first, index, size});
     } else {
       throw;
     }
@@ -174,11 +177,14 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
 
 
 int T::GetSupernodePosition(const std::vector<int>& variables, int global_label) {
-  return GetOverlappingSegment(supernodes_, variables, global_label);
+throw;
+  return -1; // GetOverlappingSegment(supernodes_, variables, global_label);
 }
 
 int T::GetSeparatorPosition(const std::vector<int>& variables,   int global_label) {
-  return GetOverlappingSegment(separators_, variables, global_label);
+throw;
+  return  -1; 
+  //GetOverlappingSegment(separators_, variables, global_label);
 }
 
 void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
