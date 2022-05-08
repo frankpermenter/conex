@@ -97,7 +97,7 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
 // Loop over the separators of source and record the intersections.
 void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
   const auto& source_column_labels = source->separators();
-  int source_separator_index = start_index;
+  size_t source_separator_index = start_index;
 
   if (local_supernode_to_source_separator_[source].size() > 0) {
     return;
@@ -115,7 +115,7 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
     }
   }
 
-  for (int index = source_separator_index; index < source_column_labels.size(); index++) {
+  for (size_t index = source_separator_index; index < source_column_labels.size(); index++) {
     int local_row = GetSeparatorPosition(source_column_labels.at(index));
     if (local_row != -1) {
       local_separator_to_source_separator_[source].push_back({local_row, index});
@@ -191,7 +191,7 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   }
 }
 
-bool left_looking = false;
+bool left_looking = true;
 bool T::AssembleAndFactor() {
   DoInitialize();
   for (auto child : children_) {
@@ -315,7 +315,6 @@ void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, int start_index) {
   }
   size_t col_index = start_index;
 
-#if 1
   for (auto& c : local_supernode_to_source_separator_.at(source)) {
     for (auto& r : local_supernode_to_source_separator_.at(source)) {
       supernode_submatrix()(r.first, c.first) += source->separator_schur_complement()(r.second, c.second);
@@ -331,17 +330,6 @@ void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, int start_index) {
       break;
     }
   }
-  #else
-  col_index = start_index;
-  for (; col_index < vars.size(); col_index++) {
-    if (vars.at(col_index) > supernodes_.back()) {
-      // The remaining columns must belong to our parent.
-      break;
-    }
-    IncrementSupernodeColumn(source->separator_schur_complement(), vars, col_index);
-  }
-  #endif
-
 
   if (col_index < vars.size()) {
     CONEX_DEMAND(parent_, "Parent pointer is null.");
