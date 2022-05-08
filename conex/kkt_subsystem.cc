@@ -94,43 +94,39 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   }
 }
 
+// Loop over the separators of source and record the intersections.
 void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
-  auto source_column_labels = source->separators();
-  int source_column_index = start_index;
-  for (; source_column_index < 
-      source_column_labels.size(); source_column_index++) {
-    if (source_column_labels.at(source_column_index ) > supernodes_.back()) {
+  const auto& source_column_labels = source->separators();
+  int source_separator_index = start_index;
+
+  if (local_supernode_to_source_separator_[source].size() > 0) {
+    return;
+  }
+  if (local_separator_to_source_separator_[source].size() > 0) {
+    return;
+  }
+  for (; source_separator_index < source_column_labels.size(); source_separator_index++) {
+    size_t i = source_separator_index;
+    int local_row = GetSupernodePosition(source_column_labels.at(i));
+    if (local_row != -1) {
+      local_supernode_to_source_separator_[source].push_back({local_row, i});
+    } else {
       break;
-    }
-
-    {
-      auto source_column_labels = source->separators();
-      int local_column_index =
-          GetSupernodePosition(source_column_labels.at(source_column_index));
-      size_t i = source_column_index;
-      for (; i < source_column_labels.size(); i++) {
-        if (source_column_labels.at(i) > supernodes_.back()) {
-          break;
-        }
-        int local_row = GetSupernodePosition(source_column_labels.at(i));
-        CONEX_CHECK(local_row >= 0);
-        local_supernode_to_source_separator_[source].push_back({local_row, i});
-      }
-
-      for (; i < source_column_labels.size(); i++) {
-        if (source_column_labels.at(i) > separators_.back()) {
-          break;
-        }
-        int local_row = GetSeparatorPosition(source_column_labels.at(i));
-        CONEX_CHECK(local_row >= 0);
-        local_separator_to_source_separator_[source].push_back({local_row, i});
-      }
     }
   }
 
-  if (source_column_index < source_column_labels.size()) {
+  for (int index = source_separator_index; index < source_column_labels.size(); index++) {
+    int local_row = GetSeparatorPosition(source_column_labels.at(index));
+    if (local_row != -1) {
+      local_separator_to_source_separator_[source].push_back({local_row, index});
+    } else {
+      throw;
+    }
+  }
+
+  if (source_separator_index < source_column_labels.size()) {
     CONEX_DEMAND(parent_, "Parent pointer is null.");
-    parent_->ComputeOffsets(source, source_column_index);
+    parent_->ComputeOffsets(source, source_separator_index);
   }
 }
 
