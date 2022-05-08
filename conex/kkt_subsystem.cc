@@ -301,10 +301,10 @@ namespace {
 void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
   for (auto& c : destination->local_supernode_to_source_separator(source)) {
     for (auto& r : destination->local_supernode_to_source_separator(source)) {
-      destination->supernode_submatrix()(r.first, c.first) += source->separator_schur_complement()(r.second, c.second);
+      destination->supernode_submatrix().block(r.first, c.first, r.size, c.size) += source->separator_schur_complement().block(r.second, c.second, r.size, c.size);
     }
     for (auto& r : destination->local_separator_to_source_separator(source)) {
-      destination->separator_rows()(r.first, c.first) += source->separator_schur_complement()(r.second, c.second);
+      destination->separator_rows().block(r.first, c.first, r.size, c.size   ) += source->separator_schur_complement().block(r.second, c.second, r.size, c.size);
     }
   }
 }
