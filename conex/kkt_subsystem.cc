@@ -191,7 +191,7 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   }
 }
 
-bool left_looking = false;
+bool left_looking = true;
 bool T::AssembleAndFactor() {
   DoInitialize();
   for (auto child : children_) {
@@ -386,40 +386,8 @@ void T::ProvideColumnUpdate(KKTSubsystemBase* target) {
     return;
   }
 
-  for (size_t i = 0;  i < target_supernodes.size(); i++) {
-    int local_position_i = GetSeparatorPosition(target_supernodes.at(i));
-    if (local_position_i == -1) {
-      continue;
-    }
-    for (size_t j = i;  j < target_supernodes.size(); j++) {
-      int local_position_j = GetSeparatorPosition(target_supernodes.at(j));
-      if (local_position_j == -1) {
-        continue;
-      }
-      if (local_position_j < local_position_i) {
-      // we can't swap without invalidating beginning of loop.
-      throw;
-      }
-      target_supernode_submatrix(j, i) += separator_schur_complement()(local_position_j, 
-                                                                    local_position_i);
-    }
-
-    if (target_separators.size() == 0 ||  target_separators.at(0) > separators_.back()) {
-      continue;
-    }
-
-    for (size_t j = 0;  j < target_separators.size(); j++) {
-      int local_position_j = GetSeparatorPosition(target_separators.at(j));
-      if (local_position_j == -1) {
-        continue;
-      }
-      if (local_position_j < local_position_i) {
-      throw;
-      }
-      target_separator_rows(j, i) += separator_schur_complement()(local_position_j, 
-                                                                 local_position_i);
-    }
-  }
+  ComputeOffsets(this, 0);
+  Update(this, target);
 
   for (auto& c : children_) {
     c->ProvideColumnUpdate(target);
