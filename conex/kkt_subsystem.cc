@@ -8,6 +8,12 @@ namespace conex {
 
 using T = KKTSubsystemBase;
 
+void T::DoMultiplyAndDecrementByOffDiagonalSubMatrix(
+    Eigen::Ref<MatrixXd> output,  Eigen::Ref<const MatrixXd> input) const {
+  for (int i = 0; i < separator_rows().rows(); i++) {
+    output.row(separators()[i]) -= separator_rows().row(i) * input;
+  }
+}
 // Iterate from the leafs of the tree upwards using recursion.
 // At each leaf, we consider the triangular system
 //
@@ -18,12 +24,6 @@ using T = KKTSubsystemBase;
 //
 //  x_supernodes = L^{-1} b_supernodes
 //  b_[separator] -=   SR^{-1} [x_supernodes]
-void T::DoMultiplyAndDecrementByOffDiagonalSubMatrix(
-    Eigen::Ref<MatrixXd> output,  Eigen::Ref<const MatrixXd> input) const {
-  for (int i = 0; i < separator_rows().rows(); i++) {
-    output.row(separators()[i]) -= separator_rows().row(i) * input;
-  }
-}
 
 void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   // Do recursion all the way down to a leaf node.
@@ -57,6 +57,10 @@ Eigen::MatrixXd T::SeparatorRows(const Eigen::MatrixXd& x) const {
 
 bool T::IsRoot() const { return parent_ == nullptr; }
 
+void T::DoMultiplyByTransposeOfOffDiagonalSubMatrix(
+    Eigen::MatrixXd* output,  Eigen::Ref<const Eigen::MatrixXd> input) const {
+  *output = separator_rows().transpose() * SeparatorRows(input);
+}
 
 // Iterate from the root of the tree downwards using depth-first search. At each
 // node, we consider the triangular system
@@ -77,7 +81,8 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
 
     // Update residual using x_separator computed by ascendants in tree.
     if (separators_.size() > 0) {
-      Eigen::MatrixXd temp = separator_rows().transpose() * SeparatorRows(x);
+      Eigen::MatrixXd temp; 
+      DoMultiplyByTransposeOfOffDiagonalSubMatrix(&temp, x);
       DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(temp);
       x_supernodes.noalias() -= temp;
     }
