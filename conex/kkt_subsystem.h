@@ -174,6 +174,7 @@ class KKTSubsystemBase {
 
   virtual bool DoIsValidLeaf() { return true; }
 
+  void DoComputeOffsets();
   // separators_ and supernodes_ are disjoint and their
   // union contains variables_
   std::vector<int> separators_;

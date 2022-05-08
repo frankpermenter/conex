@@ -94,26 +94,43 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   }
 }
 
-void T::ComputeOffsets(const KKTSubsystemBase* source, int source_column_index) {
-
+void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
   auto source_column_labels = source->separators();
-  int local_column_index =
-      GetSupernodePosition(source_column_labels.at(source_column_index));
-  size_t i = source_column_index;
-  for (; i < source_column_labels.size(); i++) {
-    if (source_column_labels.at(i) > supernodes_.back()) {
+  int source_column_index = start_index;
+  for (; source_column_index < 
+      source_column_labels.size(); source_column_index++) {
+    if (source_column_labels.at(source_column_index ) > supernodes_.back()) {
       break;
     }
-    int local_row = GetSupernodePosition(source_column_labels.at(i));
-    local_supernode_to_source_separator_[source].push_back({local_row, i});
+
+    {
+      auto source_column_labels = source->separators();
+      int local_column_index =
+          GetSupernodePosition(source_column_labels.at(source_column_index));
+      size_t i = source_column_index;
+      for (; i < source_column_labels.size(); i++) {
+        if (source_column_labels.at(i) > supernodes_.back()) {
+          break;
+        }
+        int local_row = GetSupernodePosition(source_column_labels.at(i));
+        CONEX_CHECK(local_row >= 0);
+        local_supernode_to_source_separator_[source].push_back({local_row, i});
+      }
+
+      for (; i < source_column_labels.size(); i++) {
+        if (source_column_labels.at(i) > separators_.back()) {
+          break;
+        }
+        int local_row = GetSeparatorPosition(source_column_labels.at(i));
+        CONEX_CHECK(local_row >= 0);
+        local_separator_to_source_separator_[source].push_back({local_row, i});
+      }
+    }
   }
 
-  for (; i < source_column_labels.size(); i++) {
-    if (source_column_labels.at(i) > separators_.back()) {
-      break;
-    }
-    int local_row = GetSeparatorPosition(source_column_labels.at(i));
-    local_separator_to_source_separator_[source].push_back({local_row, i});
+  if (source_column_index < source_column_labels.size()) {
+    CONEX_DEMAND(parent_, "Parent pointer is null.");
+    parent_->ComputeOffsets(source, source_column_index);
   }
 }
 
@@ -178,7 +195,7 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   }
 }
 
-bool left_looking = true;
+bool left_looking = false;
 bool T::AssembleAndFactor() {
   DoInitialize();
   for (auto child : children_) {
@@ -289,34 +306,46 @@ void T::SetVariableOrdering(
   }
 };
 
+void T::DoComputeOffsets() {
+  if (parent_ && separators_.size() > 0) {
+    parent_->ComputeOffsets(this, 0 /*start index*/);
+  }
+}
+
 void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, int start_index) {
   const auto& vars = source->separators();
   if (start_index > vars.size()) {
     return;
   }
   size_t col_index = start_index;
-  CONEX_ASSERT(vars.at(col_index) >= supernodes_.at(0),
-               "Submatrix has been eliminated.");
 
-  if (local_supernode_to_source_separator_.find(source) !=
-      local_supernode_to_source_separator_.end()) {
-    for (; col_index < vars.size(); col_index++) {
-      if (vars.at(col_index) > supernodes_.back()) {
-        // The remaining columns must belong to our parent.
-        break;
-      }
-      ComputeOffsets(source, col_index);
+#if 1
+  for (auto& c : local_supernode_to_source_separator_.at(source)) {
+    for (auto& r : local_supernode_to_source_separator_.at(source)) {
+      supernode_submatrix()(r.first, c.first) += source->separator_schur_complement()(r.second, c.second);
+    }
+    for (auto& r : local_separator_to_source_separator_[source]) {
+      separator_rows()(r.first, c.first) += source->separator_schur_complement()(r.second, c.second);
     }
   }
-
+  col_index = start_index;
   for (; col_index < vars.size(); col_index++) {
     if (vars.at(col_index) > supernodes_.back()) {
       // The remaining columns must belong to our parent.
       break;
     }
-
+  }
+  #else
+  col_index = start_index;
+  for (; col_index < vars.size(); col_index++) {
+    if (vars.at(col_index) > supernodes_.back()) {
+      // The remaining columns must belong to our parent.
+      break;
+    }
     IncrementSupernodeColumn(source->separator_schur_complement(), vars, col_index);
   }
+  #endif
+
 
   if (col_index < vars.size()) {
     CONEX_DEMAND(parent_, "Parent pointer is null.");
@@ -349,6 +378,7 @@ void T::IncrementSubmatrix(const Eigen::MatrixXd& S,
 
 void T::DoScatterSeparatorSubmatrix() {
   if (parent_ && separators_.size() > 0) {
+    parent_->ComputeOffsets(this, 0);
     parent_->ReceiveColumnUpdate(this, 0 /*start index*/);
   }
 }
