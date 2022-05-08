@@ -43,7 +43,7 @@ void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
       destination->supernode_submatrix().block(r.first, c.first, r.size, c.size) += source->separator_schur_complement().block(r.second, c.second, r.size, c.size);
     }
     for (auto& r : destination->local_separator_to_source_separator(source)) {
-      destination->separator_rows().block(r.first, c.first, r.size, c.size   ) += source->separator_schur_complement().block(r.second, c.second, r.size, c.size);
+      destination->separator_rows().block(r.first, c.first, r.size, c.size) += source->separator_schur_complement().block(r.second, c.second, r.size, c.size);
     }
   }
 }
@@ -148,8 +148,7 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
   }
 
   while (source_separator_index < source_column_labels.size())  {
-    size_t i = source_separator_index;
-    auto local_row = GetOverlappingSegment(supernodes_, source_column_labels, i);
+    auto local_row = GetOverlappingSegment(supernodes_, source_column_labels, source_separator_index);
     if (local_row.size != 0) {
       local_supernode_to_source_separator_[source].push_back(local_row);
       source_separator_index += local_row.size;
@@ -157,7 +156,7 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
       break;
     }
   }
-
+  #if 0
   for (size_t index = source_separator_index; index < source_column_labels.size(); index++) {
     auto local_row =  GetOverlappingSegment(separators_, source_column_labels, index);
     if (local_row.size != 0) {
@@ -167,6 +166,23 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
       throw;
     }
   }
+  #else
+  int index = source_separator_index;
+  while (index < source_column_labels.size())  {
+    auto local_row = GetOverlappingSegment(separators_, source_column_labels, index);
+    if (local_row.size != 0) {
+      local_separator_to_source_separator_[source].push_back(local_row);
+      index += local_row.size;
+    } else {
+      // By the running intersection property, all separators must be present.
+      throw;
+    }
+  }
+  #endif
+
+
+
+
 
   if (source_separator_index < source_column_labels.size()) {
     CONEX_DEMAND(parent_, "Parent pointer is null.");
