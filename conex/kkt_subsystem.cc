@@ -107,7 +107,7 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
   }
   for (; source_separator_index < source_column_labels.size(); source_separator_index++) {
     size_t i = source_separator_index;
-    int local_row = GetSupernodePosition(source_column_labels.at(i));
+    int local_row = GetSupernodePosition(source_column_labels, i);
     if (local_row != -1) {
       local_supernode_to_source_separator_[source].push_back({local_row, i});
     } else {
@@ -136,13 +136,13 @@ void T::IncrementSupernodeColumn(const Eigen::MatrixXd& source_data,
                                  const std::vector<int>& source_column_labels,
                                  int source_column_index) {
   int local_column_index =
-      GetSupernodePosition(source_column_labels.at(source_column_index));
+      GetSupernodePosition(source_column_labels, source_column_index);
   size_t i = source_column_index;
   for (; i < source_column_labels.size(); i++) {
     if (source_column_labels.at(i) > supernodes_.back()) {
       break;
     }
-    int local_row = GetSupernodePosition(source_column_labels.at(i));
+    int local_row = GetSupernodePosition(source_column_labels, i);
     supernode_submatrix()(local_row, local_column_index) +=
         source_data(i, source_column_index);
   }
@@ -157,13 +157,26 @@ void T::IncrementSupernodeColumn(const Eigen::MatrixXd& source_data,
   }
 }
 
-int T::GetSupernodePosition(int global_label) {
-  for (size_t i = 0; i < supernodes_.size(); ++i) {
-    if (supernodes_.at(i) == global_label) {
-      return i;
+int T::GetSupernodePosition(const std::vector<int>& variables, int global_label) {
+  size_t start = 0;
+  bool found = false;
+  int size = 0;
+  for (; start < supernodes_.size(); ++start) {
+    if (supernodes_.at(start) == variables.at(global_label)) {
+      size = 1;
+      break;
     }
   }
-  return -1;
+  if (size >= 1) {
+    while (start + size < supernodes_.size() &&
+           global_label + size < variables.size() &&
+           supernodes_.at(start + size) == variables.at(global_label + size)) {
+      size++;
+    }
+    return start;
+  }  else {
+    return -1;
+  }
 }
 
 int T::GetSeparatorPosition(int global_label) {
@@ -308,6 +321,7 @@ void T::DoComputeOffsets() {
   }
 }
 
+namespace {
 void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
   for (auto& c : destination->local_supernode_to_source_separator(source)) {
     for (auto& r : destination->local_supernode_to_source_separator(source)) {
@@ -318,19 +332,17 @@ void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
     }
   }
 }
+} // namespace
 
-
-void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, int start_index) {
+void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, size_t start_index) {
   const auto& vars = source->separators();
   if (start_index > vars.size()) {
     return;
   }
 
   Update(source, this);
+
   size_t col_index = start_index;
-
-
-  col_index = start_index;
   for (; col_index < vars.size(); col_index++) {
     if (vars.at(col_index) > supernodes_.back()) {
       // The remaining columns must belong to our parent.
@@ -380,12 +392,9 @@ void T::DoScatterSeparatorSubmatrix() {
 void T::ProvideColumnUpdate(KKTSubsystemBase* target) {
   const std::vector<int>& target_supernodes = target->supernodes();
   const std::vector<int>& target_separators = target->separators();
-  Eigen::Ref<MatrixXd> target_supernode_submatrix = target->supernode_submatrix();
-  Eigen::Ref<MatrixXd> target_separator_rows = target->separator_rows();
-  if (separators_.size() == 0 ||  target_supernodes.at(0) > separators_.back()) {
+  if (separators_.size() == 0 || target_supernodes.at(0) > separators_.back()) {
     return;
   }
-
   ComputeOffsets(this, 0);
   Update(this, target);
 

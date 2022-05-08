@@ -173,7 +173,7 @@ class KKTSubsystemBase {
 
 
   void ProvideColumnUpdate(KKTSubsystemBase* target);
-  void ReceiveColumnUpdate(const KKTSubsystemBase* source, int start_index_of_source);
+  void ReceiveColumnUpdate(const KKTSubsystemBase* source, size_t start_index_of_source);
 
   void SetParent(KKTSubsystemBase* parent) {
     CONEX_DEMAND(parent, "Received nullptr");
@@ -200,7 +200,7 @@ class KKTSubsystemBase {
                                 int source_column_index);
 
 
-  int GetSupernodePosition(int global_label);
+  int GetSupernodePosition(const std::vector<int>& variables, int global_label);
   int GetSeparatorPosition(int global_label);
   void DoScatterSeparatorSubmatrix();
   void IncrementSubmatrix(const Eigen::MatrixXd& S,
