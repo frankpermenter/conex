@@ -11,6 +11,7 @@ struct Time {
   int solve_time_dense;
   int factor_time_natural;
   int factor_time_amd;
+  int factor_time_left_looking;
   int solve_time_sparse;
   int non_zeros_amd;
   int non_zeros_natural;

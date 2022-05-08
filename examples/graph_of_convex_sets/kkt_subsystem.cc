@@ -57,25 +57,6 @@ T::ConvexSetNode(const std::vector<int>& variables,
   //                                                  -1
   //                                        -I
   //                                                  -1
-  Eigen::MatrixXd T::MakeSeperatorMatrix() {
-    Eigen::MatrixXd Q(num_separators(), num_supernodes());
-    Q.setZero();
-    // Set col to spatial flow multiplier.
-    for (int i = 0; i < num_outgoing; i++) {
-      Q.block(params_.outgoing_spatial_flow_start_positions.at(i), 
-         params_.conservation_of_spatial_flow_multiplier_position, spatial_dim, spatial_dim)
-          .diagonal()
-          .setConstant(-2);
-    }
-
-    for (int i = 0; i < num_outgoing; i++) {
-      int offset_row = params_.outgoing_flow_start_positions.at(i); 
-      Q(offset_row, params_.conservation_of_flow_multiplier_position) = -1;
-      offset_row += spatial_dim;
-    }
-//    Q.setConstant(-.01);
-    return Q;
-  }
 
   Eigen::MatrixXd T::MakeSeperatorMatrixNoFill() {
   throw std::runtime_error("Obsolete function.");
@@ -95,7 +76,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
       Q(offset_row, offset_col) = -1;
       offset_row += spatial_dim + 1;
     }
- //   Q.setConstant(-.01);
+   Q.setConstant(-.01);
     return Q;
   }
 
@@ -158,7 +139,31 @@ T::ConvexSetNode(const std::vector<int>& variables,
       Q(params_.conservation_of_flow_multiplier_position,  
         params_.incoming_flow_start_positions.at(i)) = 10 + i;
     }
+    Q.setConstant(.1);
+    Q.diagonal().setConstant(10);
     return Q;
   }
+
+  Eigen::MatrixXd T::MakeSeperatorMatrix() {
+    Eigen::MatrixXd Q(num_separators(), num_supernodes());
+    Q.setZero();
+    // Set col to spatial flow multiplier.
+    for (int i = 0; i < num_outgoing; i++) {
+      Q.block(params_.outgoing_spatial_flow_start_positions.at(i), 
+         params_.conservation_of_spatial_flow_multiplier_position, spatial_dim, spatial_dim)
+          .diagonal()
+          .setConstant(-2);
+    }
+
+    for (int i = 0; i < num_outgoing; i++) {
+      int offset_row = params_.outgoing_flow_start_positions.at(i); 
+      Q(offset_row, params_.conservation_of_flow_multiplier_position) = -1;
+      offset_row += spatial_dim;
+    }
+    Q.setConstant(-.01);
+    return Q;
+  }
+
+
 
 } // namespace conex

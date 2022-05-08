@@ -122,10 +122,6 @@ T(T&&) = delete;\
 T& operator=(const T&) = delete;\
 T& operator=(T&&) = delete;\
 
-
-
-
-
 class ConvexSetNode : public KKTSubsystem {
  public:
   CONEX_NO_COPY_NO_MOVE(ConvexSetNode)

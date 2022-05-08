@@ -2,6 +2,7 @@
 #include "conex/kkt_solver_interface.h"
 #include "conex/kkt_subsystem.h"
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
 
 namespace conex {
 
@@ -24,7 +25,13 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   subsystem_to_parent_subsystem,
                 bool check_for_zero_pivots = true);
 
+  void SetFactorizationMode(bool left_looking);  
+
   std::vector<int> subsystem_to_parent() { return subsystem_to_parent_; }
+
+  Eigen::SparseMatrix<double> MakeSparseKKTMatrix(
+      bool permute_to_elimination_order = true) const;
+
  private:
   void FinalizeHelper(const std::vector<int>& subsystem_to_parent_subsystem);
   Eigen::MatrixXd DoKKTMatrix(

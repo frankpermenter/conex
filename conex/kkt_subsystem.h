@@ -5,6 +5,7 @@
 #include "conex/debug_macros.h"
 #include "conex/error_checking_macros.h"
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
 // A KKT sub-system is a symmetric system of linear equations of the
 // form:
 //
@@ -92,10 +93,9 @@ class KKTSubsystemBase {
   virtual Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement() const = 0;
   virtual Eigen::Ref<const Eigen::MatrixXd> separator_rows() const = 0; 
 
-  virtual void DoInitialize() {};
-
   const std::vector<int>& shared_variables() const { return variables_; }
 
+  void SetFactorizationMode(bool left_looking) { left_looking_ = left_looking; }
   void SetSeparators(const std::vector<int>& separators) {
     separators_ = separators;
   }
@@ -128,6 +128,7 @@ class KKTSubsystemBase {
   bool is_valid_leaf() { return DoIsValidLeaf(); }
 
   void MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const;
+  void AddSparseMatrixTriplets(std::vector<Eigen::Triplet<double>>*) const;
   bool AssembleAndFactor();
 
   KKTSubsystemBase* parent() const { return parent_; }
@@ -154,6 +155,7 @@ class KKTSubsystemBase {
   }
 
  private:
+  virtual void DoInitialize() {};
   virtual bool DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
   virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
@@ -167,11 +169,6 @@ class KKTSubsystemBase {
     Eigen::MatrixXd* output,  Eigen::Ref<const Eigen::MatrixXd> input) const;
 
   bool IsRoot() const;
-
-  KKTSubsystemBase* parent_ = nullptr;
-  std::vector<KKTSubsystemBase*> children_;
-
-
   void ProvideColumnUpdate(KKTSubsystemBase* target);
   void ReceiveColumnUpdate(const KKTSubsystemBase* source, size_t start_index_of_source);
 
@@ -182,17 +179,16 @@ class KKTSubsystemBase {
   }
 
   virtual bool DoIsValidLeaf() { return true; }
-
   void DoComputeOffsets();
+  void DoScatterSeparatorSubmatrix();
+  void ComputeOffsets(const KKTSubsystemBase* source, int source_separators_start);
+  KKTSubsystemBase* parent_ = nullptr;
+  std::vector<KKTSubsystemBase*> children_;
 
   std::vector<int> variable_to_local_elimination_position_;
-
-  void DoScatterSeparatorSubmatrix();
-
-  // We are given a submatrix with arbitrary labels.
-  void ComputeOffsets(const KKTSubsystemBase* source, int source_separators_start);
   std::map<const KKTSubsystemBase*, std::vector<Offset>> local_supernode_to_source_separator_;
   std::map<const KKTSubsystemBase*, std::vector<Offset>> local_separator_to_source_separator_;
+
 protected:
   std::vector<int>& variable_to_local_elimination_rank() {
     return variable_to_local_elimination_position_;
@@ -200,6 +196,7 @@ protected:
   std::vector<int> separators_;
   std::vector<int> supernodes_;
   const std::vector<int> variables_;
+  bool left_looking_ = false;
 };
 
 class KKTSubsystem : public KKTSubsystemBase {

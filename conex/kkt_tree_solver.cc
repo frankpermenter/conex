@@ -101,6 +101,7 @@ int GetUnvisited(const std::vector<int>& x) {
   }
   return -1;
 }
+
 template <typename T>
 class SymmetricMatrix {
  public:
@@ -347,6 +348,12 @@ void T::FinalizeHelper(const std::vector<int>& parent) {
   }
 }
 
+void T::SetFactorizationMode(bool left_looking) {
+  for (auto s : subsystems_) {
+    s->SetFactorizationMode(left_looking);
+  }
+}
+
 bool T::CheckForZeroPivot(const std::vector<int>& parent,
                           std::vector<int>* index_of_zero_pivot) {
   index_of_zero_pivot->clear();
@@ -408,6 +415,20 @@ Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
       variable_to_elimination_position_.data(), number_of_variables());
   return P.transpose() * M * P;
 }
+
+Eigen::SparseMatrix<double> T::MakeSparseKKTMatrix(
+      bool permute_to_elimination_order) const {
+
+  std::vector<Eigen::Triplet<double>> triplets;
+  for (auto s : subsystems_) {
+    s->AddSparseMatrixTriplets(&triplets);
+  }
+  Eigen::SparseMatrix<double> matrix(number_of_variables(), number_of_variables());
+  matrix.setFromTriplets(triplets.begin(), triplets.end());
+  return matrix;
+}
+
+
 
 void T::AddSubsystem(KKTSubsystem* system) { CONEX_CHECK(system != nullptr); subsystems_.push_back(system); }
 

@@ -7,6 +7,7 @@ using Eigen::VectorXd;
 namespace conex {
 
 using T = KKTSubsystemBase;
+using std::vector;
 
 
 namespace {
@@ -196,14 +197,13 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   }
 }
 
-bool left_looking = true;
 bool T::AssembleAndFactor() {
   DoInitialize();
   for (auto child : children_) {
     if (!child->AssembleAndFactor()) {
       return false;
     }
-    if (left_looking) {
+    if (left_looking_) {
       child->ProvideColumnUpdate(this);
     }
   }
@@ -211,7 +211,7 @@ bool T::AssembleAndFactor() {
     return false;
   }
   DoComputeSeparatorSchurComplement();
-  if (!IsRoot() && !left_looking) {
+  if (!IsRoot() && !left_looking_) {
     DoScatterSeparatorSubmatrix();
   }
   return true;
@@ -221,12 +221,12 @@ void T::Assemble() {
   DoInitialize();
   for (auto child : children_) {
     child->Assemble();
-    if (left_looking) {
+    if (left_looking_) {
       child->ProvideColumnUpdate(this);
     }
   }
 
-  if (!IsRoot() && !left_looking) {
+  if (!IsRoot() && !left_looking_) {
     DoScatterSeparatorSubmatrix();
   }
 }
@@ -236,7 +236,7 @@ bool T::Factor() {
     if (!child->Factor()) {
       return false;
     }
-    if (left_looking) {
+    if (left_looking_) {
       child->ProvideColumnUpdate(this);
     }
   }
@@ -247,7 +247,7 @@ bool T::Factor() {
   // scattered the separator sub-matrix.
   separator_schur_complement().setZero();
   DoComputeSeparatorSchurComplement();
-  if (!IsRoot() && !left_looking) {
+  if (!IsRoot() && !left_looking_) {
     DoScatterSeparatorSubmatrix();
   }
   return true;
@@ -313,7 +313,6 @@ void T::DoComputeOffsets() {
   }
 }
 
-
 void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, size_t start_index) {
   const auto& vars = source->separators();
   if (start_index > vars.size()) {
@@ -336,6 +335,31 @@ void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, size_t start_index) 
   }
 }
 
+void T::AddSparseMatrixTriplets(vector<Eigen::Triplet<double>>* triplets) const {
+  int i = 0;
+  for (auto& r : supernodes_) {
+    int j = 0;
+    for (auto& c : supernodes_) {
+      if (supernode_submatrix()(i, j) != 0 && r >= c) {
+        triplets->emplace_back(r, c, supernode_submatrix()(i, j));
+      }
+      j++;
+    }
+    i++;
+  }
+
+  i = 0;
+  for (auto& r : separators_) {
+    int j = 0;
+    for (auto& c : supernodes_) {
+      if (separator_rows()(i, j) != 0 && r >= c) {
+        triplets->emplace_back(r, c, separator_rows()(i, j));
+      }
+      j++;
+    }
+    i++;
+  }
+}
 
 void T::DoScatterSeparatorSubmatrix() {
   if (parent_ && separators_.size() > 0) {

@@ -9,6 +9,20 @@
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {
+
+
+MatrixXd SparsityMask(const Eigen::MatrixXd& x) {
+  MatrixXd y = x;
+  for (int i = 0; i < x.rows(); i++) {
+    for (int j = 0; j < x.cols(); j++) {
+      if (y(i, j) != 0) {
+        y(i, j) = 1;
+      }
+    }
+  }
+  return y;
+}
+
 using StaticAssembler = StaticSubsystem<false>;
 Time Verify(const GraphData& data,
   std::vector<int> node_to_parent_in_spanning_tree_reference,
@@ -80,7 +94,6 @@ Time Verify(const GraphData& data,
   return stats;
 }
 
-
 Time Profile(const GraphData& data,
   std::vector<int> node_to_parent_in_spanning_tree_reference) {
 
@@ -107,17 +120,26 @@ Time Profile(const GraphData& data,
 
   system_using_custom_assemblers.SetEliminationTree(graph.node_to_parent_in_spanning_tree());
 
+  system_using_custom_assemblers.SetFactorizationMode(false);
   system_using_custom_assemblers.Assemble();
   START_LOG_TIMER
   system_using_custom_assemblers.Factor();
   END_LOG_TIMER(stats.factor_time)
 
+  system_using_custom_assemblers.SetFactorizationMode(true);
+  system_using_custom_assemblers.Assemble();
+  START_LOG_TIMER
+  system_using_custom_assemblers.Factor();
+  END_LOG_TIMER(stats.factor_time_left_looking)
+
+
 bool only_custom = false;
 if (!only_custom) {
   system_using_custom_assemblers.Assemble();
-  Eigen::MatrixXd M = system_using_custom_assemblers.KKTMatrix(true);
+//  Eigen::MatrixXd M = system_using_custom_assemblers.KKTMatrix(true);
+  Eigen::SparseMatrix<double> M = system_using_custom_assemblers.MakeSparseKKTMatrix().triangularView<Eigen::Lower>();
   VectorXd x; x.setLinSpaced(M.cols(), -1, 1);
-  VectorXd y = M * x;
+  VectorXd y = M.selfadjointView<Eigen::Lower>() * x;
   VectorXd b = y;
 
   START_LOG_TIMER
@@ -132,17 +154,12 @@ if (!only_custom) {
     llt.compute(M);
   END_LOG_TIMER(stats.factor_time_dense);
 
-  Eigen::MatrixXd M_lower = M.triangularView<Eigen::Lower>();
-
-  Eigen::SparseMatrix<double> Msparse_lower_tri = M_lower.sparseView();
-  stats.non_zeros_lower_tri = Msparse_lower_tri.nonZeros();
-  Eigen::SparseMatrix<double> Msparse = M.sparseView();
-
+  stats.non_zeros_lower_tri = M.nonZeros();
   Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>, Eigen::Lower, 
                         Eigen::NaturalOrdering<int>> llt_sparse;
 
   START_LOG_TIMER
-    llt_sparse.compute(Msparse);
+    llt_sparse.compute(M);
   END_LOG_TIMER(stats.factor_time_natural);
 
   Eigen::SparseMatrix<double> factor = llt_sparse.matrixL();
@@ -150,21 +167,13 @@ if (!only_custom) {
 
   Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>, Eigen::Lower> llt_amd;
   START_LOG_TIMER
-    llt_amd.compute(Msparse);
+    llt_amd.compute(M);
   END_LOG_TIMER(stats.factor_time_amd);
    Eigen::SparseMatrix<double> factor_amd = llt_amd.matrixL();
     stats.non_zeros_amd = factor_amd.nonZeros();
     }
 
-return stats;
+  return stats;
 }
-
-
-
-
-
-
-
-
 
 } // namespace conex

@@ -219,8 +219,7 @@ GraphData GenerateRandomDAG(int num_nodes, double edge_density) {
 }
 
 
-void DoTest(int num_nodes, int spatial_dim, Time* stats_ptr) {
-  double edge_density = 1;
+void DoTest(int num_nodes, int spatial_dim, int edge_density, Time* stats_ptr) {
   auto& stats = *stats_ptr;
 
   GraphData graph = GenerateRandomDAG(num_nodes, edge_density);
@@ -235,7 +234,8 @@ void DoTest(int num_nodes, int spatial_dim, Time* stats_ptr) {
 
             << ", Nat fill-in: " <<  (double) stats.non_zeros_natural/stats.non_zeros_lower_tri << ", "
             << ", Nat solve: " <<  stats.factor_time_natural 
-            << ", Custom Solve: " <<  (double) stats.factor_time << ", ";
+            << ", Custom Solve: " <<  (double) stats.factor_time << ", " 
+            << ", Custom Solve Left: " <<  (double) stats.factor_time_left_looking << ", ";
 }
 
 GTEST_TEST(GraphOfConvexSets, RandomDAG) {
@@ -248,33 +248,21 @@ GTEST_TEST(GraphOfConvexSets, RandomDAG) {
   //DoTest(30, 20);
   //DoTest(10, 30);
   //DoTest(20, 30);
-Time stats;
-stats.factor_time_amd = 0;
-stats.factor_time_natural = 0;
-stats.factor_time = 0;
-for (int i = 0; i < 10; i++) {
-  Time stats_i;
-  DoTest(3, 2, &stats_i);
-  stats.factor_time_natural += stats_i.factor_time_natural;
-  stats.factor_time += stats_i.factor_time;
-}
-DUMP(stats.factor_time_natural);
-DUMP(stats.factor_time_amd);
-DUMP(stats.factor_time);
+  Time stats;
+  stats.factor_time_amd = 0;
+  stats.factor_time_natural = 0;
+  stats.factor_time = 0;
+  for (int i = 0; i < 20; i++) {
+    Time stats_i;
+    //DoTest(100 /*nodes*/, 25 /*dim*/, .6 /*edge*/ , &stats_i);
+    DoTest(20 /*nodes*/, 25 /*dim*/, .9 /*edge*/ , &stats_i);
+    stats.factor_time_natural += stats_i.factor_time_natural;
+    stats.factor_time += stats_i.factor_time;
+  }
+  DUMP(stats.factor_time_natural);
+  DUMP(stats.factor_time_amd);
+  DUMP(stats.factor_time);
 }
 
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
 }  // namespace conex
