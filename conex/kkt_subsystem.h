@@ -141,6 +141,13 @@ class KKTSubsystemBase {
     children_.clear();
   }
 
+  std::vector<std::pair<int, int>> local_supernode_to_source_separator(const KKTSubsystemBase* source) {
+    return local_supernode_to_source_separator_.at(source);
+  }
+  std::vector<std::pair<int, int>> local_separator_to_source_separator(const KKTSubsystemBase* source) {
+    return local_separator_to_source_separator_.at(source);
+  }
+
  protected:
   virtual bool DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
@@ -162,6 +169,8 @@ class KKTSubsystemBase {
   std::vector<int>& variable_to_local_elimination_rank() {
     return variable_to_local_elimination_position_;
   }
+
+
 
   void ProvideColumnUpdate(KKTSubsystemBase* target);
   void ReceiveColumnUpdate(const KKTSubsystemBase* source, int start_index_of_source);
@@ -190,6 +199,7 @@ class KKTSubsystemBase {
                                 const std::vector<int>& source_column_labels,
                                 int source_column_index);
 
+
   int GetSupernodePosition(int global_label);
   int GetSeparatorPosition(int global_label);
   void DoScatterSeparatorSubmatrix();
@@ -201,6 +211,7 @@ class KKTSubsystemBase {
   void ComputeOffsets(const KKTSubsystemBase* source, int source_separators_start);
   std::map<const KKTSubsystemBase*, std::vector<std::pair<int, int>>> local_supernode_to_source_separator_;
   std::map<const KKTSubsystemBase*, std::vector<std::pair<int, int>>> local_separator_to_source_separator_;
+
 };
 
 class KKTSubsystem : public KKTSubsystemBase {

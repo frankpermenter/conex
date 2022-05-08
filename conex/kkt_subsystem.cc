@@ -191,7 +191,7 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   }
 }
 
-bool left_looking = true;
+bool left_looking = false;
 bool T::AssembleAndFactor() {
   DoInitialize();
   for (auto child : children_) {
@@ -308,21 +308,28 @@ void T::DoComputeOffsets() {
   }
 }
 
+void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
+  for (auto& c : destination->local_supernode_to_source_separator(source)) {
+    for (auto& r : destination->local_supernode_to_source_separator(source)) {
+      destination->supernode_submatrix()(r.first, c.first) += source->separator_schur_complement()(r.second, c.second);
+    }
+    for (auto& r : destination->local_separator_to_source_separator(source)) {
+      destination->separator_rows()(r.first, c.first) += source->separator_schur_complement()(r.second, c.second);
+    }
+  }
+}
+
+
 void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, int start_index) {
   const auto& vars = source->separators();
   if (start_index > vars.size()) {
     return;
   }
+
+  Update(source, this);
   size_t col_index = start_index;
 
-  for (auto& c : local_supernode_to_source_separator_.at(source)) {
-    for (auto& r : local_supernode_to_source_separator_.at(source)) {
-      supernode_submatrix()(r.first, c.first) += source->separator_schur_complement()(r.second, c.second);
-    }
-    for (auto& r : local_separator_to_source_separator_[source]) {
-      separator_rows()(r.first, c.first) += source->separator_schur_complement()(r.second, c.second);
-    }
-  }
+
   col_index = start_index;
   for (; col_index < vars.size(); col_index++) {
     if (vars.at(col_index) > supernodes_.back()) {
