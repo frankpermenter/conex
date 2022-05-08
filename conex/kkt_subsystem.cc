@@ -109,16 +109,18 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
     size_t i = source_separator_index;
     int local_row = GetSupernodePosition(source_column_labels, i);
     if (local_row != -1) {
-      local_supernode_to_source_separator_[source].push_back({local_row, i});
+      int size = 1;
+      local_supernode_to_source_separator_[source].push_back({local_row, i, size});
     } else {
       break;
     }
   }
 
   for (size_t index = source_separator_index; index < source_column_labels.size(); index++) {
-    int local_row = GetSeparatorPosition(source_column_labels.at(index));
+    int local_row = GetSeparatorPosition(source_column_labels, index);
     if (local_row != -1) {
-      local_separator_to_source_separator_[source].push_back({local_row, index});
+      int size = 1;
+      local_separator_to_source_separator_[source].push_back({local_row, index, size});
     } else {
       throw;
     }
@@ -131,35 +133,10 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
 }
 
 
-
-void T::IncrementSupernodeColumn(const Eigen::MatrixXd& source_data,
-                                 const std::vector<int>& source_column_labels,
-                                 int source_column_index) {
-  int local_column_index =
-      GetSupernodePosition(source_column_labels, source_column_index);
-  size_t i = source_column_index;
-  for (; i < source_column_labels.size(); i++) {
-    if (source_column_labels.at(i) > supernodes_.back()) {
-      break;
-    }
-    int local_row = GetSupernodePosition(source_column_labels, i);
-    supernode_submatrix()(local_row, local_column_index) +=
-        source_data(i, source_column_index);
-  }
-
-  for (; i < source_column_labels.size(); i++) {
-    if (source_column_labels.at(i) > separators_.back()) {
-      break;
-    }
-    int local_row = GetSeparatorPosition(source_column_labels.at(i));
-    separator_rows()(local_row, local_column_index) +=
-        source_data(i, source_column_index);
-  }
-}
-
-int T::GetSupernodePosition(const std::vector<int>& variables, int global_label) {
+int GetOverlappingSegment(const std::vector<int>& supernodes_, 
+                          const std::vector<int>& variables,
+                          int global_label) {
   size_t start = 0;
-  bool found = false;
   int size = 0;
   for (; start < supernodes_.size(); ++start) {
     if (supernodes_.at(start) == variables.at(global_label)) {
@@ -179,13 +156,12 @@ int T::GetSupernodePosition(const std::vector<int>& variables, int global_label)
   }
 }
 
-int T::GetSeparatorPosition(int global_label) {
-  for (size_t i = 0; i < separators_.size(); ++i) {
-    if (separators_.at(i) == global_label) {
-      return i;
-    }
-  }
-  return -1;
+int T::GetSupernodePosition(const std::vector<int>& variables, int global_label) {
+  return GetOverlappingSegment(supernodes_, variables, global_label);
+}
+
+int T::GetSeparatorPosition(const std::vector<int>& variables,   int global_label) {
+  return GetOverlappingSegment(separators_, variables, global_label);
 }
 
 void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
@@ -356,28 +332,6 @@ void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, size_t start_index) 
   }
 }
 
-void T::IncrementSubmatrix(const Eigen::MatrixXd& S,
-                           const std::vector<int>& vars, size_t start_index) {
-  if (start_index > vars.size()) {
-    return;
-  }
-
-  size_t col_index = start_index;
-  CONEX_ASSERT(vars.at(col_index) >= supernodes_.at(0),
-               "Submatrix has been eliminated.");
-  for (; col_index < vars.size(); col_index++) {
-    if (vars.at(col_index) > supernodes_.back()) {
-      // The remaining columns must belong to our parent.
-      break;
-    }
-    IncrementSupernodeColumn(S, vars, col_index);
-  }
-
-  if (col_index < vars.size()) {
-    CONEX_DEMAND(parent_, "Parent pointer is null.");
-    parent_->IncrementSubmatrix(S, vars, col_index);
-  }
-}
 
 void T::DoScatterSeparatorSubmatrix() {
   if (parent_ && separators_.size() > 0) {

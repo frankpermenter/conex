@@ -141,10 +141,16 @@ class KKTSubsystemBase {
     children_.clear();
   }
 
-  std::vector<std::pair<int, int>> local_supernode_to_source_separator(const KKTSubsystemBase* source) {
+  struct Offset {
+    Offset(int x, int y, int z) : first(x), second(y), size(z) {}
+    int first;
+    int second;
+    int size;
+  };
+  std::vector<Offset> local_supernode_to_source_separator(const KKTSubsystemBase* source) {
     return local_supernode_to_source_separator_.at(source);
   }
-  std::vector<std::pair<int, int>> local_separator_to_source_separator(const KKTSubsystemBase* source) {
+  std::vector<Offset> local_separator_to_source_separator(const KKTSubsystemBase* source) {
     return local_separator_to_source_separator_.at(source);
   }
 
@@ -195,22 +201,19 @@ class KKTSubsystemBase {
   Eigen::MatrixXd SeparatorRows(const Eigen::MatrixXd& x) const;
 
 
-  void IncrementSupernodeColumn(const Eigen::MatrixXd& source_data,
-                                const std::vector<int>& source_column_labels,
-                                int source_column_index);
 
 
   int GetSupernodePosition(const std::vector<int>& variables, int global_label);
-  int GetSeparatorPosition(int global_label);
+  int GetSeparatorPosition(const std::vector<int>& variables, int global_label);
   void DoScatterSeparatorSubmatrix();
-  void IncrementSubmatrix(const Eigen::MatrixXd& S,
-                          const std::vector<int>& vars, size_t start_index);
 
   // We are given a submatrix with arbitrary labels.
 
   void ComputeOffsets(const KKTSubsystemBase* source, int source_separators_start);
-  std::map<const KKTSubsystemBase*, std::vector<std::pair<int, int>>> local_supernode_to_source_separator_;
-  std::map<const KKTSubsystemBase*, std::vector<std::pair<int, int>>> local_separator_to_source_separator_;
+
+
+  std::map<const KKTSubsystemBase*, std::vector<Offset>> local_supernode_to_source_separator_;
+  std::map<const KKTSubsystemBase*, std::vector<Offset>> local_separator_to_source_separator_;
 
 };
 
