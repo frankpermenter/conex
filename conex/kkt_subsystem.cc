@@ -94,6 +94,31 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   }
 }
 
+void T::ComputeOffsets(const KKTSubsystemBase* source, int source_column_index) {
+
+  auto source_column_labels = source->separators();
+  int local_column_index =
+      GetSupernodePosition(source_column_labels.at(source_column_index));
+  size_t i = source_column_index;
+  for (; i < source_column_labels.size(); i++) {
+    if (source_column_labels.at(i) > supernodes_.back()) {
+      break;
+    }
+    int local_row = GetSupernodePosition(source_column_labels.at(i));
+    local_supernode_to_source_separator_[source].push_back({local_row, i});
+  }
+
+  for (; i < source_column_labels.size(); i++) {
+    if (source_column_labels.at(i) > separators_.back()) {
+      break;
+    }
+    int local_row = GetSeparatorPosition(source_column_labels.at(i));
+    local_separator_to_source_separator_[source].push_back({local_row, i});
+  }
+}
+
+
+
 void T::IncrementSupernodeColumn(const Eigen::MatrixXd& source_data,
                                  const std::vector<int>& source_column_labels,
                                  int source_column_index) {
@@ -264,6 +289,41 @@ void T::SetVariableOrdering(
   }
 };
 
+void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, int start_index) {
+  const auto& vars = source->separators();
+  if (start_index > vars.size()) {
+    return;
+  }
+  size_t col_index = start_index;
+  CONEX_ASSERT(vars.at(col_index) >= supernodes_.at(0),
+               "Submatrix has been eliminated.");
+
+  if (local_supernode_to_source_separator_.find(source) !=
+      local_supernode_to_source_separator_.end()) {
+    for (; col_index < vars.size(); col_index++) {
+      if (vars.at(col_index) > supernodes_.back()) {
+        // The remaining columns must belong to our parent.
+        break;
+      }
+      ComputeOffsets(source, col_index);
+    }
+  }
+
+  for (; col_index < vars.size(); col_index++) {
+    if (vars.at(col_index) > supernodes_.back()) {
+      // The remaining columns must belong to our parent.
+      break;
+    }
+
+    IncrementSupernodeColumn(source->separator_schur_complement(), vars, col_index);
+  }
+
+  if (col_index < vars.size()) {
+    CONEX_DEMAND(parent_, "Parent pointer is null.");
+    parent_->ReceiveColumnUpdate(source, col_index);
+  }
+}
+
 void T::IncrementSubmatrix(const Eigen::MatrixXd& S,
                            const std::vector<int>& vars, size_t start_index) {
   if (start_index > vars.size()) {
@@ -289,8 +349,7 @@ void T::IncrementSubmatrix(const Eigen::MatrixXd& S,
 
 void T::DoScatterSeparatorSubmatrix() {
   if (parent_ && separators_.size() > 0) {
-    parent_->IncrementSubmatrix(separator_schur_complement(), separators_,
-                                0 /*start index*/);
+    parent_->ReceiveColumnUpdate(this, 0 /*start index*/);
   }
 }
 

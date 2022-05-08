@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <map>
 
 #include "conex/debug_macros.h"
 #include "conex/error_checking_macros.h"
@@ -163,6 +164,7 @@ class KKTSubsystemBase {
   }
 
   void ProvideColumnUpdate(KKTSubsystemBase* target);
+  void ReceiveColumnUpdate(const KKTSubsystemBase* source, int start_index_of_source);
 
   void SetParent(KKTSubsystemBase* parent) {
     CONEX_DEMAND(parent, "Received nullptr");
@@ -192,6 +194,12 @@ class KKTSubsystemBase {
   void DoScatterSeparatorSubmatrix();
   void IncrementSubmatrix(const Eigen::MatrixXd& S,
                           const std::vector<int>& vars, size_t start_index);
+
+  // We are given a submatrix with arbitrary labels.
+
+  void ComputeOffsets(const KKTSubsystemBase* source, int source_separators_start);
+  std::map<const KKTSubsystemBase*, std::vector<std::pair<int, int>>> local_supernode_to_source_separator_;
+  std::map<const KKTSubsystemBase*, std::vector<std::pair<int, int>>> local_separator_to_source_separator_;
 };
 
 class KKTSubsystem : public KKTSubsystemBase {
