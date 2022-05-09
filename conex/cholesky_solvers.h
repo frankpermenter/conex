@@ -16,7 +16,6 @@ class CholeskySolver : public KKTSubsystemBase {
                  separator_rows_(separator_rows),
                  separator_schur_complement_(separator_schur_complement),
                  llt_(supernode_submatrix.rows()) {}
-
     
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override { return supernode_submatrix_; }
   Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override { 

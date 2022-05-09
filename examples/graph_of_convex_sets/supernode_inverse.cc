@@ -14,8 +14,7 @@ namespace {
 using IncomingSpatialVariableBlockBase = 
 KKTCholeskySystem<CholeskySolver<Eigen::LLT<MatrixXd>, true>>;
 
-using DenseBlockBase = 
-KKTCholeskySystem<CholeskySolver<Eigen::RLDLT<MatrixXd>, true>>;
+using DenseBlockBase = CholeskySolver<Eigen::RLDLT<MatrixXd>, true>;
 
 using Parameters = SupernodeSubmatrix::Parameters;
 
@@ -30,21 +29,24 @@ T(T&&) = delete;\
 T& operator=(const T&) = delete;\
 T& operator=(T&&) = delete;\
 
-using DenseBlockBase = 
-KKTCholeskySystem<CholeskySolver<Eigen::RLDLT<MatrixXd>, true>>;
 } // namespace
 
+Eigen::MatrixXd dummy;
 class DenseBlock : public DenseBlockBase {
   CONEX_NO_COPY_NO_MOVE(DenseBlock)
  public:
+  static int SupernodeSize(const Parameters& p) { return (p.spatial_dimension + 1) * (p.num_edges + 1); }
   using FactorizationMethod = CholeskySolver<Eigen::RLDLT<MatrixXd>, true>;
-  DenseBlock(const Parameters& p, Eigen::Ref<MatrixXd> full_matrix) {
+  DenseBlock(const Parameters& p, 
+  Eigen::Ref<MatrixXd> full_matrix) :
+    DenseBlockBase(full_matrix.bottomRightCorner(SupernodeSize(p), SupernodeSize(p)),
+    dummy, 
+    dummy)  {
     int offset = p.spatial_dimension * p.num_edges; 
     std::vector<int> supernodes((p.spatial_dimension + 1) * (p.num_edges + 1));
     std::iota(supernodes.begin(), supernodes.end(), offset);
     SetSupernodes(supernodes);
     SetSeparators({});
-    KKTSubsystem::DoInitialize();
   }
   void SetData(Eigen::Ref<MatrixXd> full_matrix) {
     supernode_submatrix() = full_matrix.bottomRightCorner(supernodes().size(), supernodes().size());
@@ -123,7 +125,7 @@ void T::SetData(Eigen::Ref<Eigen::MatrixXd> full_matrix) {
   for (auto& i : incoming_blocks_) {
     i->SetData(full_matrix);
   }
-  dense_block_->SetData(full_matrix);
+  //dense_block_->SetData(full_matrix);
   tree_solver_->Assemble();
 }
 

@@ -6,14 +6,15 @@ using Eigen::VectorXd;
 namespace conex {
 
 GTEST_TEST(SupernodeSubmatrix, Constructor) {
+  Eigen::MatrixXd ref(40, 40); // dummy input
   SupernodeSubmatrix::Parameters p;
   p.num_edges = 3;
   p.spatial_dimension = 2;
-  EXPECT_NO_THROW({SupernodeSubmatrix solver(p);});
+  EXPECT_NO_THROW({SupernodeSubmatrix solver(p, ref);});
 
   p.spatial_dimension = 0;
   p.num_edges = 0;
-  EXPECT_THROW({SupernodeSubmatrix solver(p);}, std::runtime_error);
+  EXPECT_THROW({SupernodeSubmatrix solver(p, ref);}, std::runtime_error);
 }
 
 GTEST_TEST(SupernodeSubmatrix, MakeKKTMatrixAndSolve) {
@@ -36,7 +37,7 @@ GTEST_TEST(SupernodeSubmatrix, MakeKKTMatrixAndSolve) {
   SupernodeSubmatrix::Parameters p;
   p.num_edges = 2;
   p.spatial_dimension = 2;
-  SupernodeSubmatrix solver(p);
+  SupernodeSubmatrix solver(p, ref);
   solver.SetData(ref);
   MatrixXd x_calc = solver.MakeKKTMatrix();
   MatrixXd error = (x_calc - ref).selfadjointView<Eigen::Lower>();
