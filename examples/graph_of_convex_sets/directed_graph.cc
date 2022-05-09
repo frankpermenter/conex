@@ -25,7 +25,11 @@ class RecursiveTopologicalSort {
      }
      temporary_mark_.at(n) = 1;
 
-     for (auto& e : nodes_.at(n).outgoing_edges) {
+    srand(time(0));
+    std::vector<int> edges = nodes_.at(n).outgoing_edges;
+    std::random_shuffle ( edges.begin(), edges.end() ); 
+
+     for (auto& e : edges) {
        visit(edges_.at(e).sink);
      }
      temporary_mark_.at(n) = 0;
@@ -36,6 +40,10 @@ class RecursiveTopologicalSort {
 
    std::vector<int> Compute(int source_node) {
      visit(source_node);
+     if (num_ordered != nodes_.size()) {
+      throw std::runtime_error("Graph has multiple source nodes.");
+     }
+     DUMP(position_to_node);
      return position_to_node;
    }
 
@@ -111,6 +119,7 @@ void T::SortEdgeListInReverseTopologicalOrder(std::vector<int>* edge_list) const
 
 void T::BuildSpanningTree() {
   std::vector<int> position_to_node = ComputeTopologicalOrdering();
+  DUMP(position_to_node);
   std::vector<int> node_to_parent(nodes_.size());
   int root = position_to_node.at(0);
   node_to_parent_in_spanning_tree_.at(root) = -1;
@@ -159,23 +168,31 @@ void T::IdentifyFillInEdges() {
   int child = source_node_;
   auto& node_to_fill_in_edge_indices = node_to_fill_in_edges_;
   node_to_fill_in_edge_indices.resize(nodes_.size());
+  int num_fill_in = 0;
 
   while (child != -1 /*root node*/) { 
     int parent = node_to_parent_in_spanning_tree_[child];
 
+
+   // Create new fill-in
     for (auto& f : nodes_.at(child).outgoing_edges) {
       if (edges_[f].sink != parent) {
         node_to_fill_in_edge_indices.at(parent).push_back(f);
+        num_fill_in++;
       }
     }
 
+   // Propogate fill-in 
     for (auto& f : node_to_fill_in_edge_indices[child]) {
       if (edges_[f].sink != parent) {
         node_to_fill_in_edge_indices.at(parent).push_back(f);
+        num_fill_in++;
       }
     }
     child = parent;
   }
+  DUMP(num_fill_in);
+  throw;
 }
 
 

@@ -48,7 +48,7 @@ class Graph {
       } else {
       CONEX_DEMAND(source_node_ == -1, 
       "Source node already specified.");
-        source_node_ = i;
+        source_node_ = e.sink;
       }
       nodes_.at(e.sink).incoming_edges.push_back(i);
       i++;

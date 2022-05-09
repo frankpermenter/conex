@@ -101,6 +101,7 @@ Time Profile(const GraphData& data,
   Graph graph(data.nodes, data.edges);
 
   graph.BuildSpanningTree();
+  DUMP(graph.node_to_parent_in_spanning_tree());
   graph.SortEdgeListInReverseTopologicalOrder();
   graph.AssignEliminationOrder();
   graph.IdentifyFillInEdges();
@@ -118,7 +119,6 @@ Time Profile(const GraphData& data,
   for (auto& n : nodes) {
     system_using_custom_assemblers.AddSubsystem(n.get());
   }
-
   system_using_custom_assemblers.SetEliminationTree(graph.node_to_parent_in_spanning_tree());
 
   system_using_custom_assemblers.SetFactorizationMode(false);
@@ -137,7 +137,6 @@ Time Profile(const GraphData& data,
   system_using_custom_assemblers.Factor();
   END_LOG_TIMER(stats.factor_time_custom_inverse)
 
-
   for (auto& node: nodes) {
     node->SetFactorizationMode(false /*use custom*/);
   }
@@ -145,9 +144,6 @@ Time Profile(const GraphData& data,
   START_LOG_TIMER
   system_using_custom_assemblers.Factor();
   END_LOG_TIMER(stats.factor_time_left_looking)
-
-
-
 
   system_using_custom_assemblers.Assemble();
   Eigen::SparseMatrix<double> M = system_using_custom_assemblers.MakeSparseKKTMatrix().triangularView<Eigen::Lower>();
@@ -159,7 +155,7 @@ Time Profile(const GraphData& data,
   system_using_custom_assemblers.Factor();
   system_using_custom_assemblers.SolveInPlace(y, false);
   END_LOG_TIMER(stats.solve_time)
-  EXPECT_NEAR( (y-x).norm(), 0, 1e-12);
+  EXPECT_NEAR( (y-x).norm(), 0, 1e-11);
 
   Eigen::RLDLT<Eigen::MatrixXd> llt;
   y = M * x;

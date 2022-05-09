@@ -77,8 +77,6 @@ GTEST_TEST(GraphOfConvexSets, Path) {
   Verify(graph, node_to_parent_in_spanning_tree_reference, spatial_dim);
 }
 
-#else
-#if 0
 //GTEST_TEST(GraphOfConvexSets, Cycle) {
 //  int num_edges = 4;
 //  int spatial_dim = 2;
@@ -92,9 +90,7 @@ GTEST_TEST(GraphOfConvexSets, Path) {
 //  GraphData graph = MakeCycle(num_edges, spatial_dim);
 //  Verify(graph, node_to_parent_in_spanning_tree_reference, spatial_dim);
 //}
-#else
 
-#if 0
 GTEST_TEST(GraphOfConvexSets, TwoPaths) {
 
   int spatial_dim = 2;
@@ -123,7 +119,9 @@ GTEST_TEST(GraphOfConvexSets, TwoPaths) {
   std::vector<int> node_to_parent_in_spanning_tree_reference{1, 2, -1};
   Verify(graph, node_to_parent_in_spanning_tree_reference, spatial_dim);
 }
-GTEST_TEST(GraphOfConvexSets, TwoSegments) {
+#endif
+#if 0
+GraphData MakeTwoSegments() {
   int spatial_dim = 2;
 
   GraphData graph; 
@@ -141,27 +139,75 @@ GTEST_TEST(GraphOfConvexSets, TwoSegments) {
         3
   */
 
-  graph.edges.at(0).source = -1;
-  graph.edges.at(0).sink = 0;
+  //std::vector<int> v{0, 1, 2, 3};
+  //std::vector<int> e{0, 1, 2, 3, 4, 5};
 
-  graph.edges.at(1).source = 0;
-  graph.edges.at(1).sink = 1;
-  graph.edges.at(2).source = 0;
-  graph.edges.at(2).sink = 2;
-  graph.edges.at(3).source = 0;
-  graph.edges.at(3).sink = 3;
+  std::vector<int> v{1, 3, 0, 2};
+  std::vector<int> e{4, 2, 1, 3, 0, 5};
+  graph.edges.at(e[0]).source = -1;
+  graph.edges.at(e[0]).sink = v[0];
 
-  graph.edges.at(4).source = 1;
-  graph.edges.at(4).sink = 2;
+  graph.edges.at(e[1]).source = v[0];
+  graph.edges.at(e[1]).sink = v[1];
+  graph.edges.at(e[2]).source = v[0];
+  graph.edges.at(e[2]).sink = v[2];
+  graph.edges.at(e[3]).source = v[0];
+  graph.edges.at(e[3]).sink = v[3];
 
-  graph.edges.at(5).source = 2;
-  graph.edges.at(5).sink = 3;
+  graph.edges.at(e[4]).source = v[1];
+  graph.edges.at(e[4]).sink = v[2];
 
-  std::vector<int> node_to_parent_in_spanning_tree_reference{1, 2, 3, -1};
-  Verify(graph, node_to_parent_in_spanning_tree_reference, spatial_dim);
+  graph.edges.at(e[5]).source = v[2];
+  graph.edges.at(e[5]).sink = v[3];
+  return graph;
+}
+
+
+GTEST_TEST(GraphOfConvexSets, TwoSegments) {
+  GraphData graph = MakeTwoSegments();
+  //Verify(graph, node_to_parent_in_spanning_tree_reference, spatial_dim);
+  Profile(graph, {});
+  auto stats = Profile(graph, {});
+
+  std::cout 
+            << ", AMD fill-in: " <<  (double) stats.non_zeros_amd/stats.non_zeros_lower_tri << ", " 
+            << ", AMD solve: " <<  stats.factor_time_amd << ", " 
+
+            << ", Nat fill-in: " <<  (double) stats.non_zeros_natural/stats.non_zeros_lower_tri << ", "
+            << ", Nat solve: " <<  stats.factor_time_natural 
+            //<< ", Custom Solve: " <<  (double) stats.factor_time << ", " 
+            << ", Custom Solve Left: " <<  (double) stats.factor_time_left_looking << ", "
+            << ", Custom Solve CustomInv: " <<  (double) stats.factor_time_custom_inverse << ", ";
 }
 #endif
-#endif
+#if 1
+
+GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topological_order) {
+  GraphData graph; 
+  int num_nodes = adj_matrix.rows();
+  graph.nodes.resize(num_nodes);
+
+  graph.edges.push_back(Edge{});
+  graph.edges.back().source = -1;
+  graph.edges.back().sink = 0;
+  for (int i = 0; i < num_nodes; i++) {
+    for (int j  = i+1; j < num_nodes; j++) {
+      if (adj_matrix(i, j) != 0) {
+        graph.edges.push_back(Edge{});
+        if (topological_order.at(i) > topological_order.at(j)) {
+          graph.edges.back().source = i; 
+          graph.edges.back().sink = j;  
+        } else {
+          graph.edges.back().source = j; 
+          graph.edges.back().sink = i; 
+        }
+      }
+    }
+  }
+  DUMP(adj_matrix);
+  return graph;
+}
+
 
 GraphData GenerateRandomDAG(int num_nodes, double edge_density) {
   GraphData graph; 
@@ -175,14 +221,16 @@ GraphData GenerateRandomDAG(int num_nodes, double edge_density) {
   M.setZero();
 
   // Add path
+  #if 0
   for (int i = 0; i < num_nodes; i++) {
     if (i < num_nodes -1 ) {
     M(i, i + 1) = 1;
     M(i + 1, i) = 1;
     }
   }
-
   int edge_count = num_nodes - 1;
+  #endif
+  int edge_count = 0;
 
   // Add random edges
   int target = edge_density * .5 * (num_nodes *  num_nodes - num_nodes);
@@ -197,29 +245,11 @@ GraphData GenerateRandomDAG(int num_nodes, double edge_density) {
       M(node_2, node_1) = 1;
     }
   }
-
-  graph.edges.push_back(Edge{});
-  graph.edges.back().source = -1;
-  graph.edges.back().sink = 0;
-  for (int i = 0; i < num_nodes; i++) {
-    for (int j  = i+1; j < num_nodes; j++) {
-      if (M(i, j) != 0) {
-        graph.edges.push_back(Edge{});
-        if (topological_order.at(i) > topological_order.at(j)) {
-          graph.edges.back().source = i; 
-          graph.edges.back().sink = j;  
-        } else {
-          graph.edges.back().source = j; 
-          graph.edges.back().sink = i; 
-        }
-      }
-    }
-  }
-  return graph;
+  return MakeGraph(M, topological_order);
 }
 
 
-void DoTest(int num_nodes, int spatial_dim, int edge_density, Time* stats_ptr) {
+void DoTest(int num_nodes, int spatial_dim, double edge_density, Time* stats_ptr) {
   auto& stats = *stats_ptr;
 
   GraphData graph = GenerateRandomDAG(num_nodes, edge_density);
@@ -238,9 +268,8 @@ void DoTest(int num_nodes, int spatial_dim, int edge_density, Time* stats_ptr) {
             << ", Custom Solve Left: " <<  (double) stats.factor_time_left_looking << ", "
             << ", Custom Solve CustomInv: " <<  (double) stats.factor_time_custom_inverse << ", ";
 }
-
 GTEST_TEST(GraphOfConvexSets, RandomDAG) {
-  srand(0);
+  srand(4);
   //DoTest(10, 10);
   //DoTest(20, 10);
   //DoTest(30, 10);
@@ -249,14 +278,15 @@ GTEST_TEST(GraphOfConvexSets, RandomDAG) {
   //DoTest(30, 20);
   //DoTest(10, 30);
   //DoTest(20, 30);
+  std::srand(7);
   Time stats;
   stats.factor_time_amd = 0;
   stats.factor_time_natural = 0;
   stats.factor_time = 0;
-  for (int i = 0; i < 20; i++) {
+  for (int i = 0; i < 2; i++) {
     Time stats_i;
-    //DoTest(100 /*nodes*/, 25 /*dim*/, .6 /*edge*/ , &stats_i);
-    DoTest(3 /*nodes*/, 1 /*dim*/, 0 /*edge*/ , &stats_i);
+    //DoTest(4 /*nodes*/, 1 /*dim*/, .7 /*edge*/ , &stats_i);
+    DoTest(5 /*nodes*/, 1 /*dim*/, .7 /*edge*/ , &stats_i);
     stats.factor_time_natural += stats_i.factor_time_natural;
     stats.factor_time += stats_i.factor_time;
   }
@@ -264,6 +294,11 @@ GTEST_TEST(GraphOfConvexSets, RandomDAG) {
   DUMP(stats.factor_time_amd);
   DUMP(stats.factor_time);
 }
-
 #endif
+
+
+
+
+
+
 }  // namespace conex
