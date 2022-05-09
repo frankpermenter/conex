@@ -6,6 +6,7 @@
 #include "conex/RLDLT.h"
 #include "conex/kkt_tree_solver.h"
 #include "supernode_inverse.h"
+#include "conex/debug_macros.h"
 
 namespace conex {
 using Eigen::MatrixXd; 
@@ -101,6 +102,7 @@ using Eigen::MatrixXd;
 */
 
 struct ConvexSetNodeParameters {
+  int use_custom_factorization;
   int spatial_dimension;
   int num_incoming;
   int num_outgoing;
@@ -130,42 +132,17 @@ class ConvexSetNode : public KKTSubsystem {
   int num_supernodes() { return supernodes().size(); }
   int num_separators() { return separators().size(); }
 
-  bool DoEliminateSupernodeColumns() override {
-    if (use_custom_supernode_inverse_) {
-      supernode_submatrix_.SetData(supernode_submatrix());
-      return supernode_submatrix_.Factor();
-    } else {
-      return factorization_->DoEliminateSupernodeColumns();
-    }
-  }
+
+  void SetFactorizationMode(bool use_custom) { use_custom_supernode_inverse_ = use_custom; }
+  bool DoEliminateSupernodeColumns() override;
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    if (use_custom_supernode_inverse_) {
-      return supernode_submatrix_.SolveInPlace(y);
-    } else {
-      factorization_->DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(y);
-    }
-  }
+      Eigen::Ref<MatrixXd> y) const override;
 
   void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    if (use_custom_supernode_inverse_) {
-      (void) y; // NOOP
-    } else  {
-      factorization_->DoApplyInverseOfRightFactorOfSupernodeSubmatrix(y);
-    }
-  }
+      Eigen::Ref<MatrixXd> y) const override;
 
-  void DoComputeSeparatorSchurComplement() override {
-    if (use_custom_supernode_inverse_) {
-      MatrixXd temp = separator_rows().transpose();
-      supernode_submatrix_.SolveInPlace(temp);
-      separator_schur_complement() = separator_rows() * temp;
-    } else {
-      factorization_->DoComputeSeparatorSchurComplement();
-    }
-  }
+  void DoComputeSeparatorSchurComplement() override;
 
   Eigen::MatrixXd MakeSuperNodeSubmatrix();
 
@@ -213,7 +190,7 @@ class ConvexSetNode : public KKTSubsystem {
   ConvexSetNodeParameters params_;
   std::unique_ptr<FactorizationType> factorization_;
   SupernodeSubmatrix supernode_submatrix_; 
-  bool use_custom_supernode_inverse_ = true;
+  bool use_custom_supernode_inverse_ = false;
 };
 
 } // namespace conex

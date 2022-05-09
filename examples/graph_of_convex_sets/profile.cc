@@ -111,6 +111,7 @@ Time Profile(const GraphData& data,
 
   for (int i = 0; i < num_nodes; i++) {
     nodes.at(i) = MakeConvexSetNode(graph, i);
+    nodes.at(i)->SetFactorizationMode(false /*use custom*/);
   }
 
   SymmetricLinearSystemTreeSolver system_using_custom_assemblers;
@@ -126,11 +127,21 @@ Time Profile(const GraphData& data,
   system_using_custom_assemblers.Factor();
   END_LOG_TIMER(stats.factor_time)
 
-  system_using_custom_assemblers.SetFactorizationMode(true);
+  system_using_custom_assemblers.SetFactorizationMode(true /*left looking*/);
   system_using_custom_assemblers.Assemble();
   START_LOG_TIMER
   system_using_custom_assemblers.Factor();
   END_LOG_TIMER(stats.factor_time_left_looking)
+
+
+  for (auto& node: nodes) {
+    node->SetFactorizationMode(true /*use custom*/);
+  }
+  system_using_custom_assemblers.Assemble();
+  START_LOG_TIMER
+  system_using_custom_assemblers.Factor();
+  END_LOG_TIMER(stats.factor_time_custom_inverse)
+
 
   system_using_custom_assemblers.Assemble();
   Eigen::SparseMatrix<double> M = system_using_custom_assemblers.MakeSparseKKTMatrix().triangularView<Eigen::Lower>();

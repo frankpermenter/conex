@@ -1,7 +1,7 @@
+#define CONEX_ENABLE_TIMER 0
 #include "kkt_subsystem.h"
 #include "conex/debug_macros.h"
 #include "supernode_inverse.h"
-#define CONEX_ENABLE_TIMER 1
 
 namespace conex {
 namespace {
@@ -53,6 +53,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
   num_incoming = params.num_incoming; 
   num_outgoing = params.num_outgoing;
   spatial_dim = params.spatial_dimension;
+  use_custom_supernode_inverse_ = false;
 }
 
   //          ye  ze phie ye  ze  phie  lam_spatial  lam_flow    yf  pf  yf pf
@@ -169,4 +170,52 @@ T::ConvexSetNode(const std::vector<int>& variables,
     return Q;
   }
 
+  bool T::DoEliminateSupernodeColumns() {
+    bool success = true;
+    if (use_custom_supernode_inverse_) {
+    supernode_submatrix_.SetData(supernode_submatrix());
+    START_TIMER(ElimateCustom);
+      success = supernode_submatrix_.AssembleAndFactor();
+    END_TIMER
+    } else {
+    START_TIMER(Elimate);
+      success = factorization_->DoEliminateSupernodeColumns();
+    END_TIMER
+    }
+    return success;
+  }
+
+  void T::DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const {
+    START_TIMER( SolveLeft);
+    if (use_custom_supernode_inverse_) {
+      supernode_submatrix_.SolveInPlace(y);
+    } else {
+      factorization_->DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(y);
+    }
+    END_TIMER
+  }
+
+  void T::DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const {
+    START_TIMER( SolveRight)
+    if (use_custom_supernode_inverse_) {
+      (void) y; // NOOP
+    } else  {
+      factorization_->DoApplyInverseOfRightFactorOfSupernodeSubmatrix(y);
+    }
+    END_TIMER
+  }
+
+  void T::DoComputeSeparatorSchurComplement() {
+   START_TIMER( SchurComplement)
+    if (use_custom_supernode_inverse_) {
+      MatrixXd temp = separator_rows().transpose();
+      supernode_submatrix_.SolveInPlace(temp);
+      separator_schur_complement() = -separator_rows() * temp;
+    } else {
+      factorization_->DoComputeSeparatorSchurComplement();
+    }
+    END_TIMER
+  }
 } // namespace conex

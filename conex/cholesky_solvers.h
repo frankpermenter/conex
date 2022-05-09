@@ -86,7 +86,7 @@ class CholeskySolver : public KKTSubsystemBase {
   }
 
   bool OnlyLowerTriangularPart(int num_vectors, int cost_of_inner_product) {
-    return false;
+    return true;
     //return num_vectors * cost_of_inner_product > 100; 
   }
 
