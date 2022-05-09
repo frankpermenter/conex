@@ -4,6 +4,7 @@
 
 namespace conex {
 
+using KKTSubsystemType = KKTSubsystemBase;
 namespace {
 class DistanceToRootRecursion{
  public:
@@ -38,7 +39,7 @@ std::vector<int> ComputeDistanceToRoot(const std::vector<int>& parent) {
 }
 
 void FillIn(std::vector<int> system_to_parent, int num_variables,
-            std::vector<KKTSubsystem*>* systems) {
+            std::vector<KKTSubsystemType*>* systems) {
 
   std::vector<int> system_to_distance_to_root = ComputeDistanceToRoot(system_to_parent);
   std::vector<int> eliminated(num_variables, -1);
@@ -119,11 +120,11 @@ class SymmetricMatrix {
 class Weight {
  public:
   Weight(SymmetricMatrix<vector<int>>& intersections,
-         const vector<KKTSubsystem*>& cliques_sorted)
+         const vector<KKTSubsystemType*>& cliques_sorted)
       : intersections_(intersections), subsystems_(cliques_sorted) {}
   int num_nodes_;
   SymmetricMatrix<vector<int>>& intersections_;
-  const vector<KKTSubsystem*>& subsystems_;
+  const vector<KKTSubsystemType*>& subsystems_;
 
   size_t get_weight(int active, int i) {
     // Weight is the size of intersection.
@@ -139,7 +140,7 @@ class Weight {
 /* 
 Visit nodes of clique intersection graph using weighted DFS.
 */
-int PickCliqueOrderHelper(const std::vector<KKTSubsystem*>& subsystems,
+int PickCliqueOrderHelper(const std::vector<KKTSubsystemType*>& subsystems,
                           int root_in, bool validate_leaf_nodes,
                           SymmetricMatrix<vector<int>>* intersections_ptr,
                           RootedTree* tree_ptr) {
@@ -431,6 +432,6 @@ Eigen::SparseMatrix<double> T::MakeSparseKKTMatrix(
 
 
 
-void T::AddSubsystem(KKTSubsystem* system) { CONEX_CHECK(system != nullptr); subsystems_.push_back(system); }
+void T::AddSubsystem(KKTSubsystemType* system) { CONEX_CHECK(system != nullptr); subsystems_.push_back(system); }
 
 }  // namespace conex

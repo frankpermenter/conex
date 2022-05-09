@@ -15,7 +15,7 @@ struct Options {
 class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
  public:
   int number_of_variables() const;
-  void AddSubsystem(KKTSubsystem* system);
+  void AddSubsystem(KKTSubsystemBase* system);
   void RepairTreeInPlace(std::vector<int>* parent_ptr);
 
   void SetEliminationTree(const std::vector<int>& 
@@ -45,8 +45,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   bool CheckForZeroPivot(const std::vector<int>& parent,
                          std::vector<int>* subsystems_with_zero_piviot);
 
-  std::vector<KKTSubsystem*> roots_;
-  std::vector<KKTSubsystem*> subsystems_;
+  std::vector<KKTSubsystemBase*> roots_;
+  std::vector<KKTSubsystemBase*> subsystems_;
   std::vector<int> variable_to_elimination_position_;
   std::vector<int> subsystem_to_parent_;
 };
