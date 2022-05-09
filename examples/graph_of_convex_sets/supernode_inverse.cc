@@ -38,7 +38,7 @@ class DenseBlock : public DenseBlockBase {
   CONEX_NO_COPY_NO_MOVE(DenseBlock)
  public:
   using FactorizationMethod = CholeskySolver<Eigen::RLDLT<MatrixXd>, true>;
-  DenseBlock(const Parameters& p) {
+  DenseBlock(const Parameters& p, Eigen::Ref<MatrixXd> full_matrix) {
     int offset = p.spatial_dimension * p.num_edges; 
     std::vector<int> supernodes((p.spatial_dimension + 1) * (p.num_edges + 1));
     std::iota(supernodes.begin(), supernodes.end(), offset);
@@ -102,13 +102,14 @@ class IncomingSpatialVariableBlock : public IncomingSpatialVariableBlockBase  {
 using T = SupernodeSubmatrix;
 T::~SupernodeSubmatrix() {}
 
-T::SupernodeSubmatrix(const Parameters& p) : incoming_blocks_(p.num_edges) {
+T::SupernodeSubmatrix(const Parameters& p, Eigen::Ref<Eigen::MatrixXd> full_matrix) : 
+incoming_blocks_(p.num_edges) {
   CONEX_CHECK(p.num_edges > 0 && p.spatial_dimension > 0);
   tree_solver_ = std::make_unique<SymmetricLinearSystemTreeSolver>();
   for (int i = 0; i < p.num_edges; i++) {
     incoming_blocks_.at(i) = std::make_unique<IncomingSpatialVariableBlock>(p, i);
   }
-  dense_block_ = std::make_unique<DenseBlock>(p);
+  dense_block_ = std::make_unique<DenseBlock>(p,  full_matrix);
   tree_solver_->AddSubsystem(dense_block_.get());
   for (int i = 0; i < p.num_edges; i++) {
     tree_solver_->AddSubsystem(incoming_blocks_.at(i).get());

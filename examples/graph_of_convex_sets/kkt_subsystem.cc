@@ -33,8 +33,7 @@ using T = ConvexSetNode;
 
 T::ConvexSetNode(const std::vector<int>& variables, 
                  const ConvexSetNodeParameters& params) : 
-                 KKTSubsystem(variables, 0), params_(params), 
-                 supernode_submatrix_(MakeParams(params)) {
+                 KKTSubsystem(variables, 0), params_(params) {
   int num_supernodes =
       params.num_incoming * (2 * params.spatial_dimension + 1) +
       params.spatial_dimension + 1;
@@ -55,6 +54,29 @@ T::ConvexSetNode(const std::vector<int>& variables,
   spatial_dim = params.spatial_dimension;
   use_custom_supernode_inverse_ = false;
 }
+
+  void T::DoInitialize() {
+    KKTSubsystem::DoInitialize();
+    auto data = MakeSeperatorMatrix();
+    CONEX_CHECK(data.rows() == separator_rows().rows());
+    CONEX_CHECK(data.cols() == separator_rows().cols());
+    separator_rows() = data;
+
+    data = MakeSuperNodeSubmatrix();
+    CONEX_CHECK(data.rows() == supernode_submatrix().rows());
+    CONEX_CHECK(data.cols() == supernode_submatrix().cols());
+    supernode_submatrix() = data;
+    separator_schur_complement().setZero();
+    factorization_ = std::make_unique<FactorizationType>(supernode_submatrix(), separator_rows(), separator_schur_complement());
+
+    supernode_submatrix_ = std::make_unique<SupernodeSubmatrix>(MakeParams(params_), 
+    supernode_submatrix());
+
+  }
+
+
+
+
 
   //          ye  ze phie ye  ze  phie  lam_spatial  lam_flow    yf  pf  yf pf
   //
@@ -173,9 +195,9 @@ T::ConvexSetNode(const std::vector<int>& variables,
   bool T::DoEliminateSupernodeColumns() {
     bool success = true;
     if (use_custom_supernode_inverse_) {
-    supernode_submatrix_.SetData(supernode_submatrix());
+    supernode_submatrix_->SetData(supernode_submatrix());
     START_TIMER(ElimateCustom);
-      success = supernode_submatrix_.AssembleAndFactor();
+      success = supernode_submatrix_->AssembleAndFactor();
     END_TIMER
     } else {
     START_TIMER(Elimate);
@@ -189,7 +211,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
       Eigen::Ref<MatrixXd> y) const {
     START_TIMER( SolveLeft);
     if (use_custom_supernode_inverse_) {
-      supernode_submatrix_.SolveInPlace(y);
+      supernode_submatrix_->SolveInPlace(y);
     } else {
       factorization_->DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(y);
     }
@@ -211,7 +233,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
    START_TIMER( SchurComplement)
     if (use_custom_supernode_inverse_) {
       MatrixXd temp = separator_rows().transpose();
-      supernode_submatrix_.SolveInPlace(temp);
+      supernode_submatrix_->SolveInPlace(temp);
       separator_schur_complement() = -separator_rows() * temp;
     } else {
       factorization_->DoComputeSeparatorSchurComplement();

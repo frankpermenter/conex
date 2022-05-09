@@ -41,7 +41,7 @@ class SupernodeSubmatrix {
     int spatial_dimension;
   };
 
-  SupernodeSubmatrix(const Parameters& params);
+  SupernodeSubmatrix(const Parameters& params, Eigen::Ref<MatrixXd> full_matrix);
   ~SupernodeSubmatrix();
 
   bool AssembleAndFactor() { return tree_solver_->AssembleAndFactor(); }

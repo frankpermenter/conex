@@ -169,27 +169,14 @@ class ConvexSetNode : public KKTSubsystem {
 
  private:
   using FactorizationType = CholeskySolver<Eigen::RLDLT<Eigen::MatrixXd>, true>;
-  void DoInitialize() override {
-    KKTSubsystem::DoInitialize();
-    auto data = MakeSeperatorMatrix();
-    CONEX_CHECK(data.rows() == separator_rows().rows());
-    CONEX_CHECK(data.cols() == separator_rows().cols());
-    separator_rows() = data;
-
-    data = MakeSuperNodeSubmatrix();
-    CONEX_CHECK(data.rows() == supernode_submatrix().rows());
-    CONEX_CHECK(data.cols() == supernode_submatrix().cols());
-    supernode_submatrix() = data;
-    separator_schur_complement().setZero();
-    factorization_ = std::make_unique<FactorizationType>(supernode_submatrix(), separator_rows(), separator_schur_complement());
-  }
+  void DoInitialize();
 
   int spatial_dim = 0;
   int num_incoming = 0;
   int num_outgoing = 0;
   ConvexSetNodeParameters params_;
   std::unique_ptr<FactorizationType> factorization_;
-  SupernodeSubmatrix supernode_submatrix_; 
+  std::unique_ptr<SupernodeSubmatrix> supernode_submatrix_; 
   bool use_custom_supernode_inverse_ = false;
 };
 
