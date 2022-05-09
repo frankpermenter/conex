@@ -1,4 +1,4 @@
-#define CONEX_ENABLE_TIMER 0
+#define CONEX_ENABLE_TIMER 1
 #include "kkt_subsystem.h"
 #include "conex/debug_macros.h"
 #include "supernode_inverse.h"
@@ -71,7 +71,6 @@ T::ConvexSetNode(const std::vector<int>& variables,
 
     supernode_submatrix_ = std::make_unique<SupernodeSubmatrix>(MakeParams(params_), 
     supernode_submatrix());
-
   }
 
 
@@ -117,43 +116,48 @@ T::ConvexSetNode(const std::vector<int>& variables,
     MatrixXd edge_hessian(spatial_dim, spatial_dim);
     edge_hessian.setConstant(.01);
     edge_hessian.diagonal().array() += 1;
+    bool fill_in = false;
     for (int i = 0; i < num_incoming; i++) {
-      Q.block(params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
-              params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
-      spatial_dim, spatial_dim) = edge_hessian;
+      for (int j = 0; j < num_incoming; j++) {
+        if (!fill_in && i != j) {
+          continue; 
+        }
+        Q.block(params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
+                params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(j), 
+        spatial_dim, spatial_dim) = edge_hessian;
 
-      Q.block(params_.incoming_spatial_flow_start_positions.at(i), 
-              params_.incoming_spatial_flow_start_positions.at(i),
-      spatial_dim, spatial_dim) = edge_hessian;
+        Q.block(params_.incoming_spatial_flow_start_positions.at(i), 
+                params_.incoming_spatial_flow_start_positions.at(j),
+        spatial_dim, spatial_dim) = edge_hessian;
 
-      Q.block(params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
-              params_.incoming_spatial_flow_start_positions.at(i), 
-      spatial_dim, spatial_dim).setConstant(.01);
+        Q.block(params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
+                params_.incoming_spatial_flow_start_positions.at(j), 
+        spatial_dim, spatial_dim).setConstant(.01);
 
-      Q.block(params_.incoming_spatial_flow_start_positions.at(i), 
-              params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i),
-      spatial_dim, spatial_dim).setConstant(.01); 
+        Q.block(params_.incoming_spatial_flow_start_positions.at(i), 
+                params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(j),
+        spatial_dim, spatial_dim).setConstant(.01); 
 
-      Q(params_.incoming_flow_start_positions.at(i), 
-        params_.incoming_flow_start_positions.at(i)) = 100;
+        Q(params_.incoming_flow_start_positions.at(i), 
+          params_.incoming_flow_start_positions.at(j)) = .01;
 
 
-      Q.block(params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
-              params_.incoming_flow_start_positions.at(i), 
-              spatial_dim, 1).setConstant(0.01);
+        Q.block(params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
+                params_.incoming_flow_start_positions.at(j), 
+                spatial_dim, 1).setConstant(0.01);
 
-      Q.block(params_.incoming_spatial_flow_start_positions.at(i), 
-              params_.incoming_flow_start_positions.at(i), 
-              spatial_dim, 1).setConstant(0.01);
+        Q.block(params_.incoming_spatial_flow_start_positions.at(i), 
+                params_.incoming_flow_start_positions.at(j), 
+                spatial_dim, 1).setConstant(0.01);
 
-      Q.block(params_.incoming_flow_start_positions.at(i), 
-              params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
-              1, spatial_dim).setConstant(0.01);
+        Q.block(params_.incoming_flow_start_positions.at(i), 
+                params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(j), 
+                1, spatial_dim).setConstant(0.01);
 
-      Q.block(params_.incoming_flow_start_positions.at(i), 
-              params_.incoming_spatial_flow_start_positions.at(i), 
-              1,  spatial_dim).setConstant(0.01);
-
+        Q.block(params_.incoming_flow_start_positions.at(i), 
+                params_.incoming_spatial_flow_start_positions.at(j), 
+                1,  spatial_dim).setConstant(0.01);
+      }
     }
 
     // Spatial flow
@@ -167,14 +171,47 @@ T::ConvexSetNode(const std::vector<int>& variables,
       Q(params_.conservation_of_flow_multiplier_position,  
         params_.incoming_flow_start_positions.at(i)) = 10 + i;
     }
-    // Q.setConstant(.1);
-    // Q.diagonal().setConstant(10);
+    int rows = Q.rows() - 1 - params_.spatial_dimension;
+    // Q.topLeftCorner(rows, rows ).setConstant(.1);
+    Q.diagonal().setConstant(10);
     return Q;
   }
 
   Eigen::MatrixXd T::MakeSeperatorMatrix() {
     Eigen::MatrixXd Q(num_separators(), num_supernodes());
     Q.setZero();
+    bool fill_in = false;
+    if (fill_in) {    
+      for (int i = 0; i < num_outgoing; i++) {
+        for (int j = 0; j < num_incoming; j++) {
+          Q.block(params_.outgoing_spatial_flow_start_positions.at(i), 
+                  params_.incoming_spatial_flow_start_positions.at(j), spatial_dim, spatial_dim).setConstant(.000001);
+        }
+      }
+
+      for (int i = 0; i < num_outgoing; i++) {
+        for (int j = 0; j < num_incoming; j++) {
+          Q.block(params_.outgoing_flow_start_positions.at(i), 
+                  params_.incoming_flow_start_positions.at(j), spatial_dim, spatial_dim).setConstant(.000001);
+        }
+      }
+
+      for (int i = 0; i < num_outgoing; i++) {
+        for (int j = 0; j < num_incoming; j++) {
+          Q.block(params_.outgoing_flow_start_positions.at(i), 
+                  params_.incoming_spatial_flow_start_positions.at(j),  1, spatial_dim).setConstant(.000001);
+        }
+      }
+      for (int i = 0; i < num_outgoing; i++) {
+        for (int j = 0; j < num_incoming; j++) {
+          Q.block(params_.outgoing_spatial_flow_start_positions.at(i), 
+                  params_.incoming_flow_start_positions.at(j), spatial_dim, 1).setConstant(.000001);
+        }
+      }
+    }
+
+
+
     // Set col to spatial flow multiplier.
     for (int i = 0; i < num_outgoing; i++) {
       Q.block(params_.outgoing_spatial_flow_start_positions.at(i), 
@@ -188,56 +225,53 @@ T::ConvexSetNode(const std::vector<int>& variables,
       Q(offset_row, params_.conservation_of_flow_multiplier_position) = -1;
       offset_row += spatial_dim;
     }
-    // Q.setConstant(-.01);
     return Q;
   }
 
   bool T::DoEliminateSupernodeColumns() {
     bool success = true;
     if (use_custom_supernode_inverse_) {
-    supernode_submatrix_->SetData(supernode_submatrix());
-    START_TIMER(ElimateCustom);
+      supernode_submatrix_->SetData(supernode_submatrix());
       success = supernode_submatrix_->AssembleAndFactor();
-    END_TIMER
     } else {
-    START_TIMER(Elimate);
       success = factorization_->DoEliminateSupernodeColumns();
-    END_TIMER
     }
     return success;
   }
 
   void T::DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const {
-    START_TIMER( SolveLeft);
     if (use_custom_supernode_inverse_) {
       supernode_submatrix_->SolveInPlace(y);
     } else {
       factorization_->DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(y);
     }
-    END_TIMER
   }
 
   void T::DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const {
-    START_TIMER( SolveRight)
     if (use_custom_supernode_inverse_) {
       (void) y; // NOOP
     } else  {
       factorization_->DoApplyInverseOfRightFactorOfSupernodeSubmatrix(y);
     }
-    END_TIMER
   }
-
   void T::DoComputeSeparatorSchurComplement() {
-   START_TIMER( SchurComplement)
+    if (separator_rows().rows() == 0) {
+      return;
+    }
+    MatrixXd temp = separator_rows().transpose();
     if (use_custom_supernode_inverse_) {
-      MatrixXd temp = separator_rows().transpose();
-      supernode_submatrix_->SolveInPlace(temp);
-      separator_schur_complement() = -separator_rows() * temp;
+        supernode_submatrix_->SolveInPlace(temp);
+        int n = temp.cols();
+        for (int j = 0; j < n; j++) {
+          separator_schur_complement().col(j).tail(n - j).noalias() -= separator_rows().bottomRows(n - j) * temp.col(j);
+        }
     } else {
       factorization_->DoComputeSeparatorSchurComplement();
     }
-    END_TIMER
   }
+
+
+
 } // namespace conex

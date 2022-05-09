@@ -128,11 +128,6 @@ Time Profile(const GraphData& data,
   END_LOG_TIMER(stats.factor_time)
 
   system_using_custom_assemblers.SetFactorizationMode(true /*left looking*/);
-  system_using_custom_assemblers.Assemble();
-  START_LOG_TIMER
-  system_using_custom_assemblers.Factor();
-  END_LOG_TIMER(stats.factor_time_left_looking)
-
 
   for (auto& node: nodes) {
     node->SetFactorizationMode(true /*use custom*/);
@@ -141,6 +136,17 @@ Time Profile(const GraphData& data,
   START_LOG_TIMER
   system_using_custom_assemblers.Factor();
   END_LOG_TIMER(stats.factor_time_custom_inverse)
+
+
+  for (auto& node: nodes) {
+    node->SetFactorizationMode(false /*use custom*/);
+  }
+  system_using_custom_assemblers.Assemble();
+  START_LOG_TIMER
+  system_using_custom_assemblers.Factor();
+  END_LOG_TIMER(stats.factor_time_left_looking)
+
+
 
 
   system_using_custom_assemblers.Assemble();

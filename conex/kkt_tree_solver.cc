@@ -239,6 +239,10 @@ using T = SymmetricLinearSystemTreeSolver;
 
 void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                        bool in_original_order) const {
+  CONEX_CHECK(b.rows() ==  number_of_variables());
+  if (b.cols() == 0) {
+    return;
+  }
   if (in_original_order) {
     CONEX_CHECK(variable_to_elimination_position_.size() >  0);
     Eigen::PermutationMatrix<-1> P(number_of_variables());

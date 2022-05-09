@@ -126,7 +126,7 @@ void T::SetData(Eigen::Ref<Eigen::MatrixXd> full_matrix) {
     i->SetData(full_matrix);
   }
   //dense_block_->SetData(full_matrix);
-  tree_solver_->Assemble();
+//  tree_solver_->Assemble();
 }
 
 } // namespace conex

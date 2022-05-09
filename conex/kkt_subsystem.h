@@ -89,9 +89,11 @@ class KKTSubsystemBase {
   virtual Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() = 0;
   virtual Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() = 0;
   virtual Eigen::Ref<Eigen::MatrixXd> separator_rows() = 0;
+//  virtual Eigen::Ref<Eigen::MatrixXd> separator_columns() = 0;
   virtual Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const = 0;
   virtual Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement() const = 0;
   virtual Eigen::Ref<const Eigen::MatrixXd> separator_rows() const = 0; 
+//  virtual Eigen::Ref<const Eigen::MatrixXd> separator_columns() const = 0;
 
   const std::vector<int>& shared_variables() const { return variables_; }
 
@@ -217,16 +219,19 @@ class KKTSubsystem : public KKTSubsystemBase {
   Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override { 
       return separator_schur_complement_; }
   Eigen::Ref<Eigen::MatrixXd> separator_rows() override { return separator_rows_; }
+//  Eigen::Ref<Eigen::MatrixXd> separator_columns() override { return separator_columns_; }
 
   Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const override { return supernode_submatrix_; }
   Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement() const override { 
       return separator_schur_complement_; }
   Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override { return separator_rows_; }
+//  Eigen::Ref<const Eigen::MatrixXd> separator_columns() const override { return separator_columns_; }
 
  private:
   Eigen::MatrixXd separator_schur_complement_;
   Eigen::MatrixXd supernode_submatrix_;
   Eigen::MatrixXd separator_rows_;
+//  Eigen::MatrixXd separator_columns_;
 };
 
 }  // namespace conex

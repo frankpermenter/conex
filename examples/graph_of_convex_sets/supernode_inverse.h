@@ -25,14 +25,40 @@ namespace conex {
            0            1            0            1            0            0            0            0            0            0            0            0            0
            0            0            0            0            0            0           10            0            0           11            0            0            0
 
-         
-      y1   y2
-
 */
 
 
 class DenseBlock;
 class IncomingSpatialVariableBlock;
+
+/* Builds a tree-solver for the supernode submatrix. For three n-coming
+edges, the tree has form:
+
+                          W
+               (z1, W)  (z2, W)   (z3, W)
+
+where W = (y1, p1, y2, p2, y3, p3, lam spatial, lam flow).
+
+
+A concrete example matrix with 2 incoming edges is:
+
+
+                z1                        z2                      y1                   p1                  y2                 p2                  ls                   lf
+
+        1.01         0.01            0            0         0.01         0.01         0.01            0            0            0            0            0            0
+        0.01         1.01            0            0         0.01         0.01         0.01            0            0            0            0            0            0
+           0            0         1.01         0.01            0            0            0         0.01         0.01         0.01            0            0            0
+           0            0         0.01         1.01            0            0            0         0.01         0.01         0.01            0            0            0
+        0.01         0.01            0            0      1.81797         0.01         0.01            0            0            0            0            0            0
+        0.01         0.01            0            0    0.0179686      1.81797         0.01            0            0            0            0            0            0
+        0.01         0.01            0            0    0.0103923    0.0103923          101            0            0            0            0            0            0
+           0            0         0.01         0.01   -0.0159988   -0.0159988 -1.53834e-05      5.04984         0.01         0.01            0            0            0
+           0            0         0.01         0.01   -0.0159988   -0.0159988 -1.53834e-05    0.0498431      5.04984         0.01            0            0            0
+           0            0         0.01         0.01 -0.000760711 -0.000760711    0.0999989    0.0119906    0.0119906       101.01            0            0            0
+           1            0            1            0            0            0            0            0            0            0            0            0            0
+           0            1            0            1            0            0            0            0            0            0            0            0            0
+           0            0            0            0            0            0           10            0            0           11            0            0            0
+*/
 
 class SupernodeSubmatrix {
  public:

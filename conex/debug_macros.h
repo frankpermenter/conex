@@ -52,7 +52,7 @@ namespace conex {
             << std::chrono::duration_cast<std::chrono::microseconds>(stop1 - \
                                                                      start1) \
                    .count()                                                  \
-            << ", ";                                                         \
+            << ", " << std::endl;                                                         \
   }
 #else
 
