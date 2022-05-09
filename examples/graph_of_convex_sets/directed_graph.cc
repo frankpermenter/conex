@@ -43,7 +43,6 @@ class RecursiveTopologicalSort {
      if (num_ordered != nodes_.size()) {
       throw std::runtime_error("Graph has multiple source nodes.");
      }
-     DUMP(position_to_node);
      return position_to_node;
    }
 
@@ -119,7 +118,6 @@ void T::SortEdgeListInReverseTopologicalOrder(std::vector<int>* edge_list) const
 
 void T::BuildSpanningTree() {
   std::vector<int> position_to_node = ComputeTopologicalOrdering();
-  DUMP(position_to_node);
   std::vector<int> node_to_parent(nodes_.size());
   int root = position_to_node.at(0);
   node_to_parent_in_spanning_tree_.at(root) = -1;
