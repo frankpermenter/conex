@@ -6,6 +6,8 @@ cc_test(
             "kkt_subsystem.cc",
             "profile.cc",
             "profile.h",
+            "supernode_inverse.cc", 
+            "supernode_inverse.h", 
             "convex_set_node_factory.h",
             "convex_set_node_factory.cc",
             "directed_graph.h"],

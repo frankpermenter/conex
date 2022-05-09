@@ -1,8 +1,10 @@
+#pragma once
 #include <Eigen/Dense>
 #include <memory>
 #include "conex/kkt_tree_solver.h"
-
-#include "kkt_subsystem.h"
+#include "conex/kkt_subsystem.h"
+#include "conex/RLDLT.h"
+#include "conex/cholesky_solvers.h"
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
@@ -28,8 +30,6 @@ namespace conex {
 
 */
 
-using IncomingSpatialVariableBlockBase = 
-KKTCholeskySystem<CholeskySolver<Eigen::LLT<MatrixXd>, true>>;
 
 class DenseBlock;
 class IncomingSpatialVariableBlock;
@@ -44,8 +44,9 @@ class SupernodeSubmatrix {
   SupernodeSubmatrix(const Parameters& params);
   ~SupernodeSubmatrix();
 
+  bool AssembleAndFactor() { return tree_solver_->AssembleAndFactor(); }
   bool Factor() { return tree_solver_->Factor(); }
-  void SolveInPlace(Eigen::Ref<Eigen::MatrixXd> x) { return tree_solver_->SolveInPlace(x); }
+  void SolveInPlace(Eigen::Ref<Eigen::MatrixXd> x) const { tree_solver_->SolveInPlace(x, /*do not permute*/ false); }
   void SetData(Eigen::Ref<Eigen::MatrixXd> full_matrix);
   Eigen::MatrixXd MakeKKTMatrix() const { return tree_solver_->KKTMatrix(true /*no permutation*/); }
 

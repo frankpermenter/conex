@@ -1,10 +1,10 @@
 #include "kkt_subsystem.h"
 #include "conex/debug_macros.h"
+#include "supernode_inverse.h"
 #define CONEX_ENABLE_TIMER 1
 
 namespace conex {
 namespace {
-
   bool is_sequential(const std::vector<int>& n) {
     for (size_t i = 1; i < n.size(); i++) {
       if (n[i] - n[i-1] != 1) {
@@ -21,12 +21,20 @@ namespace {
     }
     return true;
   }
+
+SupernodeSubmatrix::Parameters MakeParams(const ConvexSetNodeParameters& input) {
+  SupernodeSubmatrix::Parameters params;
+  params.num_edges = input.num_incoming;
+  params.spatial_dimension = input.spatial_dimension;
+  return params;
+}
 } // namespace
 using T = ConvexSetNode;
 
 T::ConvexSetNode(const std::vector<int>& variables, 
                  const ConvexSetNodeParameters& params) : 
-                 KKTSubsystem(variables, 0), params_(params) {
+                 KKTSubsystem(variables, 0), params_(params), 
+                 supernode_submatrix_(MakeParams(params)) {
   int num_supernodes =
       params.num_incoming * (2 * params.spatial_dimension + 1) +
       params.spatial_dimension + 1;
@@ -46,8 +54,6 @@ T::ConvexSetNode(const std::vector<int>& variables,
   num_outgoing = params.num_outgoing;
   spatial_dim = params.spatial_dimension;
 }
-
-
 
   //          ye  ze phie ye  ze  phie  lam_spatial  lam_flow    yf  pf  yf pf
   //
@@ -126,7 +132,6 @@ T::ConvexSetNode(const std::vector<int>& variables,
               1,  spatial_dim).setConstant(0.01);
 
     }
-    
 
     // Spatial flow
     for (int i = 0; i < num_incoming; i++) {
@@ -139,8 +144,8 @@ T::ConvexSetNode(const std::vector<int>& variables,
       Q(params_.conservation_of_flow_multiplier_position,  
         params_.incoming_flow_start_positions.at(i)) = 10 + i;
     }
-    Q.setConstant(.1);
-    Q.diagonal().setConstant(10);
+    // Q.setConstant(.1);
+    // Q.diagonal().setConstant(10);
     return Q;
   }
 
@@ -160,10 +165,8 @@ T::ConvexSetNode(const std::vector<int>& variables,
       Q(offset_row, params_.conservation_of_flow_multiplier_position) = -1;
       offset_row += spatial_dim;
     }
-    Q.setConstant(-.01);
+    // Q.setConstant(-.01);
     return Q;
   }
-
-
 
 } // namespace conex

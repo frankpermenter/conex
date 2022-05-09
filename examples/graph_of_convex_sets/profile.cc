@@ -132,11 +132,7 @@ Time Profile(const GraphData& data,
   system_using_custom_assemblers.Factor();
   END_LOG_TIMER(stats.factor_time_left_looking)
 
-
-bool only_custom = false;
-if (!only_custom) {
   system_using_custom_assemblers.Assemble();
-//  Eigen::MatrixXd M = system_using_custom_assemblers.KKTMatrix(true);
   Eigen::SparseMatrix<double> M = system_using_custom_assemblers.MakeSparseKKTMatrix().triangularView<Eigen::Lower>();
   VectorXd x; x.setLinSpaced(M.cols(), -1, 1);
   VectorXd y = M.selfadjointView<Eigen::Lower>() * x;
@@ -169,9 +165,8 @@ if (!only_custom) {
   START_LOG_TIMER
     llt_amd.compute(M);
   END_LOG_TIMER(stats.factor_time_amd);
-   Eigen::SparseMatrix<double> factor_amd = llt_amd.matrixL();
-    stats.non_zeros_amd = factor_amd.nonZeros();
-    }
+  Eigen::SparseMatrix<double> factor_amd = llt_amd.matrixL();
+  stats.non_zeros_amd = factor_amd.nonZeros();
 
   return stats;
 }

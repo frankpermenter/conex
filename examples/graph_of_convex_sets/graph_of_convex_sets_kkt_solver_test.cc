@@ -255,7 +255,7 @@ GTEST_TEST(GraphOfConvexSets, RandomDAG) {
   for (int i = 0; i < 20; i++) {
     Time stats_i;
     //DoTest(100 /*nodes*/, 25 /*dim*/, .6 /*edge*/ , &stats_i);
-    DoTest(20 /*nodes*/, 25 /*dim*/, .9 /*edge*/ , &stats_i);
+    DoTest(3 /*nodes*/, 2 /*dim*/, .1 /*edge*/ , &stats_i);
     stats.factor_time_natural += stats_i.factor_time_natural;
     stats.factor_time += stats_i.factor_time;
   }

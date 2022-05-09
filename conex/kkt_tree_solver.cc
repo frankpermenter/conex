@@ -239,6 +239,7 @@ using T = SymmetricLinearSystemTreeSolver;
 void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                        bool in_original_order) const {
   if (in_original_order) {
+    CONEX_CHECK(variable_to_elimination_position_.size() >  0);
     Eigen::PermutationMatrix<-1> P(number_of_variables());
     P.indices() = Eigen::Map<const Eigen::VectorXi>(
         variable_to_elimination_position_.data(), number_of_variables());

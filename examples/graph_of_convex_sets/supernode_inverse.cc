@@ -24,15 +24,18 @@ int NumberOfSeparators(const Parameters& p) {
   return p.spatial_dimension * 2 + 1;
 }
 
+#define CONEX_NO_COPY_NO_MOVE(T)\
+T(const T&) = delete;\
+T(T&&) = delete;\
+T& operator=(const T&) = delete;\
+T& operator=(T&&) = delete;\
 
 using DenseBlockBase = 
 KKTCholeskySystem<CholeskySolver<Eigen::RLDLT<MatrixXd>, true>>;
 } // namespace
 
 class DenseBlock : public DenseBlockBase {
-
-CONEX_NO_COPY_NO_MOVE(DenseBlock)
-
+  CONEX_NO_COPY_NO_MOVE(DenseBlock)
  public:
   using FactorizationMethod = CholeskySolver<Eigen::RLDLT<MatrixXd>, true>;
   DenseBlock(const Parameters& p) {
@@ -40,7 +43,8 @@ CONEX_NO_COPY_NO_MOVE(DenseBlock)
     std::vector<int> supernodes((p.spatial_dimension + 1) * (p.num_edges + 1));
     std::iota(supernodes.begin(), supernodes.end(), offset);
     SetSupernodes(supernodes);
-    DoInitialize();
+    SetSeparators({});
+    KKTSubsystem::DoInitialize();
   }
   void SetData(Eigen::Ref<MatrixXd> full_matrix) {
     supernode_submatrix() = full_matrix.bottomRightCorner(supernodes().size(), supernodes().size());
@@ -48,7 +52,7 @@ CONEX_NO_COPY_NO_MOVE(DenseBlock)
 };
 
 class IncomingSpatialVariableBlock : public IncomingSpatialVariableBlockBase  {
-CONEX_NO_COPY_NO_MOVE(IncomingSpatialVariableBlock)
+  CONEX_NO_COPY_NO_MOVE(IncomingSpatialVariableBlock)
  public:
 
   static int SupernodeGlobalOffset(const Parameters& p, int edge_number) {
@@ -87,6 +91,7 @@ CONEX_NO_COPY_NO_MOVE(IncomingSpatialVariableBlock)
      supernode_submatrix() = full_matrix.block(offset, offset, size_super, size_super);
      separator_rows().topRows(seperator_global_size_1_) = full_matrix.block(seperator_global_offset_1_ , offset, seperator_global_size_1_, size_super);
      separator_rows().bottomRows(seperator_global_size_2_) = full_matrix.block(seperator_global_offset_2_ , offset, seperator_global_size_2_, size_super);
+     separator_schur_complement().setZero();
    }
    int seperator_global_offset_1_ = 0;
    int seperator_global_size_1_ = 0;

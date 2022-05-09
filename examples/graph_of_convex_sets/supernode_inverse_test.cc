@@ -16,7 +16,7 @@ GTEST_TEST(SupernodeSubmatrix, Constructor) {
   EXPECT_THROW({SupernodeSubmatrix solver(p);}, std::runtime_error);
 }
 
-GTEST_TEST(SupernodeSubmatrix, MakeKKTMatrix) {
+GTEST_TEST(SupernodeSubmatrix, MakeKKTMatrixAndSolve) {
   Eigen::MatrixXd ref(13, 13);
   ref <<
         1.01,    0.01,     0,       0,   0.01,   0.01,         0.01,            0,            0,            0,    0,    0,  0,
@@ -41,6 +41,12 @@ GTEST_TEST(SupernodeSubmatrix, MakeKKTMatrix) {
   MatrixXd x_calc = solver.MakeKKTMatrix();
   MatrixXd error = (x_calc - ref).selfadjointView<Eigen::Lower>();
   EXPECT_NEAR((error).norm(), 0, 1e-14);
+
+  MatrixXd x_ref(13, 2); x_ref.setRandom();
+  MatrixXd y = ref.selfadjointView<Eigen::Lower>() * x_ref;
+  solver.AssembleAndFactor();
+  solver.SolveInPlace(y);
+  EXPECT_NEAR( (y - x_ref).norm(), 0, 1e-12);
 }
 
 

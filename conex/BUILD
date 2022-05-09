@@ -632,6 +632,7 @@ cc_test(
         "@gtest//:main",
     ],
 )
+
 cc_test(
     name = "kkt_solver_profile",
     srcs = [
