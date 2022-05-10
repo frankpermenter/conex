@@ -1,5 +1,3 @@
-
-
 cc_library(name = "graph_of_convex_sets_data",
   hdrs = ["graph_data.h"],
 )
@@ -20,8 +18,6 @@ cc_library(
     name = "graph_of_convex_sets_util",
     srcs = ["directed_graph.cc",
             "kkt_subsystem.cc",
-            "profile.cc",
-            "profile.h",
             "supernode_inverse.cc", 
             "supernode_inverse.h", 
             "convex_set_node_factory.h",
@@ -37,37 +33,33 @@ cc_library(
     ],
 )
 
-
-
 cc_test(
-    name = "graph_of_convex_sets_kkt_solver_test",
-    srcs = ["graph_of_convex_sets_kkt_solver_test.cc", 
-            "profile.cc",
-            "profile.h"],
-    copts = ["-Iexternal/gtest/include", 
-             "-DEIGEN_RUNTIME_NO_MALLOC"],
-    deps = [
-        "graph_of_convex_sets_util",
-        "//conex:error_checking",
-        "//conex:kkt_tree_solver",
-        "@gtest//:main",
-    ],
+  name = "graph_of_convex_sets_kkt_solver_test",
+  srcs = ["graph_of_convex_sets_kkt_solver_test.cc", 
+          "profile.cc",
+          "profile.h"],
+  copts = ["-Iexternal/gtest/include", 
+           "-DEIGEN_RUNTIME_NO_MALLOC"],
+  deps = [
+      "graph_of_convex_sets",
+      "graph_of_convex_sets_util",
+      "//conex:error_checking",
+      "//conex:kkt_tree_solver",
+      "@gtest//:main",
+  ],
 )
 
-
 cc_test(
-    name = "llt_profile",
-    srcs = ["llt_profile.cc"],
-    copts = ["-Iexternal/gtest/include", 
-             "-DEIGEN_RUNTIME_NO_MALLOC"],
-    #outs = ["gmon.out"],
-    deps = [
-        "//conex:error_checking",
-        "//conex:kkt_tree_solver",
-        "@gtest//:main",
-    ],
+  name = "llt_profile",
+  srcs = ["llt_profile.cc"],
+  copts = ["-Iexternal/gtest/include", 
+           "-DEIGEN_RUNTIME_NO_MALLOC"],
+  deps = [
+      "//conex:error_checking",
+      "//conex:kkt_tree_solver",
+      "@gtest//:main",
+  ],
 )
-
 
 cc_test(
     name = "supernode_submatrix_test",
@@ -81,7 +73,6 @@ cc_test(
         "@gtest//:main",
     ],
 )
-
 
 cc_test(
     name = "fill_in_comparison_test",

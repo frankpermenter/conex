@@ -4,6 +4,7 @@
 #include "kkt_subsystem.h"
 #include "convex_set_node_factory.h"
 #include "conex/kkt_tree_solver.h"
+#include "gcs_solver.h"
 #include "gtest/gtest.h"
 
 using Eigen::MatrixXd;
@@ -98,48 +99,31 @@ Time Profile(const GraphData& data,
   std::vector<int> node_to_parent_in_spanning_tree_reference) {
 
   Time stats;
-  Graph graph(data.nodes, data.edges);
+  GraphSolver graph_solver(data);
+  auto system_using_custom_assemblers = graph_solver.tree_solver();
 
-  graph.BuildSpanningTree();
-  DUMP(graph.node_to_parent_in_spanning_tree());
-  graph.SortEdgeListInReverseTopologicalOrder();
-  graph.AssignEliminationOrder();
-  graph.IdentifyFillInEdges();
+  GraphSolver::FactorizationMode mode;
+  mode.left_looking = false;
+  mode.custom_block_inverse = false;
+  graph_solver.SetFactorizationMode(mode);
 
-  int num_nodes = graph.nodes_.size();
-
-  std::vector<std::unique_ptr<ConvexSetNode>> nodes(num_nodes);
-
-  for (int i = 0; i < num_nodes; i++) {
-    nodes.at(i) = MakeConvexSetNode(graph, i);
-    nodes.at(i)->SetFactorizationMode(false /*use custom*/);
-  }
-
-  SymmetricLinearSystemTreeSolver system_using_custom_assemblers;
-  for (auto& n : nodes) {
-    system_using_custom_assemblers.AddSubsystem(n.get());
-  }
-  system_using_custom_assemblers.SetEliminationTree(graph.node_to_parent_in_spanning_tree());
-
-  system_using_custom_assemblers.SetFactorizationMode(false);
   system_using_custom_assemblers.Assemble();
   START_LOG_TIMER
   system_using_custom_assemblers.Factor();
   END_LOG_TIMER(stats.factor_time)
 
-  system_using_custom_assemblers.SetFactorizationMode(true /*left looking*/);
 
-  for (auto& node: nodes) {
-    node->SetFactorizationMode(true /*use custom*/);
-  }
+  mode.custom_block_inverse = true;
+  graph_solver.SetFactorizationMode(mode);
+
+
   system_using_custom_assemblers.Assemble();
   START_LOG_TIMER
   system_using_custom_assemblers.Factor();
   END_LOG_TIMER(stats.factor_time_custom_inverse)
 
-  for (auto& node: nodes) {
-    node->SetFactorizationMode(false /*use custom*/);
-  }
+  mode.left_looking = true;
+  graph_solver.SetFactorizationMode(mode);
   system_using_custom_assemblers.Assemble();
   START_LOG_TIMER
   system_using_custom_assemblers.Factor();
@@ -181,7 +165,6 @@ Time Profile(const GraphData& data,
   Eigen::SparseMatrix<double> factor_amd = llt_amd.matrixL();
   stats.non_zeros_amd = factor_amd.nonZeros();
 
-  return stats;
 }
 
 } // namespace conex

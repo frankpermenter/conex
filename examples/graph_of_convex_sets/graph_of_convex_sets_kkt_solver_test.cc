@@ -32,8 +32,6 @@ MatrixXd Sparsity(const Eigen::MatrixXd& d) {
   return y;
 }
 
-using Eigen::MatrixXd;
-
 GraphData MakePath(int num_edges, int spatial_dim) {
   GraphData data; 
   data.edges.resize(num_edges + 1);
@@ -204,10 +202,8 @@ GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topolog
       }
     }
   }
-  DUMP(adj_matrix);
   return graph;
 }
-
 
 GraphData GenerateRandomDAG(int num_nodes, double edge_density) {
   GraphData graph; 

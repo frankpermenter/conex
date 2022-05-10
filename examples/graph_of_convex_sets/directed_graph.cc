@@ -189,8 +189,6 @@ void T::IdentifyFillInEdges() {
     }
     child = parent;
   }
-  DUMP(num_fill_in);
-  throw;
 }
 
 

@@ -165,7 +165,6 @@ GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topolog
       }
     }
   }
-  DUMP(adj_matrix);
   return graph;
 }
 
@@ -208,11 +207,5 @@ GraphData GenerateRandomDAG(int num_nodes, double edge_density) {
   }
   return MakeGraph(M, topological_order);
 }
-
-
-
-
-
-
 
 }  // namespace conex

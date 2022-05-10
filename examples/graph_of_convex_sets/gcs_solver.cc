@@ -15,15 +15,23 @@ GraphSolver::GraphSolver(const GraphData& data) :
   graph.IdentifyFillInEdges();
 
   int num_nodes = graph.nodes_.size();
-  std::vector<std::unique_ptr<ConvexSetNode>> nodes(num_nodes);
 
   for (int i = 0; i < num_nodes; i++) {
     nodes_.at(i) = MakeConvexSetNode(graph, i);
   }
 
-  for (auto& n : nodes) {
+  for (auto& n : nodes_) {
     tree_solver_.AddSubsystem(n.get());
   }
+
+  tree_solver_.SetEliminationTree(graph.node_to_parent_in_spanning_tree());
+}
+
+void GraphSolver::SetFactorizationMode(const GraphSolver::FactorizationMode& mode) {
+  for (auto& node: nodes_) {
+    node->SetFactorizationMode(mode.custom_block_inverse /*use custom*/);
+  }
+  tree_solver_.SetFactorizationMode(mode.left_looking);
 }
 
 } // namespace conex
