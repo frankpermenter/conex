@@ -177,6 +177,7 @@ class ConvexSetNode : public KKTSubsystem {
   std::unique_ptr<FactorizationType> factorization_;
   std::unique_ptr<SupernodeSubmatrix> supernode_submatrix_; 
   bool use_custom_supernode_inverse_ = false;
+  bool fill_in_ = true;
 };
 
 } // namespace conex

@@ -116,10 +116,9 @@ T::ConvexSetNode(const std::vector<int>& variables,
     MatrixXd edge_hessian(spatial_dim, spatial_dim);
     edge_hessian.setConstant(.01);
     edge_hessian.diagonal().array() += 1;
-    bool fill_in = false;
     for (int i = 0; i < num_incoming; i++) {
       for (int j = 0; j < num_incoming; j++) {
-        if (!fill_in && i != j) {
+        if (!fill_in_ && i != j) {
           continue; 
         }
         Q.block(params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(i), 
@@ -172,16 +171,18 @@ T::ConvexSetNode(const std::vector<int>& variables,
         params_.incoming_flow_start_positions.at(i)) = 10 + i;
     }
     int rows = Q.rows() - 1 - params_.spatial_dimension;
-    // Q.topLeftCorner(rows, rows ).setConstant(.1);
-    Q.diagonal().setConstant(10);
+
+    //Q.setConstant(.1);
+    if (fill_in_) {
+      Q.diagonal().head(rows).setConstant(100);
+    }
     return Q;
   }
 
   Eigen::MatrixXd T::MakeSeperatorMatrix() {
     Eigen::MatrixXd Q(num_separators(), num_supernodes());
     Q.setZero();
-    bool fill_in = false;
-    if (fill_in) {    
+    if (fill_in_) {    
       for (int i = 0; i < num_outgoing; i++) {
         for (int j = 0; j < num_incoming; j++) {
           Q.block(params_.outgoing_spatial_flow_start_positions.at(i), 

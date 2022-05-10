@@ -153,8 +153,14 @@ Time Profile(const GraphData& data,
     llt_sparse.compute(M);
   END_LOG_TIMER(stats.factor_time_natural);
 
-  Eigen::SparseMatrix<double> factor = llt_sparse.matrixL();
-   stats.non_zeros_natural = factor.nonZeros();
+  if (llt_sparse.info() != Eigen::Success) {
+    stats.factor_time_natural = -1;
+    stats.non_zeros_natural = -1;
+  } else {
+    Eigen::SparseMatrix<double> factor = llt_sparse.matrixL();
+     stats.non_zeros_natural = factor.nonZeros();
+  }
+
 
   Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>, Eigen::Lower> llt_amd;
   START_LOG_TIMER
@@ -162,6 +168,7 @@ Time Profile(const GraphData& data,
   END_LOG_TIMER(stats.factor_time_amd);
   if (llt_amd.info() != Eigen::Success) {
     stats.non_zeros_amd = -1;
+    stats.factor_time_amd = -1;
   } else {
     Eigen::SparseMatrix<double> factor_amd = llt_amd.matrixL();
     stats.non_zeros_amd = factor_amd.nonZeros();

@@ -7,7 +7,6 @@
 
 namespace conex {
 
-
 struct Variables {
   std::vector<int> edge_to_flow_variable;
   // Map incoming edge label to spatial variable
