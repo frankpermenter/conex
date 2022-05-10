@@ -120,6 +120,7 @@ Time Profile(const GraphData& data,
   END_LOG_TIMER(stats.factor_time_custom_inverse)
 
   mode.left_looking = true;
+  mode.custom_block_inverse = false;
   graph_solver.SetFactorizationMode(mode);
   system_using_custom_assemblers.Assemble();
   START_LOG_TIMER

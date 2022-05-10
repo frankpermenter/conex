@@ -29,7 +29,7 @@ GraphSolver::GraphSolver(const GraphData& data) :
 
 void GraphSolver::SetFactorizationMode(const GraphSolver::FactorizationMode& mode) {
   for (auto& node: nodes_) {
-    node->SetFactorizationMode(mode.custom_block_inverse /*use custom*/);
+    node->UseCustomInverse(mode.custom_block_inverse);
   }
   tree_solver_.SetFactorizationMode(mode.left_looking);
 }

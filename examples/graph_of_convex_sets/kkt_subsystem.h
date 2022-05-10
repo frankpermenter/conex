@@ -132,7 +132,7 @@ class ConvexSetNode : public KKTSubsystem {
   int num_supernodes() { return supernodes().size(); }
   int num_separators() { return separators().size(); }
 
-  void SetFactorizationMode(bool use_custom) { use_custom_supernode_inverse_ = use_custom; }
+  void UseCustomInverse(bool use) { use_custom_supernode_inverse_ = use;  }
   bool DoEliminateSupernodeColumns() override;
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(

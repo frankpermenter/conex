@@ -261,9 +261,9 @@ void DoTest(int num_nodes, int spatial_dim, double edge_density, Time* stats_ptr
 
             << ", Nat fill-in: " <<  (double) stats.non_zeros_natural/stats.non_zeros_lower_tri << ", "
             << ", Nat solve: " <<  stats.factor_time_natural 
-            //<< ", Custom Solve: " <<  (double) stats.factor_time << ", " 
-            << ", Custom Solve Left: " <<   stats.factor_time_left_looking << ", "
-            << ", Custom Solve CustomInv: " <<   stats.factor_time_custom_inverse << ", ";
+            << ", Solve: " <<  (double) stats.factor_time << ", " 
+            << ", Solve Left: " <<   stats.factor_time_left_looking << ", "
+            << ", Solve CustomInv: " <<   stats.factor_time_custom_inverse << ", ";
 }
 
 GTEST_TEST(GraphOfConvexSets, RandomDAG) {
@@ -284,7 +284,7 @@ GTEST_TEST(GraphOfConvexSets, RandomDAG) {
   for (int i = 0; i < 10; i++) {
     Time stats_i;
     //DoTest(4 /*nodes*/, 1 /*dim*/, .7 /*edge*/ , &stats_i);
-    DoTest(20 /*nodes*/, 10 /*dim*/, 0 /*edge*/ , &stats_i);
+    DoTest(20 /*nodes*/, 25 /*dim*/, 0 /*edge*/ , &stats_i);
     stats.factor_time_natural += stats_i.factor_time_natural;
     stats.factor_time += stats_i.factor_time;
   }
