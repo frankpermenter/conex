@@ -3,20 +3,10 @@
 #include <stack>
 #include "conex/debug_macros.h"
 #include "conex/error_checking_macros.h"
+#include "graph_data.h"
 
 namespace conex {
 
-struct Node {
-  std::vector<int> incoming_edges;
-  std::vector<int> outgoing_edges;
-  int spatial_dimension;
-
-};
-
-struct Edge {
-  int source;
-  int sink;
-};
 
 struct Variables {
   std::vector<int> edge_to_flow_variable;

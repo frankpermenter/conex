@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 
+#include "graph_data.h"
 #include "directed_graph.h"
 namespace conex {
 
@@ -17,10 +18,6 @@ struct Time {
   int non_zeros_amd;
   int non_zeros_natural;
   int non_zeros_lower_tri;
-};
-struct GraphData {
-  std::vector<Node> nodes;
-  std::vector<Edge> edges;
 };
 
 
