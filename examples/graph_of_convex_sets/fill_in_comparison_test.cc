@@ -15,7 +15,7 @@
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {
-
+#if 0
 MatrixXd Sparsity(const Eigen::MatrixXd& d) {
   MatrixXd y = d;
   for (int i = 0; i < d.rows(); i++) {
@@ -141,9 +141,9 @@ GraphData MakeTwoSegments() {
   graph.edges.at(e[5]).sink = v[3];
   return graph;
 }
-
-
-GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topological_order) {
+#endif
+GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topological_order, 
+                    int spatial_dim) {
   GraphData graph; 
   int num_nodes = adj_matrix.rows();
   graph.nodes.resize(num_nodes);
@@ -165,47 +165,33 @@ GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topolog
       }
     }
   }
+
+  for (int i = 0; i < num_nodes; i++) {
+    graph.nodes.at(i).spatial_dimension = spatial_dim;
+  }
   return graph;
 }
 
+GTEST_TEST(FillIn, NonUnique) {
+  Eigen::MatrixXd M(5, 5); M.setZero();
+  M(5, 5);
+  M << 0, 1, 0, 1, 0,
+       0, 0, 1, 1, 0,
+       0, 0, 0, 1, 0,
+       0, 0, 0, 0, 1,
+       0, 0, 0, 0, 0;
+  int spatial_dim = 5;
+  auto stats = Profile(MakeGraph(M, {4, 3, 2, 1, 0}, spatial_dim), {});
 
-GraphData GenerateRandomDAG(int num_nodes, double edge_density) {
-  GraphData graph; 
-  graph.nodes.resize(num_nodes);
-  std::vector<int> topological_order(num_nodes);
-  for (int i = 0; i < num_nodes; i++) {
-    topological_order.at(i) = num_nodes - 1 - i;
-  }
+  std::cout << ", AMD fill-in: " <<  (double) stats.non_zeros_amd/stats.non_zeros_lower_tri << ", " 
+            << ", AMD solve: " <<  stats.factor_time_amd << ", " 
 
-  MatrixXd M(num_nodes, num_nodes);
-  M.setZero();
-
-  // Add path
-  #if 0
-  for (int i = 0; i < num_nodes; i++) {
-    if (i < num_nodes -1 ) {
-    M(i, i + 1) = 1;
-    M(i + 1, i) = 1;
-    }
-  }
-  int edge_count = num_nodes - 1;
-  #endif
-  int edge_count = 0;
-
-  // Add random edges
-  int target = edge_density * .5 * (num_nodes *  num_nodes - num_nodes);
-  while (edge_count < target) {
-    int node_1 = rand() % num_nodes;
-    int node_2 = rand() % num_nodes;
-    if (node_1 != node_2) {
-      if (M(node_1, node_2) == 0) {
-        edge_count++;
-      }
-      M(node_1, node_2) = 1;
-      M(node_2, node_1) = 1;
-    }
-  }
-  return MakeGraph(M, topological_order);
+            << ", Nat fill-in: " <<  (double) stats.non_zeros_natural/stats.non_zeros_lower_tri << ", "
+            << ", Nat solve: " <<  stats.factor_time_natural 
+            << ", Solve: " <<  (double) stats.factor_time << ", " 
+            << ", Solve Left: " <<   stats.factor_time_left_looking << ", "
+            << ", Solve CustomInv: " <<   stats.factor_time_custom_inverse << ", ";
 }
+
 
 }  // namespace conex

@@ -76,7 +76,7 @@ cc_test(
 
 cc_test(
     name = "fill_in_comparison_test",
-    srcs = [ "fill_in_comparison_test.cc"],
+    srcs = [ "fill_in_comparison_test.cc", "profile.h", "profile.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "graph_of_convex_sets",
