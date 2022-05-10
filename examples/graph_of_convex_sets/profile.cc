@@ -11,7 +11,6 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {
 
-
 MatrixXd SparsityMask(const Eigen::MatrixXd& x) {
   MatrixXd y = x;
   for (int i = 0; i < x.rows(); i++) {
@@ -112,10 +111,8 @@ Time Profile(const GraphData& data,
   system_using_custom_assemblers.Factor();
   END_LOG_TIMER(stats.factor_time)
 
-
   mode.custom_block_inverse = true;
   graph_solver.SetFactorizationMode(mode);
-
 
   system_using_custom_assemblers.Assemble();
   START_LOG_TIMER
@@ -139,7 +136,7 @@ Time Profile(const GraphData& data,
   system_using_custom_assemblers.Factor();
   system_using_custom_assemblers.SolveInPlace(y, false);
   END_LOG_TIMER(stats.solve_time)
-  EXPECT_NEAR( (y-x).norm(), 0, 1e-11);
+  EXPECT_NEAR( (y-x).norm(), 0, 1e-10);
 
   Eigen::RLDLT<Eigen::MatrixXd> llt;
   y = M * x;
@@ -162,8 +159,13 @@ Time Profile(const GraphData& data,
   START_LOG_TIMER
     llt_amd.compute(M);
   END_LOG_TIMER(stats.factor_time_amd);
-  Eigen::SparseMatrix<double> factor_amd = llt_amd.matrixL();
-  stats.non_zeros_amd = factor_amd.nonZeros();
+  if (llt_amd.info() != Eigen::Success) {
+    stats.non_zeros_amd = -1;
+  } else {
+    Eigen::SparseMatrix<double> factor_amd = llt_amd.matrixL();
+    stats.non_zeros_amd = factor_amd.nonZeros();
+  }
+  return stats;
 
 }
 

@@ -25,9 +25,9 @@ class RecursiveTopologicalSort {
      }
      temporary_mark_.at(n) = 1;
 
-    srand(time(0));
+    //srand(time(0));
     std::vector<int> edges = nodes_.at(n).outgoing_edges;
-    std::random_shuffle ( edges.begin(), edges.end() ); 
+    //std::random_shuffle ( edges.begin(), edges.end() ); 
 
      for (auto& e : edges) {
        visit(edges_.at(e).sink);

@@ -210,8 +210,6 @@ T::ConvexSetNode(const std::vector<int>& variables,
       }
     }
 
-
-
     // Set col to spatial flow multiplier.
     for (int i = 0; i < num_outgoing; i++) {
       Q.block(params_.outgoing_spatial_flow_start_positions.at(i), 
