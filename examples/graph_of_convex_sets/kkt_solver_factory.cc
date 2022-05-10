@@ -1,4 +1,4 @@
-#include "kkt_solver_factor.h"
+#include "gcs_solver.h"
 #include "directed_graph.h"
 #include "convex_set_node_factory.h"
 

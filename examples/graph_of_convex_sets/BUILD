@@ -5,8 +5,8 @@ cc_library(name = "graph_of_convex_sets_data",
 )
 
 cc_library(name = "graph_of_convex_sets",
-  srcs = ["kkt_solver_factory.cc"],
-  hdrs = ["kkt_solver_factor.h"],
+  srcs = ["gcs_solver.cc"],
+  hdrs = ["gcs_solver.h"],
   deps = [
       ":graph_of_convex_sets_data",
       ":graph_of_convex_sets_util",
