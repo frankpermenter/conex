@@ -16,7 +16,15 @@ struct Variables {
   std::vector<int> node_to_conversation_of_flow_multiplier;
 };
 
+
+#define CONEX_NO_COPY_NO_MOVE(T)\
+T(const T&) = delete;\
+T(T&&) = delete;\
+T& operator=(const T&) = delete;\
+T& operator=(T&&) = delete;\
+
 class Graph {
+  CONEX_NO_COPY_NO_MOVE(Graph)
  public:
   Graph(std::vector<Node> nodes, std::vector<Edge> edges)
       : nodes_(std::move(nodes)), edges_(std::move(edges)) {
@@ -62,10 +70,13 @@ class Graph {
   void SortEdgeListInReverseTopologicalOrder(std::vector<int>*) const;
 
   void BuildSpanningTree();
+  int edge_id_to_sink_node(int e) { return edges_.at(e).sink; }
 
   // All edges >
   std::vector<int> node_to_fill_in_edges(int i) const { return node_to_fill_in_edges_.at(i); }
-  std::vector<int> node_to_parent_in_spanning_tree() { return node_to_parent_in_spanning_tree_; }
+  std::vector<int> node_to_parent_in_spanning_tree() const { return node_to_parent_in_spanning_tree_; }
+
+  const Node& node(int i) const { return nodes_.at(i); }; 
 
   std::vector<int> roots_;
   std::vector<Node> nodes_;

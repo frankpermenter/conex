@@ -7,8 +7,12 @@
 #include "conex/kkt_tree_solver.h"
 #include "supernode_inverse.h"
 #include "conex/debug_macros.h"
+#include "directed_graph.h"
+
+#include "graph_data.h"
 
 namespace conex {
+
 using Eigen::MatrixXd; 
 // Variables for node v with incoming edges {e} and outgoing
 // edges {f}:
@@ -106,6 +110,8 @@ struct ConvexSetNodeParameters {
   int spatial_dimension;
   int num_incoming;
   int num_outgoing;
+  const Graph* graph;
+  int global_node_label;
   // Local variable positions.
   std::vector<int> outgoing_spatial_flow_start_positions;
   std::vector<int> outgoing_flow_start_positions;
@@ -166,7 +172,11 @@ class ConvexSetNode : public KKTSubsystem {
 
   Eigen::MatrixXd MakeSeperatorMatrixNoFill();
 
+  Eigen::Ref<Eigen::MatrixXd> quadratic_cost_mutable(int edge, VariablePartition row_block,
+                                                       VariablePartition col_block);
+
  private:
+  int LookUpPosition(int edge_position, VariablePartition row_block);
   using FactorizationType = CholeskySolver<Eigen::RLDLT<Eigen::MatrixXd>, true>;
   void DoInitialize();
 
@@ -177,7 +187,7 @@ class ConvexSetNode : public KKTSubsystem {
   std::unique_ptr<FactorizationType> factorization_;
   std::unique_ptr<SupernodeSubmatrix> supernode_submatrix_; 
   bool use_custom_supernode_inverse_ = false;
-  bool fill_in_ = true;
+  bool fill_in_ = false;
 };
 
 } // namespace conex

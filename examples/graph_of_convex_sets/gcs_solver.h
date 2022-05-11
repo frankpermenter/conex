@@ -1,17 +1,12 @@
 #pragma once
 
-#include "conex/kkt_tree_solver.h"
+#include "conex/kkt_tree_solver.h" 
 #include "kkt_subsystem.h"
+#include "directed_graph.h"
 
 #include "graph_data.h"
 
 namespace conex {
-
-enum class VariablePartition {
-  flow_variable, /* phi_e */
-  incoming_spatial_variable /*z_e*/,
-  outgoing_spatial_variable /*y_e*/,
-};
 
 /* Given a directed, acyclic graph (DAG) with vertex set V, edgeset E, source vertex s and sink vertex t, 
  * this class solves an optimization problems of the form
@@ -58,12 +53,12 @@ class GraphSolver {
     bool custom_block_inverse = false;
   };
   void SetFactorizationMode(const FactorizationMode&);
-
   SymmetricLinearSystemTreeSolver& tree_solver() { return tree_solver_; }
 
  private:
   std::vector<std::unique_ptr<ConvexSetNode>> nodes_;
   SymmetricLinearSystemTreeSolver tree_solver_;
+  Graph graph_;
 };
 
 }

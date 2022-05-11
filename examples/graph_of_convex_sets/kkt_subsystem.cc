@@ -190,6 +190,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
         }
       }
 
+        DUMP(Q);
       for (int i = 0; i < num_outgoing; i++) {
         for (int j = 0; j < num_incoming; j++) {
           Q.block(params_.outgoing_flow_start_positions.at(i), 
@@ -271,6 +272,43 @@ T::ConvexSetNode(const std::vector<int>& variables,
     }
   }
 
+  int T::LookUpPosition(int edge_position, VariablePartition row_block) {
+    int row;
+    switch (row_block)  {
+      case VariablePartition::incoming_spatial_variable: {
+        row = params_.incoming_spatial_flow_start_positions.at(edge_position);
+        break;
+      }
+      case VariablePartition::outgoing_spatial_variable: {
+        row = params_.outgoing_spatial_flow_of_incoming_edge_start_positions.at(edge_position);
+        break;
+      }
+      case VariablePartition::flow_variable: {
+        row = params_.incoming_flow_start_positions.at(edge_position);
+        break;
+      }
+    }
+    return row;
+  }
 
+
+  Eigen::Ref<Eigen::MatrixXd> T::quadratic_cost_mutable(int edge_id, VariablePartition row_block,
+                                                       VariablePartition col_block) { 
+
+    const Node& node_info = params_.graph->node(params_.global_node_label);
+    int edge_position = std::distance(node_info.incoming_edges.begin(),
+                        std::find(node_info.incoming_edges.begin(), node_info.incoming_edges.begin(), edge_id));
+
+    int size_row = params_.spatial_dimension;
+    int size_col = params_.spatial_dimension;
+    if (col_block == VariablePartition::flow_variable) {
+      size_col = 1;
+    }
+    if (row_block == VariablePartition::flow_variable) {
+      size_row = 1;
+    }
+    int row = LookUpPosition(edge_position, row_block);
+    int col = LookUpPosition(edge_position, col_block);
+    return factorization_->supernode_submatrix().block(row , col, size_row, size_col); }
 
 } // namespace conex

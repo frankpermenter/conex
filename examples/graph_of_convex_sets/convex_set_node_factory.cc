@@ -8,6 +8,8 @@ void PrepareInputs(
     const Graph& graph, const int node_index, 
     std::vector<int>* variables,
     ConvexSetNodeParameters* params) {
+  params->graph = &graph;
+  params->global_node_label = node_index;
   auto ids = graph.ids_;
 
   auto& node = graph.nodes_.at(node_index);

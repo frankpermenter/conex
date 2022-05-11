@@ -216,6 +216,4 @@ GTEST_TEST(FillIn, AMDFailure) {
             << ", Solve CustomInv: " <<   stats.factor_time_custom_inverse << ", ";
 }
 
-
-
 }  // namespace conex

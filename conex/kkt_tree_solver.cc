@@ -415,6 +415,8 @@ Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
   }
   if (permute_to_elimination_order) {
     return M;
+  } else {
+    CONEX_CHECK(variable_to_elimination_position_.size() > 0);
   }
   Eigen::PermutationMatrix<-1> P(number_of_variables());
   P.indices() = Eigen::Map<const Eigen::VectorXi>(
