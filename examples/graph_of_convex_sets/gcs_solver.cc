@@ -31,7 +31,7 @@ void GraphSolver::SetFactorizationMode(const GraphSolver::FactorizationMode& mod
   tree_solver_.SetFactorizationMode(mode.left_looking);
 }
 
-Eigen::Ref<Eigen::MatrixXd> GraphSolver::quadratic_edge_cost(int edge_number, VariablePartition row_block, VariablePartition col_block) {
+Eigen::Ref<Eigen::MatrixXd> GraphSolver::quadratic_edge_cost_mutable(int edge_number, VariablePartition row_block, VariablePartition col_block) {
   int node = graph_.edge_id_to_sink_node(edge_number);
   return nodes_.at(node)->quadratic_cost_mutable(edge_number, row_block, col_block);
 }

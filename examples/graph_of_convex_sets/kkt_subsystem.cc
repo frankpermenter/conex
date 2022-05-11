@@ -274,6 +274,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
 
   int T::LookUpPosition(int edge_position, VariablePartition row_block) {
     int row;
+    DUMP(edge_position);
     switch (row_block)  {
       case VariablePartition::incoming_spatial_variable: {
         row = params_.incoming_spatial_flow_start_positions.at(edge_position);
@@ -297,7 +298,8 @@ T::ConvexSetNode(const std::vector<int>& variables,
 
     const Node& node_info = params_.graph->node(params_.global_node_label);
     int edge_position = std::distance(node_info.incoming_edges.begin(),
-                        std::find(node_info.incoming_edges.begin(), node_info.incoming_edges.begin(), edge_id));
+                        std::find(node_info.incoming_edges.begin(), node_info.incoming_edges.end(), edge_id));
+    CONEX_CHECK(edge_position < node_info.incoming_edges.size());
 
     int size_row = params_.spatial_dimension;
     int size_col = params_.spatial_dimension;

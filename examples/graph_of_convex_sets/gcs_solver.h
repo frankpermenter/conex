@@ -45,7 +45,7 @@ class GraphSolver {
   GraphSolver(const GraphData& graph_data);
 
   // Provides direct access to the quadratic cost matrices for each block of f_e. 
-  Eigen::Ref<Eigen::MatrixXd> quadratic_edge_cost(int edge_number, VariablePartition row_block, VariablePartition col_block);
+  Eigen::Ref<Eigen::MatrixXd> quadratic_edge_cost_mutable(int edge_number, VariablePartition row_block, VariablePartition col_block);
   Eigen::Ref<Eigen::MatrixXd> linear_cost(int edge_number, VariablePartition row_block);
 
   struct FactorizationMode {
