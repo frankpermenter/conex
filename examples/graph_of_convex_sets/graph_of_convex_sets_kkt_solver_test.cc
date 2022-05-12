@@ -217,7 +217,7 @@ GraphData GenerateRandomDAG(int num_nodes, double edge_density) {
   M.setZero();
 
   // Add path
-  #if 0
+  #if 1
   for (int i = 0; i < num_nodes; i++) {
     if (i < num_nodes -1 ) {
     M(i, i + 1) = 1;
@@ -284,7 +284,7 @@ GTEST_TEST(GraphOfConvexSets, RandomDAG) {
     Time stats_i;
     //DoTest(4 /*nodes*/, 1 /*dim*/, .7 /*edge*/ , &stats_i);
     try {
-    DoTest(20 /*nodes*/, 5 /*dim*/, .5 /*edge*/ , &stats_i);
+    DoTest(20 /*nodes*/, 25 /*dim*/, 0 /*edge*/ , &stats_i);
     } catch(const std::exception& e) {
 
     }
