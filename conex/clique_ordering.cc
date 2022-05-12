@@ -143,7 +143,7 @@ int PickCliqueOrderHelper(const std::vector<std::vector<int>>& cliques_sorted,
       order->push_back(active);
       visited.at(active) = 1;
       tree.parent.at(active) = -1;
-      tree.height.at(active) = 0;
+      tree.height().at(active) = 0;
     }
 
     // Find unvisited neighbor with maximum weight.
@@ -171,7 +171,7 @@ int PickCliqueOrderHelper(const std::vector<std::vector<int>>& cliques_sorted,
       visited.at(e) = 1;
       edges.emplace_back(active, e);
       tree.parent.at(e) = active;
-      tree.height.at(e) = tree.height.at(active) + 1;
+      tree.height().at(e) = tree.height().at(active) + 1;
       if (valid_leaf.size() > 0 && !valid_leaf.at(e)) {
         // Heuristic: quit now to increase chance node e
         // is not a leaf node.
@@ -279,7 +279,7 @@ void FillIn(const RootedTree& tree, int num_variables,
       const bool variable_already_eliminated = eliminated.at(v) < num_cliques;
       if (variable_already_eliminated) {
         auto fill_in = PathInForest(order.at(i), eliminated.at(v), tree.parent,
-                                    tree.height);
+                                    tree.height());
         for (size_t j = 0; j < fill_in.size() - 1; j++) {
           auto e = fill_in.at(j);
           separators->at(e) = UnionOfSorted(separators->at(e), {v});

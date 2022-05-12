@@ -15,7 +15,8 @@ struct RootedTree {
   RootedTree(int number_of_nodes) : parent(number_of_nodes) {}
   void SwapPositions(int node1, int node2);
   std::vector<int> parent;
-  int height();
+  std::vector<int>& height() {  return height_; }
+  const std::vector<int>& height() const {  return height_; }
 
  private:
   std::vector<int> height_;

@@ -87,25 +87,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
   //                                                  -1
 
   Eigen::MatrixXd T::MakeSeperatorMatrixNoFill() {
-  throw std::runtime_error("Obsolete function.");
-    Eigen::MatrixXd Q(num_separators(), num_supernodes());
-    Q.setZero();
-    int offset_row = 0;
-    int offset_col = (2 * spatial_dim + 1) * num_incoming;
-    for (int i = 0; i < num_outgoing; i++) {
-      Q.block(offset_row, offset_col, spatial_dim, spatial_dim)
-          .diagonal()
-          .setConstant(-2);
-      offset_row += spatial_dim + 1;
-    }
-    offset_col += spatial_dim;
-    offset_row = spatial_dim;
-    for (int i = 0; i < num_outgoing; i++) {
-      Q(offset_row, offset_col) = -1;
-      offset_row += spatial_dim + 1;
-    }
-   Q.setConstant(-.01);
-    return Q;
+    throw std::runtime_error("Obsolete function.");
   }
 
   Eigen::MatrixXd T::MakeSuperNodeSubmatrix() {
@@ -168,7 +150,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
     // Flow conservation
     for (int i = 0; i < num_incoming; i++) {
       Q(params_.conservation_of_flow_multiplier_position,  
-        params_.incoming_flow_start_positions.at(i)) = 10 + i;
+        params_.incoming_flow_start_positions.at(i)) = 1;
     }
     int rows = Q.rows() - 1 - params_.spatial_dimension;
 
@@ -190,7 +172,6 @@ T::ConvexSetNode(const std::vector<int>& variables,
         }
       }
 
-        DUMP(Q);
       for (int i = 0; i < num_outgoing; i++) {
         for (int j = 0; j < num_incoming; j++) {
           Q.block(params_.outgoing_flow_start_positions.at(i), 
@@ -217,7 +198,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
       Q.block(params_.outgoing_spatial_flow_start_positions.at(i), 
          params_.conservation_of_spatial_flow_multiplier_position, spatial_dim, spatial_dim)
           .diagonal()
-          .setConstant(-2);
+          .setConstant(-1);
     }
 
     for (int i = 0; i < num_outgoing; i++) {
@@ -273,8 +254,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
   }
 
   int T::LookUpPosition(int edge_position, VariablePartition row_block) {
-    int row;
-    DUMP(edge_position);
+    int row = 0;
     switch (row_block)  {
       case VariablePartition::incoming_spatial_variable: {
         row = params_.incoming_spatial_flow_start_positions.at(edge_position);
@@ -288,6 +268,8 @@ T::ConvexSetNode(const std::vector<int>& variables,
         row = params_.incoming_flow_start_positions.at(edge_position);
         break;
       }
+      default:
+        throw std::runtime_error("Invalid");
     }
     return row;
   }
@@ -299,7 +281,7 @@ T::ConvexSetNode(const std::vector<int>& variables,
     const Node& node_info = params_.graph->node(params_.global_node_label);
     int edge_position = std::distance(node_info.incoming_edges.begin(),
                         std::find(node_info.incoming_edges.begin(), node_info.incoming_edges.end(), edge_id));
-    CONEX_CHECK(edge_position < node_info.incoming_edges.size());
+    CONEX_CHECK(static_cast<int>(edge_position) < node_info.incoming_edges.size());
 
     int size_row = params_.spatial_dimension;
     int size_col = params_.spatial_dimension;

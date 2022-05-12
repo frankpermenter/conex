@@ -605,13 +605,11 @@ cc_library(
         "kkt_tree_solver.h",
         "RLDLT.h",
     ],
-    copts = ["-Iexternal/gtest/include"],
     deps = [
         "tree_utils",
         ":error_checking",
         ":kkt_solver_interface",
         "@eigen",
-        "@gtest//:main",
     ],
     visibility = ["//visibility:public"],
 )

@@ -85,7 +85,7 @@ class KKTSubsystemBase {
 
   std::vector<int> separators() const { return separators_; }
   std::vector<int> supernodes() const { return supernodes_; }
-
+  virtual ~KKTSubsystemBase() = default;
   virtual Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() = 0;
   virtual Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() = 0;
   virtual Eigen::Ref<Eigen::MatrixXd> separator_rows() = 0;

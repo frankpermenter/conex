@@ -42,7 +42,8 @@ class GraphSolver {
  public:
 
  /*  Throws if the graph contains cycles, has multiple sources or has multiple sinks*/
-  GraphSolver(const GraphData& graph_data);
+  GraphSolver(const GraphData& graph_data, 
+              const std::vector<int>& topological_order_position_to_node = {});
 
   // Provides direct access to the quadratic cost matrices for each block of f_e. 
   Eigen::Ref<Eigen::MatrixXd> quadratic_edge_cost_mutable(int edge_number, VariablePartition row_block, VariablePartition col_block);

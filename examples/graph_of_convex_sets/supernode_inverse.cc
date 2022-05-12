@@ -106,7 +106,8 @@ T::~SupernodeSubmatrix() {}
 
 T::SupernodeSubmatrix(const Parameters& p, Eigen::Ref<Eigen::MatrixXd> full_matrix) : 
 incoming_blocks_(p.num_edges) {
-  CONEX_CHECK(p.num_edges > 0 && p.spatial_dimension > 0);
+  CONEX_CHECK(p.num_edges > 0);
+  CONEX_CHECK(p.spatial_dimension > 0);
   tree_solver_ = std::make_unique<SymmetricLinearSystemTreeSolver>();
   for (int i = 0; i < p.num_edges; i++) {
     incoming_blocks_.at(i) = std::make_unique<IncomingSpatialVariableBlock>(p, i);

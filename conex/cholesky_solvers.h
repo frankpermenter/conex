@@ -29,14 +29,12 @@ class CholeskySolver : public KKTSubsystemBase {
 
 
   bool DoEliminateSupernodeColumns() override {
-    Eigen::internal::set_is_malloc_allowed(false);
     llt_.compute(supernode_submatrix_);
     if (llt_.info() != Eigen::Success) {
       factored_ = false;
     } else {
       factored_ = true;
     }
-    Eigen::internal::set_is_malloc_allowed(true);
     return factored_;
   }
 
@@ -68,7 +66,6 @@ class CholeskySolver : public KKTSubsystemBase {
     if (temp_row_major_.size() == 0) {
       temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
     } 
-    Eigen::internal::set_is_malloc_allowed(false);
     if (separator_rows_.size()) {
       temp_row_major_ = llt_.solve(separator_rows_.transpose());
       int n = separator_schur_complement_.rows();
@@ -81,10 +78,10 @@ class CholeskySolver : public KKTSubsystemBase {
           separator_schur_complement_.noalias() -= separator_rows_ * temp_row_major_;
       }
     }
-    Eigen::internal::set_is_malloc_allowed(true);
   }
 
-  bool OnlyLowerTriangularPart(int num_vectors, int cost_of_inner_product) {
+  bool OnlyLowerTriangularPart(int /*num_vectors*/, 
+                               int /*cost_of_inner_product*/) {
     return true;
     //return num_vectors * cost_of_inner_product > 100; 
   }

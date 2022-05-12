@@ -52,7 +52,7 @@ class RecursiveTopologicalSort {
   std::vector<int> permanent_mark_;
   std::vector<int> temporary_mark_;
   std::vector<int> position_to_node;
-  int num_ordered = 0;
+  size_t num_ordered = 0;
 };
 
 } // namespace 
@@ -115,9 +115,33 @@ void T::SortEdgeListInReverseTopologicalOrder(std::vector<int>* edge_list) const
   std::sort(edge_list->begin(), edge_list->end(), EdgeOrder);
 };
 
+bool T::IsTopologicalOrderingValid(const std::vector<int>& order_position_to_node) const {
+  if (order_position_to_node.size() != nodes_.size()) {
+    return false;
+  }
+  std::vector<int> node_to_order_position(order_position_to_node.size());
+  int i = 0;
+  for (auto p : order_position_to_node) {
+    node_to_order_position.at(p) = i;
+  }
 
-void T::BuildSpanningTree() {
-  std::vector<int> position_to_node = ComputeTopologicalOrdering();
+  for (auto& e : edges_) {
+    if (e.source > -1) {
+      if (node_to_order_position.at(e.sink) >  node_to_order_position.at(e.source)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+
+void T::BuildSpanningTree(const std::vector<int>& order_position_to_node) {
+  std::vector<int> position_to_node = order_position_to_node;
+  if (order_position_to_node.size() == 0) {
+    position_to_node = ComputeTopologicalOrdering();
+  } 
+  CONEX_CHECK(IsTopologicalOrderingValid(position_to_node));
   std::vector<int> node_to_parent(nodes_.size());
   int root = position_to_node.at(0);
   node_to_parent_in_spanning_tree_.at(root) = -1;
@@ -172,7 +196,8 @@ void T::IdentifyFillInEdges() {
     int parent = node_to_parent_in_spanning_tree_[child];
 
 
-   // Create new fill-in
+   // Add out-going edges of children that are not incoming.
+   // Fill-in interpretation:  |neighbors of children that are > in the topological ordering|.
     for (auto& f : nodes_.at(child).outgoing_edges) {
       if (edges_[f].sink != parent) {
         node_to_fill_in_edge_indices.at(parent).push_back(f);
@@ -180,17 +205,59 @@ void T::IdentifyFillInEdges() {
       }
     }
 
-   // Propogate fill-in 
-    for (auto& f : node_to_fill_in_edge_indices[child]) {
-      if (edges_[f].sink != parent) {
-        node_to_fill_in_edge_indices.at(parent).push_back(f);
-        num_fill_in++;
+   // Propagate fill-in 
+    if (parent != -1) {
+      for (auto& f : node_to_fill_in_edge_indices[child]) {
+        if (edges_[f].sink != parent) {
+          node_to_fill_in_edge_indices.at(parent).push_back(f);
+          num_fill_in++;
+        }
       }
     }
     child = parent;
   }
 }
 
+T::Graph(std::vector<Node> nodes, std::vector<Edge> edges)
+    : nodes_(std::move(nodes)), edges_(std::move(edges)) {
+  int i = 0;
+  for (auto& e : edges_) {
+    if (e.source > -1) {
+      nodes_.at(e.source).outgoing_edges.push_back(i);
+    } else {
+    CONEX_DEMAND(source_node_ == -1, 
+    "Source node already specified.");
+      source_node_ = e.sink;
+    }
+    nodes_.at(e.sink).incoming_edges.push_back(i);
+    i++;
+  }
+
+  i = 0;
+  for (auto& n : nodes_) {
+    if (n.incoming_edges.size() == 0) {
+    CONEX_DEMAND(source_node_ == -1, 
+    "Source node already specified.");
+      source_node_ = i;
+      Edge e; 
+      e.source = -1;
+      e.sink = source_node_;
+      edges_.push_back(e);
+      nodes_.at(e.sink).incoming_edges.push_back(edges_.size() - 1);
+    }
+    i++;
+  }
+
+  int num_nodes = nodes_.size();
+  int num_edges = edges_.size();
+  ids_.edge_to_outgoing_spatial_flow_variable.resize(num_edges);
+  ids_.edge_to_incoming_spatial_flow_variable.resize(num_edges);
+  ids_.node_to_conversation_of_spatial_flow_multiplier.resize(num_nodes);
+  ids_.node_to_conversation_of_flow_multiplier.resize(num_nodes);
+  ids_.edge_to_flow_variable.resize(num_edges);
+  node_to_children_in_spanning_tree_.resize(num_nodes);
+  node_to_parent_in_spanning_tree_.resize(num_nodes);
+}
 
 
 }

@@ -4,9 +4,10 @@
 
 namespace conex {
 
-GraphSolver::GraphSolver(const GraphData& data) :
+GraphSolver::GraphSolver(const GraphData& data, 
+                         const std::vector<int>& topological_order_position_to_node) :
   nodes_(data.nodes.size()), graph_(data.nodes, data.edges) {
-  graph_.BuildSpanningTree();
+  graph_.BuildSpanningTree(topological_order_position_to_node);
   graph_.SortEdgeListInReverseTopologicalOrder();
   graph_.AssignEliminationOrder();
   graph_.IdentifyFillInEdges();

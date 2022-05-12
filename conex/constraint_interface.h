@@ -33,5 +33,6 @@ class Visitor {
 class ConstraintBase {
  public:
   virtual void accept(Visitor*) = 0;
+  virtual ~ConstraintBase() = default;
 };
 }  // namespace conex

@@ -25,7 +25,7 @@ struct WorkspaceLinear {
         Map(data + 3 * get_size_aligned(n), n, o->num_vars_);
   }
 
-  friend void print(const WorkspaceLinear& o) {}
+  friend void print(const WorkspaceLinear&) {}
 
   Eigen::Map<DenseMatrix, Eigen::Aligned> W{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> temp_1{NULL, 0, 0};

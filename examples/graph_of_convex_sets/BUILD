@@ -5,12 +5,12 @@ cc_library(name = "graph_of_convex_sets_data",
 cc_library(name = "graph_of_convex_sets",
   srcs = ["gcs_solver.cc"],
   hdrs = ["gcs_solver.h"],
+  visibility = ["//visibility:public"],
   deps = [
       ":graph_of_convex_sets_data",
       ":graph_of_convex_sets_util",
       "//conex:error_checking",
       "//conex:kkt_tree_solver",
-      "@gtest//:main",
   ],
 )
 
@@ -23,13 +23,11 @@ cc_library(
             "convex_set_node_factory.h",
             "convex_set_node_factory.cc",
             "directed_graph.h"],
-    copts = ["-Iexternal/gtest/include"],
     hdrs = ["directed_graph.h", "kkt_subsystem.h"],
     deps = [
         ":graph_of_convex_sets_data",
         "//conex:error_checking",
         "//conex:kkt_tree_solver",
-        "@gtest//:main",
     ],
 )
 

@@ -26,33 +26,10 @@ T& operator=(T&&) = delete;\
 class Graph {
   CONEX_NO_COPY_NO_MOVE(Graph)
  public:
-  Graph(std::vector<Node> nodes, std::vector<Edge> edges)
-      : nodes_(std::move(nodes)), edges_(std::move(edges)) {
-    int num_nodes = nodes_.size();
-    int num_edges = edges_.size();
-    ids_.edge_to_outgoing_spatial_flow_variable.resize(num_edges);
-    ids_.edge_to_incoming_spatial_flow_variable.resize(num_edges);
-    ids_.node_to_conversation_of_spatial_flow_multiplier.resize(num_nodes);
-    ids_.node_to_conversation_of_flow_multiplier.resize(num_nodes);
-    ids_.edge_to_flow_variable.resize(num_edges);
-    node_to_children_in_spanning_tree_.resize(num_nodes);
-    node_to_parent_in_spanning_tree_.resize(num_nodes);
-
-    int i = 0;
-    for (auto& e : edges_) {
-      if (e.source > -1) {
-        nodes_.at(e.source).outgoing_edges.push_back(i);
-      } else {
-      CONEX_DEMAND(source_node_ == -1, 
-      "Source node already specified.");
-        source_node_ = e.sink;
-      }
-      nodes_.at(e.sink).incoming_edges.push_back(i);
-      i++;
-    }
-  }
+  Graph(std::vector<Node> nodes, std::vector<Edge> edges);
 
   std::vector<int> ComputeTopologicalOrdering();
+  bool IsTopologicalOrderingValid(const std::vector<int>& order) const;
   void AssignEliminationOrder() {
     int offset = 0;
     for (auto& root : roots_) {
@@ -69,7 +46,7 @@ class Graph {
 
   void SortEdgeListInReverseTopologicalOrder(std::vector<int>*) const;
 
-  void BuildSpanningTree();
+  void BuildSpanningTree(const std::vector<int>& topological_ordering = {});
   int edge_id_to_sink_node(int e) { return edges_.at(e).sink; }
 
   // All edges >

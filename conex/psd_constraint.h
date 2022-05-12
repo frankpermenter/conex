@@ -24,7 +24,7 @@ struct WorkspaceDensePSD {
     new (&o->temp_2) Map(data + 2 * get_size_aligned(n * n), n, n);
   }
 
-  friend void print(const WorkspaceDensePSD& o) {}
+  friend void print(const WorkspaceDensePSD&) {}
 
   Eigen::Map<DenseMatrix, Eigen::Aligned> W{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> temp_1{NULL, 0, 0};
