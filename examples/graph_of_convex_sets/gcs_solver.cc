@@ -63,5 +63,4 @@ Eigen::PermutationMatrix<-1> GraphSolver::variable_to_primal_dual_order_position
   return P;
 }
 
-
 } // namespace conex
