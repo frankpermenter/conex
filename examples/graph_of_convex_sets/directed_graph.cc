@@ -25,9 +25,9 @@ class RecursiveTopologicalSort {
      }
      temporary_mark_.at(n) = 1;
 
-    //srand(time(0));
+    srand(time(0));
     std::vector<int> edges = nodes_.at(n).outgoing_edges;
-    //std::random_shuffle ( edges.begin(), edges.end() ); 
+    std::random_shuffle ( edges.begin(), edges.end() ); 
 
      for (auto& e : edges) {
        visit(edges_.at(e).sink);
@@ -53,6 +53,7 @@ class RecursiveTopologicalSort {
   std::vector<int> temporary_mark_;
   std::vector<int> position_to_node;
   size_t num_ordered = 0;
+  bool order_unique_ = true;
 };
 
 } // namespace 
@@ -224,20 +225,17 @@ T::Graph(std::vector<Node> nodes, std::vector<Edge> edges)
   for (auto& e : edges_) {
     if (e.source > -1) {
       nodes_.at(e.source).outgoing_edges.push_back(i);
+      nodes_.at(e.sink).incoming_edges.push_back(i);
     } else {
-    CONEX_DEMAND(source_node_ == -1, 
-    "Source node already specified.");
-      source_node_ = e.sink;
+      throw std::runtime_error("Remove trivial source edges.");
     }
-    nodes_.at(e.sink).incoming_edges.push_back(i);
     i++;
   }
 
   i = 0;
   for (auto& n : nodes_) {
     if (n.incoming_edges.size() == 0) {
-    CONEX_DEMAND(source_node_ == -1, 
-    "Source node already specified.");
+    CONEX_DEMAND(source_node_ == -1, "Source node already specified.");
       source_node_ = i;
       Edge e; 
       e.source = -1;
@@ -260,4 +258,11 @@ T::Graph(std::vector<Node> nodes, std::vector<Edge> edges)
 }
 
 
-}
+
+
+
+
+
+
+
+} // namespace conex

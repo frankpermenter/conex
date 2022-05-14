@@ -284,7 +284,8 @@ GTEST_TEST(GraphOfConvexSets, RandomDAG) {
     Time stats_i;
     //DoTest(4 /*nodes*/, 1 /*dim*/, .7 /*edge*/ , &stats_i);
     try {
-    DoTest(20 /*nodes*/, 25 /*dim*/, 0 /*edge*/ , &stats_i);
+    //DoTest(20 /*nodes*/, 20 /*dim*/, 0 /*edge*/ , &stats_i);
+    DoTest(10 /*nodes*/, 5 /*dim*/, 0 /*edge*/ , &stats_i);
     } catch(const std::exception& e) {
 
     }

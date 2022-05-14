@@ -3,6 +3,7 @@
 
 #include "graph_data.h"
 #include "directed_graph.h"
+#include "gcs_solver.h"
 namespace conex {
 
 struct Time {
@@ -27,4 +28,7 @@ Time Verify(const GraphData& data,
 
 Time Profile(const GraphData& data,
   std::vector<int> node_to_parent_in_spanning_tree_reference);
+
+Time Profile(GraphSolver& data);
+
 } // namespace conex

@@ -53,6 +53,8 @@ class GraphSolver {
     bool left_looking = false;
     bool custom_block_inverse = false;
   };
+
+  Eigen::PermutationMatrix<-1> variable_to_primal_dual_order_position() const;
   void SetFactorizationMode(const FactorizationMode&);
   SymmetricLinearSystemTreeSolver& tree_solver() { return tree_solver_; }
 

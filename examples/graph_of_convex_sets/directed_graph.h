@@ -7,7 +7,7 @@
 
 namespace conex {
 
-struct Variables {
+struct EliminationPositions {
   std::vector<int> edge_to_flow_variable;
   // Map incoming edge label to spatial variable
   std::vector<std::vector<int>> edge_to_incoming_spatial_flow_variable;
@@ -55,10 +55,15 @@ class Graph {
 
   const Node& node(int i) const { return nodes_.at(i); }; 
 
+  const std::vector<Edge>& edges() const { return edges_; }; 
+  const std::vector<Node>& nodes() const { return nodes_; }; 
+
+  const EliminationPositions& elimination_positions() const { return ids_; }
+
   std::vector<int> roots_;
   std::vector<Node> nodes_;
   std::vector<Edge> edges_;
-  Variables ids_;
+  EliminationPositions ids_;
 
  private:
 

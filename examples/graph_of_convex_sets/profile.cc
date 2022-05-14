@@ -94,11 +94,13 @@ Time Verify(const GraphData& data,
   return stats;
 }
 
-Time Profile(const GraphData& data,
-  std::vector<int> node_to_parent_in_spanning_tree_reference) {
 
+
+
+
+
+Time Profile(GraphSolver& graph_solver) {
   Time stats;
-  GraphSolver graph_solver(data);
   auto system_using_custom_assemblers = graph_solver.tree_solver();
 
   GraphSolver::FactorizationMode mode;
@@ -175,6 +177,13 @@ Time Profile(const GraphData& data,
   }
   return stats;
 
+}
+
+Time Profile(const GraphData& data,
+  std::vector<int> node_to_parent_in_spanning_tree_reference) {
+
+  GraphSolver graph_solver(data);
+  return Profile(graph_solver);
 }
 
 } // namespace conex

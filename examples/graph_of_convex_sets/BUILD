@@ -85,15 +85,13 @@ cc_test(
 )
 
 
-cc_test(
+cc_binary(
     name = "gcs_solver_test",
-    srcs = [ "gcs_solver_test.cc"],
-    copts = ["-Iexternal/gtest/include"],
+    srcs = [ "gcs_solver_test.cc" ],
     deps = [
         "graph_of_convex_sets",
         "//conex:error_checking",
         "//conex:kkt_tree_solver",
-        "@gtest//:main",
     ],
 )
 
