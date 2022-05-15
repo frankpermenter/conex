@@ -174,7 +174,6 @@ GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topolog
 
 GTEST_TEST(FillIn, NonUnique) {
   Eigen::MatrixXd M(5, 5); M.setZero();
-  M(5, 5);
   M << 0, 1, 0, 1, 0,
        0, 0, 1, 1, 0,
        0, 0, 0, 1, 0,

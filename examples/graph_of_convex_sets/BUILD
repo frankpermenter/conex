@@ -96,3 +96,13 @@ cc_binary(
 )
 
 
+cc_test(
+    name = "edge_topological_order_test",
+    srcs = [ "edge_topological_order_test.cc"],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "graph_of_convex_sets",
+        "//conex:error_checking",
+        "@gtest//:main",
+    ],
+)

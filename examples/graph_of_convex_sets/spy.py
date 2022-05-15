@@ -1,13 +1,13 @@
 import matplotlib.pyplot as plt
-import numpy as np
-
+import numpy as np 
 
 def my_spy(ax, matrix, title):
-    title = ""
+    #title = ""
     ax.spy(matrix, precision=0.1, markersize=5)
     ax.set_yticklabels([])
     ax.set_xticklabels([])
-    ax.set_title(title)# + "  " + str(np.count_nonzero(matrix)))
+    #ax.set_title(title)# + "  " + str(np.count_nonzero(matrix)))
+    ax.set_title(title + "  " + str(np.count_nonzero(matrix)))
     return ax
 
 def load_matrix(filename):
@@ -53,6 +53,37 @@ def MakePlot(folder):
     #plt.show()
     plt.savefig('sparsity'+folder+'.png')
 
-MakePlot('path')
-MakePlot('random')
-MakePlot('nonunique')
+#MakePlot('path')
+#MakePlot('random')
+#MakePlot('nonunique')
+#MakePlot('simple')
+#MakePlot('simple')
+
+def MakePlot2(folder):
+    path = '/home/frank/conex/bazel-out/k8-dbg/bin/examples/graph_of_convex_sets/edge_topological_order_test.runfiles/conex/' + folder + '/'
+    file_sparsity_cholesky_factor_topological = path + "sparsity_cholesky_factor_edge_top.txt"
+    factor_top = load_matrix(file_sparsity_cholesky_factor_topological)
+
+#    file_kkt_matrix = path + "kkt_matrix.txt"
+    file_kkt_matrix_amd_order = path + "kkt_matrix_amd_order.txt"
+    file_kkt_matrix_topological_order = path + "kkt_matrix_edge_top.txt"
+
+    file_sparsity_cholesky_factor_amd = path + "sparsity_cholesky_factor_amd.txt"
+    factor_amd = load_matrix(file_sparsity_cholesky_factor_amd)
+
+    kkt_matrix_topological_order = load_matrix(file_kkt_matrix_topological_order)
+
+    fig, axs = plt.subplots(2, 2)
+    ax1 = axs[0][0]
+    ax2 = axs[0][1]
+    ax3 = axs[1][0]
+
+    ax1 = my_spy(ax1, kkt_matrix_topological_order, "Permuted KKT Matrix ")
+    ax2 = my_spy(ax2, factor_top, "Cholesky Factor")
+    ax3 = my_spy(ax3, factor_amd, "AMD Factor")
+
+
+    plt.show()
+    #plt.savefig('sparsity'+folder+'.png')
+
+MakePlot2('nonunique')

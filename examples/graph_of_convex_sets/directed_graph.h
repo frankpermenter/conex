@@ -37,6 +37,15 @@ class Graph {
     }
   }
 
+  int LastEdgeInReverseTopologicalOrder(int node) {
+    if (nodes_.at(node).outgoing_edges.size() == 0) {
+      return nodes_.at(node).incoming_edges.back();
+    } else {
+      return nodes_.at(node).outgoing_edges.back();
+    }
+  }
+
+  std::vector<int> node_to_topological_order_position() { return node_to_topological_order_position_; }
   void IdentifyFillInEdges();
 
   // Sort the edge list of each node in reverse topological order:
@@ -77,7 +86,6 @@ class Graph {
                                 edges_.at(edge2).source);
     }
   }
-
   bool Node1LessThanNode2(int node1, int node2) const {
     // Use reverse topological ordering.
     return node_to_topological_order_position_.at(node1) >

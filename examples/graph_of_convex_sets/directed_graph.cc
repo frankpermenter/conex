@@ -3,7 +3,6 @@
 #include <algorithm>
 namespace conex {
 
-
 using T = Graph;
 
 namespace {
@@ -112,6 +111,7 @@ void T::SortEdgeListInReverseTopologicalOrder() {
 };
 
 void T::SortEdgeListInReverseTopologicalOrder(std::vector<int>* edge_list) const {
+  CONEX_CHECK(node_to_topological_order_position_.size() > 0);
   auto EdgeOrder = [this] (int x, int y) -> bool { return this->Edge1LessThanEdge2(x, y); };
   std::sort(edge_list->begin(), edge_list->end(), EdgeOrder);
 };
@@ -136,7 +136,6 @@ bool T::IsTopologicalOrderingValid(const std::vector<int>& order_position_to_nod
   return true;
 }
 
-
 void T::BuildSpanningTree(const std::vector<int>& order_position_to_node) {
   std::vector<int> position_to_node = order_position_to_node;
   if (order_position_to_node.size() == 0) {
@@ -157,34 +156,6 @@ void T::BuildSpanningTree(const std::vector<int>& order_position_to_node) {
     node_to_children_in_spanning_tree_.at(parent).push_back(child);
     node_to_topological_order_position_.at(child) = i;
   }
-
-
-  //std::vector<int> visited(nodes_.size(), 0);
-
-  //int parent = root;
-  //roots_.push_back(root);
-  //visited.at(parent) = 1;
-  //node_to_parent_in_spanning_tree_[parent] = -1;
-
-  //std::stack<int> nodes_to_visit;
-  //nodes_to_visit.push(parent);
-  //while (nodes_to_visit.size() > 0) {
-  //  parent = nodes_to_visit.top();
-  //  nodes_to_visit.pop();
-  //  for (auto& e : nodes_.at(parent).incoming_edges) {
-  //    CONEX_CHECK(edges_.at(e).sink == parent);
-  //    int child = edges_.at(e).source;
-  //    if (child >= 0 && visited.at(child) == 0) {
-  //      visited.at(child) = 1;
-  //      node_to_parent_in_spanning_tree_.at(child) = parent;
-  //      node_to_children_in_spanning_tree_.at(parent).push_back(child);
-  //      nodes_to_visit.push(child);
-  //    }
-  //  }
-  //}
-  //for (auto node_visited : visited) {
-  //  CONEX_CHECK(node_visited == 1);
-  //}
 }
 
 void T::IdentifyFillInEdges() {
