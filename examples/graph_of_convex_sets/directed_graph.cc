@@ -1,6 +1,7 @@
 #include "directed_graph.h"
 
 #include <algorithm>
+#include <numeric>
 namespace conex {
 
 using T = Graph;
@@ -158,6 +159,7 @@ void T::BuildSpanningTree(const std::vector<int>& order_position_to_node) {
   }
 }
 
+
 void T::IdentifyFillInEdges() {
   int child = source_node_;
   auto& node_to_fill_in_edge_indices = node_to_fill_in_edges_;
@@ -229,8 +231,72 @@ T::Graph(std::vector<Node> nodes, std::vector<Edge> edges)
 }
 
 
+std::vector<int> T::topological_order_position_to_edge() const {
+    std::vector<int> order_position_to_edge(edges_.size());
+    std::iota(order_position_to_edge.begin(), order_position_to_edge.end(), 0);
+    SortEdgeListInReverseTopologicalOrder(&order_position_to_edge);
+    return order_position_to_edge;
+}
 
 
+std::vector<int> T::edge_to_topological_order_position() const {
+  auto order_position_to_edge = topological_order_position_to_edge();
+  std::vector<int> edge_to_order_position(order_position_to_edge.size());
+  for (size_t i = 0; i < order_position_to_edge.size(); i++) {
+    edge_to_order_position.at(order_position_to_edge.at(i)) = i;
+  }
+  return edge_to_order_position;
+}
+
+  struct Clique {
+    int edge_id = 0;
+    std::vector<int> nodes;
+  };
+
+std::vector<int> T::primal_dual_to_elimination_order() {
+  std::vector<Clique> edge_to_supernodes;
+  std::vector<int> node_to_edge_elimination(nodes_.size());
+
+  std::vector<int> edge_to_order_position = edge_to_topological_order_position();
+  std::vector<int> order_position_to_edge = topological_order_position_to_edge();
+
+  // Put edges in order and assign nodes
+  for (size_t i = 0; i < edges_.size(); ++i) {
+    Clique c;
+    c.edge_id = order_position_to_edge.at(i);
+
+    
+    if (edges_.at(c.edge_id).source != -1) {
+      if (LastEdgeInReverseTopologicalOrder(edges_.at(c.edge_id).source) == c.edge_id) {
+        c.nodes.push_back(edges_.at(c.edge_id).source);
+        node_to_edge_elimination.at(edges_.at(c.edge_id).source) = i;
+      }
+    } 
+    if (LastEdgeInReverseTopologicalOrder(edges_.at(c.edge_id).sink) == c.edge_id) {
+      c.nodes.push_back(edges_.at(c.edge_id).sink);
+      node_to_edge_elimination.at(edges_.at(c.edge_id).sink) = i;
+    }
+    edge_to_supernodes.push_back(c);
+  }
+
+  std::vector<int> primal_dual_order_to_edge_topological;
+  int spatial_dim = nodes_.at(0).spatial_dimension;
+
+  for (auto& e : edge_to_supernodes) {
+    for (auto n : e.nodes) {
+      int offset_node = edges_.size() * (2*spatial_dim + 1) + n * (spatial_dim + 1);
+      for (int i = 0; i < spatial_dim + 1; i++) {
+        primal_dual_order_to_edge_topological.push_back(i + offset_node);
+      }
+    }
+    int offset_edge = (e.edge_id) * (2*spatial_dim + 1);
+    for (int i = 0; i < 2*spatial_dim + 1; i++) {
+      primal_dual_order_to_edge_topological.push_back(i + offset_edge);
+    }
+  }
+  DUMP(primal_dual_order_to_edge_topological);
+  return primal_dual_order_to_edge_topological;
+}
 
 
 

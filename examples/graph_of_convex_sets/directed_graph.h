@@ -69,6 +69,10 @@ class Graph {
 
   const EliminationPositions& elimination_positions() const { return ids_; }
 
+  std::vector<int> edge_to_topological_order_position() const;
+  std::vector<int> topological_order_position_to_edge() const;
+  std::vector<int> primal_dual_to_elimination_order();
+
   std::vector<int> roots_;
   std::vector<Node> nodes_;
   std::vector<Edge> edges_;

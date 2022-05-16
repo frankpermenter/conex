@@ -144,7 +144,9 @@ T::ConvexSetNode(const std::vector<int>& variables,
     // Spatial flow
     for (int i = 0; i < num_incoming; i++) {
       Q.block(params_.conservation_of_spatial_flow_multiplier_position, 
-              params_.incoming_spatial_flow_start_positions.at(i), spatial_dim, spatial_dim).setIdentity();
+              params_.incoming_spatial_flow_start_positions.at(i), spatial_dim, spatial_dim).setConstant(.001);
+      Q.block(params_.conservation_of_spatial_flow_multiplier_position, 
+              params_.incoming_spatial_flow_start_positions.at(i), spatial_dim, spatial_dim).diagonal().setConstant(1);
     }
 
     // Flow conservation
@@ -195,6 +197,8 @@ T::ConvexSetNode(const std::vector<int>& variables,
 
     // Set col to spatial flow multiplier.
     for (int i = 0; i < num_outgoing; i++) {
+      Q.block(params_.outgoing_spatial_flow_start_positions.at(i), 
+         params_.conservation_of_spatial_flow_multiplier_position, spatial_dim, spatial_dim).setConstant(.01);
       Q.block(params_.outgoing_spatial_flow_start_positions.at(i), 
          params_.conservation_of_spatial_flow_multiplier_position, spatial_dim, spatial_dim)
           .diagonal()
