@@ -380,9 +380,9 @@ MatrixData GetData(const vector<vector<int>>& cliques,
   vector<std::vector<int>> cliques_sorted = cliques;
   Sort(&cliques_sorted);
   vector<int> order;
+  vector<int> tree;
 
-  PickCliqueOrder(cliques_sorted, valid_leaf, root_clique, &order, &supernodes,
-                  &separators);
+  PickCliqueOrder(cliques_sorted, valid_leaf, root_clique, &order, &tree, &supernodes, &separators);
   return SupernodesToData(GetMax(cliques) + 1, order, supernodes, separators);
 }
 

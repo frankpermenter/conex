@@ -37,7 +37,12 @@ class Graph {
     }
   }
 
-  int LastEdgeInReverseTopologicalOrder(int node) {
+  int LastSourceEdgeInReverseTopologicalOrder(int node) const {
+    return nodes_.at(node).incoming_edges.back();
+  }
+
+
+  int LastEdgeInReverseTopologicalOrder(int node) const {
     if (nodes_.at(node).outgoing_edges.size() == 0) {
       return nodes_.at(node).incoming_edges.back();
     } else {
@@ -45,7 +50,8 @@ class Graph {
     }
   }
 
-  std::vector<int> node_to_topological_order_position() { return node_to_topological_order_position_; }
+  std::vector<int> node_to_topological_order_position() const { return node_to_topological_order_position_; }
+  std::vector<int> topological_order_position_to_node() const { return topological_order_position_to_node_; }
   void IdentifyFillInEdges();
 
   // Sort the edge list of each node in reverse topological order:
@@ -71,7 +77,8 @@ class Graph {
 
   std::vector<int> edge_to_topological_order_position() const;
   std::vector<int> topological_order_position_to_edge() const;
-  std::vector<int> primal_dual_to_elimination_order();
+  std::vector<int> primal_dual_to_interleaved_topological_order() const;
+  std::vector<int> primal_dual_to_node_edge_order() const;
 
   std::vector<int> roots_;
   std::vector<Node> nodes_;
@@ -98,6 +105,7 @@ class Graph {
   int source_node_ = -1;
   std::vector<int> node_to_parent_in_spanning_tree_{};
   std::vector<int> node_to_topological_order_position_{};
+  std::vector<int> topological_order_position_to_node_{};
   std::vector<std::vector<int>> node_to_fill_in_edges_{};
   std::vector<std::vector<int>> node_to_children_in_spanning_tree_{};
   int AssignEliminationOrderHelper(int node_index, int offset);

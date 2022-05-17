@@ -138,21 +138,21 @@ bool T::IsTopologicalOrderingValid(const std::vector<int>& order_position_to_nod
 }
 
 void T::BuildSpanningTree(const std::vector<int>& order_position_to_node) {
-  std::vector<int> position_to_node = order_position_to_node;
+  topological_order_position_to_node_  = order_position_to_node;
   if (order_position_to_node.size() == 0) {
-    position_to_node = ComputeTopologicalOrdering();
+    topological_order_position_to_node_ = ComputeTopologicalOrdering();
   } 
-  CONEX_CHECK(IsTopologicalOrderingValid(position_to_node));
+  CONEX_CHECK(IsTopologicalOrderingValid(topological_order_position_to_node_));
   std::vector<int> node_to_parent(nodes_.size());
-  int root = position_to_node.at(0);
+  int root = topological_order_position_to_node_.at(0);
   node_to_parent_in_spanning_tree_.at(root) = -1;
   roots_.push_back(root);
-  node_to_topological_order_position_.resize(position_to_node.size());
+  node_to_topological_order_position_.resize(topological_order_position_to_node_.size());
   node_to_topological_order_position_.at(root) = 0;
 
-  for (size_t i = 1; i < position_to_node.size(); i++) {
-    const int parent = position_to_node.at(i-1);
-    const int child = position_to_node.at(i);
+  for (size_t i = 1; i < topological_order_position_to_node_.size(); i++) {
+    const int parent = topological_order_position_to_node_.at(i-1);
+    const int child = topological_order_position_to_node_.at(i);
     node_to_parent_in_spanning_tree_.at(child) = parent;
     node_to_children_in_spanning_tree_.at(parent).push_back(child);
     node_to_topological_order_position_.at(child) = i;
@@ -253,7 +253,7 @@ std::vector<int> T::edge_to_topological_order_position() const {
     std::vector<int> nodes;
   };
 
-std::vector<int> T::primal_dual_to_elimination_order() {
+std::vector<int> T::primal_dual_to_interleaved_topological_order() const {
   std::vector<Clique> edge_to_supernodes;
   std::vector<int> node_to_edge_elimination(nodes_.size());
 
@@ -264,8 +264,7 @@ std::vector<int> T::primal_dual_to_elimination_order() {
   for (size_t i = 0; i < edges_.size(); ++i) {
     Clique c;
     c.edge_id = order_position_to_edge.at(i);
-
-    
+  
     if (edges_.at(c.edge_id).source != -1) {
       if (LastEdgeInReverseTopologicalOrder(edges_.at(c.edge_id).source) == c.edge_id) {
         c.nodes.push_back(edges_.at(c.edge_id).source);
@@ -294,9 +293,37 @@ std::vector<int> T::primal_dual_to_elimination_order() {
       primal_dual_order_to_edge_topological.push_back(i + offset_edge);
     }
   }
-  DUMP(primal_dual_order_to_edge_topological);
   return primal_dual_order_to_edge_topological;
 }
+
+
+std::vector<int> T::primal_dual_to_node_edge_order() const {
+  std::vector<int> order_position_to_edge = topological_order_position_to_edge();
+
+  std::vector<int> primal_dual_order_to_edge_node;
+  int spatial_dim = nodes_.at(0).spatial_dimension;
+
+  std::reverse(order_position_to_edge.begin(), order_position_to_edge.end());
+  for (auto edge_id : order_position_to_edge) {
+    int offset_edge = (edge_id) * (2*spatial_dim + 1);
+    for (int i = 0; i < 2*spatial_dim + 1; i++) {
+      primal_dual_order_to_edge_node.push_back(i + offset_edge);
+    }
+  }
+
+  auto order_position_to_node = topological_order_position_to_node_;
+  //std::reverse(order_position_to_node.begin(), order_position_to_node.end());
+  for (auto& node_id : order_position_to_node) {
+    int offset_node = edges_.size() * (2*spatial_dim + 1) + node_id * (spatial_dim + 1);
+    for (int i = 0; i < spatial_dim + 1; i++) {
+      primal_dual_order_to_edge_node.push_back(i + offset_node);
+    }
+  }
+
+  return primal_dual_order_to_edge_node;
+}
+
+
 
 
 

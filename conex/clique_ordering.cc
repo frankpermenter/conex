@@ -308,7 +308,9 @@ void FillIn(const RootedTree& tree, int num_variables,
 
 void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
                      const vector<int>& valid_leaf, int root,
-                     vector<int>* order, vector<vector<int>>* supernodes,
+                     vector<int>* order, 
+                     vector<int>* parent_in_tree,
+                     vector<vector<int>>* supernodes,
                      vector<vector<int>>* separators,
                      vector<vector<vector<int>>>* post_order_pointer) {
   size_t n = cliques_sorted.size();
@@ -332,6 +334,7 @@ void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
       count++;
     }
   }
+  *parent_in_tree = tree.parent;
 }
 
 void PickCliqueOrder(const vector<vector<int>>& cliques_sorted, int root,
@@ -339,9 +342,21 @@ void PickCliqueOrder(const vector<vector<int>>& cliques_sorted, int root,
                      vector<vector<int>>* separators,
                      vector<vector<vector<int>>>* post_order_pointer) {
   const vector<int> valid_leaf{};
-  PickCliqueOrder(cliques_sorted, valid_leaf, root, order, supernodes,
+  vector<int> parent_in_tree;
+  PickCliqueOrder(cliques_sorted, valid_leaf, root, order, &parent_in_tree, supernodes,
                   separators, post_order_pointer);
 }
+
+void PickCliqueOrder(const vector<vector<int>>& cliques_sorted, int root,
+                     vector<int>* order, vector<int>* parent_in_tree, 
+                     vector<vector<int>>* supernodes,
+                     vector<vector<int>>* separators) {
+  const vector<int> valid_leaf{};
+  PickCliqueOrder(cliques_sorted, valid_leaf, root, order, parent_in_tree, supernodes,
+                  separators, nullptr);
+}
+
+
 
 void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
                      const vector<int>& valid_leaf, int root, RootedTree* tree,

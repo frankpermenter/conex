@@ -27,7 +27,6 @@ class CholeskySolver : public KKTSubsystemBase {
       return separator_schur_complement_; }
   Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override { return separator_rows_; }
 
-
   bool DoEliminateSupernodeColumns() override {
     llt_.compute(supernode_submatrix_);
     if (llt_.info() != Eigen::Success) {
@@ -116,6 +115,7 @@ class KKTCholeskySystem : public KKTSubsystem {
   void DoComputeSeparatorSchurComplement() override {
     factorization_->DoComputeSeparatorSchurComplement();
   }
+
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     factorization_ = std::make_unique<FactorizationType>(supernode_submatrix(), 

@@ -12,7 +12,7 @@ constexpr int N = 5;
 namespace conex {
 
 struct RootedTree {
-  RootedTree(int number_of_nodes) : parent(number_of_nodes) {}
+  RootedTree(int number_of_nodes) : parent(number_of_nodes), height_(number_of_nodes) {}
   void SwapPositions(int node1, int node2);
   std::vector<int> parent;
   std::vector<int>& height() {  return height_; }

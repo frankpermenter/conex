@@ -22,6 +22,8 @@ MatrixXd SparsityMask(const Eigen::MatrixXd& x) {
   }
   return y;
 }
+
+
 void PrintCommaInitFormat(const Eigen::MatrixXd& matrix, 
                           const std::string& filename) {
 
@@ -43,6 +45,15 @@ struct Factorizations {
   Eigen::SparseMatrix<double> kkt_matrix_amd_order;
   Eigen::SparseMatrix<double> kkt_matrix_topological_order;
 };
+
+void PrintFactorizations(const Factorizations& f, const std::string& folder) {
+  PrintCommaInitFormat(f.kkt_matrix_primal_dual_order, folder +"/kkt_matrix.txt");
+  PrintCommaInitFormat(f.factor_top, folder+"/sparsity_cholesky_factor_topological.txt");
+  PrintCommaInitFormat(f.factor_amd, folder+"/sparsity_cholesky_factor_amd.txt");
+  PrintCommaInitFormat(f.kkt_matrix_amd_order, folder+"/kkt_matrix_amd_order.txt");
+  PrintCommaInitFormat(f.kkt_matrix_topological_order, folder+"/kkt_matrix_topological_order.txt");
+}
+
 Factorizations GetFactorizations(const GraphData& graph) {
   Factorizations y;
 #if 1
@@ -131,6 +142,48 @@ GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topolog
   return graph;
 }
 
+GraphData GenerateRandomDAG(int num_nodes, double edge_density, int spatial_dim) {
+  CONEX_DEMAND(edge_density <= 1 && edge_density >= 0, "invalid edge density");
+  GraphData graph; 
+  graph.nodes.resize(num_nodes);
+  std::vector<int> topological_order(num_nodes);
+  for (int i = 0; i < num_nodes; i++) {
+    topological_order.at(i) = num_nodes - 1 - i;
+  }
+
+  MatrixXd M(num_nodes, num_nodes);
+  M.setZero();
+
+  // Add path
+  #if 1
+  for (int i = 0; i < num_nodes; i++) {
+    if (i < num_nodes -1 ) {
+    M(i, i + 1) = 1;
+    M(i + 1, i) = 1;
+    }
+  }
+  int edge_count = num_nodes - 1;
+  #else 
+  int edge_count = 0;
+  #endif
+
+  // Add random edges
+  int target = edge_density * .5 * (num_nodes *  num_nodes - num_nodes);
+  while (edge_count < target) {
+    int node_1 = rand() % num_nodes;
+    int node_2 = rand() % num_nodes;
+    if (node_1 != node_2) {
+      if (M(node_1, node_2) == 0) {
+        edge_count++;
+      }
+      M(node_1, node_2) = 1;
+      M(node_2, node_1) = 1;
+    }
+  }
+  DUMP(M);
+  return MakeGraph(M, topological_order, spatial_dim);
+}
+
  //     a    c
 //   0 -> 1 -> 2
 // b |         | d
@@ -139,18 +192,19 @@ GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topolog
 //   
 GTEST_TEST(EdgeOrdering, TestTopologicalSort) {
   Eigen::MatrixXd M(5, 5); M.setZero();
-  //M << 0, 1, 0, 1, 0,
-  //     0, 0, 1, 1, 1,
-  //     0, 0, 0, 0, 1,
-  //     0, 0, 0, 0, 1,
-  //     0, 0, 0, 0, 0;
-  M << 0, 1, 0, 0, 0,
-       0, 0, 1, 0, 0,
-       0, 0, 0, 1, 0,
+  M << 0, 1, 0, 1, 0,
+       0, 0, 1, 1, 1,
+       0, 0, 0, 0, 1,
        0, 0, 0, 0, 1,
        0, 0, 0, 0, 0;
+  //M << 0, 1, 0, 0, 0,
+  //     0, 0, 1, 0, 0,
+  //     0, 0, 0, 1, 0,
+  //     0, 0, 0, 0, 1,
+  //     0, 0, 0, 0, 0;
   int spatial_dim = 2;
-  GraphData graph_data = MakeGraph(M, {4, 3, 2, 1, 0}, spatial_dim);
+  //GraphData graph_data = MakeGraph(M, {4, 3, 2, 1, 0}, spatial_dim);
+  GraphData graph_data = GenerateRandomDAG(15, .3, spatial_dim); 
   Graph graph(graph_data.nodes, graph_data.edges);
   graph.BuildSpanningTree();
   graph.SortEdgeListInReverseTopologicalOrder();
@@ -176,8 +230,9 @@ GTEST_TEST(EdgeOrdering, TestTopologicalSort) {
     i++;
   }
 
-  std::vector<int> primal_dual_order_to_edge_topological = graph.primal_dual_to_elimination_order();
-  DUMP(primal_dual_order_to_edge_topological);
+  //std::vector<int> primal_dual_order_to_edge_topological = graph.primal_dual_to_node_edge_order();
+  std::vector<int> primal_dual_order_to_edge_topological = graph.primal_dual_to_interleaved_topological_order();
+
   auto f = GetFactorizations(graph_data);
   Eigen::PermutationMatrix<-1> P;
   P.indices() = Eigen::Map<Eigen::VectorXi>(primal_dual_order_to_edge_topological.data(), primal_dual_order_to_edge_topological.size());
@@ -190,11 +245,9 @@ GTEST_TEST(EdgeOrdering, TestTopologicalSort) {
  if (llt_edge_top.info() == Eigen::Success) {
     l_top = llt_edge_top.matrixL();
  }
-
- PrintCommaInitFormat(kkt_matrix_edge_top_order, "nonunique/kkt_matrix_edge_top.txt");
- PrintCommaInitFormat(l_top, "nonunique/sparsity_cholesky_factor_edge_top.txt");
- PrintCommaInitFormat(f.factor_amd, "nonunique/sparsity_cholesky_factor_amd.txt");
- PrintCommaInitFormat(f.kkt_matrix_topological_order, "nonunique/kkt_matrix_topological_order.txt");
+ f.kkt_matrix_topological_order = kkt_matrix_edge_top_order;
+ f.factor_top = l_top;
+ PrintFactorizations(f, "nonunique");
 }
 
 } // namespace conex

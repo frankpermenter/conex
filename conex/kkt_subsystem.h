@@ -106,12 +106,19 @@ class KKTSubsystemBase {
     supernodes_ = supernodes;
   };
 
+  void Initialize() {
+    DoInitialize();
+  }
   void AddSupernode(int i) {
     supernodes_.push_back(i);
   }
 
   void AddSeparator(int i) {
     separators_.push_back(i);
+  }
+
+  std::vector<int>& variable_to_local_elimination_rank() {
+    return variable_to_local_elimination_position_;
   }
 
   int ComputePostOrdering(int offset,
@@ -192,9 +199,6 @@ class KKTSubsystemBase {
   std::map<const KKTSubsystemBase*, std::vector<Offset>> local_separator_to_source_separator_;
 
 protected:
-  std::vector<int>& variable_to_local_elimination_rank() {
-    return variable_to_local_elimination_position_;
-  }
   std::vector<int> separators_;
   std::vector<int> supernodes_;
   const std::vector<int> variables_;
