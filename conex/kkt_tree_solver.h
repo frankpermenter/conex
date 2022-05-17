@@ -19,12 +19,13 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void RepairTreeInPlace(std::vector<int>* parent_ptr);
 
   void SetEliminationTree(const std::vector<int>& 
-  subsystem_to_parent_subsystem);
+                          subsystem_to_parent_subsystem);
   void Finalize(const Options& options = Options());
   void Finalize(const std::vector<int>& 
   subsystem_to_parent_subsystem,
                 bool check_for_zero_pivots = true);
 
+  void SetEliminationOrder(const std::vector<int>& variable_to_elimination_position);
   void SetFactorizationMode(bool left_looking);  
 
   std::vector<int> subsystem_to_parent() { return subsystem_to_parent_; }

@@ -49,6 +49,9 @@ class SupernodalKKTSolver : public KKTSolverBase {
       const {
     return permutation_from_elimination_order_;
   }
+  std::vector<int> variable_to_elimination_position() const {
+    return data.variable_to_elimination_position;
+  }
 
  private:
   void DoAssemble() override;

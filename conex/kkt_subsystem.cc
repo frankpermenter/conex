@@ -52,7 +52,8 @@ KKTSubsystemBase::Offset GetOverlappingSegment(const std::vector<int>& supernode
 void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
   for (auto& c : destination->local_supernode_to_source_separator(source)) {
     for (auto& r : destination->local_supernode_to_source_separator(source)) {
-      destination->supernode_submatrix().block(r.first, c.first, r.size, c.size) += source->separator_schur_complement().block(r.second, c.second, r.size, c.size);
+      destination->supernode_submatrix().block(r.first, c.first, r.size, c.size) += 
+      source->separator_schur_complement().block(r.second, c.second, r.size, c.size);
     }
     for (auto& r : destination->local_separator_to_source_separator(source)) {
       destination->separator_rows().block(r.first, c.first, r.size, c.size) += source->separator_schur_complement().block(r.second, c.second, r.size, c.size);
@@ -219,7 +220,7 @@ bool T::AssembleAndFactor() {
 
 void T::Assemble() {
   DoInitialize();
-  for (auto child : children_) {
+  for (auto& child : children_) {
     child->Assemble();
     if (left_looking_) {
       child->ProvideColumnUpdate(this);
@@ -267,6 +268,7 @@ int T::ComputePostOrdering(int offset,
 
 void T::SetVariableOrdering(
     const std::vector<int>& shared_variable_to_elimination_position) {
+  // Relabel and sort supernodes and separators.
   for (auto& s : supernodes_) {
     s = shared_variable_to_elimination_position.at(s);
   }
@@ -276,6 +278,8 @@ void T::SetVariableOrdering(
   std::sort(supernodes_.begin(), supernodes_.end());
   std::sort(separators_.begin(), separators_.end());
 
+  // Create map from relabelled variables to their
+  // positions inside of the shared_variable vector.
   std::vector<int> variable_elimination_position = variables_;
   for (auto& v : variable_elimination_position) {
     v = shared_variable_to_elimination_position.at(v);
@@ -323,7 +327,7 @@ void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, size_t start_index) 
 
   size_t col_index = start_index;
   for (; col_index < vars.size(); col_index++) {
-    if (vars.at(col_index) > supernodes_.back()) {
+    if (supernodes_.size() == 0 ||  vars.at(col_index) > supernodes_.back()) {
       // The remaining columns must belong to our parent.
       break;
     }

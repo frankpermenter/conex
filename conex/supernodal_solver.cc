@@ -374,7 +374,8 @@ MatrixData GetData(const vector<vector<int>>& cliques, int root_clique) {
 }
 
 MatrixData GetData(const vector<vector<int>>& cliques,
-                   const std::vector<int>& valid_leaf, int root_clique) {
+                   const std::vector<int>& valid_leaf, 
+                   int root_clique) {
   vector<vector<int>> separators;
   vector<vector<int>> supernodes;
   vector<std::vector<int>> cliques_sorted = cliques;

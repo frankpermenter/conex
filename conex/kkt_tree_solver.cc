@@ -236,7 +236,9 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystemType*>& subsystems,
 
 
 using T = SymmetricLinearSystemTreeSolver;
-
+void T::SetEliminationOrder(const std::vector<int>& variable_to_elimination_position  ) {
+  variable_to_elimination_position_ = variable_to_elimination_position;
+}
 void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                        bool in_original_order) const {
   CONEX_CHECK(b.rows() ==  number_of_variables());
@@ -340,8 +342,7 @@ void T::FinalizeHelper(const std::vector<int>& parent) {
       subsystems_.at(i)->SetSeparators({});
     }
   }
-
- FillIn(parent, number_of_variables(), &subsystems_);
+  FillIn(parent, number_of_variables(), &subsystems_);
 
   // Post-order
   variable_to_elimination_position_.resize(number_of_variables());
