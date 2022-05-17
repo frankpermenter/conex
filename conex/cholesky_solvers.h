@@ -14,8 +14,7 @@ class CholeskySolver : public KKTSubsystemBase {
                  Eigen::Ref<Eigen::MatrixXd> separator_schur_complement) :  
                  supernode_submatrix_(supernode_submatrix),
                  separator_rows_(separator_rows),
-                 separator_schur_complement_(separator_schur_complement),
-                 llt_(supernode_submatrix.rows()) {}
+                 separator_schur_complement_(separator_schur_complement) {}
     
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override { return supernode_submatrix_; }
   Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override { 
@@ -28,8 +27,8 @@ class CholeskySolver : public KKTSubsystemBase {
   Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override { return separator_rows_; }
 
   bool DoEliminateSupernodeColumns() override {
-    llt_.compute(supernode_submatrix_);
-    if (llt_.info() != Eigen::Success) {
+    llt_ = std::make_unique<FactorizationMethod>(supernode_submatrix_);
+    if (llt_->info() != Eigen::Success) {
       factored_ = false;
     } else {
       factored_ = true;
@@ -40,13 +39,13 @@ class CholeskySolver : public KKTSubsystemBase {
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
     CONEX_CHECK(factored_);
-    if (llt_.info() != Eigen::Success) {
+    if (llt_->info() != Eigen::Success) {
       throw std::runtime_error("Factorization failed.");
     }
     if constexpr (schur_complement_mode) {
-      llt_.solveInPlace(y);
+      llt_->solveInPlace(y);
     } else {
-      llt_.matrixL().solveInPlace(y);
+      llt_->matrixL().solveInPlace(y);
     }
   }
 
@@ -57,7 +56,7 @@ class CholeskySolver : public KKTSubsystemBase {
       CONEX_NOOP(y);
       return;
     } else {
-      llt_.matrixL().transpose().solveInPlace(y);
+      llt_->matrixL().transpose().solveInPlace(y);
     }
   }
 
@@ -66,7 +65,7 @@ class CholeskySolver : public KKTSubsystemBase {
       temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
     } 
     if (separator_rows_.size()) {
-      temp_row_major_ = llt_.solve(separator_rows_.transpose());
+      temp_row_major_ = llt_->solve(separator_rows_.transpose());
       int n = separator_schur_complement_.rows();
       int d = separator_rows_.cols();
        if (OnlyLowerTriangularPart(n, d)) {
@@ -89,7 +88,7 @@ class CholeskySolver : public KKTSubsystemBase {
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix_; 
   Eigen::Ref<Eigen::MatrixXd> separator_rows_;
   Eigen::Ref<Eigen::MatrixXd> separator_schur_complement_; 
-  FactorizationMethod llt_;
+  std::unique_ptr<FactorizationMethod> llt_;
   bool factored_ = false;
 };
 
