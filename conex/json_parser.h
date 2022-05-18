@@ -5,7 +5,6 @@
 #include <tuple>
 
 #include "conex/error_checking_macros.h"
-#include "gtest/gtest.h"
 #include <Eigen/Dense>
 
 using std::stod;

@@ -11,8 +11,7 @@ void FillIn(const RootedTree& tree, int num_variables,
 void PickCliqueOrder(
     const std::vector<std::vector<int>>& cliques_sorted,
     const std::vector<int>& valid_leaf, int root, std::vector<int>* order,
-    std::vector<int>* parent_in_tree,
-    std::vector<std::vector<int>>* supernodes,
+    std::vector<int>* parent_in_tree, std::vector<std::vector<int>>* supernodes,
     std::vector<std::vector<int>>* separators,
     std::vector<std::vector<std::vector<int>>>* post_ordering = NULL);
 
@@ -22,13 +21,11 @@ void PickCliqueOrder(
     std::vector<std::vector<int>>* separators,
     std::vector<std::vector<std::vector<int>>>* post_ordering = NULL);
 
-void PickCliqueOrder(
-    const std::vector<std::vector<int>>& cliques_sorted, int root,
-    std::vector<int>* order, 
-    std::vector<int>* parent_in_tree,
-    std::vector<std::vector<int>>* supernodes,
-    std::vector<std::vector<int>>* separators);
-
+void PickCliqueOrder(const std::vector<std::vector<int>>& cliques_sorted,
+                     int root, std::vector<int>* order,
+                     std::vector<int>* parent_in_tree,
+                     std::vector<std::vector<int>>* supernodes,
+                     std::vector<std::vector<int>>* separators);
 
 void PickCliqueOrder(const std::vector<std::vector<int>>& cliques_sorted,
                      int root, RootedTree* order,

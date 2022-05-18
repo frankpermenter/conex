@@ -1,6 +1,7 @@
 #pragma once
-#include <vector>
 #include <stack>
+#include <vector>
+
 #include "conex/debug_macros.h"
 #include "conex/error_checking_macros.h"
 #include "graph_data.h"
@@ -16,12 +17,11 @@ struct EliminationPositions {
   std::vector<int> node_to_conversation_of_flow_multiplier;
 };
 
-
-#define CONEX_NO_COPY_NO_MOVE(T)\
-T(const T&) = delete;\
-T(T&&) = delete;\
-T& operator=(const T&) = delete;\
-T& operator=(T&&) = delete;\
+#define CONEX_NO_COPY_NO_MOVE(T)   \
+  T(const T&) = delete;            \
+  T(T&&) = delete;                 \
+  T& operator=(const T&) = delete; \
+  T& operator=(T&&) = delete;
 
 class Graph {
   CONEX_NO_COPY_NO_MOVE(Graph)
@@ -41,7 +41,6 @@ class Graph {
     return nodes_.at(node).incoming_edges.back();
   }
 
-
   int LastEdgeInReverseTopologicalOrder(int node) const {
     if (nodes_.at(node).outgoing_edges.size() == 0) {
       return nodes_.at(node).incoming_edges.back();
@@ -50,8 +49,12 @@ class Graph {
     }
   }
 
-  std::vector<int> node_to_topological_order_position() const { return node_to_topological_order_position_; }
-  std::vector<int> topological_order_position_to_node() const { return topological_order_position_to_node_; }
+  std::vector<int> node_to_topological_order_position() const {
+    return node_to_topological_order_position_;
+  }
+  std::vector<int> topological_order_position_to_node() const {
+    return topological_order_position_to_node_;
+  }
   void IdentifyFillInEdges();
 
   // Sort the edge list of each node in reverse topological order:
@@ -65,13 +68,17 @@ class Graph {
   int edge_id_to_sink_node(int e) { return edges_.at(e).sink; }
 
   // All edges >
-  std::vector<int> node_to_fill_in_edges(int i) const { return node_to_fill_in_edges_.at(i); }
-  std::vector<int> node_to_parent_in_spanning_tree() const { return node_to_parent_in_spanning_tree_; }
+  std::vector<int> node_to_fill_in_edges(int i) const {
+    return node_to_fill_in_edges_.at(i);
+  }
+  std::vector<int> node_to_parent_in_spanning_tree() const {
+    return node_to_parent_in_spanning_tree_;
+  }
 
-  const Node& node(int i) const { return nodes_.at(i); }; 
+  const Node& node(int i) const { return nodes_.at(i); };
 
-  const std::vector<Edge>& edges() const { return edges_; }; 
-  const std::vector<Node>& nodes() const { return nodes_; }; 
+  const std::vector<Edge>& edges() const { return edges_; };
+  const std::vector<Node>& nodes() const { return nodes_; };
 
   const EliminationPositions& elimination_positions() const { return ids_; }
 
@@ -86,12 +93,9 @@ class Graph {
   EliminationPositions ids_;
 
  private:
-
   bool Edge1LessThanEdge2(int edge1, int edge2) const {
-    if (edges_.at(edge1).sink != 
-        edges_.at(edge2).sink)  {
-      return Node1LessThanNode2(edges_.at(edge1).sink,
-                         edges_.at(edge2).sink);
+    if (edges_.at(edge1).sink != edges_.at(edge2).sink) {
+      return Node1LessThanNode2(edges_.at(edge1).sink, edges_.at(edge2).sink);
     } else {
       return Node1LessThanNode2(edges_.at(edge1).source,
                                 edges_.at(edge2).source);
@@ -111,5 +115,4 @@ class Graph {
   int AssignEliminationOrderHelper(int node_index, int offset);
 };
 
-
-} // namespace
+}  // namespace conex

@@ -4,10 +4,9 @@ namespace conex {
 
 namespace {
 
-void PrepareInputs(
-    const Graph& graph, const int node_index, 
-    std::vector<int>* variables,
-    ConvexSetNodeParameters* params) {
+void PrepareInputs(const Graph& graph, const int node_index,
+                   std::vector<int>* variables,
+                   ConvexSetNodeParameters* params) {
   params->graph = &graph;
   params->global_node_label = node_index;
   auto ids = graph.ids_;
@@ -21,15 +20,17 @@ void PrepareInputs(
   }
 
   for (auto e : node.incoming_edges) {
-    params->outgoing_spatial_flow_of_incoming_edge_start_positions.push_back(variables->size());
+    params->outgoing_spatial_flow_of_incoming_edge_start_positions.push_back(
+        variables->size());
     auto& y_e = ids.edge_to_outgoing_spatial_flow_variable.at(e);
     variables->insert(variables->end(), y_e.begin(), y_e.end());
-    
+
     params->incoming_flow_start_positions.push_back(variables->size());
     variables->push_back(ids.edge_to_flow_variable.at(e));
   }
 
-  auto& lam_1 = ids.node_to_conversation_of_spatial_flow_multiplier.at(node_index);
+  auto& lam_1 =
+      ids.node_to_conversation_of_spatial_flow_multiplier.at(node_index);
   params->conservation_of_spatial_flow_multiplier_position = variables->size();
   variables->insert(variables->end(), lam_1.begin(), lam_1.end());
 
@@ -38,9 +39,8 @@ void PrepareInputs(
       ids.node_to_conversation_of_flow_multiplier.at(node_index));
 
   std::vector<int> separator_edges = graph.node_to_fill_in_edges(node_index);
-  separator_edges.insert(separator_edges.end(), 
-                        node.outgoing_edges.begin(),
-                        node.outgoing_edges.end());
+  separator_edges.insert(separator_edges.end(), node.outgoing_edges.begin(),
+                         node.outgoing_edges.end());
   graph.SortEdgeListInReverseTopologicalOrder(&separator_edges);
 
   int offset = 0;
@@ -57,9 +57,10 @@ void PrepareInputs(
   }
 }
 
-} // namespace 
+}  // namespace
 
-std::unique_ptr<ConvexSetNode> MakeConvexSetNode(const Graph& graph, int node_index) {
+std::unique_ptr<ConvexSetNode> MakeConvexSetNode(const Graph& graph,
+                                                 int node_index) {
   ConvexSetNodeParameters params;
   std::vector<int> variables;
   PrepareInputs(graph, node_index, &variables, &params);
@@ -70,4 +71,4 @@ std::unique_ptr<ConvexSetNode> MakeConvexSetNode(const Graph& graph, int node_in
   return std::make_unique<ConvexSetNode>(variables, params);
 }
 
-} // namespace conex
+}  // namespace conex

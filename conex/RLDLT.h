@@ -85,10 +85,7 @@ class RLDLT {
    * The default constructor is useful in cases in which the user intends to
    * perform decompositions via RLDLT::compute(const MatrixType&).
    */
-  RLDLT()
-      : m_matrix(),
-        m_sign(internal::ZeroSign),
-        m_isInitialized(false) {}
+  RLDLT() : m_matrix(), m_sign(internal::ZeroSign), m_isInitialized(false) {}
 
   /** \brief Default Constructor with memory preallocation
    *
@@ -153,7 +150,7 @@ class RLDLT {
   /** \returns the permutation matrix P as a transposition sequence.
    */
   inline const TranspositionType& transpositionsP() const {
-    throw "Not available";
+    throw std::runtime_error("Transpose not available");
   }
 
   /** \returns the coefficients of the diagonal matrix D */
@@ -290,7 +287,7 @@ struct rldlt_inplace;
 
 template <>
 struct rldlt_inplace<Lower> {
-  template <typename MatrixType,  typename Workspace>
+  template <typename MatrixType, typename Workspace>
   static bool unblocked(MatrixType& mat, Workspace& temp, SignMatrix& sign) {
     using std::abs;
     typedef typename MatrixType::Scalar Scalar;
@@ -331,9 +328,8 @@ struct rldlt_inplace<Lower> {
       Index index_of_biggest_in_corner;
       mat.diagonal().tail(size - k).cwiseAbs().maxCoeff(
           &index_of_biggest_in_corner);
-      //index_of_biggest_in_corner += k;
+      // index_of_biggest_in_corner += k;
       index_of_biggest_in_corner = k;
-
 
       // partition the matrix:
       //       A00 |  -  |  -
@@ -548,8 +544,8 @@ RLDLT<MatrixType, _UpLo>& RLDLT<MatrixType, _UpLo>::compute(
   m_temporary.resize(size);
   m_sign = internal::ZeroSign;
 
-  m_regularization_used = !internal::rldlt_inplace<UpLo>::unblocked(
-      m_matrix,  m_temporary, m_sign);
+  m_regularization_used =
+      !internal::rldlt_inplace<UpLo>::unblocked(m_matrix, m_temporary, m_sign);
 
   m_info = Success;
   m_isInitialized = true;
@@ -579,7 +575,7 @@ RLDLT<MatrixType, _UpLo>& RLDLT<MatrixType, _UpLo>::rankUpdate(
     m_isInitialized = true;
   }
 
-  internal::rldlt_inplace<UpLo>::update(m_matrix,  m_temporary, w, sigma);
+  internal::rldlt_inplace<UpLo>::update(m_matrix, m_temporary, w, sigma);
 
   return *this;
 }
@@ -590,7 +586,7 @@ template <typename RhsType, typename DstType>
 void RLDLT<_MatrixType, _UpLo>::_solve_impl(const RhsType& rhs,
                                             DstType& dst) const {
   eigen_assert(rhs.rows() == rows());
-  dst =  rhs;
+  dst = rhs;
 
   // dst = L^-1 (P b)
   matrixL().solveInPlace(dst);
@@ -619,7 +615,6 @@ void RLDLT<_MatrixType, _UpLo>::_solve_impl(const RhsType& rhs,
   }
 
   matrixU().solveInPlace(dst);
-
 }
 #endif
 

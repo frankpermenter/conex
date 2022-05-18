@@ -1,9 +1,9 @@
 #pragma once
 #include <vector>
 
-#include "graph_data.h"
 #include "directed_graph.h"
 #include "gcs_solver.h"
+#include "graph_data.h"
 namespace conex {
 
 struct Time {
@@ -21,14 +21,13 @@ struct Time {
   int non_zeros_lower_tri;
 };
 
-
 Time Verify(const GraphData& data,
-  std::vector<int> node_to_parent_in_spanning_tree_reference,
+            std::vector<int> node_to_parent_in_spanning_tree_reference,
             int spatial_dim);
 
 Time Profile(const GraphData& data,
-  std::vector<int> node_to_parent_in_spanning_tree_reference);
+             std::vector<int> node_to_parent_in_spanning_tree_reference);
 
 Time Profile(GraphSolver& data);
 
-} // namespace conex
+}  // namespace conex

@@ -1,16 +1,15 @@
 #include "conex/cone_program.h"
-#include "conex/linear_constraint.h"
-#include "conex/quadratic_cost.h"
-#include "conex/quadratic_cone_constraint.h"
-#include "conex/soc_constraint.h"
 #include "conex/debug_macros.h"
+#include "conex/linear_constraint.h"
+#include "conex/quadratic_cone_constraint.h"
+#include "conex/quadratic_cost.h"
+#include "conex/soc_constraint.h"
 
 namespace conex {
 
 void AddSqrtQuadraticCostEpigraph(conex::Program* conex_prog,
-                                         const Eigen::MatrixXd& Qsqrt,
-                                         const std::vector<int>& z,
-                                         int epigraph) {
+                                  const Eigen::MatrixXd& Qsqrt,
+                                  const std::vector<int>& z, int epigraph) {
   // Build (A, b) satisfying b - A(x, t) \in L <=> t >= 1/2 x^T Q x.
   int num_vars = z.size();
   Eigen::MatrixXd Ai(Qsqrt.rows() + 2, num_vars + 1);
@@ -21,7 +20,7 @@ void AddSqrtQuadraticCostEpigraph(conex::Program* conex_prog,
   // (a t + k)^2 >= (a t - k)^2 + c * x^T Q x.
   // => 4 a k t >= c * x^T Q x.
   // => 2 a k / c t >= 1.0/2.0  x^T Q x.
-  double c = 1.0/(Qsqrt.transpose() * Qsqrt).squaredNorm();
+  double c = 1.0 / (Qsqrt.transpose() * Qsqrt).squaredNorm();
   double a = std::sqrt(c);
   double k = 1.5;
 
@@ -42,16 +41,15 @@ void AddSqrtQuadraticCostEpigraph(conex::Program* conex_prog,
   conex_prog->AddConstraint(conex::SOCConstraint(Ai, b), z_indices);
 }
 
-
-using Eigen::VectorXd;
 using Eigen::MatrixXd;
+using Eigen::VectorXd;
 
 struct ProblemData {
- Eigen::MatrixXd W;
- Eigen::MatrixXd Wsqrt;
- Eigen::VectorXd c;
- Eigen::MatrixXd A;
- Eigen::VectorXd b;
+  Eigen::MatrixXd W;
+  Eigen::MatrixXd Wsqrt;
+  Eigen::VectorXd c;
+  Eigen::MatrixXd A;
+  Eigen::VectorXd b;
 };
 
 MatrixXd NormalizeRows(const MatrixXd& X) {
@@ -59,13 +57,15 @@ MatrixXd NormalizeRows(const MatrixXd& X) {
   for (int i = 0; i < X.rows(); i++) {
     Y.row(i) = X.row(i) / X.row(i).norm();
   }
-  Y = Y/sqrt((double)X.rows());
+  Y = Y / sqrt((double)X.rows());
   return Y;
 }
 
-ProblemData RandomWellPosedProblem(int n, int num_ineqs, int rank_of_quadratic) {
+ProblemData RandomWellPosedProblem(int n, int num_ineqs,
+                                   int rank_of_quadratic) {
   if (rank_of_quadratic + num_ineqs < n) {
-    throw std::runtime_error("Must have rank of quadratic + num_ineqs >= num_vars");
+    throw std::runtime_error(
+        "Must have rank of quadratic + num_ineqs >= num_vars");
   }
   if (rank_of_quadratic > n) {
     throw std::runtime_error("Must have rank of quadratic <= num_vars");
@@ -82,55 +82,59 @@ ProblemData RandomWellPosedProblem(int n, int num_ineqs, int rank_of_quadratic) 
     data.W = data.Wsqrt.transpose() * data.Wsqrt;
   }
 
-  VectorXd strictly_feasible_slack(num_ineqs); strictly_feasible_slack.setConstant(1);
-  VectorXd strictly_feasible_lambda(num_ineqs); strictly_feasible_lambda.setConstant(1);
-  strictly_feasible_slack += VectorXd::Random(num_ineqs) * .1/sqrt(num_ineqs);
-  strictly_feasible_lambda += VectorXd::Random(num_ineqs) * .1/sqrt(num_ineqs);
+  VectorXd strictly_feasible_slack(num_ineqs);
+  strictly_feasible_slack.setConstant(1);
+  VectorXd strictly_feasible_lambda(num_ineqs);
+  strictly_feasible_lambda.setConstant(1);
+  strictly_feasible_slack += VectorXd::Random(num_ineqs) * .1 / sqrt(num_ineqs);
+  strictly_feasible_lambda +=
+      VectorXd::Random(num_ineqs) * .1 / sqrt(num_ineqs);
 
   VectorXd feasible_x = VectorXd::Random(n);
-  feasible_x = feasible_x/feasible_x.norm();
+  feasible_x = feasible_x / feasible_x.norm();
 
-  data.b = strictly_feasible_slack - (data.A*feasible_x);
+  data.b = strictly_feasible_slack - (data.A * feasible_x);
   data.b.array();
   data.c = data.A.transpose() * strictly_feasible_lambda - data.W * feasible_x;
 
   return data;
 }
 
-
 ProblemData ProblemDataFromSolution(int n, int num_ineqs) {
-
-  ProblemData data; 
+  ProblemData data;
   int size_of_active_set = n;
 
-  VectorXd optimal_slack(num_ineqs); optimal_slack.setZero();
-  VectorXd optimal_lambda(num_ineqs); optimal_lambda.setZero();
-  optimal_lambda.head(size_of_active_set) = VectorXd::Random(size_of_active_set).array().abs();
-  optimal_slack.tail(num_ineqs - size_of_active_set) 
-      = VectorXd::Random(num_ineqs - size_of_active_set).array().abs();
+  VectorXd optimal_slack(num_ineqs);
+  optimal_slack.setZero();
+  VectorXd optimal_lambda(num_ineqs);
+  optimal_lambda.setZero();
+  optimal_lambda.head(size_of_active_set) =
+      VectorXd::Random(size_of_active_set).array().abs();
+  optimal_slack.tail(num_ineqs - size_of_active_set) =
+      VectorXd::Random(num_ineqs - size_of_active_set).array().abs();
 
-  optimal_lambda.head(size_of_active_set).setLinSpaced(size_of_active_set, 1, size_of_active_set);
+  optimal_lambda.head(size_of_active_set)
+      .setLinSpaced(size_of_active_set, 1, size_of_active_set);
   DUMP(optimal_lambda);
-  optimal_slack.tail(num_ineqs-size_of_active_set).setConstant(1);
+  optimal_slack.tail(num_ineqs - size_of_active_set).setConstant(1);
   // double sqrtmu = 5e-7;
-  //VectorXd optimal_expv(num_ineqs);
-  //optimal_expv.tail(num_ineqs - size_of_active_set) = 
-  //    2 * sqrtmu * optimal_slack.tail(num_ineqs - size_of_active_set).cwiseInverse();
+  // VectorXd optimal_expv(num_ineqs);
+  // optimal_expv.tail(num_ineqs - size_of_active_set) =
+  //    2 * sqrtmu * optimal_slack.tail(num_ineqs -
+  //    size_of_active_set).cwiseInverse();
 
-  //optimal_expv.head(size_of_active_set) = optimal_lambda.head(size_of_active_set)/(2*sqrtmu);
+  // optimal_expv.head(size_of_active_set) =
+  // optimal_lambda.head(size_of_active_set)/(2*sqrtmu);
 
   data.A = MatrixXd::Random(num_ineqs, n);
-  data.b = optimal_slack; 
+  data.b = optimal_slack;
   data.c = data.A.transpose() * optimal_lambda;
   data.W = MatrixXd::Zero(n, n);
 
   return data;
 }
 
-
-
-
-int SolveQPInstance(ProblemData& data, const SolverConfiguration& config, 
+int SolveQPInstance(ProblemData& data, const SolverConfiguration& config,
                     bool use_epigraph, bool print_stats = false) {
   int num_vars = data.A.cols();
   Program prog(num_vars + use_epigraph);
@@ -141,12 +145,11 @@ int SolveQPInstance(ProblemData& data, const SolverConfiguration& config,
     vars.push_back(i);
   }
 
-
   if (!use_epigraph) {
     prog.AddQuadraticCost(data.W, vars);
     prog.AddLinearCost(data.c);
   } else {
-    AddSqrtQuadraticCostEpigraph(&prog, data.Wsqrt, vars, vars.size()); 
+    AddSqrtQuadraticCostEpigraph(&prog, data.Wsqrt, vars, vars.size());
     VectorXd linear_cost(num_vars + 1);
     linear_cost.head(num_vars) = data.c;
     linear_cost(num_vars) = 0;
@@ -154,7 +157,6 @@ int SolveQPInstance(ProblemData& data, const SolverConfiguration& config,
   }
   // Ax <= b.
   prog.AddConstraint(LinearConstraint(-data.A, data.b), vars);
-
 
   bool solved = Solve(prog, config, solution.data());
   if (!solved) {
@@ -173,19 +175,18 @@ struct Statistics {
   int average_iter_qp;
 };
 
-} // namespace conex
-
+}  // namespace conex
 
 struct ExperimentalSetup {
   int num_trial;
-  int num_vars; 
+  int num_vars;
   int num_ineqs;
   int rank_of_quadratic;
 };
 
 conex::Statistics DoCompare(const ExperimentalSetup& setup) {
   int num_trial = setup.num_trial;
-  int num_vars = setup.num_vars; 
+  int num_vars = setup.num_vars;
   int num_ineqs = setup.num_ineqs;
   int rank_of_quadratic = setup.rank_of_quadratic;
 
@@ -197,7 +198,6 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
   bool use_epigraph = true;
   double average_iter_socp = 0;
   double average_iter = 0;
-
 
   conex::SolverConfiguration config;
   config.enable_line_search = true;
@@ -212,14 +212,15 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
   conex::Statistics stats;
   for (int i = 0; i < num_trial; i++) {
     srand(i);
-    conex::ProblemData data = conex::RandomWellPosedProblem(num_vars, num_ineqs, rank_of_quadratic);
+    conex::ProblemData data =
+        conex::RandomWellPosedProblem(num_vars, num_ineqs, rank_of_quadratic);
     use_epigraph = true;
 
     int num_iter = conex::SolveQPInstance(data, config, use_epigraph);
-    average_iter_socp += 1.0/(1+i) * (num_iter - average_iter_socp);
+    average_iter_socp += 1.0 / (1 + i) * (num_iter - average_iter_socp);
     use_epigraph = false;
     num_iter = conex::SolveQPInstance(data, config, use_epigraph);
-    average_iter += 1.0/(1+i) * (num_iter - average_iter);
+    average_iter += 1.0 / (1 + i) * (num_iter - average_iter);
   }
   std::cout << " Avg Iter QP: " << average_iter;
   std::cout << " Avg Iter SOCP: " << average_iter_socp;
@@ -233,7 +234,7 @@ void SolveRandomQP() {
   s.num_vars = 5;
   s.rank_of_quadratic = s.num_vars - 10;
   s.rank_of_quadratic = 0;
-  s.num_ineqs = 10; 
+  s.num_ineqs = 10;
 
   conex::SolverConfiguration config;
 
@@ -249,19 +250,18 @@ void SolveRandomQP() {
   config.dinf_upper_bound = 1;
   config.prepare_dual_variables = 1;
 
-
   for (int i = 0; i < s.num_trial; i++) {
     srand(i);
-    //conex::ProblemData data = 
-    //    conex::RandomWellPosedProblem(s.num_vars, s.num_ineqs, s.rank_of_quadratic);
-    conex::ProblemData data = 
+    // conex::ProblemData data =
+    //    conex::RandomWellPosedProblem(s.num_vars, s.num_ineqs,
+    //    s.rank_of_quadratic);
+    conex::ProblemData data =
         conex::ProblemDataFromSolution(s.num_vars, s.num_ineqs);
 
     bool use_epigraph = false;
     conex::SolveQPInstance(data, config, use_epigraph, true /*print stats*/);
   }
 }
-
 
 void CompareWithGeodesicIPM() {
   ExperimentalSetup setup;
@@ -293,6 +293,6 @@ void CompareWithGeodesicIPM() {
 
 int main() {
   CompareWithGeodesicIPM();
-  //SolveRandomQP();
+  // SolveRandomQP();
   return 0;
 }

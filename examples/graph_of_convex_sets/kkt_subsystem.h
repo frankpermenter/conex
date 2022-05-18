@@ -1,19 +1,17 @@
 #pragma once
-#include <Eigen/Dense>
-
-#include "conex/kkt_subsystem.h"
-#include "conex/cholesky_solvers.h"
 #include "conex/RLDLT.h"
-#include "conex/kkt_tree_solver.h"
-#include "supernode_inverse.h"
+#include "conex/cholesky_solvers.h"
 #include "conex/debug_macros.h"
+#include "conex/kkt_subsystem.h"
+#include "conex/kkt_tree_solver.h"
 #include "directed_graph.h"
-
 #include "graph_data.h"
+#include "supernode_inverse.h"
+#include <Eigen/Dense>
 
 namespace conex {
 
-using Eigen::MatrixXd; 
+using Eigen::MatrixXd;
 // Variables for node v with incoming edges {e} and outgoing
 // edges {f}:
 //
@@ -69,7 +67,6 @@ using Eigen::MatrixXd;
 //
 //  y z
 
-
 /*
  Given node elimination sequence
   (Out-going y)  (In coming z) (Incoming Flow)
@@ -85,9 +82,9 @@ using Eigen::MatrixXd;
 
   We can interpret each block as optimality
   conditions for the node sub-problem:
- 
+
   min \sum_{e \in Incoming} f(z_e, y_e, ph_e)
-   
+
   \sum_{e \in In} y_e + \sum_{f \in Out} z_{f} = 0
   \sum_{e \in In} phi_e + \sum_{f \in Out} phi_{f} = 0
   \sum_{e \in In} phi_e <= 1.
@@ -98,7 +95,7 @@ using Eigen::MatrixXd;
   0 -> 1 -> 2 -> 3 -> 4
 
  min \sum_{e \in Incoming} f(z_e, y_e)
-   
+
   \ y_e +  z_{f} = 0
   phi_e +  phi_{f} = 0
   phi_e <= 1.
@@ -122,23 +119,23 @@ struct ConvexSetNodeParameters {
   int conservation_of_spatial_flow_multiplier_position;
 };
 
-#define CONEX_NO_COPY_NO_MOVE(T)\
-T(const T&) = delete;\
-T(T&&) = delete;\
-T& operator=(const T&) = delete;\
-T& operator=(T&&) = delete;\
+#define CONEX_NO_COPY_NO_MOVE(T)   \
+  T(const T&) = delete;            \
+  T(T&&) = delete;                 \
+  T& operator=(const T&) = delete; \
+  T& operator=(T&&) = delete;
 
 class ConvexSetNode : public KKTSubsystem {
  public:
   CONEX_NO_COPY_NO_MOVE(ConvexSetNode)
 
-  ConvexSetNode(const std::vector<int>& scalar_variables, 
+  ConvexSetNode(const std::vector<int>& scalar_variables,
                 const ConvexSetNodeParameters& parameters);
 
   int num_supernodes() { return supernodes().size(); }
   int num_separators() { return separators().size(); }
 
-  void UseCustomInverse(bool use) { use_custom_supernode_inverse_ = use;  }
+  void UseCustomInverse(bool use) { use_custom_supernode_inverse_ = use; }
   bool DoEliminateSupernodeColumns() override;
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
@@ -155,8 +152,7 @@ class ConvexSetNode : public KKTSubsystem {
     Eigen::MatrixXd m2 = MakeSuperNodeSubmatrix();
     Eigen::MatrixXd m1 = MakeSeperatorMatrixNoFill();
     Eigen::MatrixXd Q(m1.rows() + m2.rows(), m1.rows() + m2.rows());
-    Q << m2, m1.transpose(),
-         m1, Eigen::MatrixXd::Zero(m1.rows(), m1.rows());
+    Q << m2, m1.transpose(), m1, Eigen::MatrixXd::Zero(m1.rows(), m1.rows());
     return Q;
   }
 
@@ -172,8 +168,8 @@ class ConvexSetNode : public KKTSubsystem {
 
   Eigen::MatrixXd MakeSeperatorMatrixNoFill();
 
-  Eigen::Ref<Eigen::MatrixXd> quadratic_cost_mutable(int edge, VariablePartition row_block,
-                                                       VariablePartition col_block);
+  Eigen::Ref<Eigen::MatrixXd> quadratic_cost_mutable(
+      int edge, VariablePartition row_block, VariablePartition col_block);
 
  private:
   int LookUpPosition(int edge_position, VariablePartition row_block);
@@ -185,9 +181,9 @@ class ConvexSetNode : public KKTSubsystem {
   int num_outgoing = 0;
   ConvexSetNodeParameters params_;
   std::unique_ptr<FactorizationType> factorization_;
-  std::unique_ptr<SupernodeSubmatrix> supernode_submatrix_; 
+  std::unique_ptr<SupernodeSubmatrix> supernode_submatrix_;
   bool use_custom_supernode_inverse_ = false;
   bool fill_in_ = false;
 };
 
-} // namespace conex
+}  // namespace conex

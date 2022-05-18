@@ -1,13 +1,14 @@
+#include "conex/kkt_tree_solver.h"
+
 #include <map>
 #include <memory>
 #include <numeric>
 #include <stack>
 
+#include "conex/RLDLT.h"
 #include "conex/error_checking_macros.h"
 #include "conex/kkt_subsystem.h"
-#include "conex/RLDLT.h"
 #include "conex/test/directed_graph.h"
-#include "conex/kkt_tree_solver.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 
@@ -28,7 +29,6 @@ MatrixXd Sparsity(const Eigen::MatrixXd& d) {
 }
 
 using Eigen::MatrixXd;
-
 
 class LUSolver : public KKTSubsystem {
  public:
@@ -53,15 +53,13 @@ class LUSolver : public KKTSubsystem {
         separator_rows() * lu_.solve(separator_rows().transpose());
   }
 
-  void DoInitialize() override {
-    KKTSubsystem::DoInitialize();
-  }
+  void DoInitialize() override { KKTSubsystem::DoInitialize(); }
 
   Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
 };
 
 class StaticSubsystem : public LUSolver {
-  using Base = LUSolver; 
+  using Base = LUSolver;
 
  public:
   StaticSubsystem(Eigen::MatrixXd Q, std::vector<int> vars)
@@ -101,14 +99,11 @@ class StaticSubsystem : public LUSolver {
       }
     }
   }
+
  private:
   Eigen::MatrixXd Q_in_elimination_order_;
   const Eigen::MatrixXd Q_;
 };
-
-
-
-
 
 // Variables for node v with incoming edges {e} and outgoing
 // edges {f}:
@@ -164,7 +159,6 @@ class StaticSubsystem : public LUSolver {
 // Cliques:
 //
 //  y z
-
 
 class ConvexSetNode : public LUSolver {
  public:
@@ -260,8 +254,7 @@ class ConvexSetNode : public LUSolver {
     Eigen::MatrixXd m1 = MakeSeperatorMatrix();
     Eigen::MatrixXd m2 = MakeSuperNodeSubmatrix();
     Eigen::MatrixXd Q(m1.rows() + m2.rows(), m1.rows() + m2.rows());
-    Q << m2, m1.transpose(),
-         m1, Eigen::MatrixXd::Zero(m1.rows(), m1.rows());
+    Q << m2, m1.transpose(), m1, Eigen::MatrixXd::Zero(m1.rows(), m1.rows());
     return Q;
   }
 
@@ -327,9 +320,9 @@ class ConvexSetNode : public LUSolver {
 
   We can interpret each block as optimality
   conditions for the node sub-problem:
- 
+
   min \sum_{e \in Incoming} f(z_e, y_e, ph_e)
-   
+
   \sum_{e \in In} y_e + \sum_{f \in Out} z_{f} = 0
   \sum_{e \in In} phi_e + \sum_{f \in Out} phi_{f} = 0
   \sum_{e \in In} phi_e <= 1.
@@ -340,7 +333,7 @@ class ConvexSetNode : public LUSolver {
   0 -> 1 -> 2 -> 3 -> 4
 
  min \sum_{e \in Incoming} f(z_e, y_e)
-   
+
   \ y_e +  z_{f} = 0
   phi_e +  phi_{f} = 0
   phi_e <= 1.
@@ -354,7 +347,7 @@ struct GraphData {
 };
 
 GraphData MakePath(int num_edges, int spatial_dim) {
-  GraphData data; 
+  GraphData data;
   data.edges.resize(num_edges + 1);
   data.nodes.resize(num_edges + 1);
 
@@ -382,9 +375,8 @@ GraphData MakeCycle(int num_edges, int spatial_dim) {
 }
 
 void Verify(const GraphData& data,
-  std::vector<int> node_to_parent_in_spanning_tree_reference,
+            std::vector<int> node_to_parent_in_spanning_tree_reference,
             int spatial_dim) {
-
   Graph graph(data.nodes, data.edges);
 
   graph.BuildSpanningTree();
@@ -400,21 +392,23 @@ void Verify(const GraphData& data,
   }
 
   for (int i = 0; i < num_nodes; i++) {
-    static_subsystems.at(i) = std::make_unique<StaticSubsystem>(nodes.at(i)->Submatrix(), nodes.at(i)->shared_variables());
+    static_subsystems.at(i) = std::make_unique<StaticSubsystem>(
+        nodes.at(i)->Submatrix(), nodes.at(i)->shared_variables());
   }
 
   SymmetricLinearSystemTreeSolver system;
-  #if 0
+#if 0
   for (auto& n : nodes) {
     system.AddSubsystem(n.get());
   }
-  #else
+#else
   for (auto& n : static_subsystems) {
     system.AddSubsystem(n.get());
   }
-  #endif
+#endif
 
- EXPECT_EQ(graph.node_to_parent_in_spanning_tree(), node_to_parent_in_spanning_tree_reference);
+  EXPECT_EQ(graph.node_to_parent_in_spanning_tree(),
+            node_to_parent_in_spanning_tree_reference);
 
   system.Finalize(graph.node_to_parent_in_spanning_tree(), true);
   system.Assemble();
@@ -488,7 +482,7 @@ GTEST_TEST(GraphOfConvexSets, TwoPaths) {
 GTEST_TEST(GraphOfConvexSets, TwoSegments) {
   int spatial_dim = 2;
 
-  GraphData graph; 
+  GraphData graph;
   graph.nodes.resize(4);
   graph.edges.resize(6);
 
@@ -502,7 +496,6 @@ GTEST_TEST(GraphOfConvexSets, TwoSegments) {
      - -|
         3
   */
-
 
   graph.edges.at(0).source = -1;
   graph.edges.at(0).sink = 0;

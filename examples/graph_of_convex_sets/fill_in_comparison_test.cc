@@ -1,16 +1,15 @@
 #include "gcs_solver.h"
 #define CONEX_ENABLE_TIMER 1
+#include <stdlib.h>
+
 #include <map>
 #include <memory>
 #include <numeric>
 #include <stack>
 
-
 #include "gtest/gtest.h"
 #include "profile.h"
 #include <Eigen/Dense>
-
-#include <stdlib.h>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -142,9 +141,10 @@ GraphData MakeTwoSegments() {
   return graph;
 }
 #endif
-GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topological_order, 
+GraphData MakeGraph(Eigen::MatrixXd& adj_matrix,
+                    const std::vector<int>& topological_order,
                     int spatial_dim) {
-  GraphData graph; 
+  GraphData graph;
   int num_nodes = adj_matrix.rows();
   graph.nodes.resize(num_nodes);
 
@@ -152,15 +152,15 @@ GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topolog
   graph.edges.back().source = -1;
   graph.edges.back().sink = 0;
   for (int i = 0; i < num_nodes; i++) {
-    for (int j  = i+1; j < num_nodes; j++) {
+    for (int j = i + 1; j < num_nodes; j++) {
       if (adj_matrix(i, j) != 0) {
         graph.edges.push_back(Edge{});
         if (topological_order.at(i) > topological_order.at(j)) {
-          graph.edges.back().source = i; 
-          graph.edges.back().sink = j;  
+          graph.edges.back().source = i;
+          graph.edges.back().sink = j;
         } else {
-          graph.edges.back().source = j; 
-          graph.edges.back().sink = i; 
+          graph.edges.back().source = j;
+          graph.edges.back().sink = i;
         }
       }
     }
@@ -173,46 +173,49 @@ GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topolog
 }
 
 GTEST_TEST(FillIn, NonUnique) {
-  Eigen::MatrixXd M(5, 5); M.setZero();
-  M << 0, 1, 0, 1, 0,
-       0, 0, 1, 1, 0,
-       0, 0, 0, 1, 0,
-       0, 0, 0, 0, 1,
-       0, 0, 0, 0, 0;
+  Eigen::MatrixXd M(5, 5);
+  M.setZero();
+  M << 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+      0;
   int spatial_dim = 5;
   auto stats = Profile(MakeGraph(M, {4, 3, 2, 1, 0}, spatial_dim), {});
 
-  std::cout << ", AMD fill-in: " <<  (double) stats.non_zeros_amd/stats.non_zeros_lower_tri << ", " 
-            << ", AMD solve: " <<  stats.factor_time_amd << ", " 
+  std::cout << ", AMD fill-in: "
+            << (double)stats.non_zeros_amd / stats.non_zeros_lower_tri << ", "
+            << ", AMD solve: " << stats.factor_time_amd << ", "
 
-            << ", Nat fill-in: " <<  (double) stats.non_zeros_natural/stats.non_zeros_lower_tri << ", "
-            << ", Nat solve: " <<  stats.factor_time_natural 
-            << ", Solve: " <<  (double) stats.factor_time << ", " 
-            << ", Solve Left: " <<   stats.factor_time_left_looking << ", "
-            << ", Solve CustomInv: " <<   stats.factor_time_custom_inverse << ", ";
+            << ", Nat fill-in: "
+            << (double)stats.non_zeros_natural / stats.non_zeros_lower_tri
+            << ", "
+            << ", Nat solve: " << stats.factor_time_natural
+            << ", Solve: " << (double)stats.factor_time << ", "
+            << ", Solve Left: " << stats.factor_time_left_looking << ", "
+            << ", Solve CustomInv: " << stats.factor_time_custom_inverse
+            << ", ";
 }
 
 GTEST_TEST(FillIn, AMDFailure) {
-  Eigen::MatrixXd M(5, 5); M.setZero();
+  Eigen::MatrixXd M(5, 5);
+  M.setZero();
   M(5, 5);
-  M <<   
-      0, 1, 1, 0, 0,
-      1, 0, 1, 1, 1,
-      1, 1, 0, 1, 0,
-      0, 1, 1, 0, 1,
-      0, 1, 0, 1, 0;
+  M << 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1,
+      0;
 
   int spatial_dim = 5;
   auto stats = Profile(MakeGraph(M, {4, 3, 2, 1, 0}, spatial_dim), {});
 
-  std::cout << ", AMD fill-in: " <<  (double) stats.non_zeros_amd/stats.non_zeros_lower_tri << ", " 
-            << ", AMD solve: " <<  stats.factor_time_amd << ", " 
+  std::cout << ", AMD fill-in: "
+            << (double)stats.non_zeros_amd / stats.non_zeros_lower_tri << ", "
+            << ", AMD solve: " << stats.factor_time_amd << ", "
 
-            << ", Nat fill-in: " <<  (double) stats.non_zeros_natural/stats.non_zeros_lower_tri << ", "
-            << ", Nat solve: " <<  stats.factor_time_natural 
-            << ", Solve: " <<  (double) stats.factor_time << ", " 
-            << ", Solve Left: " <<   stats.factor_time_left_looking << ", "
-            << ", Solve CustomInv: " <<   stats.factor_time_custom_inverse << ", ";
+            << ", Nat fill-in: "
+            << (double)stats.non_zeros_natural / stats.non_zeros_lower_tri
+            << ", "
+            << ", Nat solve: " << stats.factor_time_natural
+            << ", Solve: " << (double)stats.factor_time << ", "
+            << ", Solve Left: " << stats.factor_time_left_looking << ", "
+            << ", Solve CustomInv: " << stats.factor_time_custom_inverse
+            << ", ";
 }
 
 }  // namespace conex

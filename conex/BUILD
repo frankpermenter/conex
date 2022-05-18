@@ -263,10 +263,10 @@ cc_library(
     hdrs = [
         "constraint_manager.h",
         "kkt_solver_interface.h",
+        "memory_utils.h",
+        "newton_step.h",
         "supernodal_assembler_base.h",
         "supernodal_cholesky_data.h",
-        "newton_step.h",
-        "memory_utils.h",
     ],
 )
 
@@ -322,10 +322,10 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "kkt_solver_interface",
         "constraint_interface",
         "equality_constraint",
         "error_checking",
+        "kkt_solver_interface",
         "solver_configuration",
         "tree_utils",
         "@eigen",
@@ -601,23 +601,23 @@ cc_test(
 cc_library(
     name = "kkt_tree_solver",
     srcs = [
+        "RLDLT.h",
+        "cholesky_solvers.h",
         "debug_macros.h",
         "kkt_subsystem.cc",
         "kkt_subsystem.h",
-        "cholesky_solvers.h",
         "kkt_tree_solver.cc",
         "kkt_tree_solver.h",
-        "static_subsystem.h",
         "static_subsystem.cc",
-        "RLDLT.h",
+        "static_subsystem.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         "tree_utils",
         ":error_checking",
         ":kkt_solver_interface",
         "@eigen",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_test(

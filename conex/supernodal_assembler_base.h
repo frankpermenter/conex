@@ -1,8 +1,9 @@
 #pragma once
-#include <Eigen/Dense>
 #include <vector>
-#include "conex/supernodal_cholesky_data.h"
+
 #include "conex/newton_step.h"
+#include "conex/supernodal_cholesky_data.h"
+#include <Eigen/Dense>
 namespace conex {
 
 class SupernodalAssemblerBase {
@@ -89,4 +90,4 @@ class SupernodalAssemblerBase {
   virtual ~SupernodalAssemblerBase(){};
 };
 
-} // namespace conex
+}  // namespace conex

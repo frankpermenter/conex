@@ -5,9 +5,9 @@
 #include <tuple>
 
 #include "conex/RLDLT.h"
+#include "conex/cholesky_solvers.h"
 #include "conex/debug_macros.h"
 #include "conex/kkt_solver_interface.h"
-#include "conex/cholesky_solvers.h"
 #include "conex/kkt_tree_solver.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
@@ -35,8 +35,6 @@ MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix,
 }  // namespace
 
 using Eigen::MatrixXd;
-
-
 
 template <typename StaticAssemblerType>
 void DoTestTrivalExample(const std::vector<int>& v) {
@@ -82,7 +80,6 @@ void DoTestTrivalExample(const std::vector<int>& v) {
   system.SolveInPlace(b);
   EXPECT_NEAR((x_ref - b).norm(), 0, 1e-12);
 
-
   system.AssembleAndFactor();
   b = full_matrix * x_ref;
   system.SolveInPlace(b);
@@ -106,7 +103,7 @@ void DoFailLDLT(bool expect_fail) {
   SymmetricLinearSystemTreeSolver system;
   system.AddSubsystem(&q1);
   std::vector<int> parent{-1};
-  Options options; 
+  Options options;
   system.Finalize(parent, false);
 
   VectorXd x_ref(num_vars);
@@ -120,7 +117,6 @@ void DoFailLDLT(bool expect_fail) {
     EXPECT_TRUE((x_ref - b).norm() < 1e-7);
   }
 }
-
 
 GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrderLDLT) {
   std::vector<int> v{0, 1, 2, 3, 4};
@@ -136,7 +132,6 @@ GTEST_TEST(KKTSubsystem, TestTrivialExampleNominalOrderLLT) {
   std::vector<int> v{0, 1, 2, 3, 4};
   DoTestTrivalExample<StaticSubsystem<true>>(v);
 }
-
 
 GTEST_TEST(KKTSubsystem, TestTrivialExampleArbitrarilyPermutedOrder) {
   std::vector<int> v{2, 0, 1, 4, 3};
@@ -208,11 +203,10 @@ void DoBadRoot() {
 
 GTEST_TEST(KKTSubsystem, DoBadRootNode) { DoBadRoot<StaticSubsystem<false>>(); }
 
-
 GTEST_TEST(KKTSubsystem, TreeFillIn) {
   //    {4, 5, 6}
   //    {3, 4, 6}
-  //    {0, 1, 2, 3, 5}        
+  //    {0, 1, 2, 3, 5}
 
   std::vector<int> supernode_reference_1{4, 5, 6};
   std::vector<int> supernode_reference_2{3};
@@ -234,20 +228,15 @@ GTEST_TEST(KKTSubsystem, TreeFillIn) {
   std::vector<int> vars2{3, 4, 6};
   Eigen::MatrixXd Q2(3, 3);
   //clang-format off
-  Q2 << 0, 0, 0,
-        0, 0, 0,
-        0, 0, 0;
+  Q2 << 0, 0, 0, 0, 0, 0, 0, 0, 0;
   // clang-format on
   full_matrix = IncrementSubmatrix(full_matrix, Q2, vars2);
   StaticSubsystem<false> q2(Q2, vars2);
 
   Eigen::MatrixXd Q3(5, 5);
   //clang-format off
-  Q3 << 1, 1, 1, 1, 1,
-        1, 2, 1, 1, 1,
-        1, 1, 3, 1, 1,
-        1, 1, 1, 4, 1,
-        1, 1, 1, 1, 5;
+  Q3 << 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 4, 1, 1, 1, 1, 1,
+      5;
   // clang-format on
   std::vector<int> vars3{0, 1, 2, 3, 5};
   StaticSubsystem<false> q3(Q3, vars3);
@@ -283,24 +272,23 @@ GTEST_TEST(KKTSubsystem, TreeFillIn) {
   EXPECT_NEAR((system.KKTMatrix() - full_matrix).norm(), 0, 1e-14);
 }
 
-
 GTEST_TEST(KKTSubsystem, TreeRepair) {
-/*
+  /*
 
-The initial spanning tree of the clique
-intersection graph is:
+  The initial spanning tree of the clique
+  intersection graph is:
 
-           {0, 1, 2}
-   {1, 2, 6}      {2, 3, 4, 5}
+             {0, 1, 2}
+     {1, 2, 6}      {2, 3, 4, 5}
 
-The node {1, 2, 6} is an invalid leaf.  This triggers
-a reorganization
+  The node {1, 2, 6} is an invalid leaf.  This triggers
+  a reorganization
 
-          {1, 2, 6} 
-          {0, 1, 2}
-        {2, 3, 4, 5}
+            {1, 2, 6}
+            {0, 1, 2}
+          {2, 3, 4, 5}
 
-*/
+  */
 
   std::vector<int> vars1{0, 1, 2};
   Eigen::MatrixXd Q1 = Eigen::MatrixXd::Identity(vars1.size(), vars1.size());
@@ -308,16 +296,11 @@ a reorganization
 
   std::vector<int> vars2{1, 2, 6};
   Eigen::MatrixXd Q2(3, 3);
-  Q2 << 0, 0, 1,
-        0, 0, 1,
-        1, 1, 0;
+  Q2 << 0, 0, 1, 0, 0, 1, 1, 1, 0;
   StaticSubsystem<false> invalid_leaf(Q2, vars2);
 
   Eigen::MatrixXd Q3(4, 4);
-  Q3 << 1, 0, 1, 1,
-        0, 1, 1, 1,
-        1, 1, 1, 1,
-        1, 1, 1, 1;
+  Q3 << 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1;
   StaticSubsystem<false> q3(Q3, {0, 3, 4, 5});
   // clang-format on
 
@@ -330,7 +313,7 @@ a reorganization
   options.check_for_zero_pivots = true;
   options.root_node = 0;
   EXPECT_THROW({ system.Finalize(options); }, std::runtime_error);
-  EXPECT_EQ(invalid_leaf.parent(),  &q1);
+  EXPECT_EQ(invalid_leaf.parent(), &q1);
   EXPECT_EQ(q3.parent(), &q1);
   EXPECT_EQ(q1.parent(), nullptr);
 
@@ -341,13 +324,12 @@ a reorganization
   options.validate_leaf_nodes = true;
   system.Finalize(options);
 
-/* Verify tree has be properly reorganized */
-  EXPECT_EQ(invalid_leaf.parent(),  nullptr);
+  /* Verify tree has be properly reorganized */
+  EXPECT_EQ(invalid_leaf.parent(), nullptr);
   EXPECT_EQ(q1.parent(), &invalid_leaf);
   EXPECT_EQ(q3.parent(), &q1);
 
   EXPECT_NO_THROW({ system.Finalize(options); });
 }
-
 
 }  // namespace conex

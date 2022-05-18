@@ -17,10 +17,10 @@ namespace conex {
     throw std::runtime_error(msg); \
   }
 
-#define CONEX_CHECK(x)                                                 \
-  if (!(x)) {                                                          \
-    std::cerr << __FILE__ << " line " << __LINE__ << ": "  << std::endl; \
-    throw std::runtime_error(std::string("Condition failed:\n") + #x); \
+#define CONEX_CHECK(x)                                                  \
+  if (!(x)) {                                                           \
+    std::cerr << __FILE__ << " line " << __LINE__ << ": " << std::endl; \
+    throw std::runtime_error(std::string("Condition failed:\n") + #x);  \
   }
 
 #ifdef NDEBUG

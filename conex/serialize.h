@@ -1,4 +1,6 @@
 #pragma once
+#include <memory>
+
 #include "conex/constraint_interface.h"
 #include "conex/json_parser.h"
 

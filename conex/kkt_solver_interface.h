@@ -1,7 +1,8 @@
 #pragma once
+#include <iostream>
+
 #include "conex/error_checking_macros.h"
 #include <Eigen/Dense>
-#include <iostream>
 namespace conex {
 
 class KKTSolverBase {
@@ -13,12 +14,12 @@ class KKTSolverBase {
   }
 
   bool AssembleAndFactor() {
-      assembled_ = false;
-      factored_ = false;
+    assembled_ = false;
+    factored_ = false;
     if (DoAssembleAndFactor()) {
       assembled_ = true;
       factored_ = true;
-    } 
+    }
     return assembled_ && factored_;
   }
 
@@ -49,7 +50,10 @@ class KKTSolverBase {
  private:
   virtual void DoAssemble() = 0;
   virtual bool DoFactor() = 0;
-  virtual bool DoAssembleAndFactor() { DoAssemble(); return DoFactor(); }
+  virtual bool DoAssembleAndFactor() {
+    DoAssemble();
+    return DoFactor();
+  }
   virtual void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                               bool permute_to_elimination_order) const = 0;
   virtual Eigen::MatrixXd DoKKTMatrix(

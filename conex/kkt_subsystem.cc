@@ -3,7 +3,6 @@
 
 #include "conex/debug_macros.h"
 
-
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {
@@ -13,7 +12,7 @@ using std::vector;
 
 namespace {
 
-Eigen::MatrixXd Submatrix(const Eigen::MatrixXd& x, 
+Eigen::MatrixXd Submatrix(const Eigen::MatrixXd& x,
                           const std::vector<int>& rows) {
   Eigen::MatrixXd separator_rows_of_x(rows.size(), x.cols());
   for (int i = 0; i < separator_rows_of_x.rows(); i++) {
@@ -22,9 +21,9 @@ Eigen::MatrixXd Submatrix(const Eigen::MatrixXd& x,
   return separator_rows_of_x;
 }
 
-KKTSubsystemBase::Offset GetOverlappingSegment(const std::vector<int>& supernodes_, 
-                          const std::vector<int>& variables,
-                          size_t global_label) {
+KKTSubsystemBase::Offset GetOverlappingSegment(
+    const std::vector<int>& supernodes_, const std::vector<int>& variables,
+    size_t global_label) {
   KKTSubsystemBase::Offset y{0, 0, 0};
   y.second = global_label;
   size_t start = 0;
@@ -43,26 +42,29 @@ KKTSubsystemBase::Offset GetOverlappingSegment(const std::vector<int>& supernode
     }
     y.first = start;
     y.size = size;
-  } 
+  }
   return y;
 }
-
 
 void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
   for (auto& c : destination->local_supernode_to_source_separator(source)) {
     for (auto& r : destination->local_supernode_to_source_separator(source)) {
-      destination->supernode_submatrix().block(r.first, c.first, r.size, c.size) += 
-      source->separator_schur_complement().block(r.second, c.second, r.size, c.size);
+      destination->supernode_submatrix().block(r.first, c.first, r.size,
+                                               c.size) +=
+          source->separator_schur_complement().block(r.second, c.second, r.size,
+                                                     c.size);
     }
     for (auto& r : destination->local_separator_to_source_separator(source)) {
-      destination->separator_rows().block(r.first, c.first, r.size, c.size) += source->separator_schur_complement().block(r.second, c.second, r.size, c.size);
+      destination->separator_rows().block(r.first, c.first, r.size, c.size) +=
+          source->separator_schur_complement().block(r.second, c.second, r.size,
+                                                     c.size);
     }
   }
 }
-} // namespace
+}  // namespace
 
 void T::DoMultiplyAndDecrementByOffDiagonalSubMatrix(
-    Eigen::Ref<MatrixXd> output,  Eigen::Ref<const MatrixXd> input) const {
+    Eigen::Ref<MatrixXd> output, Eigen::Ref<const MatrixXd> input) const {
   for (int i = 0; i < separator_rows().rows(); i++) {
     output.row(separators()[i]) -= separator_rows().row(i) * input;
   }
@@ -100,11 +102,10 @@ void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   }
 }
 
-
 bool T::IsRoot() const { return parent_ == nullptr; }
 
 void T::DoMultiplyByTransposeOfOffDiagonalSubMatrix(
-    Eigen::MatrixXd* output,  Eigen::Ref<const Eigen::MatrixXd> input) const {
+    Eigen::MatrixXd* output, Eigen::Ref<const Eigen::MatrixXd> input) const {
   *output = separator_rows().transpose() * Submatrix(input, separators_);
 }
 
@@ -127,7 +128,7 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
 
     // Update residual using x_separator computed by ascendants in tree.
     if (separators_.size() > 0) {
-      Eigen::MatrixXd temp; 
+      Eigen::MatrixXd temp;
       DoMultiplyByTransposeOfOffDiagonalSubMatrix(&temp, x);
       DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(temp);
       x_supernodes.noalias() -= temp;
@@ -145,22 +146,23 @@ void T::ComputeOffsets(const KKTSubsystemBase* descendant, int start_index) {
   const auto& source_column_labels = descendant->separators();
   size_t source_separator_index = start_index;
 
-  if (local_supernode_to_source_separator_.find(descendant) != 
+  if (local_supernode_to_source_separator_.find(descendant) !=
       local_supernode_to_source_separator_.end()) {
     return;
   } else {
     local_supernode_to_source_separator_[descendant];
   }
 
-  if (local_separator_to_source_separator_.find(descendant) != 
+  if (local_separator_to_source_separator_.find(descendant) !=
       local_separator_to_source_separator_.end()) {
     return;
   } else {
     local_separator_to_source_separator_[descendant];
   }
 
-  while (source_separator_index < source_column_labels.size())  {
-    auto local_row = GetOverlappingSegment(supernodes_, source_column_labels, source_separator_index);
+  while (source_separator_index < source_column_labels.size()) {
+    auto local_row = GetOverlappingSegment(supernodes_, source_column_labels,
+                                           source_separator_index);
     if (local_row.size != 0) {
       local_supernode_to_source_separator_[descendant].push_back(local_row);
       source_separator_index += local_row.size;
@@ -170,8 +172,9 @@ void T::ComputeOffsets(const KKTSubsystemBase* descendant, int start_index) {
   }
 
   size_t index = source_separator_index;
-  while (index < source_column_labels.size())  {
-    auto local_row = GetOverlappingSegment(separators_, source_column_labels, index);
+  while (index < source_column_labels.size()) {
+    auto local_row =
+        GetOverlappingSegment(separators_, source_column_labels, index);
     if (local_row.size != 0) {
       local_separator_to_source_separator_[descendant].push_back(local_row);
       index += local_row.size;
@@ -186,7 +189,6 @@ void T::ComputeOffsets(const KKTSubsystemBase* descendant, int start_index) {
     parent_->ComputeOffsets(descendant, source_separator_index);
   }
 }
-
 
 void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
   for (auto child : children_) {
@@ -211,7 +213,7 @@ bool T::AssembleAndFactor() {
       return false;
     }
     if (left_looking_) {
-  START_TIMER(Update)
+      START_TIMER(Update)
       child->ProvideColumnUpdate(this);
       END_TIMER
     }
@@ -226,9 +228,9 @@ bool T::AssembleAndFactor() {
   DoComputeSeparatorSchurComplement();
   END_TIMER
   if (!IsRoot() && !left_looking_) {
-  START_TIMER(Scatter)
+    START_TIMER(Scatter)
     DoScatterSeparatorSubmatrix();
-  END_TIMER
+    END_TIMER
   }
   return true;
 }
@@ -332,7 +334,8 @@ void T::DoComputeOffsets() {
   }
 }
 
-void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, size_t start_index) {
+void T::ReceiveColumnUpdate(const KKTSubsystemBase* source,
+                            size_t start_index) {
   const auto& vars = source->separators();
   if (start_index > vars.size()) {
     return;
@@ -342,7 +345,7 @@ void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, size_t start_index) 
 
   size_t col_index = start_index;
   for (; col_index < vars.size(); col_index++) {
-    if (supernodes_.size() == 0 ||  vars.at(col_index) > supernodes_.back()) {
+    if (supernodes_.size() == 0 || vars.at(col_index) > supernodes_.back()) {
       // The remaining columns must belong to our parent.
       break;
     }
@@ -354,7 +357,8 @@ void T::ReceiveColumnUpdate(const KKTSubsystemBase* source, size_t start_index) 
   }
 }
 
-void T::AddSparseMatrixTriplets(vector<Eigen::Triplet<double>>* triplets) const {
+void T::AddSparseMatrixTriplets(
+    vector<Eigen::Triplet<double>>* triplets) const {
   int i = 0;
   for (auto& r : supernodes_) {
     int j = 0;
@@ -396,12 +400,8 @@ void T::ComputeSeparatorOffsets() {
   }
 }
 
-
-
-
-
 // Update target columns with local separator schur complement information.
-// We update target column i if their is a local separator pair (j, i), 
+// We update target column i if their is a local separator pair (j, i),
 // with (j \ge i).
 void T::ProvideColumnUpdate(KKTSubsystemBase* target) {
   const std::vector<int>& target_supernodes = target->supernodes();

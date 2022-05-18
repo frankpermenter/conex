@@ -1,10 +1,11 @@
-#include "gtest/gtest.h"
-#include "conex/kkt_subsystem.h"
-#include "conex/error_checking_macros.h"
-#include <Eigen/Dense>
 #include <map>
-#include <stack>
 #include <memory>
+#include <stack>
+
+#include "conex/error_checking_macros.h"
+#include "conex/kkt_subsystem.h"
+#include "gtest/gtest.h"
+#include <Eigen/Dense>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -21,7 +22,9 @@ class LUSolver : public KKTSubsystem {
  public:
   LUSolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
 
-  void DoEliminateSupernodeColumns() override { lu_.compute(supernode_submatrix()); }
+  void DoEliminateSupernodeColumns() override {
+    lu_.compute(supernode_submatrix());
+  }
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
@@ -30,7 +33,7 @@ class LUSolver : public KKTSubsystem {
 
   void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
-   (void) y;// NOOP
+    (void)y;  // NOOP
   }
 
   void DoComputeSeparatorSchurComplement() override {
@@ -47,63 +50,60 @@ class LUSolver : public KKTSubsystem {
   Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
 };
 
-
-// Variables for node v with incoming edges {e} and outgoing 
+// Variables for node v with incoming edges {e} and outgoing
 // edges {f}:
 //
 // Supernodes:
 //
-//    outgoing spatial y_e,  
+//    outgoing spatial y_e,
 //    incoming spatial z_f,
 //    incoming flow variable: phi_f
 //
 // Separators:
 //
 //    outgoing flow variable: phi_e
-//    upstream incoming spatial z_e,  
+//    upstream incoming spatial z_e,
 //
 //
 // Sparsity of KKT submatrix:
 //
-// ye      *                         I   
+// ye      *                         I
 // ye         *                      I
-// zf              *                -1  
-// zf                 *             -1  
+// zf              *                -1
+// zf                 *             -1
 // phif            *  *    *  *        -1
 // phif            *  *    *  *        -1
 //
-// lam    I   I  -I  -I               0   
+// lam    I   I  -I  -I               0
 // lam                    -1  -1      0             1
 //
-// ze     *   0    0                
+// ze     *   0    0
 // ze     0   *       0
 // phie   *   *             *  *      1
 //
 //  We eliminate incoming spatial z,
-//  outgoing spatial y, outgoing flows phi. 
+//  outgoing spatial y, outgoing flows phi.
 //
-
 
 //        ye  ye  zf  zf  phif phif  lam  ze  ze   phie
 //
-// ye      *                            
+// ye      *
 // ye         *
-// zf              *                   
-// zf                 *              
+// zf              *
+// zf                 *
 // phif            *  *    *  *
 // phif            *  *    *  *
 //
-// lam    I   I  -I  -I               0   
-// lam                    -1  -1      0       
+// lam    I   I  -I  -I               0
+// lam                    -1  -1      0
 //
-// ze     *   0    0                
+// ze     *   0    0
 // ze     0   *       0
 // phie   *   *             *  *      1
 
-
 // Cliques:
-//  
-//  y z 
+//
+//  y z
 
 struct VariableIDs {
   std::vector<int> incoming_flows;
@@ -111,8 +111,8 @@ struct VariableIDs {
   std::vector<std::vector<int>> outgoing_spatial_flow;
   std::vector<std::vector<int>> outgoing_spatial_flow_separator;
   std::vector<std::vector<int>> incoming_spatial_flow;
-  std::vector<int> conversation_of_spatial_flow_multiplier; 
-  int conversation_of_flow_multiplier; 
+  std::vector<int> conversation_of_spatial_flow_multiplier;
+  int conversation_of_flow_multiplier;
 };
 
 struct NodeData {
@@ -120,16 +120,14 @@ struct NodeData {
   int node_id;
 };
 
-
 struct Variables {
   std::vector<int> edge_to_flow_variable;
   // Map incoming edge label to spatial variable
   std::vector<std::vector<int>> edge_to_incoming_spatial_flow_variable;
   std::vector<std::vector<int>> edge_to_outgoing_spatial_flow_variable;
-  std::vector<std::vector<int>> node_to_conversation_of_spatial_flow_multiplier; 
-  std::vector<int> node_to_conversation_of_flow_multiplier; 
+  std::vector<std::vector<int>> node_to_conversation_of_spatial_flow_multiplier;
+  std::vector<int> node_to_conversation_of_flow_multiplier;
 };
-
 
 struct Node {
   std::vector<int> incoming_edges;
@@ -142,13 +140,14 @@ struct Node {
 
 class Graph {
  public:
-  Graph(std::vector<Node> nodes, std::vector<Edge> edges) : nodes_(std::move(nodes)),  edges_(std::move(edges)) { 
+  Graph(std::vector<Node> nodes, std::vector<Edge> edges)
+      : nodes_(std::move(nodes)), edges_(std::move(edges)) {
     int num_nodes = nodes_.size();
     int num_edges = edges_.size();
-    ids_.edge_to_outgoing_spatial_flow_variable.resize(num_edges); 
-    ids_.edge_to_incoming_spatial_flow_variable.resize(num_edges); 
-    ids_.node_to_conversation_of_spatial_flow_multiplier.resize(num_nodes); 
-    ids_.node_to_conversation_of_flow_multiplier.resize(num_nodes); 
+    ids_.edge_to_outgoing_spatial_flow_variable.resize(num_edges);
+    ids_.edge_to_incoming_spatial_flow_variable.resize(num_edges);
+    ids_.node_to_conversation_of_spatial_flow_multiplier.resize(num_nodes);
+    ids_.node_to_conversation_of_flow_multiplier.resize(num_nodes);
     ids_.edge_to_flow_variable.resize(num_edges);
   }
 
@@ -160,14 +159,14 @@ class Graph {
   }
 
   // Do a pass to assign elimination position to each variable
-  int AssignEliminationOrderHelper(int node_index,  int offset) {
+  int AssignEliminationOrderHelper(int node_index, int offset) {
     CONEX_CHECK(node_index < nodes_.size());
 
     for (auto& child : nodes_.at(node_index).children_in_spanning_tree) {
       offset = AssignEliminationOrderHelper(child, offset);
     }
 
-    // Assign variable 
+    // Assign variable
     for (auto e : nodes_.at(node_index).incoming_edges) {
       // Spatial y_e
       for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
@@ -180,12 +179,13 @@ class Graph {
         offset++;
       }
       ids_.edge_to_flow_variable.at(e) = offset;
-      offset++; // phi_e
+      offset++;  // phi_e
     }
 
     for (int i = 0; i < nodes_.at(node_index).spatial_dimension; ++i) {
-      ids_.node_to_conversation_of_spatial_flow_multiplier.at(node_index).push_back(offset);
-      offset++; 
+      ids_.node_to_conversation_of_spatial_flow_multiplier.at(node_index)
+          .push_back(offset);
+      offset++;
     }
     ids_.node_to_conversation_of_flow_multiplier.at(node_index) = offset;
     offset++;
@@ -203,7 +203,8 @@ class Graph {
     std::stack<int> nodes_to_visit;
     nodes_to_visit.push(parent);
     while (nodes_to_visit.size() > 0) {
-      parent = nodes_to_visit.top(); nodes_to_visit.pop();
+      parent = nodes_to_visit.top();
+      nodes_to_visit.pop();
       for (auto& e : nodes_.at(parent).incoming_edges) {
         CONEX_CHECK(edges_.at(e).sink == parent);
         int child = edges_.at(e).source;
@@ -228,7 +229,8 @@ class Graph {
 
 class ConvexSetNode : public LUSolver {
  public:
-  static std::vector<int> ConcatenateVariablesInLocalOrdering(const Graph& graph, const int node_index) {
+  static std::vector<int> ConcatenateVariablesInLocalOrdering(
+      const Graph& graph, const int node_index) {
     auto ids = graph.ids_;
     std::vector<int> variables;
     auto& node = graph.nodes_.at(node_index);
@@ -239,9 +241,11 @@ class ConvexSetNode : public LUSolver {
       variables.insert(variables.end(), z_e.begin(), z_e.end());
       variables.push_back(ids.edge_to_flow_variable.at(e));
     }
-    auto& lam_1 = ids.node_to_conversation_of_spatial_flow_multiplier.at(node_index);
+    auto& lam_1 =
+        ids.node_to_conversation_of_spatial_flow_multiplier.at(node_index);
     variables.insert(variables.end(), lam_1.begin(), lam_1.end());
-    variables.push_back(ids.node_to_conversation_of_flow_multiplier.at(node_index));
+    variables.push_back(
+        ids.node_to_conversation_of_flow_multiplier.at(node_index));
 
     for (auto e : node.outgoing_edges) {
       auto& y_e = ids.edge_to_outgoing_spatial_flow_variable.at(e);
@@ -251,20 +255,25 @@ class ConvexSetNode : public LUSolver {
     return variables;
   }
 
-  ConvexSetNode(const Graph& graph, const int node_index) : LUSolver(ConcatenateVariablesInLocalOrdering(graph, node_index)) {
-
+  ConvexSetNode(const Graph& graph, const int node_index)
+      : LUSolver(ConcatenateVariablesInLocalOrdering(graph, node_index)) {
     auto& node = graph.nodes_.at(node_index);
     const auto& variables = shared_variables();
-    int num_supernodes = node.incoming_edges.size() * (2 * node.spatial_dimension + 1) + node.spatial_dimension + 1;
-    int num_separator_no_fill = node.outgoing_edges.size() * (node.spatial_dimension + 1);
+    int num_supernodes =
+        node.incoming_edges.size() * (2 * node.spatial_dimension + 1) +
+        node.spatial_dimension + 1;
+    int num_separator_no_fill =
+        node.outgoing_edges.size() * (node.spatial_dimension + 1);
 
     std::vector<int> supernodes;
-    supernodes.insert(supernodes.begin(), variables.begin(), variables.begin()  + num_supernodes);
+    supernodes.insert(supernodes.begin(), variables.begin(),
+                      variables.begin() + num_supernodes);
 
     std::vector<int> separators;
     DUMP(num_supernodes);
     DUMP(variables);
-    separators.insert(separators.begin(), variables.begin() + num_supernodes, variables.end());
+    separators.insert(separators.begin(), variables.begin() + num_supernodes,
+                      variables.end());
 
     SetSupernodes(supernodes);
     SetSeparators(separators);
@@ -275,19 +284,11 @@ class ConvexSetNode : public LUSolver {
     num_incoming = node.incoming_edges.size();
     num_outgoing = node.outgoing_edges.size();
     spatial_dim = node.spatial_dimension;
-
   }
 
+  int num_supernodes() { return supernodes().size(); }
 
-  int num_supernodes() {
-      return supernodes().size();
-  } 
-
-  int num_separators() {
-      return separators().size();
-  } 
-  
-
+  int num_separators() { return separators().size(); }
 
   Eigen::MatrixXd MakeSuperNodeSubmatrix() {
     Eigen::MatrixXd Q(num_supernodes(), num_supernodes());
@@ -296,12 +297,15 @@ class ConvexSetNode : public LUSolver {
 
     // Fill y_e, z_e, phi_e all incoming e.
     for (int i = 0; i < num_incoming; i++) {
-      Q.block(offset, offset, spatial_dim*2 + 1, spatial_dim*2 + 1).setConstant(.01);
-      Q.block(offset, offset, spatial_dim*2 + 1, spatial_dim*2 + 1).diagonal().setConstant(1);
+      Q.block(offset, offset, spatial_dim * 2 + 1, spatial_dim * 2 + 1)
+          .setConstant(.01);
+      Q.block(offset, offset, spatial_dim * 2 + 1, spatial_dim * 2 + 1)
+          .diagonal()
+          .setConstant(1);
       offset += 2 * spatial_dim + 1;
     }
 
-    // Spatial flow 
+    // Spatial flow
     //
     int offset_row = offset;
     int offset_col = 0;
@@ -313,7 +317,7 @@ class ConvexSetNode : public LUSolver {
     }
 
     offset_row += spatial_dim;
-    offset_col = 2*spatial_dim;
+    offset_col = 2 * spatial_dim;
     // Flow conservation
     for (int i = 0; i < num_incoming; i++) {
       Q.block(offset_row, offset_col, 1, num_incoming).setConstant(-10);
@@ -323,21 +327,23 @@ class ConvexSetNode : public LUSolver {
     DUMP(Q);
   }
 
-//          ye  ze phie ye  ze  phie  lam_spatial  lam_flow    yf  pf  yf pf  
-//
-// lam_s        I           I                                  -I      -I    
-//                  I            I                                 -1     -1
-//                                        -I
-//                                                  -1
-//                                        -I
-//                                                  -1
+  //          ye  ze phie ye  ze  phie  lam_spatial  lam_flow    yf  pf  yf pf
+  //
+  // lam_s        I           I                                  -I      -I
+  //                  I            I                                 -1     -1
+  //                                        -I
+  //                                                  -1
+  //                                        -I
+  //                                                  -1
 
   Eigen::MatrixXd MakeSeperatorMatrix() {
     Eigen::MatrixXd Q(num_separators(), num_supernodes());
     int offset_row = 0;
-    int offset_col = (2*spatial_dim + 1) * num_incoming;
+    int offset_col = (2 * spatial_dim + 1) * num_incoming;
     for (int i = 0; i < num_outgoing; i++) {
-      Q.block(offset_row, offset_col, spatial_dim, spatial_dim).diagonal().setConstant(-2);
+      Q.block(offset_row, offset_col, spatial_dim, spatial_dim)
+          .diagonal()
+          .setConstant(-2);
       offset_row += spatial_dim + 1;
     }
     offset_col += spatial_dim;
@@ -349,10 +355,7 @@ class ConvexSetNode : public LUSolver {
     return Q;
   }
 
-
-
  private:
-
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     auto data = MakeSeperatorMatrix();
@@ -363,9 +366,9 @@ class ConvexSetNode : public LUSolver {
     data = MakeSuperNodeSubmatrix();
     CONEX_CHECK(data.rows() == supernode_submatrix().rows());
     CONEX_CHECK(data.cols() == supernode_submatrix().cols());
-    supernode_submatrix() = data; 
-    //Eigen::LDLT<MatrixXd> llt(supernode_submatrix());
-    //CONEX_CHECK(llt.info() == Eigen::Success);
+    supernode_submatrix() = data;
+    // Eigen::LDLT<MatrixXd> llt(supernode_submatrix());
+    // CONEX_CHECK(llt.info() == Eigen::Success);
   }
 
   int spatial_dim = 0;
@@ -373,28 +376,26 @@ class ConvexSetNode : public LUSolver {
   int num_outgoing = 0;
 };
 
-//  
+//
 //  Given node elimination sequence
-//   (Out-going y)  (In coming z) (Incoming Flow) 
-//   
+//   (Out-going y)  (In coming z) (Incoming Flow)
+//
 //   Elimination order:
 //
-//    (ye, ze, phie)_{incoming edges}, conservation of flow multipliers, 
+//    (ye, ze, phie)_{incoming edges}, conservation of flow multipliers,
 //
-//   Equations: grad_{ye, ze, phie} = 0, 
+//   Equations: grad_{ye, ze, phie} = 0,
 //   conservation of flow: ze + yf = 0. phie + phif = 0
 //
 //   Separators: yf and phif of out-going edges.
 //
 
-// To assign variables, use DFS. 
+// To assign variables, use DFS.
 //
 //
-
-
 
 Graph MakePath(int num_edges, int spatial_dim) {
-  std::vector<Node> nodes(num_edges+1);
+  std::vector<Node> nodes(num_edges + 1);
   std::vector<Edge> edges(num_edges);
   int i = 0;
   for (auto& e : edges) {
@@ -421,7 +422,6 @@ Graph MakePath(int num_edges, int spatial_dim) {
 }
 
 GTEST_TEST(GraphOfConvexSets, PrintSparsity) {
-
   int num_edges = 3;
   int dim = 2;
   Graph graph = MakePath(num_edges, dim);
@@ -444,14 +444,11 @@ GTEST_TEST(GraphOfConvexSets, PrintSparsity) {
 
   nodes.at(roots.at(0))->Assemble();
 
-  int vars_per_node = (2*dim + 1) + (dim + 1); 
-  MatrixXd temp(vars_per_node  * num_edges, vars_per_node  * num_edges);
+  int vars_per_node = (2 * dim + 1) + (dim + 1);
+  MatrixXd temp(vars_per_node * num_edges, vars_per_node * num_edges);
 
   nodes.at(roots.at(0))->MakeKKTMatrix(&temp);
   DUMP(temp);
 }
 
-
-
-
-} // namespace conex
+}  // namespace conex

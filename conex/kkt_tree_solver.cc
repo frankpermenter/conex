@@ -6,17 +6,17 @@ namespace conex {
 
 using KKTSubsystemType = KKTSubsystemBase;
 namespace {
-class DistanceToRootRecursion{
+class DistanceToRootRecursion {
  public:
-  DistanceToRootRecursion(const std::vector<int>& parent) : parent_(parent),
-  distance_(parent.size(), -1) {}
+  DistanceToRootRecursion(const std::vector<int>& parent)
+      : parent_(parent), distance_(parent.size(), -1) {}
   int ComputeDistanceToRootHelper(int i) {
     if (distance_[i] >= 0) {
       return distance_[i];
     } else {
-     int distance_of_new = 0;
+      int distance_of_new = 0;
       if (parent_.at(i) != -1) {
-        distance_of_new = 1 + ComputeDistanceToRootHelper(parent_.at(i)); 
+        distance_of_new = 1 + ComputeDistanceToRootHelper(parent_.at(i));
       }
       distance_[i] = distance_of_new;
       return distance_[i];
@@ -28,6 +28,7 @@ class DistanceToRootRecursion{
     }
     return distance_;
   }
+
  private:
   std::vector<int> parent_;
   std::vector<int> distance_;
@@ -40,8 +41,8 @@ std::vector<int> ComputeDistanceToRoot(const std::vector<int>& parent) {
 
 void FillIn(std::vector<int> system_to_parent, int num_variables,
             std::vector<KKTSubsystemType*>* systems) {
-
-  std::vector<int> system_to_distance_to_root = ComputeDistanceToRoot(system_to_parent);
+  std::vector<int> system_to_distance_to_root =
+      ComputeDistanceToRoot(system_to_parent);
   std::vector<int> eliminated(num_variables, -1);
 
   // Detect if variable is a supernode of clique i and
@@ -53,8 +54,8 @@ void FillIn(std::vector<int> system_to_parent, int num_variables,
     for (int v : systems->at(i)->supernodes()) {
       const bool variable_already_eliminated = eliminated.at(v) > -1;
       if (variable_already_eliminated) {
-        auto path_in_tree = PathInForest(i, eliminated.at(v), system_to_parent, 
-                                                         system_to_distance_to_root);
+        auto path_in_tree = PathInForest(i, eliminated.at(v), system_to_parent,
+                                         system_to_distance_to_root);
         for (size_t j = 0; j < path_in_tree.size() - 1; j++) {
           auto e = path_in_tree.at(j);
           systems->at(e)->AddSeparator(v);
@@ -137,7 +138,7 @@ class Weight {
   }
 };
 
-/* 
+/*
 Visit nodes of clique intersection graph using weighted DFS.
 */
 int PickCliqueOrderHelper(const std::vector<KKTSubsystemType*>& subsystems,
@@ -160,7 +161,7 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystemType*>& subsystems,
   node_stack.push(root);
   int num_visited = 0;
   while (num_visited < n) {
-    int active = node_stack.top(); 
+    int active = node_stack.top();
     if (visited.at(active) == 0) {
       visited.at(active) = 1;
       num_visited++;
@@ -232,21 +233,21 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystemType*>& subsystems,
   return -1;
 }
 
-}  // namespace 
-
+}  // namespace
 
 using T = SymmetricLinearSystemTreeSolver;
-void T::SetEliminationOrder(const std::vector<int>& variable_to_elimination_position  ) {
+void T::SetEliminationOrder(
+    const std::vector<int>& variable_to_elimination_position) {
   variable_to_elimination_position_ = variable_to_elimination_position;
 }
 void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                        bool in_original_order) const {
-  CONEX_CHECK(b.rows() ==  number_of_variables());
+  CONEX_CHECK(b.rows() == number_of_variables());
   if (b.cols() == 0) {
     return;
   }
   if (in_original_order) {
-    CONEX_CHECK(variable_to_elimination_position_.size() >  0);
+    CONEX_CHECK(variable_to_elimination_position_.size() > 0);
     Eigen::PermutationMatrix<-1> P(number_of_variables());
     P.indices() = Eigen::Map<const Eigen::VectorXi>(
         variable_to_elimination_position_.data(), number_of_variables());
@@ -375,7 +376,8 @@ bool T::CheckForZeroPivot(const std::vector<int>& parent,
   int i = 0;
   for (auto r : subsystems_) {
     if (r->supernodes().size() > 0) {
-      Eigen::MatrixXd T = r->supernode_submatrix().selfadjointView<Eigen::Lower>();
+      Eigen::MatrixXd T =
+          r->supernode_submatrix().selfadjointView<Eigen::Lower>();
       T = T.transpose() * T;
       bool zero_pivot = T.colwise().sum().minCoeff() == 0;
       if (zero_pivot) {
@@ -432,19 +434,20 @@ Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
 }
 
 Eigen::SparseMatrix<double> T::MakeSparseKKTMatrix(
-      bool permute_to_elimination_order) const {
-
+    bool permute_to_elimination_order) const {
   std::vector<Eigen::Triplet<double>> triplets;
   for (auto s : subsystems_) {
     s->AddSparseMatrixTriplets(&triplets);
   }
-  Eigen::SparseMatrix<double> matrix(number_of_variables(), number_of_variables());
+  Eigen::SparseMatrix<double> matrix(number_of_variables(),
+                                     number_of_variables());
   matrix.setFromTriplets(triplets.begin(), triplets.end());
   return matrix;
 }
 
-
-
-void T::AddSubsystem(KKTSubsystemType* system) { CONEX_CHECK(system != nullptr); subsystems_.push_back(system); }
+void T::AddSubsystem(KKTSubsystemType* system) {
+  CONEX_CHECK(system != nullptr);
+  subsystems_.push_back(system);
+}
 
 }  // namespace conex

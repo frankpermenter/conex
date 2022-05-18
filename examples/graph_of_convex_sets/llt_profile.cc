@@ -1,22 +1,22 @@
 #define EIGEN_RUNTIME_NO_MALLOC 1
 #define CONEX_ENABLE_TIMER 1
+#include <stdlib.h>
+
 #include <map>
 #include <memory>
 #include <numeric>
 #include <stack>
 
-#include "conex/error_checking_macros.h"
 #include "conex/RLDLT.h"
+#include "conex/error_checking_macros.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
-
-#include <stdlib.h>
 
 namespace conex {
 
 class Workspace {
- public: 
-  Eigen::MatrixXd separator_rows; 
+ public:
+  Eigen::MatrixXd separator_rows;
   Eigen::MatrixXd separator_schur_complement;
   Eigen::MatrixXd supernode_submatrix;
   Eigen::MatrixXd temp;
@@ -32,37 +32,38 @@ class Workspace {
 };
 
 void ApproachFaster(Workspace* w) {
-  w->separator_schur_complement.noalias() -= 
-    w->separator_rows * w->llt.solve(w->separator_rows.transpose());
+  w->separator_schur_complement.noalias() -=
+      w->separator_rows * w->llt.solve(w->separator_rows.transpose());
 }
 void ApproachSlower(Workspace* w) {
   w->temp.transpose().noalias() = w->llt.solve(w->separator_rows.transpose());
-  w->separator_schur_complement.noalias() -= w->separator_rows * w->temp.transpose();
+  w->separator_schur_complement.noalias() -=
+      w->separator_rows * w->temp.transpose();
 }
 
-Workspace w; 
+Workspace w;
 GTEST_TEST(LLTProfile, SchurComplementCalculation) {
   w.Init(10, 50);
   int num_trials = 200;
   double norm = 0;
 
 #if 1
-START_TIMER(ApproachFaster)
-  for (int i = 0; i < num_trials; i++){
+  START_TIMER(ApproachFaster)
+  for (int i = 0; i < num_trials; i++) {
     ApproachFaster(&w);
     norm += w.separator_schur_complement(0, 0);
   }
-END_TIMER
-//#else
-START_TIMER(ApproachSlower)
-  for (int i = 0; i < num_trials; i++){
+  END_TIMER
+  //#else
+  START_TIMER(ApproachSlower)
+  for (int i = 0; i < num_trials; i++) {
     ApproachSlower(&w);
     norm += w.separator_schur_complement(0, 0);
   }
-END_TIMER
+  END_TIMER
 #endif
-DUMP(norm);
-Eigen::internal::set_is_malloc_allowed(true);
+  DUMP(norm);
+  Eigen::internal::set_is_malloc_allowed(true);
 }
 
 }  // namespace conex

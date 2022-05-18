@@ -30,14 +30,15 @@ namespace conex {
 
 #define PRINTSTATUS(x) std::cout << "Status: " << x << "\n\n";
 
-
 #define START_LOG_TIMER \
-  {                                                          \
-    auto start1 = std::chrono::high_resolution_clock::now(); \
+  {                     \
+    auto start1 = std::chrono::high_resolution_clock::now();
 
-#define END_LOG_TIMER(x)                                                            \
-  auto stop1 = std::chrono::high_resolution_clock::now();                    \
-   x =  std::chrono::duration_cast<std::chrono::microseconds>(stop1 - start1).count(); }
+#define END_LOG_TIMER(x)                                                    \
+  auto stop1 = std::chrono::high_resolution_clock::now();                   \
+  x = std::chrono::duration_cast<std::chrono::microseconds>(stop1 - start1) \
+          .count();                                                         \
+  }
 
 #if CONEX_ENABLE_TIMER
 #define START_TIMER(x)                                       \
@@ -52,7 +53,7 @@ namespace conex {
             << std::chrono::duration_cast<std::chrono::microseconds>(stop1 - \
                                                                      start1) \
                    .count()                                                  \
-            << ", " << std::endl;                                                         \
+            << ", " << std::endl;                                            \
   }
 #else
 

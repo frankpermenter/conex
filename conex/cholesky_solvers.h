@@ -7,77 +7,95 @@ namespace conex {
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
-template<typename T>
+template <typename T>
 constexpr bool ClassSupportSymmetricFactorization() {
-return false;
+  return false;
 }
 
-template<>
-constexpr bool ClassSupportSymmetricFactorization<Eigen::LLT<Eigen::MatrixXd>>() {
-return true;
+template <>
+constexpr bool
+ClassSupportSymmetricFactorization<Eigen::LLT<Eigen::MatrixXd>>() {
+  return true;
 }
 
-template<>
-constexpr bool ClassSupportSymmetricFactorization<Eigen::LLT<Eigen::Ref<MatrixXd>>>() {
-return true;
+template <>
+constexpr bool
+ClassSupportSymmetricFactorization<Eigen::LLT<Eigen::Ref<MatrixXd>>>() {
+  return true;
 }
-
 
 template <typename FactorizationMethod, bool schur_complement_mode>
 class CholeskySolver : public KKTSubsystemBase {
-static_assert(schur_complement_mode || ClassSupportSymmetricFactorization<FactorizationMethod>(), 
-    "Invalid template parameters. Must use schur complement mode if symmetric factorization is not supported.");
+  static_assert(schur_complement_mode ||
+                    ClassSupportSymmetricFactorization<FactorizationMethod>(),
+                "Invalid template parameters. Must use schur complement mode "
+                "if symmetric factorization is not supported.");
+
  public:
-  CholeskySolver(Eigen::Ref<Eigen::MatrixXd> supernode_submatrix,  
+  CholeskySolver(Eigen::Ref<Eigen::MatrixXd> supernode_submatrix,
                  Eigen::Ref<Eigen::MatrixXd> separator_rows,
-                 Eigen::Ref<Eigen::MatrixXd> separator_schur_complement) :  
-                 supernode_submatrix_(supernode_submatrix),
-                 separator_rows_(separator_rows),
-                 separator_schur_complement_(separator_schur_complement) {}
-    
-  Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override { return supernode_submatrix_; }
-  Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override { 
-      return separator_schur_complement_; }
-  Eigen::Ref<Eigen::MatrixXd> separator_rows() override { return separator_rows_; }
+                 Eigen::Ref<Eigen::MatrixXd> separator_schur_complement)
+      : supernode_submatrix_(supernode_submatrix),
+        separator_rows_(separator_rows),
+        separator_schur_complement_(separator_schur_complement) {}
 
-  Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const override { return supernode_submatrix_; }
-  Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement() const override { 
-      return separator_schur_complement_; }
-  Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override { return separator_rows_; }
+  Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override {
+    return supernode_submatrix_;
+  }
+  Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override {
+    return separator_schur_complement_;
+  }
+  Eigen::Ref<Eigen::MatrixXd> separator_rows() override {
+    return separator_rows_;
+  }
 
-
+  Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const override {
+    return supernode_submatrix_;
+  }
+  Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement()
+      const override {
+    return separator_schur_complement_;
+  }
+  Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override {
+    return separator_rows_;
+  }
 
   void DoComputeSeparatorSchurComplement() override {
     if (temp_row_major_.size() == 0) {
       temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
-    } 
-    if constexpr(!schur_complement_mode) {
-    if (separator_rows_.size()) {
-      temp_row_major_ = llt_->matrixL().solve(separator_rows_.transpose());
-      int n = separator_schur_complement_.rows();
-      int d = separator_rows_.cols();
-       if (OnlyLowerTriangularPart(n, d)) {
-        for (int j = 0; j < n; j++) {
-          separator_schur_complement_.col(j).tail(n - j).noalias() -= temp_row_major_.rightCols(n - j).transpose() * temp_row_major_.col(j);
-        }
-        } else {
-          separator_schur_complement_.noalias() -= separator_columns_.transpose() * separator_columns_;
-      }
     }
+    if constexpr (!schur_complement_mode) {
+      if (separator_rows_.size()) {
+        temp_row_major_ = llt_->matrixL().solve(separator_rows_.transpose());
+        int n = separator_schur_complement_.rows();
+        int d = separator_rows_.cols();
+        if (OnlyLowerTriangularPart(n, d)) {
+          for (int j = 0; j < n; j++) {
+            separator_schur_complement_.col(j).tail(n - j).noalias() -=
+                temp_row_major_.rightCols(n - j).transpose() *
+                temp_row_major_.col(j);
+          }
+        } else {
+          separator_schur_complement_.noalias() -=
+              separator_columns_.transpose() * separator_columns_;
+        }
+      }
     } else {
       if (temp_row_major_.size() == 0) {
         temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
-      } 
+      }
       if (separator_rows_.size()) {
         temp_row_major_ = llt_->solve(separator_rows_.transpose());
         int n = separator_schur_complement_.rows();
         int d = separator_rows_.cols();
-         if (OnlyLowerTriangularPart(n, d)) {
+        if (OnlyLowerTriangularPart(n, d)) {
           for (int j = 0; j < temp_row_major_.cols(); j++) {
-            separator_schur_complement_.col(j).tail(n - j).noalias() -= separator_rows_.bottomRows(n - j) * temp_row_major_.col(j);
+            separator_schur_complement_.col(j).tail(n - j).noalias() -=
+                separator_rows_.bottomRows(n - j) * temp_row_major_.col(j);
           }
-          } else {
-            separator_schur_complement_.noalias() -= separator_rows_ * temp_row_major_;
+        } else {
+          separator_schur_complement_.noalias() -=
+              separator_rows_ * temp_row_major_;
         }
       }
     }
@@ -108,7 +126,7 @@ static_assert(schur_complement_mode || ClassSupportSymmetricFactorization<Factor
       }
     }
   }
-  #endif
+#endif
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
@@ -134,23 +152,22 @@ static_assert(schur_complement_mode || ClassSupportSymmetricFactorization<Factor
     }
   }
 
-
-  bool OnlyLowerTriangularPart(int /*num_vectors*/, 
+  bool OnlyLowerTriangularPart(int /*num_vectors*/,
                                int /*cost_of_inner_product*/) {
     return true;
-    //return num_vectors * cost_of_inner_product > 100; 
+    // return num_vectors * cost_of_inner_product > 100;
   }
 
   Eigen::Matrix<double, -1, -1, Eigen::RowMajor> temp_row_major_;
-  Eigen::Ref<Eigen::MatrixXd> supernode_submatrix_; 
+  Eigen::Ref<Eigen::MatrixXd> supernode_submatrix_;
   Eigen::MatrixXd separator_columns_;
   Eigen::Ref<Eigen::MatrixXd> separator_rows_;
-  Eigen::Ref<Eigen::MatrixXd> separator_schur_complement_; 
+  Eigen::Ref<Eigen::MatrixXd> separator_schur_complement_;
   std::unique_ptr<FactorizationMethod> llt_;
   bool factored_ = false;
 };
 
-template<typename FactorizationType>
+template <typename FactorizationType>
 class KKTCholeskySystem : public KKTSubsystem {
  public:
   KKTCholeskySystem() {}
@@ -175,9 +192,10 @@ class KKTCholeskySystem : public KKTSubsystem {
 
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
-    factorization_ = std::make_unique<FactorizationType>(supernode_submatrix(), 
-    separator_rows(), separator_schur_complement());
+    factorization_ = std::make_unique<FactorizationType>(
+        supernode_submatrix(), separator_rows(), separator_schur_complement());
   }
+
  protected:
   std::unique_ptr<FactorizationType> factorization_;
 };
@@ -209,9 +227,8 @@ class LUSolver : public KKTSubsystem {
   Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
 };
 
-
-
-using LLTSolver = KKTCholeskySystem<CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, false>>;
+using LLTSolver =
+    KKTCholeskySystem<CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, false>>;
 template <bool is_positive_definite>
 using FactorizationMethod =
     typename std::conditional<is_positive_definite, LLTSolver, LUSolver>::type;
@@ -261,5 +278,4 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite> {
   Eigen::MatrixXd Q_;
 };
 
-
-} // namespace conex
+}  // namespace conex

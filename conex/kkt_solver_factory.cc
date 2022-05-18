@@ -17,6 +17,7 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
   vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
 
   auto solver_temp = std::make_unique<SupernodalKKTSolver>(cliques, dual_vars);
+
   solver_temp->SetIterativeRefinementIterations(
       config.iterative_refinement_iterations);
   solver_temp->SetSolverMode(config.kkt_solver);

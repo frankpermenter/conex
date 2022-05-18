@@ -227,8 +227,7 @@ void T::ApplyBlockInverseOfMTranspose(
   PartitionVectorIterator ypart(*y, mat.N, mat.supernode_size);
   // mat.diagonal.back().triangularView<Eigen::Lower>().transpose().solveInPlace(ypart.b_i());
   factorization.back().matrixL().transpose().solveInPlace(ypart.b_i());
-  Eigen::PermutationMatrix<-1> P0(factorization.back().transpositionsP());
-  ypart.b_i() = P0.transpose() * ypart.b_i();
+  ypart.b_i() = ypart.b_i();
 
   for (int i = static_cast<int>(mat.diagonal.size() - 2); i >= 0; i--) {
     ypart.Decrement();
@@ -258,8 +257,7 @@ void T::ApplyBlockInverseOfMTranspose(
 
     // mat.diagonal[i].triangularView<Eigen::Lower>().transpose().solveInPlace(ypart.b_i());
     factorization[i].matrixL().transpose().solveInPlace(ypart.b_i());
-    Eigen::PermutationMatrix<-1> Pi(factorization[i].transpositionsP());
-    ypart.b_i() = Pi.transpose() * ypart.b_i();
+    ypart.b_i() = ypart.b_i();
   }
 }
 
@@ -269,8 +267,7 @@ void T::ApplyBlockInverseOfMD(
     VectorXd* y) {
   // Apply inv(M) = inv(P^T L) = inv(L) P
   PartitionVectorForwardIterator ypart(*y, mat.supernode_size);
-  Eigen::PermutationMatrix<-1> P0(factorization[0].transpositionsP());
-  ypart.b_i() = P0 * ypart.b_i();
+  ypart.b_i() = ypart.b_i();
   factorization[0].matrixL().solveInPlace(ypart.b_i());
 
   for (size_t i = 1; i < mat.diagonal.size(); i++) {
@@ -283,8 +280,6 @@ void T::ApplyBlockInverseOfMD(
         cnt++;
       }
     }
-    Eigen::PermutationMatrix<-1> Pi(factorization[i].transpositionsP());
-    ypart.b_i() = Pi * ypart.b_i();
     factorization[i].matrixL().solveInPlace(ypart.b_i());
   }
 
@@ -326,11 +321,9 @@ bool T::BlockLDLTInPlace(
     if (llts.back().regularization_used()) {
       regularization_used = true;
     }
-    Eigen::PermutationMatrix<-1> P(llts[i].transpositionsP());
-
     //   Q^T = inv(D_1) inv(L) inv(P)  * off_diag
     if (C->off_diagonal[i].size() > 0) {
-      C->off_diagonal[i] = P * C->off_diagonal[i];
+      C->off_diagonal[i] = C->off_diagonal[i];
       llts.back().matrixL().solveInPlace(C->off_diagonal[i]);
       C->off_diagonal[i].noalias() =
           llts.back().vectorD().asDiagonal().inverse() * (C->off_diagonal[i]);

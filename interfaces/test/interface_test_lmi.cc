@@ -1,6 +1,5 @@
-#include "interfaces/conex.h"
-
 #include "gtest/gtest.h"
+#include "interfaces/conex.h"
 
 TEST(TestArguments, AddLMI) {
   void* p = CONEX_CreateConeProgram();

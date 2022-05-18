@@ -1,20 +1,20 @@
 #define CONEX_ENABLE_TIMER 1
+#include <stdlib.h>
+
 #include <map>
 #include <memory>
 #include <numeric>
 #include <stack>
 
-#include "conex/error_checking_macros.h"
 #include "conex/RLDLT.h"
-#include "directed_graph.h"
-#include "kkt_subsystem.h"
+#include "conex/error_checking_macros.h"
 #include "conex/kkt_tree_solver.h"
 #include "convex_set_node_factory.h"
+#include "directed_graph.h"
 #include "gtest/gtest.h"
+#include "kkt_subsystem.h"
 #include "profile.h"
 #include <Eigen/Dense>
-
-#include <stdlib.h>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -33,7 +33,7 @@ MatrixXd Sparsity(const Eigen::MatrixXd& d) {
 }
 
 GraphData MakePath(int num_edges, int spatial_dim) {
-  GraphData data; 
+  GraphData data;
   data.edges.resize(num_edges + 1);
   data.nodes.resize(num_edges + 1);
 
@@ -180,8 +180,9 @@ GTEST_TEST(GraphOfConvexSets, TwoSegments) {
 #endif
 #if 1
 
-GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topological_order) {
-  GraphData graph; 
+GraphData MakeGraph(Eigen::MatrixXd& adj_matrix,
+                    const std::vector<int>& topological_order) {
+  GraphData graph;
   int num_nodes = adj_matrix.rows();
   graph.nodes.resize(num_nodes);
 
@@ -189,15 +190,15 @@ GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topolog
   graph.edges.back().source = -1;
   graph.edges.back().sink = 0;
   for (int i = 0; i < num_nodes; i++) {
-    for (int j  = i+1; j < num_nodes; j++) {
+    for (int j = i + 1; j < num_nodes; j++) {
       if (adj_matrix(i, j) != 0) {
         graph.edges.push_back(Edge{});
         if (topological_order.at(i) > topological_order.at(j)) {
-          graph.edges.back().source = i; 
-          graph.edges.back().sink = j;  
+          graph.edges.back().source = i;
+          graph.edges.back().sink = j;
         } else {
-          graph.edges.back().source = j; 
-          graph.edges.back().sink = i; 
+          graph.edges.back().source = j;
+          graph.edges.back().sink = i;
         }
       }
     }
@@ -206,7 +207,7 @@ GraphData MakeGraph(Eigen::MatrixXd& adj_matrix, const std::vector<int>& topolog
 }
 
 GraphData GenerateRandomDAG(int num_nodes, double edge_density) {
-  GraphData graph; 
+  GraphData graph;
   graph.nodes.resize(num_nodes);
   std::vector<int> topological_order(num_nodes);
   for (int i = 0; i < num_nodes; i++) {
@@ -216,21 +217,21 @@ GraphData GenerateRandomDAG(int num_nodes, double edge_density) {
   MatrixXd M(num_nodes, num_nodes);
   M.setZero();
 
-  // Add path
-  #if 1
+// Add path
+#if 1
   for (int i = 0; i < num_nodes; i++) {
-    if (i < num_nodes -1 ) {
-    M(i, i + 1) = 1;
-    M(i + 1, i) = 1;
+    if (i < num_nodes - 1) {
+      M(i, i + 1) = 1;
+      M(i + 1, i) = 1;
     }
   }
   int edge_count = num_nodes - 1;
-  #else 
+#else
   int edge_count = 0;
-  #endif
+#endif
 
   // Add random edges
-  int target = edge_density * .5 * (num_nodes *  num_nodes - num_nodes);
+  int target = edge_density * .5 * (num_nodes * num_nodes - num_nodes);
   while (edge_count < target) {
     int node_1 = rand() % num_nodes;
     int node_2 = rand() % num_nodes;
@@ -245,8 +246,8 @@ GraphData GenerateRandomDAG(int num_nodes, double edge_density) {
   return MakeGraph(M, topological_order);
 }
 
-
-void DoTest(int num_nodes, int spatial_dim, double edge_density, Time* stats_ptr) {
+void DoTest(int num_nodes, int spatial_dim, double edge_density,
+            Time* stats_ptr) {
   auto& stats = *stats_ptr;
 
   GraphData graph = GenerateRandomDAG(num_nodes, edge_density);
@@ -256,38 +257,41 @@ void DoTest(int num_nodes, int spatial_dim, double edge_density, Time* stats_ptr
   stats = Profile(graph, {});
 
   std::cout << "\n nodes: " << num_nodes << ", Spatial dim: " << spatial_dim
-            << ", AMD fill-in: " <<  (double) stats.non_zeros_amd/stats.non_zeros_lower_tri << ", " 
-            << ", AMD solve: " <<  stats.factor_time_amd << ", " 
+            << ", AMD fill-in: "
+            << (double)stats.non_zeros_amd / stats.non_zeros_lower_tri << ", "
+            << ", AMD solve: " << stats.factor_time_amd << ", "
 
-            << ", Nat fill-in: " <<  (double) stats.non_zeros_natural/stats.non_zeros_lower_tri << ", "
-            << ", Nat solve: " <<  stats.factor_time_natural 
-            << ", Solve: " <<  (double) stats.factor_time << ", " 
-            << ", Solve Left: " <<   stats.factor_time_left_looking << ", "
-            << ", Solve CustomInv: " <<   stats.factor_time_custom_inverse << ", ";
+            << ", Nat fill-in: "
+            << (double)stats.non_zeros_natural / stats.non_zeros_lower_tri
+            << ", "
+            << ", Nat solve: " << stats.factor_time_natural
+            << ", Solve: " << (double)stats.factor_time << ", "
+            << ", Solve Left: " << stats.factor_time_left_looking << ", "
+            << ", Solve CustomInv: " << stats.factor_time_custom_inverse
+            << ", ";
 }
 
 GTEST_TEST(GraphOfConvexSets, RandomDAG) {
   srand(4);
-  //DoTest(10, 10);
-  //DoTest(20, 10);
-  //DoTest(30, 10);
-  //DoTest(10, 20);
-  //DoTest(20, 20);
-  //DoTest(30, 20);
-  //DoTest(10, 30);
-  //DoTest(20, 30);
+  // DoTest(10, 10);
+  // DoTest(20, 10);
+  // DoTest(30, 10);
+  // DoTest(10, 20);
+  // DoTest(20, 20);
+  // DoTest(30, 20);
+  // DoTest(10, 30);
+  // DoTest(20, 30);
   Time stats;
   stats.factor_time_amd = 0;
   stats.factor_time_natural = 0;
   stats.factor_time = 0;
   for (int i = 0; i < 10; i++) {
     Time stats_i;
-    //DoTest(4 /*nodes*/, 1 /*dim*/, .7 /*edge*/ , &stats_i);
+    // DoTest(4 /*nodes*/, 1 /*dim*/, .7 /*edge*/ , &stats_i);
     try {
-    //DoTest(20 /*nodes*/, 20 /*dim*/, 0 /*edge*/ , &stats_i);
-    DoTest(10 /*nodes*/, 5 /*dim*/, 0 /*edge*/ , &stats_i);
-    } catch(const std::exception& e) {
-
+      // DoTest(20 /*nodes*/, 20 /*dim*/, 0 /*edge*/ , &stats_i);
+      DoTest(10 /*nodes*/, 5 /*dim*/, 0 /*edge*/, &stats_i);
+    } catch (const std::exception& e) {
     }
     stats.factor_time_natural += stats_i.factor_time_natural;
     stats.factor_time += stats_i.factor_time;

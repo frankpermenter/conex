@@ -1,14 +1,13 @@
-#include "conex/kkt_subsystem.h"
-#include "conex/cholesky_solvers.h"
-
 #include <iostream>
 #include <map>
-#include <tuple>
 #include <numeric>
+#include <tuple>
 
 #include "conex/RLDLT.h"
+#include "conex/cholesky_solvers.h"
 #include "conex/debug_macros.h"
 #include "conex/kkt_solver_interface.h"
+#include "conex/kkt_subsystem.h"
 #include "conex/kkt_tree_solver.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
@@ -39,8 +38,6 @@ MatrixXd IncrementSubmatrix(const MatrixXd& full_matrix,
 
 using Eigen::MatrixXd;
 
-
-
 struct BlockDiagonalMatrixParameters {
   int block_size;
   int num_blocks;
@@ -56,20 +53,23 @@ class TestSystem {
     int overlap = o.overlap;
 
     Eigen::MatrixXd Q(block_size, block_size);
-    Q.setConstant(1); Q.diagonal().setConstant(block_size);
+    Q.setConstant(1);
+    Q.diagonal().setConstant(block_size);
 
     parent.resize(num_blocks, -1);
     int offset = 0;
     int size = block_size * num_blocks - (num_blocks - 1) * overlap;
-    full_matrix.resize(size, size); full_matrix.setZero();
+    full_matrix.resize(size, size);
+    full_matrix.setZero();
 
     for (int i = 0; i < num_blocks; i++) {
-      std::vector<int> vars(block_size); std::iota(vars.begin(), vars.end(), offset); 
-      full_matrix = IncrementSubmatrix(full_matrix,  Q, vars);
+      std::vector<int> vars(block_size);
+      std::iota(vars.begin(), vars.end(), offset);
+      full_matrix = IncrementSubmatrix(full_matrix, Q, vars);
       subsystems_no_ptr.emplace_back(Q, vars);
       offset += Q.rows() - overlap;
       if (overlap > 0 && i < num_blocks - 1) {
-        parent.at(i) = i+1;
+        parent.at(i) = i + 1;
       }
     }
 
@@ -77,11 +77,11 @@ class TestSystem {
       subsystems.push_back(&subsystems_no_ptr.at(i));
     }
 
-    for (auto& s: subsystems) {
+    for (auto& s : subsystems) {
       system.AddSubsystem(s);
     }
   }
-  
+
   SymmetricLinearSystemTreeSolver system;
   std::vector<KKTSubsystem*> subsystems;
   std::vector<int> parent;
@@ -89,61 +89,61 @@ class TestSystem {
   Eigen::MatrixXd full_matrix;
 };
 
-
 void DoSparseSolve(const TestSystem& test) {
-  Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>, Eigen::Lower, 
-                        Eigen::NaturalOrdering<int>> llt_sparse;
+  Eigen::SimplicialLDLT<Eigen::SparseMatrix<double>, Eigen::Lower,
+                        Eigen::NaturalOrdering<int>>
+      llt_sparse;
   Eigen::SparseMatrix<double> sparse_matrix = test.full_matrix.sparseView();
   START_TIMER(Sparse)
-    llt_sparse.compute(sparse_matrix);
+  llt_sparse.compute(sparse_matrix);
   END_TIMER
 }
 
 void DoRecursiveSolve(TestSystem& test) {
   test.system.Assemble();
   START_TIMER(SupernodalRecursive)
-    test.system.Factor();
+  test.system.Factor();
   END_TIMER
 
   test.system.Assemble();
   START_TIMER(SupernodalRecursiveAgain)
-    test.system.Factor();
+  test.system.Factor();
   END_TIMER
 }
 
 void DoDevirtualizedSolve(TestSystem& test) {
-  for (auto& s: test.subsystems_no_ptr) {
-    s.Assemble(); 
+  for (auto& s : test.subsystems_no_ptr) {
+    s.Assemble();
   }
   START_TIMER(SupernodalNoPtr)
-    for (auto& s: test.subsystems_no_ptr) {
-      s.DoEliminateSupernodeColumns(); 
-    }
+  for (auto& s : test.subsystems_no_ptr) {
+    s.DoEliminateSupernodeColumns();
+  }
   END_TIMER
-  for (auto& s: test.subsystems_no_ptr) {
-    s.Assemble(); 
+  for (auto& s : test.subsystems_no_ptr) {
+    s.Assemble();
   }
   START_TIMER(SupernodalNoPtrAgain)
-    for (auto& s: test.subsystems_no_ptr) {
-      s.DoEliminateSupernodeColumns(); 
-    }
+  for (auto& s : test.subsystems_no_ptr) {
+    s.DoEliminateSupernodeColumns();
+  }
   END_TIMER
 }
 
 void DoSerialSolve(TestSystem& test) {
   START_TIMER(SupernodalSerial)
-    for (auto& s: test.subsystems) {
-      s->Factor(); 
-    }
+  for (auto& s : test.subsystems) {
+    s->Factor();
+  }
   END_TIMER
-  for (auto& s: test.subsystems) {
-    s->Assemble(); 
+  for (auto& s : test.subsystems) {
+    s->Assemble();
   }
 
   START_TIMER(SupernodalSerialAgain)
-    for (auto& s: test.subsystems) {
-      s->Factor(); 
-    }
+  for (auto& s : test.subsystems) {
+    s->Factor();
+  }
   END_TIMER
 }
 
@@ -173,7 +173,7 @@ GTEST_TEST(KKTSubsystem, CliqueIntersectionGraphIsPath) {
   test.Initialize(p);
   auto& system = test.system;
   auto& full_matrix = test.full_matrix;
-  auto& parent  = test.parent;
+  auto& parent = test.parent;
   system.Finalize(parent);
   system.Assemble();
   // avoid bug in KKTMatrix
@@ -186,7 +186,5 @@ GTEST_TEST(KKTSubsystem, CliqueIntersectionGraphIsPath) {
   // DoSerialSolve(test);
   // DoDevirtualizedSolve(test);
 }
-
-
 
 }  // namespace conex

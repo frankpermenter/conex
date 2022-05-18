@@ -18,15 +18,15 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void AddSubsystem(KKTSubsystemBase* system);
   void RepairTreeInPlace(std::vector<int>* parent_ptr);
 
-  void SetEliminationTree(const std::vector<int>& 
-                          subsystem_to_parent_subsystem);
+  void SetEliminationTree(
+      const std::vector<int>& subsystem_to_parent_subsystem);
   void Finalize(const Options& options = Options());
-  void Finalize(const std::vector<int>& 
-  subsystem_to_parent_subsystem,
+  void Finalize(const std::vector<int>& subsystem_to_parent_subsystem,
                 bool check_for_zero_pivots = true);
 
-  void SetEliminationOrder(const std::vector<int>& variable_to_elimination_position);
-  void SetFactorizationMode(bool left_looking);  
+  void SetEliminationOrder(
+      const std::vector<int>& variable_to_elimination_position);
+  void SetFactorizationMode(bool left_looking);
 
   std::vector<int> subsystem_to_parent() { return subsystem_to_parent_; }
 
@@ -34,6 +34,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
       bool permute_to_elimination_order = true) const;
 
   void ComputeSeparatorOffsets();
+
  private:
   void FinalizeHelper(const std::vector<int>& subsystem_to_parent_subsystem);
   Eigen::MatrixXd DoKKTMatrix(

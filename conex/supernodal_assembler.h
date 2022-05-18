@@ -3,8 +3,8 @@
 
 #include "conex/constraint.h"
 #include "conex/newton_step.h"
-#include "conex/supernodal_cholesky_data.h"
 #include "conex/supernodal_assembler_base.h"
+#include "conex/supernodal_cholesky_data.h"
 #include <Eigen/Dense>
 
 namespace conex {
@@ -47,7 +47,6 @@ inline OffDiagonalBlock BuildBlock(const std::vector<int>* r,
   block.assign = 0;
   return block;
 }
-
 
 class SupernodalAssembler : public SupernodalAssemblerBase {
  public:
