@@ -11,6 +11,7 @@ class KKTAssemblerToSubsystemAdapter  {
  private:
   SupernodalAssemblerBase* assembler_;
   std::unique_ptr<KKTSubsystemBase> kkt_subsystem_;
+  Eigen::MatrixXd Q_in_elimination_order_;
 };
 
 } // namespace

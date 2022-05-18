@@ -202,7 +202,7 @@ protected:
   std::vector<int> separators_;
   std::vector<int> supernodes_;
   const std::vector<int> variables_;
-  bool left_looking_ = false;
+  bool left_looking_ = true;
 };
 
 class KKTSubsystem : public KKTSubsystemBase {

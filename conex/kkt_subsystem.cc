@@ -378,6 +378,9 @@ void T::DoScatterSeparatorSubmatrix() {
 void T::ProvideColumnUpdate(KKTSubsystemBase* target) {
   const std::vector<int>& target_supernodes = target->supernodes();
   const std::vector<int>& target_separators = target->separators();
+  if (target_supernodes.size() == 0) {
+    return;
+  }
   if (separators_.size() == 0 || target_supernodes.at(0) > separators_.back()) {
     return;
   }
