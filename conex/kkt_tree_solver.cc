@@ -266,6 +266,12 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
   }
 }
 
+void T::ComputeSeparatorOffsets() {
+  for (auto root : roots_) {
+    root->ComputeSeparatorOffsets();
+  }
+}
+
 void T::DoAssemble() {
   for (auto root : roots_) {
     root->Assemble();

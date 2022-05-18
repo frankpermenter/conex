@@ -25,6 +25,7 @@ T::KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base) : assembler_(ba
   using SystemType = KKTCholeskySystem<CholeskySolver<Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>>, false>>;
   //using SystemType = KKTCholeskySystem<CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, false>>;
   kkt_subsystem_ = std::make_unique<SystemType>(assembler_->variables());
+  kkt_subsystem_->SetFactorizationMode(true /*left looking*/);
 }
 
 void T::UpdateData() {

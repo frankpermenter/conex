@@ -33,6 +33,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   Eigen::SparseMatrix<double> MakeSparseKKTMatrix(
       bool permute_to_elimination_order = true) const;
 
+  void ComputeSeparatorOffsets();
  private:
   void FinalizeHelper(const std::vector<int>& subsystem_to_parent_subsystem);
   Eigen::MatrixXd DoKKTMatrix(

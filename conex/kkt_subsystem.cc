@@ -1,6 +1,8 @@
+#define CONEX_ENABLE_TIMER 0
 #include "conex/kkt_subsystem.h"
 
 #include "conex/debug_macros.h"
+
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -8,7 +10,6 @@ namespace conex {
 
 using T = KKTSubsystemBase;
 using std::vector;
-
 
 namespace {
 
@@ -20,8 +21,6 @@ Eigen::MatrixXd Submatrix(const Eigen::MatrixXd& x,
   }
   return separator_rows_of_x;
 }
-
-
 
 KKTSubsystemBase::Offset GetOverlappingSegment(const std::vector<int>& supernodes_, 
                           const std::vector<int>& variables,
@@ -142,21 +141,28 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
 }
 
 // Loop over the separators of source and record the intersections.
-void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
-  const auto& source_column_labels = source->separators();
+void T::ComputeOffsets(const KKTSubsystemBase* descendant, int start_index) {
+  const auto& source_column_labels = descendant->separators();
   size_t source_separator_index = start_index;
 
-  if (local_supernode_to_source_separator_[source].size() > 0) {
+  if (local_supernode_to_source_separator_.find(descendant) != 
+      local_supernode_to_source_separator_.end()) {
     return;
+  } else {
+    local_supernode_to_source_separator_[descendant];
   }
-  if (local_separator_to_source_separator_[source].size() > 0) {
+
+  if (local_separator_to_source_separator_.find(descendant) != 
+      local_separator_to_source_separator_.end()) {
     return;
+  } else {
+    local_separator_to_source_separator_[descendant];
   }
 
   while (source_separator_index < source_column_labels.size())  {
     auto local_row = GetOverlappingSegment(supernodes_, source_column_labels, source_separator_index);
     if (local_row.size != 0) {
-      local_supernode_to_source_separator_[source].push_back(local_row);
+      local_supernode_to_source_separator_[descendant].push_back(local_row);
       source_separator_index += local_row.size;
     } else {
       break;
@@ -167,7 +173,7 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
   while (index < source_column_labels.size())  {
     auto local_row = GetOverlappingSegment(separators_, source_column_labels, index);
     if (local_row.size != 0) {
-      local_separator_to_source_separator_[source].push_back(local_row);
+      local_separator_to_source_separator_[descendant].push_back(local_row);
       index += local_row.size;
     } else {
       // By the running intersection property, all separators must be present.
@@ -177,7 +183,7 @@ void T::ComputeOffsets(const KKTSubsystemBase* source, int start_index) {
 
   if (source_separator_index < source_column_labels.size()) {
     CONEX_DEMAND(parent_, "Parent pointer is null.");
-    parent_->ComputeOffsets(source, source_separator_index);
+    parent_->ComputeOffsets(descendant, source_separator_index);
   }
 }
 
@@ -205,15 +211,24 @@ bool T::AssembleAndFactor() {
       return false;
     }
     if (left_looking_) {
+  START_TIMER(Update)
       child->ProvideColumnUpdate(this);
+      END_TIMER
     }
   }
+  START_TIMER(Eliminate)
   if (!DoEliminateSupernodeColumns()) {
     return false;
   }
+  END_TIMER
+
+  START_TIMER(ComputeSep)
   DoComputeSeparatorSchurComplement();
+  END_TIMER
   if (!IsRoot() && !left_looking_) {
+  START_TIMER(Scatter)
     DoScatterSeparatorSubmatrix();
+  END_TIMER
   }
   return true;
 }
@@ -367,10 +382,23 @@ void T::AddSparseMatrixTriplets(vector<Eigen::Triplet<double>>* triplets) const 
 
 void T::DoScatterSeparatorSubmatrix() {
   if (parent_ && separators_.size() > 0) {
-    parent_->ComputeOffsets(this, 0);
     parent_->ReceiveColumnUpdate(this, 0 /*start index*/);
   }
 }
+
+void T::ComputeSeparatorOffsets() {
+  for (auto& child : children_) {
+    child->ComputeSeparatorOffsets();
+  }
+
+  if (!IsRoot()) {
+    parent_->ComputeOffsets(this, 0);
+  }
+}
+
+
+
+
 
 // Update target columns with local separator schur complement information.
 // We update target column i if their is a local separator pair (j, i), 
@@ -384,7 +412,6 @@ void T::ProvideColumnUpdate(KKTSubsystemBase* target) {
   if (separators_.size() == 0 || target_supernodes.at(0) > separators_.back()) {
     return;
   }
-  ComputeOffsets(this, 0);
   Update(this, target);
 
   for (auto& c : children_) {

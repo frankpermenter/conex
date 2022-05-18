@@ -26,6 +26,8 @@ class CholeskySolver : public KKTSubsystemBase {
       return separator_schur_complement_; }
   Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override { return separator_rows_; }
 
+
+#if 0
   bool DoEliminateSupernodeColumns() override {
     llt_ = std::make_unique<FactorizationMethod>(supernode_submatrix_);
     if (llt_->info() != Eigen::Success) {
@@ -35,6 +37,75 @@ class CholeskySolver : public KKTSubsystemBase {
     }
     return factored_;
   }
+
+  void DoComputeSeparatorSchurComplement() override {
+    if (temp_row_major_.size() == 0) {
+      temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
+    } 
+    if (separator_rows_.size()) {
+      temp_row_major_ = llt_->solve(separator_rows_.transpose());
+      int n = separator_schur_complement_.rows();
+      int d = separator_rows_.cols();
+       if (OnlyLowerTriangularPart(n, d)) {
+        for (int j = 0; j < temp_row_major_.cols(); j++) {
+          separator_schur_complement_.col(j).tail(n - j).noalias() -= separator_rows_.bottomRows(n - j) * temp_row_major_.col(j);
+        }
+        } else {
+          separator_schur_complement_.noalias() -= separator_rows_ * temp_row_major_;
+      }
+    }
+  }
+
+  #else
+
+
+  bool DoEliminateSupernodeColumns() override {
+    llt_ = std::make_unique<FactorizationMethod>(supernode_submatrix_);
+    if (llt_->info() != Eigen::Success) {
+      factored_ = false;
+    } else {
+      factored_ = true;
+    }
+    return factored_;
+  }
+#if 0
+  void DoComputeSeparatorSchurComplement() override {
+    separator_columns_ = separator_rows_.transpose();
+    if (separator_rows_.size()) {
+      llt_->matrixL().solveInPlace(separator_columns_);
+      int n = separator_schur_complement_.rows();
+      int d = separator_rows_.cols();
+       if (OnlyLowerTriangularPart(n, d)) {
+        for (int j = 0; j < n; j++) {
+          separator_schur_complement_.col(j).tail(n - j).noalias() -= separator_columns_.rightCols(n - j).transpose() * separator_columns_.col(j);
+        }
+        } else {
+          separator_schur_complement_.noalias() -= separator_columns_.transpose() * separator_columns_;
+      }
+    }
+  }
+  #else
+
+  void DoComputeSeparatorSchurComplement() override {
+    if (temp_row_major_.size() == 0) {
+      temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
+    } 
+    if (separator_rows_.size()) {
+      temp_row_major_ = llt_->matrixL().solve(separator_rows_.transpose());
+      int n = separator_schur_complement_.rows();
+      int d = separator_rows_.cols();
+       if (OnlyLowerTriangularPart(n, d)) {
+        for (int j = 0; j < n; j++) {
+          separator_schur_complement_.col(j).tail(n - j).noalias() -= temp_row_major_.rightCols(n - j).transpose() * temp_row_major_.col(j);
+        }
+        } else {
+          separator_schur_complement_.noalias() -= separator_columns_.transpose() * separator_columns_;
+      }
+    }
+  }
+  #endif
+
+  #endif
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
@@ -60,23 +131,6 @@ class CholeskySolver : public KKTSubsystemBase {
     }
   }
 
-  void DoComputeSeparatorSchurComplement() override {
-    if (temp_row_major_.size() == 0) {
-      temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
-    } 
-    if (separator_rows_.size()) {
-      temp_row_major_ = llt_->solve(separator_rows_.transpose());
-      int n = separator_schur_complement_.rows();
-      int d = separator_rows_.cols();
-       if (OnlyLowerTriangularPart(n, d)) {
-        for (int j = 0; j < temp_row_major_.cols(); j++) {
-          separator_schur_complement_.col(j).tail(n - j).noalias() -= separator_rows_.bottomRows(n - j) * temp_row_major_.col(j);
-        }
-        } else {
-          separator_schur_complement_.noalias() -= separator_rows_ * temp_row_major_;
-      }
-    }
-  }
 
   bool OnlyLowerTriangularPart(int /*num_vectors*/, 
                                int /*cost_of_inner_product*/) {
@@ -86,6 +140,7 @@ class CholeskySolver : public KKTSubsystemBase {
 
   Eigen::Matrix<double, -1, -1, Eigen::RowMajor> temp_row_major_;
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix_; 
+  Eigen::MatrixXd separator_columns_;
   Eigen::Ref<Eigen::MatrixXd> separator_rows_;
   Eigen::Ref<Eigen::MatrixXd> separator_schur_complement_; 
   std::unique_ptr<FactorizationMethod> llt_;

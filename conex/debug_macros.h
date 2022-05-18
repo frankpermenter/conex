@@ -43,12 +43,12 @@ namespace conex {
 #define START_TIMER(x)                                       \
   {                                                          \
     auto start1 = std::chrono::high_resolution_clock::now(); \
-    std::cout << #x << "(us)"                                \
+    std::cerr << #x << "(us)"                                \
               << ":";
 
 #define END_TIMER                                                            \
   auto stop1 = std::chrono::high_resolution_clock::now();                    \
-  std::cout << " "                                                           \
+  std::cerr << " "                                                           \
             << std::chrono::duration_cast<std::chrono::microseconds>(stop1 - \
                                                                      start1) \
                    .count()                                                  \

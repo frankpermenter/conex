@@ -163,6 +163,7 @@ class KKTSubsystemBase {
     return local_separator_to_source_separator_.at(source);
   }
 
+  void ComputeSeparatorOffsets();
  private:
   virtual void DoInitialize() {};
   virtual bool DoEliminateSupernodeColumns() = 0;
