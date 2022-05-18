@@ -6,8 +6,27 @@ namespace conex {
 #define CONEX_NOOP(x) (void)x;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+
+template<typename T>
+constexpr bool ClassSupportSymmetricFactorization() {
+return false;
+}
+
+template<>
+constexpr bool ClassSupportSymmetricFactorization<Eigen::LLT<Eigen::MatrixXd>>() {
+return true;
+}
+
+template<>
+constexpr bool ClassSupportSymmetricFactorization<Eigen::LLT<Eigen::Ref<MatrixXd>>>() {
+return true;
+}
+
+
 template <typename FactorizationMethod, bool schur_complement_mode>
 class CholeskySolver : public KKTSubsystemBase {
+static_assert(schur_complement_mode || ClassSupportSymmetricFactorization<FactorizationMethod>(), 
+    "Invalid template parameters. Must use schur complement mode if symmetric factorization is not supported.");
  public:
   CholeskySolver(Eigen::Ref<Eigen::MatrixXd> supernode_submatrix,  
                  Eigen::Ref<Eigen::MatrixXd> separator_rows,
@@ -27,37 +46,42 @@ class CholeskySolver : public KKTSubsystemBase {
   Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override { return separator_rows_; }
 
 
-#if 0
-  bool DoEliminateSupernodeColumns() override {
-    llt_ = std::make_unique<FactorizationMethod>(supernode_submatrix_);
-    if (llt_->info() != Eigen::Success) {
-      factored_ = false;
-    } else {
-      factored_ = true;
-    }
-    return factored_;
-  }
 
   void DoComputeSeparatorSchurComplement() override {
     if (temp_row_major_.size() == 0) {
       temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
     } 
+    if constexpr(!schur_complement_mode) {
     if (separator_rows_.size()) {
-      temp_row_major_ = llt_->solve(separator_rows_.transpose());
+      temp_row_major_ = llt_->matrixL().solve(separator_rows_.transpose());
       int n = separator_schur_complement_.rows();
       int d = separator_rows_.cols();
        if (OnlyLowerTriangularPart(n, d)) {
-        for (int j = 0; j < temp_row_major_.cols(); j++) {
-          separator_schur_complement_.col(j).tail(n - j).noalias() -= separator_rows_.bottomRows(n - j) * temp_row_major_.col(j);
+        for (int j = 0; j < n; j++) {
+          separator_schur_complement_.col(j).tail(n - j).noalias() -= temp_row_major_.rightCols(n - j).transpose() * temp_row_major_.col(j);
         }
         } else {
-          separator_schur_complement_.noalias() -= separator_rows_ * temp_row_major_;
+          separator_schur_complement_.noalias() -= separator_columns_.transpose() * separator_columns_;
+      }
+    }
+    } else {
+      if (temp_row_major_.size() == 0) {
+        temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
+      } 
+      if (separator_rows_.size()) {
+        temp_row_major_ = llt_->solve(separator_rows_.transpose());
+        int n = separator_schur_complement_.rows();
+        int d = separator_rows_.cols();
+         if (OnlyLowerTriangularPart(n, d)) {
+          for (int j = 0; j < temp_row_major_.cols(); j++) {
+            separator_schur_complement_.col(j).tail(n - j).noalias() -= separator_rows_.bottomRows(n - j) * temp_row_major_.col(j);
+          }
+          } else {
+            separator_schur_complement_.noalias() -= separator_rows_ * temp_row_major_;
+        }
       }
     }
   }
-
-  #else
-
 
   bool DoEliminateSupernodeColumns() override {
     llt_ = std::make_unique<FactorizationMethod>(supernode_submatrix_);
@@ -84,27 +108,6 @@ class CholeskySolver : public KKTSubsystemBase {
       }
     }
   }
-  #else
-
-  void DoComputeSeparatorSchurComplement() override {
-    if (temp_row_major_.size() == 0) {
-      temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
-    } 
-    if (separator_rows_.size()) {
-      temp_row_major_ = llt_->matrixL().solve(separator_rows_.transpose());
-      int n = separator_schur_complement_.rows();
-      int d = separator_rows_.cols();
-       if (OnlyLowerTriangularPart(n, d)) {
-        for (int j = 0; j < n; j++) {
-          separator_schur_complement_.col(j).tail(n - j).noalias() -= temp_row_major_.rightCols(n - j).transpose() * temp_row_major_.col(j);
-        }
-        } else {
-          separator_schur_complement_.noalias() -= separator_columns_.transpose() * separator_columns_;
-      }
-    }
-  }
-  #endif
-
   #endif
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
