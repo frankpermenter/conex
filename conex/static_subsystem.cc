@@ -52,6 +52,12 @@ void T::UpdateData() {
     return;
   }
 
+  if (kkt_subsystem_->variable_set_equals_sorted_separators()) {
+    new (&source_submatrix) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
+        kkt_subsystem_->separator_schur_complement().data(), n2, n2);
+    assembler_->SetDenseData();
+    return;
+  }
   Q_in_elimination_order_.resize(n1 + n2, n1 + n2);
   assembler_->SetDenseData();
   AssignSubmatrix(source_submatrix, Q_in_elimination_order_,
