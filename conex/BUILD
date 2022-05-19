@@ -221,6 +221,7 @@ conex_cc_test(
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "constraint_interface",
+        "kkt_solver_factory",
         "kkt_solver_interface",
         "supernodal_solver",
         "@gtest//:main",

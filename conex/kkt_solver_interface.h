@@ -34,6 +34,14 @@ class KKTSolverBase {
     return factored_;
   }
 
+  Eigen::MatrixXd Solve(Eigen::Ref<Eigen::MatrixXd> b,
+                        bool permute_to_elimination_order = true) const {
+    CONEX_DEMAND(factored_, "System has not been factored.");
+    Eigen::MatrixXd x = b;
+    DoSolveInPlace(x, permute_to_elimination_order);
+    return x;
+  }
+
   void SolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                     bool permute_to_elimination_order = true) const {
     CONEX_DEMAND(factored_, "System has not been factored.");

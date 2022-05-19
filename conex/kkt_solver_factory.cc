@@ -74,32 +74,25 @@ std::unique_ptr<KKTSolverBase> MakeTreeSolver(
   auto tree_solver_ =
       std::make_unique<::conex::SymmetricLinearSystemTreeSolver>();
 
-  vector<vector<int>> separators;
-  vector<vector<int>> supernodes;
+  SymmetricLinearSystemTreeSolver::CliqueTree clique_tree;
   vector<std::vector<int>> cliques_sorted = cliques;
   Sort(&cliques_sorted);
   vector<int> order;
-  vector<int> tree;
 
   PickCliqueOrder(cliques_sorted, is_empty(dual_vars),
-                  GetRootNode(cliques, dual_vars), &order, &tree, &supernodes,
-                  &separators);
-
+                  GetRootNode(cliques, dual_vars), &order,
+                  &clique_tree.node_to_parent, &clique_tree.supernodes,
+                  &clique_tree.separators);
   int i = 0;
   for (auto c : clique_assemblers_ptrs_) {
     c->SetVariables(cliques.at(i), 0);
     auto adapter = std::make_unique<::conex::KKTAssemblerToSubsystemAdapter>(c);
     auto* subsystem = adapter->kkt_subsystem();
     tree_solver_->AddSubsystem(subsystem);
-    subsystem->SetSupernodes(supernodes.at(i));
-    subsystem->SetSeparators(separators.at(i));
-    subsystem->Initialize();
     tree_solver_->push_back(std::move(adapter));
     ++i;
   }
-  tree_solver_->SetEliminationTree(tree);
-  tree_solver_->SetEliminationOrder(tree_solver_->ComputePostOrdering());
-  tree_solver_->ComputeSeparatorOffsets();
+  tree_solver_->Finalize(clique_tree);
 
   return tree_solver_;
 }

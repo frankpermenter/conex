@@ -7,6 +7,7 @@
 #include "conex/debug_macros.h"
 #include "conex/equality_constraint.h"
 #include "conex/kkt_solver.h"
+#include "conex/kkt_solver_factory.h"
 #include "conex/supernodal_assembler.h"
 #include "conex/supernodal_solver.h"
 #include "gtest/gtest.h"
@@ -85,9 +86,10 @@ GTEST_TEST(LDLT, TestAssembly) {
 
   ConstraintManager prog;
   BuildLQRProblem(N, &prog);
-  SupernodalKKTSolver solver(prog.variables(),
-                             prog.equality_constraint_multipliers());
-  solver.Bind(prog.clique_assemblers());
+  std::unique_ptr<KKTSolverBase> solver_ptr =
+      KKTSolverFactory().create_unique(&prog, SolverConfiguration());
+
+  auto& solver = *solver_ptr;
   solver.Assemble();
 
   EXPECT_EQ(n + m, prog.SizeOfKKTSystem());
@@ -124,9 +126,10 @@ GTEST_TEST(LDLT, Benchmark2) {
   ConstraintManager prog;
   BuildLQRProblem(N, &prog);
 
-  SupernodalKKTSolver solver(prog.variables(),
-                             prog.equality_constraint_multipliers());
-  solver.Bind(prog.clique_assemblers());
+  std::unique_ptr<KKTSolverBase> solver_ptr =
+      KKTSolverFactory().create_unique(&prog, SolverConfiguration());
+  auto& solver = *solver_ptr;
+
   solver.Assemble();
   Eigen::MatrixXd T = solver.KKTMatrix().selfadjointView<Eigen::Lower>();
 
@@ -159,15 +162,14 @@ GTEST_TEST(Assemble, VariablesSpecifiedOutOfOrder) {
   prog.AddQuadraticCost(Q, vector{1, 0, 2});
 
   prog.InitializeWorkspace();
-  SupernodalKKTSolver solver(prog.variables(),
-                             prog.equality_constraint_multipliers());
-  solver.Bind(prog.clique_assemblers());
+  std::unique_ptr<KKTSolverBase> solver_ptr =
+      KKTSolverFactory().create_unique(&prog, SolverConfiguration());
+  auto& solver = *solver_ptr;
+
   solver.Assemble();
   auto M = solver.KKTMatrix();
   Eigen::VectorXd expected(4);
   expected << 0, 2, 2, 3;
-  EXPECT_EQ((expected - M.diagonal()).norm(), 0);
-  MatrixXd Mref = expected.asDiagonal();
-  EXPECT_EQ((Mref - M).norm(), 0);
+  EXPECT_EQ((Eigen::MatrixXd(expected.asDiagonal()) - M).norm(), 0);
 }
 }  // namespace conex

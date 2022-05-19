@@ -303,6 +303,21 @@ bool T::DoFactor() {
   return true;
 }
 
+void T::Finalize(const CliqueTree& clique_tree) {
+  CONEX_CHECK(clique_tree.supernodes.size() == subsystems_.size());
+  CONEX_CHECK(clique_tree.separators.size() == subsystems_.size());
+  int i = 0;
+  for (auto& s : subsystems_) {
+    s->SetSupernodes(clique_tree.supernodes.at(i));
+    s->SetSeparators(clique_tree.separators.at(i));
+    s->Initialize();
+    ++i;
+  }
+  SetEliminationTree(clique_tree.node_to_parent);
+  SetEliminationOrder(ComputePostOrdering());
+  ComputeSeparatorOffsets();
+}
+
 void T::Finalize(const Options& options) {
   RootedTree tree(subsystems_.size());
   SymmetricMatrix<vector<int>> intersections(subsystems_.size());

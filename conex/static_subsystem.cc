@@ -45,7 +45,7 @@ void T::UpdateData() {
   int n2 = kkt_subsystem_->separators().size();
 
   auto& source_submatrix = assembler_->submatrix_data()->G;
-  if (n1 == source_submatrix.rows()) {
+  if (kkt_subsystem_->variable_set_equals_sorted_supernodes()) {
     new (&source_submatrix) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
         kkt_subsystem_->supernode_submatrix().data(), n1, n1);
     assembler_->SetDenseData();

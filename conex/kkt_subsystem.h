@@ -161,6 +161,12 @@ class KKTSubsystemBase {
   }
 
   void ComputeSeparatorOffsets();
+  bool variable_set_equals_sorted_separators() {
+    return variable_set_equals_sorted_separators_;
+  }
+  bool variable_set_equals_sorted_supernodes() {
+    return variable_set_equals_sorted_supernodes_;
+  }
 
  private:
   virtual void DoInitialize(){};
@@ -207,6 +213,8 @@ class KKTSubsystemBase {
   std::vector<int> supernodes_;
   const std::vector<int> variables_;
   bool left_looking_ = true;
+  bool variable_set_equals_sorted_supernodes_;
+  bool variable_set_equals_sorted_separators_;
 };
 
 class KKTSubsystem : public KKTSubsystemBase {
@@ -233,9 +241,6 @@ class KKTSubsystem : public KKTSubsystemBase {
   Eigen::Ref<Eigen::MatrixXd> separator_rows() override {
     return separator_rows_;
   }
-  //  Eigen::Ref<Eigen::MatrixXd> separator_columns() override { return
-  //  separator_columns_; }
-
   Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const override {
     return supernode_submatrix_;
   }
@@ -246,14 +251,11 @@ class KKTSubsystem : public KKTSubsystemBase {
   Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override {
     return separator_rows_;
   }
-  //  Eigen::Ref<const Eigen::MatrixXd> separator_columns() const override {
-  //  return separator_columns_; }
 
  private:
   Eigen::MatrixXd separator_schur_complement_;
   Eigen::MatrixXd supernode_submatrix_;
   Eigen::MatrixXd separator_rows_;
-  //  Eigen::MatrixXd separator_columns_;
 };
 
 }  // namespace conex

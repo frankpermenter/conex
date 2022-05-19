@@ -289,6 +289,7 @@ void T::SetVariableOrdering(
   for (auto& s : supernodes_) {
     s = shared_variable_to_elimination_position.at(s);
   }
+
   for (auto& e : separators_) {
     e = shared_variable_to_elimination_position.at(e);
   }
@@ -298,8 +299,18 @@ void T::SetVariableOrdering(
   // Create map from relabelled variables to their
   // positions inside of the shared_variable vector.
   std::vector<int> variable_elimination_position = variables_;
+  variable_set_equals_sorted_supernodes_ =
+      variables_.size() == supernodes_.size();
+  variable_set_equals_sorted_separators_ =
+      variables_.size() == separators_.size();
+  int v_last = -1;
   for (auto& v : variable_elimination_position) {
     v = shared_variable_to_elimination_position.at(v);
+    if (v < v_last) {
+      variable_set_equals_sorted_supernodes_ = false;
+      variable_set_equals_sorted_separators_ = false;
+    }
+    v_last = v;
   }
 
   variable_to_local_elimination_position_.resize(variables_.size());
