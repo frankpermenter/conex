@@ -1,11 +1,51 @@
 #include "kkt_solver_factory.h"
 
+#include "conex/clique_ordering.h"
 #include "conex/conjugate_gradient_solvers.h"
 #include "conex/kkt_solver.h"
+#include "conex/kkt_tree_solver.h"
 
 namespace conex {
-using std::vector;
 
+namespace {
+
+vector<int> is_empty(const vector<std::vector<int>>& vect) {
+  vector<int> y(vect.size());
+  for (size_t i = 0; i < y.size(); i++) {
+    y[i] = vect[i].size() == 0;
+  }
+  return y;
+}
+
+int GetRootNode(const std::vector<std::vector<int>>& vars,
+                const std::vector<std::vector<int>>& dual_vars) {
+  int arg_max = 0;
+
+  size_t max = dual_vars.at(0).size();
+  for (size_t i = 1; i < dual_vars.size(); i++) {
+    if (dual_vars.at(i).size() > max) {
+      arg_max = i;
+      max = dual_vars.at(i).size();
+    }
+  }
+  if (max > 0) {
+    return arg_max;
+  }
+
+  arg_max = 0;
+  max = vars.at(0).size();
+  for (size_t i = 1; i < vars.size(); i++) {
+    if (vars.at(i).size() > max) {
+      arg_max = i;
+      max = vars.at(i).size();
+    }
+  }
+  return arg_max;
+}
+
+}  // namespace
+
+using std::vector;
 void IncrementSubvector(std::vector<int>* y, const std::vector<int>& indices) {
   for (auto i : indices) {
     y->at(i)++;
@@ -25,6 +65,44 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
   return solver_temp;
 }
 
+std::unique_ptr<KKTSolverBase> MakeTreeSolver(
+    ConstraintManager* c, const SolverConfiguration& config) {
+  vector<vector<int>> cliques = c->variables();
+  vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
+  auto& clique_assemblers_ptrs_ = c->clique_assemblers();
+
+  auto tree_solver_ =
+      std::make_unique<::conex::SymmetricLinearSystemTreeSolver>();
+
+  vector<vector<int>> separators;
+  vector<vector<int>> supernodes;
+  vector<std::vector<int>> cliques_sorted = cliques;
+  Sort(&cliques_sorted);
+  vector<int> order;
+  vector<int> tree;
+
+  PickCliqueOrder(cliques_sorted, is_empty(dual_vars),
+                  GetRootNode(cliques, dual_vars), &order, &tree, &supernodes,
+                  &separators);
+
+  int i = 0;
+  for (auto c : clique_assemblers_ptrs_) {
+    c->SetVariables(cliques.at(i), 0);
+    auto adapter = std::make_unique<::conex::KKTAssemblerToSubsystemAdapter>(c);
+    auto* subsystem = adapter->kkt_subsystem();
+    tree_solver_->AddSubsystem(subsystem);
+    subsystem->SetSupernodes(supernodes.at(i));
+    subsystem->SetSeparators(separators.at(i));
+    subsystem->Initialize();
+    tree_solver_->push_back(std::move(adapter));
+    ++i;
+  }
+  tree_solver_->SetEliminationTree(tree);
+  tree_solver_->SetEliminationOrder(tree_solver_->ComputePostOrdering());
+  tree_solver_->ComputeSeparatorOffsets();
+
+  return tree_solver_;
+}
 vector<int> DiagonalOfBarrierHessian(const ConstraintManager* kkt) {
   std::vector<int> degree(kkt->GetNumberOfVariables(), 0);
   for (const auto& c : kkt->clique_assemblers()) {
@@ -102,6 +180,9 @@ std::unique_ptr<KKTSolverBase> KKTSolverFactory::create_unique(
       break;
     case CONEX_KKT_SOLVER_CG:
       return MakeCGSolver(kkt, config);
+      break;
+    case CONEX_KKT_SOLVER_TREE:
+      return MakeTreeSolver(kkt, config);
       break;
   }
   std::runtime_error("Invalid KKT Solver.");

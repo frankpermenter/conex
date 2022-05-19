@@ -239,6 +239,9 @@ using T = SymmetricLinearSystemTreeSolver;
 void T::SetEliminationOrder(
     const std::vector<int>& variable_to_elimination_position) {
   variable_to_elimination_position_ = variable_to_elimination_position;
+  for (auto s : subsystems_) {
+    s->SetVariableOrdering(variable_to_elimination_position_);
+  }
 }
 void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                        bool in_original_order) const {
@@ -274,6 +277,9 @@ void T::ComputeSeparatorOffsets() {
 }
 
 void T::DoAssemble() {
+  for (auto& a : assembler_to_subsystem_adapter_) {
+    a->UpdateData();
+  }
   for (auto root : roots_) {
     root->Assemble();
   }
@@ -355,11 +361,21 @@ void T::FinalizeHelper(const std::vector<int>& parent) {
   variable_to_elimination_position_.resize(number_of_variables());
   int first = 0;
   for (auto r : roots_) {
-    r->ComputePostOrdering(first, &variable_to_elimination_position_);
+    first = r->ComputePostOrdering(first, &variable_to_elimination_position_);
   }
   for (auto s : subsystems_) {
     s->SetVariableOrdering(variable_to_elimination_position_);
   }
+}
+
+std::vector<int> T::ComputePostOrdering() const {
+  // Post-order
+  std::vector<int> variable_to_elimination_position(number_of_variables());
+  int first = 0;
+  for (auto r : roots_) {
+    first = r->ComputePostOrdering(first, &variable_to_elimination_position);
+  }
+  return variable_to_elimination_position;
 }
 
 void T::SetFactorizationMode(bool left_looking) {
@@ -448,6 +464,10 @@ Eigen::SparseMatrix<double> T::MakeSparseKKTMatrix(
 void T::AddSubsystem(KKTSubsystemType* system) {
   CONEX_CHECK(system != nullptr);
   subsystems_.push_back(system);
+}
+
+void T::push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system) {
+  assembler_to_subsystem_adapter_.emplace_back(std::move(system));
 }
 
 }  // namespace conex

@@ -1,6 +1,7 @@
 #pragma once
 #include "conex/kkt_solver_interface.h"
 #include "conex/kkt_subsystem.h"
+#include "conex/static_subsystem.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
@@ -34,6 +35,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
       bool permute_to_elimination_order = true) const;
 
   void ComputeSeparatorOffsets();
+  std::vector<int> ComputePostOrdering() const;
+  void push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system);
 
  private:
   void FinalizeHelper(const std::vector<int>& subsystem_to_parent_subsystem);
@@ -50,6 +53,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
 
   std::vector<KKTSubsystemBase*> roots_;
   std::vector<KKTSubsystemBase*> subsystems_;
+  std::vector<std::unique_ptr<KKTAssemblerToSubsystemAdapter>>
+      assembler_to_subsystem_adapter_;
   std::vector<int> variable_to_elimination_position_;
   std::vector<int> subsystem_to_parent_;
 };

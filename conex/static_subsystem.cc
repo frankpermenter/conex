@@ -1,5 +1,6 @@
 #include "conex/static_subsystem.h"
 
+#include "conex/RLDLT.h"
 #include "conex/cholesky_solvers.h"
 
 namespace conex {
@@ -24,11 +25,18 @@ void AssignSubmatrix(const Eigen::MatrixXd& source,
 }  // namespace
 T::KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base)
     : assembler_(base) {
-  using SystemType = KKTCholeskySystem<
+  using SystemTypePositiveDefinite = KKTCholeskySystem<
       CholeskySolver<Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>>, false>>;
-  // using SystemType =
-  // KKTCholeskySystem<CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, false>>;
-  kkt_subsystem_ = std::make_unique<SystemType>(assembler_->variables());
+  using SystemTypeIndefinite = KKTCholeskySystem<
+      CholeskySolver<Eigen::RLDLT<Eigen::Ref<Eigen::MatrixXd>>, true>>;
+
+  if (base->is_positive_definite()) {
+    kkt_subsystem_ =
+        std::make_unique<SystemTypePositiveDefinite>(assembler_->variables());
+  } else {
+    kkt_subsystem_ =
+        std::make_unique<SystemTypeIndefinite>(assembler_->variables());
+  }
   kkt_subsystem_->SetFactorizationMode(true /*left looking*/);
 }
 

@@ -257,4 +257,3 @@ class KKTSubsystem : public KKTSubsystemBase {
 };
 
 }  // namespace conex
-// namespace conex

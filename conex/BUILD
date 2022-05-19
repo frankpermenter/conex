@@ -280,6 +280,7 @@ cc_library(
         "conjugate_gradient_solvers",
         "constraint_interface",
         "kkt_solver_interface",
+        "kkt_tree_solver",
         "supernodal_solver",
     ],
 )
