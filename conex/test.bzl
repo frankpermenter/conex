@@ -18,12 +18,22 @@ def conex_cc_test(
         **kwargs
     )
     native.cc_test(
+        name = name + "_tree",
+        size = size,
+        srcs = srcs + ["test/default_solver_config.h"],
+        args = args,
+        tags = tags,
+        deps = deps,
+        copts = copts + ["-DCONEX_TEST_TREE"],
+        **kwargs
+    )
+    native.cc_test(
         name = name,
         size = size,
         srcs = srcs + ["test/default_solver_config.h"],
         args = args,
         tags = tags,
         deps = deps,
-        copts = copts,
+        copts = copts + ["-DCONEX_TEST_SUPERNODAL"],
         **kwargs
     )
