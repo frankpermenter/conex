@@ -96,6 +96,7 @@ std::unique_ptr<KKTSolverBase> MakeTreeSolver(
 
   return tree_solver_;
 }
+
 vector<int> DiagonalOfBarrierHessian(const ConstraintManager* kkt) {
   std::vector<int> degree(kkt->GetNumberOfVariables(), 0);
   for (const auto& c : kkt->clique_assemblers()) {

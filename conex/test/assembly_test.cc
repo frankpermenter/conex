@@ -58,6 +58,7 @@ void BuildLQRProblem(int N, ConstraintManager* prg) {
   prog.InitializeWorkspace();
 }
 
+#if 0
 GTEST_TEST(LDLT, TestAssembly) {
   using Eigen::MatrixXd;
   constexpr int m = 6;
@@ -118,6 +119,19 @@ GTEST_TEST(LDLT, TestAssembly) {
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 GTEST_TEST(LDLT, Benchmark2) {
   using Eigen::MatrixXd;
 
@@ -172,4 +186,91 @@ GTEST_TEST(Assemble, VariablesSpecifiedOutOfOrder) {
   expected << 0, 2, 2, 3;
   EXPECT_EQ((Eigen::MatrixXd(expected.asDiagonal()) - M).norm(), 0);
 }
+#endif
+
+void ModifyCliquesForEqualities(ConstraintManager& prog) {
+  std::vector<std::vector<int>> cliques;
+  std::vector<std::vector<int>> dual_vars =
+      prog.equality_constraint_multipliers();
+  for (auto& e : prog.clique_assemblers()) {
+    if (e->is_positive_definite()) {
+      cliques.push_back(e->variables());
+      int j = 0;
+      for (auto& f : prog.clique_assemblers()) {
+        std::vector<int> intersection;
+        IntersectionOfSorted(e->variables(), f->variables(), &intersection);
+        if (intersection.size() > 0) {
+          for (auto lambda : dual_vars.at(j)) {
+            cliques.back().push_back(-lambda);
+          }
+          std::sort(cliques.back().begin(), cliques.back().end());
+        }
+        j++;
+      }
+    }
+  }
+  vector<std::vector<int>> supernodes(cliques.size());
+  vector<std::vector<int>> separators(cliques.size());
+  std::vector<int> tree(cliques.size());
+  std::vector<int> order(cliques.size());
+  PickCliqueOrder(cliques, 1, &order, &tree, &supernodes, &separators);
+  DUMP(cliques);
+  DUMP(supernodes);
+  DUMP(separators);
+  DUMP(tree);
+}
+
+GTEST_TEST(EqualityConstraints, TestElimination) {
+  int N = 5;
+  ConstraintManager prog;
+  BuildLQRProblem(N, &prog);
+
+  // ModifyCliquesForEqualities(prog);
+
+  MatrixXd Q(2, 2);
+  ConstraintManager prog2(3);
+  prog2.AddQuadraticCost(Q, {0, 2});
+  prog2.AddQuadraticCost(Q, {1, 2});
+  Eigen::MatrixXd A(1, 1);
+  A << 1;
+  Eigen::MatrixXd b(1, 1);
+  b << 0;
+  prog2.AddEqualityConstraint(EqualityConstraints(A, b), {2});
+  ModifyCliquesForEqualities(prog2);
+}
+
+//
+//
+GTEST_TEST(Simple, TestElimination) {
+  MatrixXd Q(2, 2);
+  Q.setConstant(3);
+  ConstraintManager prog(6);
+  prog.AddQuadraticCost(Q, {0, 1});
+  prog.AddQuadraticCost(Q, {2, 3});
+  prog.AddQuadraticCost(Q, {4, 5});
+  Eigen::MatrixXd A(2, 4);
+  A << 1, 1, 1, 2, 2, 3, 4, 5;
+  Eigen::MatrixXd b(2, 1);
+  b << 1, 1;
+  prog.AddEqualityConstraint(EqualityConstraints(A, b), {0, 1, 2, 3});
+  prog.AddEqualityConstraint(EqualityConstraints(A, b), {2, 3, 4, 5});
+  prog.InitializeWorkspace();
+
+  auto solver = KKTSolverFactory().create_unique(&prog, SolverConfiguration());
+  solver->Assemble();
+  DUMP(solver->KKTMatrix());
+  ModifyCliquesForEqualities(prog);
+
+  // Want clique tree: (0, 1,
+
+  // l1 x2
+  // l1 x1
+  // x1 x2
+  //
+  // * *
+  // * *
+  //
+  // * *
+}
+
 }  // namespace conex

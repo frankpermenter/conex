@@ -9,7 +9,7 @@ cc_library(
     ]),
     copts = ["-Iexternal/gtest/include"],
     deps = [
-        "conex_lib",
+        "@eigen",
         "@gtest//:main",
     ],
 )
@@ -37,10 +37,11 @@ conex_cc_test(
 )
 
 conex_cc_test(
-    name = "sdp",
+    name = "sdp_test",
     srcs = glob(["test/test_sdp.cc"]),
     copts = ["-Iexternal/gtest/include"],
     deps = [
+        "core",
         "linear_constraint",
         "semidefinite_constraints",
         "test_util",
@@ -101,7 +102,6 @@ cc_test(
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "approximate_eigenvalues",
-        "conex_lib",
         "test_util",
         "@eigen",
         "@gtest//:main",
@@ -221,6 +221,7 @@ conex_cc_test(
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "constraint_interface",
+        "constraint_manager",
         "kkt_solver_factory",
         "kkt_solver_interface",
         "supernodal_solver",
@@ -260,9 +261,19 @@ cc_library(
 )
 
 cc_library(
+    name = "constraint_manager",
+    srcs = ["constraint_manager.cc"],
+    hdrs = ["constraint_manager.h"],
+    deps = [
+        "equality_constraint",
+        "error_checking",
+        "kkt_solver_interface",
+    ],
+)
+
+cc_library(
     name = "kkt_solver_interface",
     hdrs = [
-        "constraint_manager.h",
         "kkt_solver_interface.h",
         "memory_utils.h",
         "newton_step.h",
@@ -280,6 +291,7 @@ cc_library(
     deps = [
         "conjugate_gradient_solvers",
         "constraint_interface",
+        "constraint_manager",
         "kkt_solver_interface",
         "kkt_tree_solver",
         "supernodal_solver",
@@ -459,7 +471,6 @@ cc_library(
 cc_library(
     name = "conex_lib",
     hdrs = [
-        "cone_program.h",
         "constraint.h",
         "debug_macros.h",
         "error_checking_macros.h",
@@ -622,36 +633,36 @@ cc_library(
     ],
 )
 
-cc_test(
-    name = "kkt_subsystem_test",
-    srcs = [
-        "RLDLT.h",
-        "debug_macros.h",
-        "test/kkt_subsystem_test.cc",
-    ],
-    copts = ["-Iexternal/gtest/include"],
-    deps = [
-        "kkt_tree_solver",
-        ":error_checking",
-        ":kkt_solver_interface",
-        "@eigen",
-        "@gtest//:main",
-    ],
-)
-
-cc_test(
-    name = "kkt_solver_profile",
-    srcs = [
-        "RLDLT.h",
-        "debug_macros.h",
-        "test/kkt_solver_profile.cc",
-    ],
-    copts = ["-Iexternal/gtest/include"],
-    deps = [
-        "kkt_tree_solver",
-        ":error_checking",
-        ":kkt_solver_interface",
-        "@eigen",
-        "@gtest//:main",
-    ],
-)
+#cc_test(
+#    name = "kkt_subsystem_test",
+#    srcs = [
+#        "RLDLT.h",
+#        "debug_macros.h",
+#        "test/kkt_subsystem_test.cc",
+#    ],
+#    copts = ["-Iexternal/gtest/include"],
+#    deps = [
+#        "kkt_tree_solver",
+#        ":error_checking",
+#        ":kkt_solver_interface",
+#        "@eigen",
+#        "@gtest//:main",
+#    ],
+#)
+#
+#cc_test(
+#    name = "kkt_solver_profile",
+#    srcs = [
+#        "RLDLT.h",
+#        "debug_macros.h",
+#        "test/kkt_solver_profile.cc",
+#    ],
+#    copts = ["-Iexternal/gtest/include"],
+#    deps = [
+#        "kkt_tree_solver",
+#        ":error_checking",
+#        ":kkt_solver_interface",
+#        "@eigen",
+#        "@gtest//:main",
+#    ],
+#)

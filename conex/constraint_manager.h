@@ -11,21 +11,6 @@
 
 namespace conex {
 
-inline int IsUnique(int N, const std::vector<int>& x) {
-  Eigen::VectorXd y(N);
-  y.setZero();
-  for (auto& xi : x) {
-    if (xi >= N) {
-      return false;
-    }
-    y(xi)++;
-    if (y(xi) > 1) {
-      return false;
-    }
-  }
-  return true;
-}
-
 class ConstraintManager {
  public:
   ConstraintManager(int max_number_of_variables)
@@ -60,9 +45,8 @@ class ConstraintManager {
 
   template <typename T>
   CONEX_ID AddConstraint(T&& x, const std::vector<int>& variables) {
-    if (!IsUnique(max_number_of_variables_, variables)) {
-      return CONEX_FAILURE;
-    }
+    CONEX_DEMAND(Validate(variables) == CONEX_SUCCESS,
+                 "Failed to add constraint.");
 
     constraint_storage_.push_back(x);
     constraints_.emplace_back(
@@ -78,9 +62,8 @@ class ConstraintManager {
 
   template <typename T>
   CONEX_ID AddQuadraticCost(const T& Qi, const std::vector<int>& variables) {
-    if (!IsUnique(max_number_of_variables_, variables)) {
-      return CONEX_FAILURE;
-    }
+    CONEX_DEMAND(Validate(variables) == CONEX_SUCCESS,
+                 "Failed to add constraint.");
 
     quadratic_costs_.emplace_back(Qi, variables);
     supernodal_assemblers_ptr_.push_back(&quadratic_costs_.back());
@@ -89,17 +72,7 @@ class ConstraintManager {
   }
 
   CONEX_ID AddEqualityConstraint(const EqualityConstraints& x,
-                                 const std::vector<int>& variables) {
-    if (!IsUnique(max_number_of_variables_, variables)) {
-      return CONEX_FAILURE;
-    }
-
-    equality_constraints_.emplace_back(x.A_, x.b_, variables);
-
-    supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
-
-    return equality_constraints_.size() - 1;
-  }
+                                 const std::vector<int>& variables);
 
   std::vector<Workspace> workspace() {
     std::vector<Workspace> workspaces;
@@ -181,6 +154,7 @@ class ConstraintManager {
   }
 
  private:
+  CONEX_STATUS Validate(const std::vector<int>& variables);
   mutable std::vector<std::vector<int>> dual_vars_;
   mutable std::vector<std::vector<int>> cliques_;
   std::list<SupernodalAssembler> supernodal_assemblers_;

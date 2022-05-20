@@ -359,7 +359,6 @@ void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
                      const vector<int>& valid_leaf, int root, RootedTree* tree,
                      vector<vector<int>>* supernodes,
                      vector<vector<int>>* separators) {
-  size_t n = cliques_sorted.size();
   std::vector<int> order;
   GetCliqueEliminationOrder(cliques_sorted, valid_leaf, root, &order,
                             supernodes, separators, tree);
