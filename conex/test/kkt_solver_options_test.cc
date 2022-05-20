@@ -73,32 +73,32 @@ int random_seed = 1;
 GTEST_TEST(KKTSolver, UseIterativeRefinement) {
   auto config = GetConfiguration();
   config.iterative_refinement_iterations = 3;
-  config.kkt_solver = CONEX_LLT_FACTORIZATION;
+  config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
   DoRandomDenseTest(config, num_tests, random_seed);
 }
 
 GTEST_TEST(KKTSolver, UseLLT) {
   auto config = GetConfiguration();
   config.iterative_refinement_iterations = 0;
-  config.kkt_solver = CONEX_LLT_FACTORIZATION;
+  config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
   DoRandomDenseTest(config, num_tests, random_seed);
 }
 
 GTEST_TEST(LP, UseLDLT) {
   auto config = GetConfiguration();
-  config.kkt_solver = CONEX_LDLT_FACTORIZATION;
+  config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
   DoRandomDenseTest(config, num_tests, random_seed);
 }
 
 GTEST_TEST(LP, UseQR) {
   auto config = GetConfiguration();
-  config.kkt_solver = CONEX_QR_FACTORIZATION;
+  config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL_QR;
   DoRandomDenseTest(config, num_tests, random_seed);
 }
 
 GTEST_TEST(QR, SuccessWithDependentInequalityColumns) {
   auto config = GetConfiguration();
-  config.kkt_solver = CONEX_QR_FACTORIZATION;
+  config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL_QR;
   Eigen::MatrixXd A(3, 4);
   Eigen::VectorXd c(3);
   // clang-format off
@@ -116,7 +116,7 @@ GTEST_TEST(QR, SuccessWithDependentInequalityColumns) {
   Solve(b, prog, config, solution.data());
   EXPECT_EQ(prog.Status().solved, 1);
 
-  config.kkt_solver = CONEX_LLT_FACTORIZATION;
+  config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
   Solve(b, prog, config, solution.data());
   EXPECT_EQ(prog.Status().solved, 0);
 }
@@ -150,12 +150,13 @@ GTEST_TEST(QR, SuccessWithDependentEquations) {
   MatrixXd b = A.transpose() * c;
 
   VectorXd solution(4);
-  config.kkt_solver = CONEX_QR_FACTORIZATION;
+  config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL_QR;
   Solve(b, prog, config, solution.data());
   EXPECT_EQ(prog.Status().solved, 1);
   EXPECT_NEAR((B * solution - d).norm(), 0, 1e-9);
 
-  config.kkt_solver = CONEX_LDLT_FACTORIZATION;
+  DUMP("HEHE");
+  config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
   Solve(b, prog, config, solution.data());
   EXPECT_EQ(prog.Status().solved, 1);
   EXPECT_NEAR((B * solution - d).norm(), 0, 1e-9);

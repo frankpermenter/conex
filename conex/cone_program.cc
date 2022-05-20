@@ -274,12 +274,13 @@ bool Program::AddLinearCost(const VectorXd& b) {
 
 std::string ToString(int solver_type) {
   switch (solver_type) {
-    case CONEX_KKT_SOLVER_LLT:
-    case CONEX_KKT_SOLVER_LDLT:
-      return "Cholesky";
+    case CONEX_KKT_SOLVER_TREE:
+      return "Cholesky Tree";
+    case CONEX_KKT_SOLVER_SUPERNODAL:
+      return "Supernodal Cholesky";
     case CONEX_KKT_SOLVER_CG:
       return "Conjugate Gradient";
-    case CONEX_KKT_SOLVER_QR:
+    case CONEX_KKT_SOLVER_SUPERNODAL_QR:
       return "QR Factorization";
   }
   return "";

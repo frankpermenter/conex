@@ -60,8 +60,18 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
 
   solver_temp->SetIterativeRefinementIterations(
       config.iterative_refinement_iterations);
-  solver_temp->SetSolverMode(config.kkt_solver);
+  if (config.kkt_solver == CONEX_KKT_SOLVER_SUPERNODAL) {
+    if (c->equality_constraints().size() > 0) {
+      DUMP("HEHEH!");
+      solver_temp->SetSolverMode(CONEX_LDLT_FACTORIZATION);
+    } else {
+      solver_temp->SetSolverMode(CONEX_LLT_FACTORIZATION);
+    }
+  } else {
+    solver_temp->SetSolverMode(CONEX_QR_FACTORIZATION);
+  }
   solver_temp->Bind(c->clique_assemblers());
+
   return solver_temp;
 }
 
@@ -167,9 +177,8 @@ std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
 std::unique_ptr<KKTSolverBase> KKTSolverFactory::create_unique(
     ConstraintManager* kkt, const SolverConfiguration& config) {
   switch (config.kkt_solver) {
-    case CONEX_KKT_SOLVER_LLT:
-    case CONEX_KKT_SOLVER_LDLT:
-    case CONEX_KKT_SOLVER_QR:
+    case CONEX_KKT_SOLVER_SUPERNODAL:
+    case CONEX_KKT_SOLVER_SUPERNODAL_QR:
       return MakeSupernodalSolver(kkt, config);
       break;
     case CONEX_KKT_SOLVER_CG:

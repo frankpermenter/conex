@@ -5,7 +5,7 @@ namespace conex {
 inline SolverConfiguration DefaultTestConfiguration() {
   SolverConfiguration config;
 #ifdef CONEX_TEST_SUPERNODAL
-  config.kkt_solver = CONEX_KKT_SOLVER_LLT;
+  config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
 #endif
 #ifdef CONEX_TEST_CG
   config.kkt_solver = CONEX_KKT_SOLVER_CG;

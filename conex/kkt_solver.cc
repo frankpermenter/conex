@@ -145,32 +145,29 @@ void T::DoAssemble() {
   }
 }
 
+void T::SetSolverMode(int mode) { mode_ = mode; }
+
 bool T::DoFactor() {
   // TODO(FrankPermenter): save a sparse copy of the matrix instead.
-  bool use_qr = mode_ == CONEX_QR_FACTORIZATION;
-  if (iterative_refinement_iterations_ > 0 || use_qr) {
+  if (iterative_refinement_iterations_ > 0 || mode_ == CONEX_QR_FACTORIZATION) {
     kkt_matrix_ = DoKKTMatrix(false /*permute to elimination order*/);
   }
 
-  if (!use_qr) {
-    use_cholesky_ = true;
-    for (auto di : dual_variables_) {
-      if (di.size() > 0) {
-        use_cholesky_ = false;
-        break;
-      }
-    }
-    if (use_cholesky_) {
+  switch (mode_) {
+    case CONEX_LLT_FACTORIZATION:
       return BlockTriangularOperations::BlockCholeskyInPlace(&mat.workspace_);
-    } else {
+    case CONEX_LDLT_FACTORIZATION: {
       bool no_regularization = BlockTriangularOperations::BlockLDLTInPlace(
           &mat.workspace_, &factorization);
       factorization_regularized_ = !no_regularization;
       return true;
     }
-  } else {
-    qr_decomp_.compute(kkt_matrix_);
-    return true;
+    case CONEX_QR_FACTORIZATION: {
+      qr_decomp_.compute(kkt_matrix_);
+      return true;
+    }
+    default:
+      throw std::runtime_error("Invalid factorization type.");
   }
 }
 
@@ -180,13 +177,14 @@ Eigen::VectorXd T::Solve(const Eigen::VectorXd& b,
                "Incompatiable dimensions.");
 
   bool use_qr = mode_ == CONEX_QR_FACTORIZATION;
+  bool use_cholesky = mode_ == CONEX_LLT_FACTORIZATION;
   if (!use_qr) {
     if (permute_to_elimination_order) {
       b_permuted_ = permutation_to_elimination_order() * b;
     } else {
       b_permuted_ = b;
     }
-    if (use_cholesky_) {
+    if (use_cholesky) {
       BlockTriangularOperations::SolveInPlaceCholesky(mat.workspace_,
                                                       &b_permuted_);
     } else {
@@ -206,6 +204,7 @@ Eigen::VectorXd T::Solve(const Eigen::VectorXd& b,
 void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b_input,
                        bool permute_to_elimination_order) const {
   bool use_qr = mode_ == CONEX_QR_FACTORIZATION;
+  bool use_cholesky = mode_ == CONEX_LLT_FACTORIZATION;
   auto* b = &b_input;
   if (b->rows() != permutation_from_elimination_order().rows()) {
     throw std::runtime_error(
@@ -229,7 +228,7 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b_input,
     b_permuted_ = (*b);
   }
 
-  if (use_cholesky_) {
+  if (use_cholesky) {
     BlockTriangularOperations::SolveInPlaceCholesky(mat.workspace_,
                                                     &b_permuted_);
   } else {
@@ -250,7 +249,7 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b_input,
     auto& y = *b;
     const VectorXd residual = total_residual - kkt_matrix_ * y;
     b_permuted_ = permutation_to_elimination_order() * (residual);
-    if (use_cholesky_) {
+    if (use_cholesky) {
       BlockTriangularOperations::SolveInPlaceCholesky(mat.workspace_,
                                                       &b_permuted_);
     } else {

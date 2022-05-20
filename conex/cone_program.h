@@ -2,10 +2,10 @@
 #include "conex/conex.h"
 #include "conex/constraint.h"
 #include "conex/constraint_manager.h"
+#include "conex/debug_macros.h"
 #include "conex/equality_constraint.h"
 #include "conex/error_checking_macros.h"
-#include "conex/kkt_solver.h"
-#include "conex/supernodal_assembler.h"
+#include "conex/kkt_solver_interface.h"
 #include "workspace.h"
 
 namespace conex {
