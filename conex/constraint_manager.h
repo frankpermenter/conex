@@ -126,32 +126,9 @@ class ConstraintManager {
     return equality_constraints_;
   }
 
-  const std::vector<std::vector<int>>& equality_constraint_multipliers() const {
-    int offset = max_number_of_variables_;
-    dual_vars_.clear();
-    for (auto e : supernodal_assemblers_ptr_) {
-      int n = e->number_of_auxiliary_variables();
-      std::vector<int> temp(n);
-      std::iota(temp.begin(), temp.end(), offset);
-      dual_vars_.push_back(temp);
-      offset += n;
-    }
-    return dual_vars_;
-  }
 
-  const std::vector<std::vector<int>>& variables() const {
-    cliques_.clear();
-    std::vector<std::vector<int>> dual_vars = equality_constraint_multipliers();
-    int i = 0;
-    for (auto e : supernodal_assemblers_ptr_) {
-      cliques_.push_back({});
-      auto& c = cliques_.back();
-      c = e->variables();
-      c.insert(c.end(), dual_vars.at(i).begin(), dual_vars.at(i).end());
-      i++;
-    }
-    return cliques_;
-  }
+  const std::vector<std::vector<int>>& equality_constraint_multipliers() const;
+  const std::vector<std::vector<int>>& variables() const;
 
  private:
   CONEX_STATUS Validate(const std::vector<int>& variables);
@@ -178,6 +155,7 @@ class ConstraintManager {
   int max_number_of_variables_ = 0;
   int dual_variable_start_ = 0;
   Eigen::VectorXd workspace_memory_;
+  std::vector<std::vector<int>> equality_constraint_multipliers_;
 };
 
 }  // namespace conex

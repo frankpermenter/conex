@@ -19,7 +19,6 @@ inline int IsUnique(int N, const std::vector<int>& x) {
 }
 }  // namespace
 
-#if 0
 const std::vector<std::vector<int>>& T::variables() const {
   cliques_.clear();
   std::vector<std::vector<int>> dual_vars = equality_constraint_multipliers();
@@ -46,7 +45,6 @@ const std::vector<std::vector<int>>& T::equality_constraint_multipliers() const 
   }
   return dual_vars_;
 }
-#endif
 
 CONEX_STATUS T::Validate(const std::vector<int>& variables) {
   if (!IsUnique(max_number_of_variables_, variables)) {
