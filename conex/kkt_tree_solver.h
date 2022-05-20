@@ -2,6 +2,7 @@
 #include "conex/kkt_solver_interface.h"
 #include "conex/kkt_subsystem.h"
 #include "conex/static_subsystem.h"
+#include "conex/tree_utils.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
@@ -19,11 +20,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void AddSubsystem(KKTSubsystemBase* system);
   void RepairTreeInPlace(std::vector<int>* parent_ptr);
 
-  struct CliqueTree {
-    std::vector<std::vector<int>> supernodes;
-    std::vector<std::vector<int>> separators;
-    std::vector<int> node_to_parent;
-  };
   void Finalize(const CliqueTree& clique_tree);
   void Finalize(const Options& options = Options());
   void Finalize(const std::vector<int>& subsystem_to_parent_subsystem,

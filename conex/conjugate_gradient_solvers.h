@@ -2,7 +2,6 @@
 #include "conex/kkt_solver.h"
 #include "conex/kkt_solver_interface.h"
 #include "conex/supernodal_assembler.h"
-
 namespace conex {
 // Solves KKT system of form
 //

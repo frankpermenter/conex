@@ -13,6 +13,40 @@ using Cliques = vector<vector<int>>;
 
 namespace {
 
+int GetRootNode(const std::vector<std::vector<int>>& vars,
+                const std::vector<std::vector<int>>& dual_vars) {
+  int arg_max = 0;
+
+  size_t max = dual_vars.at(0).size();
+  for (size_t i = 1; i < dual_vars.size(); i++) {
+    if (dual_vars.at(i).size() > max) {
+      arg_max = i;
+      max = dual_vars.at(i).size();
+    }
+  }
+  if (max > 0) {
+    return arg_max;
+  }
+
+  arg_max = 0;
+  max = vars.at(0).size();
+  for (size_t i = 1; i < vars.size(); i++) {
+    if (vars.at(i).size() > max) {
+      arg_max = i;
+      max = vars.at(i).size();
+    }
+  }
+  return arg_max;
+}
+
+vector<int> is_empty(const vector<std::vector<int>>& vect) {
+  vector<int> y(vect.size());
+  for (size_t i = 0; i < y.size(); i++) {
+    y[i] = vect[i].size() == 0;
+  }
+  return y;
+}
+
 int GetMax(const std::vector<Clique>& cliques) {
   int max = cliques.at(0).at(0);
   for (const auto& c : cliques) {
@@ -364,6 +398,21 @@ void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
                             supernodes, separators, tree);
   int num_vars = GetMax(cliques_sorted) + 1;
   FillIn(*tree, num_vars, order, supernodes, separators);
+}
+
+CliqueTree MakeCliqueTree(const vector<vector<int>>& cliques,
+                          const vector<vector<int>>& dual_vars) {
+  CliqueTree clique_tree;
+
+  vector<std::vector<int>> cliques_sorted = cliques;
+  Sort(&cliques_sorted);
+
+  PickCliqueOrder(
+      cliques_sorted, is_empty(dual_vars), GetRootNode(cliques, dual_vars),
+      &clique_tree.clique_to_post_order_position, &clique_tree.node_to_parent,
+      &clique_tree.supernodes, &clique_tree.separators);
+
+  return clique_tree;
 }
 
 }  // namespace conex

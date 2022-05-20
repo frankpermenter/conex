@@ -7,44 +7,6 @@
 
 namespace conex {
 
-namespace {
-
-vector<int> is_empty(const vector<std::vector<int>>& vect) {
-  vector<int> y(vect.size());
-  for (size_t i = 0; i < y.size(); i++) {
-    y[i] = vect[i].size() == 0;
-  }
-  return y;
-}
-
-int GetRootNode(const std::vector<std::vector<int>>& vars,
-                const std::vector<std::vector<int>>& dual_vars) {
-  int arg_max = 0;
-
-  size_t max = dual_vars.at(0).size();
-  for (size_t i = 1; i < dual_vars.size(); i++) {
-    if (dual_vars.at(i).size() > max) {
-      arg_max = i;
-      max = dual_vars.at(i).size();
-    }
-  }
-  if (max > 0) {
-    return arg_max;
-  }
-
-  arg_max = 0;
-  max = vars.at(0).size();
-  for (size_t i = 1; i < vars.size(); i++) {
-    if (vars.at(i).size() > max) {
-      arg_max = i;
-      max = vars.at(i).size();
-    }
-  }
-  return arg_max;
-}
-
-}  // namespace
-
 using std::vector;
 void IncrementSubvector(std::vector<int>* y, const std::vector<int>& indices) {
   for (auto i : indices) {
@@ -56,13 +18,15 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
   vector<vector<int>> cliques = c->variables();
   vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
 
-  auto solver_temp = std::make_unique<SupernodalKKTSolver>(cliques, dual_vars);
+  CliqueTree clique_tree = MakeCliqueTree(cliques, dual_vars);
+  auto solver_temp = std::make_unique<SupernodalKKTSolver>(
+      cliques, c->SizeOfKKTSystem(), clique_tree.clique_to_post_order_position,
+      clique_tree.supernodes, clique_tree.separators);
 
   solver_temp->SetIterativeRefinementIterations(
       config.iterative_refinement_iterations);
   if (config.kkt_solver == CONEX_KKT_SOLVER_SUPERNODAL) {
     if (c->equality_constraints().size() > 0) {
-      DUMP("HEHEH!");
       solver_temp->SetSolverMode(CONEX_LDLT_FACTORIZATION);
     } else {
       solver_temp->SetSolverMode(CONEX_LLT_FACTORIZATION);
@@ -84,15 +48,8 @@ std::unique_ptr<KKTSolverBase> MakeTreeSolver(
   auto tree_solver_ =
       std::make_unique<::conex::SymmetricLinearSystemTreeSolver>();
 
-  SymmetricLinearSystemTreeSolver::CliqueTree clique_tree;
-  vector<std::vector<int>> cliques_sorted = cliques;
-  Sort(&cliques_sorted);
-  vector<int> order;
+  CliqueTree clique_tree = MakeCliqueTree(cliques, dual_vars);
 
-  PickCliqueOrder(cliques_sorted, is_empty(dual_vars),
-                  GetRootNode(cliques, dual_vars), &order,
-                  &clique_tree.node_to_parent, &clique_tree.supernodes,
-                  &clique_tree.separators);
   int i = 0;
   for (auto c : clique_assemblers_ptrs_) {
     c->SetVariables(cliques.at(i), 0);
@@ -103,7 +60,6 @@ std::unique_ptr<KKTSolverBase> MakeTreeSolver(
     ++i;
   }
   tree_solver_->Finalize(clique_tree);
-
   return tree_solver_;
 }
 

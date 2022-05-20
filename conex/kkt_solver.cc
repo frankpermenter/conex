@@ -85,7 +85,7 @@ vector<int> is_empty(const vector<std::vector<int>>& vect) {
   }
   return y;
 }
-
+#if 0
 T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
                        const std::vector<std::vector<int>>& dual_vars)
     : cliques_(cliques),
@@ -102,6 +102,7 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
   permutation_to_elimination_order_.indices() = Eigen::Map<Eigen::MatrixXi>(
       data.variable_to_elimination_position.data(), data.N, 1);
 }
+#endif
 
 T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques)
     : cliques_(cliques),
@@ -118,6 +119,11 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques)
   permutation_to_elimination_order_.indices() = Eigen::Map<Eigen::MatrixXi>(
       data.variable_to_elimination_position.data(), data.N, 1);
 }
+
+T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
+                       int num_vars, const CliqueTree& tree)
+    : SupernodalKKTSolver(cliques, num_vars, tree.clique_to_post_order_position,
+                          tree.supernodes, tree.separators) {}
 
 T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
                        int num_vars, const std::vector<int>& order,

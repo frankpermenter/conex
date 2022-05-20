@@ -4,6 +4,9 @@
 
 namespace conex {
 
+CliqueTree MakeCliqueTree(const std::vector<std::vector<int>>& cliques,
+                          const std::vector<std::vector<int>>& dual_vars = {});
+
 void FillIn(const RootedTree& tree, int num_variables,
             const std::vector<int>& order, vector<std::vector<int>>* supernodes,
             vector<std::vector<int>>* separators);
