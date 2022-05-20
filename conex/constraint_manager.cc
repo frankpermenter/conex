@@ -19,6 +19,7 @@ inline int IsUnique(int N, const std::vector<int>& x) {
 }
 }  // namespace
 
+#if 0
 const std::vector<std::vector<int>>& T::variables() const {
   cliques_.clear();
   std::vector<std::vector<int>> dual_vars = equality_constraint_multipliers();
@@ -45,6 +46,7 @@ const std::vector<std::vector<int>>& T::equality_constraint_multipliers() const 
   }
   return dual_vars_;
 }
+#endif
 
 CONEX_STATUS T::Validate(const std::vector<int>& variables) {
   if (!IsUnique(max_number_of_variables_, variables)) {
@@ -58,16 +60,16 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
   if (!IsUnique(max_number_of_variables_, variables)) {
     return CONEX_FAILURE;
   }
-  equality_constraint_multipliers_.emplace_back(x.A_.rows());
-  //equality_constraints_.emplace_back(x.A_, x.b_, variables);
-  //supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
-
-  equality_constraints_.emplace_back(x.A_.col(0), x.b_, variables.at(0));
-   for (int i = 1; i < variables.size(); i++) {
-    equality_constraints_.emplace_back(x.A_.col(i), 0*x.b_, variables.at(i));
-  }
-
+  //equality_constraint_multipliers_.emplace_back(x.A_.rows());
+  equality_constraints_.emplace_back(x.A_, x.b_, variables);
   supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
+
+  //equality_constraints_.emplace_back(x.A_.col(0), x.b_, variables.at(0));
+  // for (int i = 1; i < variables.size(); i++) {
+  //  equality_constraints_.emplace_back(x.A_.col(i), 0*x.b_, variables.at(i));
+  //}
+
+  //supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
   return equality_constraints_.size() - 1;
 }
 }  // namespace conex
