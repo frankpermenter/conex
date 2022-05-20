@@ -258,8 +258,10 @@ bool T::Factor() {
       child->ProvideColumnUpdate(this);
     }
   }
-  if (!DoEliminateSupernodeColumns()) {
-    return false;
+  if (supernodes_.size() > 0) {
+    if (!DoEliminateSupernodeColumns()) {
+      return false;
+    }
   }
   // We assume that Assemble() has been called and already
   // scattered the separator sub-matrix.

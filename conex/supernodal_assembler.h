@@ -124,10 +124,9 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
  public:
   SupernodalAssemblerEqualities(const Eigen::MatrixXd& A,
                                 const Eigen::VectorXd& b,
-                                const std::vector<int>& variables)
-      : SupernodalAssemblerBase(variables, A.rows()), A_(A), b_(b) {
-    CONEX_ASSERT(A.cols() == static_cast<int>(variables.size()),
-                 "Number of columns must match number of variables");
+                                const std::vector<int>& primal_and_dual_variables) 
+      : SupernodalAssemblerBase(primal_and_dual_variables, 0), A_(A), b_(b) {
+    CONEX_CHECK(A.cols() + A.rows() == static_cast<int>(primal_and_dual_variables.size()));
   }
 
   int UpdateMatrix(double value, int row, int col) {
@@ -143,9 +142,6 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
 
   virtual bool is_dynamic() const override { return false; }
   virtual bool is_positive_definite() const override { return false; }
-  virtual int number_of_auxiliary_variables() const override {
-    return A_.rows();
-  }
 
   virtual void SetDenseData() override {
     if (!submatrix_data_.initialized) {

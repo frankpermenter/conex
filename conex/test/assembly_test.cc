@@ -107,6 +107,7 @@ GTEST_TEST(LDLT, TestAssembly) {
   solver.Assemble();
 
   MatrixXd error = (solver.KKTMatrix() - T);
+
   EXPECT_EQ(error.norm(), 0);
 
   solver.Factor();
