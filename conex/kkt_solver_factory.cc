@@ -42,13 +42,12 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
 std::unique_ptr<KKTSolverBase> MakeTreeSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
   vector<vector<int>> cliques = c->variables();
-  vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
   auto& clique_assemblers_ptrs_ = c->clique_assemblers();
 
   auto tree_solver_ =
       std::make_unique<::conex::SymmetricLinearSystemTreeSolver>();
 
-  CliqueTree clique_tree = MakeCliqueTree(cliques, dual_vars);
+  CliqueTree clique_tree = MakeCliqueTree(cliques);
 
   int i = 0;
   for (auto c : clique_assemblers_ptrs_) {

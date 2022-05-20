@@ -58,7 +58,6 @@ void BuildLQRProblem(int N, ConstraintManager* prg) {
   prog.InitializeWorkspace();
 }
 
-#if 0
 GTEST_TEST(LDLT, TestAssembly) {
   using Eigen::MatrixXd;
   constexpr int m = 6;
@@ -186,7 +185,7 @@ GTEST_TEST(Assemble, VariablesSpecifiedOutOfOrder) {
   expected << 0, 2, 2, 3;
   EXPECT_EQ((Eigen::MatrixXd(expected.asDiagonal()) - M).norm(), 0);
 }
-#endif
+#if 0
 
 void ModifyCliquesForEqualities(ConstraintManager& prog) {
   std::vector<std::vector<int>> cliques;
@@ -272,5 +271,6 @@ GTEST_TEST(Simple, TestElimination) {
   //
   // * *
 }
+#endif
 
 }  // namespace conex
