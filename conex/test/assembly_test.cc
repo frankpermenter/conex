@@ -55,7 +55,6 @@ void BuildLQRProblem(int N, ConstraintManager* prg) {
     o += 3;
     prog.AddQuadraticCost(Qi, vars);
   }
-  prog.InitializeWorkspace();
 }
 
 GTEST_TEST(LDLT, TestAssembly) {
@@ -162,7 +161,6 @@ GTEST_TEST(Assemble, VariablesSpecifiedOutOfOrder) {
   // clang-format on
   prog.AddQuadraticCost(Q, vector{1, 0, 2});
 
-  prog.InitializeWorkspace();
   std::unique_ptr<KKTSolverBase> solver_ptr =
       KKTSolverFactory().create_unique(&prog, SolverConfiguration());
   auto& solver = *solver_ptr;
