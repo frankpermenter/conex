@@ -58,6 +58,7 @@ std::unique_ptr<KKTSolverBase> MakeTreeSolver(
   }
   tree_solver_->Finalize(clique_tree);
   tree_solver_->SetFactorizationMode(true /*left looking*/);
+  tree_solver_->EnableAutoUpdateAtAssemble(true);
   return tree_solver_;
 }
 

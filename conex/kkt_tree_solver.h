@@ -26,8 +26,10 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
                 bool check_for_zero_pivots = true);
 
   void SetFactorizationMode(bool left_looking);
+  void EnableAutoUpdateAtAssemble(bool enable) {
+    auto_update_assemblers_ = enable;
+  }
   void UpdateAssemblerData();
-
 
   std::vector<int> subsystem_to_parent() { return subsystem_to_parent_; }
 
@@ -61,6 +63,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
       assembler_to_subsystem_adapter_;
   std::vector<int> variable_to_elimination_position_;
   std::vector<int> subsystem_to_parent_;
+  bool auto_update_assemblers_ = false;
 };
 
 }  // namespace conex
