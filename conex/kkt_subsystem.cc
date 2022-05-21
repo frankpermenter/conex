@@ -285,6 +285,36 @@ int T::ComputePostOrdering(int offset,
   return offset;
 };
 
+std::vector<int> GetLocalEliminationPosition(
+    const std::vector<int> variable_elimination_position,
+    const std::vector<int> supernodes_, const std::vector<int> separators_) {
+  std::vector<int> variable_to_local_elimination_position_(
+      variable_elimination_position.size());
+  for (size_t i = 0; i < variable_elimination_position.size(); i++) {
+    bool found = false;
+    for (size_t j = 0; j < supernodes_.size(); j++) {
+      if (variable_elimination_position.at(i) == supernodes_.at(j)) {
+        variable_to_local_elimination_position_.at(i) = j;
+        found = true;
+        break;
+      }
+    }
+    if (found) {
+      continue;
+    }
+    for (size_t j = 0; j < separators_.size(); j++) {
+      if (variable_elimination_position.at(i) == separators_.at(j)) {
+        variable_to_local_elimination_position_.at(i) = j + supernodes_.size();
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      throw;
+    }
+  }
+  return variable_to_local_elimination_position_;
+}
 void T::SetVariableOrdering(
     const std::vector<int>& shared_variable_to_elimination_position) {
   // Relabel and sort supernodes and separators.
@@ -310,30 +340,8 @@ void T::SetVariableOrdering(
   variable_set_equals_sorted_separators_ =
       variable_elimination_position == separators_;
 
-  variable_to_local_elimination_position_.resize(variables_.size());
-  for (size_t i = 0; i < variables_.size(); i++) {
-    bool found = false;
-    for (size_t j = 0; j < supernodes_.size(); j++) {
-      if (variable_elimination_position.at(i) == supernodes_.at(j)) {
-        variable_to_local_elimination_position_.at(i) = j;
-        found = true;
-        break;
-      }
-    }
-    if (found) {
-      continue;
-    }
-    for (size_t j = 0; j < separators_.size(); j++) {
-      if (variable_elimination_position.at(i) == separators_.at(j)) {
-        variable_to_local_elimination_position_.at(i) = j + supernodes_.size();
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      throw;
-    }
-  }
+  variable_to_local_elimination_position_ = GetLocalEliminationPosition(
+      variable_elimination_position, supernodes_, separators_);
 };
 
 void T::DoComputeOffsets() {
