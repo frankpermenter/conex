@@ -7,7 +7,7 @@ using Eigen::MatrixXd;
 using std::vector;
 
 T::EqualityConstraints(const Eigen::MatrixXd& A, const Eigen::MatrixXd& b)
-    : A_(A), b_(b), lambda_(Eigen::VectorXd::Zero(b_.rows())) {}
+    : A_(A), b_(b) {}
 
 void ConstructSchurComplementSystem(EqualityConstraints* o, bool initialize,
                                     SchurComplementSystem* sys_) {
@@ -34,7 +34,6 @@ void ConstructSchurComplementSystem(EqualityConstraints* o, bool initialize,
 
 void PrepareStep(EqualityConstraints* o, const StepOptions&, const Ref& y,
                  StepInfo* info_i) {
-  o->lambda_ = y.col(0).tail(o->b_.rows());
   info_i->normsqrd = 0;
   info_i->norminfd = 0;
 }

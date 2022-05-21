@@ -25,8 +25,8 @@ inline int IsUnique(int N, const std::vector<int>& x) {
 using std::vector;
 int T::SizeOfKKTSystem() const { return new_dual_variable_start_; };
 
-const std::vector<std::vector<int>>& T::variables() const {
-  cliques_.clear();
+std::vector<std::vector<int>> T::variables() const {
+  vector<std::vector<int>> cliques_;
   for (auto e : supernodal_assemblers_ptr_) {
     cliques_.push_back({});
     auto& c = cliques_.back();

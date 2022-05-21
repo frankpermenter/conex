@@ -31,7 +31,6 @@ class EqualityConstraints : public ConstraintBase {
   Eigen::MatrixXd affine_term() const { return b_; }
   Eigen::MatrixXd A_;
   Eigen::MatrixXd b_;
-  Eigen::VectorXd lambda_;
 
   friend int Rank(const EqualityConstraints&) { return 0; };
   friend void SetIdentity(EqualityConstraints*){};

@@ -20,6 +20,7 @@ class ConstraintManager {
   ConstraintManager(){};
 
   void SetNumberOfVariables(int N) {
+    CONEX_CHECK(N > 0);
     max_number_of_variables_ = N;
     new_dual_variable_start_ = N;
   }
@@ -121,12 +122,11 @@ class ConstraintManager {
   }
 
   const std::vector<std::vector<int>>& equality_constraint_multipliers() const;
-  const std::vector<std::vector<int>>& variables() const;
+  std::vector<std::vector<int>> variables() const;
 
  private:
   CONEX_STATUS Validate(const std::vector<int>& variables);
   mutable std::vector<std::vector<int>> dual_vars_;
-  mutable std::vector<std::vector<int>> cliques_;
   std::list<SupernodalAssembler> supernodal_assemblers_;
   std::list<SupernodalAssemblerStatic> quadratic_costs_;
   std::list<SupernodalAssemblerEqualities> equality_constraints_;
