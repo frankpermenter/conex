@@ -6,6 +6,7 @@ namespace conex {
 
 using KKTSubsystemType = KKTSubsystemBase;
 namespace {
+#if 0
 class DistanceToRootRecursion {
  public:
   DistanceToRootRecursion(const std::vector<int>& parent)
@@ -233,14 +234,17 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystemType*>& subsystems,
   return -1;
 }
 
+#endif
 }  // namespace
-
 using T = SymmetricLinearSystemTreeSolver;
 void T::SetEliminationOrder(
     const std::vector<int>& variable_to_elimination_position) {
   variable_to_elimination_position_ = variable_to_elimination_position;
   for (auto s : subsystems_) {
     s->SetVariableOrdering(variable_to_elimination_position_);
+  }
+  for (auto& s : assembler_to_subsystem_adapter_) {
+    s->SetEliminationPosition(variable_to_elimination_position);
   }
 }
 void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
@@ -319,11 +323,12 @@ void T::Finalize(const CliqueTree& clique_tree) {
 }
 
 void T::Finalize(const Options& options) {
-  RootedTree tree(subsystems_.size());
-  SymmetricMatrix<vector<int>> intersections(subsystems_.size());
-  PickCliqueOrderHelper(subsystems_, options.root_node,
-                        options.validate_leaf_nodes, &intersections, &tree);
-  Finalize(tree.parent, options.check_for_zero_pivots);
+  throw std::runtime_error("Obsolete");
+  // RootedTree tree(subsystems_.size());
+  // SymmetricMatrix<vector<int>> intersections(subsystems_.size());
+  // PickCliqueOrderHelper(subsystems_, options.root_node,
+  //                       options.validate_leaf_nodes, &intersections, &tree);
+  // Finalize(tree.parent, options.check_for_zero_pivots);
 }
 
 void T::SetEliminationTree(const std::vector<int>& parent) {
@@ -343,6 +348,8 @@ void T::SetEliminationTree(const std::vector<int>& parent) {
 }
 
 void T::FinalizeHelper(const std::vector<int>& parent) {
+  throw std::runtime_error("Obsolete");
+  /*
   CONEX_DEMAND(parent.size() == subsystems_.size(),
                "Size of parent vector must equal number of subsystems.");
 
@@ -380,7 +387,7 @@ void T::FinalizeHelper(const std::vector<int>& parent) {
   }
   for (auto s : subsystems_) {
     s->SetVariableOrdering(variable_to_elimination_position_);
-  }
+  }*/
 }
 
 std::vector<int> T::ComputePostOrdering() const {

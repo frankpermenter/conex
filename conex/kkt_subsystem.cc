@@ -285,36 +285,6 @@ int T::ComputePostOrdering(int offset,
   return offset;
 };
 
-std::vector<int> GetLocalEliminationPosition(
-    const std::vector<int> variable_elimination_position,
-    const std::vector<int> supernodes_, const std::vector<int> separators_) {
-  std::vector<int> variable_to_local_elimination_position_(
-      variable_elimination_position.size());
-  for (size_t i = 0; i < variable_elimination_position.size(); i++) {
-    bool found = false;
-    for (size_t j = 0; j < supernodes_.size(); j++) {
-      if (variable_elimination_position.at(i) == supernodes_.at(j)) {
-        variable_to_local_elimination_position_.at(i) = j;
-        found = true;
-        break;
-      }
-    }
-    if (found) {
-      continue;
-    }
-    for (size_t j = 0; j < separators_.size(); j++) {
-      if (variable_elimination_position.at(i) == separators_.at(j)) {
-        variable_to_local_elimination_position_.at(i) = j + supernodes_.size();
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      throw;
-    }
-  }
-  return variable_to_local_elimination_position_;
-}
 void T::SetVariableOrdering(
     const std::vector<int>& shared_variable_to_elimination_position) {
   // Relabel and sort supernodes and separators.
@@ -327,21 +297,6 @@ void T::SetVariableOrdering(
   }
   std::sort(supernodes_.begin(), supernodes_.end());
   std::sort(separators_.begin(), separators_.end());
-
-  // Create map from relabelled variables to their
-  // positions inside of the shared_variable vector.
-  std::vector<int> variable_elimination_position = variables_;
-  int v_last = -1;
-  for (auto& v : variable_elimination_position) {
-    v = shared_variable_to_elimination_position.at(v);
-  }
-  variable_set_equals_sorted_supernodes_ =
-      variable_elimination_position == supernodes_;
-  variable_set_equals_sorted_separators_ =
-      variable_elimination_position == separators_;
-
-  variable_to_local_elimination_position_ = GetLocalEliminationPosition(
-      variable_elimination_position, supernodes_, separators_);
 };
 
 void T::DoComputeOffsets() {

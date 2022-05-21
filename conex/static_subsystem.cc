@@ -31,13 +31,58 @@ T::KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base)
       CholeskySolver<Eigen::RLDLT<Eigen::Ref<Eigen::MatrixXd>>, true>>;
 
   if (0) {  // base->is_positive_definite()) {
-    kkt_subsystem_ =
-        std::make_unique<SystemTypePositiveDefinite>(assembler_->variables());
+    kkt_subsystem_ = std::make_unique<SystemTypePositiveDefinite>();
   } else {
-    kkt_subsystem_ =
-        std::make_unique<SystemTypeIndefinite>(assembler_->variables());
+    kkt_subsystem_ = std::make_unique<SystemTypeIndefinite>();
   }
   kkt_subsystem_->SetFactorizationMode(true /*left looking*/);
+}
+
+std::vector<int> GetLocalEliminationPosition(
+    const std::vector<int> variable_elimination_position,
+    const std::vector<int> supernodes_, const std::vector<int> separators_) {
+  std::vector<int> variable_to_local_elimination_position_(
+      variable_elimination_position.size());
+  for (size_t i = 0; i < variable_elimination_position.size(); i++) {
+    bool found = false;
+    for (size_t j = 0; j < supernodes_.size(); j++) {
+      if (variable_elimination_position.at(i) == supernodes_.at(j)) {
+        variable_to_local_elimination_position_.at(i) = j;
+        found = true;
+        break;
+      }
+    }
+    if (found) {
+      continue;
+    }
+    for (size_t j = 0; j < separators_.size(); j++) {
+      if (variable_elimination_position.at(i) == separators_.at(j)) {
+        variable_to_local_elimination_position_.at(i) = j + supernodes_.size();
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      throw;
+    }
+  }
+  return variable_to_local_elimination_position_;
+}
+
+void T::SetEliminationPosition(
+    const std::vector<int>& shared_variable_to_elimination_position) {
+  std::vector<int> variable_elimination_position = assembler_->variables();
+  for (auto& v : variable_elimination_position) {
+    v = shared_variable_to_elimination_position.at(v);
+  }
+  variable_set_equals_sorted_supernodes_ =
+      variable_elimination_position == kkt_subsystem_->supernodes();
+  variable_set_equals_sorted_separators_ =
+      variable_elimination_position == kkt_subsystem_->separators();
+
+  variable_to_local_elimination_position_ = GetLocalEliminationPosition(
+      variable_elimination_position, kkt_subsystem_->supernodes(),
+      kkt_subsystem_->separators());
 }
 
 void T::UpdateData() {
@@ -45,14 +90,14 @@ void T::UpdateData() {
   int n2 = kkt_subsystem_->separators().size();
   auto& source_submatrix = assembler_->submatrix_data()->G;
 
-  if (kkt_subsystem_->variable_set_equals_sorted_supernodes()) {
+  if (variable_set_equals_sorted_supernodes_) {
     new (&source_submatrix) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
         kkt_subsystem_->supernode_submatrix().data(), n1, n1);
     assembler_->SetDenseData();
     return;
   }
 
-  if (kkt_subsystem_->variable_set_equals_sorted_separators()) {
+  if (variable_set_equals_sorted_separators_) {
     new (&source_submatrix) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
         kkt_subsystem_->separator_schur_complement().data(), n2, n2);
     assembler_->SetDenseData();
@@ -61,7 +106,7 @@ void T::UpdateData() {
   Q_in_elimination_order_.resize(n1 + n2, n1 + n2);
   assembler_->SetDenseData();
   AssignSubmatrix(source_submatrix, Q_in_elimination_order_,
-                  kkt_subsystem_->variable_to_local_elimination_rank());
+                  variable_to_local_elimination_position_);
 
   kkt_subsystem_->supernode_submatrix().triangularView<Eigen::Lower>() =
       Q_in_elimination_order_.topLeftCorner(n1, n1)

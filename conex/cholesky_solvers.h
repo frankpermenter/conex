@@ -170,8 +170,6 @@ class CholeskySolver : public KKTSubsystemBase {
 template <typename FactorizationType>
 class KKTCholeskySystem : public KKTSubsystem {
  public:
-  KKTCholeskySystem() {}
-  KKTCholeskySystem(const std::vector<int>& vars) : KKTSubsystem(vars, 0) {}
   bool DoEliminateSupernodeColumns() override {
     return factorization_->DoEliminateSupernodeColumns();
   }
@@ -202,8 +200,6 @@ class KKTCholeskySystem : public KKTSubsystem {
 
 class LUSolver : public KKTSubsystem {
  public:
-  LUSolver(std::vector<int> vars) : KKTSubsystem(vars, 0) {}
-
   bool DoEliminateSupernodeColumns() override {
     lu_.compute(supernode_submatrix());
     return lu_.determinant() != 0;

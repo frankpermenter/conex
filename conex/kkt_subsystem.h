@@ -77,11 +77,6 @@ namespace conex {
 
 class KKTSubsystemBase {
  public:
-  KKTSubsystemBase(const std::vector<int>& shared_assembler_variables, int)
-      : variables_(shared_assembler_variables) {}
-
-  KKTSubsystemBase() : variables_({}) {}
-
   std::vector<int> separators() const { return separators_; }
   std::vector<int> supernodes() const { return supernodes_; }
   virtual ~KKTSubsystemBase() = default;
@@ -94,8 +89,6 @@ class KKTSubsystemBase {
       const = 0;
   virtual Eigen::Ref<const Eigen::MatrixXd> separator_rows() const = 0;
   //  virtual Eigen::Ref<const Eigen::MatrixXd> separator_columns() const = 0;
-
-  const std::vector<int>& shared_variables() const { return variables_; }
 
   void SetFactorizationMode(bool left_looking) { left_looking_ = left_looking; }
   void SetSeparators(const std::vector<int>& separators) {
@@ -110,10 +103,6 @@ class KKTSubsystemBase {
   void AddSupernode(int i) { supernodes_.push_back(i); }
 
   void AddSeparator(int i) { separators_.push_back(i); }
-
-  std::vector<int>& variable_to_local_elimination_rank() {
-    return variable_to_local_elimination_position_;
-  }
 
   int ComputePostOrdering(int offset,
                           std::vector<int>* variable_to_elimination_position);
@@ -202,7 +191,6 @@ class KKTSubsystemBase {
   KKTSubsystemBase* parent_ = nullptr;
   std::vector<KKTSubsystemBase*> children_;
 
-  std::vector<int> variable_to_local_elimination_position_;
   std::map<const KKTSubsystemBase*, std::vector<Offset>>
       local_supernode_to_source_separator_;
   std::map<const KKTSubsystemBase*, std::vector<Offset>>
@@ -211,7 +199,6 @@ class KKTSubsystemBase {
  protected:
   std::vector<int> separators_;
   std::vector<int> supernodes_;
-  const std::vector<int> variables_;
   bool left_looking_ = true;
   bool variable_set_equals_sorted_supernodes_;
   bool variable_set_equals_sorted_separators_;
@@ -219,13 +206,6 @@ class KKTSubsystemBase {
 
 class KKTSubsystem : public KKTSubsystemBase {
  public:
-  KKTSubsystem(const std::vector<int>& shared_assembler_variables,
-               int number_of_private_variables)
-      : KKTSubsystemBase(shared_assembler_variables,
-                         number_of_private_variables) {}
-
-  KKTSubsystem() {}
-
   void DoInitialize() override {
     supernode_submatrix_.resize(supernodes_.size(), supernodes_.size());
     separator_rows_.resize(separators_.size(), supernodes_.size());
