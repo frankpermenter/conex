@@ -149,6 +149,10 @@ class ConstraintManager {
   int new_dual_variable_start_ = 0;
   Eigen::VectorXd workspace_memory_;
   std::vector<std::vector<int>> equality_constraint_multipliers_;
+  void PartitionEqualityConstraint(
+      const Eigen::MatrixXd& A, const Eigen::MatrixXd& b,
+      const std::vector<std::vector<int>>& variable_groups,
+      const std::vector<int>& multipliers);
 };
 
 }  // namespace conex

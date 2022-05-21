@@ -178,17 +178,17 @@ void T::UpdateBlocks() {
   }
 }
 
-  SupernodalAssemblerEqualities::SupernodalAssemblerEqualities(
-      const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
-      const std::vector<int>& primal_variables, 
-      const std::vector<int>& dual_variables)
-      :  A_(A), b_(b), dual_variables_(dual_variables) {
-    CONEX_CHECK(A.cols() == static_cast<int>(primal_variables.size()));
-    CONEX_CHECK(A.rows() == static_cast<int>(dual_variables.size()));
-    std::vector<int> variables = primal_variables;
-    variables.insert(variables.end(), dual_variables.begin(), dual_variables.end());
-    SetVariables(variables, 0);
-  }
-
+SupernodalAssemblerEqualities::SupernodalAssemblerEqualities(
+    const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
+    const std::vector<int>& primal_variables,
+    const std::vector<int>& dual_variables)
+    : A_(A), b_(b), dual_variables_(dual_variables) {
+  CONEX_CHECK(A.cols() == static_cast<int>(primal_variables.size()));
+  CONEX_CHECK(A.rows() == static_cast<int>(dual_variables.size()));
+  std::vector<int> variables = primal_variables;
+  variables.insert(variables.end(), dual_variables.begin(),
+                   dual_variables.end());
+  SetVariables(variables, 0);
+}
 
 }  // namespace conex

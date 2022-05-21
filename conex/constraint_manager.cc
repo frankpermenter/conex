@@ -3,6 +3,7 @@
 #include "conex/debug_macros.h"
 
 namespace conex {
+using std::vector;
 using T = ConstraintManager;
 namespace {
 inline int IsUnique(int N, const std::vector<int>& x) {
@@ -19,6 +20,7 @@ inline int IsUnique(int N, const std::vector<int>& x) {
   }
   return true;
 }
+
 }  // namespace
 using std::vector;
 int T::SizeOfKKTSystem() const { return new_dual_variable_start_; };
@@ -57,16 +59,22 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
   new_dual_variable_start_ += equality_constraint_multipliers_.back().size();
 
 #if 1
-  std::vector<int> primal_vars; primal_vars.push_back(variables.at(0));
-  equality_constraints_.emplace_back(x.A_.col(0), x.b_, primal_vars, 
-  equality_constraint_multipliers_.back());
-  supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
-  for (size_t i = 1; i < variables.size(); i++) {
-  primal_vars.at(0) = variables.at(i);
-  equality_constraints_.emplace_back(x.A_.col(i), x.b_ * 0, primal_vars, 
-              equality_constraint_multipliers_.back());
-    supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
+  vector<std::vector<int>> var_groups(variables.size());
+  for (int i = 0; i < variables.size(); i++) {
+    var_groups.at(i).push_back(variables.at(i));
   }
+  PartitionEqualityConstraint(x.A_, x.b_, var_groups,
+                              equality_constraint_multipliers_.back());
+  // std::vector<int> primal_vars; primal_vars.push_back(variables.at(0));
+  // equality_constraints_.emplace_back(x.A_.col(0), x.b_, primal_vars,
+  // equality_constraint_multipliers_.back());
+  // supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
+  // for (size_t i = 1; i < variables.size(); i++) {
+  // primal_vars.at(0) = variables.at(i);
+  // equality_constraints_.emplace_back(x.A_.col(i), x.b_ * 0, primal_vars,
+  //            equality_constraint_multipliers_.back());
+  //  supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
+  //}
 #else
   std::vector<int> primal_dual_variables = variables;
   std::copy(equality_constraint_multipliers_.back().begin(),
@@ -79,5 +87,19 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
 #endif
 
   return equality_constraints_.size() - 1;
+}
+
+void T::PartitionEqualityConstraint(const Eigen::MatrixXd& A,
+                                    const Eigen::MatrixXd& b,
+                                    const vector<vector<int>>& variable_groups,
+                                    const vector<int>& multipliers) {
+  equality_constraints_.emplace_back(A.col(0), b, variable_groups.at(0),
+                                     multipliers);
+  supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
+  for (size_t i = 1; i < variable_groups.size(); i++) {
+    equality_constraints_.emplace_back(A.col(i), b * 0, variable_groups.at(i),
+                                       multipliers);
+    supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
+  }
 }
 }  // namespace conex
