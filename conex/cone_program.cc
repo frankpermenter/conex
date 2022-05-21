@@ -40,6 +40,16 @@ inline void TakeStep(std::vector<SupernodalAssembler*>* constraints,
   }
 }
 
+void IncrementSubvector(Eigen::Ref<MatrixXd> destination,
+                        const std::vector<int>& indices,
+                        const Eigen::Ref<const MatrixXd> source) {
+  int i = 0;
+  for (auto& r : indices) {
+    destination.row(r) += source.row(i);
+    i++;
+  }
+}
+
 void AssembleSchurComplementResiduals(ConstraintManager* kkt,
                                       SchurComplementSystem* s) {
   s->setZero();
@@ -57,12 +67,8 @@ void AssembleSchurComplementResiduals(ConstraintManager* kkt,
     }
     i++;
   }
-
-  int offset = kkt->GetNumberOfVariables();
   for (auto& eq : kkt->equality_constraints()) {
-    int num_eq = eq.affine_term().rows();
-    s->AQc.middleRows(offset, num_eq) = eq.affine_term();
-    offset += num_eq;
+    IncrementSubvector(s->AQc, eq.dual_variables(), eq.affine_term());
   }
 }
 

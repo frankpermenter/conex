@@ -119,19 +119,6 @@ GTEST_TEST(LDLT, TestAssembly) {
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 GTEST_TEST(LDLT, Benchmark2) {
   using Eigen::MatrixXd;
 

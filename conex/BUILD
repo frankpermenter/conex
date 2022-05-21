@@ -263,7 +263,10 @@ cc_library(
 cc_library(
     name = "constraint_manager",
     srcs = ["constraint_manager.cc"],
-    hdrs = ["constraint_manager.h", "debug_macros.h"],
+    hdrs = [
+        "constraint_manager.h",
+        "debug_macros.h",
+    ],
     deps = [
         "equality_constraint",
         "error_checking",

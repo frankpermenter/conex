@@ -120,7 +120,6 @@ class ConstraintManager {
     return equality_constraints_;
   }
 
-
   const std::vector<std::vector<int>>& equality_constraint_multipliers() const;
   const std::vector<std::vector<int>>& variables() const;
 

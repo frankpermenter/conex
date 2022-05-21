@@ -16,10 +16,10 @@ namespace {
 int GetRootNode(const std::vector<std::vector<int>>& vars,
                 const std::vector<std::vector<int>>& dual_vars) {
   int arg_max = 0;
-  int max = 0;
+  size_t max = 0;
 
   if (dual_vars.size() > 0) {
-    size_t max = dual_vars.at(0).size();
+    max = dual_vars.at(0).size();
     for (size_t i = 1; i < dual_vars.size(); i++) {
       if (dual_vars.at(i).size() > max) {
         arg_max = i;

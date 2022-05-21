@@ -16,7 +16,6 @@ void IncrementSubvector(std::vector<int>* y, const std::vector<int>& indices) {
 std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
   vector<vector<int>> cliques = c->variables();
-  //vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
 
   CliqueTree clique_tree = MakeCliqueTree(cliques);
   auto solver_temp = std::make_unique<SupernodalKKTSolver>(
@@ -42,14 +41,12 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
 std::unique_ptr<KKTSolverBase> MakeTreeSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
   vector<vector<int>> cliques = c->variables();
-//  vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
   auto& clique_assemblers_ptrs_ = c->clique_assemblers();
 
   auto tree_solver_ =
       std::make_unique<::conex::SymmetricLinearSystemTreeSolver>();
 
   CliqueTree clique_tree = MakeCliqueTree(cliques);
-
   int i = 0;
   for (auto c : clique_assemblers_ptrs_) {
     c->SetVariables(cliques.at(i), 0);
@@ -60,6 +57,7 @@ std::unique_ptr<KKTSolverBase> MakeTreeSolver(
     ++i;
   }
   tree_solver_->Finalize(clique_tree);
+  tree_solver_->SetFactorizationMode(true /*left looking*/);
   return tree_solver_;
 }
 
@@ -141,7 +139,7 @@ std::unique_ptr<KKTSolverBase> KKTSolverFactory::create_unique(
       return MakeCGSolver(kkt, config);
       break;
     case CONEX_KKT_SOLVER_TREE:
-      return MakeSupernodalSolver(kkt, config);
+      //           return MakeSupernodalSolver(kkt, config);
       return MakeTreeSolver(kkt, config);
       break;
   }
