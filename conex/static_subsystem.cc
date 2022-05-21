@@ -30,7 +30,7 @@ T::KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base)
   using SystemTypeIndefinite = KKTCholeskySystem<
       CholeskySolver<Eigen::RLDLT<Eigen::Ref<Eigen::MatrixXd>>, true>>;
 
-  if (0) {  // base->is_positive_definite()) {
+  if (base->is_positive_definite()) {
     kkt_subsystem_ = std::make_unique<SystemTypePositiveDefinite>();
   } else {
     kkt_subsystem_ = std::make_unique<SystemTypeIndefinite>();

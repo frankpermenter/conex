@@ -280,10 +280,14 @@ void T::ComputeSeparatorOffsets() {
   }
 }
 
-void T::DoAssemble() {
+
+void T::UpdateAssemblerData() {
   for (auto& a : assembler_to_subsystem_adapter_) {
     a->UpdateData();
   }
+}
+
+void T::DoAssemble() {
   for (auto root : roots_) {
     root->Assemble();
   }

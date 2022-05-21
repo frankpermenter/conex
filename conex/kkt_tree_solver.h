@@ -26,6 +26,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
                 bool check_for_zero_pivots = true);
 
   void SetFactorizationMode(bool left_looking);
+  void UpdateAssemblerData();
+
 
   std::vector<int> subsystem_to_parent() { return subsystem_to_parent_; }
 
