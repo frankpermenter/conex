@@ -124,14 +124,7 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
  public:
   SupernodalAssemblerEqualities(
       const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
-      const std::vector<int>& primal_and_dual_variables)
-      : SupernodalAssemblerBase(primal_and_dual_variables, 0), A_(A), b_(b) {
-    CONEX_CHECK(A.cols() + A.rows() ==
-                static_cast<int>(primal_and_dual_variables.size()));
-    for (int i = A.cols(); i < A.cols() + A.rows(); i++) {
-      dual_variables_.push_back(variables().at(i));
-    }
-  }
+      const std::vector<int>& primal_and_dual_variables);
 
   const std::vector<int>& dual_variables() const { return dual_variables_; }
   int UpdateMatrix(double value, int row, int col) {
