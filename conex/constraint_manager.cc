@@ -49,14 +49,17 @@ CONEX_STATUS T::Validate(const std::vector<int>& variables) {
 
 CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
                                   const std::vector<int>& variables) {
+  CONEX_CHECK(max_number_of_variables_ > 0);
   if (!IsUnique(max_number_of_variables_, variables)) {
     return CONEX_FAILURE;
   }
-  equality_constraint_multipliers_.emplace_back(x.A_.rows());
-  std::iota(equality_constraint_multipliers_.back().begin(),
-            equality_constraint_multipliers_.back().end(),
+  equality_constraints_.data.push_back(x);
+  equality_constraints_.dual_variables.emplace_back(x.A_.rows());
+  std::iota(equality_constraints_.dual_variables.back().begin(),
+            equality_constraints_.dual_variables.back().end(),
             new_dual_variable_start_);
-  new_dual_variable_start_ += equality_constraint_multipliers_.back().size();
+  new_dual_variable_start_ += equality_constraints_.dual_variables.back().size();
+  equality_constraints_.variables.push_back(variables);
 
 #if 1
   vector<std::vector<int>> var_groups(variables.size());
@@ -64,7 +67,7 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
     var_groups.at(i).push_back(variables.at(i));
   }
   PartitionEqualityConstraint(x.A_, x.b_, var_groups,
-                              equality_constraint_multipliers_.back());
+                              equality_constraints_.dual_variables.back());
   // std::vector<int> primal_vars; primal_vars.push_back(variables.at(0));
   // equality_constraints_.emplace_back(x.A_.col(0), x.b_, primal_vars,
   // equality_constraint_multipliers_.back());
@@ -86,20 +89,20 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
 
 #endif
 
-  return equality_constraints_.size() - 1;
+  return equality_constraints_.data.size() - 1;
 }
 
 void T::PartitionEqualityConstraint(const Eigen::MatrixXd& A,
                                     const Eigen::MatrixXd& b,
                                     const vector<vector<int>>& variable_groups,
                                     const vector<int>& multipliers) {
-  equality_constraints_.emplace_back(A.col(0), b, variable_groups.at(0),
+  equality_constraints_.assemblers.emplace_back(A.col(0), b, variable_groups.at(0),
                                      multipliers);
-  supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
+  supernodal_assemblers_ptr_.push_back(&equality_constraints_.assemblers.back());
   for (size_t i = 1; i < variable_groups.size(); i++) {
-    equality_constraints_.emplace_back(A.col(i), b * 0, variable_groups.at(i),
+    equality_constraints_.assemblers.emplace_back(A.col(i), b * 0, variable_groups.at(i),
                                        multipliers);
-    supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
+    supernodal_assemblers_ptr_.push_back(&equality_constraints_.assemblers.back());
   }
 }
 }  // namespace conex

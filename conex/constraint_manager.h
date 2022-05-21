@@ -11,6 +11,13 @@
 
 namespace conex {
 
+class EqualityConstraintManager {
+ public:
+  std::vector<EqualityConstraints> data;
+  std::vector<std::vector<int>> variables; 
+  std::vector<std::vector<int>> dual_variables; 
+  std::list<SupernodalAssemblerEqualities> assemblers;
+};
 class ConstraintManager {
  public:
   ConstraintManager(int max_number_of_variables)
@@ -69,6 +76,15 @@ class ConstraintManager {
   CONEX_ID AddEqualityConstraint(const EqualityConstraints& x,
                                  const std::vector<int>& variables);
 
+
+  CONEX_ID AddEqualityConstraint(const EqualityConstraints& x) {
+    std::vector<int> clique(max_number_of_variables_);
+    for (size_t i = 0; i < clique.size(); i++) {
+      clique[i] = i;
+    }
+    return AddEqualityConstraint(x, clique);
+  }
+
   std::vector<Workspace> workspace() {
     std::vector<Workspace> workspaces;
     for (auto& c : constraints_) {
@@ -79,15 +95,6 @@ class ConstraintManager {
     }
     return workspaces;
   }
-
-  CONEX_ID AddEqualityConstraint(const EqualityConstraints& x) {
-    std::vector<int> clique(max_number_of_variables_);
-    for (size_t i = 0; i < clique.size(); i++) {
-      clique[i] = i;
-    }
-    return AddEqualityConstraint(x, clique);
-  }
-
   void InitializeWorkspace() {
     auto workspaces = workspace();
     auto size = SizeOf(workspaces);
@@ -118,7 +125,7 @@ class ConstraintManager {
   }
 
   const std::list<SupernodalAssemblerEqualities>& equality_constraints() const {
-    return equality_constraints_;
+    return equality_constraints_.assemblers;
   }
 
   const std::vector<std::vector<int>>& equality_constraint_multipliers() const;
@@ -129,7 +136,6 @@ class ConstraintManager {
   mutable std::vector<std::vector<int>> dual_vars_;
   std::list<SupernodalAssembler> supernodal_assemblers_;
   std::list<SupernodalAssemblerStatic> quadratic_costs_;
-  std::list<SupernodalAssemblerEqualities> equality_constraints_;
 
   // Stores and owns the constraints.
   std::list<std::any> constraint_storage_;
@@ -141,6 +147,7 @@ class ConstraintManager {
   // Provides random access to constraints_.
   std::vector<Constraint*> cone_inequalities_;
   std::vector<SupernodalAssembler*> cone_inequality_assemblers_;
+  EqualityConstraintManager equality_constraints_;
 
   // Provides type-erased interface to supernodal assemblers.
   std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;
@@ -148,7 +155,6 @@ class ConstraintManager {
   int max_number_of_variables_ = 0;
   int new_dual_variable_start_ = 0;
   Eigen::VectorXd workspace_memory_;
-  std::vector<std::vector<int>> equality_constraint_multipliers_;
   void PartitionEqualityConstraint(
       const Eigen::MatrixXd& A, const Eigen::MatrixXd& b,
       const std::vector<std::vector<int>>& variable_groups,
