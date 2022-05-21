@@ -124,7 +124,8 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
  public:
   SupernodalAssemblerEqualities(
       const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
-      const std::vector<int>& primal_and_dual_variables);
+      const std::vector<int>& primal_variables, 
+      const std::vector<int>& dual_variables);
 
   const std::vector<int>& dual_variables() const { return dual_variables_; }
   int UpdateMatrix(double value, int row, int col) {

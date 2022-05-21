@@ -20,7 +20,7 @@ inline int IsUnique(int N, const std::vector<int>& x) {
   return true;
 }
 }  // namespace
-
+using std::vector;
 int T::SizeOfKKTSystem() const { return new_dual_variable_start_; };
 
 const std::vector<std::vector<int>>& T::variables() const {
@@ -57,19 +57,14 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
   new_dual_variable_start_ += equality_constraint_multipliers_.back().size();
 
 #if 1
-  std::vector<int> primal_dual_variables;
-  primal_dual_variables.reserve(1 + x.A_.rows());
-  primal_dual_variables.push_back(variables.at(0));
-  std::copy(equality_constraint_multipliers_.back().begin(),
-            equality_constraint_multipliers_.back().end(),
-            std::back_inserter(primal_dual_variables));
-
-  equality_constraints_.emplace_back(x.A_.col(0), x.b_, primal_dual_variables);
+  std::vector<int> primal_vars; primal_vars.push_back(variables.at(0));
+  equality_constraints_.emplace_back(x.A_.col(0), x.b_, primal_vars, 
+  equality_constraint_multipliers_.back());
   supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
   for (size_t i = 1; i < variables.size(); i++) {
-    primal_dual_variables.at(0) = variables.at(i);
-    equality_constraints_.emplace_back(x.A_.col(i), 0 * x.b_,
-                                       primal_dual_variables);
+  primal_vars.at(0) = variables.at(i);
+  equality_constraints_.emplace_back(x.A_.col(i), x.b_ * 0, primal_vars, 
+              equality_constraint_multipliers_.back());
     supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
   }
 #else
