@@ -16,7 +16,7 @@ namespace conex {
 #endif
 
 #ifndef CONEX_ENABLE_TIMER
-#define CONEX_ENABLE_TIMER 1
+#define CONEX_ENABLE_TIMER 0
 #endif
 
 #if CONEX_VERBOSE

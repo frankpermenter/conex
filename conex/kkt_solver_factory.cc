@@ -139,7 +139,6 @@ std::unique_ptr<KKTSolverBase> KKTSolverFactory::create_unique(
       return MakeCGSolver(kkt, config);
       break;
     case CONEX_KKT_SOLVER_TREE:
-      //           return MakeSupernodalSolver(kkt, config);
       return MakeTreeSolver(kkt, config);
       break;
   }
