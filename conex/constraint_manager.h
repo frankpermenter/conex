@@ -130,6 +130,7 @@ class ConstraintManager {
 
   const std::vector<std::vector<int>>& equality_constraint_multipliers() const;
   std::vector<std::vector<int>> variables() const;
+  void PartitionEqualityConstraints();
 
  private:
   CONEX_STATUS Validate(const std::vector<int>& variables);

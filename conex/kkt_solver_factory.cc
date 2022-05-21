@@ -51,7 +51,6 @@ std::unique_ptr<KKTSolverBase> MakeTreeSolver(
   CliqueTree clique_tree = MakeCliqueTree(cliques);
   int i = 0;
   for (auto c : clique_assemblers_ptrs_) {
-    c->SetVariables(cliques.at(i), 0);
     auto adapter = std::make_unique<::conex::KKTAssemblerToSubsystemAdapter>(c);
     auto* subsystem = adapter->kkt_subsystem();
     tree_solver_->AddSubsystem(subsystem);

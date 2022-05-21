@@ -92,6 +92,19 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
   return equality_constraints_.data.size() - 1;
 }
 
+void T::PartitionEqualityConstraints() {
+  int i = 0;
+  for (auto& x : equality_constraints_.data) {
+    auto& variables = equality_constraints_.variables.at(i);
+    vector<std::vector<int>> var_groups(variables.size());
+    for (size_t j = 0; j < variables.size(); j++) {
+      var_groups.at(j).push_back(variables.at(j));
+    }
+    PartitionEqualityConstraint(x.A_, x.b_, var_groups, 
+    equality_constraints_.dual_variables.at(i));
+    i++;
+  }
+}
 void T::PartitionEqualityConstraint(const Eigen::MatrixXd& A,
                                     const Eigen::MatrixXd& b,
                                     const vector<vector<int>>& variable_groups,
