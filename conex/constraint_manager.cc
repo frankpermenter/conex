@@ -1,11 +1,16 @@
 #include "conex/constraint_manager.h"
 
+#include <numeric>
+
+#include "conex/clique_ordering.h"
 #include "conex/debug_macros.h"
 
 namespace conex {
 using std::vector;
 using T = ConstraintManager;
+
 namespace {
+
 inline int IsUnique(int N, const std::vector<int>& x) {
   Eigen::VectorXd y(N);
   y.setZero();
@@ -50,6 +55,7 @@ CONEX_STATUS T::Validate(const std::vector<int>& variables) {
 CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
                                   const std::vector<int>& variables) {
   CONEX_CHECK(max_number_of_variables_ > 0);
+  CONEX_CHECK(static_cast<int>(variables.size()) == x.A_.cols());
   if (!IsUnique(max_number_of_variables_, variables)) {
     return CONEX_FAILURE;
   }
@@ -58,64 +64,76 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
   std::iota(equality_constraints_.dual_variables.back().begin(),
             equality_constraints_.dual_variables.back().end(),
             new_dual_variable_start_);
-  new_dual_variable_start_ += equality_constraints_.dual_variables.back().size();
+  new_dual_variable_start_ +=
+      equality_constraints_.dual_variables.back().size();
   equality_constraints_.variables.push_back(variables);
-
-#if 1
-  vector<std::vector<int>> var_groups(variables.size());
-  for (int i = 0; i < variables.size(); i++) {
-    var_groups.at(i).push_back(variables.at(i));
-  }
-  PartitionEqualityConstraint(x.A_, x.b_, var_groups,
-                              equality_constraints_.dual_variables.back());
-  // std::vector<int> primal_vars; primal_vars.push_back(variables.at(0));
-  // equality_constraints_.emplace_back(x.A_.col(0), x.b_, primal_vars,
-  // equality_constraint_multipliers_.back());
-  // supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
-  // for (size_t i = 1; i < variables.size(); i++) {
-  // primal_vars.at(0) = variables.at(i);
-  // equality_constraints_.emplace_back(x.A_.col(i), x.b_ * 0, primal_vars,
-  //            equality_constraint_multipliers_.back());
-  //  supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
-  //}
-#else
-  std::vector<int> primal_dual_variables = variables;
-  std::copy(equality_constraint_multipliers_.back().begin(),
-            equality_constraint_multipliers_.back().end(),
-            std::back_inserter(primal_dual_variables));
-
-  equality_constraints_.emplace_back(x.A_, x.b_, primal_dual_variables);
-  supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
-
-#endif
 
   return equality_constraints_.data.size() - 1;
 }
 
 void T::PartitionEqualityConstraints() {
   int i = 0;
+
+  vector<vector<int>> primal_cliques;
+  for (const auto& c : clique_assemblers()) {
+    if (c->is_positive_definite()) {
+      primal_cliques.push_back(c->variables());
+    }
+  }
+  CliqueTree tree = MakeCliqueTree(primal_cliques);
   for (auto& x : equality_constraints_.data) {
     auto& variables = equality_constraints_.variables.at(i);
-    vector<std::vector<int>> var_groups(variables.size());
-    for (size_t j = 0; j < variables.size(); j++) {
-      var_groups.at(j).push_back(variables.at(j));
-    }
-    PartitionEqualityConstraint(x.A_, x.b_, var_groups, 
-    equality_constraints_.dual_variables.at(i));
+    PartitionEqualityConstraint(x.A_, x.b_, variables, &tree,
+                                equality_constraints_.dual_variables.at(i));
     i++;
   }
 }
+
 void T::PartitionEqualityConstraint(const Eigen::MatrixXd& A,
                                     const Eigen::MatrixXd& b,
-                                    const vector<vector<int>>& variable_groups,
+                                    const vector<int>& variables,
+                                    const CliqueTree* primal_tree,
                                     const vector<int>& multipliers) {
-  equality_constraints_.assemblers.emplace_back(A.col(0), b, variable_groups.at(0),
-                                     multipliers);
-  supernodal_assemblers_ptr_.push_back(&equality_constraints_.assemblers.back());
+  std::vector<std::vector<int>> variable_groups;
+  size_t total_found = 0;
+  for (auto& s : primal_tree->supernodes) {
+    bool found = false;
+    for (auto& v : variables) {
+      if (std::find(s.begin(), s.end(), v) != s.end()) {
+        total_found++;
+        if (!found) {
+          variable_groups.push_back(std::vector<int>{v});
+        } else {
+          variable_groups.back().push_back(v);
+        }
+        found = true;
+      }
+    }
+  }
+  CONEX_CHECK(total_found == variables.size());
+
+  auto columns_of_A = [A, variables, variable_groups](int group_number) {
+    const auto& cols = variable_groups.at(group_number);
+    Eigen::MatrixXd y(A.rows(), cols.size());
+    int i = 0;
+    for (auto& c : cols) {
+      int index = std::distance(
+          variables.begin(), std::find(variables.begin(), variables.end(), c));
+      y.col(i) = A.col(index);
+      ++i;
+    }
+    return y;
+  };
+
+  equality_constraints_.assemblers.emplace_back(
+      columns_of_A(0), b, variable_groups.at(0), multipliers);
+  supernodal_assemblers_ptr_.push_back(
+      &equality_constraints_.assemblers.back());
   for (size_t i = 1; i < variable_groups.size(); i++) {
-    equality_constraints_.assemblers.emplace_back(A.col(i), b * 0, variable_groups.at(i),
-                                       multipliers);
-    supernodal_assemblers_ptr_.push_back(&equality_constraints_.assemblers.back());
+    equality_constraints_.assemblers.emplace_back(
+        columns_of_A(i), b * 0, variable_groups.at(i), multipliers);
+    supernodal_assemblers_ptr_.push_back(
+        &equality_constraints_.assemblers.back());
   }
 }
 }  // namespace conex

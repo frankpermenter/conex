@@ -1,5 +1,6 @@
 #include "conex/block_triangular_operations.h"
 
+#include "conex/clique_ordering_utils.h"
 #include "conex/supernodal_solver.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
@@ -233,5 +234,4 @@ GTEST_TEST(LowerTri, LDLT) {
   DoLDLTTest(diagonal, {{0, 1, 2}, {1, 2, 3}, {3, 4, 2}});
   DoLDLTTest(diagonal, {{0, 1}, {2, 4}, {3, 4}, {5, 6, 7}, {7, 8, 9, 10}});
 }
-
 }  // namespace conex

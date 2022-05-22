@@ -30,7 +30,7 @@ T::KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base)
   using SystemTypeIndefinite = KKTCholeskySystem<
       CholeskySolver<Eigen::RLDLT<Eigen::Ref<Eigen::MatrixXd>>, true>>;
 
-  if (base->is_positive_definite()) {
+  if (0) {  // base->is_positive_definite()) {
     kkt_subsystem_ = std::make_unique<SystemTypePositiveDefinite>();
   } else {
     kkt_subsystem_ = std::make_unique<SystemTypeIndefinite>();
@@ -71,17 +71,20 @@ std::vector<int> GetLocalEliminationPosition(
 
 void T::SetEliminationPosition(
     const std::vector<int>& shared_variable_to_elimination_position) {
-  std::vector<int> variable_elimination_position = assembler_->variables();
-  for (auto& v : variable_elimination_position) {
+  variable_index_to_elimination_position_ = assembler_->variables();
+  for (auto& v : variable_index_to_elimination_position_) {
     v = shared_variable_to_elimination_position.at(v);
   }
   variable_set_equals_sorted_supernodes_ =
-      variable_elimination_position == kkt_subsystem_->supernodes();
+      variable_index_to_elimination_position_ == kkt_subsystem_->supernodes() &&
+      kkt_subsystem_->separators().size() == 0;
+
   variable_set_equals_sorted_separators_ =
-      variable_elimination_position == kkt_subsystem_->separators();
+      variable_index_to_elimination_position_ == kkt_subsystem_->separators() &&
+      kkt_subsystem_->supernodes().size() == 0;
 
   variable_to_local_elimination_position_ = GetLocalEliminationPosition(
-      variable_elimination_position, kkt_subsystem_->supernodes(),
+      variable_index_to_elimination_position_, kkt_subsystem_->supernodes(),
       kkt_subsystem_->separators());
 }
 

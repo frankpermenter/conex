@@ -2,7 +2,6 @@
 
 #include <any>
 #include <list>
-#include <numeric>
 
 #include "conex/equality_constraint.h"
 #include "conex/error_checking_macros.h"
@@ -11,11 +10,12 @@
 
 namespace conex {
 
+class CliqueTree;
 class EqualityConstraintManager {
  public:
   std::vector<EqualityConstraints> data;
-  std::vector<std::vector<int>> variables; 
-  std::vector<std::vector<int>> dual_variables; 
+  std::vector<std::vector<int>> variables;
+  std::vector<std::vector<int>> dual_variables;
   std::list<SupernodalAssemblerEqualities> assemblers;
 };
 class ConstraintManager {
@@ -75,7 +75,6 @@ class ConstraintManager {
 
   CONEX_ID AddEqualityConstraint(const EqualityConstraints& x,
                                  const std::vector<int>& variables);
-
 
   CONEX_ID AddEqualityConstraint(const EqualityConstraints& x) {
     std::vector<int> clique(max_number_of_variables_);
@@ -156,10 +155,11 @@ class ConstraintManager {
   int max_number_of_variables_ = 0;
   int new_dual_variable_start_ = 0;
   Eigen::VectorXd workspace_memory_;
-  void PartitionEqualityConstraint(
-      const Eigen::MatrixXd& A, const Eigen::MatrixXd& b,
-      const std::vector<std::vector<int>>& variable_groups,
-      const std::vector<int>& multipliers);
+  void PartitionEqualityConstraint(const Eigen::MatrixXd& A,
+                                   const Eigen::MatrixXd& b,
+                                   const std::vector<int>& variables,
+                                   const CliqueTree* primal_tree,
+                                   const std::vector<int>& multipliers);
 };
 
 }  // namespace conex

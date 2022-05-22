@@ -268,6 +268,7 @@ cc_library(
         "debug_macros.h",
     ],
     deps = [
+        "clique_ordering",
         "equality_constraint",
         "error_checking",
         "kkt_solver_interface",
@@ -311,11 +312,23 @@ cc_library(
 )
 
 cc_library(
+    name = "clique_ordering",
+    srcs = [
+        "clique_ordering.cc",
+        "clique_ordering_utils.cc",
+    ],
+    hdrs = [
+        "clique_ordering.h",
+        "clique_ordering_utils.h",
+    ],
+    deps = ["tree_utils"],
+)
+
+cc_library(
     name = "supernodal_solver",
     srcs = [
         "RLDLT.h",
         "block_triangular_operations.cc",
-        "clique_ordering.cc",
         "debug_macros.h",
         "kkt_solver.cc",
         "supernodal_assembler.cc",
@@ -324,7 +337,6 @@ cc_library(
     ],
     hdrs = [
         "block_triangular_operations.h",
-        "clique_ordering.h",
         "debug_macros.h",
         "kkt_solver.h",
         "kkt_solver_factory.h",
@@ -339,6 +351,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "clique_ordering",
         "constraint_interface",
         "equality_constraint",
         "error_checking",

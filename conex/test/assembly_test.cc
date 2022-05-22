@@ -17,7 +17,7 @@ namespace conex {
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::vector;
-
+#if 0
 void BuildLQRProblem(int N, ConstraintManager* prg) {
   auto& prog = *prg;
   Eigen::MatrixXd Qi = Eigen::MatrixXd::Identity(3, 3) * 2;
@@ -109,7 +109,9 @@ GTEST_TEST(LDLT, TestAssembly) {
 
   EXPECT_EQ(error.norm(), 0);
 
-  solver.Factor();
+  bool success  = solver.Factor();
+  EXPECT_EQ(success, true);
+
   for (int i = 0; i < 3; i++) {
     yref = ldlt.solve(b);
     VectorXd y = solver.Solve(b);
@@ -171,6 +173,9 @@ GTEST_TEST(Assemble, VariablesSpecifiedOutOfOrder) {
   expected << 0, 2, 2, 3;
   EXPECT_EQ((Eigen::MatrixXd(expected.asDiagonal()) - M).norm(), 0);
 }
+
+#endif
+
 #if 0
 
 void ModifyCliquesForEqualities(ConstraintManager& prog) {
@@ -258,5 +263,29 @@ GTEST_TEST(Simple, TestElimination) {
   // * *
 }
 #endif
+
+GTEST_TEST(Assemble, Path) {
+  // * *
+  // * * *
+  //   * *
+  // * * *
+  //
+  // cliques: x0, x1, l,
+  //          x1, x2, l,
+  MatrixXd Q(2, 2);
+  Q.setConstant(.2);
+  Q.diagonal().setConstant(3);
+  ConstraintManager prog(3);
+  prog.AddQuadraticCost(Q, {0, 1});
+  prog.AddQuadraticCost(Q, {1, 2});
+  Eigen::MatrixXd A(1, 3);
+  A << 1, 2, 3;
+  Eigen::MatrixXd b(1, 1);
+  b << 0;
+  prog.AddEqualityConstraint(EqualityConstraints(A, b), {0, 1, 2});
+  SolverConfiguration config;
+  config.kkt_solver = CONEX_KKT_SOLVER_TREE;
+  auto solver = KKTSolverFactory().create_unique(&prog, config);
+}
 
 }  // namespace conex

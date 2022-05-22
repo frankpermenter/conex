@@ -3,8 +3,9 @@
 #include <algorithm>
 #include <stack>
 
+#include "conex/clique_ordering_utils.h"
 #include "conex/debug_macros.h"
-#include "conex/supernodal_solver.h"
+#include "conex/error_checking_macros.h"
 
 namespace conex {
 
@@ -155,7 +156,7 @@ int PickCliqueOrderHelper(const std::vector<std::vector<int>>& cliques_sorted,
   auto& intersections = *intersections_ptr;
   size_t n = cliques_sorted.size();
   Weight edge_weights(n, intersections, cliques_sorted, valid_leaf);
-  assert(root_in < static_cast<int>(n));
+  CONEX_CHECK(root_in < static_cast<int>(n));
 
   vector<int> visited(n, 0);
 
@@ -414,7 +415,6 @@ CliqueTree MakeCliqueTree(const vector<vector<int>>& cliques,
       cliques_sorted, is_empty(dual_vars), GetRootNode(cliques, dual_vars),
       &clique_tree.clique_to_post_order_position, &clique_tree.node_to_parent,
       &clique_tree.supernodes, &clique_tree.separators);
-
   return clique_tree;
 }
 
