@@ -89,7 +89,8 @@ vector<int> FindEqualityConstraintsContainingVariable(
 std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
                                             const SolverConfiguration& config) {
   SparseEqualityConstraints equality_constraints;
-  for (const auto& eq : kkt->equality_constraints()) {
+  int constraint_number = 0;
+  for (const auto& eq : kkt->equality_constraint_manager().data) {
     const Eigen::MatrixXd& A = eq.constraint_matrix();
     for (int i = 0; i < A.rows(); i++) {
       std::vector<double> entries;
@@ -97,8 +98,11 @@ std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
         entries.push_back(A(i, j));
       }
       equality_constraints.matrix_entries.push_back(entries);
-      equality_constraints.columns.push_back(eq.variables());
+
+      equality_constraints.columns.push_back(
+          kkt->equality_constraint_manager().variables.at(constraint_number));
     }
+    constraint_number++;
   }
   std::vector<std::vector<int>> cliques_of_G;
   std::vector<SupernodalAssemblerBase*> clique_assemblers_of_G;
@@ -120,9 +124,8 @@ std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
   }
   int number_of_equations =
       kkt->SizeOfKKTSystem() - kkt->GetNumberOfVariables();
-  CONEX_DEMAND(number_of_equations ==
-                   static_cast<int>(equality_constraints.columns.size()),
-               "KKT system is malformed");
+  CONEX_CHECK(number_of_equations ==
+              static_cast<int>(equality_constraints.columns.size()));
   return std::make_unique<ConstrainedLeastSquaresConjugateGradientSolver>(
       cliques_of_G, clique_assemblers_of_G, equality_constraints.columns,
       equality_constraints.matrix_entries);

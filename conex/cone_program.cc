@@ -67,8 +67,13 @@ void AssembleSchurComplementResiduals(ConstraintManager* kkt,
     }
     i++;
   }
-  for (auto& eq : kkt->equality_constraints()) {
-    IncrementSubvector(s->AQc, eq.dual_variables(), eq.affine_term());
+
+  i = 0;
+  for (auto& eq : kkt->equality_constraint_manager().data) {
+    IncrementSubvector(s->AQc,
+                       kkt->equality_constraint_manager().dual_variables.at(i),
+                       eq.affine_term());
+    i++;
   }
 }
 

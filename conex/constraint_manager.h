@@ -123,6 +123,10 @@ class ConstraintManager {
     return equality_constraints_.assemblers;
   }
 
+  const EqualityConstraintManager& equality_constraint_manager() const {
+    return equality_constraints_;
+  }
+
   const std::vector<std::vector<int>>& equality_constraint_multipliers() const;
   std::vector<std::vector<int>> variables() const;
   void PartitionEqualityConstraints();
