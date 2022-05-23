@@ -155,7 +155,6 @@ GTEST_TEST(QR, SuccessWithDependentEquations) {
   EXPECT_EQ(prog.Status().solved, 1);
   EXPECT_NEAR((B * solution - d).norm(), 0, 1e-9);
 
-  DUMP("HEHE");
   config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
   Solve(b, prog, config, solution.data());
   EXPECT_EQ(prog.Status().solved, 1);

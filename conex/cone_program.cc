@@ -243,6 +243,9 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
       config.initialization_mode == CONEX_INITIALIZATION_MODE_COLDSTART) {
     prog.stats = std::make_unique<WorkspaceStats>(config.max_iterations);
     auto& solver = prog.solver;
+    if (config.kkt_solver != CONEX_KKT_SOLVER_CG) {
+      prog.kkt_system_manager_.PartitionEqualityConstraints();
+    }
 
     prog.sys.m_ = prog.kkt_system_manager_.SizeOfKKTSystem();
     prog.sys.residual_only_ = true;
@@ -674,6 +677,20 @@ int Program::UpdateAffineTermOfConstraint(int i, double value, int row, int col,
   return UpdateAffineTerm(
       kkt_system_manager_.cone_inequalities().at(i)->constraint(), value, row,
       col, hyper_complex_dim);
+}
+
+void Program::InitializeWorkspace() {
+  workspaces = kkt_system_manager_.workspace();
+
+  workspaces.emplace_back(stats.get());
+  workspaces.emplace_back(&sys);
+  auto size = SizeOf(workspaces);
+  if (size > workspace_data_->size()) {
+    workspace_data_->resize(size);
+  }
+  Initialize(&workspaces, workspace_data_->data());
+
+  is_initialized = true;
 }
 
 }  // namespace conex

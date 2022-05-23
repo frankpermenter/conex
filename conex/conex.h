@@ -31,7 +31,7 @@ struct SolverConfiguration {
   int kkt_solver = CONEX_KKT_SOLVER_TREE;
   int enable_rescaling = 1;
   int iterative_refinement_iterations = 0;
-  int verbose;
+  int verbose = 1;
 };
 
 struct ConexStatus {

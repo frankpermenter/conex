@@ -15,7 +15,6 @@ void IncrementSubvector(std::vector<int>* y, const std::vector<int>& indices) {
 }
 std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
-  c->PartitionEqualityConstraints();
   vector<vector<int>> cliques = c->variables();
 
   CliqueTree clique_tree = MakeCliqueTree(cliques);
@@ -41,10 +40,8 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
 
 std::unique_ptr<KKTSolverBase> MakeTreeSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
-  c->PartitionEqualityConstraints();
   vector<vector<int>> cliques = c->variables();
   auto& clique_assemblers_ptrs_ = c->clique_assemblers();
-  c->InitializeWorkspace();
 
   auto tree_solver_ =
       std::make_unique<::conex::SymmetricLinearSystemTreeSolver>();

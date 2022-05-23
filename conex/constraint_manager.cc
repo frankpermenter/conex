@@ -72,6 +72,9 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
 }
 
 void T::PartitionEqualityConstraints() {
+  if (equality_constraints_.data.size() == 0) {
+    return;
+  }
   int i = 0;
 
   vector<vector<int>> primal_cliques;
@@ -136,4 +139,17 @@ void T::PartitionEqualityConstraint(const Eigen::MatrixXd& A,
         &equality_constraints_.assemblers.back());
   }
 }
+
+void T::InitializeWorkspace(const SolverConfiguration& config) {
+  if (config.kkt_solver != CONEX_KKT_SOLVER_CG) {
+    PartitionEqualityConstraints();
+  }
+  auto workspaces = workspace();
+  auto size = SizeOf(workspaces);
+  if (size > workspace_memory_.size()) {
+    workspace_memory_.resize(size);
+  }
+  Initialize(&workspaces, workspace_memory_.data());
+}
+
 }  // namespace conex

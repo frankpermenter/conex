@@ -52,6 +52,7 @@ GTEST_TEST(EqualityConstraints, Basic) {
   EXPECT_NEAR((solution - optimal_y).norm(), 0,
               DefaultEqualityConstraintTolerance());
 }
+
 void DoManySeparate(bool separate) {
   int num_vars = 10;
   int num_inequalities = num_vars + 10;
@@ -59,20 +60,16 @@ void DoManySeparate(bool separate) {
 
   MatrixXd A = MatrixXd::Random(num_inequalities, num_vars);
   MatrixXd C(num_inequalities, 1);
+  VectorXd feasible_slack(num_inequalities);
+  VectorXd feasible_dual(num_inequalities);
+  VectorXd feasible_y(num_vars);
 
-  VectorXd optimal_slack(num_inequalities);
-  VectorXd optimal_dual(num_inequalities);
-  VectorXd optimal_y(num_vars);
+  feasible_slack.setConstant(1);
+  feasible_dual.setConstant(1);
 
-  optimal_slack.setConstant(1);
-  optimal_dual.setConstant(1);
-  int m = num_inequalities * .5;
-  optimal_slack.topRows(m).setConstant(1e-7);
-  optimal_dual.bottomRows(num_inequalities - m).setConstant(1e-7);
+  feasible_y = Eigen::MatrixXd::Random(num_vars, 1);
 
-  optimal_y = Eigen::MatrixXd::Random(num_vars, 1);
-
-  C = optimal_slack + A * optimal_y;
+  C = feasible_slack + A * feasible_y;
 
   LinearConstraint linear_inequality{A, C};
 
@@ -88,7 +85,7 @@ void DoManySeparate(bool separate) {
     for (size_t j = 0; j < vars.size(); j++) {
       eq(i, vars.at(j)) = Bi(0, j);
     }
-    eq_affine(i) = eq.row(i) * optimal_y;
+    eq_affine(i) = eq.row(i) * feasible_y;
     if (separate) {
       prog.AddConstraint(EqualityConstraints{Bi, eq_affine.row(i)}, vars);
     }
@@ -99,7 +96,7 @@ void DoManySeparate(bool separate) {
   }
 
   VectorXd linear_cost(num_vars);
-  linear_cost = A.transpose() * optimal_dual;
+  linear_cost = A.transpose() * feasible_dual;
 
   VectorXd solution(num_vars);
   SolverConfiguration config = DefaultTestConfiguration();
@@ -111,9 +108,8 @@ void DoManySeparate(bool separate) {
 
   EXPECT_TRUE((C - A * solution).minCoeff() > -1e8);
   EXPECT_NEAR((eq * solution - eq_affine).norm(), 0, 5e-7);
-  EXPECT_GE(linear_cost.dot(solution) + 1e-4, linear_cost.dot(optimal_y));
+  EXPECT_GE(linear_cost.dot(solution) + 1e-4, linear_cost.dot(feasible_y));
 }
-
 GTEST_TEST(EqualityConstraints, ManyConstraints) {
   for (int i = 0; i < 10; i++) {
     srand(i);

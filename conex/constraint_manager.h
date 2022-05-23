@@ -3,6 +3,7 @@
 #include <any>
 #include <list>
 
+#include "conex/conex.h"
 #include "conex/equality_constraint.h"
 #include "conex/error_checking_macros.h"
 #include "conex/supernodal_assembler.h"
@@ -18,6 +19,7 @@ class EqualityConstraintManager {
   std::vector<std::vector<int>> dual_variables;
   std::list<SupernodalAssemblerEqualities> assemblers;
 };
+
 class ConstraintManager {
  public:
   ConstraintManager(int max_number_of_variables)
@@ -94,14 +96,8 @@ class ConstraintManager {
     }
     return workspaces;
   }
-  void InitializeWorkspace() {
-    auto workspaces = workspace();
-    auto size = SizeOf(workspaces);
-    if (size > workspace_memory_.size()) {
-      workspace_memory_.resize(size);
-    }
-    Initialize(&workspaces, workspace_memory_.data());
-  }
+
+  void InitializeWorkspace(const SolverConfiguration& config);
 
   const std::vector<SupernodalAssembler*>& cone_inequalities() const {
     return cone_inequality_assemblers_;

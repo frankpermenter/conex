@@ -42,7 +42,9 @@ GTEST_TEST(ConjugateGradient, TrivalExample) {
   // clang-format on
   prog.AddQuadraticCost(Q1, {0, 1});
   prog.AddQuadraticCost(Q2, {2, 3});
-  prog.InitializeWorkspace();
+  SolverConfiguration config;
+  config.kkt_solver = CONEX_KKT_SOLVER_CG;
+  prog.InitializeWorkspace(config);
 
   MatrixXd B(num_eq, num_vars);
   // clang-format off
@@ -98,7 +100,9 @@ GTEST_TEST(ConjugateGradient, IndefiniteExample) {
         2, 1;
   // clang-format on
   prog.AddQuadraticCost(Q1, {0, 1});
-  prog.InitializeWorkspace();
+  SolverConfiguration config;
+  config.kkt_solver = CONEX_KKT_SOLVER_CG;
+  prog.InitializeWorkspace(config);
 
   MatrixXd B(num_eq, num_vars);
   // clang-format off
@@ -108,9 +112,7 @@ GTEST_TEST(ConjugateGradient, IndefiniteExample) {
   //
   EqualityConstraints eq{B, VectorXd::Zero(2)};
   prog.AddEqualityConstraint(eq);
-  prog.InitializeWorkspace();
-  SolverConfiguration config;
-  config.kkt_solver = CONEX_KKT_SOLVER_CG;
+  prog.InitializeWorkspace(config);
   EXPECT_THROW({ KKTSolverFactory::create_unique(&prog, config); },
                std::runtime_error);
 }
