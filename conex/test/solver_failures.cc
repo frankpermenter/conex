@@ -163,11 +163,11 @@ void EqualityConstraintForceEqualityConstraintsToLeafNodes(
 
   MatrixXd A1(2, 3);
   A1 << 1, 2, 3, -1, -2, -3;
-  VectorXd b1 = A1.transpose() * VectorXd::Constant(3, 1);
+  VectorXd b1 = A1.transpose() * VectorXd::Constant(2, 1);
 
   MatrixXd A2(2, 3);
   A2 << 3, 1, 5, -3, -4, -5;
-  VectorXd b2 = A2.transpose() * VectorXd::Constant(3, 1);
+  VectorXd b2 = A2.transpose() * VectorXd::Constant(2, 1);
 
   MatrixXd B2(1, 2);
   B2 << 1, -1;
@@ -217,11 +217,11 @@ void EqualityConstraintsNoQuadraticPenalty() {
 
   MatrixXd A1(2, 3);
   A1 << 1, 2, 3, -1, -2, -3;
-  VectorXd b1 = A1.transpose() * VectorXd::Constant(3, 1);
+  VectorXd b1 = A1.transpose() * VectorXd::Constant(2, 1);
 
   MatrixXd A2(2, 3);
   A2 << 3, 1, 5, -3, -4, -5;
-  VectorXd b2 = A2.transpose() * VectorXd::Constant(3, 1);
+  VectorXd b2 = A2.transpose() * VectorXd::Constant(2, 1);
   VectorXd linear_cost(num_vars);
   linear_cost.setConstant(0);
   IncrementSubVector(cliques.at(0), b1, &linear_cost);
@@ -501,14 +501,14 @@ void SimpleBadLDLT() {
 }  // namespace conex
 
 int main() {
-  conex::SimpleBadLDLT();
-  return 0;
+  // conex::SimpleBadLDLT();
+  conex::EqualityConstraintForceEqualityConstraintsToLeafNodes(
+      true /*fill-in induced failure*/);
   conex::EqualityConstraintForceEqualityConstraintsToLeafNodes(
       false /*fill-in induced failure*/);
   conex::EqualityConstraintsNoQuadraticPenalty();
-  conex::EqualityConstraintForceEqualityConstraintsToLeafNodes(
-      true /*fill-in induced failure*/);
   conex::EqualityConstraintFailingLDLT();
+  return 0;
   conex::MPCFailingLDLT().Run(true /*trigger fail*/);
   srand(0);
   for (int i = 0; i < 5; i++) {
