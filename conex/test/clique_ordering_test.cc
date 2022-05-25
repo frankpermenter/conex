@@ -139,6 +139,8 @@ GTEST_TEST(PrimalDualCliqueTree, RootIsFirstNode) {
   vector<vector<int>> dual_variables{{0, 1}, {0, 1, 2}, {0, 1, 2, 3, 4}};
   PrimalDualCliqueTree tree = MakePrimalDualCliqueTree(primal_variables, dual_variables);
   EXPECT_EQ(tree.clique_id_to_parent.at(0), -1);
+  EXPECT_EQ(tree.primal_supernodes.at(0), primal_variables.at(0));
+  EXPECT_EQ(tree.dual_supernodes.at(0), dual_variables.at(0));
 }
 
 GTEST_TEST(PrimalDualCliqueTree, RootIsLastNode) {
@@ -146,7 +148,26 @@ GTEST_TEST(PrimalDualCliqueTree, RootIsLastNode) {
   vector<vector<int>> dual_variables{{1}, {0}, {0, 1, 2, 3, 4}};
   PrimalDualCliqueTree tree = MakePrimalDualCliqueTree(primal_variables, dual_variables);
   EXPECT_EQ(tree.clique_id_to_parent.back(), -1);
+  EXPECT_EQ(tree.primal_supernodes.back(), primal_variables.back());
+  EXPECT_EQ(tree.dual_supernodes.back(), dual_variables.back());
 }
 
+GTEST_TEST(PrimalDualCliqueTree, Test) {
+  vector<vector<int>> primal_variables{{0, 1}, {0, 1, 2}, {}};
+  vector<vector<int>> dual_variables{{1}, {0}, {0, 1, 2, 3, 4}};
+  PrimalDualCliqueTree tree = MakePrimalDualCliqueTree(primal_variables, dual_variables);
+  EXPECT_EQ(tree.clique_id_to_parent.back(), -1);
+  EXPECT_EQ(tree.primal_supernodes.back(), primal_variables.back());
+  EXPECT_EQ(tree.dual_supernodes.back(), dual_variables.back());
+  EXPECT_EQ(tree.dual_separators.back(), std::vector<int>{});
+  EXPECT_EQ(tree.primal_separators.back(), std::vector<int>{});
+}
+
+GTEST_TEST(OneDensePrimalCliqueManySparseDual, Test) {
+  vector<vector<int>> primal_variables{{0, 1, 2, 3, 4}, {0, 1}, {2, 3, 4}};
+  vector<vector<int>> dual_variables{{}, {1}, {2}};
+  PrimalDualCliqueTree tree = MakePrimalDualCliqueTree(primal_variables, dual_variables);
+  EXPECT_TRUE(tree.clique_id_to_parent.at(0) != -1);
+}
 
 }  // namespace conex

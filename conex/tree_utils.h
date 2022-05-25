@@ -20,11 +20,17 @@ struct CliqueTree {
 
 struct PrimalDualCliqueTree {
   std::vector<std::vector<int>> primal_supernodes;
-  std::vector<std::vector<int>> dual_supernodes;
   std::vector<std::vector<int>> primal_separators;
+  std::vector<std::vector<int>> dual_supernodes;
   std::vector<std::vector<int>> dual_separators;
   std::vector<int> clique_id_to_parent;
   std::vector<int> clique_id_to_post_order_position;
+  PrimalDualCliqueTree(int n) : primal_supernodes(n), 
+                                primal_separators(n),
+                                dual_supernodes(n), 
+                                dual_separators(n),                                 
+                                clique_id_to_parent(n),
+                                clique_id_to_post_order_position(n) {}
 };
 
 

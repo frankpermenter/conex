@@ -64,12 +64,12 @@ class Edges {
 
 void WeightedDepthFirstSearchTraversal(int root_in, int num_nodes, const Edges& edge_weights,  std::vector<int>* order, RootedTree* tree_ptr) {
   auto& tree = *tree_ptr;
-  size_t n = num_nodes;
+  int n = num_nodes;
   CONEX_CHECK(root_in < static_cast<int>(n));
 
   vector<int> visited(n, 0);
 
-  std::stack<size_t> node_stack;
+  std::stack<int> node_stack;
   int root = root_in;
   if (root < 0) {
     root = 0;
@@ -79,8 +79,8 @@ void WeightedDepthFirstSearchTraversal(int root_in, int num_nodes, const Edges& 
   order->clear();
   order->reserve(n);
 
-  while (order->size() < n) {
-    size_t active = node_stack.top();
+  while (order->size() < static_cast<size_t>(n)) {
+    int active = node_stack.top();
 
     if (visited.at(active) == 0) {
       order->push_back(active);
@@ -90,9 +90,9 @@ void WeightedDepthFirstSearchTraversal(int root_in, int num_nodes, const Edges& 
     }
 
     // Find unvisited neighbor with maximum weight.
-    size_t max_weight = 1;
+    int max_weight = 1;
     vector<int> argmax;
-    for (size_t i = 0; i < num_nodes; i++) {
+    for (int i = 0; i < num_nodes; i++) {
       if (i == active || visited.at(i) == 1) {
         continue;
       }
@@ -161,7 +161,6 @@ int GetRootNode(const std::vector<std::vector<int>>& vars,
 
 Edges ComputeEdges(const vector<vector<int>>& primal_variables,
                   const vector<vector<int>>& dual_variables) {
-  int n = primal_variables.size();
   Edges edges(primal_variables.size());
   for (size_t i = 0; i < primal_variables.size(); ++i) {
     for (size_t j = i + 1; j < primal_variables.size(); ++j) {
@@ -190,30 +189,49 @@ Edges ComputeEdges(const vector<vector<int>>& primal_variables,
       }
     }
   }
-  DUMP(edges.number_of_sink_edges);
   return edges;
 }
+
 PrimalDualCliqueTree MakePrimalDualCliqueTree(const vector<vector<int>>& primal_variables,
                                               const vector<vector<int>>& dual_variables) {
   CONEX_CHECK(primal_variables.size() == dual_variables.size());
+  int n = primal_variables.size();
 
-  PrimalDualCliqueTree clique_tree;
+  PrimalDualCliqueTree c(n);
 
   vector<std::vector<int>> primal_sorted = primal_variables;
   Sort(&primal_sorted);
   vector<std::vector<int>> dual_sorted = dual_variables;
   Sort(&dual_sorted);
   Edges edges = ComputeEdges(primal_variables, dual_variables);
+  int root = std::distance(edges.number_of_sink_edges.begin(), 
+                           std::min_element(edges.number_of_sink_edges.begin(), edges.number_of_sink_edges.end()));
 
-  int n = primal_variables.size();
-  int root = std::distance(edges.number_of_sink_edges.begin(), std::min(edges.number_of_sink_edges.begin(), edges.number_of_sink_edges.end()));
   RootedTree tree(n);
   std::vector<int> clique_id_to_post_order_position(n);
   WeightedDepthFirstSearchTraversal(root, n, edges, 
-  &clique_tree.clique_id_to_post_order_position, &tree);
-  clique_tree.clique_id_to_parent = tree.parent;
+  &c.clique_id_to_post_order_position, &tree);
+  c.clique_id_to_parent = tree.parent;
 
-  return clique_tree;
-
+  vector<vector<int>>& primal_separators = c.primal_separators;
+  vector<vector<int>>& primal_supernodes = c.primal_supernodes;
+  vector<vector<int>>& dual_separators = c.dual_separators;
+  vector<vector<int>>& dual_supernodes = c.dual_supernodes;
+  for (int i = 0; i < n; i++) {
+    if (c.clique_id_to_parent.at(i) != -1) {
+      primal_separators.at(i) = edges.primal_intersection(i, c.clique_id_to_parent.at(i));
+      dual_separators.at(i) = edges.dual_intersection(i, c.clique_id_to_parent.at(i));
+      std::set_difference(primal_sorted.at(i).begin(),
+                          primal_sorted.at(i).end(), primal_separators.at(i).begin(),
+                          primal_separators.at(i).end(), std::back_inserter(primal_supernodes.at(i)));
+      std::set_difference(dual_sorted.at(i).begin(),
+                          dual_sorted.at(i).end(), dual_separators.at(i).begin(),
+                          dual_separators.at(i).end(), std::back_inserter(dual_supernodes.at(i)));
+    } else {
+      primal_supernodes.at(i) = primal_variables.at(i);
+      dual_supernodes.at(i) = dual_variables.at(i);
+    }
+  }
+  return c;
 }
 }  // namespace conex

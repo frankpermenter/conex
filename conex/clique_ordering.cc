@@ -393,5 +393,4 @@ CliqueTree MakeCliqueTree(const vector<vector<int>>& cliques,
   return clique_tree;
 }
 
-
 }  // namespace conex
