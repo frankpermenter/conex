@@ -316,6 +316,7 @@ cc_library(
     name = "clique_ordering",
     srcs = [
         "clique_ordering.cc",
+        "primal_dual_clique_ordering.cc",
         "clique_ordering_utils.cc",
     ],
     hdrs = [

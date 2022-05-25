@@ -78,8 +78,8 @@ int GetRootNode(const std::vector<std::vector<int>>& vars,
   return arg_max;
 }
 
-vector<int> is_empty(const vector<std::vector<int>>& vect) {
-  vector<int> y(vect.size());
+vector<bool> is_empty(const vector<std::vector<int>>& vect) {
+  vector<bool> y(vect.size());
   for (size_t i = 0; i < y.size(); i++) {
     y[i] = vect[i].size() == 0;
   }

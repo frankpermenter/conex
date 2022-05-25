@@ -103,7 +103,6 @@ void T::UpdateData() {
   if (variable_set_equals_sorted_supernodes_) {
     new (&source_submatrix) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
         kkt_subsystem_->supernode_submatrix().data(), n1, n1);
-    DUMP(kkt_subsystem_->supernode_submatrix());
     assembler_->SetDenseData();
     return;
   }

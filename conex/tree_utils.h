@@ -18,6 +18,17 @@ struct CliqueTree {
   std::vector<int> clique_to_post_order_position;
 };
 
+struct PrimalDualCliqueTree {
+  std::vector<std::vector<int>> primal_supernodes;
+  std::vector<std::vector<int>> dual_supernodes;
+  std::vector<std::vector<int>> primal_separators;
+  std::vector<std::vector<int>> dual_separators;
+  std::vector<int> clique_id_to_parent;
+  std::vector<int> clique_id_to_post_order_position;
+};
+
+
+
 struct RootedTree {
   RootedTree(int number_of_nodes)
       : parent(number_of_nodes), height_(number_of_nodes) {}

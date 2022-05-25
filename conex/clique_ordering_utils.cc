@@ -1,6 +1,7 @@
 #include "conex/clique_ordering_utils.h"
 
 #include <algorithm>
+
 namespace conex {
 
 void IntersectionOfSorted(const std::vector<int>& v1,

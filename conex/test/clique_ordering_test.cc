@@ -125,19 +125,28 @@ GTEST_TEST(CliqueOrdering, FillIn) {
 
 GTEST_TEST(CliqueOrdering, Nonmaximal) {
   vector<vector<int>> cliques{{0, 1}, {0, 1, 2}, {0, 1, 2, 3, 4}};
-  int n = 5;
+  int n = 3;
   vector<int> order(n);
   vector<vector<int>> supernodes(n);
   vector<vector<int>> separators(n);
-  vector<vector<vector<int>>> post_order(n);
-  PickCliqueOrder(cliques, 2 /*root*/, &order, &supernodes, &separators,
-                  &post_order);
+  PickCliqueOrder(cliques, 2 /*root*/, &order, &supernodes, &separators);
   vector<int> order_ref{0, 1, 2};
   EXPECT_EQ(order, order_ref);
-
-  EXPECT_EQ(post_order.at(0).size(), 0u);
-  EXPECT_EQ(post_order.at(1).size(), 0u);
-  EXPECT_EQ(post_order.at(2).size(), 2u);
 }
+
+GTEST_TEST(PrimalDualCliqueTree, RootIsFirstNode) {
+  vector<vector<int>> primal_variables{{}, {0, 1, 2}, {0, 1, 2, 3, 4}};
+  vector<vector<int>> dual_variables{{0, 1}, {0, 1, 2}, {0, 1, 2, 3, 4}};
+  PrimalDualCliqueTree tree = MakePrimalDualCliqueTree(primal_variables, dual_variables);
+  EXPECT_EQ(tree.clique_id_to_parent.at(0), -1);
+}
+
+GTEST_TEST(PrimalDualCliqueTree, RootIsLastNode) {
+  vector<vector<int>> primal_variables{{0, 1}, {0, 1, 2}, {}};
+  vector<vector<int>> dual_variables{{1}, {0}, {0, 1, 2, 3, 4}};
+  PrimalDualCliqueTree tree = MakePrimalDualCliqueTree(primal_variables, dual_variables);
+  EXPECT_EQ(tree.clique_id_to_parent.back(), -1);
+}
+
 
 }  // namespace conex

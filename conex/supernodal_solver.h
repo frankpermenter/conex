@@ -30,7 +30,7 @@ struct MatrixData {
 MatrixData GetData(const std::vector<Clique>& cliques, int init = 0);
 
 MatrixData GetData(const std::vector<Clique>& cliques,
-                   const std::vector<int>& valid_leafs, int init = 0);
+                   const std::vector<bool>& clique_is_valid_leaf, int init = 0);
 
 template <typename T>
 inline void DoBind(const MatrixData& data, TriangularMatrixWorkspace& workspace,

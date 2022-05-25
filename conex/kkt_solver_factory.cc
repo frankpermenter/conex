@@ -7,17 +7,33 @@
 
 namespace conex {
 
+std::vector<bool> MakeValidLeafIndicator(
+    const std::vector<std::vector<int>>& cliques, int dual_variable_start) {
+  std::vector<bool> valid_leaf(cliques.size(), true);
+  int i = 0;
+  for (auto& c : cliques) {
+    if (c.back() >= dual_variable_start) {
+      valid_leaf.at(i) = false;
+    }
+    i++;
+  }
+  return valid_leaf;
+}
+
 using std::vector;
 void IncrementSubvector(std::vector<int>* y, const std::vector<int>& indices) {
   for (auto i : indices) {
     y->at(i)++;
   }
 }
+
 std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
   vector<vector<int>> cliques = c->variables();
 
-  CliqueTree clique_tree = MakeCliqueTree(cliques);
+  CliqueTree clique_tree = MakeCliqueTree(
+      cliques, MakeValidLeafIndicator(cliques, c->GetNumberOfVariables()));
+
   auto solver_temp = std::make_unique<SupernodalKKTSolver>(
       cliques, c->SizeOfKKTSystem(), clique_tree.clique_to_post_order_position,
       clique_tree.supernodes, clique_tree.separators);
@@ -67,7 +83,11 @@ std::unique_ptr<KKTSolverBase> MakeTreeSolver(
   auto tree_solver_ =
       std::make_unique<::conex::SymmetricLinearSystemTreeSolver>();
 
-  CliqueTree clique_tree = MakeCliqueTree(cliques);
+  CliqueTree clique_tree = MakeCliqueTree(
+      cliques, MakeValidLeafIndicator(cliques, c->GetNumberOfVariables()));
+  DUMP(clique_tree.supernodes);
+  DUMP(clique_tree.node_to_parent);
+  DUMP(cliques);
   int i = 0;
   for (auto& clique : clique_assemblers_ptrs_) {
     auto adapter =
