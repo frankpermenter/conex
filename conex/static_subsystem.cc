@@ -24,18 +24,25 @@ void AssignSubmatrix(const Eigen::MatrixXd& source,
 }
 }  // namespace
 T::KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base)
-    : assembler_(base) {
+    : assembler_(base) {}
+
+KKTSubsystemBase* T::KKTAssemblerToSubsystemAdapter::create_subsystem(
+    const SubsystemType& type) {
   using SystemTypePositiveDefinite = KKTCholeskySystem<
       CholeskySolver<Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>>, false>>;
   using SystemTypeIndefinite = KKTCholeskySystem<
       CholeskySolver<Eigen::RLDLT<Eigen::Ref<Eigen::MatrixXd>>, true>>;
 
-  if (0) {  // base->is_positive_definite()) {
-    kkt_subsystem_ = std::make_unique<SystemTypePositiveDefinite>();
-  } else {
-    kkt_subsystem_ = std::make_unique<SystemTypeIndefinite>();
+  switch (type) {
+    case SubsystemType::kPositiveDefinite:
+      kkt_subsystem_ = std::make_unique<SystemTypePositiveDefinite>();
+      break;
+    case SubsystemType::kNegativeDefinite:
+    case SubsystemType::kQuasiDefinite:
+      kkt_subsystem_ = std::make_unique<SystemTypeIndefinite>();
   }
   kkt_subsystem_->SetFactorizationMode(true /*left looking*/);
+  return kkt_subsystem_.get();
 }
 
 std::vector<int> GetLocalEliminationPosition(
@@ -96,6 +103,7 @@ void T::UpdateData() {
   if (variable_set_equals_sorted_supernodes_) {
     new (&source_submatrix) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
         kkt_subsystem_->supernode_submatrix().data(), n1, n1);
+    DUMP(kkt_subsystem_->supernode_submatrix());
     assembler_->SetDenseData();
     return;
   }

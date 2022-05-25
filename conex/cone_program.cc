@@ -301,9 +301,10 @@ std::string ToString(int solver_type) {
 }
 void PrintSummary(const Program& prog, const SolverConfiguration& config) {
   std::cout << "  Variables:" << prog.GetNumberOfVariables() << std::endl;
-  std::cout << "  Equality Constraints: "
-            << prog.constraint_manager().equality_constraints().size()
-            << std::endl;
+  std::cout
+      << "  Equality Constraints: "
+      << prog.constraint_manager().equality_constraint_manager().data.size()
+      << std::endl;
   std::cout << "  Cone Inequalities: "
             << prog.constraint_manager().cone_inequalities().size()
             << std::endl;
@@ -354,11 +355,11 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     ynan.array() = bin.array() * std::numeric_limits<double>::infinity();
     return prog.status_.solved;
   }
+  Initialize(prog, config);
   if (config.verbose) {
     PrintSummary(prog, config);
     std::cout << "\n";
   }
-  Initialize(prog, config);
 
   Eigen::MatrixXd ydata(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
   Eigen::Map<DenseMatrix> yout(primal_variable, m, 1);

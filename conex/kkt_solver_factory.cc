@@ -38,6 +38,27 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
   return solver_temp;
 }
 
+SubsystemType ClassifySupernodeSubmatrix(const std::vector<int>& vars,
+                                         int number_of_primal_variables) {
+  bool all_primal_variables = true;
+  bool all_dual_variables = true;
+  for (auto& v : vars) {
+    if (v < number_of_primal_variables) {
+      all_dual_variables = false;
+    }
+    if (v >= number_of_primal_variables) {
+      all_primal_variables = false;
+    }
+  }
+  if (all_primal_variables) {
+    return SubsystemType::kPositiveDefinite;
+  }
+  if (all_dual_variables) {
+    return SubsystemType::kNegativeDefinite;
+  }
+  return SubsystemType::kQuasiDefinite;
+}
+
 std::unique_ptr<KKTSolverBase> MakeTreeSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
   vector<vector<int>> cliques = c->variables();
@@ -48,9 +69,11 @@ std::unique_ptr<KKTSolverBase> MakeTreeSolver(
 
   CliqueTree clique_tree = MakeCliqueTree(cliques);
   int i = 0;
-  for (auto c : clique_assemblers_ptrs_) {
-    auto adapter = std::make_unique<::conex::KKTAssemblerToSubsystemAdapter>(c);
-    auto* subsystem = adapter->kkt_subsystem();
+  for (auto& clique : clique_assemblers_ptrs_) {
+    auto adapter =
+        std::make_unique<::conex::KKTAssemblerToSubsystemAdapter>(clique);
+    auto* subsystem = adapter->create_subsystem(ClassifySupernodeSubmatrix(
+        clique_tree.supernodes.at(i), c->GetNumberOfVariables()));
     tree_solver_->AddSubsystem(subsystem);
     tree_solver_->push_back(std::move(adapter));
     ++i;
@@ -58,6 +81,7 @@ std::unique_ptr<KKTSolverBase> MakeTreeSolver(
   tree_solver_->Finalize(clique_tree);
   tree_solver_->SetFactorizationMode(true /*left looking*/);
   tree_solver_->EnableAutoUpdateAtAssemble(true);
+
   return tree_solver_;
 }
 

@@ -3,10 +3,18 @@
 #include "conex/supernodal_assembler_base.h"
 
 namespace conex {
+
+enum class SubsystemType {
+  kPositiveDefinite,
+  kNegativeDefinite,
+  kQuasiDefinite,
+};
+
 class KKTAssemblerToSubsystemAdapter {
  public:
   KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base);
   KKTSubsystemBase* kkt_subsystem() { return kkt_subsystem_.get(); }
+  KKTSubsystemBase* create_subsystem(const SubsystemType& type);
   void SetEliminationPosition(
       const std::vector<int>& shared_variable_to_elimination_position);
   void UpdateData();
