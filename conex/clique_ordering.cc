@@ -291,11 +291,8 @@ auto FindSupernode(const std::vector<int>& separator, const T& b, const T& c,
 void FillIn(const RootedTree& tree, int num_variables,
             const std::vector<int>& order, vector<std::vector<int>>* supernodes,
             vector<std::vector<int>>* separators) {
-  std::vector<int> eliminated(num_variables);
+  std::vector<int> eliminated(num_variables, order.size() + 1);
   int num_cliques = order.size();
-  for (auto& e : eliminated) {
-    e = num_cliques + 1;
-  }
 
   // Detect if variable is a supernode of clique i and
   // clique j.  If so, apply running intersection property

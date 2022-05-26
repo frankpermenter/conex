@@ -1,4 +1,5 @@
 #include "conex/clique_ordering.h"
+#include "conex/primal_dual_clique_ordering.h"
 
 #include "conex/block_triangular_operations.h"
 #include "conex/clique_ordering_utils.h"

@@ -1,4 +1,4 @@
-#include "conex/clique_ordering.h"
+#include "conex/primal_dual_clique_ordering.h"
 
 #include <algorithm>
 #include <stack>

@@ -7,9 +7,6 @@ namespace conex {
 CliqueTree MakeCliqueTree(const std::vector<std::vector<int>>& cliques,
                           const std::vector<bool>& clique_is_valid_leaf = {});
 
-PrimalDualCliqueTree MakePrimalDualCliqueTree(
-    const std::vector<std::vector<int>>& primal_variables,
-    const std::vector<std::vector<int>>& dual_variables);
 
 void FillIn(const RootedTree& tree, int num_variables,
             const std::vector<int>& order, vector<std::vector<int>>* supernodes,

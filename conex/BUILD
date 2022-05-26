@@ -321,6 +321,7 @@ cc_library(
     ],
     hdrs = [
         "clique_ordering.h",
+        "primal_dual_clique_ordering.h",
         "clique_ordering_utils.h",
     ],
     deps = ["tree_utils"],
