@@ -5,10 +5,24 @@
 #include <map>
 
 #include "conex/clique_ordering_utils.h"
+#include "conex/clique_ordering.h"
 #include "conex/debug_macros.h"
 #include "conex/error_checking_macros.h"
 
 namespace conex {
+
+namespace {
+int GetMax(const std::vector<Clique>& cliques) {
+  int max = 0;
+  for (const auto& c : cliques) {
+    for (const auto ci : c) {
+      if (ci > max) {
+        max = ci;
+      }
+    }
+  }
+  return max;
+}
 
 int GetUnvisited(const std::vector<int>& x) {
   int cnt = 0;
@@ -45,7 +59,7 @@ class SymmetricMatrix {
 
 class Edges {
  public:
-  Edges(int n) : primal_intersection(n),  dual_intersection(n), number_of_sink_edges(n, 0),  weights_(n*n), n_(n){}
+  Edges(int n) : primal_intersection(n),  dual_intersection(n), number_of_sink_edges(n, 0),  weights_(n*n, -1), n_(n){}
 
   SymmetricMatrix<std::vector<int>> primal_intersection;
   SymmetricMatrix<std::vector<int>> dual_intersection;
@@ -61,8 +75,7 @@ class Edges {
   std::vector<int> weights_;
   int n_ = 0;
 };
-
-void WeightedDepthFirstSearchTraversal(int root_in, int num_nodes, const Edges& edge_weights,  std::vector<int>* order, RootedTree* tree_ptr) {
+void WeightedDepthFirstSearchTraversal(int root_in, int num_nodes, const Edges& edge_weights,  std::vector<int>* order_position_to_id, RootedTree* tree_ptr) {
   auto& tree = *tree_ptr;
   int n = num_nodes;
   CONEX_CHECK(root_in < static_cast<int>(n));
@@ -76,21 +89,21 @@ void WeightedDepthFirstSearchTraversal(int root_in, int num_nodes, const Edges& 
   }
   node_stack.push(root);
 
-  order->clear();
-  order->reserve(n);
+  order_position_to_id->clear();
+  order_position_to_id->reserve(n);
 
-  while (order->size() < static_cast<size_t>(n)) {
+  while (order_position_to_id->size() < static_cast<size_t>(n)) {
     int active = node_stack.top();
 
     if (visited.at(active) == 0) {
-      order->push_back(active);
+      order_position_to_id->push_back(active);
       visited.at(active) = 1;
       tree.parent.at(active) = -1;
       tree.height().at(active) = 0;
     }
 
     // Find unvisited neighbor with maximum weight.
-    int max_weight = 1;
+    int max_weight = 0;
     vector<int> argmax;
     for (int i = 0; i < num_nodes; i++) {
       if (i == active || visited.at(i) == 1) {
@@ -109,7 +122,7 @@ void WeightedDepthFirstSearchTraversal(int root_in, int num_nodes, const Edges& 
 
     for (auto e : argmax) {
       node_stack.push(e);
-      order->push_back(e);
+      order_position_to_id->push_back(e);
       visited.at(e) = 1;
       tree.parent.at(e) = active;
       tree.height().at(e) = tree.height().at(active) + 1;
@@ -128,7 +141,7 @@ void WeightedDepthFirstSearchTraversal(int root_in, int num_nodes, const Edges& 
     }
   }
 
-  std::reverse(order->begin(), order->end());
+  std::reverse(order_position_to_id->begin(), order_position_to_id->end());
 }
 
 int GetRootNode(const std::vector<std::vector<int>>& vars,
@@ -175,7 +188,11 @@ Edges ComputeEdges(const vector<vector<int>>& primal_variables,
 
         int is_j_valid_sink = (primal_variables.at(j).size() + dual_intersection) 
                             >= (dual_variables.at(j).size() + primal_intersection); 
-      
+     
+        if (dual_intersection + primal_intersection > 0) {
+          edges(j, i) = 0;
+          edges(i, j) = 0;
+        }
 
         if (is_i_valid_sink) {
           edges(j, i) = dual_intersection + primal_intersection; 
@@ -192,6 +209,40 @@ Edges ComputeEdges(const vector<vector<int>>& primal_variables,
   return edges;
 }
 
+void DualFillIn(const RootedTree& tree, int num_variables,
+            const std::vector<int>& order_position_to_id, 
+            const vector<vector<int>>& primal_supernodes,
+            vector<std::vector<int>>* supernodes,
+            vector<std::vector<int>>* separators) {
+
+  size_t num_cliques = order_position_to_id.size();
+  vector<int> weight(num_variables, 0);
+  for (auto& id : order_position_to_id) {
+    std::vector<int> supernodes_keep;
+
+    for (auto& s : supernodes->at(id)) {
+      weight.at(s) += primal_supernodes.at(id).size();
+    }
+
+    for (auto& s : supernodes->at(id)) {
+      if (weight.at(s) > 0) {
+        supernodes_keep.push_back(s);
+      } else {
+        separators->at(id).push_back(s);
+        supernodes->at(tree.parent.at(id)).push_back(s);
+      }
+    }
+    supernodes->at(id) = supernodes_keep;
+  }
+  for (auto& id : order_position_to_id) {
+  DUMP(id);
+  DUMP(primal_supernodes.at(id));
+  DUMP(supernodes->at(id));
+  DUMP(separators->at(id));
+  }
+}
+
+} // namespace
 PrimalDualCliqueTree MakePrimalDualCliqueTree(const vector<vector<int>>& primal_variables,
                                               const vector<vector<int>>& dual_variables) {
   CONEX_CHECK(primal_variables.size() == dual_variables.size());
@@ -232,6 +283,8 @@ PrimalDualCliqueTree MakePrimalDualCliqueTree(const vector<vector<int>>& primal_
       dual_supernodes.at(i) = dual_variables.at(i);
     }
   }
+  FillIn(tree, GetMax(primal_variables) + 1, c.clique_id_to_post_order_position, &c.primal_supernodes, &c.primal_separators);
+  FillIn(tree, GetMax(dual_variables) + 1, c.clique_id_to_post_order_position, &c.dual_supernodes, &c.dual_separators);
   return c;
 }
 }  // namespace conex

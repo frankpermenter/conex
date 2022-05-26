@@ -145,7 +145,7 @@ GTEST_TEST(PrimalDualCliqueTree, RootIsFirstNode) {
 }
 
 GTEST_TEST(PrimalDualCliqueTree, RootIsLastNode) {
-  vector<vector<int>> primal_variables{{0, 1}, {0, 1, 2}, {}};
+  vector<vector<int>> primal_variables{{0, 1}, {0, 1, 2, 3, 4}, {0,1,2,3,4}};
   vector<vector<int>> dual_variables{{1}, {0}, {0, 1, 2, 3, 4}};
   PrimalDualCliqueTree tree = MakePrimalDualCliqueTree(primal_variables, dual_variables);
   EXPECT_EQ(tree.clique_id_to_parent.back(), -1);
@@ -170,5 +170,19 @@ GTEST_TEST(OneDensePrimalCliqueManySparseDual, Test) {
   PrimalDualCliqueTree tree = MakePrimalDualCliqueTree(primal_variables, dual_variables);
   EXPECT_TRUE(tree.clique_id_to_parent.at(0) != -1);
 }
+
+GTEST_TEST(OneEquality, Test) {
+  vector<vector<int>> primal_variables{{0, 1}, {2, 3}, {3, 4}, {4,5}};
+  vector<vector<int>> dual_variables{{0}, {0}, {}, {0}};
+  PrimalDualCliqueTree tree = MakePrimalDualCliqueTree(primal_variables, dual_variables);
+  for (auto id : tree.clique_id_to_post_order_position) {
+    //DUMP(tree.primal_supernodes.at(id));
+    DUMP(tree.dual_supernodes.at(id));
+    DUMP(tree.dual_separators.at(id));
+  }
+}
+
+
+
 
 }  // namespace conex

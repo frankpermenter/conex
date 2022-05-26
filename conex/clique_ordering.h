@@ -1,3 +1,4 @@
+#pragma once
 #include <vector>
 
 #include "conex/tree_utils.h"
