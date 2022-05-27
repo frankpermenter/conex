@@ -85,9 +85,6 @@ std::unique_ptr<KKTSolverBase> MakeTreeSolver(
 
   CliqueTree clique_tree = MakeCliqueTree(
       cliques, MakeValidLeafIndicator(cliques, c->GetNumberOfVariables()));
-  DUMP(clique_tree.supernodes);
-  DUMP(clique_tree.node_to_parent);
-  DUMP(cliques);
   int i = 0;
   for (auto& clique : clique_assemblers_ptrs_) {
     auto adapter =
