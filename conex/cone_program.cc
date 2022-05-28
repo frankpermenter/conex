@@ -360,13 +360,13 @@ bool Solve(Program& prog, const SolverConfiguration& config,
         Eigen::VectorXd b(prog.kkt_system_manager_.SizeOfKKTSystem());
         b.setZero();
         b.head(m) << bin;
-        DUMP(bin);
+        MakeAffineTermOfEqualityConstraints(prog.kkt_system_manager_, b);
         solver->Assemble();
-        DUMP(solver->KKTMatrix());
         solver->AssembleAndFactor();
         solver->SolveInPlace(b);
         Eigen::Map<DenseMatrix> y_least_squares(primal_variable, m, 1);
-        y_least_squares = b;
+        y_least_squares = b.head(m);
+        prog.status_.solved = true;
       }
 
     } else {
