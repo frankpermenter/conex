@@ -97,23 +97,40 @@ void T::PartitionEqualityConstraint(const Eigen::MatrixXd& A,
                                     const vector<int>& variables,
                                     const CliqueTree* primal_tree,
                                     const vector<int>& multipliers) {
+  CONEX_CHECK(variables.size() > 0);
+  CONEX_CHECK(multipliers.size() > 0);
+  CONEX_CHECK(static_cast<int>(variables.size()) == A.cols());
+  CONEX_CHECK(static_cast<int>(multipliers.size()) == A.rows());
   std::vector<std::vector<int>> variable_groups;
-  size_t total_found = 0;
+  std::vector<bool> variable_found(variables.size(), false);
   for (auto& s : primal_tree->supernodes) {
-    bool found = false;
+    if (s.size() == 0) {
+      continue;
+    }
+    bool group_exists_for_supernode = false;
+    int i = 0;
     for (auto& v : variables) {
       if (std::find(s.begin(), s.end(), v) != s.end()) {
-        total_found++;
-        if (!found) {
-          variable_groups.push_back(std::vector<int>{v});
+        CONEX_CHECK(variable_found.at(i) == false);
+        variable_found.at(i) = true;
+        if (!group_exists_for_supernode) {
+          variable_groups.emplace_back(1, v);
+          group_exists_for_supernode = true;
         } else {
           variable_groups.back().push_back(v);
         }
-        found = true;
       }
+      ++i;
     }
   }
-  CONEX_CHECK(total_found == variables.size());
+
+  int i = 0;
+  for (const auto& found : variable_found) {
+    if (!found) {
+      variable_groups.emplace_back(1, variables[i]);
+    }
+    i++;
+  }
 
   auto columns_of_A = [A, variables, variable_groups](int group_number) {
     const auto& cols = variable_groups.at(group_number);
@@ -128,6 +145,7 @@ void T::PartitionEqualityConstraint(const Eigen::MatrixXd& A,
     return y;
   };
 
+  CONEX_CHECK(variable_groups.size() > 0);
   equality_constraints_.assemblers.emplace_back(
       columns_of_A(0), b, variable_groups.at(0), multipliers);
   supernodal_assemblers_ptr_.push_back(

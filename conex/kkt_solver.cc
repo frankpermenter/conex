@@ -122,7 +122,7 @@ T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques)
 
 T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
                        int num_vars, const CliqueTree& tree)
-    : SupernodalKKTSolver(cliques, num_vars, tree.clique_to_post_order_position,
+    : SupernodalKKTSolver(cliques, num_vars, tree.post_order_position_to_clique,
                           tree.supernodes, tree.separators) {}
 
 T::SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,

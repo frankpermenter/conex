@@ -142,7 +142,8 @@ int PickCliqueOrderHelper(const std::vector<std::vector<int>>& cliques_sorted,
                           const std::vector<bool>& valid_leaf, int root_in,
                           SymmetricMatrix<vector<int>>* intersections_ptr,
                           vector<vector<int>>* separators,
-                          std::vector<int>* order, RootedTree* tree_ptr) {
+                          std::vector<int>* post_order_position_to_clique,
+                          RootedTree* tree_ptr) {
   auto& tree = *tree_ptr;
   auto& intersections = *intersections_ptr;
   size_t n = cliques_sorted.size();
@@ -162,17 +163,17 @@ int PickCliqueOrderHelper(const std::vector<std::vector<int>>& cliques_sorted,
   vector<Path> paths;
   vector<Edge> edges;
 
-  order->clear();
-  order->reserve(n);
+  post_order_position_to_clique->clear();
+  post_order_position_to_clique->reserve(n);
 
-  while (order->size() < n) {
+  while (post_order_position_to_clique->size() < n) {
     size_t active = node_stack.top();
 
     if (visited.at(active) == 0) {
-      order->push_back(active);
+      post_order_position_to_clique->push_back(active);
       visited.at(active) = 1;
       tree.parent.at(active) = -1;
-      tree.height().at(active) = 0;
+      tree.height(active) = 0;
     }
 
     // Find unvisited neighbor with maximum weight.
@@ -196,11 +197,11 @@ int PickCliqueOrderHelper(const std::vector<std::vector<int>>& cliques_sorted,
     for (auto e : argmax) {
       separators->at(e) = intersections(active, e);
       node_stack.push(e);
-      order->push_back(e);
+      post_order_position_to_clique->push_back(e);
       visited.at(e) = 1;
       edges.emplace_back(active, e);
       tree.parent.at(e) = active;
-      tree.height().at(e) = tree.height().at(active) + 1;
+      tree.height(e) = tree.height(active) + 1;
       if (valid_leaf.size() > 0 && !valid_leaf.at(e)) {
         // Heuristic: quit now to increase chance node e
         // is not a leaf node.
@@ -226,39 +227,41 @@ int PickCliqueOrderHelper(const std::vector<std::vector<int>>& cliques_sorted,
       weights.begin(),
       std::max_element(weights.begin(), weights.begin() + weights.size()));
 
-  std::reverse(order->begin(), order->end());
+  std::reverse(post_order_position_to_clique->begin(),
+               post_order_position_to_clique->end());
   return root_node;
 }
 
 void GetCliqueEliminationOrder(const vector<vector<int>>& cliques_sorted,
                                const vector<bool>& valid_leaf, int root,
-                               vector<int>* order,
+                               vector<int>* post_order_position_to_clique,
                                vector<vector<int>>* supernodes,
                                vector<vector<int>>* separators,
                                RootedTree* tree) {
   size_t n = cliques_sorted.size();
-  order->clear();
-  order->resize(n);
+  post_order_position_to_clique->clear();
+  post_order_position_to_clique->resize(n);
   separators->clear();
   separators->resize(n);
   SymmetricMatrix<vector<int>> intersections(n);
   int better_root =
       PickCliqueOrderHelper(cliques_sorted, valid_leaf, root, &intersections,
-                            separators, order, tree);
+                            separators, post_order_position_to_clique, tree);
 
   if (root == -1) {
-    order->clear();
-    order->resize(n);
+    post_order_position_to_clique->clear();
+    post_order_position_to_clique->resize(n);
     separators->clear();
     separators->resize(n);
     RootedTree tree_i(n);
     PickCliqueOrderHelper(cliques_sorted, valid_leaf, better_root,
-                          &intersections, separators, order, &tree_i);
+                          &intersections, separators,
+                          post_order_position_to_clique, &tree_i);
     *tree = tree_i;
   }
 
   supernodes->resize(n);
-  for (auto& e : *order) {
+  for (auto& e : *post_order_position_to_clique) {
     supernodes->at(e).resize(cliques_sorted.at(e).size() -
                              separators->at(e).size());
     if (supernodes->at(e).size() > 0) {
@@ -275,8 +278,8 @@ auto FindSupernode(const std::vector<int>& separator, const T& b, const T& c,
   if (separator.size() == 0) {
     return c;
   }
-  // TODO(FrankPermenter): Process separators in elimination order
-  // so we do not search over all supernodes.
+  // TODO(FrankPermenter): Process separators in elimination
+  // post_order_position_to_clique so we do not search over all supernodes.
   for (auto i = b; i != c; ++i) {
     IntersectionOfSorted(separator, *i, intersection);
     if (intersection->size() == separator.size()) {
@@ -289,10 +292,12 @@ auto FindSupernode(const std::vector<int>& separator, const T& b, const T& c,
 }  // namespace
 
 void FillIn(const RootedTree& tree, int num_variables,
-            const std::vector<int>& order, vector<std::vector<int>>* supernodes,
+            const std::vector<int>& post_order_position_to_clique,
+            vector<std::vector<int>>* supernodes,
             vector<std::vector<int>>* separators) {
-  std::vector<int> eliminated(num_variables, order.size() + 1);
-  int num_cliques = order.size();
+  std::vector<int> eliminated(num_variables,
+                              post_order_position_to_clique.size() + 1);
+  int num_cliques = post_order_position_to_clique.size();
 
   // Detect if variable is a supernode of clique i and
   // clique j.  If so, apply running intersection property
@@ -300,19 +305,19 @@ void FillIn(const RootedTree& tree, int num_variables,
   //  1) Make a supernode of the clique closest to the root.
   //  2) Make a separator of all other cliques.
   //
-  for (size_t i = 0; i < order.size(); i++) {
-    for (int v : supernodes->at(order.at(i))) {
+  for (size_t i = 0; i < post_order_position_to_clique.size(); i++) {
+    for (int v : supernodes->at(post_order_position_to_clique.at(i))) {
       const bool variable_already_eliminated = eliminated.at(v) < num_cliques;
       if (variable_already_eliminated) {
-        auto fill_in = PathInForest(order.at(i), eliminated.at(v), tree.parent,
-                                    tree.height());
+        auto fill_in = tree.PathInForest(post_order_position_to_clique.at(i),
+                                         eliminated.at(v));
         for (size_t j = 0; j < fill_in.size() - 1; j++) {
           auto e = fill_in.at(j);
           separators->at(e) = UnionOfSorted(separators->at(e), {v});
         }
         eliminated.at(v) = fill_in.back();
       } else {
-        eliminated.at(v) = order.at(i);
+        eliminated.at(v) = post_order_position_to_clique.at(i);
       }
     }
   }
@@ -334,46 +339,55 @@ void FillIn(const RootedTree& tree, int num_variables,
 
 void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
                      const vector<bool>& valid_leaf, int root,
-                     vector<int>* order, vector<int>* parent_in_tree,
+                     vector<int>* post_order_position_to_clique,
+                     vector<int>* parent_in_tree,
                      vector<vector<int>>* supernodes,
                      vector<vector<int>>* separators) {
   size_t n = cliques_sorted.size();
   RootedTree tree(n);
-  GetCliqueEliminationOrder(cliques_sorted, valid_leaf, root, order, supernodes,
+  GetCliqueEliminationOrder(cliques_sorted, valid_leaf, root,
+                            post_order_position_to_clique, supernodes,
                             separators, &tree);
   int num_vars = GetMax(cliques_sorted) + 1;
-  FillIn(tree, num_vars, *order, supernodes, separators);
+  FillIn(tree, num_vars, *post_order_position_to_clique, supernodes,
+         separators);
 
   *parent_in_tree = tree.parent;
 }
 
 void PickCliqueOrder(const vector<vector<int>>& cliques_sorted, int root,
-                     vector<int>* order, vector<vector<int>>* supernodes,
-                     vector<vector<int>>* separators) {
-  const vector<bool> valid_leaf{};
-  vector<int> parent_in_tree;
-  PickCliqueOrder(cliques_sorted, valid_leaf, root, order, &parent_in_tree,
-                  supernodes, separators);
-}
-
-void PickCliqueOrder(const vector<vector<int>>& cliques_sorted, int root,
-                     vector<int>* order, vector<int>* parent_in_tree,
+                     vector<int>* post_order_position_to_clique,
                      vector<vector<int>>* supernodes,
                      vector<vector<int>>* separators) {
   const vector<bool> valid_leaf{};
-  PickCliqueOrder(cliques_sorted, valid_leaf, root, order, parent_in_tree,
-                  supernodes, separators);
+  vector<int> parent_in_tree;
+  PickCliqueOrder(cliques_sorted, valid_leaf, root,
+                  post_order_position_to_clique, &parent_in_tree, supernodes,
+                  separators);
+}
+
+void PickCliqueOrder(const vector<vector<int>>& cliques_sorted, int root,
+                     vector<int>* post_order_position_to_clique,
+                     vector<int>* parent_in_tree,
+                     vector<vector<int>>* supernodes,
+                     vector<vector<int>>* separators) {
+  const vector<bool> valid_leaf{};
+  PickCliqueOrder(cliques_sorted, valid_leaf, root,
+                  post_order_position_to_clique, parent_in_tree, supernodes,
+                  separators);
 }
 
 void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
                      const vector<bool>& valid_leaf, int root, RootedTree* tree,
                      vector<vector<int>>* supernodes,
                      vector<vector<int>>* separators) {
-  std::vector<int> order;
-  GetCliqueEliminationOrder(cliques_sorted, valid_leaf, root, &order,
-                            supernodes, separators, tree);
+  std::vector<int> post_order_position_to_clique;
+  GetCliqueEliminationOrder(cliques_sorted, valid_leaf, root,
+                            &post_order_position_to_clique, supernodes,
+                            separators, tree);
   int num_vars = GetMax(cliques_sorted) + 1;
-  FillIn(*tree, num_vars, order, supernodes, separators);
+  FillIn(*tree, num_vars, post_order_position_to_clique, supernodes,
+         separators);
 }
 
 CliqueTree MakeCliqueTree(const vector<vector<int>>& cliques,
@@ -384,7 +398,7 @@ CliqueTree MakeCliqueTree(const vector<vector<int>>& cliques,
   Sort(&cliques_sorted);
 
   PickCliqueOrder(cliques_sorted, valid_leaf, GetRootNode(cliques, valid_leaf),
-                  &clique_tree.clique_to_post_order_position,
+                  &clique_tree.post_order_position_to_clique,
                   &clique_tree.node_to_parent, &clique_tree.supernodes,
                   &clique_tree.separators);
   return clique_tree;

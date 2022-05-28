@@ -40,9 +40,10 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<int> ComputePostOrdering() const;
   void push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system);
 
- private:
   void SetEliminationTree(
       const std::vector<int>& variable_to_elimination_position);
+
+ private:
   void SetEliminationOrder(
       const std::vector<int>& variable_to_elimination_position);
   void FinalizeHelper(const std::vector<int>& subsystem_to_parent_subsystem);
@@ -64,6 +65,26 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<int> variable_to_elimination_position_;
   std::vector<int> subsystem_to_parent_;
   bool auto_update_assemblers_ = false;
+};
+
+class SparseFactorization;
+class EigenSparseCholesky : public KKTSolverBase {
+ public:
+  EigenSparseCholesky(
+      std::unique_ptr<SymmetricLinearSystemTreeSolver>&& solver);
+  ~EigenSparseCholesky();
+
+ private:
+  Eigen::MatrixXd DoKKTMatrix(
+      bool permute_to_elimination_order = true) const override;
+  void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
+                      bool in_original_order) const;
+
+  void DoAssemble() override;
+  bool DoAssembleAndFactor() override;
+  bool DoFactor() override;
+  std::unique_ptr<SymmetricLinearSystemTreeSolver> solver_;
+  std::unique_ptr<SparseFactorization> factorization_;
 };
 
 }  // namespace conex

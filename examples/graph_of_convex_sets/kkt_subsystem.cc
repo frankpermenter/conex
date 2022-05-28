@@ -35,7 +35,7 @@ using T = ConvexSetNode;
 
 T::ConvexSetNode(const std::vector<int>& variables,
                  const ConvexSetNodeParameters& params)
-    : KKTSubsystem(variables, 0), params_(params) {
+    : params_(params) {
   int num_supernodes =
       params.num_incoming * (2 * params.spatial_dimension + 1) +
       params.spatial_dimension + 1;

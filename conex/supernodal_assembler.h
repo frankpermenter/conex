@@ -89,6 +89,7 @@ class SupernodalAssemblerStatic : public SupernodalAssemblerBase {
   SupernodalAssemblerStatic(const Eigen::MatrixXd& A,
                             const std::vector<int>& variables)
       : SupernodalAssemblerBase(variables, 0 /*no private variables*/), A_(A) {
+    CONEX_CHECK(static_cast<int>(variables.size()) == A_.rows());
     if (A_.rows() != A.cols()) {
       throw std::runtime_error("Static assembler requires square matrix");
     }

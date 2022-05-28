@@ -459,6 +459,7 @@ int T::number_of_variables() const {
 }
 
 Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
+  DUMP(variable_to_elimination_position_);
   int num_vars = number_of_variables();
   Eigen::MatrixXd M(num_vars, num_vars);
   M.setZero();

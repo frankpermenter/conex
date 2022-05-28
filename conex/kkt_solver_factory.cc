@@ -35,7 +35,7 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
       cliques, MakeValidLeafIndicator(cliques, c->GetNumberOfVariables()));
 
   auto solver_temp = std::make_unique<SupernodalKKTSolver>(
-      cliques, c->SizeOfKKTSystem(), clique_tree.clique_to_post_order_position,
+      cliques, c->SizeOfKKTSystem(), clique_tree.post_order_position_to_clique,
       clique_tree.supernodes, clique_tree.separators);
 
   solver_temp->SetIterativeRefinementIterations(
@@ -75,7 +75,7 @@ SubsystemType ClassifySupernodeSubmatrix(const std::vector<int>& vars,
   return SubsystemType::kQuasiDefinite;
 }
 
-std::unique_ptr<KKTSolverBase> MakeTreeSolver(
+std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
   vector<vector<int>> cliques = c->variables();
   auto& clique_assemblers_ptrs_ = c->clique_assemblers();
@@ -183,7 +183,10 @@ std::unique_ptr<KKTSolverBase> KKTSolverFactory::create_unique(
       return MakeCGSolver(kkt, config);
       break;
     case CONEX_KKT_SOLVER_TREE:
-      return MakeTreeSolver(kkt, config);
+      std::unique_ptr<SymmetricLinearSystemTreeSolver> ptr =
+          MakeTreeSolver(kkt, config);
+      return ptr;
+      return std::make_unique<EigenSparseCholesky>(std::move(ptr));
       break;
   }
   std::runtime_error("Invalid KKT Solver.");

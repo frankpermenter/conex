@@ -350,9 +350,26 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   int m = bin.rows();
   // Empty program
   if (prog.NumberOfConstraints() == 0) {
-    Eigen::Map<DenseMatrix> ynan(primal_variable, m, 1);
-    prog.status_.solved = 0;
-    ynan.array() = bin.array() * std::numeric_limits<double>::infinity();
+    if (prog.NumberOfQuadraticCosts() > 0) {
+      {
+        Initialize(prog, config);
+        Eigen::VectorXd b(prog.kkt_system_manager_.SizeOfKKTSystem());
+        b.setZero();
+        b.head(m) << bin;
+        DUMP(bin);
+        solver->Assemble();
+        DUMP(solver->KKTMatrix());
+        solver->AssembleAndFactor();
+        solver->SolveInPlace(b);
+        Eigen::Map<DenseMatrix> y_least_squares(primal_variable, m, 1);
+        y_least_squares = b;
+      }
+
+    } else {
+      Eigen::Map<DenseMatrix> ynan(primal_variable, m, 1);
+      prog.status_.solved = 0;
+      ynan.array() = bin.array() * std::numeric_limits<double>::infinity();
+    }
     return prog.status_.solved;
   }
   Initialize(prog, config);

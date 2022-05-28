@@ -316,13 +316,13 @@ cc_library(
     name = "clique_ordering",
     srcs = [
         "clique_ordering.cc",
-        "primal_dual_clique_ordering.cc",
         "clique_ordering_utils.cc",
+        "primal_dual_clique_ordering.cc",
     ],
     hdrs = [
         "clique_ordering.h",
-        "primal_dual_clique_ordering.h",
         "clique_ordering_utils.h",
+        "primal_dual_clique_ordering.h",
     ],
     deps = ["tree_utils"],
 )
@@ -636,6 +636,7 @@ cc_library(
         "RLDLT.h",
         "cholesky_solvers.h",
         "debug_macros.h",
+        "kkt_simplicial_solver.cc",
         "kkt_subsystem.cc",
         "kkt_subsystem.h",
         "kkt_tree_solver.cc",
