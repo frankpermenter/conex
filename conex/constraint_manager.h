@@ -111,11 +111,11 @@ class ConstraintManager {
     return supernodal_assemblers_ptr_;
   }
 
-  std::list<SupernodalAssemblerStatic>& quadratic_costs() {
+  std::list<SupernodalAssemblerQuadratic>& quadratic_costs() {
     return quadratic_costs_;
   }
 
-  const std::list<SupernodalAssemblerStatic>& quadratic_costs() const {
+  const std::list<SupernodalAssemblerQuadratic>& quadratic_costs() const {
     return quadratic_costs_;
   }
 
@@ -135,7 +135,7 @@ class ConstraintManager {
   CONEX_STATUS Validate(const std::vector<int>& variables);
   mutable std::vector<std::vector<int>> dual_vars_;
   std::list<SupernodalAssembler> supernodal_assemblers_;
-  std::list<SupernodalAssemblerStatic> quadratic_costs_;
+  std::list<SupernodalAssemblerQuadratic> quadratic_costs_;
 
   // Stores and owns the constraints.
   std::list<std::any> constraint_storage_;

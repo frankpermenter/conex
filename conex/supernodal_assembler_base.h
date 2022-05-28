@@ -34,7 +34,7 @@ class SupernodalAssemblerBase {
   virtual void SetDenseData() = 0;
 
   Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> Subvector(
-      const Eigen::MatrixXd& x) {
+      const Eigen::MatrixXd& x) const {
     ysegment.resize(variables_.size(), 1);
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
                                                   ysegment.size(), 1);
@@ -63,7 +63,7 @@ class SupernodalAssemblerBase {
 
  protected:
   WorkspaceSchurComplement submatrix_data_;
-  Eigen::VectorXd ysegment;
+  mutable Eigen::VectorXd ysegment;
   double GetCoeff(int i, int j);
 
   void Increment(const int* r, int sizer, const int* c, int sizec,

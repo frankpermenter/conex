@@ -53,7 +53,7 @@ class SupernodalAssembler : public SupernodalAssemblerBase {
   SupernodalAssembler(const std::vector<int>& variables, Constraint* W)
       : SupernodalAssemblerBase(variables, 0 /*no private variables*/) {
     workspace_ = W;
-    assert(W);
+    CONEX_CHECK(W);
   }
 
   virtual bool is_dynamic() const override { return true; }
@@ -166,4 +166,12 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
   std::vector<int> dual_variables_;
 };
 
+class SupernodalAssemblerQuadratic : public SupernodalAssemblerStatic {
+ public:
+  SupernodalAssemblerQuadratic(const Eigen::MatrixXd& A,
+                               const std::vector<int>& variables)
+      : SupernodalAssemblerStatic(A, variables) {}
+  double EvaluateQuadraticCost(
+      const Eigen::Ref<const Eigen::MatrixXd> x) const;
+};
 }  // namespace conex
