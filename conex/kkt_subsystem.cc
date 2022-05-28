@@ -330,17 +330,6 @@ void T::ReceiveColumnUpdate(const KKTSubsystemBase* source,
 
 void T::AddSparseMatrixTriplets(
     vector<Eigen::Triplet<double>>* triplets) const {
-
-  // for (size_t j = 0; j < supernodes_.size(); j++) {
-  //   for (size_t i = 0; i < supernodes_.size(); i++) {
-  //     (*full_matrix)(supernodes_.at(i), supernodes_.at(j)) =
-  //         supernode_submatrix()(i, j);
-  //   }
-  //   for (size_t i = 0; i < separators_.size(); i++) {
-  //     (*full_matrix)(separators_.at(i), supernodes_.at(j)) =
-  //         separator_rows()(i, j);
-  //   }
-  // }
   for (size_t j = 0; j < supernodes_.size(); j++) {
     for (size_t i = 0; i < supernodes_.size(); i++) {
       triplets->emplace_back(supernodes_.at(i), supernodes_.at(j), supernode_submatrix()(i, j));
@@ -350,33 +339,6 @@ void T::AddSparseMatrixTriplets(
     }
   }
 
-#if 0
-  for (size_t j = 0; j < supernodes_.size(); j++) {
-    for (size_t i = j; i < supernodes_.size(); i++) {
-      int row = supernodes_.at(i);
-      int col = supernodes_.at(j);
-      if (col > row) {
-        std::swap(row, col);
-      }
-      if (supernode_submatrix()(i, j) != 0) {
-        triplets->emplace_back(row, col, supernode_submatrix()(i, j));
-      }
-    }
-  }
-
-  for (size_t j = 0; j < supernodes_.size(); j++) {
-    for (size_t i = 0; i < separators_.size(); i++) {
-      int row = separators_.at(i);
-      int col = supernodes_.at(j);
-      if (col > row) {
-        std::swap(row, col);
-      }
-      if (separator_rows()(i, j) != 0) {
-        triplets->emplace_back(row, col, separator_rows()(i, j));
-      }
-    }
-  }
-  #endif
 }
 
 void T::DoScatterSeparatorSubmatrix() {

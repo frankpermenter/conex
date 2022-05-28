@@ -482,17 +482,13 @@ Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
 
 Eigen::SparseMatrix<double> T::MakeSparseKKTMatrix(
     bool permute_to_elimination_order) const {
+  std::vector<Eigen::Triplet<double>> triplets;
+  for (auto s : subsystems_) {
+    s->AddSparseMatrixTriplets(&triplets);
+  }
   Eigen::SparseMatrix<double> matrix(number_of_variables(),
                                      number_of_variables());
-  for (auto s : subsystems_) {
-    std::vector<Eigen::Triplet<double>> triplets;
-    s->AddSparseMatrixTriplets(&triplets);
-
-    Eigen::SparseMatrix<double> matrix_i(number_of_variables(),
-                                       number_of_variables());
-    matrix_i.setFromTriplets(triplets.begin(), triplets.end());
-    matrix += matrix_i;
-  }
+  matrix.setFromTriplets(triplets.begin(), triplets.end());
   Eigen::SparseMatrix<double> matrix_sym = matrix.selfadjointView<Eigen::Lower>();
   if (permute_to_elimination_order) {
     return matrix;
