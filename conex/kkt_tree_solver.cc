@@ -5,6 +5,7 @@
 namespace conex {
 
 using KKTSubsystemType = KKTSubsystemBase;
+using Eigen::MatrixXd;
 namespace {
 #if 0
 class DistanceToRootRecursion {
@@ -467,10 +468,11 @@ Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
     root->MakeKKTMatrix(&M);
     M = M.selfadjointView<Eigen::Lower>();
   }
+  DUMP(M);
   if (permute_to_elimination_order) {
     return M;
   } else {
-    CONEX_CHECK(variable_to_elimination_position_.size() > 0);
+    CONEX_CHECK(static_cast<int>(variable_to_elimination_position_.size()) == number_of_variables());
   }
   Eigen::PermutationMatrix<-1> P(number_of_variables());
   P.indices() = Eigen::Map<const Eigen::VectorXi>(
@@ -480,14 +482,28 @@ Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
 
 Eigen::SparseMatrix<double> T::MakeSparseKKTMatrix(
     bool permute_to_elimination_order) const {
-  std::vector<Eigen::Triplet<double>> triplets;
-  for (auto s : subsystems_) {
-    s->AddSparseMatrixTriplets(&triplets);
-  }
   Eigen::SparseMatrix<double> matrix(number_of_variables(),
                                      number_of_variables());
-  matrix.setFromTriplets(triplets.begin(), triplets.end());
-  return matrix;
+  for (auto s : subsystems_) {
+    std::vector<Eigen::Triplet<double>> triplets;
+    s->AddSparseMatrixTriplets(&triplets);
+
+    Eigen::SparseMatrix<double> matrix_i(number_of_variables(),
+                                       number_of_variables());
+    matrix_i.setFromTriplets(triplets.begin(), triplets.end());
+    matrix += matrix_i;
+  }
+  Eigen::SparseMatrix<double> matrix_sym = matrix.selfadjointView<Eigen::Lower>();
+  if (permute_to_elimination_order) {
+    return matrix;
+  } else {
+    CONEX_CHECK(static_cast<int>(variable_to_elimination_position_.size()) == number_of_variables());
+    Eigen::PermutationMatrix<-1> P(number_of_variables());
+    P.indices() = Eigen::Map<const Eigen::VectorXi>(
+        variable_to_elimination_position_.data(), number_of_variables());
+    Eigen::MatrixXd matrix_dense = MatrixXd(matrix).selfadjointView<Eigen::Lower>();
+    return P.transpose() * matrix_sym * P;
+  }
 }
 
 void T::AddSubsystem(KKTSubsystemType* system) {

@@ -366,9 +366,13 @@ bool Solve(Program& prog, const SolverConfiguration& config,
         solver->SolveInPlace(b);
         Eigen::Map<DenseMatrix> y_least_squares(primal_variable, m, 1);
         y_least_squares = b.head(m);
+        double yQy;
+        for (const auto& cost : prog.constraint_manager().quadratic_costs()) {
+          yQy += cost.EvaluateQuadraticCost(y_least_squares);
+        }
         prog.status_.solved = true;
+        prog.status_.primal_objective_value = .5*yQy + prog.linear_cost_.dot(y_least_squares.col(0));
       }
-
     } else {
       Eigen::Map<DenseMatrix> ynan(primal_variable, m, 1);
       prog.status_.solved = 0;
@@ -578,11 +582,13 @@ bool Solve(Program& prog, const SolverConfiguration& config,
         }
       }
       // sdotx = (c-A*y)*x = c'x - Qx
-      double pobj = by - 0.5 * yQy;
-      double dobj = cx + 0.5 * yQy;
+      double pobj = -(by - 0.5 * yQy);
+      double dobj = -(cx + 0.5 * yQy);
+      prog.status_.dual_objective_value = dobj;
+      prog.status_.primal_objective_value = pobj;
       REPORT(pobj);
       REPORT(dobj);
-      kkt_error = std::fabs(pobj - dobj + s_dot_x) / (1e-12 + s_dot_x);
+      kkt_error = std::fabs(dobj - pobj + s_dot_x) / (1e-12 + s_dot_x);
       REPORT(kkt_error);
       REPORT(s_dot_x);
     }
