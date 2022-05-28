@@ -50,11 +50,22 @@ void IncrementSubvector(Eigen::Ref<MatrixXd> destination,
   }
 }
 
-void AssembleSchurComplementResiduals(ConstraintManager* kkt,
+void MakeAffineTermOfEqualityConstraints(const ConstraintManager& kkt,
+                                         Eigen::Ref<MatrixXd> f) {
+  int i = 0;
+  for (auto& eq : kkt.equality_constraint_manager().data) {
+    IncrementSubvector(f,
+                       kkt.equality_constraint_manager().dual_variables.at(i),
+                       eq.affine_term());
+    i++;
+  }
+}
+
+void AssembleSchurComplementResiduals(const ConstraintManager& kkt,
                                       SchurComplementSystem* s) {
   s->setZero();
   int i = 0;
-  for (auto& ci : kkt->cone_inequalities()) {
+  for (auto& ci : kkt.cone_inequalities()) {
     auto* rhs_i = ci->submatrix_data();
     s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
     s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
@@ -67,14 +78,7 @@ void AssembleSchurComplementResiduals(ConstraintManager* kkt,
     }
     i++;
   }
-
-  i = 0;
-  for (auto& eq : kkt->equality_constraint_manager().data) {
-    IncrementSubvector(s->AQc,
-                       kkt->equality_constraint_manager().dual_variables.at(i),
-                       eq.affine_term());
-    i++;
-  }
+  MakeAffineTermOfEqualityConstraints(kkt, s->AQc);
 }
 
 template <typename T>
@@ -440,7 +444,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 
     START_TIMER(Assemble)
     solver->Assemble();
-    AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
+    AssembleSchurComplementResiduals(prog.kkt_system_manager_, &prog.sys);
     END_TIMER
 
     if (i < 1 && config.enable_rescaling) {
@@ -614,7 +618,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   }
   if (config.prepare_dual_variables) {
     solver->Assemble();
-    AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
+    AssembleSchurComplementResiduals(prog.kkt_system_manager_, &prog.sys);
     solver->Factor();
     DenseMatrix bres =
         newton_step_parameters.inv_sqrt_mu * b * b_scaling - 1 * prog.sys.AW;
@@ -649,7 +653,7 @@ DenseMatrix GetFeasibleObjective(Program* prg) {
   auto& prog = *prg;
   Initialize(prog, SolverConfiguration());
   prog.solver->Assemble();
-  AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
+  AssembleSchurComplementResiduals(prog.kkt_system_manager_, &prog.sys);
   return .5 * prog.sys.AW;
 }
 
