@@ -565,16 +565,20 @@ bool Solve(Program& prog, const SolverConfiguration& config,
       REPORT(mu);
       REPORT(d_2);
       REPORT(d_inf);
+      double yQy = 0;
       if (prog.contains_quadratic_costs_) {
         double scale = newton_step_parameters.inv_sqrt_mu * c_scaling;
         scale *= scale;
         for (const auto& cost : prog.constraint_manager().quadratic_costs()) {
-          by -= cost.EvaluateQuadraticCost(y) * 1.0/scale;
+          yQy += cost.EvaluateQuadraticCost(y) * 1.0 / scale;
         }
       }
-      REPORT(by);
-      REPORT(cx);
-      kkt_error = std::fabs(cx - by - s_dot_x) / s_dot_x;
+      // sdotx = (c-A*y)*x = c'x - Qx
+      double pobj = by - 0.5 * yQy;
+      double dobj = cx + 0.5 * yQy;
+      REPORT(pobj);
+      REPORT(dobj);
+      kkt_error = std::fabs(pobj - dobj + s_dot_x) / (1e-12 + s_dot_x);
       REPORT(kkt_error);
       REPORT(s_dot_x);
     }
