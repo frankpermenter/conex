@@ -139,7 +139,7 @@ class SupernodalAssembler : public SupernodalAssemblerBase {
   SupernodalAssembler(const std::vector<int>& variables, Constraint* W)
       : SupernodalAssemblerBase(variables, 0 /*no private variables*/) {
     workspace_ = W;
-    assert(W);
+    CONEX_CHECK(W);
   }
 
   virtual bool is_dynamic() const override { return true; }
