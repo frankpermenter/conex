@@ -1,16 +1,18 @@
+#include "conex/constraint_interface.h"
 #include "conex/error_codes.h"
 #include "conex/newton_step.h"
 #include "conex/workspace_soc.h"
 
 namespace conex {
 
-class SOCConstraint {
+class SOCConstraint : public ConstraintBase {
   using StorageType = DenseMatrix;
 
  public:
   SOCConstraint(const Eigen::MatrixXd& constraint_matrix,
                 const Eigen::MatrixXd& constraint_affine);
 
+  void accept(Visitor* v) override { v->visit(*this); }
   // Lorentz cone a subset of R^(n+1).
   SOCConstraint(int n) : workspace_(n), n_(n) {}
 
@@ -42,6 +44,9 @@ class SOCConstraint {
                                 const LineSearchParameters& params,
                                 const Ref& y0, const Ref& y1,
                                 LineSearchOutput* output);
+
+  DenseMatrix constraint_matrix() const { return constraint_matrix_; }
+  DenseMatrix affine_term() const { return constraint_affine_; }
 
  private:
   void ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y, Ref* minus_s);
