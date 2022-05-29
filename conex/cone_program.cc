@@ -39,11 +39,11 @@ inline void TakeStep(std::vector<SupernodalAssembler*>* constraints,
   }
 }
 
-void AssembleSchurComplementResiduals(ConstraintManager* kkt,
+void AssembleSchurComplementResiduals(const ConstraintManager& kkt,
                                       SchurComplementSystem* s) {
   s->setZero();
   int i = 0;
-  for (auto& ci : kkt->cone_inequalities()) {
+  for (auto& ci : kkt.cone_inequalities()) {
     auto* rhs_i = ci->submatrix_data();
     s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
     s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
@@ -57,8 +57,8 @@ void AssembleSchurComplementResiduals(ConstraintManager* kkt,
     i++;
   }
 
-  int offset = kkt->GetNumberOfVariables();
-  for (auto& eq : kkt->equality_constraints()) {
+  int offset = kkt.GetNumberOfVariables();
+  for (auto& eq : kkt.equality_constraints()) {
     int num_eq = eq.affine_term().rows();
     s->AQc.middleRows(offset, num_eq) = eq.affine_term();
     offset += num_eq;
@@ -411,7 +411,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 
     START_TIMER(Assemble)
     solver->Assemble();
-    AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
+    AssembleSchurComplementResiduals(prog.kkt_system_manager_, &prog.sys);
     END_TIMER
 
     if (i < 1 && config.enable_rescaling) {
@@ -584,7 +584,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   }
   if (config.prepare_dual_variables) {
     solver->Assemble();
-    AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
+    AssembleSchurComplementResiduals(prog.kkt_system_manager_, &prog.sys);
     solver->Factor();
     DenseMatrix bres =
         newton_step_parameters.inv_sqrt_mu * b * b_scaling - 1 * prog.sys.AW;
@@ -619,7 +619,7 @@ DenseMatrix GetFeasibleObjective(Program* prg) {
   auto& prog = *prg;
   Initialize(prog, SolverConfiguration());
   prog.solver->Assemble();
-  AssembleSchurComplementResiduals(&prog.kkt_system_manager_, &prog.sys);
+  AssembleSchurComplementResiduals(prog.kkt_system_manager_, &prog.sys);
   return .5 * prog.sys.AW;
 }
 
