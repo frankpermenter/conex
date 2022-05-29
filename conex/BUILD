@@ -18,7 +18,7 @@ cc_library(
     ]),
     copts = ["-Iexternal/gtest/include"],
     deps = [
-        "conex_lib",
+        "@eigen",
         "@gtest//:main",
     ],
 )
@@ -310,8 +310,6 @@ cc_library(
         "constraint_manager.h",
         "debug_macros.h",
         "equality_constraint.h",
-        "error_checking_macros.h",
-        "error_codes.h",
         "kkt_solver.h",
         "kkt_solver_factory.h",
         "kkt_solver_interface.h",
@@ -326,7 +324,8 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "clique_ordering",
+        ":clique_ordering",
+        ":error_checking",
         ":solver_configuration",
         ":tree_utils",
         "@eigen",
@@ -344,8 +343,6 @@ cc_library(
         "constraint.h",
         "constraint_manager.h",
         "debug_macros.h",
-        "error_checking_macros.h",
-        "error_codes.h",
         "memory_utils.h",
         "newton_step.h",
         "quadratic_cost.h",
@@ -357,6 +354,7 @@ cc_library(
     deps = [
         ":conjugate_gradient_solvers",
         ":divergence",
+        ":error_checking",
         ":kkt_solver_factory",
         ":solver_configuration",
         ":supernodal_solver",
@@ -396,6 +394,7 @@ cc_library(
     deps = [
         "approximate_eigenvalues",
         "core",
+        "error_checking",
         "exponential_map",
         "exponential_map_pade",
         "jordan_matrix_algebra",
@@ -433,6 +432,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "core",
+        "error_checking",
         "@eigen",
     ],
 )
@@ -443,8 +443,6 @@ cc_library(
         "cone_program.h",
         "constraint.h",
         "debug_macros.h",
-        "error_checking_macros.h",
-        "error_codes.h",
         "memory_utils.h",
         "newton_step.h",
         "workspace.h",
@@ -454,6 +452,7 @@ cc_library(
         ":approximate_eigenvalues",
         ":core",
         ":divergence",
+        ":error_checking",
         ":exponential_map",
         ":exponential_map_pade",
         ":jordan_matrix_algebra",
@@ -520,22 +519,6 @@ cc_test(
         "@gtest//:main",
     ],
 )
-
-#conex_cc_test(
-#    name = "cg_equality_constraints_test",
-#    srcs = [
-#        "test/default_solver_config.h",
-#        "test/equality_constraints_test.cc",
-#    ],
-#    copts = [
-#        "-Iexternal/gtest/include",
-#        #  "-DCONEX_TEST_CG",
-#    ],
-#    deps = [
-#        "conex_lib",
-#        "@gtest//:main",
-#    ],
-#)
 
 cc_binary(
     name = "solver_failures",
