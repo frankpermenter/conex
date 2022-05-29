@@ -178,4 +178,9 @@ void T::UpdateBlocks() {
   }
 }
 
+double SupernodalAssemblerQuadratic::EvaluateQuadraticCost(
+    const Eigen::Ref<const Eigen::MatrixXd> x) const {
+  const Eigen::VectorXd xtemp = Subvector(x);
+  return xtemp.dot(A_ * xtemp);
+}
 }  // namespace conex

@@ -140,11 +140,11 @@ class ConstraintManager {
     return supernodal_assemblers_ptr_;
   }
 
-  std::list<SupernodalAssemblerStatic>& quadratic_costs() {
+  std::list<SupernodalAssemblerQuadratic>& quadratic_costs() {
     return quadratic_costs_;
   }
 
-  const std::list<SupernodalAssemblerStatic>& quadratic_costs() const {
+  const std::list<SupernodalAssemblerQuadratic>& quadratic_costs() const {
     return quadratic_costs_;
   }
 
@@ -183,7 +183,7 @@ class ConstraintManager {
   mutable std::vector<std::vector<int>> dual_vars_;
   mutable std::vector<std::vector<int>> cliques_;
   std::list<SupernodalAssembler> supernodal_assemblers_;
-  std::list<SupernodalAssemblerStatic> quadratic_costs_;
+  std::list<SupernodalAssemblerQuadratic> quadratic_costs_;
   std::list<SupernodalAssemblerEqualities> equality_constraints_;
 
   // Stores and owns the constraints.
