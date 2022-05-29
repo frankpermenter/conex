@@ -29,7 +29,7 @@ class ConstraintManager {
   ConstraintManager(){};
 
   void SetNumberOfVariables(int N) {
-    CONEX_CHECK(N > 0);
+    CONEX_CHECK(N >= 0);
     max_number_of_variables_ = N;
     new_dual_variable_start_ = N;
   }

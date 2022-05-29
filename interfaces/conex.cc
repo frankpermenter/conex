@@ -204,8 +204,8 @@ int CONEX_AddDenseLinearConstraint(void* prog, const double* A, int Ar, int Ac,
 
   int n = Ar;
   int m = Ac;
-
-  conex::LinearConstraint T3{n, m, A, c};
+  conex::LinearConstraint T3{Eigen::Map<const Eigen::MatrixXd>(A, n, m),
+                             Eigen::Map<const Eigen::MatrixXd>(c, n, 1)};
   auto& program = *reinterpret_cast<Program*>(prog);
 
   return program.AddConstraint(T3);

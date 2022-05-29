@@ -1,4 +1,4 @@
-set -e
+#set -e
 
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:$PWD/interfaces"
 export LIBRARY_PATH="${LIBRARY_PATH}:$PWD/interfaces"
