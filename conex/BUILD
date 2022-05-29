@@ -503,8 +503,9 @@ conex_cc_test(
     ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
-        "conex_lib",
+        ":core",
         ":equality_constraint",
+        ":linear_constraint",
         "@gtest//:main",
     ],
 )
