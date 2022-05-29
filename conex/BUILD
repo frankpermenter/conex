@@ -402,6 +402,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "core",
+        "error_checking",
         "@eigen",
     ],
 )
