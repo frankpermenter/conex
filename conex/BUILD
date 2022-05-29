@@ -30,17 +30,19 @@ conex_cc_test(
     srcs = glob(["test/hermitian_psd_test.cc"]),
     copts = ["-Iexternal/gtest/include"],
     deps = [
-        "conex_lib",
+        "core",
+        "semidefinite_constraints",
         "test_util",
         "@gtest//:main",
     ],
 )
 
 conex_cc_test(
-    name = "sdp",
+    name = "sdp_test",
     srcs = glob(["test/test_sdp.cc"]),
     copts = ["-Iexternal/gtest/include"],
     deps = [
+        "core",
         "linear_constraint",
         "semidefinite_constraints",
         "test_util",
@@ -402,7 +404,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "core",
+        "constraint_interface",
         "error_checking",
         "@eigen",
     ],
@@ -423,7 +425,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "approximate_eigenvalues",
-        "core",
+        "constraint_interface",
         "error_checking",
         "exponential_map",
         "exponential_map_pade",
@@ -461,7 +463,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "core",
+        "constraint_interface",
         "error_checking",
         "@eigen",
     ],
