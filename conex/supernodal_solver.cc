@@ -4,6 +4,7 @@
 #include <map>
 
 #include "conex/clique_ordering.h"
+#include "conex/clique_ordering_utils.h"
 #include <Eigen/Dense>
 
 namespace conex {
@@ -237,13 +238,6 @@ class LowerTriangularSuperNodal {
 
 }  // namespace
 
-void IntersectionOfSorted(const std::vector<int>& v1,
-                          const std::vector<int>& v2, std::vector<int>* v3) {
-  v3->clear();
-  std::set_intersection(v1.begin(), v1.end(), v2.begin(), v2.end(),
-                        back_inserter(*v3));
-}
-
 std::vector<Clique> Permute(std::vector<Clique>& path,
                             std::vector<int>& permutation) {
   auto y = path;
@@ -253,12 +247,6 @@ std::vector<Clique> Permute(std::vector<Clique>& path,
     }
   }
   return y;
-}
-
-void Sort(std::vector<Clique>* path) {
-  for (size_t i = 0; i < path->size(); i++) {
-    std::sort(path->at(i).begin(), path->at(i).end());
-  }
 }
 
 Eigen::MatrixXd TriangularMatrixOperations::ToDense(
@@ -350,13 +338,6 @@ VectorXd T::ApplyInverse(SparseTriangularMatrix* mat, const VectorXd& b) {
     col.NextColumn();
     y(i) = res(i) / col.Diagonal();
   }
-  return y;
-}
-
-std::vector<int> UnionOfSorted(const std::vector<int>& x1,
-                               const std::vector<int>& x2) {
-  std::vector<int> y;
-  set_union(x1.begin(), x1.end(), x2.begin(), x2.end(), inserter(y, y.end()));
   return y;
 }
 

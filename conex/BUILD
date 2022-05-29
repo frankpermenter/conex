@@ -1,6 +1,15 @@
 load("test.bzl", "conex_cc_test")
 
 cc_library(
+    name = "error_checking",
+    hdrs = [
+        "error_checking_macros.h",
+        "error_codes.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "test_util",
     srcs = glob(["test/test_util.cc"]),
     hdrs = glob([
@@ -208,7 +217,7 @@ cc_test(
     srcs = ["test/clique_ordering_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
-        "supernodal_solver",
+        "clique_ordering",
         "@gtest//:main",
     ],
 )
@@ -268,11 +277,26 @@ cc_library(
 )
 
 cc_library(
+    name = "clique_ordering",
+    srcs = [
+        "clique_ordering.cc",
+        "clique_ordering_utils.cc",
+    ],
+    hdrs = [
+        "clique_ordering.h",
+        "clique_ordering_utils.h",
+    ],
+    deps = [
+        "error_checking",
+        "tree_utils",
+    ],
+)
+
+cc_library(
     name = "supernodal_solver",
     srcs = [
         "RLDLT.h",
         "block_triangular_operations.cc",
-        "clique_ordering.cc",
         "debug_macros.h",
         "equality_constraint.cc",
         "kkt_solver.cc",
@@ -282,7 +306,6 @@ cc_library(
     ],
     hdrs = [
         "block_triangular_operations.h",
-        "clique_ordering.h",
         "constraint.h",
         "constraint_manager.h",
         "debug_macros.h",
@@ -303,6 +326,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "clique_ordering",
         ":solver_configuration",
         ":tree_utils",
         "@eigen",

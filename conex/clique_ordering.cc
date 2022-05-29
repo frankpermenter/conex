@@ -3,8 +3,8 @@
 #include <algorithm>
 #include <stack>
 
-#include "conex/debug_macros.h"
-#include "conex/supernodal_solver.h"
+#include "conex/clique_ordering_utils.h"
+#include "conex/error_checking_macros.h"
 
 namespace conex {
 
@@ -118,7 +118,7 @@ int PickCliqueOrderHelper(const std::vector<std::vector<int>>& cliques_sorted,
   auto& intersections = *intersections_ptr;
   size_t n = cliques_sorted.size();
   Weight edge_weights(n, intersections, cliques_sorted, valid_leaf);
-  assert(root_in < static_cast<int>(n));
+  CONEX_ASSERT(root_in < static_cast<int>(n), "Invalid input.");
 
   vector<int> visited(n, 0);
 
