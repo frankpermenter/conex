@@ -59,7 +59,8 @@ std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
   }
   int number_of_equations =
       kkt->SizeOfKKTSystem() - kkt->GetNumberOfVariables();
-  CONEX_DEMAND(number_of_equations == equality_constraints.columns.size(),
+  CONEX_DEMAND(number_of_equations ==
+                   static_cast<int>(equality_constraints.columns.size()),
                "KKT system is malformed");
   return std::make_unique<ConstrainedLeastSquaresConjugateGradientSolver>(
       cliques_of_G, clique_assemblers_of_G, equality_constraints.columns,
