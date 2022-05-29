@@ -53,7 +53,7 @@ class SupernodalKKTSolver : public KKTSolverBase {
  private:
   void DoAssemble() override;
   bool DoFactor() override;
-  void DoSolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
+  void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                       bool permute_to_elimination_order) const override;
   Eigen::MatrixXd DoKKTMatrix(bool permute_to_elimination_order) const override;
 

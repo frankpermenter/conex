@@ -203,9 +203,10 @@ Eigen::VectorXd T::Solve(const Eigen::VectorXd& b,
   }
 }
 
-void T::DoSolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
+void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b_input,
                        bool permute_to_elimination_order) const {
   bool use_qr = mode_ == CONEX_QR_FACTORIZATION;
+  auto* b = &b_input;
   if (b->rows() != permutation_from_elimination_order().rows()) {
     throw std::runtime_error(
         "Supernodal solver input error: invalid dimensions.");

@@ -42,9 +42,8 @@ class ConstrainedLeastSquaresConjugateGradientSolver : public KKTSolverBase {
   Eigen::VectorXd Solve(const Eigen::VectorXd& f) {
     using Eigen::VectorXd;
     VectorXd y = f;
-    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> ymap(y.data(), y.rows(), 1);
-    SolveInPlace(&ymap);
-    return ymap;
+    SolveInPlace(y);
+    return y;
   }
 
   Eigen::VectorXd EvaluateEquationOperator(const Eigen::VectorXd& d) const;
@@ -56,7 +55,7 @@ class ConstrainedLeastSquaresConjugateGradientSolver : public KKTSolverBase {
  private:
   void DoAssemble() override;
   bool DoFactor() override;
-  void DoSolveInPlace(Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>* b,
+  void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                       bool permute_to_elimination_order) const override;
   Eigen::MatrixXd DoKKTMatrix(bool permute_to_elimination_order) const override;
 
