@@ -1,5 +1,6 @@
 #undef EIGEN_MPL2_ONLY
-#include "conex/kkt_tree_solver.h"
+#include "conex/kkt_simplicial_solver.h"
+
 #include <Eigen/Dense>
 #include <Eigen/SparseCholesky>
 #include <Eigen/SparseQR>

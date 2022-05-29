@@ -43,7 +43,7 @@ def CheckErrors(sol):
     return passes
 
 def log(name, val):
-    print name +",", val," ",
+    print(name +",", val," ",)
 
 def randominstance():
     n = 3
@@ -186,7 +186,6 @@ def TestBlowUp():
     b[0] = 0
 
     y = prog.Maximize(b)
-    print y
 
 def DualInfeas():
     m = 2;

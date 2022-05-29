@@ -2,6 +2,7 @@
 
 #include "conex/clique_ordering.h"
 #include "conex/conjugate_gradient_solvers.h"
+#include "conex/kkt_simplicial_solver.h"
 #include "conex/kkt_solver.h"
 #include "conex/kkt_tree_solver.h"
 

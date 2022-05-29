@@ -16,7 +16,9 @@ all: libconex.so
 SOURCES = approximate_eigenvalues.cc \
 	  block_triangular_operations.cc \
 	  clique_ordering.cc \
+	  clique_ordering_utils.cc \
 	  conjugate_gradient_solvers.cc \
+	  constraint_manager.cc \
 	  cone_program.cc \
 	  quadratic_cost.cc \
 	  dense_lmi_constraint.cc \
@@ -25,7 +27,6 @@ SOURCES = approximate_eigenvalues.cc \
 	  equality_constraint.cc \
 	  exponential_map_pade.cc \
 	  hermitian_psd.cc \
-	  supernodal_assembler.cc \
 	  kkt_solver.cc \
 	  kkt_subsystem.cc \
 	  kkt_simplicial_solver.cc \

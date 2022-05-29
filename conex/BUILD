@@ -639,6 +639,7 @@ cc_library(
         "cholesky_solvers.h",
         "debug_macros.h",
         "kkt_simplicial_solver.cc",
+        "kkt_simplicial_solver.h",
         "kkt_subsystem.cc",
         "kkt_subsystem.h",
         "kkt_tree_solver.cc",
