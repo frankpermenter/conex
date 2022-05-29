@@ -37,7 +37,7 @@ class SupernodalKKTSolver : public KKTSolverBase {
   void SetIterativeRefinementIterations(int x) {
     iterative_refinement_iterations_ = x;
   }
-  void SetSolverMode(int mode) { mode_ = mode; }
+  void SetSolverMode(int mode);
 
   Eigen::VectorXd Solve(const Eigen::VectorXd& b,
                         bool permute_to_elimination_order = true) const;
@@ -58,7 +58,6 @@ class SupernodalKKTSolver : public KKTSolverBase {
   Eigen::MatrixXd DoKKTMatrix(bool permute_to_elimination_order) const override;
 
   void RelabelCliques(MatrixData* data_ptr);
-  bool use_cholesky_ = false;
   // Copies of inputs.
   const std::vector<std::vector<int>> cliques_;
   const std::vector<std::vector<int>> dual_variables_;

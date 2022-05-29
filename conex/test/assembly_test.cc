@@ -6,7 +6,7 @@
 #include "conex/constraint_manager.h"
 #include "conex/debug_macros.h"
 #include "conex/equality_constraint.h"
-#include "conex/kkt_solver.h"
+#include "conex/kkt_solver_factory.h"
 #include "conex/supernodal_assembler.h"
 #include "conex/supernodal_solver.h"
 #include "gtest/gtest.h"
@@ -85,9 +85,10 @@ GTEST_TEST(LDLT, TestAssembly) {
 
   ConstraintManager prog;
   BuildLQRProblem(N, &prog);
-  SupernodalKKTSolver solver(prog.variables(),
-                             prog.equality_constraint_multipliers());
-  solver.Bind(prog.clique_assemblers());
+  std::unique_ptr<KKTSolverBase> solver_ptr =
+      KKTSolverFactory().create_unique(&prog, SolverConfiguration());
+
+  auto& solver = *solver_ptr;
   solver.Assemble();
 
   EXPECT_EQ(n + m, prog.SizeOfKKTSystem());
@@ -107,7 +108,8 @@ GTEST_TEST(LDLT, TestAssembly) {
   MatrixXd error = (solver.KKTMatrix() - T);
   EXPECT_EQ(error.norm(), 0);
 
-  solver.Factor();
+  bool success = solver.Factor();
+  EXPECT_EQ(success, true);
   for (int i = 0; i < 3; i++) {
     yref = ldlt.solve(b);
     VectorXd y = solver.Solve(b);
@@ -124,9 +126,9 @@ GTEST_TEST(LDLT, Benchmark2) {
   ConstraintManager prog;
   BuildLQRProblem(N, &prog);
 
-  SupernodalKKTSolver solver(prog.variables(),
-                             prog.equality_constraint_multipliers());
-  solver.Bind(prog.clique_assemblers());
+  std::unique_ptr<KKTSolverBase> solver_ptr =
+      KKTSolverFactory().create_unique(&prog, SolverConfiguration());
+  auto& solver = *solver_ptr;
   solver.Assemble();
   Eigen::MatrixXd T = solver.KKTMatrix().selfadjointView<Eigen::Lower>();
 
@@ -157,11 +159,12 @@ GTEST_TEST(Assemble, VariablesSpecifiedOutOfOrder) {
        0, 0, 2;
   // clang-format on
   prog.AddQuadraticCost(Q, vector{1, 0, 2});
-
   prog.InitializeWorkspace();
-  SupernodalKKTSolver solver(prog.variables(),
-                             prog.equality_constraint_multipliers());
-  solver.Bind(prog.clique_assemblers());
+
+  std::unique_ptr<KKTSolverBase> solver_ptr =
+      KKTSolverFactory().create_unique(&prog, SolverConfiguration());
+  auto& solver = *solver_ptr;
+
   solver.Assemble();
   auto M = solver.KKTMatrix();
   Eigen::VectorXd expected(4);

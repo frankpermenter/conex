@@ -220,7 +220,7 @@ conex_cc_test(
     srcs = ["test/assembly_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
-        "supernodal_solver",
+        "kkt_solver_factory",
         "@gtest//:main",
     ],
 )

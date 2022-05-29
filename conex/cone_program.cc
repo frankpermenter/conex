@@ -271,18 +271,19 @@ bool Program::AddLinearCost(const VectorXd& b) {
   return CONEX_SUCCESS;
 }
 
+namespace {
 std::string ToString(int solver_type) {
   switch (solver_type) {
-    case CONEX_KKT_SOLVER_LLT:
-    case CONEX_KKT_SOLVER_LDLT:
-      return "Cholesky";
+    case CONEX_KKT_SOLVER_SUPERNODAL:
+      return "Supernodal Cholesky";
     case CONEX_KKT_SOLVER_CG:
       return "Conjugate Gradient";
-    case CONEX_KKT_SOLVER_QR:
+    case CONEX_KKT_SOLVER_SUPERNODAL_QR:
       return "QR Factorization";
   }
   return "";
 }
+}  // namespace
 void PrintSummary(const Program& prog, const SolverConfiguration& config) {
   std::cout << "  Variables:" << prog.GetNumberOfVariables() << std::endl;
   std::cout << "  Equality Constraints: "
