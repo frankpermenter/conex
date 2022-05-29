@@ -2,12 +2,11 @@
 #include <memory>
 #include <vector>
 
-#include <Eigen/Dense>
-
 #include "conex/error_checking_macros.h"
 #include "conex/error_codes.h"
 #include "conex/newton_step.h"
 #include "conex/workspace.h"
+#include <Eigen/Dense>
 
 namespace conex {
 

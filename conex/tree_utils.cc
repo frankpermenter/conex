@@ -1,5 +1,7 @@
 #include "conex/tree_utils.h"
+
 #include "assert.h"
+
 #include <stack>
 #include <vector>
 

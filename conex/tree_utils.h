@@ -2,6 +2,7 @@
 #include <array>
 #include <stack>
 #include <vector>
+
 #include "debug_macros.h"
 
 using std::array;

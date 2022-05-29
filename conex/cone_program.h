@@ -1,4 +1,5 @@
 #pragma once
+#include "conex/conex.h"
 #include "conex/constraint.h"
 #include "conex/constraint_manager.h"
 #include "conex/equality_constraint.h"
@@ -6,8 +7,6 @@
 #include "conex/kkt_solver.h"
 #include "conex/supernodal_assembler.h"
 #include "workspace.h"
-
-#include "conex/conex.h"
 
 namespace conex {
 

@@ -1,11 +1,10 @@
 #include "conex/hermitian_psd.h"
-#include "conex/dense_lmi_constraint.h"
-#include "conex/test/default_solver_config.h"
-
-#include "gtest/gtest.h"
-#include <Eigen/Dense>
 
 #include "conex/cone_program.h"
+#include "conex/dense_lmi_constraint.h"
+#include "conex/test/default_solver_config.h"
+#include "gtest/gtest.h"
+#include <Eigen/Dense>
 
 namespace conex {
 

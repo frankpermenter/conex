@@ -1,4 +1,5 @@
 #include "conex/hermitian_psd.h"
+
 #include "conex/error_checking_macros.h"
 #include "conex/exponential_map.h"
 

@@ -2,10 +2,9 @@
 
 #include <chrono>
 
-#include "gtest/gtest.h"
-
 #include "conex/debug_macros.h"
 #include "conex/test/test_util.h"
+#include "gtest/gtest.h"
 #include <Eigen/Dense>
 
 namespace conex {

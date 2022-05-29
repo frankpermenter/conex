@@ -4,17 +4,15 @@
 #include <memory>
 #include <vector>
 
-#include <Eigen/Dense>
-
 #include "conex/cone_program.h"
 #include "conex/constraint.h"
 #include "conex/dense_lmi_constraint.h"
 #include "conex/equality_constraint.h"
+#include "conex/error_checking_macros.h"
 #include "conex/hermitian_psd.h"
 #include "conex/linear_constraint.h"
 #include "conex/soc_constraint.h"
-
-#include "conex/error_checking_macros.h"
+#include <Eigen/Dense>
 
 #define SAFER_CAST_TO_Program(x, prog)                 \
   CONEX_RETURN_ON_FAIL(x, "Program pointer is null."); \

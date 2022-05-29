@@ -1,7 +1,10 @@
 #include "conex/linear_constraint.h"
+
 #include <stdlib.h>
+
 #include <iostream>
 #include <memory>
+
 #include "conex/cone_program.h"
 #include "conex/constraint.h"
 #include "conex/test/default_solver_config.h"

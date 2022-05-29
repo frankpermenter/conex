@@ -1,4 +1,5 @@
 #include <cmath>
+
 #include "conex/debug_macros.h"
 #include "conex/divergence.h"
 #include "gtest/gtest.h"

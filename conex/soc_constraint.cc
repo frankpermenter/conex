@@ -1,4 +1,5 @@
 #include "conex/soc_constraint.h"
+
 #include "conex/error_checking_macros.h"
 #include "conex/error_codes.h"
 #include "conex/newton_step.h"

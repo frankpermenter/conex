@@ -3,8 +3,8 @@
 #include <any>
 #include <list>
 #include <numeric>
-#include "conex/equality_constraint.h"
 
+#include "conex/equality_constraint.h"
 #include "conex/error_checking_macros.h"
 #define CONEX_ID int
 

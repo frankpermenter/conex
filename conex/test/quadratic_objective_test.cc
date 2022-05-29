@@ -1,13 +1,11 @@
-#include "conex/quadratic_cost.h"
-
-#include "gtest/gtest.h"
-
 #include "conex/cone_program.h"
 #include "conex/debug_macros.h"
 #include "conex/linear_constraint.h"
 #include "conex/quadratic_cone_constraint.h"
+#include "conex/quadratic_cost.h"
 #include "conex/soc_constraint.h"
 #include "conex/test/default_solver_config.h"
+#include "gtest/gtest.h"
 
 namespace conex {
 

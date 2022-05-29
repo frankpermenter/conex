@@ -2,10 +2,9 @@
 #include <numeric>
 #include <vector>
 
-#include <Eigen/Dense>
-
 #include "conex/debug_macros.h"
 #include "conex/memory_utils.h"
+#include <Eigen/Dense>
 
 namespace conex {
 

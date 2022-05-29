@@ -1,12 +1,11 @@
-#include "gtest/gtest.h"
-#include <Eigen/Dense>
-
 #include "conex/cone_program.h"
 #include "conex/debug_macros.h"
 #include "conex/dense_lmi_constraint.h"
 #include "conex/linear_constraint.h"
 #include "conex/test/default_solver_config.h"
 #include "conex/test/test_util.h"
+#include "gtest/gtest.h"
+#include <Eigen/Dense>
 
 namespace conex {
 

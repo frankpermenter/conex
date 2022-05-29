@@ -1,8 +1,7 @@
 #pragma once
-#include <Eigen/Dense>
-
 #include "newton_step.h"
 #include "workspace.h"
+#include <Eigen/Dense>
 
 namespace conex {
 

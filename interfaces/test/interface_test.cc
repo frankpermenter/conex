@@ -1,6 +1,5 @@
-#include "interfaces/conex.h"
-
 #include "gtest/gtest.h"
+#include "interfaces/conex.h"
 
 #define TEST_CONSTRAINT_API(AddConstraintCommand)                              \
   int status;                                                                  \

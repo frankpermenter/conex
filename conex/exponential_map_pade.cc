@@ -1,6 +1,8 @@
 #include "exponential_map_pade.h"
+
 #include <cmath>
 #include <complex>
+
 #include "debug_macros.h"
 
 namespace conex {

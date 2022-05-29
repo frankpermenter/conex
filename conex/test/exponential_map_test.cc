@@ -2,7 +2,6 @@
 
 #include "conex/jordan_matrix_algebra.h"
 #include "gtest/gtest.h"
-
 #include <Eigen/Dense>
 #include <unsupported/Eigen/MatrixFunctions>
 

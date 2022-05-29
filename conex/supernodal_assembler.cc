@@ -1,4 +1,5 @@
 #include "conex/supernodal_assembler.h"
+
 #include "conex/debug_macros.h"
 #include "conex/newton_step.h"
 
