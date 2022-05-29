@@ -89,9 +89,6 @@ class Conex:
 
     def AddQuadraticCost(self, P): 
         if P.shape[0] != self.m or P.shape[1] != self.m:
-            print self.m
-            print P.shape[0]
-            print P.shape[1]
             raise NameError("Cost matrix dimension does not match number of variables.")
 
         cost = self.wrapper.CONEX_AddQuadraticCost(self.a, P)
@@ -232,7 +229,6 @@ class Conex:
 
     def AddSparseLinearMatrixInequality(self, A, c, variables): 
         if np.max(variables) + 1 > self.m:
-            print self.m
             raise NameError("Invalid sparse LMI." + str(self.m) + "!=" + str(np.max(variables+1)))
         self.A.append(LMIOperator(A, [self.m, variables]))
         self.c.append(c)
