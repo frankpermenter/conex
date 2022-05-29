@@ -1,9 +1,23 @@
 #include "kkt_solver_factory.h"
 
+#include "conex/clique_ordering.h"
 #include "conex/conjugate_gradient_solvers.h"
 #include "conex/kkt_solver.h"
 
 namespace conex {
+namespace {
+std::vector<int> MakeValidLeafIndicator(
+    const std::vector<std::vector<int>>& cliques, int dual_variable_start) {
+  std::vector<int> valid_leaf(cliques.size(), 1);
+  int i = 0;
+  for (auto& c : cliques) {
+    if (c.back() >= dual_variable_start) {
+      valid_leaf.at(i) = 0;
+    }
+    i++;
+  }
+  return valid_leaf;
+}
 using std::vector;
 
 void IncrementSubvector(std::vector<int>* y, const std::vector<int>& indices) {
@@ -11,12 +25,22 @@ void IncrementSubvector(std::vector<int>* y, const std::vector<int>& indices) {
     y->at(i)++;
   }
 }
+}  // namespace
 std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
   vector<vector<int>> cliques = c->variables();
   vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
-
+#if 1
   auto solver_temp = std::make_unique<SupernodalKKTSolver>(cliques, dual_vars);
+#else
+
+  CliqueTree clique_tree = MakeCliqueTree(
+      cliques, MakeValidLeafIndicator(cliques, c->GetNumberOfVariables()));
+
+  auto solver_temp = std::make_unique<SupernodalKKTSolver>(
+      cliques, c->SizeOfKKTSystem(), clique_tree.post_order_position_to_clique,
+      clique_tree.supernodes, clique_tree.separators);
+#endif
 
   solver_temp->SetIterativeRefinementIterations(
       config.iterative_refinement_iterations);

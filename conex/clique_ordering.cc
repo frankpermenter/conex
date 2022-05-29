@@ -13,6 +13,33 @@ using Cliques = vector<vector<int>>;
 
 namespace {
 
+int GetRootNode(const std::vector<std::vector<int>>& vars,
+                const std::vector<int>& valid_leaf) {
+  int arg_max = 0;
+  size_t max = 0;
+
+  if (valid_leaf.size() > 0) {
+    for (size_t i = 0; i < vars.size(); i++) {
+      if (!valid_leaf.at(i) && vars.at(i).size() > max) {
+        arg_max = i;
+        max = vars.at(i).size();
+      }
+    }
+    if (max > 0) {
+      return arg_max;
+    }
+  }
+
+  arg_max = 0;
+  max = vars.at(0).size();
+  for (size_t i = 1; i < vars.size(); i++) {
+    if (vars.at(i).size() > max) {
+      arg_max = i;
+      max = vars.at(i).size();
+    }
+  }
+  return arg_max;
+}
 int GetMax(const std::vector<Clique>& cliques) {
   int max = cliques.at(0).at(0);
   for (const auto& c : cliques) {
@@ -343,4 +370,38 @@ void PickCliqueOrder(const vector<vector<int>>& cliques_sorted, int root,
                   separators, post_order_pointer);
 }
 
+namespace {
+
+void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
+                     const vector<int>& valid_leaf, int root,
+                     vector<int>* post_order_position_to_clique,
+                     vector<int>* parent_in_tree,
+                     vector<vector<int>>* supernodes,
+                     vector<vector<int>>* separators) {
+  size_t n = cliques_sorted.size();
+  RootedTree tree(n);
+  GetCliqueEliminationOrder(cliques_sorted, valid_leaf, root,
+                            post_order_position_to_clique, supernodes,
+                            separators, &tree);
+  int num_vars = GetMax(cliques_sorted) + 1;
+  FillIn(tree, num_vars, *post_order_position_to_clique, supernodes,
+         separators);
+
+  *parent_in_tree = tree.parent;
+}
+
+}  // namespace
+CliqueTree MakeCliqueTree(const vector<vector<int>>& cliques,
+                          const std::vector<int>& valid_leaf) {
+  CliqueTree clique_tree;
+
+  vector<std::vector<int>> cliques_sorted = cliques;
+  Sort(&cliques_sorted);
+
+  PickCliqueOrder(cliques_sorted, valid_leaf, GetRootNode(cliques, valid_leaf),
+                  &clique_tree.post_order_position_to_clique,
+                  &clique_tree.node_to_parent, &clique_tree.supernodes,
+                  &clique_tree.separators);
+  return clique_tree;
+}
 }  // namespace conex

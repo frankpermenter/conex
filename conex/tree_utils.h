@@ -11,6 +11,12 @@ constexpr int N = 5;
 
 namespace conex {
 
+struct CliqueTree {
+  std::vector<std::vector<int>> supernodes;
+  std::vector<std::vector<int>> separators;
+  std::vector<int> node_to_parent;
+  std::vector<int> post_order_position_to_clique;
+};
 struct RootedTree {
   RootedTree(int number_of_nodes)
       : parent(number_of_nodes), height(number_of_nodes) {}

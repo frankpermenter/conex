@@ -4,6 +4,7 @@
 #include "conex/kkt_solver_interface.h"
 #include "conex/supernodal_assembler.h"
 #include "conex/supernodal_solver.h"
+#include "conex/tree_utils.h"
 
 namespace conex {
 
@@ -17,6 +18,8 @@ class SupernodalKKTSolver : public KKTSolverBase {
  public:
   SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
                       const std::vector<std::vector<int>>& dual_vars);
+  SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques,
+                      int num_vars, const CliqueTree& tree);
 
   SupernodalKKTSolver(const std::vector<std::vector<int>>& cliques);
 
