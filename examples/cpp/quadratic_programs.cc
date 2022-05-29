@@ -114,16 +114,7 @@ ProblemData ProblemDataFromSolution(int n, int num_ineqs) {
 
   optimal_lambda.head(size_of_active_set)
       .setLinSpaced(size_of_active_set, 1, size_of_active_set);
-  DUMP(optimal_lambda);
   optimal_slack.tail(num_ineqs - size_of_active_set).setConstant(1);
-  // double sqrtmu = 5e-7;
-  // VectorXd optimal_expv(num_ineqs);
-  // optimal_expv.tail(num_ineqs - size_of_active_set) =
-  //    2 * sqrtmu * optimal_slack.tail(num_ineqs -
-  //    size_of_active_set).cwiseInverse();
-
-  // optimal_expv.head(size_of_active_set) =
-  // optimal_lambda.head(size_of_active_set)/(2*sqrtmu);
 
   data.A = MatrixXd::Random(num_ineqs, n);
   data.b = optimal_slack;
