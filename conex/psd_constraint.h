@@ -1,4 +1,5 @@
 #pragma once
+#include "conex/constraint_interface.h"
 #include "newton_step.h"
 #include "workspace.h"
 #include <Eigen/Dense>
@@ -35,7 +36,7 @@ struct WorkspaceDensePSD {
   int n_;
 };
 
-class PsdConstraint {
+class PsdConstraint : public ConstraintBase {
  public:
   friend void SetIdentity(PsdConstraint* o);
   friend int Rank(const PsdConstraint& o) { return o.workspace_.n_; };

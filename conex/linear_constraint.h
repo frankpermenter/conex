@@ -1,5 +1,6 @@
 #pragma once
-#include "conex/constraint.h"
+#include "conex/constraint_interface.h"
+#include "conex/error_checking_macros.h"
 #include "conex/newton_step.h"
 #include "linear_workspace.h"
 
@@ -11,10 +12,11 @@ void PreprocessLinearInequality(const Eigen::MatrixXd& A,
                                 Eigen::MatrixXd* Aineq, Eigen::MatrixXd* bineq,
                                 Eigen::MatrixXd* Aeq, Eigen::MatrixXd* beq);
 // TODO(FrankPermenter) Rename to LinearInequality
-class LinearConstraint {
+class LinearConstraint : public ConstraintBase {
   using StorageType = DenseMatrix;
 
  public:
+  void accept(Visitor* v) override { v->visit(*this); }
   LinearConstraint(const Eigen::MatrixXd& constraint_matrix,
                    const Eigen::MatrixXd& constraint_affine);
 
@@ -45,6 +47,8 @@ class LinearConstraint {
                                            int var, int r, int c, int dim);
   friend CONEX_STATUS UpdateAffineTerm(LinearConstraint* o, double val, int r,
                                        int c, int dim);
+  DenseMatrix constraint_matrix() const { return constraint_matrix_; }
+  DenseMatrix affine_term() const { return constraint_affine_; }
 
  private:
   void ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y, Ref* minus_s);
