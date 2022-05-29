@@ -352,7 +352,6 @@ cc_library(
     name = "core",
     srcs = [
         "cone_program.cc",
-        "quadratic_cost.cc",
     ],
     hdrs = [
         "cone_program.h",
@@ -360,7 +359,6 @@ cc_library(
         "debug_macros.h",
         "memory_utils.h",
         "newton_step.h",
-        "quadratic_cost.h",
         "supernodal_assembler.h",
         "supernodal_cholesky_data.h",
         "workspace.h",
