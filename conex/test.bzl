@@ -24,6 +24,6 @@ def conex_cc_test(
         args = args,
         tags = tags,
         deps = deps,
-        copts = copts,
+        copts = copts + ["-DCONEX_TEST_SUPERNODAL"],
         **kwargs
     )
