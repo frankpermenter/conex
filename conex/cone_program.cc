@@ -526,12 +526,21 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     REPORT(mu);
     REPORT(d_2);
     REPORT(d_inf);
-    if (!prog.contains_quadratic_costs_) {
-      REPORT(by);
-      REPORT(cx);
-      kkt_error = std::fabs(cx - by - s_dot_x) / s_dot_x;
-      REPORT(kkt_error);
+    double yQy = 0;
+    if (prog.contains_quadratic_costs_) {
+      double scale = newton_step_parameters.inv_sqrt_mu * c_scaling;
+      scale *= scale;
+      for (const auto& cost : prog.constraint_manager().quadratic_costs()) {
+        yQy += cost.EvaluateQuadraticCost(y) * 1.0 / scale;
+      }
     }
+    // sdotx = (c-A*y)*x = c'x - Qx
+    double pobj = -(by - 0.5 * yQy);
+    double dobj = -(cx + 0.5 * yQy);
+    REPORT(pobj);
+    REPORT(dobj);
+    kkt_error = std::fabs(dobj - pobj + s_dot_x) / (1e-12 + std::fabs(s_dot_x));
+    REPORT(kkt_error);
 
     prog.stats->num_iter = i + 1;
     prog.stats->sqrt_inv_mu[i] = newton_step_parameters.inv_sqrt_mu;
@@ -594,7 +603,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   }
 
   return prog.status_.solved;
-}
+}  // namespace conex
 
 DenseMatrix GetFeasibleObjective(Program* prg) {
   auto& prog = *prg;
