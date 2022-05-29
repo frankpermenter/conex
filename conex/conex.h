@@ -38,6 +38,8 @@ struct ConexStatus {
   int num_iterations;
   int primal_infeasible = 0;
   int dual_infeasible = 0;
+  double dual_objective_value;
+  double primal_objective_value;
 };
 
 }  // namespace conex

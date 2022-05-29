@@ -546,6 +546,8 @@ bool Solve(Program& prog, const SolverConfiguration& config,
       }
       double pobj = -(by - 0.5 * yQy);
       double dobj = -(cx + 0.5 * yQy);
+      prog.status_.dual_objective_value = dobj;
+      prog.status_.primal_objective_value = pobj;
       REPORT(pobj);
       REPORT(dobj);
       kkt_error =
