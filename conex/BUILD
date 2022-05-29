@@ -565,6 +565,7 @@ cc_library(
     name = "constraint_interface",
     hdrs = [
         "constraint.h",
+        "constraint_interface.h",
         "debug_macros.h",
         "memory_utils.h",
         "newton_step.h",
