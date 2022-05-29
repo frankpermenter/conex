@@ -14,13 +14,13 @@ class ConstraintManager {
  public:
   ConstraintManager(int max_number_of_variables)
       : max_number_of_variables_(max_number_of_variables),
-        dual_variable_start_(max_number_of_variables_) {}
+        new_dual_variable_start_(max_number_of_variables_) {}
 
   ConstraintManager(){};
 
   void SetNumberOfVariables(int N) {
     max_number_of_variables_ = N;
-    dual_variable_start_ = N;
+    new_dual_variable_start_ = N;
   }
 
   int GetNumberOfVariables() const { return max_number_of_variables_; }
@@ -132,7 +132,7 @@ class ConstraintManager {
   std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;
 
   int max_number_of_variables_ = 0;
-  int dual_variable_start_ = 0;
+  int new_dual_variable_start_ = 0;
   Eigen::VectorXd workspace_memory_;
 };
 
