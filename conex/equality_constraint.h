@@ -24,9 +24,10 @@ class EqualityConstraints {
   EqualityConstraints(const Eigen::MatrixXd& A, const Eigen::MatrixXd& b);
 
   int SizeOfDualVariable() { return A_.rows(); }
+  Eigen::MatrixXd constraint_matrix() const { return A_; }
+  Eigen::MatrixXd affine_term() const { return b_; }
   Eigen::MatrixXd A_;
   Eigen::MatrixXd b_;
-  Eigen::VectorXd lambda_;
 
   friend int Rank(const EqualityConstraints&) { return 0; };
   friend void SetIdentity(EqualityConstraints*){};
