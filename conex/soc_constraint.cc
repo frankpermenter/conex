@@ -1,11 +1,11 @@
 #include "conex/soc_constraint.h"
 
+#include "conex/debug_macros.h"
 #include "conex/error_checking_macros.h"
 #include "conex/error_codes.h"
 #include "conex/newton_step.h"
 
 namespace conex {
-
 using EigenType = DenseMatrix;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -14,6 +14,21 @@ using Real = double;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using Real = double;
+
+SOCConstraint::SOCConstraint(const Eigen::MatrixXd& constraint_matrix,
+                             const Eigen::MatrixXd& constraint_affine)
+    : workspace_(constraint_matrix.rows() - 1),
+      constraint_matrix_(constraint_matrix),
+      constraint_affine_(constraint_affine) {
+  CONEX_DEMAND(constraint_matrix_.rows() == constraint_affine_.rows(),
+               "Invalid SOC problem data.");
+  // for (int i = 0; i < constraint_matrix_.rows(); i++) {
+  //   double scale = 1.0 / std::sqrt(constraint_matrix_.row(i).squaredNorm() +
+  //                                  constraint_affine_.row(i).squaredNorm());
+  //   constraint_matrix_.row(i) *= scale;
+  //   constraint_affine_.row(i) *= scale;
+  // }
+}
 
 struct SpinFactorProduct {
   Eigen::MatrixXd w1;

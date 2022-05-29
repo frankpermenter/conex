@@ -332,13 +332,14 @@ void T::AddSparseMatrixTriplets(
     vector<Eigen::Triplet<double>>* triplets) const {
   for (size_t j = 0; j < supernodes_.size(); j++) {
     for (size_t i = 0; i < supernodes_.size(); i++) {
-      triplets->emplace_back(supernodes_.at(i), supernodes_.at(j), supernode_submatrix()(i, j));
+      triplets->emplace_back(supernodes_.at(i), supernodes_.at(j),
+                             supernode_submatrix()(i, j));
     }
     for (size_t i = 0; i < separators_.size(); i++) {
-      triplets->emplace_back(separators_.at(i), supernodes_.at(j), separator_rows()(i, j));
+      triplets->emplace_back(separators_.at(i), supernodes_.at(j),
+                             separator_rows()(i, j));
     }
   }
-
 }
 
 void T::DoScatterSeparatorSubmatrix() {

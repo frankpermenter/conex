@@ -1,11 +1,26 @@
 #include "linear_constraint.h"
 
+#include "conex/debug_macros.h"
 #include "newton_step.h"
 
 namespace conex {
 using Eigen::VectorXd;
 
 using Eigen::MatrixXd;
+
+LinearConstraint::LinearConstraint(const Eigen::MatrixXd& constraint_matrix,
+                                   const Eigen::MatrixXd& constraint_affine)
+    : workspace_(constraint_matrix.rows(), constraint_matrix.cols()),
+      constraint_matrix_(constraint_matrix),
+      constraint_affine_(constraint_affine) {
+  CONEX_CHECK(constraint_matrix_.rows() == constraint_affine_.rows());
+  // for (int i = 0; i < constraint_matrix_.rows(); i++) {
+  //  double scale = 1.0 / std::sqrt(constraint_matrix_.row(i).squaredNorm() +
+  //                                 constraint_affine_.row(i).squaredNorm());
+  //  constraint_matrix_.row(i) *= scale;
+  //  constraint_affine_.row(i) *= scale;
+  //}
+}
 
 void AppendRow(MatrixXd* A, const MatrixXd& new_rows) {
   int num_cols = A->cols();

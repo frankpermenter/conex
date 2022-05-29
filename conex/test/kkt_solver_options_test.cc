@@ -39,7 +39,7 @@ int DoRandomDenseTest(const SolverConfiguration& config, int number_of_tests,
     DenseMatrix Clinear = DenseMatrix::Random(num_constraints, 1);
     Clinear = Clinear.array().abs();
 
-    LinearConstraint linear_constraint{num_constraints, &Alinear, &Clinear};
+    LinearConstraint linear_constraint{Alinear, Clinear};
 
     Program prog(num_variables);
     prog.AddConstraint(linear_constraint);
@@ -119,6 +119,10 @@ GTEST_TEST(QR, SuccessWithDependentInequalityColumns) {
   config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
   Solve(b, prog, config, solution.data());
   EXPECT_EQ(prog.Status().solved, 0);
+
+  config.kkt_solver = CONEX_KKT_SOLVER_SPARSE_QR;
+  Solve(b, prog, config, solution.data());
+  EXPECT_EQ(prog.Status().solved, 1);
 }
 
 GTEST_TEST(QR, SuccessWithDependentEquations) {
@@ -156,6 +160,11 @@ GTEST_TEST(QR, SuccessWithDependentEquations) {
   EXPECT_NEAR((B * solution - d).norm(), 0, 1e-9);
 
   config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
+  Solve(b, prog, config, solution.data());
+  EXPECT_EQ(prog.Status().solved, 1);
+  EXPECT_NEAR((B * solution - d).norm(), 0, 1e-9);
+
+  config.kkt_solver = CONEX_KKT_SOLVER_SPARSE_QR;
   Solve(b, prog, config, solution.data());
   EXPECT_EQ(prog.Status().solved, 1);
   EXPECT_NEAR((B * solution - d).norm(), 0, 1e-9);

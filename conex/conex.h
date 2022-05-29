@@ -8,6 +8,7 @@ enum : int {
   CONEX_KKT_SOLVER_SUPERNODAL_QR = 1,
   CONEX_KKT_SOLVER_CG = 2,
   CONEX_KKT_SOLVER_TREE = 3,
+  CONEX_KKT_SOLVER_SPARSE_QR = 4,
 };
 
 struct SolverConfiguration {

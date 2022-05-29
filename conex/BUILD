@@ -414,6 +414,7 @@ cc_library(
 cc_library(
     name = "linear_constraint",
     srcs = [
+        "debug_macros.h",
         "linear_constraint.cc",
     ],
     hdrs = [
@@ -470,6 +471,7 @@ cc_library(
 cc_library(
     name = "socp_constraints",
     srcs = [
+        "debug_macros.h",
         "quadratic_cone_constraint.cc",
         "quadratic_epigraph.cc",
         "soc_constraint.cc",

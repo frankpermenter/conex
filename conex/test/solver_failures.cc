@@ -433,7 +433,7 @@ void LPFailSlater(int number_of_implicit_equations) {
   offset.setConstant(distance_to_infeasible);
   C << C1, -(C1 - offset), C2;
 
-  LinearConstraint _constraint{n, &A, &C};
+  LinearConstraint _constraint{A, C};
 
   Program prog(m);
   prog.SetNumberOfVariables(m);

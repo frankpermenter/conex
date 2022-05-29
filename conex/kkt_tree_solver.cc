@@ -468,16 +468,16 @@ Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
     root->MakeKKTMatrix(&M);
     M = M.selfadjointView<Eigen::Lower>();
   }
-  DUMP(M);
   if (permute_to_elimination_order) {
     return M;
   } else {
-    CONEX_CHECK(static_cast<int>(variable_to_elimination_position_.size()) == number_of_variables());
+    CONEX_CHECK(static_cast<int>(variable_to_elimination_position_.size()) ==
+                number_of_variables());
+    Eigen::PermutationMatrix<-1> P(number_of_variables());
+    P.indices() = Eigen::Map<const Eigen::VectorXi>(
+        variable_to_elimination_position_.data(), number_of_variables());
+    return P.transpose() * M * P;
   }
-  Eigen::PermutationMatrix<-1> P(number_of_variables());
-  P.indices() = Eigen::Map<const Eigen::VectorXi>(
-      variable_to_elimination_position_.data(), number_of_variables());
-  return P.transpose() * M * P;
 }
 
 Eigen::SparseMatrix<double> T::MakeSparseKKTMatrix(
@@ -489,15 +489,16 @@ Eigen::SparseMatrix<double> T::MakeSparseKKTMatrix(
   Eigen::SparseMatrix<double> matrix(number_of_variables(),
                                      number_of_variables());
   matrix.setFromTriplets(triplets.begin(), triplets.end());
-  Eigen::SparseMatrix<double> matrix_sym = matrix.selfadjointView<Eigen::Lower>();
+  Eigen::SparseMatrix<double> matrix_sym =
+      matrix.selfadjointView<Eigen::Lower>();
   if (permute_to_elimination_order) {
     return matrix;
   } else {
-    CONEX_CHECK(static_cast<int>(variable_to_elimination_position_.size()) == number_of_variables());
+    CONEX_CHECK(static_cast<int>(variable_to_elimination_position_.size()) ==
+                number_of_variables());
     Eigen::PermutationMatrix<-1> P(number_of_variables());
     P.indices() = Eigen::Map<const Eigen::VectorXi>(
         variable_to_elimination_position_.data(), number_of_variables());
-    Eigen::MatrixXd matrix_dense = MatrixXd(matrix).selfadjointView<Eigen::Lower>();
     return P.transpose() * matrix_sym * P;
   }
 }

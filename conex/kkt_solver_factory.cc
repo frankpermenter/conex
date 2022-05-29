@@ -183,9 +183,10 @@ std::unique_ptr<KKTSolverBase> KKTSolverFactory::create_unique(
       return MakeCGSolver(kkt, config);
       break;
     case CONEX_KKT_SOLVER_TREE:
+      return MakeTreeSolver(kkt, config);
+    case CONEX_KKT_SOLVER_SPARSE_QR:
       std::unique_ptr<SymmetricLinearSystemTreeSolver> ptr =
           MakeTreeSolver(kkt, config);
-//      return ptr;
       return std::make_unique<EigenSparseCholesky>(std::move(ptr));
       break;
   }

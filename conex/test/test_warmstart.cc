@@ -54,7 +54,7 @@ GTEST_TEST(Warmstart, TestWorkspaceInitialization) {
   DenseMatrix Alinear = DenseMatrix::Random(n, m);
   DenseMatrix Clinear(n, 1);
   Clinear.setConstant(1);
-  LinearConstraint linear_constraint{n, &Alinear, &Clinear};
+  LinearConstraint linear_constraint{Alinear, Clinear};
 
   DenseMatrix y(m, 1);
 
