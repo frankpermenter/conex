@@ -253,6 +253,7 @@ cc_library(
 
 cc_library(
     name = "constraint_manager",
+    srcs = ["constraint_manager.cc"],
     hdrs = [
         "conex.h",
         "constraint_manager.h",
