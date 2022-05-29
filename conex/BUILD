@@ -1,15 +1,6 @@
 load("test.bzl", "conex_cc_test")
 
 cc_library(
-    name = "error_checking",
-    hdrs = [
-        "error_checking_macros.h",
-        "error_codes.h",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
     name = "test_util",
     srcs = glob(["test/test_util.cc"]),
     hdrs = glob([
@@ -261,6 +252,20 @@ cc_library(
 )
 
 cc_library(
+    name = "constraint_manager",
+    hdrs = [
+        "conex.h",
+        "constraint_manager.h",
+    ],
+    deps = [
+        "clique_ordering",
+        "equality_constraint",
+        "error_checking",
+        "kkt_solver_interface",
+    ],
+)
+
+cc_library(
     name = "kkt_solver_interface",
     hdrs = ["kkt_solver_interface.h"],
 )
@@ -274,6 +279,15 @@ cc_library(
         "kkt_solver_interface",
         "supernodal_solver",
     ],
+)
+
+cc_library(
+    name = "error_checking",
+    hdrs = [
+        "error_checking_macros.h",
+        "error_codes.h",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -298,7 +312,6 @@ cc_library(
         "RLDLT.h",
         "block_triangular_operations.cc",
         "debug_macros.h",
-        "equality_constraint.cc",
         "kkt_solver.cc",
         "supernodal_assembler.cc",
         "supernodal_solver.cc",
@@ -307,9 +320,7 @@ cc_library(
     hdrs = [
         "block_triangular_operations.h",
         "constraint.h",
-        "constraint_manager.h",
         "debug_macros.h",
-        "equality_constraint.h",
         "kkt_solver.h",
         "kkt_solver_factory.h",
         "kkt_solver_interface.h",
@@ -324,7 +335,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "equality_constraint",
         ":clique_ordering",
+        ":constraint_manager",
         ":error_checking",
         ":solver_configuration",
         ":tree_utils",
@@ -341,7 +354,6 @@ cc_library(
     hdrs = [
         "cone_program.h",
         "constraint.h",
-        "constraint_manager.h",
         "debug_macros.h",
         "memory_utils.h",
         "newton_step.h",
@@ -353,11 +365,27 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":conjugate_gradient_solvers",
+        ":constraint_manager",
         ":divergence",
         ":error_checking",
         ":kkt_solver_factory",
         ":solver_configuration",
         ":supernodal_solver",
+        "@eigen",
+    ],
+)
+
+cc_library(
+    name = "equality_constraint",
+    srcs = [
+        "equality_constraint.cc",
+    ],
+    hdrs = [
+        "equality_constraint.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "constraint_interface",
         "@eigen",
     ],
 )
@@ -452,6 +480,7 @@ cc_library(
         ":approximate_eigenvalues",
         ":core",
         ":divergence",
+        ":equality_constraint",
         ":error_checking",
         ":exponential_map",
         ":exponential_map_pade",
@@ -473,6 +502,7 @@ conex_cc_test(
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
+        ":equality_constraint",
         "@gtest//:main",
     ],
 )
@@ -525,5 +555,21 @@ cc_binary(
     srcs = ["test/solver_failures.cc"],
     deps = [
         "conex_lib",
+    ],
+)
+
+cc_library(
+    name = "constraint_interface",
+    hdrs = [
+        "constraint.h",
+        "debug_macros.h",
+        "memory_utils.h",
+        "newton_step.h",
+        "supernodal_assembler.h",
+        "supernodal_cholesky_data.h",
+        "workspace.h",
+    ],
+    deps = [
+        "error_checking",
     ],
 )

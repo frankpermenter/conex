@@ -2,9 +2,9 @@
 
 #include <vector>
 
+#include "conex/newton_step.h"
 #include "supernodal_assembler.h"
 #include <Eigen/Dense>
-
 namespace conex {
 
 struct WorkspaceEqualityConstraints {
