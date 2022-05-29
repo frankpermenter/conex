@@ -10,8 +10,9 @@ mydir=$(dirname $(realpath $0))
 
 bazel_config=debug
 bazel run //:buildifier --config=$bazel_config
-find ./conex/ -iname *.h -o -iname *.cc | xargs clang-format-10 -i
-find ./interfaces/ -iname *.h -o -iname *.cc | xargs clang-format-10 -i
+
+find ./ -type f -name "*.h" | xargs clang-format -i
+find ./ -type f -name "*.cc" | xargs clang-format -i
 
 
 ## Build and test repo. 
