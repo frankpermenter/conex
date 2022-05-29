@@ -39,7 +39,7 @@ int DoRandomDenseTest(const SolverConfiguration& config, int number_of_tests,
     DenseMatrix Clinear = DenseMatrix::Random(num_constraints, 1);
     Clinear = Clinear.array().abs();
 
-    LinearConstraint linear_constraint{num_constraints, &Alinear, &Clinear};
+    LinearConstraint linear_constraint{Alinear, Clinear};
 
     Program prog(num_variables);
     prog.AddConstraint(linear_constraint);

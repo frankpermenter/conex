@@ -15,35 +15,8 @@ class LinearConstraint {
   using StorageType = DenseMatrix;
 
  public:
-  template <typename T>
-  LinearConstraint(int n, T* constraint_matrix, T* constraint_affine)
-      : LinearConstraint(n, *constraint_matrix, *constraint_affine) {}
-
-  template <typename T>
-  LinearConstraint(const T& constraint_matrix, const T& constraint_affine)
-      : LinearConstraint(constraint_matrix.rows(), constraint_matrix,
-                         constraint_affine) {}
-
   LinearConstraint(const Eigen::MatrixXd& constraint_matrix,
-                   const Eigen::MatrixXd& constraint_affine)
-      : LinearConstraint(constraint_matrix.rows(), constraint_matrix,
-                         constraint_affine) {}
-
-  template <typename T>
-  LinearConstraint(int n, const T& constraint_matrix,
-                   const T& constraint_affine)
-      : workspace_(n, constraint_matrix.cols()),
-        constraint_matrix_(constraint_matrix),
-        constraint_affine_(constraint_affine) {
-    assert(constraint_affine_.rows() == n);
-    assert(constraint_matrix_.rows() == n);
-  }
-
-  LinearConstraint(int n, int m, const double* constraint_matrix,
-                   const double* constraint_affine)
-      : LinearConstraint(
-            n, Eigen::Map<const DenseMatrix>(constraint_matrix, n, m),
-            Eigen::Map<const DenseMatrix>(constraint_affine, n, 1)) {}
+                   const Eigen::MatrixXd& constraint_affine);
 
   WorkspaceLinear* workspace() { return &workspace_; }
 

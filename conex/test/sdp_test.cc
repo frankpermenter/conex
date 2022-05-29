@@ -78,7 +78,7 @@ int TestDiagonalSDP() {
   }
 
   DenseLMIConstraint LMI{n, constraints2, affine2};
-  LinearConstraint Linear{n, &Alinear, &Clinear};
+  LinearConstraint Linear{Alinear, Clinear};
 
   Program prog(m);
   Eigen::VectorXd b(m);

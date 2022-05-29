@@ -162,11 +162,11 @@ void EqualityConstraintForceEqualityConstraintsToLeafNodes(
 
   MatrixXd A1(2, 3);
   A1 << 1, 2, 3, -1, -2, -3;
-  VectorXd b1 = A1.transpose() * VectorXd::Constant(3, 1);
+  VectorXd b1 = A1.transpose() * VectorXd::Constant(2, 1);
 
   MatrixXd A2(2, 3);
   A2 << 3, 1, 5, -3, -4, -5;
-  VectorXd b2 = A2.transpose() * VectorXd::Constant(3, 1);
+  VectorXd b2 = A2.transpose() * VectorXd::Constant(2, 1);
 
   MatrixXd B2(1, 2);
   B2 << 1, -1;
@@ -216,11 +216,11 @@ void EqualityConstraintsNoQuadraticPenalty() {
 
   MatrixXd A1(2, 3);
   A1 << 1, 2, 3, -1, -2, -3;
-  VectorXd b1 = A1.transpose() * VectorXd::Constant(3, 1);
+  VectorXd b1 = A1.transpose() * VectorXd::Constant(2, 1);
 
   MatrixXd A2(2, 3);
   A2 << 3, 1, 5, -3, -4, -5;
-  VectorXd b2 = A2.transpose() * VectorXd::Constant(3, 1);
+  VectorXd b2 = A2.transpose() * VectorXd::Constant(2, 1);
   VectorXd linear_cost(num_vars);
   linear_cost.setConstant(0);
   IncrementSubVector(cliques.at(0), b1, &linear_cost);
@@ -432,7 +432,7 @@ void LPFailSlater(int number_of_implicit_equations) {
   offset.setConstant(distance_to_infeasible);
   C << C1, -(C1 - offset), C2;
 
-  LinearConstraint _constraint{n, &A, &C};
+  LinearConstraint _constraint{A, C};
 
   Program prog(m);
   prog.SetNumberOfVariables(m);

@@ -28,7 +28,7 @@ int DoRandomDenseTest(const SolverConfiguration& config, int number_of_tests,
     DenseMatrix Clinear = DenseMatrix::Random(num_constraints, 1);
     Clinear = Clinear.array().abs();
 
-    LinearConstraint linear_constraint{num_constraints, &Alinear, &Clinear};
+    LinearConstraint linear_constraint{Alinear, Clinear};
 
     Program prog(num_variables);
     prog.AddConstraint(linear_constraint);
@@ -352,7 +352,7 @@ void DoRandomPrimalFailsSlater(double distance_to_infeasible) {
   offset.setConstant(distance_to_infeasible);
   C << C1, -(C1 - offset), C2;
 
-  LinearConstraint _constraint{n, &A, &C};
+  LinearConstraint _constraint{A, C};
 
   Program prog(m);
   prog.SetNumberOfVariables(m);
@@ -424,7 +424,7 @@ void DoRandomDualFailsSlater(double distance_to_infeasible) {
   VectorXd b = A.transpose() * xref;
   b.bottomRows(m2).setConstant(distance_to_infeasible);
 
-  LinearConstraint constraint{n, &A, &C};
+  LinearConstraint constraint{A, C};
   prog.AddConstraint(constraint);
 
   DenseMatrix y(m, 1);

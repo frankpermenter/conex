@@ -7,6 +7,13 @@ using Eigen::VectorXd;
 
 using Eigen::MatrixXd;
 
+LinearConstraint::LinearConstraint(const Eigen::MatrixXd& constraint_matrix,
+                                   const Eigen::MatrixXd& constraint_affine)
+    : workspace_(constraint_matrix.rows(), constraint_matrix.cols()),
+      constraint_matrix_(constraint_matrix),
+      constraint_affine_(constraint_affine) {
+  CONEX_CHECK(constraint_matrix_.rows() == constraint_affine_.rows());
+}
 void AppendRow(MatrixXd* A, const MatrixXd& new_rows) {
   int num_cols = A->cols();
   if (A->rows() == 0) {
