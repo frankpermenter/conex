@@ -672,4 +672,17 @@ int Program::UpdateAffineTermOfConstraint(int i, double value, int row, int col,
       col, hyper_complex_dim);
 }
 
+void Program::InitializeWorkspace() {
+  workspaces = kkt_system_manager_.workspace();
+
+  workspaces.emplace_back(stats.get());
+  workspaces.emplace_back(&sys);
+  auto size = SizeOf(workspaces);
+  if (size > workspace_data_->size()) {
+    workspace_data_->resize(size);
+  }
+  Initialize(&workspaces, workspace_data_->data());
+
+  is_initialized = true;
+}
 }  // namespace conex

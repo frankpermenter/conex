@@ -66,19 +66,7 @@ class Program {
   CONEX_STATUS UpdateAffineTermOfConstraint(int i, double value, int row,
                                             int col, int hyper_complex_dim);
 
-  void InitializeWorkspace() {
-    workspaces = kkt_system_manager_.workspace();
-
-    workspaces.emplace_back(stats.get());
-    workspaces.emplace_back(&sys);
-    auto size = SizeOf(workspaces);
-    if (size > workspace_data_->size()) {
-      workspace_data_->resize(size);
-    }
-    Initialize(&workspaces, workspace_data_->data());
-
-    is_initialized = true;
-  }
+  void InitializeWorkspace();
 
   template <typename T>
   CONEX_ID AddConstraint(T&& d) {
