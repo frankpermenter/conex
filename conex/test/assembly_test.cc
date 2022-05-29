@@ -9,6 +9,7 @@
 #include "conex/kkt_solver_factory.h"
 #include "conex/supernodal_assembler.h"
 #include "conex/supernodal_solver.h"
+#include "conex/test/default_solver_config.h"
 #include "gtest/gtest.h"
 
 namespace conex {
@@ -86,7 +87,7 @@ GTEST_TEST(LDLT, TestAssembly) {
   ConstraintManager prog;
   BuildLQRProblem(N, &prog);
   std::unique_ptr<KKTSolverBase> solver_ptr =
-      KKTSolverFactory().create_unique(&prog, SolverConfiguration());
+      KKTSolverFactory().create_unique(&prog, DefaultTestConfiguration());
 
   auto& solver = *solver_ptr;
   solver.Assemble();
@@ -127,7 +128,7 @@ GTEST_TEST(LDLT, Benchmark2) {
   BuildLQRProblem(N, &prog);
 
   std::unique_ptr<KKTSolverBase> solver_ptr =
-      KKTSolverFactory().create_unique(&prog, SolverConfiguration());
+      KKTSolverFactory().create_unique(&prog, DefaultTestConfiguration());
   auto& solver = *solver_ptr;
   solver.Assemble();
   Eigen::MatrixXd T = solver.KKTMatrix().selfadjointView<Eigen::Lower>();
@@ -162,7 +163,7 @@ GTEST_TEST(Assemble, VariablesSpecifiedOutOfOrder) {
   prog.InitializeWorkspace();
 
   std::unique_ptr<KKTSolverBase> solver_ptr =
-      KKTSolverFactory().create_unique(&prog, SolverConfiguration());
+      KKTSolverFactory().create_unique(&prog, DefaultTestConfiguration());
   auto& solver = *solver_ptr;
 
   solver.Assemble();

@@ -1,5 +1,5 @@
 #pragma once
-#include "conex/cone_program.h"
+#include "conex/conex.h"
 namespace conex {
 
 inline SolverConfiguration DefaultTestConfiguration() {
