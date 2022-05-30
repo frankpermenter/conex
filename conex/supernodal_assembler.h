@@ -2,6 +2,7 @@
 #include <vector>
 
 #include "conex/constraint.h"
+#include "conex/constraint_interface.h"
 #include "conex/newton_step.h"
 #include "conex/supernodal_cholesky_data.h"
 #include <Eigen/Dense>
@@ -134,12 +135,15 @@ class SupernodalAssemblerBase {
   virtual ~SupernodalAssemblerBase(){};
 };
 
-class SupernodalAssembler : public SupernodalAssemblerBase {
+class SupernodalAssemblerConstraint : public SupernodalAssemblerBase {
  public:
-  SupernodalAssembler(const std::vector<int>& variables, Constraint* W)
+  SupernodalAssemblerConstraint(const std::vector<int>& variables,
+                                Constraint* W, ConstraintBase* serializer)
       : SupernodalAssemblerBase(variables, 0 /*no private variables*/) {
     workspace_ = W;
+    serializer_ = serializer;
     CONEX_CHECK(W);
+    CONEX_CHECK(serializer_);
   }
 
   virtual bool is_dynamic() const override { return true; }
@@ -165,8 +169,9 @@ class SupernodalAssembler : public SupernodalAssemblerBase {
     }
   }
 
-  SupernodalAssembler(){};
+  SupernodalAssemblerConstraint(){};
   Constraint* workspace_ = NULL;
+  ConstraintBase* serializer_ = NULL;
   Eigen::VectorXd memory_;
 };
 

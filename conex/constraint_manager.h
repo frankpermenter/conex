@@ -45,11 +45,12 @@ class ConstraintManager {
     constraint_storage_.emplace_back(std::move(pointer));
     constraints_.emplace_back(
         dynamic_cast<Type*>(constraint_storage_.back().get()));
-    supernodal_assemblers_.emplace_back(variables, &constraints_.back());
-    supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
+    constraint_assemblers_.emplace_back(variables, &constraints_.back(),
+                                        constraint_storage_.back().get());
+    supernodal_assemblers_ptr_.push_back(&constraint_assemblers_.back());
 
     cone_inequalities_.push_back(&constraints_.back());
-    cone_inequality_assemblers_.push_back(&supernodal_assemblers_.back());
+    cone_inequality_assemblers_.push_back(&constraint_assemblers_.back());
     return constraints_.size() - 1;
   }
 
@@ -81,11 +82,11 @@ class ConstraintManager {
 
   void InitializeWorkspace();
 
-  const std::vector<SupernodalAssembler*>& cone_inequalities() const {
+  const std::vector<SupernodalAssemblerConstraint*>& cone_inequalities() const {
     return cone_inequality_assemblers_;
   }
 
-  std::vector<SupernodalAssembler*>& cone_inequalities() {
+  std::vector<SupernodalAssemblerConstraint*>& cone_inequalities() {
     return cone_inequality_assemblers_;
   }
 
@@ -117,8 +118,8 @@ class ConstraintManager {
   CONEX_STATUS Validate(const std::vector<int>& variables);
   mutable std::vector<std::vector<int>> dual_vars_;
   mutable std::vector<std::vector<int>> cliques_;
-  std::list<SupernodalAssembler> supernodal_assemblers_;
   std::list<SupernodalAssemblerQuadratic> quadratic_costs_;
+  std::list<SupernodalAssemblerConstraint> constraint_assemblers_;
   std::list<SupernodalAssemblerEqualities> equality_constraints_;
 
   // Stores and owns the constraints.
@@ -130,7 +131,7 @@ class ConstraintManager {
 
   // Provides random access to constraints_.
   std::vector<Constraint*> cone_inequalities_;
-  std::vector<SupernodalAssembler*> cone_inequality_assemblers_;
+  std::vector<SupernodalAssemblerConstraint*> cone_inequality_assemblers_;
 
   // Provides type-erased interface to supernodal assemblers.
   std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;

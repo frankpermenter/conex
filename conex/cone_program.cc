@@ -32,7 +32,7 @@ inline void PrepareStep(ConstraintManager* kkt,
   }
 }
 
-inline void TakeStep(std::vector<SupernodalAssembler*>* constraints,
+inline void TakeStep(std::vector<SupernodalAssemblerConstraint*>* constraints,
                      const StepOptions& newton_step_parameters) {
   for (auto& c : *constraints) {
     TakeStep(c->constraint(), newton_step_parameters);
