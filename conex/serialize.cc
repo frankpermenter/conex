@@ -1,5 +1,6 @@
 #include "conex/serialize.h"
 
+#include "conex/debug_macros.h"
 #include "conex/dense_lmi_constraint.h"
 #include "conex/equality_constraint.h"
 #include "conex/json_parser.h"
@@ -125,4 +126,47 @@ std::unique_ptr<ConstraintBase> MakeConstraintFromJSON(
   }
   throw std::runtime_error("Failed to parse JSON");
 }
+
+void SerializeConeProgram(const ConstraintManager& constraint_manager) {
+  Serializer serialize;
+  JsonObject program;
+  program["constraints"] =
+      serialize.GenerateJsonObject(constraint_manager.parameters());
+}
+
+namespace {
+void AddConstraintFromJSON(const JsonObject& value, ConstraintManager* c) {
+  IDs constraint_type = static_cast<IDs>(stoi(value["id"].value()));
+  switch (constraint_type) {
+    case IDs::LinearConstraint: {
+      c->AddConstraint(fromJson<LinearConstraint>(value["data"]));
+      break;
+    }
+    case IDs::SOCConstraint: {
+      c->AddConstraint(fromJson<SOCConstraint>(value["data"]));
+      break;
+    }
+    case IDs::EqualityConstraints: {
+      c->AddConstraint(fromJson<EqualityConstraints>(value["data"]));
+      break;
+    }
+    case IDs::DenseLMIConstraint: {
+      c->AddConstraint(fromJson<DenseLMIConstraint>(value["data"]));
+      break;
+    }
+    default:
+      throw std::runtime_error("Failed to parse JSON");
+  }
+}
+}  // namespace
+
+void DeserializeConeProgram(const JsonObject& json, ConstraintManager* c) {
+  Serializer serialize;
+  const auto& all_constraints = json["constraints"];
+  size_t num_constraints = stoi(json["num_constraints"].value());
+  for (size_t i = 0; i < num_constraints; ++i) {
+    AddConstraintFromJSON(all_constraints[to_string(i)], c);
+  }
+}
+
 }  // namespace conex

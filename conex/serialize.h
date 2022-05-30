@@ -2,6 +2,7 @@
 #include <memory>
 
 #include "conex/constraint_interface.h"
+#include "conex/constraint_manager.h"
 #include "conex/json_parser.h"
 
 namespace conex {
@@ -34,4 +35,7 @@ template <typename T>
 JsonObject toJson(const T& object);
 
 std::unique_ptr<ConstraintBase> MakeConstraintFromJSON(const JsonObject& value);
+
+void DeserializeConeProgram(const JsonObject& json, ConstraintManager* c);
+
 }  // namespace conex

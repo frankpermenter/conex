@@ -587,6 +587,7 @@ cc_library(
         "serialize.h",
     ],
     deps = [
+        "constraint_manager",
         "equality_constraint",
         "error_checking",
         "linear_constraint",

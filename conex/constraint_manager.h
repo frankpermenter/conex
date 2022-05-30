@@ -109,6 +109,10 @@ class ConstraintManager {
 
   const std::vector<std::vector<int>>& variables() const;
 
+  const std::vector<std::unique_ptr<ConstraintBase>>& parameters() const {
+    return constraint_storage_;
+  }
+
  private:
   CONEX_STATUS Validate(const std::vector<int>& variables);
   mutable std::vector<std::vector<int>> dual_vars_;

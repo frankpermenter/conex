@@ -84,7 +84,7 @@ void CompareLMIConstraint(const ConstraintBase* x_ptr,
   EXPECT_TRUE(IsEqual(x.constraint_matrices(), y.constraint_matrices()));
 }
 
-GTEST_TEST(Serialize, TestSerializeDeserialize) {
+std::vector<std::unique_ptr<ConstraintBase>> MakeConstraints() {
   std::vector<std::unique_ptr<ConstraintBase>> constraints;
   constraints.emplace_back(new LinearConstraint(
       std::move(MakeMatrixConstraint<LinearConstraint>(1))));
@@ -96,11 +96,17 @@ GTEST_TEST(Serialize, TestSerializeDeserialize) {
 
   constraints.emplace_back(
       new DenseLMIConstraint(std::move(MakeLMIConstraint(3))));
+  return constraints;
+}
 
+GTEST_TEST(Serialize, TestSerializeDeserialize) {
+  std::vector<std::unique_ptr<ConstraintBase>> constraints = MakeConstraints();
   JsonObject program;
   Serializer serialize;
   program["constraints"] = serialize.GenerateJsonObject(constraints);
+  program["num_constraints"] = ConvertToJson(3);
 
+  ConstraintManager c;
   std::vector<std::unique_ptr<ConstraintBase>> constraints_deserialize;
   for (size_t i = 0; i < constraints.size(); ++i) {
     const auto& all_constraints = program["constraints"];
@@ -122,6 +128,18 @@ GTEST_TEST(Serialize, TestSerializeDeserialize) {
   i++;
   CompareLMIConstraint(constraints_deserialize.at(i).get(),
                        constraints.at(i).get());
+}
+
+GTEST_TEST(DeserializeConeProgram, TestSerializeDeserialize) {
+  std::vector<std::unique_ptr<ConstraintBase>> constraints = MakeConstraints();
+  JsonObject program;
+  Serializer serialize;
+  program["constraints"] = serialize.GenerateJsonObject(constraints);
+  program["num_constraints"] =
+      ConvertToJson(static_cast<int>(constraints.size()));
+  ConstraintManager c;
+  DeserializeConeProgram(program, &c);
+  EXPECT_EQ(c.parameters().size(), constraints.size());
 }
 
 }  // namespace conex
