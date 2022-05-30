@@ -255,20 +255,10 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
 }
 
 bool Program::AddLinearCost(const VectorXd& b, const std::vector<int>& vars) {
-  CONEX_DEMAND(static_cast<int>(vars.size()) == b.rows(),
-               "Cost vector dimension does not equal number of variables");
-  int cnt = 0;
-  for (auto i : vars) {
-    linear_cost_(i) += b(cnt++);
-  }
-  return false;
+  return kkt_system_manager_.AddLinearCost(b, vars);
 }
 bool Program::AddLinearCost(const VectorXd& b) {
-  CONEX_RETURN_ON_FAIL(
-      GetNumberOfVariables() == b.rows(),
-      "Cost vector dimension does not equal number of variables");
-  linear_cost_ += b;
-  return CONEX_SUCCESS;
+  return kkt_system_manager_.AddLinearCost(b);
 }
 
 namespace {
@@ -298,7 +288,7 @@ void PrintSummary(const Program& prog, const SolverConfiguration& config) {
   std::cout << "  KKT Solver: " << ToString(config.kkt_solver) << std::endl;
 }
 
-void Program::ClearLinearCosts() { linear_cost_.setZero(); }
+void Program::ClearLinearCosts() { kkt_system_manager_.ClearLinearCost(); }
 
 bool Solve(Program& prog, const SolverConfiguration& config,
            double* primal_variable) {
@@ -308,7 +298,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
       "Must enable line search and disable rescaling for problems "
       "with quadratic costs.");
 
-  VectorXd bin = -prog.linear_cost_;
+  VectorXd bin = -prog.kkt_system_manager_.GetLinearCostVector();
 
   auto& constraints = prog.kkt_system_manager_.cone_inequalities();
   auto& solver = prog.solver;

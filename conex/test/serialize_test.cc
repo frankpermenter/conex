@@ -135,11 +135,19 @@ GTEST_TEST(DeserializeConeProgram, TestSerializeDeserialize) {
   JsonObject program;
   Serializer serialize;
   program["constraints"] = serialize.GenerateJsonObject(constraints);
+  for (size_t i = 0; i < constraints.size(); i++) {
+    program["constraints"][to_string(i)]["variables"] = ConvertToJson(std::vector<int>{0, 1, 2});
+  }
+
   program["num_constraints"] =
       ConvertToJson(static_cast<int>(constraints.size()));
-  ConstraintManager c;
+  ConstraintManager c(4);
   DeserializeConeProgram(program, &c);
-  EXPECT_EQ(c.parameters().size(), constraints.size());
+  EXPECT_EQ(c.cone_inequalities().size(), constraints.size());
+
+  JsonObject program_serialized = SerializeConeProgram(c);
+  ConstraintManager c_deserialized(4);
+  DeserializeConeProgram(program_serialized, &c_deserialized);
 }
 
 }  // namespace conex

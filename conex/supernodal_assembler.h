@@ -51,7 +51,7 @@ inline OffDiagonalBlock BuildBlock(const std::vector<int>* r,
 // Manages the transfer of clique submatrix to supernodal data structure.
 // The SetDenseData triggers an update the submatrix which
 // is store in an Eigen::Map.
-class SupernodalAssemblerBase {
+class SupernodalAssemblerBase : public ConstraintBase {
  public:
   SupernodalAssemblerBase(const std::vector<int>& shared_variables,
                           int num_private) {
@@ -69,6 +69,8 @@ class SupernodalAssemblerBase {
     scatter_block.clear();
     direct_update = false;
   }
+
+  void accept(Visitor* v) override { throw std::runtime_error("Not implemented."); }
 
   virtual bool is_dynamic() const { return false; }
   virtual bool is_positive_definite() const { return true; }
@@ -146,6 +148,7 @@ class SupernodalAssemblerConstraint : public SupernodalAssemblerBase {
     CONEX_CHECK(serializer_);
   }
 
+  void accept(Visitor* v) override { serializer_->accept(v); }
   virtual bool is_dynamic() const override { return true; }
   virtual bool is_positive_definite() const override { return true; }
   virtual int number_of_auxiliary_variables() const override { return 0; }

@@ -11,6 +11,7 @@ class Serializer : Visitor {
  public:
   JsonObject GenerateJsonObject(
       const std::vector<std::unique_ptr<ConstraintBase>>& constraints) {
+    json_ = JsonObject();
     for (auto& c : constraints) {
       // If constraint c accepts, then it will
       // call Visitor::visit().
@@ -18,6 +19,20 @@ class Serializer : Visitor {
     }
     return json_;
   }
+
+  template<typename T>
+  JsonObject GenerateJsonObject(
+      const std::vector<T*>& constraints) {
+    json_ = JsonObject();
+    for (auto& c : constraints) {
+      // If constraint c accepts, then it will
+      // call Visitor::visit().
+      c->accept(this);
+    }
+    return json_;
+  }
+
+
 
   void visit(const LinearConstraint&) override;
   void visit(const SOCConstraint&) override;
@@ -37,5 +52,8 @@ JsonObject toJson(const T& object);
 std::unique_ptr<ConstraintBase> MakeConstraintFromJSON(const JsonObject& value);
 
 void DeserializeConeProgram(const JsonObject& json, ConstraintManager* c);
+
+
+JsonObject SerializeConeProgram(const ConstraintManager& constraint_manager);
 
 }  // namespace conex

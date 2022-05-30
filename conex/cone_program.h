@@ -24,7 +24,6 @@ class Program {
   void SetNumberOfVariables(int m) {
     CONEX_DEMAND(m >= 0, "Number of variables must be nonnegative.");
     kkt_system_manager_.SetNumberOfVariables(m);
-    linear_cost_ = Eigen::VectorXd::Zero(m);
   }
 
   int GetNumberOfVariables() const {
@@ -130,8 +129,6 @@ class Program {
   bool is_initialized = false;
   bool contains_quadratic_costs_ = false;
   ConexStatus status_;
-
-  Eigen::VectorXd linear_cost_;
 };
 
 DenseMatrix GetFeasibleObjective(Program* prog);

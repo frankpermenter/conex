@@ -14,13 +14,40 @@ class ConstraintManager {
  public:
   ConstraintManager(int max_number_of_variables)
       : max_number_of_variables_(max_number_of_variables),
-        new_dual_variable_start_(max_number_of_variables_) {}
+        new_dual_variable_start_(max_number_of_variables_),
+        linear_cost_vector_(max_number_of_variables_) {
+    ClearLinearCost();
+  }
 
   ConstraintManager(){};
+
+  void ClearLinearCost() { linear_cost_vector_.setZero(); }
+
+  bool AddLinearCost(const Eigen::VectorXd& b) {
+    CONEX_RETURN_ON_FAIL(
+        GetNumberOfVariables() == b.rows(),
+        "Cost vector dimension does not equal number of variables");
+    linear_cost_vector_ += b;
+    return CONEX_SUCCESS;
+  }
+
+  bool AddLinearCost(const Eigen::VectorXd& b, const std::vector<int>& vars) {
+    CONEX_DEMAND(static_cast<int>(vars.size()) == b.rows(),
+                 "Cost vector dimension does not equal number of variables");
+    int cnt = 0;
+    for (auto i : vars) {
+      linear_cost_vector_(i) += b(cnt++);
+    }
+    return false;
+  }
+
+  Eigen::VectorXd GetLinearCostVector() const { return linear_cost_vector_; }
 
   void SetNumberOfVariables(int N) {
     max_number_of_variables_ = N;
     new_dual_variable_start_ = N;
+    linear_cost_vector_.resize(N);
+    ClearLinearCost();
   }
 
   int GetNumberOfVariables() const { return max_number_of_variables_; }
@@ -107,10 +134,9 @@ class ConstraintManager {
   }
 
   const std::vector<std::vector<int>>& equality_constraint_multipliers() const;
-
   const std::vector<std::vector<int>>& variables() const;
-
-  const std::vector<std::unique_ptr<ConstraintBase>>& parameters() const {
+  const std::vector<std::unique_ptr<ConstraintBase>>& constraint_serializer()
+      const {
     return constraint_storage_;
   }
 
@@ -139,6 +165,7 @@ class ConstraintManager {
   int max_number_of_variables_ = 0;
   int new_dual_variable_start_ = 0;
   Eigen::VectorXd workspace_memory_;
+  Eigen::VectorXd linear_cost_vector_;
 };
 
 }  // namespace conex
