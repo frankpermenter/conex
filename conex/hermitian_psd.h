@@ -1,4 +1,5 @@
 #pragma once
+#include "conex/constraint_interface.h"
 #include "conex/error_codes.h"
 #include "conex/jordan_matrix_algebra.h"
 #include "conex/newton_step.h"
@@ -38,10 +39,11 @@ struct WorkspaceDenseHermitian {
 };
 
 template <typename T = Real>
-class HermitianPsdConstraint {
+class HermitianPsdConstraint : public ConstraintBase {
  public:
   using Matrix = typename T::Matrix;
 
+  void accept(Visitor* v) override { v->visit(*this); }
   HermitianPsdConstraint(int n) : rank_(n), workspace_(n) {}
 
   HermitianPsdConstraint(int n, const std::vector<Matrix>& a, const Matrix& c)

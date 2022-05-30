@@ -492,7 +492,6 @@ void ConstructSchurComplementSystem(SOCConstraint* o, bool initialize,
   W.bottomRows(n) = o->workspace_.W1;
 
   auto G = &sys->G;
-
   Eigen::MatrixXd WA = o->constraint_matrix_;
   Eigen::MatrixXd WsqrtC =
       QuadraticRepresentation(Wsqrt, o->constraint_affine_);

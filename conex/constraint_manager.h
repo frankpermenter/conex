@@ -37,14 +37,14 @@ class ConstraintManager {
   }
 
   template <typename T>
-  CONEX_ID AddConstraint(T&& x, const std::vector<int>& variables) {
+  CONEX_ID AddConstraint(const T& x, const std::vector<int>& variables) {
     CONEX_DEMAND(Validate(variables) == CONEX_SUCCESS,
                  "Failed to add constraint.");
-
-    constraint_storage_.push_back(x);
+    using Type = typename std::remove_reference<T>::type;
+    std::unique_ptr<ConstraintBase> pointer = std::make_unique<Type>(x);
+    constraint_storage_.emplace_back(std::move(pointer));
     constraints_.emplace_back(
-        std::any_cast<typename std::remove_reference<T>::type>(
-            &constraint_storage_.back()));
+        dynamic_cast<Type*>(constraint_storage_.back().get()));
     supernodal_assemblers_.emplace_back(variables, &constraints_.back());
     supernodal_assemblers_ptr_.push_back(&supernodal_assemblers_.back());
 
@@ -118,7 +118,7 @@ class ConstraintManager {
   std::list<SupernodalAssemblerEqualities> equality_constraints_;
 
   // Stores and owns the constraints.
-  std::list<std::any> constraint_storage_;
+  std::vector<std::unique_ptr<ConstraintBase>> constraint_storage_;
 
   // Provides type-erased interface to constraints.
   // forwards to objects in constraint_storage_.

@@ -28,15 +28,10 @@ bool PerformLineSearch(T*, const LineSearchParameters&, const Ref&, const Ref&,
   CONEX_RETURN_ON_FAIL(false, "Constraint does not support line search.");
 }
 
-// template <typename T>
-// bool TakeStep(T*, const StepOptions&) {
-//  return true;
-//}
-
 // A helper class for forwarding to different implementations of an "interface."
-// With this approach, implementations do not need to use inheritance or virtual
-// functions. Instead, they simply provide functions of appropriate name and
-// signature, e.g.,
+// With this approach, implementations do not need to use inheritance and
+// virtual functions. Instead, they simply provide functions of appropriate name
+// and signature, e.g.,
 //
 //    void PrepareStep(Implementation1*, {arguments});
 //    void Rank(Implementation1*, {arguments});
@@ -46,8 +41,7 @@ bool PerformLineSearch(T*, const LineSearchParameters&, const Ref&, const Ref&,
 //
 // Note that implementations can be ANSI C compliant when the signature is.
 //
-// Reference: "Inheritance is the base-class of evil" by Sean Parent.  class
-// Constraint {
+// Reference: "Inheritance is the base-class of evil" by Sean Parent.
 
 class Constraint {
  public:

@@ -1,10 +1,11 @@
 #pragma once
+#include "conex/constraint_interface.h"
 #include "newton_step.h"
 #include "workspace_soc.h"
 
 namespace conex {
 
-class QuadraticConstraintBase {
+class QuadraticConstraintBase : public ConstraintBase {
   using StorageType = DenseMatrix;
 
  public:
@@ -24,6 +25,8 @@ class QuadraticConstraintBase {
     assert(constraint_affine.cols() == 1);
     Initialize();
   }
+
+  void accept(Visitor* v) override { v->visit(*this); }
 
   template <typename T>
   QuadraticConstraintBase(const T& constraint_matrix,

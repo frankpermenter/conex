@@ -14,12 +14,6 @@ class HermitianPsdConstraint;
 template <int dimension>
 class MatrixAlgebra;
 
-using RealHermitianPsdConstraint = HermitianPsdConstraint<MatrixAlgebra<1>>;
-using ComplexHermitianPsdConstraint = HermitianPsdConstraint<MatrixAlgebra<2>>;
-using QuaternicHermitianPsdConstraint =
-    HermitianPsdConstraint<MatrixAlgebra<4>>;
-using OctonicHermitianPsdConstraint = HermitianPsdConstraint<MatrixAlgebra<8>>;
-
 // Visit existing objects and serialize them.
 class Visitor {
  public:
@@ -27,6 +21,11 @@ class Visitor {
   virtual void visit(const SOCConstraint&) = 0;
   virtual void visit(const EqualityConstraints&) = 0;
   virtual void visit(const DenseLMIConstraint&) = 0;
+  virtual void visit(const HermitianPsdConstraint<MatrixAlgebra<1>>&) {}
+  virtual void visit(const HermitianPsdConstraint<MatrixAlgebra<2>>&){};
+  virtual void visit(const HermitianPsdConstraint<MatrixAlgebra<4>>&){};
+  virtual void visit(const HermitianPsdConstraint<MatrixAlgebra<8>>&){};
+  virtual void visit(const QuadraticConstraintBase&) {}
   virtual ~Visitor() = default;
 };
 
