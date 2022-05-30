@@ -577,3 +577,38 @@ cc_library(
         "error_checking",
     ],
 )
+
+cc_library(
+    name = "serializer",
+    srcs = [
+        "json_parser.cc",
+        "json_parser.h",
+        "serialize.cc",
+        "serialize.h",
+    ],
+    deps = [
+        "equality_constraint",
+        "error_checking",
+        "linear_constraint",
+        "semidefinite_constraints",
+        "socp_constraints",
+        "@eigen",
+    ],
+)
+
+cc_test(
+    name = "serialize_test",
+    srcs = [
+        "test/serialize_test.cc",
+    ],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "equality_constraint",
+        "linear_constraint",
+        "semidefinite_constraints",
+        "serializer",
+        "socp_constraints",
+        "@eigen",
+        "@gtest//:main",
+    ],
+)

@@ -11,6 +11,10 @@ class MatrixLMIConstraint : public PsdConstraint {
                       const DenseMatrix& constraint_affine);
 
   Eigen::MatrixXd constraint_matrices_vect_;
+  const std::vector<DenseMatrix> constraint_matrices() const {
+    return constraint_matrices_;
+  }
+  const DenseMatrix affine_term() const { return constraint_affine_; }
   const std::vector<DenseMatrix> constraint_matrices_;
   const DenseMatrix constraint_affine_;
 
