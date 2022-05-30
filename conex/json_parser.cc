@@ -37,8 +37,8 @@ std::vector<T> CommaSeparatedStringToVector(const std::string& input) {
 }
 
 std::string MatrixToInitializerString(const Eigen::MatrixXd& value) {
-  Eigen::IOFormat CommaInitFmt(Eigen::StreamPrecision, Eigen::DontAlignCols,
-                               ", ", ", ", "", "", "", "");
+  Eigen::IOFormat CommaInitFmt(Eigen::FullPrecision, Eigen::DontAlignCols, ", ",
+                               ", ", "", "", "", "");
   std::stringstream buffer;
   buffer << value.format(CommaInitFmt);
   return buffer.str();

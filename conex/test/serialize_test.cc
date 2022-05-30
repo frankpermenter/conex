@@ -134,11 +134,19 @@ GTEST_TEST(DeserializeConeProgram, TestSerializeDeserialize) {
   std::vector<std::unique_ptr<ConstraintBase>> constraints = MakeConstraints();
   JsonObject program;
   Serializer serialize;
+  program["quadratic_costs"]["0"]["cost_matrix"] =
+      ConvertToJson(Eigen::MatrixXd::Identity(3, 3));
+  program["quadratic_costs"]["0"]["variables"] =
+      ConvertToJson(std::vector<int>{0, 1, 2});
+  program["num_quadratic_costs"] = ConvertToJson(static_cast<int>(1));
+  Eigen::VectorXd linear_cost = Eigen::VectorXd::LinSpaced(4, -1, 1);
+  program["linear_cost"] = ConvertToJson(linear_cost);
+
   program["constraints"] = serialize.GenerateJsonObject(constraints);
   for (size_t i = 0; i < constraints.size(); i++) {
-    program["constraints"][to_string(i)]["variables"] = ConvertToJson(std::vector<int>{0, 1, 2});
+    program["constraints"][to_string(i)]["variables"] =
+        ConvertToJson(std::vector<int>{0, 1, 2});
   }
-
   program["num_constraints"] =
       ConvertToJson(static_cast<int>(constraints.size()));
   ConstraintManager c(4);
@@ -148,6 +156,14 @@ GTEST_TEST(DeserializeConeProgram, TestSerializeDeserialize) {
   JsonObject program_serialized = SerializeConeProgram(c);
   ConstraintManager c_deserialized(4);
   DeserializeConeProgram(program_serialized, &c_deserialized);
+
+  ConstraintManager c_deserialized_from_string(4);
+  std::string prog_stringify = ConvertToJsonString(program_serialized);
+  DeserializeConeProgram(ParseJsonString(prog_stringify),
+                         &c_deserialized_from_string);
+  EXPECT_NEAR(
+      (c_deserialized_from_string.GetLinearCostVector() - linear_cost).norm(),
+      0, 1e-9);
 }
 
 }  // namespace conex

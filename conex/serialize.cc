@@ -131,23 +131,39 @@ std::unique_ptr<ConstraintBase> MakeConstraintFromJSON(
 JsonObject SerializeConeProgram(const ConstraintManager& constraint_manager) {
   Serializer serialize;
   JsonObject program;
-  program["num_constraints"] = 
-  ConvertToJson(static_cast<int>(constraint_manager.constraint_serializer().size()));
+  program["num_constraints"] = ConvertToJson(
+      static_cast<int>(constraint_manager.constraint_serializer().size()));
   program["constraints"] =
       serialize.GenerateJsonObject(constraint_manager.constraint_serializer());
 
   int i = 0;
-  for (auto& v: constraint_manager.cone_inequalities()) {
-    program["constraints"][to_string(i)]["variables"] =  ConvertToJson(v->variables());
+  for (auto& v : constraint_manager.cone_inequalities()) {
+    program["constraints"][to_string(i)]["variables"] =
+        ConvertToJson(v->variables());
     i++;
   }
+  i = 0;
+
+  program["num_quadratic_costs"] = ConvertToJson(
+      static_cast<int>(constraint_manager.quadratic_costs().size()));
+
+  for (auto& v : constraint_manager.quadratic_costs()) {
+    program["quadratic_costs"][to_string(i)]["variables"] =
+        ConvertToJson(v.variables());
+    program["quadratic_costs"][to_string(i)]["cost_matrix"] =
+        ConvertToJson(v.CostMatrix());
+    i++;
+  }
+  program["linear_cost"] =
+      ConvertToJson(constraint_manager.GetLinearCostVector());
   return program;
 }
 
 namespace {
 void AddConstraintFromJSON(const JsonObject& value, ConstraintManager* c) {
   IDs constraint_type = static_cast<IDs>(stoi(value["id"].value()));
-  std::vector<int> variables = ConstructObjectFromJson<std::vector<int>>( value["variables"]);
+  std::vector<int> variables =
+      ConstructObjectFromJson<std::vector<int>>(value["variables"]);
   switch (constraint_type) {
     case IDs::LinearConstraint: {
       c->AddConstraint(fromJson<LinearConstraint>(value["data"]), variables);
@@ -176,8 +192,18 @@ void DeserializeConeProgram(const JsonObject& json, ConstraintManager* c) {
   const auto& all_constraints = json["constraints"];
   size_t num_constraints = stoi(json["num_constraints"].value());
   for (size_t i = 0; i < num_constraints; ++i) {
-    AddConstraintFromJSON(all_constraints[to_string(i)],  c);
+    AddConstraintFromJSON(all_constraints[to_string(i)], c);
   }
+
+  size_t num_quadratic_costs = stoi(json["num_quadratic_costs"].value());
+  for (size_t i = 0; i < num_quadratic_costs; ++i) {
+    const auto& data = json["quadratic_costs"][to_string(i)];
+    std::vector<int> variables =
+        ConstructObjectFromJson<std::vector<int>>(data["variables"]);
+    c->AddQuadraticCost(ConstructObjectFromJson<MatrixXd>(data["cost_matrix"]),
+                        variables);
+  }
+  c->AddLinearCost(ConstructObjectFromJson<MatrixXd>(json["linear_cost"]));
 }
 
 }  // namespace conex

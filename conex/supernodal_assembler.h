@@ -70,7 +70,9 @@ class SupernodalAssemblerBase : public ConstraintBase {
     direct_update = false;
   }
 
-  void accept(Visitor* v) override { throw std::runtime_error("Not implemented."); }
+  void accept(Visitor* v) override {
+    throw std::runtime_error("Not implemented.");
+  }
 
   virtual bool is_dynamic() const { return false; }
   virtual bool is_positive_definite() const { return true; }
@@ -266,5 +268,6 @@ class SupernodalAssemblerQuadratic : public SupernodalAssemblerStatic {
                                const std::vector<int>& variables)
       : SupernodalAssemblerStatic(A, variables) {}
   double EvaluateQuadraticCost(const Eigen::Ref<const Eigen::MatrixXd> x) const;
+  Eigen::MatrixXd CostMatrix() const { return A_; }
 };
 }  // namespace conex
