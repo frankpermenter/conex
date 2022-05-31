@@ -675,6 +675,7 @@ int Program::UpdateAffineTermOfConstraint(int i, double value, int row, int col,
 }
 
 void Program::InitializeWorkspace() {
+  CONEX_CHECK(workspace_data_);
   workspaces = kkt_system_manager_.workspace();
 
   workspaces.emplace_back(stats.get());

@@ -36,7 +36,7 @@ class QuadraticConstraintBase : public ConstraintBase {
 
   WorkspaceSOC* workspace() { return &workspace_; }
 
-  int number_of_variables() { return A1_.cols(); }
+  int number_of_variables() const override { return A1_.cols(); }
   friend int Rank(const QuadraticConstraintBase&) { return 2; };
   friend void SetIdentity(QuadraticConstraintBase* o);
   friend void PrepareStep(QuadraticConstraintBase* o, const StepOptions& opt,

@@ -31,6 +31,8 @@ class EqualityConstraints : public ConstraintBase {
   Eigen::MatrixXd A_;
   Eigen::MatrixXd b_;
 
+  int number_of_variables() const override { return A_.cols(); }
+
   friend int Rank(const EqualityConstraints&) { return 0; };
   friend void SetIdentity(EqualityConstraints*){};
   friend void PrepareStep(EqualityConstraints* o, const StepOptions&,

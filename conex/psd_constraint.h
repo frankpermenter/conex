@@ -48,7 +48,7 @@ class PsdConstraint : public ConstraintBase {
   friend void GetWeightedSlackEigenvalues(PsdConstraint* o, const Ref& y,
                                           double c_weight,
                                           WeightedSlackEigenvalues* p);
-  int number_of_variables() { return num_dual_constraints_; }
+  int number_of_variables() const override { return num_dual_constraints_; }
 
  protected:
   PsdConstraint(int n, int m) : workspace_(n), num_dual_constraints_{m} {}

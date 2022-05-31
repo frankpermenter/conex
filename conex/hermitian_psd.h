@@ -63,7 +63,9 @@ class HermitianPsdConstraint : public ConstraintBase {
                                           const Ref& y, double c_weight,
                                           WeightedSlackEigenvalues* p);
 
-  int number_of_variables() { return constraint_matrices_.size(); }
+  int number_of_variables() const override {
+    return constraint_matrices_.size();
+  }
 
   template <typename H>
   friend void PrepareStep(HermitianPsdConstraint<H>* o, const StepOptions& opt,

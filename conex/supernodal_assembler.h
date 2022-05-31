@@ -74,6 +74,8 @@ class SupernodalAssemblerBase : public ConstraintBase {
     throw std::runtime_error("Not implemented.");
   }
 
+  int number_of_variables() const override { return variables_.size(); }
+
   virtual bool is_dynamic() const { return false; }
   virtual bool is_positive_definite() const { return true; }
   virtual int number_of_auxiliary_variables() const { return 0; }

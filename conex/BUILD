@@ -604,6 +604,7 @@ cc_test(
     ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
+        "core",
         "equality_constraint",
         "linear_constraint",
         "semidefinite_constraints",

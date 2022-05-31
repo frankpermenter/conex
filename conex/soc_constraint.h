@@ -18,7 +18,7 @@ class SOCConstraint : public ConstraintBase {
 
   WorkspaceSOC* workspace() { return &workspace_; }
 
-  int number_of_variables() { return constraint_matrix_.cols(); }
+  int number_of_variables() const override { return constraint_matrix_.cols(); }
   friend int Rank(const SOCConstraint&) { return 2; };
   friend void SetIdentity(SOCConstraint* o) {
     *o->workspace_.W0 = 1;

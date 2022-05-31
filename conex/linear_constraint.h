@@ -22,7 +22,7 @@ class LinearConstraint : public ConstraintBase {
 
   WorkspaceLinear* workspace() { return &workspace_; }
 
-  int number_of_variables() { return constraint_matrix_.cols(); }
+  int number_of_variables() const override { return constraint_matrix_.cols(); }
   friend int Rank(const LinearConstraint& o) { return o.workspace_.n_; };
   friend void SetIdentity(LinearConstraint* o);
   friend void PrepareStep(LinearConstraint* o, const StepOptions& opt,
