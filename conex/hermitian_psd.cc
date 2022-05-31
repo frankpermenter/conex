@@ -263,9 +263,6 @@ CONEX_STATUS UpdateLinearOperator(HermitianPsdConstraint<H>* o, double val,
     }
   }
 
-  for (int i = o->constraint_matrices_.size(); i <= var; i++) {
-    o->constraint_matrices_.push_back(H::Zero(o->rank_, o->rank_));
-  }
   o->constraint_matrices_.at(var).at(dim)(r, c) = val;
   if (dim == 0) {
     o->constraint_matrices_.at(var).at(dim)(c, r) = val;

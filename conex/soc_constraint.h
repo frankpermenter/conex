@@ -14,7 +14,12 @@ class SOCConstraint : public ConstraintBase {
 
   void accept(Visitor* v) override { v->visit(*this); }
   // Lorentz cone a subset of R^(n+1).
-  SOCConstraint(int n) : workspace_(n), n_(n) {}
+  SOCConstraint(int n, int num_vars) : workspace_(n), n_(n) {
+    constraint_matrix_.resize(n + 1, num_vars);
+    constraint_affine_.resize(n + 1, 1);
+    constraint_matrix_.setZero();
+    constraint_affine_.setZero();
+  }
 
   WorkspaceSOC* workspace() { return &workspace_; }
 

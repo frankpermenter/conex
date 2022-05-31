@@ -280,25 +280,27 @@ CONEX_STATUS CONEX_NewLinearMatrixInequality(void* p, int order,
 
   Program* prg;
   SAFER_CAST_TO_Program(p, prg);
+  int number_of_variables = prg->GetNumberOfVariables();
 
   switch (hyper_complex_dim) {
     case 1:
-      *constraint_id =
-          prg->AddConstraint(HermitianPsdConstraint<conex::Real>(order));
+      *constraint_id = prg->AddConstraint(
+          HermitianPsdConstraint<conex::Real>(order, number_of_variables));
       break;
     case 2:
-      *constraint_id =
-          prg->AddConstraint(HermitianPsdConstraint<conex::Complex>(order));
+      *constraint_id = prg->AddConstraint(
+          HermitianPsdConstraint<conex::Complex>(order, number_of_variables));
       break;
     case 4:
       *constraint_id =
-          prg->AddConstraint(HermitianPsdConstraint<conex::Quaternions>(order));
+          prg->AddConstraint(HermitianPsdConstraint<conex::Quaternions>(
+              order, number_of_variables));
       break;
     case 8:
       CONEX_RETURN_ON_FAIL(
           order <= 3, "Order of octonion algebra cannot be greater than 3.");
-      *constraint_id =
-          prg->AddConstraint(HermitianPsdConstraint<conex::Octonions>(order));
+      *constraint_id = prg->AddConstraint(
+          HermitianPsdConstraint<conex::Octonions>(order, number_of_variables));
   }
   CONEX_RETURN_ON_FAIL(*constraint_id >= 0, "Failed to add constraint.");
   return CONEX_SUCCESS;
@@ -382,7 +384,7 @@ CONEX_STATUS CONEX_NewLorentzConeConstraint(void* p, int order,
   Program* prg;
   SAFER_CAST_TO_Program(p, prg);
 
-  prg->AddConstraint(conex::SOCConstraint(order));
+  prg->AddConstraint(conex::SOCConstraint(order, prg->GetNumberOfVariables()));
   *constraint_id = prg->NumberOfConstraints() - 1;
   return CONEX_SUCCESS;
 }

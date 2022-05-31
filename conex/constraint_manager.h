@@ -69,6 +69,8 @@ class ConstraintManager {
                  "Failed to add constraint.");
     using Type = typename std::remove_reference<T>::type;
     std::unique_ptr<ConstraintBase> pointer = std::make_unique<Type>(x);
+    CONEX_CHECK(pointer->number_of_variables() ==
+                static_cast<int>(variables.size()));
     constraint_storage_.emplace_back(std::move(pointer));
     constraints_.emplace_back(
         dynamic_cast<Type*>(constraint_storage_.back().get()));
