@@ -1,4 +1,6 @@
 #pragma once
+#include <string>
+
 namespace conex {
 
 enum : int {
@@ -31,6 +33,8 @@ struct SolverConfiguration {
   int enable_rescaling = 1;
   int iterative_refinement_iterations = 0;
   int verbose = 1;
+  bool enable_logging = false;
+  std::string log_file = "conex_log.json";
 };
 
 struct ConexStatus {

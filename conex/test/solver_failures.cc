@@ -1,7 +1,10 @@
+#include <fstream>
+
 #include "conex/cone_program.h"
 #include "conex/equality_constraint.h"
 #include "conex/linear_constraint.h"
 #include "conex/quadratic_cone_constraint.h"
+#include "conex/serialize.h"
 #include <Eigen/Dense>
 
 namespace conex {
@@ -496,9 +499,45 @@ void SimpleBadLDLT() {
   }
 }
 
+void GraphOfConvexSets() {
+  std::ifstream t("conex/test/graph_of_convex_sets_fails_slater.json");
+  std::stringstream buffer;
+  ConstraintManager c;
+  buffer << t.rdbuf();
+  JsonObject prog = ParseJsonString(buffer.str());
+  DUMP(prog["constraints"]["0"]["id"].value());
+  DUMP(prog["num_constraints"].value());
+  DeserializeConeProgram(prog, &c);
+  Eigen::VectorXd y(c.GetNumberOfVariables());
+  DUMP(c.GetLinearCostVector());
+  Program program(std::move(c));
+
+  SolverConfiguration config;
+  config.initial_centering_steps_coldstart = 0;
+  config.prepare_dual_variables = 0;
+  config.infeasibility_threshold = 9e6;
+  config.divergence_upper_bound = 100;
+  config.final_centering_steps = 5;
+  config.final_centering_tolerance = 1;
+  config.max_iterations = 200;
+  config.verbose = true;
+  config.dinf_upper_bound = 1.1;
+  // config.kkt_solver = conex::CONEX_KKT_SOLVER_SPARSE_QR;
+  config.kkt_solver = conex::CONEX_KKT_SOLVER_SUPERNODAL_QR;
+  // config.enable_line_search = !psd_constraints_found;
+  config.enable_line_search = 0;
+  config.enable_rescaling = !config.enable_line_search;
+  config.inv_sqrt_mu_max = 2000;
+  config.maximum_mu = 100;
+  config.kkt_error_tolerance = 4;
+
+  Solve(program, config, y.data());
+}
+
 }  // namespace conex
 
 int main() {
+  conex::GraphOfConvexSets();
   conex::SimpleBadLDLT();
   conex::EqualityConstraintForceEqualityConstraintsToLeafNodes(
       false /*fill-in induced failure*/);

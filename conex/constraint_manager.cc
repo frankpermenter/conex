@@ -43,6 +43,12 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
 
   supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
 
+  std::unique_ptr<ConstraintBase> pointer =
+      std::make_unique<EqualityConstraints>(x);
+  CONEX_CHECK(pointer->number_of_variables() ==
+              static_cast<int>(variables.size()));
+  constraint_storage_.emplace_back(std::move(pointer));
+
   return equality_constraints_.size() - 1;
 }
 
@@ -87,6 +93,16 @@ const std::vector<std::vector<int>>& T::variables() const {
     c = e->variables();
     c.insert(c.end(), dual_vars.at(i).begin(), dual_vars.at(i).end());
     i++;
+  }
+  return cliques_;
+}
+
+const std::vector<std::vector<int>>& T::primal_variables() const {
+  cliques_.clear();
+  for (auto e : supernodal_assemblers_ptr_) {
+    cliques_.push_back({});
+    auto& c = cliques_.back();
+    c = e->variables();
   }
   return cliques_;
 }

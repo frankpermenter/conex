@@ -51,5 +51,7 @@ std::unique_ptr<ConstraintBase> MakeConstraintFromJSON(const JsonObject& value);
 void DeserializeConeProgram(const JsonObject& json, ConstraintManager* c);
 
 JsonObject SerializeConeProgram(const ConstraintManager& constraint_manager);
+void SaveConeProgram(const ConstraintManager& constraint_manager,
+                     const std::string& filename);
 
 }  // namespace conex

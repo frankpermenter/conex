@@ -370,6 +370,7 @@ cc_library(
         ":divergence",
         ":error_checking",
         ":kkt_solver_factory",
+        ":serializer",
         ":solver_configuration",
         ":supernodal_solver",
         "@eigen",
@@ -556,8 +557,10 @@ cc_test(
 cc_binary(
     name = "solver_failures",
     srcs = ["test/solver_failures.cc"],
+    data = ["test/graph_of_convex_sets_fails_slater.json"],
     deps = [
         "conex_lib",
+        "serializer",
     ],
 )
 

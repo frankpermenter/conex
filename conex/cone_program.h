@@ -14,7 +14,6 @@ class Program {
   Program(ConstraintManager&& constraints) {
     workspace_data_ = &memory_;
     kkt_system_manager_ = std::move(constraints);
-    SetNumberOfVariables(kkt_system_manager_.GetNumberOfVariables());
   }
 
   Program(int number_of_variables) {

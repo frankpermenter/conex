@@ -96,8 +96,6 @@ void CompareMatrixConstraint(const ConstraintBase* x_ptr,
   const auto& y = *dynamic_cast<const T*>(y_ptr);
   EXPECT_EQ((x.constraint_matrix() - y.constraint_matrix()).norm(), 0);
   EXPECT_EQ((x.affine_term() - y.affine_term()).norm(), 0);
-  DUMP(x.affine_term());
-  DUMP(x.constraint_matrix());
 }
 
 void CompareLMIConstraint(const ConstraintBase* x_ptr,
@@ -181,9 +179,13 @@ GTEST_TEST(DeserializeConeProgram, TestSerializeDeserialize) {
   }
   program["num_constraints"] =
       ConvertToJson(static_cast<int>(constraints.size()));
+
+  program["num_variables"] = ConvertToJson(4);
   ConstraintManager c(4);
   DeserializeConeProgram(program, &c);
-  EXPECT_EQ(c.cone_inequalities().size(), constraints.size());
+  EXPECT_EQ(c.cone_inequalities().size(),
+            constraints.size() - 1 /* minus one equality constraint*/);
+  EXPECT_EQ(c.equality_constraints().size(), 1U /* one equality constraint*/);
 
   JsonObject program_serialized = SerializeConeProgram(c);
   ConstraintManager c_deserialized(4);

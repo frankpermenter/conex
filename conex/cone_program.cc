@@ -5,6 +5,7 @@
 #include "conex/divergence.h"
 #include "conex/kkt_solver_factory.h"
 #include "conex/newton_step.h"
+#include "conex/serialize.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -299,6 +300,10 @@ bool Solve(Program& prog, const SolverConfiguration& config,
       "with quadratic costs.");
 
   VectorXd bin = -prog.kkt_system_manager_.GetLinearCostVector();
+
+  if (config.enable_logging) {
+    SaveConeProgram(prog.kkt_system_manager_, config.log_file);
+  }
 
   auto& constraints = prog.kkt_system_manager_.cone_inequalities();
   auto& solver = prog.solver;

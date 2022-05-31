@@ -1,5 +1,7 @@
 #include "conex/serialize.h"
 
+#include <fstream>
+
 #include "conex/debug_macros.h"
 #include "conex/dense_lmi_constraint.h"
 #include "conex/equality_constraint.h"
@@ -133,13 +135,14 @@ JsonObject SerializeConeProgram(const ConstraintManager& constraint_manager) {
   JsonObject program;
   program["num_constraints"] = ConvertToJson(
       static_cast<int>(constraint_manager.constraint_serializer().size()));
+  program["num_variables"] = ConvertToJson(
+      static_cast<int>(constraint_manager.GetNumberOfVariables()));
   program["constraints"] =
       serialize.GenerateJsonObject(constraint_manager.constraint_serializer());
 
   int i = 0;
-  for (auto& v : constraint_manager.cone_inequalities()) {
-    program["constraints"][to_string(i)]["variables"] =
-        ConvertToJson(v->variables());
+  for (auto& v : constraint_manager.primal_variables()) {
+    program["constraints"][to_string(i)]["variables"] = ConvertToJson(v);
     i++;
   }
   i = 0;
@@ -174,7 +177,8 @@ void AddConstraintFromJSON(const JsonObject& value, ConstraintManager* c) {
       break;
     }
     case IDs::EqualityConstraints: {
-      c->AddConstraint(fromJson<EqualityConstraints>(value["data"]), variables);
+      c->AddEqualityConstraint(fromJson<EqualityConstraints>(value["data"]),
+                               variables);
       break;
     }
     case IDs::DenseLMIConstraint: {
@@ -191,6 +195,8 @@ void DeserializeConeProgram(const JsonObject& json, ConstraintManager* c) {
   Serializer serialize;
   const auto& all_constraints = json["constraints"];
   size_t num_constraints = stoi(json["num_constraints"].value());
+  size_t num_variables = stoi(json["num_variables"].value());
+  c->SetNumberOfVariables(num_variables);
   for (size_t i = 0; i < num_constraints; ++i) {
     AddConstraintFromJSON(all_constraints[to_string(i)], c);
   }
@@ -204,6 +210,13 @@ void DeserializeConeProgram(const JsonObject& json, ConstraintManager* c) {
                         variables);
   }
   c->AddLinearCost(ConstructObjectFromJson<MatrixXd>(json["linear_cost"]));
+}
+
+void SaveConeProgram(const ConstraintManager& c, const std::string& filename) {
+  std::ofstream myfile;
+  myfile.open(filename);
+  myfile << ConvertToJsonString(SerializeConeProgram(c));
+  myfile.close();
 }
 
 }  // namespace conex

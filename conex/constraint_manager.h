@@ -137,6 +137,7 @@ class ConstraintManager {
 
   const std::vector<std::vector<int>>& equality_constraint_multipliers() const;
   const std::vector<std::vector<int>>& variables() const;
+  const std::vector<std::vector<int>>& primal_variables() const;
   const std::vector<std::unique_ptr<ConstraintBase>>& constraint_serializer()
       const {
     return constraint_storage_;
