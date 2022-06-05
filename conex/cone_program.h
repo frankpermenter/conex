@@ -141,6 +141,9 @@ DenseMatrix GetFeasibleObjective(Program* prog);
 bool Solve(Program& prog, const SolverConfiguration& config,
            double* primal_variable);
 
+Eigen::VectorXd Solve(
+    Program& prog, const SolverConfiguration& config = SolverConfiguration());
+
 bool Solve(const DenseMatrix& b, Program& prog,
            const SolverConfiguration& config, double* primal_variable);
 

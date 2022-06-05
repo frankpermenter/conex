@@ -693,4 +693,11 @@ void Program::InitializeWorkspace() {
 
   is_initialized = true;
 }
+
+Eigen::VectorXd Solve(Program& prog, const SolverConfiguration& config) {
+  Eigen::VectorXd y(prog.GetNumberOfVariables());
+  Solve(prog, config, y.data());
+  return y;
+}
+
 }  // namespace conex
