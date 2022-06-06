@@ -1,5 +1,3 @@
-#define EIGEN_RUNTIME_NO_MALLOC
-
 #include "conex/quadratic_cone_constraint.h"
 
 #include "conex/newton_step.h"
@@ -138,7 +136,6 @@ void QuadraticConstraintBase::ComputeNegativeSlack(double inv_sqrt_mu,
 // Combine this with PrepareStep
 void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o, const Ref& y,
                                  double c_weight, WeightedSlackEigenvalues* p) {
-  Eigen::internal::set_is_malloc_allowed(false);
   auto* workspace = &o->workspace_;
   auto& minus_s_1 = workspace->temp1_1;
   double minus_s_0;
@@ -167,12 +164,10 @@ void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o, const Ref& y,
   p->lambda_min = lamda_min;
   p->frobenius_norm_squared = std::pow(lamda_max, 2) + std::pow(lamda_min, 2);
   p->trace = (lamda_max + lamda_min);
-  Eigen::internal::set_is_malloc_allowed(true);
 }
 
 void PrepareStep(QuadraticConstraintBase* o, const StepOptions& opt,
                  const Ref& y, StepInfo* info) {
-  Eigen::internal::set_is_malloc_allowed(false);
   // d =  e - Q(w^{1/2})(C-A^y)
   double& wsqrt_q0 = *o->workspace_.W0;
   auto& wsqrt_q1 = o->workspace_.temp3_1;
@@ -204,8 +199,6 @@ void PrepareStep(QuadraticConstraintBase* o, const StepOptions& opt,
     info->norminfd = std::fabs(ev(1));
   }
   info->normsqrd = ev.squaredNorm();
-
-  Eigen::internal::set_is_malloc_allowed(true);
 }
 
 void QuadraticConstraintBase::Initialize() {
