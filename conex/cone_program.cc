@@ -59,7 +59,7 @@ void AssembleSchurComplementResiduals(const ConstraintManager& kkt,
   }
 
   int offset = kkt.GetNumberOfVariables();
-  for (auto& eq : kkt.equality_constraints()) {
+  for (auto& eq : kkt.equality_constraints().data) {
     int num_eq = eq.affine_term().rows();
     s->AQc.middleRows(offset, num_eq) = eq.affine_term();
     offset += num_eq;
@@ -278,7 +278,7 @@ std::string ToString(int solver_type) {
 void PrintSummary(const Program& prog, const SolverConfiguration& config) {
   std::cout << "  Variables:" << prog.GetNumberOfVariables() << std::endl;
   std::cout << "  Equality Constraints: "
-            << prog.constraint_manager().equality_constraints().size()
+            << prog.constraint_manager().equality_constraints().data.size()
             << std::endl;
   std::cout << "  Cone Inequalities: "
             << prog.constraint_manager().cone_inequalities().size()

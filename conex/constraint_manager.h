@@ -10,6 +10,13 @@
 
 namespace conex {
 
+class EqualityConstraintManager {
+ public:
+  std::vector<EqualityConstraints> data;
+  std::vector<std::vector<int>> variables;
+  std::vector<std::vector<int>> dual_variables;
+  std::list<SupernodalAssemblerEqualities> assemblers;
+};
 class ConstraintManager {
  public:
   ConstraintManager(int max_number_of_variables)
@@ -131,7 +138,7 @@ class ConstraintManager {
     return quadratic_costs_;
   }
 
-  const std::list<SupernodalAssemblerEqualities>& equality_constraints() const {
+  const EqualityConstraintManager& equality_constraints() const {
     return equality_constraints_;
   }
 
@@ -149,7 +156,6 @@ class ConstraintManager {
   mutable std::vector<std::vector<int>> cliques_;
   std::list<SupernodalAssemblerQuadratic> quadratic_costs_;
   std::list<SupernodalAssemblerConstraint> constraint_assemblers_;
-  std::list<SupernodalAssemblerEqualities> equality_constraints_;
 
   // Stores and owns the constraints.
   std::vector<std::unique_ptr<ConstraintBase>> constraint_storage_;
@@ -161,6 +167,7 @@ class ConstraintManager {
   // Provides random access to constraints_.
   std::vector<Constraint*> cone_inequalities_;
   std::vector<SupernodalAssemblerConstraint*> cone_inequality_assemblers_;
+  EqualityConstraintManager equality_constraints_;
 
   // Provides type-erased interface to supernodal assemblers.
   std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;

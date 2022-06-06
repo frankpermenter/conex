@@ -185,7 +185,8 @@ GTEST_TEST(DeserializeConeProgram, TestSerializeDeserialize) {
   DeserializeConeProgram(program, &c);
   EXPECT_EQ(c.cone_inequalities().size(),
             constraints.size() - 1 /* minus one equality constraint*/);
-  EXPECT_EQ(c.equality_constraints().size(), 1U /* one equality constraint*/);
+  EXPECT_EQ(c.equality_constraints().data.size(),
+            1U /* one equality constraint*/);
 
   JsonObject program_serialized = SerializeConeProgram(c);
   ConstraintManager c_deserialized(4);

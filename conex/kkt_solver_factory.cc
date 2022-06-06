@@ -28,7 +28,7 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
   solver_temp->SetIterativeRefinementIterations(
       config.iterative_refinement_iterations);
   if (config.kkt_solver == CONEX_KKT_SOLVER_SUPERNODAL) {
-    if (c->equality_constraints().size() > 0) {
+    if (c->equality_constraints().data.size() > 0) {
       solver_temp->SetSolverMode(CONEX_LDLT_FACTORIZATION);
     } else {
       solver_temp->SetSolverMode(CONEX_LLT_FACTORIZATION);
@@ -43,7 +43,7 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
 std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
                                             const SolverConfiguration& config) {
   SparseEqualityConstraints equality_constraints;
-  for (const auto& eq : kkt->equality_constraints()) {
+  for (const auto& eq : kkt->equality_constraints().assemblers) {
     const Eigen::MatrixXd& A = eq.constraint_matrix();
     for (int i = 0; i < A.rows(); i++) {
       std::vector<double> entries;

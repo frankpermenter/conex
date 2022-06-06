@@ -39,9 +39,11 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
   CONEX_DEMAND(Validate(variables) == CONEX_SUCCESS,
                "Failed to add constraint.");
 
-  equality_constraints_.emplace_back(x.A_, x.b_, variables);
+  equality_constraints_.data.push_back(x);
+  equality_constraints_.assemblers.emplace_back(x.A_, x.b_, variables);
 
-  supernodal_assemblers_ptr_.push_back(&equality_constraints_.back());
+  supernodal_assemblers_ptr_.push_back(
+      &equality_constraints_.assemblers.back());
 
   std::unique_ptr<ConstraintBase> pointer =
       std::make_unique<EqualityConstraints>(x);
@@ -49,7 +51,7 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
               static_cast<int>(variables.size()));
   constraint_storage_.emplace_back(std::move(pointer));
 
-  return equality_constraints_.size() - 1;
+  return equality_constraints_.data.size() - 1;
 }
 
 CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x) {
