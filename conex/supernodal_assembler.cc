@@ -84,7 +84,7 @@ void T::BindDiagonalBlock(const DiagonalBlock* data) {
     throw std::runtime_error("Cannot bind multiple diagonal blocks");
   }
   diag.push_back(*data);
-  int m = NumberOfVariables();
+  int m = number_of_variables();
 
   if (m == data->num_vars) {
     direct_update = true;
@@ -180,7 +180,12 @@ void T::UpdateBlocks() {
 
 double SupernodalAssemblerQuadratic::EvaluateQuadraticCost(
     const Eigen::Ref<const Eigen::MatrixXd> x) const {
-  const Eigen::VectorXd xtemp = Subvector(x);
+  const Eigen::VectorXd xtemp = PrimalSubvector(x);
   return xtemp.dot(A_ * xtemp);
 }
+SupernodalAssemblerEqualities::SupernodalAssemblerEqualities(
+    const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
+    const std::vector<int>& primal_variables,
+    const std::vector<int>& dual_variables)
+    : SupernodalAssemblerBase(primal_variables, dual_variables), A_(A), b_(b) {}
 }  // namespace conex

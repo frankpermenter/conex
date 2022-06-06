@@ -53,9 +53,16 @@ inline OffDiagonalBlock BuildBlock(const std::vector<int>* r,
 // is store in an Eigen::Map.
 class SupernodalAssemblerBase : public ConstraintBase {
  public:
-  SupernodalAssemblerBase(const std::vector<int>& shared_variables,
-                          int num_private) {
-    SetVariables(shared_variables, num_private);
+  SupernodalAssemblerBase(const std::vector<int>& shared_variables) {
+    SetPrimalVariables(shared_variables);
+  }
+  SupernodalAssemblerBase(const std::vector<int>& primal_variables,
+                          const std::vector<int>& dual_variables) {
+    std::vector<int> variables = primal_variables;
+    variables.insert(variables.end(), dual_variables.begin(),
+                     dual_variables.end());
+    SetPrimalVariables(primal_variables);
+    SetDualVariables(dual_variables);
   }
   SupernodalAssemblerBase(){};
 
@@ -74,40 +81,49 @@ class SupernodalAssemblerBase : public ConstraintBase {
     throw std::runtime_error("Not implemented.");
   }
 
-  int number_of_variables() const override { return variables_.size(); }
+  int number_of_variables() const override {
+    return primal_variables().size() + dual_variables().size();
+  }
 
   virtual bool is_dynamic() const { return false; }
   virtual bool is_positive_definite() const { return true; }
-  virtual int number_of_auxiliary_variables() const { return 0; }
-  virtual std::vector<int> variables() const { return variables_; }
+  virtual std::vector<int> variables() const {
+    std::vector<int> variables = primal_variables_;
+    variables.insert(variables.end(), dual_variables_.begin(),
+                     dual_variables_.end());
+    return variables;
+  }
+  virtual const std::vector<int>& primal_variables() const {
+    return primal_variables_;
+  }
+  virtual const std::vector<int>& dual_variables() const {
+    return dual_variables_;
+  }
 
   void UpdateBlocks();
   virtual void SetDenseData() = 0;
 
-  Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> Subvector(
+  Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> PrimalSubvector(
       const Eigen::MatrixXd& x) const {
-    ysegment.resize(variables_.size(), 1);
+    ysegment.resize(primal_variables_.size(), 1);
     Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> z(ysegment.data(),
                                                   ysegment.size(), 1);
     int cnt = 0;
-    for (auto i : variables_) {
+    for (auto i : primal_variables_) {
       z(cnt++) = x(i);
     }
     return z;
   }
 
-  int NumberOfVariables() { return num_variables_; };
-
-  // TODO(frankpermenter): deprecate this method. It
-  // is currently used by Drake.
-  void SetNumberOfVariables(int num_variables) {
-    num_variables_ = num_variables;
-    submatrix_data_.m_ = num_variables;
+  void SetPrimalVariables(const std::vector<int>& variables) {
+    primal_variables_ = variables;
+    num_variables_ = primal_variables_.size() + dual_variables_.size();
+    submatrix_data_.m_ = number_of_variables();
   };
-
-  void SetVariables(const std::vector<int>& variables, int num_private) {
-    variables_ = variables;
-    SetNumberOfVariables(variables.size() + num_private);
+  void SetDualVariables(const std::vector<int>& variables) {
+    dual_variables_ = variables;
+    num_variables_ = primal_variables_.size() + dual_variables_.size();
+    submatrix_data_.m_ = number_of_variables();
   };
 
   SchurComplementSystem* submatrix_data() { return &submatrix_data_; }
@@ -132,7 +148,8 @@ class SupernodalAssemblerBase : public ConstraintBase {
 
   void Scatter(const int* r, int sizer, const int* c, int sizec, double** data);
   int num_variables_;
-  std::vector<int> variables_;
+  std::vector<int> primal_variables_;
+  std::vector<int> dual_variables_;
 
   bool direct_update = false;
   std::vector<DiagonalBlock> diag;
@@ -145,7 +162,7 @@ class SupernodalAssemblerConstraint : public SupernodalAssemblerBase {
  public:
   SupernodalAssemblerConstraint(const std::vector<int>& variables,
                                 Constraint* W, ConstraintBase* serializer)
-      : SupernodalAssemblerBase(variables, 0 /*no private variables*/) {
+      : SupernodalAssemblerBase(variables) {
     workspace_ = W;
     serializer_ = serializer;
     CONEX_CHECK(W);
@@ -155,7 +172,6 @@ class SupernodalAssemblerConstraint : public SupernodalAssemblerBase {
   void accept(Visitor* v) override { serializer_->accept(v); }
   virtual bool is_dynamic() const override { return true; }
   virtual bool is_positive_definite() const override { return true; }
-  virtual int number_of_auxiliary_variables() const override { return 0; }
   Constraint* constraint() { return workspace_; }
 
   virtual void SetDenseData() {
@@ -186,7 +202,7 @@ class SupernodalAssemblerStatic : public SupernodalAssemblerBase {
  public:
   SupernodalAssemblerStatic(const Eigen::MatrixXd& A,
                             const std::vector<int>& variables)
-      : SupernodalAssemblerBase(variables, 0 /*no private variables*/), A_(A) {
+      : SupernodalAssemblerBase(variables), A_(A) {
     if (A_.rows() != A.cols()) {
       throw std::runtime_error("Static assembler requires square matrix");
     }
@@ -222,8 +238,8 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
  public:
   SupernodalAssemblerEqualities(const Eigen::MatrixXd& A,
                                 const Eigen::VectorXd& b,
-                                const std::vector<int>& variables)
-      : SupernodalAssemblerBase(variables, A.rows()), A_(A), b_(b) {}
+                                const std::vector<int>& primal_variables,
+                                const std::vector<int>& dual_variables);
 
   int UpdateMatrix(double value, int row, int col) {
     CONEX_RETURN_ON_FAIL(row < A_.rows() && col < A_.cols(),
@@ -238,9 +254,6 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
 
   virtual bool is_dynamic() const override { return false; }
   virtual bool is_positive_definite() const override { return false; }
-  virtual int number_of_auxiliary_variables() const override {
-    return A_.rows();
-  }
 
   virtual void SetDenseData() override {
     if (!submatrix_data_.initialized) {

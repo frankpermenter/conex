@@ -23,8 +23,8 @@ inline void PrepareStep(ConstraintManager* kkt,
   info->norminfd = -1;
   int i = 0;
   for (auto& ci : kkt->cone_inequalities()) {
-    PrepareStep(ci->constraint(), newton_step_parameters, ci->Subvector(y),
-                &info_i);
+    PrepareStep(ci->constraint(), newton_step_parameters,
+                ci->PrimalSubvector(y), &info_i);
     if (info_i.norminfd > info->norminfd) {
       info->norminfd = info_i.norminfd;
     }
@@ -82,8 +82,8 @@ void GetWeightedSlackEigenvalues(ConstraintManager* constraints, const Ref& y,
   int i = 0;
   for (auto& ci : constraints->cone_inequalities()) {
     WeightedSlackEigenvalues temp;
-    GetWeightedSlackEigenvalues(ci->constraint(), ci->Subvector(y), c_weight,
-                                &temp);
+    GetWeightedSlackEigenvalues(ci->constraint(), ci->PrimalSubvector(y),
+                                c_weight, &temp);
 
     if (p->lambda_max < temp.lambda_max) {
       p->lambda_max = temp.lambda_max;
@@ -142,8 +142,8 @@ double ComputeMuFromLineSearch(ConstraintManager& constraints,
   int i = 0;
   for (auto& ci : constraints.cone_inequalities()) {
     LineSearchOutput output_i;
-    Eigen::MatrixXd ysegment1 = ci->Subvector(*y0);
-    Eigen::MatrixXd ysegment2 = ci->Subvector(y1);
+    Eigen::MatrixXd ysegment1 = ci->PrimalSubvector(*y0);
+    Eigen::MatrixXd ysegment2 = ci->PrimalSubvector(y1);
     Ref z1(ysegment1.data(), ysegment1.rows(), 1);
     Ref z2(ysegment2.data(), ysegment2.rows(), 1);
     bool failure =

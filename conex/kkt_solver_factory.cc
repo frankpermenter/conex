@@ -50,8 +50,9 @@ std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
       for (int j = 0; j < A.cols(); j++) {
         entries.push_back(A(i, j));
       }
+      CONEX_CHECK(A.cols() == static_cast<int>(eq.primal_variables().size()));
       equality_constraints.matrix_entries.push_back(entries);
-      equality_constraints.columns.push_back(eq.variables());
+      equality_constraints.columns.push_back(eq.primal_variables());
     }
   }
   std::vector<std::vector<int>> cliques_of_G;
@@ -59,11 +60,11 @@ std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
   std::vector<int> degree(kkt->GetNumberOfVariables(), 0);
   for (const auto& c : kkt->clique_assemblers()) {
     if (c->is_positive_definite()) {
-      cliques_of_G.push_back(c->variables());
+      cliques_of_G.push_back(c->primal_variables());
       clique_assemblers_of_G.push_back(c);
-      IncrementSubvector(&degree, c->variables());
+      IncrementSubvector(&degree, c->primal_variables());
       CONEX_DEMAND(
-          c->number_of_auxiliary_variables() == 0,
+          c->dual_variables().size() == 0,
           "Auxiliary variables only supported for equality constraints");
     }
   }

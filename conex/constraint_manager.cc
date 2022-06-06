@@ -29,7 +29,7 @@ CONEX_STATUS T::Validate(const std::vector<int>& variables) {
 int T::SizeOfKKTSystem() const {
   int num_aux_vars = 0;
   for (const auto& e : supernodal_assemblers_ptr_) {
-    num_aux_vars += e->number_of_auxiliary_variables();
+    num_aux_vars += e->dual_variables().size();
   }
   return max_number_of_variables_ + num_aux_vars;
 };
@@ -40,7 +40,16 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
                "Failed to add constraint.");
 
   equality_constraints_.data.push_back(x);
-  equality_constraints_.assemblers.emplace_back(x.A_, x.b_, variables);
+  equality_constraints_.dual_variables.emplace_back(x.A_.rows());
+  std::iota(equality_constraints_.dual_variables.back().begin(),
+            equality_constraints_.dual_variables.back().end(),
+            new_dual_variable_start_);
+  new_dual_variable_start_ +=
+      equality_constraints_.dual_variables.back().size();
+  equality_constraints_.variables.push_back(variables);
+
+  equality_constraints_.assemblers.emplace_back(
+      x.A_, x.b_, variables, equality_constraints_.dual_variables.back());
 
   supernodal_assemblers_ptr_.push_back(
       &equality_constraints_.assemblers.back());
@@ -73,28 +82,19 @@ void T::InitializeWorkspace() {
 
 const std::vector<std::vector<int>>& T::equality_constraint_multipliers()
     const {
-  int offset = max_number_of_variables_;
   dual_vars_.clear();
   for (auto e : supernodal_assemblers_ptr_) {
-    int n = e->number_of_auxiliary_variables();
-    std::vector<int> temp(n);
-    std::iota(temp.begin(), temp.end(), offset);
-    dual_vars_.push_back(temp);
-    offset += n;
+    dual_vars_.push_back(e->dual_variables());
   }
   return dual_vars_;
 }
 
 const std::vector<std::vector<int>>& T::variables() const {
   cliques_.clear();
-  std::vector<std::vector<int>> dual_vars = equality_constraint_multipliers();
-  int i = 0;
   for (auto e : supernodal_assemblers_ptr_) {
     cliques_.push_back({});
     auto& c = cliques_.back();
     c = e->variables();
-    c.insert(c.end(), dual_vars.at(i).begin(), dual_vars.at(i).end());
-    i++;
   }
   return cliques_;
 }
@@ -104,7 +104,7 @@ const std::vector<std::vector<int>>& T::primal_variables() const {
   for (auto e : supernodal_assemblers_ptr_) {
     cliques_.push_back({});
     auto& c = cliques_.back();
-    c = e->variables();
+    c = e->primal_variables();
   }
   return cliques_;
 }
