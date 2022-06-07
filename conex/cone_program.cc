@@ -344,9 +344,35 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   int m = bin.rows();
   // Empty program
   if (prog.NumberOfConstraints() == 0) {
-    Eigen::Map<DenseMatrix> ynan(primal_variable, m, 1);
-    prog.status_.solved = 0;
-    ynan.array() = bin.array() * std::numeric_limits<double>::infinity();
+    if (prog.NumberOfQuadraticCosts() > 0) {
+      {
+        if (config.verbose) {
+          std::cout << "Finding solution analytically...\n";
+        }
+        Initialize(prog, config);
+        Eigen::VectorXd b(prog.kkt_system_manager_.SizeOfKKTSystem());
+        b.setZero();
+        b.head(m) << bin;
+        MakeAffineTermOfEqualityConstraints(prog.kkt_system_manager_, b);
+        solver->Assemble();
+        solver->AssembleAndFactor();
+        solver->SolveInPlace(b);
+        Eigen::Map<DenseMatrix> y_least_squares(primal_variable, m, 1);
+        y_least_squares = b.head(m);
+        double yQy;
+        for (const auto& cost : prog.constraint_manager().quadratic_costs()) {
+          yQy += cost.EvaluateQuadraticCost(y_least_squares);
+        }
+        prog.status_.solved = true;
+        prog.status_.primal_objective_value =
+            .5 * yQy + prog.kkt_system_manager_.GetLinearCostVector().dot(
+                           y_least_squares.col(0));
+      }
+    } else {
+      Eigen::Map<DenseMatrix> ynan(primal_variable, m, 1);
+      prog.status_.solved = 0;
+      ynan.array() = bin.array() * std::numeric_limits<double>::infinity();
+    }
     return prog.status_.solved;
   }
 

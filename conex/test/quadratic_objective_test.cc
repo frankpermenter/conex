@@ -126,7 +126,9 @@ void SolveQPInstance(ProblemData& data, const SolverConfiguration& config,
   prog.AddQuadraticCost(data.W, vars);
   prog.AddLinearCost(data.c);
   // Ax <= b.
-  prog.AddConstraint(LinearConstraint(-data.A, data.b), vars);
+  if (data.A.rows() > 0) {
+    prog.AddConstraint(LinearConstraint(-data.A, data.b), vars);
+  }
 
   double norm_bound = 1.0;
   if (add_quadratic_constraint) {
@@ -144,16 +146,16 @@ void SolveQPInstance(ProblemData& data, const SolverConfiguration& config,
     EXPECT_TRUE(solution.norm() <= norm_bound + 1e-9);
   } else {
     EXPECT_NEAR((solution - data.optimal_x).norm(), 0.0, 1e-9);
-    EXPECT_NEAR((data.A * solution + data.b - data.optimal_slack).norm(), 0.0,
-                1e-9);
+    if (data.A.rows() > 0) {
+      EXPECT_NEAR((data.A * solution + data.b - data.optimal_slack).norm(), 0.0,
+                  1e-9);
+    }
   }
   EXPECT_EQ(error, false);
 }
 
-}  // namespace conex
-
 void SolveRandomQP(int num_vars, int num_ineqs) {
-  conex::SolverConfiguration config = conex::DefaultTestConfiguration();
+  SolverConfiguration config = DefaultTestConfiguration();
 
   config.enable_line_search = true;
   config.initial_centering_steps_coldstart = 0;
@@ -167,13 +169,13 @@ void SolveRandomQP(int num_vars, int num_ineqs) {
   config.dinf_upper_bound = 1;
   config.prepare_dual_variables = 1;
 
-  conex::ProblemData data = conex::ProblemDataWithSolution(num_vars, num_ineqs);
+  ProblemData data = ProblemDataWithSolution(num_vars, num_ineqs);
 
-  conex::SolveQPInstance(data, config);
+  SolveQPInstance(data, config);
 }
 
 void SolveRandomQCQP(int num_vars, int num_ineqs) {
-  conex::SolverConfiguration config = conex::DefaultTestConfiguration();
+  SolverConfiguration config = DefaultTestConfiguration();
 
   config.enable_line_search = true;
   config.initial_centering_steps_coldstart = 0;
@@ -187,9 +189,9 @@ void SolveRandomQCQP(int num_vars, int num_ineqs) {
   config.dinf_upper_bound = 1;
   config.prepare_dual_variables = 1;
 
-  conex::ProblemData data = conex::ProblemDataWithSolution(num_vars, num_ineqs);
+  ProblemData data = ProblemDataWithSolution(num_vars, num_ineqs);
 
-  conex::SolveQPInstance(data, config);
+  SolveQPInstance(data, config);
 }
 
 GTEST_TEST(RandomQP, Small) {
@@ -215,3 +217,52 @@ GTEST_TEST(RandomQCQP, Small) {
   int num_ineqs = 10;
   SolveRandomQCQP(num_vars, num_ineqs);
 }
+
+GTEST_TEST(RandomQP, Unconstrained) {
+  SolverConfiguration config = DefaultTestConfiguration();
+  config.enable_rescaling = false;
+  config.enable_line_search = true;
+  int num_vars = 5;
+  Program prog(num_vars);
+  double off_diag = 0.01;
+  Eigen::MatrixXd W(num_vars, num_vars);
+  W.setConstant(0.01);
+  W.diagonal().setConstant(off_diag * (num_vars - 1) + 1);
+  Eigen::VectorXd c;
+  c.setLinSpaced(num_vars, -1, 1);
+  prog.AddQuadraticCost(W);
+  prog.AddLinearCost(c);
+  Eigen::VectorXd solution = Solve(prog, config);
+  EXPECT_NEAR((W * solution + c).norm(), 0, 1e-12);
+}
+
+GTEST_TEST(RandomQP, EqualityConstrained) {
+  SolverConfiguration config = DefaultTestConfiguration();
+  config.enable_rescaling = false;
+  config.enable_line_search = true;
+  int num_vars = 5;
+  Program prog(num_vars);
+  double off_diag = 0.01;
+  Eigen::MatrixXd W(num_vars, num_vars);
+  W.setConstant(0.01);
+  W.diagonal().setConstant(off_diag * (num_vars - 1) + 1);
+  Eigen::VectorXd c;
+  c.setLinSpaced(num_vars, -1, 1);
+  prog.AddQuadraticCost(W);
+  prog.AddLinearCost(c);
+  // clang-format off
+  Eigen::MatrixXd Aeq(2, 3);
+  Aeq << 1, 1, 0, 1, 0, 1;
+  Eigen::MatrixXd beq(2, 1);
+  beq << 1, -1;
+  // clang-format on
+
+  prog.AddConstraint(EqualityConstraints(Aeq, beq), {0, 1, 2});
+  Eigen::VectorXd solution = Solve(prog, config);
+  Eigen::MatrixXd nullspace_A(3, 5);
+  nullspace_A << 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -1, -1, 0, 0;
+  EXPECT_NEAR((nullspace_A * (W * solution + c)).norm(), 0, 1e-12);
+  EXPECT_NEAR((Aeq * solution.head(3) - beq).norm(), 0, 1e-12);
+}
+
+}  // namespace conex
