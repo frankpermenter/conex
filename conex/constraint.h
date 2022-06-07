@@ -5,6 +5,7 @@
 #include "conex/error_checking_macros.h"
 #include "conex/error_codes.h"
 #include "conex/newton_step.h"
+#include "conex/supernodal_assembler_base.h"
 #include "conex/workspace.h"
 #include <Eigen/Dense>
 
@@ -192,6 +193,46 @@ class Constraint {
     Implementation* data;
   };
   std::unique_ptr<Concept> model;
+};
+
+class SupernodalAssemblerConstraint : public SupernodalAssemblerBase {
+ public:
+  SupernodalAssemblerConstraint(const std::vector<int>& variables,
+                                Constraint* W, ConstraintBase* serializer)
+      : SupernodalAssemblerBase(variables) {
+    workspace_ = W;
+    serializer_ = serializer;
+    CONEX_CHECK(W);
+    CONEX_CHECK(serializer_);
+  }
+
+  void accept(Visitor* v) override { serializer_->accept(v); }
+  virtual bool is_dynamic() const override { return true; }
+  virtual bool is_positive_definite() const override { return true; }
+  Constraint* constraint() { return workspace_; }
+
+  virtual void SetDenseData() {
+    if (!submatrix_data_.initialized) {
+#if CONEX_DEBUG_MESSAGES
+      std::cerr << "Performing self initialization of SupernodalAssembler. Did "
+                   "you forget to initialize workspace?";
+#endif
+      Workspace workspace = Workspace(&submatrix_data_);
+      memory_.resize(SizeOf(workspace));
+      Initialize(&workspace, memory_.data());
+    }
+
+    if (workspace_) {
+      ConstructSchurComplementSystem(workspace_, true, &submatrix_data_);
+    } else {
+      throw std::runtime_error("Supernodal assembler data source is not set.");
+    }
+  }
+
+  SupernodalAssemblerConstraint(){};
+  Constraint* workspace_ = NULL;
+  ConstraintBase* serializer_ = NULL;
+  Eigen::VectorXd memory_;
 };
 
 }  // namespace conex

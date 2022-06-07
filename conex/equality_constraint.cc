@@ -38,4 +38,10 @@ void PrepareStep(EqualityConstraints* o, const StepOptions&, const Ref& y,
   info_i->norminfd = 0;
 }
 
+SupernodalAssemblerEqualities::SupernodalAssemblerEqualities(
+    const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
+    const std::vector<int>& primal_variables,
+    const std::vector<int>& dual_variables)
+    : SupernodalAssemblerBase(primal_variables, dual_variables), A_(A), b_(b) {}
+
 }  // namespace conex

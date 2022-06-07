@@ -254,6 +254,20 @@ cc_library(
 )
 
 cc_library(
+    name = "quadratic_cost",
+    srcs = ["quadratic_cost.cc"],
+    hdrs = [
+        "quadratic_cost.h",
+        "workspace.h",
+    ],
+    deps = [
+        "constraint_interface",
+        "error_checking",
+        "@eigen",
+    ],
+)
+
+cc_library(
     name = "constraint_manager",
     srcs = ["constraint_manager.cc"],
     hdrs = [
@@ -265,6 +279,7 @@ cc_library(
         "equality_constraint",
         "error_checking",
         "kkt_solver_interface",
+        "quadratic_cost",
     ],
 )
 
@@ -359,12 +374,12 @@ cc_library(
         "debug_macros.h",
         "memory_utils.h",
         "newton_step.h",
-        "supernodal_assembler.h",
         "supernodal_cholesky_data.h",
         "workspace.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "constraint_interface",
         ":conjugate_gradient_solvers",
         ":constraint_manager",
         ":divergence",
@@ -572,7 +587,7 @@ cc_library(
         "debug_macros.h",
         "memory_utils.h",
         "newton_step.h",
-        "supernodal_assembler.h",
+        "supernodal_assembler_base.h",
         "supernodal_cholesky_data.h",
         "workspace.h",
     ],

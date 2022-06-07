@@ -4,8 +4,11 @@
 #include <list>
 #include <numeric>
 
+#include "conex/constraint.h"
 #include "conex/equality_constraint.h"
 #include "conex/error_checking_macros.h"
+#include "conex/quadratic_cost.h"
+#include "conex/workspace.h"
 #define CONEX_ID int
 
 namespace conex {
@@ -17,6 +20,7 @@ class EqualityConstraintManager {
   std::vector<std::vector<int>> dual_variables;
   std::list<SupernodalAssemblerEqualities> assemblers;
 };
+
 class ConstraintManager {
  public:
   ConstraintManager(int max_number_of_variables)
