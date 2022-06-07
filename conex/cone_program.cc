@@ -40,6 +40,25 @@ inline void TakeStep(std::vector<SupernodalAssemblerConstraint*>* constraints,
   }
 }
 
+void IncrementSubvector(Eigen::Ref<MatrixXd> destination,
+                        const std::vector<int>& indices,
+                        const Eigen::Ref<const MatrixXd> source) {
+  int i = 0;
+  for (auto& r : indices) {
+    destination.row(r) += source.row(i);
+    i++;
+  }
+}
+
+void MakeAffineTermOfEqualityConstraints(const ConstraintManager& kkt,
+                                         Eigen::Ref<MatrixXd> f) {
+  int i = 0;
+  for (auto& eq : kkt.equality_constraints().data) {
+    IncrementSubvector(f, kkt.equality_constraints().dual_variables.at(i),
+                       eq.affine_term());
+    i++;
+  }
+}
 void AssembleSchurComplementResiduals(const ConstraintManager& kkt,
                                       SchurComplementSystem* s) {
   s->setZero();
@@ -58,12 +77,7 @@ void AssembleSchurComplementResiduals(const ConstraintManager& kkt,
     i++;
   }
 
-  int offset = kkt.GetNumberOfVariables();
-  for (auto& eq : kkt.equality_constraints().data) {
-    int num_eq = eq.affine_term().rows();
-    s->AQc.middleRows(offset, num_eq) = eq.affine_term();
-    offset += num_eq;
-  }
+  MakeAffineTermOfEqualityConstraints(kkt, s->AQc);
 }
 
 template <typename T>
