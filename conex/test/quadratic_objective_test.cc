@@ -251,18 +251,22 @@ GTEST_TEST(RandomQP, EqualityConstrained) {
   prog.AddQuadraticCost(W);
   prog.AddLinearCost(c);
   // clang-format off
-  Eigen::MatrixXd Aeq(2, 3);
-  Aeq << 1, 1, 0, 1, 0, 1;
+  Eigen::MatrixXd Aeq(2, 5);
+  Aeq << 1, 1, 0, 0, 0, 
+         1, 0, 1, 0, 0;
   Eigen::MatrixXd beq(2, 1);
   beq << 1, -1;
+  Eigen::MatrixXd nullspace_A(3, 5);
+  nullspace_A << 0, 0, 0, 0, 1, 
+                 0, 0, 0, 1, 0,
+                 1, -1, -1, 0, 0;
   // clang-format on
 
-  prog.AddConstraint(EqualityConstraints(Aeq, beq), {0, 1, 2});
+  prog.AddConstraint(EqualityConstraints(Aeq.leftCols(3), beq), {0, 1, 2});
   Eigen::VectorXd solution = Solve(prog, config);
-  Eigen::MatrixXd nullspace_A(3, 5);
-  nullspace_A << 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, -1, -1, 0, 0;
   EXPECT_NEAR((nullspace_A * (W * solution + c)).norm(), 0, 1e-12);
-  EXPECT_NEAR((Aeq * solution.head(3) - beq).norm(), 0, 1e-12);
+  EXPECT_NEAR((Aeq * solution - beq).norm(), 0, 1e-12);
+  EXPECT_NEAR((Aeq * nullspace_A.transpose()).norm(), 0, 1e-12);
 }
 
 }  // namespace conex

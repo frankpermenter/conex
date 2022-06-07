@@ -355,7 +355,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
         b.head(m) << bin;
         MakeAffineTermOfEqualityConstraints(prog.kkt_system_manager_, b);
         solver->Assemble();
-        solver->AssembleAndFactor();
+        CONEX_DEMAND(solver->Factor(), "Factorization failed.");
         solver->SolveInPlace(b);
         Eigen::Map<DenseMatrix> y_least_squares(primal_variable, m, 1);
         y_least_squares = b.head(m);

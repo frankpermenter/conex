@@ -295,6 +295,7 @@ cc_library(
     deps = [
         "conjugate_gradient_solvers",
         "kkt_solver_interface",
+        "kkt_tree_solver",
         "supernodal_solver",
     ],
 )

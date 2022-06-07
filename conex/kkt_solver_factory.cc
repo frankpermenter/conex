@@ -2,7 +2,9 @@
 
 #include "conex/clique_ordering.h"
 #include "conex/conjugate_gradient_solvers.h"
+#include "conex/kkt_simplicial_solver.h"
 #include "conex/kkt_solver.h"
+#include "conex/kkt_tree_solver.h"
 
 namespace conex {
 namespace {
@@ -40,6 +42,53 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
   return solver_temp;
 }
 
+SubsystemType ClassifySupernodeSubmatrix(const std::vector<int>& vars,
+                                         int number_of_primal_variables) {
+  bool all_primal_variables = true;
+  bool all_dual_variables = true;
+  for (auto& v : vars) {
+    if (v < number_of_primal_variables) {
+      all_dual_variables = false;
+    }
+    if (v >= number_of_primal_variables) {
+      all_primal_variables = false;
+    }
+  }
+  if (all_primal_variables) {
+    return SubsystemType::kPositiveDefinite;
+  }
+  if (all_dual_variables) {
+    return SubsystemType::kNegativeDefinite;
+  }
+  return SubsystemType::kQuasiDefinite;
+}
+std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
+    ConstraintManager* c, const SolverConfiguration& config) {
+  vector<vector<int>> cliques = c->variables();
+  auto& clique_assemblers_ptrs_ = c->clique_assemblers();
+
+  auto tree_solver_ =
+      std::make_unique<::conex::SymmetricLinearSystemTreeSolver>();
+
+  vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
+
+  CliqueTree clique_tree = MakePrimalDualCliqueTree(cliques, dual_vars);
+  int i = 0;
+  for (auto& clique : clique_assemblers_ptrs_) {
+    auto adapter =
+        std::make_unique<::conex::KKTAssemblerToSubsystemAdapter>(clique);
+    auto* subsystem = adapter->create_subsystem(ClassifySupernodeSubmatrix(
+        clique_tree.supernodes.at(i), c->GetNumberOfVariables()));
+    tree_solver_->AddSubsystem(subsystem);
+    tree_solver_->push_back(std::move(adapter));
+    ++i;
+  }
+  tree_solver_->Finalize(clique_tree);
+  tree_solver_->SetFactorizationMode(true /*left looking*/);
+  tree_solver_->EnableAutoUpdateAtAssemble(true);
+
+  return tree_solver_;
+}
 std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
                                             const SolverConfiguration& config) {
   SparseEqualityConstraints equality_constraints;
@@ -93,6 +142,13 @@ std::unique_ptr<KKTSolverBase> KKTSolverFactory::create_unique(
       break;
     case CONEX_KKT_SOLVER_CG:
       return MakeCGSolver(kkt, config);
+      break;
+    case CONEX_KKT_SOLVER_TREE:
+      return MakeTreeSolver(kkt, config);
+    case CONEX_KKT_SOLVER_SPARSE_QR:
+      std::unique_ptr<SymmetricLinearSystemTreeSolver> ptr =
+          MakeTreeSolver(kkt, config);
+      return std::make_unique<EigenSparseCholesky>(std::move(ptr));
       break;
   }
   throw std::runtime_error("Invalid KKT Solver.");
