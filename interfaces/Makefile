@@ -26,16 +26,21 @@ SOURCES = approximate_eigenvalues.cc \
 	  equality_constraint.cc \
 	  exponential_map_pade.cc \
 	  hermitian_psd.cc \
-	  supernodal_assembler.cc \
 	  kkt_solver.cc \
+	  kkt_subsystem.cc \
+	  kkt_simplicial_solver.cc \
+	  kkt_tree_solver.cc \
 	  kkt_solver_factory.cc \
 	  linear_constraint.cc \
 	  psd_constraint.cc \
 	  quadratic_cone_constraint.cc \
 	  soc_constraint.cc \
+	  static_subsystem.cc \
 	  supernodal_solver.cc \
+	  supernodal_assembler.cc \
 	  triangular_matrix_workspace.cc \
 	  tree_utils.cc \
+	  quadratic_cost.cc \
 	  jordan_matrix_algebra.cc \
 
 OBJECTS := $(SOURCES:.cc=.o)

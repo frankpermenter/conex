@@ -632,3 +632,28 @@ cc_test(
         "@gtest//:main",
     ],
 )
+
+cc_library(
+    name = "kkt_tree_solver",
+    srcs = [
+        "RLDLT.h",
+        "cholesky_solvers.h",
+        "debug_macros.h",
+        "kkt_simplicial_solver.cc",
+        "kkt_simplicial_solver.h",
+        "kkt_subsystem.cc",
+        "kkt_subsystem.h",
+        "kkt_tree_solver.cc",
+        "kkt_tree_solver.h",
+        "static_subsystem.cc",
+        "static_subsystem.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "constraint_interface",
+        "tree_utils",
+        ":error_checking",
+        ":kkt_solver_interface",
+        "@eigen",
+    ],
+)
