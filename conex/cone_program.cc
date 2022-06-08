@@ -279,13 +279,18 @@ bool Program::AddLinearCost(const VectorXd& b) {
 namespace {
 std::string ToString(int solver_type) {
   switch (solver_type) {
+    case CONEX_KKT_SOLVER_TREE:
+      return "Cholesky Tree";
     case CONEX_KKT_SOLVER_SUPERNODAL:
       return "Supernodal Cholesky";
     case CONEX_KKT_SOLVER_CG:
       return "Conjugate Gradient";
     case CONEX_KKT_SOLVER_SUPERNODAL_QR:
       return "QR Factorization";
+    case CONEX_KKT_SOLVER_SPARSE_QR:
+      return "Sparse QR Factorization";
   }
+  throw std::runtime_error("Unknown KKT system type");
   return "";
 }
 }  // namespace
@@ -359,7 +364,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
         solver->SolveInPlace(b);
         Eigen::Map<DenseMatrix> y_least_squares(primal_variable, m, 1);
         y_least_squares = b.head(m);
-        double yQy;
+        double yQy = 0;
         for (const auto& cost : prog.constraint_manager().quadratic_costs()) {
           yQy += cost.EvaluateQuadraticCost(y_least_squares);
         }
