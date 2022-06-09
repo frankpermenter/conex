@@ -34,8 +34,36 @@ int T::SizeOfKKTSystem() const {
   return max_number_of_variables_ + num_aux_vars;
 };
 
-CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x,
-                                  const std::vector<int>& variables) {
+namespace {
+struct SparseEqualities {
+  Eigen::MatrixXd nonzero_columns;
+  std::vector<int> variables;
+};
+
+SparseEqualities RemoveNonZeroColumns(const EqualityConstraints& x,
+                                      const std::vector<int> vars) {
+  SparseEqualities y;
+  std::vector<int> columns_keep;
+  for (int i = 0; i < x.constraint_matrix().cols(); i++) {
+    if (x.constraint_matrix().col(i).norm() > 0) {
+      columns_keep.push_back(i);
+    }
+  }
+  y.nonzero_columns.resize(x.constraint_matrix().rows(), columns_keep.size());
+  int i = 0;
+  for (auto& nonzero_col_index : columns_keep) {
+    y.nonzero_columns.col(i++) = x.constraint_matrix().col(nonzero_col_index);
+    y.variables.push_back(vars.at(nonzero_col_index));
+  }
+  return y;
+}
+}  // namespace
+
+CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x_in,
+                                  const std::vector<int>& vars_in) {
+  SparseEqualities y = RemoveNonZeroColumns(x_in, vars_in);
+  EqualityConstraints x(y.nonzero_columns, x_in.affine_term());
+  std::vector<int> variables = y.variables;
   CONEX_DEMAND(Validate(variables) == CONEX_SUCCESS,
                "Failed to add constraint.");
 
