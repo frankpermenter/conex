@@ -89,6 +89,47 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
 
   return tree_solver_;
 }
+namespace {
+class PrimalVariables {
+ public:
+  PrimalVariables(ConstraintManager* kkt)
+      : degree(kkt->GetNumberOfVariables(), 0), kkt_(kkt) {
+    for (const auto& c : kkt->clique_assemblers()) {
+      if (c->is_positive_definite()) {
+        cliques_of_G.push_back(c->primal_variables());
+        clique_assemblers_of_G.push_back(c);
+        IncrementSubvector(&degree, c->primal_variables());
+        CONEX_DEMAND(
+            c->dual_variables().size() == 0,
+            "Auxiliary variables only supported for equality constraints");
+      }
+    }
+  }
+  bool ValidateStrictConvexity() {
+    for (const auto d : degree) {
+      CONEX_DEMAND(
+          d > 0,
+          "Primal schur-complement matrix is not positive definite.  "
+          "Please presolve variables using equality constraints or add "
+          "inequalities/quadratic penalty terms.");
+    }
+    return true;
+  }
+  void MakeStrictlyConvex() {
+    int i = 0;
+    for (const auto d : degree) {
+      if (d == 0) {
+        kkt_->AddQuadraticCost(Eigen::MatrixXd::Identity(1, 1), {i});
+      }
+      i++;
+    }
+  }
+  std::vector<std::vector<int>> cliques_of_G;
+  std::vector<SupernodalAssemblerBase*> clique_assemblers_of_G;
+  std::vector<int> degree;
+  ConstraintManager* kkt_;
+};
+};  // namespace
 std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
                                             const SolverConfiguration& config) {
   SparseEqualityConstraints equality_constraints;
@@ -104,32 +145,16 @@ std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
       equality_constraints.columns.push_back(eq.primal_variables());
     }
   }
-  std::vector<std::vector<int>> cliques_of_G;
-  std::vector<SupernodalAssemblerBase*> clique_assemblers_of_G;
-  std::vector<int> degree(kkt->GetNumberOfVariables(), 0);
-  for (const auto& c : kkt->clique_assemblers()) {
-    if (c->is_positive_definite()) {
-      cliques_of_G.push_back(c->primal_variables());
-      clique_assemblers_of_G.push_back(c);
-      IncrementSubvector(&degree, c->primal_variables());
-      CONEX_DEMAND(
-          c->dual_variables().size() == 0,
-          "Auxiliary variables only supported for equality constraints");
-    }
-  }
-  for (const auto d : degree) {
-    CONEX_DEMAND(d > 0,
-                 "Primal schur-complement matrix is not positive definite.  "
-                 "Please presolve variables using equality constraints or add "
-                 "inequalities/quadratic penalty terms.");
-  }
+  PrimalVariables p(kkt);
+  p.ValidateStrictConvexity();
   int number_of_equations =
       kkt->SizeOfKKTSystem() - kkt->GetNumberOfVariables();
   CONEX_DEMAND(number_of_equations ==
                    static_cast<int>(equality_constraints.columns.size()),
                "KKT system is malformed");
+
   return std::make_unique<ConstrainedLeastSquaresConjugateGradientSolver>(
-      cliques_of_G, clique_assemblers_of_G, equality_constraints.columns,
+      p.cliques_of_G, p.clique_assemblers_of_G, equality_constraints.columns,
       equality_constraints.matrix_entries);
 }
 
