@@ -163,31 +163,60 @@ JsonObject SerializeConeProgram(const ConstraintManager& constraint_manager) {
 }
 
 namespace {
-void AddConstraintFromJSON(const JsonObject& value, ConstraintManager* c) {
+
+struct ConstraintCounter {
+  int linear_constraints = 0;
+  int soc_constraints = 0;
+  int equality_constraints = 0;
+  int dense_lmi_constraints = 0;
+};
+
+void AddConstraintFromJSON(const JsonObject& value, ConstraintManager* c,
+                           ConstraintCounter* stats) {
   IDs constraint_type = static_cast<IDs>(stoi(value["id"].value()));
   std::vector<int> variables =
       ConstructObjectFromJson<std::vector<int>>(value["variables"]);
   switch (constraint_type) {
     case IDs::LinearConstraint: {
       c->AddConstraint(fromJson<LinearConstraint>(value["data"]), variables);
+      stats->linear_constraints++;
       break;
     }
     case IDs::SOCConstraint: {
       c->AddConstraint(fromJson<SOCConstraint>(value["data"]), variables);
+      stats->soc_constraints++;
       break;
     }
     case IDs::EqualityConstraints: {
       c->AddEqualityConstraint(fromJson<EqualityConstraints>(value["data"]),
                                variables);
+      stats->equality_constraints++;
       break;
     }
     case IDs::DenseLMIConstraint: {
       c->AddConstraint(fromJson<DenseLMIConstraint>(value["data"]), variables);
+      stats->dense_lmi_constraints++;
       break;
     }
     default:
       throw std::runtime_error("Failed to parse JSON");
   }
+}
+void PrintSummary(const JsonObject& json, const ConstraintCounter& count) {
+  std::cout << "Importing cone program from JSON: " << std::endl;
+  ;
+  size_t num_constraints = stoi(json["num_constraints"].value());
+  size_t num_variables = stoi(json["num_variables"].value());
+  std::cout << " Num Variables: " << num_variables << std::endl;
+  ;
+  std::cout << " Num Constraints: " << num_constraints << std::endl;
+  std::cout << "  Linear Constraints: " << count.linear_constraints
+            << std::endl;
+  std::cout << "  SOC Constraints: " << count.soc_constraints << std::endl;
+  std::cout << "  LMI Constraints: " << count.dense_lmi_constraints
+            << std::endl;
+  std::cout << "  Equality Constraints: " << count.equality_constraints
+            << std::endl;
 }
 }  // namespace
 
@@ -197,8 +226,9 @@ void DeserializeConeProgram(const JsonObject& json, ConstraintManager* c) {
   size_t num_constraints = stoi(json["num_constraints"].value());
   size_t num_variables = stoi(json["num_variables"].value());
   c->SetNumberOfVariables(num_variables);
+  ConstraintCounter constraint_count;
   for (size_t i = 0; i < num_constraints; ++i) {
-    AddConstraintFromJSON(all_constraints[to_string(i)], c);
+    AddConstraintFromJSON(all_constraints[to_string(i)], c, &constraint_count);
   }
 
   size_t num_quadratic_costs = stoi(json["num_quadratic_costs"].value());
@@ -210,6 +240,7 @@ void DeserializeConeProgram(const JsonObject& json, ConstraintManager* c) {
                         variables);
   }
   c->AddLinearCost(ConstructObjectFromJson<MatrixXd>(json["linear_cost"]));
+  PrintSummary(json, constraint_count);
 }
 
 void SaveConeProgram(const ConstraintManager& c, const std::string& filename) {
