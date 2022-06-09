@@ -182,4 +182,5 @@ class ConstraintManager {
   Eigen::VectorXd linear_cost_vector_;
 };
 
+void MakeObjectiveStrictlyConvex(ConstraintManager* x, double eps = 1e-3);
 }  // namespace conex

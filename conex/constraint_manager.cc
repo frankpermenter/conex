@@ -137,4 +137,55 @@ const std::vector<std::vector<int>>& T::primal_variables() const {
   return cliques_;
 }
 
+namespace {
+
+void IncrementSubvector(std::vector<int>* y, const std::vector<int>& indices) {
+  for (auto i : indices) {
+    y->at(i)++;
+  }
+}
+class PrimalVariables {
+ public:
+  PrimalVariables(ConstraintManager* kkt)
+      : degree(kkt->GetNumberOfVariables(), 0), kkt_(kkt) {
+    for (const auto& c : kkt->clique_assemblers()) {
+      if (c->is_positive_definite()) {
+        cliques_of_G.push_back(c->primal_variables());
+        clique_assemblers_of_G.push_back(c);
+        IncrementSubvector(&degree, c->primal_variables());
+        CONEX_DEMAND(
+            c->dual_variables().size() == 0,
+            "Auxiliary variables only supported for equality constraints");
+      }
+    }
+  }
+  bool ValidateStrictConvexity() {
+    for (const auto d : degree) {
+      CONEX_DEMAND(
+          d > 0,
+          "Primal schur-complement matrix is not positive definite.  "
+          "Please presolve variables using equality constraints or add "
+          "inequalities/quadratic penalty terms.");
+    }
+    return true;
+  }
+  void MakeStrictlyConvex(double eps) {
+    int i = 0;
+    for (const auto d : degree) {
+      if (d == 0) {
+        kkt_->AddQuadraticCost(Eigen::MatrixXd::Identity(1, 1) * eps, {i});
+      }
+      i++;
+    }
+  }
+  std::vector<std::vector<int>> cliques_of_G;
+  std::vector<SupernodalAssemblerBase*> clique_assemblers_of_G;
+  std::vector<int> degree;
+  ConstraintManager* kkt_;
+};
+
+}  // namespace
+void MakeObjectiveStrictlyConvex(ConstraintManager* x, double eps) {
+  PrimalVariables(x).MakeStrictlyConvex(eps);
+}
 }  // namespace conex
