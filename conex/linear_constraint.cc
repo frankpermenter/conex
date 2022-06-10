@@ -12,6 +12,7 @@ LinearConstraint::LinearConstraint(const Eigen::MatrixXd& constraint_matrix,
     : workspace_(constraint_matrix.rows(), constraint_matrix.cols()),
       constraint_matrix_(constraint_matrix),
       constraint_affine_(constraint_affine) {
+  constraint_affine_.array() += 1e-2;
   CONEX_CHECK(constraint_matrix_.rows() == constraint_affine_.rows());
 }
 void AppendRow(MatrixXd* A, const MatrixXd& new_rows) {
