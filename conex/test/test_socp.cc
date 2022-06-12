@@ -61,26 +61,36 @@ int DoMain() {
 
     Program prog1(n);
     prog1.AddConstraint(soc_constraint_with_squareroot);
+
     DenseMatrix y1(n, 1);
-    Solve(b, prog1, config, y1.data());
-    DenseMatrix y1_ls(n, 1);
-    config.enable_line_search = 1;
-    Solve(b, prog1, config, y1_ls.data());
     config.enable_line_search = 0;
-    EXPECT_NEAR((y1 - y1_ls).norm(), 0, 1e-6);
+    Solve(b, prog1, config, y1.data());
 
-    Program prog2(n);
-    prog2.AddConstraint(lmi_constraint);
-    DenseMatrix y2(n, 1);
-    Solve(b, prog2, config, y2.data());
+    DenseMatrix y1_line_search(n, 1);
+    config.enable_line_search = 1;
+    Solve(b, prog1, config, y1_line_search.data());
+    EXPECT_NEAR((y1 - y1_line_search).norm(), 0, 1e-6);
 
-    EXPECT_NEAR((y1 - y2).norm(), 0, 1e-4);
+    Program prog_quad(n);
+    prog_quad.AddConstraint(quad_constraint);
 
-    Program prog3(n);
-    prog3.AddConstraint(quad_constraint);
-    DenseMatrix y3(n, 1);
-    Solve(b, prog3, config, y3.data());
-    EXPECT_NEAR((y1 - y3).norm(), 0, 8e-6);
+    DenseMatrix y_quad(n, 1);
+    config.enable_line_search = 0;
+    Solve(b, prog_quad, config, y_quad.data());
+    EXPECT_NEAR((y1 - y_quad).norm(), 0, 8e-6);
+
+    DenseMatrix y_quad_line_search(n, 1);
+    config.enable_line_search = 1;
+    Solve(b, prog_quad, config, y_quad_line_search.data());
+    EXPECT_NEAR((y_quad_line_search - y1_line_search).norm(), 0, 8e-6);
+
+    Program prog_lmi(n);
+    config.enable_line_search = 0;
+    prog_lmi.AddConstraint(lmi_constraint);
+    DenseMatrix y_lmi(n, 1);
+    Solve(b, prog_lmi, config, y_lmi.data());
+
+    EXPECT_NEAR((y1 - y_lmi).norm(), 0, 1e-4);
 
     Program prog4(n);
     prog4.AddConstraint(quad_constraint_with_squareroot);

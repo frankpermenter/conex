@@ -42,6 +42,10 @@ class QuadraticConstraintBase : public ConstraintBase {
   friend void PrepareStep(QuadraticConstraintBase* o, const StepOptions& opt,
                           const Ref& y, StepInfo* data);
 
+  friend bool PerformLineSearch(QuadraticConstraintBase* o,
+                                const LineSearchParameters& params,
+                                const Ref& y0, const Ref& y1,
+                                LineSearchOutput* output);
   friend bool TakeStep(QuadraticConstraintBase* o, const StepOptions& opt);
   friend void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o,
                                           const Ref& y, double c_weight,

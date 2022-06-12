@@ -192,6 +192,118 @@ void PrepareStep(QuadraticConstraintBase* o, const StepOptions& opt,
   info->normsqrd = ev.squaredNorm();
 }
 
+namespace {
+
+Eigen::VectorXd SolveNormEquationsPlus(double a, double x0, double x1,
+                                       double y0, double y1, double k) {
+  Eigen::VectorXd t(2);
+  double a_squared = a * a;
+  double under_radical = a_squared * y1 + 2 * a * k * y0 - 2 * a * x0 * y1 +
+                         k * k - 2 * k * x0 * y0 + x0 * x0 * y1 + x1 * y0 * y0 -
+                         x1 * y1;
+
+  if (under_radical > 1e-16) {
+    t(0) = (-sqrt(under_radical) + a * y0 + k - x0 * y0) / (y0 * y0 - y1);
+    t(1) = (sqrt(under_radical) + a * y0 + k - x0 * y0) / (y0 * y0 - y1);
+  } else {
+    if (under_radical >= 0) {
+      t.resize(1);
+      t(0) = (a * y0 + k - x0 * y0) / (y0 * y0 - y1);
+    } else {
+      t.resize(0);
+    }
+  }
+
+  return t;
+}
+
+Eigen::VectorXd GetCandidateK(double dinfmax, double x0, double x1, double y0,
+                              double y1, double k) {
+  using Eigen::VectorXd;
+  auto t = SolveNormEquationsPlus(dinfmax, x0, x1, y0, y1, k);
+  std::vector<double> val;
+  double eps = 0.01;
+  for (int i = 0; i < t.size(); i++) {
+    double error_minus =
+        x0 + t(i) * y0 - sqrt(x1 + 2 * t(i) * k + t(i) * t(i) * y1) + dinfmax;
+    double error_plus =
+        x0 + t(i) * y0 + sqrt(x1 + 2 * t(i) * k + t(i) * t(i) * y1) - dinfmax;
+
+    if ((fabs(error_plus) < eps && error_minus > -eps) ||
+        (fabs(error_minus) < eps && error_plus < eps)) {
+      val.push_back(t(i));
+    }
+  }
+  t = SolveNormEquationsPlus(-dinfmax, x0, x1, y0, y1, k);
+  for (int i = 0; i < t.size(); i++) {
+    double error_minus =
+        x0 + t(i) * y0 - sqrt(x1 + 2 * t(i) * k + t(i) * t(i) * y1) + dinfmax;
+    double error_plus =
+        x0 + t(i) * y0 + sqrt(x1 + 2 * t(i) * k + t(i) * t(i) * y1) - dinfmax;
+
+    if ((fabs(error_plus) < eps && error_minus > -eps) ||
+        (fabs(error_minus) < eps && error_plus < eps)) {
+      val.push_back(t(i));
+    }
+  }
+  return Eigen::Map<const VectorXd>(val.data(), static_cast<int>(val.size()));
+}
+
+double GetMinSqrtMu(double dinfmax, const double& x0,
+                    const double& x1_squared_norm, const double& y0,
+                    const double& y1_squared_norm, const double x1_dot_y1,
+                    LineSearchOutput* output) {
+  double upper_bound = 1e45;
+  double lower_bound = -1e45;
+  auto t = GetCandidateK(dinfmax, x0, x1_squared_norm, y0, y1_squared_norm,
+                         x1_dot_y1);
+
+  if (t.size() < 2) {
+    // Force failure
+    upper_bound = -1;
+    lower_bound = 1;
+  } else {
+    double lower_bound_i = t.minCoeff();
+    double upper_bound_i = t.maxCoeff();
+
+    if (lower_bound_i > lower_bound) {
+      lower_bound = lower_bound_i;
+    }
+    if (upper_bound_i < upper_bound) {
+      upper_bound = upper_bound_i;
+    }
+  }
+
+  output->lower_bound = lower_bound;
+  output->upper_bound = upper_bound;
+
+  return upper_bound;
+}
+
+}  // namespace
+
+bool PerformLineSearch(QuadraticConstraintBase* o,
+                       const LineSearchParameters& params, const Ref& y0,
+                       const Ref& y1, LineSearchOutput* output) {
+  int n = o->workspace_.n_;
+  double d0_0;
+  Eigen::VectorXd d0_1(n);
+  o->ComputeNewtonDirection(params.c0_weight, y0, &d0_0, d0_1);
+
+  double d1_0;
+  Eigen::VectorXd d1_1(n);
+  o->ComputeNewtonDirection(params.c1_weight, y1, &d1_0, d1_1);
+
+  double dt_0 = d1_0 - d0_0;
+  Eigen::VectorXd dt_1 = d1_1 - d0_1;
+
+  GetMinSqrtMu(params.dinf_upper_bound, d0_0,
+               SquaredNorm(o->Q_, d0_1, &o->workspace_.temp1_1), dt_0,
+               SquaredNorm(o->Q_, dt_1, &o->workspace_.temp1_1),
+               InnerProduct(o->Q_, dt_1, d0_1, &o->workspace_.temp1_1), output);
+  bool failure = false;
+  return failure;
+}
 void QuadraticConstraintBase::Initialize() {
   DenseMatrix W;
   A_gram_ = EvalAtQX(A1_, &W);
