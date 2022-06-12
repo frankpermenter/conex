@@ -194,23 +194,21 @@ void PrepareStep(QuadraticConstraintBase* o, const StepOptions& opt,
 
 namespace {
 
-Eigen::VectorXd SolveNormEquationsPlus(double a, double x0, double x1,
-                                       double y0, double y1, double k) {
-  Eigen::VectorXd t(2);
+std::vector<double> SolveNormEquationsPlus(double a, double x0, double x1,
+                                           double y0, double y1, double k) {
+  std::vector<double> t;
+  t.reserve(2);
   double a_squared = a * a;
   double under_radical = a_squared * y1 + 2 * a * k * y0 - 2 * a * x0 * y1 +
                          k * k - 2 * k * x0 * y0 + x0 * x0 * y1 + x1 * y0 * y0 -
                          x1 * y1;
 
   if (under_radical > 1e-16) {
-    t(0) = (-sqrt(under_radical) + a * y0 + k - x0 * y0) / (y0 * y0 - y1);
-    t(1) = (sqrt(under_radical) + a * y0 + k - x0 * y0) / (y0 * y0 - y1);
+    t.push_back((-sqrt(under_radical) + a * y0 + k - x0 * y0) / (y0 * y0 - y1));
+    t.push_back((sqrt(under_radical) + a * y0 + k - x0 * y0) / (y0 * y0 - y1));
   } else {
     if (under_radical >= 0) {
-      t.resize(1);
-      t(0) = (a * y0 + k - x0 * y0) / (y0 * y0 - y1);
-    } else {
-      t.resize(0);
+      t.push_back((a * y0 + k - x0 * y0) / (y0 * y0 - y1));
     }
   }
 
@@ -220,30 +218,32 @@ Eigen::VectorXd SolveNormEquationsPlus(double a, double x0, double x1,
 Eigen::VectorXd GetCandidateK(double dinfmax, double x0, double x1, double y0,
                               double y1, double k) {
   using Eigen::VectorXd;
-  auto t = SolveNormEquationsPlus(dinfmax, x0, x1, y0, y1, k);
+  std::vector<double> t = SolveNormEquationsPlus(dinfmax, x0, x1, y0, y1, k);
   std::vector<double> val;
   double eps = 0.01;
   for (int i = 0; i < t.size(); i++) {
+    double ti = t[i];
     double error_minus =
-        x0 + t(i) * y0 - sqrt(x1 + 2 * t(i) * k + t(i) * t(i) * y1) + dinfmax;
+        x0 + ti * y0 - sqrt(x1 + 2 * ti * k + ti * ti * y1) + dinfmax;
     double error_plus =
-        x0 + t(i) * y0 + sqrt(x1 + 2 * t(i) * k + t(i) * t(i) * y1) - dinfmax;
+        x0 + ti * y0 + sqrt(x1 + 2 * ti * k + ti * ti * y1) - dinfmax;
 
     if ((fabs(error_plus) < eps && error_minus > -eps) ||
         (fabs(error_minus) < eps && error_plus < eps)) {
-      val.push_back(t(i));
+      val.push_back(ti);
     }
   }
   t = SolveNormEquationsPlus(-dinfmax, x0, x1, y0, y1, k);
   for (int i = 0; i < t.size(); i++) {
+    double ti = t[i];
     double error_minus =
-        x0 + t(i) * y0 - sqrt(x1 + 2 * t(i) * k + t(i) * t(i) * y1) + dinfmax;
+        x0 + ti * y0 - sqrt(x1 + 2 * ti * k + ti * ti * y1) + dinfmax;
     double error_plus =
-        x0 + t(i) * y0 + sqrt(x1 + 2 * t(i) * k + t(i) * t(i) * y1) - dinfmax;
+        x0 + ti * y0 + sqrt(x1 + 2 * ti * k + ti * ti * y1) - dinfmax;
 
     if ((fabs(error_plus) < eps && error_minus > -eps) ||
         (fabs(error_minus) < eps && error_plus < eps)) {
-      val.push_back(t(i));
+      val.push_back(ti);
     }
   }
   return Eigen::Map<const VectorXd>(val.data(), static_cast<int>(val.size()));
