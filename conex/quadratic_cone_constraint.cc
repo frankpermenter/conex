@@ -159,25 +159,29 @@ void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o, const Ref& y,
   p->trace = (lamda_max + lamda_min);
 }
 
+void QuadraticConstraintBase::ComputeNewtonDirection(
+    const double c_weight, const Ref& y, double* d_q0,
+    Eigen::Ref<Eigen::VectorXd> d_q1) {
+  auto o = this;
+  auto workspace = &o->workspace_;
+  auto& minus_s_1 = o->workspace_.temp1_1;
+  double minus_s_0;
+  o->ComputeNegativeSlack(c_weight, y, &minus_s_0, &minus_s_1);
+
+  QuadraticRepresentation(o->workspace_.wsqrt_q1_norm_sqr,
+                          InnerProduct(o->Q_, workspace->sqrtW_1, minus_s_1,
+                                       &o->workspace_.temp3_1),
+                          *workspace->sqrtW_0, workspace->sqrtW_1, minus_s_0,
+                          minus_s_1, d_q0, &d_q1);
+  *d_q0 += 1;
+}
+
 void PrepareStep(QuadraticConstraintBase* o, const StepOptions& opt,
                  const Ref& y, StepInfo* info) {
-  auto* workspace = &o->workspace_;
-  // d =  e - Q(w^{1/2})(C-A^y)
   auto& d_q1 = o->workspace_.temp2_1;
   double& d_q0 = o->workspace_.d0;
 
-  {  // Use temp_1
-    auto& minus_s_1 = o->workspace_.temp1_1;
-    double minus_s_0;
-    o->ComputeNegativeSlack(opt.c_weight, y, &minus_s_0, &minus_s_1);
-
-    QuadraticRepresentation(o->workspace_.wsqrt_q1_norm_sqr,
-                            InnerProduct(o->Q_, workspace->sqrtW_1, minus_s_1,
-                                         &o->workspace_.temp2_1),
-                            *workspace->sqrtW_0, workspace->sqrtW_1, minus_s_0,
-                            minus_s_1, &d_q0, &d_q1);
-    d_q0 += 1;
-  }  // temp_1 is free
+  o->ComputeNewtonDirection(opt.c_weight, y, &d_q0, d_q1);
 
   // Compute rescaling.
   auto ev = Eigenvalues(Norm(o->Q_, d_q1, &o->workspace_.temp1_1), d_q0);

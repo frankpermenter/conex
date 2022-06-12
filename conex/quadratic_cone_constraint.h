@@ -61,6 +61,8 @@ class QuadraticConstraintBase : public ConstraintBase {
   const DenseMatrix Q_;
 
  private:
+  void ComputeNewtonDirection(double c_weight, const Ref& y, double* d0,
+                              Eigen::Ref<Eigen::VectorXd> d1);
   void ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y, double* minus_s_0,
                             Ref* minus_s_1);
   void GeodesicUpdate(const Ref& S, StepInfo* data);
