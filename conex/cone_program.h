@@ -107,6 +107,7 @@ class Program {
 
   int UpdateQuadraticCost(int cost_id, double value, int row, int col);
   int NumberOfQuadraticCosts() const;
+  bool contains_quadratic_costs() { return NumberOfQuadraticCosts() > 0; }
 
   friend DenseMatrix GetFeasibleObjective(Program* prog);
   friend bool Solve(Program& prog, const SolverConfiguration& config,
@@ -132,7 +133,6 @@ class Program {
   Eigen::VectorXd memory_;
   Eigen::VectorXd* workspace_data_;
   bool is_initialized = false;
-  bool contains_quadratic_costs_ = false;
   ConexStatus status_;
 };
 

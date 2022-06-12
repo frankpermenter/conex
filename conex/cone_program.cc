@@ -313,7 +313,7 @@ void Program::ClearLinearCosts() { kkt_system_manager_.ClearLinearCost(); }
 bool Solve(Program& prog, const SolverConfiguration& config,
            double* primal_variable) {
   CONEX_RETURN_ON_FAIL(
-      prog.contains_quadratic_costs_ == false ||
+      prog.contains_quadratic_costs() == false ||
           (config.enable_line_search && !config.enable_rescaling),
       "Must enable line search and disable rescaling for problems "
       "with quadratic costs.");
@@ -499,7 +499,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 
       if (temp < 0) {
         CONEX_RETURN_ON_FAIL(
-            !prog.contains_quadratic_costs_,
+            !prog.contains_quadratic_costs(),
             "Solver terminating with error: line-search failed.");
         temp = ComputeMuFromDivergence(prog.kkt_system_manager_, solver,
                                        prog.sys.AQc * c_scaling, c_scaling,
@@ -577,7 +577,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
       REPORT(d_2);
       REPORT(d_inf);
       double yQy = 0;
-      if (prog.contains_quadratic_costs_) {
+      if (prog.contains_quadratic_costs()) {
         double scale = newton_step_parameters.inv_sqrt_mu * c_scaling;
         scale *= scale;
         for (const auto& cost : prog.constraint_manager().quadratic_costs()) {
@@ -674,7 +674,6 @@ bool Solve(const DenseMatrix& b, Program& prog,
 
 CONEX_ID Program::AddQuadraticCost(const DenseMatrix& Q,
                                    const std::vector<int>& vars) {
-  contains_quadratic_costs_ = true;
   return kkt_system_manager_.AddQuadraticCost(Q, vars);
 }
 
