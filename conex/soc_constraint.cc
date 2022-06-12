@@ -23,10 +23,6 @@ SOCConstraint::SOCConstraint(const Eigen::MatrixXd& constraint_matrix,
   CONEX_DEMAND(constraint_matrix_.rows() == constraint_affine_.rows(),
                "Invalid SOC problem data.");
 }
-struct SpinFactorProduct {
-  Eigen::MatrixXd w1;
-  Eigen::VectorXd w0;
-};
 
 Eigen::VectorXd SolveNormEquationsPlus(double a, double x0, double x1,
                                        double y0, double y1, double k) {
@@ -107,22 +103,20 @@ Eigen::VectorXd GetCandidateK(double dinfmax, double x0, double x1, double y0,
   return Eigen::Map<const VectorXd>(val.data(), static_cast<int>(val.size()));
 }
 
-double GetMinSqrtMu(double dinfmax, const SpinFactorProduct& x,
-                    const SpinFactorProduct& y, LineSearchOutput* output) {
+double GetMinSqrtMu(double dinfmax, const double& x0,
+                    const double& x1_squared_norm, const double& y0,
+                    const double& y1_squared_norm, const double x1_dot_y1,
+                    LineSearchOutput* output) {
   double upper_bound = 1e45;
   double lower_bound = -1e45;
-  for (int i = 0; i < x.w0.size(); i++) {
-    auto t =
-        GetCandidateK(dinfmax, x.w0(i), x.w1.col(i).squaredNorm(), y.w0(i),
-                      y.w1.col(i).squaredNorm(), x.w1.col(i).dot(y.w1.col(i)));
+  auto t = GetCandidateK(dinfmax, x0, x1_squared_norm, y0, y1_squared_norm,
+                         x1_dot_y1);
 
-    if (t.size() < 2) {
-      // Force failure
-      upper_bound = -1;
-      lower_bound = 1;
-      break;
-    }
-
+  if (t.size() < 2) {
+    // Force failure
+    upper_bound = -1;
+    lower_bound = 1;
+  } else {
     double lower_bound_i = t.minCoeff();
     double upper_bound_i = t.maxCoeff();
 
@@ -132,52 +126,10 @@ double GetMinSqrtMu(double dinfmax, const SpinFactorProduct& x,
     if (upper_bound_i < upper_bound) {
       upper_bound = upper_bound_i;
     }
-
-#ifndef NDEBUG
-    for (int j = 0; j < t.size(); j++) {
-      double v0 = x.w0(i) + t(j) * y.w0(i);
-      VectorXd v1 = x.w1.col(i) + t(j) * y.w1.col(i);
-      double val = fabs(v0 + v1.norm());
-      if (fabs(v0 - v1.norm()) > val) {
-        val = fabs(v0 - v1.norm());
-      }
-      if (fabs(val - dinfmax) > 0.02) {
-        return -1;
-        throw std::runtime_error("Bad calculation.");
-      }
-    }
-#endif
   }
 
   output->lower_bound = lower_bound;
   output->upper_bound = upper_bound;
-
-#if 0
-  VectorXd d = x.w1 + lower_bound * y.w1;
-  VectorXd d0 = x.w0 + lower_bound * y.w0;
-  double test0 = std::fabs(d0(0)  - d.norm());
-  double test1 = std::fabs(d0(0)  + d.norm());
-  if (test1 > test0) {
-    test0 = test1;
-  }
-  DUMP(test0);
-  if (fabs(test0 - dinfmax) > 0.02) {
-    throw std::runtime_error("Bad calculation.");
-  }
-
-
-  d = x.w1 + upper_bound * y.w1;
-  d0 = x.w0 + upper_bound * y.w0;
-  test0 = std::fabs(d0(0)  - d.norm());
-  test1 = std::fabs(d0(0)  + d.norm());
-  if (test1 > test0) {
-    test0 = test1;
-  }
-  DUMP(test0);
-  if (fabs(test0 - dinfmax) > 0.02) {
-    throw std::runtime_error("Bad calculation.");
-  }
-#endif
 
   return upper_bound;
 }
@@ -448,39 +400,25 @@ VectorXd SOCConstraint::BuildNewtonDirection(double c_weight, const Ref& y) {
   d(0, 0) += 1;
   return d;
 }
-double InnerProduct(const SpinFactorProduct& x, const SpinFactorProduct& y) {
-  MatrixXd temp = x.w1.transpose() * y.w1;
-  double val = temp(0, 0);
-  if (temp.rows() > 1 || temp.cols() > 1) {
-    throw std::runtime_error("Expected trivial spin-factor product.");
-  }
-  val += x.w0(0) * y.w0(0);
-  return 2 * val;
-}
 
 bool PerformLineSearch(SOCConstraint* o, const LineSearchParameters& params,
                        const Ref& y0, const Ref& y1, LineSearchOutput* output) {
   int n = o->workspace_.n_;
 
   auto temp = o->BuildNewtonDirection(params.c0_weight, y0);
-  SpinFactorProduct d0;
-  d0.w0 = temp.head(1);
-  d0.w1 = temp.tail(n);
+  double d0_0 = temp(0);
+  VectorXd d0_1 = temp.tail(n);
 
   temp = o->BuildNewtonDirection(params.c1_weight, y1);
-  SpinFactorProduct d1;
-  d1.w0 = temp.head(1);
-  d1.w1 = temp.tail(n);
+  double d1_0 = temp(0);
+  VectorXd d1_1 = temp.tail(n);
 
-  SpinFactorProduct dt;
-  dt.w0 = d1.w0 - d0.w0;
-  dt.w1 = d1.w1 - d0.w1;
+  double dt_0 = d1_0 - d0_0;
+  VectorXd dt_1 = d1_1 - d0_1;
 
-  GetMinSqrtMu(params.dinf_upper_bound, d0, dt, output);
+  GetMinSqrtMu(params.dinf_upper_bound, d0_0, d0_1.squaredNorm(), dt_0,
+               dt_1.squaredNorm(), dt_1.dot(d0_1), output);
   bool failure = false;
-  // if (success == -1) {
-  //   failure = true;
-  // }
   return failure;
 }
 void ConstructSchurComplementSystem(SOCConstraint* o, bool initialize,
