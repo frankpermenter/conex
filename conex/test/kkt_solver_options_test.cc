@@ -119,6 +119,9 @@ GTEST_TEST(QR, SuccessWithDependentInequalityColumns) {
   config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
   Solve(b, prog, config, solution.data());
   EXPECT_EQ(prog.Status().solved, 0);
+  config.kkt_solver = CONEX_KKT_SOLVER_SPARSE_QR;
+  Solve(b, prog, config, solution.data());
+  EXPECT_EQ(prog.Status().solved, 1);
 }
 
 GTEST_TEST(QR, SuccessWithDependentEquations) {
@@ -156,6 +159,10 @@ GTEST_TEST(QR, SuccessWithDependentEquations) {
   EXPECT_NEAR((B * solution - d).norm(), 0, 1e-9);
 
   config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
+  Solve(b, prog, config, solution.data());
+  EXPECT_EQ(prog.Status().solved, 1);
+  EXPECT_NEAR((B * solution - d).norm(), 0, 1e-9);
+  config.kkt_solver = CONEX_KKT_SOLVER_SPARSE_QR;
   Solve(b, prog, config, solution.data());
   EXPECT_EQ(prog.Status().solved, 1);
   EXPECT_NEAR((B * solution - d).norm(), 0, 1e-9);
