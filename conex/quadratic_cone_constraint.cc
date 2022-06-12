@@ -141,20 +141,13 @@ void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o, const Ref& y,
   double minus_s_0;
   o->ComputeNegativeSlack(c_weight, y, &minus_s_0, &minus_s_1);
 
-  double wsqrt_q0 = *o->workspace_.W0;
-  auto& wsqrt_q1 = o->workspace_.temp3_1;
-  wsqrt_q1 = o->workspace_.W1;
-
-  double temp = Norm(o->Q_, wsqrt_q1, &workspace->temp2_1);
-  Sqrt(temp, &wsqrt_q0, &wsqrt_q1);
-
   auto& Ws_1 = workspace->temp2_1;
   double Ws_0;
   QuadraticRepresentation(
-      SquaredNorm(o->Q_, wsqrt_q1, &workspace->temp2_1),
-      InnerProduct(o->Q_, wsqrt_q1, minus_s_1, &workspace->temp2_1), wsqrt_q0,
-      wsqrt_q1, minus_s_0, minus_s_1, &Ws_0, &Ws_1);
-
+      o->workspace_.wsqrt_q1_norm_sqr,
+      InnerProduct(o->Q_, workspace->sqrtW_1, minus_s_1, &workspace->temp2_1),
+      *workspace->sqrtW_0, workspace->sqrtW_1, minus_s_0, minus_s_1, &Ws_0,
+      &Ws_1);
   auto ev = Eigenvalues(Norm(o->Q_, Ws_1, &workspace->temp1_1), Ws_0);
 
   const double lamda_max = -ev.minCoeff();
@@ -168,27 +161,21 @@ void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o, const Ref& y,
 
 void PrepareStep(QuadraticConstraintBase* o, const StepOptions& opt,
                  const Ref& y, StepInfo* info) {
+  auto* workspace = &o->workspace_;
   // d =  e - Q(w^{1/2})(C-A^y)
-  double& wsqrt_q0 = *o->workspace_.W0;
-  auto& wsqrt_q1 = o->workspace_.temp3_1;
   auto& d_q1 = o->workspace_.temp2_1;
   double& d_q0 = o->workspace_.d0;
-  double& wsqrt_q1_norm_sqr = o->workspace_.wsqrt_q1_norm_sqr;
 
   {  // Use temp_1
     auto& minus_s_1 = o->workspace_.temp1_1;
     double minus_s_0;
     o->ComputeNegativeSlack(opt.c_weight, y, &minus_s_0, &minus_s_1);
 
-    wsqrt_q1 = o->workspace_.W1;
-    Sqrt(Norm(o->Q_, wsqrt_q1, &o->workspace_.temp2_1), &wsqrt_q0, &wsqrt_q1);
-
-    wsqrt_q1_norm_sqr = SquaredNorm(o->Q_, wsqrt_q1, &o->workspace_.temp2_1);
-
-    QuadraticRepresentation(
-        wsqrt_q1_norm_sqr,
-        InnerProduct(o->Q_, wsqrt_q1, minus_s_1, &o->workspace_.temp2_1),
-        wsqrt_q0, wsqrt_q1, minus_s_0, minus_s_1, &d_q0, &d_q1);
+    QuadraticRepresentation(o->workspace_.wsqrt_q1_norm_sqr,
+                            InnerProduct(o->Q_, workspace->sqrtW_1, minus_s_1,
+                                         &o->workspace_.temp2_1),
+                            *workspace->sqrtW_0, workspace->sqrtW_1, minus_s_0,
+                            minus_s_1, &d_q0, &d_q1);
     d_q0 += 1;
   }  // temp_1 is free
 
@@ -209,8 +196,8 @@ void QuadraticConstraintBase::Initialize() {
 bool TakeStep(QuadraticConstraintBase* o, const StepOptions& options) {
   auto& d_q1 = o->workspace_.temp2_1;
   double& d_q0 = o->workspace_.d0;
-  double& wsqrt_q0 = *o->workspace_.W0;
-  auto& wsqrt_q1 = o->workspace_.temp3_1;
+  double& wsqrt_q0 = *o->workspace_.sqrtW_0;
+  auto& wsqrt_q1 = o->workspace_.sqrtW_1;
   double& wsqrt_q1_norm_sqr = o->workspace_.wsqrt_q1_norm_sqr;
   if (options.step_size != 1) {
     d_q0 = options.step_size * d_q0;
@@ -225,6 +212,15 @@ bool TakeStep(QuadraticConstraintBase* o, const StepOptions& options) {
       wsqrt_q1_norm_sqr,
       InnerProduct(o->Q_, wsqrt_q1, expd_q1, &o->workspace_.temp1_1), wsqrt_q0,
       wsqrt_q1, expd_q0, expd_q1, o->workspace_.W0, &o->workspace_.W1);
+
+  *o->workspace_.sqrtW_0 = *o->workspace_.W0;
+  o->workspace_.sqrtW_1 = o->workspace_.W1;
+  o->workspace_.wsqrt_q1_norm_sqr =
+      SquaredNorm(o->Q_, o->workspace_.sqrtW_1, &o->workspace_.temp2_1);
+  Sqrt(std::sqrt(o->workspace_.wsqrt_q1_norm_sqr), o->workspace_.sqrtW_0,
+       &o->workspace_.sqrtW_1);
+  o->workspace_.wsqrt_q1_norm_sqr =
+      SquaredNorm(o->Q_, o->workspace_.sqrtW_1, &o->workspace_.temp2_1);
   return true;
 }
 
@@ -286,6 +282,9 @@ void ConstructSchurComplementSystem(QuadraticConstraintBase* o, bool initialize,
 void SetIdentity(QuadraticConstraintBase* o) {
   *o->workspace_.W0 = 1;
   o->workspace_.W1.setZero();
+  *o->workspace_.sqrtW_0 = 1;
+  o->workspace_.sqrtW_1.setZero();
+  o->workspace_.wsqrt_q1_norm_sqr = 0;
 }
 
 }  // namespace conex
