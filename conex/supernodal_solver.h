@@ -74,7 +74,7 @@ class SparseTriangularMatrix {
         supernodes(workspace_.diagonal),
         snodes(workspace_.snodes),
         separator(workspace_.off_diagonal) {
-    assert(memory_.size() >= SizeOf(workspace_));
+    CONEX_CHECK(memory_.size() >= SizeOf(workspace_));
     Initialize(&workspace_, memory_.data());
   }
 
