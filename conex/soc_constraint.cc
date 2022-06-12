@@ -24,6 +24,7 @@ SOCConstraint::SOCConstraint(const Eigen::MatrixXd& constraint_matrix,
                "Invalid SOC problem data.");
 }
 
+namespace {
 Eigen::VectorXd SolveNormEquationsPlus(double a, double x0, double x1,
                                        double y0, double y1, double k) {
   Eigen::VectorXd t(2);
@@ -39,31 +40,6 @@ Eigen::VectorXd SolveNormEquationsPlus(double a, double x0, double x1,
     if (under_radical >= 0) {
       t.resize(1);
       t(0) = (a * y0 + k - x0 * y0) / (y0 * y0 - y1);
-    } else {
-      t.resize(0);
-    }
-  }
-
-  return t;
-}
-
-Eigen::VectorXd SolveNormEquationsMinus(double a, double x0, double x1,
-                                        double y0, double y1, double k) {
-  Eigen::VectorXd t(2);
-  double a_squared = a * a;
-  double under_radical = a_squared * y1 + 2 * a * k * y0 - 2 * a * x0 * y1 +
-                         k * k - 2 * k * x0 * y0 + x0 * x0 * y1 + x1 * y0 * y0 -
-                         x1 * y1;
-
-  if (under_radical > 1e-16) {
-    t(0) =
-        (-sqrt(under_radical) + a * y0 + k - x0 * y0) / (y0 * y0 - y1 + 1e-15);
-    t(1) =
-        (sqrt(under_radical) + a * y0 + k - x0 * y0) / (y0 * y0 - y1 + 1e-15);
-  } else {
-    if (under_radical >= 0) {
-      t.resize(1);
-      t(0) = (a * y0 + k - x0 * y0) / (y0 * y0 - y1 + 1e-15);
     } else {
       t.resize(0);
     }
@@ -312,6 +288,7 @@ double NormInf(double x0, const DenseMatrix& x) {
     return std::fabs(ev(1));
   }
 }
+}  // namespace
 
 void SOCConstraint::ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y,
                                          Ref* minus_s) {
@@ -421,6 +398,7 @@ bool PerformLineSearch(SOCConstraint* o, const LineSearchParameters& params,
   bool failure = false;
   return failure;
 }
+
 void ConstructSchurComplementSystem(SOCConstraint* o, bool initialize,
                                     SchurComplementSystem* sys) {
   int n = o->workspace_.n_;
