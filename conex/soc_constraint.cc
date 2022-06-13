@@ -395,6 +395,9 @@ bool PerformLineSearch(SOCConstraint* o, const LineSearchParameters& params,
 
   GetMinSqrtMu(params.dinf_upper_bound, d0_0, d0_1.squaredNorm(), dt_0,
                dt_1.squaredNorm(), dt_1.dot(d0_1), output);
+  output->dt_squared_norm = 2 * (dt_0 * dt_0 + dt_1.dot(dt_1));
+  output->d0_squared_norm = 2 * (d0_0 * d0_0 + d0_1.dot(d0_1));
+  output->d0_dot_dt = 2 * (d0_0 * dt_0 + d0_1.dot(dt_1));
   bool failure = false;
   return failure;
 }

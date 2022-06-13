@@ -80,6 +80,9 @@ bool FindMinimumMu(const T& d0, const T& delta, double dinfmax,
       lower_bound = lower_bound_i;
     }
   }
+  output->d0_dot_dt = d0.col(0).dot(delta.col(0));
+  output->dt_squared_norm = delta.col(0).dot(delta.col(0));
+  output->d0_squared_norm = d0.col(0).dot(d0.col(0));
 
   bool success = true;
   if (lower_bound > upper_bound) {

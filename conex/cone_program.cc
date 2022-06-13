@@ -163,6 +163,9 @@ LineSearchOutput ComputeMuFromLineSearch(ConstraintManager& constraints,
     Ref z2(ysegment2.data(), ysegment2.rows(), 1);
     bool failure =
         PerformLineSearch(ci->constraint(), params, z1, z2, &output_i);
+    output.dt_squared_norm += output_i.dt_squared_norm;
+    output.d0_squared_norm += output_i.d0_squared_norm;
+    output.d0_dot_dt += output_i.d0_dot_dt;
     if (failure) {
       output.failed = true;
       return output;
@@ -494,7 +497,16 @@ bool Solve(Program& prog, const SolverConfiguration& config,
             prog.sys.AQc * c_scaling, c_scaling, b * b_scaling, prog.sys.AW,
             &y);
         if (output.failed) {
-          temp = newton_step_parameters.inv_sqrt_mu;
+          temp = -output.d0_dot_dt / output.dt_squared_norm;
+          // For debugging, print the predicted value of the d2 norm.
+          // This should agree with the norm that is reported.
+          // double norm = output.d0_squared_norm +
+          //               (temp * temp) * output.dt_squared_norm +
+          //               2 * temp * output.d0_dot_dt;
+          // DUMP(std::sqrt(norm));
+          if (temp < 0) {
+            temp = newton_step_parameters.inv_sqrt_mu;
+          }
         } else {
           temp = output.upper_bound;
         }

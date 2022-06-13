@@ -525,7 +525,7 @@ void GraphOfConvexSets() {
   // config.kkt_solver = conex::CONEX_KKT_SOLVER_SPARSE_QR;
   config.kkt_solver = conex::CONEX_KKT_SOLVER_SUPERNODAL_QR;
   // config.enable_line_search = !psd_constraints_found;
-  config.enable_line_search = 0;
+  config.enable_line_search = 1;
   config.enable_rescaling = !config.enable_line_search;
   config.inv_sqrt_mu_max = 2000;
   config.maximum_mu = 100;
@@ -538,6 +538,7 @@ void GraphOfConvexSets() {
 
 int main() {
   conex::GraphOfConvexSets();
+  return 0;
   conex::SimpleBadLDLT();
   conex::EqualityConstraintForceEqualityConstraintsToLeafNodes(
       false /*fill-in induced failure*/);

@@ -301,9 +301,20 @@ bool PerformLineSearch(QuadraticConstraintBase* o,
                SquaredNorm(o->Q_, d0_1, &o->workspace_.temp1_1), dt_0,
                SquaredNorm(o->Q_, dt_1, &o->workspace_.temp1_1),
                InnerProduct(o->Q_, dt_1, d0_1, &o->workspace_.temp1_1), output);
+
+  output->d0_dot_dt = 2 * (d0_0 * dt_0 + InnerProduct(o->Q_, dt_1, d0_1,
+                                                      &o->workspace_.temp1_1));
+  output->dt_squared_norm =
+      2 *
+      (dt_0 * dt_0 + InnerProduct(o->Q_, dt_1, dt_1, &o->workspace_.temp1_1));
+  output->d0_squared_norm =
+      2 *
+      (d0_0 * d0_0 + InnerProduct(o->Q_, d0_1, d0_1, &o->workspace_.temp1_1));
+
   bool failure = false;
   return failure;
 }
+
 void QuadraticConstraintBase::Initialize() {
   DenseMatrix W;
   A_gram_ = EvalAtQX(A1_, &W);
