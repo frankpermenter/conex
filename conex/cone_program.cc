@@ -135,11 +135,12 @@ void ConstructSchurComplementSystem(std::vector<T*>* c, bool initialize,
 //            (b * b_scaling + prog.sys.AQc * c_scaling) -
 //        2 * prog.sys.AW;
 
-double ComputeMuFromLineSearch(ConstraintManager& constraints,
-                               std::unique_ptr<KKTSolverBase>& solver,
-                               double dinf_upper_bound, const DenseMatrix& AQc,
-                               double c_weight, const DenseMatrix& b,
-                               const DenseMatrix& AW, Ref* y0) {
+LineSearchOutput ComputeMuFromLineSearch(ConstraintManager& constraints,
+                                         std::unique_ptr<KKTSolverBase>& solver,
+                                         double dinf_upper_bound,
+                                         const DenseMatrix& AQc,
+                                         double c_weight, const DenseMatrix& b,
+                                         const DenseMatrix& AW, Ref* y0) {
   *y0 = -2 * AW;
   solver->SolveInPlace(*y0);
 
@@ -163,7 +164,8 @@ double ComputeMuFromLineSearch(ConstraintManager& constraints,
     bool failure =
         PerformLineSearch(ci->constraint(), params, z1, z2, &output_i);
     if (failure) {
-      return -1;
+      output.failed = true;
+      return output;
     }
     if (output_i.lower_bound > output.lower_bound) {
       output.lower_bound = output_i.lower_bound;
@@ -173,11 +175,10 @@ double ComputeMuFromLineSearch(ConstraintManager& constraints,
     }
     i++;
   }
-  if (output.lower_bound <= output.upper_bound) {
-    return output.upper_bound;
-  } else {
-    return -1;
+  if (output.lower_bound > output.upper_bound) {
+    output.failed = true;
   }
+  return output;
 }
 
 // Finds the k that maximizes the denominator of the divergence upperbound:
@@ -488,12 +489,14 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     if (update_mu) {
       double temp = -1;
       if (config.enable_line_search) {
-        temp = ComputeMuFromLineSearch(prog.kkt_system_manager_, solver,
-                                       config.dinf_upper_bound,
-                                       prog.sys.AQc * c_scaling, c_scaling,
-                                       b * b_scaling, prog.sys.AW, &y);
-        if (temp < 0) {
+        LineSearchOutput output = ComputeMuFromLineSearch(
+            prog.kkt_system_manager_, solver, config.dinf_upper_bound,
+            prog.sys.AQc * c_scaling, c_scaling, b * b_scaling, prog.sys.AW,
+            &y);
+        if (output.failed) {
           temp = newton_step_parameters.inv_sqrt_mu;
+        } else {
+          temp = output.upper_bound;
         }
       }
 

@@ -45,6 +45,9 @@ struct LineSearchParameters {
 struct LineSearchOutput {
   double upper_bound = std::numeric_limits<double>::max();
   double lower_bound = -std::numeric_limits<double>::max();
+  double d0_dot_dt = 0;
+  double dt_squared_norm = 0;
+  bool failed = false;
 };
 
 using DenseMatrix = Eigen::MatrixXd;
