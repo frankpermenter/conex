@@ -161,7 +161,7 @@ void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o, const Ref& y,
 
 void QuadraticConstraintBase::ComputeNewtonDirection(
     const double c_weight, const Ref& y, double* d_q0,
-    Eigen::Ref<Eigen::VectorXd> d_q1) {
+    Eigen::Ref<Eigen::MatrixXd> d_q1) {
   auto o = this;
   auto workspace = &o->workspace_;
   auto& minus_s_1 = o->workspace_.temp1_1;
@@ -221,7 +221,7 @@ Eigen::VectorXd GetCandidateK(double dinfmax, double x0, double x1, double y0,
   std::vector<double> t = SolveNormEquationsPlus(dinfmax, x0, x1, y0, y1, k);
   std::vector<double> val;
   double eps = 0.01;
-  for (int i = 0; i < t.size(); i++) {
+  for (size_t i = 0; i < t.size(); i++) {
     double ti = t[i];
     double error_minus =
         x0 + ti * y0 - sqrt(x1 + 2 * ti * k + ti * ti * y1) + dinfmax;
@@ -234,7 +234,7 @@ Eigen::VectorXd GetCandidateK(double dinfmax, double x0, double x1, double y0,
     }
   }
   t = SolveNormEquationsPlus(-dinfmax, x0, x1, y0, y1, k);
-  for (int i = 0; i < t.size(); i++) {
+  for (size_t i = 0; i < t.size(); i++) {
     double ti = t[i];
     double error_minus =
         x0 + ti * y0 - sqrt(x1 + 2 * ti * k + ti * ti * y1) + dinfmax;
