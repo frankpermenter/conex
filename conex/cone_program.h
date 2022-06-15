@@ -35,6 +35,8 @@ class Program {
     return kkt_system_manager_.GetNumberOfVariables();
   }
 
+  Eigen::MatrixXd GetDualVariable(int i);
+
   template <typename T>
   void GetDualVariable(int i, T* xi) {
     int cnt = 0;

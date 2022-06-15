@@ -759,4 +759,15 @@ Eigen::VectorXd Solve(Program& prog, const SolverConfiguration& config) {
   return y;
 }
 
+Eigen::MatrixXd Program::GetDualVariable(int i) {
+  auto ci = kkt_system_manager_.cone_inequalities().at(i);
+  Eigen::VectorXd xi(ci->constraint()->dual_variable_size());
+  ci->constraint()->get_dual_variable(xi.data());
+  if (!status_.primal_infeasible) {
+    xi.array() /=
+        (stats->sqrt_inv_mu[stats->num_iter - 1] * stats->b_scaling());
+  }
+  return xi;
+}
+
 }  // namespace conex
