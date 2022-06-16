@@ -24,7 +24,9 @@ CONEX_STATUS UpdateAffineTerm(T*, double, int, int, int) {
 }
 
 template <typename T>
-bool PerformLineSearch(T*, const LineSearchParameters&, const Ref&, const Ref&,
+bool PerformLineSearch(T*, const LineSearchParameters&,
+                       const Eigen::Ref<const Eigen::MatrixXd>&,
+                       const Eigen::Ref<const Eigen::MatrixXd>&,
                        LineSearchOutput*) {
   CONEX_RETURN_ON_FAIL(false, "Constraint does not support line search.");
 }
@@ -96,7 +98,8 @@ class Constraint {
 
   friend bool PerformLineSearch(Constraint* o,
                                 const LineSearchParameters& params,
-                                const Ref& y0, const Ref& y1,
+                                const Eigen::Ref<const Eigen::MatrixXd>& y0,
+                                const Eigen::Ref<const Eigen::MatrixXd>& y1,
                                 LineSearchOutput* output) {
     return o->model->do_perform_line_search(params, y0, y1, output);
   }
@@ -121,9 +124,11 @@ class Constraint {
     virtual CONEX_STATUS do_update_affine_term(double val, int row, int col,
                                                int hyper_complex_dim) = 0;
 
-    virtual bool do_perform_line_search(const LineSearchParameters& params,
-                                        const Ref& y0, const Ref& y1,
-                                        LineSearchOutput* output) = 0;
+    virtual bool do_perform_line_search(
+        const LineSearchParameters& params,
+        const Eigen::Ref<const Eigen::MatrixXd>& y0,
+        const Eigen::Ref<const Eigen::MatrixXd>& y1,
+        LineSearchOutput* output) = 0;
 
     virtual int do_rank() = 0;
     virtual ~Concept() = default;
@@ -185,7 +190,8 @@ class Constraint {
     }
 
     bool do_perform_line_search(const LineSearchParameters& params,
-                                const Ref& y0, const Ref& y1,
+                                const Eigen::Ref<const Eigen::MatrixXd>& y0,
+                                const Eigen::Ref<const Eigen::MatrixXd>& y1,
                                 LineSearchOutput* output) override {
       return PerformLineSearch(data, params, y0, y1, output);
     }

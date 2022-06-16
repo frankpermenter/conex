@@ -52,7 +52,7 @@ DenseMatrix T::EvalAtQX(const DenseMatrix& X, DenseMatrix* QX) {
   Y.bottomRows(1) = -.5 * X.topRows(1);
   return Y;
 }
-DenseMatrix T::EvalAtQX(const DenseMatrix& X, Ref*) {
+DenseMatrix T::EvalAtQX(const DenseMatrix& X, NonConstRefType) {
   int n = Q_.rows() - 1;
   const auto& Qi = Q_.bottomRightCorner(n, n);
   DenseMatrix Y(n + 1, X.cols());

@@ -5,6 +5,8 @@
 
 namespace conex {
 
+using RefType = Eigen::Ref<const Eigen::MatrixXd>;
+using NonConstRefType = Eigen::Ref<Eigen::MatrixXd>;
 class QuadraticConstraintBase : public ConstraintBase {
   using StorageType = DenseMatrix;
 
@@ -40,15 +42,15 @@ class QuadraticConstraintBase : public ConstraintBase {
   friend int Rank(const QuadraticConstraintBase&) { return 2; };
   friend void SetIdentity(QuadraticConstraintBase* o);
   friend void PrepareStep(QuadraticConstraintBase* o, const StepOptions& opt,
-                          const Ref& y, StepInfo* data);
+                          const RefType& y, StepInfo* data);
 
   friend bool PerformLineSearch(QuadraticConstraintBase* o,
                                 const LineSearchParameters& params,
-                                const Ref& y0, const Ref& y1,
+                                const RefType& y0, const RefType& y1,
                                 LineSearchOutput* output);
   friend bool TakeStep(QuadraticConstraintBase* o, const StepOptions& opt);
   friend void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o,
-                                          const Ref& y, double c_weight,
+                                          const RefType& y, double c_weight,
                                           WeightedSlackEigenvalues* p);
   friend void ConstructSchurComplementSystem(QuadraticConstraintBase* o,
                                              bool initialize,
@@ -59,18 +61,18 @@ class QuadraticConstraintBase : public ConstraintBase {
  protected:
   virtual void Initialize();
   virtual DenseMatrix EvalAtQX(const DenseMatrix& X, DenseMatrix* QX);
-  virtual DenseMatrix EvalAtQX(const DenseMatrix& X, Ref* QX);
-  double EvalCQX(const DenseMatrix& X, Ref* QX);
+  virtual DenseMatrix EvalAtQX(const DenseMatrix& X, NonConstRefType QX);
+  double EvalCQX(const DenseMatrix& X, NonConstRefType QX);
 
   const DenseMatrix Q_;
 
  private:
-  void ComputeNewtonDirection(double c_weight, const Ref& y, double* d0,
-                              Eigen::Ref<Eigen::MatrixXd> d1);
-  void ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y, double* minus_s_0,
-                            Ref* minus_s_1);
-  void GeodesicUpdate(const Ref& S, StepInfo* data);
-  void AffineUpdate(const Ref& S);
+  void ComputeNewtonDirection(const StepOptions opts, const RefType& y,
+                              double* d0, Eigen::Ref<Eigen::MatrixXd> d1);
+  void ComputeNegativeSlack(double inv_sqrt_mu, const RefType& y,
+                            double* minus_s_0, NonConstRefType minus_s_1);
+  void GeodesicUpdate(const RefType& S, StepInfo* data);
+  void AffineUpdate(const RefType& S);
 
   const int n_ = 0;
   WorkspaceSOC workspace_;
@@ -94,7 +96,7 @@ class QuadraticEpigraph : public QuadraticConstraintBase {
  private:
   void Initialize() override;
   DenseMatrix EvalAtQX(const DenseMatrix& X, DenseMatrix* QX) override;
-  DenseMatrix EvalAtQX(const DenseMatrix& X, Ref* QX) override;
+  DenseMatrix EvalAtQX(const DenseMatrix& X, NonConstRefType QX) override;
 };
 
 }  // namespace conex

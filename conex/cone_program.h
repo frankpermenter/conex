@@ -112,6 +112,10 @@ class Program {
   bool contains_quadratic_costs() { return NumberOfQuadraticCosts() > 0; }
 
   friend DenseMatrix GetFeasibleObjective(Program* prog);
+
+  friend void SolveHSD(Program& prog, const Eigen::VectorXd& bin,
+                       const SolverConfiguration& config, Eigen::VectorXd* yout,
+                       double* tau, double* kappa);
   friend bool Solve(Program& prog, const SolverConfiguration& config,
                     double* primal_variable);
   friend bool Solve(const DenseMatrix& b, Program& prog,
@@ -125,6 +129,12 @@ class Program {
   const ConstraintManager& constraint_manager() const {
     return kkt_system_manager_;
   };
+
+  ConstraintManager& constraint_manager() { return kkt_system_manager_; };
+  const SchurComplementSystem& kkt_system_residual() const { return sys; };
+
+  SchurComplementSystem& kkt_system_residual() { return sys; };
+  KKTSolverBase* kkt_solver() { return solver.get(); };
 
  private:
   ConstraintManager kkt_system_manager_;
@@ -149,5 +159,16 @@ Eigen::VectorXd Solve(
 bool Solve(const DenseMatrix& b, Program& prog,
            const SolverConfiguration& config, double* primal_variable);
 
+void AssembleSchurComplementResiduals(const ConstraintManager& kkt,
+                                      SchurComplementSystem* s);
+
+void PrepareStep(ConstraintManager* kkt,
+                 const StepOptions& newton_step_parameters, const Ref& y,
+                 StepInfo* info);
+
 bool Initialize(Program& prog, const SolverConfiguration& config);
+
+void TakeStep(std::vector<SupernodalAssemblerConstraint*>* constraints,
+              const StepOptions& newton_step_parameters);
+
 }  // namespace conex

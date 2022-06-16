@@ -4,6 +4,7 @@
 #include "conex/equality_constraint.h"
 #include "conex/linear_constraint.h"
 #include "conex/quadratic_cone_constraint.h"
+#include "conex/self_dual_embedding.h"
 #include "conex/serialize.h"
 #include <Eigen/Dense>
 
@@ -446,8 +447,9 @@ void LPFailSlater(int number_of_implicit_equations) {
   xref = xref.array().abs();
   b = A.transpose() * xref;
 
-  DenseMatrix y(m, 1);
-  Solve(b, prog, config, y.data());
+  prog.AddLinearCost(-b);
+  config.kkt_solver = CONEX_KKT_SOLVER_SPARSE_QR;
+  VectorXd y = SolveHSD(prog, config);
 }
 // Builds the program with x1 = x2 constraint
 // with no quadratic penalty or inequality on x2 if
@@ -500,16 +502,14 @@ void SimpleBadLDLT() {
 }
 
 void GraphOfConvexSets() {
-  std::ifstream t("conex/test/graph_of_convex_sets_fails_slater.json");
+  // std::ifstream t("conex/test/graph_of_convex_sets_fails_slater.json");
+  std::ifstream t("conex/test/maze_example_2.json");
   std::stringstream buffer;
   ConstraintManager c;
   buffer << t.rdbuf();
   JsonObject prog = ParseJsonString(buffer.str());
-  DUMP(prog["constraints"]["0"]["id"].value());
-  DUMP(prog["num_constraints"].value());
   DeserializeConeProgram(prog, &c);
   Eigen::VectorXd y(c.GetNumberOfVariables());
-  DUMP(c.GetLinearCostVector());
   Program program(std::move(c));
 
   SolverConfiguration config;
@@ -519,11 +519,11 @@ void GraphOfConvexSets() {
   config.divergence_upper_bound = 100;
   config.final_centering_steps = 5;
   config.final_centering_tolerance = 1;
-  config.max_iterations = 200;
+  config.max_iterations = 60;
   config.verbose = true;
-  config.dinf_upper_bound = 1.1;
-  // config.kkt_solver = conex::CONEX_KKT_SOLVER_SPARSE_QR;
-  config.kkt_solver = conex::CONEX_KKT_SOLVER_SUPERNODAL_QR;
+  config.dinf_upper_bound = 1.0;
+  config.kkt_solver = conex::CONEX_KKT_SOLVER_SPARSE_QR;
+  // config.kkt_solver = conex::CONEX_KKT_SOLVER_SUPERNODAL_QR;
   // config.enable_line_search = !psd_constraints_found;
   config.enable_line_search = 1;
   config.enable_rescaling = !config.enable_line_search;
@@ -531,13 +531,17 @@ void GraphOfConvexSets() {
   config.maximum_mu = 100;
   config.kkt_error_tolerance = 4;
 
-  Solve(program, config, y.data());
+  // Solve(program, config, y.data());
+  // y = Solve(program, config);
+  y = SolveHSD(program, config);
+  throw std::runtime_error("dfdf");
 }
 
 }  // namespace conex
 
 int main() {
-  conex::GraphOfConvexSets();
+  conex::LPFailSlater(1 /*num implicit eqs*/);
+  // conex::GraphOfConvexSets();
   return 0;
   conex::SimpleBadLDLT();
   conex::EqualityConstraintForceEqualityConstraintsToLeafNodes(

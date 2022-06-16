@@ -23,10 +23,10 @@ struct IterationStats {
 
 struct StepOptions {
   bool affine = true;
-  double inv_sqrt_mu = 0;
-  // Take step of form  w_1 e + Q(w/2)(A^y - w_2 c)
+  // Take step of form  w_1 e + Q(w/2)(A^y - w_2 c + w_weight * e)
   double c_weight = 0;
-  double e_weight = 0;
+  double e_weight = 1;
+  double w_weight = 0;
   double step_size = 1;
 };
 
@@ -36,8 +36,8 @@ struct StepInfo {
 };
 
 struct LineSearchParameters {
-  double c0_weight;
-  double c1_weight;
+  StepOptions options_0;
+  StepOptions options_1;
   bool primal = true;
   bool dual = true;
   double dinf_upper_bound;
@@ -57,7 +57,7 @@ struct WorkspaceSchurComplement {
   WorkspaceSchurComplement() {}
 
   static constexpr int size_of(int m, bool residual_only) {
-    int size = 2 * get_size_aligned(m);
+    int size = 4 * get_size_aligned(m);
     if (!residual_only) {
       size += get_size_aligned(m * m);
     }
@@ -73,9 +73,11 @@ struct WorkspaceSchurComplement {
     int m = o->m_;
     new (&o->AW) Map(data, m, 1);
     new (&o->AQc) Map(data + 1 * get_size_aligned(m), m, 1);
+    new (&o->AQe) Map(data + 2 * get_size_aligned(m), m, 1);
+    new (&o->Ae) Map(data + 3 * get_size_aligned(m), m, 1);
 
     if (!o->residual_only_) {
-      new (&o->G) Map(data + 2 * get_size_aligned(m), m, m);
+      new (&o->G) Map(data + 4 * get_size_aligned(m), m, m);
     }
 
     o->initialized = true;
@@ -86,15 +88,21 @@ struct WorkspaceSchurComplement {
       G.setZero();
     }
     AW.setZero();
+    AQe.setZero();
     AQc.setZero();
+    Ae.setZero();
     inner_product_of_w_and_c = 0;
+    inner_product_of_c_and_e = 0;
     inner_product_of_c_and_Qc = 0;
+    inner_product_of_c_and_Qe = 0;
   }
 
   friend void print(const WorkspaceSchurComplement& o) {
     DUMP(o.initialized);
     DUMP(o.AW);
     DUMP(o.AQc);
+    DUMP(o.AQe);
+    DUMP(o.Ae);
   }
 
   void InitializeWorkspace(double* data) { Initialize(this, data); }
@@ -105,6 +113,11 @@ struct WorkspaceSchurComplement {
   Eigen::Map<DenseMatrix, Eigen::Aligned> G{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> AW{NULL, 0, 0};
   Eigen::Map<DenseMatrix, Eigen::Aligned> AQc{NULL, 0, 0};
+  // Self-dual embedding
+  double inner_product_of_c_and_e;
+  double inner_product_of_c_and_Qe;
+  Eigen::Map<DenseMatrix, Eigen::Aligned> Ae{NULL, 0, 0};
+  Eigen::Map<DenseMatrix, Eigen::Aligned> AQe{NULL, 0, 0};
   int m_;
   bool initialized = false;
   bool residual_only_ = false;

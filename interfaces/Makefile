@@ -34,6 +34,7 @@ SOURCES = approximate_eigenvalues.cc \
 	  linear_constraint.cc \
 	  psd_constraint.cc \
 	  quadratic_cone_constraint.cc \
+	  self_dual_embedding.cc \
 	  soc_constraint.cc \
 	  static_subsystem.cc \
 	  supernodal_solver.cc \

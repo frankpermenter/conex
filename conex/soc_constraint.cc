@@ -290,21 +290,20 @@ double NormInf(double x0, const DenseMatrix& x) {
 }
 }  // namespace
 
-void SOCConstraint::ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y,
-                                         Ref* minus_s) {
-  minus_s->noalias() = (constraint_matrix_)*y;
-  minus_s->noalias() -= (constraint_affine_)*inv_sqrt_mu;
+void SOCConstraint::ComputeNegativeSlack(double inv_sqrt_mu, const RefType& y,
+                                         NonConstRefType minus_s) {
+  minus_s.noalias() = (constraint_matrix_)*y;
+  minus_s.noalias() -= (constraint_affine_)*inv_sqrt_mu;
 }
 
 // Combine this with PrepareStep
-void GetWeightedSlackEigenvalues(SOCConstraint* o, const Ref& y,
+void GetWeightedSlackEigenvalues(SOCConstraint* o, const RefType& y,
                                  double c_weight, WeightedSlackEigenvalues* p) {
   auto* workspace = &o->workspace_;
   int n = workspace->n_;
-  Eigen::VectorXd minus_s_data(n + 1);
-  Ref minus_s(minus_s_data.data(), n + 1, 1);
+  Eigen::VectorXd minus_s(n + 1);
   Eigen::VectorXd Ws(n + 1);
-  o->ComputeNegativeSlack(c_weight, y, &minus_s);
+  o->ComputeNegativeSlack(c_weight, y, minus_s);
 
   auto wsqrt = Sqrt(*o->workspace_.W0, o->workspace_.W1);
   Ws = QuadraticRepresentation(wsqrt, minus_s);
@@ -327,9 +326,8 @@ bool TakeStep(SOCConstraint* o, const StepOptions& opt) {
   auto d0 = o->workspace_.d0;
 
   int n = d1.rows() + 1;
-  Eigen::VectorXd wsqrt(n);
-  wsqrt(0, 0) = *o->workspace_.W0;
-  wsqrt.bottomRows(n - 1) = o->workspace_.W1;
+
+  auto wsqrt = Sqrt(*o->workspace_.W0, o->workspace_.W1);
 
   if (opt.step_size != 1.0) {
     d0 *= opt.step_size;
@@ -345,48 +343,40 @@ bool TakeStep(SOCConstraint* o, const StepOptions& opt) {
   return true;
 }
 
-void PrepareStep(SOCConstraint* o, const StepOptions& opt, const Ref& y,
+void PrepareStep(SOCConstraint* o, const StepOptions& opt, const RefType& y,
                  StepInfo* info) {
-  Eigen::VectorXd minus_s_data(o->workspace_.n_ + 1);
-  Ref minus_s(minus_s_data.data(), o->workspace_.n_ + 1, 1);
-  o->ComputeNegativeSlack(opt.c_weight, y, &minus_s);
-
-  // e - Q(w^{1/2})(C-A^y)
-  int n = minus_s.rows();
-  auto wsqrt = Sqrt(*o->workspace_.W0, o->workspace_.W1);
-  *o->workspace_.W0 = wsqrt(0, 0);
-  o->workspace_.W1 = wsqrt.bottomRows(n - 1);
-
-  auto d = QuadraticRepresentation(wsqrt, minus_s);
-  d(0, 0) += 1;
-  o->workspace_.temp1_1 = d.bottomRows(n - 1);
+  int n = o->workspace_.n_;
+  auto d = o->BuildNewtonDirection(opt, y);
+  o->workspace_.temp1_1 = d.bottomRows(n);
   o->workspace_.d0 = d(0, 0);
 
-  info->norminfd = NormInf(d(0, 0), d.bottomRows(n - 1));
+  info->norminfd = NormInf(d(0, 0), d.bottomRows(n));
   info->normsqrd = 2 * d.squaredNorm();
 }
 
-VectorXd SOCConstraint::BuildNewtonDirection(double c_weight, const Ref& y) {
+VectorXd SOCConstraint::BuildNewtonDirection(const StepOptions& options,
+                                             const RefType& y) {
   int n = workspace_.n_;
-  Eigen::VectorXd minus_s_data(n + 1);
-  Ref minus_s(minus_s_data.data(), n + 1, 1);
-  ComputeNegativeSlack(c_weight, y, &minus_s);
+  Eigen::VectorXd minus_s(n + 1);
+  ComputeNegativeSlack(options.c_weight, y, minus_s);
+  minus_s(0) -= options.w_weight;
 
   auto wsqrt = Sqrt(*workspace_.W0, workspace_.W1);
   auto d = QuadraticRepresentation(wsqrt, minus_s);
-  d(0, 0) += 1;
+  d(0, 0) += options.e_weight;
   return d;
 }
 
 bool PerformLineSearch(SOCConstraint* o, const LineSearchParameters& params,
-                       const Ref& y0, const Ref& y1, LineSearchOutput* output) {
+                       const RefType& y0, const RefType& y1,
+                       LineSearchOutput* output) {
   int n = o->workspace_.n_;
 
-  auto temp = o->BuildNewtonDirection(params.c0_weight, y0);
+  auto temp = o->BuildNewtonDirection(params.options_0, y0);
   double d0_0 = temp(0);
   VectorXd d0_1 = temp.tail(n);
 
-  temp = o->BuildNewtonDirection(params.c1_weight, y1);
+  temp = o->BuildNewtonDirection(params.options_1, y1);
   double d1_0 = temp(0);
   VectorXd d1_1 = temp.tail(n);
 
@@ -425,12 +415,24 @@ void ConstructSchurComplementSystem(SOCConstraint* o, bool initialize,
     sys->AQc.noalias() = 2 * WA.transpose() * WsqrtC;
     sys->inner_product_of_w_and_c = 2 * WsqrtC(0);
     sys->inner_product_of_c_and_Qc = 2 * WsqrtC.squaredNorm();
+
+    sys->inner_product_of_c_and_Qe = 2 * WsqrtC.col(0).dot(W.col(0));
+    sys->inner_product_of_c_and_e = 2 * o->constraint_affine_(0);
+    sys->AQe.noalias() = 2 * WA.transpose() * W;
+    sys->Ae = 2 * o->constraint_matrix_.row(0).transpose();
+
   } else {
     (*G).noalias() += 2 * WA.transpose() * WA;
     sys->AW.noalias() += 2 * o->constraint_matrix_.transpose() * W;
     sys->AQc.noalias() += 2 * WA.transpose() * WsqrtC;
+
+    sys->AQe.noalias() += 2 * WA.transpose() * W;
+    sys->Ae += 2 * o->constraint_matrix_.row(0);
+
     sys->inner_product_of_w_and_c += 2 * WsqrtC(0);
     sys->inner_product_of_c_and_Qc += 2 * WsqrtC.squaredNorm();
+    sys->inner_product_of_c_and_Qe += 2 * WsqrtC.col(0).dot(W.col(0));
+    sys->inner_product_of_c_and_e += 2 * o->constraint_affine_(0);
   }
 }
 

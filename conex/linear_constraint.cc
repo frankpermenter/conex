@@ -92,20 +92,24 @@ bool FindMinimumMu(const T& d0, const T& delta, double dinfmax,
 }
 
 bool PerformLineSearch(LinearConstraint* o, const LineSearchParameters& params,
-                       const Ref& y0, const Ref& y1, LineSearchOutput* output) {
+                       const Eigen::Ref<const Eigen::MatrixXd>& y0,
+                       const Eigen::Ref<const Eigen::MatrixXd>& y1,
+                       LineSearchOutput* output) {
   auto* workspace = &o->workspace_;
 
   auto& d0 = workspace->temp_1;
   auto& d1 = workspace->temp_2;
 
-  // d =  e + w \circ ( A'y  - c k_1)
-  o->ComputeNegativeSlack(params.c0_weight, y0, &d0);
+  // d =  e + w \circ (A'y  - c k_1)
+  o->ComputeNegativeSlack(params.options_0.c_weight, y0, d0);
+  d0.array() -= params.options_0.w_weight;
   d0 = d0.cwiseProduct(o->workspace_.W);
-  d0.array() += 1;
+  d0.array() += params.options_0.e_weight;
 
-  o->ComputeNegativeSlack(params.c1_weight, y1, &d1);
+  o->ComputeNegativeSlack(params.options_1.c_weight, y1, d1);
+  d1.array() -= params.options_1.w_weight;
   d1 = d1.cwiseProduct(o->workspace_.W);
-  d1.array() += 1;
+  d1.array() += params.options_1.e_weight;
 
   d1 = d1 - d0;
 
@@ -116,15 +120,16 @@ bool PerformLineSearch(LinearConstraint* o, const LineSearchParameters& params,
 void SetIdentity(LinearConstraint* o) { o->workspace_.W.setConstant(1); }
 
 // TODO: use e_weight and c_weight
-void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
-                 StepInfo* info) {
+void PrepareStep(LinearConstraint* o, const StepOptions& options,
+                 const Eigen::Ref<const Eigen::MatrixXd>& y, StepInfo* info) {
   auto* workspace = &o->workspace_;
   auto& minus_s = workspace->temp_1;
   if (!options.affine) {
     auto& d = workspace->temp_2;
 
-    // d =  e + w \circ ( A'y  - c k_1)
-    o->ComputeNegativeSlack(options.c_weight, y, &d);
+    // d =  e + w \circ ( A'y  - c k_1 - k_0 e)
+    o->ComputeNegativeSlack(options.c_weight, y, d);
+    d.array() -= options.w_weight;
     d = d.cwiseProduct(o->workspace_.W);
     d.array() += options.e_weight;
 
@@ -133,7 +138,7 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options, const Ref& y,
     info->normsqrd = d.squaredNorm();
 
   } else {
-    o->ComputeNegativeSlack(0, y, &minus_s);
+    o->ComputeNegativeSlack(0, y, minus_s);
     TakeStep(o, options);
   }
 }
@@ -160,7 +165,7 @@ void GetWeightedSlackEigenvalues(LinearConstraint* o, const Ref& y,
   auto* workspace = &o->workspace_;
   auto& minus_s = workspace->temp_1;
   auto& Ws = workspace->temp_2;
-  o->ComputeNegativeSlack(c_weight, y, &minus_s);
+  o->ComputeNegativeSlack(c_weight, y, minus_s);
   Ws.noalias() = workspace->W.cwiseProduct(minus_s);
 
   const double lamda_max = -Ws.minCoeff();
@@ -172,13 +177,15 @@ void GetWeightedSlackEigenvalues(LinearConstraint* o, const Ref& y,
   p->trace = -Ws.sum();
 }
 
-void LinearConstraint::ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y,
-                                            Ref* minus_s) {
-  minus_s->noalias() = (constraint_matrix_)*y.topRows(number_of_variables());
-  minus_s->noalias() -= (constraint_affine_)*inv_sqrt_mu;
+void LinearConstraint::ComputeNegativeSlack(
+    double inv_sqrt_mu, const Eigen::Ref<const Eigen::MatrixXd>& y,
+    Eigen::Ref<Eigen::MatrixXd> minus_s) {
+  minus_s.noalias() = (constraint_matrix_)*y.topRows(number_of_variables());
+  minus_s.noalias() -= (constraint_affine_)*inv_sqrt_mu;
 }
 
-void LinearConstraint::AffineUpdate(const Ref& minus_s) {
+void LinearConstraint::AffineUpdate(
+    const Eigen::Ref<const Eigen::MatrixXd>& minus_s) {
   auto& W = workspace_.W;
   auto& SW = workspace_.temp_1;
   SW = minus_s.cwiseProduct(W);
@@ -200,18 +207,30 @@ void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
   if (initialize) {
     sys->inner_product_of_w_and_c = WC.sum();
     sys->inner_product_of_c_and_Qc = WC.squaredNorm();
+    sys->inner_product_of_c_and_Qe = WC.col(0).dot(W.col(0));
+    sys->inner_product_of_c_and_e = o->constraint_affine_.sum();
     if (G->rows() != m) {
       sys->setZero();
     }
     (*G).topLeftCorner(m, m).noalias() = WA.transpose() * WA;
     sys->AW.topRows(m).noalias() = o->constraint_matrix_.transpose() * W;
     sys->AQc.topRows(m).noalias() = WA.transpose() * WC;
+    sys->AQe.topRows(m).noalias() =
+        o->constraint_matrix_.transpose() * (W.cwiseProduct(W));
+    sys->Ae.topRows(m).noalias() =
+        o->constraint_matrix_.colwise().sum().transpose();
   } else {
     sys->inner_product_of_w_and_c += WC.sum();
     sys->inner_product_of_c_and_Qc += WC.squaredNorm();
+    sys->inner_product_of_c_and_Qe += WC.col(0).dot(W.col(0));
+    sys->inner_product_of_c_and_e += o->constraint_affine_.sum();
     (*G).topLeftCorner(m, m).noalias() += WA.transpose() * WA;
     sys->AW.topRows(m).noalias() += o->constraint_matrix_.transpose() * W;
     sys->AQc.topRows(m).noalias() += WA.transpose() * WC;
+    sys->AQe.topRows(m).noalias() +=
+        o->constraint_matrix_.transpose() * (W.cwiseProduct(W));
+    sys->Ae.topRows(m).noalias() +=
+        o->constraint_matrix_.colwise().sum().transpose();
   }
 }
 

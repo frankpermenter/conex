@@ -13,33 +13,6 @@ namespace conex {
 
 namespace {
 
-inline void PrepareStep(ConstraintManager* kkt,
-                        const StepOptions& newton_step_parameters, const Ref& y,
-                        StepInfo* info) {
-  StepInfo info_i;
-  info_i.normsqrd = 0;
-  info_i.norminfd = 0;
-  info->normsqrd = 0;
-  info->norminfd = -1;
-  int i = 0;
-  for (auto& ci : kkt->cone_inequalities()) {
-    PrepareStep(ci->constraint(), newton_step_parameters,
-                ci->PrimalSubvector(y), &info_i);
-    if (info_i.norminfd > info->norminfd) {
-      info->norminfd = info_i.norminfd;
-    }
-    info->normsqrd += info_i.normsqrd;
-    i++;
-  }
-}
-
-inline void TakeStep(std::vector<SupernodalAssemblerConstraint*>* constraints,
-                     const StepOptions& newton_step_parameters) {
-  for (auto& c : *constraints) {
-    TakeStep(c->constraint(), newton_step_parameters);
-  }
-}
-
 void IncrementSubvector(Eigen::Ref<MatrixXd> destination,
                         const std::vector<int>& indices,
                         const Eigen::Ref<const MatrixXd> source) {
@@ -58,26 +31,6 @@ void MakeAffineTermOfEqualityConstraints(const ConstraintManager& kkt,
                        eq.affine_term());
     i++;
   }
-}
-void AssembleSchurComplementResiduals(const ConstraintManager& kkt,
-                                      SchurComplementSystem* s) {
-  s->setZero();
-  int i = 0;
-  for (auto& ci : kkt.cone_inequalities()) {
-    auto* rhs_i = ci->submatrix_data();
-    s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
-    s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
-    int cnt = 0;
-
-    for (const auto& k : ci->variables()) {
-      s->AW(k) += rhs_i->AW(cnt);
-      s->AQc(k) += rhs_i->AQc(cnt);
-      cnt++;
-    }
-    i++;
-  }
-
-  MakeAffineTermOfEqualityConstraints(kkt, s->AQc);
 }
 
 template <typename T>
@@ -149,12 +102,11 @@ LineSearchOutput ComputeMuFromLineSearch(ConstraintManager& constraints,
   y1 = AQc + b - 2 * AW;
   solver->SolveInPlace(y1);
   LineSearchParameters params;
-  params.c0_weight = c_weight * 0;
-  params.c1_weight = c_weight * 1;
+  params.options_0.c_weight = c_weight * 0;
+  params.options_1.c_weight = c_weight * 1;
   params.dinf_upper_bound = dinf_upper_bound;
   LineSearchOutput output;
 
-  int i = 0;
   for (auto& ci : constraints.cone_inequalities()) {
     LineSearchOutput output_i;
     Eigen::MatrixXd ysegment1 = ci->PrimalSubvector(*y0);
@@ -176,7 +128,6 @@ LineSearchOutput ComputeMuFromLineSearch(ConstraintManager& constraints,
     if (output_i.upper_bound < output.upper_bound) {
       output.upper_bound = output_i.upper_bound;
     }
-    i++;
   }
   if (output.lower_bound > output.upper_bound) {
     output.failed = true;
@@ -404,7 +355,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 
   StepOptions newton_step_parameters;
   newton_step_parameters.affine = 0;
-  newton_step_parameters.inv_sqrt_mu = 0;
+  double newton_step_parameters_inv_sqrt_mu = 0;
   newton_step_parameters.affine = false;
 
   int rankK = Rank(constraints);
@@ -439,7 +390,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     }
 #endif
     bool final_centering =
-        (newton_step_parameters.inv_sqrt_mu >= inv_sqrt_mu_max) ||
+        (newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max) ||
         (kkt_error > config.kkt_error_tolerance) ||
         i >= (config.max_iterations - config.final_centering_steps);
     bool update_mu = (i == 0) || !(initial_centering || final_centering) ||
@@ -505,7 +456,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
           //               2 * temp * output.d0_dot_dt;
           // DUMP(std::sqrt(norm));
           if (temp < 0) {
-            temp = newton_step_parameters.inv_sqrt_mu;
+            temp = newton_step_parameters_inv_sqrt_mu;
           }
         } else {
           temp = output.upper_bound;
@@ -522,9 +473,9 @@ bool Solve(Program& prog, const SolverConfiguration& config,
       }
 
       if (temp > 0) {
-        newton_step_parameters.inv_sqrt_mu = temp;
+        newton_step_parameters_inv_sqrt_mu = temp;
       } else {
-        newton_step_parameters.inv_sqrt_mu *= .5;
+        newton_step_parameters_inv_sqrt_mu *= .5;
       }
     } else {
       if (initial_centering == 0) {
@@ -534,9 +485,9 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 
     const double max = inv_sqrt_mu_max;
     const double min = std::sqrt(1.0 / (1e-15 + config.maximum_mu));
-    ApplyLimits(&newton_step_parameters.inv_sqrt_mu, min, max);
+    ApplyLimits(&newton_step_parameters_inv_sqrt_mu, min, max);
 
-    y = newton_step_parameters.inv_sqrt_mu *
+    y = newton_step_parameters_inv_sqrt_mu *
             (b * b_scaling + prog.sys.AQc * c_scaling) -
         2 * prog.sys.AW;
     START_TIMER(Solve)
@@ -545,7 +496,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 
     newton_step_parameters.e_weight = 1;
     newton_step_parameters.c_weight =
-        newton_step_parameters.inv_sqrt_mu * c_scaling;
+        newton_step_parameters_inv_sqrt_mu * c_scaling;
 
     StepInfo info;
     START_TIMER(Update)
@@ -569,18 +520,18 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     const double d_2 = std::sqrt(std::fabs(info.normsqrd));
     const double d_inf = std::fabs(info.norminfd);
     by = b.col(0).dot(y.col(0)) * 1.0 /
-         (newton_step_parameters.inv_sqrt_mu * c_scaling);
+         (newton_step_parameters_inv_sqrt_mu * c_scaling);
     // inv_sqrt_mu * <c, x> = c' Q(w^{1/2}) (e + d)
     //                      = c' Q(w^{1/2}) (e +  e + Q(w^{1/2})(Ay - k c))
     //                      = c' Q(w^{1/2}) (2e + Q(w^{1/2})(Ay - k c))
     //                      = 2 c' w + c'Q(w)(Ay - k c' Q(w) c)
     cx = 2 * prog.sys.inner_product_of_w_and_c +
          prog.sys.AQc.col(0).dot(y.col(0)) -
-         newton_step_parameters.inv_sqrt_mu *
+         newton_step_parameters_inv_sqrt_mu *
              prog.sys.inner_product_of_c_and_Qc * c_scaling;
-    cx /= (newton_step_parameters.inv_sqrt_mu * b_scaling);
+    cx /= (newton_step_parameters_inv_sqrt_mu * b_scaling);
 
-    double mu = 1.0 / (newton_step_parameters.inv_sqrt_mu);
+    double mu = 1.0 / (newton_step_parameters_inv_sqrt_mu);
     mu *= mu;
 
     double s_dot_x = mu * (rankK - d_2 * d_2) / (b_scaling * c_scaling);
@@ -593,7 +544,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
       REPORT(d_inf);
       double yQy = 0;
       if (prog.contains_quadratic_costs()) {
-        double scale = newton_step_parameters.inv_sqrt_mu * c_scaling;
+        double scale = newton_step_parameters_inv_sqrt_mu * c_scaling;
         scale *= scale;
         for (const auto& cost : prog.constraint_manager().quadratic_costs()) {
           yQy += cost.EvaluateQuadraticCost(y) * 1.0 / scale;
@@ -613,10 +564,10 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 #endif
 
     prog.stats->num_iter = i + 1;
-    prog.stats->sqrt_inv_mu[i] = newton_step_parameters.inv_sqrt_mu;
+    prog.stats->sqrt_inv_mu[i] = newton_step_parameters_inv_sqrt_mu;
 
     if (final_centering ||
-        newton_step_parameters.inv_sqrt_mu >= inv_sqrt_mu_max) {
+        newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max) {
       if (d_inf <= config.final_centering_tolerance) {
         max_iters_reached = false;
         break;
@@ -627,15 +578,15 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   prog.status_.num_iterations = prog.stats->num_iter;
   yout = y.topRows(m);
 
-  double mu = 1.0 / (newton_step_parameters.inv_sqrt_mu);
+  double mu = 1.0 / (newton_step_parameters_inv_sqrt_mu);
   mu *= mu;
   if (mu > config.infeasibility_threshold) {
     PRINTSTATUS("Infeasible Or Unbounded!!.");
     prog.status_.solved = 0;
     prog.status_.primal_infeasible =
-        cx * newton_step_parameters.inv_sqrt_mu <= -.5;
+        cx * newton_step_parameters_inv_sqrt_mu <= -.5;
     prog.status_.dual_infeasible =
-        by * newton_step_parameters.inv_sqrt_mu >= .5;
+        by * newton_step_parameters_inv_sqrt_mu >= .5;
   } else {
     prog.status_.solved = true;
   }
@@ -644,7 +595,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     AssembleSchurComplementResiduals(prog.kkt_system_manager_, &prog.sys);
     solver->Factor();
     DenseMatrix bres =
-        newton_step_parameters.inv_sqrt_mu * b * b_scaling - 1 * prog.sys.AW;
+        newton_step_parameters_inv_sqrt_mu * b * b_scaling - 1 * prog.sys.AW;
     Ref y2map(bres.data(), bres.rows(), bres.cols());
     solver->SolveInPlace(y2map);
     newton_step_parameters.affine = true;
@@ -656,7 +607,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   }
 
   if (prog.status_.solved) {
-    yout /= (newton_step_parameters.inv_sqrt_mu);
+    yout /= (newton_step_parameters_inv_sqrt_mu);
     yout /= c_scaling;
   }
 
@@ -768,6 +719,58 @@ Eigen::MatrixXd Program::GetDualVariable(int i) {
         (stats->sqrt_inv_mu[stats->num_iter - 1] * stats->b_scaling());
   }
   return xi;
+}
+
+void PrepareStep(ConstraintManager* kkt,
+                 const StepOptions& newton_step_parameters, const Ref& y,
+                 StepInfo* info) {
+  StepInfo info_i;
+  info_i.normsqrd = 0;
+  info_i.norminfd = 0;
+  info->normsqrd = 0;
+  info->norminfd = -1;
+  int i = 0;
+  for (auto& ci : kkt->cone_inequalities()) {
+    PrepareStep(ci->constraint(), newton_step_parameters,
+                ci->PrimalSubvector(y), &info_i);
+    if (info_i.norminfd > info->norminfd) {
+      info->norminfd = info_i.norminfd;
+    }
+    info->normsqrd += info_i.normsqrd;
+    i++;
+  }
+}
+
+void AssembleSchurComplementResiduals(const ConstraintManager& kkt,
+                                      SchurComplementSystem* s) {
+  s->setZero();
+  int i = 0;
+  for (auto& ci : kkt.cone_inequalities()) {
+    auto* rhs_i = ci->submatrix_data();
+    s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
+    s->inner_product_of_c_and_Qc += rhs_i->inner_product_of_c_and_Qc;
+    s->inner_product_of_c_and_Qe += rhs_i->inner_product_of_c_and_Qe;
+    s->inner_product_of_c_and_e += rhs_i->inner_product_of_c_and_e;
+    int cnt = 0;
+
+    for (const auto& k : ci->variables()) {
+      s->AW(k) += rhs_i->AW(cnt);
+      s->AQc(k) += rhs_i->AQc(cnt);
+      s->AQe(k) += rhs_i->AQe(cnt);
+      s->Ae(k) += rhs_i->Ae(cnt);
+      cnt++;
+    }
+    i++;
+  }
+
+  MakeAffineTermOfEqualityConstraints(kkt, s->AQc);
+}
+
+void TakeStep(std::vector<SupernodalAssemblerConstraint*>* constraints,
+              const StepOptions& newton_step_parameters) {
+  for (auto& c : *constraints) {
+    TakeStep(c->constraint(), newton_step_parameters);
+  }
 }
 
 }  // namespace conex

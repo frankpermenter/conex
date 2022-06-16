@@ -5,6 +5,8 @@
 
 namespace conex {
 
+using RefType = Eigen::Ref<const Eigen::MatrixXd>;
+using NonConstRefType = Eigen::Ref<Eigen::MatrixXd>;
 class SOCConstraint : public ConstraintBase {
   using StorageType = DenseMatrix;
 
@@ -30,11 +32,11 @@ class SOCConstraint : public ConstraintBase {
     o->workspace_.W1.setZero();
   }
   friend void PrepareStep(SOCConstraint* o, const StepOptions& opt,
-                          const Ref& y, StepInfo* data);
+                          const RefType& y, StepInfo* data);
 
   friend bool TakeStep(SOCConstraint* o, const StepOptions& opt);
 
-  friend void GetWeightedSlackEigenvalues(SOCConstraint* o, const Ref& y,
+  friend void GetWeightedSlackEigenvalues(SOCConstraint* o, const RefType& y,
                                           double c_weight,
                                           WeightedSlackEigenvalues* p);
   friend void ConstructSchurComplementSystem(SOCConstraint* o, bool initialize,
@@ -47,17 +49,19 @@ class SOCConstraint : public ConstraintBase {
 
   friend bool PerformLineSearch(SOCConstraint* o,
                                 const LineSearchParameters& params,
-                                const Ref& y0, const Ref& y1,
+                                const RefType& y0, const RefType& y1,
                                 LineSearchOutput* output);
 
   DenseMatrix constraint_matrix() const { return constraint_matrix_; }
   DenseMatrix affine_term() const { return constraint_affine_; }
 
  private:
-  void ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y, Ref* minus_s);
-  void GeodesicUpdate(const Ref& S, StepInfo* data);
-  void AffineUpdate(const Ref& S);
-  Eigen::VectorXd BuildNewtonDirection(double c_weight, const Ref& y);
+  void ComputeNegativeSlack(double inv_sqrt_mu, const RefType& y,
+                            NonConstRefType minus_s);
+  void GeodesicUpdate(const RefType& S, StepInfo* data);
+  void AffineUpdate(const RefType& S);
+  Eigen::VectorXd BuildNewtonDirection(const StepOptions& options,
+                                       const RefType& y);
 
   WorkspaceSOC workspace_;
   DenseMatrix constraint_matrix_;

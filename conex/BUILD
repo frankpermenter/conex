@@ -573,9 +573,14 @@ cc_test(
 cc_binary(
     name = "solver_failures",
     srcs = ["test/solver_failures.cc"],
-    data = ["test/graph_of_convex_sets_fails_slater.json"],
+    data = [
+        "test/graph_of_convex_sets_fails_slater.json",
+        "test/maze_example.json",
+        "test/maze_example_2.json",
+    ],
     deps = [
         "conex_lib",
+        "self_dual_embedding",
         "serializer",
     ],
 )
@@ -655,6 +660,36 @@ cc_library(
         "tree_utils",
         ":error_checking",
         ":kkt_solver_interface",
+        "@eigen",
+    ],
+)
+
+cc_test(
+    name = "self_dual_embedding_test",
+    srcs = ["test/self_dual_embedding_test.cc"],
+    copts = [
+        "-Iexternal/gtest/include",
+        "-g",
+    ],
+    deps = [
+        "conex_lib",
+        "self_dual_embedding",
+        "test_util",
+        "@gtest//:main",
+    ],
+)
+
+cc_library(
+    name = "self_dual_embedding",
+    srcs = [
+        "self_dual_embedding.cc",
+    ],
+    hdrs = [
+        "self_dual_embedding.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "conex_lib",
         "@eigen",
     ],
 )

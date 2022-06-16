@@ -71,6 +71,15 @@ void Sqrt(double norm_x1, double* x0, T* x1) {
   (*x0) = (.5 * (square_root(*x0 + k) + square_root(*x0 - k)));
 }
 
+template <typename T>
+void Square(double norm_x1, double* x0, T* x1) {
+  double k = norm_x1;
+  if (k > 0) {
+    (*x1) *= .5 * (std::pow(*x0 + k, 2) - std::pow(*x0 - k, 2)) / k;
+  }
+  (*x0) = (.5 * (std::pow(*x0 + k, 2) + std::pow(*x0 - k, 2)));
+}
+
 Eigen::Vector2d Eigenvalues(double norm_of_x1, double x0) {
   Eigen::Vector2d eigenvalues(2, 1);
   eigenvalues(0) = x0 + norm_of_x1;
@@ -105,41 +114,43 @@ DenseMatrix QuadraticConstraintBase::EvalAtQX(const DenseMatrix& X,
   }
 }
 
-DenseMatrix QuadraticConstraintBase::EvalAtQX(const DenseMatrix& X, Ref* QX) {
+DenseMatrix QuadraticConstraintBase::EvalAtQX(const DenseMatrix& X,
+                                              NonConstRefType QX) {
   if (Q_.rows() > 0) {
-    QX->noalias() = Q_ * X;
-    return A1_.transpose() * (*QX);
+    QX.noalias() = Q_ * X;
+    return A1_.transpose() * (QX);
   } else {
     return A1_.transpose() * X;
   }
 }
 
-double QuadraticConstraintBase::EvalCQX(const DenseMatrix& X, Ref* QX) {
+double QuadraticConstraintBase::EvalCQX(const DenseMatrix& X,
+                                        NonConstRefType QX) {
   if (Q_.rows() > 0) {
-    QX->noalias() = Q_ * X;
-    return C1_.dot(QX->col(0));
+    QX.noalias() = Q_ * X;
+    return C1_.dot(QX.col(0));
   } else {
     return C1_.dot(X.col(0));
   }
 }
 
 void QuadraticConstraintBase::ComputeNegativeSlack(double inv_sqrt_mu,
-                                                   const Ref& y,
+                                                   const RefType& y,
                                                    double* minus_s_0,
-                                                   Ref* minus_s_1) {
+                                                   NonConstRefType minus_s_1) {
   *minus_s_0 = A0_.dot(y.col(0));
   *minus_s_0 -= C0_ * inv_sqrt_mu;
-  minus_s_1->noalias() = A1_ * y;
-  minus_s_1->noalias() -= C1_ * inv_sqrt_mu;
+  minus_s_1.noalias() = A1_ * y;
+  minus_s_1.noalias() -= C1_ * inv_sqrt_mu;
 }
 
 // Combine this with PrepareStep
-void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o, const Ref& y,
+void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o, const RefType& y,
                                  double c_weight, WeightedSlackEigenvalues* p) {
   auto* workspace = &o->workspace_;
   auto& minus_s_1 = workspace->temp1_1;
   double minus_s_0;
-  o->ComputeNegativeSlack(c_weight, y, &minus_s_0, &minus_s_1);
+  o->ComputeNegativeSlack(c_weight, y, &minus_s_0, minus_s_1);
 
   auto& Ws_1 = workspace->temp2_1;
   double Ws_0;
@@ -160,28 +171,29 @@ void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o, const Ref& y,
 }
 
 void QuadraticConstraintBase::ComputeNewtonDirection(
-    const double c_weight, const Ref& y, double* d_q0,
+    const StepOptions opts, const RefType& y, double* d_q0,
     Eigen::Ref<Eigen::MatrixXd> d_q1) {
   auto o = this;
   auto workspace = &o->workspace_;
   auto& minus_s_1 = o->workspace_.temp1_1;
   double minus_s_0;
-  o->ComputeNegativeSlack(c_weight, y, &minus_s_0, &minus_s_1);
+  o->ComputeNegativeSlack(opts.c_weight, y, &minus_s_0, minus_s_1);
 
+  minus_s_0 -= opts.w_weight;
   QuadraticRepresentation(o->workspace_.wsqrt_q1_norm_sqr,
                           InnerProduct(o->Q_, workspace->sqrtW_1, minus_s_1,
                                        &o->workspace_.temp3_1),
                           *workspace->sqrtW_0, workspace->sqrtW_1, minus_s_0,
                           minus_s_1, d_q0, &d_q1);
-  *d_q0 += 1;
+  *d_q0 += opts.e_weight;
 }
 
 void PrepareStep(QuadraticConstraintBase* o, const StepOptions& opt,
-                 const Ref& y, StepInfo* info) {
+                 const RefType& y, StepInfo* info) {
   auto& d_q1 = o->workspace_.temp2_1;
   double& d_q0 = o->workspace_.d0;
 
-  o->ComputeNewtonDirection(opt.c_weight, y, &d_q0, d_q1);
+  o->ComputeNewtonDirection(opt, y, &d_q0, d_q1);
 
   // Compute rescaling.
   auto ev = Eigenvalues(Norm(o->Q_, d_q1, &o->workspace_.temp1_1), d_q0);
@@ -283,16 +295,16 @@ double GetMinSqrtMu(double dinfmax, const double& x0,
 }  // namespace
 
 bool PerformLineSearch(QuadraticConstraintBase* o,
-                       const LineSearchParameters& params, const Ref& y0,
-                       const Ref& y1, LineSearchOutput* output) {
+                       const LineSearchParameters& params, const RefType& y0,
+                       const RefType& y1, LineSearchOutput* output) {
   int n = o->workspace_.n_;
   double d0_0;
   Eigen::VectorXd d0_1(n);
-  o->ComputeNewtonDirection(params.c0_weight, y0, &d0_0, d0_1);
+  o->ComputeNewtonDirection(params.options_0, y0, &d0_0, d0_1);
 
   double d1_0;
   Eigen::VectorXd d1_1(n);
-  o->ComputeNewtonDirection(params.c1_weight, y1, &d1_0, d1_1);
+  o->ComputeNewtonDirection(params.options_1, y1, &d1_0, d1_1);
 
   double dt_0 = d1_0 - d0_0;
   Eigen::VectorXd dt_1 = d1_1 - d0_1;
@@ -362,8 +374,8 @@ void ConstructSchurComplementSystem(QuadraticConstraintBase* o, bool initialize,
   auto& temp = o->workspace_.temp1_1;
   auto& A_dot_x = o->A_dot_x_;
 
-  double c_dot_x = o->EvalCQX(o->workspace_.W1, &temp);
-  A_dot_x = o->EvalAtQX(o->workspace_.W1, &temp);
+  double c_dot_x = o->EvalCQX(o->workspace_.W1, temp);
+  A_dot_x = o->EvalAtQX(o->workspace_.W1, temp);
 
   auto& Q_W1 = o->workspace_.temp2_1;
   double det_w = (*o->workspace_.W0) * (*o->workspace_.W0) -
@@ -373,29 +385,38 @@ void ConstructSchurComplementSystem(QuadraticConstraintBase* o, bool initialize,
     SchurComplement(A0, A_gram, *o->workspace_.W0, det_w, A_dot_x, true,
                     &sys->G);
     sys->AW.noalias() = A_dot_x + A0 * (*o->workspace_.W0);
-    sys->AQc.noalias() = det_w * (o->EvalAtQX(C1, &temp) - A0 * C0);
-    sys->inner_product_of_c_and_Qc = det_w * (o->EvalCQX(C1, &temp) - C0 * C0);
+    sys->AQc.noalias() = det_w * (o->EvalAtQX(C1, temp) - A0 * C0);
+    sys->inner_product_of_c_and_Qc = det_w * (o->EvalCQX(C1, temp) - C0 * C0);
+
+    sys->AQe.noalias() = -det_w * (A0);
+    sys->Ae = A0;
+    sys->inner_product_of_c_and_e = C0;
+    sys->inner_product_of_c_and_Qe = -det_w * C0;
+
   } else {
-    SchurComplement(A0, A_gram, *o->workspace_.W0, det_w, A_dot_x, false,
-                    &sys->G);
-    sys->AW.noalias() += A_dot_x + A0 * (*o->workspace_.W0);
-    sys->AQc.noalias() += det_w * (o->EvalAtQX(C1, &temp) - A0 * C0);
-    sys->inner_product_of_c_and_Qc += det_w * (o->EvalCQX(C1, &temp) - C0 * C0);
+    throw std::runtime_error("Not supported.");
   }
 
-  double scale;
+  double c_scale;
   if (o->Q_.size() > 0) {
-    scale = Q_W1.col(0).dot(C1.col(0)) + C0 * (*o->workspace_.W0);
+    c_scale = Q_W1.col(0).dot(C1.col(0)) + C0 * (*o->workspace_.W0);
   } else {
-    scale = o->workspace_.W1.col(0).dot(C1.col(0)) + C0 * (*o->workspace_.W0);
+    c_scale = o->workspace_.W1.col(0).dot(C1.col(0)) + C0 * (*o->workspace_.W0);
   }
-  sys->AQc.noalias() += 2 * (A_dot_x + A0 * (*o->workspace_.W0)) * scale;
+  sys->AQc.noalias() += 2 * (A_dot_x + A0 * (*o->workspace_.W0)) * c_scale;
+  sys->AQe.noalias() +=
+      2 * (A_dot_x + A0 * (*o->workspace_.W0)) * (*o->workspace_.W0);
+
   sys->inner_product_of_c_and_Qc +=
-      2 * (c_dot_x + C0 * (*o->workspace_.W0)) * scale;
+      2 * (c_dot_x + C0 * (*o->workspace_.W0)) * c_scale;
+
+  sys->inner_product_of_c_and_Qe +=
+      2 * (c_dot_x + C0 * (*o->workspace_.W0)) * (*o->workspace_.W0);
+
   if (initialize) {
-    sys->inner_product_of_w_and_c = scale;
+    sys->inner_product_of_w_and_c = c_scale;
   } else {
-    sys->inner_product_of_w_and_c += scale;
+    throw std::runtime_error("Not supported.");
   }
 
   // Account for Jordan inner-product  <x, y> := 2 x^T y.
@@ -403,6 +424,11 @@ void ConstructSchurComplementSystem(QuadraticConstraintBase* o, bool initialize,
   sys->AW *= 2;
   sys->inner_product_of_c_and_Qc *= 2;
   sys->inner_product_of_w_and_c *= 2;
+
+  sys->AQe *= 2;
+  sys->Ae *= 2;
+  sys->inner_product_of_c_and_e *= 2;
+  sys->inner_product_of_c_and_Qe *= 2;
   sys->G *= 2;
 }
 

@@ -26,11 +26,13 @@ class LinearConstraint : public ConstraintBase {
   friend int Rank(const LinearConstraint& o) { return o.workspace_.n_; };
   friend void SetIdentity(LinearConstraint* o);
   friend void PrepareStep(LinearConstraint* o, const StepOptions& opt,
-                          const Ref& y, StepInfo* data);
+                          const Eigen::Ref<const Eigen::MatrixXd>& y0,
+                          StepInfo* data);
 
   friend bool PerformLineSearch(LinearConstraint* o,
                                 const LineSearchParameters& params,
-                                const Ref& y0, const Ref& y1,
+                                const Eigen::Ref<const Eigen::MatrixXd>& y0,
+                                const Eigen::Ref<const Eigen::MatrixXd>& y1,
                                 LineSearchOutput* output);
 
   // Eigenvalues of Q(w^{1/2}) *(c-A*y)
@@ -51,9 +53,10 @@ class LinearConstraint : public ConstraintBase {
   DenseMatrix affine_term() const { return constraint_affine_; }
 
  private:
-  void ComputeNegativeSlack(double inv_sqrt_mu, const Ref& y, Ref* minus_s);
-  void GeodesicUpdate(const Ref& S, StepInfo* data);
-  void AffineUpdate(const Ref& S);
+  void ComputeNegativeSlack(double inv_sqrt_mu,
+                            const Eigen::Ref<const Eigen::MatrixXd>& y,
+                            Eigen::Ref<Eigen::MatrixXd> minus_s);
+  void AffineUpdate(const Eigen::Ref<const Eigen::MatrixXd>& y);
 
   WorkspaceLinear workspace_;
   DenseMatrix constraint_matrix_;
@@ -69,7 +72,8 @@ class LowerBound : public LinearConstraint {
 
   friend bool PerformLineSearch(LowerBound* o,
                                 const LineSearchParameters& params,
-                                const Ref& y0, const Ref& y1,
+                                const Eigen::Ref<const Eigen::MatrixXd>& y0,
+                                const Eigen::Ref<const Eigen::MatrixXd>& y1,
                                 LineSearchOutput* output) {
     return PerformLineSearch(static_cast<LinearConstraint*>(o), params, y0, y1,
                              output);
