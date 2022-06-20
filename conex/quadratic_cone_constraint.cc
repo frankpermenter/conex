@@ -71,15 +71,6 @@ void Sqrt(double norm_x1, double* x0, T* x1) {
   (*x0) = (.5 * (square_root(*x0 + k) + square_root(*x0 - k)));
 }
 
-template <typename T>
-void Square(double norm_x1, double* x0, T* x1) {
-  double k = norm_x1;
-  if (k > 0) {
-    (*x1) *= .5 * (std::pow(*x0 + k, 2) - std::pow(*x0 - k, 2)) / k;
-  }
-  (*x0) = (.5 * (std::pow(*x0 + k, 2) + std::pow(*x0 - k, 2)));
-}
-
 Eigen::Vector2d Eigenvalues(double norm_of_x1, double x0) {
   Eigen::Vector2d eigenvalues(2, 1);
   eigenvalues(0) = x0 + norm_of_x1;
