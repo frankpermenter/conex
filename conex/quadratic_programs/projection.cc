@@ -23,8 +23,7 @@ class CoordinateProjection {
         y(i) = 0;
       }
     }
-    return y;
-  }
+    return y; }
 
   VectorXd OneMinusEval(const VectorXd& x) { return x - Eval(x); }
 
