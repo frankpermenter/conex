@@ -26,6 +26,7 @@ SOURCES = approximate_eigenvalues.cc \
 	  equality_constraint.cc \
 	  exponential_map_pade.cc \
 	  hermitian_psd.cc \
+	  json_parser.cc \
 	  kkt_solver.cc \
 	  kkt_subsystem.cc \
 	  kkt_simplicial_solver.cc \
@@ -36,6 +37,7 @@ SOURCES = approximate_eigenvalues.cc \
 	  quadratic_cone_constraint.cc \
 	  self_dual_embedding.cc \
 	  soc_constraint.cc \
+	  serialize.cc \
 	  static_subsystem.cc \
 	  supernodal_solver.cc \
 	  supernodal_assembler.cc \

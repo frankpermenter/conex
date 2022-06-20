@@ -2,6 +2,7 @@
 
 import distutils.core
 import numpy
+from pathlib import Path
 
 try:
     numpy_include = numpy.get_include()
@@ -10,7 +11,7 @@ except AttributeError:
 
 _conex = distutils.core.Extension("_conex",
                    ["conex.i"],
-                   libraries = ["/home/frank/conexnew/conex/interfaces/conex"],
+                   libraries = [str(Path("../").resolve()) +  "/conex"],
                    include_dirs = [numpy_include],
                    )
 

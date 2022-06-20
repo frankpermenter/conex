@@ -531,18 +531,15 @@ void GraphOfConvexSets() {
   config.maximum_mu = 100;
   config.kkt_error_tolerance = 4;
 
-  // Solve(program, config, y.data());
   // y = Solve(program, config);
   y = SolveHSD(program, config);
-  throw std::runtime_error("dfdf");
 }
 
 }  // namespace conex
 
 int main() {
   conex::LPFailSlater(1 /*num implicit eqs*/);
-  // conex::GraphOfConvexSets();
-  return 0;
+  conex::GraphOfConvexSets();
   conex::SimpleBadLDLT();
   conex::EqualityConstraintForceEqualityConstraintsToLeafNodes(
       false /*fill-in induced failure*/);
