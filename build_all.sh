@@ -22,7 +22,7 @@ cd ..
 
 ## Build and test C API. 
 cd interfaces
-make
+make -j
 bazel test --cache_test_results=no --config=$bazel_config ...
 cd ..
 
