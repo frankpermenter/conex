@@ -138,37 +138,33 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options,
                  const Eigen::Ref<const Eigen::MatrixXd>& y, StepInfo* info) {
   auto* workspace = &o->workspace_;
   auto& minus_s = workspace->temp_1;
-  if (!options.affine) {
-    auto& d = workspace->temp_2;
+  auto& d = workspace->temp_2;
 
-    // d =  e + w \circ ( A'y  - c k_1 - k_0 e)
-    o->ComputeNegativeSlack(options.c_weight, y, d);
-    d.array() -= options.w_weight;
-    d = d.cwiseProduct(o->workspace_.W);
-    d.array() += options.e_weight;
+  // d =  e + w \circ ( A'y  - c k_1 - k_0 e)
+  o->ComputeNegativeSlack(options.c_weight, y, d);
+  d.array() -= options.w_weight;
+  d = d.cwiseProduct(o->workspace_.W);
+  d.array() += options.e_weight;
 
-    double norminf = (d).array().abs().maxCoeff();
-    info->norminfd = norminf;
-    info->normsqrd = d.squaredNorm();
-
-  } else {
-    o->ComputeNegativeSlack(0, y, minus_s);
+  double norminf = (d).array().abs().maxCoeff();
+  info->norminfd = norminf;
+  info->normsqrd = d.squaredNorm();
+  if (options.affine) {
     TakeStep(o, options);
   }
 }
 
 bool TakeStep(LinearConstraint* o, const StepOptions& options) {
+  auto& d = o->workspace_.temp_2;
+  auto& W = o->workspace_.W;
   if (!options.affine) {
-    auto& d = o->workspace_.temp_2;
-    auto& W = o->workspace_.W;
     if (options.step_size != 1) {
       d.array() *= options.step_size;
     }
     d = d.array().exp();
     W = W.cwiseProduct(d);
   } else {
-    auto& minus_s = o->workspace_.temp_1;
-    o->AffineUpdate(minus_s);
+    o->AffineUpdate(d);
   }
   return true;
 }
@@ -199,11 +195,9 @@ void LinearConstraint::ComputeNegativeSlack(
 }
 
 void LinearConstraint::AffineUpdate(
-    const Eigen::Ref<const Eigen::MatrixXd>& minus_s) {
+    const Eigen::Ref<const Eigen::MatrixXd>& d) {
   auto& W = workspace_.W;
-  auto& SW = workspace_.temp_1;
-  SW = minus_s.cwiseProduct(W);
-  W += W.cwiseProduct(SW);
+  W += W.cwiseProduct(d);
 }
 
 void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
