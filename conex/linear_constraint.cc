@@ -29,29 +29,43 @@ void AppendRow(MatrixXd* A, const MatrixXd& new_rows) {
 
 void PreprocessLinearInequality(const MatrixXd& A, const MatrixXd& lb,
                                 const MatrixXd& ub, MatrixXd* Aineq,
-                                MatrixXd* bineq, MatrixXd* Aeq, MatrixXd* beq) {
+                                MatrixXd* bineq, MatrixXd* Aeq, MatrixXd* beq,
+                                double rescale) {
   for (int i = 0; i < A.rows(); i++) {
     if (lb.row(i) == ub.row(i)) {
-      double scale =
-          1.0 / std::sqrt(A.row(i).squaredNorm() + ub.row(i).squaredNorm());
-      AppendRow(Aeq, scale * A.row(i));
-      AppendRow(beq, scale * ub.row(i));
+      double scale = 1.0;
+      if (rescale) {
+        scale = 1.0 / std::sqrt(A.row(i).squaredNorm());
+      }
+      if (std::isfinite(scale)) {
+        AppendRow(Aeq, scale * A.row(i));
+        AppendRow(beq, scale * ub.row(i));
+      }
     } else {
       if (ub(i, 0) < 1e8) {
-        double scale =
-            1.0 / std::sqrt(A.row(i).squaredNorm() + ub.row(i).squaredNorm());
-        AppendRow(Aineq, scale * A.row(i));
-        AppendRow(bineq, scale * ub.row(i));
+        double scale = 1.0;
+        if (rescale) {
+          scale = 1.0 / std::sqrt(A.row(i).squaredNorm());
+        }
+        if (std::isfinite(scale)) {
+          AppendRow(Aineq, scale * A.row(i));
+          AppendRow(bineq, scale * ub.row(i));
+        }
       }
       if (lb(i, 0) > -1e8) {
-        double scale =
-            1.0 / std::sqrt(A.row(i).squaredNorm() + lb.row(i).squaredNorm());
-        AppendRow(Aineq, -scale * A.row(i));
-        AppendRow(bineq, -scale * lb.row(i));
+        double scale = 1.0;
+        if (rescale) {
+          scale = 1.0 / std::sqrt(A.row(i).squaredNorm());
+        }
+        if (std::isfinite(scale)) {
+          AppendRow(Aineq, -scale * A.row(i));
+          AppendRow(bineq, -scale * lb.row(i));
+        }
       }
     }
   }
 }
+
 template <typename T>
 bool FindMinimumMu(const T& d0, const T& delta, double dinfmax,
                    LineSearchOutput* output) {
