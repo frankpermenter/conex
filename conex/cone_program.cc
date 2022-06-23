@@ -89,7 +89,7 @@ void ConstructSchurComplementSystem(std::vector<T*>* c, bool initialize,
 //        2 * prog.sys.AW;
 
 LineSearchOutput ComputeMuFromLineSearch(ConstraintManager& constraints,
-                                         std::unique_ptr<KKTSolverBase>& solver,
+                                         KKTSolverBase* solver,
                                          double dinf_upper_bound,
                                          const DenseMatrix& AQc,
                                          double c_weight, const DenseMatrix& b,
@@ -147,9 +147,8 @@ double MinimizeNormInf(WeightedSlackEigenvalues& p) {
   return y;
 }
 double ComputeMuFromDivergence(ConstraintManager& constraints,
-                               std::unique_ptr<KKTSolverBase>& solver,
-                               const DenseMatrix& AQc, double c_weight,
-                               const DenseMatrix& b,
+                               KKTSolverBase* solver, const DenseMatrix& AQc,
+                               double c_weight, const DenseMatrix& b,
                                const SolverConfiguration& config, int rankK,
                                Ref* workspace_y) {
   WeightedSlackEigenvalues mu_param;
@@ -232,6 +231,282 @@ bool Program::AddLinearCost(const VectorXd& b) {
 }
 
 namespace {
+
+struct WorkspaceInfeasibleStart {
+  WorkspaceInfeasibleStart(double* y_data, int m) : y(y_data, m, 1) {}
+  WorkspaceSchurComplement sys;
+  Ref y;
+};
+
+bool SolveIPM(ConstraintManager& kkt_system_manager_,
+              const SolverConfiguration& config, SchurComplementSystem& sys,
+              KKTSolverBase* solver, double& c_scaling, double& b_scaling,
+              ConexStatus& status_, WorkspaceInfeasibleStart& workspace,
+              WorkspaceStats* stats) {
+  double inv_sqrt_mu_max = config.inv_sqrt_mu_max;
+  double cx = 1;
+  double by = -1;
+  double kkt_error = 0;
+  bool max_iter_failure = false;
+
+  StepOptions newton_step_parameters;
+  double newton_step_parameters_inv_sqrt_mu = 0;
+  newton_step_parameters.affine = false;
+
+  int m = kkt_system_manager_.GetNumberOfVariables();
+  auto& constraints = kkt_system_manager_.cone_inequalities();
+  int rankK = Rank(constraints);
+  int centering_steps = 0;
+  bool warmstart_aborted = false;
+  Eigen::VectorXd b(kkt_system_manager_.SizeOfKKTSystem());
+  b.setZero();
+  b.head(m) << -kkt_system_manager_.GetLinearCostVector();
+  auto& y = workspace.y;
+
+  int initial_centering_steps = config.initial_centering_steps_coldstart;
+  int initial_centering = 1;
+
+  if (config.initialization_mode) {
+    PRINTSTATUS("Warmstarting...");
+    initial_centering_steps = config.initial_centering_steps_warmstart;
+  }
+
+  for (int i = 0; i < config.max_iterations; i++) {
+    if (i >= initial_centering_steps) {
+      initial_centering = 0;
+    }
+
+#if CONEX_VERBOSE
+    if (config.verbose) {
+      if (i < 10) {
+        std::cout << "i:  " << i << ", ";
+      } else {
+        std::cout << "i: " << i << ", ";
+      }
+    }
+#endif
+    bool final_centering =
+        (newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max) ||
+        (kkt_error > config.kkt_error_tolerance) ||
+        i >= (config.max_iterations - config.final_centering_steps);
+    bool update_mu = (i == 0) || !(initial_centering || final_centering) ||
+                     warmstart_aborted;
+    warmstart_aborted = false;
+
+    START_TIMER(Assemble)
+    solver->Assemble();
+    AssembleSchurComplementResiduals(kkt_system_manager_, &sys);
+    END_TIMER
+
+    if (i < 1 && config.enable_rescaling) {
+      if (config.initialization_mode == CONEX_INITIALIZATION_MODE_COLDSTART) {
+        b_scaling = 1.0 / (1 + b.norm());
+        c_scaling = 1.0 / (1 + sys.AQc.norm());
+      }
+      // The solver returns xhat = b_scaling * x and
+      //                    shat = c_scaling * s
+      // satisfying xhat * shat = mu * I
+      //
+      // This means x * s = mu/(b_scaling * c_scaling).
+      // So, we rescale the target_mu by (b_scaling * c_scaling).
+      double mu_target = 1.0 / (inv_sqrt_mu_max * inv_sqrt_mu_max);
+      mu_target *= (b_scaling * c_scaling);
+      inv_sqrt_mu_max = 1.0 / std::sqrt(mu_target);
+    }
+
+    START_TIMER(Factor)
+    if (!solver->Factor()) {
+      if (i == 0 &&
+          config.initialization_mode == CONEX_INITIALIZATION_MODE_WARMSTART) {
+        PRINTSTATUS("Aborting warmstart...");
+        SetIdentity(&constraints);
+        warmstart_aborted = true;
+        continue;
+      }
+      status_.solved = 0;
+      PRINTSTATUS("Factorization failed.");
+      return false;
+    }
+    END_TIMER
+
+    if (update_mu) {
+      double temp = -1;
+      if (config.enable_line_search) {
+        LineSearchOutput output = ComputeMuFromLineSearch(
+            kkt_system_manager_, solver, config.dinf_upper_bound,
+            sys.AQc * c_scaling, c_scaling, b * b_scaling, sys.AW,
+            &workspace.y);
+        if (output.failed) {
+          temp = -output.d0_dot_dt / output.dt_squared_norm;
+          // For debugging, print the predicted value of the d2 norm.
+          // This should agree with the norm that is reported.
+          // double norm = output.d0_squared_norm +
+          // DUMP(std::sqrt(norm));
+          if (temp < 0) {
+            temp = newton_step_parameters_inv_sqrt_mu;
+          }
+        } else {
+          temp = output.upper_bound;
+        }
+      }
+
+      if (temp < 0) {
+        CONEX_RETURN_ON_FAIL(
+            !kkt_system_manager_.quadratic_costs().size(),
+            "Solver terminating with error: line-search failed.");
+        temp = ComputeMuFromDivergence(
+            kkt_system_manager_, solver, sys.AQc * c_scaling, c_scaling,
+            b * b_scaling, config, rankK, &workspace.y);
+      }
+
+      if (temp > 0) {
+        newton_step_parameters_inv_sqrt_mu = temp;
+      } else {
+        newton_step_parameters_inv_sqrt_mu *= .5;
+      }
+    } else {
+      if (initial_centering == 0) {
+        centering_steps++;
+      }
+    }
+
+    const double max = inv_sqrt_mu_max;
+    const double min = std::sqrt(1.0 / (1e-15 + config.maximum_mu));
+    ApplyLimits(&newton_step_parameters_inv_sqrt_mu, min, max);
+
+    y = newton_step_parameters_inv_sqrt_mu *
+            (b * b_scaling + sys.AQc * c_scaling) -
+        2 * sys.AW;
+    START_TIMER(Solve)
+    solver->SolveInPlace(y);
+    END_TIMER
+
+    newton_step_parameters.e_weight = 1;
+    newton_step_parameters.c_weight =
+        newton_step_parameters_inv_sqrt_mu * c_scaling;
+
+    StepInfo info;
+    PrepareStep(&kkt_system_manager_, newton_step_parameters, y, &info);
+    newton_step_parameters.step_size = 2.0 / (info.norminfd * info.norminfd);
+    if (newton_step_parameters.step_size > 1) {
+      newton_step_parameters.step_size = 1;
+    }
+
+    if (i == 0 &&
+        (config.initialization_mode == CONEX_INITIALIZATION_MODE_WARMSTART) &&
+        info.norminfd >= config.warmstart_abort_threshold) {
+      PRINTSTATUS("Aborting warmstart...");
+      SetIdentity(&constraints);
+      warmstart_aborted = true;
+    }
+
+    const double d_2 = std::sqrt(std::fabs(info.normsqrd));
+    const double d_inf = std::fabs(info.norminfd);
+    by = b.col(0).dot(y.col(0)) * 1.0 /
+         (newton_step_parameters_inv_sqrt_mu * c_scaling);
+    // inv_sqrt_mu * <c, x> = c' Q(w^{1/2}) (e + d)
+    //                      = c' Q(w^{1/2}) (e +  e + Q(w^{1/2})(Ay - k c))
+    //                      = c' Q(w^{1/2}) (2e + Q(w^{1/2})(Ay - k c))
+    //                      = 2 c' w + c'Q(w)(Ay - k c' Q(w) c)
+    cx = 2 * sys.inner_product_of_w_and_c + sys.AQc.col(0).dot(y.col(0)) -
+         newton_step_parameters_inv_sqrt_mu * sys.inner_product_of_c_and_Qc *
+             c_scaling;
+    cx /= (newton_step_parameters_inv_sqrt_mu * b_scaling);
+
+    double mu = 1.0 / (newton_step_parameters_inv_sqrt_mu);
+    mu *= mu;
+
+    double s_dot_x = mu * (rankK - d_2 * d_2) / (b_scaling * c_scaling);
+
+    mu = mu / (c_scaling * b_scaling);
+#if CONEX_VERBOSE
+    if (config.verbose) {
+      REPORT(mu);
+      REPORT(d_2);
+      REPORT(d_inf);
+      double yQy = 0;
+      if (kkt_system_manager_.quadratic_costs().size()) {
+        double scale = newton_step_parameters_inv_sqrt_mu * c_scaling;
+        scale *= scale;
+        for (const auto& cost : kkt_system_manager_.quadratic_costs()) {
+          yQy += cost.EvaluateQuadraticCost(y) * 1.0 / scale;
+        }
+      }
+      double pobj = -(by - 0.5 * yQy);
+      double dobj = -(cx + 0.5 * yQy);
+      status_.dual_objective_value = dobj;
+      status_.primal_objective_value = pobj;
+      REPORT(pobj);
+      REPORT(dobj);
+      kkt_error =
+          std::fabs(dobj - pobj + s_dot_x) / (1e-12 + std::fabs(s_dot_x));
+      REPORT(kkt_error);
+      std::cout << std::endl;
+    }
+#endif
+
+    stats->num_iter = i + 1;
+    stats->sqrt_inv_mu[i] = newton_step_parameters_inv_sqrt_mu;
+
+    bool terminate =
+        final_centering && centering_steps >= config.final_centering_steps ||
+        i == config.max_iterations - 1;
+    bool converged = newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max &&
+                     d_inf <= config.final_centering_tolerance;
+
+    if (terminate || converged) {
+      max_iter_failure = !converged;
+      if (config.prepare_dual_variables) {
+        newton_step_parameters.affine = true;
+        DenseMatrix bres(b.rows(), 1);
+        Ref y2map(bres.data(), bres.rows(), bres.cols());
+        StepInfo info;
+        bres = newton_step_parameters_inv_sqrt_mu * b * b_scaling - 1 * sys.AW;
+        newton_step_parameters.e_weight = 0;
+        newton_step_parameters.c_weight = 0;
+        solver->SolveInPlace(y2map);
+        PrepareStep(&kkt_system_manager_, newton_step_parameters, y2map, &info);
+        TakeStep(&constraints, newton_step_parameters);
+      } else {
+        TakeStep(&constraints, newton_step_parameters);
+      }
+      break;
+    } else {
+      TakeStep(&constraints, newton_step_parameters);
+      continue;
+    }
+    throw std::runtime_error("Unreachable: termination logic has a bug.");
+  }
+
+  double mu = 1.0 / (newton_step_parameters_inv_sqrt_mu);
+  mu *= mu;
+  if (mu > config.infeasibility_threshold) {
+    PRINTSTATUS("Infeasible Or Unbounded!!.");
+    status_.solved = 0;
+    status_.primal_infeasible = cx * newton_step_parameters_inv_sqrt_mu <= -.5;
+    status_.dual_infeasible = by * newton_step_parameters_inv_sqrt_mu >= .5;
+  } else {
+    status_.solved = true;
+  }
+
+  if (status_.solved) {
+    workspace.y /= (newton_step_parameters_inv_sqrt_mu);
+    workspace.y /= stats->c_scaling();
+  }
+
+  if (status_.solved) {
+    if (max_iter_failure) {
+      status_.solved = false;
+      PRINTSTATUS("Terminating at maximum iteration limit.");
+    } else {
+      PRINTSTATUS("Solved.");
+    }
+  }
+
+  status_.num_iterations = stats->num_iter;
+  return true;
+}
+
 std::string ToString(int solver_type) {
   switch (solver_type) {
     case CONEX_KKT_SOLVER_TREE:
@@ -345,277 +620,17 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 #endif
 
   Eigen::MatrixXd ydata(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
+  WorkspaceInfeasibleStart workspace(
+      ydata.data(), prog.kkt_system_manager_.SizeOfKKTSystem());
+
+  SolveIPM(prog.kkt_system_manager_, config, prog.sys, solver.get(),
+           prog.stats->c_scaling(), prog.stats->b_scaling(), prog.status_,
+           workspace, prog.stats.get());
+
   Eigen::Map<DenseMatrix> yout(primal_variable, m, 1);
-  Ref y(ydata.data(), prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
-
-  double inv_sqrt_mu_max = config.inv_sqrt_mu_max;
-  double cx = 1;
-  double by = -1;
-  double kkt_error = 0;
-
-  StepOptions newton_step_parameters;
-  newton_step_parameters.affine = 0;
-  double newton_step_parameters_inv_sqrt_mu = 0;
-  newton_step_parameters.affine = false;
-
-  int rankK = Rank(constraints);
-  int centering_steps = 0;
-  bool warmstart_aborted = false;
-  Eigen::VectorXd b(prog.kkt_system_manager_.SizeOfKKTSystem());
-  b.setZero();
-  b.head(m) << bin;
-
-  int initial_centering_steps = config.initial_centering_steps_coldstart;
-  int initial_centering = 1;
-  auto& c_scaling = prog.stats->c_scaling();
-  auto& b_scaling = prog.stats->b_scaling();
-
-  if (config.initialization_mode) {
-    PRINTSTATUS("Warmstarting...");
-    initial_centering_steps = config.initial_centering_steps_warmstart;
-  }
-
-  for (int i = 0; i < config.max_iterations; i++) {
-    if (i >= initial_centering_steps) {
-      initial_centering = 0;
-    }
-
-#if CONEX_VERBOSE
-    if (config.verbose) {
-      if (i < 10) {
-        std::cout << "i:  " << i << ", ";
-      } else {
-        std::cout << "i: " << i << ", ";
-      }
-    }
-#endif
-    bool final_centering =
-        (newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max) ||
-        (kkt_error > config.kkt_error_tolerance) ||
-        i >= (config.max_iterations - config.final_centering_steps);
-    bool update_mu = (i == 0) || !(initial_centering || final_centering) ||
-                     warmstart_aborted;
-    warmstart_aborted = false;
-
-    START_TIMER(Assemble)
-    solver->Assemble();
-    AssembleSchurComplementResiduals(prog.kkt_system_manager_, &prog.sys);
-    END_TIMER
-
-    if (i < 1 && config.enable_rescaling) {
-      if (config.initialization_mode == CONEX_INITIALIZATION_MODE_COLDSTART) {
-        b_scaling = 1.0 / (1 + b.norm());
-        c_scaling = 1.0 / (1 + prog.sys.AQc.norm());
-      }
-      // The solver returns xhat = b_scaling * x and
-      //                    shat = c_scaling * s
-      // satisfying xhat * shat = mu * I
-      //
-      // This means x * s = mu/(b_scaling * c_scaling).
-      // So, we rescale the target_mu by (b_scaling * c_scaling).
-      double mu_target = 1.0 / (inv_sqrt_mu_max * inv_sqrt_mu_max);
-      mu_target *= (b_scaling * c_scaling);
-      inv_sqrt_mu_max = 1.0 / std::sqrt(mu_target);
-    }
-
-    START_TIMER(Factor)
-    if (!solver->Factor()) {
-      if (i == 0 &&
-          config.initialization_mode == CONEX_INITIALIZATION_MODE_WARMSTART) {
-        PRINTSTATUS("Aborting warmstart...");
-        SetIdentity(&constraints);
-        warmstart_aborted = true;
-        continue;
-      }
-      prog.status_.solved = 0;
-      PRINTSTATUS("Factorization failed.");
-      return prog.status_.solved;
-    }
-    END_TIMER
-
-    if (update_mu) {
-      double temp = -1;
-      if (config.enable_line_search) {
-        LineSearchOutput output = ComputeMuFromLineSearch(
-            prog.kkt_system_manager_, solver, config.dinf_upper_bound,
-            prog.sys.AQc * c_scaling, c_scaling, b * b_scaling, prog.sys.AW,
-            &y);
-        if (output.failed) {
-          temp = -output.d0_dot_dt / output.dt_squared_norm;
-          // For debugging, print the predicted value of the d2 norm.
-          // This should agree with the norm that is reported.
-          // double norm = output.d0_squared_norm +
-          //               (temp * temp) * output.dt_squared_norm +
-          //               2 * temp * output.d0_dot_dt;
-          // DUMP(std::sqrt(norm));
-          if (temp < 0) {
-            temp = newton_step_parameters_inv_sqrt_mu;
-          }
-        } else {
-          temp = output.upper_bound;
-        }
-      }
-
-      if (temp < 0) {
-        CONEX_RETURN_ON_FAIL(
-            !prog.contains_quadratic_costs(),
-            "Solver terminating with error: line-search failed.");
-        temp = ComputeMuFromDivergence(prog.kkt_system_manager_, solver,
-                                       prog.sys.AQc * c_scaling, c_scaling,
-                                       b * b_scaling, config, rankK, &y);
-      }
-
-      if (temp > 0) {
-        newton_step_parameters_inv_sqrt_mu = temp;
-      } else {
-        newton_step_parameters_inv_sqrt_mu *= .5;
-      }
-    } else {
-      if (initial_centering == 0) {
-        centering_steps++;
-      }
-    }
-
-    const double max = inv_sqrt_mu_max;
-    const double min = std::sqrt(1.0 / (1e-15 + config.maximum_mu));
-    ApplyLimits(&newton_step_parameters_inv_sqrt_mu, min, max);
-
-    y = newton_step_parameters_inv_sqrt_mu *
-            (b * b_scaling + prog.sys.AQc * c_scaling) -
-        2 * prog.sys.AW;
-    START_TIMER(Solve)
-    solver->SolveInPlace(y);
-    END_TIMER
-
-    newton_step_parameters.e_weight = 1;
-    newton_step_parameters.c_weight =
-        newton_step_parameters_inv_sqrt_mu * c_scaling;
-
-    StepInfo info;
-    PrepareStep(&prog.kkt_system_manager_, newton_step_parameters, y, &info);
-    newton_step_parameters.step_size = 2.0 / (info.norminfd * info.norminfd);
-    if (newton_step_parameters.step_size > 1) {
-      newton_step_parameters.step_size = 1;
-    }
-
-    if (i == 0 &&
-        (config.initialization_mode == CONEX_INITIALIZATION_MODE_WARMSTART) &&
-        info.norminfd >= config.warmstart_abort_threshold) {
-      PRINTSTATUS("Aborting warmstart...");
-      SetIdentity(&constraints);
-      warmstart_aborted = true;
-    }
-
-    const double d_2 = std::sqrt(std::fabs(info.normsqrd));
-    const double d_inf = std::fabs(info.norminfd);
-    by = b.col(0).dot(y.col(0)) * 1.0 /
-         (newton_step_parameters_inv_sqrt_mu * c_scaling);
-    // inv_sqrt_mu * <c, x> = c' Q(w^{1/2}) (e + d)
-    //                      = c' Q(w^{1/2}) (e +  e + Q(w^{1/2})(Ay - k c))
-    //                      = c' Q(w^{1/2}) (2e + Q(w^{1/2})(Ay - k c))
-    //                      = 2 c' w + c'Q(w)(Ay - k c' Q(w) c)
-    cx = 2 * prog.sys.inner_product_of_w_and_c +
-         prog.sys.AQc.col(0).dot(y.col(0)) -
-         newton_step_parameters_inv_sqrt_mu *
-             prog.sys.inner_product_of_c_and_Qc * c_scaling;
-    cx /= (newton_step_parameters_inv_sqrt_mu * b_scaling);
-
-    double mu = 1.0 / (newton_step_parameters_inv_sqrt_mu);
-    mu *= mu;
-
-    double s_dot_x = mu * (rankK - d_2 * d_2) / (b_scaling * c_scaling);
-
-    mu = mu / (c_scaling * b_scaling);
-#if CONEX_VERBOSE
-    if (config.verbose) {
-      REPORT(mu);
-      REPORT(d_2);
-      REPORT(d_inf);
-      double yQy = 0;
-      if (prog.contains_quadratic_costs()) {
-        double scale = newton_step_parameters_inv_sqrt_mu * c_scaling;
-        scale *= scale;
-        for (const auto& cost : prog.constraint_manager().quadratic_costs()) {
-          yQy += cost.EvaluateQuadraticCost(y) * 1.0 / scale;
-        }
-      }
-      double pobj = -(by - 0.5 * yQy);
-      double dobj = -(cx + 0.5 * yQy);
-      prog.status_.dual_objective_value = dobj;
-      prog.status_.primal_objective_value = pobj;
-      REPORT(pobj);
-      REPORT(dobj);
-      kkt_error =
-          std::fabs(dobj - pobj + s_dot_x) / (1e-12 + std::fabs(s_dot_x));
-      REPORT(kkt_error);
-      std::cout << std::endl;
-    }
-#endif
-
-    prog.stats->num_iter = i + 1;
-    prog.stats->sqrt_inv_mu[i] = newton_step_parameters_inv_sqrt_mu;
-
-    bool terminate =
-        final_centering && centering_steps >= config.final_centering_steps ||
-        i == config.max_iterations - 1;
-    bool converged = newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max &&
-                     d_inf <= config.final_centering_tolerance;
-
-    if (terminate || converged) {
-      max_iter_failure = !converged;
-      if (config.prepare_dual_variables) {
-        newton_step_parameters.affine = true;
-        DenseMatrix bres(b.rows(), 1);
-        Ref y2map(bres.data(), bres.rows(), bres.cols());
-        StepInfo info;
-        bres = newton_step_parameters_inv_sqrt_mu * b * b_scaling -
-               1 * prog.sys.AW;
-        newton_step_parameters.e_weight = 0;
-        newton_step_parameters.c_weight = 0;
-        solver->SolveInPlace(y2map);
-        PrepareStep(&prog.kkt_system_manager_, newton_step_parameters, y2map,
-                    &info);
-        TakeStep(&constraints, newton_step_parameters);
-      } else {
-        TakeStep(&constraints, newton_step_parameters);
-      }
-      break;
-    } else {
-      TakeStep(&constraints, newton_step_parameters);
-      continue;
-    }
-    throw std::runtime_error("Unreachable: termination logic has a bug.");
-  }
 
   prog.status_.num_iterations = prog.stats->num_iter;
-  yout = y.topRows(m);
-
-  double mu = 1.0 / (newton_step_parameters_inv_sqrt_mu);
-  mu *= mu;
-  if (mu > config.infeasibility_threshold) {
-    PRINTSTATUS("Infeasible Or Unbounded!!.");
-    prog.status_.solved = 0;
-    prog.status_.primal_infeasible =
-        cx * newton_step_parameters_inv_sqrt_mu <= -.5;
-    prog.status_.dual_infeasible =
-        by * newton_step_parameters_inv_sqrt_mu >= .5;
-  } else {
-    prog.status_.solved = true;
-  }
-
-  if (prog.status_.solved) {
-    yout /= (newton_step_parameters_inv_sqrt_mu);
-    yout /= c_scaling;
-  }
-
-  if (prog.status_.solved) {
-    if (max_iter_failure) {
-      prog.status_.solved = false;
-      PRINTSTATUS("Terminating at maximum iteration limit.");
-    } else {
-      PRINTSTATUS("Solved.");
-    }
-  }
+  yout = workspace.y.topRows(m);
 
   return prog.status_.solved;
 }

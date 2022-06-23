@@ -14,7 +14,6 @@
 namespace conex {
 using DenseMatrix = Eigen::MatrixXd;
 using Eigen::VectorXd;
-
 int DoRandomDenseTest(const SolverConfiguration& config, int number_of_tests,
                       int random_seed) {
   srand(random_seed);
@@ -384,6 +383,7 @@ GTEST_TEST(LP, RandomPrimal) {
     DoRandomPrimalFailsSlater(.1 * (-1 + i * 1));
   }
 }
+
 void DoRandomDualFailsSlater(double distance_to_infeasible) {
   SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
@@ -439,7 +439,6 @@ void DoRandomDualFailsSlater(double distance_to_infeasible) {
     EXPECT_GE((C - A * y).minCoeff(), -1e-8);
   }
 }
-
 GTEST_TEST(LP, RandomDual) {
   srand(0);
   for (int i = 0; i < 3; i++) {
