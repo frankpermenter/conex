@@ -45,7 +45,8 @@ class Program {
         ci->constraint()->get_dual_variable(xi->data());
         if (!status_.primal_infeasible) {
           xi->array() /=
-              (stats->sqrt_inv_mu[stats->num_iter - 1] * stats->b_scaling());
+              (workspace_.stats->sqrt_inv_mu[workspace_.stats->num_iter - 1] *
+               workspace_.stats->b_scaling());
         }
         return;
       }
@@ -97,7 +98,7 @@ class Program {
   int NumberOfConstraints() {
     return kkt_system_manager_.cone_inequalities().size();
   }
-  ConexStatus Status() { return status_; }
+  ConexStatus& Status() { return status_; }
 
   bool AddLinearCost(const Eigen::VectorXd& b);
   bool AddLinearCost(const Eigen::VectorXd& b,
@@ -124,22 +125,29 @@ class Program {
 
   Eigen::VectorXd* workspace_memory() { return workspace_data_; }
 
-  const WorkspaceStats& statistics() const { return *stats; }
+  const WorkspaceStats& statistics() const { return *workspace_.stats; }
+  WorkspaceStats& statistics() { return *workspace_.stats; }
 
   const ConstraintManager& constraint_manager() const {
     return kkt_system_manager_;
   };
 
   ConstraintManager& constraint_manager() { return kkt_system_manager_; };
-  const SchurComplementSystem& kkt_system_residual() const { return sys; };
+  const SchurComplementSystem& kkt_system_residual() const {
+    return workspace_.sys;
+  };
 
-  SchurComplementSystem& kkt_system_residual() { return sys; };
+  SchurComplementSystem& kkt_system_residual() { return workspace_.sys; };
   KKTSolverBase* kkt_solver() { return solver.get(); };
 
  private:
+  struct IPMWorkSpace {
+    SchurComplementSystem sys;
+    std::unique_ptr<WorkspaceStats> stats;
+  };
+  IPMWorkSpace workspace_;
+
   ConstraintManager kkt_system_manager_;
-  SchurComplementSystem sys;
-  std::unique_ptr<WorkspaceStats> stats;
   std::vector<Workspace> workspaces;
   std::unique_ptr<KKTSolverBase> solver;
   Eigen::VectorXd memory_;

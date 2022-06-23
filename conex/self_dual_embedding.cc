@@ -206,20 +206,46 @@ double DoLineSearch(double dinf_upper_bound, ConstraintManager* constraints,
 //    b'y - c'x = kappa
 //    A'x = tau * b + mu * (Ae - b)
 //    tau c - Ay = s + mu * (c-e)
-void SolveHSD(Program& prog, const Eigen::VectorXd& bin,
+//
+
+struct WorkspaceHSDEmbedding {
+  WorkspaceHSDEmbedding(double* y_data, int m) : y(y_data, m, 1) {}
+  WorkspaceSchurComplement sys;
+  Ref y;
+  double kappa;
+  double tau;
+};
+
+void SolveHSD(ConstraintManager& kkt_system_manager_,
+              const SolverConfiguration& config, SchurComplementSystem& sys,
+              KKTSolverBase* solver, ConexStatus& status_,
+              WorkspaceHSDEmbedding& workspace, WorkspaceStats* stats);
+
+void SolveHSD(Program& prog, const Eigen::VectorXd&,
               const SolverConfiguration& config, VectorXd* yout, double* tau,
               double* kappa) {
-  std::cout << "\n\nStarting Conex optimizer (Self-dual-embedding mode)\n";
-
   Initialize(prog, config);
-  int m = bin.size();
-  Eigen::VectorXd b(prog.kkt_system_manager_.SizeOfKKTSystem());
+  int m = prog.constraint_manager().SizeOfKKTSystem();
+  int num_vars = prog.constraint_manager().GetNumberOfVariables();
+  VectorXd ydata(m);
+  WorkspaceHSDEmbedding workspace(ydata.data(), m);
+  SolveHSD(prog.constraint_manager(), config, prog.kkt_system_residual(),
+           prog.kkt_solver(), prog.Status(), workspace, &prog.statistics());
+  *yout = ydata.head(num_vars);
+}
+
+void SolveHSD(ConstraintManager& kkt_system_manager_,
+              const SolverConfiguration& config, SchurComplementSystem& sys,
+              KKTSolverBase* solver, ConexStatus& status_,
+              WorkspaceHSDEmbedding& workspace, WorkspaceStats* stats) {
+  std::cout << "\n\nStarting Conex optimizer (Self-dual-embedding mode)\n";
+  auto* yout = &workspace.y;
+
+  int m = kkt_system_manager_.GetNumberOfVariables();
+  Eigen::VectorXd b(kkt_system_manager_.SizeOfKKTSystem());
   int num_eqs = b.rows() - m;
   b.setZero();
-  b.head(m) << bin;
-  b.head(m) << bin;
-
-  auto sys = prog.sys;
+  b.head(m) << -kkt_system_manager_.GetLinearCostVector();
 
   double sqrtmu = 1;
   double eps = 1e-6;
@@ -228,17 +254,16 @@ void SolveHSD(Program& prog, const Eigen::VectorXd& bin,
   double& dinf = dir.dinf;
   double& dt = dir.d_tau;
   VectorXd& y = dir.y;
-  int rank = Rank(prog.kkt_system_manager_.cone_inequalities());
+  int rank = Rank(kkt_system_manager_.cone_inequalities());
   for (int i = 0; i < config.max_iterations; i++) {
-    prog.solver->Assemble();
-    CONEX_CHECK(prog.solver->Factor());
+    solver->Assemble();
+    CONEX_CHECK(solver->Factor());
 
-    AssembleSchurComplementResiduals(prog.kkt_system_manager_, &sys);
+    AssembleSchurComplementResiduals(kkt_system_manager_, &sys);
 
-    sqrtmu = DoLineSearch(config.dinf_upper_bound, &prog.kkt_system_manager_,
-                          sys, prog.solver.get(), b, wt, sqrtmu, &dir);
-    SetNewtonDirection(&prog.kkt_system_manager_, sys, prog.solver.get(), b, wt,
-                       sqrtmu, &dir);
+    sqrtmu = DoLineSearch(config.dinf_upper_bound, &kkt_system_manager_, sys,
+                          solver, b, wt, sqrtmu, &dir);
+    SetNewtonDirection(&kkt_system_manager_, sys, solver, b, wt, sqrtmu, &dir);
 
     dir.options.step_size = 2.0 / (dinf * dinf);
     if (dir.options.step_size > 1) {
@@ -276,15 +301,15 @@ void SolveHSD(Program& prog, const Eigen::VectorXd& bin,
               << "  rank: " << rank << "  mu: " << sqrtmu * sqrtmu
               << "  b'y: " << primal_obj << " c'x: " << dual_obj
               << " gap_error " << gap_error << std::endl;
-    prog.stats->sqrt_inv_mu[i] = tau / sqrtmu;
-    prog.stats->num_iter = i + 1;
+    stats->sqrt_inv_mu[i] = tau / sqrtmu;
+    stats->num_iter = i + 1;
     double min_mu = 1.0 / config.inv_sqrt_mu_max;
     min_mu *= min_mu;
     if (dinf <= config.final_centering_tolerance) {
       if (sqrtmu * sqrtmu < min_mu) {
-        (*yout) = y.head(m) * sqrtmu / tau;
+        (*yout) = y * sqrtmu / tau;
         dir.options.affine = 1;
-        TakeStep(&prog.constraint_manager().cone_inequalities(), dir.options);
+        TakeStep(&kkt_system_manager_.cone_inequalities(), dir.options);
         return;
       }
     }
@@ -292,7 +317,7 @@ void SolveHSD(Program& prog, const Eigen::VectorXd& bin,
     // if (sqrtmu > min_mu && gap_error < 1e-15) {
     //  sqrtmu *= 0.1;
     //}
-    TakeStep(&prog.constraint_manager().cone_inequalities(), dir.options);
+    TakeStep(&kkt_system_manager_.cone_inequalities(), dir.options);
     wt = wt * std::exp(dir.options.step_size * dt);
   }
 }

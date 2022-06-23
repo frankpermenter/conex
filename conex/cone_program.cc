@@ -203,16 +203,17 @@ void ApplyLimits(double* x, double lb, double ub) {
 bool Initialize(Program& prog, const SolverConfiguration& config) {
   if (!prog.is_initialized ||
       config.initialization_mode == CONEX_INITIALIZATION_MODE_COLDSTART) {
-    prog.stats = std::make_unique<WorkspaceStats>(config.max_iterations);
+    prog.workspace_.stats =
+        std::make_unique<WorkspaceStats>(config.max_iterations);
     auto& solver = prog.solver;
 
-    prog.sys.m_ = prog.kkt_system_manager_.SizeOfKKTSystem();
-    prog.sys.residual_only_ = true;
+    prog.workspace_.sys.m_ = prog.kkt_system_manager_.SizeOfKKTSystem();
+    prog.workspace_.sys.residual_only_ = true;
 
     prog.InitializeWorkspace();
     if (config.initialization_mode == CONEX_INITIALIZATION_MODE_COLDSTART) {
-      prog.stats->b_scaling() = 1;
-      prog.stats->c_scaling() = 1;
+      prog.workspace_.stats->b_scaling() = 1;
+      prog.workspace_.stats->c_scaling() = 1;
       SetIdentity(&prog.kkt_system_manager_.cone_inequalities());
     }
 
@@ -240,9 +241,10 @@ struct WorkspaceInfeasibleStart {
 
 bool SolveIPM(ConstraintManager& kkt_system_manager_,
               const SolverConfiguration& config, SchurComplementSystem& sys,
-              KKTSolverBase* solver, double& c_scaling, double& b_scaling,
-              ConexStatus& status_, WorkspaceInfeasibleStart& workspace,
-              WorkspaceStats* stats) {
+              KKTSolverBase* solver, ConexStatus& status_,
+              WorkspaceInfeasibleStart& workspace, WorkspaceStats* stats) {
+  double& c_scaling = stats->c_scaling();
+  double& b_scaling = stats->b_scaling();
   double inv_sqrt_mu_max = config.inv_sqrt_mu_max;
   double cx = 1;
   double by = -1;
@@ -258,6 +260,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
   int rankK = Rank(constraints);
   int centering_steps = 0;
   bool warmstart_aborted = false;
+
   Eigen::VectorXd b(kkt_system_manager_.SizeOfKKTSystem());
   b.setZero();
   b.head(m) << -kkt_system_manager_.GetLinearCostVector();
@@ -449,7 +452,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     stats->sqrt_inv_mu[i] = newton_step_parameters_inv_sqrt_mu;
 
     bool terminate =
-        final_centering && centering_steps >= config.final_centering_steps ||
+        (final_centering && centering_steps >= config.final_centering_steps) ||
         i == config.max_iterations - 1;
     bool converged = newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max &&
                      d_inf <= config.final_centering_tolerance;
@@ -554,12 +557,10 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     SaveConeProgram(prog.kkt_system_manager_, config.log_file);
   }
 
-  auto& constraints = prog.kkt_system_manager_.cone_inequalities();
   auto& solver = prog.solver;
   prog.status_.solved = 0;
   prog.status_.primal_infeasible = 0;
   prog.status_.dual_infeasible = 0;
-  bool max_iter_failure = false;
 
 #if CONEX_VERBOSE
   if (config.verbose) {
@@ -623,13 +624,12 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   WorkspaceInfeasibleStart workspace(
       ydata.data(), prog.kkt_system_manager_.SizeOfKKTSystem());
 
-  SolveIPM(prog.kkt_system_manager_, config, prog.sys, solver.get(),
-           prog.stats->c_scaling(), prog.stats->b_scaling(), prog.status_,
-           workspace, prog.stats.get());
+  SolveIPM(prog.kkt_system_manager_, config, prog.workspace_.sys, solver.get(),
+           prog.status_, workspace, prog.workspace_.stats.get());
 
   Eigen::Map<DenseMatrix> yout(primal_variable, m, 1);
 
-  prog.status_.num_iterations = prog.stats->num_iter;
+  prog.status_.num_iterations = prog.workspace_.stats->num_iter;
   yout = workspace.y.topRows(m);
 
   return prog.status_.solved;
@@ -639,8 +639,9 @@ DenseMatrix GetFeasibleObjective(Program* prg) {
   auto& prog = *prg;
   Initialize(prog, SolverConfiguration());
   prog.solver->Assemble();
-  AssembleSchurComplementResiduals(prog.kkt_system_manager_, &prog.sys);
-  return .5 * prog.sys.AW;
+  AssembleSchurComplementResiduals(prog.kkt_system_manager_,
+                                   &prog.workspace_.sys);
+  return .5 * prog.workspace_.sys.AW;
 }
 
 bool Solve(const DenseMatrix& b, Program& prog,
@@ -705,8 +706,8 @@ void Program::InitializeWorkspace() {
   CONEX_CHECK(workspace_data_);
   workspaces = kkt_system_manager_.workspace();
 
-  workspaces.emplace_back(stats.get());
-  workspaces.emplace_back(&sys);
+  workspaces.emplace_back(workspace_.stats.get());
+  workspaces.emplace_back(&workspace_.sys);
   auto size = SizeOf(workspaces);
   if (size > workspace_data_->size()) {
     workspace_data_->resize(size);
@@ -728,7 +729,8 @@ Eigen::MatrixXd Program::GetDualVariable(int i) {
   ci->constraint()->get_dual_variable(xi.data());
   if (!status_.primal_infeasible) {
     xi.array() /=
-        (stats->sqrt_inv_mu[stats->num_iter - 1] * stats->b_scaling());
+        (workspace_.stats->sqrt_inv_mu[workspace_.stats->num_iter - 1] *
+         workspace_.stats->b_scaling());
   }
   return xi;
 }
