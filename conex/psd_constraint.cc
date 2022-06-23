@@ -51,13 +51,6 @@ void PrepareStep(PsdConstraint* o, const StepOptions& opt, const Ref& y,
   auto& WS = workspace.temp_1;
   auto& WSWS = workspace.temp_2;
 
-  if (opt.affine) {
-    o->ComputeNegativeSlack(opt.c_weight, y, &minus_s);
-    WS = W * minus_s;
-    o->AffineUpdate(opt.e_weight, &WS);
-    return;
-  }
-
   o->ComputeNegativeSlack(opt.c_weight, y, &minus_s);
   WS = W * minus_s;
 
@@ -86,7 +79,11 @@ void PrepareStep(PsdConstraint* o, const StepOptions& opt, const Ref& y,
 
 bool TakeStep(PsdConstraint* o, const StepOptions& options) {
   auto& WS = o->workspace_.temp_1;
-  o->GeodesicUpdate(options.step_size, options, &WS);
+  if (options.affine) {
+    o->AffineUpdate(options.e_weight, &WS);
+  } else {
+    o->GeodesicUpdate(options.step_size, options, &WS);
+  }
   return true;
 }
 

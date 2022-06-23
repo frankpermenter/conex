@@ -15,12 +15,23 @@ bool TakeStep(HermitianPsdConstraint<T>* o, const StepOptions& opt) {
   if (scale != 1.0) {
     WS = T::ScalarMultiply(WS, scale);
   }
-
   int n = Rank(*o);
-  auto expWS = T::Zero(n, n);
-  ExponentialMap(WS, &expWS);
-  o->W = T::Multiply(expWS, o->W);
-  o->W = T::ScalarMultiply(T::Add(o->W, T::ConjugateTranspose(o->W)), .5);
+
+  if (opt.affine) {
+    auto& WS = o->WS;
+    auto WSW = T::Zero(n, n);
+    WSW = T::Multiply(WS, o->W);
+    if (opt.e_weight != 0) {
+      o->W = T::ScalarMultiply(o->W, 1 + opt.e_weight);
+    }
+    o->W = T::Add(o->W, WSW);
+  } else {
+    int n = Rank(*o);
+    auto expWS = T::Zero(n, n);
+    ExponentialMap(WS, &expWS);
+    o->W = T::Multiply(expWS, o->W);
+    o->W = T::ScalarMultiply(T::Add(o->W, T::ConjugateTranspose(o->W)), .5);
+  }
 
   // TODO(FrankPermenter): Remove this hack, which provides
   // the dual-variable-interface access to real part of W.
@@ -40,22 +51,6 @@ void PrepareStep(HermitianPsdConstraint<T>* o, const StepOptions& opt,
 
   WS = T::Multiply(o->W, minus_s);
   int n = Rank(*o);
-
-  if (opt.affine) {
-    auto WSW = T::Zero(n, n);
-    WSW = T::Multiply(WS, o->W);
-    if (opt.e_weight != 0) {
-      o->W = T::ScalarMultiply(o->W, 1 + opt.e_weight);
-    }
-    o->W = T::Add(o->W, WSW);
-    // TODO(FrankPermenter): Remove this hack, which provides
-    // the dual-variable-interface access to real part of W.
-    if (o->W.at(0).data() != o->workspace_.W.data()) {
-      new (&o->workspace_.W)
-          Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(o->W.at(0).data(), n, n);
-    }
-    return;
-  }
 
   auto gw_eig = T::ApproximateEigenvalues(WS, o->W, T::Random(n, 1), n / 2 + 1);
   const double lambda_1 = std::fabs(opt.e_weight + gw_eig.minCoeff());
@@ -124,7 +119,16 @@ bool TakeStep(HermitianPsdConstraint<Octonions>* o, const StepOptions& opt) {
     minus_s = T::ScalarMultiply(minus_s, scale);
   }
 
-  o->W = GeodesicUpdateScaled(o->W, minus_s);
+  if (opt.affine) {
+    int n = Rank(*o);
+    auto WSW = T::QuadraticRepresentation(o->W, minus_s);
+    if (opt.e_weight != 0) {
+      o->W = T::ScalarMultiply(o->W, 1 + opt.e_weight);
+    }
+    o->W = T::Add(o->W, WSW);
+  } else {
+    o->W = GeodesicUpdateScaled(o->W, minus_s);
+  }
   return true;
 }
 

@@ -604,6 +604,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     StepInfo info;
     PrepareStep(&prog.kkt_system_manager_, newton_step_parameters, y2map,
                 &info);
+    TakeStep(&constraints, newton_step_parameters);
   }
 
   if (prog.status_.solved) {

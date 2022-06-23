@@ -149,9 +149,6 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options,
   double norminf = (d).array().abs().maxCoeff();
   info->norminfd = norminf;
   info->normsqrd = d.squaredNorm();
-  if (options.affine) {
-    TakeStep(o, options);
-  }
 }
 
 bool TakeStep(LinearConstraint* o, const StepOptions& options) {
