@@ -24,7 +24,7 @@ struct SolverConfiguration {
   int enable_line_search = 0;
   double dinf_upper_bound = 1;
   int final_centering_steps = 5;
-  double final_centering_tolerance = .01;
+  double final_centering_tolerance = 1;
   int initial_centering_steps_warmstart = 0;
   int initial_centering_steps_coldstart = 0;
   double warmstart_abort_threshold = 2;

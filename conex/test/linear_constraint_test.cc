@@ -58,7 +58,6 @@ int DoRandomDenseTest(const SolverConfiguration& config, int number_of_tests,
   }
   return total_iters;
 }
-
 GTEST_TEST(LP, Dense) {
   SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
@@ -105,7 +104,6 @@ Eigen::VectorXd ExtractVars(const Eigen::VectorXd& x,
   }
   return z;
 }
-
 using Eigen::MatrixXd;
 using std::vector;
 std::pair<MatrixXd, MatrixXd> Combine(vector<MatrixXd> A, vector<MatrixXd> C,
@@ -321,7 +319,6 @@ GTEST_TEST(LP, SparseWithFillIn) {
   auto y2 = SolveFillIn(false);
   EXPECT_NEAR((y1 - y2).norm(), 0, 1e-7);
 }
-
 void DoRandomPrimalFailsSlater(double distance_to_infeasible) {
   SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
@@ -329,7 +326,7 @@ void DoRandomPrimalFailsSlater(double distance_to_infeasible) {
   config.maximum_mu = 10000000;
   config.divergence_upper_bound = 10000;
   config.infeasibility_threshold = 2000000;
-  config.final_centering_steps = 5;
+  config.final_centering_steps = 0;
   config.final_centering_tolerance = 1;
 
   int m = 10;
@@ -387,7 +384,6 @@ GTEST_TEST(LP, RandomPrimal) {
     DoRandomPrimalFailsSlater(.1 * (-1 + i * 1));
   }
 }
-
 void DoRandomDualFailsSlater(double distance_to_infeasible) {
   SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;

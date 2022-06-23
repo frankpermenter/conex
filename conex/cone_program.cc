@@ -284,7 +284,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   prog.status_.solved = 0;
   prog.status_.primal_infeasible = 0;
   prog.status_.dual_infeasible = 0;
-  bool max_iters_reached = true;
+  bool max_iter_failure = false;
 
 #if CONEX_VERBOSE
   if (config.verbose) {
@@ -396,13 +396,6 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     bool update_mu = (i == 0) || !(initial_centering || final_centering) ||
                      warmstart_aborted;
     warmstart_aborted = false;
-
-    if (final_centering) {
-      if (centering_steps >= config.final_centering_steps) {
-        max_iters_reached = (i >= config.max_iterations - 1);
-        break;
-      }
-    }
 
     START_TIMER(Assemble)
     solver->Assemble();
@@ -562,15 +555,36 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     prog.stats->num_iter = i + 1;
     prog.stats->sqrt_inv_mu[i] = newton_step_parameters_inv_sqrt_mu;
 
-    bool terminate = (final_centering ||
-                      newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max) &&
+    bool terminate =
+        final_centering && centering_steps >= config.final_centering_steps ||
+        i == config.max_iterations - 1;
+    bool converged = newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max &&
                      d_inf <= config.final_centering_tolerance;
 
-    if (terminate) {
-      max_iters_reached = false;
+    if (terminate || converged) {
+      max_iter_failure = !converged;
+      if (config.prepare_dual_variables) {
+        newton_step_parameters.affine = true;
+        DenseMatrix bres(b.rows(), 1);
+        Ref y2map(bres.data(), bres.rows(), bres.cols());
+        StepInfo info;
+        bres = newton_step_parameters_inv_sqrt_mu * b * b_scaling -
+               1 * prog.sys.AW;
+        newton_step_parameters.e_weight = 0;
+        newton_step_parameters.c_weight = 0;
+        solver->SolveInPlace(y2map);
+        PrepareStep(&prog.kkt_system_manager_, newton_step_parameters, y2map,
+                    &info);
+        TakeStep(&constraints, newton_step_parameters);
+      } else {
+        TakeStep(&constraints, newton_step_parameters);
+      }
+      break;
     } else {
       TakeStep(&constraints, newton_step_parameters);
+      continue;
     }
+    throw std::runtime_error("Unreachable: termination logic has a bug.");
   }
 
   prog.status_.num_iterations = prog.stats->num_iter;
@@ -588,22 +602,6 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   } else {
     prog.status_.solved = true;
   }
-  if (config.prepare_dual_variables) {
-    solver->Assemble();
-    AssembleSchurComplementResiduals(prog.kkt_system_manager_, &prog.sys);
-    solver->Factor();
-    DenseMatrix bres =
-        newton_step_parameters_inv_sqrt_mu * b * b_scaling - 1 * prog.sys.AW;
-    Ref y2map(bres.data(), bres.rows(), bres.cols());
-    solver->SolveInPlace(y2map);
-    newton_step_parameters.affine = true;
-    newton_step_parameters.e_weight = 0;
-    newton_step_parameters.c_weight = 0;
-    StepInfo info;
-    PrepareStep(&prog.kkt_system_manager_, newton_step_parameters, y2map,
-                &info);
-    TakeStep(&constraints, newton_step_parameters);
-  }
 
   if (prog.status_.solved) {
     yout /= (newton_step_parameters_inv_sqrt_mu);
@@ -611,7 +609,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   }
 
   if (prog.status_.solved) {
-    if (max_iters_reached) {
+    if (max_iter_failure) {
       prog.status_.solved = false;
       PRINTSTATUS("Terminating at maximum iteration limit.");
     } else {

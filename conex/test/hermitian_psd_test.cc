@@ -57,7 +57,7 @@ int CompareRealHermitianWithLMI(int rank, int dim) {
   MatrixXd X_2(rank, rank);
   prog2.GetDualVariable(0, &X_2);
   EXPECT_NEAR((y2 - y).norm(), 0, 1e-11);
-  EXPECT_NEAR((X_2 - X_1).norm(), 0, 1e-11);
+  EXPECT_NEAR((X_2 - X_1).norm(), 0, 2e-11);
 
   return solved_1 && solved_2;
 }
