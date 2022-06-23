@@ -499,7 +499,6 @@ bool Solve(Program& prog, const SolverConfiguration& config,
         newton_step_parameters_inv_sqrt_mu * c_scaling;
 
     StepInfo info;
-    START_TIMER(Update)
     PrepareStep(&prog.kkt_system_manager_, newton_step_parameters, y, &info);
     newton_step_parameters.step_size = 2.0 / (info.norminfd * info.norminfd);
     if (newton_step_parameters.step_size > 1) {
@@ -512,10 +511,7 @@ bool Solve(Program& prog, const SolverConfiguration& config,
       PRINTSTATUS("Aborting warmstart...");
       SetIdentity(&constraints);
       warmstart_aborted = true;
-    } else {
-      TakeStep(&constraints, newton_step_parameters);
     }
-    END_TIMER
 
     const double d_2 = std::sqrt(std::fabs(info.normsqrd));
     const double d_inf = std::fabs(info.norminfd);
@@ -566,12 +562,14 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     prog.stats->num_iter = i + 1;
     prog.stats->sqrt_inv_mu[i] = newton_step_parameters_inv_sqrt_mu;
 
-    if (final_centering ||
-        newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max) {
-      if (d_inf <= config.final_centering_tolerance) {
-        max_iters_reached = false;
-        break;
-      }
+    bool terminate = (final_centering ||
+                      newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max) &&
+                     d_inf <= config.final_centering_tolerance;
+
+    if (terminate) {
+      max_iters_reached = false;
+    } else {
+      TakeStep(&constraints, newton_step_parameters);
     }
   }
 
