@@ -422,23 +422,25 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     double s_dot_x = mu * (rankK - d_2 * d_2) / (b_scaling * c_scaling);
 
     mu = mu / (c_scaling * b_scaling);
+    double yQy = 0;
+    if (kkt_system_manager_.quadratic_costs().size()) {
+      double scale = newton_step_parameters_inv_sqrt_mu * c_scaling;
+      scale *= scale;
+      for (const auto& cost : kkt_system_manager_.quadratic_costs()) {
+        yQy += cost.EvaluateQuadraticCost(y) * 1.0 / scale;
+      }
+    }
+    double pobj = -(by - 0.5 * yQy);
+    double dobj = -(cx + 0.5 * yQy);
+    double gap = std::abs(pobj - dobj);
 #if CONEX_VERBOSE
     if (config.verbose) {
       REPORT(mu);
       REPORT(d_2);
       REPORT(d_inf);
-      double yQy = 0;
-      if (kkt_system_manager_.quadratic_costs().size()) {
-        double scale = newton_step_parameters_inv_sqrt_mu * c_scaling;
-        scale *= scale;
-        for (const auto& cost : kkt_system_manager_.quadratic_costs()) {
-          yQy += cost.EvaluateQuadraticCost(y) * 1.0 / scale;
-        }
-      }
-      double pobj = -(by - 0.5 * yQy);
-      double dobj = -(cx + 0.5 * yQy);
       status_.dual_objective_value = dobj;
       status_.primal_objective_value = pobj;
+      REPORT(gap);
       REPORT(pobj);
       REPORT(dobj);
       kkt_error =
@@ -454,8 +456,10 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     bool terminate =
         (final_centering && centering_steps >= config.final_centering_steps) ||
         i == config.max_iterations - 1;
-    bool converged = newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max &&
-                     d_inf <= config.final_centering_tolerance;
+    bool converged =
+        (newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max ||
+         gap <= rankK * 1.0 / (inv_sqrt_mu_max * inv_sqrt_mu_max)) &&
+        d_inf <= config.final_centering_tolerance;
 
     if (terminate || converged) {
       max_iter_failure = !converged;
