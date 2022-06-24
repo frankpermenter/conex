@@ -243,12 +243,10 @@ void SolveHSD(ConstraintManager& kkt_system_manager_,
 
   int m = kkt_system_manager_.GetNumberOfVariables();
   Eigen::VectorXd b(kkt_system_manager_.SizeOfKKTSystem());
-  int num_eqs = b.rows() - m;
   b.setZero();
   b.head(m) << -kkt_system_manager_.GetLinearCostVector();
 
   double sqrtmu = 1;
-  double eps = 1e-6;
   double wt = sqrtmu;
   NewtonDirectionInfo dir;
   double& dinf = dir.dinf;

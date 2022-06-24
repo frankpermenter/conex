@@ -137,7 +137,6 @@ void SetIdentity(LinearConstraint* o) { o->workspace_.W.setConstant(1); }
 void PrepareStep(LinearConstraint* o, const StepOptions& options,
                  const Eigen::Ref<const Eigen::MatrixXd>& y, StepInfo* info) {
   auto* workspace = &o->workspace_;
-  auto& minus_s = workspace->temp_1;
   auto& d = workspace->temp_2;
 
   // d =  e + w \circ ( A'y  - c k_1 - k_0 e)

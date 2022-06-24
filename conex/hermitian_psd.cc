@@ -120,7 +120,6 @@ bool TakeStep(HermitianPsdConstraint<Octonions>* o, const StepOptions& opt) {
   }
 
   if (opt.affine) {
-    int n = Rank(*o);
     auto WSW = T::QuadraticRepresentation(o->W, minus_s);
     if (opt.e_weight != 0) {
       o->W = T::ScalarMultiply(o->W, 1 + opt.e_weight);
