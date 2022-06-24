@@ -2,11 +2,11 @@ load("test.bzl", "conex_cc_test")
 
 cc_library(
     name = "test_util",
-    srcs = glob(["test/test_util.cc"]),
-    hdrs = glob([
-        "test/test_util.h",
+    srcs = ["test/test_util.cc"],
+    hdrs = [
         "debug_macros.h",
-    ]),
+        "test/test_util.h",
+    ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "@eigen",
@@ -16,7 +16,7 @@ cc_library(
 
 conex_cc_test(
     name = "linear_constraint_test",
-    srcs = glob(["test/linear_constraint_test.cc"]),
+    srcs = ["test/linear_constraint_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "core",
@@ -27,7 +27,7 @@ conex_cc_test(
 
 conex_cc_test(
     name = "hermitian_psd_test",
-    srcs = glob(["test/hermitian_psd_test.cc"]),
+    srcs = ["test/hermitian_psd_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "core",
@@ -39,7 +39,7 @@ conex_cc_test(
 
 conex_cc_test(
     name = "sdp_test",
-    srcs = glob(["test/test_sdp.cc"]),
+    srcs = ["test/sdp_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "core",
@@ -65,7 +65,7 @@ cc_binary(
 
 conex_cc_test(
     name = "socp",
-    srcs = glob(["test/test_socp.cc"]),
+    srcs = ["test/test_socp.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
@@ -75,7 +75,7 @@ conex_cc_test(
 
 cc_test(
     name = "divergence_test",
-    srcs = glob(["test/test_divergence.cc"]),
+    srcs = ["test/test_divergence.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "divergence",
@@ -96,10 +96,10 @@ conex_cc_test(
 
 cc_test(
     name = "approximate_eigenvalues_test",
-    srcs = glob([
-        "test/approximate_eigenvalues.cc",
+    srcs = [
         "debug_macros.h",
-    ]),
+        "test/approximate_eigenvalues.cc",
+    ],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "approximate_eigenvalues",
@@ -120,7 +120,7 @@ cc_library(
 
 cc_test(
     name = "exponential_map_pade_test",
-    srcs = glob(["test/exponential_map_pade_test.cc"]),
+    srcs = ["test/exponential_map_pade_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "exponential_map_pade",
@@ -529,7 +529,7 @@ conex_cc_test(
 
 conex_cc_test(
     name = "quadratic_objective_test",
-    srcs = glob(["test/quadratic_objective_test.cc"]),
+    srcs = ["test/quadratic_objective_test.cc"],
     copts = ["-Iexternal/gtest/include"],
     deps = [
         "conex_lib",
