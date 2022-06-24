@@ -67,7 +67,8 @@ void BasicHSDSolverTestHelper(const Eigen::MatrixXd& A,
   config.dinf_upper_bound = .9;
   config.final_centering_tolerance = 1;
   config.inv_sqrt_mu_max = 1e3;
-  SolveHSD(prog, bin, config, &ysol, &tau_sol, &kappa_sol);
+  config.algorithm = CONEX_ALGORITHM_SELF_DUAL_EMBEDDING;
+  Solve(prog, config);
   return;
 }
 

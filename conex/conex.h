@@ -11,6 +11,8 @@ enum : int {
   CONEX_KKT_SOLVER_CG = 2,
   CONEX_KKT_SOLVER_TREE = 3,
   CONEX_KKT_SOLVER_SPARSE_QR = 4,
+  CONEX_ALGORITHM_INFEASIBLE_START = 0,
+  CONEX_ALGORITHM_SELF_DUAL_EMBEDDING = 1,
 };
 
 struct SolverConfiguration {
@@ -36,6 +38,7 @@ struct SolverConfiguration {
   int iterative_refinement_iterations = 0;
   int verbose = 1;
   bool enable_logging = false;
+  int algorithm = CONEX_ALGORITHM_INFEASIBLE_START;
   std::string log_file = "conex_log.json";
 };
 

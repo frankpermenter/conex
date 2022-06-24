@@ -208,19 +208,6 @@ double DoLineSearch(double dinf_upper_bound, ConstraintManager* constraints,
 //    tau c - Ay = s + mu * (c-e)
 //
 
-struct WorkspaceHSDEmbedding {
-  WorkspaceHSDEmbedding(double* y_data, int m) : y(y_data, m, 1) {}
-  WorkspaceSchurComplement sys;
-  Ref y;
-  double kappa;
-  double tau;
-};
-
-void SolveHSD(ConstraintManager& kkt_system_manager_,
-              const SolverConfiguration& config, SchurComplementSystem& sys,
-              KKTSolverBase* solver, ConexStatus& status_,
-              WorkspaceHSDEmbedding& workspace, WorkspaceStats* stats);
-
 void SolveHSD(Program& prog, const Eigen::VectorXd&,
               const SolverConfiguration& config, VectorXd* yout, double* tau,
               double* kappa) {
@@ -293,21 +280,46 @@ void SolveHSD(ConstraintManager& kkt_system_manager_,
         (primal_obj - dual_obj) * tau -
         (kappa - sqrtmu * sqrtmu * (1.0 + sys.inner_product_of_c_and_e));
 
-    std::cout << i << " tau: " << tau << " kappa: " << kappa
+    std::cout << stats->num_iter << " tau: " << tau << " kappa: " << kappa
               << "  dinf: " << dinf << "  dinf_w: " << dir.dinf_w
-              << "  dinf_t: " << dir.dinf_t << "  dsqr: " << dir.info.normsqrd
+              << "  d_t: " << dt << "  dsqr: " << dir.info.normsqrd
               << "  rank: " << rank << "  mu: " << sqrtmu * sqrtmu
               << "  b'y: " << primal_obj << " c'x: " << dual_obj
               << " gap_error " << gap_error << std::endl;
-    stats->sqrt_inv_mu[i] = tau / sqrtmu;
-    stats->num_iter = i + 1;
+    stats->sqrt_inv_mu[stats->num_iter] = wt * (1 + dt);
+    stats->num_iter++;
     double min_mu = 1.0 / config.inv_sqrt_mu_max;
     min_mu *= min_mu;
     if (dinf <= config.final_centering_tolerance) {
-      if (sqrtmu * sqrtmu < min_mu) {
-        (*yout) = y * sqrtmu / tau;
+      if (sqrtmu * sqrtmu <= min_mu ||
+          stats->sqrt_inv_mu[stats->num_iter - 1] > config.inv_sqrt_mu_max) {
+        (*yout) = y * (wt * (1 + dt));
+        status_.solved = (wt * (1 + dt)) > 1e-2;
+        if (!status_.solved) {
+          dir.options.affine = 1;
+          TakeStep(&kkt_system_manager_.cone_inequalities(), dir.options);
+        }
+        return;
         dir.options.affine = 1;
+        auto& newton_step_parameters = dir.options;
+
+        newton_step_parameters.affine = true;
+        DenseMatrix bres(b.rows(), 1);
+        Ref y2map(bres.data(), bres.rows(), bres.cols());
+        StepInfo info;
+        bres = (wt * (1 + dt)) * b - 1 * sys.AW;
+        newton_step_parameters.e_weight = 0;
+        newton_step_parameters.w_weight = 0;
+        newton_step_parameters.c_weight = 0;
+        stats->sqrt_inv_mu[i] = (wt * (1 + dt));
+        solver->SolveInPlace(y2map);
+        PrepareStep(&kkt_system_manager_, newton_step_parameters, y2map, &info);
         TakeStep(&kkt_system_manager_.cone_inequalities(), dir.options);
+
+        y2map = sys.AQc;
+        solver->SolveInPlace(y2map);
+        (*yout) = y2map;
+
         return;
       }
     }

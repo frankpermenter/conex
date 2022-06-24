@@ -24,6 +24,18 @@ struct SelfDualEmbeddingSystem {
   double inner_product_of_c_and_Qe;
 };*/
 
+struct WorkspaceHSDEmbedding {
+  WorkspaceHSDEmbedding(double* y_data, int m) : y(y_data, m, 1) {}
+  WorkspaceSchurComplement sys;
+  Ref y;
+  double kappa;
+  double tau;
+};
+
+void SolveHSD(ConstraintManager& kkt_system_manager_,
+              const SolverConfiguration& config, SchurComplementSystem& sys,
+              KKTSolverBase* solver, ConexStatus& status_,
+              WorkspaceHSDEmbedding& workspace, WorkspaceStats* stats);
 SelfDualEmbeddingSolution SolveEmbedding(const SelfDualEmbeddingSystem& s,
                                          const Eigen::VectorXd& b,
                                          const double& wt,

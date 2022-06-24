@@ -63,7 +63,7 @@ int TestDiagonalSDP() {
   int n = 5;
   int m = 2;
   SolverConfiguration config = DefaultTestConfiguration();
-  config.inv_sqrt_mu_max = 25000;
+  config.inv_sqrt_mu_max = 5000;
   config.prepare_dual_variables = true;
 
   DenseMatrix affine2 = DenseMatrix::Identity(n, n);

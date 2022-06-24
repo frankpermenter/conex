@@ -4,6 +4,11 @@ namespace conex {
 
 inline SolverConfiguration DefaultTestConfiguration() {
   SolverConfiguration config;
+
+#ifdef CONEX_TEST_SD_EMBEDDING
+  config.algorithm = CONEX_ALGORITHM_SELF_DUAL_EMBEDDING;
+#endif
+
 #ifdef CONEX_TEST_SUPERNODAL
   config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
 #endif

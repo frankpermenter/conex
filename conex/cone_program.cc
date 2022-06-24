@@ -5,6 +5,7 @@
 #include "conex/divergence.h"
 #include "conex/kkt_solver_factory.h"
 #include "conex/newton_step.h"
+#include "conex/self_dual_embedding.h"
 #include "conex/serialize.h"
 
 using Eigen::MatrixXd;
@@ -289,10 +290,10 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
 
 #if CONEX_VERBOSE
     if (config.verbose) {
-      if (i < 10) {
-        std::cout << "i:  " << i << ", ";
+      if (stats->num_iter < 10) {
+        std::cout << "i:  " << stats->num_iter << ", ";
       } else {
-        std::cout << "i: " << i << ", ";
+        std::cout << "i: " << stats->num_iter << ", ";
       }
     }
 #endif
@@ -458,8 +459,8 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     }
 #endif
 
-    stats->num_iter = i + 1;
-    stats->sqrt_inv_mu[i] = newton_step_parameters_inv_sqrt_mu;
+    stats->sqrt_inv_mu[stats->num_iter] = newton_step_parameters_inv_sqrt_mu;
+    stats->num_iter++;
 
     bool terminate =
         (final_centering && centering_steps >= config.final_centering_steps) ||
@@ -632,23 +633,50 @@ bool Solve(Program& prog, const SolverConfiguration& config,
   }
 #endif
 
+  prog.workspace_.stats.get()->num_iter = 0;
   if (config.enable_line_search) {
     CONEX_CHECK(
         SupportsLineSearch(prog.kkt_system_manager_.cone_inequalities()));
   }
 
   Eigen::MatrixXd ydata(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
-  WorkspaceInfeasibleStart workspace(
-      ydata.data(), prog.kkt_system_manager_.SizeOfKKTSystem());
 
-  SolveIPM(prog.kkt_system_manager_, config, prog.workspace_.sys, solver.get(),
-           prog.status_, workspace, prog.workspace_.stats.get());
+  bool use_infeas_start =
+      config.algorithm == CONEX_ALGORITHM_INFEASIBLE_START ||
+      prog.contains_quadratic_costs() > 0 ||
+      !SupportsLineSearch(prog.constraint_manager().cone_inequalities());
+
+  if (use_infeas_start) {
+    WorkspaceInfeasibleStart workspace(
+        ydata.data(), prog.kkt_system_manager_.SizeOfKKTSystem());
+
+    SolveIPM(prog.kkt_system_manager_, config, prog.workspace_.sys,
+             solver.get(), prog.status_, workspace,
+             prog.workspace_.stats.get());
+  } else {
+    int m = prog.constraint_manager().SizeOfKKTSystem();
+    auto* stats = &prog.statistics();
+    WorkspaceHSDEmbedding workspace(ydata.data(), m);
+    SolveHSD(prog.constraint_manager(), config, prog.kkt_system_residual(),
+             prog.kkt_solver(), prog.Status(), workspace, &prog.statistics());
+
+    if (prog.Status().solved) {
+      WorkspaceInfeasibleStart workspace2(
+          ydata.data(), prog.kkt_system_manager_.SizeOfKKTSystem());
+      double inv_sqrt_mu = stats->sqrt_inv_mu[stats->num_iter - 1];
+      SolverConfiguration config2 = config;
+      config2.maximum_mu = 1.0 / (inv_sqrt_mu * inv_sqrt_mu);
+      config2.enable_rescaling = 0;
+      SolveIPM(prog.kkt_system_manager_, config2, prog.workspace_.sys,
+               solver.get(), prog.status_, workspace2,
+               prog.workspace_.stats.get());
+    }
+  }
 
   Eigen::Map<DenseMatrix> yout(primal_variable, m, 1);
 
   prog.status_.num_iterations = prog.workspace_.stats->num_iter;
-  yout = workspace.y.topRows(m);
-
+  yout = ydata.topRows(m);
   return prog.status_.solved;
 }
 

@@ -14,47 +14,44 @@
 namespace conex {
 using DenseMatrix = Eigen::MatrixXd;
 using Eigen::VectorXd;
-int DoRandomDenseTest(const SolverConfiguration& config, int number_of_tests,
-                      int random_seed) {
+int DoRandomDenseTest(const SolverConfiguration& config, int random_seed) {
   srand(random_seed);
   int total_iters = 0;
-  for (int i = 0; i < number_of_tests; i++) {
-    int num_variables = 5;
-    int num_constraints = 6 + 2 * i;
-    double eps = 1e-12;
+  int num_variables = 5;
+  int num_constraints = 6 + 20;
+  double eps = 1e-12;
 
-    DenseMatrix Alinear = DenseMatrix::Random(num_constraints, num_variables);
-    DenseMatrix Clinear = DenseMatrix::Random(num_constraints, 1);
-    Clinear = Clinear.array().abs();
+  DenseMatrix Alinear = DenseMatrix::Random(num_constraints, num_variables);
+  DenseMatrix Clinear = DenseMatrix::Random(num_constraints, 1);
+  Clinear = Clinear.array().abs();
 
-    LinearConstraint linear_constraint{Alinear, Clinear};
+  LinearConstraint linear_constraint{Alinear, Clinear};
 
-    Program prog(num_variables);
-    prog.AddConstraint(linear_constraint);
-    //    prog.AddConstraint((linear_constraint), {0, 1, 2, 3, 4});
-    // prog.AddConstraint(LinearConstraint{num_constraints, &Alinear,
-    // &Clinear});
+  Program prog(num_variables);
+  prog.AddConstraint(linear_constraint);
+  //    prog.AddConstraint((linear_constraint), {0, 1, 2, 3, 4});
+  // prog.AddConstraint(LinearConstraint{num_constraints, &Alinear,
+  // &Clinear});
 
-    VectorXd x0 = VectorXd::Random(num_constraints, 1);
-    x0 = x0.array().abs();
-    x0 *= 0.01 / x0.norm();
-    VectorXd b = Alinear.transpose() * x0;
-    DenseMatrix y(num_variables, 1);
-    Solve(b, prog, config, y.data());
+  VectorXd x0 = VectorXd::Random(num_constraints, 1);
+  x0 = x0.array().abs();
+  x0 *= 0.01 / x0.norm();
+  VectorXd b = Alinear.transpose() * x0;
+  DenseMatrix y(num_variables, 1);
+  Solve(b, prog, config, y.data());
 
-    VectorXd x(num_constraints);
-    prog.GetDualVariable(0, &x);
+  VectorXd x(num_constraints);
+  prog.GetDualVariable(0, &x);
 
-    VectorXd slack = Clinear - Alinear * y;
-    EXPECT_LE((Alinear.transpose() * x - b).norm(), eps * b.norm());
-    EXPECT_GE(slack.minCoeff(), -eps);
-    EXPECT_GE(x.minCoeff(), -eps);
-    EXPECT_GE(slack.dot(x), -eps);
-    double mu = 1.0 / (config.inv_sqrt_mu_max * config.inv_sqrt_mu_max);
-    EXPECT_LE(slack.dot(x), (mu + std::sqrt(eps)) * num_constraints);
-    auto status = prog.Status();
-    total_iters += status.num_iterations;
-  }
+  VectorXd slack = Clinear - Alinear * y;
+  EXPECT_LE((Alinear.transpose() * x - b).norm(), eps * b.norm());
+  EXPECT_GE(slack.minCoeff(), -eps);
+  EXPECT_GE(x.minCoeff(), -eps);
+  EXPECT_GE(slack.dot(x), -eps);
+  double mu = 1.0 / (config.inv_sqrt_mu_max * config.inv_sqrt_mu_max);
+  EXPECT_LE(slack.dot(x), (mu + std::sqrt(eps)) * num_constraints);
+  auto status = prog.Status();
+  total_iters += status.num_iterations;
   return total_iters;
 }
 GTEST_TEST(LP, Dense) {
@@ -63,27 +60,31 @@ GTEST_TEST(LP, Dense) {
   config.inv_sqrt_mu_max = 5e3;
   config.divergence_upper_bound = 1;
   config.dinf_upper_bound = 1;
-  config.final_centering_tolerance = 1;
-  int num_tests = 50;
-  int random_seed = 1;
+  config.final_centering_tolerance = 1.01;
+  int num_tests = 5;
 
-  config.enable_line_search = 0;
-  config.enable_rescaling = 1;
-  int num_iter_div = DoRandomDenseTest(config, num_tests, random_seed);
+  int num_iter_div = 0;
+  int num_iter_div_no_rescale = 0;
+  int num_iter_line_search = 0;
+  int num_iter_line_search_no_rescale = 0;
+  for (int i = 0; i < num_tests; i++) {
+    int random_seed = i;
+    config.enable_line_search = 0;
+    config.enable_rescaling = 1;
+    num_iter_div += DoRandomDenseTest(config, random_seed);
 
-  config.enable_line_search = 0;
-  config.enable_rescaling = 0;
-  int num_iter_div_no_rescale =
-      DoRandomDenseTest(config, num_tests, random_seed);
+    config.enable_line_search = 0;
+    config.enable_rescaling = 0;
+    num_iter_div_no_rescale += DoRandomDenseTest(config, random_seed);
 
-  config.enable_line_search = 1;
-  config.enable_rescaling = 1;
-  int num_iter_line_search = DoRandomDenseTest(config, num_tests, random_seed);
+    config.enable_line_search = 1;
+    config.enable_rescaling = 1;
+    num_iter_line_search += DoRandomDenseTest(config, random_seed);
 
-  config.enable_line_search = 1;
-  config.enable_rescaling = 0;
-  int num_iter_line_search_no_rescale =
-      DoRandomDenseTest(config, num_tests, random_seed);
+    config.enable_line_search = 1;
+    config.enable_rescaling = 0;
+    num_iter_line_search_no_rescale += DoRandomDenseTest(config, random_seed);
+  }
 
   // Empirical evidence suggests line search is better than divergence
   // upper-bound.
@@ -142,10 +143,10 @@ Eigen::VectorXd SolveSparseHelper(bool sparse) {
   using std::vector;
   SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
-  config.final_centering_tolerance = 1;
+  config.final_centering_tolerance = 1.001;
   config.divergence_upper_bound = 1e4;
 
-  int number_of_constraints = 50;
+  int number_of_constraints = 10;
   std::vector<std::vector<int> > variables(number_of_constraints);
   vector<MatrixXd> A(number_of_constraints);
   vector<MatrixXd> C(number_of_constraints);
@@ -321,7 +322,7 @@ GTEST_TEST(LP, SparseWithFillIn) {
 void DoRandomPrimalFailsSlater(double distance_to_infeasible) {
   SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
-  config.inv_sqrt_mu_max = 10000;
+  config.inv_sqrt_mu_max = 1e4;
   config.maximum_mu = 10000000;
   config.divergence_upper_bound = 10000;
   config.infeasibility_threshold = 2000000;
@@ -365,7 +366,7 @@ void DoRandomPrimalFailsSlater(double distance_to_infeasible) {
   prog.GetDualVariable(0, &x);
 
   if (distance_to_infeasible < 0) {
-    double scale = (-C.transpose() * x)(0, 0);
+    double scale = x.norm();
     EXPECT_NEAR((A.transpose() * x / scale).norm(), 0, 1e-4);
     EXPECT_GE((-C.transpose() * x)(0, 0), 0);
     EXPECT_GE(x.minCoeff() / scale, -1e-8);
