@@ -33,6 +33,7 @@ class ConstraintBase {
  public:
   virtual void accept(Visitor*) = 0;
   virtual int number_of_variables() const = 0;
+  virtual bool supports_line_search() const { return false; }
   virtual ~ConstraintBase() = default;
 };
 }  // namespace conex

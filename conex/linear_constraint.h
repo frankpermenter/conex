@@ -18,6 +18,7 @@ class LinearConstraint : public ConstraintBase {
 
  public:
   void accept(Visitor* v) override { v->visit(*this); }
+  bool supports_line_search() const override { return true; }
   LinearConstraint(const Eigen::MatrixXd& constraint_matrix,
                    const Eigen::MatrixXd& constraint_affine);
 

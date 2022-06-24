@@ -33,6 +33,14 @@ void MakeAffineTermOfEqualityConstraints(const ConstraintManager& kkt,
   }
 }
 
+bool SupportsLineSearch(const std::vector<SupernodalAssemblerConstraint*>& c) {
+  for (auto& ci : c) {
+    if (!ci->supports_line_search()) {
+      return false;
+    }
+  }
+  return true;
+}
 template <typename T>
 void SetIdentity(std::vector<T*>* c) {
   for (auto& ci : *c) {
@@ -623,6 +631,11 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     std::cout << "\n";
   }
 #endif
+
+  if (config.enable_line_search) {
+    CONEX_CHECK(
+        SupportsLineSearch(prog.kkt_system_manager_.cone_inequalities()));
+  }
 
   Eigen::MatrixXd ydata(prog.kkt_system_manager_.SizeOfKKTSystem(), 1);
   WorkspaceInfeasibleStart workspace(

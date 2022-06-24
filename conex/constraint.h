@@ -235,6 +235,9 @@ class SupernodalAssemblerConstraint : public SupernodalAssemblerBase {
     }
   }
 
+  virtual bool supports_line_search() const override {
+    return serializer_->supports_line_search();
+  }
   SupernodalAssemblerConstraint(){};
   Constraint* workspace_ = NULL;
   ConstraintBase* serializer_ = NULL;

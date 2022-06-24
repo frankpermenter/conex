@@ -29,6 +29,7 @@ class QuadraticConstraintBase : public ConstraintBase {
   }
 
   void accept(Visitor* v) override { v->visit(*this); }
+  bool supports_line_search() const override { return true; }
 
   template <typename T>
   QuadraticConstraintBase(const T& constraint_matrix,
