@@ -103,10 +103,11 @@ void DoManySeparate(bool separate) {
 
   VectorXd solution(num_vars);
   SolverConfiguration config = DefaultTestConfiguration();
-  config.final_centering_steps = 10;
+  config.final_centering_steps = 0;
   config.initial_centering_steps_coldstart = 0;
   config.max_iterations = 40;
-  config.divergence_upper_bound = .5;
+  config.dinf_upper_bound = 1;
+  config.enable_line_search = true;
   Solve(linear_cost, prog, config, solution.data());
 
   EXPECT_TRUE((C - A * solution).minCoeff() > -1e8);

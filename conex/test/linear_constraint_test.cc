@@ -60,9 +60,9 @@ int DoRandomDenseTest(const SolverConfiguration& config, int number_of_tests,
 GTEST_TEST(LP, Dense) {
   SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
-  config.inv_sqrt_mu_max = 5e5;
-  config.divergence_upper_bound = 1000;
-  config.dinf_upper_bound = 1.35;
+  config.inv_sqrt_mu_max = 5e3;
+  config.divergence_upper_bound = 1;
+  config.dinf_upper_bound = 1;
   config.final_centering_tolerance = 1;
   int num_tests = 50;
   int random_seed = 1;
