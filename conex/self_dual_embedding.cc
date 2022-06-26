@@ -301,27 +301,6 @@ void SolveHSD(ConstraintManager& kkt_system_manager_,
           TakeStep(&kkt_system_manager_.cone_inequalities(), dir.options);
         }
         return;
-        dir.options.affine = 1;
-        auto& newton_step_parameters = dir.options;
-
-        newton_step_parameters.affine = true;
-        DenseMatrix bres(b.rows(), 1);
-        Ref y2map(bres.data(), bres.rows(), bres.cols());
-        StepInfo info;
-        bres = (wt * (1 + dt)) * b - 1 * sys.AW;
-        newton_step_parameters.e_weight = 0;
-        newton_step_parameters.w_weight = 0;
-        newton_step_parameters.c_weight = 0;
-        stats->sqrt_inv_mu[i] = (wt * (1 + dt));
-        solver->SolveInPlace(y2map);
-        PrepareStep(&kkt_system_manager_, newton_step_parameters, y2map, &info);
-        TakeStep(&kkt_system_manager_.cone_inequalities(), dir.options);
-
-        y2map = sys.AQc;
-        solver->SolveInPlace(y2map);
-        (*yout) = y2map;
-
-        return;
       }
     }
 
