@@ -280,12 +280,13 @@ void SolveHSD(ConstraintManager& kkt_system_manager_,
         (primal_obj - dual_obj) * tau -
         (kappa - sqrtmu * sqrtmu * (1.0 + sys.inner_product_of_c_and_e));
 
-    std::cout << stats->num_iter << " tau: " << tau << " kappa: " << kappa
-              << "  dinf: " << dinf << "  dinf_w: " << dir.dinf_w
-              << "  d_t: " << dt << "  dsqr: " << dir.info.normsqrd
-              << "  rank: " << rank << "  mu: " << sqrtmu * sqrtmu
-              << "  b'y: " << primal_obj << " c'x: " << dual_obj
-              << " gap_error " << gap_error << std::endl;
+    std::cout << stats->num_iter << " mu: " << 1.0 / std::pow(wt * (1 + dt), 2)
+              << " kappa: " << kappa << "  dinf: " << dinf
+              << "  dinf_w: " << dir.dinf_w << "  d_t: " << dt
+              << "  dsqr: " << dir.info.normsqrd << "  rank: " << rank
+              << "  theta: " << sqrtmu * sqrtmu << "  b'y: " << primal_obj
+              << " c'x: " << dual_obj << " gap_error " << gap_error
+              << std::endl;
     stats->sqrt_inv_mu[stats->num_iter] = wt * (1 + dt);
     stats->num_iter++;
     double min_mu = 1.0 / config.inv_sqrt_mu_max;
@@ -324,9 +325,6 @@ void SolveHSD(ConstraintManager& kkt_system_manager_,
       }
     }
 
-    // if (sqrtmu > min_mu && gap_error < 1e-15) {
-    //  sqrtmu *= 0.1;
-    //}
     TakeStep(&kkt_system_manager_.cone_inequalities(), dir.options);
     wt = wt * std::exp(dir.options.step_size * dt);
   }

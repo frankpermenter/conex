@@ -58,11 +58,10 @@ void BasicHSDSolverTestHelper(const Eigen::MatrixXd& A,
   prog.AddConstraint(SOCConstraint(Asocp, csocp), {0, 1, 2});
 
   prog.AddConstraint(QuadraticConstraint(Asocp, csocp), {0, 1, 3});
+  prog.AddLinearCost(-bin);
 
   Initialize(prog, SolverConfiguration());
   VectorXd ysol;
-  double kappa_sol;
-  double tau_sol;
   SolverConfiguration config;
   config.dinf_upper_bound = .9;
   config.final_centering_tolerance = 1;
@@ -247,7 +246,6 @@ TestData GetTestData(int num_constraints = 10, bool linear_equations = false) {
   srand(1);
   TestData d;
   int num_vars = 5;
-  double wt = .9;
   d.b = VectorXd::Random(num_vars);
   VectorXd e(num_constraints);
   e.setConstant(1);
