@@ -51,9 +51,11 @@ GTEST_TEST(ConjugateGradient, TrivalExample) {
   // clang-format on
 
   BlockSparseMatrix B_sparse = MakeBlockSparseMatrix(B);
+  std::unique_ptr<SupernodalKKTSolver> primal_inverse =
+      std::make_unique<SupernodalKKTSolver>(prog.variables());
+  primal_inverse->Bind(prog.clique_assemblers());
   ConstrainedLeastSquaresConjugateGradientSolver solver(
-      prog.variables(), prog.clique_assemblers(), B_sparse.non_zero_columns,
-      B_sparse.entries);
+      std::move(primal_inverse), B_sparse.non_zero_columns, B_sparse.entries);
 
   VectorXd f(num_vars);
   f.setLinSpaced(4, -10, 10);

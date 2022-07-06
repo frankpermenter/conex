@@ -153,8 +153,10 @@ std::unique_ptr<KKTSolverBase> MakeCGSolver(ConstraintManager* kkt,
                    static_cast<int>(equality_constraints.columns.size()),
                "KKT system is malformed");
 
+  auto solver = std::make_unique<SupernodalKKTSolver>(p.cliques_of_G);
+  solver->Bind(p.clique_assemblers_of_G);
   return std::make_unique<ConstrainedLeastSquaresConjugateGradientSolver>(
-      p.cliques_of_G, p.clique_assemblers_of_G, equality_constraints.columns,
+      std::move(solver), equality_constraints.columns,
       equality_constraints.matrix_entries);
 }
 

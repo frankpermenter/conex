@@ -58,24 +58,22 @@ MatrixXd SparseMatrixProduct(const vector<vector<int>>& non_zero_columns,
 using T = ConstrainedLeastSquaresConjugateGradientSolver;
 
 T::ConstrainedLeastSquaresConjugateGradientSolver(
-    const std::vector<std::vector<int>>& cliques_of_G,
-    const std::vector<SupernodalAssemblerBase*>& clique_assemblers_of_G,
+    std::unique_ptr<SupernodalKKTSolver>&& solver,
     const std::vector<std::vector<int>>& non_zero_columns_of_B,
     const std::vector<std::vector<double>>& entries_of_B)
-    : inverse_of_G_(cliques_of_G),
+    : inverse_of_G_(std::move(solver)),
       non_zero_columns_of_B_(non_zero_columns_of_B),
       entries_of_B_(entries_of_B) {
-  inverse_of_G_.Bind(clique_assemblers_of_G);
   for (auto& e : non_zero_columns_of_B_) {
     for (int& ei : e) {
-      ei = inverse_of_G_.permutation_to_elimination_order().indices()(ei);
+      ei = inverse_of_G_->permutation_to_elimination_order().indices()(ei);
     }
   }
 }
 
-bool T::DoFactor() { return inverse_of_G_.Factor(); }
+bool T::DoFactor() { return inverse_of_G_->Factor(); }
 
-void T::DoAssemble() { inverse_of_G_.Assemble(); }
+void T::DoAssemble() { inverse_of_G_->Assemble(); }
 
 Eigen::VectorXd T::EvaluateEquationOperator(
     const Eigen::VectorXd& residual) const {
@@ -84,7 +82,7 @@ Eigen::VectorXd T::EvaluateEquationOperator(
 
 Eigen::VectorXd T::EvaluateEquationOperatorTranspose(
     const Eigen::VectorXd& residual) const {
-  int num_cols_of_B = inverse_of_G_.SizeOfSystem();
+  int num_cols_of_B = inverse_of_G_->SizeOfSystem();
   return SparseTransposeProduct(non_zero_columns_of_B_, entries_of_B_,
                                 num_cols_of_B, residual);
 }
@@ -100,7 +98,7 @@ Eigen::VectorXd T::ApplyPreconditioner(const Eigen::VectorXd& x) const {
   MatrixXd Ginv_Bt(B.cols(), B.rows());
   for (int i = 0; i < B.rows(); i++) {
     Ginv_Bt.col(i) =
-        inverse_of_G_.Solve(B.row(i).transpose(), false /*permute*/);
+        inverse_of_G_->Solve(B.row(i).transpose(), false /*permute*/);
   }
 
   MatrixXd schur_complement =
@@ -119,7 +117,7 @@ Eigen::VectorXd T::SchurComplementConjugateGradientSolver(
   config.iteration_limit = rhs.rows();
 
   auto f = [this](const VectorXd& s) -> VectorXd {
-    return EvaluateEquationOperator(inverse_of_G_.Solve(
+    return EvaluateEquationOperator(inverse_of_G_->Solve(
         EvaluateEquationOperatorTranspose(s), false /*permute*/));
   };
 
@@ -190,9 +188,9 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> y,
 
 void T::Solve(const VectorXd& fin, const VectorXd& g, VectorXd* y, VectorXd* z,
               bool use_llt) const {
-  VectorXd f_permuted = inverse_of_G_.permutation_to_elimination_order() * fin;
+  VectorXd f_permuted = inverse_of_G_->permutation_to_elimination_order() * fin;
 
-  VectorXd Ginv_f = inverse_of_G_.Solve(f_permuted, false /*permute*/);
+  VectorXd Ginv_f = inverse_of_G_->Solve(f_permuted, false /*permute*/);
   int num_columns_of_B = f_permuted.rows();
 
   VectorXd schur_complement_residual =
@@ -203,7 +201,7 @@ void T::Solve(const VectorXd& fin, const VectorXd& g, VectorXd* y, VectorXd* z,
                                  num_columns_of_B);
     MatrixXd Ginv_Bt(B.cols(), B.rows());
     for (int i = 0; i < B.rows(); i++) {
-      Ginv_Bt.col(i) = inverse_of_G_.Solve(B.row(i).transpose());
+      Ginv_Bt.col(i) = inverse_of_G_->Solve(B.row(i).transpose());
     }
 
     MatrixXd schur_complement =
@@ -215,18 +213,18 @@ void T::Solve(const VectorXd& fin, const VectorXd& g, VectorXd* y, VectorXd* z,
     *z = SchurComplementConjugateGradientSolver(schur_complement_residual);
   }
 
-  *y = inverse_of_G_.Solve(
+  *y = inverse_of_G_->Solve(
       f_permuted - SparseTransposeProduct(non_zero_columns_of_B_, entries_of_B_,
                                           num_columns_of_B, *z),
       false /*permuted*/);
-  *y = inverse_of_G_.permutation_from_elimination_order() * (*y);
+  *y = inverse_of_G_->permutation_from_elimination_order() * (*y);
 }
 
 MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
-  MatrixXd G = inverse_of_G_.KKTMatrix(permute_to_elimination_order);
+  MatrixXd G = inverse_of_G_->KKTMatrix(permute_to_elimination_order);
   MatrixXd B = MakeDenseMatrix(non_zero_columns_of_B_, entries_of_B_, G.cols());
   if (!permute_to_elimination_order) {
-    B = B * inverse_of_G_.permutation_from_elimination_order();
+    B = B * inverse_of_G_->permutation_from_elimination_order();
   }
   int dim = G.rows() + B.rows();
   MatrixXd M(dim, dim);

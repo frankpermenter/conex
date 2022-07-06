@@ -31,8 +31,7 @@ struct ConstrainedLeastSquaresConjugateGradientSolverConfig {
 class ConstrainedLeastSquaresConjugateGradientSolver : public KKTSolverBase {
  public:
   ConstrainedLeastSquaresConjugateGradientSolver(
-      const std::vector<std::vector<int>>& cliques_of_G,
-      const std::vector<SupernodalAssemblerBase*>& clique_assemblers_of_G,
+      std::unique_ptr<SupernodalKKTSolver>&& solver,
       const std::vector<std::vector<int>>& non_zero_columns_of_B,
       const std::vector<std::vector<double>>& entries_of_B);
 
@@ -49,7 +48,7 @@ class ConstrainedLeastSquaresConjugateGradientSolver : public KKTSolverBase {
   Eigen::VectorXd EvaluateEquationOperator(const Eigen::VectorXd& d) const;
   Eigen::VectorXd EvaluateEquationOperatorTranspose(
       const Eigen::VectorXd& d) const;
-  SupernodalKKTSolver inverse_of_G_;
+  std::unique_ptr<SupernodalKKTSolver> inverse_of_G_;
   int number_of_equations() const { return non_zero_columns_of_B_.size(); }
 
  private:
@@ -61,7 +60,7 @@ class ConstrainedLeastSquaresConjugateGradientSolver : public KKTSolverBase {
 
   std::vector<std::vector<int>> non_zero_columns_of_B_;
   std::vector<std::vector<double>> entries_of_B_;
-  int number_of_variables() const { return inverse_of_G_.SizeOfSystem(); }
+  int number_of_variables() const { return inverse_of_G_->SizeOfSystem(); }
 
   Eigen::VectorXd SchurComplementConjugateGradientSolver(
       const Eigen::VectorXd& x) const;
