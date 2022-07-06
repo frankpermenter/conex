@@ -484,10 +484,12 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
         PrepareStep(&kkt_system_manager_, newton_step_parameters, y2map, &info);
         TakeStep(&constraints, newton_step_parameters);
       } else {
+        newton_step_parameters.affine = !config.use_geodesic_updates;
         TakeStep(&constraints, newton_step_parameters);
       }
       break;
     } else {
+      newton_step_parameters.affine = !config.use_geodesic_updates;
       TakeStep(&constraints, newton_step_parameters);
       continue;
     }
@@ -513,9 +515,13 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
   if (status_.solved) {
     if (max_iter_failure) {
       status_.solved = false;
-      PRINTSTATUS("Terminating at maximum iteration limit.");
+      if (config.verbose) {
+        PRINTSTATUS("Terminating at maximum iteration limit.");
+      }
     } else {
-      PRINTSTATUS("Solved.");
+      if (config.verbose) {
+        PRINTSTATUS("Solved.");
+      }
     }
   }
 

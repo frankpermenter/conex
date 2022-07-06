@@ -39,6 +39,7 @@ struct SolverConfiguration {
   int verbose = 1;
   bool enable_logging = false;
   int algorithm = CONEX_ALGORITHM_INFEASIBLE_START;
+  int use_geodesic_updates = true;
   std::string log_file = "conex_log.json";
 };
 

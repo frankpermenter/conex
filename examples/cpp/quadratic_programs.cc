@@ -172,6 +172,7 @@ struct ExperimentalSetup {
   int num_vars;
   int num_ineqs;
   int rank_of_quadratic;
+  bool use_geodesic_updates = true;
 };
 
 conex::Statistics DoCompare(const ExperimentalSetup& setup) {
@@ -188,6 +189,7 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
   bool use_epigraph = true;
   double average_iter_socp = 0;
   double average_iter = 0;
+  double average_iter_barrier = 0;
 
   conex::SolverConfiguration config;
   config.enable_line_search = true;
@@ -197,60 +199,35 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
   config.final_centering_tolerance = 1;
   config.max_iterations = 50;
   config.kkt_error_tolerance = 1e30;
-  config.dinf_upper_bound = 1;
+  config.verbose = false;
+  config.dinf_upper_bound = 1 - 1e-1;
 
   conex::Statistics stats;
   for (int i = 0; i < num_trial; i++) {
+    config.use_geodesic_updates = true;
     srand(i);
+    int num_iter = 0;
     conex::ProblemData data =
         conex::RandomWellPosedProblem(num_vars, num_ineqs, rank_of_quadratic);
     use_epigraph = true;
 
-    int num_iter = conex::SolveQPInstance(data, config, use_epigraph);
+    num_iter = conex::SolveQPInstance(data, config, use_epigraph);
+
     average_iter_socp += 1.0 / (1 + i) * (num_iter - average_iter_socp);
     use_epigraph = false;
+
     num_iter = conex::SolveQPInstance(data, config, use_epigraph);
     average_iter += 1.0 / (1 + i) * (num_iter - average_iter);
+
+    config.use_geodesic_updates = false;
+    num_iter = conex::SolveQPInstance(data, config, use_epigraph);
+    average_iter_barrier += 1.0 / (1 + i) * (num_iter - average_iter_barrier);
   }
   std::cout << " Avg Iter QP: " << average_iter;
+  std::cout << " Avg Iter barrier: " << average_iter_barrier;
   std::cout << " Avg Iter SOCP: " << average_iter_socp;
   std::cout << "\n";
   return stats;
-}
-
-void SolveRandomQP() {
-  ExperimentalSetup s;
-  s.num_trial = 1;
-  s.num_vars = 5;
-  s.rank_of_quadratic = s.num_vars - 10;
-  s.rank_of_quadratic = 0;
-  s.num_ineqs = 10;
-
-  conex::SolverConfiguration config;
-
-  config.enable_line_search = true;
-  config.initial_centering_steps_coldstart = 0;
-  config.enable_rescaling = false;
-  config.inv_sqrt_mu_max = 1e7;
-  config.max_iterations = 25;
-  config.final_centering_tolerance = 1.05;
-  config.final_centering_steps = 0;
-  config.minimum_mu = 0;
-  config.kkt_error_tolerance = 1e45;
-  config.dinf_upper_bound = 1;
-  config.prepare_dual_variables = 1;
-
-  for (int i = 0; i < s.num_trial; i++) {
-    srand(i);
-    // conex::ProblemData data =
-    //    conex::RandomWellPosedProblem(s.num_vars, s.num_ineqs,
-    //    s.rank_of_quadratic);
-    conex::ProblemData data =
-        conex::ProblemDataFromSolution(s.num_vars, s.num_ineqs);
-
-    bool use_epigraph = false;
-    conex::SolveQPInstance(data, config, use_epigraph, true /*print stats*/);
-  }
 }
 
 void CompareWithGeodesicIPM() {
@@ -283,6 +260,5 @@ void CompareWithGeodesicIPM() {
 
 int main() {
   CompareWithGeodesicIPM();
-  // SolveRandomQP();
   return 0;
 }
