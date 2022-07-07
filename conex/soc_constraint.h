@@ -14,7 +14,7 @@ class SOCConstraint : public ConstraintBase {
   SOCConstraint(const Eigen::MatrixXd& constraint_matrix,
                 const Eigen::MatrixXd& constraint_affine);
 
-  void accept(Visitor* v) override { v->visit(*this); }
+  void accept(Visitor* v) const override { v->visit(*this); }
   bool supports_line_search() const override { return true; }
   // Lorentz cone a subset of R^(n+1).
   SOCConstraint(int n, int num_vars) : workspace_(n), n_(n) {

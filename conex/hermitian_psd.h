@@ -43,7 +43,7 @@ class HermitianPsdConstraint : public ConstraintBase {
  public:
   using Matrix = typename T::Matrix;
 
-  void accept(Visitor* v) override { v->visit(*this); }
+  void accept(Visitor* v) const override { v->visit(*this); }
   HermitianPsdConstraint(int n, int number_of_variables)
       : rank_(n), workspace_(n), constraint_matrices_(number_of_variables) {
     for (auto& c : constraint_matrices_) {

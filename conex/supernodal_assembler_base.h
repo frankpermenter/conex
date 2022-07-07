@@ -36,7 +36,7 @@ class SupernodalAssemblerBase : public ConstraintBase {
     direct_update = false;
   }
 
-  void accept(Visitor*) override {
+  void accept(Visitor*) const override {
     throw std::runtime_error("Not implemented.");
   }
 

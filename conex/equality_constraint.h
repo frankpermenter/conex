@@ -23,7 +23,7 @@ struct WorkspaceEqualityConstraints {
 
 class EqualityConstraints : public ConstraintBase {
  public:
-  void accept(Visitor* v) override { v->visit(*this); }
+  void accept(Visitor* v) const override { v->visit(*this); }
   EqualityConstraints(){};
   EqualityConstraints(const Eigen::MatrixXd& A, const Eigen::MatrixXd& b);
 

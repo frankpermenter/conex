@@ -17,7 +17,7 @@ class LinearConstraint : public ConstraintBase {
   using StorageType = DenseMatrix;
 
  public:
-  void accept(Visitor* v) override { v->visit(*this); }
+  void accept(Visitor* v) const override { v->visit(*this); }
   bool supports_line_search() const override { return true; }
   LinearConstraint(const Eigen::MatrixXd& constraint_matrix,
                    const Eigen::MatrixXd& constraint_affine);

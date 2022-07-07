@@ -212,7 +212,7 @@ class SupernodalAssemblerConstraint : public SupernodalAssemblerBase {
     CONEX_CHECK(serializer_);
   }
 
-  void accept(Visitor* v) override { serializer_->accept(v); }
+  void accept(Visitor* v) const override { serializer_->accept(v); }
   virtual bool is_dynamic() const override { return true; }
   virtual bool is_positive_definite() const override { return true; }
   Constraint* constraint() { return workspace_; }
