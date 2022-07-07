@@ -26,13 +26,7 @@ CONEX_STATUS T::Validate(const std::vector<int>& variables) {
   return CONEX_SUCCESS;
 }
 
-int T::SizeOfKKTSystem() const {
-  int num_aux_vars = 0;
-  for (const auto& e : supernodal_assemblers_ptr_) {
-    num_aux_vars += e->dual_variables().size();
-  }
-  return max_number_of_variables_ + num_aux_vars;
-};
+int T::SizeOfKKTSystem() const { return new_dual_variable_start_; };
 
 namespace {
 struct SparseEqualities {
