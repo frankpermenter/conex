@@ -118,16 +118,6 @@ const std::vector<std::vector<int>>& T::variables() const {
   return cliques_;
 }
 
-const std::vector<std::vector<int>>& T::primal_variables() const {
-  cliques_.clear();
-  for (auto e : clique_assemblers()) {
-    cliques_.push_back({});
-    auto& c = cliques_.back();
-    c = e->primal_variables();
-  }
-  return cliques_;
-}
-
 std::vector<SupernodalAssemblerBase*> T::clique_assemblers() {
   std::vector<SupernodalAssemblerBase*> supernodal_assemblers_pointers_;
   for (auto& q : quadratic_costs_) {
