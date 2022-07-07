@@ -501,9 +501,9 @@ void SimpleBadLDLT() {
   }
 }
 
-void GraphOfConvexSets() {
+void SolveInstance(const std::string& filename) {
   // std::ifstream t("conex/test/graph_of_convex_sets_fails_slater.json");
-  std::ifstream t("conex/test/maze_example_2.json");
+  std::ifstream t(filename);
   std::stringstream buffer;
   ConstraintManager c;
   buffer << t.rdbuf();
@@ -521,25 +521,26 @@ void GraphOfConvexSets() {
   config.final_centering_tolerance = 1;
   config.max_iterations = 60;
   config.verbose = true;
-  config.dinf_upper_bound = 1.0;
-  config.kkt_solver = conex::CONEX_KKT_SOLVER_SPARSE_QR;
-  // config.kkt_solver = conex::CONEX_KKT_SOLVER_SUPERNODAL_QR;
+  config.dinf_upper_bound = 0.9;
+  // config.kkt_solver = conex::CONEX_KKT_SOLVER_CG;
+  config.kkt_solver = conex::CONEX_KKT_SOLVER_SUPERNODAL_QR;
   // config.enable_line_search = !psd_constraints_found;
   config.enable_line_search = 1;
+  config.algorithm = CONEX_ALGORITHM_SELF_DUAL_EMBEDDING;
   config.enable_rescaling = !config.enable_line_search;
   config.inv_sqrt_mu_max = 2000;
   config.maximum_mu = 100;
   config.kkt_error_tolerance = 4;
 
-  // y = Solve(program, config);
-  y = SolveHSD(program, config);
+  y = Solve(program, config);
+  // y = SolveHSD(program, config);
 }
 
 }  // namespace conex
 
-int main() {
+void DoMain() {
+  conex::SolveInstance("conex/test/maze_example_2.json");
   conex::LPFailSlater(1 /*num implicit eqs*/);
-  conex::GraphOfConvexSets();
   conex::SimpleBadLDLT();
   conex::EqualityConstraintForceEqualityConstraintsToLeafNodes(
       false /*fill-in induced failure*/);
@@ -559,3 +560,5 @@ int main() {
   srand(0);
   conex::LPFailSlater(2 /*num implicit eqs*/);
 }
+
+int main() { DoMain(); }
