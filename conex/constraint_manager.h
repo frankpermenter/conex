@@ -87,7 +87,6 @@ class ConstraintManager {
         dynamic_cast<Type*>(constraint_storage_.back().get()));
     constraint_assemblers_.emplace_back(variables, &constraints_.back(),
                                         constraint_storage_.back().get());
-    supernodal_assemblers_ptr_.push_back(&constraint_assemblers_.back());
 
     cone_inequalities_.push_back(&constraints_.back());
     cone_inequality_assemblers_.push_back(&constraint_assemblers_.back());
@@ -100,7 +99,6 @@ class ConstraintManager {
                  "Failed to add constraint.");
 
     quadratic_costs_.emplace_back(Qi, variables);
-    supernodal_assemblers_ptr_.push_back(&quadratic_costs_.back());
 
     return quadratic_costs_.size() - 1;
   }
@@ -110,7 +108,7 @@ class ConstraintManager {
     for (auto& c : constraints_) {
       workspaces.push_back(c.workspace());
     }
-    for (auto& c : supernodal_assemblers_ptr_) {
+    for (auto& c : clique_assemblers()) {
       workspaces.emplace_back(c->submatrix_data());
     }
     return workspaces;
@@ -130,9 +128,8 @@ class ConstraintManager {
     return cone_inequality_assemblers_;
   }
 
-  const std::vector<SupernodalAssemblerBase*>& clique_assemblers() const {
-    return supernodal_assemblers_ptr_;
-  }
+  std::vector<SupernodalAssemblerBase*> clique_assemblers();
+  std::vector<const SupernodalAssemblerBase*> clique_assemblers() const;
 
   std::list<SupernodalAssemblerQuadratic>& quadratic_costs() {
     return quadratic_costs_;
@@ -146,6 +143,9 @@ class ConstraintManager {
     return equality_constraints_;
   }
 
+  EqualityConstraintManager& equality_constraints() {
+    return equality_constraints_;
+  }
   const std::vector<std::vector<int>>& equality_constraint_multipliers() const;
   const std::vector<std::vector<int>>& variables() const;
   const std::vector<std::vector<int>>& primal_variables() const;
@@ -168,9 +168,6 @@ class ConstraintManager {
   std::vector<Constraint*> cone_inequalities_;
   std::vector<SupernodalAssemblerConstraint*> cone_inequality_assemblers_;
   EqualityConstraintManager equality_constraints_;
-
-  // Provides type-erased interface to supernodal assemblers.
-  std::vector<SupernodalAssemblerBase*> supernodal_assemblers_ptr_;
 
   int max_number_of_variables_ = 0;
   int new_dual_variable_start_ = 0;

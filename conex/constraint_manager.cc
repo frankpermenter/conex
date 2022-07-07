@@ -73,9 +73,6 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x_in,
   equality_constraints_.assemblers.emplace_back(
       x.A_, x.b_, variables, equality_constraints_.dual_variables.back());
 
-  supernodal_assemblers_ptr_.push_back(
-      &equality_constraints_.assemblers.back());
-
   std::unique_ptr<ConstraintBase> pointer =
       std::make_unique<EqualityConstraints>(x);
   CONEX_CHECK(pointer->number_of_variables() ==
@@ -105,7 +102,7 @@ void T::InitializeWorkspace() {
 const std::vector<std::vector<int>>& T::equality_constraint_multipliers()
     const {
   dual_vars_.clear();
-  for (auto e : supernodal_assemblers_ptr_) {
+  for (const auto& e : clique_assemblers()) {
     dual_vars_.push_back(e->dual_variables());
   }
   return dual_vars_;
@@ -113,7 +110,7 @@ const std::vector<std::vector<int>>& T::equality_constraint_multipliers()
 
 const std::vector<std::vector<int>>& T::variables() const {
   cliques_.clear();
-  for (auto e : supernodal_assemblers_ptr_) {
+  for (auto e : clique_assemblers()) {
     cliques_.push_back({});
     auto& c = cliques_.back();
     c = e->variables();
@@ -123,7 +120,7 @@ const std::vector<std::vector<int>>& T::variables() const {
 
 const std::vector<std::vector<int>>& T::primal_variables() const {
   cliques_.clear();
-  for (auto e : supernodal_assemblers_ptr_) {
+  for (auto e : clique_assemblers()) {
     cliques_.push_back({});
     auto& c = cliques_.back();
     c = e->primal_variables();
@@ -131,6 +128,33 @@ const std::vector<std::vector<int>>& T::primal_variables() const {
   return cliques_;
 }
 
+std::vector<SupernodalAssemblerBase*> T::clique_assemblers() {
+  std::vector<SupernodalAssemblerBase*> supernodal_assemblers_pointers_;
+  for (auto& q : quadratic_costs_) {
+    supernodal_assemblers_pointers_.push_back(&q);
+  }
+  for (auto& q : constraint_assemblers_) {
+    supernodal_assemblers_pointers_.push_back(&q);
+  }
+  for (auto& q : equality_constraints_.assemblers) {
+    supernodal_assemblers_pointers_.push_back(&q);
+  }
+  return supernodal_assemblers_pointers_;
+}
+
+std::vector<const SupernodalAssemblerBase*> T::clique_assemblers() const {
+  std::vector<const SupernodalAssemblerBase*> supernodal_assemblers_pointers_;
+  for (auto& q : quadratic_costs_) {
+    supernodal_assemblers_pointers_.push_back(&q);
+  }
+  for (auto& q : constraint_assemblers_) {
+    supernodal_assemblers_pointers_.push_back(&q);
+  }
+  for (auto& q : equality_constraints_.assemblers) {
+    supernodal_assemblers_pointers_.push_back(&q);
+  }
+  return supernodal_assemblers_pointers_;
+}
 namespace {
 
 void IncrementSubvector(std::vector<int>* y, const std::vector<int>& indices) {

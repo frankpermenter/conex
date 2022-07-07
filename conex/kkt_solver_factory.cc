@@ -65,7 +65,7 @@ SubsystemType ClassifySupernodeSubmatrix(const std::vector<int>& vars,
 std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
   vector<vector<int>> cliques = c->variables();
-  auto& clique_assemblers_ptrs_ = c->clique_assemblers();
+  auto clique_assemblers_ptrs_ = c->clique_assemblers();
 
   auto tree_solver_ =
       std::make_unique<::conex::SymmetricLinearSystemTreeSolver>();
