@@ -133,20 +133,34 @@ std::unique_ptr<ConstraintBase> MakeConstraintFromJSON(
 JsonObject SerializeConeProgram(const ConstraintManager& constraint_manager) {
   Serializer serialize;
   JsonObject program;
-  program["num_constraints"] = ConvertToJson(
-      static_cast<int>(constraint_manager.constraint_serializer().size()));
   program["num_variables"] = ConvertToJson(
       static_cast<int>(constraint_manager.GetNumberOfVariables()));
-  program["constraints"] =
-      serialize.GenerateJsonObject(constraint_manager.constraint_serializer());
+  std::vector<const ConstraintBase*> constraint_serializer;
+  vector<std::vector<int>> constraint_variables;
 
+  for (auto& v : constraint_manager.cone_inequalities()) {
+    constraint_serializer.push_back(v);
+    constraint_variables.push_back(v->variables());
+  }
   int i = 0;
-  for (auto& v : constraint_manager.primal_variables()) {
+  for (auto& v : constraint_manager.equality_constraints().data) {
+    constraint_serializer.push_back(&v);
+    constraint_variables.push_back(
+        constraint_manager.equality_constraints().variables.at(i));
+    i++;
+  }
+
+  program["num_constraints"] =
+      ConvertToJson(static_cast<int>(constraint_serializer.size()));
+  program["constraints"] = serialize.GenerateJsonObject(constraint_serializer);
+
+  i = 0;
+  for (auto& v : constraint_variables) {
     program["constraints"][to_string(i)]["variables"] = ConvertToJson(v);
     i++;
   }
-  i = 0;
 
+  i = 0;
   program["num_quadratic_costs"] = ConvertToJson(
       static_cast<int>(constraint_manager.quadratic_costs().size()));
 
