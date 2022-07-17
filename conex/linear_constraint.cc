@@ -1,5 +1,6 @@
 #include "linear_constraint.h"
 
+#include "conex.h"
 #include "newton_step.h"
 
 namespace conex {
@@ -153,14 +154,15 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options,
 bool TakeStep(LinearConstraint* o, const StepOptions& options) {
   auto& d = o->workspace_.temp_2;
   auto& W = o->workspace_.W;
-  if (!options.affine) {
+  bool use_geodesic = options.step_type == CONEX_STEP_TYPE_GEODESIC;
+  if (use_geodesic) {
     if (options.step_size != 1) {
       d.array() *= options.step_size;
     }
     d = d.array().exp();
     W = W.cwiseProduct(d);
   } else {
-    o->AffineUpdate(d);
+    o->AffineUpdate(d, options.step_type);
   }
   return true;
 }
@@ -190,10 +192,18 @@ void LinearConstraint::ComputeNegativeSlack(
   minus_s.noalias() -= (constraint_affine_)*inv_sqrt_mu;
 }
 
-void LinearConstraint::AffineUpdate(
-    const Eigen::Ref<const Eigen::MatrixXd>& d) {
+void LinearConstraint::AffineUpdate(const Eigen::Ref<const Eigen::MatrixXd>& d,
+                                    int step_type) {
   auto& W = workspace_.W;
-  W += W.cwiseProduct(d);
+  bool dual_barrier = step_type == CONEX_STEP_TYPE_DUAL_BARRIER;
+  if (!dual_barrier) {
+    CONEX_CHECK(step_type == CONEX_STEP_TYPE_PRIMAL_BARRIER);
+    VectorXd Winv = W.cwiseInverse();
+    Winv -= Winv.cwiseProduct(d);
+    W = Winv.cwiseInverse();
+  } else {
+    W += W.cwiseProduct(d);
+  }
 }
 
 void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,

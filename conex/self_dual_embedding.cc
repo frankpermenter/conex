@@ -104,7 +104,7 @@ NewtonDirectionInfo SetNewtonDirection(ConstraintManager* constraints,
   double e_weight = sqrtmu;
 
   StepInfo info;
-  dir.options.affine = 0;
+  dir.options.step_type = CONEX_STEP_TYPE_GEODESIC;
   dir.options.c_weight = c_weight;
   dir.options.e_weight = 1;
   dir.options.w_weight = e_weight;
@@ -297,7 +297,7 @@ void SolveHSD(ConstraintManager& kkt_system_manager_,
         (*yout) = y * (wt * (1 + dt));
         status_.solved = (wt * (1 + dt)) > 1e-2;
         if (!status_.solved) {
-          dir.options.affine = 1;
+          dir.options.step_type = CONEX_STEP_TYPE_DUAL_BARRIER;
           TakeStep(&kkt_system_manager_.cone_inequalities(), dir.options);
         }
         return;

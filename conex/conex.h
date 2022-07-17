@@ -13,6 +13,9 @@ enum : int {
   CONEX_KKT_SOLVER_SPARSE_QR = 4,
   CONEX_ALGORITHM_INFEASIBLE_START = 0,
   CONEX_ALGORITHM_SELF_DUAL_EMBEDDING = 1,
+  CONEX_STEP_TYPE_DUAL_BARRIER = 0,
+  CONEX_STEP_TYPE_PRIMAL_BARRIER = 1,
+  CONEX_STEP_TYPE_GEODESIC = 2,
 };
 
 struct SolverConfiguration {
@@ -39,7 +42,7 @@ struct SolverConfiguration {
   int verbose = 1;
   bool enable_logging = false;
   int algorithm = CONEX_ALGORITHM_INFEASIBLE_START;
-  int use_geodesic_updates = true;
+  int step_type = CONEX_STEP_TYPE_GEODESIC;
   std::string log_file = "conex_log.json";
 };
 

@@ -3,6 +3,8 @@
 #include <cmath>
 
 #include "conex/approximate_eigenvalues.h"
+#include "conex/conex.h"
+#include "conex/error_checking_macros.h"
 #include "conex/exponential_map.h"
 #include "conex/exponential_map_pade.h"
 
@@ -79,9 +81,11 @@ void PrepareStep(PsdConstraint* o, const StepOptions& opt, const Ref& y,
 
 bool TakeStep(PsdConstraint* o, const StepOptions& options) {
   auto& WS = o->workspace_.temp_1;
-  if (options.affine) {
+  if (options.step_type == CONEX_STEP_TYPE_DUAL_BARRIER) {
     o->AffineUpdate(options.e_weight, &WS);
   } else {
+    CONEX_DEMAND(options.step_type == CONEX_STEP_TYPE_GEODESIC,
+                 "Invalid step type.");
     o->GeodesicUpdate(options.step_size, options, &WS);
   }
   return true;

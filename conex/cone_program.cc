@@ -262,7 +262,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
 
   StepOptions newton_step_parameters;
   double newton_step_parameters_inv_sqrt_mu = 0;
-  newton_step_parameters.affine = false;
+  newton_step_parameters.step_type = config.step_type;
 
   int m = kkt_system_manager_.GetNumberOfVariables();
   auto& constraints = kkt_system_manager_.cone_inequalities();
@@ -473,7 +473,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     if (terminate || converged) {
       max_iter_failure = !converged;
       if (config.prepare_dual_variables) {
-        newton_step_parameters.affine = true;
+        newton_step_parameters.step_type = CONEX_STEP_TYPE_DUAL_BARRIER;
         DenseMatrix bres(b.rows(), 1);
         Ref y2map(bres.data(), bres.rows(), bres.cols());
         StepInfo info;
@@ -484,12 +484,12 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
         PrepareStep(&kkt_system_manager_, newton_step_parameters, y2map, &info);
         TakeStep(&constraints, newton_step_parameters);
       } else {
-        newton_step_parameters.affine = !config.use_geodesic_updates;
+        newton_step_parameters.step_type = config.step_type;
         TakeStep(&constraints, newton_step_parameters);
       }
       break;
     } else {
-      newton_step_parameters.affine = !config.use_geodesic_updates;
+      newton_step_parameters.step_type = config.step_type;
       TakeStep(&constraints, newton_step_parameters);
       continue;
     }

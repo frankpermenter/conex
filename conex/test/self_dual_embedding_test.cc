@@ -159,7 +159,7 @@ void DirectionTestsHelper(const Eigen::MatrixXd& A, const Eigen::VectorXd& bin,
 
     StepOptions options;
     StepInfo info;
-    options.affine = 0;
+    options.step_type = CONEX_STEP_TYPE_GEODESIC;
     options.c_weight = c_weight;
     options.e_weight = 1;
     options.w_weight = e_weight;

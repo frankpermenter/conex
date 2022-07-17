@@ -4,7 +4,7 @@ namespace conex {
 
 inline SolverConfiguration DefaultTestConfiguration() {
   SolverConfiguration config;
-  config.use_geodesic_updates = true;
+  config.step_type = CONEX_STEP_TYPE_GEODESIC;
 
 #ifdef CONEX_TEST_SD_EMBEDDING
   config.algorithm = CONEX_ALGORITHM_SELF_DUAL_EMBEDDING;

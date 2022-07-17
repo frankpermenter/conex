@@ -423,6 +423,7 @@ cc_library(
     deps = [
         "constraint_interface",
         "error_checking",
+        "solver_configuration",
         "@eigen",
     ],
 )
@@ -447,6 +448,7 @@ cc_library(
         "exponential_map",
         "exponential_map_pade",
         "jordan_matrix_algebra",
+        "solver_configuration",
         "@eigen",
     ],
 )

@@ -58,7 +58,7 @@ class LinearConstraint : public ConstraintBase {
   void ComputeNegativeSlack(double inv_sqrt_mu,
                             const Eigen::Ref<const Eigen::MatrixXd>& y,
                             Eigen::Ref<Eigen::MatrixXd> minus_s);
-  void AffineUpdate(const Eigen::Ref<const Eigen::MatrixXd>& y);
+  void AffineUpdate(const Eigen::Ref<const Eigen::MatrixXd>& y, int step_type);
 
   WorkspaceLinear workspace_;
   DenseMatrix constraint_matrix_;

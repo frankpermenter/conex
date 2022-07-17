@@ -1,5 +1,6 @@
 #include "conex/hermitian_psd.h"
 
+#include "conex/conex.h"
 #include "conex/error_checking_macros.h"
 #include "conex/exponential_map.h"
 
@@ -17,7 +18,7 @@ bool TakeStep(HermitianPsdConstraint<T>* o, const StepOptions& opt) {
   }
   int n = Rank(*o);
 
-  if (opt.affine) {
+  if (opt.step_type == CONEX_STEP_TYPE_DUAL_BARRIER) {
     auto& WS = o->WS;
     auto WSW = T::Zero(n, n);
     WSW = T::Multiply(WS, o->W);
@@ -119,13 +120,15 @@ bool TakeStep(HermitianPsdConstraint<Octonions>* o, const StepOptions& opt) {
     minus_s = T::ScalarMultiply(minus_s, scale);
   }
 
-  if (opt.affine) {
+  if (opt.step_type == CONEX_STEP_TYPE_DUAL_BARRIER) {
     auto WSW = T::QuadraticRepresentation(o->W, minus_s);
     if (opt.e_weight != 0) {
       o->W = T::ScalarMultiply(o->W, 1 + opt.e_weight);
     }
     o->W = T::Add(o->W, WSW);
   } else {
+    CONEX_DEMAND(opt.step_type == CONEX_STEP_TYPE_GEODESIC,
+                 "Invalid step type");
     o->W = GeodesicUpdateScaled(o->W, minus_s);
   }
   return true;

@@ -1,4 +1,5 @@
 #include "conex/cone_program.h"
+#include "conex/conex.h"
 #include "conex/debug_macros.h"
 #include "conex/linear_constraint.h"
 #include "conex/quadratic_cone_constraint.h"
@@ -189,7 +190,8 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
   bool use_epigraph = true;
   double average_iter_socp = 0;
   double average_iter = 0;
-  double average_iter_barrier = 0;
+  double average_iter_dual_barrier = 0;
+  double average_iter_primal_barrier = 0;
 
   conex::SolverConfiguration config;
   config.enable_line_search = true;
@@ -204,13 +206,12 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
 
   conex::Statistics stats;
   for (int i = 0; i < num_trial; i++) {
-    config.use_geodesic_updates = true;
+    config.step_type = conex::CONEX_STEP_TYPE_GEODESIC;
     srand(i);
     int num_iter = 0;
     conex::ProblemData data =
         conex::RandomWellPosedProblem(num_vars, num_ineqs, rank_of_quadratic);
     use_epigraph = true;
-
     num_iter = conex::SolveQPInstance(data, config, use_epigraph);
 
     average_iter_socp += 1.0 / (1 + i) * (num_iter - average_iter_socp);
@@ -219,12 +220,19 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
     num_iter = conex::SolveQPInstance(data, config, use_epigraph);
     average_iter += 1.0 / (1 + i) * (num_iter - average_iter);
 
-    config.use_geodesic_updates = false;
+    config.step_type = conex::CONEX_STEP_TYPE_DUAL_BARRIER;
     num_iter = conex::SolveQPInstance(data, config, use_epigraph);
-    average_iter_barrier += 1.0 / (1 + i) * (num_iter - average_iter_barrier);
+    average_iter_dual_barrier +=
+        1.0 / (1 + i) * (num_iter - average_iter_dual_barrier);
+
+    config.step_type = conex::CONEX_STEP_TYPE_PRIMAL_BARRIER;
+    num_iter = conex::SolveQPInstance(data, config, use_epigraph);
+    average_iter_primal_barrier +=
+        1.0 / (1 + i) * (num_iter - average_iter_primal_barrier);
   }
   std::cout << " Avg Iter QP: " << average_iter;
-  std::cout << " Avg Iter barrier: " << average_iter_barrier;
+  std::cout << " Avg Iter dual barrier: " << average_iter_dual_barrier;
+  std::cout << " Avg Iter primal barrier: " << average_iter_primal_barrier;
   std::cout << " Avg Iter SOCP: " << average_iter_socp;
   std::cout << "\n";
   return stats;
