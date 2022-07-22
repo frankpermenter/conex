@@ -29,9 +29,6 @@ int DoRandomDenseTest(const SolverConfiguration& config, int random_seed) {
 
   Program prog(num_variables);
   prog.AddConstraint(linear_constraint);
-  //    prog.AddConstraint((linear_constraint), {0, 1, 2, 3, 4});
-  // prog.AddConstraint(LinearConstraint{num_constraints, &Alinear,
-  // &Clinear});
 
   VectorXd x0 = VectorXd::Random(num_constraints, 1);
   x0 = x0.array().abs();
@@ -61,31 +58,44 @@ GTEST_TEST(LP, Dense) {
   config.divergence_upper_bound = 1;
   config.dinf_upper_bound = 1;
   config.final_centering_tolerance = 1.01;
+  config.final_centering_steps = 0;
+  config.verbose = false;
   int num_tests = 5;
 
   int num_iter_div = 0;
   int num_iter_div_no_rescale = 0;
   int num_iter_line_search = 0;
   int num_iter_line_search_no_rescale = 0;
+  int num_iter_scale_correction = 0;
   for (int i = 0; i < num_tests; i++) {
     int random_seed = i;
     config.enable_line_search = 0;
     config.enable_rescaling = 1;
+    config.enable_scale_correction = false;
     num_iter_div += DoRandomDenseTest(config, random_seed);
 
     config.enable_line_search = 0;
     config.enable_rescaling = 0;
+    config.enable_scale_correction = false;
     num_iter_div_no_rescale += DoRandomDenseTest(config, random_seed);
 
     config.enable_line_search = 1;
     config.enable_rescaling = 1;
+    config.enable_scale_correction = false;
     num_iter_line_search += DoRandomDenseTest(config, random_seed);
 
     config.enable_line_search = 1;
     config.enable_rescaling = 0;
+    config.enable_scale_correction = false;
+    config.verbose = true;
     num_iter_line_search_no_rescale += DoRandomDenseTest(config, random_seed);
-  }
 
+    config.enable_line_search = 1;
+    config.enable_rescaling = 0;
+    config.enable_scale_correction = true;
+    config.verbose = true;
+    num_iter_scale_correction += DoRandomDenseTest(config, random_seed);
+  }
   // Empirical evidence suggests line search is better than divergence
   // upper-bound.
   EXPECT_LE(num_iter_div, num_iter_div_no_rescale);
@@ -93,6 +103,9 @@ GTEST_TEST(LP, Dense) {
   // Empirical evidence suggests rescaling helps.
   EXPECT_LE(num_iter_line_search, num_iter_div_no_rescale);
   EXPECT_LE(num_iter_line_search, num_iter_line_search_no_rescale);
+
+  // Empirical evidence suggests scale correction helps.
+  EXPECT_LE(num_iter_scale_correction, num_iter_line_search_no_rescale);
 }
 
 Eigen::VectorXd ExtractVars(const Eigen::VectorXd& x,

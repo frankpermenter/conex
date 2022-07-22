@@ -28,6 +28,7 @@ struct StepOptions {
   double e_weight = 1;
   double w_weight = 0;
   double step_size = 1;
+  bool update_scaling = false;
 };
 
 struct StepInfo {

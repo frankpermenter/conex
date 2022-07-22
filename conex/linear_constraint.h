@@ -45,6 +45,10 @@ class LinearConstraint : public ConstraintBase {
   friend void ConstructSchurComplementSystem(LinearConstraint* o,
                                              bool initialize,
                                              SchurComplementSystem* sys);
+
+  friend void ApplyRescaling(LinearConstraint*, Eigen::Ref<Eigen::MatrixXd>,
+                             double*);
+
   friend bool TakeStep(LinearConstraint*, const StepOptions&);
 
   friend CONEX_STATUS UpdateLinearOperator(LinearConstraint* o, double val,

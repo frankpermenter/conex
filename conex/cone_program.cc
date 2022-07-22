@@ -248,6 +248,75 @@ struct WorkspaceInfeasibleStart {
   Ref y;
 };
 
+StepInfo IterationHelper(bool& update_mu, const SolverConfiguration& config,
+                         SchurComplementSystem& sys, double& b_scaling,
+                         double& c_scaling,
+                         double& newton_step_parameters_inv_sqrt_mu,
+                         StepOptions& newton_step_parameters, int& rankK,
+                         KKTSolverBase* solver,
+                         WorkspaceInfeasibleStart& workspace,
+                         double& inv_sqrt_mu_max, const VectorXd& b,
+                         ConstraintManager& kkt_system_manager_) {
+  auto& y = workspace.y;
+  if (update_mu) {
+    double temp = -1;
+    if (config.enable_line_search) {
+      LineSearchOutput output = ComputeMuFromLineSearch(
+          kkt_system_manager_, solver, config.dinf_upper_bound,
+          sys.AQc * c_scaling, c_scaling, b * b_scaling, sys.AW, &workspace.y);
+      if (output.failed) {
+        temp = -output.d0_dot_dt / output.dt_squared_norm;
+        // For debugging, print the predicted value of the d2 norm.
+        // This should agree with the norm that is reported.
+        // double norm = output.d0_squared_norm +
+        // DUMP(std::sqrt(norm));
+        if (temp < 0) {
+          temp = newton_step_parameters_inv_sqrt_mu;
+        }
+      } else {
+        temp = output.upper_bound;
+      }
+    }
+
+    if (temp < 0) {
+      CONEX_DEMAND(!kkt_system_manager_.quadratic_costs().size(),
+                   "Solver terminating with error: line-search failed.");
+      temp = ComputeMuFromDivergence(
+          kkt_system_manager_, solver, sys.AQc * c_scaling, c_scaling,
+          b * b_scaling, config, rankK, &workspace.y);
+    }
+
+    if (temp > 0) {
+      newton_step_parameters_inv_sqrt_mu = temp;
+    } else {
+      newton_step_parameters_inv_sqrt_mu *= .5;
+    }
+  }
+  const double max = inv_sqrt_mu_max;
+  const double min = std::sqrt(1.0 / (1e-15 + config.maximum_mu));
+  ApplyLimits(&newton_step_parameters_inv_sqrt_mu, min, max);
+
+  y = newton_step_parameters_inv_sqrt_mu *
+          (b * b_scaling + sys.AQc * c_scaling) -
+      2 * sys.AW;
+  START_TIMER(Solve)
+  solver->SolveInPlace(y);
+  END_TIMER
+
+  newton_step_parameters.e_weight = 1;
+  newton_step_parameters.c_weight =
+      newton_step_parameters_inv_sqrt_mu * c_scaling;
+
+  StepInfo info;
+  PrepareStep(&kkt_system_manager_, newton_step_parameters, y, &info);
+
+  newton_step_parameters.step_size = 2.0 / (info.norminfd * info.norminfd);
+  if (newton_step_parameters.step_size > 1) {
+    newton_step_parameters.step_size = 1;
+  }
+  return info;
+}
+
 bool SolveIPM(ConstraintManager& kkt_system_manager_,
               const SolverConfiguration& config, SchurComplementSystem& sys,
               KKTSolverBase* solver, ConexStatus& status_,
@@ -263,6 +332,13 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
   StepOptions newton_step_parameters;
   double newton_step_parameters_inv_sqrt_mu = 0;
   newton_step_parameters.step_type = config.step_type;
+  if (config.enable_scale_correction) {
+    // Affine steps apply the rescaling so that the dual
+    // variable interface works. For this reason, we can
+    // only use affine steps to prepare dual variables
+    // at termination when the scale correction is enabled.
+    CONEX_CHECK(config.step_type == CONEX_STEP_TYPE_GEODESIC);
+  }
 
   int m = kkt_system_manager_.GetNumberOfVariables();
   auto& constraints = kkt_system_manager_.cone_inequalities();
@@ -282,7 +358,6 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     PRINTSTATUS("Warmstarting...");
     initial_centering_steps = config.initial_centering_steps_warmstart;
   }
-
   for (int i = 0; i < config.max_iterations; i++) {
     if (i >= initial_centering_steps) {
       initial_centering = 0;
@@ -290,10 +365,10 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
 
 #if CONEX_VERBOSE
     if (config.verbose) {
-      if (stats->num_iter < 10) {
-        std::cout << "i:  " << stats->num_iter << ", ";
+      if (i < 10) {
+        std::cout << "i:  " << i << ", ";
       } else {
-        std::cout << "i: " << stats->num_iter << ", ";
+        std::cout << "i: " << i << ", ";
       }
     }
 #endif
@@ -341,68 +416,16 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     }
     END_TIMER
 
-    if (update_mu) {
-      double temp = -1;
-      if (config.enable_line_search) {
-        LineSearchOutput output = ComputeMuFromLineSearch(
-            kkt_system_manager_, solver, config.dinf_upper_bound,
-            sys.AQc * c_scaling, c_scaling, b * b_scaling, sys.AW,
-            &workspace.y);
-        if (output.failed) {
-          temp = -output.d0_dot_dt / output.dt_squared_norm;
-          // For debugging, print the predicted value of the d2 norm.
-          // This should agree with the norm that is reported.
-          // double norm = output.d0_squared_norm +
-          // DUMP(std::sqrt(norm));
-          if (temp < 0) {
-            temp = newton_step_parameters_inv_sqrt_mu;
-          }
-        } else {
-          temp = output.upper_bound;
-        }
-      }
-
-      if (temp < 0) {
-        CONEX_RETURN_ON_FAIL(
-            !kkt_system_manager_.quadratic_costs().size(),
-            "Solver terminating with error: line-search failed.");
-        temp = ComputeMuFromDivergence(
-            kkt_system_manager_, solver, sys.AQc * c_scaling, c_scaling,
-            b * b_scaling, config, rankK, &workspace.y);
-      }
-
-      if (temp > 0) {
-        newton_step_parameters_inv_sqrt_mu = temp;
-      } else {
-        newton_step_parameters_inv_sqrt_mu *= .5;
-      }
-    } else {
+    if (!update_mu) {
       if (initial_centering == 0) {
         centering_steps++;
       }
     }
 
-    const double max = inv_sqrt_mu_max;
-    const double min = std::sqrt(1.0 / (1e-15 + config.maximum_mu));
-    ApplyLimits(&newton_step_parameters_inv_sqrt_mu, min, max);
-
-    y = newton_step_parameters_inv_sqrt_mu *
-            (b * b_scaling + sys.AQc * c_scaling) -
-        2 * sys.AW;
-    START_TIMER(Solve)
-    solver->SolveInPlace(y);
-    END_TIMER
-
-    newton_step_parameters.e_weight = 1;
-    newton_step_parameters.c_weight =
-        newton_step_parameters_inv_sqrt_mu * c_scaling;
-
-    StepInfo info;
-    PrepareStep(&kkt_system_manager_, newton_step_parameters, y, &info);
-    newton_step_parameters.step_size = 2.0 / (info.norminfd * info.norminfd);
-    if (newton_step_parameters.step_size > 1) {
-      newton_step_parameters.step_size = 1;
-    }
+    StepInfo info = IterationHelper(
+        update_mu, config, sys, b_scaling, c_scaling,
+        newton_step_parameters_inv_sqrt_mu, newton_step_parameters, rankK,
+        solver, workspace, inv_sqrt_mu_max, b, kkt_system_manager_);
 
     if (i == 0 &&
         (config.initialization_mode == CONEX_INITIALIZATION_MODE_WARMSTART) &&
@@ -410,6 +433,24 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
       PRINTSTATUS("Aborting warmstart...");
       SetIdentity(&constraints);
       warmstart_aborted = true;
+    }
+
+    if (config.enable_scale_correction && i > 0) {
+      newton_step_parameters.update_scaling = true;
+      newton_step_parameters.step_type = config.step_type;
+      TakeStep(&constraints, newton_step_parameters);
+
+      sys.AW.setZero();
+      sys.inner_product_of_w_and_c = 0;
+      for (auto& ci : constraints) {
+        ApplyRescaling(ci->constraint(), sys.AW, &sys.inner_product_of_w_and_c);
+      }
+
+      info = IterationHelper(update_mu, config, sys, b_scaling, c_scaling,
+                             newton_step_parameters_inv_sqrt_mu,
+                             newton_step_parameters, rankK, solver, workspace,
+                             inv_sqrt_mu_max, b, kkt_system_manager_);
+      newton_step_parameters.update_scaling = false;
     }
 
     const double d_2 = std::sqrt(std::fabs(info.normsqrd));
@@ -442,13 +483,16 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     double pobj = -(by - 0.5 * yQy);
     double dobj = -(cx + 0.5 * yQy);
     double gap = std::abs(pobj - dobj);
+
+    status_.dual_objective_value = dobj;
+    status_.primal_objective_value = pobj;
+    status_.complementarity = s_dot_x;
 #if CONEX_VERBOSE
     if (config.verbose) {
       REPORT(mu);
+      REPORT(s_dot_x);
       REPORT(d_2);
       REPORT(d_inf);
-      status_.dual_objective_value = dobj;
-      status_.primal_objective_value = pobj;
       REPORT(gap);
       REPORT(pobj);
       REPORT(dobj);
@@ -461,18 +505,18 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
 
     stats->sqrt_inv_mu[stats->num_iter] = newton_step_parameters_inv_sqrt_mu;
     stats->num_iter++;
-
     bool terminate =
         (final_centering && centering_steps >= config.final_centering_steps) ||
         i == config.max_iterations - 1;
     bool converged =
         (newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max ||
-         gap <= rankK * 1.0 / (inv_sqrt_mu_max * inv_sqrt_mu_max)) &&
+         s_dot_x <= rankK * 1.0 / (inv_sqrt_mu_max * inv_sqrt_mu_max)) &&
         d_inf <= config.final_centering_tolerance;
 
     if (terminate || converged) {
       max_iter_failure = !converged;
       if (config.prepare_dual_variables) {
+        newton_step_parameters.update_scaling = false;
         newton_step_parameters.step_type = CONEX_STEP_TYPE_DUAL_BARRIER;
         DenseMatrix bres(b.rows(), 1);
         Ref y2map(bres.data(), bres.rows(), bres.cols());
@@ -485,6 +529,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
         TakeStep(&constraints, newton_step_parameters);
       } else {
         newton_step_parameters.step_type = config.step_type;
+        newton_step_parameters.update_scaling = false;
         TakeStep(&constraints, newton_step_parameters);
       }
       break;
@@ -681,7 +726,6 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 
   Eigen::Map<DenseMatrix> yout(primal_variable, m, 1);
 
-  prog.status_.num_iterations = prog.workspace_.stats->num_iter;
   yout = ydata.topRows(m);
   return prog.status_.solved;
 }
@@ -794,7 +838,6 @@ void PrepareStep(ConstraintManager* kkt,
   info_i.norminfd = 0;
   info->normsqrd = 0;
   info->norminfd = -1;
-  int i = 0;
   for (auto& ci : kkt->cone_inequalities()) {
     PrepareStep(ci->constraint(), newton_step_parameters,
                 ci->PrimalSubvector(y), &info_i);
@@ -802,14 +845,12 @@ void PrepareStep(ConstraintManager* kkt,
       info->norminfd = info_i.norminfd;
     }
     info->normsqrd += info_i.normsqrd;
-    i++;
   }
 }
 
 void AssembleSchurComplementResiduals(const ConstraintManager& kkt,
                                       SchurComplementSystem* s) {
   s->setZero();
-  int i = 0;
   for (auto& ci : kkt.cone_inequalities()) {
     auto* rhs_i = ci->submatrix_data();
     s->inner_product_of_w_and_c += rhs_i->inner_product_of_w_and_c;
@@ -825,7 +866,6 @@ void AssembleSchurComplementResiduals(const ConstraintManager& kkt,
       s->Ae(k) += rhs_i->Ae(cnt);
       cnt++;
     }
-    i++;
   }
 
   MakeAffineTermOfEqualityConstraints(kkt, s->AQc);

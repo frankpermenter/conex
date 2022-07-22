@@ -119,11 +119,13 @@ bool PerformLineSearch(LinearConstraint* o, const LineSearchParameters& params,
   o->ComputeNegativeSlack(params.options_0.c_weight, y0, d0);
   d0.array() -= params.options_0.w_weight;
   d0 = d0.cwiseProduct(o->workspace_.W);
+  d0 = d0.cwiseQuotient(o->workspace_.r);
   d0.array() += params.options_0.e_weight;
 
   o->ComputeNegativeSlack(params.options_1.c_weight, y1, d1);
   d1.array() -= params.options_1.w_weight;
   d1 = d1.cwiseProduct(o->workspace_.W);
+  d1 = d1.cwiseQuotient(o->workspace_.r);
   d1.array() += params.options_1.e_weight;
 
   d1 = d1 - d0;
@@ -132,7 +134,10 @@ bool PerformLineSearch(LinearConstraint* o, const LineSearchParameters& params,
   return !success;
 }
 
-void SetIdentity(LinearConstraint* o) { o->workspace_.W.setConstant(1); }
+void SetIdentity(LinearConstraint* o) {
+  o->workspace_.W.setConstant(1);
+  o->workspace_.r.setConstant(1);
+}
 
 // TODO: use e_weight and c_weight
 void PrepareStep(LinearConstraint* o, const StepOptions& options,
@@ -144,25 +149,65 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options,
   o->ComputeNegativeSlack(options.c_weight, y, d);
   d.array() -= options.w_weight;
   d = d.cwiseProduct(o->workspace_.W);
+  d = d.cwiseQuotient(o->workspace_.r);
   d.array() += options.e_weight;
 
   double norminf = (d).array().abs().maxCoeff();
   info->norminfd = norminf;
-  info->normsqrd = d.squaredNorm();
+  VectorXd rd = d.col(0).cwiseProduct(o->workspace_.r);
+  info->normsqrd = rd.squaredNorm();
 }
 
 bool TakeStep(LinearConstraint* o, const StepOptions& options) {
   auto& d = o->workspace_.temp_2;
   auto& W = o->workspace_.W;
   bool use_geodesic = options.step_type == CONEX_STEP_TYPE_GEODESIC;
-  if (use_geodesic) {
-    if (options.step_size != 1) {
-      d.array() *= options.step_size;
+  VectorXd r = o->workspace_.r;
+  if (options.update_scaling) {
+    for (int i = 0; i < d.rows(); i++) {
+#if 0
+      if (std::abs(d(i)) < 1) {
+        o->workspace_.r(i) = std::sqrt(product(i));
+        //o->workspace_.r(i) *= std::sqrt( (1 - d(i)) * (1 + d(i)));
+        //o->workspace_.r(i) = std::sqrt(o->workspace_.r(i));
+      }
+#else
+      // Absorb max(1-d, 1+d) into r.
+      double max_scale = 30;
+      double min_scale = .1;
+      if (d(i) < 0) {
+        double scale = 1 - d(i) * options.step_size;
+        if (scale > max_scale) {
+          scale = max_scale;
+        }
+        if (scale < min_scale) {
+          scale = min_scale;
+        }
+        o->workspace_.r(i) *= scale;
+        o->workspace_.r(i) = std::sqrt(o->workspace_.r(i));
+      } else {
+        double scale = 1 + d(i) * options.step_size;
+        if (scale > max_scale) {
+          scale = max_scale;
+        }
+        o->workspace_.r(i) *= scale;
+        o->workspace_.r(i) = std::sqrt(o->workspace_.r(i));
+      }
+#endif
     }
-    d = d.array().exp();
-    W = W.cwiseProduct(d);
+    // This normalization necessarity to ensure <r, r> = rank K
+    o->workspace_.r = o->workspace_.r / o->workspace_.r.norm() *
+                      std::sqrt(o->workspace_.r.rows());
   } else {
-    o->AffineUpdate(d, options.step_type);
+    if (use_geodesic) {
+      if (options.step_size != 1) {
+        d.array() *= options.step_size;
+      }
+      d = d.array().exp();
+      W = W.cwiseProduct(d);
+    } else {
+      o->AffineUpdate(d, options.step_type);
+    }
   }
   return true;
 }
@@ -203,12 +248,29 @@ void LinearConstraint::AffineUpdate(const Eigen::Ref<const Eigen::MatrixXd>& d,
     W = Winv.cwiseInverse();
   } else {
     W += W.cwiseProduct(d);
+    // TODO(FrankPermenter): remove this hack.
+    // We scale by r so that AffineStep in PrepareDualVariables
+    // will place the dual variable in workspace_.W;
+    // We need workspace_.W  to hold the dual variable
+    // because of the dual variable interface.
+    W = W.cwiseProduct(workspace_.r);
   }
+}
+
+void ApplyRescaling(LinearConstraint* o, Eigen::Ref<Eigen::MatrixXd> Aw,
+                    double* ip) {
+  const auto& W = o->workspace_.W;
+  const auto& r = o->workspace_.r;
+  *ip += W.cwiseProduct(r).col(0).dot(o->constraint_affine_.col(0));
+  int m = o->number_of_variables();
+  Aw.topRows(m).noalias() +=
+      o->constraint_matrix_.transpose() * r.cwiseProduct(W);
 }
 
 void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
                                     SchurComplementSystem* sys) {
   const auto& W = o->workspace_.W;
+  const auto& r = o->workspace_.r;
   auto G = &sys->G;
 
   auto& WA = o->workspace_.weighted_constraints;
@@ -219,7 +281,8 @@ void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
   WC = W.cwiseProduct(o->constraint_affine_);
 
   if (initialize) {
-    sys->inner_product_of_w_and_c = WC.sum();
+    sys->inner_product_of_w_and_c =
+        W.cwiseProduct(r).col(0).dot(o->constraint_affine_.col(0));
     sys->inner_product_of_c_and_Qc = WC.squaredNorm();
     sys->inner_product_of_c_and_Qe = WC.col(0).dot(W.col(0));
     sys->inner_product_of_c_and_e = o->constraint_affine_.sum();
@@ -227,13 +290,15 @@ void ConstructSchurComplementSystem(LinearConstraint* o, bool initialize,
       sys->setZero();
     }
     (*G).topLeftCorner(m, m).noalias() = WA.transpose() * WA;
-    sys->AW.topRows(m).noalias() = o->constraint_matrix_.transpose() * W;
+    sys->AW.topRows(m).noalias() =
+        o->constraint_matrix_.transpose() * r.cwiseProduct(W);
     sys->AQc.topRows(m).noalias() = WA.transpose() * WC;
     sys->AQe.topRows(m).noalias() =
         o->constraint_matrix_.transpose() * (W.cwiseProduct(W));
     sys->Ae.topRows(m).noalias() =
         o->constraint_matrix_.colwise().sum().transpose();
   } else {
+    std::runtime_error("obsolete");
     sys->inner_product_of_w_and_c += WC.sum();
     sys->inner_product_of_c_and_Qc += WC.squaredNorm();
     sys->inner_product_of_c_and_Qe += WC.col(0).dot(W.col(0));

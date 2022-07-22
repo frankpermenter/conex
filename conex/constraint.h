@@ -12,6 +12,11 @@
 namespace conex {
 
 template <typename T>
+void ApplyRescaling(T*, Eigen::Ref<Eigen::MatrixXd>, double*) {
+  throw std::runtime_error("Constraint does not support rescaling");
+}
+
+template <typename T>
 CONEX_STATUS UpdateLinearOperator(T*, double, int, int, int, int) {
   CONEX_RETURN_ON_FAIL(
       false, "Constraint does not support updates of linear operator.");
@@ -76,6 +81,11 @@ class Constraint {
 
   void get_dual_variable(double* v) { return model->do_get_dual_variable(v); }
 
+  friend void ApplyRescaling(Constraint* o, Eigen::Ref<Eigen::MatrixXd> ArW,
+                             double* inner_product_of_c_and_rW) {
+    o->model->do_apply_rescaling(ArW, inner_product_of_c_and_rW);
+  }
+
   int dual_variable_size() { return model->do_dual_variable_size(); }
 
   int number_of_variables() { return model->do_number_of_variables(); }
@@ -118,6 +128,10 @@ class Constraint {
     virtual bool do_take_step(const StepOptions&) = 0;
     virtual int do_dual_variable_size() = 0;
     virtual int do_number_of_variables() = 0;
+
+    virtual void do_apply_rescaling(Eigen::Ref<Eigen::MatrixXd> ArW,
+                                    double* inner_product_of_c_and_rW) = 0;
+
     virtual CONEX_STATUS do_update_linear_operator(double val, int var, int row,
                                                    int col,
                                                    int hyper_complex_dim) = 0;
@@ -183,6 +197,11 @@ class Constraint {
     void do_prepare_step(const StepOptions& opt, const Ref& y,
                          StepInfo* info) override {
       PrepareStep(data, opt, y, info);
+    }
+
+    void do_apply_rescaling(Eigen::Ref<Eigen::MatrixXd> ArW,
+                            double* inner_product_of_c_and_rW) override {
+      ApplyRescaling(data, ArW, inner_product_of_c_and_rW);
     }
 
     bool do_take_step(const StepOptions& opt) override {

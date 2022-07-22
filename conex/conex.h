@@ -41,6 +41,7 @@ struct SolverConfiguration {
   int iterative_refinement_iterations = 0;
   int verbose = 1;
   bool enable_logging = false;
+  bool enable_scale_correction = false;
   int algorithm = CONEX_ALGORITHM_INFEASIBLE_START;
   int step_type = CONEX_STEP_TYPE_GEODESIC;
   std::string log_file = "conex_log.json";
@@ -51,8 +52,10 @@ struct ConexStatus {
   int num_iterations;
   int primal_infeasible = 0;
   int dual_infeasible = 0;
-  double dual_objective_value;
-  double primal_objective_value;
+  double dual_objective_value = 0;
+  double primal_objective_value = 0;
+  double complementarity = 0;
+  double dinf = 0;
 };
 
 }  // namespace conex
