@@ -164,6 +164,9 @@ void PrepareStep(LinearConstraint* o, const StepOptions& options,
   double norminf = (d).array().abs().maxCoeff();
   info->norminfd = norminf;
   info->normsqrd = d.squaredNorm();
+
+  info->complementarity = o->workspace_.sqrt_inv_x.col(0).dot(o->workspace_.sqrt_inv_slack.col(0));
+
 }
 extern bool scale_step;
 bool TakeStep(LinearConstraint* o, const StepOptions& options) {
@@ -205,6 +208,7 @@ bool TakeStep(LinearConstraint* o, const StepOptions& options) {
       }
       #endif
     }
+    o->workspace_.r = o->workspace_.r/o->workspace_.r.norm() * std::sqrt(o->workspace_.r.rows());
   } else {
     if (use_geodesic) {
       if (options.step_size != 1) {
@@ -216,9 +220,6 @@ bool TakeStep(LinearConstraint* o, const StepOptions& options) {
       o->AffineUpdate(d, options.step_type);
     }
   }
-  double sqrtmu = 1.0/o->workspace_.inv_sqrt_mu;
-  DUMP(sqrtmu*sqrtmu* o->workspace_.sqrt_inv_x.col(0).dot(o->workspace_.sqrt_inv_slack.col(0)));
-
   return true;
 }
 

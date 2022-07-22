@@ -284,7 +284,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
   }
   int true_iter = 0;
   for (int i = 0; i < config.max_iterations; i++) {
-    scale_step = i % 2 == 0 && (i > 3);
+    scale_step = i % 2 == 0 && (i > 1) && config.enable_scale_correction;
     if (!scale_step) {
       true_iter++;
     }
@@ -294,7 +294,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     }
 
 #if CONEX_VERBOSE
-    if (config.verbose) {
+    if (config.verbose && !scale_step) {
       if (stats->num_iter < 10) {
         std::cout << "i:  " << true_iter-1 << ", ";
       } else {
@@ -391,7 +391,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     const double min = std::sqrt(1.0 / (1e-15 + config.maximum_mu));
     //ApplyLimits(&newton_step_parameters_inv_sqrt_mu, min, max);
     if (scale_step) {
-      newton_step_parameters_inv_sqrt_mu *= std::pow(1.01, i);
+      //newton_step_parameters_inv_sqrt_mu *= std::pow(1.02, i);
     }
 
     y = newton_step_parameters_inv_sqrt_mu *
@@ -450,9 +450,11 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     double pobj = -(by - 0.5 * yQy);
     double dobj = -(cx + 0.5 * yQy);
     double gap = std::abs(pobj - dobj);
+    s_dot_x = mu * info.complementarity;
 #if CONEX_VERBOSE
-    if (config.verbose) {
+    if (config.verbose && !scale_step) {
       REPORT(mu);
+      REPORT(s_dot_x);
       REPORT(d_2);
       REPORT(d_inf);
       status_.dual_objective_value = dobj;
@@ -802,6 +804,7 @@ void PrepareStep(ConstraintManager* kkt,
   info_i.norminfd = 0;
   info->normsqrd = 0;
   info->norminfd = -1;
+  info->complementarity = 0;
   int i = 0;
   for (auto& ci : kkt->cone_inequalities()) {
     PrepareStep(ci->constraint(), newton_step_parameters,
@@ -810,6 +813,7 @@ void PrepareStep(ConstraintManager* kkt,
       info->norminfd = info_i.norminfd;
     }
     info->normsqrd += info_i.normsqrd;
+    info->complementarity += info_i.complementarity;
     i++;
   }
 }

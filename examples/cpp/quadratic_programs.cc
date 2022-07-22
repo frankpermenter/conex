@@ -196,13 +196,14 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
   conex::SolverConfiguration config;
   config.enable_line_search = true;
   config.enable_rescaling = false;
-  config.inv_sqrt_mu_max = 1e4;
+  config.inv_sqrt_mu_max = 1e5;
   config.maximum_mu = 1e9;
   config.final_centering_tolerance = 1;
   config.max_iterations = 50;
   config.kkt_error_tolerance = 1e30;
   config.verbose = true;
-  config.dinf_upper_bound = 1 - 1e-3;
+  config.dinf_upper_bound = 1;
+  config.enable_scale_correction = true;
 
   conex::Statistics stats;
   for (int i = 0; i < num_trial; i++) {
@@ -212,14 +213,18 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
     conex::ProblemData data =
         conex::RandomWellPosedProblem(num_vars, num_ineqs, rank_of_quadratic);
     use_epigraph = true;
-    num_iter = conex::SolveQPInstance(data, config, use_epigraph);
+   // num_iter = conex::SolveQPInstance(data, config, use_epigraph);
 
     average_iter_socp += 1.0 / (1 + i) * (num_iter - average_iter_socp);
     use_epigraph = false;
 
-DUMP("HEHE");
+    config.enable_scale_correction = true;
     num_iter = conex::SolveQPInstance(data, config, use_epigraph);
     average_iter += 1.0 / (1 + i) * (num_iter - average_iter);
+
+    config.enable_scale_correction = false;
+    num_iter = conex::SolveQPInstance(data, config, use_epigraph);
+    continue;
     throw;
     return stats;
 
@@ -243,7 +248,7 @@ DUMP("HEHE");
 
 void CompareWithGeodesicIPM() {
   ExperimentalSetup setup;
-  setup.num_trial = 1;
+  setup.num_trial = 10;
   setup.num_vars = 10;
 
   // Increase rank

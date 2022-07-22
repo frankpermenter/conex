@@ -41,6 +41,7 @@ struct SolverConfiguration {
   int iterative_refinement_iterations = 0;
   int verbose = 1;
   bool enable_logging = false;
+  bool enable_scale_correction = false;
   int algorithm = CONEX_ALGORITHM_INFEASIBLE_START;
   int step_type = CONEX_STEP_TYPE_GEODESIC;
   std::string log_file = "conex_log.json";

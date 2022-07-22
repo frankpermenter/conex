@@ -33,6 +33,7 @@ struct StepOptions {
 struct StepInfo {
   double normsqrd = 0;
   double norminfd = 0;
+  double complementarity = 0;
 };
 
 struct LineSearchParameters {
