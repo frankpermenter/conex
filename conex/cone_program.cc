@@ -11,7 +11,7 @@
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 namespace conex {
-
+bool scale_step = true;
 namespace {
 
 void IncrementSubvector(Eigen::Ref<MatrixXd> destination,
@@ -282,8 +282,13 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     PRINTSTATUS("Warmstarting...");
     initial_centering_steps = config.initial_centering_steps_warmstart;
   }
-
+  int true_iter = 0;
   for (int i = 0; i < config.max_iterations; i++) {
+    scale_step = i % 2 == 0 && (i > 3);
+    if (!scale_step) {
+      true_iter++;
+    }
+
     if (i >= initial_centering_steps) {
       initial_centering = 0;
     }
@@ -291,9 +296,9 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
 #if CONEX_VERBOSE
     if (config.verbose) {
       if (stats->num_iter < 10) {
-        std::cout << "i:  " << stats->num_iter << ", ";
+        std::cout << "i:  " << true_iter-1 << ", ";
       } else {
-        std::cout << "i: " << stats->num_iter << ", ";
+        std::cout << "i: " << true_iter-1 << ", ";
       }
     }
 #endif
@@ -384,7 +389,10 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
 
     const double max = inv_sqrt_mu_max;
     const double min = std::sqrt(1.0 / (1e-15 + config.maximum_mu));
-    ApplyLimits(&newton_step_parameters_inv_sqrt_mu, min, max);
+    //ApplyLimits(&newton_step_parameters_inv_sqrt_mu, min, max);
+    if (scale_step) {
+      newton_step_parameters_inv_sqrt_mu *= std::pow(1.01, i);
+    }
 
     y = newton_step_parameters_inv_sqrt_mu *
             (b * b_scaling + sys.AQc * c_scaling) -

@@ -196,13 +196,13 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
   conex::SolverConfiguration config;
   config.enable_line_search = true;
   config.enable_rescaling = false;
-  config.inv_sqrt_mu_max = 100;
+  config.inv_sqrt_mu_max = 1e4;
   config.maximum_mu = 1e9;
   config.final_centering_tolerance = 1;
   config.max_iterations = 50;
   config.kkt_error_tolerance = 1e30;
-  config.verbose = false;
-  config.dinf_upper_bound = 1 - 1e-1;
+  config.verbose = true;
+  config.dinf_upper_bound = 1 - 1e-3;
 
   conex::Statistics stats;
   for (int i = 0; i < num_trial; i++) {
@@ -217,8 +217,11 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
     average_iter_socp += 1.0 / (1 + i) * (num_iter - average_iter_socp);
     use_epigraph = false;
 
+DUMP("HEHE");
     num_iter = conex::SolveQPInstance(data, config, use_epigraph);
     average_iter += 1.0 / (1 + i) * (num_iter - average_iter);
+    throw;
+    return stats;
 
     config.step_type = conex::CONEX_STEP_TYPE_DUAL_BARRIER;
     num_iter = conex::SolveQPInstance(data, config, use_epigraph);
@@ -240,13 +243,14 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
 
 void CompareWithGeodesicIPM() {
   ExperimentalSetup setup;
-  setup.num_trial = 10;
-  setup.num_vars = 100;
+  setup.num_trial = 1;
+  setup.num_vars = 10;
 
   // Increase rank
   setup.num_ineqs = 75;
-  setup.rank_of_quadratic = 25;
+  setup.rank_of_quadratic = 1;
   DoCompare(setup);
+  return;
   setup.rank_of_quadratic = 50;
   DoCompare(setup);
   setup.rank_of_quadratic = 75;
