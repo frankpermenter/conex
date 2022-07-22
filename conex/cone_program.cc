@@ -389,10 +389,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
 
     const double max = inv_sqrt_mu_max;
     const double min = std::sqrt(1.0 / (1e-15 + config.maximum_mu));
-    //ApplyLimits(&newton_step_parameters_inv_sqrt_mu, min, max);
-    if (scale_step) {
-      //newton_step_parameters_inv_sqrt_mu *= std::pow(1.02, i);
-    }
+    ApplyLimits(&newton_step_parameters_inv_sqrt_mu, min, max);
 
     y = newton_step_parameters_inv_sqrt_mu *
             (b * b_scaling + sys.AQc * c_scaling) -
@@ -451,14 +448,17 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     double dobj = -(cx + 0.5 * yQy);
     double gap = std::abs(pobj - dobj);
     s_dot_x = mu * info.complementarity;
+
+    status_.dual_objective_value = dobj;
+    status_.primal_objective_value = pobj;
+    status_.complementarity = s_dot_x;
+    status_.num_iterations = true_iter; 
 #if CONEX_VERBOSE
     if (config.verbose && !scale_step) {
       REPORT(mu);
       REPORT(s_dot_x);
       REPORT(d_2);
       REPORT(d_inf);
-      status_.dual_objective_value = dobj;
-      status_.primal_objective_value = pobj;
       REPORT(gap);
       REPORT(pobj);
       REPORT(dobj);
@@ -471,14 +471,13 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
 
     stats->sqrt_inv_mu[stats->num_iter] = newton_step_parameters_inv_sqrt_mu;
     stats->num_iter++;
-
     bool terminate =
         (final_centering && centering_steps >= config.final_centering_steps) ||
         i == config.max_iterations - 1;
     bool converged =
         (newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max ||
-         gap <= rankK * 1.0 / (inv_sqrt_mu_max * inv_sqrt_mu_max)) &&
-        d_inf <= config.final_centering_tolerance;
+         s_dot_x <= rankK * 1.0 / (inv_sqrt_mu_max * inv_sqrt_mu_max)) &&
+         d_inf <= config.final_centering_tolerance;
 
     if (terminate || converged) {
       max_iter_failure = !converged;
@@ -535,7 +534,6 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     }
   }
 
-  status_.num_iterations = stats->num_iter;
   return true;
 }
 
@@ -691,7 +689,6 @@ bool Solve(Program& prog, const SolverConfiguration& config,
 
   Eigen::Map<DenseMatrix> yout(primal_variable, m, 1);
 
-  prog.status_.num_iterations = prog.workspace_.stats->num_iter;
   yout = ydata.topRows(m);
   return prog.status_.solved;
 }

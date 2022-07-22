@@ -125,7 +125,11 @@ ProblemData ProblemDataFromSolution(int n, int num_ineqs) {
   return data;
 }
 
-int SolveQPInstance(ProblemData& data, const SolverConfiguration& config,
+struct Stats {
+  int num_iter;
+  double complementarity;
+};
+ConexStatus SolveQPInstance(ProblemData& data, const SolverConfiguration& config,
                     bool use_epigraph, bool print_stats = false) {
   int num_vars = data.A.cols();
   Program prog(num_vars + use_epigraph);
@@ -154,11 +158,7 @@ int SolveQPInstance(ProblemData& data, const SolverConfiguration& config,
     throw std::runtime_error("Failed to solve");
   }
   VectorXd optimal_x = solution.head(num_vars);
-  int num_iter = prog.Status().num_iterations;
-  if (print_stats) {
-    print(prog.statistics());
-  }
-  return num_iter;
+  return prog.Status();
 }
 
 struct Statistics {
@@ -187,11 +187,11 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
   std::cout << " Num Vars: " << num_vars;
   std::cout << " Num Ineq: " << num_ineqs;
   std::cout << " Rank: " << rank_of_quadratic;
-  bool use_epigraph = true;
-  double average_iter_socp = 0;
-  double average_iter = 0;
-  double average_iter_dual_barrier = 0;
-  double average_iter_primal_barrier = 0;
+  double average_iter_no_rescaling = 0;
+  double average_iter_with_rescaling = 0;
+
+  double average_gap_no_rescaling = 0;
+  double average_gap_with_rescaling = 0;
 
   conex::SolverConfiguration config;
   config.enable_line_search = true;
@@ -201,61 +201,51 @@ conex::Statistics DoCompare(const ExperimentalSetup& setup) {
   config.final_centering_tolerance = 1;
   config.max_iterations = 50;
   config.kkt_error_tolerance = 1e30;
-  config.verbose = true;
+  config.verbose = false;
   config.dinf_upper_bound = 1;
   config.enable_scale_correction = true;
 
   conex::Statistics stats;
+  conex::ConexStatus conex_stats;
   for (int i = 0; i < num_trial; i++) {
     config.step_type = conex::CONEX_STEP_TYPE_GEODESIC;
     srand(i);
     int num_iter = 0;
     conex::ProblemData data =
         conex::RandomWellPosedProblem(num_vars, num_ineqs, rank_of_quadratic);
-    use_epigraph = true;
-   // num_iter = conex::SolveQPInstance(data, config, use_epigraph);
 
-    average_iter_socp += 1.0 / (1 + i) * (num_iter - average_iter_socp);
-    use_epigraph = false;
 
     config.enable_scale_correction = true;
-    num_iter = conex::SolveQPInstance(data, config, use_epigraph);
-    average_iter += 1.0 / (1 + i) * (num_iter - average_iter);
+    conex_stats = conex::SolveQPInstance(data, config, false /*use_epigraph*/);
+    average_iter_with_rescaling += 1.0 / (1 + i) * (conex_stats.num_iterations 
+    - average_iter_with_rescaling);
+
+    average_gap_with_rescaling += 1.0 / (1 + i) * (conex_stats.complementarity
+    - average_gap_with_rescaling);
+
 
     config.enable_scale_correction = false;
-    num_iter = conex::SolveQPInstance(data, config, use_epigraph);
-    continue;
-    throw;
-    return stats;
-
-    config.step_type = conex::CONEX_STEP_TYPE_DUAL_BARRIER;
-    num_iter = conex::SolveQPInstance(data, config, use_epigraph);
-    average_iter_dual_barrier +=
-        1.0 / (1 + i) * (num_iter - average_iter_dual_barrier);
-
-    config.step_type = conex::CONEX_STEP_TYPE_PRIMAL_BARRIER;
-    num_iter = conex::SolveQPInstance(data, config, use_epigraph);
-    average_iter_primal_barrier +=
-        1.0 / (1 + i) * (num_iter - average_iter_primal_barrier);
+    conex_stats = conex::SolveQPInstance(data, config, false /*use_epigraph*/);
+    average_iter_no_rescaling += 1.0 / (1 + i) * (conex_stats.num_iterations - average_iter_no_rescaling);
+    average_gap_no_rescaling += 1.0 / (1 + i) * (conex_stats.complementarity - average_gap_no_rescaling);
   }
-  std::cout << " Avg Iter QP: " << average_iter;
-  std::cout << " Avg Iter dual barrier: " << average_iter_dual_barrier;
-  std::cout << " Avg Iter primal barrier: " << average_iter_primal_barrier;
-  std::cout << " Avg Iter SOCP: " << average_iter_socp;
+  std::cout << " Avg Iter QP no rescaling: " << average_iter_no_rescaling;
+  std::cout << " Avg Iter QP with rescaling: " << average_iter_with_rescaling;
+  std::cout << " Avg Gap QP no rescaling: " << average_gap_no_rescaling;
+  std::cout << " Avg Gap QP with rescaling: " << average_gap_with_rescaling;
   std::cout << "\n";
   return stats;
 }
 
 void CompareWithGeodesicIPM() {
   ExperimentalSetup setup;
-  setup.num_trial = 10;
-  setup.num_vars = 10;
+  setup.num_trial = 1;
+  setup.num_vars = 100;
 
   // Increase rank
   setup.num_ineqs = 75;
-  setup.rank_of_quadratic = 1;
+  setup.rank_of_quadratic = 25;
   DoCompare(setup);
-  return;
   setup.rank_of_quadratic = 50;
   DoCompare(setup);
   setup.rank_of_quadratic = 75;
