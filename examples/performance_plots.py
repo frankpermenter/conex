@@ -5,7 +5,6 @@ import sys
 import threading
 import os
 from matplotlib.ticker import MaxNLocator
-from myutils import *
 
 def geodistv(x, y):
     return norm2(logm( sqrtm(x) * inv(y) * sqrtm(x)))
@@ -115,7 +114,7 @@ def Plot(filename, showplot, mu, labels):
     plt.gca().xaxis.set_major_locator(MaxNLocator(integer=True))
     plt.savefig(filename + "mu_update.eps")
     if show_plot:
-        plt.show(True)
+        plt.show()
 
 def random_symmetric_matrix(n):
     x = np.matrix(np.random.randn(n, n))
