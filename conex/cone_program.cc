@@ -255,7 +255,7 @@ StepInfo IterationHelper(bool& update_mu, const SolverConfiguration& config,
                          StepOptions& newton_step_parameters, int& rankK,
                          KKTSolverBase* solver,
                          WorkspaceInfeasibleStart& workspace,
-                         double& inv_sqrt_mu_max, const VectorXd& b,
+                         const double& inv_sqrt_mu_max, const VectorXd& b,
                          ConstraintManager& kkt_system_manager_) {
   auto& y = workspace.y;
   if (update_mu) {
@@ -328,6 +328,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
   double by = -1;
   double kkt_error = 0;
   bool max_iter_failure = false;
+  double mu;
 
   StepOptions newton_step_parameters;
   double newton_step_parameters_inv_sqrt_mu = 0;
@@ -466,7 +467,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
              c_scaling;
     cx /= (newton_step_parameters_inv_sqrt_mu * b_scaling);
 
-    double mu = 1.0 / (newton_step_parameters_inv_sqrt_mu);
+    mu = 1.0 / (newton_step_parameters_inv_sqrt_mu);
     mu *= mu;
 
     double s_dot_x = mu * (rankK - d_2 * d_2) / (b_scaling * c_scaling);
@@ -507,7 +508,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     stats->num_iter++;
     bool terminate =
         (final_centering && centering_steps >= config.final_centering_steps) ||
-        i == config.max_iterations - 1;
+        i == config.max_iterations - 1 || mu > config.infeasibility_threshold;
     bool converged =
         (newton_step_parameters_inv_sqrt_mu >= inv_sqrt_mu_max ||
          s_dot_x <= rankK * 1.0 / (inv_sqrt_mu_max * inv_sqrt_mu_max)) &&
@@ -541,8 +542,6 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     throw std::runtime_error("Unreachable: termination logic has a bug.");
   }
 
-  double mu = 1.0 / (newton_step_parameters_inv_sqrt_mu);
-  mu *= mu;
   if (mu > config.infeasibility_threshold) {
     PRINTSTATUS("Infeasible Or Unbounded!!.");
     status_.solved = 0;
