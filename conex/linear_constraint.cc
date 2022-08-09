@@ -173,8 +173,8 @@ bool TakeStep(LinearConstraint* o, const StepOptions& options) {
       }
 #else
       // Absorb max(1-d, 1+d) into r.
-      double max_scale = 30;
-      double min_scale = .1;
+      double max_scale = 1e5;
+      double min_scale = 1e-5;
       if (d(i) < 0) {
         double scale = 1 - d(i) * options.step_size;
         if (scale > max_scale) {
@@ -184,14 +184,12 @@ bool TakeStep(LinearConstraint* o, const StepOptions& options) {
           scale = min_scale;
         }
         o->workspace_.r(i) *= scale;
-        o->workspace_.r(i) = std::sqrt(o->workspace_.r(i));
       } else {
         double scale = 1 + d(i) * options.step_size;
         if (scale > max_scale) {
           scale = max_scale;
         }
         o->workspace_.r(i) *= scale;
-        o->workspace_.r(i) = std::sqrt(o->workspace_.r(i));
       }
 #endif
     }

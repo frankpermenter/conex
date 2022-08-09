@@ -319,8 +319,9 @@ StepInfo IterationHelper(bool& update_mu, const SolverConfiguration& config,
 
 bool SolveIPM(ConstraintManager& kkt_system_manager_,
               const SolverConfiguration& config, SchurComplementSystem& sys,
-              KKTSolverBase* solver, ConexStatus& status_,
-              WorkspaceInfeasibleStart& workspace, WorkspaceStats* stats) {
+              bool dual_feasibility_correction, KKTSolverBase* solver,
+              ConexStatus& status_, WorkspaceInfeasibleStart& workspace,
+              WorkspaceStats* stats) {
   double& c_scaling = stats->c_scaling();
   double& b_scaling = stats->b_scaling();
   double inv_sqrt_mu_max = config.inv_sqrt_mu_max;
@@ -519,14 +520,18 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
       if (config.prepare_dual_variables) {
         newton_step_parameters.update_scaling = false;
         newton_step_parameters.step_type = CONEX_STEP_TYPE_DUAL_BARRIER;
-        DenseMatrix bres(b.rows(), 1);
-        Ref y2map(bres.data(), bres.rows(), bres.cols());
-        StepInfo info;
-        bres = newton_step_parameters_inv_sqrt_mu * b * b_scaling - 1 * sys.AW;
-        newton_step_parameters.e_weight = 0;
-        newton_step_parameters.c_weight = 0;
-        solver->SolveInPlace(y2map);
-        PrepareStep(&kkt_system_manager_, newton_step_parameters, y2map, &info);
+        if (dual_feasibility_correction) {
+          DenseMatrix bres(b.rows(), 1);
+          Ref y2map(bres.data(), bres.rows(), bres.cols());
+          StepInfo info;
+          bres =
+              newton_step_parameters_inv_sqrt_mu * b * b_scaling - 1 * sys.AW;
+          newton_step_parameters.e_weight = 0;
+          newton_step_parameters.c_weight = 0;
+          solver->SolveInPlace(y2map);
+          PrepareStep(&kkt_system_manager_, newton_step_parameters, y2map,
+                      &info);
+        }
         TakeStep(&constraints, newton_step_parameters);
       } else {
         newton_step_parameters.step_type = config.step_type;
@@ -700,9 +705,10 @@ bool Solve(Program& prog, const SolverConfiguration& config,
     WorkspaceInfeasibleStart workspace(
         ydata.data(), prog.kkt_system_manager_.SizeOfKKTSystem());
 
-    SolveIPM(prog.kkt_system_manager_, config, prog.workspace_.sys,
-             solver.get(), prog.status_, workspace,
-             prog.workspace_.stats.get());
+    SolveIPM(
+        prog.kkt_system_manager_, config, prog.workspace_.sys,
+        config.enable_scale_correction == 0 /*primal feasibility correction*/,
+        solver.get(), prog.status_, workspace, prog.workspace_.stats.get());
   } else {
     int m = prog.constraint_manager().SizeOfKKTSystem();
     auto* stats = &prog.statistics();
@@ -718,8 +724,8 @@ bool Solve(Program& prog, const SolverConfiguration& config,
       config2.maximum_mu = 1.0 / (inv_sqrt_mu * inv_sqrt_mu);
       config2.enable_rescaling = 0;
       SolveIPM(prog.kkt_system_manager_, config2, prog.workspace_.sys,
-               solver.get(), prog.status_, workspace2,
-               prog.workspace_.stats.get());
+               true /*primal feasibility correction*/, solver.get(),
+               prog.status_, workspace2, prog.workspace_.stats.get());
     }
   }
 
