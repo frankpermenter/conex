@@ -249,8 +249,8 @@ struct WorkspaceInfeasibleStart {
 };
 
 StepInfo IterationHelper(bool& update_mu, const SolverConfiguration& config,
-                         SchurComplementSystem& sys, double& b_scaling,
-                         double& c_scaling,
+                         bool force_feasible, SchurComplementSystem& sys,
+                         double& b_scaling, double& c_scaling,
                          double& newton_step_parameters_inv_sqrt_mu,
                          StepOptions& newton_step_parameters, int& rankK,
                          KKTSolverBase* solver,
@@ -261,9 +261,13 @@ StepInfo IterationHelper(bool& update_mu, const SolverConfiguration& config,
   if (update_mu) {
     double temp = -1;
     if (config.enable_line_search) {
+      double dinf_upper_bound = config.dinf_upper_bound;
+      if (force_feasible && dinf_upper_bound > 1) {
+        dinf_upper_bound = 1.0;
+      }
       LineSearchOutput output = ComputeMuFromLineSearch(
-          kkt_system_manager_, solver, config.dinf_upper_bound,
-          sys.AQc * c_scaling, c_scaling, b * b_scaling, sys.AW, &workspace.y);
+          kkt_system_manager_, solver, dinf_upper_bound, sys.AQc * c_scaling,
+          c_scaling, b * b_scaling, sys.AW, &workspace.y);
       if (output.failed) {
         temp = -output.d0_dot_dt / output.dt_squared_norm;
         // For debugging, print the predicted value of the d2 norm.
@@ -328,6 +332,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
   double cx = 1;
   double by = -1;
   double kkt_error = 0;
+  double s_dot_x;
   bool max_iter_failure = false;
   double mu;
 
@@ -347,6 +352,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
   int rankK = Rank(constraints);
   int centering_steps = 0;
   bool warmstart_aborted = false;
+  bool force_feasible = false;
 
   Eigen::VectorXd b(kkt_system_manager_.SizeOfKKTSystem());
   b.setZero();
@@ -424,8 +430,11 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
       }
     }
 
+    if (!force_feasible && s_dot_x < 0) {
+      force_feasible = true;
+    }
     StepInfo info = IterationHelper(
-        update_mu, config, sys, b_scaling, c_scaling,
+        update_mu, config, force_feasible, sys, b_scaling, c_scaling,
         newton_step_parameters_inv_sqrt_mu, newton_step_parameters, rankK,
         solver, workspace, inv_sqrt_mu_max, b, kkt_system_manager_);
 
@@ -448,15 +457,15 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
         ApplyRescaling(ci->constraint(), sys.AW, &sys.inner_product_of_w_and_c);
       }
 
-      info = IterationHelper(update_mu, config, sys, b_scaling, c_scaling,
-                             newton_step_parameters_inv_sqrt_mu,
+      info = IterationHelper(update_mu, config, force_feasible, sys, b_scaling,
+                             c_scaling, newton_step_parameters_inv_sqrt_mu,
                              newton_step_parameters, rankK, solver, workspace,
                              inv_sqrt_mu_max, b, kkt_system_manager_);
       newton_step_parameters.update_scaling = false;
     }
 
-    const double d_2 = std::sqrt(std::fabs(info.normsqrd));
-    const double d_inf = std::fabs(info.norminfd);
+    const double d_sqr = info.normsqrd;
+    const double d_inf = info.norminfd;
     by = b.col(0).dot(y.col(0)) * 1.0 /
          (newton_step_parameters_inv_sqrt_mu * c_scaling);
     // inv_sqrt_mu * <c, x> = c' Q(w^{1/2}) (e + d)
@@ -471,7 +480,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     mu = 1.0 / (newton_step_parameters_inv_sqrt_mu);
     mu *= mu;
 
-    double s_dot_x = mu * (rankK - d_2 * d_2) / (b_scaling * c_scaling);
+    s_dot_x = mu * (rankK - d_sqr) / (b_scaling * c_scaling);
 
     mu = mu / (c_scaling * b_scaling);
     double yQy = 0;
@@ -484,7 +493,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     }
     double pobj = -(by - 0.5 * yQy);
     double dobj = -(cx + 0.5 * yQy);
-    double gap = std::abs(pobj - dobj);
+    double gap = pobj - dobj;
 
     status_.dual_objective_value = dobj;
     status_.primal_objective_value = pobj;
@@ -493,13 +502,13 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     if (config.verbose) {
       REPORT(mu);
       REPORT(s_dot_x);
-      REPORT(d_2);
-      REPORT(d_inf);
       REPORT(gap);
+      REPORTP(d_sqr, 2);
+      REPORTP(d_inf, 2);
       REPORT(pobj);
       REPORT(dobj);
-      kkt_error =
-          std::fabs(dobj - pobj + s_dot_x) / (1e-12 + std::fabs(s_dot_x));
+      double kkt_error = (dobj - pobj + s_dot_x) /
+                         (1.0 + std::fabs(dobj - pobj) + std::fabs(s_dot_x));
       REPORT(kkt_error);
       std::cout << std::endl;
     }
