@@ -28,6 +28,10 @@ namespace conex {
   std::cout << #x ":" \
             << " " << x << ", ";
 
+#define REPORTP(x, y)                         \
+  std::cout << std::setprecision(y) << #x ":" \
+            << " " << x << ", ";
+
 #define PRINTSTATUS(x) std::cout << "Status: " << x << "\n\n";
 
 #if CONEX_ENABLE_TIMER
