@@ -6,7 +6,6 @@
 #include "conex/cone_program.h"
 #include "conex/error_checking_macros.h"
 #include "conex/linear_constraint.h"
-#include "conex/quadratic_programs/logspace_interior_point_method.h"
 #include "conex/self_dual_embedding.h"
 #include "conex/soc_constraint.h"
 #include <Eigen/Dense>
@@ -122,6 +121,18 @@ SolverConfiguration APIConvertSolverConfiguration(
   c.kkt_solver = config->kkt_solver;
   return c;
 }
+
+struct ProblemData {
+  Eigen::MatrixXd W;
+  Eigen::VectorXd c;
+  Eigen::MatrixXd A;
+  Eigen::VectorXd b;
+  Eigen::MatrixXd B;
+  Eigen::VectorXd d;
+  ProblemData() = default;
+  ProblemData(int m, int n) : A(m, n), c(n), b(m), W(n, n) {}
+};
+
 }  // namespace
 
 int CONEX_QP_GetCanonicalProblemData(
@@ -148,7 +159,7 @@ int CONEX_QP_GetCanonicalProblemData(
 
   using Map = Eigen::Map<const MatrixXd>;
   int num_vars = num_col;
-  conex::quadratic_programs::ProblemData data;
+  ProblemData data;
   data.W = Map(quadratic_cost_matrix, num_row, num_col);
   data.c = Map(cost_vector, num_vars, 1);
 
@@ -214,7 +225,7 @@ int CONEX_QP_Solver(const double* quadratic_cost_matrix, int num_row,
 
   using Map = Eigen::Map<const MatrixXd>;
   int num_vars = num_col;
-  conex::quadratic_programs::ProblemData data;
+  ProblemData data;
   data.W = Map(quadratic_cost_matrix, num_row, num_col);
   data.c = Map(cost_vector, num_vars, 1);
 
