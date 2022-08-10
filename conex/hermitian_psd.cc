@@ -142,13 +142,13 @@ void PrepareStep(HermitianPsdConstraint<Octonions>* o, const StepOptions& opt,
   o->ComputeNegativeSlack(opt.c_weight, y, &minus_s);
 
   // || e - Q(w^{1/2}) s\|
-  double trace_ws = T::TraceInnerProduct(o->W, minus_s);
+  double minus_trace_ws = T::TraceInnerProduct(o->W, minus_s);
   info->normsqrd =
       T::TraceInnerProduct(T::QuadraticRepresentation(o->W, minus_s), minus_s) +
-      2 * trace_ws + Rank(*o);
+      2 * minus_trace_ws + Rank(*o);
 
   // TODO(FrankPermenter): replace this heuristic approximation.
-  info->norminfd = 1.0 / 3.0 * (trace_ws + Rank(*o));
+  info->norminfd = std::sqrt(info->normsqrd);
 }
 
 template <>
