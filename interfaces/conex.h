@@ -26,7 +26,9 @@ typedef struct {
   double infeasibility_threshold;
   double kkt_error_tolerance;
   int enable_rescaling;
+  int enable_scale_correction;
   int kkt_solver;
+  double verbosity;
 } CONEX_SolverConfiguration;
 
 typedef struct {
@@ -36,6 +38,7 @@ typedef struct {
 
 typedef struct {
   int iterations;
+  double duality_gap;
 } CONEX_SolutionStats;
 
 void* CONEX_CreateConeProgram();
@@ -98,6 +101,26 @@ CONEX_STATUS CONEX_UpdateQuadraticCostMatrix(void* p, int id, double value,
 
 CONEX_STATUS CONEX_SetNumberOfVariables(void* program, int m);
 
+int CONEX_QP_Solver(const double* quadratic_cost_matrix,
+                    int quadratic_cost_matrix_num_row,
+                    int quadratic_cost_matrix_num_col,
+                    const double* cost_vector, int num_row_cost_vector,
+                    const double* inequality_matrix, int num_row_ineq,
+                    int num_col_ineq, const double* inequality_upper_bound,
+                    int num_row_ineq_ub, const double* inequality_lower_bound,
+                    int num_row_ineq_lb,
+                    const CONEX_SolverConfiguration* config_input,
+                    double* solution, int num_row, CONEX_SolutionStats* stats);
+
+int CONEX_QP_GetCanonicalProblemData(
+    const double* quadratic_cost_matrix, int quadratic_cost_matrix_num_row,
+    int quadratic_cost_matrix_num_col, const double* cost_vector,
+    int num_row_cost_vector, const double* inequality_matrix, int num_row_ineq,
+    int num_col_ineq, const double* inequality_upper_bound, int num_row_ineq_ub,
+    const double* inequality_lower_bound, int num_row_ineq_lb, int* num_ineq,
+    int* num_eq, double* matrix_A, int num_row_A, int num_col_A,
+    double* vector_b, int num_row_b, double* matrix_B, int num_row_B,
+    int num_col_B, double* vector_d, int num_row_d);
 #ifdef __cplusplus
 }  // extern "C"
 #endif

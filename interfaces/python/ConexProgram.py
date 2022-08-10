@@ -55,6 +55,65 @@ class LMIOperator:
         y.transposed = not y.transposed
         return y;
 
+def ConexGetQuadraticProgramData(quadratic_cost_matrix,
+                    cost_vector, 
+                    inequality_matrix,
+                    inequality_upper_bound,
+                    inequality_lower_bound):
+
+    inequality_lower_bound = np.squeeze(np.array(inequality_lower_bound[:])).transpose()
+    inequality_upper_bound = np.squeeze(np.array(inequality_upper_bound[:])).transpose()
+    cost_vector = np.squeeze(np.array(cost_vector[:])).transpose()
+
+    wrapper = conex
+    m = quadratic_cost_matrix.shape[0]
+
+    n = inequality_matrix.shape[0]
+    A = np.zeros((2*n, m)).astype(real)
+    B = np.zeros((n, m)).astype(real)
+    b = np.zeros((2*n)).astype(real)
+    d = np.zeros((n)).astype(real)
+    num_eq = wrapper.intp();
+    num_ineq = wrapper.intp();
+    status = wrapper.CONEX_QP_GetCanonicalProblemData(quadratic_cost_matrix, 
+                    cost_vector, 
+                    inequality_matrix,
+                    inequality_upper_bound,
+                    inequality_lower_bound, 
+                    num_ineq,
+                    num_eq,
+                    A,
+                    b,
+                    B,
+                    d)
+
+    return A[0:num_ineq.value(), :], b[0:num_ineq.value()], B[0:num_eq.value(), :], d[0:num_eq.value()]
+def ConexSolveQuadraticProgram(quadratic_cost_matrix,
+                    cost_vector, 
+                    inequality_matrix,
+                    inequality_upper_bound,
+                    inequality_lower_bound,
+                    config):
+
+    inequality_lower_bound = np.squeeze(np.array(inequality_lower_bound[:])).transpose()
+    inequality_upper_bound = np.squeeze(np.array(inequality_upper_bound[:])).transpose()
+    cost_vector = np.squeeze(np.array(cost_vector[:])).transpose()
+
+    wrapper = conex
+    m = quadratic_cost_matrix.shape[0]
+    solution = np.ones(m).astype(real)
+
+    stats =  wrapper.CONEX_SolutionStats()
+    status = wrapper.CONEX_QP_Solver(quadratic_cost_matrix, 
+                    cost_vector, 
+                    inequality_matrix,
+                    inequality_upper_bound,
+                    inequality_lower_bound, 
+                    config, 
+                    solution, 
+                    stats)
+
+    return solution, status, stats
 class Conex:
     def __init__(self, m = -1):
         self.wrapper = conex
