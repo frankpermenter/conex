@@ -274,7 +274,6 @@ int CONEX_QP_Solver(const double* quadratic_cost_matrix, int num_row,
   Eigen::Map<MatrixXd> sol_map(solution, num_vars, 1);
   SolverConfiguration config;
   config.enable_line_search = true;
-  DUMP(config_input->enable_scale_correction);
   config.enable_rescaling = config_input->enable_rescaling;
   config.enable_scale_correction = config_input->enable_scale_correction;
   config.final_centering_tolerance = 1;

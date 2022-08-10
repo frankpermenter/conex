@@ -149,8 +149,8 @@ class Conex:
     def AddQuadraticCost(self, P): 
         if P.shape[0] != self.m or P.shape[1] != self.m:
             raise NameError("Cost matrix dimension does not match number of variables.")
-
         cost = self.wrapper.CONEX_AddQuadraticCost(self.a, P)
+
     def AddLinearInequality(self, A, c): 
         c_ = np.squeeze(np.array(c[:])).transpose()
         const_id = self.wrapper.CONEX_AddDenseLinearConstraint(self.a, A, c_)
@@ -168,6 +168,7 @@ class Conex:
         self.A.append(np.matrix(A))
         self.c.append(np.matrix(ub_))
         self.num_constraints = self.num_constraints + 1
+
     def DefaultConfiguration(self):
         config = self.wrapper.CONEX_SolverConfiguration()
         self.wrapper.CONEX_SetDefaultOptions(config);
@@ -191,6 +192,16 @@ class Conex:
         sol.y = np.ones((self.m)).astype(real)
         sol.status = self.wrapper.CONEX_Solve(self.a,  config, sol.y)
         return sol
+
+    def AddLinearCost(self, b): 
+        b = np.matrix(b)
+        if b.shape[1] > b.shape[0]:
+            b = b.transpose()
+
+        if b.shape[0] != self.m:
+            raise NameError("Cost vector dimension does not match number of variables.")
+
+        self.wrapper.CONEX_AddLinearCost(self.a, np.squeeze(np.array(b), 1))
 
 
     def Maximize(self, b, config = []): 

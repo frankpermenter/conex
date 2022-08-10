@@ -66,6 +66,8 @@ int CONEX_AddSparseLMIConstraint(void* prog, const double* Aarray, int Aarrayr,
 int CONEX_Maximize(void* prog, const double* b, int br,
                    const CONEX_SolverConfiguration* config, double* y, int yr);
 
+int CONEX_AddLinearCost(void* prog, const double* b, int br);
+
 int CONEX_Solve(void* prog, const CONEX_SolverConfiguration* config, double* y,
                 int yr);
 

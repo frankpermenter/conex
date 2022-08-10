@@ -73,6 +73,7 @@ SolverConfiguration APIConvertSolverConfiguration(
   c.kkt_error_tolerance = config->kkt_error_tolerance;
   c.enable_rescaling = config->enable_rescaling;
   c.kkt_solver = config->kkt_solver;
+  c.enable_scale_correction = config->enable_scale_correction;
   return c;
 }
 }  // namespace
@@ -89,6 +90,13 @@ int CONEX_Maximize(void* prog_ptr, const double* b, int br,
   Program& prog = *reinterpret_cast<Program*>(prog_ptr);
 
   return Solve(blinear, prog, config, y);
+}
+
+int CONEX_AddLinearCost(void* prog_ptr, const double* b, int br) {
+  using InputMatrix = Eigen::Map<const DenseMatrix>;
+  InputMatrix bmap(b, br, 1);
+  Program& prog = *reinterpret_cast<Program*>(prog_ptr);
+  return prog.AddLinearCost(bmap);
 }
 
 int CONEX_Solve(void* prog_ptr, const CONEX_SolverConfiguration* config_input,
@@ -338,8 +346,10 @@ CONEX_STATUS CONEX_AddQuadraticCost(void* p, const double* A, int Ar, int Ac) {
 
   Eigen::Map<const DenseMatrix> input(A, Ar, Ac);
   NonZeroSubMat(input, &vars, &Q);
-  int id = prg->AddQuadraticCost(Q, vars);
-  CONEX_RETURN_ON_FAIL(id >= 0, "Failed to add constraint.");
+  if (vars.size() > 0) {
+    int id = prg->AddQuadraticCost(Q, vars);
+    CONEX_RETURN_ON_FAIL(id >= 0, "Failed to add constraint.");
+  }
   return CONEX_SUCCESS;
 }
 
