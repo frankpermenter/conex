@@ -6,7 +6,7 @@ numpy.i:
 _conex.so: numpy.i ../libconex.so conex.i
 	rm -rf build
 	rm -f conex_wrap.c
-	python dependencies/setup.py build --build-lib=.
+	python3 dependencies/setup.py build --build-lib=.
 
 .PHONY: clean
 

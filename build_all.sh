@@ -31,4 +31,4 @@ cd interfaces/python
 make clean
 make
 cd ../../
-python interfaces/python/test/run_tests.py
+python3 interfaces/python/test/run_tests.py
