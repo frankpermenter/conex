@@ -41,7 +41,7 @@ typedef struct {
   double duality_gap;
 } CONEX_SolutionStats;
 
-void* CONEX_CreateConeProgram();
+void* CONEX_CreateConeProgram(void);
 void CONEX_DeleteConeProgram(void*);
 
 int CONEX_AddDenseLinearConstraint(void* prog, const double* A, int Ar, int Ac,
