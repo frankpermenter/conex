@@ -1,3 +1,5 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
 cc_library(
     name = "main",
     srcs = glob(
@@ -8,7 +10,7 @@ cc_library(
         "include/**/*.h",
         "src/*.h",
     ]),
-    copts = ["-Iexternal/gtest/include"],
+    includes = ["include"],
     linkopts = ["-pthread"],
     visibility = ["//visibility:public"],
 )

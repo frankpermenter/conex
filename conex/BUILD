@@ -1,4 +1,5 @@
 load("test.bzl", "conex_cc_test")
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 cc_library(
     name = "test_util",

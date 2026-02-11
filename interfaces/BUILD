@@ -1,3 +1,5 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
+
 cc_library(
     name = "libconex",
     srcs = ["conex.cc"],
@@ -37,8 +39,8 @@ cc_test(
         "test/interface_test.cc",
     ],
     copts = ["-Iexternal/gtest/include"],
-    linkopts = ["-lconex"],
     deps = [
+        "libconex",
         "@gtest//:main",
     ],
 )
@@ -50,8 +52,8 @@ cc_test(
         "test/interface_test_lmi.cc",
     ],
     copts = ["-Iexternal/gtest/include"],
-    linkopts = ["-lconex"],
     deps = [
+        "libconex",
         "@gtest//:main",
     ],
 )
@@ -62,5 +64,5 @@ cc_binary(
         "conex.h",
         "test/test_app.cc",
     ],
-    linkopts = ["-lconex"],
+    deps = ["libconex"],
 )

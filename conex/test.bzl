@@ -1,3 +1,5 @@
+load("@rules_cc//cc:defs.bzl", "cc_test")
+
 def conex_cc_test(
         name,
         size = None,
@@ -7,7 +9,7 @@ def conex_cc_test(
         deps = [],
         copts = [],
         **kwargs):
-    native.cc_test(
+    cc_test(
         name = name + "_sd_embedding",
         size = size,
         srcs = srcs + ["test/default_solver_config.h"],
@@ -18,7 +20,7 @@ def conex_cc_test(
         **kwargs
     )
 
-    native.cc_test(
+    cc_test(
         name = name + "_cg",
         size = size,
         srcs = srcs + ["test/default_solver_config.h"],
@@ -29,7 +31,7 @@ def conex_cc_test(
         **kwargs
     )
 
-    native.cc_test(
+    cc_test(
         name = name + "_tree",
         size = size,
         srcs = srcs + ["test/default_solver_config.h"],
@@ -40,7 +42,7 @@ def conex_cc_test(
         **kwargs
     )
 
-    native.cc_test(
+    cc_test(
         name = name,
         size = size,
         srcs = srcs + ["test/default_solver_config.h"],
