@@ -1,6 +1,6 @@
 import conex
 import numpy as np
-import scipy.linalg as la
+import numpy.linalg as la
 
 real = 'double'
 def zeros(n, m):

@@ -1,11 +1,29 @@
-EIGEN=$(EIGEN_DIR)
+EIGEN ?= $(EIGEN_DIR)
+ifeq ($(strip $(EIGEN)),)
+ifneq ("$(wildcard ../bazel-conex/external/+http_archive+eigen/Eigen)","")
+EIGEN := ../bazel-conex/external/+http_archive+eigen
+else ifneq ("$(wildcard /usr/include/eigen3/Eigen)","")
+EIGEN := /usr/include/eigen3
+endif
+endif
 CONEX=../
 
-CPPFLAGS =-O3 -fPIC -std=c++17 -fdata-sections -ffunction-sections -DNDEBUG -DEIGEN_NO_DEBUG -I $(EIGEN) -I $(CONEX) 
+CPPFLAGS =-O3 -fPIC -std=c++17 -fdata-sections -ffunction-sections -DNDEBUG -DEIGEN_NO_DEBUG -I$(CONEX)
+ifneq ($(strip $(EIGEN)),)
+CPPFLAGS += -I$(EIGEN)
+endif
 
-# BLAS 
-CPPFLAGS_LIBRARY=$(CPPFLAGS) -DEIGEN_USE_BLAS 
-LFLAGS=-lblas 
+ifeq ($(strip $(EIGEN)),)
+$(error Could not find Eigen headers. Set EIGEN_DIR to an Eigen include root)
+endif
+
+USE_BLAS ?= 0
+CPPFLAGS_LIBRARY=$(CPPFLAGS)
+LFLAGS=
+ifeq ($(USE_BLAS),1)
+CPPFLAGS_LIBRARY += -DEIGEN_USE_BLAS
+LFLAGS += -lblas
+endif
 
 # MKL
 #CPPFLAGS_LIBRARY=$(CPPFLAGS) -DEIGEN_USE_MKL_ALL -I$(MKLROOT)/include 

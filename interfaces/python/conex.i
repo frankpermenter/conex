@@ -8,11 +8,7 @@
 %include cpointer.i
 %pointer_class(int, intp);
 
-%include "numpy.i"
-
-%init %{
-    import_array();
-%}
+%include "typemaps.i"
 
 %apply (double* IN_FARRAY2, int DIM1, int DIM2) {(const double* A, int Ar, int Ac)}
 %apply (double* IN_FARRAY2, int DIM1, int DIM2) {(const double* cmat, int cr, int cc)}

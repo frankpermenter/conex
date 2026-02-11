@@ -1,7 +1,7 @@
 import unittest
 from ConexProgram import *
 import numpy as np
-import scipy.linalg as la
+import numpy.linalg as la
 
 def AddRandomLinearMatrixInequality(self, numvars, order, hyper_complex_dim):
     constraint = self.NewLinearMatrixInequality(order, hyper_complex_dim)

@@ -1,12 +1,7 @@
-all: _conex.so
+all: check
 
-numpy.i:
-	python3 dependencies/get_numpy_interface.py
-
-_conex.so: numpy.i ../libconex.so conex.i
-	rm -rf build
-	rm -f conex_wrap.c
-	python3 dependencies/setup.py build --build-lib=.
+check: ../libconex.so conex.py
+	python3 -m py_compile conex.py ConexProgram.py
 
 .PHONY: clean
 
@@ -14,8 +9,4 @@ clean:
 	rm -f *.so
 	rm -f *.o
 	rm -f *.out
-	rm -f conex_wrap.c
-	rm -rf build
-	rm -f conex.py
 	rm -f *.pyc
-	rm -f numpy.i
