@@ -3,6 +3,7 @@ project(conex_python LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+option(USE_BLAS "Enable BLAS-backed Eigen kernels" OFF)
 
 find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 find_package(pybind11 CONFIG QUIET)
@@ -95,6 +96,29 @@ if(Eigen3_FOUND)
   target_link_libraries(_conex PRIVATE Eigen3::Eigen)
 else()
   target_include_directories(_conex PRIVATE "${EIGEN3_INCLUDE_DIR}")
+endif()
+
+# Match historical optimization/visibility/section flags from interfaces/Makefile.
+target_compile_options(_conex PRIVATE
+  -O3
+  -fdata-sections
+  -ffunction-sections
+  -fvisibility=hidden
+)
+target_compile_definitions(_conex PRIVATE
+  NDEBUG
+  EIGEN_NO_DEBUG
+)
+target_link_options(_conex PRIVATE
+  -static-libstdc++
+  -Wl,--exclude-libs,ALL
+  -Wl,--gc-sections
+)
+
+if(USE_BLAS)
+  find_package(BLAS REQUIRED)
+  target_compile_definitions(_conex PRIVATE EIGEN_USE_BLAS)
+  target_link_libraries(_conex PRIVATE BLAS::BLAS)
 endif()
 
 set_target_properties(_conex PROPERTIES
