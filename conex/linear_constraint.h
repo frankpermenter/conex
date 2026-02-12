@@ -25,56 +25,26 @@ class LinearConstraint : public Constraint {
   WorkspaceLinear* workspace() { return &workspace_; }
 
   int number_of_variables() const override { return constraint_matrix_.cols(); }
-  friend int Rank(const LinearConstraint& o) { return o.workspace_.n_; };
-  friend void SetIdentity(LinearConstraint* o);
-  friend void PrepareStep(LinearConstraint* o, const StepOptions& opt,
-                          const Eigen::Ref<const Eigen::MatrixXd>& y0,
-                          StepInfo* data);
-
-  friend bool PerformLineSearch(LinearConstraint* o,
-                                const LineSearchParameters& params,
-                                const Eigen::Ref<const Eigen::MatrixXd>& y0,
-                                const Eigen::Ref<const Eigen::MatrixXd>& y1,
-                                LineSearchOutput* output);
-
-  // Eigenvalues of Q(w^{1/2}) *(c-A*y)
-  friend void GetWeightedSlackEigenvalues(LinearConstraint* o, const Ref& y,
-                                          double c_weight,
-                                          WeightedSlackEigenvalues* p);
-
-  friend void ConstructSchurComplementSystem(LinearConstraint* o,
-                                             bool initialize,
-                                             SchurComplementSystem* sys);
-
-  friend void ApplyRescaling(LinearConstraint*, Eigen::Ref<Eigen::MatrixXd>,
-                             double*);
-
-  friend bool TakeStep(LinearConstraint*, const StepOptions&);
-
-  friend CONEX_STATUS UpdateLinearOperator(LinearConstraint* o, double val,
-                                           int var, int r, int c, int dim);
-  friend CONEX_STATUS UpdateAffineTerm(LinearConstraint* o, double val, int r,
-                                       int c, int dim);
   DenseMatrix constraint_matrix() const { return constraint_matrix_; }
   DenseMatrix affine_term() const { return constraint_affine_; }
 
   void do_schur_complement(bool initialize,
                            SchurComplementSystem* sys) override {
-    ConstructSchurComplementSystem(this, initialize, sys);
+    ConstructSchurComplementSystemImpl(initialize, sys);
   }
 
-  void do_set_identity() override { SetIdentity(this); }
+  void do_set_identity() override { SetIdentityImpl(); }
 
   void do_weighted_slack_eigenvalues(const Ref& y, double c_weight,
                                      WeightedSlackEigenvalues* p) override {
-    GetWeightedSlackEigenvalues(this, y, c_weight, p);
+    GetWeightedSlackEigenvaluesImpl(y, c_weight, p);
   }
 
   Workspace do_get_workspace() override { return Workspace(workspace()); }
 
   void do_prepare_step(const StepOptions& opt, const Ref& y,
                        StepInfo* info) override {
-    PrepareStep(this, opt, y, info);
+    PrepareStepImpl(opt, y, info);
   }
 
   void do_get_dual_variable(double* var) override {
@@ -82,9 +52,7 @@ class LinearConstraint : public Constraint {
            sizeof(double) * do_dual_variable_size());
   }
 
-  bool do_take_step(const StepOptions& opts) override {
-    return TakeStep(this, opts);
-  }
+  bool do_take_step(const StepOptions& opts) override { return TakeStepImpl(opts); }
 
   int do_dual_variable_size() override {
     return workspace()->W.rows() * workspace()->W.cols();
@@ -94,29 +62,47 @@ class LinearConstraint : public Constraint {
 
   void do_apply_rescaling(Eigen::Ref<Eigen::MatrixXd> ArW,
                           double* inner_product_of_c_and_rW) override {
-    ApplyRescaling(this, ArW, inner_product_of_c_and_rW);
+    ApplyRescalingImpl(ArW, inner_product_of_c_and_rW);
   }
 
   CONEX_STATUS do_update_linear_operator(double val, int var, int row, int col,
                                          int hyper_complex_dim) override {
-    return UpdateLinearOperator(this, val, var, row, col, hyper_complex_dim);
+    return UpdateLinearOperatorImpl(val, var, row, col, hyper_complex_dim);
   }
 
   CONEX_STATUS do_update_affine_term(double val, int row, int col,
                                      int hyper_complex_dim) override {
-    return UpdateAffineTerm(this, val, row, col, hyper_complex_dim);
+    return UpdateAffineTermImpl(val, row, col, hyper_complex_dim);
   }
 
   bool do_perform_line_search(const LineSearchParameters& params,
                               const Eigen::Ref<const Eigen::MatrixXd>& y0,
                               const Eigen::Ref<const Eigen::MatrixXd>& y1,
                               LineSearchOutput* output) override {
-    return PerformLineSearch(this, params, y0, y1, output);
+    return PerformLineSearchImpl(params, y0, y1, output);
   }
 
-  int do_rank() const override { return Rank(*this); }
+  int do_rank() const override { return workspace_.n_; }
 
  private:
+  void SetIdentityImpl();
+  void PrepareStepImpl(const StepOptions& opt,
+                       const Eigen::Ref<const Eigen::MatrixXd>& y0,
+                       StepInfo* data);
+  bool PerformLineSearchImpl(const LineSearchParameters& params,
+                             const Eigen::Ref<const Eigen::MatrixXd>& y0,
+                             const Eigen::Ref<const Eigen::MatrixXd>& y1,
+                             LineSearchOutput* output);
+  void GetWeightedSlackEigenvaluesImpl(const Ref& y, double c_weight,
+                                       WeightedSlackEigenvalues* p);
+  void ConstructSchurComplementSystemImpl(bool initialize,
+                                          SchurComplementSystem* sys);
+  void ApplyRescalingImpl(Eigen::Ref<Eigen::MatrixXd>, double*);
+  bool TakeStepImpl(const StepOptions&);
+  CONEX_STATUS UpdateLinearOperatorImpl(double val, int var, int r, int c,
+                                        int dim);
+  CONEX_STATUS UpdateAffineTermImpl(double val, int r, int c, int dim);
+
   void ComputeNegativeSlack(double inv_sqrt_mu,
                             const Eigen::Ref<const Eigen::MatrixXd>& y,
                             Eigen::Ref<Eigen::MatrixXd> minus_s);
@@ -133,15 +119,6 @@ class LowerBound : public LinearConstraint {
       : LinearConstraint(-Eigen::MatrixXd::Identity(lower_bounds.rows(),
                                                     lower_bounds.rows()),
                          -lower_bounds) {}
-
-  friend bool PerformLineSearch(LowerBound* o,
-                                const LineSearchParameters& params,
-                                const Eigen::Ref<const Eigen::MatrixXd>& y0,
-                                const Eigen::Ref<const Eigen::MatrixXd>& y1,
-                                LineSearchOutput* output) {
-    return PerformLineSearch(static_cast<LinearConstraint*>(o), params, y0, y1,
-                             output);
-  }
 };
 
 class UpperBound : public LinearConstraint {
@@ -150,14 +127,6 @@ class UpperBound : public LinearConstraint {
       : LinearConstraint(
             Eigen::MatrixXd::Identity(upper_bounds.rows(), upper_bounds.rows()),
             upper_bounds) {}
-
-  friend bool PerformLineSearch(UpperBound* o,
-                                const LineSearchParameters& params,
-                                const Ref& y0, const Ref& y1,
-                                LineSearchOutput* output) {
-    return PerformLineSearch(static_cast<LinearConstraint*>(o), params, y0, y1,
-                             output);
-  }
 };
 
 }  // namespace conex

@@ -296,16 +296,21 @@ void SOCConstraint::ComputeNegativeSlack(double inv_sqrt_mu, const RefType& y,
   minus_s.noalias() -= (constraint_affine_)*inv_sqrt_mu;
 }
 
+void SOCConstraint::SetIdentityImpl() {
+  *workspace_.W0 = 1;
+  workspace_.W1.setZero();
+}
+
 // Combine this with PrepareStep
-void GetWeightedSlackEigenvalues(SOCConstraint* o, const RefType& y,
+void SOCConstraint::GetWeightedSlackEigenvaluesImpl(const RefType& y,
                                  double c_weight, WeightedSlackEigenvalues* p) {
-  auto* workspace = &o->workspace_;
+  auto* workspace = &workspace_;
   int n = workspace->n_;
   Eigen::VectorXd minus_s(n + 1);
   Eigen::VectorXd Ws(n + 1);
-  o->ComputeNegativeSlack(c_weight, y, minus_s);
+  ComputeNegativeSlack(c_weight, y, minus_s);
 
-  auto wsqrt = Sqrt(*o->workspace_.W0, o->workspace_.W1);
+  auto wsqrt = Sqrt(*workspace_.W0, workspace_.W1);
   Ws = QuadraticRepresentation(wsqrt, minus_s);
 
   SpectralDecompSpinFactor spec(n);
@@ -321,13 +326,13 @@ void GetWeightedSlackEigenvalues(SOCConstraint* o, const RefType& y,
   p->trace = (lamda_max + lamda_min);
 }
 
-bool TakeStep(SOCConstraint* o, const StepOptions& opt) {
-  auto d1 = o->workspace_.temp1_1;
-  auto d0 = o->workspace_.d0;
+bool SOCConstraint::TakeStepImpl(const StepOptions& opt) {
+  auto d1 = workspace_.temp1_1;
+  auto d0 = workspace_.d0;
 
   int n = d1.rows() + 1;
 
-  auto wsqrt = Sqrt(*o->workspace_.W0, o->workspace_.W1);
+  auto wsqrt = Sqrt(*workspace_.W0, workspace_.W1);
 
   if (opt.step_size != 1.0) {
     d0 *= opt.step_size;
@@ -335,20 +340,20 @@ bool TakeStep(SOCConstraint* o, const StepOptions& opt) {
   }
   auto expd = Exp(d0, d1);
   auto wn = QuadraticRepresentation(wsqrt, expd);
-  *o->workspace_.W0 = wn(0, 0);
-  o->workspace_.W1 = wn.bottomRows(n - 1);
+  *workspace_.W0 = wn(0, 0);
+  workspace_.W1 = wn.bottomRows(n - 1);
 
-  CONEX_ASSERT(o->workspace_.W1.norm() <= *o->workspace_.W0,
+  CONEX_ASSERT(workspace_.W1.norm() <= *workspace_.W0,
                "Element not in cone.");
   return true;
 }
 
-void PrepareStep(SOCConstraint* o, const StepOptions& opt, const RefType& y,
+void SOCConstraint::PrepareStepImpl(const StepOptions& opt, const RefType& y,
                  StepInfo* info) {
-  int n = o->workspace_.n_;
-  auto d = o->BuildNewtonDirection(opt, y);
-  o->workspace_.temp1_1 = d.bottomRows(n);
-  o->workspace_.d0 = d(0, 0);
+  int n = workspace_.n_;
+  auto d = BuildNewtonDirection(opt, y);
+  workspace_.temp1_1 = d.bottomRows(n);
+  workspace_.d0 = d(0, 0);
 
   info->norminfd = NormInf(d(0, 0), d.bottomRows(n));
   info->normsqrd = 2 * d.squaredNorm();
@@ -367,16 +372,16 @@ VectorXd SOCConstraint::BuildNewtonDirection(const StepOptions& options,
   return d;
 }
 
-bool PerformLineSearch(SOCConstraint* o, const LineSearchParameters& params,
+bool SOCConstraint::PerformLineSearchImpl(const LineSearchParameters& params,
                        const RefType& y0, const RefType& y1,
                        LineSearchOutput* output) {
-  int n = o->workspace_.n_;
+  int n = workspace_.n_;
 
-  auto temp = o->BuildNewtonDirection(params.options_0, y0);
+  auto temp = BuildNewtonDirection(params.options_0, y0);
   double d0_0 = temp(0);
   VectorXd d0_1 = temp.tail(n);
 
-  temp = o->BuildNewtonDirection(params.options_1, y1);
+  temp = BuildNewtonDirection(params.options_1, y1);
   double d1_0 = temp(0);
   VectorXd d1_1 = temp.tail(n);
 
@@ -392,18 +397,18 @@ bool PerformLineSearch(SOCConstraint* o, const LineSearchParameters& params,
   return failure;
 }
 
-void ConstructSchurComplementSystem(SOCConstraint* o, bool initialize,
+void SOCConstraint::ConstructSchurComplementSystemImpl(bool initialize,
                                     SchurComplementSystem* sys) {
-  int n = o->workspace_.n_;
-  auto Wsqrt = Sqrt(*o->workspace_.W0, o->workspace_.W1);
+  int n = workspace_.n_;
+  auto Wsqrt = Sqrt(*workspace_.W0, workspace_.W1);
   DenseMatrix W(n + 1, 1);
-  W(0, 0) = *o->workspace_.W0;
-  W.bottomRows(n) = o->workspace_.W1;
+  W(0, 0) = *workspace_.W0;
+  W.bottomRows(n) = workspace_.W1;
 
   auto G = &sys->G;
-  Eigen::MatrixXd WA = o->constraint_matrix_;
+  Eigen::MatrixXd WA = constraint_matrix_;
   Eigen::MatrixXd WsqrtC =
-      QuadraticRepresentation(Wsqrt, o->constraint_affine_);
+      QuadraticRepresentation(Wsqrt, constraint_affine_);
 
   for (int i = 0; i < WA.cols(); i++) {
     WA.col(i) = QuadraticRepresentation(Wsqrt, WA.col(i));
@@ -411,28 +416,28 @@ void ConstructSchurComplementSystem(SOCConstraint* o, bool initialize,
 
   if (initialize) {
     (*G).noalias() = 2 * WA.transpose() * WA;
-    sys->AW.noalias() = 2 * o->constraint_matrix_.transpose() * W;
+    sys->AW.noalias() = 2 * constraint_matrix_.transpose() * W;
     sys->AQc.noalias() = 2 * WA.transpose() * WsqrtC;
     sys->inner_product_of_w_and_c = 2 * WsqrtC(0);
     sys->inner_product_of_c_and_Qc = 2 * WsqrtC.squaredNorm();
 
     sys->inner_product_of_c_and_Qe = 2 * WsqrtC.col(0).dot(W.col(0));
-    sys->inner_product_of_c_and_e = 2 * o->constraint_affine_(0);
+    sys->inner_product_of_c_and_e = 2 * constraint_affine_(0);
     sys->AQe.noalias() = 2 * WA.transpose() * W;
-    sys->Ae = 2 * o->constraint_matrix_.row(0).transpose();
+    sys->Ae = 2 * constraint_matrix_.row(0).transpose();
 
   } else {
     (*G).noalias() += 2 * WA.transpose() * WA;
-    sys->AW.noalias() += 2 * o->constraint_matrix_.transpose() * W;
+    sys->AW.noalias() += 2 * constraint_matrix_.transpose() * W;
     sys->AQc.noalias() += 2 * WA.transpose() * WsqrtC;
 
     sys->AQe.noalias() += 2 * WA.transpose() * W;
-    sys->Ae += 2 * o->constraint_matrix_.row(0);
+    sys->Ae += 2 * constraint_matrix_.row(0);
 
     sys->inner_product_of_w_and_c += 2 * WsqrtC(0);
     sys->inner_product_of_c_and_Qc += 2 * WsqrtC.squaredNorm();
     sys->inner_product_of_c_and_Qe += 2 * WsqrtC.col(0).dot(W.col(0));
-    sys->inner_product_of_c_and_e += 2 * o->constraint_affine_(0);
+    sys->inner_product_of_c_and_e += 2 * constraint_affine_(0);
   }
 }
 
@@ -445,27 +450,27 @@ void ConservativeResizeHelper(T* constraint_matrix_, int var, int rows) {
   }
 }
 
-CONEX_STATUS UpdateLinearOperator(SOCConstraint* o, double val, int var, int r,
+CONEX_STATUS SOCConstraint::UpdateLinearOperatorImpl(double val, int var, int r,
                                   int c, int dim) {
   CONEX_RETURN_ON_FAIL(dim == 0, "Complex second-order cone not supported.");
   CONEX_RETURN_ON_FAIL(c == 0, "Second-order constraint is not matrix valued.");
-  CONEX_RETURN_ON_FAIL(r <= o->n_, "Row index out of bounds.");
+  CONEX_RETURN_ON_FAIL(r <= n_, "Row index out of bounds.");
   CONEX_RETURN_ON_FAIL((var >= 0) && (r >= 0), "Indices cannot be negative.");
 
-  ConservativeResizeHelper(&o->constraint_matrix_, var, o->n_ + 1);
-  o->constraint_matrix_(r, var) = val;
+  ConservativeResizeHelper(&constraint_matrix_, var, n_ + 1);
+  constraint_matrix_(r, var) = val;
   return CONEX_SUCCESS;
 }
 
-CONEX_STATUS UpdateAffineTerm(SOCConstraint* o, double val, int r, int c,
-                              int dim) {
+CONEX_STATUS SOCConstraint::UpdateAffineTermImpl(double val, int r, int c,
+                                                   int dim) {
   CONEX_RETURN_ON_FAIL(dim == 0, "Complex second-order cone not supported.");
   CONEX_RETURN_ON_FAIL(c == 0, "Second-order constraint is not matrix valued.");
-  CONEX_RETURN_ON_FAIL(r <= o->n_, "Row index out of bounds.");
+  CONEX_RETURN_ON_FAIL(r <= n_, "Row index out of bounds.");
   CONEX_RETURN_ON_FAIL(r >= 0, "Indices cannot be negative.");
 
-  ConservativeResizeHelper(&o->constraint_affine_, 0, o->n_ + 1);
-  o->constraint_affine_(r) = val;
+  ConservativeResizeHelper(&constraint_affine_, 0, n_ + 1);
+  constraint_affine_(r) = val;
   return CONEX_SUCCESS;
 }
 

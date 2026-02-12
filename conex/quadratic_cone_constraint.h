@@ -40,40 +40,24 @@ class QuadraticConstraintBase : public Constraint {
   WorkspaceSOC* workspace() { return &workspace_; }
 
   int number_of_variables() const override { return A1_.cols(); }
-  friend int Rank(const QuadraticConstraintBase&) { return 2; };
-  friend void SetIdentity(QuadraticConstraintBase* o);
-  friend void PrepareStep(QuadraticConstraintBase* o, const StepOptions& opt,
-                          const RefType& y, StepInfo* data);
-
-  friend bool PerformLineSearch(QuadraticConstraintBase* o,
-                                const LineSearchParameters& params,
-                                const RefType& y0, const RefType& y1,
-                                LineSearchOutput* output);
-  friend bool TakeStep(QuadraticConstraintBase* o, const StepOptions& opt);
-  friend void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o,
-                                          const RefType& y, double c_weight,
-                                          WeightedSlackEigenvalues* p);
-  friend void ConstructSchurComplementSystem(QuadraticConstraintBase* o,
-                                             bool initialize,
-                                             SchurComplementSystem* sys);
 
   void do_schur_complement(bool initialize,
                            SchurComplementSystem* sys) override {
-    ConstructSchurComplementSystem(this, initialize, sys);
+    ConstructSchurComplementSystemImpl(initialize, sys);
   }
 
-  void do_set_identity() override { SetIdentity(this); }
+  void do_set_identity() override { SetIdentityImpl(); }
 
   void do_weighted_slack_eigenvalues(const Ref& y, double c_weight,
                                      WeightedSlackEigenvalues* p) override {
-    GetWeightedSlackEigenvalues(this, y, c_weight, p);
+    GetWeightedSlackEigenvaluesImpl(y, c_weight, p);
   }
 
   Workspace do_get_workspace() override { return Workspace(workspace()); }
 
   void do_prepare_step(const StepOptions& opt, const Ref& y,
                        StepInfo* info) override {
-    PrepareStep(this, opt, y, info);
+    PrepareStepImpl(opt, y, info);
   }
 
   void do_get_dual_variable(double* var) override {
@@ -81,9 +65,7 @@ class QuadraticConstraintBase : public Constraint {
            sizeof(double) * do_dual_variable_size());
   }
 
-  bool do_take_step(const StepOptions& opts) override {
-    return TakeStep(this, opts);
-  }
+  bool do_take_step(const StepOptions& opts) override { return TakeStepImpl(opts); }
 
   int do_dual_variable_size() override {
     return workspace()->W.rows() * workspace()->W.cols();
@@ -95,10 +77,10 @@ class QuadraticConstraintBase : public Constraint {
                               const Eigen::Ref<const Eigen::MatrixXd>& y0,
                               const Eigen::Ref<const Eigen::MatrixXd>& y1,
                               LineSearchOutput* output) override {
-    return PerformLineSearch(this, params, y0, y1, output);
+    return PerformLineSearchImpl(params, y0, y1, output);
   }
 
-  int do_rank() const override { return Rank(*this); }
+  int do_rank() const override { return 2; }
 
   virtual ~QuadraticConstraintBase(){};
 
@@ -111,6 +93,18 @@ class QuadraticConstraintBase : public Constraint {
   const DenseMatrix Q_;
 
  private:
+  void SetIdentityImpl();
+  void PrepareStepImpl(const StepOptions& opt, const RefType& y,
+                       StepInfo* data);
+  bool PerformLineSearchImpl(const LineSearchParameters& params,
+                             const RefType& y0, const RefType& y1,
+                             LineSearchOutput* output);
+  bool TakeStepImpl(const StepOptions& opt);
+  void GetWeightedSlackEigenvaluesImpl(const RefType& y, double c_weight,
+                                       WeightedSlackEigenvalues* p);
+  void ConstructSchurComplementSystemImpl(bool initialize,
+                                          SchurComplementSystem* sys);
+
   void ComputeNewtonDirection(const StepOptions opts, const RefType& y,
                               double* d0, Eigen::Ref<Eigen::MatrixXd> d1);
   void ComputeNegativeSlack(double inv_sqrt_mu, const RefType& y,

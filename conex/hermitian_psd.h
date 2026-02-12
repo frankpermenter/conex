@@ -59,58 +59,28 @@ class HermitianPsdConstraint : public Constraint {
         constraint_affine_(c) {}
 
   WorkspaceDenseHermitian* workspace() { return &workspace_; }
-  friend void SetIdentity(HermitianPsdConstraint* o) {
-    o->W = T::Identity(o->rank_);
-  }
-  friend int Rank(const HermitianPsdConstraint& o) { return o.rank_; };
-
-  template <typename H>
-  friend void GetWeightedSlackEigenvalues(HermitianPsdConstraint<H>* o,
-                                          const Ref& y, double c_weight,
-                                          WeightedSlackEigenvalues* p);
 
   int number_of_variables() const override {
     return constraint_matrices_.size();
   }
 
-  template <typename H>
-  friend void PrepareStep(HermitianPsdConstraint<H>* o, const StepOptions& opt,
-                          const Ref& y, StepInfo*);
-
-  template <typename H>
-  friend bool TakeStep(HermitianPsdConstraint<H>* o, const StepOptions& opt);
-
-  template <typename H>
-  friend void ConstructSchurComplementSystem(HermitianPsdConstraint<H>* o,
-                                             bool initialize,
-                                             SchurComplementSystem* sys);
-
-  template <typename H>
-  friend CONEX_STATUS UpdateLinearOperator(HermitianPsdConstraint<H>* o,
-                                           double val, int var, int r, int c,
-                                           int dim);
-
-  template <typename H>
-  friend CONEX_STATUS UpdateAffineTerm(HermitianPsdConstraint<H>* o, double val,
-                                       int r, int c, int dim);
-
   void do_schur_complement(bool initialize,
                            SchurComplementSystem* sys) override {
-    ConstructSchurComplementSystem(this, initialize, sys);
+    ConstructSchurComplementSystemImpl(initialize, sys);
   }
 
-  void do_set_identity() override { SetIdentity(this); }
+  void do_set_identity() override { SetIdentityImpl(); }
 
   void do_weighted_slack_eigenvalues(const Ref& y, double c_weight,
                                      WeightedSlackEigenvalues* p) override {
-    GetWeightedSlackEigenvalues(this, y, c_weight, p);
+    GetWeightedSlackEigenvaluesImpl(y, c_weight, p);
   }
 
   Workspace do_get_workspace() override { return Workspace(workspace()); }
 
   void do_prepare_step(const StepOptions& opt, const Ref& y,
                        StepInfo* info) override {
-    PrepareStep(this, opt, y, info);
+    PrepareStepImpl(opt, y, info);
   }
 
   void do_get_dual_variable(double* var) override {
@@ -118,9 +88,7 @@ class HermitianPsdConstraint : public Constraint {
            sizeof(double) * do_dual_variable_size());
   }
 
-  bool do_take_step(const StepOptions& opts) override {
-    return TakeStep(this, opts);
-  }
+  bool do_take_step(const StepOptions& opts) override { return TakeStepImpl(opts); }
 
   int do_dual_variable_size() override {
     return workspace()->W.rows() * workspace()->W.cols();
@@ -130,17 +98,28 @@ class HermitianPsdConstraint : public Constraint {
 
   CONEX_STATUS do_update_linear_operator(double val, int var, int row, int col,
                                          int hyper_complex_dim) override {
-    return UpdateLinearOperator(this, val, var, row, col, hyper_complex_dim);
+    return UpdateLinearOperatorImpl(val, var, row, col, hyper_complex_dim);
   }
 
   CONEX_STATUS do_update_affine_term(double val, int row, int col,
                                      int hyper_complex_dim) override {
-    return UpdateAffineTerm(this, val, row, col, hyper_complex_dim);
+    return UpdateAffineTermImpl(val, row, col, hyper_complex_dim);
   }
 
-  int do_rank() const override { return Rank(*this); }
+  int do_rank() const override { return rank_; }
 
  private:
+  void SetIdentityImpl() { W = T::Identity(rank_); }
+  void GetWeightedSlackEigenvaluesImpl(const Ref& y, double c_weight,
+                                       WeightedSlackEigenvalues* p);
+  void PrepareStepImpl(const StepOptions& opt, const Ref& y, StepInfo* info);
+  bool TakeStepImpl(const StepOptions& opt);
+  void ConstructSchurComplementSystemImpl(bool initialize,
+                                          SchurComplementSystem* sys);
+  CONEX_STATUS UpdateLinearOperatorImpl(double val, int var, int r, int c,
+                                        int dim);
+  CONEX_STATUS UpdateAffineTermImpl(double val, int r, int c, int dim);
+
   int rank_;
   WorkspaceDenseHermitian workspace_;
   std::vector<Matrix> constraint_matrices_;

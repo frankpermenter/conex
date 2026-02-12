@@ -38,33 +38,24 @@ struct WorkspaceDensePSD {
 
 class PsdConstraint : public Constraint {
  public:
-  friend void SetIdentity(PsdConstraint* o);
-  friend int Rank(const PsdConstraint& o) { return o.workspace_.n_; };
   WorkspaceDensePSD* workspace() { return &workspace_; }
-  friend void PrepareStep(PsdConstraint* o, const StepOptions& opt,
-                          const Ref& y, StepInfo*);
-
-  friend bool TakeStep(PsdConstraint*, const StepOptions&);
-  friend void GetWeightedSlackEigenvalues(PsdConstraint* o, const Ref& y,
-                                          double c_weight,
-                                          WeightedSlackEigenvalues* p);
   int number_of_variables() const override { return num_dual_constraints_; }
 
   virtual void do_schur_complement(bool initialize,
                                    SchurComplementSystem* sys) override = 0;
 
-  void do_set_identity() override { SetIdentity(this); }
+  void do_set_identity() override { SetIdentityImpl(); }
 
   void do_weighted_slack_eigenvalues(const Ref& y, double c_weight,
                                      WeightedSlackEigenvalues* p) override {
-    GetWeightedSlackEigenvalues(this, y, c_weight, p);
+    GetWeightedSlackEigenvaluesImpl(y, c_weight, p);
   }
 
   Workspace do_get_workspace() override { return Workspace(workspace()); }
 
   void do_prepare_step(const StepOptions& opt, const Ref& y,
                        StepInfo* info) override {
-    PrepareStep(this, opt, y, info);
+    PrepareStepImpl(opt, y, info);
   }
 
   void do_get_dual_variable(double* var) override {
@@ -72,9 +63,7 @@ class PsdConstraint : public Constraint {
            sizeof(double) * do_dual_variable_size());
   }
 
-  bool do_take_step(const StepOptions& opts) override {
-    return TakeStep(this, opts);
-  }
+  bool do_take_step(const StepOptions& opts) override { return TakeStepImpl(opts); }
 
   int do_dual_variable_size() override {
     return workspace()->W.rows() * workspace()->W.cols();
@@ -82,7 +71,7 @@ class PsdConstraint : public Constraint {
 
   int do_number_of_variables() const override { return number_of_variables(); }
 
-  int do_rank() const override { return Rank(*this); }
+  int do_rank() const override { return workspace_.n_; }
 
  protected:
   PsdConstraint(int n, int m) : workspace_(n), num_dual_constraints_{m} {}
@@ -95,6 +84,11 @@ class PsdConstraint : public Constraint {
   virtual double EvalDualObjective(const Ref& W) = 0;
   virtual void ComputeAW(int i, const Ref& W, Ref* AW, Ref* WAW) = 0;
   virtual void ComputeNegativeSlack(double k, const Ref& y, Ref* s) = 0;
+  void SetIdentityImpl();
+  void PrepareStepImpl(const StepOptions& opt, const Ref& y, StepInfo* info);
+  bool TakeStepImpl(const StepOptions& options);
+  void GetWeightedSlackEigenvaluesImpl(const Ref& y, double c_weight,
+                                       WeightedSlackEigenvalues* p);
   virtual ~PsdConstraint(){};
 };
 

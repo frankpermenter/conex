@@ -45,18 +45,18 @@ void PsdConstraint::AffineUpdate(double w_e, Ref* WS) {
   }
 }
 
-void PrepareStep(PsdConstraint* o, const StepOptions& opt, const Ref& y,
-                 StepInfo* info) {
-  auto& workspace = o->workspace_;
+void PsdConstraint::PrepareStepImpl(const StepOptions& opt, const Ref& y,
+                                    StepInfo* info) {
+  auto& workspace = workspace_;
   auto& minus_s = workspace.temp_1;
   auto& W = workspace.W;
   auto& WS = workspace.temp_1;
   auto& WSWS = workspace.temp_2;
 
-  o->ComputeNegativeSlack(opt.c_weight, y, &minus_s);
+  ComputeNegativeSlack(opt.c_weight, y, &minus_s);
   WS = W * minus_s;
 
-  int n = Rank(*o);
+  int n = workspace_.n_;
   // Use heuristic initialization of ApproximateEigenvalues.
   // Finds eigenvalues of -Q(w/2) s
   int index = 0;
@@ -73,41 +73,41 @@ void PrepareStep(PsdConstraint* o, const StepOptions& opt, const Ref& y,
   }
 
   WSWS = WS * WS;
-  double norm2 = WSWS.trace() + 2 * WS.trace() + Rank(*o);
+  double norm2 = WSWS.trace() + 2 * WS.trace() + workspace_.n_;
 
   info->norminfd = norminf;
   info->normsqrd = norm2;
 }
 
-bool TakeStep(PsdConstraint* o, const StepOptions& options) {
-  auto& WS = o->workspace_.temp_1;
+bool PsdConstraint::TakeStepImpl(const StepOptions& options) {
+  auto& WS = workspace_.temp_1;
   if (options.step_type == CONEX_STEP_TYPE_DUAL_BARRIER) {
-    o->AffineUpdate(options.e_weight, &WS);
+    AffineUpdate(options.e_weight, &WS);
   } else {
     CONEX_DEMAND(options.step_type == CONEX_STEP_TYPE_GEODESIC,
                  "Invalid step type.");
-    o->GeodesicUpdate(options.step_size, options, &WS);
+    GeodesicUpdate(options.step_size, options, &WS);
   }
   return true;
 }
 
-void SetIdentity(PsdConstraint* o) {
-  o->workspace_.W.setZero();
-  o->workspace_.W.diagonal().setConstant(1);
+void PsdConstraint::SetIdentityImpl() {
+  workspace_.W.setZero();
+  workspace_.W.diagonal().setConstant(1);
 }
 
-void GetWeightedSlackEigenvalues(PsdConstraint* o, const Ref& y,
-                                 double c_weight, WeightedSlackEigenvalues* p) {
-  auto* workspace = &o->workspace_;
+void PsdConstraint::GetWeightedSlackEigenvaluesImpl(const Ref& y,
+                                                 double c_weight, WeightedSlackEigenvalues* p) {
+  auto* workspace = &workspace_;
   auto& minus_s = workspace->temp_1;
   auto& WSWS = workspace->temp_1;
   auto& WS = workspace->temp_2;
-  o->ComputeNegativeSlack(c_weight, y, &minus_s);
+  ComputeNegativeSlack(c_weight, y, &minus_s);
 
   WS.noalias() = workspace->W * minus_s;
 
 #if 1
-  int n = Rank(*o);
+  int n = workspace_.n_;
   // VectorXd r = minus_s.col(0);
   int index = 0;
   WS.diagonal().maxCoeff(&index);

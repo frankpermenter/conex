@@ -70,30 +70,30 @@ double MatrixLMIConstraint::EvalDualObjective(const Ref& W) {
 }
 
 #define SCHUR_COMPLEMENT_FUNCTION(OP)                                        \
-  int n = Rank(*o);                                                          \
+  int n = ws->n_;                                                            \
   Eigen::Map<Eigen::VectorXd> vectWAW(WAW.data(), n* n);                     \
   for (int i = 0; i < m; i++) {                                              \
-    o->ComputeAW(i, W, &AW, &WAW);                                           \
+    ComputeAW(i, W, &AW, &WAW);                                           \
     sys->G.row(i).head(i + 1) OP vectWAW.transpose() *                       \
-        o->constraint_matrices_vect_.leftCols(i + 1);                        \
+        constraint_matrices_vect_.leftCols(i + 1);                        \
     sys->AW(i, 0) OP AW.trace();                                             \
-    sys->AQc(i, 0) OP o->EvalDualObjective(WAW);                             \
+    sys->AQc(i, 0) OP EvalDualObjective(WAW);                             \
   }                                                                          \
-  sys->inner_product_of_w_and_c OP o->EvalDualObjective(W);                  \
+  sys->inner_product_of_w_and_c OP EvalDualObjective(W);                  \
                                                                              \
   auto& WCW = WAW;                                                           \
   auto& CW = AW;                                                             \
-  o->ComputeWCW(W, &CW, &WCW);                                               \
-  sys->inner_product_of_c_and_Qc OP TraceInnerProduct(o->constraint_affine_, \
+  ComputeWCW(W, &CW, &WCW);                                               \
+  sys->inner_product_of_c_and_Qc OP TraceInnerProduct(constraint_affine_, \
                                                       WCW);
 
-void ConstructSchurComplementSystem(DenseLMIConstraint* o, bool initialize,
-                                    SchurComplementSystem* sys) {
-  auto workspace = o->workspace();
-  auto& W = workspace->W;
-  auto& AW = workspace->temp_1;
-  auto& WAW = workspace->temp_2;
-  int m = o->num_dual_constraints_;
+void DenseLMIConstraint::ConstructSchurComplementSystemImpl(bool initialize,
+                                                          SchurComplementSystem* sys) {
+  auto* ws = workspace();
+  auto& W = ws->W;
+  auto& AW = ws->temp_1;
+  auto& WAW = ws->temp_2;
+  int m = num_dual_constraints_;
 
   if (initialize) {
     SCHUR_COMPLEMENT_FUNCTION(=);

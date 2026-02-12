@@ -35,48 +35,24 @@ class EqualityConstraints : public Constraint {
 
   int number_of_variables() const override { return A_.cols(); }
 
-  friend int Rank(const EqualityConstraints&) { return 0; };
-  friend void SetIdentity(EqualityConstraints*){};
-  friend void PrepareStep(EqualityConstraints* o, const StepOptions&,
-                          const Ref& y, StepInfo*);
-
-  friend bool TakeStep(EqualityConstraints*, const StepOptions&) {
-    return true;
-  };
-
-  friend void GetWeightedSlackEigenvalues(EqualityConstraints*, const Ref&,
-                                          double, WeightedSlackEigenvalues*){};
-
-  friend void ConstructSchurComplementSystem(EqualityConstraints* o,
-                                             bool initialize,
-                                             SchurComplementSystem* sys_);
-
   WorkspaceEqualityConstraints workspace_;
   WorkspaceEqualityConstraints* workspace() { return &workspace_; }
-  friend bool PerformLineSearch(EqualityConstraints*,
-                                const LineSearchParameters&, const Ref&,
-                                const Ref&, LineSearchOutput*) {
-    bool failure = false;
-    return failure;
-  }
 
   void do_schur_complement(bool initialize,
                            SchurComplementSystem* sys) override {
-    ConstructSchurComplementSystem(this, initialize, sys);
+    ConstructSchurComplementSystemImpl(initialize, sys);
   }
 
-  void do_set_identity() override { SetIdentity(this); }
+  void do_set_identity() override {}
 
   void do_weighted_slack_eigenvalues(const Ref& y, double c_weight,
-                                     WeightedSlackEigenvalues* p) override {
-    GetWeightedSlackEigenvalues(this, y, c_weight, p);
-  }
+                                     WeightedSlackEigenvalues* p) override {}
 
   Workspace do_get_workspace() override { return Workspace(workspace()); }
 
   void do_prepare_step(const StepOptions& opt, const Ref& y,
                        StepInfo* info) override {
-    PrepareStep(this, opt, y, info);
+    PrepareStepImpl(opt, y, info);
   }
 
   void do_get_dual_variable(double* var) override {
@@ -84,9 +60,7 @@ class EqualityConstraints : public Constraint {
            sizeof(double) * do_dual_variable_size());
   }
 
-  bool do_take_step(const StepOptions& opts) override {
-    return TakeStep(this, opts);
-  }
+  bool do_take_step(const StepOptions& opts) override { return true; }
 
   int do_dual_variable_size() override {
     return workspace()->W.rows() * workspace()->W.cols();
@@ -101,7 +75,12 @@ class EqualityConstraints : public Constraint {
     return false;
   }
 
-  int do_rank() const override { return Rank(*this); }
+  int do_rank() const override { return 0; }
+
+ private:
+  void ConstructSchurComplementSystemImpl(bool initialize,
+                                          SchurComplementSystem* sys_);
+  void PrepareStepImpl(const StepOptions&, const Ref& y, StepInfo* info_i);
 };
 
 class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {

@@ -136,21 +136,21 @@ void QuadraticConstraintBase::ComputeNegativeSlack(double inv_sqrt_mu,
 }
 
 // Combine this with PrepareStep
-void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o, const RefType& y,
+void QuadraticConstraintBase::GetWeightedSlackEigenvaluesImpl(const RefType& y,
                                  double c_weight, WeightedSlackEigenvalues* p) {
-  auto* workspace = &o->workspace_;
+  auto* workspace = &workspace_;
   auto& minus_s_1 = workspace->temp1_1;
   double minus_s_0;
-  o->ComputeNegativeSlack(c_weight, y, &minus_s_0, minus_s_1);
+  ComputeNegativeSlack(c_weight, y, &minus_s_0, minus_s_1);
 
   auto& Ws_1 = workspace->temp2_1;
   double Ws_0;
   QuadraticRepresentation(
-      o->workspace_.wsqrt_q1_norm_sqr,
-      InnerProduct(o->Q_, workspace->sqrtW_1, minus_s_1, &workspace->temp2_1),
+      workspace_.wsqrt_q1_norm_sqr,
+      InnerProduct(Q_, workspace->sqrtW_1, minus_s_1, &workspace->temp2_1),
       *workspace->sqrtW_0, workspace->sqrtW_1, minus_s_0, minus_s_1, &Ws_0,
       &Ws_1);
-  auto ev = Eigenvalues(Norm(o->Q_, Ws_1, &workspace->temp1_1), Ws_0);
+  auto ev = Eigenvalues(Norm(Q_, Ws_1, &workspace->temp1_1), Ws_0);
 
   const double lamda_max = -ev.minCoeff();
   const double lamda_min = -ev.maxCoeff();
@@ -164,30 +164,29 @@ void GetWeightedSlackEigenvalues(QuadraticConstraintBase* o, const RefType& y,
 void QuadraticConstraintBase::ComputeNewtonDirection(
     const StepOptions opts, const RefType& y, double* d_q0,
     Eigen::Ref<Eigen::MatrixXd> d_q1) {
-  auto o = this;
-  auto workspace = &o->workspace_;
-  auto& minus_s_1 = o->workspace_.temp1_1;
+  auto workspace = &workspace_;
+  auto& minus_s_1 = workspace_.temp1_1;
   double minus_s_0;
-  o->ComputeNegativeSlack(opts.c_weight, y, &minus_s_0, minus_s_1);
+  ComputeNegativeSlack(opts.c_weight, y, &minus_s_0, minus_s_1);
 
   minus_s_0 -= opts.w_weight;
-  QuadraticRepresentation(o->workspace_.wsqrt_q1_norm_sqr,
-                          InnerProduct(o->Q_, workspace->sqrtW_1, minus_s_1,
-                                       &o->workspace_.temp3_1),
+  QuadraticRepresentation(workspace_.wsqrt_q1_norm_sqr,
+                          InnerProduct(Q_, workspace->sqrtW_1, minus_s_1,
+                                       &workspace_.temp3_1),
                           *workspace->sqrtW_0, workspace->sqrtW_1, minus_s_0,
                           minus_s_1, d_q0, &d_q1);
   *d_q0 += opts.e_weight;
 }
 
-void PrepareStep(QuadraticConstraintBase* o, const StepOptions& opt,
+void QuadraticConstraintBase::PrepareStepImpl(const StepOptions& opt,
                  const RefType& y, StepInfo* info) {
-  auto& d_q1 = o->workspace_.temp2_1;
-  double& d_q0 = o->workspace_.d0;
+  auto& d_q1 = workspace_.temp2_1;
+  double& d_q0 = workspace_.d0;
 
-  o->ComputeNewtonDirection(opt, y, &d_q0, d_q1);
+  ComputeNewtonDirection(opt, y, &d_q0, d_q1);
 
   // Compute rescaling.
-  auto ev = Eigenvalues(Norm(o->Q_, d_q1, &o->workspace_.temp1_1), d_q0);
+  auto ev = Eigenvalues(Norm(Q_, d_q1, &workspace_.temp1_1), d_q0);
   info->norminfd = std::fabs(ev(0));
   if (info->norminfd < std::fabs(ev(1))) {
     info->norminfd = std::fabs(ev(1));
@@ -285,34 +284,34 @@ double GetMinSqrtMu(double dinfmax, const double& x0,
 
 }  // namespace
 
-bool PerformLineSearch(QuadraticConstraintBase* o,
-                       const LineSearchParameters& params, const RefType& y0,
+bool QuadraticConstraintBase::PerformLineSearchImpl(
+    const LineSearchParameters& params, const RefType& y0,
                        const RefType& y1, LineSearchOutput* output) {
-  int n = o->workspace_.n_;
+  int n = workspace_.n_;
   double d0_0;
   Eigen::VectorXd d0_1(n);
-  o->ComputeNewtonDirection(params.options_0, y0, &d0_0, d0_1);
+  ComputeNewtonDirection(params.options_0, y0, &d0_0, d0_1);
 
   double d1_0;
   Eigen::VectorXd d1_1(n);
-  o->ComputeNewtonDirection(params.options_1, y1, &d1_0, d1_1);
+  ComputeNewtonDirection(params.options_1, y1, &d1_0, d1_1);
 
   double dt_0 = d1_0 - d0_0;
   Eigen::VectorXd dt_1 = d1_1 - d0_1;
 
   GetMinSqrtMu(params.dinf_upper_bound, d0_0,
-               SquaredNorm(o->Q_, d0_1, &o->workspace_.temp1_1), dt_0,
-               SquaredNorm(o->Q_, dt_1, &o->workspace_.temp1_1),
-               InnerProduct(o->Q_, dt_1, d0_1, &o->workspace_.temp1_1), output);
+               SquaredNorm(Q_, d0_1, &workspace_.temp1_1), dt_0,
+               SquaredNorm(Q_, dt_1, &workspace_.temp1_1),
+               InnerProduct(Q_, dt_1, d0_1, &workspace_.temp1_1), output);
 
-  output->d0_dot_dt = 2 * (d0_0 * dt_0 + InnerProduct(o->Q_, dt_1, d0_1,
-                                                      &o->workspace_.temp1_1));
+  output->d0_dot_dt = 2 * (d0_0 * dt_0 + InnerProduct(Q_, dt_1, d0_1,
+                                                      &workspace_.temp1_1));
   output->dt_squared_norm =
       2 *
-      (dt_0 * dt_0 + InnerProduct(o->Q_, dt_1, dt_1, &o->workspace_.temp1_1));
+      (dt_0 * dt_0 + InnerProduct(Q_, dt_1, dt_1, &workspace_.temp1_1));
   output->d0_squared_norm =
       2 *
-      (d0_0 * d0_0 + InnerProduct(o->Q_, d0_1, d0_1, &o->workspace_.temp1_1));
+      (d0_0 * d0_0 + InnerProduct(Q_, d0_1, d0_1, &workspace_.temp1_1));
 
   bool failure = false;
   return failure;
@@ -323,61 +322,61 @@ void QuadraticConstraintBase::Initialize() {
   A_gram_ = EvalAtQX(A1_, &W);
 }
 
-bool TakeStep(QuadraticConstraintBase* o, const StepOptions& options) {
-  auto& d_q1 = o->workspace_.temp2_1;
-  double& d_q0 = o->workspace_.d0;
-  double& wsqrt_q0 = *o->workspace_.sqrtW_0;
-  auto& wsqrt_q1 = o->workspace_.sqrtW_1;
-  double& wsqrt_q1_norm_sqr = o->workspace_.wsqrt_q1_norm_sqr;
+bool QuadraticConstraintBase::TakeStepImpl(const StepOptions& options) {
+  auto& d_q1 = workspace_.temp2_1;
+  double& d_q0 = workspace_.d0;
+  double& wsqrt_q0 = *workspace_.sqrtW_0;
+  auto& wsqrt_q1 = workspace_.sqrtW_1;
+  double& wsqrt_q1_norm_sqr = workspace_.wsqrt_q1_norm_sqr;
   if (options.step_size != 1) {
     d_q0 = options.step_size * d_q0;
     d_q1 = options.step_size * d_q1;
   }
 
-  Exp(Norm(o->Q_, d_q1, &o->workspace_.temp1_1), &d_q0, &d_q1);
+  Exp(Norm(Q_, d_q1, &workspace_.temp1_1), &d_q0, &d_q1);
   const auto& expd_q1 = d_q1;
   const auto& expd_q0 = d_q0;
 
   QuadraticRepresentation(
       wsqrt_q1_norm_sqr,
-      InnerProduct(o->Q_, wsqrt_q1, expd_q1, &o->workspace_.temp1_1), wsqrt_q0,
-      wsqrt_q1, expd_q0, expd_q1, o->workspace_.W0, &o->workspace_.W1);
+      InnerProduct(Q_, wsqrt_q1, expd_q1, &workspace_.temp1_1), wsqrt_q0,
+      wsqrt_q1, expd_q0, expd_q1, workspace_.W0, &workspace_.W1);
 
-  *o->workspace_.sqrtW_0 = *o->workspace_.W0;
-  o->workspace_.sqrtW_1 = o->workspace_.W1;
-  o->workspace_.wsqrt_q1_norm_sqr =
-      SquaredNorm(o->Q_, o->workspace_.sqrtW_1, &o->workspace_.temp2_1);
-  Sqrt(std::sqrt(o->workspace_.wsqrt_q1_norm_sqr), o->workspace_.sqrtW_0,
-       &o->workspace_.sqrtW_1);
-  o->workspace_.wsqrt_q1_norm_sqr =
-      SquaredNorm(o->Q_, o->workspace_.sqrtW_1, &o->workspace_.temp2_1);
+  *workspace_.sqrtW_0 = *workspace_.W0;
+  workspace_.sqrtW_1 = workspace_.W1;
+  workspace_.wsqrt_q1_norm_sqr =
+      SquaredNorm(Q_, workspace_.sqrtW_1, &workspace_.temp2_1);
+  Sqrt(std::sqrt(workspace_.wsqrt_q1_norm_sqr), workspace_.sqrtW_0,
+       &workspace_.sqrtW_1);
+  workspace_.wsqrt_q1_norm_sqr =
+      SquaredNorm(Q_, workspace_.sqrtW_1, &workspace_.temp2_1);
   return true;
 }
 
 //  A' Q(w) A
 //  = A( w * w' + det w R) A
-void ConstructSchurComplementSystem(QuadraticConstraintBase* o, bool initialize,
+void QuadraticConstraintBase::ConstructSchurComplementSystemImpl(bool initialize,
                                     SchurComplementSystem* sys) {
-  const auto& A0 = o->A0_;
-  const auto& C0 = o->C0_;
-  const auto& C1 = o->C1_;
-  const auto& A_gram = o->A_gram_;
-  auto& temp = o->workspace_.temp1_1;
-  auto& A_dot_x = o->A_dot_x_;
+  const auto& A0 = A0_;
+  const auto& C0 = C0_;
+  const auto& C1 = C1_;
+  const auto& A_gram = A_gram_;
+  auto& temp = workspace_.temp1_1;
+  auto& A_dot_x = A_dot_x_;
 
-  double c_dot_x = o->EvalCQX(o->workspace_.W1, temp);
-  A_dot_x = o->EvalAtQX(o->workspace_.W1, temp);
+  double c_dot_x = EvalCQX(workspace_.W1, temp);
+  A_dot_x = EvalAtQX(workspace_.W1, temp);
 
-  auto& Q_W1 = o->workspace_.temp2_1;
-  double det_w = (*o->workspace_.W0) * (*o->workspace_.W0) -
-                 SquaredNorm(o->Q_, o->workspace_.W1, &Q_W1);
+  auto& Q_W1 = workspace_.temp2_1;
+  double det_w = (*workspace_.W0) * (*workspace_.W0) -
+                 SquaredNorm(Q_, workspace_.W1, &Q_W1);
 
   if (initialize) {
-    SchurComplement(A0, A_gram, *o->workspace_.W0, det_w, A_dot_x, true,
+    SchurComplement(A0, A_gram, *workspace_.W0, det_w, A_dot_x, true,
                     &sys->G);
-    sys->AW.noalias() = A_dot_x + A0 * (*o->workspace_.W0);
-    sys->AQc.noalias() = det_w * (o->EvalAtQX(C1, temp) - A0 * C0);
-    sys->inner_product_of_c_and_Qc = det_w * (o->EvalCQX(C1, temp) - C0 * C0);
+    sys->AW.noalias() = A_dot_x + A0 * (*workspace_.W0);
+    sys->AQc.noalias() = det_w * (EvalAtQX(C1, temp) - A0 * C0);
+    sys->inner_product_of_c_and_Qc = det_w * (EvalCQX(C1, temp) - C0 * C0);
 
     sys->AQe.noalias() = -det_w * (A0);
     sys->Ae = A0;
@@ -389,20 +388,20 @@ void ConstructSchurComplementSystem(QuadraticConstraintBase* o, bool initialize,
   }
 
   double c_scale;
-  if (o->Q_.size() > 0) {
-    c_scale = Q_W1.col(0).dot(C1.col(0)) + C0 * (*o->workspace_.W0);
+  if (Q_.size() > 0) {
+    c_scale = Q_W1.col(0).dot(C1.col(0)) + C0 * (*workspace_.W0);
   } else {
-    c_scale = o->workspace_.W1.col(0).dot(C1.col(0)) + C0 * (*o->workspace_.W0);
+    c_scale = workspace_.W1.col(0).dot(C1.col(0)) + C0 * (*workspace_.W0);
   }
-  sys->AQc.noalias() += 2 * (A_dot_x + A0 * (*o->workspace_.W0)) * c_scale;
+  sys->AQc.noalias() += 2 * (A_dot_x + A0 * (*workspace_.W0)) * c_scale;
   sys->AQe.noalias() +=
-      2 * (A_dot_x + A0 * (*o->workspace_.W0)) * (*o->workspace_.W0);
+      2 * (A_dot_x + A0 * (*workspace_.W0)) * (*workspace_.W0);
 
   sys->inner_product_of_c_and_Qc +=
-      2 * (c_dot_x + C0 * (*o->workspace_.W0)) * c_scale;
+      2 * (c_dot_x + C0 * (*workspace_.W0)) * c_scale;
 
   sys->inner_product_of_c_and_Qe +=
-      2 * (c_dot_x + C0 * (*o->workspace_.W0)) * (*o->workspace_.W0);
+      2 * (c_dot_x + C0 * (*workspace_.W0)) * (*workspace_.W0);
 
   if (initialize) {
     sys->inner_product_of_w_and_c = c_scale;
@@ -423,12 +422,12 @@ void ConstructSchurComplementSystem(QuadraticConstraintBase* o, bool initialize,
   sys->G *= 2;
 }
 
-void SetIdentity(QuadraticConstraintBase* o) {
-  *o->workspace_.W0 = 1;
-  o->workspace_.W1.setZero();
-  *o->workspace_.sqrtW_0 = 1;
-  o->workspace_.sqrtW_1.setZero();
-  o->workspace_.wsqrt_q1_norm_sqr = 0;
+void QuadraticConstraintBase::SetIdentityImpl() {
+  *workspace_.W0 = 1;
+  workspace_.W1.setZero();
+  *workspace_.sqrtW_0 = 1;
+  workspace_.sqrtW_1.setZero();
+  workspace_.wsqrt_q1_norm_sqr = 0;
 }
 
 }  // namespace conex
