@@ -3,6 +3,8 @@
 #include <any>
 #include <list>
 #include <numeric>
+#include <type_traits>
+#include <utility>
 
 #include "conex/constraint.h"
 #include "conex/equality_constraint.h"
@@ -75,22 +77,21 @@ class ConstraintManager {
   }
 
   template <typename T>
-  CONEX_ID AddConstraint(const T& x, const std::vector<int>& variables) {
+  CONEX_ID AddConstraint(T&& x, const std::vector<int>& variables) {
     CONEX_DEMAND(Validate(variables) == CONEX_SUCCESS,
                  "Failed to add constraint.");
-    using Type = typename std::remove_reference<T>::type;
-    std::unique_ptr<ConstraintBase> pointer = std::make_unique<Type>(x);
+    using Type = std::remove_cv_t<std::remove_reference_t<T>>;
+    static_assert(std::is_base_of<ConstraintBase, Type>::value,
+                  "Constraint type must derive from ConstraintBase.");
+    std::unique_ptr<Constraint> pointer =
+        std::make_unique<ConstraintAdapter<Type>>(std::forward<T>(x));
     CONEX_CHECK(pointer->number_of_variables() ==
                 static_cast<int>(variables.size()));
     constraint_storage_.emplace_back(std::move(pointer));
-    constraints_.emplace_back(
-        dynamic_cast<Type*>(constraint_storage_.back().get()));
-    constraint_assemblers_.emplace_back(variables, &constraints_.back(),
+    constraint_assemblers_.emplace_back(variables,
                                         constraint_storage_.back().get());
-
-    cone_inequalities_.push_back(&constraints_.back());
     cone_inequality_assemblers_.push_back(&constraint_assemblers_.back());
-    return constraints_.size() - 1;
+    return cone_inequality_assemblers_.size() - 1;
   }
 
   template <typename T>
@@ -105,8 +106,8 @@ class ConstraintManager {
 
   std::vector<Workspace> workspace() {
     std::vector<Workspace> workspaces;
-    for (auto& c : constraints_) {
-      workspaces.push_back(c.workspace());
+    for (auto& c : constraint_storage_) {
+      workspaces.push_back(c->workspace());
     }
     for (auto& c : clique_assemblers()) {
       workspaces.emplace_back(c->submatrix_data());
@@ -156,15 +157,9 @@ class ConstraintManager {
   std::list<SupernodalAssemblerQuadratic> quadratic_costs_;
   std::list<SupernodalAssemblerConstraint> constraint_assemblers_;
 
-  // Stores and owns the constraints.
-  std::vector<std::unique_ptr<ConstraintBase>> constraint_storage_;
+  // Stores and owns all constraints through a single virtual interface.
+  std::vector<std::unique_ptr<Constraint>> constraint_storage_;
 
-  // Provides type-erased interface to constraints.
-  // forwards to objects in constraint_storage_.
-  std::list<Constraint> constraints_;
-
-  // Provides random access to constraints_.
-  std::vector<Constraint*> cone_inequalities_;
   std::vector<SupernodalAssemblerConstraint*> cone_inequality_assemblers_;
   EqualityConstraintManager equality_constraints_;
 
