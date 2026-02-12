@@ -41,6 +41,7 @@ class PsdConstraint : public Constraint {
   WorkspaceDensePSD* workspace() { return &workspace_; }
   int number_of_variables() const override { return num_dual_constraints_; }
 
+ private:
   virtual void do_schur_complement(bool initialize,
                                    SchurComplementSystem* sys) override = 0;
 
@@ -86,11 +87,14 @@ class PsdConstraint : public Constraint {
   virtual double EvalDualObjective(const Ref& W) = 0;
   virtual void ComputeAW(int i, const Ref& W, Ref* AW, Ref* WAW) = 0;
   virtual void ComputeNegativeSlack(double k, const Ref& y, Ref* s) = 0;
+ private:
   void SetIdentityImpl();
   void PrepareStepImpl(const StepOptions& opt, const Ref& y, StepInfo* info);
   bool TakeStepImpl(const StepOptions& options);
   void GetWeightedSlackEigenvaluesImpl(const Ref& y, double c_weight,
                                        WeightedSlackEigenvalues* p);
+
+ protected:
   virtual ~PsdConstraint(){};
 };
 

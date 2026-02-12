@@ -38,6 +38,7 @@ class EqualityConstraints : public Constraint {
   WorkspaceEqualityConstraints workspace_;
   WorkspaceEqualityConstraints* workspace() { return &workspace_; }
 
+ private:
   void do_schur_complement(bool initialize,
                            SchurComplementSystem* sys) override {
     ConstructSchurComplementSystemImpl(initialize, sys);
@@ -77,7 +78,6 @@ class EqualityConstraints : public Constraint {
 
   int do_rank() const override { return 0; }
 
- private:
   void ConstructSchurComplementSystemImpl(bool initialize,
                                           SchurComplementSystem* sys_);
   void PrepareStepImpl(const StepOptions&, const Ref& y, StepInfo* info_i);

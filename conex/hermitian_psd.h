@@ -64,6 +64,7 @@ class HermitianPsdConstraint : public Constraint {
     return constraint_matrices_.size();
   }
 
+ private:
   void do_schur_complement(bool initialize,
                            SchurComplementSystem* sys) override {
     ConstructSchurComplementSystemImpl(initialize, sys);
@@ -110,7 +111,6 @@ class HermitianPsdConstraint : public Constraint {
 
   int do_rank() const override { return rank_; }
 
- private:
   void SetIdentityImpl() { W = T::Identity(rank_); }
   void GetWeightedSlackEigenvaluesImpl(const Ref& y, double c_weight,
                                        WeightedSlackEigenvalues* p);

@@ -28,6 +28,7 @@ class LinearConstraint : public Constraint {
   DenseMatrix constraint_matrix() const { return constraint_matrix_; }
   DenseMatrix affine_term() const { return constraint_affine_; }
 
+ private:
   void do_schur_complement(bool initialize,
                            SchurComplementSystem* sys) override {
     ConstructSchurComplementSystemImpl(initialize, sys);
@@ -86,7 +87,6 @@ class LinearConstraint : public Constraint {
 
   int do_rank() const override { return workspace_.n_; }
 
- private:
   void SetIdentityImpl();
   void PrepareStepImpl(const StepOptions& opt,
                        const Eigen::Ref<const Eigen::MatrixXd>& y0,

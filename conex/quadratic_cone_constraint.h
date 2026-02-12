@@ -36,11 +36,13 @@ class QuadraticConstraintBase : public Constraint {
                           const T& constraint_affine)
       : QuadraticConstraintBase(DenseMatrix(), constraint_matrix,
                                 constraint_affine) {}
+  virtual ~QuadraticConstraintBase(){};
 
   WorkspaceSOC* workspace() { return &workspace_; }
 
   int number_of_variables() const override { return A1_.cols(); }
 
+ private:
   void do_schur_complement(bool initialize,
                            SchurComplementSystem* sys) override {
     ConstructSchurComplementSystemImpl(initialize, sys);
@@ -83,8 +85,6 @@ class QuadraticConstraintBase : public Constraint {
   }
 
   int do_rank() const override { return 2; }
-
-  virtual ~QuadraticConstraintBase(){};
 
  protected:
   virtual void Initialize();
