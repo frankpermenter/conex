@@ -6,6 +6,7 @@
 #include "conex/error_checking_macros.h"
 #include "conex/kkt_solver_interface.h"
 #include "workspace.h"
+#include <type_traits>
 
 namespace conex {
 
@@ -76,7 +77,7 @@ class Program {
 
   template <typename T>
   CONEX_ID AddConstraint(T&& d) {
-    if constexpr (!std::is_same<T, EqualityConstraints>::value) {
+    if constexpr (!std::is_same_v<std::decay_t<T>, EqualityConstraints>) {
       return kkt_system_manager_.AddConstraint<T>(std::forward<T>(d));
     } else {
       return kkt_system_manager_.AddEqualityConstraint(
@@ -86,7 +87,7 @@ class Program {
 
   template <typename T>
   CONEX_ID AddConstraint(T&& d, const std::vector<int>& variables) {
-    if constexpr (!std::is_same<T, EqualityConstraints>::value) {
+    if constexpr (!std::is_same_v<std::decay_t<T>, EqualityConstraints>) {
       return kkt_system_manager_.AddConstraint<T>(std::forward<T>(d),
                                                   variables);
     } else {

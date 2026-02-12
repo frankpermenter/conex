@@ -1,6 +1,5 @@
 #pragma once
 
-#include <any>
 #include <list>
 #include <numeric>
 #include <type_traits>
@@ -80,15 +79,10 @@ class ConstraintManager {
   CONEX_ID AddConstraint(T&& x, const std::vector<int>& variables) {
     CONEX_DEMAND(Validate(variables) == CONEX_SUCCESS,
                  "Failed to add constraint.");
-    using Type = std::remove_cv_t<std::remove_reference_t<T>>;
-    static_assert(std::is_base_of<ConstraintBase, Type>::value,
-                  "Constraint type must derive from ConstraintBase.");
-    std::unique_ptr<Constraint> pointer;
-    if constexpr (std::is_base_of<Constraint, Type>::value) {
-      pointer = std::make_unique<Type>(std::forward<T>(x));
-    } else {
-      pointer = std::make_unique<ConstraintAdapter<Type>>(std::forward<T>(x));
-    }
+    using Type = std::decay_t<T>;
+    static_assert(std::is_base_of<Constraint, Type>::value,
+                  "Constraint type must derive from Constraint.");
+    auto pointer = std::make_unique<Type>(std::forward<T>(x));
     CONEX_CHECK(pointer->number_of_variables() ==
                 static_cast<int>(variables.size()));
     constraint_storage_.emplace_back(std::move(pointer));
