@@ -13,9 +13,10 @@
 
 namespace conex {
 
-class Constraint : public ConstraintBase {
+class Constraint : public IVisitable, public IVariableShape {
  public:
   virtual ~Constraint() = default;
+  virtual bool supports_line_search() const { return false; }
 
   void BuildSchurComplement(bool initialize, SchurComplementSystem* sys) {
     do_schur_complement(initialize, sys);

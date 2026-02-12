@@ -29,11 +29,15 @@ class Visitor {
   virtual ~Visitor() = default;
 };
 
-class ConstraintBase {
+class IVisitable {
  public:
   virtual void accept(Visitor*) const = 0;
+  virtual ~IVisitable() = default;
+};
+
+class IVariableShape {
+ public:
   virtual int number_of_variables() const = 0;
-  virtual bool supports_line_search() const { return false; }
-  virtual ~ConstraintBase() = default;
+  virtual ~IVariableShape() = default;
 };
 }  // namespace conex

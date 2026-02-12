@@ -10,7 +10,7 @@ namespace conex {
 // Manages the transfer of clique submatrix to supernodal data structure.
 // The SetDenseData triggers an update the submatrix which
 // is store in an Eigen::Map.
-class SupernodalAssemblerBase : public ConstraintBase {
+class SupernodalAssemblerBase : public IVisitable, public IVariableShape {
  public:
   SupernodalAssemblerBase(const std::vector<int>& shared_variables) {
     SetPrimalVariables(shared_variables);
@@ -46,6 +46,7 @@ class SupernodalAssemblerBase : public ConstraintBase {
 
   virtual bool is_dynamic() const { return false; }
   virtual bool is_positive_definite() const { return true; }
+  virtual bool supports_line_search() const { return false; }
   virtual std::vector<int> variables() const {
     std::vector<int> variables = primal_variables_;
     variables.insert(variables.end(), dual_variables_.begin(),

@@ -90,16 +90,14 @@ DenseLMIConstraint MakeLMIConstraint(int value) {
 }
 
 template <typename T>
-void CompareMatrixConstraint(const ConstraintBase* x_ptr,
-                             const ConstraintBase* y_ptr) {
+void CompareMatrixConstraint(const Constraint* x_ptr, const Constraint* y_ptr) {
   const auto& x = *dynamic_cast<const T*>(x_ptr);
   const auto& y = *dynamic_cast<const T*>(y_ptr);
   EXPECT_EQ((x.constraint_matrix() - y.constraint_matrix()).norm(), 0);
   EXPECT_EQ((x.affine_term() - y.affine_term()).norm(), 0);
 }
 
-void CompareLMIConstraint(const ConstraintBase* x_ptr,
-                          const ConstraintBase* y_ptr) {
+void CompareLMIConstraint(const Constraint* x_ptr, const Constraint* y_ptr) {
   using T = DenseLMIConstraint;
   const auto& x = *dynamic_cast<const T*>(x_ptr);
   const auto& y = *dynamic_cast<const T*>(y_ptr);
@@ -107,8 +105,8 @@ void CompareLMIConstraint(const ConstraintBase* x_ptr,
   EXPECT_TRUE(IsEqual(x.constraint_matrices(), y.constraint_matrices()));
 }
 
-std::vector<std::unique_ptr<ConstraintBase>> MakeConstraints() {
-  std::vector<std::unique_ptr<ConstraintBase>> constraints;
+std::vector<std::unique_ptr<Constraint>> MakeConstraints() {
+  std::vector<std::unique_ptr<Constraint>> constraints;
   constraints.emplace_back(new LinearConstraint(
       std::move(MakeMatrixConstraint<LinearConstraint>(1))));
   constraints.emplace_back(
@@ -123,14 +121,14 @@ std::vector<std::unique_ptr<ConstraintBase>> MakeConstraints() {
 }
 
 GTEST_TEST(Serialize, TestSerializeDeserialize) {
-  std::vector<std::unique_ptr<ConstraintBase>> constraints = MakeConstraints();
+  std::vector<std::unique_ptr<Constraint>> constraints = MakeConstraints();
   JsonObject program;
   Serializer serialize;
   program["constraints"] = serialize.GenerateJsonObject(constraints);
   program["num_constraints"] = ConvertToJson(3);
 
   ConstraintManager c;
-  std::vector<std::unique_ptr<ConstraintBase>> constraints_deserialize;
+  std::vector<std::unique_ptr<Constraint>> constraints_deserialize;
   for (size_t i = 0; i < constraints.size(); ++i) {
     const auto& all_constraints = program["constraints"];
     const auto& constraint_i = all_constraints[to_string(i)];
@@ -153,14 +151,14 @@ GTEST_TEST(Serialize, TestSerializeDeserialize) {
                        constraints.at(i).get());
 }
 
-std::vector<int> MakeVariableList(ConstraintBase* c) {
+std::vector<int> MakeVariableList(Constraint* c) {
   std::vector<int> vars(c->number_of_variables());
   std::iota(vars.begin(), vars.end(), 0);
   return vars;
 }
 
 GTEST_TEST(DeserializeConeProgram, TestSerializeDeserialize) {
-  std::vector<std::unique_ptr<ConstraintBase>> constraints = MakeConstraints();
+  std::vector<std::unique_ptr<Constraint>> constraints = MakeConstraints();
   JsonObject program;
   Serializer serialize;
   program["quadratic_costs"]["0"]["cost_matrix"] =

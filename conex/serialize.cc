@@ -105,12 +105,12 @@ DenseLMIConstraint fromJson<DenseLMIConstraint>(const JsonObject& data) {
 }
 
 template <typename T>
-std::unique_ptr<ConstraintBase> MakeConstraint(const JsonObject& value) {
+std::unique_ptr<Constraint> MakeConstraint(const JsonObject& value) {
   T constraint = fromJson<T>(value["data"]);
   return std::make_unique<T>(std::move(constraint));
 }
 
-std::unique_ptr<ConstraintBase> MakeConstraintFromJSON(
+std::unique_ptr<Constraint> MakeConstraintFromJSON(
     const JsonObject& value) {
   IDs constraint_type = static_cast<IDs>(stoi(value["id"].value()));
   switch (constraint_type) {
@@ -135,7 +135,7 @@ JsonObject SerializeConeProgram(const ConstraintManager& constraint_manager) {
   JsonObject program;
   program["num_variables"] = ConvertToJson(
       static_cast<int>(constraint_manager.GetNumberOfVariables()));
-  std::vector<const ConstraintBase*> constraint_serializer;
+  std::vector<const IVisitable*> constraint_serializer;
   vector<std::vector<int>> constraint_variables;
 
   for (auto& v : constraint_manager.cone_inequalities()) {
