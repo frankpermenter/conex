@@ -82,7 +82,7 @@ void Serializer::visit(const DenseLMIConstraint& data) {
   value["data"]["constraint_matrix"] =
       ConvertToJson(data.constraint_matrices());
   value["data"]["affine_term"] = ConvertToJson(data.affine_term());
-  value["data"]["order"] = ConvertToJson(data.GetRank());
+  value["data"]["order"] = ConvertToJson(data.Rank());
   value["id"].value() = enum_to_string(IDs::DenseLMIConstraint);
   int i = json_.as_map().size();
   json_[to_string(i)] = value;

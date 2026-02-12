@@ -644,6 +644,27 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "constraint_visibility_test",
+    srcs = [
+        "test/constraint_visibility_test.cc",
+    ],
+    copts = ["-Iexternal/gtest/include"],
+    data = [
+        "constraint.h",
+        "dense_lmi_constraint.h",
+        "equality_constraint.h",
+        "hermitian_psd.h",
+        "linear_constraint.h",
+        "psd_constraint.h",
+        "quadratic_cone_constraint.h",
+        "soc_constraint.h",
+    ],
+    deps = [
+        "@gtest//:main",
+    ],
+)
+
 cc_library(
     name = "kkt_tree_solver",
     srcs = [

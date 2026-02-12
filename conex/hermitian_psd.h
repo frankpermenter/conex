@@ -85,8 +85,7 @@ class HermitianPsdConstraint : public Constraint {
   }
 
   void do_get_dual_variable(double* var) override {
-    memcpy(static_cast<void*>(var), static_cast<void*>(workspace()->W.data()),
-           sizeof(double) * do_dual_variable_size());
+    CopyDualVariableFromWorkspace(workspace(), var);
   }
 
   bool do_take_step(const StepOptions& opts) override {
@@ -94,7 +93,7 @@ class HermitianPsdConstraint : public Constraint {
   }
 
   int do_dual_variable_size() override {
-    return workspace()->W.rows() * workspace()->W.cols();
+    return DualVariableSizeFromWorkspace(workspace());
   }
 
   int do_number_of_variables() const override { return number_of_variables(); }

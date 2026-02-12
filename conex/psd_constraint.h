@@ -60,8 +60,7 @@ class PsdConstraint : public Constraint {
   }
 
   void do_get_dual_variable(double* var) override {
-    memcpy(static_cast<void*>(var), static_cast<void*>(workspace()->W.data()),
-           sizeof(double) * do_dual_variable_size());
+    CopyDualVariableFromWorkspace(workspace(), var);
   }
 
   bool do_take_step(const StepOptions& opts) override {
@@ -69,7 +68,7 @@ class PsdConstraint : public Constraint {
   }
 
   int do_dual_variable_size() override {
-    return workspace()->W.rows() * workspace()->W.cols();
+    return DualVariableSizeFromWorkspace(workspace());
   }
 
   int do_number_of_variables() const override { return number_of_variables(); }
@@ -87,6 +86,7 @@ class PsdConstraint : public Constraint {
   virtual double EvalDualObjective(const Ref& W) = 0;
   virtual void ComputeAW(int i, const Ref& W, Ref* AW, Ref* WAW) = 0;
   virtual void ComputeNegativeSlack(double k, const Ref& y, Ref* s) = 0;
+
  private:
   void SetIdentityImpl();
   void PrepareStepImpl(const StepOptions& opt, const Ref& y, StepInfo* info);

@@ -13,7 +13,7 @@ template <typename T>
 int Rank(const std::vector<T*>& c) {
   int rank = 0;
   for (const auto& ci : c) {
-    rank += ci->constraint()->GetRank();
+    rank += ci->constraint()->Rank();
   }
   return rank;
 }
@@ -164,7 +164,7 @@ double DoLineSearch(double dinf_upper_bound, ConstraintManager* constraints,
     LineSearchOutput output_i;
     Eigen::MatrixXd y1 = ci->PrimalSubvector(dir0.y);
     Eigen::MatrixXd y2 = ci->PrimalSubvector(dir1.y);
-    bool failure = ci->constraint()->RunLineSearch(params, y1, y2, &output_i);
+    bool failure = ci->constraint()->PerformLineSearch(params, y1, y2, &output_i);
     if (failure) {
       throw std::runtime_error("Line search failed.");
       output.failed = true;
