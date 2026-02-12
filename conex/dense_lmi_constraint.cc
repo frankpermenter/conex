@@ -69,26 +69,25 @@ double MatrixLMIConstraint::EvalDualObjective(const Ref& W) {
   return TraceInnerProduct(constraint_matrix, W);
 }
 
-#define SCHUR_COMPLEMENT_FUNCTION(OP)                                        \
-  int n = ws->n_;                                                            \
-  Eigen::Map<Eigen::VectorXd> vectWAW(WAW.data(), n* n);                     \
-  for (int i = 0; i < m; i++) {                                              \
-    ComputeAW(i, W, &AW, &WAW);                                           \
-    sys->G.row(i).head(i + 1) OP vectWAW.transpose() *                       \
-        constraint_matrices_vect_.leftCols(i + 1);                        \
-    sys->AW(i, 0) OP AW.trace();                                             \
-    sys->AQc(i, 0) OP EvalDualObjective(WAW);                             \
-  }                                                                          \
-  sys->inner_product_of_w_and_c OP EvalDualObjective(W);                  \
-                                                                             \
-  auto& WCW = WAW;                                                           \
-  auto& CW = AW;                                                             \
-  ComputeWCW(W, &CW, &WCW);                                               \
-  sys->inner_product_of_c_and_Qc OP TraceInnerProduct(constraint_affine_, \
-                                                      WCW);
+#define SCHUR_COMPLEMENT_FUNCTION(OP)                    \
+  int n = ws->n_;                                        \
+  Eigen::Map<Eigen::VectorXd> vectWAW(WAW.data(), n* n); \
+  for (int i = 0; i < m; i++) {                          \
+    ComputeAW(i, W, &AW, &WAW);                          \
+    sys->G.row(i).head(i + 1) OP vectWAW.transpose() *   \
+        constraint_matrices_vect_.leftCols(i + 1);       \
+    sys->AW(i, 0) OP AW.trace();                         \
+    sys->AQc(i, 0) OP EvalDualObjective(WAW);            \
+  }                                                      \
+  sys->inner_product_of_w_and_c OP EvalDualObjective(W); \
+                                                         \
+  auto& WCW = WAW;                                       \
+  auto& CW = AW;                                         \
+  ComputeWCW(W, &CW, &WCW);                              \
+  sys->inner_product_of_c_and_Qc OP TraceInnerProduct(constraint_affine_, WCW);
 
-void DenseLMIConstraint::ConstructSchurComplementSystemImpl(bool initialize,
-                                                          SchurComplementSystem* sys) {
+void DenseLMIConstraint::ConstructSchurComplementSystemImpl(
+    bool initialize, SchurComplementSystem* sys) {
   auto* ws = workspace();
   auto& W = ws->W;
   auto& AW = ws->temp_1;

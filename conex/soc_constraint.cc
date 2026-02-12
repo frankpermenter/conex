@@ -302,8 +302,8 @@ void SOCConstraint::SetIdentityImpl() {
 }
 
 // Combine this with PrepareStep
-void SOCConstraint::GetWeightedSlackEigenvaluesImpl(const RefType& y,
-                                 double c_weight, WeightedSlackEigenvalues* p) {
+void SOCConstraint::GetWeightedSlackEigenvaluesImpl(
+    const RefType& y, double c_weight, WeightedSlackEigenvalues* p) {
   auto* workspace = &workspace_;
   int n = workspace->n_;
   Eigen::VectorXd minus_s(n + 1);
@@ -343,13 +343,12 @@ bool SOCConstraint::TakeStepImpl(const StepOptions& opt) {
   *workspace_.W0 = wn(0, 0);
   workspace_.W1 = wn.bottomRows(n - 1);
 
-  CONEX_ASSERT(workspace_.W1.norm() <= *workspace_.W0,
-               "Element not in cone.");
+  CONEX_ASSERT(workspace_.W1.norm() <= *workspace_.W0, "Element not in cone.");
   return true;
 }
 
 void SOCConstraint::PrepareStepImpl(const StepOptions& opt, const RefType& y,
-                 StepInfo* info) {
+                                    StepInfo* info) {
   int n = workspace_.n_;
   auto d = BuildNewtonDirection(opt, y);
   workspace_.temp1_1 = d.bottomRows(n);
@@ -373,8 +372,8 @@ VectorXd SOCConstraint::BuildNewtonDirection(const StepOptions& options,
 }
 
 bool SOCConstraint::PerformLineSearchImpl(const LineSearchParameters& params,
-                       const RefType& y0, const RefType& y1,
-                       LineSearchOutput* output) {
+                                          const RefType& y0, const RefType& y1,
+                                          LineSearchOutput* output) {
   int n = workspace_.n_;
 
   auto temp = BuildNewtonDirection(params.options_0, y0);
@@ -397,8 +396,8 @@ bool SOCConstraint::PerformLineSearchImpl(const LineSearchParameters& params,
   return failure;
 }
 
-void SOCConstraint::ConstructSchurComplementSystemImpl(bool initialize,
-                                    SchurComplementSystem* sys) {
+void SOCConstraint::ConstructSchurComplementSystemImpl(
+    bool initialize, SchurComplementSystem* sys) {
   int n = workspace_.n_;
   auto Wsqrt = Sqrt(*workspace_.W0, workspace_.W1);
   DenseMatrix W(n + 1, 1);
@@ -407,8 +406,7 @@ void SOCConstraint::ConstructSchurComplementSystemImpl(bool initialize,
 
   auto G = &sys->G;
   Eigen::MatrixXd WA = constraint_matrix_;
-  Eigen::MatrixXd WsqrtC =
-      QuadraticRepresentation(Wsqrt, constraint_affine_);
+  Eigen::MatrixXd WsqrtC = QuadraticRepresentation(Wsqrt, constraint_affine_);
 
   for (int i = 0; i < WA.cols(); i++) {
     WA.col(i) = QuadraticRepresentation(Wsqrt, WA.col(i));
@@ -451,7 +449,7 @@ void ConservativeResizeHelper(T* constraint_matrix_, int var, int rows) {
 }
 
 CONEX_STATUS SOCConstraint::UpdateLinearOperatorImpl(double val, int var, int r,
-                                  int c, int dim) {
+                                                     int c, int dim) {
   CONEX_RETURN_ON_FAIL(dim == 0, "Complex second-order cone not supported.");
   CONEX_RETURN_ON_FAIL(c == 0, "Second-order constraint is not matrix valued.");
   CONEX_RETURN_ON_FAIL(r <= n_, "Row index out of bounds.");
@@ -463,7 +461,7 @@ CONEX_STATUS SOCConstraint::UpdateLinearOperatorImpl(double val, int var, int r,
 }
 
 CONEX_STATUS SOCConstraint::UpdateAffineTermImpl(double val, int r, int c,
-                                                   int dim) {
+                                                 int dim) {
   CONEX_RETURN_ON_FAIL(dim == 0, "Complex second-order cone not supported.");
   CONEX_RETURN_ON_FAIL(c == 0, "Second-order constraint is not matrix valued.");
   CONEX_RETURN_ON_FAIL(r <= n_, "Row index out of bounds.");

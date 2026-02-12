@@ -1,4 +1,6 @@
 #pragma once
+#include <type_traits>
+
 #include "conex/conex.h"
 #include "conex/constraint.h"
 #include "conex/constraint_manager.h"
@@ -6,7 +8,6 @@
 #include "conex/error_checking_macros.h"
 #include "conex/kkt_solver_interface.h"
 #include "workspace.h"
-#include <type_traits>
 
 namespace conex {
 

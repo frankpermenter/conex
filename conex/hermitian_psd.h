@@ -88,7 +88,9 @@ class HermitianPsdConstraint : public Constraint {
            sizeof(double) * do_dual_variable_size());
   }
 
-  bool do_take_step(const StepOptions& opts) override { return TakeStepImpl(opts); }
+  bool do_take_step(const StepOptions& opts) override {
+    return TakeStepImpl(opts);
+  }
 
   int do_dual_variable_size() override {
     return workspace()->W.rows() * workspace()->W.cols();

@@ -106,10 +106,10 @@ bool FindMinimumMu(const T& d0, const T& delta, double dinfmax,
   return success;
 }
 
-bool LinearConstraint::PerformLineSearchImpl(const LineSearchParameters& params,
-                                             const Eigen::Ref<const Eigen::MatrixXd>& y0,
-                                             const Eigen::Ref<const Eigen::MatrixXd>& y1,
-                                             LineSearchOutput* output) {
+bool LinearConstraint::PerformLineSearchImpl(
+    const LineSearchParameters& params,
+    const Eigen::Ref<const Eigen::MatrixXd>& y0,
+    const Eigen::Ref<const Eigen::MatrixXd>& y1, LineSearchOutput* output) {
   auto* workspace = &workspace_;
 
   auto& d0 = workspace->temp_1;
@@ -140,8 +140,9 @@ void LinearConstraint::SetIdentityImpl() {
 }
 
 // TODO: use e_weight and c_weight
-void LinearConstraint::PrepareStepImpl(const StepOptions& options,
-                 const Eigen::Ref<const Eigen::MatrixXd>& y, StepInfo* info) {
+void LinearConstraint::PrepareStepImpl(
+    const StepOptions& options, const Eigen::Ref<const Eigen::MatrixXd>& y,
+    StepInfo* info) {
   auto* workspace = &workspace_;
   auto& d = workspace->temp_2;
 
@@ -194,8 +195,8 @@ bool LinearConstraint::TakeStepImpl(const StepOptions& options) {
 #endif
     }
     // This normalization necessarity to ensure <r, r> = rank K
-    workspace_.r = workspace_.r / workspace_.r.norm() *
-                      std::sqrt(workspace_.r.rows());
+    workspace_.r =
+        workspace_.r / workspace_.r.norm() * std::sqrt(workspace_.r.rows());
   } else {
     if (use_geodesic) {
       if (options.step_size != 1) {
@@ -211,8 +212,8 @@ bool LinearConstraint::TakeStepImpl(const StepOptions& options) {
 }
 
 // Eigenvalues of Q(w/2)(C - A'y).
-void LinearConstraint::GetWeightedSlackEigenvaluesImpl(const Ref& y,
-                                 double c_weight, WeightedSlackEigenvalues* p) {
+void LinearConstraint::GetWeightedSlackEigenvaluesImpl(
+    const Ref& y, double c_weight, WeightedSlackEigenvalues* p) {
   auto* workspace = &workspace_;
   auto& minus_s = workspace->temp_1;
   auto& Ws = workspace->temp_2;
@@ -256,17 +257,16 @@ void LinearConstraint::AffineUpdate(const Eigen::Ref<const Eigen::MatrixXd>& d,
 }
 
 void LinearConstraint::ApplyRescalingImpl(Eigen::Ref<Eigen::MatrixXd> Aw,
-                    double* ip) {
+                                          double* ip) {
   const auto& W = workspace_.W;
   const auto& r = workspace_.r;
   *ip += W.cwiseProduct(r).col(0).dot(constraint_affine_.col(0));
   int m = number_of_variables();
-  Aw.topRows(m).noalias() +=
-      constraint_matrix_.transpose() * r.cwiseProduct(W);
+  Aw.topRows(m).noalias() += constraint_matrix_.transpose() * r.cwiseProduct(W);
 }
 
-void LinearConstraint::ConstructSchurComplementSystemImpl(bool initialize,
-                                    SchurComplementSystem* sys) {
+void LinearConstraint::ConstructSchurComplementSystemImpl(
+    bool initialize, SchurComplementSystem* sys) {
   const auto& W = workspace_.W;
   const auto& r = workspace_.r;
   auto G = &sys->G;
@@ -312,7 +312,7 @@ void LinearConstraint::ConstructSchurComplementSystemImpl(bool initialize,
 }
 
 CONEX_STATUS LinearConstraint::UpdateLinearOperatorImpl(double val, int var,
-                                  int r, int c, int dim) {
+                                                        int r, int c, int dim) {
   CONEX_RETURN_ON_FAIL(dim == 0, "Complex linear constraints not supported.");
   CONEX_RETURN_ON_FAIL(c == 0, "Linear constraint is not matrix valued.");
   CONEX_RETURN_ON_FAIL(r < constraint_matrix_.rows(),
@@ -324,7 +324,7 @@ CONEX_STATUS LinearConstraint::UpdateLinearOperatorImpl(double val, int var,
 }
 
 CONEX_STATUS LinearConstraint::UpdateAffineTermImpl(double val, int r, int c,
-                                                     int dim) {
+                                                    int dim) {
   CONEX_RETURN_ON_FAIL(dim == 0, "Complex linear cone not supported.");
   CONEX_RETURN_ON_FAIL(c == 0, "Linear constraint is not matrix valued.");
   CONEX_RETURN_ON_FAIL(r < constraint_matrix_.rows(),

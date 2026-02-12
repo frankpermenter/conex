@@ -136,8 +136,8 @@ void QuadraticConstraintBase::ComputeNegativeSlack(double inv_sqrt_mu,
 }
 
 // Combine this with PrepareStep
-void QuadraticConstraintBase::GetWeightedSlackEigenvaluesImpl(const RefType& y,
-                                 double c_weight, WeightedSlackEigenvalues* p) {
+void QuadraticConstraintBase::GetWeightedSlackEigenvaluesImpl(
+    const RefType& y, double c_weight, WeightedSlackEigenvalues* p) {
   auto* workspace = &workspace_;
   auto& minus_s_1 = workspace->temp1_1;
   double minus_s_0;
@@ -170,16 +170,17 @@ void QuadraticConstraintBase::ComputeNewtonDirection(
   ComputeNegativeSlack(opts.c_weight, y, &minus_s_0, minus_s_1);
 
   minus_s_0 -= opts.w_weight;
-  QuadraticRepresentation(workspace_.wsqrt_q1_norm_sqr,
-                          InnerProduct(Q_, workspace->sqrtW_1, minus_s_1,
-                                       &workspace_.temp3_1),
-                          *workspace->sqrtW_0, workspace->sqrtW_1, minus_s_0,
-                          minus_s_1, d_q0, &d_q1);
+  QuadraticRepresentation(
+      workspace_.wsqrt_q1_norm_sqr,
+      InnerProduct(Q_, workspace->sqrtW_1, minus_s_1, &workspace_.temp3_1),
+      *workspace->sqrtW_0, workspace->sqrtW_1, minus_s_0, minus_s_1, d_q0,
+      &d_q1);
   *d_q0 += opts.e_weight;
 }
 
 void QuadraticConstraintBase::PrepareStepImpl(const StepOptions& opt,
-                 const RefType& y, StepInfo* info) {
+                                              const RefType& y,
+                                              StepInfo* info) {
   auto& d_q1 = workspace_.temp2_1;
   double& d_q0 = workspace_.d0;
 
@@ -285,8 +286,8 @@ double GetMinSqrtMu(double dinfmax, const double& x0,
 }  // namespace
 
 bool QuadraticConstraintBase::PerformLineSearchImpl(
-    const LineSearchParameters& params, const RefType& y0,
-                       const RefType& y1, LineSearchOutput* output) {
+    const LineSearchParameters& params, const RefType& y0, const RefType& y1,
+    LineSearchOutput* output) {
   int n = workspace_.n_;
   double d0_0;
   Eigen::VectorXd d0_1(n);
@@ -304,14 +305,12 @@ bool QuadraticConstraintBase::PerformLineSearchImpl(
                SquaredNorm(Q_, dt_1, &workspace_.temp1_1),
                InnerProduct(Q_, dt_1, d0_1, &workspace_.temp1_1), output);
 
-  output->d0_dot_dt = 2 * (d0_0 * dt_0 + InnerProduct(Q_, dt_1, d0_1,
-                                                      &workspace_.temp1_1));
+  output->d0_dot_dt =
+      2 * (d0_0 * dt_0 + InnerProduct(Q_, dt_1, d0_1, &workspace_.temp1_1));
   output->dt_squared_norm =
-      2 *
-      (dt_0 * dt_0 + InnerProduct(Q_, dt_1, dt_1, &workspace_.temp1_1));
+      2 * (dt_0 * dt_0 + InnerProduct(Q_, dt_1, dt_1, &workspace_.temp1_1));
   output->d0_squared_norm =
-      2 *
-      (d0_0 * d0_0 + InnerProduct(Q_, d0_1, d0_1, &workspace_.temp1_1));
+      2 * (d0_0 * d0_0 + InnerProduct(Q_, d0_1, d0_1, &workspace_.temp1_1));
 
   bool failure = false;
   return failure;
@@ -355,8 +354,8 @@ bool QuadraticConstraintBase::TakeStepImpl(const StepOptions& options) {
 
 //  A' Q(w) A
 //  = A( w * w' + det w R) A
-void QuadraticConstraintBase::ConstructSchurComplementSystemImpl(bool initialize,
-                                    SchurComplementSystem* sys) {
+void QuadraticConstraintBase::ConstructSchurComplementSystemImpl(
+    bool initialize, SchurComplementSystem* sys) {
   const auto& A0 = A0_;
   const auto& C0 = C0_;
   const auto& C1 = C1_;
@@ -372,8 +371,7 @@ void QuadraticConstraintBase::ConstructSchurComplementSystemImpl(bool initialize
                  SquaredNorm(Q_, workspace_.W1, &Q_W1);
 
   if (initialize) {
-    SchurComplement(A0, A_gram, *workspace_.W0, det_w, A_dot_x, true,
-                    &sys->G);
+    SchurComplement(A0, A_gram, *workspace_.W0, det_w, A_dot_x, true, &sys->G);
     sys->AW.noalias() = A_dot_x + A0 * (*workspace_.W0);
     sys->AQc.noalias() = det_w * (EvalAtQX(C1, temp) - A0 * C0);
     sys->inner_product_of_c_and_Qc = det_w * (EvalCQX(C1, temp) - C0 * C0);

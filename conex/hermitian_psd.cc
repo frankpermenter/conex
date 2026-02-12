@@ -67,8 +67,8 @@ void HermitianPsdConstraint<T>::PrepareStepImpl(const StepOptions& opt,
 }
 
 template <typename T>
-void HermitianPsdConstraint<T>::GetWeightedSlackEigenvaluesImpl(const Ref& y,
-                                                                double c_weight, WeightedSlackEigenvalues* p) {
+void HermitianPsdConstraint<T>::GetWeightedSlackEigenvaluesImpl(
+    const Ref& y, double c_weight, WeightedSlackEigenvalues* p) {
   typename T::Matrix minus_s;
   ComputeNegativeSlack(c_weight, y, &minus_s);
 
@@ -93,7 +93,8 @@ template void HermitianPsdConstraint<Complex>::PrepareStepImpl(
 template void HermitianPsdConstraint<Quaternions>::PrepareStepImpl(
     const StepOptions& opt, const Ref& y, StepInfo* info);
 
-template bool HermitianPsdConstraint<Real>::TakeStepImpl(const StepOptions& opt);
+template bool HermitianPsdConstraint<Real>::TakeStepImpl(
+    const StepOptions& opt);
 template bool HermitianPsdConstraint<Complex>::TakeStepImpl(
     const StepOptions& opt);
 template bool HermitianPsdConstraint<Quaternions>::TakeStepImpl(
@@ -103,7 +104,8 @@ template void HermitianPsdConstraint<Real>::GetWeightedSlackEigenvaluesImpl(
     const Ref& y, double c_weight, WeightedSlackEigenvalues* p);
 template void HermitianPsdConstraint<Complex>::GetWeightedSlackEigenvaluesImpl(
     const Ref& y, double c_weight, WeightedSlackEigenvalues* p);
-template void HermitianPsdConstraint<Quaternions>::GetWeightedSlackEigenvaluesImpl(
+template void
+HermitianPsdConstraint<Quaternions>::GetWeightedSlackEigenvaluesImpl(
     const Ref& y, double c_weight, WeightedSlackEigenvalues* p);
 
 template <>
@@ -132,7 +134,8 @@ bool HermitianPsdConstraint<Octonions>::TakeStepImpl(const StepOptions& opt) {
 
 template <>
 void HermitianPsdConstraint<Octonions>::PrepareStepImpl(const StepOptions& opt,
-                                                        const Ref& y, StepInfo* info) {
+                                                        const Ref& y,
+                                                        StepInfo* info) {
   using T = Octonions;
   auto& minus_s_local = minus_s;
   ComputeNegativeSlack(opt.c_weight, y, &minus_s_local);
@@ -234,18 +237,23 @@ void HermitianPsdConstraint<T>::ConstructSchurComplementSystemImpl(
 template void HermitianPsdConstraint<Real>::ConstructSchurComplementSystemImpl(
     bool initialize, SchurComplementSystem* sys);
 
-template void HermitianPsdConstraint<Complex>::ConstructSchurComplementSystemImpl(
+template void
+HermitianPsdConstraint<Complex>::ConstructSchurComplementSystemImpl(
     bool initialize, SchurComplementSystem* sys);
 
-template void HermitianPsdConstraint<Quaternions>::ConstructSchurComplementSystemImpl(
+template void
+HermitianPsdConstraint<Quaternions>::ConstructSchurComplementSystemImpl(
     bool initialize, SchurComplementSystem* sys);
 
-template void HermitianPsdConstraint<Octonions>::ConstructSchurComplementSystemImpl(
+template void
+HermitianPsdConstraint<Octonions>::ConstructSchurComplementSystemImpl(
     bool initialize, SchurComplementSystem* sys);
 
 template <typename H>
-CONEX_STATUS HermitianPsdConstraint<H>::UpdateLinearOperatorImpl(
-    double val, int var, int r, int c, int dim) {
+CONEX_STATUS HermitianPsdConstraint<H>::UpdateLinearOperatorImpl(double val,
+                                                                 int var, int r,
+                                                                 int c,
+                                                                 int dim) {
   CONEX_RETURN_ON_FAIL(dim < H::HyperComplexDimension(),
                        "Complex dimension out of bounds.");
   CONEX_RETURN_ON_FAIL(r < rank_ && c < rank_,
@@ -273,14 +281,18 @@ template CONEX_STATUS HermitianPsdConstraint<Complex>::UpdateLinearOperatorImpl(
     double val, int var, int r, int c, int dim);
 template CONEX_STATUS HermitianPsdConstraint<Real>::UpdateLinearOperatorImpl(
     double val, int var, int r, int c, int dim);
-template CONEX_STATUS HermitianPsdConstraint<Quaternions>::UpdateLinearOperatorImpl(
-    double val, int var, int r, int c, int dim);
-template CONEX_STATUS HermitianPsdConstraint<Octonions>::UpdateLinearOperatorImpl(
-    double val, int var, int r, int c, int dim);
+template CONEX_STATUS
+HermitianPsdConstraint<Quaternions>::UpdateLinearOperatorImpl(double val,
+                                                              int var, int r,
+                                                              int c, int dim);
+template CONEX_STATUS
+HermitianPsdConstraint<Octonions>::UpdateLinearOperatorImpl(double val, int var,
+                                                            int r, int c,
+                                                            int dim);
 
 template <typename H>
-CONEX_STATUS HermitianPsdConstraint<H>::UpdateAffineTermImpl(
-    double val, int r, int c, int dim) {
+CONEX_STATUS HermitianPsdConstraint<H>::UpdateAffineTermImpl(double val, int r,
+                                                             int c, int dim) {
   CONEX_RETURN_ON_FAIL(dim < H::HyperComplexDimension(),
                        "Complex dimension out of bounds.");
   CONEX_RETURN_ON_FAIL(r < rank_ && c < rank_,

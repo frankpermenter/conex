@@ -96,8 +96,8 @@ void PsdConstraint::SetIdentityImpl() {
   workspace_.W.diagonal().setConstant(1);
 }
 
-void PsdConstraint::GetWeightedSlackEigenvaluesImpl(const Ref& y,
-                                                 double c_weight, WeightedSlackEigenvalues* p) {
+void PsdConstraint::GetWeightedSlackEigenvaluesImpl(
+    const Ref& y, double c_weight, WeightedSlackEigenvalues* p) {
   auto* workspace = &workspace_;
   auto& minus_s = workspace->temp_1;
   auto& WSWS = workspace->temp_1;

@@ -17,54 +17,13 @@ class Constraint : public ConstraintBase {
  public:
   virtual ~Constraint() = default;
 
-  virtual void do_schur_complement(bool initialize,
-                                   SchurComplementSystem* sys) = 0;
-  virtual void do_set_identity() = 0;
-  virtual void do_weighted_slack_eigenvalues(const Ref& y, double c_weight,
-                                             WeightedSlackEigenvalues* p) = 0;
-  virtual Workspace do_get_workspace() = 0;
-  virtual void do_prepare_step(const StepOptions& opt, const Ref& y,
-                               StepInfo* info) = 0;
-  virtual void do_get_dual_variable(double*) = 0;
-  virtual bool do_take_step(const StepOptions&) = 0;
-  virtual int do_dual_variable_size() = 0;
-  virtual int do_number_of_variables() const = 0;
-
-  virtual void do_apply_rescaling(Eigen::Ref<Eigen::MatrixXd> ArW,
-                                  double* inner_product_of_c_and_rW) {
-    CONEX_DEMAND(false, "Constraint does not support rescaling.");
-  }
-
-  virtual CONEX_STATUS do_update_linear_operator(double val, int var, int row,
-                                                 int col,
-                                                 int hyper_complex_dim) {
-    CONEX_RETURN_ON_FAIL(
-        false, "Constraint does not support updates of linear operator.");
-  }
-
-  virtual CONEX_STATUS do_update_affine_term(double val, int row, int col,
-                                             int hyper_complex_dim) {
-    CONEX_RETURN_ON_FAIL(false,
-                         "Constraint does not support updates of affine term.");
-  }
-
-  virtual bool do_perform_line_search(
-      const LineSearchParameters& params,
-      const Eigen::Ref<const Eigen::MatrixXd>& y0,
-      const Eigen::Ref<const Eigen::MatrixXd>& y1, LineSearchOutput* output) {
-    CONEX_RETURN_ON_FAIL(false, "Constraint does not support line search.");
-  }
-
-  virtual int do_rank() const = 0;
-
   void BuildSchurComplementSystem(bool initialize, SchurComplementSystem* sys) {
     do_schur_complement(initialize, sys);
   }
 
   void SetSlackIdentity() { do_set_identity(); }
 
-  void PrepareNewtonStep(const StepOptions& opt, const Ref& y,
-                         StepInfo* info) {
+  void PrepareNewtonStep(const StepOptions& opt, const Ref& y, StepInfo* info) {
     do_prepare_step(opt, y, info);
   }
 
@@ -106,6 +65,47 @@ class Constraint : public ConstraintBase {
                      LineSearchOutput* output) {
     return do_perform_line_search(params, y0, y1, output);
   }
+
+ private:
+  virtual void do_schur_complement(bool initialize,
+                                   SchurComplementSystem* sys) = 0;
+  virtual void do_set_identity() = 0;
+  virtual void do_weighted_slack_eigenvalues(const Ref& y, double c_weight,
+                                             WeightedSlackEigenvalues* p) = 0;
+  virtual Workspace do_get_workspace() = 0;
+  virtual void do_prepare_step(const StepOptions& opt, const Ref& y,
+                               StepInfo* info) = 0;
+  virtual void do_get_dual_variable(double*) = 0;
+  virtual bool do_take_step(const StepOptions&) = 0;
+  virtual int do_dual_variable_size() = 0;
+  virtual int do_number_of_variables() const = 0;
+
+  virtual void do_apply_rescaling(Eigen::Ref<Eigen::MatrixXd> ArW,
+                                  double* inner_product_of_c_and_rW) {
+    CONEX_DEMAND(false, "Constraint does not support rescaling.");
+  }
+
+  virtual CONEX_STATUS do_update_linear_operator(double val, int var, int row,
+                                                 int col,
+                                                 int hyper_complex_dim) {
+    CONEX_RETURN_ON_FAIL(
+        false, "Constraint does not support updates of linear operator.");
+  }
+
+  virtual CONEX_STATUS do_update_affine_term(double val, int row, int col,
+                                             int hyper_complex_dim) {
+    CONEX_RETURN_ON_FAIL(false,
+                         "Constraint does not support updates of affine term.");
+  }
+
+  virtual bool do_perform_line_search(
+      const LineSearchParameters& params,
+      const Eigen::Ref<const Eigen::MatrixXd>& y0,
+      const Eigen::Ref<const Eigen::MatrixXd>& y1, LineSearchOutput* output) {
+    CONEX_RETURN_ON_FAIL(false, "Constraint does not support line search.");
+  }
+
+  virtual int do_rank() const = 0;
 };
 
 class SupernodalAssemblerConstraint : public SupernodalAssemblerBase {
