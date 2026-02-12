@@ -74,7 +74,7 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x_in,
       x.A_, x.b_, variables, equality_constraints_.dual_variables.back());
 
   std::unique_ptr<Constraint> pointer =
-      std::make_unique<ConstraintAdapter<EqualityConstraints>>(std::move(x));
+      std::make_unique<EqualityConstraints>(std::move(x));
   CONEX_CHECK(pointer->number_of_variables() ==
               static_cast<int>(variables.size()));
   constraint_storage_.emplace_back(std::move(pointer));

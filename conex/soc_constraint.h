@@ -1,4 +1,4 @@
-#include "conex/constraint_interface.h"
+#include "conex/constraint.h"
 #include "conex/error_codes.h"
 #include "conex/newton_step.h"
 #include "conex/workspace_soc.h"
@@ -7,7 +7,7 @@ namespace conex {
 
 using RefType = Eigen::Ref<const Eigen::MatrixXd>;
 using NonConstRefType = Eigen::Ref<Eigen::MatrixXd>;
-class SOCConstraint : public ConstraintBase {
+class SOCConstraint : public Constraint {
   using StorageType = DenseMatrix;
 
  public:
@@ -55,6 +55,59 @@ class SOCConstraint : public ConstraintBase {
 
   DenseMatrix constraint_matrix() const { return constraint_matrix_; }
   DenseMatrix affine_term() const { return constraint_affine_; }
+
+  void do_schur_complement(bool initialize,
+                           SchurComplementSystem* sys) override {
+    ConstructSchurComplementSystem(this, initialize, sys);
+  }
+
+  void do_set_identity() override { SetIdentity(this); }
+
+  void do_weighted_slack_eigenvalues(const Ref& y, double c_weight,
+                                     WeightedSlackEigenvalues* p) override {
+    GetWeightedSlackEigenvalues(this, y, c_weight, p);
+  }
+
+  Workspace do_get_workspace() override { return Workspace(workspace()); }
+
+  void do_prepare_step(const StepOptions& opt, const Ref& y,
+                       StepInfo* info) override {
+    PrepareStep(this, opt, y, info);
+  }
+
+  void do_get_dual_variable(double* var) override {
+    memcpy(static_cast<void*>(var), static_cast<void*>(workspace()->W.data()),
+           sizeof(double) * do_dual_variable_size());
+  }
+
+  bool do_take_step(const StepOptions& opts) override {
+    return TakeStep(this, opts);
+  }
+
+  int do_dual_variable_size() override {
+    return workspace()->W.rows() * workspace()->W.cols();
+  }
+
+  int do_number_of_variables() const override { return number_of_variables(); }
+
+  CONEX_STATUS do_update_linear_operator(double val, int var, int row, int col,
+                                         int hyper_complex_dim) override {
+    return UpdateLinearOperator(this, val, var, row, col, hyper_complex_dim);
+  }
+
+  CONEX_STATUS do_update_affine_term(double val, int row, int col,
+                                     int hyper_complex_dim) override {
+    return UpdateAffineTerm(this, val, row, col, hyper_complex_dim);
+  }
+
+  bool do_perform_line_search(const LineSearchParameters& params,
+                              const Eigen::Ref<const Eigen::MatrixXd>& y0,
+                              const Eigen::Ref<const Eigen::MatrixXd>& y1,
+                              LineSearchOutput* output) override {
+    return PerformLineSearch(this, params, y0, y1, output);
+  }
+
+  int do_rank() const override { return Rank(*this); }
 
  private:
   void ComputeNegativeSlack(double inv_sqrt_mu, const RefType& y,

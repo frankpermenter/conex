@@ -1,5 +1,5 @@
 #pragma once
-#include "conex/constraint_interface.h"
+#include "conex/constraint.h"
 #include "newton_step.h"
 #include "workspace.h"
 #include <Eigen/Dense>
@@ -36,7 +36,7 @@ struct WorkspaceDensePSD {
   int n_;
 };
 
-class PsdConstraint : public ConstraintBase {
+class PsdConstraint : public Constraint {
  public:
   friend void SetIdentity(PsdConstraint* o);
   friend int Rank(const PsdConstraint& o) { return o.workspace_.n_; };
@@ -49,6 +49,40 @@ class PsdConstraint : public ConstraintBase {
                                           double c_weight,
                                           WeightedSlackEigenvalues* p);
   int number_of_variables() const override { return num_dual_constraints_; }
+
+  virtual void do_schur_complement(bool initialize,
+                                   SchurComplementSystem* sys) override = 0;
+
+  void do_set_identity() override { SetIdentity(this); }
+
+  void do_weighted_slack_eigenvalues(const Ref& y, double c_weight,
+                                     WeightedSlackEigenvalues* p) override {
+    GetWeightedSlackEigenvalues(this, y, c_weight, p);
+  }
+
+  Workspace do_get_workspace() override { return Workspace(workspace()); }
+
+  void do_prepare_step(const StepOptions& opt, const Ref& y,
+                       StepInfo* info) override {
+    PrepareStep(this, opt, y, info);
+  }
+
+  void do_get_dual_variable(double* var) override {
+    memcpy(static_cast<void*>(var), static_cast<void*>(workspace()->W.data()),
+           sizeof(double) * do_dual_variable_size());
+  }
+
+  bool do_take_step(const StepOptions& opts) override {
+    return TakeStep(this, opts);
+  }
+
+  int do_dual_variable_size() override {
+    return workspace()->W.rows() * workspace()->W.cols();
+  }
+
+  int do_number_of_variables() const override { return number_of_variables(); }
+
+  int do_rank() const override { return Rank(*this); }
 
  protected:
   PsdConstraint(int n, int m) : workspace_(n), num_dual_constraints_{m} {}

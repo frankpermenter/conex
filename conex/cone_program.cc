@@ -45,7 +45,7 @@ bool SupportsLineSearch(const std::vector<SupernodalAssemblerConstraint*>& c) {
 template <typename T>
 void SetIdentity(std::vector<T*>* c) {
   for (auto& ci : *c) {
-    SetIdentity(ci->constraint());
+    ConstraintSetIdentity(ci->constraint());
   }
 }
 
@@ -58,8 +58,9 @@ void GetWeightedSlackEigenvalues(ConstraintManager* constraints, const Ref& y,
   int i = 0;
   for (auto& ci : constraints->cone_inequalities()) {
     WeightedSlackEigenvalues temp;
-    GetWeightedSlackEigenvalues(ci->constraint(), ci->PrimalSubvector(y),
-                                c_weight, &temp);
+    ConstraintGetWeightedSlackEigenvalues(ci->constraint(),
+                                          ci->PrimalSubvector(y), c_weight,
+                                          &temp);
 
     if (p->lambda_max < temp.lambda_max) {
       p->lambda_max = temp.lambda_max;
@@ -78,7 +79,7 @@ template <typename T>
 int Rank(const std::vector<T*>& c) {
   int rank = 0;
   for (const auto& ci : c) {
-    rank += Rank(*ci->constraint());
+    rank += ConstraintRank(*ci->constraint());
   }
   return rank;
 }
@@ -88,7 +89,7 @@ void ConstructSchurComplementSystem(std::vector<T*>* c, bool initialize,
                                     SchurComplementSystem* sys) {
   bool init = initialize;
   for (auto& ci : *c) {
-    ConstructSchurComplementSystem(ci, init, sys);
+    ConstraintConstructSchurComplementSystem(ci, init, sys);
     init = false;
   }
 }
@@ -123,7 +124,8 @@ LineSearchOutput ComputeMuFromLineSearch(ConstraintManager& constraints,
     Ref z1(ysegment1.data(), ysegment1.rows(), 1);
     Ref z2(ysegment2.data(), ysegment2.rows(), 1);
     bool failure =
-        PerformLineSearch(ci->constraint(), params, z1, z2, &output_i);
+        ConstraintPerformLineSearch(ci->constraint(), params, z1, z2,
+                                    &output_i);
     output.dt_squared_norm += output_i.dt_squared_norm;
     output.d0_squared_norm += output_i.d0_squared_norm;
     output.d0_dot_dt += output_i.d0_dot_dt;
@@ -454,7 +456,8 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
       sys.AW.setZero();
       sys.inner_product_of_w_and_c = 0;
       for (auto& ci : constraints) {
-        ApplyRescaling(ci->constraint(), sys.AW, &sys.inner_product_of_w_and_c);
+        ConstraintApplyRescaling(ci->constraint(), sys.AW,
+                                 &sys.inner_product_of_w_and_c);
       }
 
       info = IterationHelper(update_mu, config, force_feasible, sys, b_scaling,
@@ -796,7 +799,7 @@ int Program::UpdateLinearOperatorOfConstraint(int i, double value, int variable,
   CONEX_RETURN_ON_FAIL(
       i < static_cast<int>(kkt_system_manager_.cone_inequalities().size()),
       "Invalid Constraint");
-  return UpdateLinearOperator(
+  return ConstraintUpdateLinearOperator(
       kkt_system_manager_.cone_inequalities().at(i)->constraint(), value,
       variable, row, col, hyper_complex_dim);
 }
@@ -806,9 +809,9 @@ int Program::UpdateAffineTermOfConstraint(int i, double value, int row, int col,
   CONEX_RETURN_ON_FAIL(
       i < static_cast<int>(kkt_system_manager_.cone_inequalities().size()),
       "Invalid Constraint");
-  return UpdateAffineTerm(
-      kkt_system_manager_.cone_inequalities().at(i)->constraint(), value, row,
-      col, hyper_complex_dim);
+  return ConstraintUpdateAffineTerm(
+      kkt_system_manager_.cone_inequalities().at(i)->constraint(), value,
+      row, col, hyper_complex_dim);
 }
 
 void Program::InitializeWorkspace() {
@@ -853,8 +856,8 @@ void PrepareStep(ConstraintManager* kkt,
   info->normsqrd = 0;
   info->norminfd = -1;
   for (auto& ci : kkt->cone_inequalities()) {
-    PrepareStep(ci->constraint(), newton_step_parameters,
-                ci->PrimalSubvector(y), &info_i);
+    ConstraintPrepareStep(ci->constraint(), newton_step_parameters,
+                          ci->PrimalSubvector(y), &info_i);
     if (info_i.norminfd > info->norminfd) {
       info->norminfd = info_i.norminfd;
     }
@@ -888,7 +891,7 @@ void AssembleSchurComplementResiduals(const ConstraintManager& kkt,
 void TakeStep(std::vector<SupernodalAssemblerConstraint*>* constraints,
               const StepOptions& newton_step_parameters) {
   for (auto& c : *constraints) {
-    TakeStep(c->constraint(), newton_step_parameters);
+    ConstraintTakeStep(c->constraint(), newton_step_parameters);
   }
 }
 

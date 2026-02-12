@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include "conex/constraint_interface.h"
+#include "conex/constraint.h"
 #include "conex/error_checking_macros.h"
 #include "conex/newton_step.h"
 #include "conex/supernodal_assembler_base.h"
@@ -21,7 +21,7 @@ struct WorkspaceEqualityConstraints {
   Eigen::Map<DenseMatrix, Eigen::Aligned> W{NULL, 0, 0};
 };
 
-class EqualityConstraints : public ConstraintBase {
+class EqualityConstraints : public Constraint {
  public:
   void accept(Visitor* v) const override { v->visit(*this); }
   EqualityConstraints(){};
@@ -51,7 +51,6 @@ class EqualityConstraints : public ConstraintBase {
                                              bool initialize,
                                              SchurComplementSystem* sys_);
 
-  int number_of_variables() { return 0; }
   WorkspaceEqualityConstraints workspace_;
   WorkspaceEqualityConstraints* workspace() { return &workspace_; }
   friend bool PerformLineSearch(EqualityConstraints*,
@@ -60,6 +59,49 @@ class EqualityConstraints : public ConstraintBase {
     bool failure = false;
     return failure;
   }
+
+  void do_schur_complement(bool initialize,
+                           SchurComplementSystem* sys) override {
+    ConstructSchurComplementSystem(this, initialize, sys);
+  }
+
+  void do_set_identity() override { SetIdentity(this); }
+
+  void do_weighted_slack_eigenvalues(const Ref& y, double c_weight,
+                                     WeightedSlackEigenvalues* p) override {
+    GetWeightedSlackEigenvalues(this, y, c_weight, p);
+  }
+
+  Workspace do_get_workspace() override { return Workspace(workspace()); }
+
+  void do_prepare_step(const StepOptions& opt, const Ref& y,
+                       StepInfo* info) override {
+    PrepareStep(this, opt, y, info);
+  }
+
+  void do_get_dual_variable(double* var) override {
+    memcpy(static_cast<void*>(var), static_cast<void*>(workspace()->W.data()),
+           sizeof(double) * do_dual_variable_size());
+  }
+
+  bool do_take_step(const StepOptions& opts) override {
+    return TakeStep(this, opts);
+  }
+
+  int do_dual_variable_size() override {
+    return workspace()->W.rows() * workspace()->W.cols();
+  }
+
+  int do_number_of_variables() const override { return number_of_variables(); }
+
+  bool do_perform_line_search(const LineSearchParameters& params,
+                              const Eigen::Ref<const Eigen::MatrixXd>& y0,
+                              const Eigen::Ref<const Eigen::MatrixXd>& y1,
+                              LineSearchOutput* output) override {
+    return false;
+  }
+
+  int do_rank() const override { return Rank(*this); }
 };
 
 class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {

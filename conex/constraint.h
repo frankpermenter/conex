@@ -98,32 +98,33 @@ class Constraint : public ConstraintBase {
 
   virtual int do_rank() const = 0;
 
-  friend void ConstructSchurComplementSystem(Constraint* o, bool initialize,
-                                             SchurComplementSystem* sys) {
+  friend void ConstraintConstructSchurComplementSystem(
+      Constraint* o, bool initialize, SchurComplementSystem* sys) {
     o->do_schur_complement(initialize, sys);
   }
 
-  friend void SetIdentity(Constraint* o) { o->do_set_identity(); }
+  friend void ConstraintSetIdentity(Constraint* o) { o->do_set_identity(); }
 
-  friend void PrepareStep(Constraint* o, const StepOptions& opt, const Ref& y,
-                          StepInfo* info) {
+  friend void ConstraintPrepareStep(Constraint* o, const StepOptions& opt,
+                                    const Ref& y, StepInfo* info) {
     o->do_prepare_step(opt, y, info);
   }
 
-  friend void GetWeightedSlackEigenvalues(Constraint* o, const Ref& y,
-                                          double c_weight,
-                                          WeightedSlackEigenvalues* p) {
+  friend void ConstraintGetWeightedSlackEigenvalues(
+      Constraint* o, const Ref& y, double c_weight,
+      WeightedSlackEigenvalues* p) {
     o->do_weighted_slack_eigenvalues(y, c_weight, p);
   }
 
-  friend int Rank(const Constraint& o) { return o.do_rank(); }
+  friend int ConstraintRank(const Constraint& o) { return o.do_rank(); }
 
   Workspace workspace() { return do_get_workspace(); }
 
   void get_dual_variable(double* v) { return do_get_dual_variable(v); }
 
-  friend void ApplyRescaling(Constraint* o, Eigen::Ref<Eigen::MatrixXd> ArW,
-                             double* inner_product_of_c_and_rW) {
+  friend void ConstraintApplyRescaling(
+      Constraint* o, Eigen::Ref<Eigen::MatrixXd> ArW,
+      double* inner_product_of_c_and_rW) {
     o->do_apply_rescaling(ArW, inner_product_of_c_and_rW);
   }
 
@@ -131,27 +132,26 @@ class Constraint : public ConstraintBase {
 
   int number_of_variables() const override { return do_number_of_variables(); }
 
-  friend CONEX_STATUS UpdateLinearOperator(Constraint* o, double val, int var,
-                                           int row, int col,
-                                           int hyper_complex_dim) {
+  friend CONEX_STATUS ConstraintUpdateLinearOperator(
+      Constraint* o, double val, int var, int row, int col,
+      int hyper_complex_dim) {
     return o->do_update_linear_operator(val, var, row, col,
                                         hyper_complex_dim);
   }
 
-  friend CONEX_STATUS UpdateAffineTerm(Constraint* o, double val, int row,
-                                       int col, int hyper_complex_dim) {
+  friend CONEX_STATUS ConstraintUpdateAffineTerm(
+      Constraint* o, double val, int row, int col, int hyper_complex_dim) {
     return o->do_update_affine_term(val, row, col, hyper_complex_dim);
   }
 
-  friend bool TakeStep(Constraint* o, const StepOptions& opts) {
+  friend bool ConstraintTakeStep(Constraint* o, const StepOptions& opts) {
     return o->do_take_step(opts);
   }
 
-  friend bool PerformLineSearch(Constraint* o,
-                                const LineSearchParameters& params,
-                                const Eigen::Ref<const Eigen::MatrixXd>& y0,
-                                const Eigen::Ref<const Eigen::MatrixXd>& y1,
-                                LineSearchOutput* output) {
+  friend bool ConstraintPerformLineSearch(
+      Constraint* o, const LineSearchParameters& params,
+      const Eigen::Ref<const Eigen::MatrixXd>& y0,
+      const Eigen::Ref<const Eigen::MatrixXd>& y1, LineSearchOutput* output) {
     return o->do_perform_line_search(params, y0, y1, output);
   }
 };
@@ -252,7 +252,8 @@ class SupernodalAssemblerConstraint : public SupernodalAssemblerBase {
     }
 
     if (workspace_) {
-      ConstructSchurComplementSystem(workspace_, true, &submatrix_data_);
+      ConstraintConstructSchurComplementSystem(workspace_, true,
+                                               &submatrix_data_);
     } else {
       throw std::runtime_error("Supernodal assembler data source is not set.");
     }

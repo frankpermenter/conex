@@ -42,6 +42,11 @@ class DenseLMIConstraint final : public MatrixLMIConstraint {
 
   void accept(Visitor* v) const override { v->visit(*this); }
 
+  void do_schur_complement(bool initialize,
+                           SchurComplementSystem* sys) override {
+    ConstructSchurComplementSystem(this, initialize, sys);
+  }
+
  private:
   void ComputeNegativeSlack(double k, const Ref& y, Ref* s) override;
 };
