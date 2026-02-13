@@ -9,7 +9,10 @@
 #include <pybind11/pybind11.h>
 
 #include "../../conex.h"
-#include "../../../conex/cone_program.h"
+#include "../../../conex/clique_ordering.h"
+#include "../../../conex/kkt_tree_solver.h"
+#include "../../../conex/static_subsystem.h"
+#include "../../../conex/workspace.h"
 
 namespace py = pybind11;
 
@@ -102,6 +105,33 @@ py::array_t<double> ToPyArray(const Eigen::VectorXd& v) {
 }
 
 using RowSparseMatrix = Eigen::SparseMatrix<double, Eigen::RowMajor>;
+
+class StaticMatrixAssembler final : public conex::SupernodalAssemblerBase {
+ public:
+  StaticMatrixAssembler(const std::vector<int>& variables,
+                        const Eigen::MatrixXd& local_matrix)
+      : conex::SupernodalAssemblerBase(variables), local_matrix_(local_matrix) {
+    if (local_matrix_.rows() != local_matrix_.cols()) {
+      throw std::runtime_error("Local matrix must be square.");
+    }
+    if (local_matrix_.rows() != static_cast<int>(variables.size())) {
+      throw std::runtime_error("Local matrix size must match variables.");
+    }
+    conex::Workspace workspace(&submatrix_data_);
+    memory_.resize(SizeOf(workspace));
+    Initialize(&workspace, memory_.data());
+  }
+
+  void SetDenseData() override {
+    submatrix_data_.G.setZero();
+    submatrix_data_.G.triangularView<Eigen::Lower>() =
+        local_matrix_.triangularView<Eigen::Lower>();
+  }
+
+ private:
+  Eigen::MatrixXd local_matrix_;
+  Eigen::VectorXd memory_;
+};
 
 std::vector<int> RowSupport(const RowSparseMatrix& A, int row) {
   std::vector<int> support;
@@ -217,8 +247,6 @@ Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
   if (A.rows() != b.rows()) {
     throw std::runtime_error("A and b dimension mismatch.");
   }
-  std::vector<std::vector<int>> cliques;
-  std::vector<std::vector<int>> rows_per_clique;
   std::map<std::vector<int>, std::vector<int>> grouped_rows;
   for (int row = 0; row < A.rows(); ++row) {
     auto support = RowSupport(A, row);
@@ -226,71 +254,102 @@ Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
       grouped_rows[support].push_back(row);
     }
   }
-  for (const auto& entry : grouped_rows) {
-    cliques.push_back(entry.first);
-    rows_per_clique.push_back(entry.second);
+  std::vector<std::vector<int>> cliques;
+  std::vector<Eigen::MatrixXd> local_blocks;
+  cliques.reserve(grouped_rows.size() + static_cast<size_t>(A.cols()));
+  local_blocks.reserve(grouped_rows.size() + static_cast<size_t>(A.cols()));
+
+  std::vector<char> variable_covered(static_cast<size_t>(A.cols()), 0);
+  const bool single_dense_clique =
+      grouped_rows.size() == 1 &&
+      grouped_rows.begin()->first.size() == static_cast<size_t>(A.cols()) &&
+      grouped_rows.begin()->second.size() == static_cast<size_t>(A.rows());
+  if (single_dense_clique) {
+    const auto& vars = grouped_rows.begin()->first;
+    cliques.push_back(vars);
+    Eigen::SparseMatrix<double> A_col_major = A;
+    local_blocks.push_back(Eigen::MatrixXd(A_col_major.transpose() * A_col_major));
+    std::fill(variable_covered.begin(), variable_covered.end(), 1);
+  } else {
+    for (const auto& entry : grouped_rows) {
+      const auto& vars = entry.first;
+      const auto& rows = entry.second;
+      Eigen::MatrixXd block(vars.size(), vars.size());
+      block.setZero();
+      std::vector<int> column_to_local(A.cols(), -1);
+      for (size_t i = 0; i < vars.size(); ++i) {
+        column_to_local.at(vars.at(i)) = static_cast<int>(i);
+        variable_covered.at(static_cast<size_t>(vars.at(i))) = 1;
+      }
+      for (int row : rows) {
+        std::vector<std::pair<int, double>> local_entries;
+        for (RowSparseMatrix::InnerIterator it(A, row); it; ++it) {
+          const int local = column_to_local.at(it.col());
+          if (local >= 0) {
+            local_entries.emplace_back(local, it.value());
+          }
+        }
+        for (size_t i = 0; i < local_entries.size(); ++i) {
+          for (size_t j = 0; j <= i; ++j) {
+            const int r = local_entries.at(i).first;
+            const int c = local_entries.at(j).first;
+            const double v =
+                local_entries.at(i).second * local_entries.at(j).second;
+            block(r, c) += v;
+            if (r != c) {
+              block(c, r) += v;
+            }
+          }
+        }
+      }
+      cliques.push_back(vars);
+      local_blocks.push_back(std::move(block));
+    }
   }
-  // Ensure every variable appears in at least one singleton clique so post-order
-  // labeling always defines a full permutation over variables.
+
+  // Include uncovered variables with tiny ridge to keep the system SPD.
   for (int col = 0; col < A.cols(); ++col) {
-    cliques.push_back({col});
-    rows_per_clique.push_back({});
+    if (!variable_covered.at(static_cast<size_t>(col))) {
+      cliques.push_back({col});
+      Eigen::MatrixXd block(1, 1);
+      block(0, 0) = 1e-12;
+      local_blocks.push_back(std::move(block));
+    }
   }
   if (cliques.empty()) {
     throw std::runtime_error("No cliques constructed from A.");
   }
+  conex::CliqueTree clique_tree = conex::MakeCliqueTree(cliques);
 
-  conex::Program prog(A.cols());
-  for (size_t k = 0; k < cliques.size(); ++k) {
-    const auto& vars = cliques.at(k);
-    const auto& rows = rows_per_clique.at(k);
-    Eigen::MatrixXd block(vars.size(), vars.size());
-    block.setZero();
-    std::vector<int> column_to_local(A.cols(), -1);
-    for (size_t i = 0; i < vars.size(); ++i) {
-      column_to_local.at(vars.at(i)) = static_cast<int>(i);
-    }
-    for (int row : rows) {
-      std::vector<std::pair<int, double>> local_entries;
-      for (RowSparseMatrix::InnerIterator it(A, row); it; ++it) {
-        int local = column_to_local.at(it.col());
-        if (local >= 0) {
-          local_entries.emplace_back(local, it.value());
-        }
-      }
-      for (size_t i = 0; i < local_entries.size(); ++i) {
-        for (size_t j = 0; j <= i; ++j) {
-          int r = local_entries.at(i).first;
-          int c = local_entries.at(j).first;
-          double v = local_entries.at(i).second * local_entries.at(j).second;
-          block(r, c) += v;
-          if (r != c) {
-            block(c, r) += v;
-          }
-        }
-      }
-    }
-    if (vars.empty()) {
-      continue;
-    }
-    // Objective is 0.5*x'Qx + c'x. For ||Ax-b||^2, use Q = 2*A'A.
-    prog.AddQuadraticCost(2.0 * block, vars);
+  conex::SymmetricLinearSystemTreeSolver tree_solver;
+  tree_solver.SetNumThreads(single_dense_clique ? 1 : std::max(1, num_threads));
+  tree_solver.EnableAutoUpdateAtAssemble(true);
+  tree_solver.SetFactorizationMode(true);
+
+  std::vector<std::unique_ptr<StaticMatrixAssembler>> assemblers;
+  std::vector<std::unique_ptr<conex::KKTAssemblerToSubsystemAdapter>> adapters;
+  assemblers.reserve(cliques.size());
+  adapters.reserve(cliques.size());
+
+  for (size_t i = 0; i < cliques.size(); ++i) {
+    assemblers.emplace_back(std::make_unique<StaticMatrixAssembler>(
+        cliques.at(i), 2.0 * local_blocks.at(i)));
+    auto adapter = std::make_unique<conex::KKTAssemblerToSubsystemAdapter>(
+        assemblers.back().get());
+    auto* subsystem =
+        adapter->create_subsystem(conex::SubsystemType::kPositiveDefinite);
+    tree_solver.AddSubsystem(subsystem);
+    tree_solver.push_back(std::move(adapter));
   }
-
-  Eigen::VectorXd rhs = A.transpose() * b;
-  prog.AddLinearCost((-2.0 * rhs).eval());
-
-  conex::SolverConfiguration config;
-  config.kkt_solver = conex::CONEX_KKT_SOLVER_TREE;
-  config.num_threads = num_threads;
-  config.enable_line_search = 1;
-  config.enable_rescaling = 0;
-  config.verbose = 0;
-  Eigen::VectorXd x(A.cols());
-  if (!Solve(prog, config, x.data())) {
-    throw std::runtime_error("Conex tree least-squares solve failed.");
+  tree_solver.Finalize(clique_tree);
+  tree_solver.Assemble();
+  if (!tree_solver.Factor()) {
+    throw std::runtime_error("Conex tree least-squares factorization failed.");
   }
-  return x;
+  Eigen::VectorXd rhs = 2.0 * (A.transpose() * b);
+  Eigen::MatrixXd rhs_mat(rhs.rows(), 1);
+  rhs_mat.col(0) = rhs;
+  return tree_solver.Solve(rhs_mat, true).col(0);
 }
 
 }  // namespace
