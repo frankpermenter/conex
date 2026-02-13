@@ -236,12 +236,7 @@ class KKTSubsystem : public KKTSubsystemBase {
                                                  separators_.size());
     }
   }
-  size_t RequiredArenaBytes() const override {
-    const size_t n1 = supernodes_.size();
-    const size_t n2 = separators_.size();
-    const size_t data_bytes = (n1 * n1 + n2 * n1 + n2 * n2) * sizeof(double);
-    return data_bytes + 3 * (EIGEN_MAX_ALIGN_BYTES - 1);
-  }
+  size_t RequiredArenaBytes() const override;
   void BindArenaMemory(double* ptr, size_t bytes) override;
 
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override {

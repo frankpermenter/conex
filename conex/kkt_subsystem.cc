@@ -266,30 +266,63 @@ void T::ReserveSolveWorkspace(int rhs_cols) {
   solve_workspace2_.resize(supernode_rows, solve_workspace_cols_);
 }
 
+namespace {
+size_t AlignUp(size_t value, size_t alignment) {
+  return ((value + alignment - 1) / alignment) * alignment;
+}
+
+struct ArenaLayout {
+  size_t supernode_offset_bytes = 0;
+  size_t separator_rows_offset_bytes = 0;
+  size_t separator_schur_offset_bytes = 0;
+  size_t total_bytes = 0;
+};
+
+ArenaLayout ComputeArenaLayout(size_t n1, size_t n2) {
+  constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
+  ArenaLayout layout;
+  size_t cursor = 0;
+
+  layout.supernode_offset_bytes = AlignUp(cursor, kAlign);
+  cursor = layout.supernode_offset_bytes + n1 * n1 * sizeof(double);
+
+  layout.separator_rows_offset_bytes = AlignUp(cursor, kAlign);
+  cursor = layout.separator_rows_offset_bytes + n2 * n1 * sizeof(double);
+
+  layout.separator_schur_offset_bytes = AlignUp(cursor, kAlign);
+  cursor = layout.separator_schur_offset_bytes + n2 * n2 * sizeof(double);
+
+  layout.total_bytes = cursor;
+  return layout;
+}
+}  // namespace
+
+size_t KKTSubsystem::RequiredArenaBytes() const {
+  return ComputeArenaLayout(supernodes_.size(), separators_.size()).total_bytes;
+}
+
 void KKTSubsystem::BindArenaMemory(double* ptr, size_t bytes) {
   const size_t n1 = supernodes_.size();
   const size_t n2 = separators_.size();
-  const size_t required_bytes = RequiredArenaBytes();
+  const auto layout = ComputeArenaLayout(n1, n2);
+  const size_t required_bytes = layout.total_bytes;
   CONEX_DEMAND(bytes >= required_bytes, "Insufficient arena memory provided.");
   using_arena_memory_ = true;
 
-  auto align_ptr = [](double* p) -> double* {
-    std::uintptr_t u = reinterpret_cast<std::uintptr_t>(p);
-    const std::uintptr_t a = static_cast<std::uintptr_t>(EIGEN_MAX_ALIGN_BYTES);
-    u = (u + (a - 1)) & ~(a - 1);
-    return reinterpret_cast<double*>(u);
-  };
+  char* base = reinterpret_cast<char*>(ptr);
+  auto* supernode_ptr =
+      reinterpret_cast<double*>(base + layout.supernode_offset_bytes);
+  auto* separator_rows_ptr =
+      reinterpret_cast<double*>(base + layout.separator_rows_offset_bytes);
+  auto* separator_schur_ptr =
+      reinterpret_cast<double*>(base + layout.separator_schur_offset_bytes);
 
-  double* cursor = align_ptr(ptr);
-  supernode_submatrix_map_.emplace(cursor, static_cast<int>(n1),
+  supernode_submatrix_map_.emplace(supernode_ptr, static_cast<int>(n1),
                                    static_cast<int>(n1));
-  cursor += n1 * n1;
-  cursor = align_ptr(cursor);
-  separator_rows_map_.emplace(cursor, static_cast<int>(n2),
+  separator_rows_map_.emplace(separator_rows_ptr, static_cast<int>(n2),
                               static_cast<int>(n1));
-  cursor += n2 * n1;
-  cursor = align_ptr(cursor);
-  separator_schur_complement_map_.emplace(cursor, static_cast<int>(n2),
+  separator_schur_complement_map_.emplace(separator_schur_ptr,
+                                          static_cast<int>(n2),
                                           static_cast<int>(n2));
 }
 
