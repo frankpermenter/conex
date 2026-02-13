@@ -118,6 +118,27 @@ struct SparseLSTiming {
   bool single_dense_clique = false;
 };
 
+class ScopedEigenNoMalloc final {
+ public:
+  ScopedEigenNoMalloc() {
+#if defined(EIGEN_RUNTIME_NO_MALLOC)
+    previous_state_ = Eigen::internal::is_malloc_allowed();
+    Eigen::internal::set_is_malloc_allowed(false);
+#endif
+  }
+
+  ~ScopedEigenNoMalloc() {
+#if defined(EIGEN_RUNTIME_NO_MALLOC)
+    Eigen::internal::set_is_malloc_allowed(previous_state_);
+#endif
+  }
+
+ private:
+#if defined(EIGEN_RUNTIME_NO_MALLOC)
+  bool previous_state_ = true;
+#endif
+};
+
 class StaticMatrixAssembler final : public conex::SupernodalAssemblerBase {
  public:
   StaticMatrixAssembler(const std::vector<int>& variables,
@@ -348,14 +369,31 @@ Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
   tree_solver.Finalize(clique_tree);
   const auto factor_start = std::chrono::steady_clock::now();
   tree_solver.Assemble();
-  if (!tree_solver.Factor()) {
-    throw std::runtime_error("Conex tree least-squares factorization failed.");
+  {
+    ScopedEigenNoMalloc no_malloc_during_factor;
+    if (!tree_solver.Factor()) {
+      throw std::runtime_error("Conex tree least-squares factorization failed.");
+    }
   }
   const auto solve_start = std::chrono::steady_clock::now();
   Eigen::VectorXd rhs = 2.0 * (A.transpose() * b);
   Eigen::MatrixXd rhs_mat(rhs.rows(), 1);
   rhs_mat.col(0) = rhs;
-  Eigen::VectorXd x = tree_solver.Solve(rhs_mat, true).col(0);
+  const auto& variable_to_elimination_position =
+      tree_solver.variable_to_elimination_position();
+  if (static_cast<int>(variable_to_elimination_position.size()) != rhs.rows()) {
+    throw std::runtime_error("Invalid elimination permutation size.");
+  }
+  Eigen::PermutationMatrix<-1> P(rhs.rows());
+  P.indices() = Eigen::Map<const Eigen::VectorXi>(
+      variable_to_elimination_position.data(), rhs.rows());
+  Eigen::MatrixXd x = P * rhs_mat;
+  tree_solver.ReserveSolveWorkspace(x.cols());
+  {
+    ScopedEigenNoMalloc no_malloc_during_solve;
+    tree_solver.SolveInPlace(x, false);
+  }
+  x = P.transpose() * x;
   const auto end = std::chrono::steady_clock::now();
   if (timing != nullptr) {
     timing->support_ms = std::chrono::duration<double, std::milli>(
@@ -377,7 +415,7 @@ Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
     timing->num_cliques = static_cast<int>(cliques.size());
     timing->single_dense_clique = single_dense_clique;
   }
-  return x;
+  return x.col(0);
 }
 
 }  // namespace

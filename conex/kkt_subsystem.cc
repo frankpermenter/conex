@@ -128,7 +128,9 @@ void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
 
   // Update residual via separator_rows * LeftFactor^{-1} * x_{supernodes}
   if (separators_.size() > 0) {
-    Eigen::MatrixXd temp = x_supernodes;
+    Eigen::Ref<Eigen::MatrixXd> temp =
+        solve_workspace1_.topLeftCorner(x_supernodes.rows(), x_supernodes.cols());
+    temp = x_supernodes;
     DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
     DoMultiplyAndDecrementByOffDiagonalSubMatrix(x, temp);
   }
@@ -207,8 +209,21 @@ void T::ApplyLeftLookingChildUpdates() {
 }
 
 void T::DoMultiplyByTransposeOfOffDiagonalSubMatrix(
-    Eigen::MatrixXd* output, Eigen::Ref<const Eigen::MatrixXd> input) const {
-  *output = separator_rows().transpose() * Submatrix(input, separators_);
+    Eigen::Ref<Eigen::MatrixXd> output,
+    Eigen::Ref<const Eigen::MatrixXd> input) const {
+  output.noalias() = separator_rows().transpose() * Submatrix(input, separators_);
+}
+
+void T::ReserveSolveWorkspace(int rhs_cols) {
+  for (auto child : children_) {
+    child->ReserveSolveWorkspace(rhs_cols);
+  }
+  if (rhs_cols <= solve_workspace_cols_) {
+    return;
+  }
+  solve_workspace_cols_ = rhs_cols;
+  solve_workspace1_.resize(supernodes_.size(), solve_workspace_cols_);
+  solve_workspace2_.resize(supernodes_.size(), solve_workspace_cols_);
 }
 
 // Iterate from the root of the tree downwards using depth-first search. At each
@@ -230,8 +245,9 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
 
     // Update residual using x_separator computed by ascendants in tree.
     if (separators_.size() > 0) {
-      Eigen::MatrixXd temp;
-      DoMultiplyByTransposeOfOffDiagonalSubMatrix(&temp, x);
+      Eigen::Ref<Eigen::MatrixXd> temp =
+          solve_workspace2_.topLeftCorner(x_supernodes.rows(), x_supernodes.cols());
+      DoMultiplyByTransposeOfOffDiagonalSubMatrix(temp, x);
       DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(temp);
       x_supernodes.noalias() -= temp;
     }

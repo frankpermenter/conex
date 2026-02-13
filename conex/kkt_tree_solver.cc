@@ -475,6 +475,12 @@ void T::SetFactorizationMode(bool left_looking) {
   }
 }
 
+void T::ReserveSolveWorkspace(int rhs_cols) {
+  CONEX_DEMAND(rhs_cols >= 0, "rhs_cols must be nonnegative.");
+  ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
+              [&](size_t i) { roots_.at(i)->ReserveSolveWorkspace(rhs_cols); });
+}
+
 bool T::CheckForZeroPivot(const std::vector<int>& parent,
                           std::vector<int>* index_of_zero_pivot) {
   index_of_zero_pivot->clear();

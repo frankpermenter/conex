@@ -132,6 +132,7 @@ class KKTSubsystemBase {
 
   void ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
   void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
+  void ReserveSolveWorkspace(int rhs_cols);
 
   void Reset() {
     parent_ = nullptr;
@@ -174,7 +175,8 @@ class KKTSubsystemBase {
       Eigen::Ref<const Eigen::MatrixXd> input) const;
 
   virtual void DoMultiplyByTransposeOfOffDiagonalSubMatrix(
-      Eigen::MatrixXd* output, Eigen::Ref<const Eigen::MatrixXd> input) const;
+      Eigen::Ref<Eigen::MatrixXd> output,
+      Eigen::Ref<const Eigen::MatrixXd> input) const;
 
   bool IsRoot() const;
   void AccumulateColumnUpdate(
@@ -212,6 +214,9 @@ class KKTSubsystemBase {
   bool variable_set_equals_sorted_supernodes_;
   bool variable_set_equals_sorted_separators_;
   int num_threads_ = 1;
+  int solve_workspace_cols_ = 0;
+  mutable Eigen::MatrixXd solve_workspace1_;
+  mutable Eigen::MatrixXd solve_workspace2_;
 };
 
 class KKTSubsystem : public KKTSubsystemBase {

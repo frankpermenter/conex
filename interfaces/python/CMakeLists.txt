@@ -4,6 +4,7 @@ project(conex_python LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(USE_BLAS "Enable BLAS-backed Eigen kernels" OFF)
+option(CHECK_EIGEN_MALLOC "Enable Eigen runtime no-malloc checks" OFF)
 
 find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 find_package(pybind11 CONFIG QUIET)
@@ -105,10 +106,14 @@ target_compile_options(_conex PRIVATE
   -ffunction-sections
   -fvisibility=hidden
 )
-target_compile_definitions(_conex PRIVATE
-  NDEBUG
-  EIGEN_NO_DEBUG
-)
+if(CHECK_EIGEN_MALLOC)
+  target_compile_definitions(_conex PRIVATE EIGEN_RUNTIME_NO_MALLOC)
+else()
+  target_compile_definitions(_conex PRIVATE
+    NDEBUG
+    EIGEN_NO_DEBUG
+  )
+endif()
 target_link_options(_conex PRIVATE
   -static-libstdc++
   -Wl,--exclude-libs,ALL

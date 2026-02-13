@@ -28,12 +28,16 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
 
   void SetFactorizationMode(bool left_looking);
   void SetNumThreads(int num_threads);
+  void ReserveSolveWorkspace(int rhs_cols);
   void EnableAutoUpdateAtAssemble(bool enable) {
     auto_update_assemblers_ = enable;
   }
   void UpdateAssemblerData();
 
   std::vector<int> subsystem_to_parent() { return subsystem_to_parent_; }
+  const std::vector<int>& variable_to_elimination_position() const {
+    return variable_to_elimination_position_;
+  }
 
   Eigen::SparseMatrix<double> MakeSparseKKTMatrix(
       bool permute_to_elimination_order = true) const;
