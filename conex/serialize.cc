@@ -110,8 +110,7 @@ std::unique_ptr<Constraint> MakeConstraint(const JsonObject& value) {
   return std::make_unique<T>(std::move(constraint));
 }
 
-std::unique_ptr<Constraint> MakeConstraintFromJSON(
-    const JsonObject& value) {
+std::unique_ptr<Constraint> MakeConstraintFromJSON(const JsonObject& value) {
   IDs constraint_type = static_cast<IDs>(stoi(value["id"].value()));
   switch (constraint_type) {
     case IDs::LinearConstraint: {

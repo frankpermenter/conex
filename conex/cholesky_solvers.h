@@ -251,6 +251,16 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite> {
   void DoAssemble() {
     int n1 = Base::supernode_submatrix().rows();
     int n2 = Base::separator_rows().rows();
+    CONEX_DEMAND(n1 >= 0 && n2 >= 0, "Invalid block sizes.");
+    CONEX_DEMAND(n1 <= Q_in_elimination_order_.rows() &&
+                     n1 <= Q_in_elimination_order_.cols(),
+                 "Invalid top-left block bounds.");
+    CONEX_DEMAND(n2 <= Q_in_elimination_order_.rows() &&
+                     n1 <= Q_in_elimination_order_.cols(),
+                 "Invalid bottom-left block bounds.");
+    CONEX_DEMAND(n2 <= Q_in_elimination_order_.rows() &&
+                     n2 <= Q_in_elimination_order_.cols(),
+                 "Invalid bottom-right block bounds.");
     Base::supernode_submatrix() = Q_in_elimination_order_.topLeftCorner(n1, n1);
     Base::separator_rows() = Q_in_elimination_order_.bottomLeftCorner(n2, n1);
     Base::separator_schur_complement() =

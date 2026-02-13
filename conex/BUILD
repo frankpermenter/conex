@@ -579,6 +579,31 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "kkt_tree_solver_least_squares_test",
+    srcs = [
+        "test/kkt_tree_solver_least_squares_test.cc",
+    ],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "clique_ordering",
+        "kkt_tree_solver",
+        "@gtest//:main",
+    ],
+)
+
+cc_binary(
+    name = "kkt_tree_solver_least_squares_benchmark",
+    srcs = [
+        "test/kkt_tree_solver_least_squares_benchmark.cc",
+    ],
+    deps = [
+        "clique_ordering",
+        "kkt_tree_solver",
+        "@eigen",
+    ],
+)
+
 cc_library(
     name = "conjugate_gradient_solvers",
     srcs = ["conjugate_gradient_solvers.cc"],

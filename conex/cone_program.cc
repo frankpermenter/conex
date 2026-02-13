@@ -59,7 +59,7 @@ void GetWeightedSlackEigenvalues(ConstraintManager* constraints, const Ref& y,
   for (auto& ci : constraints->cone_inequalities()) {
     WeightedSlackEigenvalues temp;
     ci->constraint()->GetWeightedSlackEigenvalues(ci->PrimalSubvector(y),
-                                                      c_weight, &temp);
+                                                  c_weight, &temp);
 
     if (p->lambda_max < temp.lambda_max) {
       p->lambda_max = temp.lambda_max;
@@ -122,7 +122,8 @@ LineSearchOutput ComputeMuFromLineSearch(ConstraintManager& constraints,
     Eigen::MatrixXd ysegment2 = ci->PrimalSubvector(y1);
     Ref z1(ysegment1.data(), ysegment1.rows(), 1);
     Ref z2(ysegment2.data(), ysegment2.rows(), 1);
-    bool failure = ci->constraint()->PerformLineSearch(params, z1, z2, &output_i);
+    bool failure =
+        ci->constraint()->PerformLineSearch(params, z1, z2, &output_i);
     output.dt_squared_norm += output_i.dt_squared_norm;
     output.d0_squared_norm += output_i.d0_squared_norm;
     output.d0_dot_dt += output_i.d0_dot_dt;
@@ -453,8 +454,7 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
       sys.AW.setZero();
       sys.inner_product_of_w_and_c = 0;
       for (auto& ci : constraints) {
-        ci->constraint()->ApplyRescaling(sys.AW,
-                                               &sys.inner_product_of_w_and_c);
+        ci->constraint()->ApplyRescaling(sys.AW, &sys.inner_product_of_w_and_c);
       }
 
       info = IterationHelper(update_mu, config, force_feasible, sys, b_scaling,
@@ -856,7 +856,7 @@ void PrepareStep(ConstraintManager* kkt,
   info->norminfd = -1;
   for (auto& ci : kkt->cone_inequalities()) {
     ci->constraint()->PrepareStep(newton_step_parameters,
-                                        ci->PrimalSubvector(y), &info_i);
+                                  ci->PrimalSubvector(y), &info_i);
     if (info_i.norminfd > info->norminfd) {
       info->norminfd = info_i.norminfd;
     }

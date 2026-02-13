@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <thread>
 
 #include "conex/debug_macros.h"
@@ -23,6 +24,27 @@ Eigen::MatrixXd Submatrix(const Eigen::MatrixXd& x,
     separator_rows_of_x.row(i) = x.row(rows[i]);
   }
   return separator_rows_of_x;
+}
+
+void ScatterRows(const Eigen::MatrixXd& source, const std::vector<int>& rows,
+                 Eigen::Ref<Eigen::MatrixXd> destination) {
+  CONEX_DEMAND(source.rows() == static_cast<int>(rows.size()),
+               "Source row count must match index set.");
+  CONEX_DEMAND(source.cols() == destination.cols(),
+               "Source and destination column counts must match.");
+  for (int i = 0; i < source.rows(); ++i) {
+    destination.row(rows.at(i)) = source.row(i);
+  }
+}
+
+void CheckBlockBounds(const Eigen::MatrixXd& matrix, int start_row,
+                      int start_col, int block_rows, int block_cols,
+                      const char* label) {
+  CONEX_DEMAND(start_row >= 0 && start_col >= 0 && block_rows >= 0 &&
+                   block_cols >= 0,
+               label);
+  CONEX_DEMAND(start_row + block_rows <= matrix.rows(), label);
+  CONEX_DEMAND(start_col + block_cols <= matrix.cols(), label);
 }
 
 KKTSubsystemBase::Offset GetOverlappingSegment(
@@ -57,12 +79,20 @@ void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
       destination->local_separator_to_source_separator(source);
   for (const auto& c : supernode_offsets) {
     for (const auto& r : supernode_offsets) {
+      CheckBlockBounds(destination->supernode_submatrix(), r.first, c.first,
+                       r.size, c.size, "supernode destination block OOB");
+      CheckBlockBounds(source->separator_schur_complement(), r.second, c.second,
+                       r.size, c.size, "source schur block OOB");
       destination->supernode_submatrix()
           .block(r.first, c.first, r.size, c.size)
           .noalias() += source->separator_schur_complement().block(
           r.second, c.second, r.size, c.size);
     }
     for (const auto& r : separator_offsets) {
+      CheckBlockBounds(destination->separator_rows(), r.first, c.first, r.size,
+                       c.size, "separator rows destination block OOB");
+      CheckBlockBounds(source->separator_schur_complement(), r.second, c.second,
+                       r.size, c.size, "source schur block OOB");
       destination->separator_rows()
           .block(r.first, c.first, r.size, c.size)
           .noalias() += source->separator_schur_complement().block(
@@ -81,11 +111,19 @@ void AccumulateUpdate(const KKTSubsystemBase* source,
       destination->local_separator_to_source_separator(source);
   for (const auto& c : supernode_offsets) {
     for (const auto& r : supernode_offsets) {
+      CheckBlockBounds(supernode_delta, r.first, c.first, r.size, c.size,
+                       "supernode delta block OOB");
+      CheckBlockBounds(source->separator_schur_complement(), r.second, c.second,
+                       r.size, c.size, "source schur block OOB");
       supernode_delta.block(r.first, c.first, r.size, c.size).noalias() +=
           source->separator_schur_complement().block(r.second, c.second, r.size,
                                                      c.size);
     }
     for (const auto& r : separator_offsets) {
+      CheckBlockBounds(separator_delta, r.first, c.first, r.size, c.size,
+                       "separator delta block OOB");
+      CheckBlockBounds(source->separator_schur_complement(), r.second, c.second,
+                       r.size, c.size, "source schur block OOB");
       separator_delta.block(r.first, c.first, r.size, c.size).noalias() +=
           source->separator_schur_complement().block(r.second, c.second, r.size,
                                                      c.size);
@@ -121,9 +159,9 @@ void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
     return;
   }
 
-  // We have reached leaf. So solve for x_supernode in place.
-  Eigen::Ref<Eigen::MatrixXd> x_supernodes = x.middleRows(
-      supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
+  // Gather supernode rows explicitly because labels are not necessarily
+  // contiguous in the global ordering.
+  Eigen::MatrixXd x_supernodes = Submatrix(x, supernodes_);
   DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(x_supernodes);
 
   // Update residual via separator_rows * LeftFactor^{-1} * x_{supernodes}
@@ -134,6 +172,7 @@ void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
     DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
     DoMultiplyAndDecrementByOffDiagonalSubMatrix(x, temp);
   }
+  ScatterRows(x_supernodes, supernodes_, x);
 }
 
 bool T::IsRoot() const { return parent_ == nullptr; }
@@ -222,8 +261,36 @@ void T::ReserveSolveWorkspace(int rhs_cols) {
     return;
   }
   solve_workspace_cols_ = rhs_cols;
-  solve_workspace1_.resize(supernodes_.size(), solve_workspace_cols_);
-  solve_workspace2_.resize(supernodes_.size(), solve_workspace_cols_);
+  const int supernode_rows = static_cast<int>(supernodes_.size());
+  solve_workspace1_.resize(supernode_rows, solve_workspace_cols_);
+  solve_workspace2_.resize(supernode_rows, solve_workspace_cols_);
+}
+
+void KKTSubsystem::BindArenaMemory(double* ptr, size_t bytes) {
+  const size_t n1 = supernodes_.size();
+  const size_t n2 = separators_.size();
+  const size_t required_bytes = RequiredArenaBytes();
+  CONEX_DEMAND(bytes >= required_bytes, "Insufficient arena memory provided.");
+  using_arena_memory_ = true;
+
+  auto align_ptr = [](double* p) -> double* {
+    std::uintptr_t u = reinterpret_cast<std::uintptr_t>(p);
+    const std::uintptr_t a = static_cast<std::uintptr_t>(EIGEN_MAX_ALIGN_BYTES);
+    u = (u + (a - 1)) & ~(a - 1);
+    return reinterpret_cast<double*>(u);
+  };
+
+  double* cursor = align_ptr(ptr);
+  supernode_submatrix_map_.emplace(cursor, static_cast<int>(n1),
+                                   static_cast<int>(n1));
+  cursor += n1 * n1;
+  cursor = align_ptr(cursor);
+  separator_rows_map_.emplace(cursor, static_cast<int>(n2),
+                              static_cast<int>(n1));
+  cursor += n2 * n1;
+  cursor = align_ptr(cursor);
+  separator_schur_complement_map_.emplace(cursor, static_cast<int>(n2),
+                                          static_cast<int>(n2));
 }
 
 // Iterate from the root of the tree downwards using depth-first search. At each
@@ -240,8 +307,9 @@ void T::ReserveSolveWorkspace(int rhs_cols) {
 // We then compute x_supernodes = R^{-1} b_supernodes.
 void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
   if (supernodes_.size() > 0) {
-    Eigen::Ref<Eigen::MatrixXd> x_supernodes = x.middleRows(
-        supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
+    // Gather supernode rows explicitly because labels are not necessarily
+    // contiguous in the global ordering.
+    Eigen::MatrixXd x_supernodes = Submatrix(x, supernodes_);
 
     // Update residual using x_separator computed by ascendants in tree.
     if (separators_.size() > 0) {
@@ -252,6 +320,7 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
       x_supernodes.noalias() -= temp;
     }
     DoApplyInverseOfRightFactorOfSupernodeSubmatrix(x_supernodes);
+    ScatterRows(x_supernodes, supernodes_, x);
   }
 
   for (auto child : children_) {

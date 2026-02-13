@@ -48,14 +48,10 @@ void AssertNoPublicDoHooks(const std::string& path) {
 
 TEST(ConstraintVisibilityTest, DoHooksAreNotPublic) {
   const std::vector<std::string> headers = {
-      "conex/constraint.h",
-      "conex/linear_constraint.h",
-      "conex/soc_constraint.h",
-      "conex/quadratic_cone_constraint.h",
-      "conex/equality_constraint.h",
-      "conex/psd_constraint.h",
-      "conex/dense_lmi_constraint.h",
-      "conex/hermitian_psd.h",
+      "conex/constraint.h",           "conex/linear_constraint.h",
+      "conex/soc_constraint.h",       "conex/quadratic_cone_constraint.h",
+      "conex/equality_constraint.h",  "conex/psd_constraint.h",
+      "conex/dense_lmi_constraint.h", "conex/hermitian_psd.h",
   };
 
   for (const auto& path : headers) {

@@ -117,6 +117,16 @@ void T::UpdateData() {
   assembler_->SetDenseData();
   AssignSubmatrix(source_submatrix, Q_in_elimination_order_,
                   variable_to_local_elimination_position_);
+  CONEX_DEMAND(n1 >= 0 && n2 >= 0, "Invalid block sizes.");
+  CONEX_DEMAND(n1 <= Q_in_elimination_order_.rows() &&
+                   n1 <= Q_in_elimination_order_.cols(),
+               "Invalid top-left block bounds.");
+  CONEX_DEMAND(n2 <= Q_in_elimination_order_.rows() &&
+                   n1 <= Q_in_elimination_order_.cols(),
+               "Invalid bottom-left block bounds.");
+  CONEX_DEMAND(n2 <= Q_in_elimination_order_.rows() &&
+                   n2 <= Q_in_elimination_order_.cols(),
+               "Invalid bottom-right block bounds.");
 
   kkt_subsystem_->supernode_submatrix().triangularView<Eigen::Lower>() =
       Q_in_elimination_order_.topLeftCorner(n1, n1)

@@ -308,6 +308,10 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
   if (b.cols() == 0) {
     return;
   }
+  // Ensure per-subsystem temporary solve buffers are sized for this RHS width.
+  ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
+              [&](size_t i) { roots_.at(i)->ReserveSolveWorkspace(b.cols()); });
+
   if (in_original_order) {
     CONEX_CHECK(variable_to_elimination_position_.size() > 0);
     Eigen::PermutationMatrix<-1> P(number_of_variables());
@@ -383,8 +387,11 @@ void T::Finalize(const CliqueTree& clique_tree) {
   for (auto& s : subsystems_) {
     s->SetSupernodes(clique_tree.supernodes.at(i));
     s->SetSeparators(clique_tree.separators.at(i));
-    s->Initialize();
     ++i;
+  }
+  AllocateArenaAndBind();
+  for (auto& s : subsystems_) {
+    s->Initialize();
   }
   SetEliminationTree(clique_tree.node_to_parent);
   SetEliminationOrder(ComputePostOrdering());
@@ -472,6 +479,38 @@ std::vector<int> T::ComputePostOrdering() const {
 void T::SetFactorizationMode(bool left_looking) {
   for (auto s : subsystems_) {
     s->SetFactorizationMode(left_looking);
+  }
+}
+
+void T::AllocateArenaAndBind() {
+  constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
+  size_t total_bytes = 0;
+  for (const auto* subsystem : subsystems_) {
+    total_bytes += subsystem->RequiredArenaBytes() + (kAlign - 1);
+  }
+  if (total_bytes == 0) {
+    arena_memory_.reset();
+    arena_bytes_ = 0;
+    return;
+  }
+  const size_t alloc_bytes = ((total_bytes + (kAlign - 1)) / kAlign) * kAlign;
+  void* raw_ptr = nullptr;
+  if (posix_memalign(&raw_ptr, kAlign, alloc_bytes) != 0) {
+    throw std::bad_alloc();
+  }
+  arena_memory_.reset(raw_ptr);
+  arena_bytes_ = alloc_bytes;
+
+  std::uintptr_t cursor =
+      reinterpret_cast<std::uintptr_t>(arena_memory_.get());
+  for (auto* subsystem : subsystems_) {
+    const size_t bytes = subsystem->RequiredArenaBytes();
+    if (bytes == 0) {
+      continue;
+    }
+    cursor = (cursor + (kAlign - 1)) & ~(static_cast<std::uintptr_t>(kAlign - 1));
+    subsystem->BindArenaMemory(reinterpret_cast<double*>(cursor), bytes);
+    cursor += bytes;
   }
 }
 

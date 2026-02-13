@@ -3,6 +3,9 @@
 #include "conex/kkt_subsystem.h"
 #include "conex/static_subsystem.h"
 #include "conex/tree_utils.h"
+#include <cstdint>
+#include <cstdlib>
+#include <memory>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
@@ -63,6 +66,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   bool DoFactor() override;
   bool CheckForZeroPivot(const std::vector<int>& parent,
                          std::vector<int>* subsystems_with_zero_piviot);
+  void AllocateArenaAndBind();
 
   std::vector<KKTSubsystemBase*> roots_;
   std::vector<KKTSubsystemBase*> subsystems_;
@@ -72,6 +76,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<int> subsystem_to_parent_;
   bool auto_update_assemblers_ = false;
   int num_threads_ = 1;
+  std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr, &std::free};
+  size_t arena_bytes_ = 0;
 };
 
 }  // namespace conex
