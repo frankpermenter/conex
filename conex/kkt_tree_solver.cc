@@ -1,5 +1,9 @@
 #include "conex/kkt_tree_solver.h"
 
+#include <algorithm>
+#include <atomic>
+#include <thread>
+
 #include "conex/tree_utils.h"
 
 namespace conex {
@@ -7,6 +11,48 @@ namespace conex {
 using KKTSubsystemType = KKTSubsystemBase;
 using Eigen::MatrixXd;
 namespace {
+template <typename Fn>
+void ForEachTask(size_t num_tasks, int requested_threads, const Fn& fn) {
+  if (num_tasks == 0) {
+    return;
+  }
+  if (requested_threads < 1 || num_tasks == 1) {
+    for (size_t i = 0; i < num_tasks; ++i) {
+      fn(i);
+    }
+    return;
+  }
+  const size_t num_threads = std::min<size_t>(requested_threads, num_tasks);
+  std::atomic<size_t> next_task(0);
+  std::vector<std::thread> workers;
+  workers.reserve(num_threads);
+  for (size_t t = 0; t < num_threads; ++t) {
+    workers.emplace_back([&]() {
+      while (true) {
+        const size_t i = next_task.fetch_add(1, std::memory_order_relaxed);
+        if (i >= num_tasks) {
+          return;
+        }
+        fn(i);
+      }
+    });
+  }
+  for (auto& worker : workers) {
+    worker.join();
+  }
+}
+
+int EffectiveThreadCount(int requested_threads) {
+  if (requested_threads > 0) {
+    return requested_threads;
+  }
+  const unsigned int hardware_threads = std::thread::hardware_concurrency();
+  if (hardware_threads == 0) {
+    return 1;
+  }
+  return static_cast<int>(hardware_threads);
+}
+
 #if 0
 class DistanceToRootRecursion {
  public:
@@ -238,6 +284,11 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystemType*>& subsystems,
 #endif
 }  // namespace
 using T = SymmetricLinearSystemTreeSolver;
+void T::SetNumThreads(int num_threads) {
+  CONEX_DEMAND(num_threads > 0, "num_threads must be positive.");
+  num_threads_ = num_threads;
+}
+
 void T::SetEliminationOrder(
     const std::vector<int>& variable_to_elimination_position) {
   variable_to_elimination_position_ = variable_to_elimination_position;
@@ -262,10 +313,11 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
     b = P * b;
   }
 
-  for (auto root : roots_) {
+  ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_), [&](size_t i) {
+    auto* root = roots_.at(i);
     root->ApplyInverseOfLeftFactor(b);
     root->ApplyInverseOfRightFactor(b);
-  }
+  });
 
   if (in_original_order) {
     Eigen::PermutationMatrix<-1> P(number_of_variables());
@@ -276,42 +328,49 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
 }
 
 void T::ComputeSeparatorOffsets() {
-  for (auto root : roots_) {
-    root->ComputeSeparatorOffsets();
-  }
+  ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
+              [&](size_t i) { roots_.at(i)->ComputeSeparatorOffsets(); });
 }
 
 void T::UpdateAssemblerData() {
-  for (auto& a : assembler_to_subsystem_adapter_) {
-    a->UpdateData();
-  }
+  ForEachTask(assembler_to_subsystem_adapter_.size(),
+              EffectiveThreadCount(num_threads_), [&](size_t i) {
+                assembler_to_subsystem_adapter_.at(i)->UpdateData();
+              });
 }
 
 void T::DoAssemble() {
   if (auto_update_assemblers_) {
     UpdateAssemblerData();
   }
-  for (auto root : roots_) {
-    root->Assemble();
-  }
+  ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
+              [&](size_t i) { roots_.at(i)->Assemble(); });
 }
 
 bool T::DoAssembleAndFactor() {
-  for (auto root : roots_) {
-    if (!root->AssembleAndFactor()) {
-      return false;
+  std::atomic<bool> success(true);
+  ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_), [&](size_t i) {
+    if (!success.load(std::memory_order_relaxed)) {
+      return;
     }
-  }
-  return true;
+    if (!roots_.at(i)->AssembleAndFactor()) {
+      success.store(false, std::memory_order_relaxed);
+    }
+  });
+  return success.load(std::memory_order_relaxed);
 }
 
 bool T::DoFactor() {
-  for (auto root : roots_) {
-    if (!root->Factor()) {
-      return false;
+  std::atomic<bool> success(true);
+  ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_), [&](size_t i) {
+    if (!success.load(std::memory_order_relaxed)) {
+      return;
     }
-  }
-  return true;
+    if (!roots_.at(i)->Factor()) {
+      success.store(false, std::memory_order_relaxed);
+    }
+  });
+  return success.load(std::memory_order_relaxed);
 }
 
 void T::Finalize(const CliqueTree& clique_tree) {

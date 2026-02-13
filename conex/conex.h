@@ -39,6 +39,9 @@ struct SolverConfiguration {
   int kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
   int enable_rescaling = 1;
   int iterative_refinement_iterations = 0;
+  // Number of CPU threads used by compatible KKT solvers.
+  // Set to 1 for single-threaded execution.
+  int num_threads = 1;
   int verbose = 1;
   bool enable_logging = false;
   bool enable_scale_correction = false;

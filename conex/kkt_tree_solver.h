@@ -12,6 +12,7 @@ struct Options {
   bool validate_leaf_nodes = false;
   bool check_for_zero_pivots = false;
   int root_node = 0;
+  int num_threads = 1;
 };
 
 class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
@@ -26,6 +27,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
                 bool check_for_zero_pivots = true);
 
   void SetFactorizationMode(bool left_looking);
+  void SetNumThreads(int num_threads);
   void EnableAutoUpdateAtAssemble(bool enable) {
     auto_update_assemblers_ = enable;
   }
@@ -65,6 +67,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<int> variable_to_elimination_position_;
   std::vector<int> subsystem_to_parent_;
   bool auto_update_assemblers_ = false;
+  int num_threads_ = 1;
 };
 
 }  // namespace conex

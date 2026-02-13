@@ -86,6 +86,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
   tree_solver_->Finalize(clique_tree);
   tree_solver_->SetFactorizationMode(true /*left looking*/);
   tree_solver_->EnableAutoUpdateAtAssemble(true);
+  tree_solver_->SetNumThreads(config.num_threads);
 
   return tree_solver_;
 }
