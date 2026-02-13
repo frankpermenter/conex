@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <stdexcept>
@@ -105,6 +106,17 @@ py::array_t<double> ToPyArray(const Eigen::VectorXd& v) {
 }
 
 using RowSparseMatrix = Eigen::SparseMatrix<double, Eigen::RowMajor>;
+
+struct SparseLSTiming {
+  double support_ms = 0.0;
+  double blocks_ms = 0.0;
+  double finalize_ms = 0.0;
+  double factor_ms = 0.0;
+  double solve_ms = 0.0;
+  double total_ms = 0.0;
+  int num_cliques = 0;
+  bool single_dense_clique = false;
+};
 
 class StaticMatrixAssembler final : public conex::SupernodalAssemblerBase {
  public:
@@ -243,10 +255,13 @@ RowSparseMatrix BuildSparseFromDense(const py::array& A_dense) {
 
 Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
                                           const Eigen::VectorXd& b,
-                                          int num_threads) {
+                                          int num_threads,
+                                          SparseLSTiming* timing = nullptr) {
+  const auto total_start = std::chrono::steady_clock::now();
   if (A.rows() != b.rows()) {
     throw std::runtime_error("A and b dimension mismatch.");
   }
+  const auto support_start = std::chrono::steady_clock::now();
   std::map<std::vector<int>, std::vector<int>> grouped_rows;
   for (int row = 0; row < A.rows(); ++row) {
     auto support = RowSupport(A, row);
@@ -254,6 +269,7 @@ Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
       grouped_rows[support].push_back(row);
     }
   }
+  const auto blocks_start = std::chrono::steady_clock::now();
   std::vector<std::vector<int>> cliques;
   std::vector<Eigen::MatrixXd> local_blocks;
   cliques.reserve(grouped_rows.size() + static_cast<size_t>(A.cols()));
@@ -274,34 +290,21 @@ Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
     for (const auto& entry : grouped_rows) {
       const auto& vars = entry.first;
       const auto& rows = entry.second;
-      Eigen::MatrixXd block(vars.size(), vars.size());
-      block.setZero();
-      std::vector<int> column_to_local(A.cols(), -1);
-      for (size_t i = 0; i < vars.size(); ++i) {
-        column_to_local.at(vars.at(i)) = static_cast<int>(i);
-        variable_covered.at(static_cast<size_t>(vars.at(i))) = 1;
+      for (int col : vars) {
+        variable_covered.at(static_cast<size_t>(col)) = 1;
       }
-      for (int row : rows) {
-        std::vector<std::pair<int, double>> local_entries;
-        for (RowSparseMatrix::InnerIterator it(A, row); it; ++it) {
-          const int local = column_to_local.at(it.col());
-          if (local >= 0) {
-            local_entries.emplace_back(local, it.value());
-          }
-        }
-        for (size_t i = 0; i < local_entries.size(); ++i) {
-          for (size_t j = 0; j <= i; ++j) {
-            const int r = local_entries.at(i).first;
-            const int c = local_entries.at(j).first;
-            const double v =
-                local_entries.at(i).second * local_entries.at(j).second;
-            block(r, c) += v;
-            if (r != c) {
-              block(c, r) += v;
-            }
+      Eigen::MatrixXd ag(rows.size(), vars.size());
+      ag.setZero();
+      for (size_t r = 0; r < rows.size(); ++r) {
+        for (RowSparseMatrix::InnerIterator it(A, rows.at(r)); it; ++it) {
+          auto lb = std::lower_bound(vars.begin(), vars.end(), it.col());
+          if (lb != vars.end() && *lb == it.col()) {
+            const int c = static_cast<int>(lb - vars.begin());
+            ag(static_cast<int>(r), c) = it.value();
           }
         }
       }
+      Eigen::MatrixXd block = ag.transpose() * ag;
       cliques.push_back(vars);
       local_blocks.push_back(std::move(block));
     }
@@ -319,6 +322,7 @@ Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
   if (cliques.empty()) {
     throw std::runtime_error("No cliques constructed from A.");
   }
+  const auto finalize_start = std::chrono::steady_clock::now();
   conex::CliqueTree clique_tree = conex::MakeCliqueTree(cliques);
 
   conex::SymmetricLinearSystemTreeSolver tree_solver;
@@ -342,14 +346,38 @@ Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
     tree_solver.push_back(std::move(adapter));
   }
   tree_solver.Finalize(clique_tree);
+  const auto factor_start = std::chrono::steady_clock::now();
   tree_solver.Assemble();
   if (!tree_solver.Factor()) {
     throw std::runtime_error("Conex tree least-squares factorization failed.");
   }
+  const auto solve_start = std::chrono::steady_clock::now();
   Eigen::VectorXd rhs = 2.0 * (A.transpose() * b);
   Eigen::MatrixXd rhs_mat(rhs.rows(), 1);
   rhs_mat.col(0) = rhs;
-  return tree_solver.Solve(rhs_mat, true).col(0);
+  Eigen::VectorXd x = tree_solver.Solve(rhs_mat, true).col(0);
+  const auto end = std::chrono::steady_clock::now();
+  if (timing != nullptr) {
+    timing->support_ms = std::chrono::duration<double, std::milli>(
+                             blocks_start - support_start)
+                             .count();
+    timing->blocks_ms = std::chrono::duration<double, std::milli>(
+                            finalize_start - blocks_start)
+                            .count();
+    timing->finalize_ms = std::chrono::duration<double, std::milli>(
+                              factor_start - finalize_start)
+                              .count();
+    timing->factor_ms = std::chrono::duration<double, std::milli>(
+                            solve_start - factor_start)
+                            .count();
+    timing->solve_ms =
+        std::chrono::duration<double, std::milli>(end - solve_start).count();
+    timing->total_ms =
+        std::chrono::duration<double, std::milli>(end - total_start).count();
+    timing->num_cliques = static_cast<int>(cliques.size());
+    timing->single_dense_clique = single_dense_clique;
+  }
+  return x;
 }
 
 }  // namespace
@@ -504,6 +532,37 @@ PYBIND11_MODULE(_conex, m) {
           return CONEX_Solve(PtrFromPy(p), &cfg, static_cast<double*>(yi.ptr),
                              static_cast<int>(yi.shape[0]));
         });
+
+  m.def(
+      "sparse_ls_profile_csr",
+      [](const py::array& indptr, const py::array& indices, const py::array& data,
+         int m_rows, int n_cols, const py::array& b, int num_threads) {
+        Eigen::VectorXd b_eig = ToEigenVector(b);
+        if (b_eig.rows() != m_rows) {
+          throw std::runtime_error("b length must equal number of rows in A.");
+        }
+        RowSparseMatrix A =
+            BuildSparseFromCSR(indptr, indices, data, m_rows, n_cols);
+        SparseLSTiming timing;
+        Eigen::VectorXd x;
+        {
+          py::gil_scoped_release release;
+          x = SparseLeastSquaresViaTree(A, b_eig, num_threads, &timing);
+        }
+        py::dict out;
+        out["x"] = ToPyArray(x);
+        out["support_ms"] = timing.support_ms;
+        out["blocks_ms"] = timing.blocks_ms;
+        out["finalize_ms"] = timing.finalize_ms;
+        out["factor_ms"] = timing.factor_ms;
+        out["solve_ms"] = timing.solve_ms;
+        out["total_ms"] = timing.total_ms;
+        out["num_cliques"] = timing.num_cliques;
+        out["single_dense_clique"] = timing.single_dense_clique;
+        return out;
+      },
+      py::arg("indptr"), py::arg("indices"), py::arg("data"), py::arg("m_rows"),
+      py::arg("n_cols"), py::arg("b"), py::arg("num_threads") = 1);
 
   m.def(
       "sparse_ls_csr",
