@@ -69,6 +69,7 @@ SolverConfiguration APIConvertSolverConfiguration(
   c.warmstart_abort_threshold = config->warmstart_abort_threshold;
   c.max_iterations = config->max_iterations;
   c.iterative_refinement_iterations = config->iterative_refinement_iterations;
+  c.num_threads = config->num_threads;
   c.infeasibility_threshold = config->infeasibility_threshold;
   c.kkt_error_tolerance = config->kkt_error_tolerance;
   c.enable_rescaling = config->enable_rescaling;
@@ -243,9 +244,14 @@ void CONEX_SetDefaultOptions(CONEX_SolverConfiguration* c) {
       config.initial_centering_steps_coldstart;
   c->warmstart_abort_threshold = config.warmstart_abort_threshold;
   c->max_iterations = config.max_iterations;
+  c->iterative_refinement_iterations = config.iterative_refinement_iterations;
+  c->num_threads = config.num_threads;
   c->infeasibility_threshold = config.infeasibility_threshold;
   c->kkt_error_tolerance = config.kkt_error_tolerance;
   c->enable_rescaling = config.enable_rescaling;
+  c->enable_scale_correction = config.enable_scale_correction;
+  c->kkt_solver = config.kkt_solver;
+  c->verbosity = config.verbose;
 }
 
 void CONEX_GetIterationStats(void* prog, CONEX_IterationStats* stats,

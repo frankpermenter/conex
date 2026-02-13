@@ -115,6 +115,7 @@ SolverConfiguration APIConvertSolverConfiguration(
   c.warmstart_abort_threshold = config->warmstart_abort_threshold;
   c.max_iterations = config->max_iterations;
   c.iterative_refinement_iterations = config->iterative_refinement_iterations;
+  c.num_threads = config->num_threads;
   c.infeasibility_threshold = config->infeasibility_threshold;
   c.kkt_error_tolerance = config->kkt_error_tolerance;
   c.enable_rescaling = config->enable_rescaling;

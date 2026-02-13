@@ -23,6 +23,7 @@ typedef struct {
   double warmstart_abort_threshold;
   int max_iterations;
   int iterative_refinement_iterations;
+  int num_threads;
   double infeasibility_threshold;
   double kkt_error_tolerance;
   int enable_rescaling;

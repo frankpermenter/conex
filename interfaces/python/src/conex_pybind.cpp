@@ -1,11 +1,15 @@
+#include <algorithm>
 #include <cstdint>
+#include <map>
 #include <stdexcept>
 #include <vector>
 
+#include <Eigen/Sparse>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 
 #include "../../conex.h"
+#include "../../../conex/cone_program.h"
 
 namespace py = pybind11;
 
@@ -26,8 +30,10 @@ class IntPtr {
 };
 
 template <int N>
-py::array_t<double, py::array::forcecast> AsArray(const py::array& a) {
-  auto out = py::array_t<double, py::array::forcecast>(a);
+py::array_t<double, py::array::c_style | py::array::forcecast> AsArray(
+    const py::array& a) {
+  auto out =
+      py::array_t<double, py::array::c_style | py::array::forcecast>(a);
   if (out.ndim() != N) {
     throw std::runtime_error("Expected array with " + std::to_string(N) +
                              " dimensions");
@@ -73,6 +79,220 @@ py::array_t<double, py::array::c_style | py::array::forcecast> AsMutable2D(
   return out;
 }
 
+Eigen::VectorXd ToEigenVector(const py::array& a) {
+  auto vec = AsArray<1>(a);
+  auto vi = vec.request();
+  const auto* vptr = static_cast<const double*>(vi.ptr);
+  const ssize_t stride = vi.strides[0] / static_cast<ssize_t>(sizeof(double));
+  Eigen::VectorXd out(static_cast<int>(vi.shape[0]));
+  for (int i = 0; i < out.rows(); ++i) {
+    out(i) = vptr[i * stride];
+  }
+  return out;
+}
+
+py::array_t<double> ToPyArray(const Eigen::VectorXd& v) {
+  py::array_t<double> out({v.rows()}, {static_cast<ssize_t>(sizeof(double))});
+  auto oi = out.request();
+  auto* optr = static_cast<double*>(oi.ptr);
+  for (int i = 0; i < v.rows(); ++i) {
+    optr[i] = v(i);
+  }
+  return out;
+}
+
+using RowSparseMatrix = Eigen::SparseMatrix<double, Eigen::RowMajor>;
+
+std::vector<int> RowSupport(const RowSparseMatrix& A, int row) {
+  std::vector<int> support;
+  for (RowSparseMatrix::InnerIterator it(A, row); it; ++it) {
+    support.push_back(it.col());
+  }
+  std::sort(support.begin(), support.end());
+  support.erase(std::unique(support.begin(), support.end()), support.end());
+  return support;
+}
+
+RowSparseMatrix BuildSparseFromCSR(const py::array& indptr, const py::array& indices,
+                                   const py::array& data, int m, int n) {
+  auto indptr_arr =
+      py::array_t<long long, py::array::c_style | py::array::forcecast>(indptr);
+  auto indices_arr =
+      py::array_t<long long, py::array::c_style | py::array::forcecast>(indices);
+  auto data_arr =
+      py::array_t<double, py::array::c_style | py::array::forcecast>(data);
+  if (indptr_arr.ndim() != 1 || indices_arr.ndim() != 1 || data_arr.ndim() != 1) {
+    throw std::runtime_error("indptr, indices, data must be 1D arrays.");
+  }
+  if (indptr_arr.shape(0) != m + 1) {
+    throw std::runtime_error("indptr length must equal m + 1.");
+  }
+  if (indices_arr.shape(0) != data_arr.shape(0)) {
+    throw std::runtime_error("indices and data lengths must match.");
+  }
+  auto indptr_u = indptr_arr.unchecked<1>();
+  auto indices_u = indices_arr.unchecked<1>();
+  auto data_u = data_arr.unchecked<1>();
+  std::vector<Eigen::Triplet<double>> triplets;
+  triplets.reserve(static_cast<size_t>(data_arr.shape(0)));
+  for (int row = 0; row < m; ++row) {
+    const long long start = indptr_u(row);
+    const long long end = indptr_u(row + 1);
+    for (long long k = start; k < end; ++k) {
+      const int col = static_cast<int>(indices_u(k));
+      if (col < 0 || col >= n) {
+        throw std::runtime_error("indices out of bounds for shape.");
+      }
+      triplets.emplace_back(row, col, data_u(k));
+    }
+  }
+  RowSparseMatrix A(m, n);
+  A.setFromTriplets(triplets.begin(), triplets.end());
+  A.makeCompressed();
+  return A;
+}
+
+RowSparseMatrix BuildSparseFromCOO(const py::array& rows, const py::array& cols,
+                                   const py::array& data, int m, int n) {
+  auto rows_arr =
+      py::array_t<long long, py::array::c_style | py::array::forcecast>(rows);
+  auto cols_arr =
+      py::array_t<long long, py::array::c_style | py::array::forcecast>(cols);
+  auto data_arr =
+      py::array_t<double, py::array::c_style | py::array::forcecast>(data);
+  if (rows_arr.ndim() != 1 || cols_arr.ndim() != 1 || data_arr.ndim() != 1) {
+    throw std::runtime_error("rows, cols, data must be 1D arrays.");
+  }
+  if (rows_arr.shape(0) != cols_arr.shape(0) || rows_arr.shape(0) != data_arr.shape(0)) {
+    throw std::runtime_error("rows/cols/data must have same length.");
+  }
+  auto rows_u = rows_arr.unchecked<1>();
+  auto cols_u = cols_arr.unchecked<1>();
+  auto data_u = data_arr.unchecked<1>();
+  std::vector<Eigen::Triplet<double>> triplets;
+  triplets.reserve(static_cast<size_t>(data_arr.shape(0)));
+  for (ssize_t k = 0; k < data_arr.shape(0); ++k) {
+    const int r = static_cast<int>(rows_u(k));
+    const int c = static_cast<int>(cols_u(k));
+    if (r < 0 || r >= m || c < 0 || c >= n) {
+      throw std::runtime_error("COO row/col out of bounds.");
+    }
+    triplets.emplace_back(r, c, data_u(k));
+  }
+  RowSparseMatrix A(m, n);
+  A.setFromTriplets(triplets.begin(), triplets.end());
+  A.makeCompressed();
+  return A;
+}
+
+RowSparseMatrix BuildSparseFromDense(const py::array& A_dense) {
+  auto A = py::array_t<double, py::array::c_style | py::array::forcecast>(A_dense);
+  if (A.ndim() != 2) {
+    throw std::runtime_error("A must be 2D.");
+  }
+  auto ai = A.request();
+  const int m = static_cast<int>(ai.shape[0]);
+  const int n = static_cast<int>(ai.shape[1]);
+  const auto* ptr = static_cast<double*>(ai.ptr);
+  const ssize_t rs = ai.strides[0] / static_cast<ssize_t>(sizeof(double));
+  const ssize_t cs = ai.strides[1] / static_cast<ssize_t>(sizeof(double));
+  std::vector<Eigen::Triplet<double>> triplets;
+  for (int r = 0; r < m; ++r) {
+    for (int c = 0; c < n; ++c) {
+      double v = ptr[r * rs + c * cs];
+      if (v != 0.0) {
+        triplets.emplace_back(r, c, v);
+      }
+    }
+  }
+  RowSparseMatrix S(m, n);
+  S.setFromTriplets(triplets.begin(), triplets.end());
+  S.makeCompressed();
+  return S;
+}
+
+Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
+                                          const Eigen::VectorXd& b,
+                                          int num_threads) {
+  if (A.rows() != b.rows()) {
+    throw std::runtime_error("A and b dimension mismatch.");
+  }
+  std::vector<std::vector<int>> cliques;
+  std::vector<std::vector<int>> rows_per_clique;
+  std::map<std::vector<int>, std::vector<int>> grouped_rows;
+  for (int row = 0; row < A.rows(); ++row) {
+    auto support = RowSupport(A, row);
+    if (!support.empty()) {
+      grouped_rows[support].push_back(row);
+    }
+  }
+  for (const auto& entry : grouped_rows) {
+    cliques.push_back(entry.first);
+    rows_per_clique.push_back(entry.second);
+  }
+  // Ensure every variable appears in at least one singleton clique so post-order
+  // labeling always defines a full permutation over variables.
+  for (int col = 0; col < A.cols(); ++col) {
+    cliques.push_back({col});
+    rows_per_clique.push_back({});
+  }
+  if (cliques.empty()) {
+    throw std::runtime_error("No cliques constructed from A.");
+  }
+
+  conex::Program prog(A.cols());
+  for (size_t k = 0; k < cliques.size(); ++k) {
+    const auto& vars = cliques.at(k);
+    const auto& rows = rows_per_clique.at(k);
+    Eigen::MatrixXd block(vars.size(), vars.size());
+    block.setZero();
+    std::vector<int> column_to_local(A.cols(), -1);
+    for (size_t i = 0; i < vars.size(); ++i) {
+      column_to_local.at(vars.at(i)) = static_cast<int>(i);
+    }
+    for (int row : rows) {
+      std::vector<std::pair<int, double>> local_entries;
+      for (RowSparseMatrix::InnerIterator it(A, row); it; ++it) {
+        int local = column_to_local.at(it.col());
+        if (local >= 0) {
+          local_entries.emplace_back(local, it.value());
+        }
+      }
+      for (size_t i = 0; i < local_entries.size(); ++i) {
+        for (size_t j = 0; j <= i; ++j) {
+          int r = local_entries.at(i).first;
+          int c = local_entries.at(j).first;
+          double v = local_entries.at(i).second * local_entries.at(j).second;
+          block(r, c) += v;
+          if (r != c) {
+            block(c, r) += v;
+          }
+        }
+      }
+    }
+    if (vars.empty()) {
+      continue;
+    }
+    // Objective is 0.5*x'Qx + c'x. For ||Ax-b||^2, use Q = 2*A'A.
+    prog.AddQuadraticCost(2.0 * block, vars);
+  }
+
+  Eigen::VectorXd rhs = A.transpose() * b;
+  prog.AddLinearCost((-2.0 * rhs).eval());
+
+  conex::SolverConfiguration config;
+  config.kkt_solver = conex::CONEX_KKT_SOLVER_TREE;
+  config.num_threads = num_threads;
+  config.enable_line_search = 1;
+  config.enable_rescaling = 0;
+  config.verbose = 0;
+  Eigen::VectorXd x(A.cols());
+  if (!Solve(prog, config, x.data())) {
+    throw std::runtime_error("Conex tree least-squares solve failed.");
+  }
+  return x;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(_conex, m) {
@@ -110,6 +330,7 @@ PYBIND11_MODULE(_conex, m) {
       .def_readwrite("max_iterations", &CONEX_SolverConfiguration::max_iterations)
       .def_readwrite("iterative_refinement_iterations",
                      &CONEX_SolverConfiguration::iterative_refinement_iterations)
+      .def_readwrite("num_threads", &CONEX_SolverConfiguration::num_threads)
       .def_readwrite("infeasibility_threshold",
                      &CONEX_SolverConfiguration::infeasibility_threshold)
       .def_readwrite("kkt_error_tolerance",
@@ -224,6 +445,62 @@ PYBIND11_MODULE(_conex, m) {
           return CONEX_Solve(PtrFromPy(p), &cfg, static_cast<double*>(yi.ptr),
                              static_cast<int>(yi.shape[0]));
         });
+
+  m.def(
+      "sparse_ls_csr",
+      [](const py::array& indptr, const py::array& indices, const py::array& data,
+         int m_rows, int n_cols, const py::array& b, int num_threads) {
+        Eigen::VectorXd b_eig = ToEigenVector(b);
+        if (b_eig.rows() != m_rows) {
+          throw std::runtime_error("b length must equal number of rows in A.");
+        }
+        RowSparseMatrix A =
+            BuildSparseFromCSR(indptr, indices, data, m_rows, n_cols);
+        Eigen::VectorXd x;
+        {
+          py::gil_scoped_release release;
+          x = SparseLeastSquaresViaTree(A, b_eig, num_threads);
+        }
+        return ToPyArray(x);
+      },
+      py::arg("indptr"), py::arg("indices"), py::arg("data"), py::arg("m_rows"),
+      py::arg("n_cols"), py::arg("b"), py::arg("num_threads") = 1);
+
+  m.def(
+      "sparse_ls_coo",
+      [](const py::array& rows, const py::array& cols, const py::array& data,
+         int m_rows, int n_cols, const py::array& b, int num_threads) {
+        Eigen::VectorXd b_eig = ToEigenVector(b);
+        if (b_eig.rows() != m_rows) {
+          throw std::runtime_error("b length must equal number of rows in A.");
+        }
+        RowSparseMatrix A = BuildSparseFromCOO(rows, cols, data, m_rows, n_cols);
+        Eigen::VectorXd x;
+        {
+          py::gil_scoped_release release;
+          x = SparseLeastSquaresViaTree(A, b_eig, num_threads);
+        }
+        return ToPyArray(x);
+      },
+      py::arg("rows"), py::arg("cols"), py::arg("data"), py::arg("m_rows"),
+      py::arg("n_cols"), py::arg("b"), py::arg("num_threads") = 1);
+
+  m.def(
+      "sparse_ls_dense",
+      [](const py::array& A_dense, const py::array& b, int num_threads) {
+        RowSparseMatrix A = BuildSparseFromDense(A_dense);
+        Eigen::VectorXd b_eig = ToEigenVector(b);
+        if (b_eig.rows() != A.rows()) {
+          throw std::runtime_error("b length must equal number of rows in A.");
+        }
+        Eigen::VectorXd x;
+        {
+          py::gil_scoped_release release;
+          x = SparseLeastSquaresViaTree(A, b_eig, num_threads);
+        }
+        return ToPyArray(x);
+      },
+      py::arg("A_dense"), py::arg("b"), py::arg("num_threads") = 1);
 
   m.def("CONEX_Maximize",
         [](std::uintptr_t p, const py::array& b, const CONEX_SolverConfiguration& cfg,
