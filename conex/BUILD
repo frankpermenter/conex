@@ -555,6 +555,30 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "kkt_tree_solver_speedup_test",
+    srcs = [
+        "test/kkt_tree_solver_speedup_test.cc",
+    ],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "kkt_tree_solver",
+        "@gtest//:main",
+    ],
+)
+
+cc_test(
+    name = "kkt_tree_solver_sparse_benchmark_test",
+    srcs = [
+        "test/kkt_tree_solver_sparse_benchmark_test.cc",
+    ],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "kkt_tree_solver",
+        "@gtest//:main",
+    ],
+)
+
 cc_library(
     name = "conjugate_gradient_solvers",
     srcs = ["conjugate_gradient_solvers.cc"],

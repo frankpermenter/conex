@@ -287,6 +287,9 @@ using T = SymmetricLinearSystemTreeSolver;
 void T::SetNumThreads(int num_threads) {
   CONEX_DEMAND(num_threads > 0, "num_threads must be positive.");
   num_threads_ = num_threads;
+  for (auto* subsystem : subsystems_) {
+    subsystem->SetNumThreads(num_threads_);
+  }
 }
 
 void T::SetEliminationOrder(
@@ -564,6 +567,7 @@ Eigen::SparseMatrix<double> T::MakeSparseKKTMatrix(
 
 void T::AddSubsystem(KKTSubsystemType* system) {
   CONEX_CHECK(system != nullptr);
+  system->SetNumThreads(num_threads_);
   subsystems_.push_back(system);
 }
 

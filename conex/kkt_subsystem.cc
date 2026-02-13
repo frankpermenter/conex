@@ -1,6 +1,10 @@
 #define CONEX_ENABLE_TIMER 0
 #include "conex/kkt_subsystem.h"
 
+#include <algorithm>
+#include <atomic>
+#include <thread>
+
 #include "conex/debug_macros.h"
 
 using Eigen::MatrixXd;
@@ -47,20 +51,48 @@ KKTSubsystemBase::Offset GetOverlappingSegment(
 }
 
 void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
-  for (auto& c : destination->local_supernode_to_source_separator(source)) {
-    for (auto& r : destination->local_supernode_to_source_separator(source)) {
-      destination->supernode_submatrix().block(r.first, c.first, r.size,
-                                               c.size) +=
+  const auto supernode_offsets =
+      destination->local_supernode_to_source_separator(source);
+  const auto separator_offsets =
+      destination->local_separator_to_source_separator(source);
+  for (const auto& c : supernode_offsets) {
+    for (const auto& r : supernode_offsets) {
+      destination->supernode_submatrix()
+          .block(r.first, c.first, r.size, c.size)
+          .noalias() += source->separator_schur_complement().block(
+          r.second, c.second, r.size, c.size);
+    }
+    for (const auto& r : separator_offsets) {
+      destination->separator_rows()
+          .block(r.first, c.first, r.size, c.size)
+          .noalias() += source->separator_schur_complement().block(
+          r.second, c.second, r.size, c.size);
+    }
+  }
+}
+
+void AccumulateUpdate(const KKTSubsystemBase* source,
+                      const KKTSubsystemBase* destination,
+                      Eigen::Ref<Eigen::MatrixXd> supernode_delta,
+                      Eigen::Ref<Eigen::MatrixXd> separator_delta) {
+  const auto supernode_offsets =
+      destination->local_supernode_to_source_separator(source);
+  const auto separator_offsets =
+      destination->local_separator_to_source_separator(source);
+  for (const auto& c : supernode_offsets) {
+    for (const auto& r : supernode_offsets) {
+      supernode_delta.block(r.first, c.first, r.size, c.size).noalias() +=
           source->separator_schur_complement().block(r.second, c.second, r.size,
                                                      c.size);
     }
-    for (auto& r : destination->local_separator_to_source_separator(source)) {
-      destination->separator_rows().block(r.first, c.first, r.size, c.size) +=
+    for (const auto& r : separator_offsets) {
+      separator_delta.block(r.first, c.first, r.size, c.size).noalias() +=
           source->separator_schur_complement().block(r.second, c.second, r.size,
                                                      c.size);
     }
   }
 }
+
 }  // namespace
 
 void T::DoMultiplyAndDecrementByOffDiagonalSubMatrix(
@@ -103,6 +135,76 @@ void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
 }
 
 bool T::IsRoot() const { return parent_ == nullptr; }
+
+void T::AccumulateColumnUpdate(
+    const KKTSubsystemBase* target, Eigen::Ref<Eigen::MatrixXd> supernode_delta,
+    Eigen::Ref<Eigen::MatrixXd> separator_delta) const {
+  const std::vector<int>& target_supernodes = target->supernodes();
+  if (target_supernodes.size() == 0) {
+    return;
+  }
+  if (separators_.size() == 0 || target_supernodes.at(0) > separators_.back()) {
+    return;
+  }
+  AccumulateUpdate(this, target, supernode_delta, separator_delta);
+  for (auto& c : children_) {
+    c->AccumulateColumnUpdate(target, supernode_delta, separator_delta);
+  }
+}
+
+void T::ApplyLeftLookingChildUpdates() {
+  if (!left_looking_ || children_.empty()) {
+    return;
+  }
+  if (num_threads_ <= 1 || children_.size() == 1) {
+    for (auto* child : children_) {
+      child->ProvideColumnUpdate(this);
+    }
+    return;
+  }
+
+  const size_t worker_count =
+      std::min<size_t>(static_cast<size_t>(num_threads_), children_.size());
+  std::vector<Eigen::MatrixXd> supernode_deltas(worker_count);
+  std::vector<Eigen::MatrixXd> separator_deltas(worker_count);
+
+  const int supernode_rows = supernode_submatrix().rows();
+  const int supernode_cols = supernode_submatrix().cols();
+  const int separator_row_count = this->separator_rows().rows();
+  const int separator_col_count = this->separator_rows().cols();
+  for (size_t i = 0; i < worker_count; ++i) {
+    supernode_deltas.at(i) =
+        Eigen::MatrixXd::Zero(supernode_rows, supernode_cols);
+    separator_deltas.at(i) =
+        Eigen::MatrixXd::Zero(separator_row_count, separator_col_count);
+  }
+
+  std::atomic<size_t> next_child(0);
+  std::vector<std::thread> workers;
+  workers.reserve(worker_count);
+  for (size_t t = 0; t < worker_count; ++t) {
+    workers.emplace_back([&, t]() {
+      while (true) {
+        const size_t child_index =
+            next_child.fetch_add(1, std::memory_order_relaxed);
+        if (child_index >= children_.size()) {
+          return;
+        }
+        children_.at(child_index)
+            ->AccumulateColumnUpdate(this, supernode_deltas.at(t),
+                                     separator_deltas.at(t));
+      }
+    });
+  }
+  for (auto& worker : workers) {
+    worker.join();
+  }
+
+  for (size_t i = 0; i < worker_count; ++i) {
+    supernode_submatrix() += supernode_deltas.at(i);
+    separator_rows() += separator_deltas.at(i);
+  }
+}
 
 void T::DoMultiplyByTransposeOfOffDiagonalSubMatrix(
     Eigen::MatrixXd* output, Eigen::Ref<const Eigen::MatrixXd> input) const {
@@ -212,11 +314,11 @@ bool T::AssembleAndFactor() {
     if (!child->AssembleAndFactor()) {
       return false;
     }
-    if (left_looking_) {
-      START_TIMER(Update)
-      child->ProvideColumnUpdate(this);
-      END_TIMER
-    }
+  }
+  if (left_looking_) {
+    START_TIMER(Update)
+    ApplyLeftLookingChildUpdates();
+    END_TIMER
   }
   START_TIMER(Eliminate)
   if (!DoEliminateSupernodeColumns()) {
@@ -239,9 +341,9 @@ void T::Assemble() {
   DoInitialize();
   for (auto& child : children_) {
     child->Assemble();
-    if (left_looking_) {
-      child->ProvideColumnUpdate(this);
-    }
+  }
+  if (left_looking_) {
+    ApplyLeftLookingChildUpdates();
   }
 
   if (!IsRoot() && !left_looking_) {
@@ -254,9 +356,9 @@ bool T::Factor() {
     if (!child->Factor()) {
       return false;
     }
-    if (left_looking_) {
-      child->ProvideColumnUpdate(this);
-    }
+  }
+  if (left_looking_) {
+    ApplyLeftLookingChildUpdates();
   }
   if (supernodes_.size() > 0) {
     if (!DoEliminateSupernodeColumns()) {

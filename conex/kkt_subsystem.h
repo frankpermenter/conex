@@ -109,6 +109,10 @@ class KKTSubsystemBase {
 
   void SetVariableOrdering(
       const std::vector<int>& variable_to_elimination_position);
+  void SetNumThreads(int num_threads) {
+    CONEX_DEMAND(num_threads > 0, "num_threads must be positive.");
+    num_threads_ = num_threads;
+  }
 
   void AddChild(KKTSubsystemBase* child) {
     CONEX_DEMAND(child, "Received nullptr");
@@ -141,11 +145,11 @@ class KKTSubsystemBase {
     int size;
   };
   std::vector<Offset> local_supernode_to_source_separator(
-      const KKTSubsystemBase* source) {
+      const KKTSubsystemBase* source) const {
     return local_supernode_to_source_separator_.at(source);
   }
   std::vector<Offset> local_separator_to_source_separator(
-      const KKTSubsystemBase* source) {
+      const KKTSubsystemBase* source) const {
     return local_separator_to_source_separator_.at(source);
   }
 
@@ -173,6 +177,11 @@ class KKTSubsystemBase {
       Eigen::MatrixXd* output, Eigen::Ref<const Eigen::MatrixXd> input) const;
 
   bool IsRoot() const;
+  void AccumulateColumnUpdate(
+      const KKTSubsystemBase* target,
+      Eigen::Ref<Eigen::MatrixXd> supernode_delta,
+      Eigen::Ref<Eigen::MatrixXd> separator_delta) const;
+  void ApplyLeftLookingChildUpdates();
   void ProvideColumnUpdate(KKTSubsystemBase* target);
   void ReceiveColumnUpdate(const KKTSubsystemBase* source,
                            size_t start_index_of_source);
@@ -202,6 +211,7 @@ class KKTSubsystemBase {
   bool left_looking_ = true;
   bool variable_set_equals_sorted_supernodes_;
   bool variable_set_equals_sorted_separators_;
+  int num_threads_ = 1;
 };
 
 class KKTSubsystem : public KKTSubsystemBase {
