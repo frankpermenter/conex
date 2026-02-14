@@ -17,6 +17,18 @@ using std::vector;
 
 namespace {
 
+bool AreContiguousLabels(const std::vector<int>& labels) {
+  if (labels.empty()) {
+    return true;
+  }
+  for (size_t i = 1; i < labels.size(); ++i) {
+    if (labels.at(i) != labels.at(i - 1) + 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
 KKTSubsystemBase::Offset GetOverlappingSegment(
     const std::vector<int>& supernodes_, const std::vector<int>& variables,
     size_t global_label) {
@@ -150,7 +162,27 @@ void T::ApplyLeftLookingChildUpdates() {
   if (!left_looking_ || children_.empty()) {
     return;
   }
+  const int supernode_rows = supernode_submatrix().rows();
+  const int supernode_cols = supernode_submatrix().cols();
+  const int separator_row_count = this->separator_rows().rows();
+  const int separator_col_count = this->separator_rows().cols();
+  const long long update_entries_per_accumulator =
+      static_cast<long long>(supernode_rows) * supernode_cols +
+      static_cast<long long>(separator_row_count) * separator_col_count;
+  const long long total_update_entries =
+      update_entries_per_accumulator *
+      static_cast<long long>(children_.size());
+
+  // For tiny updates (e.g., many 1x1 star leaves), threaded setup and
+  // reduction overhead can dominate arithmetic.
+  constexpr long long kSmallUpdateThresholdEntries = 1 << 14;
   if (num_threads_ <= 1 || children_.size() == 1) {
+    for (auto* child : children_) {
+      child->ProvideColumnUpdate(this);
+    }
+    return;
+  }
+  if (total_update_entries <= kSmallUpdateThresholdEntries) {
     for (auto* child : children_) {
       child->ProvideColumnUpdate(this);
     }
@@ -162,10 +194,6 @@ void T::ApplyLeftLookingChildUpdates() {
   std::vector<Eigen::MatrixXd> supernode_deltas(worker_count);
   std::vector<Eigen::MatrixXd> separator_deltas(worker_count);
 
-  const int supernode_rows = supernode_submatrix().rows();
-  const int supernode_cols = supernode_submatrix().cols();
-  const int separator_row_count = this->separator_rows().rows();
-  const int separator_col_count = this->separator_rows().cols();
   for (size_t i = 0; i < worker_count; ++i) {
     supernode_deltas.at(i) =
         Eigen::MatrixXd::Zero(supernode_rows, supernode_cols);
@@ -220,6 +248,8 @@ void T::ReserveSolveWorkspace(int rhs_cols) {
   for (auto child : children_) {
     child->ReserveSolveWorkspace(rhs_cols);
   }
+  CONEX_DEMAND(AreContiguousLabels(supernodes_),
+               "Non-contiguous supernodes are not supported in solve path.");
   if (rhs_cols <= solve_workspace_cols_) {
     return;
   }

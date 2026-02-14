@@ -180,5 +180,22 @@ TEST(KKTTreeSolver, MultiThreadSingleTreeStarSpeedup) {
   EXPECT_GT(single_thread_ms - multi_thread_ms, 30);
 }
 
+TEST(KKTTreeSolver, RejectsNonContiguousSupernodesInSolve) {
+  SymmetricLinearSystemTreeSolver solver;
+  solver.SetNumThreads(1);
+
+  auto subsystem = std::make_unique<SleepySubsystem>(std::chrono::milliseconds(0));
+  subsystem->SetSupernodes({0, 2});
+  subsystem->SetSeparators({});
+  solver.AddSubsystem(subsystem.get());
+
+  solver.SetEliminationTree({-1});
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  Eigen::MatrixXd rhs(3, 1);
+  rhs.setZero();
+  EXPECT_THROW((void)solver.Solve(rhs, false), std::runtime_error);
+}
+
 }  // namespace
 }  // namespace conex

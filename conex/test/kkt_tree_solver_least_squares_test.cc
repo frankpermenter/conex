@@ -69,6 +69,27 @@ class RowPartitionAssembler final : public SupernodalAssemblerBase {
   Eigen::VectorXd memory_;
 };
 
+class StaticMatrixAssembler final : public SupernodalAssemblerBase {
+ public:
+  StaticMatrixAssembler(const std::vector<int>& variables,
+                        const Eigen::MatrixXd& local_matrix)
+      : SupernodalAssemblerBase(variables), local_matrix_(local_matrix) {
+    CONEX_DEMAND(local_matrix_.rows() == local_matrix_.cols(),
+                 "Local matrix must be square.");
+    CONEX_DEMAND(local_matrix_.rows() == static_cast<int>(variables.size()),
+                 "Local matrix size must match variables.");
+    Workspace workspace(&submatrix_data_);
+    memory_.resize(SizeOf(workspace));
+    Initialize(&workspace, memory_.data());
+  }
+
+  void SetDenseData() override { submatrix_data_.G = local_matrix_; }
+
+ private:
+  Eigen::MatrixXd local_matrix_;
+  Eigen::VectorXd memory_;
+};
+
 std::vector<int> RowSupport(const RowSparseMatrix& A, int row) {
   std::vector<int> support;
   for (RowSparseMatrix::InnerIterator it(A, row); it; ++it) {
@@ -197,6 +218,82 @@ TEST(KKTTreeSolver, SparseLeastSquaresFromRowPartitions) {
   EXPECT_LT(rel_diff, 2e-5);
   EXPECT_LT(tree_residual, 2e-5);
   EXPECT_LT(qr_residual, 2e-8);
+}
+
+TEST(KKTTreeSolver, RelabelsNonContiguousGlobalCliquesAndSolves) {
+  // Two independent cliques in global labels: {0,2} and {1,3}.
+  // Even though labels are non-contiguous globally, solver should relabel and
+  // solve correctly.
+  Eigen::MatrixXd local_02(2, 2);
+  local_02 << 4.0, 1.0, 1.0, 3.0;
+  Eigen::MatrixXd local_13(2, 2);
+  local_13 << 5.0, 2.0, 2.0, 6.0;
+
+  SymmetricLinearSystemTreeSolver tree_solver;
+  tree_solver.SetNumThreads(1);
+  tree_solver.EnableAutoUpdateAtAssemble(true);
+  tree_solver.SetFactorizationMode(true);
+
+  std::vector<std::unique_ptr<StaticMatrixAssembler>> assemblers;
+  std::vector<std::unique_ptr<KKTAssemblerToSubsystemAdapter>> adapters;
+
+  assemblers.emplace_back(
+      std::make_unique<StaticMatrixAssembler>(std::vector<int>{0, 2}, local_02));
+  {
+    auto adapter = std::make_unique<KKTAssemblerToSubsystemAdapter>(
+        assemblers.back().get());
+    auto* subsystem =
+        adapter->create_subsystem(SubsystemType::kPositiveDefinite);
+    tree_solver.AddSubsystem(subsystem);
+    tree_solver.push_back(std::move(adapter));
+  }
+
+  assemblers.emplace_back(
+      std::make_unique<StaticMatrixAssembler>(std::vector<int>{1, 3}, local_13));
+  {
+    auto adapter = std::make_unique<KKTAssemblerToSubsystemAdapter>(
+        assemblers.back().get());
+    auto* subsystem =
+        adapter->create_subsystem(SubsystemType::kPositiveDefinite);
+    tree_solver.AddSubsystem(subsystem);
+    tree_solver.push_back(std::move(adapter));
+  }
+
+  CliqueTree clique_tree;
+  clique_tree.supernodes = {{0, 2}, {1, 3}};
+  clique_tree.separators = {{}, {}};
+  clique_tree.node_to_parent = {-1, -1};
+  tree_solver.Finalize(clique_tree);
+
+  Eigen::MatrixXd K = Eigen::MatrixXd::Zero(4, 4);
+  K(0, 0) = local_02(0, 0);
+  K(0, 2) = local_02(0, 1);
+  K(2, 0) = local_02(1, 0);
+  K(2, 2) = local_02(1, 1);
+  K(1, 1) = local_13(0, 0);
+  K(1, 3) = local_13(0, 1);
+  K(3, 1) = local_13(1, 0);
+  K(3, 3) = local_13(1, 1);
+
+  Eigen::VectorXd rhs(4);
+  rhs << 1.0, -2.0, 3.0, 4.0;
+  Eigen::MatrixXd rhs_mat(4, 1);
+  rhs_mat.col(0) = rhs;
+
+  tree_solver.Assemble();
+  ASSERT_TRUE(tree_solver.Factor());
+
+  Eigen::MatrixXd x_tree;
+  EXPECT_NO_THROW(x_tree = tree_solver.Solve(rhs_mat, true));
+
+  Eigen::LDLT<Eigen::MatrixXd> ldlt(K);
+  ASSERT_EQ(ldlt.info(), Eigen::Success);
+  const Eigen::VectorXd x_ref = ldlt.solve(rhs);
+  ASSERT_EQ(ldlt.info(), Eigen::Success);
+
+  const double rel_error =
+      (x_tree.col(0) - x_ref).norm() / std::max(1.0, x_ref.norm());
+  EXPECT_LT(rel_error, 1e-10);
 }
 
 }  // namespace
