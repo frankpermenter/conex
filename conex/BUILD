@@ -592,6 +592,18 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "kkt_tree_solver_generic_factorization_test",
+    srcs = [
+        "test/kkt_tree_solver_generic_factorization_test.cc",
+    ],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "kkt_tree_solver",
+        "@gtest//:main",
+    ],
+)
+
 cc_binary(
     name = "kkt_tree_solver_least_squares_benchmark",
     srcs = [
