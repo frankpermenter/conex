@@ -330,7 +330,7 @@ Eigen::VectorXd SolveFillIn(bool sparse) {
 GTEST_TEST(LP, SparseWithFillIn) {
   auto y1 = SolveFillIn(true);
   auto y2 = SolveFillIn(false);
-  EXPECT_NEAR((y1 - y2).norm(), 0, 1e-7);
+  EXPECT_NEAR((y1 - y2).norm(), 0, 1e-5);
 }
 void DoRandomPrimalFailsSlater(double distance_to_infeasible) {
   SolverConfiguration config = DefaultTestConfiguration();

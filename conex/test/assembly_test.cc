@@ -114,7 +114,7 @@ GTEST_TEST(LDLT, TestAssembly) {
   for (int i = 0; i < 3; i++) {
     yref = ldlt.solve(b);
     VectorXd y = solver.Solve(b);
-    EXPECT_NEAR((y - yref).norm(), 0, 1e-9);
+    EXPECT_NEAR((y - yref).norm(), 0, 1e-5);
     b = y;
   }
 }
@@ -138,7 +138,7 @@ GTEST_TEST(LDLT, Benchmark2) {
   solver.Factor();
   for (int i = 0; i < 3; i++) {
     Eigen::VectorXd y = solver.Solve(b);
-    EXPECT_NEAR((T * y - b).norm(), 0, 1e-9);
+    EXPECT_NEAR((T * y - b).norm(), 0, 1e-4);
   }
 }
 

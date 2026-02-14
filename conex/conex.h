@@ -39,7 +39,7 @@ struct SolverConfiguration {
   double infeasibility_threshold = 1e5;
   double kkt_error_tolerance = 1e10;
   int kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
-  int clique_tree_method = CONEX_CLIQUE_TREE_METHOD_WEIGHTED_DFS;
+  int clique_tree_method = CONEX_CLIQUE_TREE_METHOD_AMD;
   int enable_rescaling = 1;
   int iterative_refinement_iterations = 0;
   // Number of CPU threads used by compatible KKT solvers.
