@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <vector>
 
@@ -161,9 +162,167 @@ class StaticMatrixAssembler final : public conex::SupernodalAssemblerBase {
         local_matrix_.triangularView<Eigen::Lower>();
   }
 
+  void SetLocalMatrix(const Eigen::MatrixXd& local_matrix) {
+    if (local_matrix.rows() != local_matrix.cols()) {
+      throw std::runtime_error("Local matrix must be square.");
+    }
+    if (local_matrix.rows() != static_cast<int>(variables().size())) {
+      throw std::runtime_error("Local matrix size must match variables.");
+    }
+    local_matrix_ = local_matrix;
+  }
+
  private:
   Eigen::MatrixXd local_matrix_;
   Eigen::VectorXd memory_;
+};
+
+std::vector<int> VectorFromPyInt64(const py::array& arr, const char* name) {
+  auto vec = py::array_t<long long, py::array::c_style | py::array::forcecast>(arr);
+  if (vec.ndim() != 1) {
+    throw std::runtime_error(std::string(name) + " must be a 1D array.");
+  }
+  std::vector<int> out(static_cast<size_t>(vec.shape(0)));
+  auto u = vec.unchecked<1>();
+  for (ssize_t i = 0; i < vec.shape(0); ++i) {
+    out.at(static_cast<size_t>(i)) = static_cast<int>(u(i));
+  }
+  return out;
+}
+
+std::vector<std::vector<int>> NestedVectorFromPy(const py::list& nested,
+                                                 const char* name) {
+  std::vector<std::vector<int>> out;
+  out.reserve(nested.size());
+  for (size_t i = 0; i < nested.size(); ++i) {
+    auto arr = py::array(nested[i]);
+    out.push_back(VectorFromPyInt64(arr, name));
+  }
+  return out;
+}
+
+py::array_t<double> MatrixToPyArray(const Eigen::MatrixXd& mat) {
+  py::array_t<double> out({mat.rows(), mat.cols()});
+  auto o = out.mutable_unchecked<2>();
+  for (int r = 0; r < mat.rows(); ++r) {
+    for (int c = 0; c < mat.cols(); ++c) {
+      o(r, c) = mat(r, c);
+    }
+  }
+  return out;
+}
+
+Eigen::MatrixXd MatrixFromPy(const py::array& a, const char* name) {
+  auto mat = py::array_t<double, py::array::c_style | py::array::forcecast>(a);
+  if (mat.ndim() != 2) {
+    throw std::runtime_error(std::string(name) + " must be a 2D array.");
+  }
+  auto info = mat.request();
+  const auto* ptr = static_cast<const double*>(info.ptr);
+  const ssize_t rs = info.strides[0] / static_cast<ssize_t>(sizeof(double));
+  const ssize_t cs = info.strides[1] / static_cast<ssize_t>(sizeof(double));
+  Eigen::MatrixXd out(static_cast<int>(info.shape[0]), static_cast<int>(info.shape[1]));
+  for (int r = 0; r < out.rows(); ++r) {
+    for (int c = 0; c < out.cols(); ++c) {
+      out(r, c) = ptr[r * rs + c * cs];
+    }
+  }
+  return out;
+}
+
+class PyKKTTreeSolver {
+ public:
+  PyKKTTreeSolver() { solver_.EnableAutoUpdateAtAssemble(true); }
+  void SetNumThreads(int num_threads) { solver_.SetNumThreads(num_threads); }
+  void SetFactorizationMode(bool left_looking) {
+    solver_.SetFactorizationMode(left_looking);
+  }
+  void EnableAutoUpdateAtAssemble(bool enable) {
+    solver_.EnableAutoUpdateAtAssemble(enable);
+  }
+
+  int AddDenseSubsystem(const py::array& variables, const py::array& local_matrix) {
+    std::vector<int> vars = VectorFromPyInt64(variables, "variables");
+    Eigen::MatrixXd local = MatrixFromPy(local_matrix, "local_matrix");
+    assemblers_.push_back(std::make_unique<StaticMatrixAssembler>(vars, local));
+    auto adapter =
+        std::make_unique<conex::KKTAssemblerToSubsystemAdapter>(assemblers_.back().get());
+    auto* subsystem =
+        adapter->create_subsystem(conex::SubsystemType::kPositiveDefinite);
+    solver_.AddSubsystem(subsystem);
+    solver_.push_back(std::move(adapter));
+    return static_cast<int>(assemblers_.size()) - 1;
+  }
+
+  void UpdateLocalMatrix(int subsystem_index, const py::array& local_matrix) {
+    if (subsystem_index < 0 ||
+        subsystem_index >= static_cast<int>(assemblers_.size())) {
+      throw std::runtime_error("subsystem_index out of range.");
+    }
+    assemblers_.at(static_cast<size_t>(subsystem_index))
+        ->SetLocalMatrix(MatrixFromPy(local_matrix, "local_matrix"));
+  }
+
+  void Finalize(const py::list& supernodes, const py::list& separators,
+                const py::array& node_to_parent) {
+    conex::CliqueTree tree;
+    tree.supernodes = NestedVectorFromPy(supernodes, "supernodes");
+    tree.separators = NestedVectorFromPy(separators, "separators");
+    tree.node_to_parent = VectorFromPyInt64(node_to_parent, "node_to_parent");
+    const size_t n = assemblers_.size();
+    if (tree.supernodes.size() != n || tree.separators.size() != n ||
+        tree.node_to_parent.size() != n) {
+      throw std::runtime_error(
+          "Finalize expects supernodes/separators/node_to_parent sized to "
+          "number of added subsystems.");
+    }
+    solver_.Finalize(tree);
+  }
+
+  void UpdateAssemblerData() { solver_.UpdateAssemblerData(); }
+  void Assemble() {
+    solver_.UpdateAssemblerData();
+    solver_.Assemble();
+  }
+  bool Factor() {
+    solver_.UpdateAssemblerData();
+    return solver_.Factor();
+  }
+  bool AssembleAndFactor() {
+    solver_.UpdateAssemblerData();
+    return solver_.AssembleAndFactor();
+  }
+
+  py::array_t<double> Solve(const py::array& rhs, bool in_original_order) const {
+    Eigen::MatrixXd b = MatrixFromPy(rhs, "rhs");
+    if (b.rows() != solver_.number_of_variables()) {
+      throw std::runtime_error("rhs row count must match solver variable count.");
+    }
+    Eigen::MatrixXd x;
+    {
+      py::gil_scoped_release release;
+      x = solver_.Solve(b, in_original_order);
+    }
+    return MatrixToPyArray(x);
+  }
+
+  py::array_t<double> KKTMatrix(bool in_elimination_order) const {
+    Eigen::MatrixXd M = solver_.KKTMatrix(in_elimination_order);
+    return MatrixToPyArray(M);
+  }
+
+  py::list VariableToEliminationPosition() const {
+    const auto& order = solver_.variable_to_elimination_position();
+    py::list out;
+    for (size_t i = 0; i < order.size(); ++i) {
+      out.append(order.at(i));
+    }
+    return out;
+  }
+
+ private:
+  conex::SymmetricLinearSystemTreeSolver solver_;
+  std::vector<std::unique_ptr<StaticMatrixAssembler>> assemblers_;
 };
 
 std::vector<int> RowSupport(const RowSparseMatrix& A, int row) {
@@ -421,6 +580,31 @@ Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
 }  // namespace
 
 PYBIND11_MODULE(_conex, m) {
+  py::class_<PyKKTTreeSolver>(m, "KKTTreeSolver")
+      .def(py::init<>())
+      .def("set_num_threads", &PyKKTTreeSolver::SetNumThreads,
+           py::arg("num_threads"))
+      .def("set_factorization_mode", &PyKKTTreeSolver::SetFactorizationMode,
+           py::arg("left_looking"))
+      .def("enable_auto_update_at_assemble",
+           &PyKKTTreeSolver::EnableAutoUpdateAtAssemble, py::arg("enable"))
+      .def("add_dense_subsystem", &PyKKTTreeSolver::AddDenseSubsystem,
+           py::arg("variables"), py::arg("local_matrix"))
+      .def("update_local_matrix", &PyKKTTreeSolver::UpdateLocalMatrix,
+           py::arg("subsystem_index"), py::arg("local_matrix"))
+      .def("finalize", &PyKKTTreeSolver::Finalize, py::arg("supernodes"),
+           py::arg("separators"), py::arg("node_to_parent"))
+      .def("update_assembler_data", &PyKKTTreeSolver::UpdateAssemblerData)
+      .def("assemble", &PyKKTTreeSolver::Assemble)
+      .def("factor", &PyKKTTreeSolver::Factor)
+      .def("assemble_and_factor", &PyKKTTreeSolver::AssembleAndFactor)
+      .def("solve", &PyKKTTreeSolver::Solve, py::arg("rhs"),
+           py::arg("in_original_order") = true)
+      .def("kkt_matrix", &PyKKTTreeSolver::KKTMatrix,
+           py::arg("in_elimination_order") = false)
+      .def("variable_to_elimination_position",
+           &PyKKTTreeSolver::VariableToEliminationPosition);
+
   py::class_<IntPtr>(m, "intp")
       .def(py::init<int>(), py::arg("value") = 0)
       .def("value", &IntPtr::value)
