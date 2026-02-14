@@ -1,50 +1,67 @@
 #!/usr/bin/env python3
 import time
+from pathlib import Path
 
+import matplotlib
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
 from _conex import sparse_ls_profile_csr
 
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+
 
 def build_star_matrix_expected_tree(
     separator_size: int, num_leaves: int, repeats: int, seed: int
 ) -> sp.csr_matrix:
-    # Variables: [separator block | leaf variables]
+    # Variables: [leaf blocks | separator block], with leaf block size = separator_size.
     # Unique supports are exactly:
     #  - one separator support of size separator_size
-    #  - one support per leaf of size separator_size + 1
+    #  - one support per leaf of size 2 * separator_size
     # Therefore expected cliques = 1 + num_leaves.
-    n = separator_size + num_leaves
+    leaf_block_size = separator_size
+    n = separator_size + num_leaves * leaf_block_size
     rows = []
     cols = []
     vals = []
     r = 0
     rng = np.random.default_rng(seed)
 
+    separator_start = num_leaves * leaf_block_size
+    separator_cols = list(range(separator_start, separator_start + separator_size))
+
     # Separator-only rows with full separator support (single unique support).
     for _ in range(separator_size):
         coeff = rng.normal(0.0, 0.25, size=separator_size)
-        for j, c in enumerate(coeff):
+        for j, c in zip(separator_cols, coeff):
             rows.append(r)
             cols.append(j)
             vals.append(float(c))
         r += 1
 
-    # Per-leaf rows with support = full separator block + current leaf.
-    # repeats+1 keeps leaf diagonal conditioning while preserving support pattern.
+    # Per-leaf rows with support = full separator block + current leaf block.
+    # repeats+1 keeps leaf-block conditioning while preserving support pattern.
+    rows_per_leaf = max(repeats + 1, leaf_block_size)
     for leaf in range(num_leaves):
-        leaf_col = separator_size + leaf
-        for rep in range(repeats + 1):
+        leaf_start = leaf * leaf_block_size
+        leaf_cols = list(range(leaf_start, leaf_start + leaf_block_size))
+        for rep in range(rows_per_leaf):
             coeff = rng.normal(0.0, 0.25, size=separator_size)
-            for j, c in enumerate(coeff):
+            for j, c in zip(separator_cols, coeff):
                 rows.append(r)
                 cols.append(j)
                 vals.append(float(c))
-            rows.append(r)
-            cols.append(leaf_col)
-            vals.append(0.8 + 0.05 * (rep % 4))
+            # Keep all columns in support, but cycle a strong coordinate to
+            # guarantee full-rank information in each leaf block.
+            leaf_coeff = rng.normal(0.0, 0.02, size=leaf_block_size)
+            ridge = 1.0 + 0.02 * (rep % 5)
+            leaf_coeff[rep % leaf_block_size] += ridge
+            for j, c in zip(leaf_cols, leaf_coeff):
+                rows.append(r)
+                cols.append(j)
+                vals.append(float(c))
             r += 1
 
     return sp.csr_matrix((vals, (rows, cols)), shape=(r, n))
@@ -66,11 +83,25 @@ def rel_error(x, y):
     return np.linalg.norm(x - y) / denom
 
 
+def save_sparsity_pattern(ata: sp.csc_matrix, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig = plt.figure(figsize=(5.5, 5.5), dpi=150)
+    ax = fig.add_subplot(111)
+    ax.spy(ata, markersize=0.8, color="black")
+    ax.set_title("Sparsity of A^T A")
+    ax.set_xlabel("column")
+    ax.set_ylabel("row")
+    fig.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
+
+
 def main():
     instances = []
     for sep in [1, 4, 8, 16, 32]:
         for leaves in [64, 128, 256]:
             instances.append((sep, leaves, 8))
+    output_dir = Path("interfaces/python/test/benchmark_outputs")
 
     print(
         "sep,leaves,expected_cliques,actual_cliques,match,"
@@ -86,6 +117,9 @@ def main():
         b = A @ x_true
         ata = (A.T @ A).tocsc()
         rhs = A.T @ b
+
+        pattern_path = output_dir / f"ata_pattern_sep{sep}_leaves{leaves}.png"
+        save_sparsity_pattern(ata, pattern_path)
 
         # Warmup each path.
         _ = sparse_ls_profile_csr(
