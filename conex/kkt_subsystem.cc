@@ -54,25 +54,93 @@ KKTSubsystemBase::Offset GetOverlappingSegment(
   return y;
 }
 
+struct OffsetPattern {
+  int first0 = 0;
+  int second0 = 0;
+  int size = 0;
+  int stride_first = 0;
+  int stride_second = 0;
+  int count = 0;
+  bool valid = false;
+};
+
+OffsetPattern DetectUniformStridePattern(
+    const std::vector<KKTSubsystemBase::Offset>& offsets) {
+  OffsetPattern pattern;
+  if (offsets.empty()) {
+    return pattern;
+  }
+  pattern.first0 = offsets.front().first;
+  pattern.second0 = offsets.front().second;
+  pattern.size = offsets.front().size;
+  pattern.count = static_cast<int>(offsets.size());
+  if (pattern.count == 1) {
+    pattern.valid = true;
+    return pattern;
+  }
+  pattern.stride_first = offsets.at(1).first - offsets.at(0).first;
+  pattern.stride_second = offsets.at(1).second - offsets.at(0).second;
+  for (int i = 1; i < pattern.count; ++i) {
+    if (offsets.at(i).size != pattern.size) {
+      return pattern;
+    }
+    if (offsets.at(i).first != pattern.first0 + i * pattern.stride_first) {
+      return pattern;
+    }
+    if (offsets.at(i).second != pattern.second0 + i * pattern.stride_second) {
+      return pattern;
+    }
+  }
+  pattern.valid = true;
+  return pattern;
+}
+
+void AddOffsetBlocks(Eigen::Ref<Eigen::MatrixXd> destination,
+                     Eigen::Ref<const Eigen::MatrixXd> source,
+                     const std::vector<KKTSubsystemBase::Offset>& row_offsets,
+                     const std::vector<KKTSubsystemBase::Offset>& col_offsets) {
+  if (row_offsets.empty() || col_offsets.empty()) {
+    return;
+  }
+  const auto row_pattern = DetectUniformStridePattern(row_offsets);
+  const auto col_pattern = DetectUniformStridePattern(col_offsets);
+
+  if (row_pattern.valid && col_pattern.valid) {
+    for (int c = 0; c < col_pattern.count; ++c) {
+      const int dst_col = col_pattern.first0 + c * col_pattern.stride_first;
+      const int src_col = col_pattern.second0 + c * col_pattern.stride_second;
+      for (int r = 0; r < row_pattern.count; ++r) {
+        const int dst_row = row_pattern.first0 + r * row_pattern.stride_first;
+        const int src_row = row_pattern.second0 + r * row_pattern.stride_second;
+        destination
+            .block(dst_row, dst_col, row_pattern.size, col_pattern.size)
+            .noalias() +=
+            source.block(src_row, src_col, row_pattern.size, col_pattern.size);
+      }
+    }
+    return;
+  }
+
+  for (const auto& c : col_offsets) {
+    for (const auto& r : row_offsets) {
+      destination.block(r.first, c.first, r.size, c.size).noalias() +=
+          source.block(r.second, c.second, r.size, c.size);
+    }
+  }
+}
+
 void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
   const auto supernode_offsets =
       destination->local_supernode_to_source_separator(source);
   const auto separator_offsets =
       destination->local_separator_to_source_separator(source);
-  for (const auto& c : supernode_offsets) {
-    for (const auto& r : supernode_offsets) {
-      destination->supernode_submatrix()
-          .block(r.first, c.first, r.size, c.size)
-          .noalias() += source->separator_schur_complement().block(
-          r.second, c.second, r.size, c.size);
-    }
-    for (const auto& r : separator_offsets) {
-      destination->separator_rows()
-          .block(r.first, c.first, r.size, c.size)
-          .noalias() += source->separator_schur_complement().block(
-          r.second, c.second, r.size, c.size);
-    }
-  }
+  auto destination_supernode = destination->supernode_submatrix();
+  auto destination_separator_rows = destination->separator_rows();
+  const auto source_separator_schur = source->separator_schur_complement();
+  AddOffsetBlocks(destination_supernode, source_separator_schur,
+                  supernode_offsets, supernode_offsets);
+  AddOffsetBlocks(destination_separator_rows, source_separator_schur,
+                  separator_offsets, supernode_offsets);
 }
 
 void AccumulateUpdate(const KKTSubsystemBase* source,
@@ -83,18 +151,11 @@ void AccumulateUpdate(const KKTSubsystemBase* source,
       destination->local_supernode_to_source_separator(source);
   const auto separator_offsets =
       destination->local_separator_to_source_separator(source);
-  for (const auto& c : supernode_offsets) {
-    for (const auto& r : supernode_offsets) {
-      supernode_delta.block(r.first, c.first, r.size, c.size).noalias() +=
-          source->separator_schur_complement().block(r.second, c.second, r.size,
-                                                     c.size);
-    }
-    for (const auto& r : separator_offsets) {
-      separator_delta.block(r.first, c.first, r.size, c.size).noalias() +=
-          source->separator_schur_complement().block(r.second, c.second, r.size,
-                                                     c.size);
-    }
-  }
+  const auto source_separator_schur = source->separator_schur_complement();
+  AddOffsetBlocks(supernode_delta, source_separator_schur, supernode_offsets,
+                  supernode_offsets);
+  AddOffsetBlocks(separator_delta, source_separator_schur, separator_offsets,
+                  supernode_offsets);
 }
 
 }  // namespace
