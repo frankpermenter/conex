@@ -31,6 +31,17 @@ b = A @ (0.1 * np.arange(40))
 x = conex.sparse_ls(A, b, num_threads=4)
 ```
 
+Experimental tree-decomposition-based sparse least-squares helper (built on
+the exposed `KKTTreeSolver` API):
+
+```python
+x = conex.sparse_ls_tree(A, b, num_threads=4)
+```
+
+`sparse_ls_tree` uses an off-the-shelf min-fill tree decomposition heuristic
+(`networkx`) to build a clique tree. If `networkx` is unavailable, it falls
+back to `conex.sparse_ls`.
+
 Benchmark Conex tree least-squares against SciPy/NumPy:
 ```bash
 LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:$PWD/interfaces" \
