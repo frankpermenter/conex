@@ -1,3 +1,5 @@
+startup --output_user_root=/tmp/conex_bazel_user_root
+
 build --action_env=LIBRARY_PATH
 build --action_env=LD_LIBRARY_PATH
 build --cxxopt='-std=c++17'
