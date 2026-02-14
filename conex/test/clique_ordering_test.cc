@@ -139,4 +139,23 @@ GTEST_TEST(CliqueOrdering, Nonmaximal) {
   EXPECT_EQ(post_order.at(2).size(), 2u);
 }
 
+GTEST_TEST(CliqueOrdering, MakeCliqueTreeAmd) {
+  vector<vector<int>> cliques{{0, 1, 3}, {1, 2}, {2, 4}, {1, 4, 5}, {0, 5}};
+  auto tree = MakeCliqueTree(cliques, {}, CLIQUE_TREE_METHOD_AMD);
+  EXPECT_EQ(tree.supernodes.size(), cliques.size());
+  EXPECT_EQ(tree.separators.size(), cliques.size());
+  EXPECT_EQ(tree.post_order_position_to_clique.size(), cliques.size());
+  EXPECT_EQ(tree.node_to_parent.size(), cliques.size());
+
+  auto cliques_sorted = cliques;
+  Sort(&cliques_sorted);
+  for (size_t i = 0; i < cliques_sorted.size(); ++i) {
+    auto bag = UnionOfSorted(tree.supernodes.at(i), tree.separators.at(i));
+    std::vector<int> intersection;
+    IntersectionOfSorted(bag, cliques_sorted.at(i), &intersection);
+    EXPECT_EQ(intersection, cliques_sorted.at(i));
+  }
+  EXPECT_EQ(Union(tree.supernodes), Union(cliques_sorted));
+}
+
 }  // namespace conex

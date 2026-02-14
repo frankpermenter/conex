@@ -29,6 +29,7 @@ typedef struct {
   int enable_rescaling;
   int enable_scale_correction;
   int kkt_solver;
+  int clique_tree_method;
   double verbosity;
 } CONEX_SolverConfiguration;
 

@@ -120,6 +120,7 @@ SolverConfiguration APIConvertSolverConfiguration(
   c.kkt_error_tolerance = config->kkt_error_tolerance;
   c.enable_rescaling = config->enable_rescaling;
   c.kkt_solver = config->kkt_solver;
+  c.clique_tree_method = config->clique_tree_method;
   return c;
 }
 

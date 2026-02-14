@@ -11,6 +11,8 @@ enum : int {
   CONEX_KKT_SOLVER_CG = 2,
   CONEX_KKT_SOLVER_TREE = 3,
   CONEX_KKT_SOLVER_SPARSE_QR = 4,
+  CONEX_CLIQUE_TREE_METHOD_WEIGHTED_DFS = 0,
+  CONEX_CLIQUE_TREE_METHOD_AMD = 1,
   CONEX_ALGORITHM_INFEASIBLE_START = 0,
   CONEX_ALGORITHM_SELF_DUAL_EMBEDDING = 1,
   CONEX_STEP_TYPE_DUAL_BARRIER = 0,
@@ -37,6 +39,7 @@ struct SolverConfiguration {
   double infeasibility_threshold = 1e5;
   double kkt_error_tolerance = 1e10;
   int kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
+  int clique_tree_method = CONEX_CLIQUE_TREE_METHOD_WEIGHTED_DFS;
   int enable_rescaling = 1;
   int iterative_refinement_iterations = 0;
   // Number of CPU threads used by compatible KKT solvers.

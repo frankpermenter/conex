@@ -649,6 +649,8 @@ PYBIND11_MODULE(_conex, m) {
       .def_readwrite("enable_scale_correction",
                      &CONEX_SolverConfiguration::enable_scale_correction)
       .def_readwrite("kkt_solver", &CONEX_SolverConfiguration::kkt_solver)
+      .def_readwrite("clique_tree_method",
+                     &CONEX_SolverConfiguration::clique_tree_method)
       .def_readwrite("verbosity", &CONEX_SolverConfiguration::verbosity);
 
   py::class_<CONEX_IterationStats>(m, "CONEX_IterationStats")

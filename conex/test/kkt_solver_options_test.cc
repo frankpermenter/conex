@@ -96,6 +96,13 @@ GTEST_TEST(LP, UseQR) {
   DoRandomDenseTest(config, num_tests, random_seed);
 }
 
+GTEST_TEST(LP, UseAmdCliqueTreeMethod) {
+  auto config = GetConfiguration();
+  config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
+  config.clique_tree_method = CONEX_CLIQUE_TREE_METHOD_AMD;
+  DoRandomDenseTest(config, num_tests, random_seed);
+}
+
 GTEST_TEST(QR, SuccessWithDependentInequalityColumns) {
   auto config = GetConfiguration();
   config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL_QR;

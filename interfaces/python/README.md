@@ -42,6 +42,24 @@ x = conex.sparse_ls_tree(A, b, num_threads=4)
 (`networkx`) to build a clique tree. If `networkx` is unavailable, it falls
 back to `conex.sparse_ls`.
 
+Labeled block-assembly solver interface:
+
+```python
+x = conex.sparse_solve_blocks_tree(
+    submatrices_by_group=[[B0], [B1a, B1b]],
+    labels=[(0, 1), (1, 2)],
+    b=b,
+    num_threads=4,
+)
+```
+
+Each `labels[i]` tuple gives global variable labels for all blocks in
+`submatrices_by_group[i]`; blocks in the same group are summed before solve.
+The routine builds a variable support graph from the label tuples, computes a
+min-fill tree decomposition, and assigns each labeled block to a decomposition
+clique that is a superset of its support. This gives a running-intersection
+compatible clique tree and explicit fill-in via the decomposition.
+
 Benchmark Conex tree least-squares against SciPy/NumPy:
 ```bash
 LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:$PWD/interfaces" \

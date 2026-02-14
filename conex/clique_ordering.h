@@ -5,12 +5,19 @@
 
 namespace conex {
 
+enum : int {
+  CLIQUE_TREE_METHOD_WEIGHTED_DFS = 0,
+  CLIQUE_TREE_METHOD_AMD = 1,
+};
+
 CliqueTree MakeCliqueTree(const std::vector<std::vector<int>>& cliques,
-                          const std::vector<int>& clique_is_valid_leaf = {});
+                          const std::vector<int>& clique_is_valid_leaf = {},
+                          int method = CLIQUE_TREE_METHOD_WEIGHTED_DFS);
 
 CliqueTree MakePrimalDualCliqueTree(
     const std::vector<std::vector<int>>& cliques,
-    const std::vector<std::vector<int>>& dual_variables);
+    const std::vector<std::vector<int>>& dual_variables,
+    int method = CLIQUE_TREE_METHOD_WEIGHTED_DFS);
 void FillIn(const RootedTree& tree, int num_variables,
             const std::vector<int>& order, vector<std::vector<int>>* supernodes,
             vector<std::vector<int>>* separators);

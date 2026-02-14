@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <stack>
+#include <vector>
 
+#include <Eigen/Sparse>
 #include "conex/clique_ordering_utils.h"
 #include "conex/error_checking_macros.h"
 
@@ -302,6 +304,142 @@ void GetCliqueEliminationOrder(const vector<vector<int>>& cliques_sorted,
   }
 }
 
+RootedTree BuildTreeWithHeights(const std::vector<int>& parent) {
+  RootedTree tree(parent.size());
+  tree.parent = parent;
+  for (size_t i = 0; i < parent.size(); ++i) {
+    int node = static_cast<int>(i);
+    int depth = 0;
+    while (tree.parent.at(node) != -1) {
+      depth++;
+      node = tree.parent.at(node);
+    }
+    tree.height.at(i) = depth;
+  }
+  return tree;
+}
+
+void GetCliqueEliminationOrderAmd(const vector<vector<int>>& cliques_sorted,
+                                  vector<int>* order,
+                                  vector<vector<int>>* supernodes,
+                                  vector<vector<int>>* separators,
+                                  RootedTree* tree) {
+  const int n = static_cast<int>(cliques_sorted.size());
+  order->assign(n, 0);
+  separators->assign(n, {});
+
+  SymmetricMatrix<vector<int>> intersections(n);
+  std::vector<Eigen::Triplet<double>> triplets;
+  triplets.reserve(n * 4);
+  for (int i = 0; i < n; ++i) {
+    triplets.emplace_back(i, i, 1.0);
+  }
+  for (int i = 0; i < n; ++i) {
+    for (int j = i + 1; j < n; ++j) {
+      IntersectionOfSorted(cliques_sorted.at(i), cliques_sorted.at(j),
+                           &intersections(i, j));
+      if (!intersections(i, j).empty()) {
+        triplets.emplace_back(i, j, 1.0);
+        triplets.emplace_back(j, i, 1.0);
+      }
+    }
+  }
+
+  Eigen::SparseMatrix<double> intersection_graph(n, n);
+  intersection_graph.setFromTriplets(triplets.begin(), triplets.end());
+
+  std::vector<int> remaining(n, 1);
+  for (int step = 0; step < n; ++step) {
+    int best = -1;
+    int best_degree = n + 1;
+    for (int i = 0; i < n; ++i) {
+      if (!remaining.at(i)) {
+        continue;
+      }
+      int degree = 0;
+      for (Eigen::SparseMatrix<double>::InnerIterator it(intersection_graph, i);
+           it; ++it) {
+        const int j = static_cast<int>(it.row());
+        if (j != i && remaining.at(j)) {
+          degree++;
+        }
+      }
+      if (degree < best_degree) {
+        best_degree = degree;
+        best = i;
+      }
+    }
+    CONEX_DEMAND(best >= 0, "Min-degree ordering failed.");
+    order->at(step) = best;
+    remaining.at(best) = 0;
+  }
+
+  std::vector<int> position(n, -1);
+  for (int i = 0; i < n; ++i) {
+    position.at(order->at(i)) = i;
+  }
+
+  std::vector<std::vector<int>> adjacency(n);
+  for (int i = 0; i < n; ++i) {
+    for (int j = i + 1; j < n; ++j) {
+      if (!intersections(i, j).empty()) {
+        adjacency.at(i).push_back(j);
+        adjacency.at(j).push_back(i);
+      }
+    }
+  }
+
+  std::vector<int> parent(n, -1);
+  for (const int active : *order) {
+    std::vector<int> nplus;
+    for (const int nei : adjacency.at(active)) {
+      if (position.at(nei) > position.at(active)) {
+        nplus.push_back(nei);
+      }
+    }
+    if (nplus.empty()) {
+      continue;
+    }
+
+    auto best_parent = nplus.front();
+    size_t best_weight = intersections(active, best_parent).size();
+    for (const int candidate : nplus) {
+      const size_t w = intersections(active, candidate).size();
+      if (w > best_weight) {
+        best_parent = candidate;
+        best_weight = w;
+      }
+    }
+    parent.at(active) = best_parent;
+    separators->at(active) = intersections(active, best_parent);
+
+    for (size_t i = 0; i < nplus.size(); ++i) {
+      for (size_t j = i + 1; j < nplus.size(); ++j) {
+        const int a = nplus.at(i);
+        const int b = nplus.at(j);
+        if (std::find(adjacency.at(a).begin(), adjacency.at(a).end(), b) ==
+            adjacency.at(a).end()) {
+          adjacency.at(a).push_back(b);
+          adjacency.at(b).push_back(a);
+        }
+      }
+    }
+  }
+
+  *tree = BuildTreeWithHeights(parent);
+
+  supernodes->assign(n, {});
+  for (int e = 0; e < n; ++e) {
+    supernodes->at(e).resize(cliques_sorted.at(e).size() -
+                             separators->at(e).size());
+    if (!supernodes->at(e).empty()) {
+      std::set_difference(cliques_sorted.at(e).begin(), cliques_sorted.at(e).end(),
+                          separators->at(e).begin(), separators->at(e).end(),
+                          supernodes->at(e).begin());
+    }
+  }
+}
+
 template <typename T>
 auto FindSupernode(const std::vector<int>& separator, const T& b, const T& c,
                    vector<int>* intersection) {
@@ -412,12 +550,18 @@ void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
                      vector<int>* post_order_position_to_clique,
                      vector<int>* parent_in_tree,
                      vector<vector<int>>* supernodes,
-                     vector<vector<int>>* separators) {
+                     vector<vector<int>>* separators,
+                     int method) {
   size_t n = cliques_sorted.size();
   RootedTree tree(n);
-  GetCliqueEliminationOrder(cliques_sorted, valid_leaf, root,
-                            post_order_position_to_clique, supernodes,
-                            separators, &tree);
+  if (method == CLIQUE_TREE_METHOD_AMD) {
+    GetCliqueEliminationOrderAmd(cliques_sorted, post_order_position_to_clique,
+                                 supernodes, separators, &tree);
+  } else {
+    GetCliqueEliminationOrder(cliques_sorted, valid_leaf, root,
+                              post_order_position_to_clique, supernodes,
+                              separators, &tree);
+  }
   int num_vars = GetMax(cliques_sorted) + 1;
   FillIn(tree, num_vars, *post_order_position_to_clique, supernodes,
          separators);
@@ -427,7 +571,7 @@ void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
 
 }  // namespace
 CliqueTree MakeCliqueTree(const vector<vector<int>>& cliques,
-                          const std::vector<int>& valid_leaf) {
+                          const std::vector<int>& valid_leaf, int method) {
   CliqueTree clique_tree;
 
   vector<std::vector<int>> cliques_sorted = cliques;
@@ -436,13 +580,13 @@ CliqueTree MakeCliqueTree(const vector<vector<int>>& cliques,
   PickCliqueOrder(cliques_sorted, valid_leaf, GetRootNode(cliques, valid_leaf),
                   &clique_tree.post_order_position_to_clique,
                   &clique_tree.node_to_parent, &clique_tree.supernodes,
-                  &clique_tree.separators);
+                  &clique_tree.separators, method);
   return clique_tree;
 }
 
 CliqueTree MakePrimalDualCliqueTree(
     const vector<vector<int>>& cliques,
-    const std::vector<std::vector<int>>& dual_variables) {
+    const std::vector<std::vector<int>>& dual_variables, int method) {
   CliqueTree clique_tree;
 
   vector<std::vector<int>> cliques_sorted = cliques;
@@ -452,7 +596,7 @@ CliqueTree MakePrimalDualCliqueTree(
                   GetRootNode(cliques, dual_variables),
                   &clique_tree.post_order_position_to_clique,
                   &clique_tree.node_to_parent, &clique_tree.supernodes,
-                  &clique_tree.separators);
+                  &clique_tree.separators, method);
   return clique_tree;
 }
 
