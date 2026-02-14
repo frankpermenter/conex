@@ -6,23 +6,7 @@
 namespace conex {
 using T = KKTAssemblerToSubsystemAdapter;
 
-namespace {
-void AssignSubmatrix(const Eigen::MatrixXd& source,
-                     Eigen::Ref<Eigen::MatrixXd> destination,
-                     const std::vector<int>& source_to_dest_index) {
-  destination.setZero();
-  for (int j = 0; j < source.cols(); j++) {
-    for (int i = j; i < source.rows(); i++) {
-      int row = source_to_dest_index.at(i);
-      int col = source_to_dest_index.at(j);
-      if (col > row) {
-        std::swap(row, col);
-      }
-      destination(row, col) = source(i, j);
-    }
-  }
-}
-}  // namespace
+namespace {}  // namespace
 T::KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base)
     : assembler_(base) {}
 
@@ -95,6 +79,22 @@ void T::SetEliminationPosition(
   variable_to_local_elimination_position_ = GetLocalEliminationPosition(
       variable_index_to_elimination_position_, kkt_subsystem_->supernodes(),
       kkt_subsystem_->separators());
+
+  remap_lower_entries_.clear();
+  remap_lower_entries_.reserve(
+      variable_to_local_elimination_position_.size() *
+      (variable_to_local_elimination_position_.size() + 1) / 2);
+  for (size_t j = 0; j < variable_to_local_elimination_position_.size(); ++j) {
+    for (size_t i = j; i < variable_to_local_elimination_position_.size(); ++i) {
+      int row = variable_to_local_elimination_position_.at(i);
+      int col = variable_to_local_elimination_position_.at(j);
+      if (col > row) {
+        std::swap(row, col);
+      }
+      remap_lower_entries_.push_back(
+          {static_cast<int>(i), static_cast<int>(j), row, col});
+    }
+  }
 }
 
 void T::UpdateData() {
@@ -123,8 +123,11 @@ void T::UpdateData() {
   }
   Q_in_elimination_order_.resize(n1 + n2, n1 + n2);
   assembler_->SetDenseData();
-  AssignSubmatrix(source_submatrix, Q_in_elimination_order_,
-                  variable_to_local_elimination_position_);
+  Q_in_elimination_order_.setZero();
+  for (const auto& entry : remap_lower_entries_) {
+    Q_in_elimination_order_(entry.dst_row, entry.dst_col) =
+        source_submatrix(entry.src_row, entry.src_col);
+  }
   CONEX_DEMAND(n1 >= 0 && n2 >= 0, "Invalid block sizes.");
   CONEX_DEMAND(n1 <= Q_in_elimination_order_.rows() &&
                    n1 <= Q_in_elimination_order_.cols(),

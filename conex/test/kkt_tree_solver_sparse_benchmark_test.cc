@@ -10,7 +10,7 @@
 #include "conex/kkt_tree_solver.h"
 #include "conex/static_subsystem.h"
 #include "conex/workspace.h"
-#include <Eigen/SparseQR>
+#include <Eigen/SparseLU>
 #include <gtest/gtest.h>
 
 namespace conex {
@@ -139,6 +139,107 @@ MatrixCase BuildArrowCase(const std::string& name, int num_leaves, int seed) {
   return MatrixCase{name, matrix, cliques, supernodes, separators, parent};
 }
 
+MatrixCase BuildBlockArrowCase(const std::string& name, int separator_size,
+                               int num_leaf_blocks, int leaf_block_size,
+                               int seed) {
+  std::mt19937 rng(seed);
+  std::normal_distribution<double> coeff(0.0, 1.0);
+  std::uniform_real_distribution<double> coupling_scale(0.02, 0.06);
+
+  const int root_size = separator_size;
+  const int n = root_size + num_leaf_blocks * leaf_block_size;
+
+  std::vector<Eigen::Triplet<double>> triplets;
+  triplets.reserve(root_size * root_size +
+                   num_leaf_blocks * (leaf_block_size * leaf_block_size +
+                                      leaf_block_size * root_size * 2));
+
+  // Root SPD block.
+  Eigen::MatrixXd R0(root_size, root_size);
+  for (int i = 0; i < root_size; ++i) {
+    for (int j = 0; j < root_size; ++j) {
+      R0(i, j) = coeff(rng);
+    }
+  }
+  Eigen::MatrixXd A = R0.transpose() * R0;
+  A.diagonal().array() += static_cast<double>(root_size);
+  for (int i = 0; i < root_size; ++i) {
+    for (int j = 0; j < root_size; ++j) {
+      triplets.emplace_back(i, j, A(i, j));
+    }
+  }
+
+  // Leaf SPD blocks + low-magnitude couplings to root.
+  for (int leaf = 0; leaf < num_leaf_blocks; ++leaf) {
+    const int leaf_offset = root_size + leaf * leaf_block_size;
+
+    Eigen::MatrixXd Ri(leaf_block_size, leaf_block_size);
+    for (int i = 0; i < leaf_block_size; ++i) {
+      for (int j = 0; j < leaf_block_size; ++j) {
+        Ri(i, j) = coeff(rng);
+      }
+    }
+    Eigen::MatrixXd Di = Ri.transpose() * Ri;
+    Di.diagonal().array() += static_cast<double>(leaf_block_size);
+    for (int i = 0; i < leaf_block_size; ++i) {
+      for (int j = 0; j < leaf_block_size; ++j) {
+        triplets.emplace_back(leaf_offset + i, leaf_offset + j, Di(i, j));
+      }
+    }
+
+    Eigen::MatrixXd Bi(leaf_block_size, root_size);
+    const double s = coupling_scale(rng);
+    for (int i = 0; i < leaf_block_size; ++i) {
+      for (int j = 0; j < root_size; ++j) {
+        Bi(i, j) = s * coeff(rng);
+      }
+    }
+    for (int i = 0; i < leaf_block_size; ++i) {
+      for (int j = 0; j < root_size; ++j) {
+        const double v = Bi(i, j);
+        triplets.emplace_back(leaf_offset + i, j, v);
+        triplets.emplace_back(j, leaf_offset + i, v);
+      }
+    }
+  }
+
+  Eigen::SparseMatrix<double> matrix(n, n);
+  matrix.setFromTriplets(triplets.begin(), triplets.end());
+  matrix.makeCompressed();
+
+  std::vector<int> root_vars(root_size);
+  std::iota(root_vars.begin(), root_vars.end(), 0);
+
+  std::vector<std::vector<int>> cliques;
+  std::vector<std::vector<int>> supernodes;
+  std::vector<std::vector<int>> separators;
+  std::vector<int> parent;
+  cliques.reserve(1 + num_leaf_blocks);
+  supernodes.reserve(1 + num_leaf_blocks);
+  separators.reserve(1 + num_leaf_blocks);
+  parent.reserve(1 + num_leaf_blocks);
+
+  cliques.push_back(root_vars);
+  supernodes.push_back(root_vars);
+  separators.push_back({});
+  parent.push_back(-1);
+
+  for (int leaf = 0; leaf < num_leaf_blocks; ++leaf) {
+    const int leaf_offset = root_size + leaf * leaf_block_size;
+    std::vector<int> leaf_vars(leaf_block_size);
+    std::iota(leaf_vars.begin(), leaf_vars.end(), leaf_offset);
+
+    std::vector<int> clique = root_vars;
+    clique.insert(clique.end(), leaf_vars.begin(), leaf_vars.end());
+    cliques.push_back(std::move(clique));
+    supernodes.push_back(leaf_vars);
+    separators.push_back(root_vars);
+    parent.push_back(0);
+  }
+
+  return MatrixCase{name, matrix, cliques, supernodes, separators, parent};
+}
+
 MatrixCase BuildSingleDenseCase(const std::string& name, int n, int seed) {
   std::mt19937 rng(seed);
   std::normal_distribution<double> coeff(0.0, 1.0);
@@ -174,6 +275,7 @@ std::vector<MatrixCase> SparseMatrixLibrary() {
                              {50, 50, 50, 50, 50, 50, 50, 50}, 11),
       BuildBlockDiagonalCase("block_diag_mixed", {120, 70, 40, 90}, 19),
       BuildArrowCase("arrow_star_1x160", 160, 23),
+      BuildBlockArrowCase("block_arrow_star_sep32_leaf8x8", 32, 8, 8, 31),
       BuildSingleDenseCase("single_dense_320", 320, 29),
   };
 }
@@ -262,11 +364,11 @@ BenchmarkResult BenchmarkCase(const MatrixCase& matrix_case, int num_threads) {
         std::chrono::duration<double, std::milli>(factor_elapsed).count();
   }
 
-  Eigen::SparseQR<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>>
+  Eigen::SparseLU<Eigen::SparseMatrix<double>, Eigen::COLAMDOrdering<int>>
       sparse_solver;
   auto sparse_start = std::chrono::steady_clock::now();
   for (int i = 0; i < repeats; ++i) {
-    sparse_solver.compute(matrix_case.matrix.selfadjointView<Eigen::Lower>());
+    sparse_solver.compute(matrix_case.matrix);
     EXPECT_EQ(sparse_solver.info(), Eigen::Success);
   }
   auto sparse_elapsed = std::chrono::steady_clock::now() - sparse_start;

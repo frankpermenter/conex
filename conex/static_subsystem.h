@@ -20,10 +20,17 @@ class KKTAssemblerToSubsystemAdapter {
   void UpdateData();
 
  private:
+  struct RemapEntry {
+    int src_row;
+    int src_col;
+    int dst_row;
+    int dst_col;
+  };
   SupernodalAssemblerBase* assembler_;
   std::unique_ptr<KKTSubsystemBase> kkt_subsystem_;
   Eigen::MatrixXd Q_in_elimination_order_;
   std::vector<int> variable_to_local_elimination_position_;
+  std::vector<RemapEntry> remap_lower_entries_;
   bool variable_set_equals_sorted_supernodes_ = false;
   bool variable_set_equals_sorted_separators_ = false;
   bool supernode_map_bound_ = false;
