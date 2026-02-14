@@ -61,9 +61,7 @@ class RowPartitionAssembler final : public SupernodalAssemblerBase {
   }
 
   void SetDenseData() override {
-    submatrix_data_.G.setZero();
-    submatrix_data_.G.triangularView<Eigen::Lower>() =
-        local_matrix_.triangularView<Eigen::Lower>();
+    submatrix_data_.G = local_matrix_;
   }
 
  private:

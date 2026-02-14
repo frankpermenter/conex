@@ -16,7 +16,8 @@ void ForEachTask(size_t num_tasks, int requested_threads, const Fn& fn) {
   if (num_tasks == 0) {
     return;
   }
-  if (requested_threads < 1 || num_tasks == 1) {
+  // Thread startup/join dominates for small task counts.
+  if (requested_threads < 1 || num_tasks == 1 || num_tasks < 8) {
     for (size_t i = 0; i < num_tasks; ++i) {
       fn(i);
     }
@@ -309,8 +310,12 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
     return;
   }
   // Ensure per-subsystem temporary solve buffers are sized for this RHS width.
-  ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
-              [&](size_t i) { roots_.at(i)->ReserveSolveWorkspace(b.cols()); });
+  // Cache the max requested width to avoid repeating full-tree recursion.
+  if (b.cols() > reserved_solve_workspace_cols_) {
+    ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
+                [&](size_t i) { roots_.at(i)->ReserveSolveWorkspace(b.cols()); });
+    reserved_solve_workspace_cols_ = b.cols();
+  }
 
   if (in_original_order) {
     CONEX_CHECK(variable_to_elimination_position_.size() > 0);
@@ -393,6 +398,7 @@ void T::Finalize(const CliqueTree& clique_tree) {
   for (auto& s : subsystems_) {
     s->Initialize();
   }
+  reserved_solve_workspace_cols_ = 0;
   SetEliminationTree(clique_tree.node_to_parent);
   SetEliminationOrder(ComputePostOrdering());
   ComputeSeparatorOffsets();
@@ -408,6 +414,7 @@ void T::Finalize(const Options& options) {
 }
 
 void T::SetEliminationTree(const std::vector<int>& parent) {
+  reserved_solve_workspace_cols_ = 0;
   roots_.clear();
   for (auto s : subsystems_) {
     s->Reset();
@@ -516,8 +523,12 @@ void T::AllocateArenaAndBind() {
 
 void T::ReserveSolveWorkspace(int rhs_cols) {
   CONEX_DEMAND(rhs_cols >= 0, "rhs_cols must be nonnegative.");
+  if (rhs_cols <= reserved_solve_workspace_cols_) {
+    return;
+  }
   ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
               [&](size_t i) { roots_.at(i)->ReserveSolveWorkspace(rhs_cols); });
+  reserved_solve_workspace_cols_ = rhs_cols;
 }
 
 bool T::CheckForZeroPivot(const std::vector<int>& parent,
@@ -614,6 +625,7 @@ void T::AddSubsystem(KKTSubsystemType* system) {
   CONEX_CHECK(system != nullptr);
   system->SetNumThreads(num_threads_);
   subsystems_.push_back(system);
+  reserved_solve_workspace_cols_ = 0;
 }
 
 void T::push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system) {

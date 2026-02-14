@@ -76,6 +76,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<int> subsystem_to_parent_;
   bool auto_update_assemblers_ = false;
   int num_threads_ = 1;
+  mutable int reserved_solve_workspace_cols_ = 0;
   std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr, &std::free};
   size_t arena_bytes_ = 0;
 };

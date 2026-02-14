@@ -26,6 +26,8 @@ class KKTAssemblerToSubsystemAdapter {
   std::vector<int> variable_to_local_elimination_position_;
   bool variable_set_equals_sorted_supernodes_ = false;
   bool variable_set_equals_sorted_separators_ = false;
+  bool supernode_map_bound_ = false;
+  bool separator_map_bound_ = false;
   std::vector<int> variable_index_to_elimination_position_;
 };
 

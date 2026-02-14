@@ -220,6 +220,7 @@ class KKTSubsystemBase {
   int solve_workspace_cols_ = 0;
   mutable Eigen::MatrixXd solve_workspace1_;
   mutable Eigen::MatrixXd solve_workspace2_;
+  mutable Eigen::MatrixXd solve_workspace3_;
 };
 
 class KKTSubsystem : public KKTSubsystemBase {

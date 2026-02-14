@@ -78,6 +78,8 @@ std::vector<int> GetLocalEliminationPosition(
 
 void T::SetEliminationPosition(
     const std::vector<int>& shared_variable_to_elimination_position) {
+  supernode_map_bound_ = false;
+  separator_map_bound_ = false;
   variable_index_to_elimination_position_ = assembler_->variables();
   for (auto& v : variable_index_to_elimination_position_) {
     v = shared_variable_to_elimination_position.at(v);
@@ -101,15 +103,21 @@ void T::UpdateData() {
   auto& source_submatrix = assembler_->submatrix_data()->G;
 
   if (variable_set_equals_sorted_supernodes_) {
-    new (&source_submatrix) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
-        kkt_subsystem_->supernode_submatrix().data(), n1, n1);
+    if (!supernode_map_bound_) {
+      new (&source_submatrix) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
+          kkt_subsystem_->supernode_submatrix().data(), n1, n1);
+      supernode_map_bound_ = true;
+    }
     assembler_->SetDenseData();
     return;
   }
 
   if (variable_set_equals_sorted_separators_) {
-    new (&source_submatrix) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
-        kkt_subsystem_->separator_schur_complement().data(), n2, n2);
+    if (!separator_map_bound_) {
+      new (&source_submatrix) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
+          kkt_subsystem_->separator_schur_complement().data(), n2, n2);
+      separator_map_bound_ = true;
+    }
     assembler_->SetDenseData();
     return;
   }
