@@ -299,13 +299,28 @@ ArenaLayout ComputeArenaLayout(size_t n1, size_t n2) {
 }
 }  // namespace
 
-size_t KKTSubsystem::RequiredArenaBytes() const {
-  return ComputeArenaLayout(supernodes_.size(), separators_.size()).total_bytes;
+void DenseKKTSubsystemStorage::Initialize(size_t num_supernodes,
+                                          size_t num_separators) {
+  if (!using_arena_memory_) {
+    supernode_submatrix_storage_.resize(static_cast<int>(num_supernodes),
+                                        static_cast<int>(num_supernodes));
+    separator_rows_storage_.resize(static_cast<int>(num_separators),
+                                   static_cast<int>(num_supernodes));
+    separator_schur_complement_storage_.resize(static_cast<int>(num_separators),
+                                               static_cast<int>(num_separators));
+  }
 }
 
-void KKTSubsystem::BindArenaMemory(double* ptr, size_t bytes) {
-  const size_t n1 = supernodes_.size();
-  const size_t n2 = separators_.size();
+size_t DenseKKTSubsystemStorage::RequiredArenaBytes(size_t num_supernodes,
+                                                    size_t num_separators) const {
+  return ComputeArenaLayout(num_supernodes, num_separators).total_bytes;
+}
+
+void DenseKKTSubsystemStorage::BindArenaMemory(double* ptr, size_t bytes,
+                                               size_t num_supernodes,
+                                               size_t num_separators) {
+  const size_t n1 = num_supernodes;
+  const size_t n2 = num_separators;
   const auto layout = ComputeArenaLayout(n1, n2);
   const size_t required_bytes = layout.total_bytes;
   CONEX_DEMAND(bytes >= required_bytes, "Insufficient arena memory provided.");
@@ -333,6 +348,73 @@ void KKTSubsystem::BindArenaMemory(double* ptr, size_t bytes) {
   separator_schur_complement_map_.emplace(separator_schur_ptr,
                                           static_cast<int>(n2),
                                           static_cast<int>(n2));
+}
+
+Eigen::Ref<Eigen::MatrixXd> DenseKKTSubsystemStorage::supernode_submatrix() {
+  if (supernode_submatrix_map_) {
+    return *supernode_submatrix_map_;
+  }
+  return supernode_submatrix_storage_;
+}
+
+Eigen::Ref<Eigen::MatrixXd>
+DenseKKTSubsystemStorage::separator_schur_complement() {
+  if (separator_schur_complement_map_) {
+    return *separator_schur_complement_map_;
+  }
+  return separator_schur_complement_storage_;
+}
+
+Eigen::Ref<Eigen::MatrixXd> DenseKKTSubsystemStorage::separator_rows() {
+  if (separator_rows_map_) {
+    return *separator_rows_map_;
+  }
+  return separator_rows_storage_;
+}
+
+Eigen::Ref<const Eigen::MatrixXd>
+DenseKKTSubsystemStorage::supernode_submatrix() const {
+  if (supernode_submatrix_map_) {
+    return *supernode_submatrix_map_;
+  }
+  return supernode_submatrix_storage_;
+}
+
+Eigen::Ref<const Eigen::MatrixXd>
+DenseKKTSubsystemStorage::separator_schur_complement() const {
+  if (separator_schur_complement_map_) {
+    return *separator_schur_complement_map_;
+  }
+  return separator_schur_complement_storage_;
+}
+
+Eigen::Ref<const Eigen::MatrixXd> DenseKKTSubsystemStorage::separator_rows()
+    const {
+  if (separator_rows_map_) {
+    return *separator_rows_map_;
+  }
+  return separator_rows_storage_;
+}
+
+KKTSubsystem::KKTSubsystem()
+    : KKTSubsystem(std::make_unique<DenseKKTSubsystemStorage>()) {}
+
+KKTSubsystem::KKTSubsystem(std::unique_ptr<KKTSubsystemStorage>&& storage)
+    : storage_(std::move(storage)) {
+  CONEX_DEMAND(storage_ != nullptr, "Subsystem storage must not be null.");
+}
+
+void KKTSubsystem::SetStorage(std::unique_ptr<KKTSubsystemStorage>&& storage) {
+  CONEX_DEMAND(storage != nullptr, "Subsystem storage must not be null.");
+  storage_ = std::move(storage);
+}
+
+size_t KKTSubsystem::RequiredArenaBytes() const {
+  return storage_->RequiredArenaBytes(supernodes_.size(), separators_.size());
+}
+
+void KKTSubsystem::BindArenaMemory(double* ptr, size_t bytes) {
+  storage_->BindArenaMemory(ptr, bytes, supernodes_.size(), separators_.size());
 }
 
 // Iterate from the root of the tree downwards using depth-first search. At each

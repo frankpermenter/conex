@@ -69,6 +69,8 @@ class DiagonalLowRankSubsystem final : public KKTSubsystem {
         separator_rows_block_(separator_rows),
         separator_schur_block_(separator_schur) {}
 
+  bool used_generic_fallback() const { return use_generic_fallback_; }
+
  private:
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
@@ -78,9 +80,21 @@ class DiagonalLowRankSubsystem final : public KKTSubsystem {
         low_rank_factor_);
     separator_rows() = separator_rows_block_;
     separator_schur_complement() = separator_schur_block_;
+    use_generic_fallback_ = false;
   }
 
   bool DoEliminateSupernodeColumns() override {
+    MatrixXd expected = diag_.asDiagonal();
+    expected.selfadjointView<Eigen::Lower>().rankUpdate(low_rank_factor_);
+    const double residual =
+        (supernode_submatrix() - expected).norm() /
+        std::max(1e-12, supernode_submatrix().norm());
+    use_generic_fallback_ = residual > 1e-12;
+    if (use_generic_fallback_) {
+      generic_ldlt_.compute(supernode_submatrix().selfadjointView<Eigen::Lower>());
+      return generic_ldlt_.info() == Eigen::Success;
+    }
+
     dinv_ = diag_.cwiseInverse();
     const MatrixXd dinv_u = dinv_.asDiagonal() * low_rank_factor_;
     const MatrixXd middle =
@@ -110,6 +124,10 @@ class DiagonalLowRankSubsystem final : public KKTSubsystem {
   }
 
   void ApplyAInverseInPlace(Eigen::Ref<MatrixXd> y) const {
+    if (use_generic_fallback_) {
+      y = generic_ldlt_.solve(y);
+      return;
+    }
     // Woodbury inverse for A = D + U U^T:
     // A^{-1} = D^{-1} - D^{-1} U (I + U^T D^{-1} U)^{-1} U^T D^{-1}
     MatrixXd z = dinv_.asDiagonal() * y;
@@ -123,6 +141,34 @@ class DiagonalLowRankSubsystem final : public KKTSubsystem {
   MatrixXd separator_schur_block_;
   VectorXd dinv_;
   MatrixXd middle_inv_;
+  bool use_generic_fallback_ = false;
+  Eigen::LDLT<MatrixXd> generic_ldlt_;
+};
+
+class InjectedSeparatorUpdateSubsystem final : public KKTSubsystem {
+ public:
+  explicit InjectedSeparatorUpdateSubsystem(const MatrixXd& separator_schur)
+      : separator_schur_(separator_schur) {}
+
+ private:
+  void DoInitialize() override {
+    KKTSubsystem::DoInitialize();
+    supernode_submatrix().setZero();
+    separator_rows().setZero();
+    separator_schur_complement() = separator_schur_;
+  }
+
+  bool DoEliminateSupernodeColumns() override { return true; }
+
+  void DoComputeSeparatorSchurComplement() override {}
+
+  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> /*y*/) const override {}
+
+  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> /*y*/) const override {}
+
+  MatrixXd separator_schur_;
 };
 
 struct BlockCase {
@@ -309,6 +355,66 @@ TEST(KKTTreeSolver, GenericBlockFactorizationDiagonalLowRankBenchmarkLarge) {
             << " max_rel_err=" << max_rel_err << std::endl;
 
   EXPECT_LT(max_rel_err, 1e-9);
+}
+
+TEST(KKTTreeSolver, GenericBlockFactorizationFallsBackWhenStructureDestroyed) {
+  const int n1 = 2;
+  const int n2 = 2;
+  VectorXd d(n1);
+  d << 2.0, 3.0;
+  MatrixXd u(n1, 1);
+  u << 0.8, -0.3;
+  MatrixXd a11 = d.asDiagonal();
+  a11.selfadjointView<Eigen::Lower>().rankUpdate(u);
+
+  MatrixXd a21(n2, n1);
+  a21 << 0.4, -0.2, 0.1, 0.3;
+  MatrixXd a22(n2, n2);
+  a22 << 4.0, 0.2, 0.2, 5.0;
+
+  const MatrixXd injected =
+      (MatrixXd(2, 2) << 0.25, 0.07, 0.07, 0.18).finished();
+
+  MatrixXd kkt(n1 + n2, n1 + n2);
+  kkt << (a11 + injected), a21.transpose(), a21, a22;
+  Eigen::LDLT<MatrixXd> ref_ldlt(kkt.selfadjointView<Eigen::Lower>());
+  ASSERT_EQ(ref_ldlt.info(), Eigen::Success);
+
+  auto injected_child = std::make_unique<InjectedSeparatorUpdateSubsystem>(injected);
+  injected_child->SetSupernodes({});
+  injected_child->SetSeparators({0, 1});
+
+  auto lowrank = std::make_unique<DiagonalLowRankSubsystem>(
+      d, u, a21, MatrixXd::Zero(n2, n2));
+  lowrank->SetSupernodes({0, 1});
+  lowrank->SetSeparators({2, 3});
+
+  auto root =
+      std::make_unique<DenseLLTSubsystem>(a22, MatrixXd(0, n2), MatrixXd(0, 0));
+  root->SetSupernodes({2, 3});
+  root->SetSeparators({});
+
+  SymmetricLinearSystemTreeSolver solver;
+  solver.SetNumThreads(1);
+  solver.AddSubsystem(injected_child.get());
+  solver.AddSubsystem(lowrank.get());
+  solver.AddSubsystem(root.get());
+
+  CliqueTree tree;
+  tree.node_to_parent = {1, 2, -1};
+  tree.supernodes = {{}, {0, 1}, {2, 3}};
+  tree.separators = {{0, 1}, {2, 3}, {}};
+  solver.Finalize(tree);
+
+  ASSERT_TRUE(solver.AssembleAndFactor());
+  EXPECT_TRUE(lowrank->used_generic_fallback());
+
+  MatrixXd rhs(4, 2);
+  rhs << 1.0, -0.1, -0.2, 0.4, 0.7, -1.3, -0.5, 0.8;
+  const MatrixXd ref = ref_ldlt.solve(rhs);
+  MatrixXd sol = rhs;
+  solver.SolveInPlace(sol, false);
+  EXPECT_NEAR((sol - ref).norm(), 0.0, 1e-10);
 }
 
 }  // namespace

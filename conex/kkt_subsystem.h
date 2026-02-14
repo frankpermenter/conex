@@ -1,5 +1,6 @@
 #pragma once
 #include <map>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -75,6 +76,51 @@
 //  - Construct: K_{S} F^{-1} E^{-1} K_S^T
 
 namespace conex {
+
+class KKTSubsystemStorage {
+ public:
+  virtual ~KKTSubsystemStorage() = default;
+  virtual void Initialize(size_t num_supernodes, size_t num_separators) = 0;
+  virtual size_t RequiredArenaBytes(size_t num_supernodes,
+                                    size_t num_separators) const = 0;
+  virtual void BindArenaMemory(double* ptr, size_t bytes, size_t num_supernodes,
+                               size_t num_separators) = 0;
+  virtual Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() = 0;
+  virtual Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() = 0;
+  virtual Eigen::Ref<Eigen::MatrixXd> separator_rows() = 0;
+  virtual Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const = 0;
+  virtual Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement()
+      const = 0;
+  virtual Eigen::Ref<const Eigen::MatrixXd> separator_rows() const = 0;
+};
+
+class DenseKKTSubsystemStorage final : public KKTSubsystemStorage {
+ public:
+  using AlignedMatrixMap =
+      Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>,
+                 Eigen::Aligned>;
+  void Initialize(size_t num_supernodes, size_t num_separators) override;
+  size_t RequiredArenaBytes(size_t num_supernodes,
+                            size_t num_separators) const override;
+  void BindArenaMemory(double* ptr, size_t bytes, size_t num_supernodes,
+                       size_t num_separators) override;
+  Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override;
+  Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override;
+  Eigen::Ref<Eigen::MatrixXd> separator_rows() override;
+  Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const override;
+  Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement()
+      const override;
+  Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override;
+
+ private:
+  bool using_arena_memory_ = false;
+  std::optional<AlignedMatrixMap> separator_schur_complement_map_;
+  std::optional<AlignedMatrixMap> supernode_submatrix_map_;
+  std::optional<AlignedMatrixMap> separator_rows_map_;
+  Eigen::MatrixXd separator_schur_complement_storage_;
+  Eigen::MatrixXd supernode_submatrix_storage_;
+  Eigen::MatrixXd separator_rows_storage_;
+};
 
 class KKTSubsystemBase {
  public:
@@ -225,67 +271,40 @@ class KKTSubsystemBase {
 
 class KKTSubsystem : public KKTSubsystemBase {
  public:
-  using AlignedMatrixMap =
-      Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>,
-                 Eigen::Aligned>;
+  KKTSubsystem();
+  explicit KKTSubsystem(std::unique_ptr<KKTSubsystemStorage>&& storage);
+  void SetStorage(std::unique_ptr<KKTSubsystemStorage>&& storage);
 
   void DoInitialize() override {
-    if (!using_arena_memory_) {
-      supernode_submatrix_storage_.resize(supernodes_.size(), supernodes_.size());
-      separator_rows_storage_.resize(separators_.size(), supernodes_.size());
-      separator_schur_complement_storage_.resize(separators_.size(),
-                                                 separators_.size());
-    }
+    storage_->Initialize(supernodes_.size(), separators_.size());
   }
   size_t RequiredArenaBytes() const override;
   void BindArenaMemory(double* ptr, size_t bytes) override;
 
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override {
-    if (supernode_submatrix_map_) {
-      return *supernode_submatrix_map_;
-    }
-    return supernode_submatrix_storage_;
+    return storage_->supernode_submatrix();
   }
   Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override {
-    if (separator_schur_complement_map_) {
-      return *separator_schur_complement_map_;
-    }
-    return separator_schur_complement_storage_;
+    return storage_->separator_schur_complement();
   }
   Eigen::Ref<Eigen::MatrixXd> separator_rows() override {
-    if (separator_rows_map_) {
-      return *separator_rows_map_;
-    }
-    return separator_rows_storage_;
+    return storage_->separator_rows();
   }
   Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const override {
-    if (supernode_submatrix_map_) {
-      return *supernode_submatrix_map_;
-    }
-    return supernode_submatrix_storage_;
+    return static_cast<const KKTSubsystemStorage&>(*storage_)
+        .supernode_submatrix();
   }
   Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement()
       const override {
-    if (separator_schur_complement_map_) {
-      return *separator_schur_complement_map_;
-    }
-    return separator_schur_complement_storage_;
+    return static_cast<const KKTSubsystemStorage&>(*storage_)
+        .separator_schur_complement();
   }
   Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override {
-    if (separator_rows_map_) {
-      return *separator_rows_map_;
-    }
-    return separator_rows_storage_;
+    return static_cast<const KKTSubsystemStorage&>(*storage_).separator_rows();
   }
 
  private:
-  bool using_arena_memory_ = false;
-  std::optional<AlignedMatrixMap> separator_schur_complement_map_;
-  std::optional<AlignedMatrixMap> supernode_submatrix_map_;
-  std::optional<AlignedMatrixMap> separator_rows_map_;
-  Eigen::MatrixXd separator_schur_complement_storage_;
-  Eigen::MatrixXd supernode_submatrix_storage_;
-  Eigen::MatrixXd separator_rows_storage_;
+  std::unique_ptr<KKTSubsystemStorage> storage_;
 };
 
 }  // namespace conex
