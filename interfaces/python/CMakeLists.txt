@@ -120,11 +120,9 @@ target_link_options(_conex PRIVATE
   -Wl,--gc-sections
 )
 
-if(USE_BLAS)
-  find_package(BLAS REQUIRED)
-  target_compile_definitions(_conex PRIVATE EIGEN_USE_BLAS)
-  target_link_libraries(_conex PRIVATE BLAS::BLAS)
-endif()
+find_package(BLAS REQUIRED)
+target_compile_definitions(_conex PRIVATE EIGEN_USE_BLAS)
+target_link_libraries(_conex PRIVATE BLAS::BLAS)
 
 set_target_properties(_conex PROPERTIES
   LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}"
