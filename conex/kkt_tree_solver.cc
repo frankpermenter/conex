@@ -285,11 +285,28 @@ int PickCliqueOrderHelper(const std::vector<KKTSubsystemType*>& subsystems,
 #endif
 }  // namespace
 using T = SymmetricLinearSystemTreeSolver;
+namespace {
+int SubsystemThreadCount(int tree_threads, bool roots_only) {
+  return roots_only ? 1 : tree_threads;
+}
+}  // namespace
+
 void T::SetNumThreads(int num_threads) {
   CONEX_DEMAND(num_threads > 0, "num_threads must be positive.");
   num_threads_ = num_threads;
+  const int subsystem_threads =
+      SubsystemThreadCount(num_threads_, parallelize_roots_only_);
   for (auto* subsystem : subsystems_) {
-    subsystem->SetNumThreads(num_threads_);
+    subsystem->SetNumThreads(subsystem_threads);
+  }
+}
+
+void T::SetParallelizeRootsOnly(bool enable) {
+  parallelize_roots_only_ = enable;
+  const int subsystem_threads =
+      SubsystemThreadCount(num_threads_, parallelize_roots_only_);
+  for (auto* subsystem : subsystems_) {
+    subsystem->SetNumThreads(subsystem_threads);
   }
 }
 
@@ -623,7 +640,8 @@ Eigen::SparseMatrix<double> T::MakeSparseKKTMatrix(
 
 void T::AddSubsystem(KKTSubsystemType* system) {
   CONEX_CHECK(system != nullptr);
-  system->SetNumThreads(num_threads_);
+  system->SetNumThreads(
+      SubsystemThreadCount(num_threads_, parallelize_roots_only_));
   subsystems_.push_back(system);
   reserved_solve_workspace_cols_ = 0;
 }

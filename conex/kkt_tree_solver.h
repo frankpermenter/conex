@@ -31,6 +31,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
 
   void SetFactorizationMode(bool left_looking);
   void SetNumThreads(int num_threads);
+  void SetParallelizeRootsOnly(bool enable);
   void ReserveSolveWorkspace(int rhs_cols);
   void EnableAutoUpdateAtAssemble(bool enable) {
     auto_update_assemblers_ = enable;
@@ -76,6 +77,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<int> subsystem_to_parent_;
   bool auto_update_assemblers_ = false;
   int num_threads_ = 1;
+  bool parallelize_roots_only_ = false;
   mutable int reserved_solve_workspace_cols_ = 0;
   std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr, &std::free};
   size_t arena_bytes_ = 0;

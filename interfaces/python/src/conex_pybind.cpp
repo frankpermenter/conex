@@ -9,6 +9,7 @@
 #include <Eigen/Sparse>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 #include "../../conex.h"
 #include "../../../conex/clique_ordering.h"
@@ -234,6 +235,9 @@ class PyKKTTreeSolver {
  public:
   PyKKTTreeSolver() { solver_.EnableAutoUpdateAtAssemble(true); }
   void SetNumThreads(int num_threads) { solver_.SetNumThreads(num_threads); }
+  void SetParallelizeRootsOnly(bool enable) {
+    solver_.SetParallelizeRootsOnly(enable);
+  }
   void SetFactorizationMode(bool left_looking) {
     solver_.SetFactorizationMode(left_looking);
   }
@@ -580,10 +584,50 @@ Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
 }  // namespace
 
 PYBIND11_MODULE(_conex, m) {
+  m.attr("CLIQUE_TREE_METHOD_WEIGHTED_DFS") =
+      py::int_(static_cast<int>(conex::CLIQUE_TREE_METHOD_WEIGHTED_DFS));
+  m.attr("CLIQUE_TREE_METHOD_AMD") =
+      py::int_(static_cast<int>(conex::CLIQUE_TREE_METHOD_AMD));
+
+  m.def("build_clique_tree",
+        [](const py::list& cliques, int method) {
+          conex::CliqueTree tree =
+              conex::MakeCliqueTree(NestedVectorFromPy(cliques, "cliques"), {},
+                                    method);
+          py::dict out;
+          out["supernodes"] = py::cast(tree.supernodes);
+          out["separators"] = py::cast(tree.separators);
+          out["node_to_parent"] = py::cast(tree.node_to_parent);
+          out["order_to_clique"] =
+              py::cast(tree.post_order_position_to_clique);
+          return out;
+        },
+        py::arg("cliques"),
+        py::arg("method") = static_cast<int>(conex::CLIQUE_TREE_METHOD_AMD));
+
+  m.def("build_primal_dual_clique_tree",
+        [](const py::list& cliques, const py::list& dual_variables,
+           int method) {
+          conex::CliqueTree tree = conex::MakePrimalDualCliqueTree(
+              NestedVectorFromPy(cliques, "cliques"),
+              NestedVectorFromPy(dual_variables, "dual_variables"), method);
+          py::dict out;
+          out["supernodes"] = py::cast(tree.supernodes);
+          out["separators"] = py::cast(tree.separators);
+          out["node_to_parent"] = py::cast(tree.node_to_parent);
+          out["order_to_clique"] =
+              py::cast(tree.post_order_position_to_clique);
+          return out;
+        },
+        py::arg("cliques"), py::arg("dual_variables"),
+        py::arg("method") = static_cast<int>(conex::CLIQUE_TREE_METHOD_AMD));
+
   py::class_<PyKKTTreeSolver>(m, "KKTTreeSolver")
       .def(py::init<>())
       .def("set_num_threads", &PyKKTTreeSolver::SetNumThreads,
            py::arg("num_threads"))
+      .def("set_parallelize_roots_only",
+           &PyKKTTreeSolver::SetParallelizeRootsOnly, py::arg("enable"))
       .def("set_factorization_mode", &PyKKTTreeSolver::SetFactorizationMode,
            py::arg("left_looking"))
       .def("enable_auto_update_at_assemble",

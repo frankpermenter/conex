@@ -274,7 +274,64 @@ def _embed_block_in_bag(original_bag, expanded_bag, block):
     return out
 
 
-def sparse_solve_blocks_tree(submatrices_by_group, labels, b, num_threads=1):
+def clique_tree_stats(tree):
+    """
+    Report structural properties of a clique tree.
+
+    Parameters
+    ----------
+    tree : dict | tuple
+        Either a dict with keys `supernodes`, `separators`, `node_to_parent`,
+        or a tuple `(supernodes, separators, node_to_parent)`.
+    """
+    if isinstance(tree, dict):
+        supernodes = tree["supernodes"]
+        separators = tree["separators"]
+        parent = tree["node_to_parent"]
+    else:
+        if len(tree) != 3:
+            raise ValueError(
+                "tree must be dict or 3-tuple: (supernodes, separators, node_to_parent)."
+            )
+        supernodes, separators, parent = tree
+
+    n = len(parent)
+    if len(supernodes) != n or len(separators) != n:
+        raise ValueError("supernodes/separators/node_to_parent size mismatch.")
+
+    clique_sizes = []
+    separator_sizes = []
+    for sup, sep in zip(supernodes, separators):
+        sup_set = set(int(v) for v in np.asarray(sup, dtype=np.int64).reshape(-1))
+        sep_set = set(int(v) for v in np.asarray(sep, dtype=np.int64).reshape(-1))
+        clique_sizes.append(len(sup_set.union(sep_set)))
+        separator_sizes.append(len(sep_set))
+
+    roots = int(np.sum(np.asarray(parent, dtype=np.int64) == -1))
+    return {
+        "num_cliques": int(n),
+        "num_roots": roots,
+        "clique_sizes": clique_sizes,
+        "separator_sizes": separator_sizes,
+        "clique_size_min": int(min(clique_sizes)) if clique_sizes else 0,
+        "clique_size_max": int(max(clique_sizes)) if clique_sizes else 0,
+        "clique_size_mean": float(np.mean(clique_sizes)) if clique_sizes else 0.0,
+        "separator_size_min": int(min(separator_sizes)) if separator_sizes else 0,
+        "separator_size_max": int(max(separator_sizes)) if separator_sizes else 0,
+        "separator_size_mean": float(np.mean(separator_sizes)) if separator_sizes else 0.0,
+    }
+
+
+def sparse_solve_blocks_tree(
+    submatrices_by_group,
+    labels,
+    b,
+    num_threads=1,
+    tree=None,
+    clique_tree_method=CLIQUE_TREE_METHOD_AMD,
+    return_tree_stats=False,
+    parallelize_roots_only=False,
+):
     """
     Solve Kx=b from labeled block contributions using KKTTreeSolver.
 
@@ -289,6 +346,18 @@ def sparse_solve_blocks_tree(submatrices_by_group, labels, b, num_threads=1):
         Right-hand side(s) in global variable order.
     num_threads : int
         Number of tree-solver threads.
+    tree : None | dict | tuple
+        Optional explicit tree specification. If provided, it must define
+        `supernodes`, `separators`, and `node_to_parent` (either as a dict
+        with those keys or a 3-tuple in that order).
+    clique_tree_method : int
+        Clique-tree construction method passed to C++ `build_clique_tree`
+        when `tree` is None.
+    return_tree_stats : bool
+        If True, return `(x, stats)` where `stats = clique_tree_stats(tree_used)`.
+    parallelize_roots_only : bool
+        If True, only parallelize across root subtrees in the tree solver and
+        disable subsystem-internal threading.
     """
     blocks = _aggregate_labeled_blocks(submatrices_by_group, labels)
     original_bags = list(blocks.keys())
@@ -302,48 +371,44 @@ def sparse_solve_blocks_tree(submatrices_by_group, labels, b, num_threads=1):
     if rhs.shape[0] != n:
         raise ValueError("b row count must match max labeled variable index + 1.")
 
-    bags, adj = _bags_from_min_fill_supports(n, original_bags)
-    if not bags:
-        raise ValueError("Failed to build clique bags from labeled supports.")
-    order, parent_map = _orient_bag_forest(bags, adj)
-
-    bag_sets = [set(bag) for bag in order]
-    local_mats = [np.zeros((len(bag), len(bag)), dtype=np.float64) for bag in order]
-    for support in original_bags:
-        sset = set(support)
-        candidates = [i for i, bset in enumerate(bag_sets) if sset.issubset(bset)]
-        if not candidates:
-            raise RuntimeError(
-                "No decomposition clique contains support "
-                f"{support}. Recompute decomposition with augmented supports."
+    if tree is None:
+        tree_data = build_clique_tree(
+            [list(bag) for bag in original_bags], method=int(clique_tree_method)
+        )
+        supernodes = tree_data["supernodes"]
+        separators = tree_data["separators"]
+        parent = tree_data["node_to_parent"]
+    elif isinstance(tree, dict):
+        supernodes = tree["supernodes"]
+        separators = tree["separators"]
+        parent = tree["node_to_parent"]
+    else:
+        if len(tree) != 3:
+            raise ValueError(
+                "tree must be dict or 3-tuple: (supernodes, separators, node_to_parent)."
             )
-        target = min(candidates, key=lambda i: len(order[i]))
-        local_mats[target] += _embed_block_in_bag(support, order[target], blocks[support])
+        supernodes, separators, parent = tree
 
-    supernodes = []
-    separators = []
-    parent = []
-    bag_to_idx = {bag: i for i, bag in enumerate(order)}
-    for bag in order:
-        p = parent_map[bag]
-        if p is None:
-            sep = []
-            parent_i = -1
-        else:
-            sep = sorted(set(bag).intersection(set(p)))
-            parent_i = bag_to_idx[p]
-        sup = sorted(v for v in bag if v not in set(sep))
-        supernodes.append(np.asarray(sup, dtype=np.int64))
-        separators.append(np.asarray(sep, dtype=np.int64))
-        parent.append(parent_i)
+    if (
+        len(supernodes) != len(original_bags)
+        or len(separators) != len(original_bags)
+        or len(parent) != len(original_bags)
+    ):
+        raise ValueError("tree arrays must match number of aggregated labeled blocks.")
 
     solver = KKTTreeSolver()
     solver.set_num_threads(int(num_threads))
+    solver.set_parallelize_roots_only(bool(parallelize_roots_only))
     solver.set_factorization_mode(True)
-    for bag, local in zip(order, local_mats):
-        solver.add_dense_subsystem(np.asarray(bag, dtype=np.int64), local)
+    for bag in original_bags:
+        solver.add_dense_subsystem(np.asarray(bag, dtype=np.int64), blocks[bag])
     solver.finalize(supernodes, separators, np.asarray(parent, dtype=np.int64))
     if not solver.assemble_and_factor():
         raise RuntimeError("KKTTreeSolver factorization failed in sparse_solve_blocks_tree.")
     x = solver.solve(rhs, True)
-    return np.asarray(x, dtype=np.float64).reshape(rhs.shape)
+    x = np.asarray(x, dtype=np.float64).reshape(rhs.shape)
+    if return_tree_stats:
+        return x, clique_tree_stats(
+            {"supernodes": supernodes, "separators": separators, "node_to_parent": parent}
+        )
+    return x

@@ -51,14 +51,25 @@ x = conex.sparse_solve_blocks_tree(
     b=b,
     num_threads=4,
 )
+
+# Optional: also return clique-tree stats.
+x, stats = conex.sparse_solve_blocks_tree(
+    submatrices_by_group=[[B0], [B1a, B1b]],
+    labels=[(0, 1), (1, 2)],
+    b=b,
+    num_threads=4,
+    return_tree_stats=True,
+    parallelize_roots_only=True,
+)
+# stats keys include:
+# num_cliques, clique_sizes, separator_sizes, clique_size_max, separator_size_max, ...
 ```
 
 Each `labels[i]` tuple gives global variable labels for all blocks in
 `submatrices_by_group[i]`; blocks in the same group are summed before solve.
-The routine builds a variable support graph from the label tuples, computes a
-min-fill tree decomposition, and assigns each labeled block to a decomposition
-clique that is a superset of its support. This gives a running-intersection
-compatible clique tree and explicit fill-in via the decomposition.
+By default, clique tree construction is done by C++ (`build_clique_tree`) using
+the configured method (AMD by default). You can still pass an explicit tree via
+`tree=(supernodes, separators, node_to_parent)` or a dict with the same keys.
 
 Benchmark Conex tree least-squares against SciPy/NumPy:
 ```bash
