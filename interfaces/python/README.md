@@ -78,6 +78,22 @@ PYTHONPATH="${PYTHONPATH:-}:$PWD/interfaces/python" \
 python3 interfaces/python/test/sparse_ls_benchmark.py
 ```
 
+Benchmark with a SuiteSparse-style corpus (Dolan-More profile) using maximal
+cliques from a min-fill chordal cover:
+```bash
+LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}:$PWD/interfaces" \
+PYTHONPATH="${PYTHONPATH:-}:$PWD/interfaces/python" \
+python3 interfaces/python/test/suitesparse_ls_benchmark.py \
+  --suitesparse-dir /path/to/mtx_corpus \
+  --max-matrices 20 \
+  --reps 3 \
+  --num-threads 8
+```
+If `--suitesparse-dir` is omitted, the script runs a synthetic sparse corpus.
+Outputs are written to:
+- `interfaces/python/test/benchmark_outputs/suitesparse_ls_results.csv`
+- `interfaces/python/test/benchmark_outputs/suitesparse_ls_perf_profile.png`
+
 The low-level solver config also exposes `num_threads`:
 ```python
 cfg = conex.CONEX_SolverConfiguration()
