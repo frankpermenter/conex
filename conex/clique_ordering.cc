@@ -678,21 +678,16 @@ std::vector<std::vector<int>> FindMaximalCliquesImplicitFromRowSupports(
 
   if (implicit_tree != nullptr) {
     std::vector<int> rep_for_max(cliques.size(), -1);
-    std::vector<int> rep_pos_for_max(cliques.size(), n + 1);
     for (size_t i = 0; i < cliques.size(); ++i) {
       int rep = -1;
-      int best_pos = n + 1;
       const auto it = clique_to_best_rep.find(cliques.at(i));
       if (it != clique_to_best_rep.end()) {
         rep = it->second;
-        best_pos = pos.at(static_cast<size_t>(rep));
       }
       if (rep < 0 && !cliques.at(i).empty()) {
         rep = cliques.at(i).front();
-        best_pos = pos.at(static_cast<size_t>(rep));
       }
       rep_for_max.at(i) = rep;
-      rep_pos_for_max.at(i) = best_pos;
     }
 
     implicit_tree->node_to_parent.assign(cliques.size(), -1);
@@ -721,11 +716,16 @@ std::vector<std::vector<int>> FindMaximalCliquesImplicitFromRowSupports(
           if (i == j) {
             continue;
           }
-          if (rep_pos_for_max.at(j) <= rep_pos_for_max.at(i)) {
-            continue;
-          }
           const auto& cand_parent = cliques.at(j);
           if (cand_parent.size() < sep_target.size()) {
+            continue;
+          }
+          // Keep a DAG orientation: parent is never smaller than child.
+          // For equal-size cliques, orient by index.
+          if (cand_parent.size() < cliques.at(i).size()) {
+            continue;
+          }
+          if (cand_parent.size() == cliques.at(i).size() && j < i) {
             continue;
           }
           if (std::includes(cand_parent.begin(), cand_parent.end(),

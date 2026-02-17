@@ -217,4 +217,19 @@ GTEST_TEST(CliqueOrdering, MakeImplicitCliqueTreeFromRowSupportsPath) {
   }
 }
 
+GTEST_TEST(CliqueOrdering,
+           MakeImplicitCliqueTreeFromRowSupportsTwoCliquesConnected) {
+  const vector<vector<int>> supports = {{0, 1, 3}, {2, 3}};
+  vector<vector<int>> maximal_cliques;
+  const auto tree =
+      MakeCliqueTreeImplicitFromRowSupports(supports, &maximal_cliques);
+
+  ASSERT_EQ(maximal_cliques.size(), 2u);
+  ASSERT_EQ(tree.node_to_parent.size(), 2u);
+  const int num_roots =
+      static_cast<int>(std::count(tree.node_to_parent.begin(),
+                                  tree.node_to_parent.end(), -1));
+  EXPECT_EQ(num_roots, 1);
+}
+
 }  // namespace conex
