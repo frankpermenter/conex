@@ -459,7 +459,7 @@ auto FindSupernode(const std::vector<int>& separator, const T& b, const T& c,
 
 }  // namespace
 
-void FillIn(const RootedTree& tree, int num_variables,
+size_t FillIn(const RootedTree& tree, int num_variables,
             const std::vector<int>& order, vector<std::vector<int>>* supernodes,
             vector<std::vector<int>>* separators) {
   std::vector<int> eliminated(num_variables);
@@ -474,6 +474,7 @@ void FillIn(const RootedTree& tree, int num_variables,
   //  1) Make a supernode of the clique closest to the root.
   //  2) Make a separator of all other cliques.
   //
+  size_t total_fill = 0;
   for (size_t i = 0; i < order.size(); i++) {
     for (int v : supernodes->at(order.at(i))) {
       const bool variable_already_eliminated = eliminated.at(v) < num_cliques;
@@ -482,7 +483,9 @@ void FillIn(const RootedTree& tree, int num_variables,
                                     tree.height);
         for (size_t j = 0; j < fill_in.size() - 1; j++) {
           auto e = fill_in.at(j);
+          const size_t size_before = separators->at(e).size();
           separators->at(e) = UnionOfSorted(separators->at(e), {v});
+          total_fill += separators->at(e).size() - size_before;
         }
         eliminated.at(v) = fill_in.back();
       } else {
@@ -504,6 +507,7 @@ void FillIn(const RootedTree& tree, int num_variables,
   }
   Sort(separators);
   Sort(supernodes);
+  return total_fill;
 }
 
 void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
@@ -598,6 +602,30 @@ CliqueTree MakePrimalDualCliqueTree(
                   &clique_tree.node_to_parent, &clique_tree.supernodes,
                   &clique_tree.separators, method);
   return clique_tree;
+}
+
+size_t CountCliqueTreeFillIn(const vector<vector<int>>& cliques,
+                             const std::vector<int>& valid_leaf, int method) {
+  if (cliques.empty()) {
+    return 0;
+  }
+  vector<std::vector<int>> cliques_sorted = cliques;
+  Sort(&cliques_sorted);
+
+  vector<int> order;
+  vector<vector<int>> supernodes;
+  vector<vector<int>> separators;
+  RootedTree tree(cliques_sorted.size());
+  if (method == CLIQUE_TREE_METHOD_AMD) {
+    GetCliqueEliminationOrderAmd(cliques_sorted, &order, &supernodes,
+                                 &separators, &tree);
+  } else {
+    GetCliqueEliminationOrder(cliques_sorted, valid_leaf,
+                              GetRootNode(cliques_sorted, valid_leaf), &order,
+                              &supernodes, &separators, &tree);
+  }
+  int num_vars = GetMax(cliques_sorted) + 1;
+  return FillIn(tree, num_vars, order, &supernodes, &separators);
 }
 
 }  // namespace conex

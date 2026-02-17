@@ -122,15 +122,106 @@ struct SparseLSTiming {
   double total_ms = 0.0;
   int num_cliques = 0;
   bool single_dense_clique = false;
+  // Optional fine-grained timings used by implicit LS profiling.
+  double implicit_group_rows_ms = 0.0;
+  double implicit_find_cliques_ms = 0.0;
+  double implicit_cover_variables_ms = 0.0;
+  double implicit_init_local_blocks_ms = 0.0;
+  double implicit_assign_support_to_clique_ms = 0.0;
+  double implicit_build_local_blocks_ms = 0.0;
+  double implicit_ridge_ms = 0.0;
+  double implicit_make_clique_tree_ms = 0.0;
+  double implicit_add_subsystems_ms = 0.0;
+  double implicit_finalize_solver_ms = 0.0;
+  bool implicit_fast_tree_used = false;
 };
 
+bool IsValidImplicitCliqueTree(const std::vector<std::vector<int>>& cliques,
+                               const conex::CliqueTree& tree) {
+  const int n = static_cast<int>(cliques.size());
+  if (static_cast<int>(tree.supernodes.size()) != n ||
+      static_cast<int>(tree.separators.size()) != n ||
+      static_cast<int>(tree.node_to_parent.size()) != n) {
+    return false;
+  }
+  for (int i = 0; i < n; ++i) {
+    const int p = tree.node_to_parent.at(static_cast<size_t>(i));
+    if (p < -1 || p >= n || p == i) {
+      return false;
+    }
+    const auto& c = cliques.at(static_cast<size_t>(i));
+    const auto& s = tree.separators.at(static_cast<size_t>(i));
+    const auto& u = tree.supernodes.at(static_cast<size_t>(i));
+    if (!std::includes(c.begin(), c.end(), s.begin(), s.end())) {
+      return false;
+    }
+    if (!std::includes(c.begin(), c.end(), u.begin(), u.end())) {
+      return false;
+    }
+    std::vector<int> merged;
+    merged.reserve(s.size() + u.size());
+    std::set_union(s.begin(), s.end(), u.begin(), u.end(),
+                   std::back_inserter(merged));
+    if (merged != c) {
+      return false;
+    }
+    if (p >= 0) {
+      const auto& pc = cliques.at(static_cast<size_t>(p));
+      if (!std::includes(pc.begin(), pc.end(), s.begin(), s.end())) {
+        return false;
+      }
+    } else if (!s.empty()) {
+      return false;
+    }
+  }
+  // Detect directed cycles in node_to_parent.
+  std::vector<int> state(static_cast<size_t>(n), 0);
+  for (int i = 0; i < n; ++i) {
+    int v = i;
+    while (v >= 0) {
+      if (state.at(static_cast<size_t>(v)) == 1) {
+        return false;
+      }
+      if (state.at(static_cast<size_t>(v)) == 2) {
+        break;
+      }
+      state.at(static_cast<size_t>(v)) = 1;
+      v = tree.node_to_parent.at(static_cast<size_t>(v));
+    }
+    v = i;
+    while (v >= 0 && state.at(static_cast<size_t>(v)) == 1) {
+      state.at(static_cast<size_t>(v)) = 2;
+      v = tree.node_to_parent.at(static_cast<size_t>(v));
+    }
+  }
+  return true;
+}
+
 std::vector<std::vector<int>> FindMaximalCliquesImplicit(
-    const RowSparseMatrix& A) {
+    const RowSparseMatrix& A, conex::CliqueTree* implicit_tree = nullptr) {
   const int n = A.cols();
   const int m = A.rows();
   if (n <= 0) return {};
 
-  std::vector<std::unordered_set<int>> adj(static_cast<size_t>(n));
+  const int words = (n + 63) / 64;
+  std::vector<std::uint64_t> adj_bits(static_cast<size_t>(n) * words, 0);
+  auto row_bits = [&](int i) { return &adj_bits[static_cast<size_t>(i) * words]; };
+  auto has_edge = [&](int i, int j) {
+    const auto* ri = row_bits(i);
+    const std::uint64_t mask = std::uint64_t{1} << (j & 63);
+    return (ri[j >> 6] & mask) != 0;
+  };
+  auto set_edge_symmetric = [&](int i, int j) {
+    auto* ri = row_bits(i);
+    auto* rj = row_bits(j);
+    ri[j >> 6] |= (std::uint64_t{1} << (j & 63));
+    rj[i >> 6] |= (std::uint64_t{1} << (i & 63));
+  };
+  auto set_diag = [&](int i) {
+    auto* ri = row_bits(i);
+    ri[i >> 6] |= (std::uint64_t{1} << (i & 63));
+  };
+
   std::vector<Eigen::Triplet<double>> triplets;
   triplets.reserve(static_cast<size_t>(A.nonZeros() * 2 + n));
 
@@ -147,22 +238,30 @@ std::vector<std::vector<int>> FindMaximalCliquesImplicit(
     support.erase(std::unique(support.begin(), support.end()), support.end());
     for (size_t i = 0; i < support.size(); ++i) {
       const int u = support[i];
-      adj.at(static_cast<size_t>(u)).insert(u);
+      set_diag(u);
       for (size_t j = i + 1; j < support.size(); ++j) {
         const int v = support[j];
-        adj.at(static_cast<size_t>(u)).insert(v);
-        adj.at(static_cast<size_t>(v)).insert(u);
+        set_edge_symmetric(u, v);
       }
     }
   }
   for (int i = 0; i < n; ++i) {
-    adj.at(static_cast<size_t>(i)).insert(i);
+    set_diag(i);
   }
 
   // Build symmetric square pattern matrix for AMD.
   for (int i = 0; i < n; ++i) {
-    for (int j : adj.at(static_cast<size_t>(i))) {
-      triplets.emplace_back(i, j, 1.0);
+    const auto* ri = row_bits(i);
+    for (int w = 0; w < words; ++w) {
+      std::uint64_t bits = ri[w];
+      while (bits) {
+        const int b = __builtin_ctzll(bits);
+        const int j = (w << 6) + b;
+        if (j < n) {
+          triplets.emplace_back(i, j, 1.0);
+        }
+        bits &= (bits - 1);
+      }
     }
   }
   using ColSparseMatrix = Eigen::SparseMatrix<double>;
@@ -202,15 +301,24 @@ std::vector<std::vector<int>> FindMaximalCliquesImplicit(
     pos.at(static_cast<size_t>(order.at(static_cast<size_t>(i)))) = i;
   }
 
+  std::vector<std::vector<int>> candidate_by_var(static_cast<size_t>(n));
+  std::vector<int> parent_var(static_cast<size_t>(n), -1);
+  std::map<std::vector<int>, int> clique_to_best_rep;
   std::vector<std::vector<int>> candidates;
   candidates.reserve(static_cast<size_t>(n));
   for (int k = 0; k < n; ++k) {
     const int v = order.at(static_cast<size_t>(k));
     std::vector<int> later;
-    for (int u : adj.at(static_cast<size_t>(v))) {
-      if (u == v) continue;
-      if (pos.at(static_cast<size_t>(u)) > k) {
-        later.push_back(u);
+    const auto* rv = row_bits(v);
+    for (int w = 0; w < words; ++w) {
+      std::uint64_t bits = rv[w];
+      while (bits) {
+        const int b = __builtin_ctzll(bits);
+        const int u = (w << 6) + b;
+        if (u < n && u != v && pos.at(static_cast<size_t>(u)) > k) {
+          later.push_back(u);
+        }
+        bits &= (bits - 1);
       }
     }
     // Fill step: make later neighbors a clique.
@@ -218,8 +326,9 @@ std::vector<std::vector<int>> FindMaximalCliquesImplicit(
       for (size_t j = i + 1; j < later.size(); ++j) {
         const int a = later[i];
         const int b = later[j];
-        adj.at(static_cast<size_t>(a)).insert(b);
-        adj.at(static_cast<size_t>(b)).insert(a);
+        if (!has_edge(a, b)) {
+          set_edge_symmetric(a, b);
+        }
       }
     }
     std::vector<int> clique;
@@ -229,34 +338,134 @@ std::vector<std::vector<int>> FindMaximalCliquesImplicit(
     std::sort(clique.begin(), clique.end());
     clique.erase(std::unique(clique.begin(), clique.end()), clique.end());
     if (!clique.empty()) {
+      int pvar = -1;
+      int best_pos = n + 1;
+      for (int u : later) {
+        const int pu = pos.at(static_cast<size_t>(u));
+        if (pu > k && pu < best_pos) {
+          best_pos = pu;
+          pvar = u;
+        }
+      }
+      parent_var.at(static_cast<size_t>(v)) = pvar;
+      candidate_by_var.at(static_cast<size_t>(v)) = clique;
+      auto it = clique_to_best_rep.find(clique);
+      if (it == clique_to_best_rep.end() ||
+          pos.at(static_cast<size_t>(v)) <
+              pos.at(static_cast<size_t>(it->second))) {
+        clique_to_best_rep[clique] = v;
+      }
       candidates.push_back(std::move(clique));
     }
   }
 
   // Unique and keep maximal cliques.
-  std::sort(candidates.begin(), candidates.end());
+  std::sort(candidates.begin(), candidates.end(),
+            [](const std::vector<int>& a, const std::vector<int>& b) {
+              if (a.size() != b.size()) return a.size() > b.size();
+              return a < b;
+            });
   candidates.erase(std::unique(candidates.begin(), candidates.end()),
                    candidates.end());
   std::vector<std::vector<int>> cliques;
-  for (size_t i = 0; i < candidates.size(); ++i) {
-    const auto& a = candidates[i];
+  cliques.reserve(candidates.size());
+  for (const auto& c : candidates) {
     bool subset = false;
-    for (size_t j = 0; j < candidates.size(); ++j) {
-      if (i == j) continue;
-      const auto& b = candidates[j];
-      if (a.size() >= b.size()) continue;
-      if (std::includes(b.begin(), b.end(), a.begin(), a.end())) {
+    for (const auto& mclq : cliques) {
+      if (mclq.size() < c.size()) {
+        continue;
+      }
+      if (std::includes(mclq.begin(), mclq.end(), c.begin(), c.end())) {
         subset = true;
         break;
       }
     }
     if (!subset) {
-      cliques.push_back(a);
+      cliques.push_back(c);
     }
   }
   if (cliques.empty()) {
     for (int i = 0; i < n; ++i) {
       cliques.push_back({i});
+    }
+  }
+
+  if (implicit_tree != nullptr) {
+    std::vector<int> rep_for_max(cliques.size(), -1);
+    std::vector<int> rep_pos_for_max(cliques.size(), n + 1);
+    for (size_t i = 0; i < cliques.size(); ++i) {
+      int rep = -1;
+      int best_pos = n + 1;
+      auto it = clique_to_best_rep.find(cliques.at(i));
+      if (it != clique_to_best_rep.end()) {
+        rep = it->second;
+        best_pos = pos.at(static_cast<size_t>(rep));
+      }
+      if (rep < 0 && !cliques.at(i).empty()) {
+        rep = cliques.at(i).front();
+        best_pos = pos.at(static_cast<size_t>(rep));
+      }
+      rep_for_max.at(i) = rep;
+      rep_pos_for_max.at(i) = best_pos;
+    }
+
+    implicit_tree->node_to_parent.assign(cliques.size(), -1);
+    implicit_tree->separators.assign(cliques.size(), {});
+    implicit_tree->supernodes.assign(cliques.size(), {});
+    implicit_tree->post_order_position_to_clique.resize(cliques.size());
+    for (size_t i = 0; i < cliques.size(); ++i) {
+      implicit_tree->post_order_position_to_clique.at(i) = static_cast<int>(i);
+    }
+
+    for (size_t i = 0; i < cliques.size(); ++i) {
+      int rep = rep_for_max.at(i);
+      int parent = -1;
+      std::vector<int> sep_target;
+      if (rep >= 0 && rep < n) {
+        sep_target = candidate_by_var.at(static_cast<size_t>(rep));
+        sep_target.erase(
+            std::remove(sep_target.begin(), sep_target.end(), rep),
+            sep_target.end());
+      }
+      if (!sep_target.empty()) {
+        size_t best_parent_size = std::numeric_limits<size_t>::max();
+        for (size_t j = 0; j < cliques.size(); ++j) {
+          if (j == i) {
+            continue;
+          }
+          if (rep_pos_for_max.at(j) <= rep_pos_for_max.at(i)) {
+            continue;
+          }
+          const auto& cand_parent = cliques.at(j);
+          if (cand_parent.size() < sep_target.size()) {
+            continue;
+          }
+          if (std::includes(cand_parent.begin(), cand_parent.end(),
+                            sep_target.begin(), sep_target.end()) &&
+              cand_parent.size() < best_parent_size) {
+            best_parent_size = cand_parent.size();
+            parent = static_cast<int>(j);
+          }
+        }
+      }
+      implicit_tree->node_to_parent.at(i) = parent;
+
+      if (parent >= 0) {
+        std::vector<int> sep;
+        sep.reserve(sep_target.size());
+        std::set_intersection(sep_target.begin(), sep_target.end(),
+                              cliques.at(parent).begin(),
+                              cliques.at(parent).end(),
+                              std::back_inserter(sep));
+        implicit_tree->separators.at(i) = std::move(sep);
+      }
+      std::vector<int> sup;
+      sup.reserve(cliques.at(i).size());
+      std::set_difference(cliques.at(i).begin(), cliques.at(i).end(),
+                          implicit_tree->separators.at(i).begin(),
+                          implicit_tree->separators.at(i).end(),
+                          std::back_inserter(sup));
+      implicit_tree->supernodes.at(i) = std::move(sup);
     }
   }
   return cliques;
@@ -582,6 +791,8 @@ RowSparseMatrix BuildSparseFromDense(const py::array& A_dense) {
 Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
                                           const Eigen::VectorXd& b,
                                           int num_threads,
+                                          int clique_tree_method =
+                                              conex::CLIQUE_TREE_METHOD_AMD,
                                           SparseLSTiming* timing = nullptr) {
   const auto total_start = std::chrono::steady_clock::now();
   if (A.rows() != b.rows()) {
@@ -649,7 +860,8 @@ Eigen::VectorXd SparseLeastSquaresViaTree(const RowSparseMatrix& A,
     throw std::runtime_error("No cliques constructed from A.");
   }
   const auto finalize_start = std::chrono::steady_clock::now();
-  conex::CliqueTree clique_tree = conex::MakeCliqueTree(cliques);
+  conex::CliqueTree clique_tree =
+      conex::MakeCliqueTree(cliques, {}, clique_tree_method);
 
   conex::SymmetricLinearSystemTreeSolver tree_solver;
   tree_solver.SetNumThreads(single_dense_clique ? 1 : std::max(1, num_threads));
@@ -740,11 +952,16 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
       grouped_rows[support].push_back(row);
     }
   }
+  const auto grouped_rows_end = std::chrono::steady_clock::now();
+  const auto blocks_start = std::chrono::steady_clock::now();
 
-  std::vector<std::vector<int>> cliques = FindMaximalCliquesImplicit(A);
+  conex::CliqueTree implicit_clique_tree;
+  std::vector<std::vector<int>> cliques =
+      FindMaximalCliquesImplicit(A, &implicit_clique_tree);
   if (cliques.empty()) {
     throw std::runtime_error("No cliques constructed from implicit method.");
   }
+  const auto find_cliques_end = std::chrono::steady_clock::now();
 
   std::vector<char> covered(static_cast<size_t>(A.cols()), 0);
   for (const auto& clique : cliques) {
@@ -755,8 +972,15 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
   for (int v = 0; v < A.cols(); ++v) {
     if (!covered.at(static_cast<size_t>(v))) {
       cliques.push_back({v});
+      implicit_clique_tree.supernodes.push_back({v});
+      implicit_clique_tree.separators.push_back({});
+      implicit_clique_tree.node_to_parent.push_back(-1);
+      implicit_clique_tree.post_order_position_to_clique.push_back(
+          static_cast<int>(implicit_clique_tree.post_order_position_to_clique
+                               .size()));
     }
   }
+  const auto cover_variables_end = std::chrono::steady_clock::now();
 
   std::vector<Eigen::MatrixXd> local_blocks;
   local_blocks.reserve(cliques.size());
@@ -771,6 +995,7 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
     }
     local_pos.push_back(std::move(pos));
   }
+  const auto init_local_blocks_end = std::chrono::steady_clock::now();
 
   // support -> smallest containing clique index
   std::map<std::vector<int>, int> support_to_clique;
@@ -793,6 +1018,7 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
     }
     support_to_clique.emplace(support, best);
   }
+  const auto assign_support_end = std::chrono::steady_clock::now();
 
   // Build local normal-equation blocks per assigned clique.
   for (const auto& entry : grouped_rows) {
@@ -821,6 +1047,7 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
       }
     }
   }
+  const auto build_local_blocks_end = std::chrono::steady_clock::now();
 
   // Regularize diagonal by tiny ridge at each variable.
   for (int v = 0; v < A.cols(); ++v) {
@@ -839,39 +1066,67 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
       local_blocks.at(static_cast<size_t>(best))(idx, idx) += 1e-8;
     }
   }
+  const auto ridge_end = std::chrono::steady_clock::now();
 
-  const auto blocks_start = std::chrono::steady_clock::now();
-  conex::CliqueTree clique_tree = conex::MakeCliqueTree(cliques);
-
-  conex::SymmetricLinearSystemTreeSolver tree_solver;
-  tree_solver.SetNumThreads(std::max(1, num_threads));
-  tree_solver.EnableAutoUpdateAtAssemble(true);
-  tree_solver.SetFactorizationMode(true);
+  const auto finalize_start = std::chrono::steady_clock::now();
+  conex::CliqueTree clique_tree = implicit_clique_tree;
+  bool fast_tree_used = true;
+  if (!IsValidImplicitCliqueTree(cliques, clique_tree)) {
+    fast_tree_used = false;
+    clique_tree = conex::MakeCliqueTree(cliques);
+  }
+  const auto clique_tree_end = std::chrono::steady_clock::now();
 
   std::vector<std::unique_ptr<StaticMatrixAssembler>> assemblers;
   std::vector<std::unique_ptr<conex::KKTAssemblerToSubsystemAdapter>> adapters;
   assemblers.reserve(cliques.size());
-  adapters.reserve(cliques.size());
-
   for (size_t i = 0; i < cliques.size(); ++i) {
     assemblers.emplace_back(std::make_unique<StaticMatrixAssembler>(
         cliques.at(i), 2.0 * local_blocks.at(i)));
-    auto adapter = std::make_unique<conex::KKTAssemblerToSubsystemAdapter>(
-        assemblers.back().get());
-    auto* subsystem =
-        adapter->create_subsystem(conex::SubsystemType::kPositiveDefinite);
-    tree_solver.AddSubsystem(subsystem);
-    tree_solver.push_back(std::move(adapter));
   }
-  tree_solver.Finalize(clique_tree);
+
+  conex::SymmetricLinearSystemTreeSolver tree_solver;
+  auto build_solver_for_tree = [&](const conex::CliqueTree& tree) {
+    tree_solver = conex::SymmetricLinearSystemTreeSolver();
+    tree_solver.SetNumThreads(std::max(1, num_threads));
+    tree_solver.EnableAutoUpdateAtAssemble(true);
+    tree_solver.SetFactorizationMode(true);
+    adapters.clear();
+    adapters.reserve(cliques.size());
+    for (size_t i = 0; i < cliques.size(); ++i) {
+      auto adapter = std::make_unique<conex::KKTAssemblerToSubsystemAdapter>(
+          assemblers.at(i).get());
+      auto* subsystem =
+          adapter->create_subsystem(conex::SubsystemType::kPositiveDefinite);
+      tree_solver.AddSubsystem(subsystem);
+      tree_solver.push_back(std::move(adapter));
+    }
+    tree_solver.Finalize(tree);
+  };
+
+  build_solver_for_tree(clique_tree);
+  const auto add_subsystems_end = std::chrono::steady_clock::now();
+  const auto solver_finalize_end = add_subsystems_end;
   const auto factor_start = std::chrono::steady_clock::now();
   tree_solver.Assemble();
+  bool factor_ok = false;
   {
     ScopedEigenNoMalloc no_malloc_during_factor;
-    if (!tree_solver.Factor()) {
-      throw std::runtime_error(
-          "Conex implicit-clique least-squares factorization failed.");
+    factor_ok = tree_solver.Factor();
+  }
+  if (!factor_ok && fast_tree_used) {
+    fast_tree_used = false;
+    clique_tree = conex::MakeCliqueTree(cliques);
+    build_solver_for_tree(clique_tree);
+    tree_solver.Assemble();
+    {
+      ScopedEigenNoMalloc no_malloc_during_factor;
+      factor_ok = tree_solver.Factor();
     }
+  }
+  if (!factor_ok) {
+    throw std::runtime_error(
+        "Conex implicit-clique least-squares factorization failed.");
   }
   const auto solve_start = std::chrono::steady_clock::now();
   Eigen::VectorXd rhs = 2.0 * (A.transpose() * b);
@@ -899,19 +1154,59 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
                              blocks_start - support_start)
                              .count();
     timing->blocks_ms = std::chrono::duration<double, std::milli>(
-                            factor_start - blocks_start)
+                            finalize_start - blocks_start)
                             .count();
     timing->finalize_ms = std::chrono::duration<double, std::milli>(
-                              solve_start - factor_start)
+                              factor_start - finalize_start)
                               .count();
     timing->factor_ms = std::chrono::duration<double, std::milli>(
-                            end - solve_start)
+                            solve_start - factor_start)
                             .count();
-    timing->solve_ms = 0.0;
+    timing->solve_ms =
+        std::chrono::duration<double, std::milli>(end - solve_start).count();
     timing->total_ms =
         std::chrono::duration<double, std::milli>(end - total_start).count();
     timing->num_cliques = static_cast<int>(cliques.size());
     timing->single_dense_clique = false;
+    timing->implicit_group_rows_ms = std::chrono::duration<double, std::milli>(
+                                         grouped_rows_end - support_start)
+                                         .count();
+    timing->implicit_find_cliques_ms = std::chrono::duration<double, std::milli>(
+                                           find_cliques_end - grouped_rows_end)
+                                           .count();
+    timing->implicit_cover_variables_ms =
+        std::chrono::duration<double, std::milli>(cover_variables_end -
+                                                  find_cliques_end)
+            .count();
+    timing->implicit_init_local_blocks_ms =
+        std::chrono::duration<double, std::milli>(init_local_blocks_end -
+                                                  cover_variables_end)
+            .count();
+    timing->implicit_assign_support_to_clique_ms =
+        std::chrono::duration<double, std::milli>(assign_support_end -
+                                                  init_local_blocks_end)
+            .count();
+    timing->implicit_build_local_blocks_ms =
+        std::chrono::duration<double, std::milli>(build_local_blocks_end -
+                                                  assign_support_end)
+            .count();
+    timing->implicit_ridge_ms =
+        std::chrono::duration<double, std::milli>(ridge_end -
+                                                  build_local_blocks_end)
+            .count();
+    timing->implicit_make_clique_tree_ms =
+        std::chrono::duration<double, std::milli>(clique_tree_end -
+                                                  finalize_start)
+            .count();
+    timing->implicit_add_subsystems_ms =
+        std::chrono::duration<double, std::milli>(add_subsystems_end -
+                                                  clique_tree_end)
+            .count();
+    timing->implicit_finalize_solver_ms =
+        std::chrono::duration<double, std::milli>(solver_finalize_end -
+                                                  add_subsystems_end)
+            .count();
+    timing->implicit_fast_tree_used = fast_tree_used;
   }
   return x.col(0);
 }
@@ -936,6 +1231,14 @@ PYBIND11_MODULE(_conex, m) {
           out["order_to_clique"] =
               py::cast(tree.post_order_position_to_clique);
           return out;
+        },
+        py::arg("cliques"),
+        py::arg("method") = static_cast<int>(conex::CLIQUE_TREE_METHOD_AMD));
+
+  m.def("clique_tree_fill_in_count",
+        [](const py::list& cliques, int method) {
+          return conex::CountCliqueTreeFillIn(
+              NestedVectorFromPy(cliques, "cliques"), {}, method);
         },
         py::arg("cliques"),
         py::arg("method") = static_cast<int>(conex::CLIQUE_TREE_METHOD_AMD));
@@ -1150,7 +1453,8 @@ PYBIND11_MODULE(_conex, m) {
   m.def(
       "sparse_ls_profile_csr",
       [](const py::array& indptr, const py::array& indices, const py::array& data,
-         int m_rows, int n_cols, const py::array& b, int num_threads) {
+         int m_rows, int n_cols, const py::array& b, int num_threads,
+         int clique_tree_method) {
         Eigen::VectorXd b_eig = ToEigenVector(b);
         if (b_eig.rows() != m_rows) {
           throw std::runtime_error("b length must equal number of rows in A.");
@@ -1161,7 +1465,8 @@ PYBIND11_MODULE(_conex, m) {
         Eigen::VectorXd x;
         {
           py::gil_scoped_release release;
-          x = SparseLeastSquaresViaTree(A, b_eig, num_threads, &timing);
+          x = SparseLeastSquaresViaTree(A, b_eig, num_threads,
+                                        clique_tree_method, &timing);
         }
         py::dict out;
         out["x"] = ToPyArray(x);
@@ -1176,7 +1481,9 @@ PYBIND11_MODULE(_conex, m) {
         return out;
       },
       py::arg("indptr"), py::arg("indices"), py::arg("data"), py::arg("m_rows"),
-      py::arg("n_cols"), py::arg("b"), py::arg("num_threads") = 1);
+      py::arg("n_cols"), py::arg("b"), py::arg("num_threads") = 1,
+      py::arg("clique_tree_method") =
+          static_cast<int>(conex::CLIQUE_TREE_METHOD_AMD));
 
   m.def(
       "sparse_ls_profile_csr_implicit",
@@ -1204,6 +1511,18 @@ PYBIND11_MODULE(_conex, m) {
         out["total_ms"] = timing.total_ms;
         out["num_cliques"] = timing.num_cliques;
         out["single_dense_clique"] = timing.single_dense_clique;
+        out["group_rows_ms"] = timing.implicit_group_rows_ms;
+        out["find_cliques_ms"] = timing.implicit_find_cliques_ms;
+        out["cover_variables_ms"] = timing.implicit_cover_variables_ms;
+        out["init_local_blocks_ms"] = timing.implicit_init_local_blocks_ms;
+        out["assign_support_to_clique_ms"] =
+            timing.implicit_assign_support_to_clique_ms;
+        out["build_local_blocks_ms"] = timing.implicit_build_local_blocks_ms;
+        out["ridge_ms"] = timing.implicit_ridge_ms;
+        out["make_clique_tree_ms"] = timing.implicit_make_clique_tree_ms;
+        out["add_subsystems_ms"] = timing.implicit_add_subsystems_ms;
+        out["finalize_solver_ms"] = timing.implicit_finalize_solver_ms;
+        out["fast_tree_used"] = timing.implicit_fast_tree_used;
         return out;
       },
       py::arg("indptr"), py::arg("indices"), py::arg("data"), py::arg("m_rows"),
@@ -1212,7 +1531,8 @@ PYBIND11_MODULE(_conex, m) {
   m.def(
       "sparse_ls_csr",
       [](const py::array& indptr, const py::array& indices, const py::array& data,
-         int m_rows, int n_cols, const py::array& b, int num_threads) {
+         int m_rows, int n_cols, const py::array& b, int num_threads,
+         int clique_tree_method) {
         Eigen::VectorXd b_eig = ToEigenVector(b);
         if (b_eig.rows() != m_rows) {
           throw std::runtime_error("b length must equal number of rows in A.");
@@ -1222,12 +1542,15 @@ PYBIND11_MODULE(_conex, m) {
         Eigen::VectorXd x;
         {
           py::gil_scoped_release release;
-          x = SparseLeastSquaresViaTree(A, b_eig, num_threads);
+          x = SparseLeastSquaresViaTree(A, b_eig, num_threads,
+                                        clique_tree_method);
         }
         return ToPyArray(x);
       },
       py::arg("indptr"), py::arg("indices"), py::arg("data"), py::arg("m_rows"),
-      py::arg("n_cols"), py::arg("b"), py::arg("num_threads") = 1);
+      py::arg("n_cols"), py::arg("b"), py::arg("num_threads") = 1,
+      py::arg("clique_tree_method") =
+          static_cast<int>(conex::CLIQUE_TREE_METHOD_AMD));
 
   m.def(
       "sparse_ls_csr_implicit",
@@ -1252,7 +1575,8 @@ PYBIND11_MODULE(_conex, m) {
   m.def(
       "sparse_ls_coo",
       [](const py::array& rows, const py::array& cols, const py::array& data,
-         int m_rows, int n_cols, const py::array& b, int num_threads) {
+         int m_rows, int n_cols, const py::array& b, int num_threads,
+         int clique_tree_method) {
         Eigen::VectorXd b_eig = ToEigenVector(b);
         if (b_eig.rows() != m_rows) {
           throw std::runtime_error("b length must equal number of rows in A.");
@@ -1261,16 +1585,20 @@ PYBIND11_MODULE(_conex, m) {
         Eigen::VectorXd x;
         {
           py::gil_scoped_release release;
-          x = SparseLeastSquaresViaTree(A, b_eig, num_threads);
+          x = SparseLeastSquaresViaTree(A, b_eig, num_threads,
+                                        clique_tree_method);
         }
         return ToPyArray(x);
       },
       py::arg("rows"), py::arg("cols"), py::arg("data"), py::arg("m_rows"),
-      py::arg("n_cols"), py::arg("b"), py::arg("num_threads") = 1);
+      py::arg("n_cols"), py::arg("b"), py::arg("num_threads") = 1,
+      py::arg("clique_tree_method") =
+          static_cast<int>(conex::CLIQUE_TREE_METHOD_AMD));
 
   m.def(
       "sparse_ls_dense",
-      [](const py::array& A_dense, const py::array& b, int num_threads) {
+      [](const py::array& A_dense, const py::array& b, int num_threads,
+         int clique_tree_method) {
         RowSparseMatrix A = BuildSparseFromDense(A_dense);
         Eigen::VectorXd b_eig = ToEigenVector(b);
         if (b_eig.rows() != A.rows()) {
@@ -1279,11 +1607,14 @@ PYBIND11_MODULE(_conex, m) {
         Eigen::VectorXd x;
         {
           py::gil_scoped_release release;
-          x = SparseLeastSquaresViaTree(A, b_eig, num_threads);
+          x = SparseLeastSquaresViaTree(A, b_eig, num_threads,
+                                        clique_tree_method);
         }
         return ToPyArray(x);
       },
-      py::arg("A_dense"), py::arg("b"), py::arg("num_threads") = 1);
+      py::arg("A_dense"), py::arg("b"), py::arg("num_threads") = 1,
+      py::arg("clique_tree_method") =
+          static_cast<int>(conex::CLIQUE_TREE_METHOD_AMD));
 
   m.def("CONEX_Maximize",
         [](std::uintptr_t p, const py::array& b, const CONEX_SolverConfiguration& cfg,

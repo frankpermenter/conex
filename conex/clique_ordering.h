@@ -18,9 +18,16 @@ CliqueTree MakePrimalDualCliqueTree(
     const std::vector<std::vector<int>>& cliques,
     const std::vector<std::vector<int>>& dual_variables,
     int method = CLIQUE_TREE_METHOD_AMD);
-void FillIn(const RootedTree& tree, int num_variables,
-            const std::vector<int>& order, vector<std::vector<int>>* supernodes,
-            vector<std::vector<int>>* separators);
+
+size_t FillIn(const RootedTree& tree, int num_variables,
+              const std::vector<int>& order,
+              std::vector<std::vector<int>>* supernodes,
+              std::vector<std::vector<int>>* separators);
+
+size_t CountCliqueTreeFillIn(
+    const std::vector<std::vector<int>>& cliques,
+    const std::vector<int>& clique_is_valid_leaf = {},
+    int method = CLIQUE_TREE_METHOD_AMD);
 
 void PickCliqueOrder(
     const std::vector<std::vector<int>>& cliques_sorted,

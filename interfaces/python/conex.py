@@ -15,7 +15,7 @@ except ModuleNotFoundError as exc:
 import numpy as np
 
 
-def sparse_ls(A, b, num_threads=1):
+def sparse_ls(A, b, num_threads=1, clique_tree_method=CLIQUE_TREE_METHOD_AMD):
     """
     Solve min_x ||Ax - b||^2 using Conex tree-based normal-equations solver.
 
@@ -27,6 +27,9 @@ def sparse_ls(A, b, num_threads=1):
         Right-hand-side vector.
     num_threads : int
         Number of threads used by the tree solver.
+    clique_tree_method : int
+        Clique-tree ordering strategy (e.g., CLIQUE_TREE_METHOD_AMD or
+        CLIQUE_TREE_METHOD_WEIGHTED_DFS).
     """
     try:
         import scipy.sparse as sp
@@ -47,6 +50,7 @@ def sparse_ls(A, b, num_threads=1):
         int(Acsr.shape[1]),
         bvec,
         num_threads=int(num_threads),
+        clique_tree_method=int(clique_tree_method),
     )
 
 
