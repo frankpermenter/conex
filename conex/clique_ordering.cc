@@ -1,9 +1,13 @@
 #include "conex/clique_ordering.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
+#include <map>
 #include <stack>
 #include <vector>
 
+#include <Eigen/OrderingMethods>
 #include <Eigen/Sparse>
 #include "conex/clique_ordering_utils.h"
 #include "conex/error_checking_macros.h"
@@ -457,6 +461,317 @@ auto FindSupernode(const std::vector<int>& separator, const T& b, const T& c,
   return c;
 }
 
+std::vector<std::vector<int>> FindMaximalCliquesImplicitFromRowSupports(
+    const std::vector<std::vector<int>>& row_supports,
+    CliqueTree* implicit_tree = nullptr) {
+  std::vector<int> unique_vars;
+  for (const auto& row : row_supports) {
+    for (int v : row) {
+      if (v >= 0) {
+        unique_vars.push_back(v);
+      }
+    }
+  }
+  std::sort(unique_vars.begin(), unique_vars.end());
+  unique_vars.erase(std::unique(unique_vars.begin(), unique_vars.end()),
+                    unique_vars.end());
+  const int n = static_cast<int>(unique_vars.size());
+  if (n == 0) {
+    if (implicit_tree != nullptr) {
+      implicit_tree->post_order_position_to_clique.clear();
+      implicit_tree->node_to_parent.clear();
+      implicit_tree->supernodes.clear();
+      implicit_tree->separators.clear();
+    }
+    return {};
+  }
+
+  std::map<int, int> global_to_compact;
+  for (int i = 0; i < n; ++i) {
+    global_to_compact.emplace(unique_vars.at(i), i);
+  }
+
+  std::vector<std::vector<int>> supports_compact;
+  supports_compact.reserve(row_supports.size());
+  for (const auto& row : row_supports) {
+    std::vector<int> support;
+    support.reserve(row.size());
+    for (int v : row) {
+      const auto it = global_to_compact.find(v);
+      if (it != global_to_compact.end()) {
+        support.push_back(it->second);
+      }
+    }
+    std::sort(support.begin(), support.end());
+    support.erase(std::unique(support.begin(), support.end()), support.end());
+    if (!support.empty()) {
+      supports_compact.push_back(std::move(support));
+    }
+  }
+
+  const int words = (n + 63) / 64;
+  std::vector<std::uint64_t> adj_bits(static_cast<size_t>(n) * words, 0);
+  auto row_bits = [&](int i) { return &adj_bits[static_cast<size_t>(i) * words]; };
+  auto has_edge = [&](int i, int j) {
+    const auto* ri = row_bits(i);
+    const std::uint64_t mask = std::uint64_t{1} << (j & 63);
+    return (ri[j >> 6] & mask) != 0;
+  };
+  auto set_edge_symmetric = [&](int i, int j) {
+    auto* ri = row_bits(i);
+    auto* rj = row_bits(j);
+    ri[j >> 6] |= (std::uint64_t{1} << (j & 63));
+    rj[i >> 6] |= (std::uint64_t{1} << (i & 63));
+  };
+  auto set_diag = [&](int i) {
+    auto* ri = row_bits(i);
+    ri[i >> 6] |= (std::uint64_t{1} << (i & 63));
+  };
+
+  for (const auto& support : supports_compact) {
+    for (size_t i = 0; i < support.size(); ++i) {
+      const int u = support.at(i);
+      set_diag(u);
+      for (size_t j = i + 1; j < support.size(); ++j) {
+        set_edge_symmetric(u, support.at(j));
+      }
+    }
+  }
+  for (int i = 0; i < n; ++i) {
+    set_diag(i);
+  }
+
+  std::vector<Eigen::Triplet<double>> triplets;
+  triplets.reserve(static_cast<size_t>(n * 4));
+  for (int i = 0; i < n; ++i) {
+    const auto* ri = row_bits(i);
+    for (int w = 0; w < words; ++w) {
+      std::uint64_t bits = ri[w];
+      while (bits) {
+        const int b = __builtin_ctzll(bits);
+        const int j = (w << 6) + b;
+        if (j < n) {
+          triplets.emplace_back(i, j, 1.0);
+        }
+        bits &= (bits - 1);
+      }
+    }
+  }
+
+  Eigen::SparseMatrix<double> graph(n, n);
+  graph.setFromTriplets(triplets.begin(), triplets.end());
+  graph.makeCompressed();
+
+  std::vector<int> order(static_cast<size_t>(n), 0);
+  bool valid_perm = true;
+  {
+    Eigen::COLAMDOrdering<int> ordering;
+    Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic, int> perm;
+    ordering(graph, perm);
+    if (perm.indices().size() != n) {
+      valid_perm = false;
+    } else {
+      std::vector<char> seen(static_cast<size_t>(n), 0);
+      for (int i = 0; i < n; ++i) {
+        const int p = perm.indices()[i];
+        if (p < 0 || p >= n || seen.at(static_cast<size_t>(p))) {
+          valid_perm = false;
+          break;
+        }
+        seen.at(static_cast<size_t>(p)) = 1;
+        order.at(static_cast<size_t>(i)) = p;
+      }
+    }
+  }
+  if (!valid_perm) {
+    for (int i = 0; i < n; ++i) {
+      order.at(static_cast<size_t>(i)) = i;
+    }
+  }
+
+  std::vector<int> pos(static_cast<size_t>(n), -1);
+  for (int i = 0; i < n; ++i) {
+    pos.at(static_cast<size_t>(order.at(static_cast<size_t>(i)))) = i;
+  }
+
+  std::vector<std::vector<int>> candidate_by_var(static_cast<size_t>(n));
+  std::map<std::vector<int>, int> clique_to_best_rep;
+  std::vector<std::vector<int>> candidates;
+  candidates.reserve(static_cast<size_t>(n));
+  for (int k = 0; k < n; ++k) {
+    const int v = order.at(static_cast<size_t>(k));
+    std::vector<int> later;
+    const auto* rv = row_bits(v);
+    for (int w = 0; w < words; ++w) {
+      std::uint64_t bits = rv[w];
+      while (bits) {
+        const int b = __builtin_ctzll(bits);
+        const int u = (w << 6) + b;
+        if (u < n && u != v && pos.at(static_cast<size_t>(u)) > k) {
+          later.push_back(u);
+        }
+        bits &= (bits - 1);
+      }
+    }
+
+    for (size_t i = 0; i < later.size(); ++i) {
+      for (size_t j = i + 1; j < later.size(); ++j) {
+        const int a = later.at(i);
+        const int b = later.at(j);
+        if (!has_edge(a, b)) {
+          set_edge_symmetric(a, b);
+        }
+      }
+    }
+
+    std::vector<int> clique;
+    clique.reserve(later.size() + 1);
+    clique.push_back(v);
+    clique.insert(clique.end(), later.begin(), later.end());
+    std::sort(clique.begin(), clique.end());
+    clique.erase(std::unique(clique.begin(), clique.end()), clique.end());
+
+    if (!clique.empty()) {
+      candidate_by_var.at(static_cast<size_t>(v)) = clique;
+      auto it = clique_to_best_rep.find(clique);
+      if (it == clique_to_best_rep.end() ||
+          pos.at(static_cast<size_t>(v)) <
+              pos.at(static_cast<size_t>(it->second))) {
+        clique_to_best_rep[clique] = v;
+      }
+      candidates.push_back(std::move(clique));
+    }
+  }
+
+  std::sort(candidates.begin(), candidates.end(),
+            [](const std::vector<int>& a, const std::vector<int>& b) {
+              if (a.size() != b.size()) {
+                return a.size() > b.size();
+              }
+              return a < b;
+            });
+  candidates.erase(std::unique(candidates.begin(), candidates.end()),
+                   candidates.end());
+
+  std::vector<std::vector<int>> cliques;
+  cliques.reserve(candidates.size());
+  for (const auto& c : candidates) {
+    bool subset = false;
+    for (const auto& mclq : cliques) {
+      if (mclq.size() < c.size()) {
+        continue;
+      }
+      if (std::includes(mclq.begin(), mclq.end(), c.begin(), c.end())) {
+        subset = true;
+        break;
+      }
+    }
+    if (!subset) {
+      cliques.push_back(c);
+    }
+  }
+  if (cliques.empty()) {
+    for (int i = 0; i < n; ++i) {
+      cliques.push_back({i});
+    }
+  }
+
+  if (implicit_tree != nullptr) {
+    std::vector<int> rep_for_max(cliques.size(), -1);
+    std::vector<int> rep_pos_for_max(cliques.size(), n + 1);
+    for (size_t i = 0; i < cliques.size(); ++i) {
+      int rep = -1;
+      int best_pos = n + 1;
+      const auto it = clique_to_best_rep.find(cliques.at(i));
+      if (it != clique_to_best_rep.end()) {
+        rep = it->second;
+        best_pos = pos.at(static_cast<size_t>(rep));
+      }
+      if (rep < 0 && !cliques.at(i).empty()) {
+        rep = cliques.at(i).front();
+        best_pos = pos.at(static_cast<size_t>(rep));
+      }
+      rep_for_max.at(i) = rep;
+      rep_pos_for_max.at(i) = best_pos;
+    }
+
+    implicit_tree->node_to_parent.assign(cliques.size(), -1);
+    implicit_tree->separators.assign(cliques.size(), {});
+    implicit_tree->supernodes.assign(cliques.size(), {});
+    implicit_tree->post_order_position_to_clique.resize(cliques.size());
+    for (size_t i = 0; i < cliques.size(); ++i) {
+      implicit_tree->post_order_position_to_clique.at(i) =
+          static_cast<int>(i);
+    }
+
+    for (size_t i = 0; i < cliques.size(); ++i) {
+      const int rep = rep_for_max.at(i);
+      int parent = -1;
+      std::vector<int> sep_target;
+      if (rep >= 0 && rep < n) {
+        sep_target = candidate_by_var.at(static_cast<size_t>(rep));
+        sep_target.erase(
+            std::remove(sep_target.begin(), sep_target.end(), rep),
+            sep_target.end());
+      }
+
+      if (!sep_target.empty()) {
+        size_t best_parent_size = std::numeric_limits<size_t>::max();
+        for (size_t j = 0; j < cliques.size(); ++j) {
+          if (i == j) {
+            continue;
+          }
+          if (rep_pos_for_max.at(j) <= rep_pos_for_max.at(i)) {
+            continue;
+          }
+          const auto& cand_parent = cliques.at(j);
+          if (cand_parent.size() < sep_target.size()) {
+            continue;
+          }
+          if (std::includes(cand_parent.begin(), cand_parent.end(),
+                            sep_target.begin(), sep_target.end()) &&
+              cand_parent.size() < best_parent_size) {
+            best_parent_size = cand_parent.size();
+            parent = static_cast<int>(j);
+          }
+        }
+      }
+      implicit_tree->node_to_parent.at(i) = parent;
+
+      if (parent >= 0) {
+        std::vector<int> sep;
+        sep.reserve(sep_target.size());
+        std::set_intersection(sep_target.begin(), sep_target.end(),
+                              cliques.at(static_cast<size_t>(parent)).begin(),
+                              cliques.at(static_cast<size_t>(parent)).end(),
+                              std::back_inserter(sep));
+        implicit_tree->separators.at(i) = std::move(sep);
+      }
+      std::vector<int> sup;
+      sup.reserve(cliques.at(i).size());
+      std::set_difference(cliques.at(i).begin(), cliques.at(i).end(),
+                          implicit_tree->separators.at(i).begin(),
+                          implicit_tree->separators.at(i).end(),
+                          std::back_inserter(sup));
+      implicit_tree->supernodes.at(i) = std::move(sup);
+    }
+  }
+
+  auto remap_to_global = [&](std::vector<std::vector<int>>* sets) {
+    for (auto& vals : *sets) {
+      for (int& v : vals) {
+        v = unique_vars.at(static_cast<size_t>(v));
+      }
+    }
+  };
+  remap_to_global(&cliques);
+  if (implicit_tree != nullptr) {
+    remap_to_global(&implicit_tree->supernodes);
+    remap_to_global(&implicit_tree->separators);
+  }
+  return cliques;
+}
+
 }  // namespace
 
 size_t FillIn(const RootedTree& tree, int num_variables,
@@ -626,6 +941,17 @@ size_t CountCliqueTreeFillIn(const vector<vector<int>>& cliques,
   }
   int num_vars = GetMax(cliques_sorted) + 1;
   return FillIn(tree, num_vars, order, &supernodes, &separators);
+}
+
+CliqueTree MakeCliqueTreeImplicitFromRowSupports(
+    const std::vector<std::vector<int>>& row_supports,
+    std::vector<std::vector<int>>* maximal_cliques_out) {
+  CliqueTree tree;
+  auto cliques = FindMaximalCliquesImplicitFromRowSupports(row_supports, &tree);
+  if (maximal_cliques_out != nullptr) {
+    *maximal_cliques_out = std::move(cliques);
+  }
+  return tree;
 }
 
 }  // namespace conex

@@ -1,6 +1,7 @@
 #include "conex/clique_ordering.h"
 
 #include <algorithm>
+#include <set>
 
 #include "conex/clique_ordering_utils.h"
 #include "conex/debug_macros.h"
@@ -32,6 +33,16 @@ vector<int> LookUpSupernode(const vector<std::vector<int>>& supernodes,
     }
   }
   return y;
+}
+
+std::set<std::vector<int>> CanonicalCliqueSet(
+    const std::vector<std::vector<int>>& cliques) {
+  std::set<std::vector<int>> out;
+  for (auto c : cliques) {
+    std::sort(c.begin(), c.end());
+    out.insert(std::move(c));
+  }
+  return out;
 }
 
 void DoVerifyPerfectEliminationOrdering(const vector<vector<int>>& cliques_in,
@@ -156,6 +167,54 @@ GTEST_TEST(CliqueOrdering, MakeCliqueTreeAmd) {
     EXPECT_EQ(intersection, cliques_sorted.at(i));
   }
   EXPECT_EQ(Union(tree.supernodes), Union(cliques_sorted));
+}
+
+GTEST_TEST(CliqueOrdering, MakeImplicitCliqueTreeFromRowSupportsStar) {
+  const vector<vector<int>> supports = {{10, 30}, {20, 30}, {40, 30}, {50, 30}};
+  vector<vector<int>> maximal_cliques;
+  const auto tree =
+      MakeCliqueTreeImplicitFromRowSupports(supports, &maximal_cliques);
+
+  const std::set<std::vector<int>> expected{
+      {10, 30}, {20, 30}, {30, 40}, {30, 50}};
+  EXPECT_EQ(CanonicalCliqueSet(maximal_cliques), expected);
+  ASSERT_EQ(tree.supernodes.size(), maximal_cliques.size());
+  ASSERT_EQ(tree.separators.size(), maximal_cliques.size());
+  ASSERT_EQ(tree.node_to_parent.size(), maximal_cliques.size());
+  ASSERT_EQ(tree.post_order_position_to_clique.size(), maximal_cliques.size());
+
+  for (size_t i = 0; i < maximal_cliques.size(); ++i) {
+    const auto bag =
+        UnionOfSorted(tree.supernodes.at(i), tree.separators.at(i));
+    std::vector<int> intersection;
+    IntersectionOfSorted(bag, maximal_cliques.at(i), &intersection);
+    EXPECT_EQ(intersection, maximal_cliques.at(i));
+  }
+}
+
+GTEST_TEST(CliqueOrdering, MakeImplicitCliqueTreeFromRowSupportsPath) {
+  const vector<vector<int>> supports = {
+      {7, 9}, {9, 12}, {12, 15}, {15, 17}, {17, 18}};
+  vector<vector<int>> maximal_cliques;
+  const auto tree =
+      MakeCliqueTreeImplicitFromRowSupports(supports, &maximal_cliques);
+  ASSERT_EQ(tree.supernodes.size(), maximal_cliques.size());
+
+  for (const auto& support : supports) {
+    bool covered = false;
+    for (const auto& clique : maximal_cliques) {
+      if (std::includes(clique.begin(), clique.end(), support.begin(),
+                        support.end())) {
+        covered = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(covered);
+  }
+
+  for (const auto& separator : tree.separators) {
+    EXPECT_LE(separator.size(), 1u);
+  }
 }
 
 }  // namespace conex

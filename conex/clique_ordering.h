@@ -19,6 +19,14 @@ CliqueTree MakePrimalDualCliqueTree(
     const std::vector<std::vector<int>>& dual_variables,
     int method = CLIQUE_TREE_METHOD_AMD);
 
+// Build a clique tree using the implicit construction path from row supports.
+// Each entry in `row_supports` is treated as the support of one equation row.
+// If `maximal_cliques_out` is provided, it is filled with the maximal cliques
+// used to construct the returned tree.
+CliqueTree MakeCliqueTreeImplicitFromRowSupports(
+    const std::vector<std::vector<int>>& row_supports,
+    std::vector<std::vector<int>>* maximal_cliques_out = nullptr);
+
 size_t FillIn(const RootedTree& tree, int num_variables,
               const std::vector<int>& order,
               std::vector<std::vector<int>>* supernodes,
