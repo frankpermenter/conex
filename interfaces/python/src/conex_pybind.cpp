@@ -138,6 +138,17 @@ struct SparseLSTiming {
 
 bool IsValidImplicitCliqueTree(const std::vector<std::vector<int>>& cliques,
                                const conex::CliqueTree& tree) {
+  auto is_contiguous = [](const std::vector<int>& vars) {
+    if (vars.empty()) {
+      return true;
+    }
+    for (size_t i = 1; i < vars.size(); ++i) {
+      if (vars.at(i) != vars.at(i - 1) + 1) {
+        return false;
+      }
+    }
+    return true;
+  };
   const int n = static_cast<int>(cliques.size());
   if (static_cast<int>(tree.supernodes.size()) != n ||
       static_cast<int>(tree.separators.size()) != n ||
@@ -152,6 +163,9 @@ bool IsValidImplicitCliqueTree(const std::vector<std::vector<int>>& cliques,
     const auto& c = cliques.at(static_cast<size_t>(i));
     const auto& s = tree.separators.at(static_cast<size_t>(i));
     const auto& u = tree.supernodes.at(static_cast<size_t>(i));
+    if (!is_contiguous(u)) {
+      return false;
+    }
     if (!std::includes(c.begin(), c.end(), s.begin(), s.end())) {
       return false;
     }
@@ -955,12 +969,14 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
   const auto grouped_rows_end = std::chrono::steady_clock::now();
   const auto blocks_start = std::chrono::steady_clock::now();
 
-  conex::CliqueTree implicit_clique_tree;
-  std::vector<std::vector<int>> cliques =
-      FindMaximalCliquesImplicit(A, &implicit_clique_tree);
-  if (cliques.empty()) {
-    throw std::runtime_error("No cliques constructed from implicit method.");
+  std::vector<std::vector<int>> row_supports;
+  row_supports.reserve(grouped_rows.size());
+  for (const auto& entry : grouped_rows) {
+    row_supports.push_back(entry.first);
   }
+  std::vector<std::vector<int>> cliques;
+  conex::CliqueTree implicit_clique_tree =
+      conex::MakeCliqueTreeImplicitFromRowSupports(row_supports, &cliques);
   const auto find_cliques_end = std::chrono::steady_clock::now();
 
   std::vector<char> covered(static_cast<size_t>(A.cols()), 0);
@@ -979,6 +995,9 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
           static_cast<int>(implicit_clique_tree.post_order_position_to_clique
                                .size()));
     }
+  }
+  if (cliques.empty()) {
+    throw std::runtime_error("No cliques constructed from implicit method.");
   }
   const auto cover_variables_end = std::chrono::steady_clock::now();
 
@@ -1465,8 +1484,8 @@ PYBIND11_MODULE(_conex, m) {
         Eigen::VectorXd x;
         {
           py::gil_scoped_release release;
-          x = SparseLeastSquaresViaTree(A, b_eig, num_threads,
-                                        clique_tree_method, &timing);
+          x = SparseLeastSquaresViaImplicitCliques(A, b_eig, num_threads,
+                                                   &timing);
         }
         py::dict out;
         out["x"] = ToPyArray(x);
@@ -1533,6 +1552,7 @@ PYBIND11_MODULE(_conex, m) {
       [](const py::array& indptr, const py::array& indices, const py::array& data,
          int m_rows, int n_cols, const py::array& b, int num_threads,
          int clique_tree_method) {
+        (void)clique_tree_method;
         Eigen::VectorXd b_eig = ToEigenVector(b);
         if (b_eig.rows() != m_rows) {
           throw std::runtime_error("b length must equal number of rows in A.");
@@ -1542,8 +1562,7 @@ PYBIND11_MODULE(_conex, m) {
         Eigen::VectorXd x;
         {
           py::gil_scoped_release release;
-          x = SparseLeastSquaresViaTree(A, b_eig, num_threads,
-                                        clique_tree_method);
+          x = SparseLeastSquaresViaImplicitCliques(A, b_eig, num_threads);
         }
         return ToPyArray(x);
       },
@@ -1577,6 +1596,7 @@ PYBIND11_MODULE(_conex, m) {
       [](const py::array& rows, const py::array& cols, const py::array& data,
          int m_rows, int n_cols, const py::array& b, int num_threads,
          int clique_tree_method) {
+        (void)clique_tree_method;
         Eigen::VectorXd b_eig = ToEigenVector(b);
         if (b_eig.rows() != m_rows) {
           throw std::runtime_error("b length must equal number of rows in A.");
@@ -1585,8 +1605,7 @@ PYBIND11_MODULE(_conex, m) {
         Eigen::VectorXd x;
         {
           py::gil_scoped_release release;
-          x = SparseLeastSquaresViaTree(A, b_eig, num_threads,
-                                        clique_tree_method);
+          x = SparseLeastSquaresViaImplicitCliques(A, b_eig, num_threads);
         }
         return ToPyArray(x);
       },
@@ -1599,6 +1618,7 @@ PYBIND11_MODULE(_conex, m) {
       "sparse_ls_dense",
       [](const py::array& A_dense, const py::array& b, int num_threads,
          int clique_tree_method) {
+        (void)clique_tree_method;
         RowSparseMatrix A = BuildSparseFromDense(A_dense);
         Eigen::VectorXd b_eig = ToEigenVector(b);
         if (b_eig.rows() != A.rows()) {
@@ -1607,8 +1627,7 @@ PYBIND11_MODULE(_conex, m) {
         Eigen::VectorXd x;
         {
           py::gil_scoped_release release;
-          x = SparseLeastSquaresViaTree(A, b_eig, num_threads,
-                                        clique_tree_method);
+          x = SparseLeastSquaresViaImplicitCliques(A, b_eig, num_threads);
         }
         return ToPyArray(x);
       },
