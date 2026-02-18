@@ -27,6 +27,13 @@ CliqueTree MakeCliqueTreeImplicitFromRowSupports(
     const std::vector<std::vector<int>>& row_supports,
     std::vector<std::vector<int>>* maximal_cliques_out = nullptr);
 
+// Build a clique tree using bitset-based minimum-degree elimination to
+// triangulate, then extract maximal cliques and construct the tree.
+// Same interface as MakeCliqueTreeImplicitFromRowSupports.
+CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
+    const std::vector<std::vector<int>>& row_supports,
+    std::vector<std::vector<int>>* maximal_cliques_out = nullptr);
+
 size_t FillIn(const RootedTree& tree, int num_variables,
               const std::vector<int>& order,
               std::vector<std::vector<int>>* supernodes,
