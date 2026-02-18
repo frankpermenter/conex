@@ -133,7 +133,6 @@ struct SparseLSTiming {
   double implicit_make_clique_tree_ms = 0.0;
   double implicit_add_subsystems_ms = 0.0;
   double implicit_finalize_solver_ms = 0.0;
-  bool implicit_fast_tree_used = false;
 };
 
 bool IsValidImplicitCliqueTree(const std::vector<std::vector<int>>& cliques,
@@ -974,9 +973,13 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
   for (const auto& entry : grouped_rows) {
     row_supports.push_back(entry.first);
   }
+  std::cerr << "[implicit_ls] entering MakeCliqueTreeImplicitFromRowSupports"
+            << " rowsupports=" << row_supports.size() << "\n";
   std::vector<std::vector<int>> cliques;
   conex::CliqueTree implicit_clique_tree =
       conex::MakeCliqueTreeImplicitFromRowSupports(row_supports, &cliques);
+  std::cerr << "[implicit_ls] finished MakeCliqueTreeImplicitFromRowSupports"
+            << " cliques=" << cliques.size() << "\n";
   const auto find_cliques_end = std::chrono::steady_clock::now();
 
   std::vector<char> covered(static_cast<size_t>(A.cols()), 0);
@@ -1089,11 +1092,6 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
 
   const auto finalize_start = std::chrono::steady_clock::now();
   conex::CliqueTree clique_tree = implicit_clique_tree;
-  bool fast_tree_used = true;
-  if (!IsValidImplicitCliqueTree(cliques, clique_tree)) {
-    fast_tree_used = false;
-    clique_tree = conex::MakeCliqueTree(cliques);
-  }
   const auto clique_tree_end = std::chrono::steady_clock::now();
 
   std::vector<std::unique_ptr<StaticMatrixAssembler>> assemblers;
@@ -1120,34 +1118,32 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
       tree_solver.AddSubsystem(subsystem);
       tree_solver.push_back(std::move(adapter));
     }
+    std::cerr << "[implicit_ls] finalize start\n";
     tree_solver.Finalize(tree);
+    std::cerr << "[implicit_ls] finalize done\n";
   };
 
   build_solver_for_tree(clique_tree);
+  std::cerr << "[implicit_ls] solver finalized\n";
   const auto add_subsystems_end = std::chrono::steady_clock::now();
   const auto solver_finalize_end = add_subsystems_end;
   const auto factor_start = std::chrono::steady_clock::now();
+  std::cerr << "[implicit_ls] assemble start\n";
   tree_solver.Assemble();
+  std::cerr << "[implicit_ls] assemble done\n";
   bool factor_ok = false;
   {
+    std::cerr << "[implicit_ls] factor start\n";
     ScopedEigenNoMalloc no_malloc_during_factor;
     factor_ok = tree_solver.Factor();
   }
-  if (!factor_ok && fast_tree_used) {
-    fast_tree_used = false;
-    clique_tree = conex::MakeCliqueTree(cliques);
-    build_solver_for_tree(clique_tree);
-    tree_solver.Assemble();
-    {
-      ScopedEigenNoMalloc no_malloc_during_factor;
-      factor_ok = tree_solver.Factor();
-    }
-  }
+  std::cerr << "[implicit_ls] factor done ok=" << factor_ok << "\n";
   if (!factor_ok) {
     throw std::runtime_error(
         "Conex implicit-clique least-squares factorization failed.");
   }
   const auto solve_start = std::chrono::steady_clock::now();
+  std::cerr << "[implicit_ls] solve setup start\n";
   Eigen::VectorXd rhs = 2.0 * (A.transpose() * b);
   Eigen::MatrixXd rhs_mat(rhs.rows(), 1);
   rhs_mat.col(0) = rhs;
@@ -1162,9 +1158,11 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
   Eigen::MatrixXd x = P * rhs_mat;
   tree_solver.ReserveSolveWorkspace(x.cols());
   {
+    std::cerr << "[implicit_ls] solve inplace start\n";
     ScopedEigenNoMalloc no_malloc_during_solve;
     tree_solver.SolveInPlace(x, false);
   }
+  std::cerr << "[implicit_ls] solve inplace done\n";
   x = P.transpose() * x;
   const auto end = std::chrono::steady_clock::now();
 
@@ -1225,7 +1223,6 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
         std::chrono::duration<double, std::milli>(solver_finalize_end -
                                                   add_subsystems_end)
             .count();
-    timing->implicit_fast_tree_used = fast_tree_used;
   }
   return x.col(0);
 }
@@ -1541,7 +1538,6 @@ PYBIND11_MODULE(_conex, m) {
         out["make_clique_tree_ms"] = timing.implicit_make_clique_tree_ms;
         out["add_subsystems_ms"] = timing.implicit_add_subsystems_ms;
         out["finalize_solver_ms"] = timing.implicit_finalize_solver_ms;
-        out["fast_tree_used"] = timing.implicit_fast_tree_used;
         return out;
       },
       py::arg("indptr"), py::arg("indices"), py::arg("data"), py::arg("m_rows"),

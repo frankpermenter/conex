@@ -550,7 +550,8 @@ void T::ComputeOffsets(const KKTSubsystemBase* descendant, int start_index) {
       index += local_row.size;
     } else {
       // By the running intersection property, all separators must be present.
-      std::runtime_error("Tree fails the running intersection property.");
+      throw std::runtime_error(
+          "Tree fails the running intersection property.");
     }
   }
 
