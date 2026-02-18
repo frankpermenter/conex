@@ -42,6 +42,7 @@ set(CONEX_CORE_SOURCES
   ../../conex/approximate_eigenvalues.cc
   ../../conex/block_triangular_operations.cc
   ../../conex/clique_ordering.cc
+  ../../conex/clique_ordering_md.cc
   ../../conex/clique_ordering_utils.cc
   ../../conex/constraint_manager.cc
   ../../conex/conjugate_gradient_solvers.cc

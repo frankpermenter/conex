@@ -977,7 +977,9 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
             << " rowsupports=" << row_supports.size() << "\n";
   std::vector<std::vector<int>> cliques;
   conex::CliqueTree implicit_clique_tree =
-      conex::MakeCliqueTreeImplicitFromRowSupports(row_supports, &cliques);
+      //conex::MakeCliqueTreeImplicitFromRowSupports(row_supports, &cliques);
+      conex::MakeCliqueTreeMinDegreeFromRowSupports(row_supports, &cliques);
+
   std::cerr << "[implicit_ls] finished MakeCliqueTreeImplicitFromRowSupports"
             << " cliques=" << cliques.size() << "\n";
   const auto find_cliques_end = std::chrono::steady_clock::now();
