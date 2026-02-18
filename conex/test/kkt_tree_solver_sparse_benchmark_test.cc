@@ -30,9 +30,7 @@ class StaticMatrixAssembler final : public SupernodalAssemblerBase {
     Initialize(&workspace, memory_.data());
   }
 
-  void SetDenseData() override {
-    submatrix_data_.G = local_matrix_;
-  }
+  void SetDenseData() override { submatrix_data_.G = local_matrix_; }
 
  private:
   Eigen::MatrixXd local_matrix_;
@@ -345,13 +343,13 @@ BenchmarkResult BenchmarkCase(const MatrixCase& matrix_case, int num_threads) {
     const auto assemble_tree_elapsed =
         std::chrono::steady_clock::now() - assemble_tree_start;
     const double assemble_tree_ms =
-        std::chrono::duration<double, std::milli>(assemble_tree_elapsed).count();
+        std::chrono::duration<double, std::milli>(assemble_tree_elapsed)
+            .count();
     assemble_tree_total_ms += assemble_tree_ms;
     const double assemble_ms =
         std::chrono::duration<double, std::milli>(update_elapsed).count() +
         assemble_tree_ms;
-    assemble_total_ms +=
-        assemble_ms;
+    assemble_total_ms += assemble_ms;
 
     const auto factor_start = std::chrono::steady_clock::now();
     if (!tree_solver.Factor()) {
@@ -410,11 +408,12 @@ TEST(KKTTreeSolver, SparseLibraryBenchmarkAgainstEigen) {
               << " update_ms=" << result.update_ms
               << " assemble_tree_ms=" << result.assemble_tree_ms
               << " assemble_ms=" << result.assemble_ms
-              << " factor_ms=" << result.factor_ms << " tree_ms="
-              << result.tree_ms << " sparse_ms=" << result.sparse_ms
-              << " dense_ms=" << result.dense_ms << " sparse/tree="
-              << (result.sparse_ms / result.tree_ms) << " dense/tree="
-              << (result.dense_ms / result.tree_ms) << "\n";
+              << " factor_ms=" << result.factor_ms
+              << " tree_ms=" << result.tree_ms
+              << " sparse_ms=" << result.sparse_ms
+              << " dense_ms=" << result.dense_ms
+              << " sparse/tree=" << (result.sparse_ms / result.tree_ms)
+              << " dense/tree=" << (result.dense_ms / result.tree_ms) << "\n";
 
     if (result.tree_ms < result.sparse_ms) {
       ++tree_faster_cases;

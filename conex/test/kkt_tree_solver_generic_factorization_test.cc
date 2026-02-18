@@ -15,7 +15,8 @@ using Eigen::VectorXd;
 
 class DenseLLTSubsystem final : public KKTSubsystem {
  public:
-  DenseLLTSubsystem(const MatrixXd& supernode_block, const MatrixXd& separator_rows,
+  DenseLLTSubsystem(const MatrixXd& supernode_block,
+                    const MatrixXd& separator_rows,
                     const MatrixXd& separator_schur)
       : supernode_block_(supernode_block),
         separator_rows_block_(separator_rows),
@@ -61,7 +62,8 @@ class DenseLLTSubsystem final : public KKTSubsystem {
 
 class DiagonalLowRankSubsystem final : public KKTSubsystem {
  public:
-  DiagonalLowRankSubsystem(const VectorXd& diag, const MatrixXd& low_rank_factor,
+  DiagonalLowRankSubsystem(const VectorXd& diag,
+                           const MatrixXd& low_rank_factor,
                            const MatrixXd& separator_rows,
                            const MatrixXd& separator_schur)
       : diag_(diag),
@@ -86,12 +88,12 @@ class DiagonalLowRankSubsystem final : public KKTSubsystem {
   bool DoEliminateSupernodeColumns() override {
     MatrixXd expected = diag_.asDiagonal();
     expected.selfadjointView<Eigen::Lower>().rankUpdate(low_rank_factor_);
-    const double residual =
-        (supernode_submatrix() - expected).norm() /
-        std::max(1e-12, supernode_submatrix().norm());
+    const double residual = (supernode_submatrix() - expected).norm() /
+                            std::max(1e-12, supernode_submatrix().norm());
     use_generic_fallback_ = residual > 1e-12;
     if (use_generic_fallback_) {
-      generic_ldlt_.compute(supernode_submatrix().selfadjointView<Eigen::Lower>());
+      generic_ldlt_.compute(
+          supernode_submatrix().selfadjointView<Eigen::Lower>());
       return generic_ldlt_.info() == Eigen::Success;
     }
 
@@ -100,8 +102,8 @@ class DiagonalLowRankSubsystem final : public KKTSubsystem {
     const MatrixXd middle =
         MatrixXd::Identity(low_rank_factor_.cols(), low_rank_factor_.cols()) +
         low_rank_factor_.transpose() * dinv_u;
-    middle_inv_ = middle.ldlt().solve(
-        MatrixXd::Identity(middle.rows(), middle.cols()));
+    middle_inv_ =
+        middle.ldlt().solve(MatrixXd::Identity(middle.rows(), middle.cols()));
     return true;
   }
 
@@ -132,7 +134,8 @@ class DiagonalLowRankSubsystem final : public KKTSubsystem {
     // A^{-1} = D^{-1} - D^{-1} U (I + U^T D^{-1} U)^{-1} U^T D^{-1}
     MatrixXd z = dinv_.asDiagonal() * y;
     const MatrixXd tmp = low_rank_factor_.transpose() * z;
-    y.noalias() = z - (dinv_.asDiagonal() * low_rank_factor_) * (middle_inv_ * tmp);
+    y.noalias() =
+        z - (dinv_.asDiagonal() * low_rank_factor_) * (middle_inv_ * tmp);
   }
 
   VectorXd diag_;
@@ -207,7 +210,8 @@ BlockCase MakeBlockCase(int n1, int n2, int rank, uint64_t seed) {
     }
   }
 
-  MatrixXd r = MatrixXd::NullaryExpr(n2, n2, [&]() { return 0.1 * normal(rng); });
+  MatrixXd r =
+      MatrixXd::NullaryExpr(n2, n2, [&]() { return 0.1 * normal(rng); });
   c.a22 = 4.0 * MatrixXd::Identity(n2, n2) + r * r.transpose();
 
   c.kkt.resize(n1 + n2, n1 + n2);
@@ -243,8 +247,8 @@ TEST(KKTTreeSolver, GenericBlockFactorizationDiagonalLowRankFirstBlock) {
   child->SetSupernodes({0, 1});
   child->SetSeparators({2, 3});
 
-  auto root = std::make_unique<DenseLLTSubsystem>(a22, MatrixXd(0, n2),
-                                                  MatrixXd(0, 0));
+  auto root =
+      std::make_unique<DenseLLTSubsystem>(a22, MatrixXd(0, n2), MatrixXd(0, 0));
   root->SetSupernodes({2, 3});
   root->SetSeparators({});
 
@@ -305,8 +309,8 @@ TEST(KKTTreeSolver, GenericBlockFactorizationDiagonalLowRankBenchmarkLarge) {
     child->SetSupernodes(child_supernodes);
     child->SetSeparators(child_separators);
 
-    auto root =
-        std::make_unique<DenseLLTSubsystem>(c.a22, MatrixXd(0, n2), MatrixXd(0, 0));
+    auto root = std::make_unique<DenseLLTSubsystem>(c.a22, MatrixXd(0, n2),
+                                                    MatrixXd(0, 0));
     std::vector<int> root_supernodes(n2);
     for (int i = 0; i < n2; ++i) {
       root_supernodes[i] = n1 + i;
@@ -330,7 +334,8 @@ TEST(KKTTreeSolver, GenericBlockFactorizationDiagonalLowRankBenchmarkLarge) {
     solver.SolveInPlace(x_tree, false);
     auto t1 = Clock::now();
     tree_ms +=
-        std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t1 - t0)
+        std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(
+            t1 - t0)
             .count();
 
     auto d0 = Clock::now();
@@ -339,7 +344,8 @@ TEST(KKTTreeSolver, GenericBlockFactorizationDiagonalLowRankBenchmarkLarge) {
     MatrixXd x_ref = ldlt.solve(rhs);
     auto d1 = Clock::now();
     dense_ms +=
-        std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(d1 - d0)
+        std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(
+            d1 - d0)
             .count();
 
     const double rel_err =
@@ -351,7 +357,8 @@ TEST(KKTTreeSolver, GenericBlockFactorizationDiagonalLowRankBenchmarkLarge) {
             << " rank=" << rank << " repeats=" << repeats
             << " tree_ms_avg=" << (tree_ms / repeats)
             << " dense_ldlt_ms_avg=" << (dense_ms / repeats)
-            << " speedup_dense_over_tree=" << (tree_ms / std::max(1e-12, dense_ms))
+            << " speedup_dense_over_tree="
+            << (tree_ms / std::max(1e-12, dense_ms))
             << " max_rel_err=" << max_rel_err << std::endl;
 
   EXPECT_LT(max_rel_err, 1e-9);
@@ -380,7 +387,8 @@ TEST(KKTTreeSolver, GenericBlockFactorizationFallsBackWhenStructureDestroyed) {
   Eigen::LDLT<MatrixXd> ref_ldlt(kkt.selfadjointView<Eigen::Lower>());
   ASSERT_EQ(ref_ldlt.info(), Eigen::Success);
 
-  auto injected_child = std::make_unique<InjectedSeparatorUpdateSubsystem>(injected);
+  auto injected_child =
+      std::make_unique<InjectedSeparatorUpdateSubsystem>(injected);
   injected_child->SetSupernodes({});
   injected_child->SetSeparators({0, 1});
 

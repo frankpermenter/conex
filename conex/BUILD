@@ -314,6 +314,7 @@ cc_library(
     name = "clique_ordering",
     srcs = [
         "clique_ordering.cc",
+        "clique_ordering_md.cc",
         "clique_ordering_utils.cc",
     ],
     hdrs = [
@@ -323,6 +324,16 @@ cc_library(
     deps = [
         "error_checking",
         "tree_utils",
+    ],
+)
+
+cc_test(
+    name = "clique_ordering_md_test",
+    srcs = ["test/clique_ordering_md_test.cc"],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "clique_ordering",
+        "@gtest//:main",
     ],
 )
 

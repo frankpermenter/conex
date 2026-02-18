@@ -226,9 +226,8 @@ GTEST_TEST(CliqueOrdering,
 
   ASSERT_EQ(maximal_cliques.size(), 2u);
   ASSERT_EQ(tree.node_to_parent.size(), 2u);
-  const int num_roots =
-      static_cast<int>(std::count(tree.node_to_parent.begin(),
-                                  tree.node_to_parent.end(), -1));
+  const int num_roots = static_cast<int>(
+      std::count(tree.node_to_parent.begin(), tree.node_to_parent.end(), -1));
   EXPECT_EQ(num_roots, 1);
 }
 

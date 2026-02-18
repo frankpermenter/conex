@@ -112,8 +112,7 @@ void AddOffsetBlocks(Eigen::Ref<Eigen::MatrixXd> destination,
       for (int r = 0; r < row_pattern.count; ++r) {
         const int dst_row = row_pattern.first0 + r * row_pattern.stride_first;
         const int src_row = row_pattern.second0 + r * row_pattern.stride_second;
-        destination
-            .block(dst_row, dst_col, row_pattern.size, col_pattern.size)
+        destination.block(dst_row, dst_col, row_pattern.size, col_pattern.size)
             .noalias() +=
             source.block(src_row, src_col, row_pattern.size, col_pattern.size);
       }
@@ -193,8 +192,8 @@ void T::ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
 
   // Update residual via separator_rows * LeftFactor^{-1} * x_{supernodes}
   if (separators_.size() > 0) {
-    Eigen::Ref<Eigen::MatrixXd> temp =
-        solve_workspace1_.topLeftCorner(x_supernodes.rows(), x_supernodes.cols());
+    Eigen::Ref<Eigen::MatrixXd> temp = solve_workspace1_.topLeftCorner(
+        x_supernodes.rows(), x_supernodes.cols());
     temp = x_supernodes;
     DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
     DoMultiplyAndDecrementByOffDiagonalSubMatrix(x, temp);
@@ -231,8 +230,7 @@ void T::ApplyLeftLookingChildUpdates() {
       static_cast<long long>(supernode_rows) * supernode_cols +
       static_cast<long long>(separator_row_count) * separator_col_count;
   const long long total_update_entries =
-      update_entries_per_accumulator *
-      static_cast<long long>(children_.size());
+      update_entries_per_accumulator * static_cast<long long>(children_.size());
 
   // For tiny updates (e.g., many 1x1 star leaves), threaded setup and
   // reduction overhead can dominate arithmetic.
@@ -367,13 +365,13 @@ void DenseKKTSubsystemStorage::Initialize(size_t num_supernodes,
                                         static_cast<int>(num_supernodes));
     separator_rows_storage_.resize(static_cast<int>(num_separators),
                                    static_cast<int>(num_supernodes));
-    separator_schur_complement_storage_.resize(static_cast<int>(num_separators),
-                                               static_cast<int>(num_separators));
+    separator_schur_complement_storage_.resize(
+        static_cast<int>(num_separators), static_cast<int>(num_separators));
   }
 }
 
-size_t DenseKKTSubsystemStorage::RequiredArenaBytes(size_t num_supernodes,
-                                                    size_t num_separators) const {
+size_t DenseKKTSubsystemStorage::RequiredArenaBytes(
+    size_t num_supernodes, size_t num_separators) const {
   return ComputeArenaLayout(num_supernodes, num_separators).total_bytes;
 }
 
@@ -406,9 +404,8 @@ void DenseKKTSubsystemStorage::BindArenaMemory(double* ptr, size_t bytes,
                                    static_cast<int>(n1));
   separator_rows_map_.emplace(separator_rows_ptr, static_cast<int>(n2),
                               static_cast<int>(n1));
-  separator_schur_complement_map_.emplace(separator_schur_ptr,
-                                          static_cast<int>(n2),
-                                          static_cast<int>(n2));
+  separator_schur_complement_map_.emplace(
+      separator_schur_ptr, static_cast<int>(n2), static_cast<int>(n2));
 }
 
 Eigen::Ref<Eigen::MatrixXd> DenseKKTSubsystemStorage::supernode_submatrix() {
@@ -497,8 +494,8 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
 
     // Update residual using x_separator computed by ascendants in tree.
     if (separators_.size() > 0) {
-      Eigen::Ref<Eigen::MatrixXd> temp =
-          solve_workspace2_.topLeftCorner(x_supernodes.rows(), x_supernodes.cols());
+      Eigen::Ref<Eigen::MatrixXd> temp = solve_workspace2_.topLeftCorner(
+          x_supernodes.rows(), x_supernodes.cols());
       DoMultiplyByTransposeOfOffDiagonalSubMatrix(temp, x);
       DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(temp);
       x_supernodes.noalias() -= temp;
@@ -550,8 +547,7 @@ void T::ComputeOffsets(const KKTSubsystemBase* descendant, int start_index) {
       index += local_row.size;
     } else {
       // By the running intersection property, all separators must be present.
-      throw std::runtime_error(
-          "Tree fails the running intersection property.");
+      throw std::runtime_error("Tree fails the running intersection property.");
     }
   }
 

@@ -108,8 +108,7 @@ class DenseKKTSubsystemStorage final : public KKTSubsystemStorage {
   Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override;
   Eigen::Ref<Eigen::MatrixXd> separator_rows() override;
   Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const override;
-  Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement()
-      const override;
+  Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement() const override;
   Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override;
 
  private:

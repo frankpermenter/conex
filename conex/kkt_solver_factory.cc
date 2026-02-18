@@ -21,8 +21,8 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
   vector<vector<int>> cliques = c->variables();
   vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
 
-  CliqueTree clique_tree = MakePrimalDualCliqueTree(
-      cliques, dual_vars, config.clique_tree_method);
+  CliqueTree clique_tree =
+      MakePrimalDualCliqueTree(cliques, dual_vars, config.clique_tree_method);
 
   auto solver_temp = std::make_unique<SupernodalKKTSolver>(
       cliques, c->SizeOfKKTSystem(), clique_tree.post_order_position_to_clique,
@@ -73,8 +73,8 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
 
   vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
 
-  CliqueTree clique_tree = MakePrimalDualCliqueTree(
-      cliques, dual_vars, config.clique_tree_method);
+  CliqueTree clique_tree =
+      MakePrimalDualCliqueTree(cliques, dual_vars, config.clique_tree_method);
   int i = 0;
   for (auto& clique : clique_assemblers_ptrs_) {
     auto adapter =

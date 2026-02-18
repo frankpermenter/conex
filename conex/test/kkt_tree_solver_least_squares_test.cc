@@ -60,9 +60,7 @@ class RowPartitionAssembler final : public SupernodalAssemblerBase {
     Initialize(&workspace, memory_.data());
   }
 
-  void SetDenseData() override {
-    submatrix_data_.G = local_matrix_;
-  }
+  void SetDenseData() override { submatrix_data_.G = local_matrix_; }
 
  private:
   Eigen::MatrixXd local_matrix_;
@@ -237,8 +235,8 @@ TEST(KKTTreeSolver, RelabelsNonContiguousGlobalCliquesAndSolves) {
   std::vector<std::unique_ptr<StaticMatrixAssembler>> assemblers;
   std::vector<std::unique_ptr<KKTAssemblerToSubsystemAdapter>> adapters;
 
-  assemblers.emplace_back(
-      std::make_unique<StaticMatrixAssembler>(std::vector<int>{0, 2}, local_02));
+  assemblers.emplace_back(std::make_unique<StaticMatrixAssembler>(
+      std::vector<int>{0, 2}, local_02));
   {
     auto adapter = std::make_unique<KKTAssemblerToSubsystemAdapter>(
         assemblers.back().get());
@@ -248,8 +246,8 @@ TEST(KKTTreeSolver, RelabelsNonContiguousGlobalCliquesAndSolves) {
     tree_solver.push_back(std::move(adapter));
   }
 
-  assemblers.emplace_back(
-      std::make_unique<StaticMatrixAssembler>(std::vector<int>{1, 3}, local_13));
+  assemblers.emplace_back(std::make_unique<StaticMatrixAssembler>(
+      std::vector<int>{1, 3}, local_13));
   {
     auto adapter = std::make_unique<KKTAssemblerToSubsystemAdapter>(
         assemblers.back().get());

@@ -60,9 +60,7 @@ class RowPartitionAssembler final : public SupernodalAssemblerBase {
     Initialize(&workspace, memory_.data());
   }
 
-  void SetDenseData() override {
-    submatrix_data_.G = local_matrix_;
-  }
+  void SetDenseData() override { submatrix_data_.G = local_matrix_; }
 
  private:
   Eigen::MatrixXd local_matrix_;

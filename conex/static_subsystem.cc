@@ -85,7 +85,8 @@ void T::SetEliminationPosition(
       variable_to_local_elimination_position_.size() *
       (variable_to_local_elimination_position_.size() + 1) / 2);
   for (size_t j = 0; j < variable_to_local_elimination_position_.size(); ++j) {
-    for (size_t i = j; i < variable_to_local_elimination_position_.size(); ++i) {
+    for (size_t i = j; i < variable_to_local_elimination_position_.size();
+         ++i) {
       int row = variable_to_local_elimination_position_.at(i);
       int col = variable_to_local_elimination_position_.at(j);
       if (col > row) {

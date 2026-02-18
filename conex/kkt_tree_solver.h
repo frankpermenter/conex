@@ -1,11 +1,12 @@
 #pragma once
+#include <cstdint>
+#include <cstdlib>
+#include <memory>
+
 #include "conex/kkt_solver_interface.h"
 #include "conex/kkt_subsystem.h"
 #include "conex/static_subsystem.h"
 #include "conex/tree_utils.h"
-#include <cstdint>
-#include <cstdlib>
-#include <memory>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
@@ -79,7 +80,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   int num_threads_ = 1;
   bool parallelize_roots_only_ = false;
   mutable int reserved_solve_workspace_cols_ = 0;
-  std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr, &std::free};
+  std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr,
+                                                            &std::free};
   size_t arena_bytes_ = 0;
 };
 

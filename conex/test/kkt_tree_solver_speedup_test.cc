@@ -184,7 +184,8 @@ TEST(KKTTreeSolver, RejectsNonContiguousSupernodesInSolve) {
   SymmetricLinearSystemTreeSolver solver;
   solver.SetNumThreads(1);
 
-  auto subsystem = std::make_unique<SleepySubsystem>(std::chrono::milliseconds(0));
+  auto subsystem =
+      std::make_unique<SleepySubsystem>(std::chrono::milliseconds(0));
   subsystem->SetSupernodes({0, 2});
   subsystem->SetSeparators({});
   solver.AddSubsystem(subsystem.get());

@@ -7,10 +7,10 @@
 #include <stack>
 #include <vector>
 
-#include <Eigen/OrderingMethods>
-#include <Eigen/Sparse>
 #include "conex/clique_ordering_utils.h"
 #include "conex/error_checking_macros.h"
+#include <Eigen/OrderingMethods>
+#include <Eigen/Sparse>
 
 namespace conex {
 
@@ -437,9 +437,9 @@ void GetCliqueEliminationOrderAmd(const vector<vector<int>>& cliques_sorted,
     supernodes->at(e).resize(cliques_sorted.at(e).size() -
                              separators->at(e).size());
     if (!supernodes->at(e).empty()) {
-      std::set_difference(cliques_sorted.at(e).begin(), cliques_sorted.at(e).end(),
-                          separators->at(e).begin(), separators->at(e).end(),
-                          supernodes->at(e).begin());
+      std::set_difference(cliques_sorted.at(e).begin(),
+                          cliques_sorted.at(e).end(), separators->at(e).begin(),
+                          separators->at(e).end(), supernodes->at(e).begin());
     }
   }
 }
@@ -511,7 +511,9 @@ std::vector<std::vector<int>> FindMaximalCliquesImplicitFromRowSupports(
 
   const int words = (n + 63) / 64;
   std::vector<std::uint64_t> adj_bits(static_cast<size_t>(n) * words, 0);
-  auto row_bits = [&](int i) { return &adj_bits[static_cast<size_t>(i) * words]; };
+  auto row_bits = [&](int i) {
+    return &adj_bits[static_cast<size_t>(i) * words];
+  };
   auto has_edge = [&](int i, int j) {
     const auto* ri = row_bits(i);
     const std::uint64_t mask = std::uint64_t{1} << (j & 63);
@@ -687,16 +689,16 @@ std::vector<std::vector<int>> FindMaximalCliquesImplicitFromRowSupports(
 
   if (implicit_tree != nullptr) {
     // Reuse the standard clique-intersection DFS tree construction.
-    *implicit_tree = MakeCliqueTree(cliques, {}, CLIQUE_TREE_METHOD_WEIGHTED_DFS);
+    *implicit_tree =
+        MakeCliqueTree(cliques, {}, CLIQUE_TREE_METHOD_WEIGHTED_DFS);
     if (!cliques.empty()) {
       auto supernodes_check = implicit_tree->supernodes;
       auto separators_check = implicit_tree->separators;
-      RootedTree tree =
-          BuildTreeWithHeights(implicit_tree->node_to_parent);
+      RootedTree tree = BuildTreeWithHeights(implicit_tree->node_to_parent);
       const int num_vars = GetMax(cliques) + 1;
-      const size_t fill_in = FillIn(
-          tree, num_vars, implicit_tree->post_order_position_to_clique,
-          &supernodes_check, &separators_check);
+      const size_t fill_in =
+          FillIn(tree, num_vars, implicit_tree->post_order_position_to_clique,
+                 &supernodes_check, &separators_check);
       if (fill_in > 0) {
         throw std::runtime_error(
             "Implicit clique tree requires fill-in; refusing tree.");
@@ -709,8 +711,9 @@ std::vector<std::vector<int>> FindMaximalCliquesImplicitFromRowSupports(
 }  // namespace
 
 size_t FillIn(const RootedTree& tree, int num_variables,
-            const std::vector<int>& order, vector<std::vector<int>>* supernodes,
-            vector<std::vector<int>>* separators) {
+              const std::vector<int>& order,
+              vector<std::vector<int>>* supernodes,
+              vector<std::vector<int>>* separators) {
   std::vector<int> eliminated(num_variables);
   int num_cliques = order.size();
   for (auto& e : eliminated) {
@@ -803,8 +806,7 @@ void PickCliqueOrder(const vector<vector<int>>& cliques_sorted,
                      vector<int>* post_order_position_to_clique,
                      vector<int>* parent_in_tree,
                      vector<vector<int>>* supernodes,
-                     vector<vector<int>>* separators,
-                     int method) {
+                     vector<vector<int>>* separators, int method) {
   size_t n = cliques_sorted.size();
   RootedTree tree(n);
   if (method == CLIQUE_TREE_METHOD_AMD) {

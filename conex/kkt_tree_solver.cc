@@ -329,8 +329,9 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
   // Ensure per-subsystem temporary solve buffers are sized for this RHS width.
   // Cache the max requested width to avoid repeating full-tree recursion.
   if (b.cols() > reserved_solve_workspace_cols_) {
-    ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
-                [&](size_t i) { roots_.at(i)->ReserveSolveWorkspace(b.cols()); });
+    ForEachTask(
+        roots_.size(), EffectiveThreadCount(num_threads_),
+        [&](size_t i) { roots_.at(i)->ReserveSolveWorkspace(b.cols()); });
     reserved_solve_workspace_cols_ = b.cols();
   }
 
@@ -525,14 +526,14 @@ void T::AllocateArenaAndBind() {
   arena_memory_.reset(raw_ptr);
   arena_bytes_ = alloc_bytes;
 
-  std::uintptr_t cursor =
-      reinterpret_cast<std::uintptr_t>(arena_memory_.get());
+  std::uintptr_t cursor = reinterpret_cast<std::uintptr_t>(arena_memory_.get());
   for (auto* subsystem : subsystems_) {
     const size_t bytes = subsystem->RequiredArenaBytes();
     if (bytes == 0) {
       continue;
     }
-    cursor = (cursor + (kAlign - 1)) & ~(static_cast<std::uintptr_t>(kAlign - 1));
+    cursor =
+        (cursor + (kAlign - 1)) & ~(static_cast<std::uintptr_t>(kAlign - 1));
     subsystem->BindArenaMemory(reinterpret_cast<double*>(cursor), bytes);
     cursor += bytes;
   }
