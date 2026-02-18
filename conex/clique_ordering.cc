@@ -676,87 +676,6 @@ std::vector<std::vector<int>> FindMaximalCliquesImplicitFromRowSupports(
     }
   }
 
-  if (implicit_tree != nullptr) {
-    std::vector<int> rep_for_max(cliques.size(), -1);
-    for (size_t i = 0; i < cliques.size(); ++i) {
-      int rep = -1;
-      const auto it = clique_to_best_rep.find(cliques.at(i));
-      if (it != clique_to_best_rep.end()) {
-        rep = it->second;
-      }
-      if (rep < 0 && !cliques.at(i).empty()) {
-        rep = cliques.at(i).front();
-      }
-      rep_for_max.at(i) = rep;
-    }
-
-    implicit_tree->node_to_parent.assign(cliques.size(), -1);
-    implicit_tree->separators.assign(cliques.size(), {});
-    implicit_tree->supernodes.assign(cliques.size(), {});
-    implicit_tree->post_order_position_to_clique.resize(cliques.size());
-    for (size_t i = 0; i < cliques.size(); ++i) {
-      implicit_tree->post_order_position_to_clique.at(i) =
-          static_cast<int>(i);
-    }
-
-    for (size_t i = 0; i < cliques.size(); ++i) {
-      const int rep = rep_for_max.at(i);
-      int parent = -1;
-      std::vector<int> sep_target;
-      if (rep >= 0 && rep < n) {
-        sep_target = candidate_by_var.at(static_cast<size_t>(rep));
-        sep_target.erase(
-            std::remove(sep_target.begin(), sep_target.end(), rep),
-            sep_target.end());
-      }
-
-      if (!sep_target.empty()) {
-        size_t best_parent_size = std::numeric_limits<size_t>::max();
-        for (size_t j = 0; j < cliques.size(); ++j) {
-          if (i == j) {
-            continue;
-          }
-          const auto& cand_parent = cliques.at(j);
-          if (cand_parent.size() < sep_target.size()) {
-            continue;
-          }
-          // Keep a DAG orientation: parent is never smaller than child.
-          // For equal-size cliques, orient by index.
-          if (cand_parent.size() < cliques.at(i).size()) {
-            continue;
-          }
-          if (cand_parent.size() == cliques.at(i).size() && j < i) {
-            continue;
-          }
-          if (std::includes(cand_parent.begin(), cand_parent.end(),
-                            sep_target.begin(), sep_target.end()) &&
-              cand_parent.size() < best_parent_size) {
-            best_parent_size = cand_parent.size();
-            parent = static_cast<int>(j);
-          }
-        }
-      }
-      implicit_tree->node_to_parent.at(i) = parent;
-
-      if (parent >= 0) {
-        std::vector<int> sep;
-        sep.reserve(sep_target.size());
-        std::set_intersection(sep_target.begin(), sep_target.end(),
-                              cliques.at(static_cast<size_t>(parent)).begin(),
-                              cliques.at(static_cast<size_t>(parent)).end(),
-                              std::back_inserter(sep));
-        implicit_tree->separators.at(i) = std::move(sep);
-      }
-      std::vector<int> sup;
-      sup.reserve(cliques.at(i).size());
-      std::set_difference(cliques.at(i).begin(), cliques.at(i).end(),
-                          implicit_tree->separators.at(i).begin(),
-                          implicit_tree->separators.at(i).end(),
-                          std::back_inserter(sup));
-      implicit_tree->supernodes.at(i) = std::move(sup);
-    }
-  }
-
   auto remap_to_global = [&](std::vector<std::vector<int>>* sets) {
     for (auto& vals : *sets) {
       for (int& v : vals) {
@@ -765,9 +684,24 @@ std::vector<std::vector<int>> FindMaximalCliquesImplicitFromRowSupports(
     }
   };
   remap_to_global(&cliques);
+
   if (implicit_tree != nullptr) {
-    remap_to_global(&implicit_tree->supernodes);
-    remap_to_global(&implicit_tree->separators);
+    // Reuse the standard clique-intersection DFS tree construction.
+    *implicit_tree = MakeCliqueTree(cliques, {}, CLIQUE_TREE_METHOD_WEIGHTED_DFS);
+    if (!cliques.empty()) {
+      auto supernodes_check = implicit_tree->supernodes;
+      auto separators_check = implicit_tree->separators;
+      RootedTree tree =
+          BuildTreeWithHeights(implicit_tree->node_to_parent);
+      const int num_vars = GetMax(cliques) + 1;
+      const size_t fill_in = FillIn(
+          tree, num_vars, implicit_tree->post_order_position_to_clique,
+          &supernodes_check, &separators_check);
+      if (fill_in > 0) {
+        throw std::runtime_error(
+            "Implicit clique tree requires fill-in; refusing tree.");
+      }
+    }
   }
   return cliques;
 }
