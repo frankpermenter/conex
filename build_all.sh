@@ -14,11 +14,6 @@ fi
 
 bazel_config=debug
 bazel_startup_flags=(--output_user_root=/tmp/conex-bazel)
-if [[ "${SKIP_FORMATTING:-0}" != "1" ]]; then
-  bazel "${bazel_startup_flags[@]}" run //:buildifier --config="$bazel_config"
-  find ./ -type f -name "*.h" | xargs clang-format -i
-  find ./ -type f -name "*.cc" | xargs clang-format -i
-fi
 
 
 ## Build and test repo.
