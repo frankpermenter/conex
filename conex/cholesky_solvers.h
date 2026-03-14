@@ -79,12 +79,15 @@ class CholeskySolver : public KKTSubsystemBase {
           separator_schur_complement_.noalias() -=
               separator_columns_.transpose() * separator_columns_;
         }
+        // Store S F^{-1} = S L^{-T} = (L^{-1} S^T)^T.
+        schur_complement_factor_cached_ = temp_row_major_.transpose();
       }
     } else {
       if (temp_row_major_.size() == 0) {
         temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
       }
       if (separator_rows_.size()) {
+        // temp = A^{-1} S^T (full solve).
         temp_row_major_ = llt_->solve(separator_rows_.transpose());
         int n = separator_schur_complement_.rows();
         int d = separator_rows_.cols();
@@ -100,6 +103,26 @@ class CholeskySolver : public KKTSubsystemBase {
       }
     }
   }
+
+  void DoMultiplyByCachedMatrix(
+      Eigen::Ref<Eigen::MatrixXd> output,
+      Eigen::Ref<const Eigen::MatrixXd> input) const {
+    if (separators_.empty()) {
+      output.setZero();
+      return;
+    }
+    Eigen::Ref<Eigen::MatrixXd> gathered_separator_rows =
+        solve_workspace3_.topLeftCorner(static_cast<int>(separators_.size()),
+                                        input.cols());
+    for (int i = 0; i < gathered_separator_rows.rows(); ++i) {
+      gathered_separator_rows.row(i) = input.row(separators_.at(i));
+    }
+    output.noalias() = schur_complement_factor_cached_.transpose() * gathered_separator_rows;
+  }
+
+
+
+
 
   bool DoEliminateSupernodeColumns() override {
     llt_ = std::make_unique<FactorizationMethod>(supernode_submatrix_);
@@ -152,6 +175,23 @@ class CholeskySolver : public KKTSubsystemBase {
     }
   }
 
+
+  // Schur complement mode (E=A, F=I): compute A^{-1} S^T x_sep using
+  // original S in separator_rows_ (not cached).
+  // Non-schur mode (LLT): default uses cached S L^{-T} in separator_rows_.
+  void DoBackwardScatter(Eigen::Ref<MatrixXd> output,
+                         Eigen::Ref<const MatrixXd> input) const override {
+    if constexpr (schur_complement_mode) {
+      KKTSubsystemBase::DoBackwardScatter(output, input);
+    } else {
+      //KKTSubsystemBase::DoBackwardScatter(output, input);
+     // Use C
+      //DoMultiplyByTransposeOfOffDiagonalSubMatrix(output, input);
+      DoMultiplyByCachedMatrix(output, input);
+    }
+  }
+
+
   bool OnlyLowerTriangularPart(int /*num_vectors*/,
                                int /*cost_of_inner_product*/) {
     return true;
@@ -161,6 +201,7 @@ class CholeskySolver : public KKTSubsystemBase {
   Eigen::Matrix<double, -1, -1, Eigen::RowMajor> temp_row_major_;
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix_;
   Eigen::MatrixXd separator_columns_;
+  Eigen::MatrixXd schur_complement_factor_cached_;
   Eigen::Ref<Eigen::MatrixXd> separator_rows_;
   Eigen::Ref<Eigen::MatrixXd> separator_schur_complement_;
   std::unique_ptr<FactorizationMethod> llt_;
@@ -188,6 +229,21 @@ class KKTCholeskySystem : public KKTSubsystem {
     factorization_->DoComputeSeparatorSchurComplement();
   }
 
+  void DoBackwardScatter(Eigen::Ref<MatrixXd> output,
+                         Eigen::Ref<const MatrixXd> input) const override {
+    if (factorization_->schur_complement_factor_cached_.size() == 0) {
+      KKTSubsystemBase::DoBackwardScatter(output, input);
+      return;
+    }
+    Eigen::Ref<Eigen::MatrixXd> gathered =
+        solve_workspace3_.topLeftCorner(static_cast<int>(separators_.size()),
+                                        input.cols());
+    for (int i = 0; i < static_cast<int>(separators_.size()); ++i) {
+      gathered.row(i) = input.row(separators_.at(i));
+    }
+    output.noalias() =
+        factorization_->schur_complement_factor_cached_.transpose() * gathered;
+  }
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     factorization_ = std::make_unique<FactorizationType>(

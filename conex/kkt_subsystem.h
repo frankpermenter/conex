@@ -222,9 +222,6 @@ class KKTSubsystemBase {
       Eigen::Ref<Eigen::MatrixXd> output,
       Eigen::Ref<const Eigen::MatrixXd> input) const;
 
-  virtual void DoMultiplyByTransposeOfOffDiagonalSubMatrix(
-      Eigen::Ref<Eigen::MatrixXd> output,
-      Eigen::Ref<const Eigen::MatrixXd> input) const;
 
   bool IsRoot() const;
   void AccumulateColumnUpdate(
@@ -261,6 +258,9 @@ class KKTSubsystemBase {
   // S F^{-1} and E^{-1} F^T = I, e.g. LLT where S L^{-T} is cached).
   // Kernels where E^{-1} S^T differs from (S F^{-1})^T must override.
   virtual void DoBackwardScatter(
+      Eigen::Ref<Eigen::MatrixXd> output,
+      Eigen::Ref<const Eigen::MatrixXd> input) const;
+  virtual void DoMultiplyByTransposeOfOffDiagonalSubMatrix(
       Eigen::Ref<Eigen::MatrixXd> output,
       Eigen::Ref<const Eigen::MatrixXd> input) const;
   std::vector<int> separators_;
