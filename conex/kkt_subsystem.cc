@@ -299,11 +299,11 @@ void T::DoMultiplyByTransposeOfOffDiagonalSubMatrix(
     output.setZero();
     return;
   }
+  const int nsep = static_cast<int>(separators_.size());
   Eigen::Ref<Eigen::MatrixXd> gathered_separator_rows =
-      solve_workspace3_.topLeftCorner(static_cast<int>(separators_.size()),
-                                      input.cols());
-  for (int i = 0; i < gathered_separator_rows.rows(); ++i) {
-    gathered_separator_rows.row(i) = input.row(separators_.at(i));
+      solve_workspace3_.topLeftCorner(nsep, input.cols());
+  for (int i = 0; i < nsep; ++i) {
+    gathered_separator_rows.row(i) = input.row(separators_[i]);
   }
   output.noalias() = separator_rows().transpose() * gathered_separator_rows;
 }
