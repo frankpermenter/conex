@@ -12,53 +12,62 @@
 
 namespace conex {
 
-// A vector partitioned by the supernode structure of the elimination tree.
-// Each node contributes a supernode block and a separator block, stored at
-// SIMD-aligned pointers in a single arena allocation.
-class SupernodePartitionVector {
+// A matrix partitioned by the supernode structure of the elimination tree.
+// Each node contributes a supernode block (sn_rows x cols) and a separator
+// block (sep_rows x cols), stored at SIMD-aligned pointers in a single arena.
+class SupernodePartitionMatrix {
  public:
-  SupernodePartitionVector() = default;
+  SupernodePartitionMatrix() = default;
 
-  // Allocate arena and build block layout from the subsystem list.
+  // Set the block structure from the subsystem list.
   // perm_inv maps elimination position -> original variable index.
-  void Initialize(const std::vector<KKTSubsystemBase*>& subsystems,
-                  int num_vars,
-                  const Eigen::VectorXi& perm_inv);
+  void SetPartition(const std::vector<KKTSubsystemBase*>& subsystems,
+                    int num_vars,
+                    const Eigen::VectorXi& perm_inv);
+
+  // (Re)allocate arena for the given number of columns.
+  void Resize(int cols);
 
   bool empty() const { return blocks_.empty(); }
+  int cols() const { return cols_; }
   void SetZero();
 
-  // Scatter an original-order vector into supernode blocks.
-  void ScatterFrom(Eigen::Ref<const Eigen::VectorXd> b);
-  // Gather from supernode blocks back into an original-order vector.
-  void GatherInto(Eigen::Ref<Eigen::VectorXd> b) const;
+  // Scatter an original-order matrix into supernode blocks.
+  void ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> b);
+  // Gather from supernode blocks back into an original-order matrix.
+  void GatherInto(Eigen::Ref<Eigen::MatrixXd> b) const;
 
   // Block accessors (by subsystem index).
-  Eigen::Map<Eigen::VectorXd, Eigen::Aligned> supernode(int k) {
-    return {blocks_[k].supernode_data, blocks_[k].supernode_size};
+  Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> supernode(int k) {
+    return {blocks_[k].supernode_data, blocks_[k].sn_rows, cols_};
   }
-  Eigen::Map<Eigen::VectorXd, Eigen::Aligned> separator(int k) {
-    return {blocks_[k].separator_data, blocks_[k].separator_size};
+  Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> separator(int k) {
+    return {blocks_[k].separator_data, blocks_[k].sep_rows, cols_};
   }
-  Eigen::Map<const Eigen::VectorXd, Eigen::Aligned> supernode(int k) const {
-    return {blocks_[k].supernode_data, blocks_[k].supernode_size};
+  Eigen::Map<const Eigen::MatrixXd, Eigen::Aligned> supernode(int k) const {
+    return {blocks_[k].supernode_data, blocks_[k].sn_rows, cols_};
   }
-  Eigen::Map<const Eigen::VectorXd, Eigen::Aligned> separator(int k) const {
-    return {blocks_[k].separator_data, blocks_[k].separator_size};
+  Eigen::Map<const Eigen::MatrixXd, Eigen::Aligned> separator(int k) const {
+    return {blocks_[k].separator_data, blocks_[k].sep_rows, cols_};
   }
 
-  int supernode_size(int k) const { return blocks_[k].supernode_size; }
-  int separator_size(int k) const { return blocks_[k].separator_size; }
+  int supernode_rows(int k) const { return blocks_[k].sn_rows; }
+  int separator_rows(int k) const { return blocks_[k].sep_rows; }
 
  private:
   struct Block {
     double* supernode_data = nullptr;
     double* separator_data = nullptr;
-    int supernode_size = 0;
-    int separator_size = 0;
+    int sn_rows = 0;
+    int sep_rows = 0;
+  };
+  struct VarMapping {
+    int block_index;
+    int row_in_block;
   };
   std::vector<Block> blocks_;
-  std::vector<double*> var_to_sn_ptr_;
+  std::vector<VarMapping> var_mapping_;
+  int cols_ = 0;
   std::unique_ptr<void, decltype(&std::free)> arena_{nullptr, &std::free};
   size_t arena_bytes_ = 0;
 };
@@ -137,12 +146,11 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   int cached_num_vars_ = 0;
   Eigen::VectorXi cached_perm_;         // variable -> elimination position
   Eigen::VectorXi cached_perm_inv_;     // elimination position -> variable
-  mutable Eigen::MatrixXd solve_temp_;  // scratch for in-place permutation
   std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr,
                                                             &std::free};
   size_t arena_bytes_ = 0;
   // Block-partitioned solve data (mutable: scratch space used in const solve).
-  mutable SupernodePartitionVector solve_vector_;
+  mutable SupernodePartitionMatrix solve_matrix_;
   // Per-node precomputed child scatter info for blocked solve.
   struct ChildScatterOp {
     int child_block_index;

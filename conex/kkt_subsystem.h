@@ -183,11 +183,11 @@ class KKTSubsystemBase {
   void ForwardSolveLocal(Eigen::Ref<Eigen::MatrixXd> x) const;
   void BackwardSolveLocal(Eigen::Ref<Eigen::MatrixXd> x) const;
 
-  // Block-partitioned single-RHS solve (no global vector).
-  void ForwardSolveBlocked(double* sn_data, int sn_size,
-                           double* sep_data, int sep_size) const;
-  void BackwardSolveBlocked(double* sn_data, int sn_size,
-                            const double* sep_data, int sep_size) const;
+  // Block-partitioned solve (no global vector).
+  void ForwardSolveBlocked(Eigen::Ref<Eigen::MatrixXd> sn,
+                           Eigen::Ref<Eigen::MatrixXd> sep) const;
+  void BackwardSolveBlocked(Eigen::Ref<Eigen::MatrixXd> sn,
+                            Eigen::Ref<const Eigen::MatrixXd> sep) const;
   void ReserveSolveWorkspace(int rhs_cols);
 
   void Reset() {

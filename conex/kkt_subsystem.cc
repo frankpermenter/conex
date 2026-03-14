@@ -349,34 +349,30 @@ void T::BackwardSolveLocal(Eigen::Ref<Eigen::MatrixXd> x) const {
   }
 }
 
-void T::ForwardSolveBlocked(double* sn_data, int sn_size,
-                            double* sep_data, int sep_size) const {
-  if (sn_size == 0) return;
-  Eigen::Map<Eigen::VectorXd, Eigen::Aligned> sn_block(sn_data, sn_size);
-  DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(sn_block);
-  if (sep_size > 0) {
+void T::ForwardSolveBlocked(Eigen::Ref<Eigen::MatrixXd> sn,
+                            Eigen::Ref<Eigen::MatrixXd> sep) const {
+  if (sn.rows() == 0) return;
+  const int cols = sn.cols();
+  DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(sn);
+  if (sep.rows() > 0) {
     Eigen::Ref<Eigen::MatrixXd> temp =
-        solve_workspace1_.topLeftCorner(sn_size, 1);
-    temp.col(0) = sn_block;
+        solve_workspace1_.topLeftCorner(sn.rows(), cols);
+    temp = sn;
     DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
-    Eigen::Map<Eigen::VectorXd, Eigen::Aligned> sep_accum(sep_data, sep_size);
-    sep_accum.noalias() += separator_rows() * temp.col(0);
+    sep.noalias() += separator_rows() * temp;
   }
 }
 
-void T::BackwardSolveBlocked(double* sn_data, int sn_size,
-                             const double* sep_data, int sep_size) const {
-  if (sn_size == 0) return;
-  Eigen::Map<Eigen::VectorXd, Eigen::Aligned> sn_block(sn_data, sn_size);
-  if (sep_size > 0) {
-    Eigen::Map<const Eigen::VectorXd, Eigen::Aligned> sep_vec(sep_data,
-                                                               sep_size);
+void T::BackwardSolveBlocked(Eigen::Ref<Eigen::MatrixXd> sn,
+                             Eigen::Ref<const Eigen::MatrixXd> sep) const {
+  if (sn.rows() == 0) return;
+  if (sep.rows() > 0) {
     Eigen::Ref<Eigen::MatrixXd> temp =
-        solve_workspace2_.topLeftCorner(sn_size, 1);
-    DoBackwardScatterFromGatheredSeparator(temp, sep_vec);
-    sn_block -= temp.col(0);
+        solve_workspace2_.topLeftCorner(sn.rows(), sn.cols());
+    DoBackwardScatterFromGatheredSeparator(temp, sep);
+    sn -= temp;
   }
-  DoApplyInverseOfRightFactorOfSupernodeSubmatrix(sn_block);
+  DoApplyInverseOfRightFactorOfSupernodeSubmatrix(sn);
 }
 void T::ReserveSolveWorkspace(int rhs_cols) {
   for (auto child : children_) {

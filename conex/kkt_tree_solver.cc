@@ -11,91 +11,95 @@
 
 namespace conex {
 
-void SupernodePartitionVector::Initialize(
+void SupernodePartitionMatrix::SetPartition(
     const std::vector<KKTSubsystemBase*>& subsystems, int num_vars,
     const Eigen::VectorXi& perm_inv) {
-  constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
-  const int num_subsystems = static_cast<int>(subsystems.size());
-
-  // Compute byte-level layout with alignment.
-  struct BlockLayout {
-    size_t sn_offset;
-    size_t sep_offset;
-  };
-  std::vector<BlockLayout> layouts(num_subsystems);
-  size_t cursor = 0;
-  for (int k = 0; k < num_subsystems; ++k) {
-    const auto* sub = subsystems[k];
-    const int sn_size = static_cast<int>(sub->supernodes().size());
-    const int sep_size = static_cast<int>(sub->separators().size());
-
-    cursor = ((cursor + kAlign - 1) / kAlign) * kAlign;
-    layouts[k].sn_offset = cursor;
-    cursor += sn_size * sizeof(double);
-
-    cursor = ((cursor + kAlign - 1) / kAlign) * kAlign;
-    layouts[k].sep_offset = cursor;
-    cursor += sep_size * sizeof(double);
-  }
-  size_t arena_bytes = cursor;
-
-  if (arena_bytes == 0) {
-    blocks_.clear();
-    var_to_sn_ptr_.clear();
-    arena_.reset();
-    arena_bytes_ = 0;
-    return;
+  const int n = static_cast<int>(subsystems.size());
+  blocks_.resize(n);
+  for (int k = 0; k < n; ++k) {
+    blocks_[k].sn_rows = static_cast<int>(subsystems[k]->supernodes().size());
+    blocks_[k].sep_rows = static_cast<int>(subsystems[k]->separators().size());
+    blocks_[k].supernode_data = nullptr;
+    blocks_[k].separator_data = nullptr;
   }
 
-  const size_t alloc_bytes = ((arena_bytes + kAlign - 1) / kAlign) * kAlign;
-  void* raw_ptr = nullptr;
-  if (posix_memalign(&raw_ptr, kAlign, alloc_bytes) != 0) {
-    throw std::bad_alloc();
-  }
-  arena_.reset(raw_ptr);
-  arena_bytes_ = alloc_bytes;
-
-  char* base = static_cast<char*>(raw_ptr);
-  blocks_.resize(num_subsystems);
-  for (int k = 0; k < num_subsystems; ++k) {
-    const auto* sub = subsystems[k];
-    blocks_[k].supernode_size = static_cast<int>(sub->supernodes().size());
-    blocks_[k].separator_size = static_cast<int>(sub->separators().size());
-    blocks_[k].supernode_data =
-        reinterpret_cast<double*>(base + layouts[k].sn_offset);
-    blocks_[k].separator_data =
-        reinterpret_cast<double*>(base + layouts[k].sep_offset);
-  }
-
-  var_to_sn_ptr_.resize(num_vars);
-  for (int k = 0; k < num_subsystems; ++k) {
+  var_mapping_.resize(num_vars);
+  for (int k = 0; k < n; ++k) {
     const auto& sn = subsystems[k]->supernodes();
-    double* sn_data = blocks_[k].supernode_data;
     for (int i = 0; i < static_cast<int>(sn.size()); ++i) {
       int orig_var = perm_inv(sn[i]);
-      var_to_sn_ptr_[orig_var] = sn_data + i;
+      var_mapping_[orig_var] = {k, i};
     }
+  }
+
+  cols_ = 0;
+  arena_.reset();
+  arena_bytes_ = 0;
+}
+
+void SupernodePartitionMatrix::Resize(int cols) {
+  if (blocks_.empty()) return;
+  cols_ = cols;
+
+  constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
+  size_t cursor = 0;
+  for (const auto& blk : blocks_) {
+    cursor = ((cursor + kAlign - 1) / kAlign) * kAlign;
+    cursor += blk.sn_rows * cols * sizeof(double);
+    cursor = ((cursor + kAlign - 1) / kAlign) * kAlign;
+    cursor += blk.sep_rows * cols * sizeof(double);
+  }
+
+  if (cursor > arena_bytes_) {
+    const size_t alloc_bytes = ((cursor + kAlign - 1) / kAlign) * kAlign;
+    void* raw_ptr = nullptr;
+    if (posix_memalign(&raw_ptr, kAlign, alloc_bytes) != 0) {
+      throw std::bad_alloc();
+    }
+    arena_.reset(raw_ptr);
+    arena_bytes_ = alloc_bytes;
+  }
+
+  // Recompute block pointers for current column count.
+  char* base = static_cast<char*>(arena_.get());
+  cursor = 0;
+  for (auto& blk : blocks_) {
+    cursor = ((cursor + kAlign - 1) / kAlign) * kAlign;
+    blk.supernode_data = reinterpret_cast<double*>(base + cursor);
+    cursor += blk.sn_rows * cols * sizeof(double);
+    cursor = ((cursor + kAlign - 1) / kAlign) * kAlign;
+    blk.separator_data = reinterpret_cast<double*>(base + cursor);
+    cursor += blk.sep_rows * cols * sizeof(double);
   }
 }
 
-void SupernodePartitionVector::SetZero() {
+void SupernodePartitionMatrix::SetZero() {
   if (arena_bytes_ > 0) {
     std::memset(arena_.get(), 0, arena_bytes_);
   }
 }
 
-void SupernodePartitionVector::ScatterFrom(
-    Eigen::Ref<const Eigen::VectorXd> b) {
-  const int n = static_cast<int>(var_to_sn_ptr_.size());
+void SupernodePartitionMatrix::ScatterFrom(
+    Eigen::Ref<const Eigen::MatrixXd> b) {
+  const int n = static_cast<int>(var_mapping_.size());
   for (int v = 0; v < n; ++v) {
-    *var_to_sn_ptr_[v] = b(v);
+    const auto& m = var_mapping_[v];
+    Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> sn(
+        blocks_[m.block_index].supernode_data,
+        blocks_[m.block_index].sn_rows, cols_);
+    sn.row(m.row_in_block) = b.row(v);
   }
 }
 
-void SupernodePartitionVector::GatherInto(Eigen::Ref<Eigen::VectorXd> b) const {
-  const int n = static_cast<int>(var_to_sn_ptr_.size());
+void SupernodePartitionMatrix::GatherInto(
+    Eigen::Ref<Eigen::MatrixXd> b) const {
+  const int n = static_cast<int>(var_mapping_.size());
   for (int v = 0; v < n; ++v) {
-    b(v) = *var_to_sn_ptr_[v];
+    const auto& m = var_mapping_[v];
+    Eigen::Map<const Eigen::MatrixXd, Eigen::Aligned> sn(
+        blocks_[m.block_index].supernode_data,
+        blocks_[m.block_index].sn_rows, cols_);
+    b.row(v) = sn.row(m.row_in_block);
   }
 }
 
@@ -428,7 +432,6 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
     return;
   }
   // Ensure per-subsystem temporary solve buffers are sized for this RHS width.
-  // Cache the max requested width to avoid repeating full-tree recursion.
   if (b.cols() > reserved_solve_workspace_cols_) {
     ForEachTask(
         roots_.size(), EffectiveThreadCount(num_threads_),
@@ -436,117 +439,72 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
     reserved_solve_workspace_cols_ = b.cols();
   }
 
-  if (b.cols() == 1 && !solve_vector_.empty() && in_original_order) {
-    // Block-partitioned path: no global vector, direct block-to-block scatter.
-    solve_vector_.SetZero();
-
-#ifdef EIGEN_RUNTIME_NO_MALLOC
-    Eigen::internal::set_is_malloc_allowed(false);
-#endif
-
-    solve_vector_.ScatterFrom(b.col(0));
+  if (!solve_matrix_.empty() && in_original_order) {
+    // Block-partitioned path: scatter into per-node blocks, solve, gather.
+    if (solve_matrix_.cols() != b.cols()) {
+      solve_matrix_.Resize(b.cols());
+    }
+    solve_matrix_.SetZero();
+    solve_matrix_.ScatterFrom(b);
 
     // Forward pass (post-order).
     const int num_solve = static_cast<int>(solve_order_.size());
     for (int idx = 0; idx < num_solve; ++idx) {
       const auto& info = solve_scatter_info_[idx];
       const int k = info.block_index;
-      auto sn = solve_vector_.supernode(k);
-      auto sep = solve_vector_.separator(k);
+      auto sn = solve_matrix_.supernode(k);
+      auto sep = solve_matrix_.separator(k);
 
       // Scatter children's separator outputs into this node's blocks.
       for (const auto& cop : info.children) {
-        auto child_sep = solve_vector_.separator(cop.child_block_index);
+        auto child_sep = solve_matrix_.separator(cop.child_block_index);
         for (const auto& off : cop.sn_offsets) {
-          for (int i = 0; i < off.size; ++i) {
-            sn[off.first + i] -= child_sep[off.second + i];
-          }
+          sn.middleRows(off.first, off.size) -=
+              child_sep.middleRows(off.second, off.size);
         }
         for (const auto& off : cop.sep_offsets) {
-          for (int i = 0; i < off.size; ++i) {
-            sep[off.first + i] += child_sep[off.second + i];
-          }
+          sep.middleRows(off.first, off.size) +=
+              child_sep.middleRows(off.second, off.size);
         }
       }
 
-      // trsv + dgemv
-      solve_order_[idx]->ForwardSolveBlocked(sn.data(), sn.size(),
-                                             sep.data(), sep.size());
+      solve_order_[idx]->ForwardSolveBlocked(sn, sep);
     }
 
     // Backward pass (reverse post-order).
     for (int idx = num_solve - 1; idx >= 0; --idx) {
       const auto& info = solve_scatter_info_[idx];
       const int k = info.block_index;
-      auto sn = solve_vector_.supernode(k);
-      auto sep = solve_vector_.separator(k);
+      auto sn = solve_matrix_.supernode(k);
+      auto sep = solve_matrix_.separator(k);
 
-      // trsv (with backward scatter from separator)
-      solve_order_[idx]->BackwardSolveBlocked(sn.data(), sn.size(),
-                                              sep.data(), sep.size());
+      solve_order_[idx]->BackwardSolveBlocked(sn, sep);
 
       // Push solution values to children.
       for (const auto& cop : info.children) {
-        auto child_sep = solve_vector_.separator(cop.child_block_index);
+        auto child_sep = solve_matrix_.separator(cop.child_block_index);
         for (const auto& off : cop.sn_offsets) {
-          for (int i = 0; i < off.size; ++i) {
-            child_sep[off.second + i] = sn[off.first + i];
-          }
+          child_sep.middleRows(off.second, off.size) =
+              sn.middleRows(off.first, off.size);
         }
         for (const auto& off : cop.sep_offsets) {
-          for (int i = 0; i < off.size; ++i) {
-            child_sep[off.second + i] = sep[off.first + i];
-          }
+          child_sep.middleRows(off.second, off.size) =
+              sep.middleRows(off.first, off.size);
         }
       }
     }
 
-    solve_vector_.GatherInto(b.col(0));
-
-#ifdef EIGEN_RUNTIME_NO_MALLOC
-    Eigen::internal::set_is_malloc_allowed(true);
-#endif
+    solve_matrix_.GatherInto(b);
     return;
   }
 
-  if (in_original_order) {
-    // Apply forward permutation using cached vectors and scratch buffer.
-    if (solve_temp_.rows() < n || solve_temp_.cols() < b.cols()) {
-      solve_temp_.resize(n, b.cols());
-    }
-    for (int i = 0; i < n; ++i) {
-      solve_temp_.row(cached_perm_(i)) = b.row(i);
-    }
-    b = solve_temp_;
-  }
-
-  if (!solve_order_.empty()) {
-    // Flat traversal (avoids recursive function calls).
-    // Forward pass: post-order (leaves first).
-    for (auto* node : solve_order_) {
-      node->ForwardSolveLocal(b);
-    }
-    // Backward pass: reverse post-order (roots first).
-    for (int i = static_cast<int>(solve_order_.size()) - 1; i >= 0; --i) {
-      solve_order_[i]->BackwardSolveLocal(b);
-    }
-  } else {
-    // Fallback: recursive traversal.
-    ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
-                [&](size_t i) {
-                  auto* root = roots_.at(i);
-                  root->ApplyInverseOfLeftFactor(b);
-                  root->ApplyInverseOfRightFactor(b);
-                });
-  }
-
-  if (in_original_order) {
-    // Apply inverse permutation using cached vectors and scratch buffer.
-    for (int i = 0; i < n; ++i) {
-      solve_temp_.row(cached_perm_inv_(i)) = b.row(i);
-    }
-    b = solve_temp_;
-  }
+  // Fallback: recursive traversal on global permuted vector.
+  ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
+              [&](size_t i) {
+                auto* root = roots_.at(i);
+                root->ApplyInverseOfLeftFactor(b);
+                root->ApplyInverseOfRightFactor(b);
+              });
 }
 
 
@@ -746,7 +704,7 @@ void T::AllocateArenaAndBind() {
 }
 
 void T::AllocateSolveArena() {
-  solve_vector_.Initialize(subsystems_, cached_num_vars_, cached_perm_inv_);
+  solve_matrix_.SetPartition(subsystems_, cached_num_vars_, cached_perm_inv_);
 
   // Build subsystem pointer -> index map (local, used for setup only).
   const int num_subsystems = static_cast<int>(subsystems_.size());
