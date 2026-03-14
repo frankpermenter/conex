@@ -308,6 +308,11 @@ void T::DoMultiplyByTransposeOfOffDiagonalSubMatrix(
   output.noalias() = separator_rows().transpose() * gathered_separator_rows;
 }
 
+void T::DoBackwardScatter(Eigen::Ref<Eigen::MatrixXd> output,
+                          Eigen::Ref<const Eigen::MatrixXd> input) const {
+  DoMultiplyByTransposeOfOffDiagonalSubMatrix(output, input);
+  DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(output);
+}
 void T::ReserveSolveWorkspace(int rhs_cols) {
   for (auto child : children_) {
     child->ReserveSolveWorkspace(rhs_cols);
@@ -486,10 +491,6 @@ void KKTSubsystem::BindArenaMemory(double* ptr, size_t bytes) {
 //  R    L^{-1} S^T          [x_supernodes] = b_[supernodes]
 //            R_{seperator}  [x_separator]    b_[separator]
 //
-// Since we have already solved for x_separator, we first
-// update the residual via
-//
-//  b_[supernodes] -=  L^{-1} S^T [x_separator]
 //
 // We then compute x_supernodes = R^{-1} b_supernodes.
 void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
@@ -497,12 +498,10 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
     Eigen::Ref<Eigen::MatrixXd> x_supernodes = x.middleRows(
         supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
 
-    // Update residual using x_separator computed by ascendants in tree.
     if (separators_.size() > 0) {
       Eigen::Ref<Eigen::MatrixXd> temp = solve_workspace2_.topLeftCorner(
           x_supernodes.rows(), x_supernodes.cols());
-      DoMultiplyByTransposeOfOffDiagonalSubMatrix(temp, x);
-      DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(temp);
+      DoBackwardScatter(temp, x);
       x_supernodes.noalias() -= temp;
     }
     DoApplyInverseOfRightFactorOfSupernodeSubmatrix(x_supernodes);

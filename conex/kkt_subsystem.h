@@ -256,6 +256,13 @@ class KKTSubsystemBase {
       local_separator_to_source_separator_;
 
  protected:
+  // Computes E^{-1} S^T x_sep and writes to output.
+  // Default uses separator_rows()^T (correct when separator_rows stores
+  // S F^{-1} and E^{-1} F^T = I, e.g. LLT where S L^{-T} is cached).
+  // Kernels where E^{-1} S^T differs from (S F^{-1})^T must override.
+  virtual void DoBackwardScatter(
+      Eigen::Ref<Eigen::MatrixXd> output,
+      Eigen::Ref<const Eigen::MatrixXd> input) const;
   std::vector<int> separators_;
   std::vector<int> supernodes_;
   bool left_looking_ = true;

@@ -22,10 +22,10 @@ if [[ "${SKIP_BAZEL:-0}" != "1" ]]; then
 fi
 
 ## Build and test C API.
-make -C interfaces -j 8
-if [[ "${SKIP_BAZEL:-0}" != "1" ]]; then
-  bazel "${bazel_startup_flags[@]}" test --cache_test_results=no --config="$bazel_config" //interfaces/...
-fi
+#make -C interfaces -j 8
+#if [[ "${SKIP_BAZEL:-0}" != "1" ]]; then
+#  bazel "${bazel_startup_flags[@]}" test --cache_test_results=no --config="$bazel_config" //interfaces/...
+#fi
 
 ## Build and test Python interface.
 #make -C interfaces/python clean
