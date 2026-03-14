@@ -160,6 +160,7 @@ class KKTSubsystemBase {
     num_threads_ = num_threads;
   }
 
+  const std::vector<KKTSubsystemBase*>& children() const { return children_; }
   void AddChild(KKTSubsystemBase* child) {
     CONEX_DEMAND(child, "Received nullptr");
     children_.push_back(child);
@@ -178,6 +179,15 @@ class KKTSubsystemBase {
 
   void ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
   void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
+  // Non-recursive per-node solve (for flat traversal from tree solver).
+  void ForwardSolveLocal(Eigen::Ref<Eigen::MatrixXd> x) const;
+  void BackwardSolveLocal(Eigen::Ref<Eigen::MatrixXd> x) const;
+
+  // Block-partitioned single-RHS solve (no global vector).
+  void ForwardSolveBlocked(double* sn_data, int sn_size,
+                           double* sep_data, int sep_size) const;
+  void BackwardSolveBlocked(double* sn_data, int sn_size,
+                            const double* sep_data, int sep_size) const;
   void ReserveSolveWorkspace(int rhs_cols);
 
   void Reset() {
@@ -260,6 +270,9 @@ class KKTSubsystemBase {
   virtual void DoBackwardScatter(
       Eigen::Ref<Eigen::MatrixXd> output,
       Eigen::Ref<const Eigen::MatrixXd> input) const;
+  virtual void DoBackwardScatterFromGatheredSeparator(
+      Eigen::Ref<Eigen::MatrixXd> output,
+      Eigen::Ref<const Eigen::MatrixXd> gathered_sep) const;
   virtual void DoMultiplyByTransposeOfOffDiagonalSubMatrix(
       Eigen::Ref<Eigen::MatrixXd> output,
       Eigen::Ref<const Eigen::MatrixXd> input) const;

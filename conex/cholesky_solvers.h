@@ -200,6 +200,19 @@ class CholeskySolver : public KKTSubsystemBase {
   }
 
 
+  void DoBackwardScatterFromGatheredSeparator(
+      Eigen::Ref<MatrixXd> output,
+      Eigen::Ref<const MatrixXd> gathered_sep) const override {
+    if constexpr (!schur_complement_mode) {
+      // Cache stores S L^{-T}, so transpose gives L^{-1} S^T = E^{-1} S^T.
+      output.noalias() =
+          schur_complement_factor_cached_.transpose() * gathered_sep;
+    } else {
+      KKTSubsystemBase::DoBackwardScatterFromGatheredSeparator(output,
+                                                               gathered_sep);
+    }
+  }
+
   bool OnlyLowerTriangularPart(int /*num_vectors*/,
                                int /*cost_of_inner_product*/) {
     return true;
@@ -252,6 +265,12 @@ class KKTCholeskySystem : public KKTSubsystem {
     output.noalias() =
         factorization_->schur_complement_factor_cached_.transpose() * gathered;
   }
+  void DoBackwardScatterFromGatheredSeparator(
+      Eigen::Ref<MatrixXd> output,
+      Eigen::Ref<const MatrixXd> gathered_sep) const override {
+    factorization_->DoBackwardScatterFromGatheredSeparator(output, gathered_sep);
+  }
+
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     factorization_ = std::make_unique<FactorizationType>(

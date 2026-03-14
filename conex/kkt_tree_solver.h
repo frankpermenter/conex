@@ -80,9 +80,39 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   int num_threads_ = 1;
   bool parallelize_roots_only_ = false;
   mutable int reserved_solve_workspace_cols_ = 0;
+  // Flat post-order traversal for non-recursive solve.
+  std::vector<KKTSubsystemBase*> solve_order_;
+  // Cached permutation data for solve (avoids per-solve allocations).
+  int cached_num_vars_ = 0;
+  Eigen::VectorXi cached_perm_;         // variable -> elimination position
+  Eigen::VectorXi cached_perm_inv_;     // elimination position -> variable
+  mutable Eigen::MatrixXd solve_temp_;  // scratch for in-place permutation
   std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr,
                                                             &std::free};
   size_t arena_bytes_ = 0;
+  // Block-partitioned solve data.
+  struct SolveBlock {
+    double* supernode_data;
+    double* separator_data;
+    int supernode_size;
+    int separator_size;
+  };
+  std::vector<SolveBlock> solve_blocks_;       // indexed by subsystem index
+  std::vector<double*> var_to_sn_ptr_;         // indexed by original variable
+  // Per-node precomputed child scatter info for blocked solve.
+  struct ChildScatterOp {
+    int child_block_index;
+    std::vector<KKTSubsystemBase::Offset> sn_offsets;
+    std::vector<KKTSubsystemBase::Offset> sep_offsets;
+  };
+  struct NodeScatterInfo {
+    int block_index;
+    std::vector<ChildScatterOp> children;
+  };
+  std::vector<NodeScatterInfo> solve_scatter_info_;  // indexed by solve_order pos
+  std::unique_ptr<void, decltype(&std::free)> solve_arena_{nullptr, &std::free};
+  size_t solve_arena_bytes_ = 0;
+  void AllocateSolveArena();
 };
 
 }  // namespace conex

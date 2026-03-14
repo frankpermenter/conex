@@ -2,7 +2,10 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstring>
+#include <functional>
 #include <thread>
+#include <unordered_map>  // used in AllocateSolveArena setup
 
 #include "conex/tree_utils.h"
 
@@ -319,10 +322,20 @@ void T::SetEliminationOrder(
   for (auto& s : assembler_to_subsystem_adapter_) {
     s->SetEliminationPosition(variable_to_elimination_position);
   }
+  // Cache permutation vectors and number_of_variables for fast solve.
+  cached_num_vars_ = number_of_variables();
+  const int n = cached_num_vars_;
+  cached_perm_.resize(n);
+  cached_perm_inv_.resize(n);
+  for (int i = 0; i < n; ++i) {
+    cached_perm_(i) = variable_to_elimination_position_[i];
+    cached_perm_inv_(variable_to_elimination_position_[i]) = i;
+  }
 }
 void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                        bool in_original_order) const {
-  CONEX_CHECK(b.rows() == number_of_variables());
+  const int n = cached_num_vars_ > 0 ? cached_num_vars_ : number_of_variables();
+  CONEX_CHECK(b.rows() == n);
   if (b.cols() == 0) {
     return;
   }
@@ -335,27 +348,121 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
     reserved_solve_workspace_cols_ = b.cols();
   }
 
-  if (in_original_order) {
-    CONEX_CHECK(variable_to_elimination_position_.size() > 0);
-    Eigen::PermutationMatrix<-1> P(number_of_variables());
-    P.indices() = Eigen::Map<const Eigen::VectorXi>(
-        variable_to_elimination_position_.data(), number_of_variables());
-    b = P * b;
+  if (b.cols() == 1 && !solve_blocks_.empty() && in_original_order) {
+    // Block-partitioned path: no global vector, direct block-to-block scatter.
+    // Replaces both permutation and solve — var_to_sn_ptr_ maps original
+    // variables directly into supernode blocks.
+    std::memset(solve_arena_.get(), 0, solve_arena_bytes_);
+
+    // Scatter b into supernode blocks via var_to_sn_ptr_ (replaces permutation).
+    for (int v = 0; v < n; ++v) {
+      *var_to_sn_ptr_[v] = b(v, 0);
+    }
+
+    // Forward pass (post-order).
+    const int num_solve = static_cast<int>(solve_order_.size());
+    for (int idx = 0; idx < num_solve; ++idx) {
+      const auto& info = solve_scatter_info_[idx];
+      auto& blk = solve_blocks_[info.block_index];
+
+      // Scatter children's separator outputs into this node's blocks.
+      for (const auto& cop : info.children) {
+        const auto& child_blk = solve_blocks_[cop.child_block_index];
+        for (const auto& off : cop.sn_offsets) {
+          for (int i = 0; i < off.size; ++i) {
+            blk.supernode_data[off.first + i] -=
+                child_blk.separator_data[off.second + i];
+          }
+        }
+        for (const auto& off : cop.sep_offsets) {
+          for (int i = 0; i < off.size; ++i) {
+            blk.separator_data[off.first + i] +=
+                child_blk.separator_data[off.second + i];
+          }
+        }
+      }
+
+      // trsv + dgemv
+      solve_order_[idx]->ForwardSolveBlocked(
+          blk.supernode_data, blk.supernode_size,
+          blk.separator_data, blk.separator_size);
+    }
+
+    // Backward pass (reverse post-order).
+    for (int idx = num_solve - 1; idx >= 0; --idx) {
+      const auto& info = solve_scatter_info_[idx];
+      auto& blk = solve_blocks_[info.block_index];
+
+      // trsv (with backward scatter from separator)
+      solve_order_[idx]->BackwardSolveBlocked(
+          blk.supernode_data, blk.supernode_size,
+          blk.separator_data, blk.separator_size);
+
+      // Push solution values to children.
+      for (const auto& cop : info.children) {
+        auto& child_blk = solve_blocks_[cop.child_block_index];
+        for (const auto& off : cop.sn_offsets) {
+          for (int i = 0; i < off.size; ++i) {
+            child_blk.separator_data[off.second + i] =
+                blk.supernode_data[off.first + i];
+          }
+        }
+        for (const auto& off : cop.sep_offsets) {
+          for (int i = 0; i < off.size; ++i) {
+            child_blk.separator_data[off.second + i] =
+                blk.separator_data[off.first + i];
+          }
+        }
+      }
+    }
+
+    // Gather from blocks back into b via var_to_sn_ptr_ (replaces inv perm).
+    for (int v = 0; v < n; ++v) {
+      b(v, 0) = *var_to_sn_ptr_[v];
+    }
+    return;
   }
 
-  ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_), [&](size_t i) {
-    auto* root = roots_.at(i);
-    root->ApplyInverseOfLeftFactor(b);
-    root->ApplyInverseOfRightFactor(b);
-  });
+  if (in_original_order) {
+    // Apply forward permutation using cached vectors and scratch buffer.
+    if (solve_temp_.rows() < n || solve_temp_.cols() < b.cols()) {
+      solve_temp_.resize(n, b.cols());
+    }
+    for (int i = 0; i < n; ++i) {
+      solve_temp_.row(cached_perm_(i)) = b.row(i);
+    }
+    b = solve_temp_;
+  }
+
+  if (!solve_order_.empty()) {
+    // Flat traversal (avoids recursive function calls).
+    // Forward pass: post-order (leaves first).
+    for (auto* node : solve_order_) {
+      node->ForwardSolveLocal(b);
+    }
+    // Backward pass: reverse post-order (roots first).
+    for (int i = static_cast<int>(solve_order_.size()) - 1; i >= 0; --i) {
+      solve_order_[i]->BackwardSolveLocal(b);
+    }
+  } else {
+    // Fallback: recursive traversal.
+    ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
+                [&](size_t i) {
+                  auto* root = roots_.at(i);
+                  root->ApplyInverseOfLeftFactor(b);
+                  root->ApplyInverseOfRightFactor(b);
+                });
+  }
 
   if (in_original_order) {
-    Eigen::PermutationMatrix<-1> P(number_of_variables());
-    P.indices() = Eigen::Map<const Eigen::VectorXi>(
-        variable_to_elimination_position_.data(), number_of_variables());
-    b = P.transpose() * b;
+    // Apply inverse permutation using cached vectors and scratch buffer.
+    for (int i = 0; i < n; ++i) {
+      solve_temp_.row(cached_perm_inv_(i)) = b.row(i);
+    }
+    b = solve_temp_;
   }
 }
+
 
 void T::ComputeSeparatorOffsets() {
   ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
@@ -420,6 +527,19 @@ void T::Finalize(const CliqueTree& clique_tree) {
   SetEliminationTree(clique_tree.node_to_parent);
   SetEliminationOrder(ComputePostOrdering());
   ComputeSeparatorOffsets();
+  // Build flat post-order traversal for non-recursive solve.
+  solve_order_.clear();
+  solve_order_.reserve(subsystems_.size());
+  std::function<void(KKTSubsystemBase*)> visit = [&](KKTSubsystemBase* node) {
+    for (auto* child : node->children()) {
+      visit(child);
+    }
+    solve_order_.push_back(node);
+  };
+  for (auto* root : roots_) {
+    visit(root);
+  }
+  AllocateSolveArena();
 }
 
 void T::Finalize(const Options& options) {
@@ -539,6 +659,121 @@ void T::AllocateArenaAndBind() {
   }
 }
 
+void T::AllocateSolveArena() {
+  constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
+  const int n = cached_num_vars_;
+  const int num_subsystems = static_cast<int>(subsystems_.size());
+
+  // Compute total arena size: for each subsystem, we need supernode_size +
+  // separator_size doubles, each block SIMD-aligned.
+  size_t total_doubles = 0;
+  for (int k = 0; k < num_subsystems; ++k) {
+    const auto* sub = subsystems_[k];
+    const int sn_size = static_cast<int>(sub->supernodes().size());
+    const int sep_size = static_cast<int>(sub->separators().size());
+    // Each block needs alignment padding.
+    size_t sn_bytes = sn_size * sizeof(double);
+    size_t sep_bytes = sep_size * sizeof(double);
+    total_doubles += (sn_bytes + kAlign - 1) / sizeof(double);
+    total_doubles += (sep_bytes + kAlign - 1) / sizeof(double);
+  }
+
+  // Compute byte-level layout with alignment.
+  size_t arena_bytes = 0;
+  // First pass: compute total size.
+  struct BlockLayout {
+    size_t sn_offset;
+    size_t sep_offset;
+  };
+  std::vector<BlockLayout> layouts(num_subsystems);
+  size_t cursor = 0;
+  for (int k = 0; k < num_subsystems; ++k) {
+    const auto* sub = subsystems_[k];
+    const int sn_size = static_cast<int>(sub->supernodes().size());
+    const int sep_size = static_cast<int>(sub->separators().size());
+
+    // Supernode block.
+    cursor = ((cursor + kAlign - 1) / kAlign) * kAlign;
+    layouts[k].sn_offset = cursor;
+    cursor += sn_size * sizeof(double);
+
+    // Separator block.
+    cursor = ((cursor + kAlign - 1) / kAlign) * kAlign;
+    layouts[k].sep_offset = cursor;
+    cursor += sep_size * sizeof(double);
+  }
+  arena_bytes = cursor;
+
+  // Build subsystem pointer -> index map (local, used for setup only).
+  std::unordered_map<const KKTSubsystemBase*, int> subsystem_index;
+  for (int k = 0; k < num_subsystems; ++k) {
+    subsystem_index[subsystems_[k]] = k;
+  }
+
+  if (arena_bytes == 0) {
+    solve_blocks_.clear();
+    var_to_sn_ptr_.clear();
+    solve_arena_.reset();
+    solve_arena_bytes_ = 0;
+    return;
+  }
+
+  // Allocate aligned.
+  const size_t alloc_bytes = ((arena_bytes + kAlign - 1) / kAlign) * kAlign;
+  void* raw_ptr = nullptr;
+  if (posix_memalign(&raw_ptr, kAlign, alloc_bytes) != 0) {
+    throw std::bad_alloc();
+  }
+  solve_arena_.reset(raw_ptr);
+  solve_arena_bytes_ = alloc_bytes;
+
+  // Build solve_blocks_.
+  char* base = static_cast<char*>(raw_ptr);
+  solve_blocks_.resize(num_subsystems);
+  for (int k = 0; k < num_subsystems; ++k) {
+    const auto* sub = subsystems_[k];
+    solve_blocks_[k].supernode_size =
+        static_cast<int>(sub->supernodes().size());
+    solve_blocks_[k].separator_size =
+        static_cast<int>(sub->separators().size());
+    solve_blocks_[k].supernode_data =
+        reinterpret_cast<double*>(base + layouts[k].sn_offset);
+    solve_blocks_[k].separator_data =
+        reinterpret_cast<double*>(base + layouts[k].sep_offset);
+  }
+
+  // Build var_to_sn_ptr_: for each original variable v, a pointer into
+  // the owning node's supernode block.
+  var_to_sn_ptr_.resize(n);
+  for (int k = 0; k < num_subsystems; ++k) {
+    const auto& sn = subsystems_[k]->supernodes();
+    double* sn_data = solve_blocks_[k].supernode_data;
+    for (int i = 0; i < static_cast<int>(sn.size()); ++i) {
+      // sn[i] is the elimination-order index. We need the original variable.
+      // cached_perm_inv_ maps elimination position -> original variable.
+      int orig_var = cached_perm_inv_(sn[i]);
+      var_to_sn_ptr_[orig_var] = sn_data + i;
+    }
+  }
+
+  // Build precomputed scatter info for blocked solve hot path.
+  const int num_solve = static_cast<int>(solve_order_.size());
+  solve_scatter_info_.resize(num_solve);
+  for (int i = 0; i < num_solve; ++i) {
+    auto* node = solve_order_[i];
+    int k = subsystem_index.at(node);
+    solve_scatter_info_[i].block_index = k;
+    solve_scatter_info_[i].children.clear();
+    for (auto* child : node->children()) {
+      int ck = subsystem_index.at(child);
+      ChildScatterOp op;
+      op.child_block_index = ck;
+      op.sn_offsets = node->local_supernode_to_source_separator(child);
+      op.sep_offsets = node->local_separator_to_source_separator(child);
+      solve_scatter_info_[i].children.push_back(std::move(op));
+    }
+  }
+}
 void T::ReserveSolveWorkspace(int rhs_cols) {
   CONEX_DEMAND(rhs_cols >= 0, "rhs_cols must be nonnegative.");
   if (rhs_cols <= reserved_solve_workspace_cols_) {

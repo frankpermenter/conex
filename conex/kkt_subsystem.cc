@@ -313,6 +313,70 @@ void T::DoBackwardScatter(Eigen::Ref<Eigen::MatrixXd> output,
   DoMultiplyByTransposeOfOffDiagonalSubMatrix(output, input);
   DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(output);
 }
+void T::DoBackwardScatterFromGatheredSeparator(
+    Eigen::Ref<Eigen::MatrixXd> output,
+    Eigen::Ref<const Eigen::MatrixXd> gathered_sep) const {
+  output.noalias() = separator_rows().transpose() * gathered_sep;
+  DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(output);
+}
+void T::ForwardSolveLocal(Eigen::Ref<Eigen::MatrixXd> x) const {
+  if (supernodes_.size() == 0) {
+    return;
+  }
+  Eigen::Ref<Eigen::MatrixXd> x_supernodes = x.middleRows(
+      supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
+  DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(x_supernodes);
+  if (separators_.size() > 0) {
+    Eigen::Ref<Eigen::MatrixXd> temp = solve_workspace1_.topLeftCorner(
+        x_supernodes.rows(), x_supernodes.cols());
+    temp = x_supernodes;
+    DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
+    DoMultiplyAndDecrementByOffDiagonalSubMatrix(x, temp);
+  }
+}
+
+void T::BackwardSolveLocal(Eigen::Ref<Eigen::MatrixXd> x) const {
+  if (supernodes_.size() > 0) {
+    Eigen::Ref<Eigen::MatrixXd> x_supernodes = x.middleRows(
+        supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
+    if (separators_.size() > 0) {
+      Eigen::Ref<Eigen::MatrixXd> temp = solve_workspace2_.topLeftCorner(
+          x_supernodes.rows(), x_supernodes.cols());
+      DoBackwardScatter(temp, x);
+      x_supernodes.noalias() -= temp;
+    }
+    DoApplyInverseOfRightFactorOfSupernodeSubmatrix(x_supernodes);
+  }
+}
+
+void T::ForwardSolveBlocked(double* sn_data, int sn_size,
+                            double* sep_data, int sep_size) const {
+  if (sn_size == 0) return;
+  Eigen::Map<Eigen::VectorXd> sn_block(sn_data, sn_size);
+  DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(sn_block);
+  if (sep_size > 0) {
+    Eigen::Ref<Eigen::MatrixXd> temp =
+        solve_workspace1_.topLeftCorner(sn_size, 1);
+    temp.col(0) = sn_block;
+    DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
+    Eigen::Map<Eigen::VectorXd> sep_accum(sep_data, sep_size);
+    sep_accum.noalias() += separator_rows() * temp.col(0);
+  }
+}
+
+void T::BackwardSolveBlocked(double* sn_data, int sn_size,
+                             const double* sep_data, int sep_size) const {
+  if (sn_size == 0) return;
+  Eigen::Map<Eigen::VectorXd> sn_block(sn_data, sn_size);
+  if (sep_size > 0) {
+    Eigen::Map<const Eigen::VectorXd> sep_vec(sep_data, sep_size);
+    Eigen::Ref<Eigen::MatrixXd> temp =
+        solve_workspace2_.topLeftCorner(sn_size, 1);
+    DoBackwardScatterFromGatheredSeparator(temp, sep_vec);
+    sn_block -= temp.col(0);
+  }
+  DoApplyInverseOfRightFactorOfSupernodeSubmatrix(sn_block);
+}
 void T::ReserveSolveWorkspace(int rhs_cols) {
   for (auto child : children_) {
     child->ReserveSolveWorkspace(rhs_cols);
