@@ -12,6 +12,57 @@
 
 namespace conex {
 
+// A vector partitioned by the supernode structure of the elimination tree.
+// Each node contributes a supernode block and a separator block, stored at
+// SIMD-aligned pointers in a single arena allocation.
+class SupernodePartitionVector {
+ public:
+  SupernodePartitionVector() = default;
+
+  // Allocate arena and build block layout from the subsystem list.
+  // perm_inv maps elimination position -> original variable index.
+  void Initialize(const std::vector<KKTSubsystemBase*>& subsystems,
+                  int num_vars,
+                  const Eigen::VectorXi& perm_inv);
+
+  bool empty() const { return blocks_.empty(); }
+  void SetZero();
+
+  // Scatter an original-order vector into supernode blocks.
+  void ScatterFrom(Eigen::Ref<const Eigen::VectorXd> b);
+  // Gather from supernode blocks back into an original-order vector.
+  void GatherInto(Eigen::Ref<Eigen::VectorXd> b) const;
+
+  // Block accessors (by subsystem index).
+  Eigen::Map<Eigen::VectorXd, Eigen::Aligned> supernode(int k) {
+    return {blocks_[k].supernode_data, blocks_[k].supernode_size};
+  }
+  Eigen::Map<Eigen::VectorXd, Eigen::Aligned> separator(int k) {
+    return {blocks_[k].separator_data, blocks_[k].separator_size};
+  }
+  Eigen::Map<const Eigen::VectorXd, Eigen::Aligned> supernode(int k) const {
+    return {blocks_[k].supernode_data, blocks_[k].supernode_size};
+  }
+  Eigen::Map<const Eigen::VectorXd, Eigen::Aligned> separator(int k) const {
+    return {blocks_[k].separator_data, blocks_[k].separator_size};
+  }
+
+  int supernode_size(int k) const { return blocks_[k].supernode_size; }
+  int separator_size(int k) const { return blocks_[k].separator_size; }
+
+ private:
+  struct Block {
+    double* supernode_data = nullptr;
+    double* separator_data = nullptr;
+    int supernode_size = 0;
+    int separator_size = 0;
+  };
+  std::vector<Block> blocks_;
+  std::vector<double*> var_to_sn_ptr_;
+  std::unique_ptr<void, decltype(&std::free)> arena_{nullptr, &std::free};
+  size_t arena_bytes_ = 0;
+};
+
 struct Options {
   bool validate_leaf_nodes = false;
   bool check_for_zero_pivots = false;
@@ -90,15 +141,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr,
                                                             &std::free};
   size_t arena_bytes_ = 0;
-  // Block-partitioned solve data.
-  struct SolveBlock {
-    double* supernode_data;
-    double* separator_data;
-    int supernode_size;
-    int separator_size;
-  };
-  std::vector<SolveBlock> solve_blocks_;       // indexed by subsystem index
-  std::vector<double*> var_to_sn_ptr_;         // indexed by original variable
+  // Block-partitioned solve data (mutable: scratch space used in const solve).
+  mutable SupernodePartitionVector solve_vector_;
   // Per-node precomputed child scatter info for blocked solve.
   struct ChildScatterOp {
     int child_block_index;
@@ -110,8 +154,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     std::vector<ChildScatterOp> children;
   };
   std::vector<NodeScatterInfo> solve_scatter_info_;  // indexed by solve_order pos
-  std::unique_ptr<void, decltype(&std::free)> solve_arena_{nullptr, &std::free};
-  size_t solve_arena_bytes_ = 0;
   void AllocateSolveArena();
 };
 
