@@ -158,9 +158,13 @@ class CholeskySolver : public KKTSubsystemBase {
       throw std::runtime_error("Factorization failed.");
     }
     if constexpr (schur_complement_mode) {
-      llt_->solveInPlace(y);
+      llt_->solveInPlace(y);  // E^{-1} = A^{-1}.
     } else {
-      llt_->matrixL().solveInPlace(y);
+      if (y.cols() == 1) {
+        llt_->matrixL().solveInPlace(y.col(0));  // dtrsv
+      } else {
+        llt_->matrixL().solveInPlace(y);  // dtrsm
+      }
     }
   }
 
@@ -168,10 +172,14 @@ class CholeskySolver : public KKTSubsystemBase {
       Eigen::Ref<MatrixXd> y) const override {
     CONEX_CHECK(factored_);
     if constexpr (schur_complement_mode) {
-      CONEX_NOOP(y);
+      CONEX_NOOP(y);  // F^{-1} = I.
       return;
     } else {
-      llt_->matrixL().transpose().solveInPlace(y);
+      if (y.cols() == 1) {
+        llt_->matrixL().transpose().solveInPlace(y.col(0));  // dtrsv
+      } else {
+        llt_->matrixL().transpose().solveInPlace(y);  // dtrsm
+      }
     }
   }
 
