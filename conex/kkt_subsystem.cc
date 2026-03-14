@@ -161,8 +161,13 @@ void AccumulateUpdate(const KKTSubsystemBase* source,
 
 void T::DoMultiplyAndDecrementByOffDiagonalSubMatrix(
     Eigen::Ref<MatrixXd> output, Eigen::Ref<const MatrixXd> input) const {
-  for (int i = 0; i < separator_rows().rows(); i++) {
-    output.row(separators()[i]) -= separator_rows().row(i) * input;
+  const int nsep = static_cast<int>(separators_.size());
+  if (nsep == 0) return;
+  Eigen::Ref<Eigen::MatrixXd> temp =
+      solve_workspace3_.topLeftCorner(nsep, input.cols());
+  temp.noalias() = separator_rows() * input;
+  for (int i = 0; i < nsep; ++i) {
+    output.row(separators_[i]) -= temp.row(i);
   }
 }
 // Iterate from the leafs of the tree upwards using recursion.

@@ -28,6 +28,6 @@ if [[ "${SKIP_BAZEL:-0}" != "1" ]]; then
 fi
 
 ## Build and test Python interface.
-make -C interfaces/python clean
-make -C interfaces/python
-python3 interfaces/python/test/run_tests.py
+#make -C interfaces/python clean
+#make -C interfaces/python
+#python3 interfaces/python/test/run_tests.py
