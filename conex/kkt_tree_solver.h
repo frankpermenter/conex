@@ -215,6 +215,12 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   };
   std::vector<NodeScatterInfo> solve_scatter_info_;  // indexed by solve_order pos
   void AllocateSolveArena();
+  // Consolidated workspace arena for all subsystems' solve scratch buffers.
+  std::unique_ptr<void, decltype(&std::free)> workspace_arena_{nullptr,
+                                                                &std::free};
+  size_t workspace_arena_bytes_ = 0;
+  int workspace_arena_cols_ = 0;
+  void AllocateWorkspaceArena(int rhs_cols);
 };
 
 }  // namespace conex

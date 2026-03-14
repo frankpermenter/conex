@@ -61,44 +61,80 @@ class CholeskySolver : public KKTSubsystemBase {
   }
 
   void DoComputeSeparatorSchurComplement() override {
-    if (temp_row_major_.size() == 0) {
-      temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
-    }
-    if constexpr (!schur_complement_mode) {
-      if (separator_rows_.size()) {
-        temp_row_major_ = llt_->matrixL().solve(separator_rows_.transpose());
-        int n = separator_schur_complement_.rows();
-        int d = separator_rows_.cols();
-        if (OnlyLowerTriangularPart(n, d)) {
-          for (int j = 0; j < n; j++) {
-            separator_schur_complement_.col(j).tail(n - j).noalias() -=
-                temp_row_major_.rightCols(n - j).transpose() *
-                temp_row_major_.col(j);
+    const int sep = separator_rows_.rows();
+    const int sn = separator_rows_.cols();
+    if (temp_arena_ptr_) {
+      // Use arena-backed buffers.
+      auto temp = temp_map();
+      if constexpr (!schur_complement_mode) {
+        if (separator_rows_.size()) {
+          temp = llt_->matrixL().solve(separator_rows_.transpose());
+          int n = separator_schur_complement_.rows();
+          if (OnlyLowerTriangularPart(n, sn)) {
+            for (int j = 0; j < n; j++) {
+              separator_schur_complement_.col(j).tail(n - j).noalias() -=
+                  temp.rightCols(n - j).transpose() * temp.col(j);
+            }
+          } else {
+            separator_schur_complement_.noalias() -=
+                temp.transpose() * temp;
           }
-        } else {
-          separator_schur_complement_.noalias() -=
-              separator_columns_.transpose() * separator_columns_;
+          // Store S F^{-1} = S L^{-T} = (L^{-1} S^T)^T.
+          auto cache = ColMajorMap(cache_arena_ptr_, arena_sep_, arena_sn_);
+          cache = temp.transpose();
         }
-        // Store S F^{-1} = S L^{-T} = (L^{-1} S^T)^T.
-        schur_complement_factor_cached_ = temp_row_major_.transpose();
+      } else {
+        if (separator_rows_.size()) {
+          temp = llt_->solve(separator_rows_.transpose());
+          int n = separator_schur_complement_.rows();
+          if (OnlyLowerTriangularPart(n, sn)) {
+            for (int j = 0; j < temp.cols(); j++) {
+              separator_schur_complement_.col(j).tail(n - j).noalias() -=
+                  separator_rows_.bottomRows(n - j) * temp.col(j);
+            }
+          } else {
+            separator_schur_complement_.noalias() -=
+                separator_rows_ * temp;
+          }
+        }
       }
     } else {
+      // Fallback: use owned matrices.
       if (temp_row_major_.size() == 0) {
-        temp_row_major_.resize(separator_rows_.rows(), separator_rows_.cols());
+        temp_row_major_.resize(sep, sn);
       }
-      if (separator_rows_.size()) {
-        // temp = A^{-1} S^T (full solve).
-        temp_row_major_ = llt_->solve(separator_rows_.transpose());
-        int n = separator_schur_complement_.rows();
-        int d = separator_rows_.cols();
-        if (OnlyLowerTriangularPart(n, d)) {
-          for (int j = 0; j < temp_row_major_.cols(); j++) {
-            separator_schur_complement_.col(j).tail(n - j).noalias() -=
-                separator_rows_.bottomRows(n - j) * temp_row_major_.col(j);
+      if constexpr (!schur_complement_mode) {
+        if (separator_rows_.size()) {
+          temp_row_major_ = llt_->matrixL().solve(separator_rows_.transpose());
+          int n = separator_schur_complement_.rows();
+          if (OnlyLowerTriangularPart(n, sn)) {
+            for (int j = 0; j < n; j++) {
+              separator_schur_complement_.col(j).tail(n - j).noalias() -=
+                  temp_row_major_.rightCols(n - j).transpose() *
+                  temp_row_major_.col(j);
+            }
+          } else {
+            separator_schur_complement_.noalias() -=
+                separator_columns_.transpose() * separator_columns_;
           }
-        } else {
-          separator_schur_complement_.noalias() -=
-              separator_rows_ * temp_row_major_;
+          schur_complement_factor_cached_ = temp_row_major_.transpose();
+        }
+      } else {
+        if (temp_row_major_.size() == 0) {
+          temp_row_major_.resize(sep, sn);
+        }
+        if (separator_rows_.size()) {
+          temp_row_major_ = llt_->solve(separator_rows_.transpose());
+          int n = separator_schur_complement_.rows();
+          if (OnlyLowerTriangularPart(n, sn)) {
+            for (int j = 0; j < temp_row_major_.cols(); j++) {
+              separator_schur_complement_.col(j).tail(n - j).noalias() -=
+                  separator_rows_.bottomRows(n - j) * temp_row_major_.col(j);
+            }
+          } else {
+            separator_schur_complement_.noalias() -=
+                separator_rows_ * temp_row_major_;
+          }
         }
       }
     }
@@ -112,12 +148,12 @@ class CholeskySolver : public KKTSubsystemBase {
       return;
     }
     Eigen::Ref<Eigen::MatrixXd> gathered_separator_rows =
-        solve_workspace3_.topLeftCorner(static_cast<int>(separators_.size()),
+        ws3().topLeftCorner(static_cast<int>(separators_.size()),
                                         input.cols());
     for (int i = 0; i < gathered_separator_rows.rows(); ++i) {
       gathered_separator_rows.row(i) = input.row(separators_.at(i));
     }
-    output.noalias() = schur_complement_factor_cached_.transpose() * gathered_separator_rows;
+    output.noalias() = cache_map().transpose() * gathered_separator_rows;
   }
 
 
@@ -205,8 +241,7 @@ class CholeskySolver : public KKTSubsystemBase {
       Eigen::Ref<const MatrixXd> gathered_sep) const override {
     if constexpr (!schur_complement_mode) {
       // Cache stores S L^{-T}, so transpose gives L^{-1} S^T = E^{-1} S^T.
-      output.noalias() =
-          schur_complement_factor_cached_.transpose() * gathered_sep;
+      output.noalias() = cache_map().transpose() * gathered_sep;
     } else {
       KKTSubsystemBase::DoBackwardScatterFromGatheredSeparator(output,
                                                                gathered_sep);
@@ -217,6 +252,41 @@ class CholeskySolver : public KKTSubsystemBase {
                                int /*cost_of_inner_product*/) {
     return true;
     // return num_vectors * cost_of_inner_product > 100;
+  }
+
+  // Arena-backed factorization buffers (set by KKTCholeskySystem).
+  double* temp_arena_ptr_ = nullptr;
+  double* cache_arena_ptr_ = nullptr;
+  int arena_sep_ = 0, arena_sn_ = 0;
+
+  void BindFactorizationBuffers(double* temp, double* cache, int sep, int sn) {
+    temp_arena_ptr_ = temp;
+    cache_arena_ptr_ = cache;
+    arena_sep_ = sep;
+    arena_sn_ = sn;
+  }
+
+  using RowMajorMatrix = Eigen::Matrix<double, -1, -1, Eigen::RowMajor>;
+  using RowMajorMap = Eigen::Map<RowMajorMatrix, Eigen::Aligned>;
+  using ColMajorMap = Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>;
+
+  RowMajorMap temp_map() {
+    if (temp_arena_ptr_) return {temp_arena_ptr_, arena_sn_, arena_sep_};
+    return {temp_row_major_.data(), temp_row_major_.rows(),
+            temp_row_major_.cols()};
+  }
+  RowMajorMap temp_map() const {
+    if (temp_arena_ptr_)
+      return {const_cast<double*>(temp_arena_ptr_), arena_sn_, arena_sep_};
+    return {const_cast<double*>(temp_row_major_.data()), temp_row_major_.rows(),
+            temp_row_major_.cols()};
+  }
+  ColMajorMap cache_map() const {
+    if (cache_arena_ptr_)
+      return {const_cast<double*>(cache_arena_ptr_), arena_sep_, arena_sn_};
+    return {const_cast<double*>(schur_complement_factor_cached_.data()),
+            schur_complement_factor_cached_.rows(),
+            schur_complement_factor_cached_.cols()};
   }
 
   Eigen::Matrix<double, -1, -1, Eigen::RowMajor> temp_row_major_;
@@ -252,18 +322,18 @@ class KKTCholeskySystem : public KKTSubsystem {
 
   void DoBackwardScatter(Eigen::Ref<MatrixXd> output,
                          Eigen::Ref<const MatrixXd> input) const override {
-    if (factorization_->schur_complement_factor_cached_.size() == 0) {
+    if (!factorization_->cache_arena_ptr_ &&
+        factorization_->schur_complement_factor_cached_.size() == 0) {
       KKTSubsystemBase::DoBackwardScatter(output, input);
       return;
     }
     Eigen::Ref<Eigen::MatrixXd> gathered =
-        solve_workspace3_.topLeftCorner(static_cast<int>(separators_.size()),
+        ws3().topLeftCorner(static_cast<int>(separators_.size()),
                                         input.cols());
     for (int i = 0; i < static_cast<int>(separators_.size()); ++i) {
       gathered.row(i) = input.row(separators_.at(i));
     }
-    output.noalias() =
-        factorization_->schur_complement_factor_cached_.transpose() * gathered;
+    output.noalias() = factorization_->cache_map().transpose() * gathered;
   }
   void DoBackwardScatterFromGatheredSeparator(
       Eigen::Ref<MatrixXd> output,
@@ -271,14 +341,53 @@ class KKTCholeskySystem : public KKTSubsystem {
     factorization_->DoBackwardScatterFromGatheredSeparator(output, gathered_sep);
   }
 
+  static size_t AlignUpBytes(size_t v) {
+    constexpr size_t a = EIGEN_MAX_ALIGN_BYTES;
+    return ((v + a - 1) / a) * a;
+  }
+
+  size_t RequiredArenaBytes() const override {
+    size_t base = KKTSubsystem::RequiredArenaBytes();
+    const size_t sn = supernodes_.size();
+    const size_t sep = separators_.size();
+    if (sn > 0 && sep > 0) {
+      base = AlignUpBytes(base);
+      base += AlignUpBytes(sep * sn * sizeof(double));
+      base += AlignUpBytes(sn * sep * sizeof(double));
+    }
+    return base;
+  }
+
+  void BindArenaMemory(double* ptr, size_t bytes) override {
+    size_t base_bytes = KKTSubsystem::RequiredArenaBytes();
+    KKTSubsystem::BindArenaMemory(ptr, base_bytes);
+    const size_t sn = supernodes_.size();
+    const size_t sep = separators_.size();
+    if (sn > 0 && sep > 0) {
+      char* base = reinterpret_cast<char*>(ptr);
+      size_t cursor = AlignUpBytes(base_bytes);
+      factorization_temp_ptr_ = reinterpret_cast<double*>(base + cursor);
+      cursor += AlignUpBytes(sep * sn * sizeof(double));
+      factorization_cache_ptr_ = reinterpret_cast<double*>(base + cursor);
+    }
+  }
+
   void DoInitialize() override {
     KKTSubsystem::DoInitialize();
     factorization_ = std::make_unique<FactorizationType>(
         supernode_submatrix(), separator_rows(), separator_schur_complement());
+    if (factorization_temp_ptr_) {
+      factorization_->BindFactorizationBuffers(
+          factorization_temp_ptr_, factorization_cache_ptr_,
+          static_cast<int>(separators_.size()),
+          static_cast<int>(supernodes_.size()));
+    }
   }
 
  protected:
   std::unique_ptr<FactorizationType> factorization_;
+  double* factorization_temp_ptr_ = nullptr;
+  double* factorization_cache_ptr_ = nullptr;
 };
 
 class LUSolver : public KKTSubsystem {

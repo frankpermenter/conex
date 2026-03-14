@@ -220,6 +220,12 @@ class KKTSubsystemBase {
   virtual size_t RequiredArenaBytes() const { return 0; }
   virtual void BindArenaMemory(double* /*ptr*/, size_t /*bytes*/) {}
 
+  // Bind externally-owned memory for solve workspaces.
+  // The tree solver calls this to consolidate all workspace allocations.
+  void BindSolveWorkspace(double* ws1, int ws1_rows, int ws1_cols,
+                          double* ws2, int ws2_rows, int ws2_cols,
+                          double* ws3, int ws3_rows, int ws3_cols);
+
  private:
   virtual void DoInitialize(){};
   virtual bool DoEliminateSupernodeColumns() = 0;
@@ -283,9 +289,38 @@ class KKTSubsystemBase {
   bool variable_set_equals_sorted_separators_;
   int num_threads_ = 1;
   int solve_workspace_cols_ = 0;
+  mutable double* ws1_data_ = nullptr;
+  mutable double* ws2_data_ = nullptr;
+  mutable double* ws3_data_ = nullptr;
+  int ws1_rows_ = 0, ws2_rows_ = 0, ws3_rows_ = 0;
+  bool ws_arena_bound_ = false;
+  // Owned storage (used when NOT arena-bound).
   mutable Eigen::MatrixXd solve_workspace1_;
   mutable Eigen::MatrixXd solve_workspace2_;
   mutable Eigen::MatrixXd solve_workspace3_;
+
+  // Workspace accessors — return a mutable Map view.
+  Eigen::Map<Eigen::MatrixXd> ws1() const {
+    if (ws_arena_bound_) {
+      return {ws1_data_, ws1_rows_, solve_workspace_cols_};
+    }
+    return {solve_workspace1_.data(), solve_workspace1_.rows(),
+            solve_workspace1_.cols()};
+  }
+  Eigen::Map<Eigen::MatrixXd> ws2() const {
+    if (ws_arena_bound_) {
+      return {ws2_data_, ws2_rows_, solve_workspace_cols_};
+    }
+    return {solve_workspace2_.data(), solve_workspace2_.rows(),
+            solve_workspace2_.cols()};
+  }
+  Eigen::Map<Eigen::MatrixXd> ws3() const {
+    if (ws_arena_bound_) {
+      return {ws3_data_, ws3_rows_, solve_workspace_cols_};
+    }
+    return {solve_workspace3_.data(), solve_workspace3_.rows(),
+            solve_workspace3_.cols()};
+  }
 };
 
 class KKTSubsystem : public KKTSubsystemBase {
