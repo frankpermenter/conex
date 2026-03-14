@@ -4,8 +4,9 @@
 #include <atomic>
 #include <cstring>
 #include <functional>
+#include <limits>
 #include <thread>
-#include <unordered_map>  // used in AllocateSolveArena setup
+#include <unordered_map>
 
 #include "conex/tree_utils.h"
 
@@ -763,6 +764,120 @@ void T::AllocateSolveArena() {
     }
   }
 }
+void SubmatrixContributor::WriteSymmetric(
+    const Eigen::MatrixXd& Q, const std::vector<int>& elim_positions) {
+  const int n = static_cast<int>(elim_positions.size());
+  CONEX_DEMAND(Q.rows() == n && Q.cols() == n,
+               "Q dimensions must match elim_positions size.");
+
+  // Build mapping: elim_position -> local block row.
+  // Supernodes [sn_start_, sn_start_ + sn_count_) map to rows [0, sn_count_).
+  // Separators map to rows [0, sep_count) in the separator blocks.
+  auto sn_sub = supernode_submatrix();
+  auto sep_rows = separator_rows();
+  auto sep_schur = separator_schur_complement();
+
+  // Build a lookup from elimination position -> (is_supernode, local_row).
+  std::unordered_map<int, std::pair<bool, int>> elim_to_local;
+  for (int i = 0; i < sn_count_; ++i) {
+    elim_to_local[sn_start_ + i] = {true, i};
+  }
+  for (int i = 0; i < static_cast<int>(sep_indices_.size()); ++i) {
+    elim_to_local[sep_indices_[i]] = {false, i};
+  }
+
+  for (int j = 0; j < n; ++j) {
+    auto it_j = elim_to_local.find(elim_positions[j]);
+    CONEX_DEMAND(it_j != elim_to_local.end(),
+                 "elim_positions entry not in contributor's sparsity pattern.");
+    for (int i = j; i < n; ++i) {
+      auto it_i = elim_to_local.find(elim_positions[i]);
+      CONEX_DEMAND(
+          it_i != elim_to_local.end(),
+          "elim_positions entry not in contributor's sparsity pattern.");
+
+      bool row_is_sn = it_i->second.first;
+      int row_local = it_i->second.second;
+      bool col_is_sn = it_j->second.first;
+      int col_local = it_j->second.second;
+
+      // Ensure row >= col in elimination order (lower triangle).
+      if (!row_is_sn && col_is_sn) {
+        // row is separator, col is supernode → separator_rows block.
+        sep_rows(row_local, col_local) = Q(i, j);
+      } else if (row_is_sn && col_is_sn) {
+        // Both supernode → supernode_submatrix (lower triangle).
+        if (row_local >= col_local) {
+          sn_sub(row_local, col_local) = Q(i, j);
+        } else {
+          sn_sub(col_local, row_local) = Q(i, j);
+        }
+      } else if (!row_is_sn && !col_is_sn) {
+        // Both separator → separator_schur_complement (lower triangle).
+        if (row_local >= col_local) {
+          sep_schur(row_local, col_local) = Q(i, j);
+        } else {
+          sep_schur(col_local, row_local) = Q(i, j);
+        }
+      } else {
+        // row is supernode, col is separator → transpose into separator_rows.
+        sep_rows(col_local, row_local) = Q(i, j);
+      }
+    }
+  }
+}
+
+SubmatrixContributor T::MakeContributor(
+    const std::vector<int>& elim_indices) const {
+  if (elim_indices.empty()) {
+    return {};
+  }
+
+  // Build a set of requested indices for fast lookup.
+  std::vector<int> sorted_indices = elim_indices;
+  std::sort(sorted_indices.begin(), sorted_indices.end());
+
+  // Find the smallest subsystem whose supernodes ∪ separators contain all
+  // indices (tightest match).
+  KKTSubsystemBase* match = nullptr;
+  size_t match_size = std::numeric_limits<size_t>::max();
+  for (auto* subsystem : subsystems_) {
+    const auto& sn = subsystem->supernodes();
+    const auto& sep = subsystem->separators();
+
+    bool all_found = true;
+    for (int idx : sorted_indices) {
+      bool in_sn = std::binary_search(sn.begin(), sn.end(), idx);
+      bool in_sep = std::binary_search(sep.begin(), sep.end(), idx);
+      if (!in_sn && !in_sep) {
+        all_found = false;
+        break;
+      }
+    }
+    if (all_found) {
+      size_t total = sn.size() + sep.size();
+      if (total < match_size) {
+        match = subsystem;
+        match_size = total;
+      }
+    }
+  }
+
+  if (!match) {
+    throw std::runtime_error(
+        "MakeContributor: requested elimination indices are not contained "
+        "in any single subsystem's sparsity pattern.");
+  }
+
+  SubmatrixContributor contrib;
+  contrib.subsystem_ = match;
+  const auto& sn = match->supernodes();
+  contrib.sn_start_ = sn.empty() ? 0 : sn.front();
+  contrib.sn_count_ = static_cast<int>(sn.size());
+  contrib.sep_indices_ = match->separators();
+  return contrib;
+}
+
 void T::ReserveSolveWorkspace(int rhs_cols) {
   CONEX_DEMAND(rhs_cols >= 0, "rhs_cols must be nonnegative.");
   if (rhs_cols <= reserved_solve_workspace_cols_) {

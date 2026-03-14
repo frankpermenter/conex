@@ -77,6 +77,46 @@ class SupernodePartitionMatrix {
   size_t arena_bytes_ = 0;
 };
 
+// Provides labeled write access to the supernode/separator storage blocks
+// of a single subsystem.  Created by SymmetricLinearSystemTreeSolver::
+// MakeContributor after the tree has been finalized.
+class SubmatrixContributor {
+ public:
+  SubmatrixContributor() = default;
+
+  // Supernode range in elimination order (always contiguous).
+  int supernode_start() const { return sn_start_; }
+  int supernode_count() const { return sn_count_; }
+
+  // Separator indices in elimination order (sorted).
+  const std::vector<int>& separator_indices() const { return sep_indices_; }
+
+  // Mutable access to the three storage blocks.
+  Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() {
+    return subsystem_->supernode_submatrix();
+  }
+  Eigen::Ref<Eigen::MatrixXd> separator_rows() {
+    return subsystem_->separator_rows();
+  }
+  Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() {
+    return subsystem_->separator_schur_complement();
+  }
+
+  // Write a symmetric matrix Q into the storage blocks, permuting from
+  // original variable order to elimination order.  elim_positions[i] is the
+  // elimination position of Q's i-th row/column.  Only the lower triangle
+  // is written.
+  void WriteSymmetric(const Eigen::MatrixXd& Q,
+                      const std::vector<int>& elim_positions);
+
+ private:
+  friend class SymmetricLinearSystemTreeSolver;
+  KKTSubsystemBase* subsystem_ = nullptr;
+  int sn_start_ = 0;
+  int sn_count_ = 0;
+  std::vector<int> sep_indices_;
+};
+
 struct Options {
   bool validate_leaf_nodes = false;
   bool check_for_zero_pivots = false;
@@ -115,6 +155,13 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void ComputeSeparatorOffsets();
   std::vector<int> ComputePostOrdering() const;
   void push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system);
+
+  // Create a contributor that provides labeled write access to the storage
+  // blocks of the subsystem containing the given elimination indices.
+  // Throws if the indices are not all within a single subsystem's sparsity
+  // pattern.
+  SubmatrixContributor MakeContributor(
+      const std::vector<int>& elim_indices) const;
 
   void SetEliminationTree(
       const std::vector<int>& variable_to_elimination_position);

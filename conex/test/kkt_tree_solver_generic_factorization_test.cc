@@ -3,6 +3,7 @@
 #include <random>
 #include <vector>
 
+#include "conex/cholesky_solvers.h"
 #include "conex/kkt_tree_solver.h"
 #include <Eigen/Dense>
 #include <gtest/gtest.h>
@@ -423,6 +424,167 @@ TEST(KKTTreeSolver, GenericBlockFactorizationFallsBackWhenStructureDestroyed) {
   MatrixXd sol = rhs;
   solver.SolveInPlace(sol, false);
   EXPECT_NEAR((sol - ref).norm(), 0.0, 1e-10);
+}
+
+TEST(KKTTreeSolver, SubmatrixContributorBasic) {
+  // Build a 4x4 SPD matrix partitioned as:
+  //   child: supernodes {0,1}, separators {2,3}
+  //   root:  supernodes {2,3}, separators {}
+  const int n1 = 2, n2 = 2;
+
+  MatrixXd a11(n1, n1);
+  a11 << 4.0, 0.5, 0.5, 3.0;
+  MatrixXd a21(n2, n1);
+  a21 << 0.3, -0.1, 0.2, 0.4;
+  MatrixXd a22(n2, n2);
+  a22 << 5.0, 0.1, 0.1, 6.0;
+
+  MatrixXd kkt(4, 4);
+  kkt << a11, a21.transpose(), a21, a22;
+  Eigen::LDLT<MatrixXd> ref_ldlt(kkt.selfadjointView<Eigen::Lower>());
+  ASSERT_EQ(ref_ldlt.info(), Eigen::Success);
+
+  // Create plain KKTSubsystem nodes (no custom factorization).
+  auto child = std::make_unique<DenseLLTSubsystem>(
+      a11, a21, MatrixXd::Zero(n2, n2));
+  child->SetSupernodes({0, 1});
+  child->SetSeparators({2, 3});
+
+  auto root = std::make_unique<DenseLLTSubsystem>(
+      a22, MatrixXd(0, n2), MatrixXd(0, 0));
+  root->SetSupernodes({2, 3});
+  root->SetSeparators({});
+
+  SymmetricLinearSystemTreeSolver solver;
+  solver.AddSubsystem(child.get());
+  solver.AddSubsystem(root.get());
+
+  CliqueTree tree;
+  tree.node_to_parent = {1, -1};
+  tree.supernodes = {{0, 1}, {2, 3}};
+  tree.separators = {{2, 3}, {}};
+  solver.Finalize(tree);
+
+  // Get a contributor for the child subsystem.
+  auto contrib = solver.MakeContributor({0, 1, 2, 3});
+  EXPECT_EQ(contrib.supernode_start(), 0);
+  EXPECT_EQ(contrib.supernode_count(), 2);
+  EXPECT_EQ(contrib.separator_indices().size(), 2u);
+  EXPECT_EQ(contrib.separator_indices()[0], 2);
+  EXPECT_EQ(contrib.separator_indices()[1], 3);
+
+  // Verify we can write through the contributor and the data reaches the
+  // subsystem storage (contributor refs alias the same memory).
+  contrib.supernode_submatrix() = a11;
+  contrib.separator_rows() = a21;
+  contrib.separator_schur_complement().setZero();
+
+  // Get a contributor for just the root's supernodes.
+  auto root_contrib = solver.MakeContributor({2, 3});
+  EXPECT_EQ(root_contrib.supernode_start(), 2);
+  EXPECT_EQ(root_contrib.supernode_count(), 2);
+  EXPECT_TRUE(root_contrib.separator_indices().empty());
+  root_contrib.supernode_submatrix() = a22;
+
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  MatrixXd rhs(4, 1);
+  rhs << 1.0, -0.5, 0.3, 0.8;
+  MatrixXd sol = rhs;
+  solver.SolveInPlace(sol, false);
+  MatrixXd ref = ref_ldlt.solve(rhs);
+  EXPECT_NEAR((sol - ref).norm(), 0.0, 1e-10);
+}
+
+TEST(KKTTreeSolver, SubmatrixContributorWriteSymmetric) {
+  // Replicate what StaticSubsystem does: provide Q in original variable order
+  // and let the contributor permute it into the internal storage blocks.
+  //
+  // Tree: child has supernodes {0,1}, separators {2,3}
+  //       root  has supernodes {2,3}, separators {}
+  //
+  // Q covers all 4 variables.
+  const int n = 4;
+  MatrixXd Q(n, n);
+  Q << 4.0, 0.5, 0.3, 0.2,
+       0.5, 3.0, -0.1, 0.4,
+       0.3, -0.1, 5.0, 0.1,
+       0.2, 0.4, 0.1, 6.0;
+
+  MatrixXd kkt = Q.selfadjointView<Eigen::Lower>();
+  Eigen::LDLT<MatrixXd> ref_ldlt(kkt);
+  ASSERT_EQ(ref_ldlt.info(), Eigen::Success);
+
+  // Use LLTSolver (arena-backed) — DoInitialize is a no-op for data,
+  // so contributor-written data survives across AssembleAndFactor.
+  auto child = std::make_unique<LLTSolver>();
+  child->SetSupernodes({0, 1});
+  child->SetSeparators({2, 3});
+
+  auto root = std::make_unique<LLTSolver>();
+  root->SetSupernodes({2, 3});
+  root->SetSeparators({});
+
+  SymmetricLinearSystemTreeSolver solver;
+  solver.AddSubsystem(child.get());
+  solver.AddSubsystem(root.get());
+
+  CliqueTree tree;
+  tree.node_to_parent = {1, -1};
+  tree.supernodes = {{0, 1}, {2, 3}};
+  tree.separators = {{2, 3}, {}};
+  solver.Finalize(tree);
+
+  // Zero all storage first (arena memory is not zeroed by allocator).
+  auto root_contrib = solver.MakeContributor({2, 3});
+  root_contrib.supernode_submatrix().setZero();
+
+  // Write Q into the child subsystem via contributor.
+  // The child's sep_schur starts with Q_{22}, then factorization subtracts
+  // S * A^{-1} * S^T.  The result is scattered to the root's supernode.
+  auto contrib = solver.MakeContributor({0, 1, 2, 3});
+  contrib.supernode_submatrix().setZero();
+  contrib.separator_rows().setZero();
+  contrib.separator_schur_complement().setZero();
+  contrib.WriteSymmetric(Q, {0, 1, 2, 3});
+
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  VectorXd rhs(4);
+  rhs << 1.0, -0.5, 0.3, 0.8;
+  MatrixXd sol = rhs;
+  solver.SolveInPlace(sol, false);
+  VectorXd ref = ref_ldlt.solve(rhs);
+  EXPECT_NEAR((sol - ref).norm(), 0.0, 1e-10);
+}
+
+TEST(KKTTreeSolver, SubmatrixContributorThrowsOnInvalidIndices) {
+  auto child = std::make_unique<DenseLLTSubsystem>(
+      MatrixXd::Identity(2, 2), MatrixXd::Zero(1, 2), MatrixXd::Zero(1, 1));
+  child->SetSupernodes({0, 1});
+  child->SetSeparators({2});
+
+  auto root = std::make_unique<DenseLLTSubsystem>(
+      MatrixXd::Identity(1, 1), MatrixXd(0, 1), MatrixXd(0, 0));
+  root->SetSupernodes({2});
+  root->SetSeparators({});
+
+  SymmetricLinearSystemTreeSolver solver;
+  solver.AddSubsystem(child.get());
+  solver.AddSubsystem(root.get());
+
+  CliqueTree tree;
+  tree.node_to_parent = {1, -1};
+  tree.supernodes = {{0, 1}, {2}};
+  tree.separators = {{2}, {}};
+  solver.Finalize(tree);
+
+  // Index 3 doesn't exist in any subsystem.
+  EXPECT_THROW(solver.MakeContributor({0, 3}), std::runtime_error);
+
+  // Indices {0, 2} span child's supernodes and root's supernodes — child
+  // contains both (0 as supernode, 2 as separator), so this should succeed.
+  EXPECT_NO_THROW(solver.MakeContributor({0, 2}));
 }
 
 }  // namespace
