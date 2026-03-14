@@ -32,10 +32,14 @@ class SupernodePartitionMatrix {
   int cols() const { return cols_; }
   void SetZero();
 
-  // Scatter an original-order matrix into supernode blocks.
+  // Scatter/gather between an original-order matrix and supernode blocks.
   void ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> b);
-  // Gather from supernode blocks back into an original-order matrix.
   void GatherInto(Eigen::Ref<Eigen::MatrixXd> b) const;
+
+  // Scatter/gather between an elimination-order matrix and supernode blocks.
+  // Copies block-wise (supernodes are contiguous in elimination order).
+  void ScatterFromElimOrder(Eigen::Ref<const Eigen::MatrixXd> b);
+  void GatherIntoElimOrder(Eigen::Ref<Eigen::MatrixXd> b) const;
 
   // Block accessors (by subsystem index).
   Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> supernode(int k) {
@@ -60,6 +64,7 @@ class SupernodePartitionMatrix {
     double* separator_data = nullptr;
     int sn_rows = 0;
     int sep_rows = 0;
+    int sn_start = 0;  // first supernode index in elimination order
   };
   struct VarMapping {
     int block_index;

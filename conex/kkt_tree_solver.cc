@@ -17,8 +17,10 @@ void SupernodePartitionMatrix::SetPartition(
   const int n = static_cast<int>(subsystems.size());
   blocks_.resize(n);
   for (int k = 0; k < n; ++k) {
-    blocks_[k].sn_rows = static_cast<int>(subsystems[k]->supernodes().size());
+    const auto& sn = subsystems[k]->supernodes();
+    blocks_[k].sn_rows = static_cast<int>(sn.size());
     blocks_[k].sep_rows = static_cast<int>(subsystems[k]->separators().size());
+    blocks_[k].sn_start = sn.empty() ? 0 : sn.front();
     blocks_[k].supernode_data = nullptr;
     blocks_[k].separator_data = nullptr;
   }
@@ -100,6 +102,28 @@ void SupernodePartitionMatrix::GatherInto(
         blocks_[m.block_index].supernode_data,
         blocks_[m.block_index].sn_rows, cols_);
     b.row(v) = sn.row(m.row_in_block);
+  }
+}
+
+void SupernodePartitionMatrix::ScatterFromElimOrder(
+    Eigen::Ref<const Eigen::MatrixXd> b) {
+  for (const auto& blk : blocks_) {
+    if (blk.sn_rows > 0) {
+      Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> sn(
+          blk.supernode_data, blk.sn_rows, cols_);
+      sn = b.middleRows(blk.sn_start, blk.sn_rows);
+    }
+  }
+}
+
+void SupernodePartitionMatrix::GatherIntoElimOrder(
+    Eigen::Ref<Eigen::MatrixXd> b) const {
+  for (const auto& blk : blocks_) {
+    if (blk.sn_rows > 0) {
+      Eigen::Map<const Eigen::MatrixXd, Eigen::Aligned> sn(
+          blk.supernode_data, blk.sn_rows, cols_);
+      b.middleRows(blk.sn_start, blk.sn_rows) = sn;
+    }
   }
 }
 
@@ -439,13 +463,17 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
     reserved_solve_workspace_cols_ = b.cols();
   }
 
-  if (!solve_matrix_.empty() && in_original_order) {
+  if (!solve_matrix_.empty()) {
     // Block-partitioned path: scatter into per-node blocks, solve, gather.
     if (solve_matrix_.cols() != b.cols()) {
       solve_matrix_.Resize(b.cols());
     }
     solve_matrix_.SetZero();
-    solve_matrix_.ScatterFrom(b);
+    if (in_original_order) {
+      solve_matrix_.ScatterFrom(b);
+    } else {
+      solve_matrix_.ScatterFromElimOrder(b);
+    }
 
     // Forward pass (post-order).
     const int num_solve = static_cast<int>(solve_order_.size());
@@ -494,11 +522,15 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
       }
     }
 
-    solve_matrix_.GatherInto(b);
+    if (in_original_order) {
+      solve_matrix_.GatherInto(b);
+    } else {
+      solve_matrix_.GatherIntoElimOrder(b);
+    }
     return;
   }
 
-  // Fallback: recursive traversal on global permuted vector.
+  // Fallback: recursive traversal (only when solve_matrix_ not initialized).
   ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
               [&](size_t i) {
                 auto* root = roots_.at(i);
