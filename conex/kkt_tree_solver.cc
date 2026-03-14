@@ -817,6 +817,7 @@ void T::Finalize(const std::vector<int>& parent, bool check_for_zero_pivot) {
 }
 
 int T::number_of_variables() const {
+  if (cached_num_vars_ > 0) return cached_num_vars_;
   int max = 0;
   for (auto s : subsystems_) {
     const auto& sn = s->supernodes();
