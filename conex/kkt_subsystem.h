@@ -217,6 +217,7 @@ class KKTSubsystemBase {
   bool variable_set_equals_sorted_supernodes() {
     return variable_set_equals_sorted_supernodes_;
   }
+  virtual void MarkIndefinite() {}
   virtual size_t RequiredArenaBytes() const { return 0; }
   virtual void BindArenaMemory(double* /*ptr*/, size_t /*bytes*/) {}
 

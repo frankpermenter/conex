@@ -77,6 +77,8 @@ class SupernodePartitionMatrix {
   size_t arena_bytes_ = 0;
 };
 
+enum class ContributionType { kPositiveDefinite, kIndefinite };
+
 // Provides labeled write access to the supernode/separator storage blocks
 // of a single subsystem.  Created by SymmetricLinearSystemTreeSolver::
 // MakeContributor after the tree has been finalized.
@@ -108,6 +110,10 @@ class SubmatrixContributor {
   // is written.
   void WriteSymmetric(const Eigen::MatrixXd& Q,
                       const std::vector<int>& elim_positions);
+
+  // Declare the contribution type.  If any contributor to a subsystem is
+  // indefinite, the solver uses LU factorization for that clique.
+  void set_type(ContributionType type);
 
  private:
   friend class SymmetricLinearSystemTreeSolver;
@@ -184,6 +190,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
 
   std::vector<KKTSubsystemBase*> roots_;
   std::vector<KKTSubsystemBase*> subsystems_;
+  std::vector<std::unique_ptr<KKTSubsystemBase>> owned_subsystems_;
   std::vector<std::unique_ptr<KKTAssemblerToSubsystemAdapter>>
       assembler_to_subsystem_adapter_;
   std::vector<int> variable_to_elimination_position_;

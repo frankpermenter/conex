@@ -654,9 +654,13 @@ std::vector<ChainTreeSpec> MakeProgressiveChainTrees() {
 //   Nodes 1..n-1 each receive a Schur complement from their child into their
 //   supernode block, so we write zero for the supernode-supernode part and
 //   K entries for the separator-related parts.
+//
+// If contribution_type is specified, each contributor is tagged with that type
+// so the solver can select the appropriate factorization (LLT vs LU).
 void WriteBlockTridiagonalToTree(
     const MatrixXd& K, const ChainTreeSpec& spec,
-    SymmetricLinearSystemTreeSolver& solver) {
+    SymmetricLinearSystemTreeSolver& solver,
+    ContributionType type = ContributionType::kPositiveDefinite) {
   const int num_nodes = static_cast<int>(spec.supernodes.size());
 
   // Zero all blocks (arena memory is uninitialized).
@@ -686,7 +690,9 @@ void WriteBlockTridiagonalToTree(
     MatrixXd Q(cs, cs);
     for (int i = 0; i < cs; ++i)
       for (int j = 0; j < cs; ++j) Q(i, j) = K(clique[i], clique[j]);
-    solver.MakeContributor(clique).WriteSymmetric(Q, clique);
+    auto contrib = solver.MakeContributor(clique);
+    contrib.set_type(type);
+    contrib.WriteSymmetric(Q, clique);
   }
 
   // Nodes 1..n-1: zero in supernode-supernode block, K entries elsewhere.
@@ -706,7 +712,9 @@ void WriteBlockTridiagonalToTree(
         if (i < sn_size && j < sn_size) continue;
         Q(i, j) = K(clique[i], clique[j]);
       }
-    solver.MakeContributor(clique).WriteSymmetric(Q, clique);
+    auto contrib = solver.MakeContributor(clique);
+    contrib.set_type(type);
+    contrib.WriteSymmetric(Q, clique);
   }
 }
 
@@ -727,35 +735,37 @@ TEST(KKTTreeSolver, ContributorProgressiveMerge) {
 
   auto trees = MakeProgressiveChainTrees();
 
-  for (size_t t = 0; t < trees.size(); ++t) {
-    const auto& spec = trees[t];
-    int num_nodes = static_cast<int>(spec.supernodes.size());
+  // Test both contribution types: PD selects LLT, indefinite selects LU.
+  // The matrix is SPD so both paths should give the same answer.
+  for (ContributionType ctype :
+       {ContributionType::kPositiveDefinite, ContributionType::kIndefinite}) {
+    for (size_t t = 0; t < trees.size(); ++t) {
+      const auto& spec = trees[t];
+      int num_nodes = static_cast<int>(spec.supernodes.size());
 
-    // Create LLTSolver subsystems (arena-backed, DoInitialize preserves data).
-    std::vector<std::unique_ptr<LLTSolver>> nodes;
-    for (int i = 0; i < num_nodes; ++i)
-      nodes.push_back(std::make_unique<LLTSolver>());
+      // No explicit subsystem creation — solver auto-creates DynamicSubsystems.
+      SymmetricLinearSystemTreeSolver solver;
 
-    SymmetricLinearSystemTreeSolver solver;
-    for (auto& node : nodes) solver.AddSubsystem(node.get());
+      CliqueTree tree;
+      tree.supernodes = spec.supernodes;
+      tree.separators = spec.separators;
+      tree.node_to_parent = spec.parent;
+      solver.Finalize(tree);
 
-    CliqueTree tree;
-    tree.supernodes = spec.supernodes;
-    tree.separators = spec.separators;
-    tree.node_to_parent = spec.parent;
-    solver.Finalize(tree);
+      WriteBlockTridiagonalToTree(K, spec, solver, ctype);
 
-    WriteBlockTridiagonalToTree(K, spec, solver);
+      ASSERT_TRUE(solver.AssembleAndFactor())
+          << "Factor failed for tree with " << num_nodes << " nodes"
+          << " (type=" << static_cast<int>(ctype) << ")";
 
-    ASSERT_TRUE(solver.AssembleAndFactor())
-        << "Factor failed for tree with " << num_nodes << " nodes";
+      MatrixXd sol = rhs;
+      solver.SolveInPlace(sol, false);
 
-    MatrixXd sol = rhs;
-    solver.SolveInPlace(sol, false);
-
-    double rel_err = (sol - ref_sol).norm() / ref_sol.norm();
-    EXPECT_LT(rel_err, 1e-10)
-        << "Tree with " << num_nodes << " nodes: rel_err=" << rel_err;
+      double rel_err = (sol - ref_sol).norm() / ref_sol.norm();
+      EXPECT_LT(rel_err, 1e-10)
+          << "Tree with " << num_nodes << " nodes"
+          << " (type=" << static_cast<int>(ctype) << "): rel_err=" << rel_err;
+    }
   }
 }
 

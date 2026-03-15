@@ -476,4 +476,64 @@ class StaticSubsystem : public FactorizationMethod<is_positive_definite> {
   Eigen::MatrixXd Q_;
 };
 
+// A subsystem that dynamically selects LLT or LU factorization at runtime.
+// All contributions are assumed positive-definite (LLT) unless MarkIndefinite()
+// is called, in which case LU is used.  Created automatically by the tree
+// solver when the contributor workflow is used without explicit subsystems.
+class DynamicSubsystem : public KKTSubsystem {
+ public:
+  void MarkIndefinite() override { indefinite_ = true; }
+  bool is_indefinite() const { return indefinite_; }
+
+ private:
+  bool DoEliminateSupernodeColumns() override {
+    if (indefinite_) {
+      // LU needs the full symmetric matrix; storage may only have the lower
+      // triangle (e.g. from WriteSymmetric or Schur complement scatter).
+      auto sn = supernode_submatrix();
+      sn.triangularView<Eigen::StrictlyUpper>() = sn.transpose();
+      lu_.compute(sn);
+      return lu_.determinant() != 0;
+    }
+    llt_.compute(supernode_submatrix());
+    return llt_.info() == Eigen::Success;
+  }
+
+  void DoComputeSeparatorSchurComplement() override {
+    if (separator_rows().rows() == 0) return;
+    if (indefinite_) {
+      separator_schur_complement() -=
+          separator_rows() * lu_.solve(separator_rows().transpose());
+      return;
+    }
+    MatrixXd temp = separator_rows().transpose();
+    llt_.matrixL().solveInPlace(temp);
+    int n = separator_schur_complement().rows();
+    for (int j = 0; j < n; j++) {
+      separator_schur_complement().col(j).tail(n - j).noalias() -=
+          temp.rightCols(n - j).transpose() * temp.col(j);
+    }
+  }
+
+  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    if (indefinite_) {
+      y = lu_.solve(y);
+    } else {
+      llt_.matrixL().solveInPlace(y);
+    }
+  }
+
+  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    if (!indefinite_) {
+      llt_.matrixL().transpose().solveInPlace(y);
+    }
+  }
+
+  bool indefinite_ = false;
+  Eigen::LLT<MatrixXd> llt_;
+  Eigen::PartialPivLU<MatrixXd> lu_;
+};
+
 }  // namespace conex

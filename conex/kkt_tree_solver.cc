@@ -8,6 +8,7 @@
 #include <thread>
 #include <unordered_map>
 
+#include "conex/cholesky_solvers.h"
 #include "conex/tree_utils.h"
 
 namespace conex {
@@ -588,6 +589,15 @@ bool T::DoFactor() {
 }
 
 void T::Finalize(const CliqueTree& clique_tree) {
+  // Auto-create DynamicSubsystem instances when no subsystems were provided.
+  if (subsystems_.empty()) {
+    owned_subsystems_.clear();
+    for (size_t i = 0; i < clique_tree.supernodes.size(); ++i) {
+      auto ds = std::make_unique<DynamicSubsystem>();
+      subsystems_.push_back(ds.get());
+      owned_subsystems_.push_back(std::move(ds));
+    }
+  }
   CONEX_CHECK(clique_tree.supernodes.size() == subsystems_.size());
   CONEX_CHECK(clique_tree.separators.size() == subsystems_.size());
   int i = 0;
@@ -764,6 +774,12 @@ void T::AllocateSolveArena() {
     }
   }
 }
+void SubmatrixContributor::set_type(ContributionType type) {
+  if (type == ContributionType::kIndefinite) {
+    subsystem_->MarkIndefinite();
+  }
+}
+
 void SubmatrixContributor::WriteSymmetric(
     const Eigen::MatrixXd& Q, const std::vector<int>& elim_positions) {
   const int n = static_cast<int>(elim_positions.size());
