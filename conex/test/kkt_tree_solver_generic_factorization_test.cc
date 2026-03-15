@@ -587,5 +587,177 @@ TEST(KKTTreeSolver, SubmatrixContributorThrowsOnInvalidIndices) {
   EXPECT_NO_THROW(solver.MakeContributor({0, 2}));
 }
 
+// Build an 8x8 block-tridiagonal SPD matrix with 2x2 blocks.
+// The sparsity pattern matches a chain elimination tree:
+//   {0,1} - {2,3} - {4,5} - {6,7}
+// This matrix can be factored by any chain tree that progressively
+// merges adjacent blocks.
+MatrixXd MakeBlockTridiagonalSPD(uint64_t seed) {
+  const int N = 8;
+  const int bs = 2;
+  const int nb = N / bs;
+  std::mt19937_64 rng(seed);
+  std::normal_distribution<double> normal(0.0, 1.0);
+  auto randn = [&](int r, int c) {
+    MatrixXd M(r, c);
+    for (int i = 0; i < r; ++i)
+      for (int j = 0; j < c; ++j) M(i, j) = normal(rng);
+    return M;
+  };
+
+  MatrixXd K = MatrixXd::Zero(N, N);
+  for (int b = 0; b < nb; ++b) {
+    int s = b * bs;
+    MatrixXd R = 0.3 * randn(bs, bs);
+    K.block(s, s, bs, bs) = 4.0 * MatrixXd::Identity(bs, bs) + R * R.transpose();
+  }
+  for (int b = 0; b + 1 < nb; ++b) {
+    int s1 = b * bs, s2 = (b + 1) * bs;
+    MatrixXd B = 0.2 * randn(bs, bs);
+    K.block(s1, s2, bs, bs) = B;
+    K.block(s2, s1, bs, bs) = B.transpose();
+  }
+  return K;
+}
+
+// Describes a chain elimination tree on N=8 variables with 2-variable blocks.
+struct ChainTreeSpec {
+  std::vector<std::vector<int>> supernodes;
+  std::vector<std::vector<int>> separators;
+  std::vector<int> parent;
+};
+
+// Build the chain tree specs for progressive merging from 4 nodes to 1.
+std::vector<ChainTreeSpec> MakeProgressiveChainTrees() {
+  return {
+      // 4 nodes: {0,1} → {2,3} → {4,5} → {6,7}
+      {{{0, 1}, {2, 3}, {4, 5}, {6, 7}},
+       {{2, 3}, {4, 5}, {6, 7}, {}},
+       {1, 2, 3, -1}},
+      // 3 nodes: merge first two
+      {{{0, 1, 2, 3}, {4, 5}, {6, 7}},
+       {{4, 5}, {6, 7}, {}},
+       {1, 2, -1}},
+      // 2 nodes: merge first three
+      {{{0, 1, 2, 3, 4, 5}, {6, 7}}, {{6, 7}, {}}, {1, -1}},
+      // 1 node: fully dense
+      {{{0, 1, 2, 3, 4, 5, 6, 7}}, {{}}, {-1}},
+  };
+}
+
+// Write the block-tridiagonal matrix K into a tree solver via contributors.
+//
+// Convention for a chain tree:
+//   Node 0 is always the leaf (no children feed into it). It gets the full
+//   K[clique, clique] submatrix via WriteSymmetric.
+//
+//   Nodes 1..n-1 each receive a Schur complement from their child into their
+//   supernode block, so we write zero for the supernode-supernode part and
+//   K entries for the separator-related parts.
+void WriteBlockTridiagonalToTree(
+    const MatrixXd& K, const ChainTreeSpec& spec,
+    SymmetricLinearSystemTreeSolver& solver) {
+  const int num_nodes = static_cast<int>(spec.supernodes.size());
+
+  // Zero all blocks (arena memory is uninitialized).
+  for (int ni = 0; ni < num_nodes; ++ni) {
+    std::vector<int> clique;
+    clique.insert(clique.end(), spec.supernodes[ni].begin(),
+                  spec.supernodes[ni].end());
+    clique.insert(clique.end(), spec.separators[ni].begin(),
+                  spec.separators[ni].end());
+    if (clique.empty()) clique = spec.supernodes[ni];
+    auto c = solver.MakeContributor(clique);
+    c.supernode_submatrix().setZero();
+    if (!c.separator_indices().empty()) {
+      c.separator_rows().setZero();
+      c.separator_schur_complement().setZero();
+    }
+  }
+
+  // Node 0 (leaf): write full K[clique, clique].
+  {
+    std::vector<int> clique;
+    clique.insert(clique.end(), spec.supernodes[0].begin(),
+                  spec.supernodes[0].end());
+    clique.insert(clique.end(), spec.separators[0].begin(),
+                  spec.separators[0].end());
+    int cs = static_cast<int>(clique.size());
+    MatrixXd Q(cs, cs);
+    for (int i = 0; i < cs; ++i)
+      for (int j = 0; j < cs; ++j) Q(i, j) = K(clique[i], clique[j]);
+    solver.MakeContributor(clique).WriteSymmetric(Q, clique);
+  }
+
+  // Nodes 1..n-1: zero in supernode-supernode block, K entries elsewhere.
+  for (int ni = 1; ni < num_nodes; ++ni) {
+    std::vector<int> clique;
+    clique.insert(clique.end(), spec.supernodes[ni].begin(),
+                  spec.supernodes[ni].end());
+    clique.insert(clique.end(), spec.separators[ni].begin(),
+                  spec.separators[ni].end());
+    if (clique.empty()) continue;
+
+    int cs = static_cast<int>(clique.size());
+    int sn_size = static_cast<int>(spec.supernodes[ni].size());
+    MatrixXd Q = MatrixXd::Zero(cs, cs);
+    for (int i = 0; i < cs; ++i)
+      for (int j = 0; j < cs; ++j) {
+        if (i < sn_size && j < sn_size) continue;
+        Q(i, j) = K(clique[i], clique[j]);
+      }
+    solver.MakeContributor(clique).WriteSymmetric(Q, clique);
+  }
+}
+
+TEST(KKTTreeSolver, ContributorProgressiveMerge) {
+  const int N = 8;
+  MatrixXd K = MakeBlockTridiagonalSPD(/*seed=*/42);
+
+  // Reference solution.
+  Eigen::LDLT<MatrixXd> ref_ldlt(K.selfadjointView<Eigen::Lower>());
+  ASSERT_EQ(ref_ldlt.info(), Eigen::Success);
+
+  MatrixXd rhs(N, 3);
+  std::mt19937_64 rng(99);
+  std::normal_distribution<double> normal(0.0, 1.0);
+  for (int i = 0; i < rhs.rows(); ++i)
+    for (int j = 0; j < rhs.cols(); ++j) rhs(i, j) = normal(rng);
+  MatrixXd ref_sol = ref_ldlt.solve(rhs);
+
+  auto trees = MakeProgressiveChainTrees();
+
+  for (size_t t = 0; t < trees.size(); ++t) {
+    const auto& spec = trees[t];
+    int num_nodes = static_cast<int>(spec.supernodes.size());
+
+    // Create LLTSolver subsystems (arena-backed, DoInitialize preserves data).
+    std::vector<std::unique_ptr<LLTSolver>> nodes;
+    for (int i = 0; i < num_nodes; ++i)
+      nodes.push_back(std::make_unique<LLTSolver>());
+
+    SymmetricLinearSystemTreeSolver solver;
+    for (auto& node : nodes) solver.AddSubsystem(node.get());
+
+    CliqueTree tree;
+    tree.supernodes = spec.supernodes;
+    tree.separators = spec.separators;
+    tree.node_to_parent = spec.parent;
+    solver.Finalize(tree);
+
+    WriteBlockTridiagonalToTree(K, spec, solver);
+
+    ASSERT_TRUE(solver.AssembleAndFactor())
+        << "Factor failed for tree with " << num_nodes << " nodes";
+
+    MatrixXd sol = rhs;
+    solver.SolveInPlace(sol, false);
+
+    double rel_err = (sol - ref_sol).norm() / ref_sol.norm();
+    EXPECT_LT(rel_err, 1e-10)
+        << "Tree with " << num_nodes << " nodes: rel_err=" << rel_err;
+  }
+}
+
 }  // namespace
 }  // namespace conex
