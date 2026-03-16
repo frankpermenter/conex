@@ -4,6 +4,7 @@
 #include <limits>
 #include <map>
 #include <set>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -37,19 +38,6 @@ int Popcount(const uint64_t* bits, int words) {
   return c;
 }
 
-// popcount(a & b)
-int PopcountAnd(const uint64_t* a, const uint64_t* b, int words) {
-  int c = 0;
-  for (int w = 0; w < words; w++) c += __builtin_popcountll(a[w] & b[w]);
-  return c;
-}
-
-// Is a a subset of b?  (a & b) == a
-bool IsSubset(const uint64_t* a, const uint64_t* b, int words) {
-  for (int w = 0; w < words; w++)
-    if (a[w] & ~b[w]) return false;
-  return true;
-}
 
 struct TreeAndCliques {
   CliqueTree tree;
@@ -358,7 +346,8 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
     const std::vector<std::vector<int>>& row_supports,
     std::vector<std::vector<int>>* maximal_cliques_out,
     int max_merge_supernode_size,
-    int supernode_reorder_method) {
+    int supernode_reorder_method,
+    const std::vector<int>& dual_variables) {
   // --- Compact variable indices to [0, n) ---
   std::vector<int> unique_vars;
   for (const auto& row : row_supports) {
@@ -391,6 +380,15 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
     std::sort(sup.begin(), sup.end());
     sup.erase(std::unique(sup.begin(), sup.end()), sup.end());
     if (!sup.empty()) supports_compact.push_back(std::move(sup));
+  }
+
+  // Map dual variables to compact indices.  Use an unordered_set for O(1)
+  // lookup — efficient when few variables are dual relative to n.
+  std::unordered_set<int> is_dual;
+  is_dual.reserve(dual_variables.size());
+  for (int v : dual_variables) {
+    auto it = to_compact.find(v);
+    if (it != to_compact.end()) is_dual.insert(it->second);
   }
 
   const int words = (n + 63) / 64;
@@ -431,10 +429,18 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
   std::vector<uint64_t> clique_mask(words);
   std::vector<int> nbrs;
 
+  // Track whether each vertex has at least one eliminated neighbor.
+  // Updated incrementally: when vertex `best` is eliminated, all its
+  // living neighbors get their flag set.
+  std::vector<char> has_eliminated_neighbor(n, 0);
+
   for (int step = 0; step < n; step++) {
     int best = -1, best_deg = std::numeric_limits<int>::max();
     for (int v = 0; v < n; v++) {
-      if (deg[v] >= 0 && deg[v] < best_deg) {
+      if (deg[v] < 0) continue;
+      // A dual variable must have a neighbor eliminated first.
+      if (is_dual.count(v) && !has_eliminated_neighbor[v]) continue;
+      if (deg[v] < best_deg) {
         best_deg = deg[v];
         best = v;
       }
@@ -444,6 +450,11 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
 
     auto* rb = row(best);
     BitsToVec(rb, words, n, &nbrs);
+
+    // Mark living neighbors as having an eliminated neighbor.
+    if (!is_dual.empty()) {
+      for (int u : nbrs) has_eliminated_neighbor[u] = 1;
+    }
 
     // Record elimination clique bitset = {best} ∪ nbrs
     auto* eb = elim_row(best);
