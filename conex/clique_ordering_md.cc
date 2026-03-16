@@ -3,9 +3,24 @@
 #include <cstring>
 #include <limits>
 #include <map>
+#include <set>
+#include <utility>
 #include <vector>
 
+#include <Eigen/Sparse>
+
+#if __has_include(<suitesparse/cholmod.h>)
+#include <suitesparse/cholmod.h>
+#define CONEX_MD_HAS_CHOLMOD 1
+#elif __has_include(<cholmod.h>)
+#include <cholmod.h>
+#define CONEX_MD_HAS_CHOLMOD 1
+#else
+#define CONEX_MD_HAS_CHOLMOD 0
+#endif
+
 #include "conex/clique_ordering.h"
+#include "conex/pq_tree.h"
 
 namespace conex {
 namespace {
@@ -45,12 +60,314 @@ bool IsSubset(const uint64_t* a, const uint64_t* b, int words) {
   return true;
 }
 
+struct TreeAndCliques {
+  CliqueTree tree;
+  std::vector<std::vector<int>> cliques;
+};
 
+#if CONEX_MD_HAS_CHOLMOD
+SuiteSparse_long ReadCholmodIndex(const void* base, size_t idx, int itype) {
+  if (itype == CHOLMOD_LONG) {
+    return static_cast<const SuiteSparse_long*>(base)[idx];
+  }
+  if (itype == CHOLMOD_INT) {
+    return static_cast<SuiteSparse_long>(static_cast<const int*>(base)[idx]);
+  }
+  return -1;
+}
+
+TreeAndCliques BuildFromCholmodReference(
+    const std::vector<std::vector<int>>& supports_compact,
+    const std::vector<int>& unique_vars, int n) {
+  using ColSparse = Eigen::SparseMatrix<double, Eigen::ColMajor>;
+  std::vector<Eigen::Triplet<double>> triplets;
+  for (const auto& sup : supports_compact) {
+    for (size_t i = 0; i < sup.size(); ++i) {
+      for (size_t j = i; j < sup.size(); ++j) {
+        const int a = sup[i];
+        const int b = sup[j];
+        const int r = std::max(a, b);
+        const int c = std::min(a, b);
+        triplets.emplace_back(r, c, 1.0);
+      }
+    }
+  }
+  for (int i = 0; i < n; ++i) {
+    triplets.emplace_back(i, i, 1e-8);
+  }
+  ColSparse ata_lower(n, n);
+  ata_lower.setFromTriplets(triplets.begin(), triplets.end());
+  ata_lower.makeCompressed();
+
+  struct CholmodSession {
+    cholmod_common common;
+    cholmod_sparse* M = nullptr;
+    cholmod_factor* L = nullptr;
+    CholmodSession() { cholmod_l_start(&common); }
+    ~CholmodSession() {
+      if (L != nullptr) cholmod_l_free_factor(&L, &common);
+      if (M != nullptr) cholmod_l_free_sparse(&M, &common);
+      cholmod_l_finish(&common);
+    }
+  } session;
+  session.common.supernodal = 2;
+
+  const SuiteSparse_long nnz = static_cast<SuiteSparse_long>(ata_lower.nonZeros());
+  session.M = cholmod_l_allocate_sparse(static_cast<size_t>(n), static_cast<size_t>(n),
+                                        static_cast<size_t>(nnz), 1, 1, -1,
+                                        CHOLMOD_REAL, &session.common);
+  if (session.M == nullptr) return {};
+
+  std::vector<SuiteSparse_long> p(static_cast<size_t>(n) + 1);
+  std::vector<SuiteSparse_long> i(static_cast<size_t>(nnz));
+  for (int col = 0; col <= n; ++col) {
+    p[static_cast<size_t>(col)] =
+        static_cast<SuiteSparse_long>(ata_lower.outerIndexPtr()[col]);
+  }
+  for (SuiteSparse_long k = 0; k < nnz; ++k) {
+    i[static_cast<size_t>(k)] =
+        static_cast<SuiteSparse_long>(ata_lower.innerIndexPtr()[k]);
+  }
+  std::memcpy(session.M->p, p.data(), static_cast<size_t>(n + 1) * sizeof(SuiteSparse_long));
+  std::memcpy(session.M->i, i.data(), static_cast<size_t>(nnz) * sizeof(SuiteSparse_long));
+  std::memcpy(session.M->x, ata_lower.valuePtr(), static_cast<size_t>(nnz) * sizeof(double));
+
+  session.L = cholmod_l_analyze(session.M, &session.common);
+  if (session.L == nullptr) return {};
+  double beta[2] = {0.0, 0.0};
+  if (!cholmod_l_factorize_p(session.M, beta, nullptr, 0, session.L, &session.common)) {
+    return {};
+  }
+  if (!session.L->is_super) return {};
+
+  const int nsuper = static_cast<int>(session.L->nsuper);
+  std::vector<SuiteSparse_long> perm(static_cast<size_t>(n));
+  std::vector<SuiteSparse_long> super(static_cast<size_t>(nsuper) + 1);
+  std::vector<SuiteSparse_long> pi(static_cast<size_t>(nsuper) + 1);
+  std::vector<SuiteSparse_long> s(static_cast<size_t>(session.L->ssize));
+  for (int k = 0; k < n; ++k) {
+    perm[static_cast<size_t>(k)] =
+        ReadCholmodIndex(session.L->Perm, static_cast<size_t>(k), session.L->itype);
+  }
+  for (int k = 0; k <= nsuper; ++k) {
+    super[static_cast<size_t>(k)] =
+        ReadCholmodIndex(session.L->super, static_cast<size_t>(k), session.L->itype);
+    pi[static_cast<size_t>(k)] =
+        ReadCholmodIndex(session.L->pi, static_cast<size_t>(k), session.L->itype);
+  }
+  for (size_t k = 0; k < s.size(); ++k) {
+    s[k] = ReadCholmodIndex(session.L->s, k, session.L->itype);
+  }
+
+  std::vector<int> col_to_super(static_cast<size_t>(n), -1);
+  for (int sn = 0; sn < nsuper; ++sn) {
+    for (SuiteSparse_long c = super[static_cast<size_t>(sn)];
+         c < super[static_cast<size_t>(sn + 1)]; ++c) {
+      if (c >= 0 && c < n) col_to_super[static_cast<size_t>(c)] = sn;
+    }
+  }
+
+  TreeAndCliques out;
+  out.cliques.resize(static_cast<size_t>(nsuper));
+  out.tree.node_to_parent.assign(static_cast<size_t>(nsuper), -1);
+  out.tree.supernodes.resize(static_cast<size_t>(nsuper));
+  out.tree.separators.resize(static_cast<size_t>(nsuper));
+
+  for (int sn = 0; sn < nsuper; ++sn) {
+    const SuiteSparse_long p0 = pi[static_cast<size_t>(sn)];
+    const SuiteSparse_long p1 = pi[static_cast<size_t>(sn + 1)];
+    const SuiteSparse_long nscol =
+        super[static_cast<size_t>(sn + 1)] - super[static_cast<size_t>(sn)];
+    int parent = -1;
+    if (p0 + nscol < p1) {
+      const SuiteSparse_long parent_col = s[static_cast<size_t>(p0 + nscol)];
+      if (parent_col >= 0 && parent_col < n) {
+        parent = col_to_super[static_cast<size_t>(parent_col)];
+      }
+    }
+    out.tree.node_to_parent[static_cast<size_t>(sn)] = parent;
+
+    auto& bag = out.cliques[static_cast<size_t>(sn)];
+    bag.reserve(static_cast<size_t>(p1 - p0));
+    for (SuiteSparse_long t = p0; t < p1; ++t) {
+      const SuiteSparse_long c = s[static_cast<size_t>(t)];
+      if (c < 0 || c >= n) continue;
+      const SuiteSparse_long v = perm[static_cast<size_t>(c)];
+      if (v < 0 || v >= n) continue;
+      bag.push_back(unique_vars[static_cast<size_t>(v)]);
+    }
+    std::sort(bag.begin(), bag.end());
+    bag.erase(std::unique(bag.begin(), bag.end()), bag.end());
+  }
+
+  for (int sn = 0; sn < nsuper; ++sn) {
+    const int pnode = out.tree.node_to_parent[static_cast<size_t>(sn)];
+    if (pnode >= 0) {
+      std::set_intersection(
+          out.cliques[static_cast<size_t>(sn)].begin(),
+          out.cliques[static_cast<size_t>(sn)].end(),
+          out.cliques[static_cast<size_t>(pnode)].begin(),
+          out.cliques[static_cast<size_t>(pnode)].end(),
+          std::back_inserter(out.tree.separators[static_cast<size_t>(sn)]));
+    }
+    std::set_difference(
+        out.cliques[static_cast<size_t>(sn)].begin(),
+        out.cliques[static_cast<size_t>(sn)].end(),
+        out.tree.separators[static_cast<size_t>(sn)].begin(),
+        out.tree.separators[static_cast<size_t>(sn)].end(),
+        std::back_inserter(out.tree.supernodes[static_cast<size_t>(sn)]));
+  }
+
+  std::vector<std::vector<int>> children(static_cast<size_t>(nsuper));
+  std::vector<int> roots;
+  for (int i = 0; i < nsuper; ++i) {
+    const int pnode = out.tree.node_to_parent[static_cast<size_t>(i)];
+    if (pnode >= 0) children[static_cast<size_t>(pnode)].push_back(i);
+    else roots.push_back(i);
+  }
+  for (auto& c : children) std::sort(c.begin(), c.end());
+  std::sort(roots.begin(), roots.end());
+  out.tree.post_order_position_to_clique.clear();
+  out.tree.post_order_position_to_clique.reserve(static_cast<size_t>(nsuper));
+  std::vector<int> stk;
+  std::vector<char> expanded(static_cast<size_t>(nsuper), 0);
+  for (int root : roots) {
+    stk.clear();
+    stk.push_back(root);
+    while (!stk.empty()) {
+      const int node = stk.back();
+      if (!expanded[static_cast<size_t>(node)]) {
+        expanded[static_cast<size_t>(node)] = 1;
+        for (int c : children[static_cast<size_t>(node)]) stk.push_back(c);
+      } else {
+        stk.pop_back();
+        out.tree.post_order_position_to_clique.push_back(node);
+      }
+    }
+  }
+  return out;
+}
+#endif
+
+// Reorder supernodes/separators to maximize scatter block alignment.
+// Top-down: for each parent, reorder its supernode so that variables
+// appearing in each child's separator form contiguous blocks.  Then
+// reorder each child's separator to list parent-supernode variables first
+// (in parent's supernode order), then parent-separator variables (in
+// parent's separator order).  This guarantees at most 2 scatter blocks
+// per parent-child edge (1 for supernode, 1 for separator).
+void ReorderSupernodes(CliqueTree& ct, int supernode_reorder_method) {
+  if (supernode_reorder_method == SUPERNODE_REORDER_NONE) return;
+
+  const int nk = static_cast<int>(ct.supernodes.size());
+  std::vector<std::vector<int>> ch(nk);
+  std::vector<int> roots;
+  for (int i = 0; i < nk; ++i) {
+    if (ct.node_to_parent[i] >= 0)
+      ch[ct.node_to_parent[i]].push_back(i);
+    else
+      roots.push_back(i);
+  }
+
+  // BFS top-down.
+  std::vector<int> bfs;
+  bfs.reserve(nk);
+  for (int r : roots) bfs.push_back(r);
+  for (size_t qi = 0; qi < bfs.size(); ++qi) {
+    int p = bfs[qi];
+    for (int c : ch[p]) bfs.push_back(c);
+  }
+
+  for (int p : bfs) {
+    auto& sn = ct.supernodes[p];
+
+    if (supernode_reorder_method == SUPERNODE_REORDER_PQ_TREE) {
+      // PQ-tree reorder: build constraints from child separators,
+      // find a permutation where all children's subsets are contiguous.
+      std::map<int, int> var_to_idx;
+      for (int i = 0; i < static_cast<int>(sn.size()); ++i) {
+        var_to_idx[sn[i]] = i;
+      }
+      std::vector<std::vector<int>> constraints;
+      for (int c : ch[p]) {
+        std::vector<int> constraint;
+        for (int v : ct.separators[c]) {
+          auto it = var_to_idx.find(v);
+          if (it != var_to_idx.end()) constraint.push_back(it->second);
+        }
+        if (!constraint.empty()) constraints.push_back(std::move(constraint));
+      }
+      if (!constraints.empty()) {
+        PQTree pqt(static_cast<int>(sn.size()));
+        pqt.AddConstraintsBestEffort(constraints);
+        auto perm = pqt.GetPermutation();
+        std::vector<int> new_sn(sn.size());
+        for (size_t i = 0; i < perm.size(); ++i) {
+          new_sn[i] = sn[perm[i]];
+        }
+        sn = std::move(new_sn);
+      }
+    } else {
+      // BFS-greedy reorder: place variables requested by children first,
+      // grouped per child.
+      std::set<int> sn_set(sn.begin(), sn.end());
+
+      // Sort children by intersection size.
+      std::vector<int> ordered_ch(ch[p].begin(), ch[p].end());
+      std::sort(ordered_ch.begin(), ordered_ch.end(),
+                [&](int a, int b) {
+        int ca = 0, cb = 0;
+        for (int v : ct.separators[a]) ca += sn_set.count(v);
+        for (int v : ct.separators[b]) cb += sn_set.count(v);
+        return (supernode_reorder_method == SUPERNODE_REORDER_BFS_GREEDY_LARGEST)
+                   ? ca > cb   // largest first
+                   : ca < cb;  // smallest first
+      });
+
+      std::vector<int> new_sn;
+      new_sn.reserve(sn.size());
+      std::set<int> placed;
+
+      for (int c : ordered_ch) {
+        for (int v : ct.separators[c]) {
+          if (sn_set.count(v) && !placed.count(v)) {
+            new_sn.push_back(v);
+            placed.insert(v);
+          }
+        }
+      }
+      for (int v : sn) {
+        if (!placed.count(v)) new_sn.push_back(v);
+      }
+      sn = std::move(new_sn);
+    }
+
+    // Reorder each child's separator: parent-supernode vars in parent's
+    // supernode order, then parent-separator vars in parent's separator
+    // order.
+    const auto& sep = ct.separators[p];
+    for (int c : ch[p]) {
+      std::set<int> csep_set(ct.separators[c].begin(),
+                             ct.separators[c].end());
+      std::vector<int> new_csep;
+      new_csep.reserve(ct.separators[c].size());
+      for (int v : sn) {
+        if (csep_set.count(v)) new_csep.push_back(v);
+      }
+      for (int v : sep) {
+        if (csep_set.count(v)) new_csep.push_back(v);
+      }
+      ct.separators[c] = std::move(new_csep);
+    }
+  }
+}
 }  // namespace
 
 CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
     const std::vector<std::vector<int>>& row_supports,
-    std::vector<std::vector<int>>* maximal_cliques_out) {
+    std::vector<std::vector<int>>* maximal_cliques_out,
+    int max_merge_supernode_size,
+    int supernode_reorder_method) {
   // --- Compact variable indices to [0, n) ---
   std::vector<int> unique_vars;
   for (const auto& row : row_supports) {
@@ -175,168 +492,256 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
   }
 
   // ===================================================================
-  // Phase 2: Extract maximal cliques (bitset subset checks)
+  // Phase 2: CHOLMOD-like supernode forest from elimination columns
   // ===================================================================
-  // Sort elimination clique indices by size descending.
-  // A candidate is non-maximal if it is a subset of any larger one.
+  std::vector<int> pos(static_cast<size_t>(n), -1);
+  for (int k = 0; k < n; ++k) {
+    pos[static_cast<size_t>(order[static_cast<size_t>(k)])] = k;
+  }
 
-  std::vector<int> idx(n);
-  for (int i = 0; i < n; i++) idx[i] = order[i];  // vertex ids in elim order
-  std::sort(idx.begin(), idx.end(),
-            [&](int a, int b) { return elim_size[a] > elim_size[b]; });
-
-  std::vector<bool> is_maximal(n, true);  // indexed by vertex
-  for (int ii = 0; ii < n; ii++) {
-    int i = idx[ii];
-    if (!is_maximal[i]) continue;
-    const auto* ei = elim_row(i);
-    for (int jj = ii + 1; jj < n; jj++) {
-      int j = idx[jj];
-      if (!is_maximal[j]) continue;
-      if (elim_size[j] >= elim_size[i]) continue;
-      if (IsSubset(elim_row(j), ei, words)) {
-        is_maximal[j] = false;
+  std::vector<std::vector<int>> later(static_cast<size_t>(n));
+  std::vector<int> parent_col(static_cast<size_t>(n), -1);
+  std::vector<int> child_count(static_cast<size_t>(n), 0);
+  for (int k = 0; k < n; ++k) {
+    const int v = order[static_cast<size_t>(k)];
+    std::vector<int> lv;
+    const auto* ev = elim_row(v);
+    for (int w = 0; w < words; ++w) {
+      uint64_t bits = ev[w];
+      while (bits) {
+        const int b = __builtin_ctzll(bits);
+        const int u = (w << 6) + b;
+        if (u < n && u != v && pos[static_cast<size_t>(u)] > k) {
+          lv.push_back(u);
+        }
+        bits &= (bits - 1);
       }
+    }
+    std::sort(lv.begin(), lv.end(),
+              [&](int a, int b) { return pos[static_cast<size_t>(a)] < pos[static_cast<size_t>(b)]; });
+    later[static_cast<size_t>(v)] = lv;
+    if (!lv.empty()) {
+      parent_col[static_cast<size_t>(v)] = lv.front();
+      child_count[static_cast<size_t>(lv.front())]++;
     }
   }
 
-  // Collect maximal clique bitsets + build sorted vector cliques for output.
-  // mc_bits[ci] points to the bitset for maximal clique ci.
-  std::vector<int> mc_vertex;  // which original vertex owns each maximal clique
-  for (int i = 0; i < n; i++) {
-    int v = order[i];
-    if (is_maximal[v]) mc_vertex.push_back(v);
+  std::vector<int> col_to_super(static_cast<size_t>(n), -1);
+  std::vector<std::vector<int>> super_cols;
+  super_cols.reserve(static_cast<size_t>(n));
+  for (int k = 0; k < n; ++k) {
+    const int start = order[static_cast<size_t>(k)];
+    if (col_to_super[static_cast<size_t>(start)] >= 0) continue;
+    std::vector<int> cols;
+    cols.push_back(start);
+    int cur = start;
+    while (true) {
+      const int p = parent_col[static_cast<size_t>(cur)];
+      if (p < 0) break;
+      if (pos[static_cast<size_t>(p)] != pos[static_cast<size_t>(cur)] + 1) break;
+      // Note: we intentionally do NOT require child_count[p] == 1 here.
+      // The later-set check below is sufficient: if later[cur] == {p} ∪
+      // later[p], then p's elimination clique is a subset of cur's, so
+      // they belong in the same fundamental supernode even when p has
+      // multiple children (e.g. a dense root clique fed by many leaves).
+      const auto& lc = later[static_cast<size_t>(cur)];
+      const auto& lp = later[static_cast<size_t>(p)];
+      bool same = lc.size() == lp.size() + 1 && !lc.empty() && lc.front() == p;
+      if (same) {
+        for (size_t t = 1; t < lc.size(); ++t) {
+          if (lc[t] != lp[t - 1]) {
+            same = false;
+            break;
+          }
+        }
+      }
+      if (!same) break;
+      cols.push_back(p);
+      cur = p;
+    }
+    const int sid = static_cast<int>(super_cols.size());
+    for (int c : cols) col_to_super[static_cast<size_t>(c)] = sid;
+    super_cols.push_back(std::move(cols));
   }
-  const int k = static_cast<int>(mc_vertex.size());
 
-  // Pointers to the bitset rows for each maximal clique
-  std::vector<uint64_t*> mc_bits(k);
-  for (int ci = 0; ci < k; ci++) mc_bits[ci] = elim_row(mc_vertex[ci]);
+  const int k = static_cast<int>(super_cols.size());
+  std::vector<std::vector<int>> cliques(static_cast<size_t>(k));
+  std::vector<int> parent(static_cast<size_t>(k), -1);
+  for (int si = 0; si < k; ++si) {
+    const auto& cols = super_cols[static_cast<size_t>(si)];
+    const int first = cols.front();
+    std::set<int> bag_set(cols.begin(), cols.end());
+    for (int u : later[static_cast<size_t>(first)]) {
+      bag_set.insert(u);
+    }
+    auto& bag = cliques[static_cast<size_t>(si)];
+    bag.reserve(bag_set.size());
+    for (int v : bag_set) {
+      bag.push_back(unique_vars[static_cast<size_t>(v)]);
+    }
+    std::sort(bag.begin(), bag.end());
 
-  // Build sorted-vector cliques (in global indices) for output
-  std::vector<std::vector<int>> cliques(k);
+    const int top = cols.back();
+    const int pcol = parent_col[static_cast<size_t>(top)];
+    if (pcol >= 0) {
+      parent[static_cast<size_t>(si)] = col_to_super[static_cast<size_t>(pcol)];
+    }
+  }
+
+  CliqueTree ct;
+  ct.node_to_parent = parent;
+  ct.supernodes.resize(static_cast<size_t>(k));
+  ct.separators.resize(static_cast<size_t>(k));
+  for (int i = 0; i < k; ++i) {
+    const int pidx = parent[static_cast<size_t>(i)];
+    if (pidx >= 0) {
+      std::set_intersection(
+          cliques[static_cast<size_t>(i)].begin(),
+          cliques[static_cast<size_t>(i)].end(),
+          cliques[static_cast<size_t>(pidx)].begin(),
+          cliques[static_cast<size_t>(pidx)].end(),
+          std::back_inserter(ct.separators[static_cast<size_t>(i)]));
+    }
+    std::set_difference(
+        cliques[static_cast<size_t>(i)].begin(),
+        cliques[static_cast<size_t>(i)].end(),
+        ct.separators[static_cast<size_t>(i)].begin(),
+        ct.separators[static_cast<size_t>(i)].end(),
+        std::back_inserter(ct.supernodes[static_cast<size_t>(i)]));
+  }
+
+  // Merge singleton supernodes into their parents.
+  // This creates larger dense blocks that are more BLAS3-friendly.
   {
-    std::vector<int> tmp;
-    for (int ci = 0; ci < k; ci++) {
-      BitsToVec(mc_bits[ci], words, n, &tmp);
-      cliques[ci].reserve(tmp.size());
-      for (int v : tmp) cliques[ci].push_back(unique_vars[v]);
-      // Already sorted since unique_vars is sorted and bits scan low-to-high
-    }
-  }
+    bool merged_any = true;
+    while (merged_any) {
+      merged_any = false;
+      for (int i = 0; i < k; ++i) {
+        if (static_cast<int>(ct.supernodes[i].size()) > max_merge_supernode_size)
+          continue;
+        const int p = ct.node_to_parent[i];
+        if (p < 0) continue;
 
-  if (maximal_cliques_out) *maximal_cliques_out = cliques;
+        // Move all supernode variables to parent's supernode.
+        auto& psn = ct.supernodes[p];
+        for (int v : ct.supernodes[i]) {
+          psn.push_back(v);
+        }
+        std::sort(psn.begin(), psn.end());
 
-  if (k == 0) return CliqueTree{};
+        // Reparent children of i to p.
+        for (int j = 0; j < k; ++j)
+          if (ct.node_to_parent[j] == i) ct.node_to_parent[j] = p;
 
-  // ===================================================================
-  // Phase 3: Prim's max-weight spanning tree (bitset AND + popcount)
-  // ===================================================================
-  int root = 0;
-  for (int i = 1; i < k; i++)
-    if (elim_size[mc_vertex[i]] > elim_size[mc_vertex[root]]) root = i;
-
-  std::vector<bool> in_tree(k, false);
-  std::vector<int> parent(k, -1);
-  std::vector<int> best_weight(k, -1);
-  std::vector<int> best_neighbor(k, -1);
-
-  in_tree[root] = true;
-  for (int j = 0; j < k; j++) {
-    if (j == root) continue;
-    best_weight[j] = PopcountAnd(mc_bits[root], mc_bits[j], words);
-    best_neighbor[j] = root;
-  }
-
-  for (int step = 1; step < k; step++) {
-    int best = -1, bw = -1;
-    for (int j = 0; j < k; j++) {
-      if (!in_tree[j] && best_weight[j] > bw) {
-        bw = best_weight[j];
-        best = j;
+        // Mark deleted.
+        ct.supernodes[i].clear();
+        ct.separators[i].clear();
+        ct.node_to_parent[i] = -2;
+        merged_any = true;
       }
     }
-    in_tree[best] = true;
-    parent[best] = best_neighbor[best];
 
-    const auto* bb = mc_bits[best];
-    for (int j = 0; j < k; j++) {
-      if (!in_tree[j]) {
-        int w = PopcountAnd(bb, mc_bits[j], words);
-        if (w > best_weight[j]) {
-          best_weight[j] = w;
-          best_neighbor[j] = best;
+    // Compact: remove deleted nodes and renumber.
+    std::vector<int> old_to_new(k, -1);
+    int new_k = 0;
+    for (int i = 0; i < k; ++i)
+      if (ct.node_to_parent[i] != -2) old_to_new[i] = new_k++;
+
+    CliqueTree ct2;
+    ct2.supernodes.resize(new_k);
+    ct2.separators.resize(new_k);
+    ct2.node_to_parent.resize(new_k);
+    std::vector<std::vector<int>> new_cliques(new_k);
+    for (int i = 0; i < k; ++i) {
+      if (old_to_new[i] < 0) continue;
+      const int ni = old_to_new[i];
+      ct2.supernodes[ni] = std::move(ct.supernodes[i]);
+      ct2.separators[ni] = std::move(ct.separators[i]);
+      const int p = ct.node_to_parent[i];
+      ct2.node_to_parent[ni] = (p >= 0) ? old_to_new[p] : -1;
+      new_cliques[ni] = ct2.supernodes[ni];
+      new_cliques[ni].insert(new_cliques[ni].end(),
+                             ct2.separators[ni].begin(),
+                             ct2.separators[ni].end());
+      std::sort(new_cliques[ni].begin(), new_cliques[ni].end());
+    }
+    ct = std::move(ct2);
+    cliques = std::move(new_cliques);
+  }
+
+    ReorderSupernodes(ct, supernode_reorder_method);
+
+  // Connect disconnected forest roots into a single tree.
+  // Make all secondary roots children of the first root.
+  {
+    const int nk = static_cast<int>(ct.supernodes.size());
+    std::vector<int> roots;
+    for (int i = 0; i < nk; ++i) {
+      if (ct.node_to_parent[i] == -1) roots.push_back(i);
+    }
+    if (roots.size() > 1) {
+      const int main_root = roots[0];
+      for (size_t ri = 1; ri < roots.size(); ++ri) {
+        const int r = roots[ri];
+        ct.node_to_parent[r] = main_root;
+        // Separator = intersection of cliques[r] and cliques[main_root].
+        ct.separators[r].clear();
+        std::set_intersection(
+            cliques[r].begin(), cliques[r].end(),
+            cliques[main_root].begin(), cliques[main_root].end(),
+            std::back_inserter(ct.separators[r]));
+        // Recompute supernode = clique \ separator.
+        ct.supernodes[r].clear();
+        std::set_difference(
+            cliques[r].begin(), cliques[r].end(),
+            ct.separators[r].begin(), ct.separators[r].end(),
+            std::back_inserter(ct.supernodes[r]));
+      }
+    }
+  }
+
+  // Build post-order traversal.
+  {
+    const int nk = static_cast<int>(ct.supernodes.size());
+    std::vector<std::vector<int>> children(nk);
+    std::vector<int> roots;
+    for (int i = 0; i < nk; ++i) {
+      if (ct.node_to_parent[i] >= 0)
+        children[ct.node_to_parent[i]].push_back(i);
+      else
+        roots.push_back(i);
+    }
+    for (auto& c : children) std::sort(c.begin(), c.end());
+    std::sort(roots.begin(), roots.end());
+    ct.post_order_position_to_clique.clear();
+    ct.post_order_position_to_clique.reserve(nk);
+    std::vector<int> stk;
+    std::vector<char> expanded(nk, 0);
+    for (int root : roots) {
+      stk.clear();
+      stk.push_back(root);
+      while (!stk.empty()) {
+        const int node = stk.back();
+        if (!expanded[node]) {
+          expanded[node] = 1;
+          for (int c : children[node]) stk.push_back(c);
+        } else {
+          stk.pop_back();
+          ct.post_order_position_to_clique.push_back(node);
         }
       }
     }
   }
 
-  // ===================================================================
-  // Phase 4: Build conex::CliqueTree (post-order, supernodes, separators)
-  // ===================================================================
-  std::vector<std::vector<int>> children(k);
-  for (int i = 0; i < k; i++)
-    if (parent[i] != -1) children[parent[i]].push_back(i);
-
-  // Post-order via iterative DFS
-  std::vector<int> post_order;
-  post_order.reserve(k);
+#if 0  // CHOLMOD reference comparison (disabled)
+#if CONEX_MD_HAS_CHOLMOD
   {
-    std::vector<int> stk = {root};
-    std::vector<bool> expanded(k, false);
-    while (!stk.empty()) {
-      int node = stk.back();
-      if (!expanded[node]) {
-        expanded[node] = true;
-        for (int c : children[node]) stk.push_back(c);
-      } else {
-        stk.pop_back();
-        post_order.push_back(node);
-      }
-    }
+    const TreeAndCliques ref = BuildFromCholmodReference(supports_compact, unique_vars, n);
   }
+#endif
+#endif
 
-  // Supernodes and separators via bitwise AND / AND-NOT
-  CliqueTree ct;
-  ct.node_to_parent = std::move(parent);
-  ct.post_order_position_to_clique = std::move(post_order);
-  ct.supernodes.resize(k);
-  ct.separators.resize(k);
-
-  // We need separators in global indices.  Reuse the compact→global mapping.
-  // mc_bits are in compact space; convert via unique_vars.
-  auto bits_to_global = [&](const uint64_t* bits, int nw, int nn,
-                            std::vector<int>* out) {
-    out->clear();
-    for (int w = 0; w < nw; w++) {
-      uint64_t b = bits[w];
-      while (b) {
-        int bit = __builtin_ctzll(b);
-        int v = (w << 6) + bit;
-        if (v < nn) out->push_back(unique_vars[v]);
-        b &= b - 1;
-      }
-    }
-  };
-
-  // Temp buffer for AND / DIFF results
-  std::vector<uint64_t> tmp_bits(words);
-
-  for (int i = 0; i < k; i++) {
-    if (ct.node_to_parent[i] == -1) {
-      bits_to_global(mc_bits[i], words, n, &ct.supernodes[i]);
-    } else {
-      const auto* ci = mc_bits[i];
-      const auto* pi = mc_bits[ct.node_to_parent[i]];
-      // separator = C_i AND C_parent
-      for (int w = 0; w < words; w++) tmp_bits[w] = ci[w] & pi[w];
-      bits_to_global(tmp_bits.data(), words, n, &ct.separators[i]);
-      // supernode = C_i AND NOT C_parent
-      for (int w = 0; w < words; w++) tmp_bits[w] = ci[w] & ~pi[w];
-      bits_to_global(tmp_bits.data(), words, n, &ct.supernodes[i]);
-    }
-  }
-
+  if (maximal_cliques_out) *maximal_cliques_out = cliques;
   return ct;
 }
 

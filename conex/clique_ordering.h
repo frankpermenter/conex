@@ -10,6 +10,23 @@ enum : int {
   CLIQUE_TREE_METHOD_AMD = 1,
 };
 
+enum : int {
+  SUPERNODE_REORDER_BFS_GREEDY = 0,
+  SUPERNODE_REORDER_PQ_TREE = 1,
+  SUPERNODE_REORDER_NONE = 2,
+  SUPERNODE_REORDER_BFS_GREEDY_LARGEST = 3,
+};
+
+// Build a clique tree using minimum-degree elimination on row supports.
+// Uses bitset-based min-degree ordering, then extracts a supernodal tree.
+// Falls back to CHOLMOD supernodal factorization when available.
+CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
+    const std::vector<std::vector<int>>& row_supports,
+    std::vector<std::vector<int>>* maximal_cliques_out = nullptr,
+    int max_merge_supernode_size = 0,
+    int supernode_reorder_method = SUPERNODE_REORDER_BFS_GREEDY);
+
+
 CliqueTree MakeCliqueTree(const std::vector<std::vector<int>>& cliques,
                           const std::vector<int>& clique_is_valid_leaf = {},
                           int method = CLIQUE_TREE_METHOD_AMD);
@@ -27,12 +44,6 @@ CliqueTree MakeCliqueTreeImplicitFromRowSupports(
     const std::vector<std::vector<int>>& row_supports,
     std::vector<std::vector<int>>* maximal_cliques_out = nullptr);
 
-// Build a clique tree using bitset-based minimum-degree elimination to
-// triangulate, then extract maximal cliques and construct the tree.
-// Same interface as MakeCliqueTreeImplicitFromRowSupports.
-CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
-    const std::vector<std::vector<int>>& row_supports,
-    std::vector<std::vector<int>>* maximal_cliques_out = nullptr);
 
 size_t FillIn(const RootedTree& tree, int num_variables,
               const std::vector<int>& order,

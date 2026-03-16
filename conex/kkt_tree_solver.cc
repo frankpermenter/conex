@@ -5,6 +5,7 @@
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <set>
 #include <thread>
 #include <unordered_map>
 
@@ -877,11 +878,14 @@ SubmatrixContributor T::MakeContributor(
     const auto& sn = subsystem->supernodes();
     const auto& sep = subsystem->separators();
 
+    // Supernodes/separators may not be sorted (after ReorderSupernodes),
+    // so use a set for containment checks.
+    std::set<int> bag(sn.begin(), sn.end());
+    bag.insert(sep.begin(), sep.end());
+
     bool all_found = true;
     for (int idx : sorted_indices) {
-      bool in_sn = std::binary_search(sn.begin(), sn.end(), idx);
-      bool in_sep = std::binary_search(sep.begin(), sep.end(), idx);
-      if (!in_sn && !in_sep) {
+      if (bag.find(idx) == bag.end()) {
         all_found = false;
         break;
       }
@@ -1027,7 +1031,6 @@ int T::number_of_variables() const {
 }
 
 Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
-  DUMP(variable_to_elimination_position_);
   int num_vars = number_of_variables();
   Eigen::MatrixXd M(num_vars, num_vars);
   M.setZero();

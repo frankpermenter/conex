@@ -319,10 +319,12 @@ cc_library(
         "clique_ordering.cc",
         "clique_ordering_md.cc",
         "clique_ordering_utils.cc",
+        "pq_tree.cc",
     ],
     hdrs = [
         "clique_ordering.h",
         "clique_ordering_utils.h",
+        "pq_tree.h",
     ],
     deps = [
         "error_checking",

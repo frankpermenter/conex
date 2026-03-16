@@ -83,17 +83,18 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
       std::make_unique<::conex::SymmetricLinearSystemTreeSolver>();
 
   vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
+  bool has_dual_vars = false;
+  for (const auto& dv : dual_vars) {
+    if (!dv.empty()) { has_dual_vars = true; break; }
+  }
 
-  CliqueTree clique_tree =
-      MakePrimalDualCliqueTree(cliques, dual_vars, config.clique_tree_method);
-
-  // Merge a leaf child into its parent to demonstrate tree decoupling.
-   for (int i = 0; i < static_cast<int>(clique_tree.node_to_parent.size()); ++i) {
-     if (clique_tree.node_to_parent[i] >= 0) {
-       MergeChildIntoParent(clique_tree, i);
-       break;
-     }
-   }
+  CliqueTree clique_tree;
+  if (has_dual_vars) {
+    clique_tree =
+        MakePrimalDualCliqueTree(cliques, dual_vars, config.clique_tree_method);
+  } else {
+    clique_tree = MakeCliqueTreeMinDegreeFromRowSupports(cliques);
+  }
 
   int num_primal = c->GetNumberOfVariables();
   for (auto& clique : clique_assemblers_ptrs_) {
