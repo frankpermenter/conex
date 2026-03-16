@@ -88,7 +88,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
   }
 
   CliqueTree clique_tree = MakeCliqueTreeMinDegreeFromRowSupports(
-      cliques, /*maximal_cliques_out=*/nullptr, /*max_merge_supernode_size=*/0,
+      cliques, /*maximal_cliques_out=*/nullptr, /*max_merge_supernode_size=*/5,
       SUPERNODE_REORDER_BFS_GREEDY, dual_vars_flat);
 
   int num_primal = c->GetNumberOfVariables();

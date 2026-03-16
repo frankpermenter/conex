@@ -1,7 +1,9 @@
 #pragma once
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include <unordered_map>
 
 #include "conex/kkt_solver_interface.h"
 #include "conex/kkt_subsystem.h"
@@ -111,6 +113,18 @@ class SubmatrixContributor {
   void WriteSymmetric(const Eigen::MatrixXd& Q,
                       const std::vector<int>& elim_positions);
 
+  // Lazy variant: LazyMatrix must provide:
+  //   void set_order(const std::vector<int>& perm);
+  //   Eigen::MatrixXd block(int row, int col, int rows, int cols) const;
+  //   int rows() const;
+  //   int cols() const;
+  // set_order is called with a permutation that reorders the lazy matrix's
+  // indices to maximize contiguous block writes (supernodes first, then
+  // separators, each sorted by local elimination index).
+  template <typename LazyMatrix>
+  void WriteSymmetricLazy(LazyMatrix& lazy,
+                          const std::vector<int>& elim_positions);
+
   // Declare the contribution type.  If any contributor to a subsystem is
   // indefinite, the solver uses LU factorization for that clique.
   void set_type(ContributionType type);
@@ -122,6 +136,125 @@ class SubmatrixContributor {
   int sn_count_ = 0;
   std::vector<int> sep_indices_;
 };
+
+// --- Template implementation of WriteSymmetricLazy ---
+template <typename LazyMatrix>
+void SubmatrixContributor::WriteSymmetricLazy(
+    LazyMatrix& lazy, const std::vector<int>& elim_positions) {
+  const int n = static_cast<int>(elim_positions.size());
+  CONEX_DEMAND(lazy.rows() == n && lazy.cols() == n,
+               "Lazy matrix dimensions must match elim_positions size.");
+
+  // Classify each index: supernode or separator, with local offset.
+  struct VarInfo {
+    bool is_sn;
+    int local;
+  };
+  std::vector<VarInfo> info(n);
+  std::unordered_map<int, int> sep_to_local;
+  sep_to_local.reserve(sep_indices_.size());
+  for (int i = 0; i < static_cast<int>(sep_indices_.size()); ++i) {
+    sep_to_local[sep_indices_[i]] = i;
+  }
+  for (int i = 0; i < n; ++i) {
+    int ep = elim_positions[i];
+    if (ep >= sn_start_ && ep < sn_start_ + sn_count_) {
+      info[i] = {true, ep - sn_start_};
+    } else {
+      auto it = sep_to_local.find(ep);
+      CONEX_DEMAND(
+          it != sep_to_local.end(),
+          "elim_positions entry not in contributor's sparsity pattern.");
+      info[i] = {false, it->second};
+    }
+  }
+
+  // Compute optimal permutation: supernodes sorted by local index first,
+  // then separators sorted by local index.  This maximizes contiguous runs.
+  std::vector<int> perm(n);
+  for (int i = 0; i < n; ++i) perm[i] = i;
+  std::sort(perm.begin(), perm.end(), [&](int a, int b) {
+    if (info[a].is_sn != info[b].is_sn) return info[a].is_sn > info[b].is_sn;
+    return info[a].local < info[b].local;
+  });
+
+  // Reorder the lazy matrix and elim_positions to match the optimal order.
+  lazy.set_order(perm);
+  std::vector<int> perm_elim(n);
+  std::vector<VarInfo> perm_info(n);
+  for (int i = 0; i < n; ++i) {
+    perm_elim[i] = elim_positions[perm[i]];
+    perm_info[i] = info[perm[i]];
+  }
+
+  // Find maximal contiguous runs in the permuted order.
+  struct Run {
+    int q_start;
+    int length;
+    bool is_sn;
+    int local_start;
+  };
+  std::vector<Run> runs;
+  runs.reserve(n);
+  int i = 0;
+  while (i < n) {
+    Run run{i, 1, perm_info[i].is_sn, perm_info[i].local};
+    while (i + run.length < n &&
+           perm_info[i + run.length].is_sn == run.is_sn &&
+           perm_info[i + run.length].local == run.local_start + run.length) {
+      run.length++;
+    }
+    runs.push_back(run);
+    i += run.length;
+  }
+
+  // Dispatch blocks into storage using lazy evaluation.
+  auto sn_sub = supernode_submatrix();
+  auto sep_r = separator_rows();
+  auto sep_sc = separator_schur_complement();
+
+  const int nr = static_cast<int>(runs.size());
+  for (int ci = 0; ci < nr; ++ci) {
+    const auto& cr = runs[ci];
+    for (int ri = ci; ri < nr; ++ri) {
+      const auto& rr = runs[ri];
+      Eigen::MatrixXd Qblk =
+          lazy.block(rr.q_start, cr.q_start, rr.length, cr.length);
+
+      if (ri == ci) {
+        if (rr.is_sn) {
+          sn_sub.block(rr.local_start, cr.local_start, rr.length, cr.length)
+              .template triangularView<Eigen::Lower>() += Qblk;
+        } else {
+          sep_sc.block(rr.local_start, cr.local_start, rr.length, cr.length)
+              .template triangularView<Eigen::Lower>() += Qblk;
+        }
+      } else if (rr.is_sn && cr.is_sn) {
+        if (rr.local_start > cr.local_start) {
+          sn_sub.block(rr.local_start, cr.local_start, rr.length, cr.length)
+              .noalias() += Qblk;
+        } else {
+          sn_sub.block(cr.local_start, rr.local_start, cr.length, rr.length)
+              .noalias() += Qblk.transpose();
+        }
+      } else if (!rr.is_sn && cr.is_sn) {
+        sep_r.block(rr.local_start, cr.local_start, rr.length, cr.length)
+            .noalias() += Qblk;
+      } else if (rr.is_sn && !cr.is_sn) {
+        sep_r.block(cr.local_start, rr.local_start, cr.length, rr.length)
+            .noalias() += Qblk.transpose();
+      } else {
+        if (rr.local_start > cr.local_start) {
+          sep_sc.block(rr.local_start, cr.local_start, rr.length, cr.length)
+              .noalias() += Qblk;
+        } else {
+          sep_sc.block(cr.local_start, rr.local_start, cr.length, rr.length)
+              .noalias() += Qblk.transpose();
+        }
+      }
+    }
+  }
+}
 
 struct Options {
   bool validate_leaf_nodes = false;

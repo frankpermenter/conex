@@ -930,5 +930,265 @@ TEST(KKTTreeSolver, AdapterContributorChainTree) {
   }
 }
 
+// Lazy evaluator for A^T A.  Holds columns of A and computes sub-blocks of
+// the Gram matrix on demand.
+class LazyGramMatrix {
+ public:
+  explicit LazyGramMatrix(const Eigen::MatrixXd& A) : A_(A) {}
+
+  void set_order(const std::vector<int>& perm) {
+    Eigen::MatrixXd Ap(A_.rows(), A_.cols());
+    for (int i = 0; i < static_cast<int>(perm.size()); ++i) {
+      Ap.col(i) = A_.col(perm[i]);
+    }
+    A_ = std::move(Ap);
+    set_order_called_ = true;
+    applied_perm_ = perm;
+  }
+
+  Eigen::MatrixXd block(int row, int col, int rows, int cols) const {
+    return A_.middleCols(row, rows).transpose() * A_.middleCols(col, cols);
+  }
+
+  int rows() const { return static_cast<int>(A_.cols()); }
+  int cols() const { return static_cast<int>(A_.cols()); }
+
+  bool set_order_called() const { return set_order_called_; }
+  const std::vector<int>& applied_perm() const { return applied_perm_; }
+
+ private:
+  Eigen::MatrixXd A_;
+  bool set_order_called_ = false;
+  std::vector<int> applied_perm_;
+};
+
+// Test WriteSymmetricLazy with a LazyGramMatrix to solve A^T A x = b.
+//
+// 10 groups of columns with sizes 3,4,5,6,3,4,5,6,3,4 (total n=43).
+// Each group has non-overlapping row supports, so P^T A^T A P is block
+// diagonal.  Columns are round-robin interleaved across groups so that the
+// natural column order mixes supernodes and separators.
+//
+// Groups are paired into 5 two-node subtrees: (0,1), (2,3), ..., (8,9).
+// Each leaf node's contributor covers both groups in its pair, with the
+// first group as supernodes and the second as separators.  The interleaved
+// column order forces set_order to apply a non-trivial permutation that
+// gathers each group's columns into contiguous runs.
+TEST(KKTTreeSolver, LazyGramContributorSolve) {
+  std::mt19937_64 rng(42);
+  std::normal_distribution<double> normal(0.0, 1.0);
+
+  // 10 groups with sizes 3..6 cycling.
+  const std::vector<int> group_sizes = {3, 4, 5, 6, 3, 4, 5, 6, 3, 4};
+  const int num_groups = static_cast<int>(group_sizes.size());
+  const int num_pairs = num_groups / 2;
+  int n = 0;
+  for (int gs : group_sizes) n += gs;
+  // Each group gets its own block of rows (non-overlapping supports).
+  const int rows_per_group = 8;
+  const int m = num_groups * rows_per_group;
+
+  // Assign each variable to a group.  Round-robin: variable k belongs to
+  // group (k % num_groups).  Track which columns belong to each group.
+  std::vector<std::vector<int>> group_cols(num_groups);
+  {
+    std::vector<int> group_fill(num_groups, 0);
+    int col = 0;
+    while (col < n) {
+      for (int g = 0; g < num_groups && col < n; ++g) {
+        if (group_fill[g] < group_sizes[g]) {
+          group_cols[g].push_back(col);
+          group_fill[g]++;
+          col++;
+        }
+      }
+    }
+  }
+
+  // Build A (m x n): each group's columns are nonzero only in that group's
+  // row block.
+  MatrixXd A = MatrixXd::Zero(m, n);
+  for (int g = 0; g < num_groups; ++g) {
+    int row_start = g * rows_per_group;
+    for (int c : group_cols[g]) {
+      for (int r = row_start; r < row_start + rows_per_group; ++r) {
+        A(r, c) = normal(rng);
+      }
+    }
+  }
+  MatrixXd AtA = A.transpose() * A;
+
+  // Verify block-diagonal zero structure.
+  for (int g1 = 0; g1 < num_groups; ++g1) {
+    for (int g2 = g1 + 1; g2 < num_groups; ++g2) {
+      for (int c1 : group_cols[g1]) {
+        for (int c2 : group_cols[g2]) {
+          ASSERT_NEAR(AtA(c1, c2), 0.0, 1e-14)
+              << "Expected zero between group " << g1 << " col " << c1
+              << " and group " << g2 << " col " << c2;
+        }
+      }
+    }
+  }
+
+  Eigen::LDLT<MatrixXd> ref_ldlt(AtA);
+  ASSERT_EQ(ref_ldlt.info(), Eigen::Success);
+  VectorXd rhs(n);
+  for (int i = 0; i < n; ++i) rhs(i) = normal(rng);
+  VectorXd ref_sol = ref_ldlt.solve(rhs);
+
+  // Build a forest of 5 two-node subtrees.  Each pair (2k, 2k+1) gives:
+  //   Node 2k (leaf): sn = group 2k elim positions, sep = group 2k+1 elim positions
+  //   Node 2k+1 (root): sn = group 2k+1 elim positions, sep = {}
+  // Elimination positions are contiguous per group.
+  CliqueTree tree;
+  tree.supernodes.resize(num_groups);
+  tree.separators.resize(num_groups);
+  tree.node_to_parent.resize(num_groups);
+
+  int elim_start = 0;
+  for (int g = 0; g < num_groups; ++g) {
+    for (int j = 0; j < group_sizes[g]; ++j) {
+      tree.supernodes[g].push_back(elim_start + j);
+    }
+    elim_start += group_sizes[g];
+  }
+  for (int p = 0; p < num_pairs; ++p) {
+    int leaf = 2 * p;
+    int root = 2 * p + 1;
+    // Leaf's separator = root's supernodes.
+    tree.separators[leaf] = tree.supernodes[root];
+    tree.separators[root] = {};  // root has no separator
+    tree.node_to_parent[leaf] = root;
+    tree.node_to_parent[root] = -1;
+  }
+
+  // Build the mapping from original column order to elimination position.
+  std::vector<int> col_to_elim(n);
+  {
+    std::vector<int> next_elim(num_groups);
+    int es = 0;
+    for (int g = 0; g < num_groups; ++g) {
+      next_elim[g] = es;
+      es += group_sizes[g];
+    }
+    for (int g = 0; g < num_groups; ++g) {
+      for (int c : group_cols[g]) {
+        col_to_elim[c] = next_elim[g]++;
+      }
+    }
+  }
+
+  // Permuted A^T A for verification.
+  std::vector<int> elim_to_col(n);
+  for (int c = 0; c < n; ++c) elim_to_col[col_to_elim[c]] = c;
+  MatrixXd AtA_perm(n, n);
+  for (int i = 0; i < n; ++i)
+    for (int j = 0; j < n; ++j)
+      AtA_perm(i, j) = AtA(elim_to_col[i], elim_to_col[j]);
+
+  SymmetricLinearSystemTreeSolver solver;
+  solver.Finalize(tree);
+
+  // Zero all storage.
+  for (int g = 0; g < num_groups; ++g) {
+    std::vector<int> clique;
+    clique.insert(clique.end(), tree.supernodes[g].begin(),
+                  tree.supernodes[g].end());
+    clique.insert(clique.end(), tree.separators[g].begin(),
+                  tree.separators[g].end());
+    auto c = solver.MakeContributor(clique);
+    c.supernode_submatrix().setZero();
+    if (c.separator_rows().size() > 0) c.separator_rows().setZero();
+    if (c.separator_schur_complement().size() > 0)
+      c.separator_schur_complement().setZero();
+  }
+
+  // Write each pair's A^T A through the leaf node using WriteSymmetricLazy.
+  // The lazy matrix covers both groups in the pair; columns are interleaved,
+  // so set_order must reorder them (supernodes first, then separators).
+  int set_order_count = 0;
+  for (int p = 0; p < num_pairs; ++p) {
+    int g0 = 2 * p;
+    int g1 = 2 * p + 1;
+    int leaf = g0;
+
+    // Merge both groups' columns in interleaved original order.
+    std::vector<int> pair_cols;
+    pair_cols.insert(pair_cols.end(), group_cols[g0].begin(),
+                     group_cols[g0].end());
+    pair_cols.insert(pair_cols.end(), group_cols[g1].begin(),
+                     group_cols[g1].end());
+    // Sort by original column index to get the interleaved order.
+    std::sort(pair_cols.begin(), pair_cols.end());
+
+    int pair_n = static_cast<int>(pair_cols.size());
+    MatrixXd A_pair(m, pair_n);
+    std::vector<int> elim_pos(pair_n);
+    for (int j = 0; j < pair_n; ++j) {
+      A_pair.col(j) = A.col(pair_cols[j]);
+      elim_pos[j] = col_to_elim[pair_cols[j]];
+    }
+
+    LazyGramMatrix lazy(A_pair);
+    std::vector<int> clique;
+    clique.insert(clique.end(), tree.supernodes[leaf].begin(),
+                  tree.supernodes[leaf].end());
+    clique.insert(clique.end(), tree.separators[leaf].begin(),
+                  tree.separators[leaf].end());
+    auto contrib = solver.MakeContributor(clique);
+    contrib.WriteSymmetricLazy(lazy, elim_pos);
+
+    if (lazy.set_order_called()) set_order_count++;
+
+    // Verify supernode block for group g0.
+    int es0 = 0;
+    for (int k = 0; k < g0; ++k) es0 += group_sizes[k];
+    int gs0 = group_sizes[g0];
+    MatrixXd expected_sn =
+        AtA_perm.block(es0, es0, gs0, gs0);
+    MatrixXd actual_sn = contrib.supernode_submatrix();
+    for (int i = 0; i < gs0; ++i)
+      for (int j = i + 1; j < gs0; ++j) actual_sn(i, j) = actual_sn(j, i);
+    EXPECT_NEAR((actual_sn - expected_sn).norm(), 0.0, 1e-10)
+        << "Supernode block mismatch for pair " << p;
+
+    // Verify separator Schur complement for group g1.
+    int es1 = es0 + gs0;
+    int gs1 = group_sizes[g1];
+    MatrixXd expected_sep_sc =
+        AtA_perm.block(es1, es1, gs1, gs1);
+    MatrixXd actual_sep_sc = contrib.separator_schur_complement();
+    for (int i = 0; i < gs1; ++i)
+      for (int j = i + 1; j < gs1; ++j)
+        actual_sep_sc(i, j) = actual_sep_sc(j, i);
+    EXPECT_NEAR((actual_sep_sc - expected_sep_sc).norm(), 0.0, 1e-10)
+        << "Separator Schur complement mismatch for pair " << p;
+
+    // Separator rows should be zero (block diagonal, no cross-group terms).
+    if (contrib.separator_rows().size() > 0) {
+      EXPECT_NEAR(contrib.separator_rows().norm(), 0.0, 1e-10)
+          << "Separator rows should be zero for pair " << p;
+    }
+  }
+
+  // All 5 pairs should trigger set_order (interleaved columns).
+  EXPECT_EQ(set_order_count, num_pairs);
+
+  // Solve and verify.  The solver's variable i corresponds to original
+  // column elim_to_col[i], so permute the RHS into solver order.
+  ASSERT_TRUE(solver.AssembleAndFactor());
+  VectorXd rhs_perm(n);
+  for (int i = 0; i < n; ++i) rhs_perm(i) = rhs(elim_to_col[i]);
+  MatrixXd sol(n, 1);
+  sol.col(0) = rhs_perm;
+  solver.SolveInPlace(sol, false);
+  // Permute solution back to original order.
+  VectorXd x_orig(n);
+  for (int i = 0; i < n; ++i) x_orig(elim_to_col[i]) = sol(i, 0);
+  double rel_err = (x_orig - ref_sol).norm() / ref_sol.norm();
+  EXPECT_LT(rel_err, 1e-10) << "rel_err=" << rel_err;
+}
+
 }  // namespace
 }  // namespace conex

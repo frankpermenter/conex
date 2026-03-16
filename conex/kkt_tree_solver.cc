@@ -803,58 +803,102 @@ void SubmatrixContributor::WriteSymmetric(
   CONEX_DEMAND(Q.rows() == n && Q.cols() == n,
                "Q dimensions must match elim_positions size.");
 
-  // Build mapping: elim_position -> local block row.
-  // Supernodes [sn_start_, sn_start_ + sn_count_) map to rows [0, sn_count_).
-  // Separators map to rows [0, sep_count) in the separator blocks.
   auto sn_sub = supernode_submatrix();
-  auto sep_rows = separator_rows();
-  auto sep_schur = separator_schur_complement();
+  auto sep_r = separator_rows();
+  auto sep_sc = separator_schur_complement();
 
-  // Build a lookup from elimination position -> (is_supernode, local_row).
-  std::unordered_map<int, std::pair<bool, int>> elim_to_local;
-  for (int i = 0; i < sn_count_; ++i) {
-    elim_to_local[sn_start_ + i] = {true, i};
-  }
+  // Classify each Q index: is it supernode or separator, and what local index?
+  struct VarInfo {
+    bool is_sn;
+    int local;
+  };
+  std::vector<VarInfo> info(n);
+
+  std::unordered_map<int, int> sep_to_local;
+  sep_to_local.reserve(sep_indices_.size());
   for (int i = 0; i < static_cast<int>(sep_indices_.size()); ++i) {
-    elim_to_local[sep_indices_[i]] = {false, i};
+    sep_to_local[sep_indices_[i]] = i;
+  }
+  for (int i = 0; i < n; ++i) {
+    int ep = elim_positions[i];
+    if (ep >= sn_start_ && ep < sn_start_ + sn_count_) {
+      info[i] = {true, ep - sn_start_};
+    } else {
+      auto it = sep_to_local.find(ep);
+      CONEX_DEMAND(it != sep_to_local.end(),
+                   "elim_positions entry not in contributor's sparsity pattern.");
+      info[i] = {false, it->second};
+    }
   }
 
-  for (int j = 0; j < n; ++j) {
-    auto it_j = elim_to_local.find(elim_positions[j]);
-    CONEX_DEMAND(it_j != elim_to_local.end(),
-                 "elim_positions entry not in contributor's sparsity pattern.");
-    for (int i = j; i < n; ++i) {
-      auto it_i = elim_to_local.find(elim_positions[i]);
-      CONEX_DEMAND(
-          it_i != elim_to_local.end(),
-          "elim_positions entry not in contributor's sparsity pattern.");
+  // Find maximal contiguous runs: consecutive Q indices that map to
+  // consecutive local indices in the same block type.
+  struct Run {
+    int q_start;
+    int length;
+    bool is_sn;
+    int local_start;
+  };
+  std::vector<Run> runs;
+  runs.reserve(n);
+  int i = 0;
+  while (i < n) {
+    Run run{i, 1, info[i].is_sn, info[i].local};
+    while (i + run.length < n &&
+           info[i + run.length].is_sn == run.is_sn &&
+           info[i + run.length].local == run.local_start + run.length) {
+      run.length++;
+    }
+    runs.push_back(run);
+    i += run.length;
+  }
 
-      bool row_is_sn = it_i->second.first;
-      int row_local = it_i->second.second;
-      bool col_is_sn = it_j->second.first;
-      int col_local = it_j->second.second;
+  // Write blocks.  Only the lower triangle of Q is written, so we iterate
+  // col_run <= row_run (in Q index order).  Runs partition [0,n) into
+  // consecutive segments, so row_run.q_start >= col_run.q_start + col_run.length
+  // when ri > ci, guaranteeing the Q sub-block is below the diagonal.
+  const int nr = static_cast<int>(runs.size());
+  for (int ci = 0; ci < nr; ++ci) {
+    const auto& cr = runs[ci];
+    for (int ri = ci; ri < nr; ++ri) {
+      const auto& rr = runs[ri];
+      auto Qblk = Q.block(rr.q_start, cr.q_start, rr.length, cr.length);
 
-      // Ensure row >= col in elimination order (lower triangle).
-      if (!row_is_sn && col_is_sn) {
-        // row is separator, col is supernode → separator_rows block.
-        sep_rows(row_local, col_local) += Q(i, j);
-      } else if (row_is_sn && col_is_sn) {
-        // Both supernode → supernode_submatrix (lower triangle).
-        if (row_local >= col_local) {
-          sn_sub(row_local, col_local) += Q(i, j);
+      if (ri == ci) {
+        // Diagonal block — only lower triangle.
+        if (rr.is_sn) {
+          sn_sub.block(rr.local_start, cr.local_start, rr.length, cr.length)
+              .triangularView<Eigen::Lower>() += Qblk;
         } else {
-          sn_sub(col_local, row_local) += Q(i, j);
+          sep_sc.block(rr.local_start, cr.local_start, rr.length, cr.length)
+              .triangularView<Eigen::Lower>() += Qblk;
         }
-      } else if (!row_is_sn && !col_is_sn) {
-        // Both separator → separator_schur_complement (lower triangle).
-        if (row_local >= col_local) {
-          sep_schur(row_local, col_local) += Q(i, j);
+      } else if (rr.is_sn && cr.is_sn) {
+        // Both supernode.  Storage holds lower triangle only.
+        if (rr.local_start > cr.local_start) {
+          sn_sub.block(rr.local_start, cr.local_start, rr.length, cr.length)
+              .noalias() += Qblk;
         } else {
-          sep_schur(col_local, row_local) += Q(i, j);
+          sn_sub.block(cr.local_start, rr.local_start, cr.length, rr.length)
+              .noalias() += Qblk.transpose();
         }
+      } else if (!rr.is_sn && cr.is_sn) {
+        // row=separator, col=supernode → separator_rows.
+        sep_r.block(rr.local_start, cr.local_start, rr.length, cr.length)
+            .noalias() += Qblk;
+      } else if (rr.is_sn && !cr.is_sn) {
+        // row=supernode, col=separator → transpose into separator_rows.
+        sep_r.block(cr.local_start, rr.local_start, cr.length, rr.length)
+            .noalias() += Qblk.transpose();
       } else {
-        // row is supernode, col is separator → transpose into separator_rows.
-        sep_rows(col_local, row_local) += Q(i, j);
+        // Both separator.  Storage holds lower triangle only.
+        if (rr.local_start > cr.local_start) {
+          sep_sc.block(rr.local_start, cr.local_start, rr.length, cr.length)
+              .noalias() += Qblk;
+        } else {
+          sep_sc.block(cr.local_start, rr.local_start, cr.length, rr.length)
+              .noalias() += Qblk.transpose();
+        }
       }
     }
   }
