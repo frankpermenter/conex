@@ -121,15 +121,11 @@ void T::SetEliminationPosition(
 void T::UpdateData() {
   if (contributor_) {
     // Contributor path: populate assembler data, then write via contributor.
+    // Storage is zeroed centrally by UpdateAssemblerData before any adapter
+    // writes, so multiple contributors can accumulate into the same subsystem.
     assembler_->SetDenseData();
     const auto& G = assembler_->submatrix_data()->G;
     const int n = G.rows();
-    // Zero the storage blocks before writing.
-    contributor_->supernode_submatrix().setZero();
-    if (!contributor_->separator_indices().empty()) {
-      contributor_->separator_rows().setZero();
-      contributor_->separator_schur_complement().setZero();
-    }
     Eigen::MatrixXd Q(n, n);
     for (int i = 0; i < n; ++i)
       for (int j = 0; j < n; ++j) Q(i, j) = G(i, j);

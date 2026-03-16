@@ -5,6 +5,7 @@
 #include "conex/kkt_simplicial_solver.h"
 #include "conex/kkt_solver.h"
 #include "conex/kkt_tree_solver.h"
+#include "conex/tree_utils.h"
 
 namespace conex {
 namespace {
@@ -63,6 +64,16 @@ SubsystemType ClassifySupernodeSubmatrix(const std::vector<int>& vars,
   }
   return SubsystemType::kQuasiDefinite;
 }
+ContributionType ClassifyCliqueContribution(
+    const SupernodalAssemblerBase* assembler, int number_of_primal_variables) {
+  for (auto v : assembler->variables()) {
+    if (v >= number_of_primal_variables) {
+      return ContributionType::kIndefinite;
+    }
+  }
+  return ContributionType::kPositiveDefinite;
+}
+
 std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
   vector<vector<int>> cliques = c->variables();
@@ -75,15 +86,22 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
 
   CliqueTree clique_tree =
       MakePrimalDualCliqueTree(cliques, dual_vars, config.clique_tree_method);
-  int i = 0;
+
+  // Merge a leaf child into its parent to demonstrate tree decoupling.
+   for (int i = 0; i < static_cast<int>(clique_tree.node_to_parent.size()); ++i) {
+     if (clique_tree.node_to_parent[i] >= 0) {
+       MergeChildIntoParent(clique_tree, i);
+       break;
+     }
+   }
+
+  int num_primal = c->GetNumberOfVariables();
   for (auto& clique : clique_assemblers_ptrs_) {
     auto adapter =
         std::make_unique<::conex::KKTAssemblerToSubsystemAdapter>(clique);
-    auto* subsystem = adapter->create_subsystem(ClassifySupernodeSubmatrix(
-        clique_tree.supernodes.at(i), c->GetNumberOfVariables()));
-    tree_solver_->AddSubsystem(subsystem);
+    adapter->set_contribution_type(
+        ClassifyCliqueContribution(clique, num_primal));
     tree_solver_->push_back(std::move(adapter));
-    ++i;
   }
   tree_solver_->Finalize(clique_tree);
   tree_solver_->SetFactorizationMode(true /*left looking*/);

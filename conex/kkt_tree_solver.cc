@@ -548,6 +548,10 @@ void T::ComputeSeparatorOffsets() {
 }
 
 void T::UpdateAssemblerData() {
+  // Zero all subsystem storage before contributors write additively.
+  if (arena_memory_) {
+    std::memset(arena_memory_.get(), 0, arena_bytes_);
+  }
   ForEachTask(assembler_to_subsystem_adapter_.size(),
               EffectiveThreadCount(num_threads_), [&](size_t i) {
                 assembler_to_subsystem_adapter_.at(i)->UpdateData();
@@ -832,24 +836,24 @@ void SubmatrixContributor::WriteSymmetric(
       // Ensure row >= col in elimination order (lower triangle).
       if (!row_is_sn && col_is_sn) {
         // row is separator, col is supernode → separator_rows block.
-        sep_rows(row_local, col_local) = Q(i, j);
+        sep_rows(row_local, col_local) += Q(i, j);
       } else if (row_is_sn && col_is_sn) {
         // Both supernode → supernode_submatrix (lower triangle).
         if (row_local >= col_local) {
-          sn_sub(row_local, col_local) = Q(i, j);
+          sn_sub(row_local, col_local) += Q(i, j);
         } else {
-          sn_sub(col_local, row_local) = Q(i, j);
+          sn_sub(col_local, row_local) += Q(i, j);
         }
       } else if (!row_is_sn && !col_is_sn) {
         // Both separator → separator_schur_complement (lower triangle).
         if (row_local >= col_local) {
-          sep_schur(row_local, col_local) = Q(i, j);
+          sep_schur(row_local, col_local) += Q(i, j);
         } else {
-          sep_schur(col_local, row_local) = Q(i, j);
+          sep_schur(col_local, row_local) += Q(i, j);
         }
       } else {
         // row is supernode, col is separator → transpose into separator_rows.
-        sep_rows(col_local, row_local) = Q(i, j);
+        sep_rows(col_local, row_local) += Q(i, j);
       }
     }
   }

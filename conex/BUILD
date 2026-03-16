@@ -246,7 +246,10 @@ cc_library(
         "tree_utils.h",
     ],
     visibility = ["//visibility:public"],
-    deps = ["@eigen"],
+    deps = [
+        "error_checking",
+        "@eigen",
+    ],
 )
 
 cc_library(

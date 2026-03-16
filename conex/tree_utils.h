@@ -30,4 +30,9 @@ struct RootedTree {
 vector<int> PathInForest(int x, int y, const std::vector<int>& tree,
                          const std::vector<int>& height);
 
+// Merge a child node into its parent.  The child's supernodes are absorbed
+// into the parent; children of the child become children of the parent.
+// The child node is removed and all indices are compacted.
+void MergeChildIntoParent(CliqueTree& tree, int child_index);
+
 }  // namespace conex

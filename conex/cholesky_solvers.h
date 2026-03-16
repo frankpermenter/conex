@@ -1,4 +1,5 @@
 #pragma once
+#include "conex/RLDLT.h"
 #include "conex/kkt_subsystem.h"
 
 namespace conex {
@@ -488,22 +489,22 @@ class DynamicSubsystem : public KKTSubsystem {
  private:
   bool DoEliminateSupernodeColumns() override {
     if (indefinite_) {
-      // LU needs the full symmetric matrix; storage may only have the lower
-      // triangle (e.g. from WriteSymmetric or Schur complement scatter).
-      auto sn = supernode_submatrix();
-      sn.triangularView<Eigen::StrictlyUpper>() = sn.transpose();
-      lu_.compute(sn);
-      return lu_.determinant() != 0;
+      rldlt_.compute(supernode_submatrix());
+      return rldlt_.info() == Eigen::Success;
     }
     llt_.compute(supernode_submatrix());
     return llt_.info() == Eigen::Success;
   }
 
   void DoComputeSeparatorSchurComplement() override {
-    if (separator_rows().rows() == 0) return;
+    if (separator_rows().rows() == 0 || separator_rows().cols() == 0) return;
     if (indefinite_) {
-      separator_schur_complement() -=
-          separator_rows() * lu_.solve(separator_rows().transpose());
+      MatrixXd temp = rldlt_.solve(separator_rows().transpose());
+      int n = separator_schur_complement().rows();
+      for (int j = 0; j < n; j++) {
+        separator_schur_complement().col(j).tail(n - j).noalias() -=
+            separator_rows().bottomRows(n - j) * temp.col(j);
+      }
       return;
     }
     MatrixXd temp = separator_rows().transpose();
@@ -517,8 +518,9 @@ class DynamicSubsystem : public KKTSubsystem {
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
+    if (y.rows() == 0) return;
     if (indefinite_) {
-      y = lu_.solve(y);
+      y = rldlt_.solve(y);
     } else {
       llt_.matrixL().solveInPlace(y);
     }
@@ -526,6 +528,7 @@ class DynamicSubsystem : public KKTSubsystem {
 
   void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
+    if (y.rows() == 0) return;
     if (!indefinite_) {
       llt_.matrixL().transpose().solveInPlace(y);
     }
@@ -533,7 +536,7 @@ class DynamicSubsystem : public KKTSubsystem {
 
   bool indefinite_ = false;
   Eigen::LLT<MatrixXd> llt_;
-  Eigen::PartialPivLU<MatrixXd> lu_;
+  Eigen::RLDLT<MatrixXd> rldlt_;
 };
 
 }  // namespace conex
