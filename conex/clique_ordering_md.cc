@@ -9,15 +9,6 @@
 
 #include <Eigen/Sparse>
 
-#if __has_include(<suitesparse/cholmod.h>)
-#include <suitesparse/cholmod.h>
-#define CONEX_MD_HAS_CHOLMOD 1
-#elif __has_include(<cholmod.h>)
-#include <cholmod.h>
-#define CONEX_MD_HAS_CHOLMOD 1
-#else
-#define CONEX_MD_HAS_CHOLMOD 0
-#endif
 
 #include "conex/clique_ordering.h"
 #include "conex/pq_tree.h"
