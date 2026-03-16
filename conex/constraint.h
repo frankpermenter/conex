@@ -67,6 +67,8 @@ class Constraint : public IVisitable, public IVariableShape {
     return do_perform_line_search(params, y0, y1, output);
   }
 
+  virtual LazySymmetricMatrix* GetLazyEvaluator() { return nullptr; }
+
  protected:
   template <typename WorkspaceType>
   static void CopyDualVariableFromWorkspace(WorkspaceType* workspace,
@@ -157,6 +159,11 @@ class SupernodalAssemblerConstraint : public SupernodalAssemblerBase {
   virtual bool supports_line_search() const override {
     return workspace_->supports_line_search();
   }
+
+  LazySymmetricMatrix* GetLazyEvaluator() override {
+    return workspace_->GetLazyEvaluator();
+  }
+
   SupernodalAssemblerConstraint(){};
   Constraint* workspace_ = NULL;
   Eigen::VectorXd memory_;

@@ -113,14 +113,22 @@ class SubmatrixContributor {
   void WriteSymmetric(const Eigen::MatrixXd& Q,
                       const std::vector<int>& elim_positions);
 
+  // Precompute the optimal permutation and contiguous-run structure for
+  // WriteSymmetricLazy.  Call once after the contributor is created (the
+  // tree solver does this automatically for adapters).  Subsequent
+  // WriteSymmetricLazy calls skip the permutation/run computation and
+  // reuse the cached data.
+  void PrecomputeLazyOrder(const std::vector<int>& elim_positions);
+
   // Lazy variant: LazyMatrix must provide:
   //   void set_order(const std::vector<int>& perm);
   //   Eigen::MatrixXd block(int row, int col, int rows, int cols) const;
   //   int rows() const;
   //   int cols() const;
-  // set_order is called with a permutation that reorders the lazy matrix's
-  // indices to maximize contiguous block writes (supernodes first, then
-  // separators, each sorted by local elimination index).
+  // set_order is called once (at precompute time or on first call) with a
+  // permutation that reorders the lazy matrix's indices to maximize
+  // contiguous block writes (supernodes first, then separators, each
+  // sorted by local elimination index).
   template <typename LazyMatrix>
   void WriteSymmetricLazy(LazyMatrix& lazy,
                           const std::vector<int>& elim_positions);
@@ -135,6 +143,17 @@ class SubmatrixContributor {
   int sn_start_ = 0;
   int sn_count_ = 0;
   std::vector<int> sep_indices_;
+
+  // Cached lazy-order data (computed by PrecomputeLazyOrder).
+  struct Run {
+    int q_start;
+    int length;
+    bool is_sn;
+    int local_start;
+  };
+  bool lazy_order_cached_ = false;
+  std::vector<int> cached_perm_;
+  std::vector<Run> cached_runs_;
 };
 
 // --- Template implementation of WriteSymmetricLazy ---
@@ -145,79 +164,22 @@ void SubmatrixContributor::WriteSymmetricLazy(
   CONEX_DEMAND(lazy.rows() == n && lazy.cols() == n,
                "Lazy matrix dimensions must match elim_positions size.");
 
-  // Classify each index: supernode or separator, with local offset.
-  struct VarInfo {
-    bool is_sn;
-    int local;
-  };
-  std::vector<VarInfo> info(n);
-  std::unordered_map<int, int> sep_to_local;
-  sep_to_local.reserve(sep_indices_.size());
-  for (int i = 0; i < static_cast<int>(sep_indices_.size()); ++i) {
-    sep_to_local[sep_indices_[i]] = i;
-  }
-  for (int i = 0; i < n; ++i) {
-    int ep = elim_positions[i];
-    if (ep >= sn_start_ && ep < sn_start_ + sn_count_) {
-      info[i] = {true, ep - sn_start_};
-    } else {
-      auto it = sep_to_local.find(ep);
-      CONEX_DEMAND(
-          it != sep_to_local.end(),
-          "elim_positions entry not in contributor's sparsity pattern.");
-      info[i] = {false, it->second};
-    }
+  if (!lazy_order_cached_) {
+    PrecomputeLazyOrder(elim_positions);
   }
 
-  // Compute optimal permutation: supernodes sorted by local index first,
-  // then separators sorted by local index.  This maximizes contiguous runs.
-  std::vector<int> perm(n);
-  for (int i = 0; i < n; ++i) perm[i] = i;
-  std::sort(perm.begin(), perm.end(), [&](int a, int b) {
-    if (info[a].is_sn != info[b].is_sn) return info[a].is_sn > info[b].is_sn;
-    return info[a].local < info[b].local;
-  });
-
-  // Reorder the lazy matrix and elim_positions to match the optimal order.
-  lazy.set_order(perm);
-  std::vector<int> perm_elim(n);
-  std::vector<VarInfo> perm_info(n);
-  for (int i = 0; i < n; ++i) {
-    perm_elim[i] = elim_positions[perm[i]];
-    perm_info[i] = info[perm[i]];
-  }
-
-  // Find maximal contiguous runs in the permuted order.
-  struct Run {
-    int q_start;
-    int length;
-    bool is_sn;
-    int local_start;
-  };
-  std::vector<Run> runs;
-  runs.reserve(n);
-  int i = 0;
-  while (i < n) {
-    Run run{i, 1, perm_info[i].is_sn, perm_info[i].local};
-    while (i + run.length < n &&
-           perm_info[i + run.length].is_sn == run.is_sn &&
-           perm_info[i + run.length].local == run.local_start + run.length) {
-      run.length++;
-    }
-    runs.push_back(run);
-    i += run.length;
-  }
+  lazy.set_order(cached_perm_);
 
   // Dispatch blocks into storage using lazy evaluation.
   auto sn_sub = supernode_submatrix();
   auto sep_r = separator_rows();
   auto sep_sc = separator_schur_complement();
 
-  const int nr = static_cast<int>(runs.size());
+  const int nr = static_cast<int>(cached_runs_.size());
   for (int ci = 0; ci < nr; ++ci) {
-    const auto& cr = runs[ci];
+    const auto& cr = cached_runs_[ci];
     for (int ri = ci; ri < nr; ++ri) {
-      const auto& rr = runs[ri];
+      const auto& rr = cached_runs_[ri];
       Eigen::MatrixXd Qblk =
           lazy.block(rr.q_start, cr.q_start, rr.length, cr.length);
 

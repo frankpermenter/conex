@@ -2,9 +2,37 @@
 #include "conex/constraint.h"
 #include "conex/error_checking_macros.h"
 #include "conex/newton_step.h"
+#include "conex/supernodal_assembler_base.h"
 #include "linear_workspace.h"
 
 namespace conex {
+
+class GramEvaluator : public LazySymmetricMatrix {
+ public:
+  GramEvaluator() = default;
+  explicit GramEvaluator(WorkspaceLinear* ws) : ws_(ws) {}
+  void bind(WorkspaceLinear* ws) { ws_ = ws; }
+
+  void set_order(const std::vector<int>& perm) override {
+    const auto& WA = ws_->weighted_constraints;
+    WA_perm_.resize(WA.rows(), WA.cols());
+    for (int i = 0; i < static_cast<int>(perm.size()); ++i) {
+      WA_perm_.col(i) = WA.col(perm[i]);
+    }
+  }
+
+  Eigen::MatrixXd block(int row, int col, int rows, int cols) const override {
+    return WA_perm_.middleCols(row, rows).transpose() *
+           WA_perm_.middleCols(col, cols);
+  }
+
+  int rows() const override { return ws_->num_vars_; }
+  int cols() const override { return ws_->num_vars_; }
+
+ private:
+  WorkspaceLinear* ws_;
+  Eigen::MatrixXd WA_perm_;
+};
 
 void PreprocessLinearInequality(const Eigen::MatrixXd& A,
                                 const Eigen::MatrixXd& lb,
@@ -25,6 +53,10 @@ class LinearConstraint : public Constraint {
   WorkspaceLinear* workspace() { return &workspace_; }
 
   int number_of_variables() const override { return constraint_matrix_.cols(); }
+  LazySymmetricMatrix* GetLazyEvaluator() override {
+    gram_evaluator_.bind(&workspace_);
+    return &gram_evaluator_;
+  }
   DenseMatrix constraint_matrix() const { return constraint_matrix_; }
   DenseMatrix affine_term() const { return constraint_affine_; }
 
@@ -110,6 +142,7 @@ class LinearConstraint : public Constraint {
   void AffineUpdate(const Eigen::Ref<const Eigen::MatrixXd>& y, int step_type);
 
   WorkspaceLinear workspace_;
+  GramEvaluator gram_evaluator_;
   DenseMatrix constraint_matrix_;
   DenseMatrix constraint_affine_;
 };

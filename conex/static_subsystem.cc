@@ -120,10 +120,23 @@ void T::SetEliminationPosition(
 
 void T::UpdateData() {
   if (contributor_) {
-    // Contributor path: populate assembler data, then write via contributor.
-    // Storage is zeroed centrally by UpdateAssemblerData before any adapter
-    // writes, so multiple contributors can accumulate into the same subsystem.
+    // Contributor path: storage is zeroed centrally by UpdateAssemblerData
+    // before any adapter writes, so multiple contributors can accumulate
+    // into the same subsystem.
+
+    // Always call SetDenseData to populate auxiliary fields (AW, AQc, etc.)
+    // that the cone program reads from submatrix_data().
     assembler_->SetDenseData();
+
+    // Use the lazy evaluator if the assembler provides one, writing blocks
+    // of the Gram matrix directly into subsystem storage without copying G.
+    if (auto* lazy = assembler_->GetLazyEvaluator()) {
+      contributor_->WriteSymmetricLazy(
+          *lazy, variable_index_to_elimination_position_);
+      return;
+    }
+
+    // Fallback: copy the materialized G into subsystem storage.
     const auto& G = assembler_->submatrix_data()->G;
     const int n = G.rows();
     Eigen::MatrixXd Q(n, n);

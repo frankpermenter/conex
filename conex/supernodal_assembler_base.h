@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 #include <vector>
 
 #include "conex/constraint_interface.h"
@@ -6,6 +7,18 @@
 #include "conex/supernodal_cholesky_data.h"
 #include <Eigen/Dense>
 namespace conex {
+
+// Interface for lazy evaluation of a symmetric matrix.  Provides block
+// accessors so that entries can be computed on demand and written directly
+// into tree-solver storage without materializing the full matrix.
+class LazySymmetricMatrix {
+ public:
+  virtual ~LazySymmetricMatrix() = default;
+  virtual void set_order(const std::vector<int>& perm) = 0;
+  virtual Eigen::MatrixXd block(int row, int col, int rows, int cols) const = 0;
+  virtual int rows() const = 0;
+  virtual int cols() const = 0;
+};
 
 // Manages the transfer of clique submatrix to supernodal data structure.
 // The SetDenseData triggers an update the submatrix which
@@ -62,6 +75,7 @@ class SupernodalAssemblerBase : public IVisitable, public IVariableShape {
 
   void UpdateBlocks();
   virtual void SetDenseData() = 0;
+  virtual LazySymmetricMatrix* GetLazyEvaluator() { return nullptr; }
 
   Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> PrimalSubvector(
       const Eigen::MatrixXd& x) const {

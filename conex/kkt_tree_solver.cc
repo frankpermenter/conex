@@ -640,6 +640,7 @@ void T::Finalize(const CliqueTree& clique_tree) {
       auto c = std::make_unique<SubmatrixContributor>(
           MakeContributor(adapter->elimination_positions()));
       c->set_type(adapter->contribution_type());
+      c->PrecomputeLazyOrder(adapter->elimination_positions());
       adapter->BindContributor(std::move(c));
     }
   }
@@ -795,6 +796,67 @@ void SubmatrixContributor::set_type(ContributionType type) {
   if (type == ContributionType::kIndefinite) {
     subsystem_->MarkIndefinite();
   }
+}
+
+void SubmatrixContributor::PrecomputeLazyOrder(
+    const std::vector<int>& elim_positions) {
+  const int n = static_cast<int>(elim_positions.size());
+
+  // Classify each index: supernode or separator, with local offset.
+  struct VarInfo {
+    bool is_sn;
+    int local;
+  };
+  std::vector<VarInfo> info(n);
+  std::unordered_map<int, int> sep_to_local;
+  sep_to_local.reserve(sep_indices_.size());
+  for (int i = 0; i < static_cast<int>(sep_indices_.size()); ++i) {
+    sep_to_local[sep_indices_[i]] = i;
+  }
+  for (int i = 0; i < n; ++i) {
+    int ep = elim_positions[i];
+    if (ep >= sn_start_ && ep < sn_start_ + sn_count_) {
+      info[i] = {true, ep - sn_start_};
+    } else {
+      auto it = sep_to_local.find(ep);
+      CONEX_DEMAND(
+          it != sep_to_local.end(),
+          "elim_positions entry not in contributor's sparsity pattern.");
+      info[i] = {false, it->second};
+    }
+  }
+
+  // Compute optimal permutation: supernodes sorted by local index first,
+  // then separators sorted by local index.  This maximizes contiguous runs.
+  cached_perm_.resize(n);
+  for (int i = 0; i < n; ++i) cached_perm_[i] = i;
+  std::sort(cached_perm_.begin(), cached_perm_.end(), [&](int a, int b) {
+    if (info[a].is_sn != info[b].is_sn) return info[a].is_sn > info[b].is_sn;
+    return info[a].local < info[b].local;
+  });
+
+  // Reorder info according to perm to find contiguous runs.
+  std::vector<VarInfo> perm_info(n);
+  for (int i = 0; i < n; ++i) {
+    perm_info[i] = info[cached_perm_[i]];
+  }
+
+  // Find maximal contiguous runs in the permuted order.
+  cached_runs_.clear();
+  cached_runs_.reserve(n);
+  int i = 0;
+  while (i < n) {
+    Run run{i, 1, perm_info[i].is_sn, perm_info[i].local};
+    while (i + run.length < n &&
+           perm_info[i + run.length].is_sn == run.is_sn &&
+           perm_info[i + run.length].local == run.local_start + run.length) {
+      run.length++;
+    }
+    cached_runs_.push_back(run);
+    i += run.length;
+  }
+
+  lazy_order_cached_ = true;
 }
 
 void SubmatrixContributor::WriteSymmetric(
