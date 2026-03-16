@@ -2,6 +2,7 @@
 
 #include "conex/RLDLT.h"
 #include "conex/cholesky_solvers.h"
+#include "conex/kkt_tree_solver.h"
 
 namespace conex {
 using T = KKTAssemblerToSubsystemAdapter;
@@ -9,6 +10,8 @@ using T = KKTAssemblerToSubsystemAdapter;
 namespace {}  // namespace
 T::KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base)
     : assembler_(base) {}
+
+T::~KKTAssemblerToSubsystemAdapter() = default;
 
 KKTSubsystemBase* T::KKTAssemblerToSubsystemAdapter::create_subsystem(
     const SubsystemType& type) {
@@ -27,6 +30,18 @@ KKTSubsystemBase* T::KKTAssemblerToSubsystemAdapter::create_subsystem(
   }
   kkt_subsystem_->SetFactorizationMode(true /*left looking*/);
   return kkt_subsystem_.get();
+}
+
+void T::set_contribution_type(ContributionType type) {
+  contribution_type_value_ = static_cast<int>(type);
+}
+
+ContributionType T::contribution_type() const {
+  return static_cast<ContributionType>(contribution_type_value_);
+}
+
+void T::BindContributor(std::unique_ptr<SubmatrixContributor> contributor) {
+  contributor_ = std::move(contributor);
 }
 
 std::vector<int> GetLocalEliminationPosition(
@@ -68,6 +83,11 @@ void T::SetEliminationPosition(
   for (auto& v : variable_index_to_elimination_position_) {
     v = shared_variable_to_elimination_position.at(v);
   }
+
+  // The contributor path (or any path without a manually-created subsystem)
+  // does not need the remaining setup — it will be done after binding.
+  if (!kkt_subsystem_) return;
+
   variable_set_equals_sorted_supernodes_ =
       variable_index_to_elimination_position_ == kkt_subsystem_->supernodes() &&
       kkt_subsystem_->separators().size() == 0;
@@ -99,6 +119,25 @@ void T::SetEliminationPosition(
 }
 
 void T::UpdateData() {
+  if (contributor_) {
+    // Contributor path: populate assembler data, then write via contributor.
+    assembler_->SetDenseData();
+    const auto& G = assembler_->submatrix_data()->G;
+    const int n = G.rows();
+    // Zero the storage blocks before writing.
+    contributor_->supernode_submatrix().setZero();
+    if (!contributor_->separator_indices().empty()) {
+      contributor_->separator_rows().setZero();
+      contributor_->separator_schur_complement().setZero();
+    }
+    Eigen::MatrixXd Q(n, n);
+    for (int i = 0; i < n; ++i)
+      for (int j = 0; j < n; ++j) Q(i, j) = G(i, j);
+    contributor_->WriteSymmetric(Q, variable_index_to_elimination_position_);
+    return;
+  }
+
+  // Legacy path: direct storage access.
   int n1 = kkt_subsystem_->supernodes().size();
   int n2 = kkt_subsystem_->separators().size();
   auto& source_submatrix = assembler_->submatrix_data()->G;

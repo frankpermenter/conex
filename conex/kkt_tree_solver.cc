@@ -627,6 +627,17 @@ void T::Finalize(const CliqueTree& clique_tree) {
     visit(root);
   }
   AllocateSolveArena();
+
+  // Bind contributors to adapters that use the contributor contract
+  // (i.e., those without their own subsystem).
+  for (auto& adapter : assembler_to_subsystem_adapter_) {
+    if (!adapter->kkt_subsystem()) {
+      auto c = std::make_unique<SubmatrixContributor>(
+          MakeContributor(adapter->elimination_positions()));
+      c->set_type(adapter->contribution_type());
+      adapter->BindContributor(std::move(c));
+    }
+  }
 }
 
 void T::Finalize(const Options& options) {
@@ -732,6 +743,7 @@ void T::AllocateArenaAndBind() {
   }
   arena_memory_.reset(raw_ptr);
   arena_bytes_ = alloc_bytes;
+  std::memset(raw_ptr, 0, alloc_bytes);
 
   std::uintptr_t cursor = reinterpret_cast<std::uintptr_t>(arena_memory_.get());
   for (auto* subsystem : subsystems_) {

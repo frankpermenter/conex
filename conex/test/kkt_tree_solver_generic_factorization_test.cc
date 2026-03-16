@@ -5,6 +5,8 @@
 
 #include "conex/cholesky_solvers.h"
 #include "conex/kkt_tree_solver.h"
+#include "conex/static_subsystem.h"
+#include "conex/workspace.h"
 #include <Eigen/Dense>
 #include <gtest/gtest.h>
 
@@ -766,6 +768,165 @@ TEST(KKTTreeSolver, ContributorProgressiveMerge) {
           << "Tree with " << num_nodes << " nodes"
           << " (type=" << static_cast<int>(ctype) << "): rel_err=" << rel_err;
     }
+  }
+}
+
+// A simple assembler that holds a fixed symmetric matrix for its variables.
+class StaticMatrixAssembler final : public SupernodalAssemblerBase {
+ public:
+  StaticMatrixAssembler(const std::vector<int>& variables,
+                        const Eigen::MatrixXd& local_matrix)
+      : SupernodalAssemblerBase(variables), local_matrix_(local_matrix) {
+    CONEX_DEMAND(local_matrix_.rows() == local_matrix_.cols(),
+                 "Local matrix must be square.");
+    CONEX_DEMAND(local_matrix_.rows() == static_cast<int>(variables.size()),
+                 "Local matrix size must match variables.");
+    Workspace workspace(&submatrix_data_);
+    memory_.resize(SizeOf(workspace));
+    Initialize(&workspace, memory_.data());
+  }
+
+  void SetDenseData() override { submatrix_data_.G = local_matrix_; }
+
+ private:
+  Eigen::MatrixXd local_matrix_;
+  Eigen::VectorXd memory_;
+};
+
+// Test that KKTAssemblerToSubsystemAdapter works with the contributor contract:
+// the adapter does not call create_subsystem or AddSubsystem; instead it sets a
+// contribution type and the tree solver auto-creates DynamicSubsystems and binds
+// contributors after Finalize.
+TEST(KKTTreeSolver, AdapterContributorContract) {
+  // Two independent 2x2 SPD blocks: variables {0,1} and {2,3}.
+  MatrixXd local_01(2, 2);
+  local_01 << 4.0, 1.0, 1.0, 3.0;
+  MatrixXd local_23(2, 2);
+  local_23 << 5.0, 2.0, 2.0, 6.0;
+
+  // Full 4x4 reference matrix.
+  MatrixXd K = MatrixXd::Zero(4, 4);
+  K.topLeftCorner(2, 2) = local_01;
+  K.bottomRightCorner(2, 2) = local_23;
+
+  Eigen::LDLT<MatrixXd> ref_ldlt(K);
+  ASSERT_EQ(ref_ldlt.info(), Eigen::Success);
+
+  VectorXd rhs(4);
+  rhs << 1.0, -2.0, 3.0, 4.0;
+  VectorXd ref_sol = ref_ldlt.solve(rhs);
+
+  for (ContributionType ctype :
+       {ContributionType::kPositiveDefinite, ContributionType::kIndefinite}) {
+    std::vector<std::unique_ptr<StaticMatrixAssembler>> assemblers;
+    SymmetricLinearSystemTreeSolver solver;
+    solver.EnableAutoUpdateAtAssemble(true);
+
+    // Create adapters using the contributor contract (no create_subsystem).
+    assemblers.push_back(
+        std::make_unique<StaticMatrixAssembler>(std::vector<int>{0, 1}, local_01));
+    {
+      auto adapter = std::make_unique<KKTAssemblerToSubsystemAdapter>(
+          assemblers.back().get());
+      adapter->set_contribution_type(ctype);
+      solver.push_back(std::move(adapter));
+    }
+
+    assemblers.push_back(
+        std::make_unique<StaticMatrixAssembler>(std::vector<int>{2, 3}, local_23));
+    {
+      auto adapter = std::make_unique<KKTAssemblerToSubsystemAdapter>(
+          assemblers.back().get());
+      adapter->set_contribution_type(ctype);
+      solver.push_back(std::move(adapter));
+    }
+
+    CliqueTree tree;
+    tree.supernodes = {{0, 1}, {2, 3}};
+    tree.separators = {{}, {}};
+    tree.node_to_parent = {-1, -1};
+    solver.Finalize(tree);
+
+    solver.Assemble();
+    ASSERT_TRUE(solver.Factor())
+        << "Factor failed (type=" << static_cast<int>(ctype) << ")";
+
+    MatrixXd rhs_mat(4, 1);
+    rhs_mat.col(0) = rhs;
+    MatrixXd sol = solver.Solve(rhs_mat, true);
+
+    double rel_err = (sol.col(0) - ref_sol).norm() / ref_sol.norm();
+    EXPECT_LT(rel_err, 1e-10)
+        << "type=" << static_cast<int>(ctype) << " rel_err=" << rel_err;
+  }
+}
+
+// Test the adapter contributor contract with overlapping cliques (chain tree).
+// Each clique's local matrix is an additive contribution; their sum is K.
+TEST(KKTTreeSolver, AdapterContributorChainTree) {
+  const int N = 8;
+  std::mt19937_64 rng(77);
+  std::normal_distribution<double> normal(0.0, 1.0);
+
+  // 3 overlapping cliques: {0,1,2,3}, {2,3,4,5}, {4,5,6,7}.
+  std::vector<std::vector<int>> cliques = {
+      {0, 1, 2, 3}, {2, 3, 4, 5}, {4, 5, 6, 7}};
+
+  // Build random SPD local matrices for each clique; K = sum of contributions.
+  std::vector<MatrixXd> locals;
+  MatrixXd K = MatrixXd::Zero(N, N);
+  for (const auto& clique : cliques) {
+    int cs = static_cast<int>(clique.size());
+    MatrixXd R(cs, cs);
+    for (int i = 0; i < cs; ++i)
+      for (int j = 0; j < cs; ++j) R(i, j) = 0.3 * normal(rng);
+    MatrixXd Q = 4.0 * MatrixXd::Identity(cs, cs) + R * R.transpose();
+    locals.push_back(Q);
+    for (int i = 0; i < cs; ++i)
+      for (int j = 0; j < cs; ++j) K(clique[i], clique[j]) += Q(i, j);
+  }
+
+  Eigen::LDLT<MatrixXd> ref_ldlt(K);
+  ASSERT_EQ(ref_ldlt.info(), Eigen::Success);
+
+  MatrixXd rhs(N, 2);
+  for (int i = 0; i < rhs.rows(); ++i)
+    for (int j = 0; j < rhs.cols(); ++j) rhs(i, j) = normal(rng);
+  MatrixXd ref_sol = ref_ldlt.solve(rhs);
+
+  // Tree: node 0 sn={0,1} sep={2,3}, node 1 sn={2,3} sep={4,5},
+  //       node 2 sn={4,5} sep={6,7}, node 3 sn={6,7} sep={}.
+  CliqueTree tree;
+  tree.supernodes = {{0, 1}, {2, 3}, {4, 5}, {6, 7}};
+  tree.separators = {{2, 3}, {4, 5}, {6, 7}, {}};
+  tree.node_to_parent = {1, 2, 3, -1};
+
+  for (ContributionType ctype :
+       {ContributionType::kPositiveDefinite, ContributionType::kIndefinite}) {
+    std::vector<std::unique_ptr<StaticMatrixAssembler>> assemblers;
+    SymmetricLinearSystemTreeSolver solver;
+    solver.EnableAutoUpdateAtAssemble(true);
+
+    for (size_t i = 0; i < cliques.size(); ++i) {
+      assemblers.push_back(
+          std::make_unique<StaticMatrixAssembler>(cliques[i], locals[i]));
+      auto adapter = std::make_unique<KKTAssemblerToSubsystemAdapter>(
+          assemblers.back().get());
+      adapter->set_contribution_type(ctype);
+      solver.push_back(std::move(adapter));
+    }
+
+    solver.Finalize(tree);
+
+    solver.Assemble();
+    ASSERT_TRUE(solver.Factor())
+        << "Factor failed (type=" << static_cast<int>(ctype) << ")";
+
+    MatrixXd sol = solver.Solve(rhs, true);
+
+    double rel_err = (sol - ref_sol).norm() / ref_sol.norm();
+    EXPECT_LT(rel_err, 1e-10)
+        << "type=" << static_cast<int>(ctype) << " rel_err=" << rel_err;
   }
 }
 
