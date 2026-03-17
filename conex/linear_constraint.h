@@ -34,9 +34,17 @@ class GramEvaluator : public LazySymmetricMatrix {
     WA_perm_.noalias() = ws_->W.asDiagonal() * A_perm_;
   }
 
-  Eigen::MatrixXd block(int row, int col, int rows, int cols) const override {
-    return WA_perm_.middleCols(row, rows).transpose() *
-           WA_perm_.middleCols(col, cols);
+  void add_block(int row, int col, int rows, int cols,
+                 Eigen::Ref<Eigen::MatrixXd> dest) const override {
+    dest.noalias() +=
+        WA_perm_.middleCols(row, rows).transpose() *
+        WA_perm_.middleCols(col, cols);
+  }
+
+  void add_block_lower(int pos, int size,
+                       Eigen::Ref<Eigen::MatrixXd> dest) const override {
+    dest.selfadjointView<Eigen::Lower>().rankUpdate(
+        WA_perm_.middleCols(pos, size).transpose());
   }
 
   int rows() const override { return ws_->num_vars_; }

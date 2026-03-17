@@ -15,7 +15,16 @@ class LazySymmetricMatrix {
  public:
   virtual ~LazySymmetricMatrix() = default;
   virtual void set_order(const std::vector<int>& perm) = 0;
-  virtual Eigen::MatrixXd block(int row, int col, int rows, int cols) const = 0;
+
+  // Add block to dest:  dest += Q(row:row+rows, col:col+cols)
+  virtual void add_block(int row, int col, int rows, int cols,
+                         Eigen::Ref<Eigen::MatrixXd> dest) const = 0;
+
+  // Add lower triangle of diagonal block:
+  //   dest.triangularView<Lower>() += Q(pos:pos+size, pos:pos+size)
+  virtual void add_block_lower(int pos, int size,
+                               Eigen::Ref<Eigen::MatrixXd> dest) const = 0;
+
   virtual int rows() const = 0;
   virtual int cols() const = 0;
 };

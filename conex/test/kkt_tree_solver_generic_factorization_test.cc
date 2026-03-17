@@ -946,8 +946,16 @@ class LazyGramMatrix {
     applied_perm_ = perm;
   }
 
-  Eigen::MatrixXd block(int row, int col, int rows, int cols) const {
-    return A_.middleCols(row, rows).transpose() * A_.middleCols(col, cols);
+  void add_block(int row, int col, int rows, int cols,
+                 Eigen::Ref<Eigen::MatrixXd> dest) const {
+    dest.noalias() +=
+        A_.middleCols(row, rows).transpose() * A_.middleCols(col, cols);
+  }
+
+  void add_block_lower(int pos, int size,
+                       Eigen::Ref<Eigen::MatrixXd> dest) const {
+    dest.selfadjointView<Eigen::Lower>().rankUpdate(
+        A_.middleCols(pos, size).transpose());
   }
 
   int rows() const { return static_cast<int>(A_.cols()); }

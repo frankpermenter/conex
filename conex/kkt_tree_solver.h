@@ -180,38 +180,50 @@ void SubmatrixContributor::WriteSymmetricLazy(
     const auto& cr = cached_runs_[ci];
     for (int ri = ci; ri < nr; ++ri) {
       const auto& rr = cached_runs_[ri];
-      Eigen::MatrixXd Qblk =
-          lazy.block(rr.q_start, cr.q_start, rr.length, cr.length);
 
       if (ri == ci) {
         if (rr.is_sn) {
-          sn_sub.block(rr.local_start, cr.local_start, rr.length, cr.length)
-              .template triangularView<Eigen::Lower>() += Qblk;
+          lazy.add_block_lower(
+              rr.q_start, rr.length,
+              sn_sub.block(rr.local_start, rr.local_start, rr.length,
+                           rr.length));
         } else {
-          sep_sc.block(rr.local_start, cr.local_start, rr.length, cr.length)
-              .template triangularView<Eigen::Lower>() += Qblk;
+          lazy.add_block_lower(
+              rr.q_start, rr.length,
+              sep_sc.block(rr.local_start, rr.local_start, rr.length,
+                           rr.length));
         }
       } else if (rr.is_sn && cr.is_sn) {
         if (rr.local_start > cr.local_start) {
-          sn_sub.block(rr.local_start, cr.local_start, rr.length, cr.length)
-              .noalias() += Qblk;
+          lazy.add_block(
+              rr.q_start, cr.q_start, rr.length, cr.length,
+              sn_sub.block(rr.local_start, cr.local_start, rr.length,
+                           cr.length));
         } else {
-          sn_sub.block(cr.local_start, rr.local_start, cr.length, rr.length)
-              .noalias() += Qblk.transpose();
+          lazy.add_block(
+              cr.q_start, rr.q_start, cr.length, rr.length,
+              sn_sub.block(cr.local_start, rr.local_start, cr.length,
+                           rr.length));
         }
       } else if (!rr.is_sn && cr.is_sn) {
-        sep_r.block(rr.local_start, cr.local_start, rr.length, cr.length)
-            .noalias() += Qblk;
+        lazy.add_block(
+            rr.q_start, cr.q_start, rr.length, cr.length,
+            sep_r.block(rr.local_start, cr.local_start, rr.length, cr.length));
       } else if (rr.is_sn && !cr.is_sn) {
-        sep_r.block(cr.local_start, rr.local_start, cr.length, rr.length)
-            .noalias() += Qblk.transpose();
+        lazy.add_block(
+            cr.q_start, rr.q_start, cr.length, rr.length,
+            sep_r.block(cr.local_start, rr.local_start, cr.length, rr.length));
       } else {
         if (rr.local_start > cr.local_start) {
-          sep_sc.block(rr.local_start, cr.local_start, rr.length, cr.length)
-              .noalias() += Qblk;
+          lazy.add_block(
+              rr.q_start, cr.q_start, rr.length, cr.length,
+              sep_sc.block(rr.local_start, cr.local_start, rr.length,
+                           cr.length));
         } else {
-          sep_sc.block(cr.local_start, rr.local_start, cr.length, rr.length)
-              .noalias() += Qblk.transpose();
+          lazy.add_block(
+              cr.q_start, rr.q_start, cr.length, rr.length,
+              sep_sc.block(cr.local_start, rr.local_start, cr.length,
+                           rr.length));
         }
       }
     }
