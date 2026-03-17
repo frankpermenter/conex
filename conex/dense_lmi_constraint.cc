@@ -101,4 +101,45 @@ void DenseLMIConstraint::ConstructSchurComplementSystemImpl(
   }
 }
 
+void DenseLMIGramEvaluator::set_order(const std::vector<int>& perm) {
+  if (order_set_) return;
+  const int nn = A_vect_->rows();
+  const int m = static_cast<int>(perm.size());
+  A_vect_perm_.resize(nn, m);
+  for (int i = 0; i < m; ++i) {
+    A_vect_perm_.col(i) = A_vect_->col(perm[i]);
+  }
+  WAW_vect_perm_.resize(nn, m);
+  order_set_ = true;
+  update_weights();
+}
+
+void DenseLMIGramEvaluator::update_weights() {
+  if (!order_set_) return;
+  const auto& W = ws_->W;
+  const int n = ws_->n_;
+  const int m = A_vect_perm_.cols();
+  Eigen::MatrixXd AW(n, n);
+  for (int i = 0; i < m; ++i) {
+    Eigen::Map<const Eigen::MatrixXd> A_i(A_vect_perm_.col(i).data(), n, n);
+    Eigen::Map<Eigen::MatrixXd> WAW_i(WAW_vect_perm_.col(i).data(), n, n);
+    AW.noalias() = A_i * W;
+    WAW_i.noalias() = W * AW;
+  }
+}
+
+void DenseLMIGramEvaluator::add_block(
+    int row, int col, int rows, int cols,
+    Eigen::Ref<Eigen::MatrixXd> dest) const {
+  dest.noalias() += WAW_vect_perm_.middleCols(row, rows).transpose() *
+                    A_vect_perm_.middleCols(col, cols);
+}
+
+void DenseLMIGramEvaluator::add_block_lower(
+    int pos, int size, Eigen::Ref<Eigen::MatrixXd> dest) const {
+  Eigen::MatrixXd block = WAW_vect_perm_.middleCols(pos, size).transpose() *
+                          A_vect_perm_.middleCols(pos, size);
+  dest.triangularView<Eigen::Lower>() += block;
+}
+
 }  // namespace conex
