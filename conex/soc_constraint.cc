@@ -109,6 +109,7 @@ double GetMinSqrtMu(double dinfmax, const double& x0,
 
   return upper_bound;
 }
+}  // namespace
 
 // Implements the spectral decomposition of the Spin Factor algebra.
 // See
@@ -261,6 +262,7 @@ DenseMatrix Sqrt(double x0, const DenseMatrix& x) {
   return zsqrt;
 }
 
+namespace {
 DenseMatrix Exp(double x0, const DenseMatrix& x) {
   int n = x.rows();
   DenseMatrix z(n + 1, 1);
@@ -470,6 +472,42 @@ CONEX_STATUS SOCConstraint::UpdateAffineTermImpl(double val, int r, int c,
   ConservativeResizeHelper(&constraint_affine_, 0, n_ + 1);
   constraint_affine_(r) = val;
   return CONEX_SUCCESS;
+}
+
+void SOCGramEvaluator::set_order(const std::vector<int>& perm) {
+  if (order_set_) return;
+  const int nplus1 = A_->rows();
+  const int m = static_cast<int>(perm.size());
+  num_vars_ = m;
+  A_perm_.resize(nplus1, m);
+  for (int i = 0; i < m; ++i) {
+    A_perm_.col(i) = A_->col(perm[i]);
+  }
+  WA_perm_.resize(nplus1, m);
+  order_set_ = true;
+  update_weights();
+}
+
+void SOCGramEvaluator::update_weights() {
+  if (!order_set_) return;
+  auto Wsqrt = Sqrt(*ws_->W0, ws_->W1);
+  const int m = A_perm_.cols();
+  const double sqrt2 = std::sqrt(2.0);
+  for (int i = 0; i < m; ++i) {
+    WA_perm_.col(i) = sqrt2 * QuadraticRepresentation(Wsqrt, A_perm_.col(i));
+  }
+}
+
+void SOCGramEvaluator::add_block(int row, int col, int rows, int cols,
+                                  Eigen::Ref<Eigen::MatrixXd> dest) const {
+  dest.noalias() += WA_perm_.middleCols(row, rows).transpose() *
+                    WA_perm_.middleCols(col, cols);
+}
+
+void SOCGramEvaluator::add_block_lower(
+    int pos, int size, Eigen::Ref<Eigen::MatrixXd> dest) const {
+  dest.selfadjointView<Eigen::Lower>().rankUpdate(
+      WA_perm_.middleCols(pos, size).transpose());
 }
 
 }  // namespace conex

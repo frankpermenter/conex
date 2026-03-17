@@ -1,9 +1,42 @@
 #include "conex/constraint.h"
 #include "conex/error_codes.h"
 #include "conex/newton_step.h"
+#include "conex/supernodal_assembler_base.h"
 #include "conex/workspace_soc.h"
 
 namespace conex {
+
+class SOCGramEvaluator : public LazySymmetricMatrix {
+ public:
+  SOCGramEvaluator() = default;
+  void bind(WorkspaceSOC* ws, const Eigen::MatrixXd* A) {
+    ws_ = ws;
+    A_ = A;
+    num_vars_ = A->cols();
+  }
+
+  void set_order(const std::vector<int>& perm) override;
+  void update_weights();
+
+  void add_block(int row, int col, int rows, int cols,
+                 Eigen::Ref<Eigen::MatrixXd> dest) const override;
+  void add_block_lower(int pos, int size,
+                       Eigen::Ref<Eigen::MatrixXd> dest) const override;
+
+  int rows() const override { return num_vars_; }
+  int cols() const override { return num_vars_; }
+
+  bool is_active() const { return order_set_; }
+  void invalidate_order() { order_set_ = false; }
+
+ private:
+  WorkspaceSOC* ws_ = nullptr;
+  const Eigen::MatrixXd* A_ = nullptr;
+  int num_vars_ = 0;
+  Eigen::MatrixXd A_perm_;
+  Eigen::MatrixXd WA_perm_;  // sqrt(2) * Q(Wsqrt) * A_perm_
+  bool order_set_ = false;
+};
 
 using RefType = Eigen::Ref<const Eigen::MatrixXd>;
 using NonConstRefType = Eigen::Ref<Eigen::MatrixXd>;
@@ -29,6 +62,12 @@ class SOCConstraint : public Constraint {
   int number_of_variables() const override { return constraint_matrix_.cols(); }
   DenseMatrix constraint_matrix() const { return constraint_matrix_; }
   DenseMatrix affine_term() const { return constraint_affine_; }
+
+  LazySymmetricMatrix* GetLazyEvaluator() override {
+    gram_evaluator_.bind(&workspace_, &constraint_matrix_);
+    gram_evaluator_.update_weights();
+    return &gram_evaluator_;
+  }
 
  private:
   void do_schur_complement(bool initialize,
@@ -106,6 +145,7 @@ class SOCConstraint : public Constraint {
                                        const RefType& y);
 
   WorkspaceSOC workspace_;
+  SOCGramEvaluator gram_evaluator_;
   DenseMatrix constraint_matrix_;
   DenseMatrix constraint_affine_;
   int n_;
