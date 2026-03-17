@@ -10,15 +10,28 @@ namespace conex {
 class GramEvaluator : public LazySymmetricMatrix {
  public:
   GramEvaluator() = default;
-  explicit GramEvaluator(WorkspaceLinear* ws) : ws_(ws) {}
-  void bind(WorkspaceLinear* ws) { ws_ = ws; }
+  void bind(WorkspaceLinear* ws, const Eigen::MatrixXd* A) {
+    ws_ = ws;
+    A_ = A;
+  }
 
+  // Called once: permute columns of A and compute initial WA_perm_.
   void set_order(const std::vector<int>& perm) override {
-    const auto& WA = ws_->weighted_constraints;
-    WA_perm_.resize(WA.rows(), WA.cols());
-    for (int i = 0; i < static_cast<int>(perm.size()); ++i) {
-      WA_perm_.col(i) = WA.col(perm[i]);
+    if (order_set_) return;
+    const int n = A_->rows();
+    const int m = static_cast<int>(perm.size());
+    A_perm_.resize(n, m);
+    for (int i = 0; i < m; ++i) {
+      A_perm_.col(i) = A_->col(perm[i]);
     }
+    WA_perm_.resize(n, m);
+    update_weights();
+    order_set_ = true;
+  }
+
+  // Recompute WA_perm_ = diag(W) * A_perm_ after W changes.
+  void update_weights() {
+    WA_perm_.noalias() = ws_->W.asDiagonal() * A_perm_;
   }
 
   Eigen::MatrixXd block(int row, int col, int rows, int cols) const override {
@@ -29,9 +42,15 @@ class GramEvaluator : public LazySymmetricMatrix {
   int rows() const override { return ws_->num_vars_; }
   int cols() const override { return ws_->num_vars_; }
 
+  bool is_active() const { return order_set_; }
+  void invalidate_order() { order_set_ = false; }
+
  private:
-  WorkspaceLinear* ws_;
+  WorkspaceLinear* ws_ = nullptr;
+  const Eigen::MatrixXd* A_ = nullptr;
+  Eigen::MatrixXd A_perm_;
   Eigen::MatrixXd WA_perm_;
+  bool order_set_ = false;
 };
 
 void PreprocessLinearInequality(const Eigen::MatrixXd& A,
@@ -54,7 +73,7 @@ class LinearConstraint : public Constraint {
 
   int number_of_variables() const override { return constraint_matrix_.cols(); }
   LazySymmetricMatrix* GetLazyEvaluator() override {
-    gram_evaluator_.bind(&workspace_);
+    gram_evaluator_.bind(&workspace_, &constraint_matrix_);
     return &gram_evaluator_;
   }
   DenseMatrix constraint_matrix() const { return constraint_matrix_; }

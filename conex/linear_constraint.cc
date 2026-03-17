@@ -137,6 +137,9 @@ bool LinearConstraint::PerformLineSearchImpl(
 void LinearConstraint::SetIdentityImpl() {
   workspace_.W.setConstant(1);
   workspace_.r.setConstant(1);
+  if (gram_evaluator_.is_active()) {
+    gram_evaluator_.update_weights();
+  }
 }
 
 // TODO: use e_weight and c_weight
@@ -207,6 +210,9 @@ bool LinearConstraint::TakeStepImpl(const StepOptions& options) {
     } else {
       AffineUpdate(d, options.step_type);
     }
+  }
+  if (gram_evaluator_.is_active()) {
+    gram_evaluator_.update_weights();
   }
   return true;
 }
@@ -320,6 +326,7 @@ CONEX_STATUS LinearConstraint::UpdateLinearOperatorImpl(double val, int var,
   CONEX_RETURN_ON_FAIL((var >= 0) && (r >= 0), "Indices cannot be negative.");
 
   constraint_matrix_(r, var) = val;
+  gram_evaluator_.invalidate_order();
   return CONEX_SUCCESS;
 }
 
