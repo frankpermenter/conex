@@ -241,8 +241,7 @@ void SolveHSD(ConstraintManager& kkt_system_manager_,
   VectorXd& y = dir.y;
   int rank = Rank(kkt_system_manager_.cone_inequalities());
   for (int i = 0; i < config.max_iterations; i++) {
-    solver->Assemble();
-    CONEX_CHECK(solver->Factor());
+    CONEX_CHECK(solver->AssembleAndFactor());
 
     AssembleSchurComplementResiduals(kkt_system_manager_, &sys);
 

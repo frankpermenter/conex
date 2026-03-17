@@ -568,6 +568,9 @@ void T::DoAssemble() {
 }
 
 bool T::DoAssembleAndFactor() {
+  if (auto_update_assemblers_) {
+    UpdateAssemblerData();
+  }
   std::atomic<bool> success(true);
   ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_), [&](size_t i) {
     if (!success.load(std::memory_order_relaxed)) {
