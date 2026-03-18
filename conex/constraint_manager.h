@@ -85,6 +85,7 @@ class ConstraintManager {
     auto pointer = std::make_unique<Type>(std::forward<T>(x));
     CONEX_CHECK(pointer->number_of_variables() ==
                 static_cast<int>(variables.size()));
+    pointer->set_variable_indices(variables);
     constraint_storage_.emplace_back(std::move(pointer));
     constraint_assemblers_.emplace_back(variables,
                                         constraint_storage_.back().get());

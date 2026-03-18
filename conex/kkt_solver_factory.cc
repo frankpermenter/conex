@@ -76,8 +76,12 @@ ContributionType ClassifyCliqueContribution(
 
 std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
-  vector<vector<int>> cliques = c->variables();
   auto clique_assemblers_ptrs_ = c->clique_assemblers();
+  vector<vector<int>> cliques;
+  for (const auto& assembler : clique_assemblers_ptrs_) {
+    auto c_cliques = assembler->get_cliques();
+    cliques.insert(cliques.end(), c_cliques.begin(), c_cliques.end());
+  }
 
   auto tree_solver_ =
       std::make_unique<::conex::SymmetricLinearSystemTreeSolver>();

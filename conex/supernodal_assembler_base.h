@@ -75,6 +75,9 @@ class SupernodalAssemblerBase : public IVisitable, public IVariableShape {
                      dual_variables_.end());
     return variables;
   }
+  std::vector<std::vector<int>> get_cliques() const override {
+    return {variables()};
+  }
   virtual const std::vector<int>& primal_variables() const {
     return primal_variables_;
   }
