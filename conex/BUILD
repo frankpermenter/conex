@@ -446,6 +446,31 @@ cc_library(
 )
 
 cc_library(
+    name = "sparse_linear_constraint",
+    srcs = ["sparse_linear_constraint.cc"],
+    hdrs = ["sparse_linear_constraint.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "core",
+        "kkt_solver_factory",
+        "linear_constraint",
+        "@eigen",
+    ],
+)
+
+conex_cc_test(
+    name = "sparse_linear_constraint_test",
+    srcs = ["test/sparse_linear_constraint_test.cc"],
+    copts = ["-Iexternal/gtest/include"],
+    deps = [
+        "core",
+        "linear_constraint",
+        "sparse_linear_constraint",
+        "@gtest//:main",
+    ],
+)
+
+cc_library(
     name = "semidefinite_constraints",
     srcs = [
         "dense_lmi_constraint.cc",

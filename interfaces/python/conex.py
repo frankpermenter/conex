@@ -54,6 +54,49 @@ def sparse_ls(A, b, num_threads=1, clique_tree_method=CLIQUE_TREE_METHOD_AMD):
     )
 
 
+def sparse_ls_ne(A, rhs):
+    """
+    Solve A^T A x = rhs using SparseLinearConstraint-based tree solver.
+
+    Decomposes A by row-support containment, builds a tree solver from
+    LinearConstraint sub-blocks, and solves the normal equations.
+
+    Parameters
+    ----------
+    A : scipy.sparse.spmatrix
+        Sparse matrix whose normal equations A^T A define the system.
+    rhs : array_like, shape (n,)
+        Right-hand-side vector (length = A.cols).
+
+    Returns
+    -------
+    dict with keys:
+        x : ndarray, shape (n,) — solution
+        construction_us : float — construction time in microseconds
+        assemble_and_factor_us : float — assemble+factor time in microseconds
+        solve_us : float — solve time in microseconds
+    """
+    try:
+        import scipy.sparse as sp
+    except ImportError as exc:
+        raise ImportError("scipy is required for conex.sparse_ls_ne") from exc
+
+    if not sp.issparse(A):
+        raise TypeError("A must be a scipy sparse matrix.")
+    Acsr = A.tocsr()
+    rhs_vec = np.asarray(rhs, dtype=np.float64).reshape(-1)
+    if rhs_vec.shape[0] != Acsr.shape[1]:
+        raise ValueError("rhs length must match A.shape[1].")
+    return sparse_ls_normal_equations(
+        Acsr.indptr.astype(np.int64, copy=False),
+        Acsr.indices.astype(np.int64, copy=False),
+        Acsr.data.astype(np.float64, copy=False),
+        int(Acsr.shape[0]),
+        int(Acsr.shape[1]),
+        rhs_vec,
+    )
+
+
 def _row_supports(Acsr):
     groups = {}
     for r in range(Acsr.shape[0]):

@@ -19,6 +19,7 @@
 #include "../../../conex/clique_ordering.h"
 #include "../../../conex/kkt_tree_solver.h"
 #include "../../../conex/static_subsystem.h"
+#include "../../../conex/sparse_linear_constraint.h"
 #include "../../../conex/workspace.h"
 
 namespace py = pybind11;
@@ -975,8 +976,7 @@ Eigen::VectorXd SparseLeastSquaresViaImplicitCliques(const RowSparseMatrix& A,
   }
   std::vector<std::vector<int>> cliques;
   conex::CliqueTree implicit_clique_tree =
-      //conex::MakeCliqueTreeImplicitFromRowSupports(row_supports, &cliques);
-      conex::MakeCliqueTreeMinDegreeFromRowSupports(row_supports, &cliques);
+      conex::MakeCliqueTreeMinDegreeFromRowSupports(row_supports, &cliques, 4/*min super node size*/);
   const auto find_cliques_end = std::chrono::steady_clock::now();
 
   std::vector<char> covered(static_cast<size_t>(A.cols()), 0);
@@ -1617,6 +1617,38 @@ PYBIND11_MODULE(_conex, m) {
       py::arg("A_dense"), py::arg("b"), py::arg("num_threads") = 1,
       py::arg("clique_tree_method") =
           static_cast<int>(conex::CLIQUE_TREE_METHOD_AMD));
+
+  m.def(
+      "sparse_ls_normal_equations",
+      [](const py::array& indptr, const py::array& indices, const py::array& data,
+         int m_rows, int n_cols, const py::array& rhs) {
+        Eigen::VectorXd rhs_eig = ToEigenVector(rhs);
+        if (rhs_eig.rows() != n_cols) {
+          throw std::runtime_error("rhs length must equal number of columns in A.");
+        }
+        RowSparseMatrix A_row =
+            BuildSparseFromCSR(indptr, indices, data, m_rows, n_cols);
+        // Convert to column-major for SparseLeastSquares.
+        Eigen::SparseMatrix<double> A_col(A_row);
+        conex::SparseLeastSquaresResult result;
+        {
+          py::gil_scoped_release release;
+          result = conex::SparseLeastSquares(A_col, rhs_eig);
+        }
+        py::dict out;
+        out["x"] = ToPyArray(result.x);
+        out["construction_us"] = result.construction_time_us;
+        out["assemble_and_factor_us"] = result.assemble_and_factor_time_us;
+        out["solve_us"] = result.solve_time_us;
+        out["grouping_us"] = result.grouping_us;
+        out["add_constraints_us"] = result.add_constraints_us;
+        out["init_workspace_us"] = result.init_workspace_us;
+        out["clique_extraction_us"] = result.clique_extraction_us;
+        out["finalize_us"] = result.finalize_us;
+        return out;
+      },
+      py::arg("indptr"), py::arg("indices"), py::arg("data"), py::arg("m_rows"),
+      py::arg("n_cols"), py::arg("rhs"));
 
   m.def("CONEX_Maximize",
         [](std::uintptr_t p, const py::array& b, const CONEX_SolverConfiguration& cfg,

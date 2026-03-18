@@ -62,11 +62,13 @@ set(CONEX_CORE_SOURCES
   ../../conex/kkt_tree_solver.cc
   ../../conex/linear_constraint.cc
   ../../conex/psd_constraint.cc
+  ../../conex/pq_tree.cc
   ../../conex/quadratic_cone_constraint.cc
   ../../conex/quadratic_cost.cc
   ../../conex/self_dual_embedding.cc
   ../../conex/serialize.cc
   ../../conex/soc_constraint.cc
+  ../../conex/sparse_linear_constraint.cc
   ../../conex/static_subsystem.cc
   ../../conex/supernodal_assembler.cc
   ../../conex/supernodal_solver.cc

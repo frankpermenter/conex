@@ -276,6 +276,12 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   SubmatrixContributor MakeContributor(
       const std::vector<int>& elim_indices) const;
 
+  // Fast variant using a precomputed supernode-to-subsystem lookup table.
+  SubmatrixContributor MakeContributorFromLookup(
+      const std::vector<int>& elim_indices,
+      const std::unordered_map<int, KKTSubsystemBase*>&
+          elim_pos_to_subsystem) const;
+
   void SetEliminationTree(
       const std::vector<int>& variable_to_elimination_position);
 
