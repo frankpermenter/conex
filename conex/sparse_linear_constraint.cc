@@ -105,10 +105,15 @@ SparseLinearConstraint::SparseLinearConstraint(
   for (const auto& sg : support_groups_) {
     unique_supports_.push_back(sg.support);
   }
+}
 
-  // Build legacy containment-merged groups.
-  auto merged_supports = ContainmentMerge(unique_supports_);
-  groups_ = GetConstraints(merged_supports);
+const std::vector<SparseLinearConstraint::RowGroup>&
+SparseLinearConstraint::groups() const {
+  if (groups_.empty() && !support_groups_.empty()) {
+    auto merged_supports = ContainmentMerge(unique_supports_);
+    groups_ = GetConstraints(merged_supports);
+  }
+  return groups_;
 }
 
 std::vector<SparseLinearConstraint::RowGroup>
@@ -169,7 +174,7 @@ SparseLinearConstraint::GetConstraints(
 
 std::vector<int> SparseLinearConstraint::AddToProgram(Program& prog) {
   std::vector<int> ids;
-  for (auto& group : groups_) {
+  for (const auto& group : groups()) {
     ids.push_back(
         prog.AddConstraint(LinearConstraint(group.A, group.b), group.variables));
   }

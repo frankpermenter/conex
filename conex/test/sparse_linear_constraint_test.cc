@@ -1,5 +1,6 @@
 #include "conex/sparse_linear_constraint.h"
 
+#include <chrono>
 #include <iostream>
 #include <set>
 
@@ -459,6 +460,85 @@ GTEST_TEST(SparseLinearConstraintAssembler, ConeProgramBanded) {
       A_sparse, b_affine, cost, CONEX_KKT_SOLVER_SUPERNODAL);
   EXPECT_NEAR((y_sn - y_ref).norm(), 0, eps);
   EXPECT_GE((b_affine - A_dense * y_sn).minCoeff(), -eps);
+}
+
+// Compare solver timings between tree and supernodal on sparse LPs.
+GTEST_TEST(SparseLinearConstraintAssembler, SolverTimingComparison) {
+  using clock = std::chrono::high_resolution_clock;
+
+  struct TestCase {
+    std::string name;
+    int num_vars;
+    int bandwidth;
+    int rows_per_group;
+  };
+
+  std::vector<TestCase> cases = {
+      {"small_banded", 20, 3, 5},
+      {"medium_banded", 50, 5, 10},
+      {"large_banded", 100, 5, 10},
+      {"wide_band", 80, 10, 8},
+  };
+
+  std::cout << "\n=== Solver Timing Comparison (tree vs supernodal) ===\n";
+  std::cout << "name                  | vars | rows | nnz    | tree (ms)  | supernodal (ms)\n";
+  std::cout << "-------------------   | ---- | ---- | ------ | ---------- | ---------------\n";
+
+  for (const auto& tc : cases) {
+    srand(42);
+    int num_groups = tc.num_vars - tc.bandwidth + 1;
+    int num_rows = tc.rows_per_group * num_groups;
+
+    std::vector<Eigen::Triplet<double>> triplets;
+    for (int g = 0; g < num_groups; g++) {
+      for (int r = 0; r < tc.rows_per_group; r++) {
+        int row = g * tc.rows_per_group + r;
+        for (int j = 0; j < tc.bandwidth; j++) {
+          triplets.emplace_back(row, g + j,
+                                0.5 + static_cast<double>(rand()) / RAND_MAX);
+        }
+      }
+    }
+    Eigen::SparseMatrix<double> A_sparse(num_rows, tc.num_vars);
+    A_sparse.setFromTriplets(triplets.begin(), triplets.end());
+
+    VectorXd b_affine = VectorXd::Ones(num_rows) * 2.0;
+    MatrixXd A_dense(A_sparse);
+    VectorXd x0 = VectorXd::Random(num_rows).cwiseAbs() * 0.01;
+    VectorXd cost = A_dense.transpose() * x0;
+
+    // Print group counts for the two decomposition strategies.
+    SparseLinearConstraint slc(A_sparse, b_affine);
+    int containment_groups = slc.num_groups();
+    // Containment-merged groups have no merging for banded patterns
+    // (no support is a subset of another), so this equals the number
+    // of unique supports.
+    int unique_supports = static_cast<int>(slc.row_supports().size());
+
+    // Tree solver.
+    auto t0 = clock::now();
+    VectorXd y_tree = SolveWithAssembler(
+        A_sparse, b_affine, cost, CONEX_KKT_SOLVER_TREE);
+    auto t1 = clock::now();
+
+    // Supernodal solver.
+    auto t2 = clock::now();
+    VectorXd y_sn = SolveWithAssembler(
+        A_sparse, b_affine, cost, CONEX_KKT_SOLVER_SUPERNODAL);
+    auto t3 = clock::now();
+
+    double tree_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    double sn_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
+
+    // Verify both give same answer.
+    EXPECT_NEAR((y_tree - y_sn).norm(), 0, 1e-5);
+
+    printf("%-21s | %4d | %4d | %6ld | %4d supports, %4d containment groups | %10.3f | %10.3f\n",
+           tc.name.c_str(), tc.num_vars, num_rows,
+           static_cast<long>(A_sparse.nonZeros()),
+           unique_supports, containment_groups,
+           tree_ms, sn_ms);
+  }
 }
 
 }  // namespace conex

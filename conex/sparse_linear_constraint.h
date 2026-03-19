@@ -43,8 +43,8 @@ class SparseLinearConstraint {
   // Add all sub-constraints to the program using containment-merged groups.
   std::vector<int> AddToProgram(Program& prog);
 
-  int num_groups() const { return groups_.size(); }
-  const std::vector<RowGroup>& groups() const { return groups_; }
+  int num_groups() const { return groups().size(); }
+  const std::vector<RowGroup>& groups() const;
 
  private:
   const Eigen::SparseMatrix<double>& A_;
@@ -57,8 +57,8 @@ class SparseLinearConstraint {
   std::vector<SupportGroup> support_groups_;
   std::vector<std::vector<int>> unique_supports_;
 
-  // Legacy containment-merged groups (built in constructor).
-  std::vector<RowGroup> groups_;
+  // Containment-merged groups (lazily computed on first access).
+  mutable std::vector<RowGroup> groups_;
 };
 
 // Assembler that wraps a SparseLinearConstraint.  Its variables() returns

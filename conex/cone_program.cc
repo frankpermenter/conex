@@ -388,8 +388,19 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
                      warmstart_aborted;
     warmstart_aborted = false;
 
-    START_TIMER(Assemble)
-    solver->Assemble();
+    START_TIMER(AssembleAndFactor)
+    if (!solver->AssembleAndFactor()) {
+      if (i == 0 &&
+          config.initialization_mode == CONEX_INITIALIZATION_MODE_WARMSTART) {
+        PRINTSTATUS("Aborting warmstart...");
+        SetIdentity(&constraints);
+        warmstart_aborted = true;
+        continue;
+      }
+      status_.solved = 0;
+      PRINTSTATUS("Factorization failed.");
+      return false;
+    }
     AssembleSchurComplementResiduals(kkt_system_manager_, &sys);
     END_TIMER
 
@@ -408,21 +419,6 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
       mu_target *= (b_scaling * c_scaling);
       inv_sqrt_mu_max = 1.0 / std::sqrt(mu_target);
     }
-
-    START_TIMER(Factor)
-    if (!solver->Factor()) {
-      if (i == 0 &&
-          config.initialization_mode == CONEX_INITIALIZATION_MODE_WARMSTART) {
-        PRINTSTATUS("Aborting warmstart...");
-        SetIdentity(&constraints);
-        warmstart_aborted = true;
-        continue;
-      }
-      status_.solved = 0;
-      PRINTSTATUS("Factorization failed.");
-      return false;
-    }
-    END_TIMER
 
     if (!update_mu) {
       if (initial_centering == 0) {
