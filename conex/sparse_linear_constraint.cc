@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <chrono>
 #include <numeric>
+#include <set>
 
 #include "conex/clique_ordering.h"
 #include "conex/cone_program.h"
@@ -309,6 +310,99 @@ SparseLeastSquaresResult SparseLeastSquaresMaximalClique(
       std::chrono::duration<double, std::micro>(t_grouped - t0).count();
 
   return SolveFromGroups(groups, clique_tree, num_vars, rhs, grouping_us);
+}
+
+SparseLinearConstraintAssembler::SparseLinearConstraintAssembler(
+    std::unique_ptr<SparseLinearConstraint> slc,
+    const std::vector<int>& all_variables)
+    : SupernodalAssemblerBase(all_variables), slc_(std::move(slc)) {}
+
+std::vector<SupernodalAssemblerBase*>
+SparseLinearConstraintAssembler::Decompose(
+    const std::vector<std::vector<int>>& maximal_cliques) {
+  auto groups = slc_->GetConstraints(maximal_cliques);
+
+  std::vector<SupernodalAssemblerBase*> result;
+  for (auto& group : groups) {
+    auto constraint = std::make_unique<LinearConstraint>(group.A, group.b);
+    constraint->set_variable_indices(group.variables);
+
+    // Allocate persistent workspace memory for this constraint's
+    // WorkspaceLinear (W, r, temp_1, temp_2, weighted_constraints).
+    WorkspaceLinear* ws = constraint->workspace();
+    owned_workspace_memory_.emplace_back(SizeOf(*ws));
+    Eigen::VectorXd& mem = owned_workspace_memory_.back();
+    Initialize(ws, mem.data());
+    constraint->SetIdentity();
+
+    Constraint* raw_ptr = constraint.get();
+    owned_constraints_.push_back(std::move(constraint));
+
+    // Use emplace_back on std::list (stable addresses).
+    owned_assemblers_.emplace_back(group.variables, raw_ptr);
+    result.push_back(&owned_assemblers_.back());
+  }
+  return result;
+}
+
+SparseLeastSquaresResult SparseLeastSquaresMakeTreeSolver(
+    const Eigen::SparseMatrix<double>& A,
+    const Eigen::VectorXd& rhs) {
+  using clock = std::chrono::high_resolution_clock;
+  SparseLeastSquaresResult result;
+  const int num_vars = A.cols();
+
+  auto t0 = clock::now();
+
+  // Build SparseLinearConstraint and its assembler.
+  Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(A.rows());
+  auto slc = std::make_unique<SparseLinearConstraint>(A, b_zero);
+
+  // Compute union of all variables.
+  std::set<int> var_set;
+  for (const auto& support : slc->row_supports()) {
+    var_set.insert(support.begin(), support.end());
+  }
+  std::vector<int> all_vars(var_set.begin(), var_set.end());
+
+  // Register the sparse assembler with the ConstraintManager.
+  ConstraintManager cm(num_vars);
+  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc), all_vars);
+  cm.AddCustomAssembler(assembler.get());
+
+  auto t_grouped = clock::now();
+
+  // Use MakeTreeSolver, which calls Decompose internally.
+  SolverConfiguration config;
+  auto tree_solver = MakeTreeSolver(&cm, config);
+
+  auto t1 = clock::now();
+
+  bool ok = tree_solver->AssembleAndFactor();
+  CONEX_DEMAND(ok, "AssembleAndFactor failed.");
+
+  auto t2 = clock::now();
+
+  result.x = tree_solver->Solve(rhs);
+
+  auto t3 = clock::now();
+
+  result.grouping_us =
+      std::chrono::duration<double, std::micro>(t_grouped - t0).count();
+  result.add_constraints_us = 0;
+  result.init_workspace_us = 0;
+  result.clique_extraction_us = 0;
+  result.finalize_us =
+      std::chrono::duration<double, std::micro>(t1 - t_grouped).count();
+  result.construction_time_us =
+      std::chrono::duration<double, std::micro>(t1 - t0).count();
+  result.assemble_and_factor_time_us =
+      std::chrono::duration<double, std::micro>(t2 - t1).count();
+  result.solve_time_us =
+      std::chrono::duration<double, std::micro>(t3 - t2).count();
+
+  return result;
 }
 
 }  // namespace conex

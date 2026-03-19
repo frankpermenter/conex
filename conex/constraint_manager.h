@@ -128,6 +128,11 @@ class ConstraintManager {
     return cone_inequality_assemblers_;
   }
 
+  // Register a custom assembler (caller retains ownership).
+  void AddCustomAssembler(SupernodalAssemblerBase* assembler) {
+    custom_assemblers_.push_back(assembler);
+  }
+
   std::vector<SupernodalAssemblerBase*> clique_assemblers();
   std::vector<const SupernodalAssemblerBase*> clique_assemblers() const;
 
@@ -162,6 +167,7 @@ class ConstraintManager {
   std::vector<SupernodalAssemblerConstraint*> cone_inequality_assemblers_;
   EqualityConstraintManager equality_constraints_;
 
+  std::vector<SupernodalAssemblerBase*> custom_assemblers_;
   int max_number_of_variables_ = 0;
   int new_dual_variable_start_ = 0;
   Eigen::VectorXd workspace_memory_;

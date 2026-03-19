@@ -69,6 +69,17 @@ class SupernodalAssemblerBase : public IVisitable, public IVariableShape {
   virtual bool is_dynamic() const { return false; }
   virtual bool is_positive_definite() const { return true; }
   virtual bool supports_line_search() const { return false; }
+
+  // Decompose this assembler into sub-assemblers aligned with the given
+  // maximal cliques.  Default: returns {this} (no decomposition).
+  // Implementations that represent sparse structure (e.g.,
+  // SparseLinearConstraint) override this to split rows across cliques.
+  // Returned pointers must remain valid for the lifetime of the solver.
+  virtual std::vector<SupernodalAssemblerBase*> Decompose(
+      const std::vector<std::vector<int>>& maximal_cliques) {
+    (void)maximal_cliques;
+    return {this};
+  }
   virtual std::vector<int> variables() const {
     std::vector<int> variables = primal_variables_;
     variables.insert(variables.end(), dual_variables_.begin(),

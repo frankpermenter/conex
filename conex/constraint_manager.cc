@@ -130,6 +130,9 @@ std::vector<SupernodalAssemblerBase*> T::clique_assemblers() {
   for (auto& q : equality_constraints_.assemblers) {
     supernodal_assemblers_pointers_.push_back(&q);
   }
+  for (auto* q : custom_assemblers_) {
+    supernodal_assemblers_pointers_.push_back(q);
+  }
   return supernodal_assemblers_pointers_;
 }
 
@@ -143,6 +146,9 @@ std::vector<const SupernodalAssemblerBase*> T::clique_assemblers() const {
   }
   for (auto& q : equality_constraints_.assemblers) {
     supernodal_assemblers_pointers_.push_back(&q);
+  }
+  for (auto* q : custom_assemblers_) {
+    supernodal_assemblers_pointers_.push_back(q);
   }
   return supernodal_assemblers_pointers_;
 }

@@ -1,8 +1,12 @@
 #pragma once
+#include <list>
 #include <vector>
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+
+#include "conex/constraint.h"
+#include "conex/linear_constraint.h"
 
 namespace conex {
 
@@ -25,20 +29,17 @@ class SparseLinearConstraint {
   };
 
   // The unique row supports of A (sorted, deduplicated).
-  // Each entry is a sorted vector of column indices.
   const std::vector<std::vector<int>>& row_supports() const {
     return unique_supports_;
   }
 
   // Given a list of target supports (e.g. maximal cliques), assign each
   // row to the smallest target that contains its support, then build
-  // dense sub-blocks.  Each target support becomes one RowGroup (skipped
-  // if no rows map to it).
+  // dense sub-blocks.
   std::vector<RowGroup> GetConstraints(
       const std::vector<std::vector<int>>& target_supports) const;
 
   // Add all sub-constraints to the program using containment-merged groups.
-  // (Legacy interface — uses GetConstraints with containment merging.)
   std::vector<int> AddToProgram(Program& prog);
 
   int num_groups() const { return groups_.size(); }
@@ -48,7 +49,6 @@ class SparseLinearConstraint {
   const Eigen::SparseMatrix<double>& A_;
   Eigen::VectorXd b_;
 
-  // Per unique support: the support itself and the original row indices.
   struct SupportGroup {
     std::vector<int> support;
     std::vector<int> rows;
@@ -60,6 +60,34 @@ class SparseLinearConstraint {
   std::vector<RowGroup> groups_;
 };
 
+// Assembler that wraps a SparseLinearConstraint.  Its variables() returns
+// the union of all row supports.  Decompose() splits it into per-clique
+// LinearConstraint assemblers.
+class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
+ public:
+  SparseLinearConstraintAssembler(
+      std::unique_ptr<SparseLinearConstraint> slc,
+      const std::vector<int>& all_variables);
+
+  void SetDenseData() override {}  // No-op; Decompose creates real assemblers.
+
+  std::vector<std::vector<int>> get_cliques() const override {
+    return {slc_->row_supports().begin(), slc_->row_supports().end()};
+  }
+
+  std::vector<SupernodalAssemblerBase*> Decompose(
+      const std::vector<std::vector<int>>& maximal_cliques) override;
+
+ private:
+  std::unique_ptr<SparseLinearConstraint> slc_;
+
+  // Owned storage for decomposed constraints and their assemblers.
+  std::vector<std::unique_ptr<LinearConstraint>> owned_constraints_;
+  std::list<SupernodalAssemblerConstraint> owned_assemblers_;
+  // Persistent workspace memory for each LinearConstraint's WorkspaceLinear.
+  std::list<Eigen::VectorXd> owned_workspace_memory_;
+};
+
 struct SparseLeastSquaresResult {
   Eigen::VectorXd x;
   double construction_time_us;
@@ -67,11 +95,11 @@ struct SparseLeastSquaresResult {
   double solve_time_us;
 
   // Sub-phase breakdown of construction_time_us:
-  double grouping_us;          // SparseLinearConstraint constructor
-  double add_constraints_us;   // ConstraintManager::AddConstraint calls
-  double init_workspace_us;    // InitializeWorkspace + SetIdentity
-  double clique_extraction_us; // get_cliques + MakeCliqueTree
-  double finalize_us;          // push adapters + Finalize + mode setup
+  double grouping_us;
+  double add_constraints_us;
+  double init_workspace_us;
+  double clique_extraction_us;
+  double finalize_us;
 };
 
 // Containment-grouping path.
@@ -81,6 +109,11 @@ SparseLeastSquaresResult SparseLeastSquares(
 
 // Maximal-clique grouping path.
 SparseLeastSquaresResult SparseLeastSquaresMaximalClique(
+    const Eigen::SparseMatrix<double>& A,
+    const Eigen::VectorXd& rhs);
+
+// MakeTreeSolver path: uses SparseLinearConstraintAssembler + Decompose.
+SparseLeastSquaresResult SparseLeastSquaresMakeTreeSolver(
     const Eigen::SparseMatrix<double>& A,
     const Eigen::VectorXd& rhs);
 

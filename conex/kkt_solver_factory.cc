@@ -91,16 +91,24 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     dual_vars_flat.insert(dual_vars_flat.end(), dv.begin(), dv.end());
   }
 
+  vector<vector<int>> maximal_cliques;
   CliqueTree clique_tree = MakeCliqueTreeMinDegreeFromRowSupports(
-      cliques, /*maximal_cliques_out=*/nullptr, /*max_merge_supernode_size=*/5,
+      cliques, &maximal_cliques, /*max_merge_supernode_size=*/5,
       SUPERNODE_REORDER_BFS_GREEDY, dual_vars_flat);
 
+  // Decompose assemblers against maximal cliques.
+  vector<SupernodalAssemblerBase*> decomposed;
+  for (auto* assembler : clique_assemblers_ptrs_) {
+    auto subs = assembler->Decompose(maximal_cliques);
+    decomposed.insert(decomposed.end(), subs.begin(), subs.end());
+  }
+
   int num_primal = c->GetNumberOfVariables();
-  for (auto& clique : clique_assemblers_ptrs_) {
+  for (auto* assembler : decomposed) {
     auto adapter =
-        std::make_unique<::conex::KKTAssemblerToSubsystemAdapter>(clique);
+        std::make_unique<::conex::KKTAssemblerToSubsystemAdapter>(assembler);
     adapter->set_contribution_type(
-        ClassifyCliqueContribution(clique, num_primal));
+        ClassifyCliqueContribution(assembler, num_primal));
     tree_solver_->push_back(std::move(adapter));
   }
   tree_solver_->Finalize(clique_tree);
