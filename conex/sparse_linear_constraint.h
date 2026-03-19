@@ -8,20 +8,15 @@ namespace conex {
 
 class Program;
 
-// Decomposes a sparse linear inequality Ax <= b into groups of rows
-// with identical column support.  Each group becomes a separate
-// LinearConstraint with its own variable subset, enabling the tree
-// solver to exploit sparsity.
+// Decomposes a sparse matrix A into dense sub-blocks grouped by column
+// support.  The class holds the sparse matrix and precomputed per-row
+// supports.  Callers choose a grouping strategy (containment merging,
+// maximal-clique assignment, etc.) and call GetConstraints() with the
+// desired target supports to extract dense sub-blocks.
 class SparseLinearConstraint {
  public:
   SparseLinearConstraint(const Eigen::SparseMatrix<double>& A,
                          const Eigen::VectorXd& b);
-
-  // Add all sub-constraints to the program.
-  // Returns the constraint IDs.
-  std::vector<int> AddToProgram(Program& prog);
-
-  int num_groups() const { return groups_.size(); }
 
   struct RowGroup {
     Eigen::MatrixXd A;
@@ -29,9 +24,39 @@ class SparseLinearConstraint {
     std::vector<int> variables;
   };
 
+  // The unique row supports of A (sorted, deduplicated).
+  // Each entry is a sorted vector of column indices.
+  const std::vector<std::vector<int>>& row_supports() const {
+    return unique_supports_;
+  }
+
+  // Given a list of target supports (e.g. maximal cliques), assign each
+  // row to the smallest target that contains its support, then build
+  // dense sub-blocks.  Each target support becomes one RowGroup (skipped
+  // if no rows map to it).
+  std::vector<RowGroup> GetConstraints(
+      const std::vector<std::vector<int>>& target_supports) const;
+
+  // Add all sub-constraints to the program using containment-merged groups.
+  // (Legacy interface — uses GetConstraints with containment merging.)
+  std::vector<int> AddToProgram(Program& prog);
+
+  int num_groups() const { return groups_.size(); }
   const std::vector<RowGroup>& groups() const { return groups_; }
 
  private:
+  const Eigen::SparseMatrix<double>& A_;
+  Eigen::VectorXd b_;
+
+  // Per unique support: the support itself and the original row indices.
+  struct SupportGroup {
+    std::vector<int> support;
+    std::vector<int> rows;
+  };
+  std::vector<SupportGroup> support_groups_;
+  std::vector<std::vector<int>> unique_supports_;
+
+  // Legacy containment-merged groups (built in constructor).
   std::vector<RowGroup> groups_;
 };
 
@@ -49,15 +74,12 @@ struct SparseLeastSquaresResult {
   double finalize_us;          // push adapters + Finalize + mode setup
 };
 
-// Original path: groups rows by support containment, then builds clique tree
-// from the ConstraintManager's assembler cliques.
+// Containment-grouping path.
 SparseLeastSquaresResult SparseLeastSquares(
     const Eigen::SparseMatrix<double>& A,
     const Eigen::VectorXd& rhs);
 
-// Alternative path: passes all unique row supports directly to the clique
-// ordering, gets maximal cliques back, then groups rows by which maximal
-// clique contains their support.
+// Maximal-clique grouping path.
 SparseLeastSquaresResult SparseLeastSquaresMaximalClique(
     const Eigen::SparseMatrix<double>& A,
     const Eigen::VectorXd& rhs);
