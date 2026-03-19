@@ -324,7 +324,19 @@ SparseLinearConstraintAssembler::Decompose() {
   for (const auto& g : slc_->groups()) {
     targets.push_back(g.variables);
   }
-  return Decompose(targets);
+  auto result = Decompose(targets);
+
+  // Pre-initialize SchurComplement workspace on decomposed assemblers.
+  // This is needed for the supernodal solver path (Bind requires initialized
+  // submatrix_data_). The tree solver path calls Decompose(maximal_cliques)
+  // directly and handles initialization lazily via SetDenseData().
+  for (auto& asm_ref : owned_assemblers_) {
+    Workspace sc_ws = Workspace(asm_ref.submatrix_data());
+    asm_ref.memory_.resize(SizeOf(sc_ws));
+    Initialize(&sc_ws, asm_ref.memory_.data());
+  }
+
+  return result;
 }
 
 std::vector<SupernodalAssemblerBase*>
@@ -350,13 +362,7 @@ SparseLinearConstraintAssembler::Decompose(
 
     // Use emplace_back on std::list (stable addresses).
     owned_assemblers_.emplace_back(group.variables, raw_ptr);
-    // Pre-initialize the SchurComplement workspace so the supernodal
-    // solver's Bind can map this assembler into the tree.
-    auto& asm_ref = owned_assemblers_.back();
-    Workspace sc_ws = Workspace(asm_ref.submatrix_data());
-    asm_ref.memory_.resize(SizeOf(sc_ws));
-    Initialize(&sc_ws, asm_ref.memory_.data());
-    result.push_back(&asm_ref);
+    result.push_back(&owned_assemblers_.back());
   }
   return result;
 }
