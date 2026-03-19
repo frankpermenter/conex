@@ -1,4 +1,12 @@
 #!/usr/bin/env python3
+"""Profile Conex least-squares on SuiteSparse matrices.
+
+Compares four solver paths:
+  conex (row-partition)  — sparse_ls_profile_csr
+  conex (implicit)       — sparse_ls_profile_csr_implicit
+  conex (NE)             — sparse_ls_ne (SparseLinearConstraint)
+  scipy                  — spsolve / splu
+"""
 import argparse
 import time
 from pathlib import Path
@@ -8,6 +16,7 @@ import scipy.io
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from _conex import sparse_ls_profile_csr, sparse_ls_profile_csr_implicit
+from conex import sparse_ls_ne
 
 
 def load_mtx(path: Path) -> sp.csr_matrix:
@@ -29,7 +38,8 @@ def find_smallest_mtx(root: Path) -> Path:
     best_key = None
     for p in candidates:
         A = load_mtx(p)
-        key = (A.shape[0] * A.shape[1], A.shape[0] + A.shape[1], A.shape[0], A.shape[1], str(p))
+        key = (A.shape[0] * A.shape[1], A.shape[0] + A.shape[1],
+               A.shape[0], A.shape[1], str(p))
         if best_key is None or key < best_key:
             best_key = key
             best = p
@@ -47,14 +57,26 @@ def time_median(fn, reps: int):
     return times[len(times) // 2], out
 
 
-def profile_scipy_reference(ata_csc, rhs, reps: int):
-    # Reference 1: direct one-shot solve.
-    spsolve_ms, x_spsolve = time_median(lambda: spla.spsolve(ata_csc, rhs), reps=max(1, reps))
+def fmt_ms(v):
+    """Format milliseconds: use us for < 0.1 ms."""
+    if v < 0.1:
+        return f"{v * 1000:6.1f} us"
+    return f"{v:6.3f} ms"
 
-    # Reference 2: explicit factor + solve split via SuperLU (when available).
-    # This is the closest external analogue to factor/solve profiling.
-    factor_times = []
-    solve_times = []
+
+def rel_error(x, x_ref):
+    return np.linalg.norm(x - x_ref) / max(1.0, np.linalg.norm(x_ref))
+
+
+def rel_residual(M, x, rhs):
+    return np.linalg.norm(M @ x - rhs) / max(1.0, np.linalg.norm(rhs))
+
+
+def profile_scipy_reference(ata_csc, rhs, reps: int):
+    spsolve_ms, x_spsolve = time_median(
+        lambda: spla.spsolve(ata_csc, rhs), reps=max(1, reps))
+
+    factor_times, solve_times = [], []
     x_lu = None
     for _ in range(max(1, reps)):
         t0 = time.perf_counter()
@@ -89,9 +111,7 @@ def profile_maximal_chordal(Acsr, b, num_threads):
         "x": np.asarray(prof["x"], dtype=np.float64).reshape(-1),
         "num_cliques": int(prof["num_cliques"]),
         "support_ms": float(prof["support_ms"]),
-        "bags_ms": 0.0,
         "blocks_ms": float(prof["blocks_ms"]),
-        "tree_ms": 0.0,
         "finalize_ms": float(prof["finalize_ms"]),
         "factor_ms": float(prof["factor_ms"]),
         "solve_ms": float(prof["solve_ms"]),
@@ -104,15 +124,11 @@ def main():
         description="Profile Conex least-squares on the smallest local SuiteSparse matrix."
     )
     parser.add_argument(
-        "--suitesparse-dir",
-        type=str,
-        default="data/suitesparse",
+        "--suitesparse-dir", type=str, default="data/suitesparse",
         help="Root directory containing extracted SuiteSparse .mtx files.",
     )
     parser.add_argument(
-        "--matrix",
-        type=str,
-        default=None,
+        "--matrix", type=str, default=None,
         help="Explicit matrix path (.mtx). If omitted, the smallest matrix is selected.",
     )
     parser.add_argument("--seed", type=int, default=0)
@@ -127,91 +143,114 @@ def main():
 
     A = load_mtx(matrix_path)
     m, n = A.shape
+    nnz = A.nnz
     rng = np.random.default_rng(args.seed)
     x_true = rng.normal(0.0, 1.0, size=n)
     b = A @ x_true
 
+    reg = 1e-8
+    ata = (A.T @ A) + reg * sp.eye(n, format="csr")
+    rhs = A.T @ b
+    ata_csc = ata.tocsc()
+
+    # ── Header ───────────────────────────────────────────────────────────
+    print(f"{'=' * 74}")
+    print(f"  Matrix: {matrix_path.name}")
+    print(f"  Shape:  {m} x {n}    nnz(A) = {nnz}    nnz(A^TA) = {ata.nnz}")
+    print(f"  Threads: {args.num_threads}    Reps: {args.reps}    Seed: {args.seed}")
+    print(f"{'=' * 74}")
+
+    # ── Conex row-partition path ─────────────────────────────────────────
     prof = sparse_ls_profile_csr(
         A.indptr.astype(np.int64, copy=False),
         A.indices.astype(np.int64, copy=False),
         A.data.astype(np.float64, copy=False),
-        int(m),
-        int(n),
+        int(m), int(n),
         np.asarray(b, dtype=np.float64),
         int(args.num_threads),
     )
     x_conex = np.asarray(prof["x"], dtype=np.float64).reshape(-1)
 
-    # Profile the implicit maximal-clique path fully in C++.
-    reg = 1e-8
+    print(f"\n  Conex row-partition  ({int(prof['num_cliques'])} cliques"
+          f"{', single dense' if bool(prof['single_dense_clique']) else ''})")
+    print(f"  {'Phase':<20} {'Time':>10}")
+    print(f"  {'-' * 20} {'-' * 10}")
+    print(f"  {'support':<20} {fmt_ms(float(prof['support_ms'])):>10}")
+    print(f"  {'blocks':<20} {fmt_ms(float(prof['blocks_ms'])):>10}")
+    print(f"  {'finalize':<20} {fmt_ms(float(prof['finalize_ms'])):>10}")
+    print(f"  {'factor':<20} {fmt_ms(float(prof['factor_ms'])):>10}")
+    print(f"  {'solve':<20} {fmt_ms(float(prof['solve_ms'])):>10}")
+    print(f"  {'TOTAL':<20} {fmt_ms(float(prof['total_ms'])):>10}")
+
+    # ── Conex implicit maximal-clique path ───────────────────────────────
     maximal_prof_ms, maximal_prof = time_median(
-        lambda: profile_maximal_chordal(
-            A,
-            b,
-            int(args.num_threads),
-        ),
+        lambda: profile_maximal_chordal(A, b, int(args.num_threads)),
         reps=max(1, int(args.reps)),
     )
-    x_maximal = np.asarray(maximal_prof["x"], dtype=np.float64).reshape(-1)
+    x_maximal = maximal_prof["x"]
 
-    # Compare against scipy sparse normal-equation solve.
-    ata = (A.T @ A) + reg * sp.eye(n, format="csr")
-    rhs = A.T @ b
-    scipy_prof = profile_scipy_reference(ata.tocsc(), rhs, reps=max(1, int(args.reps)))
+    print(f"\n  Conex implicit  ({int(maximal_prof['num_cliques'])} cliques)")
+    print(f"  {'Phase':<20} {'Time':>10}")
+    print(f"  {'-' * 20} {'-' * 10}")
+    print(f"  {'support':<20} {fmt_ms(maximal_prof['support_ms']):>10}")
+    print(f"  {'blocks':<20} {fmt_ms(maximal_prof['blocks_ms']):>10}")
+    print(f"  {'finalize':<20} {fmt_ms(maximal_prof['finalize_ms']):>10}")
+    print(f"  {'factor':<20} {fmt_ms(maximal_prof['factor_ms']):>10}")
+    print(f"  {'solve':<20} {fmt_ms(maximal_prof['solve_ms']):>10}")
+    print(f"  {'TOTAL':<20} {fmt_ms(maximal_prof['total_ms']):>10}")
+    print(f"  {'total (median)':<20} {fmt_ms(maximal_prof_ms):>10}")
+
+    # ── Conex NE path ────────────────────────────────────────────────────
+    ne_prof_ms, ne_prof = time_median(
+        lambda: sparse_ls_ne(A, rhs),
+        reps=max(1, int(args.reps)),
+    )
+    x_ne = np.asarray(ne_prof["x"], dtype=np.float64).reshape(-1)
+    ne_total_ms = (ne_prof["construction_us"] + ne_prof["assemble_and_factor_us"]
+                   + ne_prof["solve_us"]) / 1000.0
+
+    print(f"\n  Conex NE path")
+    print(f"  {'Phase':<20} {'Time':>10}")
+    print(f"  {'-' * 20} {'-' * 10}")
+    print(f"  {'grouping':<20} {fmt_ms(ne_prof['grouping_us'] / 1000.0):>10}")
+    print(f"  {'add constraints':<20} {fmt_ms(ne_prof['add_constraints_us'] / 1000.0):>10}")
+    print(f"  {'init workspace':<20} {fmt_ms(ne_prof['init_workspace_us'] / 1000.0):>10}")
+    print(f"  {'clique extraction':<20} {fmt_ms(ne_prof['clique_extraction_us'] / 1000.0):>10}")
+    print(f"  {'finalize':<20} {fmt_ms(ne_prof['finalize_us'] / 1000.0):>10}")
+    print(f"  {'construction':<20} {fmt_ms(ne_prof['construction_us'] / 1000.0):>10}")
+    print(f"  {'factor':<20} {fmt_ms(ne_prof['assemble_and_factor_us'] / 1000.0):>10}")
+    print(f"  {'solve':<20} {fmt_ms(ne_prof['solve_us'] / 1000.0):>10}")
+    print(f"  {'TOTAL':<20} {fmt_ms(ne_total_ms):>10}")
+    print(f"  {'total (median)':<20} {fmt_ms(ne_prof_ms):>10}")
+
+    # ── Scipy reference ──────────────────────────────────────────────────
+    scipy_prof = profile_scipy_reference(ata_csc, rhs, reps=max(1, int(args.reps)))
     x_scipy = scipy_prof["x_spsolve"]
 
-    rel_vs_scipy = np.linalg.norm(x_conex - x_scipy) / max(1.0, np.linalg.norm(x_scipy))
-    rel_maximal_vs_scipy = np.linalg.norm(x_maximal - x_scipy) / max(
-        1.0, np.linalg.norm(x_scipy)
-    )
-    res_conex = np.linalg.norm(ata @ x_conex - rhs) / max(1.0, np.linalg.norm(rhs))
-    res_maximal = np.linalg.norm(ata @ x_maximal - rhs) / max(
-        1.0, np.linalg.norm(rhs)
-    )
-    res_scipy = np.linalg.norm(ata @ x_scipy - rhs) / max(1.0, np.linalg.norm(rhs))
+    print(f"\n  Scipy reference")
+    print(f"  {'Phase':<20} {'Time':>10}")
+    print(f"  {'-' * 20} {'-' * 10}")
+    print(f"  {'spsolve (total)':<20} {fmt_ms(scipy_prof['spsolve_total_ms']):>10}")
+    print(f"  {'splu factor':<20} {fmt_ms(scipy_prof['splu_factor_ms']):>10}")
+    print(f"  {'splu solve':<20} {fmt_ms(scipy_prof['splu_solve_ms']):>10}")
 
-    print(f"matrix={matrix_path}")
-    print(f"shape=({m}, {n}) nnz={A.nnz}")
-    print(f"num_threads={args.num_threads} reps={args.reps}")
-    print(
-        "conex_profile_ms "
-        f"support={float(prof['support_ms']):.3f} "
-        f"blocks={float(prof['blocks_ms']):.3f} "
-        f"finalize={float(prof['finalize_ms']):.3f} "
-        f"factor={float(prof['factor_ms']):.3f} "
-        f"solve={float(prof['solve_ms']):.3f} "
-        f"total={float(prof['total_ms']):.3f}"
-    )
-    print(
-        f"conex_tree_structure num_cliques={int(prof['num_cliques'])} "
-        f"single_dense_clique={bool(prof['single_dense_clique'])}"
-    )
-    print(
-        "conex_maximal_chordal_profile_ms "
-        f"support={float(maximal_prof['support_ms']):.3f} "
-        f"bags={float(maximal_prof['bags_ms']):.3f} "
-        f"blocks={float(maximal_prof['blocks_ms']):.3f} "
-        f"tree={float(maximal_prof['tree_ms']):.3f} "
-        f"finalize={float(maximal_prof['finalize_ms']):.3f} "
-        f"factor={float(maximal_prof['factor_ms']):.3f} "
-        f"solve={float(maximal_prof['solve_ms']):.3f} "
-        f"total={float(maximal_prof['total_ms']):.3f} "
-        f"total_median={maximal_prof_ms:.3f}"
-    )
-    print(f"conex_maximal_chordal_tree_structure num_cliques={int(maximal_prof['num_cliques'])}")
-    print(
-        "reference_scipy_ms "
-        f"spsolve_total={float(scipy_prof['spsolve_total_ms']):.3f} "
-        f"splu_factor={float(scipy_prof['splu_factor_ms']):.3f} "
-        f"splu_solve={float(scipy_prof['splu_solve_ms']):.3f}"
-    )
-    print(
-        f"quality rel_vs_scipy={rel_vs_scipy:.3e} "
-        f"residual_conex={res_conex:.3e} "
-        f"rel_maximal_vs_scipy={rel_maximal_vs_scipy:.3e} "
-        f"residual_maximal={res_maximal:.3e} "
-        f"residual_scipy={res_scipy:.3e}"
-    )
+    # ── Comparison table ─────────────────────────────────────────────────
+    res_conex = rel_residual(ata, x_conex, rhs)
+    res_maximal = rel_residual(ata, x_maximal, rhs)
+    res_ne = rel_residual(ata, x_ne, rhs)
+    res_scipy = rel_residual(ata, x_scipy, rhs)
+
+    print(f"\n  {'Solver':<20} {'Total':>10}  {'|x - x_scipy|/|x|':>18}  {'|Ax-b|/|b|':>12}")
+    print(f"  {'-' * 20} {'-' * 10}  {'-' * 18}  {'-' * 12}")
+    print(f"  {'conex row-part':<20} {fmt_ms(float(prof['total_ms'])):>10}"
+          f"  {rel_error(x_conex, x_scipy):18.2e}  {res_conex:12.2e}")
+    print(f"  {'conex implicit':<20} {fmt_ms(maximal_prof['total_ms']):>10}"
+          f"  {rel_error(x_maximal, x_scipy):18.2e}  {res_maximal:12.2e}")
+    print(f"  {'conex NE':<20} {fmt_ms(ne_total_ms):>10}"
+          f"  {rel_error(x_ne, x_scipy):18.2e}  {res_ne:12.2e}")
+    print(f"  {'scipy spsolve':<20} {fmt_ms(scipy_prof['spsolve_total_ms']):>10}"
+          f"  {'—':>18}  {res_scipy:12.2e}")
+    print()
 
 
 if __name__ == "__main__":

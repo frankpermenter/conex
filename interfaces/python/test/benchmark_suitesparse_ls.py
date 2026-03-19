@@ -17,6 +17,7 @@ import scipy.io
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from _conex import sparse_ls_profile_csr, sparse_ls_profile_csr_implicit
+from conex import sparse_ls_ne
 
 # Exact benchmark matrices: (group, name, nrows, ncols, nnz)
 BENCHMARK_MATRICES = [
@@ -154,6 +155,8 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--num-threads", type=int, default=8)
     parser.add_argument("--reps", type=int, default=3)
+    parser.add_argument("--reg", type=float, default=0.0,
+                        help="Ridge regularization added to A^T A.")
     args = parser.parse_args()
 
     if args.data_dir is not None:
@@ -174,14 +177,26 @@ def main():
         print("ERROR: No matrices available.")
         return 1
 
-    reg = 1e-8
+    reg = args.reg
     rng = np.random.default_rng(args.seed)
 
     # Collect results.
     results = []
     for name, nrows, ncols, nnz, mtx_path in matrices:
         print(f"\nProfiling {name} ({nrows}x{ncols}, nnz={nnz}) ...", flush=True)
-        A = load_mtx(mtx_path)
+        A_raw = load_mtx(mtx_path)
+
+        # Remove zero columns so every variable appears in at least one row.
+        col_nnz = np.diff(A_raw.tocsc().indptr)
+        live_cols = np.flatnonzero(col_nnz)
+        if len(live_cols) < A_raw.shape[1]:
+            A = A_raw[:, live_cols]
+            A = sp.csr_matrix(A)
+            print(f"  Removed {A_raw.shape[1] - len(live_cols)} zero columns "
+                  f"({A_raw.shape[1]} -> {A.shape[1]})")
+        else:
+            A = A_raw
+
         m, n = A.shape
         x_true = rng.normal(0.0, 1.0, size=n)
         b = A @ x_true
@@ -190,37 +205,90 @@ def main():
         rhs = A.T @ b
 
         # Conex standard path.
-        _, conex_prof = time_median(
-            lambda: profile_conex(A, b, args.num_threads), reps=args.reps
-        )
+        conex_prof = None
+        try:
+            _, conex_prof = time_median(
+                lambda: profile_conex(A, b, args.num_threads), reps=args.reps
+            )
+        except Exception as e:
+            print(f"  Conex row-partition failed: {e}")
 
         # Conex implicit (maximal chordal) path.
-        _, implicit_prof = time_median(
-            lambda: profile_conex_implicit(A, b, args.num_threads), reps=args.reps
-        )
+        implicit_prof = None
+        try:
+            _, implicit_prof = time_median(
+                lambda: profile_conex_implicit(A, b, args.num_threads), reps=args.reps
+            )
+        except Exception as e:
+            print(f"  Conex implicit failed: {e}")
+
+        # Conex NE path.
+        ne_prof = None
+        try:
+            _, ne_prof = time_median(
+                lambda: sparse_ls_ne(A, rhs), reps=args.reps
+            )
+        except Exception as e:
+            print(f"  NE path failed: {e}")
 
         # SciPy reference.
-        scipy_prof = profile_scipy(ata.tocsc(), rhs, reps=args.reps)
+        scipy_prof = None
+        try:
+            scipy_prof = profile_scipy(ata.tocsc(), rhs, reps=args.reps)
+        except Exception as e:
+            print(f"  SciPy failed: {e}")
 
-        x_conex = np.asarray(conex_prof["x"], dtype=np.float64).reshape(-1)
-        x_implicit = np.asarray(implicit_prof["x"], dtype=np.float64).reshape(-1)
-        x_scipy = scipy_prof["x"]
+        x_scipy = scipy_prof["x"] if scipy_prof else None
 
-        res_conex = np.linalg.norm(ata @ x_conex - rhs) / max(1.0, np.linalg.norm(rhs))
-        res_implicit = np.linalg.norm(ata @ x_implicit - rhs) / max(1.0, np.linalg.norm(rhs))
-        res_scipy = np.linalg.norm(ata @ x_scipy - rhs) / max(1.0, np.linalg.norm(rhs))
+        if conex_prof is not None:
+            x_conex = np.asarray(conex_prof["x"], dtype=np.float64).reshape(-1)
+            conex_ms = float(conex_prof["total_ms"])
+            conex_cliques = int(conex_prof["num_cliques"])
+            res_conex = np.linalg.norm(ata @ x_conex - rhs) / max(1.0, np.linalg.norm(rhs))
+        else:
+            conex_ms = None
+            conex_cliques = None
+            res_conex = None
+
+        if implicit_prof is not None:
+            x_implicit = np.asarray(implicit_prof["x"], dtype=np.float64).reshape(-1)
+            implicit_ms = float(implicit_prof["total_ms"])
+            implicit_cliques = int(implicit_prof["num_cliques"])
+            res_implicit = np.linalg.norm(ata @ x_implicit - rhs) / max(1.0, np.linalg.norm(rhs))
+        else:
+            implicit_ms = None
+            implicit_cliques = None
+            res_implicit = None
+
+        if ne_prof is not None:
+            x_ne = np.asarray(ne_prof["x"], dtype=np.float64).reshape(-1)
+            ne_total_ms = (ne_prof["construction_us"] + ne_prof["assemble_and_factor_us"]
+                           + ne_prof["solve_us"]) / 1000.0
+            res_ne = np.linalg.norm(ata @ x_ne - rhs) / max(1.0, np.linalg.norm(rhs))
+        else:
+            ne_total_ms = None
+            res_ne = None
+
+        if scipy_prof is not None:
+            scipy_ms = scipy_prof["total_ms"]
+            res_scipy = np.linalg.norm(ata @ x_scipy - rhs) / max(1.0, np.linalg.norm(rhs))
+        else:
+            scipy_ms = None
+            res_scipy = None
 
         results.append({
             "name": name,
             "shape": f"{m}x{n}",
             "nnz": A.nnz,
-            "conex_cliques": int(conex_prof["num_cliques"]),
-            "implicit_cliques": int(implicit_prof["num_cliques"]),
-            "conex_ms": float(conex_prof["total_ms"]),
-            "implicit_ms": float(implicit_prof["total_ms"]),
-            "scipy_ms": scipy_prof["total_ms"],
+            "conex_cliques": conex_cliques,
+            "implicit_cliques": implicit_cliques,
+            "conex_ms": conex_ms,
+            "implicit_ms": implicit_ms,
+            "ne_ms": ne_total_ms,
+            "scipy_ms": scipy_ms,
             "res_conex": res_conex,
             "res_implicit": res_implicit,
+            "res_ne": res_ne,
             "res_scipy": res_scipy,
         })
 
@@ -229,19 +297,30 @@ def main():
     hdr = (
         f"{'Matrix':<12s} {'Shape':>10s} {'nnz':>6s} "
         f"{'Cliques':>7s} "
-        f"{'Conex':>9s} {'Implicit':>9s} {'SciPy':>9s} "
-        f"{'Res(conex)':>11s} {'Res(impl)':>11s} {'Res(scipy)':>11s}"
+        f"{'Conex':>9s} {'Implicit':>9s} {'NE':>9s} {'SciPy':>9s} "
+        f"{'Res(conex)':>11s} {'Res(impl)':>11s} {'Res(NE)':>11s} {'Res(scipy)':>11s}"
     )
     sep = "-" * len(hdr)
     print(sep)
     print(hdr)
     print(sep)
+    def fmt_time(v):
+        return f"{v:>8.1f}ms" if v is not None else "    FAIL "
+
+    def fmt_res(v):
+        return f"{v:>11.1e}" if v is not None else "       FAIL"
+
+    def fmt_int(v, w=7):
+        return f"{v:>{w}d}" if v is not None else " " * (w - 4) + "FAIL"
+
     for r in results:
         print(
             f"{r['name']:<12s} {r['shape']:>10s} {r['nnz']:>6d} "
-            f"{r['conex_cliques']:>7d} "
-            f"{r['conex_ms']:>8.1f}ms {r['implicit_ms']:>8.1f}ms {r['scipy_ms']:>8.1f}ms "
-            f"{r['res_conex']:>11.1e} {r['res_implicit']:>11.1e} {r['res_scipy']:>11.1e}"
+            f"{fmt_int(r['conex_cliques'])} "
+            f"{fmt_time(r['conex_ms'])} {fmt_time(r['implicit_ms'])} "
+            f"{fmt_time(r['ne_ms'])} {fmt_time(r['scipy_ms'])} "
+            f"{fmt_res(r['res_conex'])} {fmt_res(r['res_implicit'])} "
+            f"{fmt_res(r['res_ne'])} {fmt_res(r['res_scipy'])}"
         )
     print(sep)
 

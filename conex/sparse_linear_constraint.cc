@@ -28,50 +28,65 @@ SparseLinearConstraint::SparseLinearConstraint(
   CONEX_DEMAND(A.rows() == b.rows(),
                "A and b must have the same number of rows.");
 
-  // Build row supports from column-major sparse matrix.
+  // Step 1: Build row supports in O(nnz).
+  // A is column-major, so iterating columns gives sorted supports directly.
   std::vector<std::vector<int>> row_supports(A.rows());
   for (int k = 0; k < A.outerSize(); ++k) {
     for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it) {
       row_supports[it.row()].push_back(it.col());
     }
   }
-  for (auto& s : row_supports) {
-    std::sort(s.begin(), s.end());
-  }
 
-  // Sort row indices by support size (descending) so that the largest
-  // supports become group leaders and smaller supports are absorbed.
-  std::vector<int> order(A.rows());
-  std::iota(order.begin(), order.end(), 0);
-  std::sort(order.begin(), order.end(), [&](int a, int b) {
-    return row_supports[a].size() > row_supports[b].size();
+  // Step 2: Group rows with identical support.
+  // Sort row indices by support to cluster identical supports together.
+  std::vector<int> row_order(A.rows());
+  std::iota(row_order.begin(), row_order.end(), 0);
+  std::sort(row_order.begin(), row_order.end(), [&](int a, int b) {
+    return row_supports[a] < row_supports[b];
   });
 
-  // Greedy grouping: assign each row to the first group whose support
-  // contains the row's support.  Since rows are processed largest-first,
-  // a row's support is never a strict superset of an existing group's.
+  // Collect unique-support groups.
+  struct UniqueGroup {
+    std::vector<int> support;
+    std::vector<int> rows;
+  };
+  std::vector<UniqueGroup> unique_groups;
+  for (int row : row_order) {
+    if (unique_groups.empty() ||
+        unique_groups.back().support != row_supports[row]) {
+      unique_groups.push_back({row_supports[row], {}});
+    }
+    unique_groups.back().rows.push_back(row);
+  }
+
+  // Step 3: Containment merging on unique supports only.
+  // Sort by support size descending so larger supports are group leaders.
+  std::sort(unique_groups.begin(), unique_groups.end(),
+            [](const UniqueGroup& a, const UniqueGroup& b) {
+              return a.support.size() > b.support.size();
+            });
+
   struct GroupInfo {
     std::vector<int> support;
     std::vector<int> rows;
   };
   std::vector<GroupInfo> group_infos;
 
-  for (int row : order) {
-    const auto& supp = row_supports[row];
+  for (auto& ug : unique_groups) {
     bool merged = false;
     for (auto& gi : group_infos) {
-      if (IsSubset(supp, gi.support)) {
-        gi.rows.push_back(row);
+      if (IsSubset(ug.support, gi.support)) {
+        gi.rows.insert(gi.rows.end(), ug.rows.begin(), ug.rows.end());
         merged = true;
         break;
       }
     }
     if (!merged) {
-      group_infos.push_back({supp, {row}});
+      group_infos.push_back({ug.support, std::move(ug.rows)});
     }
   }
 
-  // Create dense sub-blocks for each group.
+  // Step 4: Create dense sub-blocks.
   for (auto& gi : group_infos) {
     RowGroup group;
     group.variables = gi.support;
