@@ -318,6 +318,16 @@ SparseLinearConstraintAssembler::SparseLinearConstraintAssembler(
     : SupernodalAssemblerBase(all_variables), slc_(std::move(slc)) {}
 
 std::vector<SupernodalAssemblerBase*>
+SparseLinearConstraintAssembler::Decompose() {
+  // Use containment-merged groups (already computed in the constructor).
+  std::vector<std::vector<int>> targets;
+  for (const auto& g : slc_->groups()) {
+    targets.push_back(g.variables);
+  }
+  return Decompose(targets);
+}
+
+std::vector<SupernodalAssemblerBase*>
 SparseLinearConstraintAssembler::Decompose(
     const std::vector<std::vector<int>>& maximal_cliques) {
   auto groups = slc_->GetConstraints(maximal_cliques);
@@ -340,9 +350,22 @@ SparseLinearConstraintAssembler::Decompose(
 
     // Use emplace_back on std::list (stable addresses).
     owned_assemblers_.emplace_back(group.variables, raw_ptr);
-    result.push_back(&owned_assemblers_.back());
+    // Pre-initialize the SchurComplement workspace so the supernodal
+    // solver's Bind can map this assembler into the tree.
+    auto& asm_ref = owned_assemblers_.back();
+    Workspace sc_ws = Workspace(asm_ref.submatrix_data());
+    asm_ref.memory_.resize(SizeOf(sc_ws));
+    Initialize(&sc_ws, asm_ref.memory_.data());
+    result.push_back(&asm_ref);
   }
   return result;
+}
+
+void SparseLinearConstraintAssembler::RegisterDecomposedConeInequalities(
+    ConstraintManager* cm) {
+  for (auto& assembler : owned_assemblers_) {
+    cm->cone_inequalities().push_back(&assembler);
+  }
 }
 
 SparseLeastSquaresResult SparseLeastSquaresMakeTreeSolver(

@@ -98,7 +98,8 @@ class Program {
   }
 
   int NumberOfConstraints() {
-    return kkt_system_manager_.cone_inequalities().size();
+    return kkt_system_manager_.cone_inequalities().size() +
+           kkt_system_manager_.num_custom_assemblers();
   }
   ConexStatus& Status() { return status_; }
 

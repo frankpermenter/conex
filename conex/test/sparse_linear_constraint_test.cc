@@ -1,6 +1,7 @@
 #include "conex/sparse_linear_constraint.h"
 
 #include <iostream>
+#include <set>
 
 #include "conex/cone_program.h"
 #include "conex/linear_constraint.h"
@@ -294,6 +295,170 @@ GTEST_TEST(SparseLeastSquares, Banded) {
             << "  assemble_and_factor: " << result.assemble_and_factor_time_us
             << " us\n"
             << "  solve:              " << result.solve_time_us << " us\n";
+}
+
+// Verify that SparseLinearConstraintAssembler throws when used with a
+// non-tree solver path.
+GTEST_TEST(SparseLinearConstraintAssembler, ThrowsOnNonTreeSolver) {
+  std::vector<MatrixXd> blocks = {MatrixXd::Random(4, 2),
+                                  MatrixXd::Random(3, 3)};
+  auto A = BlockDiagonal(blocks);
+  VectorXd b = VectorXd::Ones(A.rows());
+  auto slc = std::make_unique<SparseLinearConstraint>(A, b);
+
+  std::set<int> var_set;
+  for (const auto& support : slc->row_supports()) {
+    var_set.insert(support.begin(), support.end());
+  }
+  std::vector<int> all_vars(var_set.begin(), var_set.end());
+
+  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc), all_vars);
+
+  // SetDenseData should throw since Decompose is required.
+  EXPECT_THROW(assembler->SetDenseData(), std::runtime_error);
+}
+
+// Helper: solve LP with SparseLinearConstraintAssembler using given solver.
+VectorXd SolveWithAssembler(
+    const Eigen::SparseMatrix<double>& A_sparse,
+    const VectorXd& b_affine,
+    const VectorXd& cost,
+    int kkt_solver) {
+  int num_vars = A_sparse.cols();
+
+  auto slc = std::make_unique<SparseLinearConstraint>(A_sparse, b_affine);
+
+  std::set<int> var_set;
+  for (const auto& support : slc->row_supports()) {
+    var_set.insert(support.begin(), support.end());
+  }
+  std::vector<int> all_vars(var_set.begin(), var_set.end());
+
+  Program prog(num_vars);
+  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc), all_vars);
+  prog.constraint_manager().AddCustomAssembler(assembler.get());
+
+  SolverConfiguration config = DefaultTestConfiguration();
+  config.prepare_dual_variables = true;
+  config.inv_sqrt_mu_max = 5e3;
+  config.final_centering_tolerance = 1.01;
+  config.final_centering_steps = 0;
+  config.kkt_solver = kkt_solver;
+
+  VectorXd y(num_vars);
+  Solve(cost, prog, config, y.data());
+  return y;
+}
+
+// Solve a cone program (LP) using SparseLinearConstraintAssembler.
+// Compare tree solver and supernodal solver against AddToProgram reference.
+GTEST_TEST(SparseLinearConstraintAssembler, ConeProgram) {
+  srand(42);
+  double eps = 1e-6;
+
+  int num_blocks = 4;
+  int rows_per_block = 6;
+  int cols_per_block = 3;
+
+  std::vector<MatrixXd> blocks(num_blocks);
+  for (int i = 0; i < num_blocks; i++) {
+    blocks[i] = MatrixXd::Random(rows_per_block, cols_per_block);
+  }
+
+  auto A_sparse = BlockDiagonal(blocks);
+  int num_rows = A_sparse.rows();
+  int num_vars = A_sparse.cols();
+
+  VectorXd b_affine = VectorXd::Ones(num_rows);
+
+  VectorXd x0 = VectorXd::Random(num_rows).cwiseAbs() * 0.01;
+  MatrixXd A_dense(A_sparse);
+  VectorXd cost = A_dense.transpose() * x0;
+
+  // --- Reference: AddToProgram ---
+  SolverConfiguration config = DefaultTestConfiguration();
+  config.prepare_dual_variables = true;
+  config.inv_sqrt_mu_max = 5e3;
+  config.final_centering_tolerance = 1.01;
+  config.final_centering_steps = 0;
+
+  SparseLinearConstraint slc_ref(A_sparse, b_affine);
+  Program prog_ref(num_vars);
+  slc_ref.AddToProgram(prog_ref);
+  VectorXd y_ref(num_vars);
+  Solve(cost, prog_ref, config, y_ref.data());
+
+  // --- Tree solver ---
+  VectorXd y_tree = SolveWithAssembler(
+      A_sparse, b_affine, cost, CONEX_KKT_SOLVER_TREE);
+  EXPECT_NEAR((y_tree - y_ref).norm(), 0, eps);
+
+  // --- Supernodal solver ---
+  VectorXd y_sn = SolveWithAssembler(
+      A_sparse, b_affine, cost, CONEX_KKT_SOLVER_SUPERNODAL);
+  EXPECT_NEAR((y_sn - y_ref).norm(), 0, eps);
+
+  // Verify feasibility for both.
+  VectorXd slack_tree = b_affine - A_dense * y_tree;
+  VectorXd slack_sn = b_affine - A_dense * y_sn;
+  EXPECT_GE(slack_tree.minCoeff(), -eps);
+  EXPECT_GE(slack_sn.minCoeff(), -eps);
+}
+
+// Same test but with overlapping (banded) sparsity pattern.
+GTEST_TEST(SparseLinearConstraintAssembler, ConeProgramBanded) {
+  srand(7);
+  double eps = 1e-6;
+  int num_vars = 8;
+  int bandwidth = 3;
+  int rows_per_group = 3;
+  int num_groups = num_vars - bandwidth + 1;
+  int num_rows = rows_per_group * num_groups;
+
+  std::vector<Eigen::Triplet<double>> triplets;
+  for (int g = 0; g < num_groups; g++) {
+    for (int r = 0; r < rows_per_group; r++) {
+      int row = g * rows_per_group + r;
+      for (int j = 0; j < bandwidth; j++) {
+        triplets.emplace_back(row, g + j,
+                              0.5 + static_cast<double>(rand()) / RAND_MAX);
+      }
+    }
+  }
+  Eigen::SparseMatrix<double> A_sparse(num_rows, num_vars);
+  A_sparse.setFromTriplets(triplets.begin(), triplets.end());
+
+  VectorXd b_affine = VectorXd::Ones(num_rows) * 2.0;
+  MatrixXd A_dense(A_sparse);
+
+  VectorXd x0 = VectorXd::Random(num_rows).cwiseAbs() * 0.01;
+  VectorXd cost = A_dense.transpose() * x0;
+
+  // --- Reference ---
+  SolverConfiguration config = DefaultTestConfiguration();
+  config.prepare_dual_variables = true;
+  config.inv_sqrt_mu_max = 5e3;
+  config.final_centering_tolerance = 1.01;
+
+  SparseLinearConstraint slc_ref(A_sparse, b_affine);
+  Program prog_ref(num_vars);
+  slc_ref.AddToProgram(prog_ref);
+  VectorXd y_ref(num_vars);
+  Solve(cost, prog_ref, config, y_ref.data());
+
+  // --- Tree solver ---
+  VectorXd y_tree = SolveWithAssembler(
+      A_sparse, b_affine, cost, CONEX_KKT_SOLVER_TREE);
+  EXPECT_NEAR((y_tree - y_ref).norm(), 0, eps);
+  EXPECT_GE((b_affine - A_dense * y_tree).minCoeff(), -eps);
+
+  // --- Supernodal solver ---
+  VectorXd y_sn = SolveWithAssembler(
+      A_sparse, b_affine, cost, CONEX_KKT_SOLVER_SUPERNODAL);
+  EXPECT_NEAR((y_sn - y_ref).norm(), 0, eps);
+  EXPECT_GE((b_affine - A_dense * y_sn).minCoeff(), -eps);
 }
 
 }  // namespace conex

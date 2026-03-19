@@ -19,7 +19,22 @@ void IncrementSubvector(std::vector<int>* y, const std::vector<int>& indices) {
 }  // namespace
 std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
     ConstraintManager* c, const SolverConfiguration& config) {
-  vector<vector<int>> cliques = c->variables();
+  auto clique_assemblers_ptrs = c->clique_assemblers();
+
+  // Decompose assemblers using default grouping (e.g. containment merging).
+  vector<SupernodalAssemblerBase*> decomposed;
+  for (auto* assembler : clique_assemblers_ptrs) {
+    auto subs = assembler->Decompose();
+    decomposed.insert(decomposed.end(), subs.begin(), subs.end());
+    assembler->RegisterDecomposedConeInequalities(c);
+  }
+
+  // Build cliques from decomposed assemblers.
+  vector<vector<int>> cliques;
+  for (auto* assembler : decomposed) {
+    cliques.push_back(assembler->variables());
+  }
+
   vector<vector<int>> dual_vars = c->equality_constraint_multipliers();
 
   CliqueTree clique_tree =
@@ -40,7 +55,7 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
   } else {
     solver_temp->SetSolverMode(CONEX_QR_FACTORIZATION);
   }
-  solver_temp->Bind(c->clique_assemblers());
+  solver_temp->Bind(decomposed);
   return solver_temp;
 }
 
@@ -101,6 +116,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
   for (auto* assembler : clique_assemblers_ptrs_) {
     auto subs = assembler->Decompose(maximal_cliques);
     decomposed.insert(decomposed.end(), subs.begin(), subs.end());
+    assembler->RegisterDecomposedConeInequalities(c);
   }
 
   int num_primal = c->GetNumberOfVariables();

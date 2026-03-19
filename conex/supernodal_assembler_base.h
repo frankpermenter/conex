@@ -70,16 +70,28 @@ class SupernodalAssemblerBase : public IVisitable, public IVariableShape {
   virtual bool is_positive_definite() const { return true; }
   virtual bool supports_line_search() const { return false; }
 
+  // Decompose using default grouping (e.g. containment merging).
+  // Called by solvers that don't provide maximal cliques (supernodal).
+  virtual std::vector<SupernodalAssemblerBase*> Decompose() {
+    return {this};
+  }
+
   // Decompose this assembler into sub-assemblers aligned with the given
   // maximal cliques.  Default: returns {this} (no decomposition).
-  // Implementations that represent sparse structure (e.g.,
-  // SparseLinearConstraint) override this to split rows across cliques.
-  // Returned pointers must remain valid for the lifetime of the solver.
+  // Called by the tree solver which provides maximal cliques.
   virtual std::vector<SupernodalAssemblerBase*> Decompose(
       const std::vector<std::vector<int>>& maximal_cliques) {
     (void)maximal_cliques;
     return {this};
   }
+
+  // Called after Decompose by MakeTreeSolver.  Override to register
+  // decomposed cone-inequality assemblers with the ConstraintManager so
+  // the IPM can iterate on them (PrepareStep / TakeStep).
+  // Default: no-op (standard assemblers are already registered).
+  virtual void RegisterDecomposedConeInequalities(
+      class ConstraintManager* /*cm*/) {}
+
   virtual std::vector<int> variables() const {
     std::vector<int> variables = primal_variables_;
     variables.insert(variables.end(), dual_variables_.begin(),
