@@ -4,9 +4,11 @@
 #include <iostream>
 #include <set>
 
+#include "conex/clique_ordering.h"
 #include "conex/cone_program.h"
 #include "conex/linear_constraint.h"
 #include "conex/test/default_solver_config.h"
+#include "conex/tree_utils.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -539,6 +541,96 @@ GTEST_TEST(SparseLinearConstraintAssembler, SolverTimingComparison) {
            unique_supports, containment_groups,
            tree_ms, sn_ms);
   }
+}
+
+// Examine clique tree structures for both solver paths.
+GTEST_TEST(SparseLinearConstraintAssembler, CliqueTreeComparison) {
+  srand(42);
+  int num_vars = 80;
+  int bandwidth = 10;
+  int rows_per_group = 8;
+  int num_groups = num_vars - bandwidth + 1;
+  int num_rows = rows_per_group * num_groups;
+
+  std::vector<Eigen::Triplet<double>> triplets;
+  for (int g = 0; g < num_groups; g++) {
+    for (int r = 0; r < rows_per_group; r++) {
+      int row = g * rows_per_group + r;
+      for (int j = 0; j < bandwidth; j++) {
+        triplets.emplace_back(row, g + j,
+                              0.5 + static_cast<double>(rand()) / RAND_MAX);
+      }
+    }
+  }
+  Eigen::SparseMatrix<double> A_sparse(num_rows, num_vars);
+  A_sparse.setFromTriplets(triplets.begin(), triplets.end());
+  VectorXd b_affine = VectorXd::Ones(num_rows) * 2.0;
+
+  SparseLinearConstraint slc(A_sparse, b_affine);
+
+  // --- Supernodal path: containment-merged cliques → MakePrimalDualCliqueTree ---
+  std::vector<std::vector<int>> sn_cliques;
+  for (const auto& g : slc.groups()) {
+    sn_cliques.push_back(g.variables);
+  }
+  CliqueTree sn_tree = MakeCliqueTree(sn_cliques);
+
+  std::cout << "\n=== Supernodal solver clique tree ===\n";
+  std::cout << "Input cliques: " << sn_cliques.size() << "\n";
+  std::cout << "Tree nodes: " << sn_tree.supernodes.size() << "\n";
+  int sn_with_supernodes = 0;
+  int sn_total_fill = 0;
+  for (size_t i = 0; i < sn_tree.supernodes.size(); i++) {
+    int sn_size = sn_tree.supernodes[i].size();
+    int sep_size = sn_tree.separators[i].size();
+    sn_total_fill += sn_size * (sn_size + sep_size);
+    if (sn_size > 0) sn_with_supernodes++;
+    if (i < 20 || sn_size == 0) {
+      std::cout << "  node " << i << ": sn=" << sn_size
+                << " sep=" << sep_size
+                << " total=" << sn_size + sep_size
+                << (sn_size == 0 ? " *** NO SUPERNODE ***" : "")
+                << "\n";
+    }
+  }
+  if (sn_tree.supernodes.size() > 20) {
+    std::cout << "  ... (" << sn_tree.supernodes.size() - 20 << " more nodes)\n";
+  }
+  std::cout << "Nodes with supernodes: " << sn_with_supernodes
+            << " / " << sn_tree.supernodes.size() << "\n";
+  std::cout << "Total fill (sum of sn*(sn+sep)): " << sn_total_fill << "\n";
+
+  // --- Tree solver path: row supports → MakeCliqueTreeMinDegreeFromRowSupports ---
+  std::vector<std::vector<int>> maximal_cliques;
+  CliqueTree tree_tree = MakeCliqueTreeMinDegreeFromRowSupports(
+      slc.row_supports(), &maximal_cliques,
+      /*max_merge_supernode_size=*/0, SUPERNODE_REORDER_BFS_GREEDY, {});
+
+  std::cout << "\n=== Tree solver clique tree ===\n";
+  std::cout << "Input supports: " << slc.row_supports().size() << "\n";
+  std::cout << "Maximal cliques: " << maximal_cliques.size() << "\n";
+  std::cout << "Tree nodes: " << tree_tree.supernodes.size() << "\n";
+  int tree_with_supernodes = 0;
+  int tree_total_fill = 0;
+  for (size_t i = 0; i < tree_tree.supernodes.size(); i++) {
+    int sn_size = tree_tree.supernodes[i].size();
+    int sep_size = tree_tree.separators[i].size();
+    tree_total_fill += sn_size * (sn_size + sep_size);
+    if (sn_size > 0) tree_with_supernodes++;
+    if (i < 20 || sn_size == 0) {
+      std::cout << "  node " << i << ": sn=" << sn_size
+                << " sep=" << sep_size
+                << " total=" << sn_size + sep_size
+                << (sn_size == 0 ? " *** NO SUPERNODE ***" : "")
+                << "\n";
+    }
+  }
+  if (tree_tree.supernodes.size() > 20) {
+    std::cout << "  ... (" << tree_tree.supernodes.size() - 20 << " more nodes)\n";
+  }
+  std::cout << "Nodes with supernodes: " << tree_with_supernodes
+            << " / " << tree_tree.supernodes.size() << "\n";
+  std::cout << "Total fill (sum of sn*(sn+sep)): " << tree_total_fill << "\n";
 }
 
 }  // namespace conex

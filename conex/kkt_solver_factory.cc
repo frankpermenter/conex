@@ -108,7 +108,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
 
   vector<vector<int>> maximal_cliques;
   CliqueTree clique_tree = MakeCliqueTreeMinDegreeFromRowSupports(
-      cliques, &maximal_cliques, /*max_merge_supernode_size=*/5,
+      cliques, &maximal_cliques, /*max_merge_supernode_size=*/0,
       SUPERNODE_REORDER_BFS_GREEDY, dual_vars_flat);
 
   // Decompose assemblers against maximal cliques.

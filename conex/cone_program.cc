@@ -304,7 +304,13 @@ StepInfo IterationHelper(bool& update_mu, const SolverConfiguration& config,
           (b * b_scaling + sys.AQc * c_scaling) -
       2 * sys.AW;
   START_TIMER(Solve)
+#if defined(EIGEN_RUNTIME_NO_MALLOC)
+  Eigen::internal::set_is_malloc_allowed(false);
+#endif
   solver->SolveInPlace(y);
+#if defined(EIGEN_RUNTIME_NO_MALLOC)
+  Eigen::internal::set_is_malloc_allowed(true);
+#endif
   END_TIMER
 
   newton_step_parameters.e_weight = 1;
@@ -389,6 +395,9 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
     warmstart_aborted = false;
 
     START_TIMER(AssembleAndFactor)
+#if defined(EIGEN_RUNTIME_NO_MALLOC)
+    if (i > 0) Eigen::internal::set_is_malloc_allowed(false);
+#endif
     if (!solver->AssembleAndFactor()) {
       if (i == 0 &&
           config.initialization_mode == CONEX_INITIALIZATION_MODE_WARMSTART) {
@@ -402,6 +411,9 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
       return false;
     }
     AssembleSchurComplementResiduals(kkt_system_manager_, &sys);
+#if defined(EIGEN_RUNTIME_NO_MALLOC)
+    if (i > 0) Eigen::internal::set_is_malloc_allowed(true);
+#endif
     END_TIMER
 
     if (i < 1 && config.enable_rescaling) {

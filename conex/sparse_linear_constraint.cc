@@ -281,7 +281,7 @@ SparseLeastSquaresResult SparseLeastSquares(
   }
   CliqueTree clique_tree = MakeCliqueTreeMinDegreeFromRowSupports(
       cliques, /*maximal_cliques_out=*/nullptr,
-      /*max_merge_supernode_size=*/5, SUPERNODE_REORDER_BFS_GREEDY, {});
+      /*max_merge_supernode_size=*/0, SUPERNODE_REORDER_BFS_GREEDY, {});
 
   auto t_grouped = clock::now();
   double grouping_us =
@@ -305,7 +305,7 @@ SparseLeastSquaresResult SparseLeastSquaresMaximalClique(
   std::vector<std::vector<int>> maximal_cliques;
   CliqueTree clique_tree = MakeCliqueTreeMinDegreeFromRowSupports(
       slc.row_supports(), &maximal_cliques,
-      /*max_merge_supernode_size=*/5, SUPERNODE_REORDER_BFS_GREEDY, {});
+      /*max_merge_supernode_size=*/0, SUPERNODE_REORDER_BFS_GREEDY, {});
 
   // Group rows by maximal clique.
   auto groups = slc.GetConstraints(maximal_cliques);

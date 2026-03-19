@@ -277,11 +277,9 @@ void LinearConstraint::ConstructSchurComplementSystemImpl(
   const auto& r = workspace_.r;
   auto G = &sys->G;
 
-  auto& WA = workspace_.weighted_constraints;
   auto& WC = workspace_.temp_1;
   int m = number_of_variables();
 
-  WA = W.asDiagonal() * (constraint_matrix_);
   WC = W.cwiseProduct(constraint_affine_);
 
   if (initialize) {
@@ -293,16 +291,27 @@ void LinearConstraint::ConstructSchurComplementSystemImpl(
     if (G->rows() != m) {
       sys->setZero();
     }
-    (*G).topLeftCorner(m, m).noalias() = WA.transpose() * WA;
+    if (gram_evaluator_.is_active()) {
+      // Lazy evaluator handles G and already has WA_perm_ up to date.
+      // Compute AQc = A' * (W .* WC) without materializing WA.
+      sys->AQc.topRows(m).noalias() =
+          constraint_matrix_.transpose() * W.cwiseProduct(WC);
+    } else {
+      auto& WA = workspace_.weighted_constraints;
+      WA = W.asDiagonal() * (constraint_matrix_);
+      (*G).topLeftCorner(m, m).noalias() = WA.transpose() * WA;
+      sys->AQc.topRows(m).noalias() = WA.transpose() * WC;
+    }
     sys->AW.topRows(m).noalias() =
         constraint_matrix_.transpose() * r.cwiseProduct(W);
-    sys->AQc.topRows(m).noalias() = WA.transpose() * WC;
     sys->AQe.topRows(m).noalias() =
         constraint_matrix_.transpose() * (W.cwiseProduct(W));
     sys->Ae.topRows(m).noalias() =
         constraint_matrix_.colwise().sum().transpose();
   } else {
     std::runtime_error("obsolete");
+    auto& WA = workspace_.weighted_constraints;
+    WA = W.asDiagonal() * (constraint_matrix_);
     sys->inner_product_of_w_and_c += WC.sum();
     sys->inner_product_of_c_and_Qc += WC.squaredNorm();
     sys->inner_product_of_c_and_Qe += WC.col(0).dot(W.col(0));
