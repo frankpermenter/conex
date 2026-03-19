@@ -97,6 +97,35 @@ def sparse_ls_ne(A, rhs):
     )
 
 
+def sparse_ls_ne_maxclique(A, rhs):
+    """
+    Solve A^T A x = rhs using maximal-clique grouping.
+
+    Passes all unique row supports to the clique ordering, gets maximal
+    cliques back, then groups rows by which maximal clique contains their
+    support.  Same return format as sparse_ls_ne.
+    """
+    try:
+        import scipy.sparse as sp
+    except ImportError as exc:
+        raise ImportError("scipy is required") from exc
+
+    if not sp.issparse(A):
+        raise TypeError("A must be a scipy sparse matrix.")
+    Acsr = A.tocsr()
+    rhs_vec = np.asarray(rhs, dtype=np.float64).reshape(-1)
+    if rhs_vec.shape[0] != Acsr.shape[1]:
+        raise ValueError("rhs length must match A.shape[1].")
+    return sparse_ls_normal_equations_maxclique(
+        Acsr.indptr.astype(np.int64, copy=False),
+        Acsr.indices.astype(np.int64, copy=False),
+        Acsr.data.astype(np.float64, copy=False),
+        int(Acsr.shape[0]),
+        int(Acsr.shape[1]),
+        rhs_vec,
+    )
+
+
 def _row_supports(Acsr):
     groups = {}
     for r in range(Acsr.shape[0]):

@@ -17,7 +17,7 @@ import scipy.io
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 from _conex import sparse_ls_profile_csr, sparse_ls_profile_csr_implicit
-from conex import sparse_ls_ne
+from conex import sparse_ls_ne, sparse_ls_ne_maxclique
 
 # Exact benchmark matrices: (group, name, nrows, ncols, nnz)
 BENCHMARK_MATRICES = [
@@ -222,7 +222,7 @@ def main():
         except Exception as e:
             print(f"  Conex implicit failed: {e}")
 
-        # Conex NE path.
+        # Conex NE path (containment grouping).
         ne_prof = None
         try:
             _, ne_prof = time_median(
@@ -230,6 +230,15 @@ def main():
             )
         except Exception as e:
             print(f"  NE path failed: {e}")
+
+        # Conex NE path (maximal-clique grouping).
+        ne_mc_prof = None
+        try:
+            _, ne_mc_prof = time_median(
+                lambda: sparse_ls_ne_maxclique(A, rhs), reps=args.reps
+            )
+        except Exception as e:
+            print(f"  NE maxclique path failed: {e}")
 
         # SciPy reference.
         scipy_prof = None
@@ -269,6 +278,15 @@ def main():
             ne_total_ms = None
             res_ne = None
 
+        if ne_mc_prof is not None:
+            x_ne_mc = np.asarray(ne_mc_prof["x"], dtype=np.float64).reshape(-1)
+            ne_mc_total_ms = (ne_mc_prof["construction_us"] + ne_mc_prof["assemble_and_factor_us"]
+                              + ne_mc_prof["solve_us"]) / 1000.0
+            res_ne_mc = np.linalg.norm(ata @ x_ne_mc - rhs) / max(1.0, np.linalg.norm(rhs))
+        else:
+            ne_mc_total_ms = None
+            res_ne_mc = None
+
         if scipy_prof is not None:
             scipy_ms = scipy_prof["total_ms"]
             res_scipy = np.linalg.norm(ata @ x_scipy - rhs) / max(1.0, np.linalg.norm(rhs))
@@ -285,10 +303,12 @@ def main():
             "conex_ms": conex_ms,
             "implicit_ms": implicit_ms,
             "ne_ms": ne_total_ms,
+            "ne_mc_ms": ne_mc_total_ms,
             "scipy_ms": scipy_ms,
             "res_conex": res_conex,
             "res_implicit": res_implicit,
             "res_ne": res_ne,
+            "res_ne_mc": res_ne_mc,
             "res_scipy": res_scipy,
         })
 
@@ -297,8 +317,8 @@ def main():
     hdr = (
         f"{'Matrix':<12s} {'Shape':>10s} {'nnz':>6s} "
         f"{'Cliques':>7s} "
-        f"{'Conex':>9s} {'Implicit':>9s} {'NE':>9s} {'SciPy':>9s} "
-        f"{'Res(conex)':>11s} {'Res(impl)':>11s} {'Res(NE)':>11s} {'Res(scipy)':>11s}"
+        f"{'Conex':>9s} {'Implicit':>9s} {'NE':>9s} {'NE-MC':>9s} {'SciPy':>9s} "
+        f"{'Res(conex)':>11s} {'Res(impl)':>11s} {'Res(NE)':>11s} {'Res(MC)':>11s} {'Res(scipy)':>11s}"
     )
     sep = "-" * len(hdr)
     print(sep)
@@ -318,9 +338,9 @@ def main():
             f"{r['name']:<12s} {r['shape']:>10s} {r['nnz']:>6d} "
             f"{fmt_int(r['conex_cliques'])} "
             f"{fmt_time(r['conex_ms'])} {fmt_time(r['implicit_ms'])} "
-            f"{fmt_time(r['ne_ms'])} {fmt_time(r['scipy_ms'])} "
+            f"{fmt_time(r['ne_ms'])} {fmt_time(r['ne_mc_ms'])} {fmt_time(r['scipy_ms'])} "
             f"{fmt_res(r['res_conex'])} {fmt_res(r['res_implicit'])} "
-            f"{fmt_res(r['res_ne'])} {fmt_res(r['res_scipy'])}"
+            f"{fmt_res(r['res_ne'])} {fmt_res(r['res_ne_mc'])} {fmt_res(r['res_scipy'])}"
         )
     print(sep)
 

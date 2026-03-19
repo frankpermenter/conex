@@ -49,7 +49,16 @@ struct SparseLeastSquaresResult {
   double finalize_us;          // push adapters + Finalize + mode setup
 };
 
+// Original path: groups rows by support containment, then builds clique tree
+// from the ConstraintManager's assembler cliques.
 SparseLeastSquaresResult SparseLeastSquares(
+    const Eigen::SparseMatrix<double>& A,
+    const Eigen::VectorXd& rhs);
+
+// Alternative path: passes all unique row supports directly to the clique
+// ordering, gets maximal cliques back, then groups rows by which maximal
+// clique contains their support.
+SparseLeastSquaresResult SparseLeastSquaresMaximalClique(
     const Eigen::SparseMatrix<double>& A,
     const Eigen::VectorXd& rhs);
 
