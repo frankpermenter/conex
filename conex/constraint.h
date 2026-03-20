@@ -68,6 +68,7 @@ class Constraint : public IVisitable, public IVariableShape {
   }
 
   virtual LazySymmetricMatrix* GetLazyEvaluator() { return nullptr; }
+  virtual void set_precompute_gram(bool) {}
 
  protected:
   template <typename WorkspaceType>
@@ -162,6 +163,9 @@ class SupernodalAssemblerConstraint : public SupernodalAssemblerBase {
 
   LazySymmetricMatrix* GetLazyEvaluator() override {
     return workspace_->GetLazyEvaluator();
+  }
+  void set_precompute_gram(bool v) override {
+    workspace_->set_precompute_gram(v);
   }
 
   SupernodalAssemblerConstraint(){};

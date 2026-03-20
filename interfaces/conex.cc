@@ -68,7 +68,8 @@ SolverConfiguration APIConvertSolverConfiguration(
       config->initial_centering_steps_coldstart;
   c.warmstart_abort_threshold = config->warmstart_abort_threshold;
   c.max_iterations = config->max_iterations;
-  c.iterative_refinement_iterations = config->iterative_refinement_iterations;
+  c.supernodal.iterative_refinement_iterations =
+      config->iterative_refinement_iterations;
   c.num_threads = config->num_threads;
   c.infeasibility_threshold = config->infeasibility_threshold;
   c.kkt_error_tolerance = config->kkt_error_tolerance;
@@ -245,7 +246,8 @@ void CONEX_SetDefaultOptions(CONEX_SolverConfiguration* c) {
       config.initial_centering_steps_coldstart;
   c->warmstart_abort_threshold = config.warmstart_abort_threshold;
   c->max_iterations = config.max_iterations;
-  c->iterative_refinement_iterations = config.iterative_refinement_iterations;
+  c->iterative_refinement_iterations =
+      config.supernodal.iterative_refinement_iterations;
   c->num_threads = config.num_threads;
   c->infeasibility_threshold = config.infeasibility_threshold;
   c->kkt_error_tolerance = config.kkt_error_tolerance;

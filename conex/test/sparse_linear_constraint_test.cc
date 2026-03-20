@@ -327,7 +327,8 @@ VectorXd SolveWithAssembler(
     const Eigen::SparseMatrix<double>& A_sparse,
     const VectorXd& b_affine,
     const VectorXd& cost,
-    int kkt_solver) {
+    int kkt_solver,
+    bool precompute_gram = false) {
   int num_vars = A_sparse.cols();
 
   auto slc = std::make_unique<SparseLinearConstraint>(A_sparse, b_affine);
@@ -349,6 +350,7 @@ VectorXd SolveWithAssembler(
   config.final_centering_tolerance = 1.01;
   config.final_centering_steps = 0;
   config.kkt_solver = kkt_solver;
+  config.tree.precompute_gram = precompute_gram;
 
   VectorXd y(num_vars);
   Solve(cost, prog, config, y.data());
@@ -518,10 +520,11 @@ GTEST_TEST(SparseLinearConstraintAssembler, SolverTimingComparison) {
     // of unique supports.
     int unique_supports = static_cast<int>(slc.row_supports().size());
 
-    // Tree solver.
+    // Tree solver with precomputed Gram.
     auto t0 = clock::now();
     VectorXd y_tree = SolveWithAssembler(
-        A_sparse, b_affine, cost, CONEX_KKT_SOLVER_TREE);
+        A_sparse, b_affine, cost, CONEX_KKT_SOLVER_TREE,
+        /*precompute_gram=*/true);
     auto t1 = clock::now();
 
     // Supernodal solver.

@@ -20,6 +20,15 @@ enum : int {
   CONEX_STEP_TYPE_GEODESIC = 2,
 };
 
+struct SupernodalSolverOptions {
+  int iterative_refinement_iterations = 0;
+};
+
+struct TreeSolverOptions {
+  bool precompute_gram = false;
+  bool left_looking = true;
+};
+
 struct SolverConfiguration {
   int prepare_dual_variables = 0;
   int initialization_mode = 0;
@@ -41,7 +50,6 @@ struct SolverConfiguration {
   int kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
   int clique_tree_method = CONEX_CLIQUE_TREE_METHOD_AMD;
   int enable_rescaling = 1;
-  int iterative_refinement_iterations = 0;
   // Number of CPU threads used by compatible KKT solvers.
   // Set to 1 for single-threaded execution.
   int num_threads = 1;
@@ -51,6 +59,9 @@ struct SolverConfiguration {
   int algorithm = CONEX_ALGORITHM_INFEASIBLE_START;
   int step_type = CONEX_STEP_TYPE_GEODESIC;
   std::string log_file = "conex_log.json";
+
+  SupernodalSolverOptions supernodal;
+  TreeSolverOptions tree;
 };
 
 struct ConexStatus {

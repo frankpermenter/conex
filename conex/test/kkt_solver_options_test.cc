@@ -72,14 +72,14 @@ int random_seed = 1;
 
 GTEST_TEST(KKTSolver, UseIterativeRefinement) {
   auto config = GetConfiguration();
-  config.iterative_refinement_iterations = 3;
+  config.supernodal.iterative_refinement_iterations = 3;
   config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
   DoRandomDenseTest(config, num_tests, random_seed);
 }
 
 GTEST_TEST(KKTSolver, UseLLT) {
   auto config = GetConfiguration();
-  config.iterative_refinement_iterations = 0;
+  config.supernodal.iterative_refinement_iterations = 0;
   config.kkt_solver = CONEX_KKT_SOLVER_SUPERNODAL;
   DoRandomDenseTest(config, num_tests, random_seed);
 }

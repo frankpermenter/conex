@@ -87,6 +87,12 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
 
   void RegisterDecomposedConeInequalities(ConstraintManager* cm) override;
 
+  void set_precompute_gram(bool v) override {
+    for (auto& c : owned_constraints_) {
+      c->set_precompute_gram(v);
+    }
+  }
+
  private:
   std::unique_ptr<SparseLinearConstraint> slc_;
 

@@ -15,6 +15,8 @@ class GramEvaluator : public LazySymmetricMatrix {
     A_ = A;
   }
 
+  void set_precompute_gram(bool v) { precompute_gram_ = v; }
+
   // Called once: permute columns of A and compute initial WA_perm_.
   void set_order(const std::vector<int>& perm) override {
     if (order_set_) return;
@@ -29,22 +31,36 @@ class GramEvaluator : public LazySymmetricMatrix {
     order_set_ = true;
   }
 
-  // Recompute WA_perm_ = diag(W) * A_perm_ after W changes.
+  // Recompute WA_perm_ = diag(W) * A_perm_ (and G_ if precomputing).
   void update_weights() {
     WA_perm_.noalias() = ws_->W.asDiagonal() * A_perm_;
+    if (precompute_gram_) {
+      G_.noalias() = WA_perm_.transpose() * WA_perm_;
+    }
   }
 
   void add_block(int row, int col, int rows, int cols,
                  Eigen::Ref<Eigen::MatrixXd> dest) const override {
-    dest.noalias() +=
-        WA_perm_.middleCols(row, rows).transpose() *
-        WA_perm_.middleCols(col, cols);
+    if (precompute_gram_) {
+      dest.noalias() += G_.block(row, col, rows, cols);
+    } else {
+      dest.noalias() +=
+          WA_perm_.middleCols(row, rows).transpose() *
+          WA_perm_.middleCols(col, cols);
+    }
   }
 
   void add_block_lower(int pos, int size,
                        Eigen::Ref<Eigen::MatrixXd> dest) const override {
-    dest.selfadjointView<Eigen::Lower>().rankUpdate(
-        WA_perm_.middleCols(pos, size).transpose());
+    if (precompute_gram_) {
+      const auto src = G_.block(pos, pos, size, size);
+      for (int j = 0; j < size; ++j) {
+        dest.col(j).tail(size - j) += src.col(j).tail(size - j);
+      }
+    } else {
+      dest.selfadjointView<Eigen::Lower>().rankUpdate(
+          WA_perm_.middleCols(pos, size).transpose());
+    }
   }
 
   int rows() const override { return ws_->num_vars_; }
@@ -58,7 +74,9 @@ class GramEvaluator : public LazySymmetricMatrix {
   const Eigen::MatrixXd* A_ = nullptr;
   Eigen::MatrixXd A_perm_;
   Eigen::MatrixXd WA_perm_;
+  Eigen::MatrixXd G_;
   bool order_set_ = false;
+  bool precompute_gram_ = false;
 };
 
 void PreprocessLinearInequality(const Eigen::MatrixXd& A,
@@ -84,6 +102,7 @@ class LinearConstraint : public Constraint {
     gram_evaluator_.bind(&workspace_, &constraint_matrix_);
     return &gram_evaluator_;
   }
+  void set_precompute_gram(bool v) { gram_evaluator_.set_precompute_gram(v); }
   DenseMatrix constraint_matrix() const { return constraint_matrix_; }
   DenseMatrix affine_term() const { return constraint_affine_; }
 

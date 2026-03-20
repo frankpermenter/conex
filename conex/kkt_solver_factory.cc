@@ -45,7 +45,7 @@ std::unique_ptr<KKTSolverBase> MakeSupernodalSolver(
       clique_tree.supernodes, clique_tree.separators);
 
   solver_temp->SetIterativeRefinementIterations(
-      config.iterative_refinement_iterations);
+      config.supernodal.iterative_refinement_iterations);
   if (config.kkt_solver == CONEX_KKT_SOLVER_SUPERNODAL) {
     if (c->equality_constraints().data.size() > 0) {
       solver_temp->SetSolverMode(CONEX_LDLT_FACTORIZATION);
@@ -117,6 +117,9 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     auto subs = assembler->Decompose(maximal_cliques);
     decomposed.insert(decomposed.end(), subs.begin(), subs.end());
     assembler->RegisterDecomposedConeInequalities(c);
+    if (config.tree.precompute_gram) {
+      assembler->set_precompute_gram(true);
+    }
   }
 
   int num_primal = c->GetNumberOfVariables();
@@ -128,7 +131,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     tree_solver_->push_back(std::move(adapter));
   }
   tree_solver_->Finalize(clique_tree);
-  tree_solver_->SetFactorizationMode(true /*left looking*/);
+  tree_solver_->SetFactorizationMode(config.tree.left_looking);
   tree_solver_->EnableAutoUpdateAtAssemble(true);
   tree_solver_->SetNumThreads(config.num_threads);
 

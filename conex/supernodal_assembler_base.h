@@ -111,6 +111,7 @@ class SupernodalAssemblerBase : public IVisitable, public IVariableShape {
   void UpdateBlocks();
   virtual void SetDenseData() = 0;
   virtual LazySymmetricMatrix* GetLazyEvaluator() { return nullptr; }
+  virtual void set_precompute_gram(bool) {}
 
   Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> PrimalSubvector(
       const Eigen::MatrixXd& x) const {
