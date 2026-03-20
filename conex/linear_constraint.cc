@@ -139,6 +139,9 @@ void LinearConstraint::SetIdentityImpl() {
   workspace_.r.setConstant(1);
   if (gram_evaluator_.is_active()) {
     gram_evaluator_.update_weights();
+  } else {
+    workspace_.weighted_constraints.noalias() =
+        workspace_.W.asDiagonal() * constraint_matrix_;
   }
 }
 
@@ -213,6 +216,9 @@ bool LinearConstraint::TakeStepImpl(const StepOptions& options) {
   }
   if (gram_evaluator_.is_active()) {
     gram_evaluator_.update_weights();
+  } else {
+    workspace_.weighted_constraints.noalias() =
+        workspace_.W.asDiagonal() * constraint_matrix_;
   }
   return true;
 }
@@ -297,8 +303,7 @@ void LinearConstraint::ConstructSchurComplementSystemImpl(
       sys->AQc.topRows(m).noalias() =
           constraint_matrix_.transpose() * W.cwiseProduct(WC);
     } else {
-      auto& WA = workspace_.weighted_constraints;
-      WA = W.asDiagonal() * (constraint_matrix_);
+      const auto& WA = workspace_.weighted_constraints;
       (*G).topLeftCorner(m, m).noalias() = WA.transpose() * WA;
       sys->AQc.topRows(m).noalias() = WA.transpose() * WC;
     }
@@ -310,8 +315,7 @@ void LinearConstraint::ConstructSchurComplementSystemImpl(
         constraint_matrix_.colwise().sum().transpose();
   } else {
     std::runtime_error("obsolete");
-    auto& WA = workspace_.weighted_constraints;
-    WA = W.asDiagonal() * (constraint_matrix_);
+    const auto& WA = workspace_.weighted_constraints;
     sys->inner_product_of_w_and_c += WC.sum();
     sys->inner_product_of_c_and_Qc += WC.squaredNorm();
     sys->inner_product_of_c_and_Qe += WC.col(0).dot(W.col(0));

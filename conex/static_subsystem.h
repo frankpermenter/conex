@@ -61,4 +61,7 @@ class KKTAssemblerToSubsystemAdapter {
   std::vector<int> variable_index_to_elimination_position_;
 };
 
+void PrintUpdateDataTimers();
+void ResetUpdateDataTimers();
+
 }  // namespace conex

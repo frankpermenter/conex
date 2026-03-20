@@ -498,21 +498,21 @@ class DynamicSubsystem : public KKTSubsystem {
 
   void DoComputeSeparatorSchurComplement() override {
     if (separator_rows().rows() == 0 || separator_rows().cols() == 0) return;
+    const int sn = separator_rows().cols();
+    const int sep = separator_rows().rows();
     if (indefinite_) {
-      MatrixXd temp = rldlt_.solve(separator_rows().transpose());
-      int n = separator_schur_complement().rows();
-      for (int j = 0; j < n; j++) {
-        separator_schur_complement().col(j).tail(n - j).noalias() -=
-            separator_rows().bottomRows(n - j) * temp.col(j);
+      temp_.noalias() = rldlt_.solve(separator_rows().transpose());
+      for (int j = 0; j < sep; j++) {
+        separator_schur_complement().col(j).tail(sep - j).noalias() -=
+            separator_rows().bottomRows(sep - j) * temp_.col(j);
       }
       return;
     }
-    MatrixXd temp = separator_rows().transpose();
-    llt_.matrixL().solveInPlace(temp);
-    int n = separator_schur_complement().rows();
-    for (int j = 0; j < n; j++) {
-      separator_schur_complement().col(j).tail(n - j).noalias() -=
-          temp.rightCols(n - j).transpose() * temp.col(j);
+    temp_ = separator_rows().transpose();
+    llt_.matrixL().solveInPlace(temp_);
+    for (int j = 0; j < sep; j++) {
+      separator_schur_complement().col(j).tail(sep - j).noalias() -=
+          temp_.rightCols(sep - j).transpose() * temp_.col(j);
     }
   }
 
@@ -537,6 +537,7 @@ class DynamicSubsystem : public KKTSubsystem {
   bool indefinite_ = false;
   Eigen::LLT<MatrixXd> llt_;
   Eigen::RLDLT<MatrixXd> rldlt_;
+  MatrixXd temp_;
 };
 
 }  // namespace conex

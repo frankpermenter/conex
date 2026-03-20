@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -10,6 +11,8 @@
 #include <unordered_map>
 
 #include "conex/cholesky_solvers.h"
+#include "conex/debug_macros.h"
+#include "conex/static_subsystem.h"
 #include "conex/tree_utils.h"
 
 namespace conex {
@@ -550,13 +553,19 @@ void T::ComputeSeparatorOffsets() {
 
 void T::UpdateAssemblerData() {
   // Zero all subsystem storage before contributors write additively.
+  START_TIMER(Memset)
   if (arena_memory_) {
     std::memset(arena_memory_.get(), 0, arena_bytes_);
   }
+  END_TIMER
+  ResetUpdateDataTimers();
+  START_TIMER(AdapterUpdateData)
   ForEachTask(assembler_to_subsystem_adapter_.size(),
               EffectiveThreadCount(num_threads_), [&](size_t i) {
                 assembler_to_subsystem_adapter_.at(i)->UpdateData();
               });
+  END_TIMER
+  PrintUpdateDataTimers();
 }
 
 void T::DoAssemble() {
@@ -569,9 +578,12 @@ void T::DoAssemble() {
 
 bool T::DoAssembleAndFactor() {
   if (auto_update_assemblers_) {
+    START_TIMER(UpdateAssemblerData)
     UpdateAssemblerData();
+    END_TIMER
   }
   std::atomic<bool> success(true);
+  START_TIMER(TreeFactorization)
   ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_), [&](size_t i) {
     if (!success.load(std::memory_order_relaxed)) {
       return;
@@ -580,6 +592,7 @@ bool T::DoAssembleAndFactor() {
       success.store(false, std::memory_order_relaxed);
     }
   });
+  END_TIMER
   return success.load(std::memory_order_relaxed);
 }
 
@@ -597,11 +610,15 @@ bool T::DoFactor() {
 }
 
 void T::Finalize(const CliqueTree& clique_tree) {
-  // Auto-create DynamicSubsystem instances when no subsystems were provided.
+  // Auto-create subsystems when none were provided.  Sparse linear
+  // constraints are always positive-definite, so use the in-place LLT
+  // solver (same as the supernodal path) to avoid extra copies.
+  using PosDefSystem = KKTCholeskySystem<
+      CholeskySolver<Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>>, false>>;
   if (subsystems_.empty()) {
     owned_subsystems_.clear();
     for (size_t i = 0; i < clique_tree.supernodes.size(); ++i) {
-      auto ds = std::make_unique<DynamicSubsystem>();
+      auto ds = std::make_unique<PosDefSystem>();
       subsystems_.push_back(ds.get());
       owned_subsystems_.push_back(std::move(ds));
     }

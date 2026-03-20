@@ -2,12 +2,30 @@
 
 #include "conex/RLDLT.h"
 #include "conex/cholesky_solvers.h"
+#include "conex/debug_macros.h"
 #include "conex/kkt_tree_solver.h"
 
 namespace conex {
 using T = KKTAssemblerToSubsystemAdapter;
 
-namespace {}  // namespace
+#if CONEX_ENABLE_TIMER
+static double g_dense_data_us = 0;
+static double g_write_lazy_us = 0;
+
+void ResetUpdateDataTimers() {
+  g_dense_data_us = 0;
+  g_write_lazy_us = 0;
+}
+void PrintUpdateDataTimers() {
+  std::cout << "SetDenseData(us): " << static_cast<int>(g_dense_data_us)
+            << ", WriteLazy(us): " << static_cast<int>(g_write_lazy_us)
+            << ", ";
+  ResetUpdateDataTimers();
+}
+#else
+void ResetUpdateDataTimers() {}
+void PrintUpdateDataTimers() {}
+#endif
 T::KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base)
     : assembler_(base) {}
 
@@ -126,13 +144,24 @@ void T::UpdateData() {
 
     // Always call SetDenseData to populate auxiliary fields (AW, AQc, etc.)
     // that the cone program reads from submatrix_data().
+#if CONEX_ENABLE_TIMER
+    auto t0 = std::chrono::high_resolution_clock::now();
+#endif
     assembler_->SetDenseData();
+#if CONEX_ENABLE_TIMER
+    auto t1 = std::chrono::high_resolution_clock::now();
+#endif
 
     // Use the lazy evaluator if the assembler provides one, writing blocks
     // of the Gram matrix directly into subsystem storage without copying G.
     if (auto* lazy = assembler_->GetLazyEvaluator()) {
       contributor_->WriteSymmetricLazy(
           *lazy, variable_index_to_elimination_position_);
+#if CONEX_ENABLE_TIMER
+      auto t2 = std::chrono::high_resolution_clock::now();
+      g_dense_data_us += std::chrono::duration<double, std::micro>(t1 - t0).count();
+      g_write_lazy_us += std::chrono::duration<double, std::micro>(t2 - t1).count();
+#endif
       return;
     }
 

@@ -480,6 +480,7 @@ GTEST_TEST(SparseLinearConstraintAssembler, SolverTimingComparison) {
       {"medium_banded", 50, 5, 10},
       {"large_banded", 100, 5, 10},
       {"wide_band", 80, 10, 8},
+      {"large_wide", 200, 10, 20},
   };
 
   std::cout << "\n=== Solver Timing Comparison (tree vs supernodal) ===\n";

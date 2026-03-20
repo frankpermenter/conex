@@ -394,11 +394,15 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
                      warmstart_aborted;
     warmstart_aborted = false;
 
-    START_TIMER(AssembleAndFactor)
+    START_TIMER(Assemble)
+    solver->Assemble();
+    AssembleSchurComplementResiduals(kkt_system_manager_, &sys);
+    END_TIMER
+    START_TIMER(Factor)
 #if defined(EIGEN_RUNTIME_NO_MALLOC)
     if (i > 0) Eigen::internal::set_is_malloc_allowed(false);
 #endif
-    if (!solver->AssembleAndFactor()) {
+    if (!solver->Factor()) {
       if (i == 0 &&
           config.initialization_mode == CONEX_INITIALIZATION_MODE_WARMSTART) {
         PRINTSTATUS("Aborting warmstart...");
@@ -410,7 +414,6 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
       PRINTSTATUS("Factorization failed.");
       return false;
     }
-    AssembleSchurComplementResiduals(kkt_system_manager_, &sys);
 #if defined(EIGEN_RUNTIME_NO_MALLOC)
     if (i > 0) Eigen::internal::set_is_malloc_allowed(true);
 #endif
