@@ -1,8 +1,16 @@
 #pragma once
+#include <chrono>
+
 #include "conex/error_checking_macros.h"
 #include <Eigen/Dense>
 
 namespace conex {
+
+struct KKTSolverTimings {
+  double assemble_and_factor_us = 0;
+  double solve_us = 0;
+  void Reset() { assemble_and_factor_us = 0; solve_us = 0; }
+};
 
 class KKTSolverBase {
  public:
@@ -15,7 +23,13 @@ class KKTSolverBase {
   bool AssembleAndFactor() {
     assembled_ = false;
     factored_ = false;
-    if (DoAssembleAndFactor()) {
+    auto t0 = Clock::now();
+    bool ok = DoAssembleAndFactor();
+    if (record_timings_) {
+      timings_.assemble_and_factor_us +=
+          std::chrono::duration<double, std::micro>(Clock::now() - t0).count();
+    }
+    if (ok) {
       assembled_ = true;
       factored_ = true;
     }
@@ -43,7 +57,12 @@ class KKTSolverBase {
   void SolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                     bool permute_to_elimination_order = true) const {
     CONEX_DEMAND(factored_, "System has not been factored.");
+    auto t0 = Clock::now();
     DoSolveInPlace(b, permute_to_elimination_order);
+    if (record_timings_) {
+      timings_.solve_us +=
+          std::chrono::duration<double, std::micro>(Clock::now() - t0).count();
+    }
   }
 
   Eigen::MatrixXd KKTMatrix(bool permute_to_elimination_order = false) const {
@@ -51,9 +70,15 @@ class KKTSolverBase {
                  "System has not been assembled or is factored in place.");
     return DoKKTMatrix(permute_to_elimination_order);
   }
+
+  void SetRecordTimings(bool v) { record_timings_ = v; }
+  const KKTSolverTimings& timings() const { return timings_; }
+  void ResetTimings() { timings_.Reset(); }
+
   virtual ~KKTSolverBase() = default;
 
  private:
+  using Clock = std::chrono::high_resolution_clock;
   virtual void DoAssemble() = 0;
   virtual bool DoFactor() = 0;
   virtual bool DoAssembleAndFactor() {
@@ -66,6 +91,8 @@ class KKTSolverBase {
       bool permute_to_elimination_order) const = 0;
   bool factored_ = false;
   bool assembled_ = false;
+  bool record_timings_ = false;
+  mutable KKTSolverTimings timings_;
 };
 
 /*

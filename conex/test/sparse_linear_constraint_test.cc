@@ -328,7 +328,9 @@ VectorXd SolveWithAssembler(
     const VectorXd& b_affine,
     const VectorXd& cost,
     int kkt_solver,
-    bool precompute_gram = false) {
+    bool precompute_gram = false,
+    bool left_looking = true,
+    KKTSolverTimings* timings_out = nullptr) {
   int num_vars = A_sparse.cols();
 
   auto slc = std::make_unique<SparseLinearConstraint>(A_sparse, b_affine);
@@ -351,9 +353,14 @@ VectorXd SolveWithAssembler(
   config.final_centering_steps = 0;
   config.kkt_solver = kkt_solver;
   config.tree.precompute_gram = precompute_gram;
+  config.tree.left_looking = left_looking;
+  config.record_kkt_timings = (timings_out != nullptr);
 
   VectorXd y(num_vars);
   Solve(cost, prog, config, y.data());
+  if (timings_out) {
+    *timings_out = prog.kkt_solver()->timings();
+  }
   return y;
 }
 
@@ -478,11 +485,13 @@ GTEST_TEST(SparseLinearConstraintAssembler, SolverTimingComparison) {
   };
 
   std::vector<TestCase> cases = {
-      {"small_banded", 20, 3, 5},
-      {"medium_banded", 50, 5, 10},
-      {"large_banded", 100, 5, 10},
-      {"wide_band", 80, 10, 8},
-      {"large_wide", 200, 10, 20},
+      // Block diagonal: num_vars = num_blocks * bandwidth, each block disjoint.
+      {"blkdiag_5x5_x20", 100, 5, 20},
+      {"blkdiag_10x10_x10", 100, 10, 20},
+      {"blkdiag_10x10_x20", 200, 10, 20},
+      {"blkdiag_20x20_x10", 200, 20, 20},
+      // Banded for comparison.
+      {"banded_200x10", 200, 10, 20},
   };
 
   std::cout << "\n=== Solver Timing Comparison (tree vs supernodal) ===\n";
@@ -491,16 +500,32 @@ GTEST_TEST(SparseLinearConstraintAssembler, SolverTimingComparison) {
 
   for (const auto& tc : cases) {
     srand(42);
-    int num_groups = tc.num_vars - tc.bandwidth + 1;
-    int num_rows = tc.rows_per_group * num_groups;
-
+    bool is_block_diagonal = tc.name.find("blkdiag") == 0;
+    int num_groups, num_rows;
     std::vector<Eigen::Triplet<double>> triplets;
-    for (int g = 0; g < num_groups; g++) {
-      for (int r = 0; r < tc.rows_per_group; r++) {
-        int row = g * tc.rows_per_group + r;
-        for (int j = 0; j < tc.bandwidth; j++) {
-          triplets.emplace_back(row, g + j,
-                                0.5 + static_cast<double>(rand()) / RAND_MAX);
+
+    if (is_block_diagonal) {
+      num_groups = tc.num_vars / tc.bandwidth;
+      num_rows = tc.rows_per_group * num_groups;
+      for (int g = 0; g < num_groups; g++) {
+        for (int r = 0; r < tc.rows_per_group; r++) {
+          int row = g * tc.rows_per_group + r;
+          for (int j = 0; j < tc.bandwidth; j++) {
+            triplets.emplace_back(row, g * tc.bandwidth + j,
+                                  0.5 + static_cast<double>(rand()) / RAND_MAX);
+          }
+        }
+      }
+    } else {
+      num_groups = tc.num_vars - tc.bandwidth + 1;
+      num_rows = tc.rows_per_group * num_groups;
+      for (int g = 0; g < num_groups; g++) {
+        for (int r = 0; r < tc.rows_per_group; r++) {
+          int row = g * tc.rows_per_group + r;
+          for (int j = 0; j < tc.bandwidth; j++) {
+            triplets.emplace_back(row, g + j,
+                                  0.5 + static_cast<double>(rand()) / RAND_MAX);
+          }
         }
       }
     }
@@ -520,11 +545,11 @@ GTEST_TEST(SparseLinearConstraintAssembler, SolverTimingComparison) {
     // of unique supports.
     int unique_supports = static_cast<int>(slc.row_supports().size());
 
-    // Tree solver with precomputed Gram.
+    // Tree solver right-looking with precomputed Gram.
     auto t0 = clock::now();
     VectorXd y_tree = SolveWithAssembler(
         A_sparse, b_affine, cost, CONEX_KKT_SOLVER_TREE,
-        /*precompute_gram=*/true);
+        /*precompute_gram=*/true, /*left_looking=*/false);
     auto t1 = clock::now();
 
     // Supernodal solver.
@@ -544,6 +569,149 @@ GTEST_TEST(SparseLinearConstraintAssembler, SolverTimingComparison) {
            static_cast<long>(A_sparse.nonZeros()),
            unique_supports, containment_groups,
            tree_ms, sn_ms);
+  }
+}
+
+// Repeated block-diagonal solve for perf profiling.
+GTEST_TEST(SparseLinearConstraintAssembler, PerfBlockDiagonal) {
+  srand(42);
+  int num_vars = 200;
+  int block_size = 20;
+  int rows_per_block = 20;
+  int num_blocks = num_vars / block_size;
+  int num_rows = rows_per_block * num_blocks;
+
+  std::vector<Eigen::Triplet<double>> triplets;
+  for (int g = 0; g < num_blocks; g++) {
+    for (int r = 0; r < rows_per_block; r++) {
+      int row = g * rows_per_block + r;
+      for (int j = 0; j < block_size; j++) {
+        triplets.emplace_back(row, g * block_size + j,
+                              0.5 + static_cast<double>(rand()) / RAND_MAX);
+      }
+    }
+  }
+  Eigen::SparseMatrix<double> A_sparse(num_rows, num_vars);
+  A_sparse.setFromTriplets(triplets.begin(), triplets.end());
+  VectorXd b_affine = VectorXd::Ones(num_rows) * 2.0;
+  MatrixXd A_dense(A_sparse);
+  VectorXd x0 = VectorXd::Random(num_rows).cwiseAbs() * 0.01;
+  VectorXd cost = A_dense.transpose() * x0;
+
+  int num_iters = 50;
+  for (int i = 0; i < num_iters; i++) {
+    SolveWithAssembler(A_sparse, b_affine, cost, CONEX_KKT_SOLVER_TREE,
+                       /*precompute_gram=*/true, /*left_looking=*/false);
+  }
+  printf("Completed %d tree solves (blkdiag 20x20 x10, 200 vars)\n", num_iters);
+
+  for (int i = 0; i < num_iters; i++) {
+    SolveWithAssembler(A_sparse, b_affine, cost, CONEX_KKT_SOLVER_SUPERNODAL);
+  }
+  printf("Completed %d supernodal solves\n", num_iters);
+}
+
+// Single dense block at increasing sizes: assemble/factor/solve breakdown.
+GTEST_TEST(SparseLinearConstraintAssembler, SingleBlockScaling) {
+  // Tree structure: root (size sep), two children (supernode size s, separator
+  // size sep).  Vary s and sep to show assembly vs scatter tradeoff.
+  //
+  // Clique 1: columns {0..s+sep-1}  (child1 supernode [sep..s+sep), separator [0..sep))
+  // Clique 2: columns {0..sep-1, s+sep..2s+sep-1}  (child2 supernode, same separator)
+  // Total vars = 2s + sep.
+  //
+  // Large s, small sep → assembly-dominated (tree should win)
+  // Small s, large sep → scatter-dominated (sn should win)
+  printf("\n=== Chain of k cliques, supernode s, separator sep (us) ===\n");
+  printf("%-4s | %-4s | %-4s | %-6s | %8s %8s | %8s %8s | %6s\n",
+         "s", "sep", "k", "vars", "tree_af", "tree_sv",
+         "sn_af", "sn_sv", "af rat");
+  printf("-----|------|------|--------|-------------------|-------------------|-------\n");
+
+  // Chain of k cliques. Clique i has columns [i*s .. i*s + s + sep).
+  // Supernode size s, separator/overlap sep. Total vars = k*s + sep.
+  struct TreeCase { int s; int sep; int k; };
+  std::vector<TreeCase> tree_cases = {
+      {10, 5, 20},
+      {10, 5, 50},
+      {10, 5, 100},
+      {10, 10, 20},
+      {10, 10, 50},
+      {10, 10, 100},
+      {10, 20, 20},
+      {10, 20, 50},
+  };
+
+  for (const auto& tc : tree_cases) {
+    srand(42);
+    int s = tc.s;
+    int sep = tc.sep;
+    int k = tc.k;
+    int num_vars = k * s + sep;
+    int clique_size = s + sep;
+    int rows_per_clique = clique_size + s;  // overdetermined
+    int num_rows = k * rows_per_clique;
+
+    std::vector<Eigen::Triplet<double>> triplets;
+    // Clique i: rows [i*rpc .. (i+1)*rpc) on columns [i*s .. i*s + s + sep)
+    for (int ci = 0; ci < k; ci++) {
+      int row_start = ci * rows_per_clique;
+      int col_start = ci * s;
+      for (int r = 0; r < rows_per_clique; r++) {
+        for (int j = 0; j < clique_size; j++) {
+          triplets.emplace_back(row_start + r, col_start + j,
+                                0.5 + static_cast<double>(rand()) / RAND_MAX);
+        }
+      }
+    }
+
+    Eigen::SparseMatrix<double> A_unperm(num_rows, num_vars);
+    A_unperm.setFromTriplets(triplets.begin(), triplets.end());
+
+    // Random column permutation.
+    std::vector<int> perm(num_vars);
+    std::iota(perm.begin(), perm.end(), 0);
+    std::random_shuffle(perm.begin(), perm.end());
+    Eigen::PermutationMatrix<Eigen::Dynamic> P(num_vars);
+    for (int i = 0; i < num_vars; i++) P.indices()(i) = perm[i];
+    Eigen::SparseMatrix<double> A_sparse = A_unperm * P;
+
+    VectorXd b_affine = VectorXd::Ones(num_rows) * 2.0;
+    MatrixXd A_dense(A_sparse);
+    VectorXd x0 = VectorXd::Random(num_rows).cwiseAbs() * 0.01;
+    VectorXd cost = A_dense.transpose() * x0;
+
+    int reps = std::max(10, 2000 / num_vars);
+
+    // Tree solver
+    KKTSolverTimings tree_t;
+    for (int i = 0; i < reps; i++) {
+      KKTSolverTimings t;
+      SolveWithAssembler(A_sparse, b_affine, cost, CONEX_KKT_SOLVER_TREE,
+                         /*precompute_gram=*/true, /*left_looking=*/false, &t);
+      tree_t.assemble_and_factor_us += t.assemble_and_factor_us;
+      tree_t.solve_us += t.solve_us;
+    }
+    tree_t.assemble_and_factor_us /= reps;
+    tree_t.solve_us /= reps;
+
+    // Supernodal solver
+    KKTSolverTimings sn_t;
+    for (int i = 0; i < reps; i++) {
+      KKTSolverTimings t;
+      SolveWithAssembler(A_sparse, b_affine, cost, CONEX_KKT_SOLVER_SUPERNODAL,
+                         false, true, &t);
+      sn_t.assemble_and_factor_us += t.assemble_and_factor_us;
+      sn_t.solve_us += t.solve_us;
+    }
+    sn_t.assemble_and_factor_us /= reps;
+    sn_t.solve_us /= reps;
+
+    printf("%-4d | %-4d | %-4d | %-6d | %8.0f %8.0f | %8.0f %8.0f | %5.2fx\n",
+           s, sep, k, num_vars,
+           tree_t.assemble_and_factor_us, tree_t.solve_us,
+           sn_t.assemble_and_factor_us, sn_t.solve_us,
+           tree_t.assemble_and_factor_us / sn_t.assemble_and_factor_us);
   }
 }
 

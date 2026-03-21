@@ -60,6 +60,8 @@ struct SolverConfiguration {
   int step_type = CONEX_STEP_TYPE_GEODESIC;
   std::string log_file = "conex_log.json";
 
+  bool record_kkt_timings = false;
+
   SupernodalSolverOptions supernodal;
   TreeSolverOptions tree;
 };

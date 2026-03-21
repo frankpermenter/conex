@@ -228,6 +228,7 @@ bool Initialize(Program& prog, const SolverConfiguration& config) {
 
     START_TIMER(Sparsity Analysis);
     solver = KKTSolverFactory::create_unique(&prog.kkt_system_manager_, config);
+    solver->SetRecordTimings(config.record_kkt_timings);
     END_TIMER
   }
   return true;
@@ -394,15 +395,8 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
                      warmstart_aborted;
     warmstart_aborted = false;
 
-    START_TIMER(Assemble)
-    solver->Assemble();
-    AssembleSchurComplementResiduals(kkt_system_manager_, &sys);
-    END_TIMER
-    START_TIMER(Factor)
-#if defined(EIGEN_RUNTIME_NO_MALLOC)
-    if (i > 0) Eigen::internal::set_is_malloc_allowed(false);
-#endif
-    if (!solver->Factor()) {
+    START_TIMER(AssembleAndFactor)
+    if (!solver->AssembleAndFactor()) {
       if (i == 0 &&
           config.initialization_mode == CONEX_INITIALIZATION_MODE_WARMSTART) {
         PRINTSTATUS("Aborting warmstart...");
@@ -414,10 +408,8 @@ bool SolveIPM(ConstraintManager& kkt_system_manager_,
       PRINTSTATUS("Factorization failed.");
       return false;
     }
-#if defined(EIGEN_RUNTIME_NO_MALLOC)
-    if (i > 0) Eigen::internal::set_is_malloc_allowed(true);
-#endif
     END_TIMER
+    AssembleSchurComplementResiduals(kkt_system_manager_, &sys);
 
     if (i < 1 && config.enable_rescaling) {
       if (config.initialization_mode == CONEX_INITIALIZATION_MODE_COLDSTART) {
