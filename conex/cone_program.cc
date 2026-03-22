@@ -305,13 +305,7 @@ StepInfo IterationHelper(bool& update_mu, const SolverConfiguration& config,
           (b * b_scaling + sys.AQc * c_scaling) -
       2 * sys.AW;
   START_TIMER(Solve)
-#if defined(EIGEN_RUNTIME_NO_MALLOC)
-  Eigen::internal::set_is_malloc_allowed(false);
-#endif
   solver->SolveInPlace(y);
-#if defined(EIGEN_RUNTIME_NO_MALLOC)
-  Eigen::internal::set_is_malloc_allowed(true);
-#endif
   END_TIMER
 
   newton_step_parameters.e_weight = 1;
