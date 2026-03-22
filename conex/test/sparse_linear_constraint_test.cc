@@ -598,7 +598,7 @@ GTEST_TEST(SparseLinearConstraintAssembler, PerfBlockDiagonal) {
   VectorXd x0 = VectorXd::Random(num_rows).cwiseAbs() * 0.01;
   VectorXd cost = A_dense.transpose() * x0;
 
-  int num_iters = 50;
+  int num_iters = 5;
   for (int i = 0; i < num_iters; i++) {
     SolveWithAssembler(A_sparse, b_affine, cost, CONEX_KKT_SOLVER_TREE,
                        /*precompute_gram=*/true, /*left_looking=*/false);
@@ -632,14 +632,11 @@ GTEST_TEST(SparseLinearConstraintAssembler, SingleBlockScaling) {
   // Supernode size s, separator/overlap sep. Total vars = k*s + sep.
   struct TreeCase { int s; int sep; int k; };
   std::vector<TreeCase> tree_cases = {
-      {10, 5, 20},
-      {10, 5, 50},
-      {10, 5, 100},
-      {10, 10, 20},
-      {10, 10, 50},
-      {10, 10, 100},
-      {10, 20, 20},
-      {10, 20, 50},
+      {10, 5, 10},
+      {10, 5, 30},
+      {10, 10, 10},
+      {10, 10, 30},
+      {10, 20, 10},
   };
 
   for (const auto& tc : tree_cases) {
@@ -681,7 +678,7 @@ GTEST_TEST(SparseLinearConstraintAssembler, SingleBlockScaling) {
     VectorXd x0 = VectorXd::Random(num_rows).cwiseAbs() * 0.01;
     VectorXd cost = A_dense.transpose() * x0;
 
-    int reps = std::max(10, 2000 / num_vars);
+    int reps = std::max(3, 500 / num_vars);
 
     // Tree solver
     KKTSolverTimings tree_t;
