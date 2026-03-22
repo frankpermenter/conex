@@ -610,15 +610,14 @@ bool T::DoFactor() {
 }
 
 void T::Finalize(const CliqueTree& clique_tree) {
-  // Auto-create subsystems when none were provided.  Sparse linear
-  // constraints are always positive-definite, so use the in-place LLT
-  // solver (same as the supernodal path) to avoid extra copies.
-  using PosDefSystem = KKTCholeskySystem<
-      CholeskySolver<Eigen::LLT<Eigen::Ref<Eigen::MatrixXd>>, false>>;
+  // Auto-create subsystems when none were provided.  Use DynamicSubsystem
+  // which supports both positive-definite (LLT) and indefinite (RLDLT)
+  // factorization, since the general tree path may encounter equality
+  // constraints that produce indefinite KKT systems.
   if (subsystems_.empty()) {
     owned_subsystems_.clear();
     for (size_t i = 0; i < clique_tree.supernodes.size(); ++i) {
-      auto ds = std::make_unique<PosDefSystem>();
+      auto ds = std::make_unique<DynamicSubsystem>();
       subsystems_.push_back(ds.get());
       owned_subsystems_.push_back(std::move(ds));
     }
