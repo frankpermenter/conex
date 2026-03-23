@@ -161,15 +161,9 @@ class KKTSubsystemBase {
   }
 
   const std::vector<KKTSubsystemBase*>& children() const { return children_; }
-  void AddChild(KKTSubsystemBase* child) {
-    CONEX_DEMAND(child, "Received nullptr");
-    children_.push_back(child);
-    child->SetParent(this);
-  }
 
   void Assemble();
   bool Factor();
-  bool is_valid_leaf() { return DoIsValidLeaf(); }
 
   void MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const;
   bool AssembleAndFactor();
@@ -184,11 +178,6 @@ class KKTSubsystemBase {
   void BackwardSolveBlocked(Eigen::Ref<Eigen::MatrixXd> sn,
                             Eigen::Ref<const Eigen::MatrixXd> sep) const;
   void ReserveSolveWorkspace(int rhs_cols);
-
-  void Reset() {
-    parent_ = nullptr;
-    children_.clear();
-  }
 
   struct Offset {
     Offset(int x, int y, int z) : first(x), second(y), size(z) {}
@@ -223,6 +212,7 @@ class KKTSubsystemBase {
                           double* ws3, int ws3_rows, int ws3_cols);
 
  private:
+  friend class SymmetricLinearSystemTreeSolver;
   virtual void DoInitialize(){}
   virtual bool DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
@@ -245,13 +235,23 @@ class KKTSubsystemBase {
   void ReceiveColumnUpdate(const KKTSubsystemBase* source,
                            size_t start_index_of_source);
 
+  void AddChild(KKTSubsystemBase* child) {
+    CONEX_DEMAND(child, "Received nullptr");
+    children_.push_back(child);
+    child->SetParent(this);
+  }
+
+  void Reset() {
+    parent_ = nullptr;
+    children_.clear();
+  }
+
   void SetParent(KKTSubsystemBase* parent) {
     CONEX_DEMAND(parent, "Received nullptr");
     CONEX_DEMAND(parent_ == nullptr, "Parent already assigned.");
     parent_ = parent;
   }
 
-  virtual bool DoIsValidLeaf() { return true; }
   void DoScatterSeparatorSubmatrix();
   void ComputeOffsets(const KKTSubsystemBase* source,
                       int source_separators_start);

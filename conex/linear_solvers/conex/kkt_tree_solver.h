@@ -233,7 +233,6 @@ void SubmatrixContributor::WriteSymmetricLazy(
 class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
  public:
   int number_of_variables() const;
-  void RepairTreeInPlace(std::vector<int>* parent_ptr);
 
   void Finalize(const CliqueTree& clique_tree);
 
