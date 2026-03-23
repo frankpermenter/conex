@@ -215,11 +215,4 @@ SparseLinearConstraintAssembler::Decompose(
   return result;
 }
 
-void SparseLinearConstraintAssembler::RegisterDecomposedConeInequalities(
-    ConstraintManager* cm) {
-  for (auto& constraint : owned_constraints_) {
-    cm->cone_inequalities().push_back(constraint.get());
-  }
-}
-
 }  // namespace conex

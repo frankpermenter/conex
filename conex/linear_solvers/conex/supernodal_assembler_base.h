@@ -59,13 +59,6 @@ class SupernodalAssemblerBase : public IVariableShape {
     return {this};
   }
 
-  // Called after Decompose by MakeTreeSolver.  Override to register
-  // decomposed cone-inequality assemblers with the ConstraintManager so
-  // the IPM can iterate on them (PrepareStep / TakeStep).
-  // Default: no-op (standard assemblers are already registered).
-  virtual void RegisterDecomposedConeInequalities(
-      class ConstraintManager* /*cm*/) {}
-
   virtual std::vector<int> variables() const {
     std::vector<int> variables = primal_variables_;
     variables.insert(variables.end(), dual_variables_.begin(),

@@ -44,7 +44,6 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
   for (auto* assembler : clique_assemblers_ptrs_) {
     auto subs = assembler->Decompose(maximal_cliques);
     decomposed.insert(decomposed.end(), subs.begin(), subs.end());
-    assembler->RegisterDecomposedConeInequalities(c);
     if (config.tree.precompute_gram) {
       assembler->set_precompute_gram(true);
     }

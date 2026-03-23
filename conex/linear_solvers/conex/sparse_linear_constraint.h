@@ -68,7 +68,10 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
   std::vector<SupernodalAssemblerBase*> Decompose(
       const std::vector<std::vector<int>>& maximal_cliques) override;
 
-  void RegisterDecomposedConeInequalities(ConstraintManager* cm) override;
+  // Access decomposed constraints (available after Decompose()).
+  const std::vector<std::unique_ptr<LinearConstraint>>& constraints() const {
+    return owned_constraints_;
+  }
 
   void set_precompute_gram(bool v) override {
     for (auto& c : owned_constraints_) {

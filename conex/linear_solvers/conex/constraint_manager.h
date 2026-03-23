@@ -37,10 +37,6 @@ class ConstraintManager {
                                  const std::vector<int>& variables);
   CONEX_ID AddEqualityConstraint(const EqualityConstraints& x);
 
-  std::vector<Constraint*>& cone_inequalities() {
-    return cone_inequality_assemblers_;
-  }
-
   // Register a custom assembler (caller retains ownership).
   void AddCustomAssembler(SupernodalAssemblerBase* assembler) {
     custom_assemblers_.push_back(assembler);
@@ -75,7 +71,6 @@ class ConstraintManager {
   // Stores and owns all constraints through a single virtual interface.
   std::vector<std::unique_ptr<Constraint>> constraint_storage_;
 
-  std::vector<Constraint*> cone_inequality_assemblers_;
   EqualityConstraintManager equality_constraints_;
 
   std::vector<SupernodalAssemblerBase*> custom_assemblers_;

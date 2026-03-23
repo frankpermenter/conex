@@ -106,13 +106,6 @@ class SubmatrixContributor {
     return subsystem_->separator_schur_complement();
   }
 
-  // Write a symmetric matrix Q into the storage blocks, permuting from
-  // original variable order to elimination order.  elim_positions[i] is the
-  // elimination position of Q's i-th row/column.  Only the lower triangle
-  // is written.
-  void WriteSymmetric(const Eigen::MatrixXd& Q,
-                      const std::vector<int>& elim_positions);
-
   // Precompute the optimal permutation and contiguous-run structure for
   // WriteSymmetricLazy.  Call once after the contributor is created (the
   // tree solver does this automatically for adapters).  Subsequent
@@ -240,7 +233,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void SetNumThreads(int num_threads);
   void SetParallelizeRootsOnly(bool enable);
   void SetUseRecursiveSolve(bool enable) { use_recursive_solve_ = enable; }
-  void ReserveSolveWorkspace(int rhs_cols);
   void EnableAutoUpdateAtAssemble(bool enable) {
     auto_update_assemblers_ = enable;
   }
@@ -257,12 +249,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
 
   // Create a contributor that provides labeled write access to the storage
   // blocks of the subsystem containing the given elimination indices.
-  // Throws if the indices are not all within a single subsystem's sparsity
-  // pattern.
-  SubmatrixContributor MakeContributor(
-      const std::vector<int>& elim_indices) const;
-
-  // Fast variant using a precomputed supernode-to-subsystem lookup table.
+  // Uses a precomputed supernode-to-subsystem lookup table.
   SubmatrixContributor MakeContributorFromLookup(
       const std::vector<int>& elim_indices,
       const std::unordered_map<int, KKTSubsystemBase*>&
