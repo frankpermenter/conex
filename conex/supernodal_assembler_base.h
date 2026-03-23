@@ -46,6 +46,7 @@ class SupernodalAssemblerBase : public IVisitable, public IVariableShape {
     SetDualVariables(dual_variables);
   }
   SupernodalAssemblerBase(){};
+  virtual ~SupernodalAssemblerBase(){};
 
   // Entries of diagonal block to update
   void BindDiagonalBlock(const DiagonalBlock* data);
@@ -165,7 +166,6 @@ class SupernodalAssemblerBase : public IVisitable, public IVariableShape {
   std::vector<DiagonalBlock> diag;
   std::vector<OffDiagonalBlock> off_diag;
   std::vector<OffDiagonalBlock> scatter_block;
-  virtual ~SupernodalAssemblerBase(){};
 };
 
 }  // namespace conex

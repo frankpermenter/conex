@@ -5,11 +5,9 @@
 #include <numeric>
 #include <set>
 
-#include "conex/clique_ordering.h"
 #include "conex/cone_program.h"
 #include "conex/constraint_manager.h"
 #include "conex/kkt_solver_factory.h"
-#include "conex/kkt_tree_solver.h"
 #include "conex/linear_constraint.h"
 #include "conex/workspace.h"
 
@@ -20,52 +18,6 @@ namespace {
 // Returns true if a ⊆ b (both sorted).
 bool IsSubset(const std::vector<int>& a, const std::vector<int>& b) {
   return std::includes(b.begin(), b.end(), a.begin(), a.end());
-}
-
-// Containment-merge unique supports: sort by size descending, greedily
-// merge smaller supports into the first larger one that contains them.
-std::vector<std::vector<int>> ContainmentMerge(
-    const std::vector<std::vector<int>>& unique_supports) {
-  struct Entry {
-    std::vector<int> support;
-    int original_index;
-  };
-  std::vector<Entry> entries;
-  entries.reserve(unique_supports.size());
-  for (int i = 0; i < static_cast<int>(unique_supports.size()); ++i) {
-    entries.push_back({unique_supports[i], i});
-  }
-  std::sort(entries.begin(), entries.end(),
-            [](const Entry& a, const Entry& b) {
-              return a.support.size() > b.support.size();
-            });
-
-  struct Group {
-    std::vector<int> support;
-    std::vector<int> member_indices;  // indices into unique_supports
-  };
-  std::vector<Group> groups;
-
-  for (auto& e : entries) {
-    bool merged = false;
-    for (auto& g : groups) {
-      if (IsSubset(e.support, g.support)) {
-        g.member_indices.push_back(e.original_index);
-        merged = true;
-        break;
-      }
-    }
-    if (!merged) {
-      groups.push_back({e.support, {e.original_index}});
-    }
-  }
-
-  std::vector<std::vector<int>> result;
-  result.reserve(groups.size());
-  for (auto& g : groups) {
-    result.push_back(std::move(g.support));
-  }
-  return result;
 }
 
 }  // namespace
@@ -105,15 +57,6 @@ SparseLinearConstraint::SparseLinearConstraint(
   for (const auto& sg : support_groups_) {
     unique_supports_.push_back(sg.support);
   }
-}
-
-const std::vector<SparseLinearConstraint::RowGroup>&
-SparseLinearConstraint::groups() const {
-  if (groups_.empty() && !support_groups_.empty()) {
-    auto merged_supports = ContainmentMerge(unique_supports_);
-    groups_ = GetConstraints(merged_supports);
-  }
-  return groups_;
 }
 
 std::vector<SparseLinearConstraint::RowGroup>
@@ -172,59 +115,48 @@ SparseLinearConstraint::GetConstraints(
   return result;
 }
 
-std::vector<int> Program::AddSparseLinearConstraint(const SparseLinearConstraint& slc) {
-  std::vector<int> ids;
-  for (const auto& group : slc.groups()) {
-    ids.push_back(
-        AddConstraint(LinearConstraint(group.A, group.b), group.variables));
+void Program::AddSparseLinearConstraint(SparseLinearConstraint&& slc) {
+  auto slc_ptr = std::make_unique<SparseLinearConstraint>(std::move(slc));
+
+  // Compute union of all row-support variables.
+  std::set<int> var_set;
+  for (const auto& support : slc_ptr->row_supports()) {
+    var_set.insert(support.begin(), support.end());
   }
-  return ids;
+  std::vector<int> all_vars(var_set.begin(), var_set.end());
+
+  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc_ptr), all_vars);
+  kkt_system_manager_.AddCustomAssembler(std::move(assembler));
 }
 
-namespace {
-
-// Shared implementation for both SparseLeastSquares variants.
-// Caller provides the RowGroups (already assigned to target supports).
-SparseLeastSquaresResult SolveFromGroups(
-    const std::vector<SparseLinearConstraint::RowGroup>& groups,
-    const CliqueTree& clique_tree,
-    int num_vars,
-    const Eigen::VectorXd& rhs,
-    double grouping_us) {
+SparseLeastSquaresResult SparseLeastSquares(
+    const Eigen::SparseMatrix<double>& A,
+    const Eigen::VectorXd& rhs) {
   using clock = std::chrono::high_resolution_clock;
   SparseLeastSquaresResult result;
+  const int num_vars = A.cols();
 
-  auto t_added_start = clock::now();
+  auto t0 = clock::now();
+
+  Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(A.rows());
+  auto slc = std::make_unique<SparseLinearConstraint>(A, b_zero);
+
+  std::set<int> var_set;
+  for (const auto& support : slc->row_supports()) {
+    var_set.insert(support.begin(), support.end());
+  }
+  std::vector<int> all_vars(var_set.begin(), var_set.end());
 
   ConstraintManager cm(num_vars);
-  for (const auto& group : groups) {
-    cm.AddConstraint(LinearConstraint(group.A, group.b), group.variables);
-  }
+  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc), all_vars);
+  cm.AddCustomAssembler(assembler.get());
 
-  auto t_added = clock::now();
+  auto t_grouped = clock::now();
 
-  cm.InitializeWorkspace();
-  for (auto* c : cm.cone_inequalities()) {
-    c->constraint()->SetIdentity();
-  }
-
-  auto t_init = clock::now();
-
-  auto clique_assemblers = cm.clique_assemblers();
-
-  auto t_clique = clock::now();
-
-  auto tree_solver =
-      std::make_unique<SymmetricLinearSystemTreeSolver>();
-  for (auto* assembler : clique_assemblers) {
-    auto adapter =
-        std::make_unique<KKTAssemblerToSubsystemAdapter>(assembler);
-    adapter->set_contribution_type(ContributionType::kPositiveDefinite);
-    tree_solver->push_back(std::move(adapter));
-  }
-  tree_solver->Finalize(clique_tree);
-  tree_solver->SetFactorizationMode(true);
-  tree_solver->EnableAutoUpdateAtAssemble(true);
+  SolverConfiguration config;
+  auto tree_solver = MakeTreeSolver(&cm, config);
 
   auto t1 = clock::now();
 
@@ -237,112 +169,27 @@ SparseLeastSquaresResult SolveFromGroups(
 
   auto t3 = clock::now();
 
+  result.grouping_us =
+      std::chrono::duration<double, std::micro>(t_grouped - t0).count();
+  result.add_constraints_us = 0;
+  result.init_workspace_us = 0;
+  result.clique_extraction_us = 0;
+  result.finalize_us =
+      std::chrono::duration<double, std::micro>(t1 - t_grouped).count();
   result.construction_time_us =
-      grouping_us +
-      std::chrono::duration<double, std::micro>(t1 - t_added_start).count();
+      std::chrono::duration<double, std::micro>(t1 - t0).count();
   result.assemble_and_factor_time_us =
       std::chrono::duration<double, std::micro>(t2 - t1).count();
   result.solve_time_us =
       std::chrono::duration<double, std::micro>(t3 - t2).count();
 
-  result.grouping_us = grouping_us;
-  result.add_constraints_us =
-      std::chrono::duration<double, std::micro>(t_added - t_added_start).count();
-  result.init_workspace_us =
-      std::chrono::duration<double, std::micro>(t_init - t_added).count();
-  result.clique_extraction_us =
-      std::chrono::duration<double, std::micro>(t_clique - t_init).count();
-  result.finalize_us =
-      std::chrono::duration<double, std::micro>(t1 - t_clique).count();
-
   return result;
-}
-
-}  // namespace
-
-SparseLeastSquaresResult SparseLeastSquares(
-    const Eigen::SparseMatrix<double>& A,
-    const Eigen::VectorXd& rhs) {
-  using clock = std::chrono::high_resolution_clock;
-  const int num_vars = A.cols();
-
-  auto t0 = clock::now();
-
-  Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(A.rows());
-  SparseLinearConstraint slc(A, b_zero);
-
-  // Use containment-merged groups (built by constructor).
-  const auto& groups = slc.groups();
-
-  // Build clique tree from group supports.
-  std::vector<std::vector<int>> cliques;
-  for (const auto& g : groups) {
-    cliques.push_back(g.variables);
-  }
-  CliqueTree clique_tree = MakeCliqueTreeMinDegreeFromRowSupports(
-      cliques, /*maximal_cliques_out=*/nullptr,
-      /*max_merge_supernode_size=*/0, SUPERNODE_REORDER_BFS_GREEDY, {});
-
-  auto t_grouped = clock::now();
-  double grouping_us =
-      std::chrono::duration<double, std::micro>(t_grouped - t0).count();
-
-  return SolveFromGroups(groups, clique_tree, num_vars, rhs, grouping_us);
-}
-
-SparseLeastSquaresResult SparseLeastSquaresMaximalClique(
-    const Eigen::SparseMatrix<double>& A,
-    const Eigen::VectorXd& rhs) {
-  using clock = std::chrono::high_resolution_clock;
-  const int num_vars = A.cols();
-
-  auto t0 = clock::now();
-
-  Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(A.rows());
-  SparseLinearConstraint slc(A, b_zero);
-
-  // Get maximal cliques from the clique ordering of unique row supports.
-  std::vector<std::vector<int>> maximal_cliques;
-  CliqueTree clique_tree = MakeCliqueTreeMinDegreeFromRowSupports(
-      slc.row_supports(), &maximal_cliques,
-      /*max_merge_supernode_size=*/0, SUPERNODE_REORDER_BFS_GREEDY, {});
-
-  // Group rows by maximal clique.
-  auto groups = slc.GetConstraints(maximal_cliques);
-
-  auto t_grouped = clock::now();
-  double grouping_us =
-      std::chrono::duration<double, std::micro>(t_grouped - t0).count();
-
-  return SolveFromGroups(groups, clique_tree, num_vars, rhs, grouping_us);
 }
 
 SparseLinearConstraintAssembler::SparseLinearConstraintAssembler(
     std::unique_ptr<SparseLinearConstraint> slc,
     const std::vector<int>& all_variables)
     : SupernodalAssemblerBase(all_variables), slc_(std::move(slc)) {}
-
-std::vector<SupernodalAssemblerBase*>
-SparseLinearConstraintAssembler::Decompose() {
-  // Use containment-merged groups (already computed in the constructor).
-  std::vector<std::vector<int>> targets;
-  for (const auto& g : slc_->groups()) {
-    targets.push_back(g.variables);
-  }
-  auto result = Decompose(targets);
-
-  // Pre-initialize SchurComplement workspace on decomposed assemblers.
-  // This is needed for the supernodal solver path (Bind requires initialized
-  // submatrix_data_). The tree solver path calls Decompose(maximal_cliques)
-  // directly and handles initialization lazily via SetDenseData().
-  for (auto& asm_ref : owned_assemblers_) {
-    Workspace sc_ws = Workspace(asm_ref.submatrix_data());
-    asm_ref.memory_.resize(SizeOf(sc_ws));
-    Initialize(&sc_ws, asm_ref.memory_.data());
-  }
-
-  return result;
-}
 
 std::vector<SupernodalAssemblerBase*>
 SparseLinearConstraintAssembler::Decompose(
@@ -377,66 +224,6 @@ void SparseLinearConstraintAssembler::RegisterDecomposedConeInequalities(
   for (auto& assembler : owned_assemblers_) {
     cm->cone_inequalities().push_back(&assembler);
   }
-}
-
-SparseLeastSquaresResult SparseLeastSquaresMakeTreeSolver(
-    const Eigen::SparseMatrix<double>& A,
-    const Eigen::VectorXd& rhs) {
-  using clock = std::chrono::high_resolution_clock;
-  SparseLeastSquaresResult result;
-  const int num_vars = A.cols();
-
-  auto t0 = clock::now();
-
-  // Build SparseLinearConstraint and its assembler.
-  Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(A.rows());
-  auto slc = std::make_unique<SparseLinearConstraint>(A, b_zero);
-
-  // Compute union of all variables.
-  std::set<int> var_set;
-  for (const auto& support : slc->row_supports()) {
-    var_set.insert(support.begin(), support.end());
-  }
-  std::vector<int> all_vars(var_set.begin(), var_set.end());
-
-  // Register the sparse assembler with the ConstraintManager.
-  ConstraintManager cm(num_vars);
-  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
-      std::move(slc), all_vars);
-  cm.AddCustomAssembler(assembler.get());
-
-  auto t_grouped = clock::now();
-
-  // Use MakeTreeSolver, which calls Decompose internally.
-  SolverConfiguration config;
-  auto tree_solver = MakeTreeSolver(&cm, config);
-
-  auto t1 = clock::now();
-
-  bool ok = tree_solver->AssembleAndFactor();
-  CONEX_DEMAND(ok, "AssembleAndFactor failed.");
-
-  auto t2 = clock::now();
-
-  result.x = tree_solver->Solve(rhs);
-
-  auto t3 = clock::now();
-
-  result.grouping_us =
-      std::chrono::duration<double, std::micro>(t_grouped - t0).count();
-  result.add_constraints_us = 0;
-  result.init_workspace_us = 0;
-  result.clique_extraction_us = 0;
-  result.finalize_us =
-      std::chrono::duration<double, std::micro>(t1 - t_grouped).count();
-  result.construction_time_us =
-      std::chrono::duration<double, std::micro>(t1 - t0).count();
-  result.assemble_and_factor_time_us =
-      std::chrono::duration<double, std::micro>(t2 - t1).count();
-  result.solve_time_us =
-      std::chrono::duration<double, std::micro>(t3 - t2).count();
-
-  return result;
 }
 
 }  // namespace conex

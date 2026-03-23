@@ -133,6 +133,12 @@ class ConstraintManager {
     custom_assemblers_.push_back(assembler);
   }
 
+  // Register a custom assembler (takes ownership).
+  void AddCustomAssembler(std::unique_ptr<SupernodalAssemblerBase> assembler) {
+    custom_assemblers_.push_back(assembler.get());
+    owned_custom_assemblers_.push_back(std::move(assembler));
+  }
+
   int num_custom_assemblers() const {
     return static_cast<int>(custom_assemblers_.size());
   }
@@ -172,6 +178,7 @@ class ConstraintManager {
   EqualityConstraintManager equality_constraints_;
 
   std::vector<SupernodalAssemblerBase*> custom_assemblers_;
+  std::vector<std::unique_ptr<SupernodalAssemblerBase>> owned_custom_assemblers_;
   int max_number_of_variables_ = 0;
   int new_dual_variable_start_ = 0;
   Eigen::VectorXd workspace_memory_;

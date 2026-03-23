@@ -38,11 +38,8 @@ class SparseLinearConstraint {
   std::vector<RowGroup> GetConstraints(
       const std::vector<std::vector<int>>& target_supports) const;
 
-  int num_groups() const { return groups().size(); }
-  const std::vector<RowGroup>& groups() const;
-
  private:
-  const Eigen::SparseMatrix<double>& A_;
+  Eigen::SparseMatrix<double> A_;
   Eigen::VectorXd b_;
 
   struct SupportGroup {
@@ -51,9 +48,6 @@ class SparseLinearConstraint {
   };
   std::vector<SupportGroup> support_groups_;
   std::vector<std::vector<int>> unique_supports_;
-
-  // Containment-merged groups (lazily computed on first access).
-  mutable std::vector<RowGroup> groups_;
 };
 
 // Assembler that wraps a SparseLinearConstraint.  Its variables() returns
@@ -74,8 +68,6 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
   std::vector<std::vector<int>> get_cliques() const override {
     return {slc_->row_supports().begin(), slc_->row_supports().end()};
   }
-
-  std::vector<SupernodalAssemblerBase*> Decompose() override;
 
   std::vector<SupernodalAssemblerBase*> Decompose(
       const std::vector<std::vector<int>>& maximal_cliques) override;
@@ -112,18 +104,7 @@ struct SparseLeastSquaresResult {
   double finalize_us;
 };
 
-// Containment-grouping path.
 SparseLeastSquaresResult SparseLeastSquares(
-    const Eigen::SparseMatrix<double>& A,
-    const Eigen::VectorXd& rhs);
-
-// Maximal-clique grouping path.
-SparseLeastSquaresResult SparseLeastSquaresMaximalClique(
-    const Eigen::SparseMatrix<double>& A,
-    const Eigen::VectorXd& rhs);
-
-// MakeTreeSolver path: uses SparseLinearConstraintAssembler + Decompose.
-SparseLeastSquaresResult SparseLeastSquaresMakeTreeSolver(
     const Eigen::SparseMatrix<double>& A,
     const Eigen::VectorXd& rhs);
 

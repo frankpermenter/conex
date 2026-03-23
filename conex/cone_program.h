@@ -82,7 +82,7 @@ class Program {
   auto AddConstraint(T&& d) {
     using Type = std::decay_t<T>;
     if constexpr (std::is_same_v<Type, SparseLinearConstraint>) {
-      return AddSparseLinearConstraint(d);
+      AddSparseLinearConstraint(std::move(d));
     } else if constexpr (std::is_same_v<Type, EqualityConstraints>) {
       return kkt_system_manager_.AddEqualityConstraint(
           std::forward<EqualityConstraints>(d));
@@ -102,9 +102,10 @@ class Program {
     }
   }
 
-  // Add a SparseLinearConstraint by decomposing it into per-group
-  // LinearConstraints. Returns the constraint IDs for each group.
-  std::vector<int> AddSparseLinearConstraint(const SparseLinearConstraint& slc);
+  // Register a SparseLinearConstraint as a custom assembler.  The actual
+  // decomposition into per-clique LinearConstraints happens inside the
+  // solver factory (MakeTreeSolver calls Decompose(maximal_cliques)).
+  void AddSparseLinearConstraint(SparseLinearConstraint&& slc);
 
   int NumberOfConstraints() {
     return kkt_system_manager_.cone_inequalities().size() +

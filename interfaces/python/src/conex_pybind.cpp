@@ -1695,7 +1695,7 @@ PYBIND11_MODULE(_conex, m) {
         conex::SparseLeastSquaresResult result;
         {
           py::gil_scoped_release release;
-          result = conex::SparseLeastSquaresMakeTreeSolver(A_col, rhs_eig);
+          result = conex::SparseLeastSquares(A_col, rhs_eig);
         }
         py::dict out;
         out["x"] = ToPyArray(result.x);

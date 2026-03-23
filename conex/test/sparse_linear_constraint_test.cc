@@ -51,19 +51,21 @@ GTEST_TEST(SparseLinearConstraint, Decomposition) {
   VectorXd b = VectorXd::Ones(A.rows());
 
   SparseLinearConstraint slc(A, b);
-  // Disjoint supports => no containment merging => 3 groups.
-  EXPECT_EQ(slc.num_groups(), 3);
+  // Disjoint supports => 3 unique row supports.
+  EXPECT_EQ(static_cast<int>(slc.row_supports().size()), 3);
 
-  // Total rows across all groups should equal A.rows().
+  // GetConstraints with row supports as targets => 3 groups, all rows covered.
+  auto groups = slc.GetConstraints(slc.row_supports());
+  EXPECT_EQ(static_cast<int>(groups.size()), 3);
   int total_rows = 0;
-  for (const auto& g : slc.groups()) {
+  for (const auto& g : groups) {
     total_rows += g.A.rows();
   }
   EXPECT_EQ(total_rows, A.rows());
 }
 
-// Test that rows with subset supports are merged into a single group.
-GTEST_TEST(SparseLinearConstraint, ContainmentMerging) {
+// Test GetConstraints with target supports that are supersets of row supports.
+GTEST_TEST(SparseLinearConstraint, GetConstraintsWithSupersets) {
   // Row 0: nonzeros in columns {0, 1, 2}
   // Row 1: nonzeros in columns {0, 1}       (subset of row 0)
   // Row 2: nonzeros in columns {1, 2}       (subset of row 0)
@@ -85,12 +87,15 @@ GTEST_TEST(SparseLinearConstraint, ContainmentMerging) {
   b << 10, 11, 12, 13;
 
   SparseLinearConstraint slc(A, b);
-  // Rows 0,1,2 should merge (supp({0,1}) ⊆ supp({0,1,2}), etc.)
-  // Row 3 is disjoint => separate group.
-  EXPECT_EQ(slc.num_groups(), 2);
+  // 4 unique supports: {0,1}, {0,1,2}, {1,2}, {3,4}.
+  EXPECT_EQ(static_cast<int>(slc.row_supports().size()), 4);
 
-  // Find the group with 3 rows.
-  const auto& groups = slc.groups();
+  // Use two target supports that cover everything: {0,1,2} and {3,4}.
+  std::vector<std::vector<int>> targets = {{0, 1, 2}, {3, 4}};
+  auto groups = slc.GetConstraints(targets);
+  EXPECT_EQ(static_cast<int>(groups.size()), 2);
+
+  // The {0,1,2} target should get 3 rows (rows 0,1,2).
   bool found_big = false, found_small = false;
   for (const auto& g : groups) {
     if (g.A.rows() == 3) {
@@ -110,7 +115,6 @@ GTEST_TEST(SparseLinearConstraint, ContainmentMerging) {
 // that the solution matches a dense solve.
 GTEST_TEST(SparseLinearConstraint, SolveBlockDiagonal) {
   srand(42);
-  double eps = 1e-8;
 
   int num_blocks = 4;
   int rows_per_block = 6;
@@ -132,43 +136,23 @@ GTEST_TEST(SparseLinearConstraint, SolveBlockDiagonal) {
   MatrixXd A_dense(A_sparse);
   VectorXd cost = A_dense.transpose() * x0;
 
-  // Solve with SparseLinearConstraint (multiple sub-constraints).
   SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
   config.inv_sqrt_mu_max = 5e3;
   config.final_centering_tolerance = 1.01;
   config.final_centering_steps = 0;
+  config.kkt_solver = CONEX_KKT_SOLVER_TREE;
 
+  // Solve with SparseLinearConstraint via AddConstraint (assembler path).
   Program prog_sparse(num_vars);
-  SparseLinearConstraint slc(A_sparse, b_affine);
-  auto ids = prog_sparse.AddConstraint(slc);
-  EXPECT_EQ(static_cast<int>(ids.size()), num_blocks);
+  prog_sparse.AddConstraint(SparseLinearConstraint(A_sparse, b_affine));
 
   VectorXd y_sparse(num_vars);
   Solve(cost, prog_sparse, config, y_sparse.data());
 
-  // Verify KKT conditions per group.
-  VectorXd Atx = VectorXd::Zero(num_vars);
-  for (int i = 0; i < num_blocks; i++) {
-    const auto& group = slc.groups()[i];
-    VectorXd y_sub(group.variables.size());
-    for (int j = 0; j < static_cast<int>(group.variables.size()); j++) {
-      y_sub(j) = y_sparse(group.variables[j]);
-    }
-
-    VectorXd slack = group.b - group.A * y_sub;
-    EXPECT_GE(slack.minCoeff(), -eps);
-
-    MatrixXd xi(group.A.rows(), 1);
-    prog_sparse.GetDualVariable(ids[i], &xi);
-    EXPECT_GE(xi.minCoeff(), -eps);
-
-    VectorXd temp = group.A.transpose() * xi;
-    for (int j = 0; j < static_cast<int>(group.variables.size()); j++) {
-      Atx(group.variables[j]) += temp(j);
-    }
-  }
-  EXPECT_NEAR((Atx - cost).norm(), 0, eps * cost.norm());
+  // Verify feasibility.
+  VectorXd slack = b_affine - A_dense * y_sparse;
+  EXPECT_GE(slack.minCoeff(), -1e-6);
 
   // Solve with single dense LinearConstraint for comparison.
   Program prog_dense(num_vars);
@@ -206,14 +190,18 @@ GTEST_TEST(SparseLinearConstraint, BandedMatrix) {
 
   VectorXd b = VectorXd::Ones(num_rows) * 2.0;
 
-  SparseLinearConstraint slc(A, b);
-  EXPECT_EQ(slc.num_groups(), num_groups);
+  {
+    SparseLinearConstraint slc(A, b);
+    // Each group of rows shares the same support pattern.
+    EXPECT_EQ(static_cast<int>(slc.row_supports().size()), num_groups);
+  }
 
   // Solve and check feasibility.
   SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
   config.inv_sqrt_mu_max = 5e3;
   config.final_centering_tolerance = 1.01;
+  config.kkt_solver = CONEX_KKT_SOLVER_TREE;
 
   // Build a feasible cost from a strictly feasible dual point.
   MatrixXd A_dense(A);
@@ -221,7 +209,7 @@ GTEST_TEST(SparseLinearConstraint, BandedMatrix) {
   VectorXd cost = A_dense.transpose() * x0;
 
   Program prog(num_vars);
-  prog.AddConstraint(slc);
+  prog.AddConstraint(SparseLinearConstraint(A, b));
 
   VectorXd y(num_vars);
   Solve(cost, prog, config, y.data());
@@ -389,16 +377,15 @@ GTEST_TEST(SparseLinearConstraintAssembler, ConeProgram) {
   MatrixXd A_dense(A_sparse);
   VectorXd cost = A_dense.transpose() * x0;
 
-  // --- Reference: AddConstraint ---
+  // --- Reference: dense LinearConstraint ---
   SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
   config.inv_sqrt_mu_max = 5e3;
   config.final_centering_tolerance = 1.01;
   config.final_centering_steps = 0;
 
-  SparseLinearConstraint slc_ref(A_sparse, b_affine);
   Program prog_ref(num_vars);
-  prog_ref.AddConstraint(slc_ref);
+  prog_ref.AddConstraint(LinearConstraint(A_dense, b_affine));
   VectorXd y_ref(num_vars);
   Solve(cost, prog_ref, config, y_ref.data());
 
@@ -407,16 +394,9 @@ GTEST_TEST(SparseLinearConstraintAssembler, ConeProgram) {
       A_sparse, b_affine, cost, CONEX_KKT_SOLVER_TREE);
   EXPECT_NEAR((y_tree - y_ref).norm(), 0, eps);
 
-  // --- Supernodal solver ---
-  VectorXd y_sn = SolveWithAssembler(
-      A_sparse, b_affine, cost, CONEX_KKT_SOLVER_SUPERNODAL);
-  EXPECT_NEAR((y_sn - y_ref).norm(), 0, eps);
-
-  // Verify feasibility for both.
+  // Verify feasibility.
   VectorXd slack_tree = b_affine - A_dense * y_tree;
-  VectorXd slack_sn = b_affine - A_dense * y_sn;
   EXPECT_GE(slack_tree.minCoeff(), -eps);
-  EXPECT_GE(slack_sn.minCoeff(), -eps);
 }
 
 // Same test but with overlapping (banded) sparsity pattern.
@@ -448,15 +428,14 @@ GTEST_TEST(SparseLinearConstraintAssembler, ConeProgramBanded) {
   VectorXd x0 = VectorXd::Random(num_rows).cwiseAbs() * 0.01;
   VectorXd cost = A_dense.transpose() * x0;
 
-  // --- Reference ---
+  // --- Reference: dense LinearConstraint ---
   SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
   config.inv_sqrt_mu_max = 5e3;
   config.final_centering_tolerance = 1.01;
 
-  SparseLinearConstraint slc_ref(A_sparse, b_affine);
   Program prog_ref(num_vars);
-  prog_ref.AddConstraint(slc_ref);
+  prog_ref.AddConstraint(LinearConstraint(MatrixXd(A_sparse), b_affine));
   VectorXd y_ref(num_vars);
   Solve(cost, prog_ref, config, y_ref.data());
 
@@ -465,12 +444,6 @@ GTEST_TEST(SparseLinearConstraintAssembler, ConeProgramBanded) {
       A_sparse, b_affine, cost, CONEX_KKT_SOLVER_TREE);
   EXPECT_NEAR((y_tree - y_ref).norm(), 0, eps);
   EXPECT_GE((b_affine - A_dense * y_tree).minCoeff(), -eps);
-
-  // --- Supernodal solver ---
-  VectorXd y_sn = SolveWithAssembler(
-      A_sparse, b_affine, cost, CONEX_KKT_SOLVER_SUPERNODAL);
-  EXPECT_NEAR((y_sn - y_ref).norm(), 0, eps);
-  EXPECT_GE((b_affine - A_dense * y_sn).minCoeff(), -eps);
 }
 
 // Compare solver timings between tree and supernodal on sparse LPs.
@@ -494,9 +467,9 @@ GTEST_TEST(SparseLinearConstraintAssembler, SolverTimingComparison) {
       {"banded_200x10", 200, 10, 20},
   };
 
-  std::cout << "\n=== Solver Timing Comparison (tree vs supernodal) ===\n";
-  std::cout << "name                  | vars | rows | nnz    | tree (ms)  | supernodal (ms)\n";
-  std::cout << "-------------------   | ---- | ---- | ------ | ---------- | ---------------\n";
+  std::cout << "\n=== Solver Timing (tree) ===\n";
+  std::cout << "name                  | vars | rows | nnz    | supports | tree (ms)\n";
+  std::cout << "-------------------   | ---- | ---- | ------ | -------- | ----------\n";
 
   for (const auto& tc : cases) {
     srand(42);
@@ -537,12 +510,7 @@ GTEST_TEST(SparseLinearConstraintAssembler, SolverTimingComparison) {
     VectorXd x0 = VectorXd::Random(num_rows).cwiseAbs() * 0.01;
     VectorXd cost = A_dense.transpose() * x0;
 
-    // Print group counts for the two decomposition strategies.
     SparseLinearConstraint slc(A_sparse, b_affine);
-    int containment_groups = slc.num_groups();
-    // Containment-merged groups have no merging for banded patterns
-    // (no support is a subset of another), so this equals the number
-    // of unique supports.
     int unique_supports = static_cast<int>(slc.row_supports().size());
 
     // Tree solver right-looking with precomputed Gram.
@@ -552,23 +520,17 @@ GTEST_TEST(SparseLinearConstraintAssembler, SolverTimingComparison) {
         /*precompute_gram=*/true, /*left_looking=*/false);
     auto t1 = clock::now();
 
-    // Supernodal solver.
-    auto t2 = clock::now();
-    VectorXd y_sn = SolveWithAssembler(
-        A_sparse, b_affine, cost, CONEX_KKT_SOLVER_SUPERNODAL);
-    auto t3 = clock::now();
-
     double tree_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-    double sn_ms = std::chrono::duration<double, std::milli>(t3 - t2).count();
 
-    // Verify both give same answer.
-    EXPECT_NEAR((y_tree - y_sn).norm(), 0, 1e-5);
+    // Verify feasibility.
+    VectorXd slack = b_affine - A_dense * y_tree;
+    EXPECT_GE(slack.minCoeff(), -1e-6);
 
-    printf("%-21s | %4d | %4d | %6ld | %4d supports, %4d containment groups | %10.3f | %10.3f\n",
+    printf("%-21s | %4d | %4d | %6ld | %4d     | %10.3f\n",
            tc.name.c_str(), tc.num_vars, num_rows,
            static_cast<long>(A_sparse.nonZeros()),
-           unique_supports, containment_groups,
-           tree_ms, sn_ms);
+           unique_supports,
+           tree_ms);
   }
 }
 
@@ -604,11 +566,6 @@ GTEST_TEST(SparseLinearConstraintAssembler, PerfBlockDiagonal) {
                        /*precompute_gram=*/true, /*left_looking=*/false);
   }
   printf("Completed %d tree solves (blkdiag 20x20 x10, 200 vars)\n", num_iters);
-
-  for (int i = 0; i < num_iters; i++) {
-    SolveWithAssembler(A_sparse, b_affine, cost, CONEX_KKT_SOLVER_SUPERNODAL);
-  }
-  printf("Completed %d supernodal solves\n", num_iters);
 }
 
 // Single dense block at increasing sizes: assemble/factor/solve breakdown.
@@ -623,10 +580,9 @@ GTEST_TEST(SparseLinearConstraintAssembler, SingleBlockScaling) {
   // Large s, small sep → assembly-dominated (tree should win)
   // Small s, large sep → scatter-dominated (sn should win)
   printf("\n=== Chain of k cliques, supernode s, separator sep (us) ===\n");
-  printf("%-4s | %-4s | %-4s | %-6s | %8s %8s | %8s %8s | %6s\n",
-         "s", "sep", "k", "vars", "tree_af", "tree_sv",
-         "sn_af", "sn_sv", "af rat");
-  printf("-----|------|------|--------|-------------------|-------------------|-------\n");
+  printf("%-4s | %-4s | %-4s | %-6s | %8s %8s\n",
+         "s", "sep", "k", "vars", "tree_af", "tree_sv");
+  printf("-----|------|------|--------|-------------------\n");
 
   // Chain of k cliques. Clique i has columns [i*s .. i*s + s + sep).
   // Supernode size s, separator/overlap sep. Total vars = k*s + sep.
@@ -692,23 +648,9 @@ GTEST_TEST(SparseLinearConstraintAssembler, SingleBlockScaling) {
     tree_t.assemble_and_factor_us /= reps;
     tree_t.solve_us /= reps;
 
-    // Supernodal solver
-    KKTSolverTimings sn_t;
-    for (int i = 0; i < reps; i++) {
-      KKTSolverTimings t;
-      SolveWithAssembler(A_sparse, b_affine, cost, CONEX_KKT_SOLVER_SUPERNODAL,
-                         false, true, &t);
-      sn_t.assemble_and_factor_us += t.assemble_and_factor_us;
-      sn_t.solve_us += t.solve_us;
-    }
-    sn_t.assemble_and_factor_us /= reps;
-    sn_t.solve_us /= reps;
-
-    printf("%-4d | %-4d | %-4d | %-6d | %8.0f %8.0f | %8.0f %8.0f | %5.2fx\n",
+    printf("%-4d | %-4d | %-4d | %-6d | %8.0f %8.0f\n",
            s, sep, k, num_vars,
-           tree_t.assemble_and_factor_us, tree_t.solve_us,
-           sn_t.assemble_and_factor_us, sn_t.solve_us,
-           tree_t.assemble_and_factor_us / sn_t.assemble_and_factor_us);
+           tree_t.assemble_and_factor_us, tree_t.solve_us);
   }
 }
 
@@ -736,38 +678,6 @@ GTEST_TEST(SparseLinearConstraintAssembler, CliqueTreeComparison) {
   VectorXd b_affine = VectorXd::Ones(num_rows) * 2.0;
 
   SparseLinearConstraint slc(A_sparse, b_affine);
-
-  // --- Supernodal path: containment-merged cliques → MakePrimalDualCliqueTree ---
-  std::vector<std::vector<int>> sn_cliques;
-  for (const auto& g : slc.groups()) {
-    sn_cliques.push_back(g.variables);
-  }
-  CliqueTree sn_tree = MakeCliqueTree(sn_cliques);
-
-  std::cout << "\n=== Supernodal solver clique tree ===\n";
-  std::cout << "Input cliques: " << sn_cliques.size() << "\n";
-  std::cout << "Tree nodes: " << sn_tree.supernodes.size() << "\n";
-  int sn_with_supernodes = 0;
-  int sn_total_fill = 0;
-  for (size_t i = 0; i < sn_tree.supernodes.size(); i++) {
-    int sn_size = sn_tree.supernodes[i].size();
-    int sep_size = sn_tree.separators[i].size();
-    sn_total_fill += sn_size * (sn_size + sep_size);
-    if (sn_size > 0) sn_with_supernodes++;
-    if (i < 20 || sn_size == 0) {
-      std::cout << "  node " << i << ": sn=" << sn_size
-                << " sep=" << sep_size
-                << " total=" << sn_size + sep_size
-                << (sn_size == 0 ? " *** NO SUPERNODE ***" : "")
-                << "\n";
-    }
-  }
-  if (sn_tree.supernodes.size() > 20) {
-    std::cout << "  ... (" << sn_tree.supernodes.size() - 20 << " more nodes)\n";
-  }
-  std::cout << "Nodes with supernodes: " << sn_with_supernodes
-            << " / " << sn_tree.supernodes.size() << "\n";
-  std::cout << "Total fill (sum of sn*(sn+sep)): " << sn_total_fill << "\n";
 
   // --- Tree solver path: row supports → MakeCliqueTreeMinDegreeFromRowSupports ---
   std::vector<std::vector<int>> maximal_cliques;
