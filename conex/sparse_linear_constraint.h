@@ -11,8 +11,6 @@
 
 namespace conex {
 
-class Program;
-
 // Decomposes a sparse matrix A into dense sub-blocks grouped by column
 // support.  The class holds the sparse matrix and precomputed per-row
 // supports.  Callers choose a grouping strategy (containment merging,
@@ -39,9 +37,6 @@ class SparseLinearConstraint {
   // dense sub-blocks.
   std::vector<RowGroup> GetConstraints(
       const std::vector<std::vector<int>>& target_supports) const;
-
-  // Add all sub-constraints to the program using containment-merged groups.
-  std::vector<int> AddToProgram(Program& prog);
 
   int num_groups() const { return groups().size(); }
   const std::vector<RowGroup>& groups() const;

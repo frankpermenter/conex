@@ -11,6 +11,8 @@
 
 namespace conex {
 
+class SparseLinearConstraint;
+
 class Program {
  public:
   Program(ConstraintManager&& constraints) {
@@ -77,12 +79,15 @@ class Program {
   void InitializeWorkspace();
 
   template <typename T>
-  CONEX_ID AddConstraint(T&& d) {
-    if constexpr (!std::is_same_v<std::decay_t<T>, EqualityConstraints>) {
-      return kkt_system_manager_.AddConstraint<T>(std::forward<T>(d));
-    } else {
+  auto AddConstraint(T&& d) {
+    using Type = std::decay_t<T>;
+    if constexpr (std::is_same_v<Type, SparseLinearConstraint>) {
+      return AddSparseLinearConstraint(d);
+    } else if constexpr (std::is_same_v<Type, EqualityConstraints>) {
       return kkt_system_manager_.AddEqualityConstraint(
           std::forward<EqualityConstraints>(d));
+    } else {
+      return kkt_system_manager_.AddConstraint<T>(std::forward<T>(d));
     }
   }
 
@@ -96,6 +101,10 @@ class Program {
           std::forward<EqualityConstraints>(d), variables);
     }
   }
+
+  // Add a SparseLinearConstraint by decomposing it into per-group
+  // LinearConstraints. Returns the constraint IDs for each group.
+  std::vector<int> AddSparseLinearConstraint(const SparseLinearConstraint& slc);
 
   int NumberOfConstraints() {
     return kkt_system_manager_.cone_inequalities().size() +

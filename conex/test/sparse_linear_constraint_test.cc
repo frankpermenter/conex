@@ -141,7 +141,7 @@ GTEST_TEST(SparseLinearConstraint, SolveBlockDiagonal) {
 
   Program prog_sparse(num_vars);
   SparseLinearConstraint slc(A_sparse, b_affine);
-  auto ids = slc.AddToProgram(prog_sparse);
+  auto ids = prog_sparse.AddConstraint(slc);
   EXPECT_EQ(static_cast<int>(ids.size()), num_blocks);
 
   VectorXd y_sparse(num_vars);
@@ -221,7 +221,7 @@ GTEST_TEST(SparseLinearConstraint, BandedMatrix) {
   VectorXd cost = A_dense.transpose() * x0;
 
   Program prog(num_vars);
-  slc.AddToProgram(prog);
+  prog.AddConstraint(slc);
 
   VectorXd y(num_vars);
   Solve(cost, prog, config, y.data());
@@ -365,7 +365,7 @@ VectorXd SolveWithAssembler(
 }
 
 // Solve a cone program (LP) using SparseLinearConstraintAssembler.
-// Compare tree solver and supernodal solver against AddToProgram reference.
+// Compare tree solver and supernodal solver against AddConstraint reference.
 GTEST_TEST(SparseLinearConstraintAssembler, ConeProgram) {
   srand(42);
   double eps = 1e-6;
@@ -389,7 +389,7 @@ GTEST_TEST(SparseLinearConstraintAssembler, ConeProgram) {
   MatrixXd A_dense(A_sparse);
   VectorXd cost = A_dense.transpose() * x0;
 
-  // --- Reference: AddToProgram ---
+  // --- Reference: AddConstraint ---
   SolverConfiguration config = DefaultTestConfiguration();
   config.prepare_dual_variables = true;
   config.inv_sqrt_mu_max = 5e3;
@@ -398,7 +398,7 @@ GTEST_TEST(SparseLinearConstraintAssembler, ConeProgram) {
 
   SparseLinearConstraint slc_ref(A_sparse, b_affine);
   Program prog_ref(num_vars);
-  slc_ref.AddToProgram(prog_ref);
+  prog_ref.AddConstraint(slc_ref);
   VectorXd y_ref(num_vars);
   Solve(cost, prog_ref, config, y_ref.data());
 
@@ -456,7 +456,7 @@ GTEST_TEST(SparseLinearConstraintAssembler, ConeProgramBanded) {
 
   SparseLinearConstraint slc_ref(A_sparse, b_affine);
   Program prog_ref(num_vars);
-  slc_ref.AddToProgram(prog_ref);
+  prog_ref.AddConstraint(slc_ref);
   VectorXd y_ref(num_vars);
   Solve(cost, prog_ref, config, y_ref.data());
 

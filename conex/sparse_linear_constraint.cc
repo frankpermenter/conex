@@ -172,11 +172,11 @@ SparseLinearConstraint::GetConstraints(
   return result;
 }
 
-std::vector<int> SparseLinearConstraint::AddToProgram(Program& prog) {
+std::vector<int> Program::AddSparseLinearConstraint(const SparseLinearConstraint& slc) {
   std::vector<int> ids;
-  for (const auto& group : groups()) {
+  for (const auto& group : slc.groups()) {
     ids.push_back(
-        prog.AddConstraint(LinearConstraint(group.A, group.b), group.variables));
+        AddConstraint(LinearConstraint(group.A, group.b), group.variables));
   }
   return ids;
 }
