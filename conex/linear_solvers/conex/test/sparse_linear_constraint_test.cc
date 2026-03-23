@@ -842,4 +842,80 @@ GTEST_TEST(SparseLeastSquares, ParallelRecursiveSolve) {
   EXPECT_NEAR((sol1 - sol3).norm(), 0, 1e-10 * x_true.norm());
 }
 
+// Test parallelize-roots-only mode with block-diagonal sparsity.
+// Block-diagonal structure produces independent subtrees (multiple roots),
+// so parallelism across roots is the natural strategy.
+GTEST_TEST(SparseLeastSquares, ParallelizeRootsOnly) {
+  srand(33);
+  int num_blocks = 8;
+  int rows_per_block = 10;
+  int cols_per_block = 5;
+
+  std::vector<MatrixXd> blocks(num_blocks);
+  for (int i = 0; i < num_blocks; i++) {
+    blocks[i] = MatrixXd::Random(rows_per_block, cols_per_block);
+  }
+  auto A_sparse = BlockDiagonal(blocks);
+  int num_vars = A_sparse.cols();
+
+  VectorXd x_true = VectorXd::Random(num_vars);
+  MatrixXd A_dense(A_sparse);
+  VectorXd rhs = A_dense.transpose() * (A_dense * x_true);
+
+  Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(A_sparse.rows());
+
+  // Single-threaded reference.
+  auto slc1 = std::make_unique<SparseLinearConstraint>(A_sparse, b_zero);
+  std::set<int> var_set;
+  for (const auto& support : slc1->row_supports()) {
+    var_set.insert(support.begin(), support.end());
+  }
+  std::vector<int> all_vars(var_set.begin(), var_set.end());
+
+  ConstraintManager cm1(num_vars);
+  auto asm1 = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc1), all_vars);
+  cm1.AddCustomAssembler(asm1.get());
+
+  SolverConfiguration config1;
+  config1.num_threads = 1;
+  auto solver1 = MakeTreeSolver(&cm1, config1);
+  ASSERT_TRUE(solver1->AssembleAndFactor());
+  VectorXd sol1 = solver1->Solve(rhs);
+  EXPECT_NEAR((sol1 - x_true).norm(), 0, 1e-8 * x_true.norm());
+
+  // Multi-threaded with parallelize_roots_only = true.
+  auto slc2 = std::make_unique<SparseLinearConstraint>(A_sparse, b_zero);
+  ConstraintManager cm2(num_vars);
+  auto asm2 = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc2), all_vars);
+  cm2.AddCustomAssembler(asm2.get());
+
+  SolverConfiguration config2;
+  config2.num_threads = 4;
+  auto solver2 = MakeTreeSolver(&cm2, config2);
+  solver2->SetParallelizeRootsOnly(true);
+  ASSERT_TRUE(solver2->AssembleAndFactor());
+  VectorXd sol2 = solver2->Solve(rhs);
+  EXPECT_NEAR((sol2 - x_true).norm(), 0, 1e-8 * x_true.norm());
+  EXPECT_NEAR((sol1 - sol2).norm(), 0, 1e-10 * x_true.norm());
+
+  // Also test with recursive solve path.
+  auto slc3 = std::make_unique<SparseLinearConstraint>(A_sparse, b_zero);
+  ConstraintManager cm3(num_vars);
+  auto asm3 = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc3), all_vars);
+  cm3.AddCustomAssembler(asm3.get());
+
+  SolverConfiguration config3;
+  config3.num_threads = 4;
+  auto solver3 = MakeTreeSolver(&cm3, config3);
+  solver3->SetParallelizeRootsOnly(true);
+  solver3->SetUseRecursiveSolve(true);
+  ASSERT_TRUE(solver3->AssembleAndFactor());
+  VectorXd sol3 = solver3->Solve(rhs);
+  EXPECT_NEAR((sol3 - x_true).norm(), 0, 1e-8 * x_true.norm());
+  EXPECT_NEAR((sol1 - sol3).norm(), 0, 1e-10 * x_true.norm());
+}
+
 }  // namespace conex
