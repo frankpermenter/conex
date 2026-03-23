@@ -15,58 +15,6 @@ LinearConstraint::LinearConstraint(const Eigen::MatrixXd& constraint_matrix,
       constraint_affine_(constraint_affine) {
   CONEX_CHECK(constraint_matrix_.rows() == constraint_affine_.rows());
 }
-void AppendRow(MatrixXd* A, const MatrixXd& new_rows) {
-  int num_cols = A->cols();
-  if (A->rows() == 0) {
-    num_cols = new_rows.cols();
-  }
-  if (num_cols != new_rows.cols()) {
-    throw std::runtime_error(
-        "Cannot stack matrices with different number of columns.");
-  }
-  A->conservativeResize(A->rows() + new_rows.rows(), num_cols);
-  A->bottomRows(new_rows.rows()) = new_rows;
-}
-
-void PreprocessLinearInequality(const MatrixXd& A, const MatrixXd& lb,
-                                const MatrixXd& ub, MatrixXd* Aineq,
-                                MatrixXd* bineq, MatrixXd* Aeq, MatrixXd* beq,
-                                double rescale) {
-  for (int i = 0; i < A.rows(); i++) {
-    if (lb.row(i) == ub.row(i)) {
-      double scale = 1.0;
-      if (rescale) {
-        scale = 1.0 / std::sqrt(A.row(i).squaredNorm());
-      }
-      if (std::isfinite(scale)) {
-        AppendRow(Aeq, scale * A.row(i));
-        AppendRow(beq, scale * ub.row(i));
-      }
-    } else {
-      if (ub(i, 0) < 1e8) {
-        double scale = 1.0;
-        if (rescale) {
-          scale = 1.0 / std::sqrt(A.row(i).squaredNorm());
-        }
-        if (std::isfinite(scale)) {
-          AppendRow(Aineq, scale * A.row(i));
-          AppendRow(bineq, scale * ub.row(i));
-        }
-      }
-      if (lb(i, 0) > -1e8) {
-        double scale = 1.0;
-        if (rescale) {
-          scale = 1.0 / std::sqrt(A.row(i).squaredNorm());
-        }
-        if (std::isfinite(scale)) {
-          AppendRow(Aineq, -scale * A.row(i));
-          AppendRow(bineq, -scale * lb.row(i));
-        }
-      }
-    }
-  }
-}
-
 template <typename T>
 bool FindMinimumMu(const T& d0, const T& delta, double dinfmax,
                    LineSearchOutput* output) {

@@ -79,12 +79,6 @@ class GramEvaluator : public LazySymmetricMatrix {
   bool precompute_gram_ = false;
 };
 
-void PreprocessLinearInequality(const Eigen::MatrixXd& A,
-                                const Eigen::MatrixXd& lb,
-                                const Eigen::MatrixXd& ub,
-                                Eigen::MatrixXd* Aineq, Eigen::MatrixXd* bineq,
-                                Eigen::MatrixXd* Aeq, Eigen::MatrixXd* beq,
-                                double rescale = true);
 // TODO(FrankPermenter) Rename to LinearInequality
 class LinearConstraint : public Constraint {
   using StorageType = DenseMatrix;

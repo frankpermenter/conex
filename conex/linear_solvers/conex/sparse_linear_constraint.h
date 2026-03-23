@@ -32,6 +32,8 @@ class SparseLinearConstraint {
     return unique_supports_;
   }
 
+  const Eigen::SparseMatrix<double>& A() const { return A_; }
+
   // Given a list of target supports (e.g. maximal cliques), assign each
   // row to the smallest target that contains its support, then build
   // dense sub-blocks.

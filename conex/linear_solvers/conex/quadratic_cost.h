@@ -45,7 +45,6 @@ class SupernodalAssemblerQuadratic : public SupernodalAssemblerStatic {
   SupernodalAssemblerQuadratic(const Eigen::MatrixXd& A,
                                const std::vector<int>& variables)
       : SupernodalAssemblerStatic(A, variables) {}
-  double EvaluateQuadraticCost(const Eigen::Ref<const Eigen::MatrixXd> x) const;
   Eigen::MatrixXd CostMatrix() const { return A_; }
 };
 }  // namespace conex

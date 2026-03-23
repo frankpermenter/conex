@@ -32,9 +32,7 @@ target_link_libraries(tree_solver PUBLIC Eigen3::Eigen)
 
 # --- Clique ordering ---
 add_library(clique_ordering
-  conex/clique_ordering.cc
   conex/clique_ordering_md.cc
-  conex/clique_ordering_utils.cc
   conex/pq_tree.cc
 )
 target_link_libraries(clique_ordering PUBLIC tree_solver)
@@ -43,7 +41,6 @@ target_link_libraries(clique_ordering PUBLIC tree_solver)
 add_library(constraints
   conex/linear_constraint.cc
   conex/equality_constraint.cc
-  conex/quadratic_cost.cc
   conex/constraint_manager.cc
 )
 target_link_libraries(constraints PUBLIC tree_solver clique_ordering)

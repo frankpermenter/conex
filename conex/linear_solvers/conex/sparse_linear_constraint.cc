@@ -178,7 +178,24 @@ SparseLinearConstraintAssembler::SparseLinearConstraintAssembler(
 std::vector<SupernodalAssemblerBase*>
 SparseLinearConstraintAssembler::Decompose(
     const std::vector<std::vector<int>>& maximal_cliques) {
-  auto groups = slc_->GetConstraints(maximal_cliques);
+  // Filter maximal cliques to only include primal variables (< A.cols()).
+  // MakeTreeSolver may produce cliques containing dual variable indices
+  // from equality constraints, which are beyond the SLC's column range.
+  const int num_cols = slc_->A().cols();
+  std::vector<std::vector<int>> primal_cliques;
+  primal_cliques.reserve(maximal_cliques.size());
+  for (const auto& clique : maximal_cliques) {
+    std::vector<int> filtered;
+    for (int v : clique) {
+      if (v < num_cols) {
+        filtered.push_back(v);
+      }
+    }
+    if (!filtered.empty()) {
+      primal_cliques.push_back(std::move(filtered));
+    }
+  }
+  auto groups = slc_->GetConstraints(primal_cliques);
 
   std::vector<SupernodalAssemblerBase*> result;
   for (auto& group : groups) {
