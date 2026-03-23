@@ -233,9 +233,7 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
   }
   // Ensure per-subsystem temporary solve buffers are sized for this RHS width.
   if (b.cols() > reserved_solve_workspace_cols_) {
-    ForEachTask(
-        roots_.size(), EffectiveThreadCount(num_threads_),
-        [&](size_t i) { roots_.at(i)->ReserveSolveWorkspace(b.cols()); });
+    AllocateWorkspaceArena(b.cols());
     reserved_solve_workspace_cols_ = b.cols();
   }
 
@@ -342,7 +340,7 @@ void T::UpdateAssemblerData() {
   // Zero all subsystem storage before contributors write additively.
   START_TIMER(Memset)
   if (arena_memory_) {
-    std::memset(arena_memory_.get(), 0, arena_bytes_);
+    std::memset(arena_memory_.get(), 0, factorization_arena_bytes_);
   }
   END_TIMER
   ResetUpdateDataTimers();
@@ -396,7 +394,7 @@ bool T::DoFactor() {
   return success.load(std::memory_order_relaxed);
 }
 
-void T::Finalize(const CliqueTree& clique_tree) {
+void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
   // Auto-create subsystems when none were provided.  Use DynamicSubsystem
   // which supports both positive-definite (LLT) and indefinite (RLDLT)
   // factorization, since the general tree path may encounter equality
@@ -417,7 +415,7 @@ void T::Finalize(const CliqueTree& clique_tree) {
     s->SetSeparators(clique_tree.separators.at(i));
     ++i;
   }
-  AllocateArenaAndBind();
+  AllocateArenaAndBind(rhs_cols);
   for (auto& s : subsystems_) {
     s->Initialize();
   }
@@ -492,37 +490,86 @@ void T::SetFactorizationMode(bool left_looking) {
   }
 }
 
-void T::AllocateArenaAndBind() {
+void T::AllocateArenaAndBind(int rhs_cols) {
   constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
-  size_t total_bytes = 0;
+  auto align = [kAlign](size_t v) {
+    return ((v + kAlign - 1) / kAlign) * kAlign;
+  };
+
+  // Compute factorization storage.
+  size_t factorization_bytes = 0;
   for (const auto* subsystem : subsystems_) {
-    total_bytes += subsystem->RequiredArenaBytes() + (kAlign - 1);
+    factorization_bytes += align(subsystem->RequiredArenaBytes());
   }
+  factorization_arena_bytes_ = factorization_bytes;
+
+  // Compute solve workspace (3 buffers per subsystem).
+  size_t workspace_bytes = 0;
+  for (const auto* subsystem : subsystems_) {
+    const auto& sn = subsystem->supernodes();
+    int sn_rows = 0;
+    if (!sn.empty()) {
+      sn_rows = sn.back() - sn.front() + 1;
+    }
+    int sep_rows = static_cast<int>(subsystem->separators().size());
+    workspace_bytes += align(sn_rows * rhs_cols * sizeof(double));
+    workspace_bytes += align(sn_rows * rhs_cols * sizeof(double));
+    workspace_bytes += align(sep_rows * rhs_cols * sizeof(double));
+  }
+
+  size_t total_bytes = factorization_bytes + workspace_bytes;
   if (total_bytes == 0) {
     arena_memory_.reset();
     arena_bytes_ = 0;
     return;
   }
-  const size_t alloc_bytes = ((total_bytes + (kAlign - 1)) / kAlign) * kAlign;
+
   void* raw_ptr = nullptr;
-  if (posix_memalign(&raw_ptr, kAlign, alloc_bytes) != 0) {
+  if (posix_memalign(&raw_ptr, kAlign, total_bytes) != 0) {
     throw std::bad_alloc();
   }
   arena_memory_.reset(raw_ptr);
-  arena_bytes_ = alloc_bytes;
-  std::memset(raw_ptr, 0, alloc_bytes);
+  arena_bytes_ = total_bytes;
+  std::memset(raw_ptr, 0, total_bytes);
 
+  // Bind factorization storage.
   std::uintptr_t cursor = reinterpret_cast<std::uintptr_t>(arena_memory_.get());
   for (auto* subsystem : subsystems_) {
     const size_t bytes = subsystem->RequiredArenaBytes();
-    if (bytes == 0) {
-      continue;
-    }
-    cursor =
-        (cursor + (kAlign - 1)) & ~(static_cast<std::uintptr_t>(kAlign - 1));
+    if (bytes == 0) continue;
+    cursor = (cursor + (kAlign - 1)) & ~(static_cast<std::uintptr_t>(kAlign - 1));
     subsystem->BindArenaMemory(reinterpret_cast<double*>(cursor), bytes);
     cursor += bytes;
   }
+
+  // Bind solve workspace.
+  char* ws_base = static_cast<char*>(arena_memory_.get()) + factorization_bytes;
+  size_t ws_cursor = 0;
+  for (auto* subsystem : subsystems_) {
+    const auto& sn = subsystem->supernodes();
+    int sn_rows = 0;
+    if (!sn.empty()) {
+      sn_rows = sn.back() - sn.front() + 1;
+    }
+    int sep_rows = static_cast<int>(subsystem->separators().size());
+
+    ws_cursor = align(ws_cursor);
+    double* ws1 = reinterpret_cast<double*>(ws_base + ws_cursor);
+    ws_cursor += sn_rows * rhs_cols * sizeof(double);
+
+    ws_cursor = align(ws_cursor);
+    double* ws2 = reinterpret_cast<double*>(ws_base + ws_cursor);
+    ws_cursor += sn_rows * rhs_cols * sizeof(double);
+
+    ws_cursor = align(ws_cursor);
+    double* ws3 = reinterpret_cast<double*>(ws_base + ws_cursor);
+    ws_cursor += sep_rows * rhs_cols * sizeof(double);
+
+    subsystem->BindSolveWorkspace(ws1, sn_rows, rhs_cols,
+                                  ws2, sn_rows, rhs_cols,
+                                  ws3, sep_rows, rhs_cols);
+  }
+  reserved_solve_workspace_cols_ = rhs_cols;
 }
 
 void T::AllocateSolveArena() {
@@ -683,64 +730,72 @@ SubmatrixContributor T::MakeContributorFromLookup(
   return contrib;
 }
 
-void T::AllocateWorkspaceArena(int rhs_cols) {
+void T::AllocateWorkspaceArena(int rhs_cols) const {
   constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
   auto align = [kAlign](size_t v) {
     return ((v + kAlign - 1) / kAlign) * kAlign;
   };
 
-  // Compute total workspace bytes for all subsystems.
-  size_t total = 0;
-  for (auto* subsystem : subsystems_) {
+  // Compute new workspace size.
+  size_t ws_bytes = 0;
+  for (const auto* subsystem : subsystems_) {
     const auto& sn = subsystem->supernodes();
-    int sn_rows = 0;
-    if (!sn.empty()) {
-      sn_rows = sn.back() - sn.front() + 1;
-    }
+    int sn_rows = sn.empty() ? 0 : sn.back() - sn.front() + 1;
     int sep_rows = static_cast<int>(subsystem->separators().size());
-    // ws1: sn_rows × rhs_cols, ws2: sn_rows × rhs_cols, ws3: sep_rows × rhs_cols
-    total += align(sn_rows * rhs_cols * sizeof(double));
-    total += align(sn_rows * rhs_cols * sizeof(double));
-    total += align(sep_rows * rhs_cols * sizeof(double));
+    ws_bytes += align(sn_rows * rhs_cols * sizeof(double));
+    ws_bytes += align(sn_rows * rhs_cols * sizeof(double));
+    ws_bytes += align(sep_rows * rhs_cols * sizeof(double));
   }
 
-  if (total > workspace_arena_bytes_) {
+  const size_t needed = factorization_arena_bytes_ + ws_bytes;
+  if (needed > arena_bytes_) {
+    // Grow arena, preserving factorization data.
     void* raw_ptr = nullptr;
-    if (posix_memalign(&raw_ptr, kAlign, total + kAlign) != 0) {
+    if (posix_memalign(&raw_ptr, kAlign, needed) != 0) {
       throw std::bad_alloc();
     }
-    workspace_arena_.reset(raw_ptr);
-    workspace_arena_bytes_ = total + kAlign;
-  }
-  workspace_arena_cols_ = rhs_cols;
+    std::memcpy(raw_ptr, arena_memory_.get(), factorization_arena_bytes_);
+    arena_memory_.reset(raw_ptr);
+    arena_bytes_ = needed;
 
-  // Distribute pointers to subsystems.
-  char* base = static_cast<char*>(workspace_arena_.get());
-  size_t cursor = 0;
+    // Rebind factorization pointers to new base.
+    std::uintptr_t cursor = reinterpret_cast<std::uintptr_t>(raw_ptr);
+    for (auto* subsystem : subsystems_) {
+      const size_t bytes = subsystem->RequiredArenaBytes();
+      if (bytes == 0) continue;
+      cursor = (cursor + (kAlign - 1)) &
+               ~(static_cast<std::uintptr_t>(kAlign - 1));
+      subsystem->BindArenaMemory(reinterpret_cast<double*>(cursor), bytes);
+      cursor += bytes;
+    }
+  }
+
+  // Bind workspace pointers after factorization region.
+  char* ws_base =
+      static_cast<char*>(arena_memory_.get()) + factorization_arena_bytes_;
+  size_t ws_cursor = 0;
   for (auto* subsystem : subsystems_) {
     const auto& sn = subsystem->supernodes();
-    int sn_rows = 0;
-    if (!sn.empty()) {
-      sn_rows = sn.back() - sn.front() + 1;
-    }
+    int sn_rows = sn.empty() ? 0 : sn.back() - sn.front() + 1;
     int sep_rows = static_cast<int>(subsystem->separators().size());
 
-    cursor = align(cursor);
-    double* ws1 = reinterpret_cast<double*>(base + cursor);
-    cursor += sn_rows * rhs_cols * sizeof(double);
+    ws_cursor = align(ws_cursor);
+    double* ws1 = reinterpret_cast<double*>(ws_base + ws_cursor);
+    ws_cursor += sn_rows * rhs_cols * sizeof(double);
 
-    cursor = align(cursor);
-    double* ws2 = reinterpret_cast<double*>(base + cursor);
-    cursor += sn_rows * rhs_cols * sizeof(double);
+    ws_cursor = align(ws_cursor);
+    double* ws2 = reinterpret_cast<double*>(ws_base + ws_cursor);
+    ws_cursor += sn_rows * rhs_cols * sizeof(double);
 
-    cursor = align(cursor);
-    double* ws3 = reinterpret_cast<double*>(base + cursor);
-    cursor += sep_rows * rhs_cols * sizeof(double);
+    ws_cursor = align(ws_cursor);
+    double* ws3 = reinterpret_cast<double*>(ws_base + ws_cursor);
+    ws_cursor += sep_rows * rhs_cols * sizeof(double);
 
     subsystem->BindSolveWorkspace(ws1, sn_rows, rhs_cols,
                                   ws2, sn_rows, rhs_cols,
                                   ws3, sep_rows, rhs_cols);
   }
+  reserved_solve_workspace_cols_ = rhs_cols;
 }
 
 int T::number_of_variables() const {

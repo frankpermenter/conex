@@ -22,6 +22,7 @@ make -j"$(nproc)" 2>&1 | tail -1
 
 # Run tests to generate coverage data.
 ./sparse_linear_constraint_test 2>&1 | grep -E "^\[  (PASSED|FAILED)"
+./multithreading_test 2>&1 | grep -E "^\[  (PASSED|FAILED)"
 
 # Collect coverage for project source files.
 echo ""

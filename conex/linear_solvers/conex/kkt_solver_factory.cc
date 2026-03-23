@@ -57,7 +57,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
         ClassifyCliqueContribution(assembler, num_primal));
     tree_solver_->push_back(std::move(adapter));
   }
-  tree_solver_->Finalize(clique_tree);
+  tree_solver_->Finalize(clique_tree, config.rhs_cols);
   tree_solver_->SetFactorizationMode(config.tree.left_looking);
   tree_solver_->EnableAutoUpdateAtAssemble(true);
   tree_solver_->SetNumThreads(config.num_threads);

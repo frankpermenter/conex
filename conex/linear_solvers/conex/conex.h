@@ -18,6 +18,10 @@ struct SolverConfiguration {
   // Set to 1 for single-threaded execution.
   int num_threads = 1;
 
+  // Number of RHS columns to pre-allocate solve workspace for.
+  // Set to the expected column count to avoid reallocation on first Solve().
+  int rhs_cols = 1;
+
   TreeSolverOptions tree;
 };
 

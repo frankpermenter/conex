@@ -227,7 +227,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
  public:
   int number_of_variables() const;
 
-  void Finalize(const CliqueTree& clique_tree);
+  void Finalize(const CliqueTree& clique_tree, int rhs_cols = 1);
 
   void SetFactorizationMode(bool left_looking);
   void SetNumThreads(int num_threads);
@@ -269,7 +269,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void DoAssemble() override;
   bool DoAssembleAndFactor() override;
   bool DoFactor() override;
-  void AllocateArenaAndBind();
+  void AllocateArenaAndBind(int rhs_cols);
 
   std::vector<KKTSubsystemBase*> roots_;
   std::vector<KKTSubsystemBase*> subsystems_;
@@ -289,9 +289,10 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   int cached_num_vars_ = 0;
   Eigen::VectorXi cached_perm_;         // variable -> elimination position
   Eigen::VectorXi cached_perm_inv_;     // elimination position -> variable
-  std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr,
-                                                            &std::free};
-  size_t arena_bytes_ = 0;
+  mutable std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr,
+                                                                    &std::free};
+  mutable size_t arena_bytes_ = 0;
+  size_t factorization_arena_bytes_ = 0;
   // Block-partitioned solve data (mutable: scratch space used in const solve).
   mutable SupernodePartitionMatrix solve_matrix_;
   // Per-node precomputed child scatter info for blocked solve.
@@ -306,12 +307,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   };
   std::vector<NodeScatterInfo> solve_scatter_info_;  // indexed by solve_order pos
   void AllocateSolveArena();
-  // Consolidated workspace arena for all subsystems' solve scratch buffers.
-  std::unique_ptr<void, decltype(&std::free)> workspace_arena_{nullptr,
-                                                                &std::free};
-  size_t workspace_arena_bytes_ = 0;
-  int workspace_arena_cols_ = 0;
-  void AllocateWorkspaceArena(int rhs_cols);
+  void AllocateWorkspaceArena(int rhs_cols) const;
 };
 
 }  // namespace conex

@@ -83,14 +83,6 @@ CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x_in,
   return equality_constraints_.data.size() - 1;
 }
 
-CONEX_ID T::AddEqualityConstraint(const EqualityConstraints& x) {
-  std::vector<int> clique(max_number_of_variables_);
-  for (size_t i = 0; i < clique.size(); i++) {
-    clique[i] = i;
-  }
-  return AddEqualityConstraint(x, clique);
-}
-
 const std::vector<std::vector<int>>& T::equality_constraint_multipliers()
     const {
   dual_vars_.clear();

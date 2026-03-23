@@ -35,7 +35,6 @@ class ConstraintManager {
 
   CONEX_ID AddEqualityConstraint(const EqualityConstraints& x,
                                  const std::vector<int>& variables);
-  CONEX_ID AddEqualityConstraint(const EqualityConstraints& x);
 
   // Register a custom assembler (caller retains ownership).
   void AddCustomAssembler(SupernodalAssemblerBase* assembler) {
