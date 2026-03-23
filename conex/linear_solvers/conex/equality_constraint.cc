@@ -9,29 +9,6 @@ using std::vector;
 T::EqualityConstraints(const Eigen::MatrixXd& A, const Eigen::MatrixXd& b)
     : A_(A), b_(b) {}
 
-void T::ConstructSchurComplementSystemImpl(bool initialize,
-                                           SchurComplementSystem* sys_) {
-  auto& sys = *sys_;
-  auto& A = A_;
-  auto& b = b_;
-
-  if (!sys_->initialized) {
-    throw std::runtime_error("Schur complement workspace is not initialized");
-  }
-
-  // Fills lower-triangular part of
-  //    0 A'
-  //    A 0
-  if (initialize) {
-    sys.setZero();
-    sys.G.bottomLeftCorner(A.rows(), A.cols()) = A;
-    sys.AQc.bottomRows(A.rows()) = b;
-  } else {
-    sys.G.bottomLeftCorner(A.rows(), A.cols()) += A;
-    sys.AQc.bottomRows(A.rows()) += b;
-  }
-}
-
 SupernodalAssemblerEqualities::SupernodalAssemblerEqualities(
     const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
     const std::vector<int>& primal_variables,

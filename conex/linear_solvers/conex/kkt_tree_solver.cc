@@ -661,27 +661,15 @@ void T::Finalize(const CliqueTree& clique_tree) {
     }
   }
 
-  // Bind contributors to adapters that use the contributor contract
-  // (i.e., those without their own subsystem).
+  // Bind contributors to adapters.
   for (auto& adapter : assembler_to_subsystem_adapter_) {
-    if (!adapter->kkt_subsystem()) {
-      auto c = std::make_unique<SubmatrixContributor>(
-          MakeContributorFromLookup(adapter->elimination_positions(),
-                                    elim_pos_to_subsystem));
-      c->set_type(adapter->contribution_type());
-      c->PrecomputeLazyOrder(adapter->elimination_positions());
-      adapter->BindContributor(std::move(c));
-    }
+    auto c = std::make_unique<SubmatrixContributor>(
+        MakeContributorFromLookup(adapter->elimination_positions(),
+                                  elim_pos_to_subsystem));
+    c->set_type(adapter->contribution_type());
+    c->PrecomputeLazyOrder(adapter->elimination_positions());
+    adapter->BindContributor(std::move(c));
   }
-}
-
-void T::Finalize(const Options& options) {
-  throw std::runtime_error("Obsolete");
-  // RootedTree tree(subsystems_.size());
-  // SymmetricMatrix<vector<int>> intersections(subsystems_.size());
-  // PickCliqueOrderHelper(subsystems_, options.root_node,
-  //                       options.validate_leaf_nodes, &intersections, &tree);
-  // Finalize(tree.parent, options.check_for_zero_pivots);
 }
 
 void T::SetEliminationTree(const std::vector<int>& parent) {
@@ -699,49 +687,6 @@ void T::SetEliminationTree(const std::vector<int>& parent) {
       roots_.push_back(subsystems_.at(i));
     }
   }
-}
-
-void T::FinalizeHelper(const std::vector<int>& parent) {
-  throw std::runtime_error("Obsolete");
-  /*
-  CONEX_DEMAND(parent.size() == subsystems_.size(),
-               "Size of parent vector must equal number of subsystems.");
-
-  SetEliminationTree(parent);
-  // Set supernodes from parent.
-  for (size_t i = 0; i < parent.size(); ++i) {
-    if (parent[i] >= 0) {
-      std::vector<int> v1 = subsystems_.at(parent[i])->shared_variables();
-      std::vector<int> v2 = subsystems_.at(i)->shared_variables();
-      std::sort(v1.begin(), v1.end());
-      std::sort(v2.begin(), v2.end());
-      std::vector<int> separators;
-      std::set_intersection(v1.begin(), v1.end(), v2.begin(), v2.end(),
-                            std::back_inserter(separators));
-      subsystems_.at(i)->SetSeparators(separators);
-
-      std::vector<int> supernodes;
-      std::set_difference(v2.begin(), v2.end(), separators.begin(),
-                          separators.end(), std::back_inserter(supernodes));
-      subsystems_.at(i)->SetSupernodes(supernodes);
-    } else {
-      std::vector<int> v2 = subsystems_.at(i)->shared_variables();
-      std::sort(v2.begin(), v2.end());
-      subsystems_.at(i)->SetSupernodes(v2);
-      subsystems_.at(i)->SetSeparators({});
-    }
-  }
-  FillIn(parent, number_of_variables(), &subsystems_);
-
-  // Post-order
-  variable_to_elimination_position_.resize(number_of_variables());
-  int first = 0;
-  for (auto r : roots_) {
-    first = r->ComputePostOrdering(first, &variable_to_elimination_position_);
-  }
-  for (auto s : subsystems_) {
-    s->SetVariableOrdering(variable_to_elimination_position_);
-  }*/
 }
 
 std::vector<int> T::ComputePostOrdering() const {
@@ -1181,38 +1126,6 @@ void T::ReserveSolveWorkspace(int rhs_cols) {
   reserved_solve_workspace_cols_ = rhs_cols;
 }
 
-bool T::CheckForZeroPivot(const std::vector<int>& parent,
-                          std::vector<int>* index_of_zero_pivot) {
-  index_of_zero_pivot->clear();
-  FinalizeHelper(parent);
-  Assemble();
-  int i = 0;
-  for (auto r : subsystems_) {
-    if (r->supernodes().size() > 0) {
-      Eigen::MatrixXd T =
-          r->supernode_submatrix().selfadjointView<Eigen::Lower>();
-      T = T.transpose() * T;
-      bool zero_pivot = T.colwise().sum().minCoeff() == 0;
-      if (zero_pivot) {
-        index_of_zero_pivot->push_back(i);
-      }
-    }
-    i++;
-  }
-  return index_of_zero_pivot->size() > 0;
-}
-
-void T::Finalize(const std::vector<int>& parent, bool check_for_zero_pivot) {
-  CONEX_CHECK(subsystems_.size() == parent.size());
-  FinalizeHelper(parent);
-  if (check_for_zero_pivot) {
-    std::vector<int> index_of_zero_pivot;
-    if (CheckForZeroPivot(parent, &index_of_zero_pivot)) {
-      throw std::runtime_error("Invalid tree: zero pivot detected.");
-    }
-  }
-}
-
 int T::number_of_variables() const {
   if (cached_num_vars_ > 0) return cached_num_vars_;
   int max = 0;
@@ -1246,37 +1159,6 @@ Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
         variable_to_elimination_position_.data(), number_of_variables());
     return P.transpose() * M * P;
   }
-}
-
-Eigen::SparseMatrix<double> T::MakeSparseKKTMatrix(
-    bool permute_to_elimination_order) const {
-  std::vector<Eigen::Triplet<double>> triplets;
-  for (auto s : subsystems_) {
-    s->AddSparseMatrixTriplets(&triplets);
-  }
-  Eigen::SparseMatrix<double> matrix(number_of_variables(),
-                                     number_of_variables());
-  matrix.setFromTriplets(triplets.begin(), triplets.end());
-  Eigen::SparseMatrix<double> matrix_sym =
-      matrix.selfadjointView<Eigen::Lower>();
-  if (permute_to_elimination_order) {
-    return matrix;
-  } else {
-    CONEX_CHECK(static_cast<int>(variable_to_elimination_position_.size()) ==
-                number_of_variables());
-    Eigen::PermutationMatrix<-1> P(number_of_variables());
-    P.indices() = Eigen::Map<const Eigen::VectorXi>(
-        variable_to_elimination_position_.data(), number_of_variables());
-    return P.transpose() * matrix_sym * P;
-  }
-}
-
-void T::AddSubsystem(KKTSubsystemType* system) {
-  CONEX_CHECK(system != nullptr);
-  system->SetNumThreads(
-      SubsystemThreadCount(num_threads_, parallelize_roots_only_));
-  subsystems_.push_back(system);
-  reserved_solve_workspace_cols_ = 0;
 }
 
 void T::push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system) {

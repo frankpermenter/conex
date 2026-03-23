@@ -172,7 +172,6 @@ class KKTSubsystemBase {
   bool is_valid_leaf() { return DoIsValidLeaf(); }
 
   void MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const;
-  void AddSparseMatrixTriplets(std::vector<Eigen::Triplet<double>>*) const;
   bool AssembleAndFactor();
 
   KKTSubsystemBase* parent() const { return parent_; }

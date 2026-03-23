@@ -45,20 +45,6 @@ void LinearConstraint::ConstructSchurComplementSystemImpl(
         constraint_matrix_.transpose() * (W.cwiseProduct(W));
     sys->Ae.topRows(m).noalias() =
         constraint_matrix_.colwise().sum().transpose();
-  } else {
-    std::runtime_error("obsolete");
-    const auto& WA = workspace_.weighted_constraints;
-    sys->inner_product_of_w_and_c += WC.sum();
-    sys->inner_product_of_c_and_Qc += WC.squaredNorm();
-    sys->inner_product_of_c_and_Qe += WC.col(0).dot(W.col(0));
-    sys->inner_product_of_c_and_e += constraint_affine_.sum();
-    (*G).topLeftCorner(m, m).noalias() += WA.transpose() * WA;
-    sys->AW.topRows(m).noalias() += constraint_matrix_.transpose() * W;
-    sys->AQc.topRows(m).noalias() += WA.transpose() * WC;
-    sys->AQe.topRows(m).noalias() +=
-        constraint_matrix_.transpose() * (W.cwiseProduct(W));
-    sys->Ae.topRows(m).noalias() +=
-        constraint_matrix_.colwise().sum().transpose();
   }
 }
 

@@ -37,17 +37,15 @@ class EqualityConstraints : public Constraint {
   WorkspaceEqualityConstraints* workspace() { return &workspace_; }
 
  private:
-  void do_schur_complement(bool initialize,
-                           SchurComplementSystem* sys) override {
-    ConstructSchurComplementSystemImpl(initialize, sys);
+  void do_schur_complement(bool, SchurComplementSystem*) override {
+    throw std::runtime_error(
+        "EqualityConstraints uses SupernodalAssemblerEqualities, "
+        "not the Constraint::SetDenseData path.");
   }
 
   Workspace do_get_workspace() override { return Workspace(workspace()); }
 
   int do_number_of_variables() const override { return number_of_variables(); }
-
-  void ConstructSchurComplementSystemImpl(bool initialize,
-                                          SchurComplementSystem* sys_);
 };
 
 class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {

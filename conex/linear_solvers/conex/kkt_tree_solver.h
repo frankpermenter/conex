@@ -230,23 +230,12 @@ void SubmatrixContributor::WriteSymmetricLazy(
   }
 }
 
-struct Options {
-  bool validate_leaf_nodes = false;
-  bool check_for_zero_pivots = false;
-  int root_node = 0;
-  int num_threads = 1;
-};
-
 class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
  public:
   int number_of_variables() const;
-  void AddSubsystem(KKTSubsystemBase* system);
   void RepairTreeInPlace(std::vector<int>* parent_ptr);
 
   void Finalize(const CliqueTree& clique_tree);
-  void Finalize(const Options& options = Options());
-  void Finalize(const std::vector<int>& subsystem_to_parent_subsystem,
-                bool check_for_zero_pivots = true);
 
   void SetFactorizationMode(bool left_looking);
   void SetNumThreads(int num_threads);
@@ -261,9 +250,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   const std::vector<int>& variable_to_elimination_position() const {
     return variable_to_elimination_position_;
   }
-
-  Eigen::SparseMatrix<double> MakeSparseKKTMatrix(
-      bool permute_to_elimination_order = true) const;
 
   void ComputeSeparatorOffsets();
   std::vector<int> ComputePostOrdering() const;
@@ -288,7 +274,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
  private:
   void SetEliminationOrder(
       const std::vector<int>& variable_to_elimination_position);
-  void FinalizeHelper(const std::vector<int>& subsystem_to_parent_subsystem);
   Eigen::MatrixXd DoKKTMatrix(
       bool permute_to_elimination_order = true) const override;
   void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
@@ -297,8 +282,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void DoAssemble() override;
   bool DoAssembleAndFactor() override;
   bool DoFactor() override;
-  bool CheckForZeroPivot(const std::vector<int>& parent,
-                         std::vector<int>* subsystems_with_zero_piviot);
   void AllocateArenaAndBind();
 
   std::vector<KKTSubsystemBase*> roots_;
