@@ -65,5 +65,14 @@ target_link_libraries(sparse_linear_constraint_test
   clique_ordering
   GTest::gtest_main
 )
+add_executable(multithreading_test
+  conex/test/multithreading_test.cc
+)
+target_link_libraries(multithreading_test
+  sparse_linear_constraint
+  clique_ordering
+  GTest::gtest_main
+)
 include(GoogleTest)
 gtest_discover_tests(sparse_linear_constraint_test)
+gtest_discover_tests(multithreading_test)
