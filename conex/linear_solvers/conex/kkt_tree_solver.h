@@ -240,6 +240,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void SetFactorizationMode(bool left_looking);
   void SetNumThreads(int num_threads);
   void SetParallelizeRootsOnly(bool enable);
+  void SetUseRecursiveSolve(bool enable) { use_recursive_solve_ = enable; }
   void ReserveSolveWorkspace(int rhs_cols);
   void EnableAutoUpdateAtAssemble(bool enable) {
     auto_update_assemblers_ = enable;
@@ -294,6 +295,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   bool auto_update_assemblers_ = false;
   int num_threads_ = 1;
   bool parallelize_roots_only_ = false;
+  bool use_recursive_solve_ = false;
   mutable int reserved_solve_workspace_cols_ = 0;
   // Flat post-order traversal for non-recursive solve.
   std::vector<KKTSubsystemBase*> solve_order_;

@@ -469,7 +469,7 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
     reserved_solve_workspace_cols_ = b.cols();
   }
 
-  if (!solve_matrix_.empty()) {
+  if (!solve_matrix_.empty() && !use_recursive_solve_) {
     // Block-partitioned path: scatter into per-node blocks, solve, gather.
     if (solve_matrix_.cols() != b.cols()) {
       solve_matrix_.Resize(b.cols());
@@ -536,13 +536,30 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
     return;
   }
 
-  // Fallback: recursive traversal (only when solve_matrix_ not initialized).
-  ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
-              [&](size_t i) {
-                auto* root = roots_.at(i);
-                root->ApplyInverseOfLeftFactor(b);
-                root->ApplyInverseOfRightFactor(b);
-              });
+  // Fallback: recursive traversal.
+  // The recursive path operates in elimination order, so permute if needed.
+  if (in_original_order) {
+    Eigen::MatrixXd elim_b(n, b.cols());
+    for (int i = 0; i < n; ++i) {
+      elim_b.row(cached_perm_(i)) = b.row(i);
+    }
+    ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
+                [&](size_t i) {
+                  auto* root = roots_.at(i);
+                  root->ApplyInverseOfLeftFactor(elim_b);
+                  root->ApplyInverseOfRightFactor(elim_b);
+                });
+    for (int i = 0; i < n; ++i) {
+      b.row(i) = elim_b.row(cached_perm_(i));
+    }
+  } else {
+    ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
+                [&](size_t i) {
+                  auto* root = roots_.at(i);
+                  root->ApplyInverseOfLeftFactor(b);
+                  root->ApplyInverseOfRightFactor(b);
+                });
+  }
 }
 
 

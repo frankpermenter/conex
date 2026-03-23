@@ -320,36 +320,6 @@ void T::DoBackwardScatterFromGatheredSeparator(
   output.noalias() = separator_rows().transpose() * gathered_sep;
   DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(output);
 }
-void T::ForwardSolveLocal(Eigen::Ref<Eigen::MatrixXd> x) const {
-  if (supernodes_.size() == 0) {
-    return;
-  }
-  Eigen::Ref<Eigen::MatrixXd> x_supernodes = x.middleRows(
-      supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
-  DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(x_supernodes);
-  if (separators_.size() > 0) {
-    Eigen::Ref<Eigen::MatrixXd> temp = ws1().topLeftCorner(
-        x_supernodes.rows(), x_supernodes.cols());
-    temp = x_supernodes;
-    DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
-    DoMultiplyAndDecrementByOffDiagonalSubMatrix(x, temp);
-  }
-}
-
-void T::BackwardSolveLocal(Eigen::Ref<Eigen::MatrixXd> x) const {
-  if (supernodes_.size() > 0) {
-    Eigen::Ref<Eigen::MatrixXd> x_supernodes = x.middleRows(
-        supernodes_.at(0), supernodes_.back() - supernodes_.at(0) + 1);
-    if (separators_.size() > 0) {
-      Eigen::Ref<Eigen::MatrixXd> temp = ws2().topLeftCorner(
-          x_supernodes.rows(), x_supernodes.cols());
-      DoBackwardScatter(temp, x);
-      x_supernodes.noalias() -= temp;
-    }
-    DoApplyInverseOfRightFactorOfSupernodeSubmatrix(x_supernodes);
-  }
-}
-
 void T::ForwardSolveBlocked(Eigen::Ref<Eigen::MatrixXd> sn,
                             Eigen::Ref<Eigen::MatrixXd> sep) const {
   if (sn.rows() == 0) return;
@@ -551,11 +521,6 @@ KKTSubsystem::KKTSubsystem(std::unique_ptr<KKTSubsystemStorage>&& storage)
   CONEX_DEMAND(storage_ != nullptr, "Subsystem storage must not be null.");
 }
 
-void KKTSubsystem::SetStorage(std::unique_ptr<KKTSubsystemStorage>&& storage) {
-  CONEX_DEMAND(storage != nullptr, "Subsystem storage must not be null.");
-  storage_ = std::move(storage);
-}
-
 size_t KKTSubsystem::RequiredArenaBytes() const {
   return storage_->RequiredArenaBytes(supernodes_.size(), separators_.size());
 }
@@ -586,8 +551,30 @@ void T::ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const {
     DoApplyInverseOfRightFactorOfSupernodeSubmatrix(x_supernodes);
   }
 
-  for (auto child : children_) {
-    child->ApplyInverseOfRightFactor(x);
+  // Children have disjoint supernodes, so backward solve is safe in parallel.
+  if (num_threads_ > 1 && children_.size() > 1) {
+    const size_t num_workers =
+        std::min<size_t>(static_cast<size_t>(num_threads_), children_.size());
+    std::atomic<size_t> next_child(0);
+    std::vector<std::thread> workers;
+    workers.reserve(num_workers);
+    for (size_t t = 0; t < num_workers; ++t) {
+      workers.emplace_back([&]() {
+        while (true) {
+          const size_t i =
+              next_child.fetch_add(1, std::memory_order_relaxed);
+          if (i >= children_.size()) return;
+          children_[i]->ApplyInverseOfRightFactor(x);
+        }
+      });
+    }
+    for (auto& w : workers) {
+      w.join();
+    }
+  } else {
+    for (auto child : children_) {
+      child->ApplyInverseOfRightFactor(x);
+    }
   }
 }
 
@@ -748,12 +735,6 @@ void T::SetVariableOrdering(
   std::sort(supernodes_.begin(), supernodes_.end());
   std::sort(separators_.begin(), separators_.end());
 };
-
-void T::DoComputeOffsets() {
-  if (parent_ && separators_.size() > 0) {
-    parent_->ComputeOffsets(this, 0 /*start index*/);
-  }
-}
 
 void T::ReceiveColumnUpdate(const KKTSubsystemBase* source,
                             size_t start_index) {

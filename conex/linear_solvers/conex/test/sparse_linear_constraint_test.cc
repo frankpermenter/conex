@@ -754,4 +754,92 @@ GTEST_TEST(SparseLeastSquares, MultithreadedLeftLooking) {
   EXPECT_NEAR((sol1 - sol2).norm(), 0, 1e-10 * x_true.norm());
 }
 
+// Test recursive solve path with parallel backward solve.
+// Uses a star-shaped structure so the root has many children, enabling
+// parallel ApplyInverseOfRightFactor across siblings.
+GTEST_TEST(SparseLeastSquares, ParallelRecursiveSolve) {
+  srand(99);
+  int hub_size = 15;
+  int spoke_size = 8;
+  int num_spokes = 20;
+  int rows_per_spoke = 12;
+  int num_vars = hub_size + spoke_size * num_spokes;
+  int num_rows = rows_per_spoke * num_spokes;
+
+  std::vector<Eigen::Triplet<double>> triplets;
+  for (int s = 0; s < num_spokes; s++) {
+    int spoke_start = hub_size + s * spoke_size;
+    for (int r = 0; r < rows_per_spoke; r++) {
+      int row = s * rows_per_spoke + r;
+      for (int j = 0; j < hub_size; j++) {
+        triplets.emplace_back(row, j,
+                              0.1 * (1.0 + static_cast<double>(rand()) / RAND_MAX));
+      }
+      for (int j = 0; j < spoke_size; j++) {
+        triplets.emplace_back(row, spoke_start + j,
+                              0.5 + static_cast<double>(rand()) / RAND_MAX);
+      }
+    }
+  }
+  Eigen::SparseMatrix<double> A(num_rows, num_vars);
+  A.setFromTriplets(triplets.begin(), triplets.end());
+
+  VectorXd x_true = VectorXd::Random(num_vars);
+  MatrixXd A_dense(A);
+  VectorXd rhs = A_dense.transpose() * (A_dense * x_true);
+
+  Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(A.rows());
+
+  // Blocked solve (default) as reference.
+  auto slc1 = std::make_unique<SparseLinearConstraint>(A, b_zero);
+  std::set<int> var_set;
+  for (const auto& support : slc1->row_supports()) {
+    var_set.insert(support.begin(), support.end());
+  }
+  std::vector<int> all_vars(var_set.begin(), var_set.end());
+
+  ConstraintManager cm1(num_vars);
+  auto asm1 = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc1), all_vars);
+  cm1.AddCustomAssembler(asm1.get());
+
+  SolverConfiguration config1;
+  auto solver1 = MakeTreeSolver(&cm1, config1);
+  ASSERT_TRUE(solver1->AssembleAndFactor());
+  VectorXd sol1 = solver1->Solve(rhs);
+  EXPECT_NEAR((sol1 - x_true).norm(), 0, 1e-8 * x_true.norm());
+
+  // Recursive solve, single-threaded.
+  auto slc2 = std::make_unique<SparseLinearConstraint>(A, b_zero);
+  ConstraintManager cm2(num_vars);
+  auto asm2 = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc2), all_vars);
+  cm2.AddCustomAssembler(asm2.get());
+
+  SolverConfiguration config2;
+  config2.num_threads = 1;
+  auto solver2 = MakeTreeSolver(&cm2, config2);
+  solver2->SetUseRecursiveSolve(true);
+  ASSERT_TRUE(solver2->AssembleAndFactor());
+  VectorXd sol2 = solver2->Solve(rhs);
+  EXPECT_NEAR((sol2 - x_true).norm(), 0, 1e-8 * x_true.norm());
+  EXPECT_NEAR((sol1 - sol2).norm(), 0, 1e-10 * x_true.norm());
+
+  // Recursive solve, multi-threaded (parallel backward solve).
+  auto slc3 = std::make_unique<SparseLinearConstraint>(A, b_zero);
+  ConstraintManager cm3(num_vars);
+  auto asm3 = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc3), all_vars);
+  cm3.AddCustomAssembler(asm3.get());
+
+  SolverConfiguration config3;
+  config3.num_threads = 4;
+  auto solver3 = MakeTreeSolver(&cm3, config3);
+  solver3->SetUseRecursiveSolve(true);
+  ASSERT_TRUE(solver3->AssembleAndFactor());
+  VectorXd sol3 = solver3->Solve(rhs);
+  EXPECT_NEAR((sol3 - x_true).norm(), 0, 1e-8 * x_true.norm());
+  EXPECT_NEAR((sol1 - sol3).norm(), 0, 1e-10 * x_true.norm());
+}
+
 }  // namespace conex

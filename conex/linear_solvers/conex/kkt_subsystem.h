@@ -178,10 +178,6 @@ class KKTSubsystemBase {
 
   void ApplyInverseOfLeftFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
   void ApplyInverseOfRightFactor(Eigen::Ref<Eigen::MatrixXd> x) const;
-  // Non-recursive per-node solve (for flat traversal from tree solver).
-  void ForwardSolveLocal(Eigen::Ref<Eigen::MatrixXd> x) const;
-  void BackwardSolveLocal(Eigen::Ref<Eigen::MatrixXd> x) const;
-
   // Block-partitioned solve (no global vector).
   void ForwardSolveBlocked(Eigen::Ref<Eigen::MatrixXd> sn,
                            Eigen::Ref<Eigen::MatrixXd> sep) const;
@@ -227,7 +223,7 @@ class KKTSubsystemBase {
                           double* ws3, int ws3_rows, int ws3_cols);
 
  private:
-  virtual void DoInitialize(){};
+  virtual void DoInitialize(){}
   virtual bool DoEliminateSupernodeColumns() = 0;
   virtual void DoComputeSeparatorSchurComplement() = 0;
   virtual void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
@@ -256,7 +252,6 @@ class KKTSubsystemBase {
   }
 
   virtual bool DoIsValidLeaf() { return true; }
-  void DoComputeOffsets();
   void DoScatterSeparatorSubmatrix();
   void ComputeOffsets(const KKTSubsystemBase* source,
                       int source_separators_start);
@@ -327,7 +322,6 @@ class KKTSubsystem : public KKTSubsystemBase {
  public:
   KKTSubsystem();
   explicit KKTSubsystem(std::unique_ptr<KKTSubsystemStorage>&& storage);
-  void SetStorage(std::unique_ptr<KKTSubsystemStorage>&& storage);
 
   void DoInitialize() override {
     storage_->Initialize(supernodes_.size(), separators_.size());
