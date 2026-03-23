@@ -200,7 +200,7 @@ SparseLinearConstraintAssembler::Decompose(
   std::vector<SupernodalAssemblerBase*> result;
   for (auto& group : groups) {
     auto constraint = std::make_unique<LinearConstraint>(group.A, group.b);
-    constraint->set_variable_indices(group.variables);
+    constraint->SetPrimalVariables(group.variables);
 
     // Allocate persistent workspace memory for this constraint's
     // WorkspaceLinear (W, r, temp_1, temp_2, weighted_constraints).
@@ -210,20 +210,16 @@ SparseLinearConstraintAssembler::Decompose(
     Initialize(ws, mem.data());
     constraint->SetIdentity();
 
-    Constraint* raw_ptr = constraint.get();
+    result.push_back(constraint.get());
     owned_constraints_.push_back(std::move(constraint));
-
-    // Use emplace_back on std::list (stable addresses).
-    owned_assemblers_.emplace_back(group.variables, raw_ptr);
-    result.push_back(&owned_assemblers_.back());
   }
   return result;
 }
 
 void SparseLinearConstraintAssembler::RegisterDecomposedConeInequalities(
     ConstraintManager* cm) {
-  for (auto& assembler : owned_assemblers_) {
-    cm->cone_inequalities().push_back(&assembler);
+  for (auto& constraint : owned_constraints_) {
+    cm->cone_inequalities().push_back(constraint.get());
   }
 }
 

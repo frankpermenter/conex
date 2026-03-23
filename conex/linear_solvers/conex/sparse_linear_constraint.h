@@ -85,9 +85,8 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
  private:
   std::unique_ptr<SparseLinearConstraint> slc_;
 
-  // Owned storage for decomposed constraints and their assemblers.
+  // Owned storage for decomposed constraints.
   std::vector<std::unique_ptr<LinearConstraint>> owned_constraints_;
-  std::list<SupernodalAssemblerConstraint> owned_assemblers_;
   // Persistent workspace memory for each LinearConstraint's WorkspaceLinear.
   std::list<Eigen::VectorXd> owned_workspace_memory_;
 };

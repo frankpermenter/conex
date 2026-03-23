@@ -37,7 +37,7 @@ class ConstraintManager {
                                  const std::vector<int>& variables);
   CONEX_ID AddEqualityConstraint(const EqualityConstraints& x);
 
-  std::vector<SupernodalAssemblerConstraint*>& cone_inequalities() {
+  std::vector<Constraint*>& cone_inequalities() {
     return cone_inequality_assemblers_;
   }
 
@@ -75,7 +75,7 @@ class ConstraintManager {
   // Stores and owns all constraints through a single virtual interface.
   std::vector<std::unique_ptr<Constraint>> constraint_storage_;
 
-  std::vector<SupernodalAssemblerConstraint*> cone_inequality_assemblers_;
+  std::vector<Constraint*> cone_inequality_assemblers_;
   EqualityConstraintManager equality_constraints_;
 
   std::vector<SupernodalAssemblerBase*> custom_assemblers_;
