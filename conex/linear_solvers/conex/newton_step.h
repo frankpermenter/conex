@@ -8,50 +8,6 @@ namespace conex {
 using DenseMatrix = Eigen::MatrixXd;
 using Ref = Eigen::Map<DenseMatrix, Eigen::Aligned>;
 
-struct WeightedSlackEigenvalues {
-  double limit = 0;
-  double frobenius_norm_squared = 0;
-  double trace = 0;
-  double lambda_min = std::numeric_limits<double>::max();
-  double lambda_max = -std::numeric_limits<double>::max();
-  double rank;
-};
-
-struct IterationStats {
-  double norminf = 0;
-};
-
-struct StepOptions {
-  int step_type;
-  // Take step of form  w_1 e + Q(w/2)(A^y - w_2 c + w_weight * e)
-  double c_weight = 0;
-  double e_weight = 1;
-  double w_weight = 0;
-  double step_size = 1;
-  bool update_scaling = false;
-};
-
-struct StepInfo {
-  double normsqrd = 0;
-  double norminfd = 0;
-};
-
-struct LineSearchParameters {
-  StepOptions options_0;
-  StepOptions options_1;
-  bool primal = true;
-  bool dual = true;
-  double dinf_upper_bound;
-};
-struct LineSearchOutput {
-  double upper_bound = std::numeric_limits<double>::max();
-  double lower_bound = -std::numeric_limits<double>::max();
-  double d0_dot_dt = 0;
-  double dt_squared_norm = 0;
-  double d0_squared_norm = 0;
-  bool failed = false;
-};
-
 using DenseMatrix = Eigen::MatrixXd;
 struct WorkspaceSchurComplement {
   WorkspaceSchurComplement(int m) : m_(m) {}

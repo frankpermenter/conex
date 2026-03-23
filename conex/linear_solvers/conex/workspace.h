@@ -14,9 +14,6 @@ int SizeOf(const std::vector<T>& x) {
   return y;
 }
 
-// template <typename T>
-// void print(T const& t){ std::cout << t << "\n"; }
-
 template <typename T>
 void print(const std::vector<T>& x) {
   for (const auto& xi : x) {
@@ -67,53 +64,6 @@ class Workspace {
     T* data;
   };
   std::unique_ptr<Concept> model;
-};
-
-// Workspaces are actually smart pointers to type-erased data:
-struct WorkspaceStats {
-  WorkspaceStats(int max_iter) : max_iter_(max_iter) {}
-  friend void Initialize(WorkspaceStats* o, double* y) {
-    o->sqrt_inv_mu = y;
-    o->norm_inf_d = y + o->max_iter_;
-    o->c_scaling_ = y + 2 * o->max_iter_;
-    o->b_scaling_ = y + 2 * o->max_iter_ + 1;
-    o->initialized = true;
-  }
-
-  friend int SizeOf(const WorkspaceStats& o) {
-    constexpr int num_items = 2;
-    return o.max_iter_ * num_items + 2;
-  }
-
-  friend void print(const WorkspaceStats& o) {
-    for (int i = 0; i < o.max_iter_; i++) {
-      std::cout << "sqrt_inv_mu, norm_inf_d" << o.sqrt_inv_mu[i] << ", "
-                << o.norm_inf_d[i] << "\n";
-    }
-  }
-
-  bool IsInitialized() const { return initialized; }
-
-  double* sqrt_inv_mu;
-  double* norm_inf_d;
-  double* c_scaling_;
-  double* b_scaling_;
-  double& b_scaling() {
-    if (!initialized) {
-      throw std::runtime_error("Workspace not initialized");
-    }
-    return *b_scaling_;
-  }
-  double& c_scaling() {
-    if (!initialized) {
-      throw std::runtime_error("Workspace not initialized");
-    }
-    return *c_scaling_;
-  }
-
-  int num_iter;
-  int max_iter_;
-  bool initialized = false;
 };
 
 }  // namespace conex

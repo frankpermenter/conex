@@ -24,7 +24,6 @@ add_library(tree_solver
   conex/kkt_tree_solver.cc
   conex/kkt_subsystem.cc
   conex/static_subsystem.cc
-  conex/kkt_simplicial_solver.cc
   conex/supernodal_assembler.cc
   conex/tree_utils.cc
 )

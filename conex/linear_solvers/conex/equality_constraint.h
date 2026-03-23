@@ -23,11 +23,9 @@ struct WorkspaceEqualityConstraints {
 
 class EqualityConstraints : public Constraint {
  public:
-  void accept(Visitor* v) const override { v->visit(*this); }
   EqualityConstraints(){};
   EqualityConstraints(const Eigen::MatrixXd& A, const Eigen::MatrixXd& b);
 
-  int SizeOfDualVariable() { return A_.rows(); }
   Eigen::MatrixXd constraint_matrix() const { return A_; }
   Eigen::MatrixXd affine_term() const { return b_; }
   Eigen::MatrixXd A_;
@@ -46,40 +44,12 @@ class EqualityConstraints : public Constraint {
 
   void do_set_identity() override {}
 
-  void do_weighted_slack_eigenvalues(const Ref& y, double c_weight,
-                                     WeightedSlackEigenvalues* p) override {}
-
   Workspace do_get_workspace() override { return Workspace(workspace()); }
-
-  void do_prepare_step(const StepOptions& opt, const Ref& y,
-                       StepInfo* info) override {
-    PrepareStepImpl(opt, y, info);
-  }
-
-  void do_get_dual_variable(double* var) override {
-    CopyDualVariableFromWorkspace(workspace(), var);
-  }
-
-  bool do_take_step(const StepOptions& opts) override { return true; }
-
-  int do_dual_variable_size() override {
-    return DualVariableSizeFromWorkspace(workspace());
-  }
 
   int do_number_of_variables() const override { return number_of_variables(); }
 
-  bool do_perform_line_search(const LineSearchParameters& params,
-                              const Eigen::Ref<const Eigen::MatrixXd>& y0,
-                              const Eigen::Ref<const Eigen::MatrixXd>& y1,
-                              LineSearchOutput* output) override {
-    return false;
-  }
-
-  int do_rank() const override { return 0; }
-
   void ConstructSchurComplementSystemImpl(bool initialize,
                                           SchurComplementSystem* sys_);
-  void PrepareStepImpl(const StepOptions&, const Ref& y, StepInfo* info_i);
 };
 
 class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {

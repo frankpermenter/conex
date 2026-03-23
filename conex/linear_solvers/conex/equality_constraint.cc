@@ -32,11 +32,6 @@ void T::ConstructSchurComplementSystemImpl(bool initialize,
   }
 }
 
-void T::PrepareStepImpl(const StepOptions&, const Ref& y, StepInfo* info_i) {
-  info_i->normsqrd = 0;
-  info_i->norminfd = 0;
-}
-
 SupernodalAssemblerEqualities::SupernodalAssemblerEqualities(
     const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
     const std::vector<int>& primal_variables,
