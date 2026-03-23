@@ -208,7 +208,6 @@ SparseLinearConstraintAssembler::Decompose(
     owned_workspace_memory_.emplace_back(SizeOf(*ws));
     Eigen::VectorXd& mem = owned_workspace_memory_.back();
     Initialize(ws, mem.data());
-    constraint->SetIdentity();
 
     result.push_back(constraint.get());
     owned_constraints_.push_back(std::move(constraint));

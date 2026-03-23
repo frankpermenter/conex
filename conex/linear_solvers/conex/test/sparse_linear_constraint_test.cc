@@ -523,4 +523,56 @@ GTEST_TEST(TreeUtils, MergeChildIntoParent) {
   EXPECT_TRUE(ct.post_order_position_to_clique.empty());
 }
 
+// Test Assemble() + KKTMatrix() + Factor() + Solve() separately.
+GTEST_TEST(SparseLeastSquares, AssembleThenKKTMatrix) {
+  srand(88);
+  int num_blocks = 3;
+  int rows_per_block = 6;
+  int cols_per_block = 3;
+
+  std::vector<MatrixXd> blocks(num_blocks);
+  for (int i = 0; i < num_blocks; i++) {
+    blocks[i] = MatrixXd::Random(rows_per_block, cols_per_block);
+  }
+  auto A_sparse = BlockDiagonal(blocks);
+  int num_vars = A_sparse.cols();
+
+  Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(A_sparse.rows());
+  auto slc = std::make_unique<SparseLinearConstraint>(A_sparse, b_zero);
+
+  std::set<int> var_set;
+  for (const auto& support : slc->row_supports()) {
+    var_set.insert(support.begin(), support.end());
+  }
+  std::vector<int> all_vars(var_set.begin(), var_set.end());
+
+  ConstraintManager cm(num_vars);
+  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc), all_vars);
+  cm.AddCustomAssembler(assembler.get());
+
+  SolverConfiguration config;
+  auto tree_solver = MakeTreeSolver(&cm, config);
+
+  // Assemble without factoring.
+  tree_solver->Assemble();
+
+  // KKTMatrix should return A^T * A (in original variable order).
+  MatrixXd KKT = tree_solver->KKTMatrix();
+  MatrixXd A_dense(A_sparse);
+  MatrixXd ATA = A_dense.transpose() * A_dense;
+
+  EXPECT_NEAR((KKT - ATA).norm(), 0, 1e-10 * ATA.norm());
+
+  // Now factor and solve.
+  bool ok = tree_solver->Factor();
+  ASSERT_TRUE(ok);
+
+  VectorXd x_true = VectorXd::Random(num_vars);
+  VectorXd rhs = ATA * x_true;
+  VectorXd sol = tree_solver->Solve(rhs);
+
+  EXPECT_NEAR((sol - x_true).norm(), 0, 1e-8 * x_true.norm());
+}
+
 }  // namespace conex

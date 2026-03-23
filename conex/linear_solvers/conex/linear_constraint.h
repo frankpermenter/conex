@@ -103,13 +103,10 @@ class LinearConstraint : public Constraint {
     ConstructSchurComplementSystemImpl(initialize, sys);
   }
 
-  void do_set_identity() override { SetIdentityImpl(); }
-
   Workspace do_get_workspace() override { return Workspace(workspace()); }
 
   int do_number_of_variables() const override { return number_of_variables(); }
 
-  void SetIdentityImpl();
   void ConstructSchurComplementSystemImpl(bool initialize,
                                           SchurComplementSystem* sys);
 

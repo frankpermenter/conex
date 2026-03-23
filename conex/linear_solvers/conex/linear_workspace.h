@@ -25,6 +25,8 @@ struct WorkspaceLinear {
     new (&o->r) Map(data + 3 * get_size_aligned(n), n, 1);
     new (&o->weighted_constraints)
         Map(data + 4 * get_size_aligned(n), n, o->num_vars_);
+    o->W.setConstant(1);
+    o->r.setConstant(1);
   }
 
   friend void print(const WorkspaceLinear& o) {

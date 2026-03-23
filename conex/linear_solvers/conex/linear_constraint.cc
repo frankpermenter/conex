@@ -15,17 +15,6 @@ LinearConstraint::LinearConstraint(const Eigen::MatrixXd& constraint_matrix,
   CONEX_CHECK(constraint_matrix_.rows() == constraint_affine_.rows());
 }
 
-void LinearConstraint::SetIdentityImpl() {
-  workspace_.W.setConstant(1);
-  workspace_.r.setConstant(1);
-  if (gram_evaluator_.is_active()) {
-    gram_evaluator_.update_weights();
-  } else {
-    workspace_.weighted_constraints.noalias() =
-        workspace_.W.asDiagonal() * constraint_matrix_;
-  }
-}
-
 void LinearConstraint::ConstructSchurComplementSystemImpl(
     bool initialize, SchurComplementSystem* sys) {
   const auto& W = workspace_.W;

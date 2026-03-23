@@ -24,7 +24,6 @@ add_library(tree_solver
   conex/kkt_tree_solver.cc
   conex/kkt_subsystem.cc
   conex/static_subsystem.cc
-  conex/supernodal_assembler.cc
   conex/tree_utils.cc
 )
 target_link_libraries(tree_solver PUBLIC Eigen3::Eigen)

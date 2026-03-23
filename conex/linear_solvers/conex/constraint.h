@@ -17,8 +17,6 @@ class Constraint : public SupernodalAssemblerBase {
     do_schur_complement(initialize, sys);
   }
 
-  void SetIdentity() { do_set_identity(); }
-
   Workspace workspace() { return do_get_workspace(); }
 
   int number_of_variables() const override { return do_number_of_variables(); }
@@ -41,7 +39,6 @@ class Constraint : public SupernodalAssemblerBase {
  private:
   virtual void do_schur_complement(bool initialize,
                                    SchurComplementSystem* sys) = 0;
-  virtual void do_set_identity() = 0;
   virtual Workspace do_get_workspace() = 0;
   virtual int do_number_of_variables() const = 0;
 
