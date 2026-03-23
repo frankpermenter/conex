@@ -1,0 +1,46 @@
+#include "conex/equality_constraint.h"
+
+namespace conex {
+
+using T = EqualityConstraints;
+using Eigen::MatrixXd;
+using std::vector;
+
+T::EqualityConstraints(const Eigen::MatrixXd& A, const Eigen::MatrixXd& b)
+    : A_(A), b_(b) {}
+
+void T::ConstructSchurComplementSystemImpl(bool initialize,
+                                           SchurComplementSystem* sys_) {
+  auto& sys = *sys_;
+  auto& A = A_;
+  auto& b = b_;
+
+  if (!sys_->initialized) {
+    throw std::runtime_error("Schur complement workspace is not initialized");
+  }
+
+  // Fills lower-triangular part of
+  //    0 A'
+  //    A 0
+  if (initialize) {
+    sys.setZero();
+    sys.G.bottomLeftCorner(A.rows(), A.cols()) = A;
+    sys.AQc.bottomRows(A.rows()) = b;
+  } else {
+    sys.G.bottomLeftCorner(A.rows(), A.cols()) += A;
+    sys.AQc.bottomRows(A.rows()) += b;
+  }
+}
+
+void T::PrepareStepImpl(const StepOptions&, const Ref& y, StepInfo* info_i) {
+  info_i->normsqrd = 0;
+  info_i->norminfd = 0;
+}
+
+SupernodalAssemblerEqualities::SupernodalAssemblerEqualities(
+    const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
+    const std::vector<int>& primal_variables,
+    const std::vector<int>& dual_variables)
+    : SupernodalAssemblerBase(primal_variables, dual_variables), A_(A), b_(b) {}
+
+}  // namespace conex
