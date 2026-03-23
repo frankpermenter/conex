@@ -168,25 +168,6 @@ GTEST_TEST(SparseLeastSquares, Banded) {
             << "  solve:              " << result.solve_time_us << " us\n";
 }
 
-GTEST_TEST(SparseLinearConstraintAssembler, ThrowsOnNonTreeSolver) {
-  std::vector<MatrixXd> blocks = {MatrixXd::Random(4, 2),
-                                  MatrixXd::Random(3, 3)};
-  auto A = BlockDiagonal(blocks);
-  VectorXd b = VectorXd::Ones(A.rows());
-  auto slc = std::make_unique<SparseLinearConstraint>(A, b);
-
-  std::set<int> var_set;
-  for (const auto& support : slc->row_supports()) {
-    var_set.insert(support.begin(), support.end());
-  }
-  std::vector<int> all_vars(var_set.begin(), var_set.end());
-
-  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
-      std::move(slc), all_vars);
-
-  EXPECT_THROW(assembler->SetDenseData(), std::runtime_error);
-}
-
 GTEST_TEST(SparseLinearConstraintAssembler, CliqueTreeComparison) {
   srand(42);
   int num_vars = 80;

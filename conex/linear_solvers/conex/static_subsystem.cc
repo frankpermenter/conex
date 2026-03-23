@@ -7,17 +7,11 @@ namespace conex {
 using T = KKTAssemblerToSubsystemAdapter;
 
 #if CONEX_ENABLE_TIMER
-static double g_dense_data_us = 0;
 static double g_write_lazy_us = 0;
 
-void ResetUpdateDataTimers() {
-  g_dense_data_us = 0;
-  g_write_lazy_us = 0;
-}
+void ResetUpdateDataTimers() { g_write_lazy_us = 0; }
 void PrintUpdateDataTimers() {
-  std::cout << "SetDenseData(us): " << static_cast<int>(g_dense_data_us)
-            << ", WriteLazy(us): " << static_cast<int>(g_write_lazy_us)
-            << ", ";
+  std::cout << "WriteLazy(us): " << static_cast<int>(g_write_lazy_us) << ", ";
   ResetUpdateDataTimers();
 }
 #else
@@ -51,37 +45,19 @@ void T::SetEliminationPosition(
 
 void T::UpdateData() {
   CONEX_DEMAND(contributor_, "Contributor not bound.");
+  auto* lazy = assembler_->GetLazyEvaluator();
+  CONEX_DEMAND(lazy, "Assembler must provide a lazy evaluator.");
 
-  // Always call SetDenseData to populate auxiliary fields (AW, AQc, etc.)
-  // that the cone program reads from submatrix_data().
 #if CONEX_ENABLE_TIMER
   auto t0 = std::chrono::high_resolution_clock::now();
 #endif
-  assembler_->SetDenseData();
+  contributor_->WriteSymmetricLazy(
+      *lazy, variable_index_to_elimination_position_);
 #if CONEX_ENABLE_TIMER
   auto t1 = std::chrono::high_resolution_clock::now();
+  g_write_lazy_us +=
+      std::chrono::duration<double, std::micro>(t1 - t0).count();
 #endif
-
-  // Use the lazy evaluator if the assembler provides one, writing blocks
-  // of the Gram matrix directly into subsystem storage without copying G.
-  if (auto* lazy = assembler_->GetLazyEvaluator()) {
-    contributor_->WriteSymmetricLazy(
-        *lazy, variable_index_to_elimination_position_);
-#if CONEX_ENABLE_TIMER
-    auto t2 = std::chrono::high_resolution_clock::now();
-    g_dense_data_us += std::chrono::duration<double, std::micro>(t1 - t0).count();
-    g_write_lazy_us += std::chrono::duration<double, std::micro>(t2 - t1).count();
-#endif
-    return;
-  }
-
-  // Fallback: copy the materialized G into subsystem storage.
-  const auto& G = assembler_->submatrix_data()->G;
-  const int n = G.rows();
-  Eigen::MatrixXd Q(n, n);
-  for (int i = 0; i < n; ++i)
-    for (int j = 0; j < n; ++j) Q(i, j) = G(i, j);
-  contributor_->WriteSymmetric(Q, variable_index_to_elimination_position_);
 }
 
 }  // namespace conex

@@ -3,7 +3,6 @@
 #include <vector>
 
 #include "conex/constraint_interface.h"
-#include "conex/newton_step.h"
 #include <Eigen/Dense>
 namespace conex {
 
@@ -28,9 +27,9 @@ class LazySymmetricMatrix {
   virtual int cols() const = 0;
 };
 
-// Manages the transfer of clique submatrix to supernodal data structure.
-// The SetDenseData triggers an update the submatrix which
-// is store in an Eigen::Map.
+// Base class for assemblers that feed data into the tree solver.
+// Subclasses provide a LazySymmetricMatrix via GetLazyEvaluator() so the
+// tree solver can write blocks directly into subsystem storage.
 class SupernodalAssemblerBase : public IVariableShape {
  public:
   SupernodalAssemblerBase(const std::vector<int>& shared_variables) {
@@ -38,9 +37,6 @@ class SupernodalAssemblerBase : public IVariableShape {
   }
   SupernodalAssemblerBase(const std::vector<int>& primal_variables,
                           const std::vector<int>& dual_variables) {
-    std::vector<int> variables = primal_variables;
-    variables.insert(variables.end(), dual_variables.begin(),
-                     dual_variables.end());
     SetPrimalVariables(primal_variables);
     SetDualVariables(dual_variables);
   }
@@ -86,25 +82,19 @@ class SupernodalAssemblerBase : public IVariableShape {
     return dual_variables_;
   }
 
-  virtual void SetDenseData() = 0;
   virtual LazySymmetricMatrix* GetLazyEvaluator() { return nullptr; }
   virtual void set_precompute_gram(bool) {}
 
   void SetPrimalVariables(const std::vector<int>& variables) {
     primal_variables_ = variables;
     num_variables_ = primal_variables_.size() + dual_variables_.size();
-    submatrix_data_.m_ = number_of_variables();
   };
   void SetDualVariables(const std::vector<int>& variables) {
     dual_variables_ = variables;
     num_variables_ = primal_variables_.size() + dual_variables_.size();
-    submatrix_data_.m_ = number_of_variables();
   };
 
-  SchurComplementSystem* submatrix_data() { return &submatrix_data_; }
-
  protected:
-  WorkspaceSchurComplement submatrix_data_;
   int num_variables_;
   std::vector<int> primal_variables_;
   std::vector<int> dual_variables_;

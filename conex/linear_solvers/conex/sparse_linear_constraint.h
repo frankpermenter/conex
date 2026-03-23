@@ -61,12 +61,6 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
       std::unique_ptr<SparseLinearConstraint> slc,
       const std::vector<int>& all_variables);
 
-  void SetDenseData() override {
-    throw std::runtime_error(
-        "SparseLinearConstraintAssembler requires the tree solver path "
-        "(CONEX_KKT_SOLVER_TREE). Use Decompose() instead of SetDenseData().");
-  }
-
   std::vector<std::vector<int>> get_cliques() const override {
     return {slc_->row_supports().begin(), slc_->row_supports().end()};
   }

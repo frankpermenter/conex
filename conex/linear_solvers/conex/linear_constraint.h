@@ -1,7 +1,6 @@
 #pragma once
 #include "conex/constraint.h"
 #include "conex/error_checking_macros.h"
-#include "conex/newton_step.h"
 #include "conex/supernodal_assembler_base.h"
 #include "linear_workspace.h"
 
@@ -80,8 +79,6 @@ class GramEvaluator : public LazySymmetricMatrix {
 };
 
 class LinearConstraint : public Constraint {
-  using StorageType = DenseMatrix;
-
  public:
   LinearConstraint(const Eigen::MatrixXd& constraint_matrix,
                    const Eigen::MatrixXd& constraint_affine);
@@ -94,26 +91,18 @@ class LinearConstraint : public Constraint {
     return &gram_evaluator_;
   }
   void set_precompute_gram(bool v) { gram_evaluator_.set_precompute_gram(v); }
-  DenseMatrix constraint_matrix() const { return constraint_matrix_; }
-  DenseMatrix affine_term() const { return constraint_affine_; }
+  Eigen::MatrixXd constraint_matrix() const { return constraint_matrix_; }
+  Eigen::MatrixXd affine_term() const { return constraint_affine_; }
 
  private:
-  void do_schur_complement(bool initialize,
-                           SchurComplementSystem* sys) override {
-    ConstructSchurComplementSystemImpl(initialize, sys);
-  }
-
   Workspace do_get_workspace() override { return Workspace(workspace()); }
 
   int do_number_of_variables() const override { return number_of_variables(); }
 
-  void ConstructSchurComplementSystemImpl(bool initialize,
-                                          SchurComplementSystem* sys);
-
   WorkspaceLinear workspace_;
   GramEvaluator gram_evaluator_;
-  DenseMatrix constraint_matrix_;
-  DenseMatrix constraint_affine_;
+  Eigen::MatrixXd constraint_matrix_;
+  Eigen::MatrixXd constraint_affine_;
 };
 
 }  // namespace conex

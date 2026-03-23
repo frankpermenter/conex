@@ -4,7 +4,6 @@
 
 #include "conex/constraint.h"
 #include "conex/error_checking_macros.h"
-#include "conex/newton_step.h"
 #include "conex/supernodal_assembler_base.h"
 #include "conex/workspace.h"
 #include <Eigen/Dense>
@@ -37,15 +36,62 @@ class EqualityConstraints : public Constraint {
   WorkspaceEqualityConstraints* workspace() { return &workspace_; }
 
  private:
-  void do_schur_complement(bool, SchurComplementSystem*) override {
-    throw std::runtime_error(
-        "EqualityConstraints uses SupernodalAssemblerEqualities, "
-        "not the Constraint::SetDenseData path.");
-  }
-
   Workspace do_get_workspace() override { return Workspace(workspace()); }
 
   int do_number_of_variables() const override { return number_of_variables(); }
+};
+
+// Lazy evaluator for the indefinite equality constraint matrix [0 A'; A 0].
+class EqualityLazyMatrix : public LazySymmetricMatrix {
+ public:
+  EqualityLazyMatrix() = default;
+  void bind(const Eigen::MatrixXd* A, int num_primal) {
+    A_ = A;
+    num_primal_ = num_primal;
+    n_ = num_primal + A->rows();
+  }
+
+  void set_order(const std::vector<int>& perm) override {
+    if (order_set_) return;
+    const int n = n_;
+    Q_perm_.setZero(n, n);
+    for (int i = 0; i < n; ++i) {
+      for (int j = 0; j < n; ++j) {
+        int oi = perm[i], oj = perm[j];
+        double val = 0;
+        if (oi >= num_primal_ && oj < num_primal_) {
+          val = (*A_)(oi - num_primal_, oj);
+        } else if (oj >= num_primal_ && oi < num_primal_) {
+          val = (*A_)(oj - num_primal_, oi);
+        }
+        Q_perm_(i, j) = val;
+      }
+    }
+    order_set_ = true;
+  }
+
+  void add_block(int row, int col, int rows, int cols,
+                 Eigen::Ref<Eigen::MatrixXd> dest) const override {
+    dest.noalias() += Q_perm_.block(row, col, rows, cols);
+  }
+
+  void add_block_lower(int pos, int size,
+                       Eigen::Ref<Eigen::MatrixXd> dest) const override {
+    const auto src = Q_perm_.block(pos, pos, size, size);
+    for (int j = 0; j < size; ++j) {
+      dest.col(j).tail(size - j) += src.col(j).tail(size - j);
+    }
+  }
+
+  int rows() const override { return n_; }
+  int cols() const override { return n_; }
+
+ private:
+  const Eigen::MatrixXd* A_ = nullptr;
+  int num_primal_ = 0;
+  int n_ = 0;
+  Eigen::MatrixXd Q_perm_;
+  bool order_set_ = false;
 };
 
 class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
@@ -66,29 +112,18 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
   const Eigen::VectorXd& affine_term() const { return b_; }
   const Eigen::MatrixXd& constraint_matrix() const { return A_; }
 
-  virtual bool is_dynamic() const override { return false; }
-  virtual bool is_positive_definite() const override { return false; }
+  bool is_dynamic() const override { return false; }
+  bool is_positive_definite() const override { return false; }
 
-  virtual void SetDenseData() override {
-    if (!submatrix_data_.initialized) {
-#if CONEX_DEBUG_MESSAGES
-      std::cerr << "Performing self initialization of "
-                   "SupernodalAssemblerStatic. Did "
-                   "you forget to initialize workspace?";
-#endif
-      Workspace workspace = Workspace(&submatrix_data_);
-      memory_.resize(SizeOf(workspace));
-      Initialize(&workspace, memory_.data());
-    }
-    submatrix_data_.setZero();
-    submatrix_data_.G.bottomLeftCorner(A_.rows(), A_.cols()) = A_;
-    submatrix_data_.AQc.bottomRows(A_.rows()) = b_;
+  LazySymmetricMatrix* GetLazyEvaluator() override {
+    lazy_.bind(&A_, static_cast<int>(primal_variables().size()));
+    return &lazy_;
   }
 
  private:
   Eigen::MatrixXd A_;
   Eigen::VectorXd b_;
-  Eigen::VectorXd memory_;
+  EqualityLazyMatrix lazy_;
 };
 
 }  // namespace conex
