@@ -780,7 +780,11 @@ void T::ReceiveColumnUpdate(const KKTSubsystemBase* source,
 
 void T::DoScatterSeparatorSubmatrix() {
   if (parent_ && separators_.size() > 0) {
-    parent_->ReceiveColumnUpdate(this, 0 /*start index*/);
+    if (scatter_to_parent_) {
+      UpdateToParent(this, parent_);
+    } else {
+      parent_->ReceiveColumnUpdate(this, 0 /*start index*/);
+    }
   }
 }
 

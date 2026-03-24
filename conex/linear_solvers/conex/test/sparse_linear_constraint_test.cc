@@ -617,7 +617,8 @@ namespace {
 // Helper: build solver, optionally enable scatter_to_parent, solve A^T A x = rhs.
 // Returns relative error vs ground truth.
 double SolveAndCheck(const Eigen::SparseMatrix<double>& A,
-                     bool scatter_to_parent, int merge_size = 5) {
+                     bool scatter_to_parent, int merge_size = 5,
+                     bool left_looking = true) {
   int nv = A.cols();
   Eigen::VectorXd b0 = Eigen::VectorXd::Zero(A.rows());
   auto slc = std::make_unique<SparseLinearConstraint>(A, b0);
@@ -630,6 +631,7 @@ double SolveAndCheck(const Eigen::SparseMatrix<double>& A,
   cm.AddCustomAssembler(asm_.get());
   SolverConfiguration cfg;
   cfg.tree.max_merge_supernode_size = merge_size;
+  cfg.tree.left_looking = left_looking;
   auto solver = MakeTreeSolver(&cm, cfg);
   if (scatter_to_parent) solver->SetScatterToParent(true);
   if (!solver->AssembleAndFactor()) return 1e30;
@@ -704,76 +706,82 @@ Eigen::SparseMatrix<double> Star(int hub, int spoke, int ns, int rps) {
 
 }  // namespace
 
-// Test scatter-to-parent on a variety of patterns with random permutations.
-// For each pattern, verify that scatter_to_parent matches the legacy path.
+// Test scatter-to-parent on a variety of patterns with random permutations,
+// in both left-looking and right-looking modes.
 GTEST_TEST(SparseLeastSquares, ScatterToParent) {
   double tol = 1e-8;
 
-  // Block diagonal, 3 permutation seeds.
-  for (int seed : {10, 20, 30}) {
-    srand(seed);
-    auto A = RandomPermute(BlockDiagonal({MatrixXd::Random(8, 3),
-                                          MatrixXd::Random(6, 4),
-                                          MatrixXd::Random(10, 3)}), seed);
-    EXPECT_LT(SolveAndCheck(A, false), tol) << "blkdiag legacy seed=" << seed;
-    EXPECT_LT(SolveAndCheck(A, true), tol) << "blkdiag scatter seed=" << seed;
-  }
+  for (bool left_looking : {true, false}) {
+    const char* mode = left_looking ? "LL" : "RL";
 
-  // Banded, varying bandwidth and permutation.
-  for (int bw : {5, 10, 20}) {
-    for (int seed : {42, 77}) {
+    // Block diagonal.
+    for (int seed : {10, 20, 30}) {
       srand(seed);
-      auto A = RandomPermute(Banded(60, bw, 6), seed);
-      EXPECT_LT(SolveAndCheck(A, false), tol) << "banded bw=" << bw;
-      EXPECT_LT(SolveAndCheck(A, true), tol) << "banded+scat bw=" << bw;
+      auto A = RandomPermute(BlockDiagonal({MatrixXd::Random(8, 3),
+                                            MatrixXd::Random(6, 4),
+                                            MatrixXd::Random(10, 3)}), seed);
+      EXPECT_LT(SolveAndCheck(A, false, 5, left_looking), tol)
+          << mode << " blkdiag legacy seed=" << seed;
+      EXPECT_LT(SolveAndCheck(A, true, 5, left_looking), tol)
+          << mode << " blkdiag scatter seed=" << seed;
     }
-  }
 
-  // Chains with various supernode/separator sizes, no merging.
-  struct ChainCase { int s, sep, k; };
-  for (auto [s, sep, k] : std::vector<ChainCase>{
-       {1, 5, 20}, {1, 10, 30}, {1, 20, 15},
-       {3, 5, 20}, {3, 10, 15},
-       {5, 5, 20}, {5, 10, 20}, {5, 20, 10},
-       {10, 5, 15}, {10, 10, 15}, {10, 20, 10}}) {
-    for (int seed : {42, 99, 137}) {
-      srand(seed);
-      int rpc = s + sep + s;
-      auto A = RandomPermute(Chain(s, sep, k, rpc), seed);
-      double err_legacy = SolveAndCheck(A, false, 0);
-      double err_scatter = SolveAndCheck(A, true, 0);
-      EXPECT_LT(err_legacy, tol)
-          << "chain legacy s=" << s << " sep=" << sep << " k=" << k
-          << " seed=" << seed;
-      EXPECT_LT(err_scatter, tol)
-          << "chain scatter s=" << s << " sep=" << sep << " k=" << k
-          << " seed=" << seed;
+    // Banded.
+    for (int bw : {5, 10, 20}) {
+      for (int seed : {42, 77}) {
+        srand(seed);
+        auto A = RandomPermute(Banded(60, bw, 6), seed);
+        EXPECT_LT(SolveAndCheck(A, false, 5, left_looking), tol)
+            << mode << " banded bw=" << bw;
+        EXPECT_LT(SolveAndCheck(A, true, 5, left_looking), tol)
+            << mode << " banded+scat bw=" << bw;
+      }
     }
-  }
 
-  // Star graphs.
-  for (auto [hub, spoke, ns] : std::vector<std::tuple<int,int,int>>{
-       {5, 3, 10}, {10, 5, 10}, {10, 5, 20}, {10, 8, 10}}) {
-    for (int seed : {42, 77}) {
-      srand(seed);
-      int rps = hub + spoke + 5;  // enough rows for well-conditioned system
-      auto A = RandomPermute(Star(hub, spoke, ns, rps), seed);
-      EXPECT_LT(SolveAndCheck(A, false), tol)
-          << "star legacy hub=" << hub << " ns=" << ns;
-      EXPECT_LT(SolveAndCheck(A, true), tol)
-          << "star scatter hub=" << hub << " ns=" << ns;
+    // Chains, no merging.
+    struct ChainCase { int s, sep, k; };
+    for (auto [s, sep, k] : std::vector<ChainCase>{
+         {1, 5, 20}, {1, 10, 30}, {1, 20, 15},
+         {3, 5, 20}, {3, 10, 15},
+         {5, 5, 20}, {5, 10, 20}, {5, 20, 10},
+         {10, 5, 15}, {10, 10, 15}, {10, 20, 10}}) {
+      for (int seed : {42, 99, 137}) {
+        srand(seed);
+        int rpc = s + sep + s;
+        auto A = RandomPermute(Chain(s, sep, k, rpc), seed);
+        EXPECT_LT(SolveAndCheck(A, false, 0, left_looking), tol)
+            << mode << " chain legacy s=" << s << " sep=" << sep
+            << " k=" << k << " seed=" << seed;
+        EXPECT_LT(SolveAndCheck(A, true, 0, left_looking), tol)
+            << mode << " chain scatter s=" << s << " sep=" << sep
+            << " k=" << k << " seed=" << seed;
+      }
     }
-  }
 
-  // Chains WITH merging (to test interaction with supernode merging).
-  for (int merge : {3, 5, 10}) {
-    for (int seed : {42, 77}) {
-      srand(seed);
-      auto A = RandomPermute(Chain(3, 10, 20, 23), seed);
-      EXPECT_LT(SolveAndCheck(A, false, merge), tol)
-          << "chain+merge legacy merge=" << merge;
-      EXPECT_LT(SolveAndCheck(A, true, merge), tol)
-          << "chain+merge scatter merge=" << merge;
+    // Star graphs.
+    for (auto [hub, spoke, ns] : std::vector<std::tuple<int,int,int>>{
+         {5, 3, 10}, {10, 5, 10}, {10, 5, 20}, {10, 8, 10}}) {
+      for (int seed : {42, 77}) {
+        srand(seed);
+        int rps = hub + spoke + 5;
+        auto A = RandomPermute(Star(hub, spoke, ns, rps), seed);
+        EXPECT_LT(SolveAndCheck(A, false, 5, left_looking), tol)
+            << mode << " star legacy hub=" << hub << " ns=" << ns;
+        EXPECT_LT(SolveAndCheck(A, true, 5, left_looking), tol)
+            << mode << " star scatter hub=" << hub << " ns=" << ns;
+      }
+    }
+
+    // Chains with merging.
+    for (int merge : {3, 5, 10}) {
+      for (int seed : {42, 77}) {
+        srand(seed);
+        auto A = RandomPermute(Chain(3, 10, 20, 23), seed);
+        EXPECT_LT(SolveAndCheck(A, false, merge, left_looking), tol)
+            << mode << " chain+merge legacy merge=" << merge;
+        EXPECT_LT(SolveAndCheck(A, true, merge, left_looking), tol)
+            << mode << " chain+merge scatter merge=" << merge;
+      }
     }
   }
 }
