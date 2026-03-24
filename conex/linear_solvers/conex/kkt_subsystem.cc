@@ -130,9 +130,9 @@ void AddOffsetBlocks(Eigen::Ref<Eigen::MatrixXd> destination,
 }
 
 void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
-  const auto supernode_offsets =
+  const auto& supernode_offsets =
       destination->local_supernode_to_source_separator(source);
-  const auto separator_offsets =
+  const auto& separator_offsets =
       destination->local_separator_to_source_separator(source);
   auto destination_supernode = destination->supernode_submatrix();
   auto destination_separator_rows = destination->separator_rows();
@@ -147,9 +147,9 @@ void AccumulateUpdate(const KKTSubsystemBase* source,
                       const KKTSubsystemBase* destination,
                       Eigen::Ref<Eigen::MatrixXd> supernode_delta,
                       Eigen::Ref<Eigen::MatrixXd> separator_delta) {
-  const auto supernode_offsets =
+  const auto& supernode_offsets =
       destination->local_supernode_to_source_separator(source);
-  const auto separator_offsets =
+  const auto& separator_offsets =
       destination->local_separator_to_source_separator(source);
   const auto source_separator_schur = source->separator_schur_complement();
   AddOffsetBlocks(supernode_delta, source_separator_schur, supernode_offsets,

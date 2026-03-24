@@ -185,11 +185,11 @@ class KKTSubsystemBase {
     int second;
     int size;
   };
-  std::vector<Offset> local_supernode_to_source_separator(
+  const std::vector<Offset>& local_supernode_to_source_separator(
       const KKTSubsystemBase* source) const {
     return local_supernode_to_source_separator_.at(source);
   }
-  std::vector<Offset> local_separator_to_source_separator(
+  const std::vector<Offset>& local_separator_to_source_separator(
       const KKTSubsystemBase* source) const {
     return local_separator_to_source_separator_.at(source);
   }
