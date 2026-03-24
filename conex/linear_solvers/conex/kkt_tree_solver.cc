@@ -424,14 +424,57 @@ bool T::DoAssembleAndFactorLeafParallel() {
 }
 
 void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
-  // Auto-create subsystems when none were provided.  Use DynamicSubsystem
-  // which supports both positive-definite (LLT) and indefinite (RLDLT)
-  // factorization, since the general tree path may encounter equality
-  // constraints that produce indefinite KKT systems.
+  // Auto-create subsystems when none were provided.
+  // Determine each clique's factorization type before creation by mapping
+  // indefinite adapters to their containing clique (original variable order).
   if (subsystems_.empty()) {
     owned_subsystems_.clear();
-    for (size_t i = 0; i < clique_tree.supernodes.size(); ++i) {
+    const size_t num_nodes = clique_tree.supernodes.size();
+
+    // Build supernode → clique-node-index lookup (original variable order).
+    std::unordered_map<int, int> sn_to_node;
+    for (size_t i = 0; i < num_nodes; ++i) {
+      for (int sn : clique_tree.supernodes[i]) {
+        sn_to_node[sn] = static_cast<int>(i);
+      }
+    }
+
+    // For each indefinite adapter, find the smallest containing clique.
+    std::vector<bool> needs_indefinite(num_nodes, false);
+    for (const auto& adapter : assembler_to_subsystem_adapter_) {
+      if (adapter->contribution_type() != ContributionType::kIndefinite) {
+        continue;
+      }
+      const auto vars = adapter->variables();
+      std::set<int> candidates;
+      for (int v : vars) {
+        auto it = sn_to_node.find(v);
+        if (it != sn_to_node.end()) {
+          candidates.insert(it->second);
+        }
+      }
+      for (int ci : candidates) {
+        const auto& sn = clique_tree.supernodes[ci];
+        const auto& sep = clique_tree.separators[ci];
+        bool all_found = true;
+        for (int v : vars) {
+          if (std::find(sn.begin(), sn.end(), v) != sn.end()) continue;
+          if (std::find(sep.begin(), sep.end(), v) != sep.end()) continue;
+          all_found = false;
+          break;
+        }
+        if (all_found) {
+          needs_indefinite[ci] = true;
+          break;
+        }
+      }
+    }
+
+    for (size_t i = 0; i < num_nodes; ++i) {
       auto ds = std::make_unique<DynamicSubsystem>();
+      if (needs_indefinite[i]) {
+        ds->MarkIndefinite();
+      }
       subsystems_.push_back(ds.get());
       owned_subsystems_.push_back(std::move(ds));
     }
@@ -464,7 +507,6 @@ void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
   for (auto* root : roots_) {
     visit(root);
   }
-  AllocateSolveArena();
 
   // Collect leaf nodes for leaf-parallel factorization.
   leaves_.clear();
@@ -492,6 +534,7 @@ void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
     c->PrecomputeLazyOrder(adapter->elimination_positions());
     adapter->BindContributor(std::move(c));
   }
+  AllocateSolveArena();
 }
 
 void T::SetEliminationTree(const std::vector<int>& parent) {

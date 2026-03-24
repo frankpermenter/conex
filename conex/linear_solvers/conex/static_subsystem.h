@@ -21,6 +21,9 @@ class KKTAssemblerToSubsystemAdapter {
   // Bind a contributor (called internally by the tree solver).
   void BindContributor(std::unique_ptr<SubmatrixContributor> contributor);
 
+  // Original variable indices from the assembler.
+  std::vector<int> variables() const { return assembler_->variables(); }
+
   // Elimination positions of this adapter's variables (available after
   // SetEliminationPosition has been called).
   const std::vector<int>& elimination_positions() const {
