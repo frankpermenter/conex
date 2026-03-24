@@ -200,11 +200,13 @@ void T::SetEliminationOrder(
   for (auto& s : contributors_) {
     s->SetEliminationPosition(variable_to_elimination_position);
   }
-  // Cache permutation vectors and number_of_variables for fast solve.
-  cached_num_vars_ = number_of_variables();
+  // Cache permutation vectors.  Use the input vector's size as the
+  // authoritative variable count — number_of_variables() only reflects
+  // variables present in supernodes, which may be fewer.
+  cached_num_vars_ = static_cast<int>(variable_to_elimination_position.size());
   const int n = cached_num_vars_;
   cached_perm_.resize(n);
-  cached_perm_inv_.resize(n);
+  cached_perm_inv_.setConstant(n, -1);
   for (int i = 0; i < n; ++i) {
     cached_perm_(i) = variable_to_elimination_position_[i];
     cached_perm_inv_(variable_to_elimination_position_[i]) = i;
@@ -503,7 +505,8 @@ void T::ComputeEliminationOrder(const CliqueTree& clique_tree) {
 
   // Single post-order traversal: assign elimination positions, collect
   // solve order, and identify leaves.
-  std::vector<int> variable_to_elimination_position(number_of_variables());
+  const int n = number_of_variables();
+  std::vector<int> variable_to_elimination_position(n, -1);
   int offset = 0;
   solve_order_.clear();
   solve_order_.reserve(subsystems_.size());
@@ -524,6 +527,15 @@ void T::ComputeEliminationOrder(const CliqueTree& clique_tree) {
   for (auto* root : roots_) {
     visit(root);
   }
+
+  // Assign remaining elimination positions to variables not in any supernode.
+  for (int i = 0; i < n; ++i) {
+    if (variable_to_elimination_position[i] < 0) {
+      variable_to_elimination_position[i] = offset++;
+    }
+  }
+  CONEX_DEMAND(offset == n,
+               "Elimination order covers wrong number of variables.");
 
   SetEliminationOrder(variable_to_elimination_position);
   ComputeSeparatorOffsets();
