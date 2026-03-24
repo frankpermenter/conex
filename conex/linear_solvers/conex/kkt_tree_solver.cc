@@ -142,7 +142,7 @@ void ForEachTask(size_t num_tasks, int requested_threads, const Fn& fn) {
     return;
   }
   // Thread startup/join dominates for small task counts.
-  if (requested_threads < 1 || num_tasks == 1 || num_tasks < 8) {
+  if (requested_threads <= 1 || num_tasks == 1) {
     for (size_t i = 0; i < num_tasks; ++i) {
       fn(i);
     }

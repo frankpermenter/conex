@@ -73,6 +73,16 @@ target_link_libraries(multithreading_test
   clique_ordering
   GTest::gtest_main
 )
+add_executable(benchmark
+  conex/test/benchmark.cc
+)
+target_link_libraries(benchmark
+  sparse_linear_constraint
+  clique_ordering
+)
+target_compile_options(benchmark PRIVATE -O2 -DNDEBUG -fno-omit-frame-pointer)
+target_link_libraries(benchmark openblas)
+
 include(GoogleTest)
 gtest_discover_tests(sparse_linear_constraint_test)
 gtest_discover_tests(multithreading_test)
