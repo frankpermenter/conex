@@ -214,4 +214,101 @@ GTEST_TEST(Multithreading, ParallelizeRootsOnly) {
   EXPECT_NEAR((sol1 - sol3).norm(), 0, 1e-10 * x_true.norm());
 }
 
+// Test leaf-parallel factorization on various graph structures.
+// Each leaf gets a worker thread; the last child to finish a parent
+// propagates up the tree.
+GTEST_TEST(Multithreading, LeafParallelFactorization) {
+  // Star: many leaves sharing a hub.
+  {
+    srand(42);
+    auto A = StarShaped(10, 5, 15, 12);
+    auto s1 = MakeSetup(A);
+    SolverConfiguration c1;
+    c1.num_threads = 1;
+    auto sol1 = MakeTreeSolver(&s1.cm, c1);
+    ASSERT_TRUE(sol1->AssembleAndFactor());
+    VectorXd x = VectorXd::Random(A.cols());
+    MatrixXd Ad(A);
+    VectorXd rhs = Ad.transpose() * (Ad * x);
+    VectorXd ref = sol1->Solve(rhs);
+
+    for (int threads : {1, 2, 4}) {
+      auto s = MakeSetup(A);
+      SolverConfiguration cfg;
+      cfg.num_threads = threads;
+      auto solver = MakeTreeSolver(&s.cm, cfg);
+      solver->SetUseLeafParallel(true);
+      ASSERT_TRUE(solver->AssembleAndFactor());
+      VectorXd sol = solver->Solve(rhs);
+      EXPECT_NEAR((sol - ref).norm(), 0, 1e-10 * ref.norm())
+          << "star threads=" << threads;
+    }
+  }
+
+  // Banded chain.
+  {
+    srand(77);
+    int n = 100, bw = 10, rpg = 8;
+    int ng = n - bw + 1, nr = rpg * ng;
+    std::vector<Eigen::Triplet<double>> triplets;
+    for (int g = 0; g < ng; g++)
+      for (int r = 0; r < rpg; r++)
+        for (int j = 0; j < bw; j++)
+          triplets.emplace_back(g * rpg + r, g + j,
+                                0.5 + static_cast<double>(rand()) / RAND_MAX);
+    Eigen::SparseMatrix<double> A(nr, n);
+    A.setFromTriplets(triplets.begin(), triplets.end());
+
+    auto s1 = MakeSetup(A);
+    SolverConfiguration c1;
+    c1.num_threads = 1;
+    auto sol1 = MakeTreeSolver(&s1.cm, c1);
+    ASSERT_TRUE(sol1->AssembleAndFactor());
+    VectorXd x = VectorXd::Random(n);
+    MatrixXd Ad(A);
+    VectorXd rhs = Ad.transpose() * (Ad * x);
+    VectorXd ref = sol1->Solve(rhs);
+
+    for (int threads : {1, 2, 4}) {
+      auto s = MakeSetup(A);
+      SolverConfiguration cfg;
+      cfg.num_threads = threads;
+      auto solver = MakeTreeSolver(&s.cm, cfg);
+      solver->SetUseLeafParallel(true);
+      ASSERT_TRUE(solver->AssembleAndFactor());
+      VectorXd sol = solver->Solve(rhs);
+      EXPECT_NEAR((sol - ref).norm(), 0, 1e-10 * ref.norm())
+          << "banded threads=" << threads;
+    }
+  }
+
+  // Block diagonal (multiple roots).
+  {
+    srand(99);
+    auto A = BlockDiagonal({MatrixXd::Random(10, 4), MatrixXd::Random(10, 4),
+                            MatrixXd::Random(10, 4), MatrixXd::Random(10, 4)});
+    auto s1 = MakeSetup(A);
+    SolverConfiguration c1;
+    c1.num_threads = 1;
+    auto sol1 = MakeTreeSolver(&s1.cm, c1);
+    ASSERT_TRUE(sol1->AssembleAndFactor());
+    VectorXd x = VectorXd::Random(A.cols());
+    MatrixXd Ad(A);
+    VectorXd rhs = Ad.transpose() * (Ad * x);
+    VectorXd ref = sol1->Solve(rhs);
+
+    for (int threads : {1, 4}) {
+      auto s = MakeSetup(A);
+      SolverConfiguration cfg;
+      cfg.num_threads = threads;
+      auto solver = MakeTreeSolver(&s.cm, cfg);
+      solver->SetUseLeafParallel(true);
+      ASSERT_TRUE(solver->AssembleAndFactor());
+      VectorXd sol = solver->Solve(rhs);
+      EXPECT_NEAR((sol - ref).norm(), 0, 1e-10 * ref.norm())
+          << "blkdiag threads=" << threads;
+    }
+  }
+}
+
 }  // namespace conex

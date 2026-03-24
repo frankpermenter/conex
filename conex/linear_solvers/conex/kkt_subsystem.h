@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <map>
 #include <memory>
 #include <optional>
@@ -285,6 +286,8 @@ class KKTSubsystemBase {
   bool variable_set_equals_sorted_supernodes_;
   bool variable_set_equals_sorted_separators_;
   int num_threads_ = 1;
+  // Atomic counter for leaf-parallel factorization.
+  std::atomic<int> pending_children_{0};
   int solve_workspace_cols_ = 0;
   mutable double* ws1_data_ = nullptr;
   mutable double* ws2_data_ = nullptr;

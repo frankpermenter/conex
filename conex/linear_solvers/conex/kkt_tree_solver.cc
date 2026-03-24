@@ -362,6 +362,9 @@ void T::DoAssemble() {
 }
 
 bool T::DoAssembleAndFactor() {
+  if (use_leaf_parallel_) {
+    return DoAssembleAndFactorLeafParallel();
+  }
   if (auto_update_assemblers_) {
     START_TIMER(UpdateAssemblerData)
     UpdateAssemblerData();
@@ -391,6 +394,60 @@ bool T::DoFactor() {
       success.store(false, std::memory_order_relaxed);
     }
   });
+  return success.load(std::memory_order_relaxed);
+}
+
+bool T::DoAssembleAndFactorLeafParallel() {
+  if (auto_update_assemblers_) {
+    UpdateAssemblerData();
+  }
+
+  // Initialize pending child counters.
+  for (auto* s : subsystems_) {
+    s->pending_children_.store(static_cast<int>(s->children().size()),
+                               std::memory_order_relaxed);
+  }
+
+  std::atomic<bool> success(true);
+
+  // Per-leaf task: factor this node, then propagate up the tree.
+  // The last child to finish a parent's counter owns the parent.
+  auto process_from = [&](KKTSubsystemBase* node) {
+    KKTSubsystemBase* current = node;
+    while (current != nullptr) {
+      if (!success.load(std::memory_order_relaxed)) return;
+
+      current->DoInitialize();
+
+      // Gather from children (scatter-to-parent: non-recursive, O(children)).
+      current->GatherFromChildren();
+
+      // Factor.
+      if (!current->DoEliminateSupernodeColumns()) {
+        success.store(false, std::memory_order_relaxed);
+        return;
+      }
+      current->DoComputeSeparatorSchurComplement();
+
+      // Propagate up: decrement parent's counter.
+      KKTSubsystemBase* p = current->parent();
+      if (p == nullptr) return;  // root — done
+
+      int remaining =
+          p->pending_children_.fetch_sub(1, std::memory_order_acq_rel);
+      if (remaining > 1) {
+        // Other children still pending — this thread stops here.
+        return;
+      }
+      // Last child: this thread now owns the parent.
+      current = p;
+    }
+  };
+
+  // Launch one task per leaf.
+  ForEachTask(leaves_.size(), EffectiveThreadCount(num_threads_),
+              [&](size_t i) { process_from(leaves_[i]); });
+
   return success.load(std::memory_order_relaxed);
 }
 
@@ -436,6 +493,14 @@ void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
     visit(root);
   }
   AllocateSolveArena();
+
+  // Collect leaf nodes for leaf-parallel factorization.
+  leaves_.clear();
+  for (auto* s : subsystems_) {
+    if (s->children().empty()) {
+      leaves_.push_back(s);
+    }
+  }
 
   // Build lookup: elimination position -> subsystem that owns it as a
   // supernode.  Each variable is a supernode of exactly one subsystem.
