@@ -287,10 +287,9 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   int cached_num_vars_ = 0;
   Eigen::VectorXi cached_perm_;         // variable -> elimination position
   Eigen::VectorXi cached_perm_inv_;     // elimination position -> variable
-  mutable std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr,
-                                                                    &std::free};
-  mutable size_t arena_bytes_ = 0;
-  size_t factorization_arena_bytes_ = 0;
+  std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr,
+                                                            &std::free};
+  size_t arena_bytes_ = 0;
   // Block-partitioned solve data (mutable: scratch space used in const solve).
   mutable SupernodePartitionMatrix solve_matrix_;
   // Per-node precomputed child scatter info for blocked solve.
@@ -305,7 +304,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   };
   std::vector<NodeScatterInfo> solve_scatter_info_;  // indexed by solve_order pos
   void AllocateSolveArena();
-  void AllocateWorkspaceArena(int rhs_cols) const;
 };
 
 }  // namespace conex

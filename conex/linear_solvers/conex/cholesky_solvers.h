@@ -481,8 +481,50 @@ class DynamicSubsystem : public KKTSubsystem {
 
 
 class WorkingLLTSubsystem : public KKTSubsystem {
+ public:
+  static size_t AlignUpBytes(size_t v) {
+    constexpr size_t a = EIGEN_MAX_ALIGN_BYTES;
+    return ((v + a - 1) / a) * a;
+  }
+
+  // Extra arena space for cached L^{-1} S^T (sn × sep).
+  size_t RequiredArenaBytes() const override {
+    size_t base = KKTSubsystem::RequiredArenaBytes();
+    const size_t sn = supernodes_.size();
+    const size_t sep = separators_.size();
+    if (sn > 0 && sep > 0) {
+      base = AlignUpBytes(base);
+      base += AlignUpBytes(sn * sep * sizeof(double));
+    }
+    return base;
+  }
+
+  void BindArenaMemory(double* ptr, size_t bytes) override {
+    size_t base_bytes = KKTSubsystem::RequiredArenaBytes();
+    KKTSubsystem::BindArenaMemory(ptr, base_bytes);
+    const int sn = static_cast<int>(supernodes_.size());
+    const int sep = static_cast<int>(separators_.size());
+    if (sn > 0 && sep > 0) {
+      char* base = reinterpret_cast<char*>(ptr);
+      size_t cursor = AlignUpBytes(base_bytes);
+      temp_arena_ptr_ = reinterpret_cast<double*>(base + cursor);
+      new (&temp_map_) Eigen::Map<MatrixXd, Eigen::Aligned>(
+          temp_arena_ptr_, sn, sep);
+      use_arena_temp_ = true;
+    }
+  }
+
+  // No DoInitialize needed — temp map is created in BindArenaMemory,
+  // which is also called on arena regrow.
 
  private:
+  Eigen::Map<MatrixXd, Eigen::Aligned>& temp() {
+    return use_arena_temp_ ? temp_map_ : owned_temp_map_;
+  }
+  const Eigen::Map<MatrixXd, Eigen::Aligned>& temp() const {
+    return use_arena_temp_ ? temp_map_ : owned_temp_map_;
+  }
+
   bool DoEliminateSupernodeColumns() override {
     llt_.compute(supernode_submatrix());
     return llt_.info() == Eigen::Success;
@@ -490,14 +532,19 @@ class WorkingLLTSubsystem : public KKTSubsystem {
 
   void DoComputeSeparatorSchurComplement() override {
     if (separator_rows().rows() == 0 || separator_rows().cols() == 0) return;
-    const int sn = separator_rows().cols();
     const int sep = separator_rows().rows();
 
-    temp_ = separator_rows().transpose();
-    llt_.matrixL().solveInPlace(temp_);
+    if (!use_arena_temp_) {
+      temp_storage_.resize(separator_rows().cols(), sep);
+      new (&owned_temp_map_) Eigen::Map<MatrixXd, Eigen::Aligned>(
+          temp_storage_.data(), temp_storage_.rows(), temp_storage_.cols());
+    }
+
+    temp() = separator_rows().transpose();
+    llt_.matrixL().solveInPlace(temp());
     for (int j = 0; j < sep; j++) {
       separator_schur_complement().col(j).tail(sep - j).noalias() -=
-          temp_.rightCols(sep - j).transpose() * temp_.col(j);
+          temp().rightCols(sep - j).transpose() * temp().col(j);
     }
   }
 
@@ -513,23 +560,21 @@ class WorkingLLTSubsystem : public KKTSubsystem {
     llt_.matrixL().transpose().solveInPlace(y);
   }
 
-  // Use cached L^{-1} S^T (computed in DoComputeSeparatorSchurComplement)
-  // to avoid recomputing the triangular solve during backward scatter.
+  // Use cached L^{-1} S^T (computed in DoComputeSeparatorSchurComplement).
   void DoBackwardScatterFromGatheredSeparator(
       Eigen::Ref<MatrixXd> output,
       Eigen::Ref<const MatrixXd> gathered_sep) const override {
-    output.noalias() = temp_ * gathered_sep;
+    output.noalias() = temp() * gathered_sep;
   }
 
   Eigen::LLT<MatrixXd> llt_;
-  MatrixXd temp_;
+  double* temp_arena_ptr_ = nullptr;
+  bool use_arena_temp_ = false;
+  Eigen::Map<MatrixXd, Eigen::Aligned> temp_map_{nullptr, 0, 0};
+  // Fallback owned storage (used when arena not bound).
+  MatrixXd temp_storage_;
+  Eigen::Map<MatrixXd, Eigen::Aligned> owned_temp_map_{nullptr, 0, 0};
 };
-
-
-
-
-
-
 
 
 

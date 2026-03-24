@@ -559,9 +559,8 @@ GTEST_TEST(SparseLeastSquares, AssembleThenKKTMatrix) {
   EXPECT_NEAR((sol - x_true).norm(), 0, 1e-8 * x_true.norm());
 }
 
-// Test solve workspace resizing: pre-allocate for 2 columns, solve with 2,
-// then solve with 3 (triggers arena grow + memcpy of factorization data).
-GTEST_TEST(SparseLeastSquares, WorkspaceResize) {
+// Test multi-column solve with pre-allocated workspace.
+GTEST_TEST(SparseLeastSquares, MultiColumnSolve) {
   srand(44);
   int num_blocks = 4;
   int rows_per_block = 8;
@@ -588,7 +587,7 @@ GTEST_TEST(SparseLeastSquares, WorkspaceResize) {
   cm.AddCustomAssembler(assembler.get());
 
   SolverConfiguration config;
-  config.rhs_cols = 2;
+  config.rhs_cols = 3;
   auto solver = MakeTreeSolver(&cm, config);
 
   ASSERT_TRUE(solver->AssembleAndFactor());
@@ -596,23 +595,23 @@ GTEST_TEST(SparseLeastSquares, WorkspaceResize) {
   MatrixXd A_dense(A_sparse);
   MatrixXd ATA = A_dense.transpose() * A_dense;
 
-  // Solve with 2 columns (fits pre-allocated workspace).
+  // Solve with 1 column.
+  VectorXd x_true_1 = VectorXd::Random(num_vars);
+  VectorXd rhs_1 = ATA * x_true_1;
+  VectorXd sol_1 = solver->Solve(rhs_1);
+  EXPECT_NEAR((sol_1 - x_true_1).norm(), 0, 1e-8 * x_true_1.norm());
+
+  // Solve with 2 columns.
   MatrixXd X_true_2 = MatrixXd::Random(num_vars, 2);
   MatrixXd rhs_2 = ATA * X_true_2;
   MatrixXd sol_2 = solver->Solve(rhs_2);
   EXPECT_NEAR((sol_2 - X_true_2).norm(), 0, 1e-8 * X_true_2.norm());
 
-  // Solve with 3 columns (triggers workspace resize).
+  // Solve with 3 columns.
   MatrixXd X_true_3 = MatrixXd::Random(num_vars, 3);
   MatrixXd rhs_3 = ATA * X_true_3;
   MatrixXd sol_3 = solver->Solve(rhs_3);
   EXPECT_NEAR((sol_3 - X_true_3).norm(), 0, 1e-8 * X_true_3.norm());
-
-  // Solve with 1 column (uses existing workspace, no resize).
-  VectorXd x_true_1 = VectorXd::Random(num_vars);
-  VectorXd rhs_1 = ATA * x_true_1;
-  VectorXd sol_1 = solver->Solve(rhs_1);
-  EXPECT_NEAR((sol_1 - x_true_1).norm(), 0, 1e-8 * x_true_1.norm());
 }
 
 namespace {
