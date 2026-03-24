@@ -9,6 +9,9 @@ enum : int {
 struct TreeSolverOptions {
   bool precompute_gram = false;
   bool left_looking = true;
+  // Use DynamicSubsystem for all cliques (LLT+RLDLT runtime dispatch).
+  // When false, positive-definite cliques use LLTSolver (in-place LLT).
+  bool use_generic_factorization = false;
   int supernode_reorder_method = 0;  // SUPERNODE_REORDER_BFS_GREEDY
   int max_merge_supernode_size = 5;
 };

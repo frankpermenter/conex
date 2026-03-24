@@ -486,6 +486,10 @@ void T::CreateSubsystems(const std::vector<bool>& needs_indefinite) {
         ds->MarkIndefinite();
         subsystems_.push_back(ds.get());
         owned_subsystems_.push_back(std::move(ds));
+    } else if (use_generic_factorization_) {
+        auto ds = std::make_unique<DynamicSubsystem>();
+        subsystems_.push_back(ds.get());
+        owned_subsystems_.push_back(std::move(ds));
     } else {
       auto s = std::make_unique<LLTSolver>();
       subsystems_.push_back(s.get());

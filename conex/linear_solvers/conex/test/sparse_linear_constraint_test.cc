@@ -620,7 +620,8 @@ namespace {
 // Returns relative error vs ground truth.
 double SolveAndCheck(const Eigen::SparseMatrix<double>& A,
                      bool scatter_to_parent, int merge_size = 5,
-                     bool left_looking = true) {
+                     bool left_looking = true,
+                     bool use_generic_factorization = false) {
   int nv = A.cols();
   Eigen::VectorXd b0 = Eigen::VectorXd::Zero(A.rows());
   auto slc = std::make_unique<SparseLinearConstraint>(A, b0);
@@ -634,6 +635,7 @@ double SolveAndCheck(const Eigen::SparseMatrix<double>& A,
   SolverConfiguration cfg;
   cfg.tree.max_merge_supernode_size = merge_size;
   cfg.tree.left_looking = left_looking;
+  cfg.tree.use_generic_factorization = use_generic_factorization;
   auto solver = MakeTreeSolver(&cm, cfg);
   if (scatter_to_parent) solver->SetScatterToParent(true);
   if (!solver->AssembleAndFactor()) return 1e30;
@@ -834,6 +836,100 @@ GTEST_TEST(SparseLeastSquares, RepeatedAssembleAndFactor) {
   VectorXd sol3 = solver->Solve(rhs);
   EXPECT_NEAR((sol3 - x_true).norm(), 0, 1e-8 * x_true.norm());
   EXPECT_EQ((sol1 - sol3).norm(), 0);
+}
+
+// Test use_generic_factorization=true (DynamicSubsystem for all cliques).
+// Runs the same patterns as ScatterToParent to verify both factorization
+// paths produce correct results.
+GTEST_TEST(SparseLeastSquares, GenericFactorization) {
+  double tol = 1e-8;
+
+  for (bool generic : {false, true}) {
+    const char* mode = generic ? "generic" : "llt";
+
+    // Block diagonal.
+    for (int seed : {10, 20}) {
+      srand(seed);
+      auto A = RandomPermute(BlockDiagonal({MatrixXd::Random(8, 3),
+                                            MatrixXd::Random(6, 4),
+                                            MatrixXd::Random(10, 3)}), seed);
+      EXPECT_LT(SolveAndCheck(A, false, 5, true, generic), tol)
+          << mode << " blkdiag seed=" << seed;
+    }
+
+    // Banded.
+    for (int bw : {5, 10, 20}) {
+      srand(42);
+      auto A = RandomPermute(Banded(60, bw, 6), 42);
+      EXPECT_LT(SolveAndCheck(A, false, 5, true, generic), tol)
+          << mode << " banded bw=" << bw;
+    }
+
+    // Chains.
+    struct ChainCase { int s, sep, k; };
+    for (auto [s, sep, k] : std::vector<ChainCase>{
+         {1, 5, 20}, {1, 10, 30}, {5, 10, 20}, {10, 10, 15}}) {
+      for (int seed : {42, 99}) {
+        srand(seed);
+        int rpc = s + sep + s;
+        auto A = RandomPermute(Chain(s, sep, k, rpc), seed);
+        EXPECT_LT(SolveAndCheck(A, false, 0, true, generic), tol)
+            << mode << " chain s=" << s << " sep=" << sep
+            << " k=" << k << " seed=" << seed;
+      }
+    }
+
+    // Star.
+    for (auto [hub, spoke, ns] : std::vector<std::tuple<int,int,int>>{
+         {5, 3, 10}, {10, 5, 10}}) {
+      srand(42);
+      int rps = hub + spoke + 5;
+      auto A = RandomPermute(Star(hub, spoke, ns, rps), 42);
+      EXPECT_LT(SolveAndCheck(A, false, 5, true, generic), tol)
+          << mode << " star hub=" << hub << " ns=" << ns;
+    }
+
+    // Equality constraint (indefinite).
+    {
+      srand(77);
+      int num_blocks = 3, rpb = 6, cpb = 4;
+      std::vector<MatrixXd> blocks(num_blocks);
+      for (int i = 0; i < num_blocks; i++)
+        blocks[i] = MatrixXd::Random(rpb, cpb);
+      auto A_sparse = BlockDiagonal(blocks);
+      int num_vars = A_sparse.cols();
+
+      MatrixXd C = MatrixXd::Ones(1, cpb);
+      VectorXd d(1); d(0) = 1.0;
+      std::vector<int> eq_vars(cpb);
+      std::iota(eq_vars.begin(), eq_vars.end(), 0);
+
+      Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(A_sparse.rows());
+      auto slc = std::make_unique<SparseLinearConstraint>(A_sparse, b_zero);
+      std::set<int> vs;
+      for (const auto& sup : slc->row_supports())
+        vs.insert(sup.begin(), sup.end());
+      std::vector<int> av(vs.begin(), vs.end());
+
+      ConstraintManager cm(num_vars);
+      auto asm_ = std::make_unique<SparseLinearConstraintAssembler>(
+          std::move(slc), av);
+      cm.AddCustomAssembler(asm_.get());
+      cm.AddEqualityConstraint(EqualityConstraints(C, d), eq_vars);
+
+      SolverConfiguration config;
+      config.tree.use_generic_factorization = generic;
+      auto solver = MakeTreeSolver(&cm, config);
+      ASSERT_TRUE(solver->AssembleAndFactor())
+          << mode << " equality constraint factor failed";
+      int kkt_size = cm.SizeOfKKTSystem();
+      VectorXd rhs = VectorXd::Zero(kkt_size);
+      rhs(num_vars) = d(0);
+      VectorXd sol = solver->Solve(rhs);
+      double cx = sol.head(cpb).sum();
+      EXPECT_NEAR(cx, 1.0, 1e-10) << mode << " equality constraint";
+    }
+  }
 }
 
 }  // namespace conex
