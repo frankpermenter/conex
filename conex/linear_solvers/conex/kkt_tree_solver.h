@@ -3,8 +3,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
-#include <unordered_map>
-
 #include "conex/kkt_solver_interface.h"
 #include "conex/kkt_subsystem.h"
 #include "conex/static_subsystem.h"
@@ -233,14 +231,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void SetScatterToParent(bool enable);
   void SetNumThreads(int num_threads);
   void SetUseRecursiveSolve(bool enable) { use_recursive_solve_ = enable; }
-  // Add a pre-created subsystem. Must be called before Finalize.
-  // If any subsystems are added, Finalize will use them instead of
-  // auto-creating DynamicSubsystem instances.
-  void AddSubsystem(std::unique_ptr<KKTSubsystemBase> subsystem) {
-    subsystems_.push_back(subsystem.get());
-    owned_subsystems_.push_back(std::move(subsystem));
-  }
-
   void EnableAutoUpdateAtAssemble(bool enable) {
     auto_update_assemblers_ = enable;
   }
@@ -255,13 +245,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<int> ComputePostOrdering() const;
   void push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system);
 
-  // Create a contributor that provides labeled write access to the storage
-  // blocks of the subsystem containing the given elimination indices.
-  // Uses a precomputed supernode-to-subsystem lookup table.
-  SubmatrixContributor MakeContributorFromLookup(
-      const std::vector<int>& elim_indices,
-      const std::unordered_map<int, KKTSubsystemBase*>&
-          elim_pos_to_subsystem) const;
 
   void SetEliminationTree(
       const std::vector<int>& variable_to_elimination_position);

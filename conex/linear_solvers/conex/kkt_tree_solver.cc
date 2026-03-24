@@ -527,39 +527,20 @@ void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
     }
   }
 
-  // Bind contributors to adapters.
-  if (adapter_to_clique.empty()) {
-    // User-provided subsystems: fall back to lookup-based binding.
-    std::unordered_map<int, KKTSubsystemBase*> elim_pos_to_subsystem;
-    for (auto* subsystem : subsystems_) {
-      for (int sn : subsystem->supernodes()) {
-        elim_pos_to_subsystem[sn] = subsystem;
-      }
-    }
-    for (auto& adapter : assembler_to_subsystem_adapter_) {
-      auto c = std::make_unique<SubmatrixContributor>(
-          MakeContributorFromLookup(adapter->elimination_positions(),
-                                    elim_pos_to_subsystem));
-      c->set_type(adapter->contribution_type());
-      c->PrecomputeLazyOrder(adapter->elimination_positions());
-      adapter->BindContributor(std::move(c));
-    }
-  } else {
-    // Use precomputed adapter → clique mapping.
-    for (size_t ai = 0; ai < assembler_to_subsystem_adapter_.size(); ++ai) {
-      auto& adapter = assembler_to_subsystem_adapter_[ai];
-      KKTSubsystemBase* match = subsystems_[adapter_to_clique[ai]];
-      SubmatrixContributor contrib;
-      contrib.subsystem_ = match;
-      const auto& sn = match->supernodes();
-      contrib.sn_start_ = sn.empty() ? 0 : sn.front();
-      contrib.sn_count_ = static_cast<int>(sn.size());
-      contrib.sep_indices_ = match->separators();
-      auto c = std::make_unique<SubmatrixContributor>(std::move(contrib));
-      c->set_type(adapter->contribution_type());
-      c->PrecomputeLazyOrder(adapter->elimination_positions());
-      adapter->BindContributor(std::move(c));
-    }
+  // Bind contributors to adapters using precomputed mapping.
+  for (size_t ai = 0; ai < assembler_to_subsystem_adapter_.size(); ++ai) {
+    auto& adapter = assembler_to_subsystem_adapter_[ai];
+    KKTSubsystemBase* match = subsystems_[adapter_to_clique[ai]];
+    SubmatrixContributor contrib;
+    contrib.subsystem_ = match;
+    const auto& sn = match->supernodes();
+    contrib.sn_start_ = sn.empty() ? 0 : sn.front();
+    contrib.sn_count_ = static_cast<int>(sn.size());
+    contrib.sep_indices_ = match->separators();
+    auto c = std::make_unique<SubmatrixContributor>(std::move(contrib));
+    c->set_type(adapter->contribution_type());
+    c->PrecomputeLazyOrder(adapter->elimination_positions());
+    adapter->BindContributor(std::move(c));
   }
   AllocateSolveArena();
 }
@@ -778,69 +759,6 @@ void SubmatrixContributor::PrecomputeLazyOrder(
   }
 
   lazy_order_cached_ = true;
-}
-
-SubmatrixContributor T::MakeContributorFromLookup(
-    const std::vector<int>& elim_indices,
-    const std::unordered_map<int, KKTSubsystemBase*>& elim_pos_to_subsystem)
-    const {
-  if (elim_indices.empty()) {
-    return {};
-  }
-
-  // Each variable maps to the subsystem owning it as a supernode.
-  // Collect candidate subsystems via the lookup, then find the smallest
-  // whose supernodes ∪ separators contain all of the contributor's variables.
-  std::set<KKTSubsystemBase*> candidates;
-  for (int idx : elim_indices) {
-    auto it = elim_pos_to_subsystem.find(idx);
-    if (it != elim_pos_to_subsystem.end()) {
-      candidates.insert(it->second);
-    }
-  }
-
-  KKTSubsystemBase* match = nullptr;
-  size_t match_size = std::numeric_limits<size_t>::max();
-  for (auto* subsystem : candidates) {
-    const auto& sn = subsystem->supernodes();
-    const auto& sep = subsystem->separators();
-    size_t total = sn.size() + sep.size();
-    if (total >= match_size) {
-      continue;
-    }
-    // Check containment: all elim_indices must be in supernodes ∪ separators.
-    // Supernodes are contiguous; use range check. Separators: use sorted search.
-    bool all_found = true;
-    int sn_lo = sn.empty() ? 0 : sn.front();
-    int sn_hi = sn.empty() ? -1 : sn.back();
-    for (int idx : elim_indices) {
-      if (idx >= sn_lo && idx <= sn_hi) {
-        continue;  // In supernode range.
-      }
-      if (!std::binary_search(sep.begin(), sep.end(), idx)) {
-        all_found = false;
-        break;
-      }
-    }
-    if (all_found) {
-      match = subsystem;
-      match_size = total;
-    }
-  }
-
-  if (!match) {
-    throw std::runtime_error(
-        "MakeContributorFromLookup: no subsystem found for elimination "
-        "indices.");
-  }
-
-  SubmatrixContributor contrib;
-  contrib.subsystem_ = match;
-  const auto& sn = match->supernodes();
-  contrib.sn_start_ = sn.empty() ? 0 : sn.front();
-  contrib.sn_count_ = static_cast<int>(sn.size());
-  contrib.sep_indices_ = match->separators();
-  return contrib;
 }
 
 void T::AllocateWorkspaceArena(int rhs_cols) const {
