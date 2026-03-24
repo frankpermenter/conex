@@ -260,6 +260,13 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void DoAssemble() override;
   bool DoAssembleAndFactor() override;
   bool DoFactor() override;
+
+  std::vector<int> ClassifyCliques(const CliqueTree& clique_tree,
+                                   std::vector<bool>* needs_indefinite);
+  void CreateSubsystems(const std::vector<bool>& needs_indefinite);
+  void ComputeEliminationOrder(const CliqueTree& clique_tree);
+  void ComputeSolveOrder();
+  void BindContributors(const std::vector<int>& adapter_to_clique);
   void AllocateArenaAndBind(int rhs_cols);
 
   std::vector<KKTSubsystemBase*> roots_;
