@@ -362,6 +362,15 @@ void T::DoAssemble() {
 }
 
 bool T::DoAssembleAndFactor() {
+  if (auto_update_assemblers_) {
+    UpdateAssemblerData();
+  }
+  if (num_threads_ <= 1) {
+    for (auto* root : roots_) {
+      if (!root->AssembleAndFactor()) return false;
+    }
+    return true;
+  }
   return DoAssembleAndFactorLeafParallel();
 }
 
@@ -379,10 +388,6 @@ bool T::DoFactor() {
 }
 
 bool T::DoAssembleAndFactorLeafParallel() {
-  if (auto_update_assemblers_) {
-    UpdateAssemblerData();
-  }
-
   // Leaf-parallel requires scatter-to-parent and left-looking gather.
   for (auto* s : subsystems_) {
     s->SetScatterToParent(true);
