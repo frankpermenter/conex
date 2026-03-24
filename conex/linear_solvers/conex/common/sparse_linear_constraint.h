@@ -68,6 +68,12 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
   std::vector<SupernodalAssemblerBase*> Decompose(
       const std::vector<std::vector<int>>& maximal_cliques) override;
 
+  // Decompose into raw (A, b, variables) blocks without creating
+  // LinearConstraint objects or allocating workspace.  Each returned
+  // RowGroup corresponds to one maximal clique.
+  std::vector<SparseLinearConstraint::RowGroup> DecomposeRaw(
+      const std::vector<std::vector<int>>& maximal_cliques) const;
+
   // Access decomposed constraints (available after Decompose()).
   const std::vector<std::unique_ptr<LinearConstraint>>& constraints() const {
     return owned_constraints_;

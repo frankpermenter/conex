@@ -170,6 +170,22 @@ SparseLeastSquaresResult SparseLeastSquares(
   return result;
 }
 
+std::vector<SparseLinearConstraint::RowGroup>
+SparseLinearConstraintAssembler::DecomposeRaw(
+    const std::vector<std::vector<int>>& maximal_cliques) const {
+  const int num_cols = slc_->A().cols();
+  std::vector<std::vector<int>> primal_cliques;
+  primal_cliques.reserve(maximal_cliques.size());
+  for (const auto& clique : maximal_cliques) {
+    std::vector<int> filtered;
+    for (int v : clique) {
+      if (v < num_cols) filtered.push_back(v);
+    }
+    if (!filtered.empty()) primal_cliques.push_back(std::move(filtered));
+  }
+  return slc_->GetConstraints(primal_cliques);
+}
+
 SparseLinearConstraintAssembler::SparseLinearConstraintAssembler(
     std::unique_ptr<SparseLinearConstraint> slc,
     const std::vector<int>& all_variables)

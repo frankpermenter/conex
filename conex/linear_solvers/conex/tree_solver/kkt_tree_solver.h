@@ -247,6 +247,21 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void ComputeSeparatorOffsets();
   void push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system);
 
+  // Access contributor (adapter) by index.
+  KKTAssemblerToSubsystemAdapter* GetContributor(int index) {
+    return contributors_.at(index).get();
+  }
+
+  // Pre-inject a subsystem for a specific clique index.  Must be called
+  // before Finalize.  CreateSubsystems will use injected subsystems instead
+  // of creating default ones.
+  void InjectSubsystem(int clique_index,
+                        std::unique_ptr<KKTSubsystemBase> subsystem) {
+    if (static_cast<int>(injected_subsystems_.size()) <= clique_index) {
+      injected_subsystems_.resize(clique_index + 1);
+    }
+    injected_subsystems_[clique_index] = std::move(subsystem);
+  }
 
   void SetEliminationTree(
       const std::vector<int>& variable_to_elimination_position);
@@ -273,6 +288,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<KKTSubsystemBase*> roots_;
   std::vector<KKTSubsystemBase*> subsystems_;
   std::vector<std::unique_ptr<KKTSubsystemBase>> owned_subsystems_;
+  std::vector<std::unique_ptr<KKTSubsystemBase>> injected_subsystems_;
   std::vector<std::unique_ptr<KKTAssemblerToSubsystemAdapter>>
       contributors_;
   std::vector<int> variable_to_elimination_position_;

@@ -483,7 +483,11 @@ void T::CreateSubsystems(const std::vector<bool>& needs_indefinite) {
   owned_subsystems_.clear();
   subsystems_.clear();
   for (size_t i = 0; i < needs_indefinite.size(); ++i) {
-    if (needs_indefinite[i]) {
+    // Use pre-injected subsystem if available.
+    if (i < injected_subsystems_.size() && injected_subsystems_[i]) {
+      subsystems_.push_back(injected_subsystems_[i].get());
+      owned_subsystems_.push_back(std::move(injected_subsystems_[i]));
+    } else if (needs_indefinite[i]) {
         auto ds = std::make_unique<DynamicSubsystem>();
         ds->MarkIndefinite();
         subsystems_.push_back(ds.get());
@@ -498,6 +502,7 @@ void T::CreateSubsystems(const std::vector<bool>& needs_indefinite) {
       owned_subsystems_.push_back(std::move(s));
     }
   }
+  injected_subsystems_.clear();
 }
 
 void T::ComputeEliminationOrder(const CliqueTree& clique_tree) {
