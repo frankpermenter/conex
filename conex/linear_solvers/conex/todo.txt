@@ -13,93 +13,122 @@ Current state (done):
 - UpdateData() and variables() are virtual on the adapter base class
 - Tests pass for single-clique solve, Schur complement, adapter path
 
+Key design principle:
+  Providers describe their own contributions in their own natural format.
+  The tree solver mediates: it collects contributions per clique, picks
+  a subsystem type, and translates. Providers never see subsystem types.
+
+Architecture:
+
+  Provider            Tree Solver              Subsystem
+  --------            -----------              ---------
+  "I have A (m x n)   Collects per clique:     LowRankPlusDiagonal:
+   on variables v"     stacks A^T into U,       stores D + UU^T,
+                       picks subsystem type      factors via Woodbury
+
+  Provider is just:
+    variables() -> which variables
+    rows()      -> rank of my contribution (= rows of A)
+    WriteRows(dest, start_row, elim_positions) -> write A into a slot
+
+  The provider does NOT know about D, U, subsystems, or Woodbury.
+  The tree solver does the stacking: U = [A1^T | A2^T | A3^T].
+
+Subsystem selection per clique:
+  total_rank = sum of provider.rows() for all providers in this clique
+  n = clique size (supernodes)
+  if total_rank < n:
+    Use LowRankPlusDiagonalSubsystem (O(n * r^2) factorization)
+  else:
+    Fall back to dense (current LLT/RLDLT path, O(n^3))
+
+  The crossover is automatic — no per-provider "am I dense or structured?"
+  flag needed. A single large constraint that fills the whole clique
+  naturally triggers the dense fallback.
+
 Remaining work:
 
-1. Refactor class hierarchy
-------------------------------
+1. Provider interface
+------------------------
+New interface for least-squares contributions:
+
+  class IConstraintProvider {
+    virtual std::vector<int> variables() const = 0;
+    virtual int rows() const = 0;
+    virtual void WriteRows(Eigen::Ref<MatrixXd> dest,
+                           const std::vector<int>& elim_positions) const = 0;
+  };
+
+WriteRows writes the constraint matrix A (m x n_clique) into dest,
+reordered to elimination order. The tree solver calls this during
+UpdateData to populate U in the subsystem.
+
+LinearConstraint implements this: WriteRows just copies A (possibly
+reordered by elim_positions).
+
+2. Tree solver stacking logic
+---------------------------------
+In UpdateAssemblerData (or a new structured equivalent):
+  For each clique with structured providers:
+    auto& sys = clique's LowRankPlusDiagonalSubsystem;
+    sys.diagonal().setZero();        // or add regularization
+    sys.low_rank_factor().setZero();
+    int col = 0;
+    for (auto* provider : providers_for_clique) {
+      // provider writes A into U.block(0, col, n, provider->rows())^T
+      provider->WriteRows(U_block, elim_positions);
+      col += provider->rows();
+    }
+
+The tree solver owns this loop. Providers just write rows.
+
+3. Subsystem creation
+------------------------
+During Finalize, per clique:
+  total_rank = sum of rows across providers
+  n = supernode size
+  if total_rank < n:
+    create LowRankPlusDiagonalSubsystem
+    pre-allocate U as (n x total_rank)
+  else:
+    create LLTSolver / DynamicSubsystem (current path)
+
+No CreateSubsystem() on the provider — the tree solver decides.
+
+4. Wire into SparseLinearConstraint pipeline
+------------------------------------------------
+Currently: SparseLinearConstraintAssembler::Decompose() creates
+LinearConstraint objects -> lazy evaluator -> dense subsystem.
+
+Change: Decompose() creates IConstraintProvider objects instead.
+Each holds its A block and variable list. The tree solver factory
+(MakeTreeSolver) collects them, computes total rank per clique,
+and creates the appropriate subsystem.
+
+For A of size m x n_clique: contribution is A^T A = (A^T)(A^T)^T,
+so U = A^T (n_clique x m). Provider just writes A; tree solver
+transposes into U.
+
+5. Refactor class hierarchy (deferred)
+-----------------------------------------
 Current: SupernodalAssemblerBase -> Constraint -> LinearConstraint
-         KKTAssemblerToSubsystemAdapter (separate, holds contributor)
-         SubmatrixContributor (position mapping for lazy writes)
+         KKTAssemblerToSubsystemAdapter + SubmatrixContributor
 
 Target:
-  ICliqueProblem         -- pure interface: variables(), get_cliques(), Decompose()
-  IDataProvider          -- pure interface: structure(), UpdateData(), CreateSubsystem()
-  LinearConstraint       -- implements both (no Constraint middle layer)
-  SubmatrixContributor   -- becomes internal detail of DenseLazyDataProvider
+  ICliqueProblem        -- variables(), get_cliques(), Decompose()
+  IConstraintProvider   -- rows(), WriteRows()
+  LinearConstraint      -- implements both
+  SubmatrixContributor  -- internal to dense fallback path only
 
-The adapter class merges into IDataProvider. Each provider can optionally
-create its own subsystem type via CreateSubsystem(). The contributor's
-position-mapping role becomes a "write context" passed at UpdateData time.
-
-2. Let adapters create their own subsystems
-----------------------------------------------
-Add to adapter/provider interface:
-  virtual std::unique_ptr<KKTSubsystemBase> CreateSubsystem();
-
-CreateSubsystems() in the tree solver asks each adapter first. If it
-returns non-null, use it. Otherwise fall back to DynamicSubsystem/LLTSolver.
-Eliminates the BindSubsystem() pattern.
-
-3. Handle mixed contributions per clique
---------------------------------------------
-When multiple providers map to the same clique, the subsystem type must
-accommodate all of them. Key insight: A^T A from a LinearConstraint
-with m rows is rank-m, not dense.
-
-Provider interface:
-  enum ContributionStructure { kDense, kLowRank, kDiagonal };
-  virtual ContributionStructure structure() const;
-  virtual void AppendDiagonal(VectorXd& d) const;
-  virtual void AppendLowRankRows(MatrixXd& U) const;
-
-Tree solver logic per clique:
-  - Collect all providers mapped to this clique
-  - If all are kLowRank or kDiagonal:
-      Sum diagonals, stack low-rank rows -> LowRankPlusDiagonalSubsystem
-      r = total rank across all providers
-  - If any is kDense:
-      Fall back to dense subsystem (current behavior)
-
-For sparse LS: each LinearConstraint(A, b) with A of size m x n_clique
-contributes rank m. A clique with constraints of ranks 5, 3, 8 gets
-r = 16, factored in O(n * 16^2) instead of O(n^3).
-
-4. Wire into MakeTreeSolver / SparseLinearConstraint
---------------------------------------------------------
-Currently SparseLinearConstraintAssembler::Decompose() creates
-LinearConstraint objects that go through the lazy evaluator path.
-
-Change: Decompose() produces LowRankDiagonalDataSource objects instead.
-Each source holds its A matrix and provides:
-  d = 0 (or small regularization)
-  U = A^T (rows of A become columns of U, so A^T A = UU^T)
-
-The tree solver factory collects these per clique, sums diagonals,
-stacks U matrices, and creates one LowRankPlusDiagonalSubsystem per clique.
-
-5. Handle UpdateData for summed contributions
--------------------------------------------------
-When multiple providers feed one subsystem, UpdateData must:
-  a) Zero the diagonal and low-rank factor
-  b) Each provider appends its contribution (additive diagonal, stacked rows)
-
-This replaces the current pattern of zeroing the arena then having
-each adapter write via WriteSymmetricLazy. The structured path is:
-  subsystem.diagonal().setZero();
-  subsystem.low_rank_factor().resize(n, total_rank);
-  int col = 0;
-  for (auto* provider : providers_for_this_clique) {
-    provider->AppendDiagonal(subsystem.diagonal());
-    provider->AppendLowRankRows(subsystem.low_rank_factor(), col);
-    col += provider->rank();
-  }
+The lazy evaluator path (GetLazyEvaluator, WriteSymmetricLazy,
+SubmatrixContributor) stays as the dense fallback but moves out of
+the base interfaces.
 
 6. Remove GetLazyEvaluator from assembler base
 --------------------------------------------------
-GetLazyEvaluator is an implementation detail of the dense path. Move it
-inside the default (dense) data provider. SupernodalAssemblerBase /
-ICliqueProblem should not know about lazy evaluation.
+Once the structured path handles the common case, GetLazyEvaluator
+becomes internal to the dense fallback adapter. Not on any base class.
 
-Ordering: 2 -> 3 -> 4 -> 5 -> 1 -> 6
-(Start with CreateSubsystem, then mixed contributions, then wire into
-the LS pipeline. Refactor the hierarchy last since it touches everything.)
+Ordering: 1 -> 3 -> 4 -> 2 -> 5 -> 6
+(Provider interface first since it's new and isolated. Then subsystem
+creation and pipeline wiring. Hierarchy refactor last.)
