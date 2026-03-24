@@ -11,7 +11,7 @@ class SubmatrixContributor;
 class KKTAssemblerToSubsystemAdapter {
  public:
   KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base);
-  ~KKTAssemblerToSubsystemAdapter();
+  virtual ~KKTAssemblerToSubsystemAdapter();
 
   // Contributor contract: declare contribution type; the tree solver
   // auto-creates subsystems and binds a contributor after Finalize.
@@ -22,7 +22,7 @@ class KKTAssemblerToSubsystemAdapter {
   void BindContributor(std::unique_ptr<SubmatrixContributor> contributor);
 
   // Original variable indices from the assembler.
-  std::vector<int> variables() const { return assembler_->variables(); }
+  virtual std::vector<int> variables() const { return assembler_->variables(); }
 
   // Elimination positions of this adapter's variables (available after
   // SetEliminationPosition has been called).
@@ -32,9 +32,9 @@ class KKTAssemblerToSubsystemAdapter {
 
   void SetEliminationPosition(
       const std::vector<int>& shared_variable_to_elimination_position);
-  void UpdateData();
+  virtual void UpdateData();
 
- private:
+ protected:
   SupernodalAssemblerBase* assembler_;
   std::unique_ptr<SubmatrixContributor> contributor_;
   int contribution_type_value_ = 0;  // ContributionType::kPositiveDefinite

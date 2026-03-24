@@ -1,8 +1,29 @@
 #pragma once
 #include "conex/tree_solver/kkt_subsystem.h"
+#include "conex/tree_solver/static_subsystem.h"
 #include <Eigen/Dense>
 
 namespace conex {
+
+// Interface for providing diagonal + low-rank data to a subsystem.
+// Implementations supply the diagonal d and low-rank factor U such that
+// the supernode block is D + U * U^T.
+class LowRankDiagonalDataSource {
+ public:
+  virtual ~LowRankDiagonalDataSource() = default;
+
+  // Return the variable indices for this data source.
+  virtual std::vector<int> variables() const = 0;
+
+  // Write current diagonal and low-rank factor into the provided storage.
+  // Called once per AssembleAndFactor cycle.
+  //   d:  output vector of length n (supernode size)
+  //   U:  output matrix of size n x r (low-rank factor)
+  // The elimination_positions vector maps original variable indices to
+  // elimination-order positions, so the data source can reorder if needed.
+  virtual void GetData(Eigen::VectorXd& d, Eigen::MatrixXd& U,
+                       const std::vector<int>& elimination_positions) const = 0;
+};
 
 // A KKT subsystem whose supernode block has the structure D + U * U^T,
 // where D is diagonal (n x n) and U is low-rank (n x r).
@@ -12,11 +33,6 @@ namespace conex {
 // where M = I + U^T D^{-1} U  (r x r, factored by LLT).
 //
 // This is efficient when r << n: factorization is O(n r^2) instead of O(n^3).
-//
-// The supernode_submatrix() storage from the tree solver is not used for
-// factorization data; instead the diagonal and low-rank factor are stored
-// separately. The separator_rows / separator_schur_complement storage is
-// used normally.
 class LowRankPlusDiagonalSubsystem : public KKTSubsystem {
  public:
   // Set the diagonal and low-rank factor.  Must be called before
@@ -33,11 +49,6 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystem {
   const Eigen::MatrixXd& low_rank_factor() const { return U_; }
 
  private:
-  // Factor (D + U U^T) using the Woodbury identity.
-  //   d_inv_ = D^{-1}
-  //   M_ = I + U^T D^{-1} U  (r x r)
-  //   M_llt_ = LLT(M_)
-  //   V_ = D^{-1} U  (precomputed for solves)
   bool DoEliminateSupernodeColumns() override {
     const int n = static_cast<int>(d_.size());
     const int r = static_cast<int>(U_.cols());
@@ -47,7 +58,7 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystem {
     d_inv_.resize(n);
     for (int i = 0; i < n; ++i) {
       if (std::abs(d_(i)) < 1e-15) {
-        d_inv_(i) = 0.0;  // regularize zero diagonal
+        d_inv_(i) = 0.0;
       } else {
         d_inv_(i) = 1.0 / d_(i);
       }
@@ -72,28 +83,20 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystem {
 
   // Schur complement: sep_schur -= S * (D + U U^T)^{-1} * S^T
   // Using Woodbury: (D + UU^T)^{-1} = D^{-1} - V M^{-1} V^T
-  // So: sep_schur -= S D^{-1} S^T - S V M^{-1} V^T S^T
-  //              i.e. sep_schur -= S D^{-1} S^T - (S V) M^{-1} (S V)^T
-  //
-  // Wait: the sign.  Woodbury says inv = D^{-1} - V M^{-1} V^T, so:
-  //   sep_schur -= S * (D^{-1} - V M^{-1} V^T) * S^T
-  //             = S D^{-1} S^T - S V M^{-1} V^T S^T
+  //   sep_schur -= S D^{-1} S^T - S V M^{-1} (S V)^T
   void DoComputeSeparatorSchurComplement() override {
     if (separator_rows().rows() == 0 || separator_rows().cols() == 0) return;
     const int sep = separator_rows().rows();
 
-    // T1 = S * D^{-1}  (sep x n, but applied as row scaling)
-    // sep_schur -= T1 * S^T = S * D^{-1} * S^T
     auto S = separator_rows();  // sep x n
 
-    // T2 = S * V = S * D^{-1} * U  (sep x r)
+    // SV = S * D^{-1} * U  (sep x r)
     Eigen::MatrixXd SV = S * V_;
 
-    // T3 = M^{-1} * (S V)^T  (r x sep)
+    // M^{-1} * (S V)^T  (r x sep)
     Eigen::MatrixXd MiSVt = M_llt_.solve(SV.transpose());
 
-    // sep_schur -= S D^{-1} S^T - SV M^{-1} SV^T
-    //           = S (D^{-1} S^T) - SV (M^{-1} SV^T)
+    // D^{-1} S^T  (n x sep)
     Eigen::MatrixXd DinvSt = d_inv_.asDiagonal() * S.transpose();
 
     for (int j = 0; j < sep; j++) {
@@ -104,24 +107,19 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystem {
     }
   }
 
-  // Solve (D + U U^T) x = y  in-place.
-  // Using Woodbury: x = D^{-1} y - V M^{-1} V^T y
-  // This is the "left factor" solve: E^{-1} = (D + UU^T)^{-1}, F = I.
+  // Solve (D + U U^T) x = y  in-place via Woodbury.
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<Eigen::MatrixXd> y) const override {
     if (y.rows() == 0) return;
-    // temp = V^T y  (r x cols)
     Eigen::MatrixXd Vty = V_.transpose() * y;
-    // temp = M^{-1} V^T y
     Eigen::MatrixXd MiVty = M_llt_.solve(Vty);
-    // y = D^{-1} y - V M^{-1} V^T y
     y = d_inv_.asDiagonal() * y - V_ * MiVty;
   }
 
-  // F = I for Schur complement mode.
+  // F = I (Schur complement mode).
   void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
       Eigen::Ref<Eigen::MatrixXd> y) const override {
-    (void)y;  // F^{-1} = I
+    (void)y;
   }
 
   bool factored_ = false;
@@ -130,7 +128,31 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystem {
   Eigen::VectorXd d_inv_;   // D^{-1} (n)
   Eigen::MatrixXd V_;       // D^{-1} U (n x r)
   Eigen::MatrixXd M_;       // I + U^T D^{-1} U (r x r)
-  Eigen::LLT<Eigen::MatrixXd> M_llt_;  // factorization of M
+  Eigen::LLT<Eigen::MatrixXd> M_llt_;
+};
+
+// Adapter that writes diagonal + low-rank data into a
+// LowRankPlusDiagonalSubsystem, bypassing the lazy evaluator path.
+class LowRankDiagonalAdapter : public KKTAssemblerToSubsystemAdapter {
+ public:
+  LowRankDiagonalAdapter(LowRankDiagonalDataSource* source)
+      : KKTAssemblerToSubsystemAdapter(nullptr), source_(source) {}
+
+  std::vector<int> variables() const override { return source_->variables(); }
+
+  void UpdateData() override {
+    source_->GetData(subsystem_->diagonal(), subsystem_->low_rank_factor(),
+                     elimination_positions());
+  }
+
+  // Called by the tree solver after creating subsystems.
+  void BindSubsystem(LowRankPlusDiagonalSubsystem* subsystem) {
+    subsystem_ = subsystem;
+  }
+
+ private:
+  LowRankDiagonalDataSource* source_;
+  LowRankPlusDiagonalSubsystem* subsystem_ = nullptr;
 };
 
 }  // namespace conex

@@ -37,7 +37,7 @@ void T::BindContributor(std::unique_ptr<SubmatrixContributor> contributor) {
 
 void T::SetEliminationPosition(
     const std::vector<int>& shared_variable_to_elimination_position) {
-  variable_index_to_elimination_position_ = assembler_->variables();
+  variable_index_to_elimination_position_ = variables();
   for (auto& v : variable_index_to_elimination_position_) {
     v = shared_variable_to_elimination_position.at(v);
   }

@@ -94,6 +94,18 @@ target_link_libraries(profile_mtx
 )
 target_compile_options(profile_mtx PRIVATE -O2 -fno-omit-frame-pointer)
 
+add_executable(low_rank_diagonal_test
+  conex/test/low_rank_diagonal_test.cc
+)
+target_link_libraries(low_rank_diagonal_test
+  sparse_linear_constraint
+  clique_ordering
+  kkt_solver_factory
+  tree_solver
+  GTest::gtest_main
+)
+
 include(GoogleTest)
 gtest_discover_tests(sparse_linear_constraint_test)
 gtest_discover_tests(multithreading_test)
+gtest_discover_tests(low_rank_diagonal_test)
