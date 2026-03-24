@@ -91,7 +91,7 @@ static SolverSetup MakeSetup(const Eigen::SparseMatrix<double>& A) {
 
 // Test multi-threaded left-looking factorization.
 // Uses a star-shaped structure so the root has many children with large blocks,
-// triggering the threaded accumulate path in ApplyLeftLookingChildUpdates.
+// triggering the threaded accumulate path in GatherFromChildren.
 GTEST_TEST(Multithreading, LeftLookingFactorization) {
   srand(77);
   auto A = StarShaped(20, 10, 30, 15);

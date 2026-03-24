@@ -231,7 +231,7 @@ class KKTSubsystemBase {
       const KKTSubsystemBase* target,
       Eigen::Ref<Eigen::MatrixXd> supernode_delta,
       Eigen::Ref<Eigen::MatrixXd> separator_delta) const;
-  void ApplyLeftLookingChildUpdates();
+  void GatherFromChildren();
   void ProvideColumnUpdate(KKTSubsystemBase* target);
   void ReceiveColumnUpdate(const KKTSubsystemBase* source,
                            size_t start_index_of_source);

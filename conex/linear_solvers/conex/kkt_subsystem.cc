@@ -243,7 +243,7 @@ void T::AccumulateColumnUpdate(
   }
 }
 
-void T::ApplyLeftLookingChildUpdates() {
+void T::GatherFromChildren() {
   if (!left_looking_ || children_.empty()) {
     return;
   }
@@ -671,7 +671,7 @@ bool T::AssembleAndFactor() {
   }
   if (left_looking_) {
     START_TIMER(Update)
-    ApplyLeftLookingChildUpdates();
+    GatherFromChildren();
     END_TIMER
   }
   START_TIMER(Eliminate)
@@ -697,7 +697,7 @@ void T::Assemble() {
     child->Assemble();
   }
   if (left_looking_) {
-    ApplyLeftLookingChildUpdates();
+    GatherFromChildren();
   }
 
   if (!IsRoot() && !left_looking_) {
@@ -712,7 +712,7 @@ bool T::Factor() {
     }
   }
   if (left_looking_) {
-    ApplyLeftLookingChildUpdates();
+    GatherFromChildren();
   }
   if (supernodes_.size() > 0) {
     if (!DoEliminateSupernodeColumns()) {
