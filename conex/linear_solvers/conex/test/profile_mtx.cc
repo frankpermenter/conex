@@ -281,6 +281,7 @@ int main(int argc, char** argv) {
       "  --merge <n>            max_merge_supernode_size (default: 5)\n"
       "  --reorder <n>          supernode_reorder_method (default: 0)\n"
       "  --generic              Use generic (RLDLT) factorization\n"
+      "  --randomize            Replace values with random N(0,1), keep sparsity\n"
       "  --sweep-threads <list> Sweep thread counts (comma-separated, e.g. 1,2,4)\n"
       "  --sweep-merge <list>   Sweep merge sizes (comma-separated, e.g. 0,3,5,10)\n"
       , argv[0]);
@@ -288,6 +289,7 @@ int main(int argc, char** argv) {
   }
 
   SolverConfiguration cfg;
+  bool randomize = false;
   std::vector<int> sweep_threads;
   std::vector<int> sweep_merge;
   std::vector<std::string> mtx_paths;
@@ -312,6 +314,8 @@ int main(int argc, char** argv) {
       cfg.tree.supernode_reorder_method = std::stoi(argv[++i]);
     } else if (arg == "--generic") {
       cfg.tree.use_generic_factorization = true;
+    } else if (arg == "--randomize") {
+      randomize = true;
     } else if (arg == "--sweep-threads" && i + 1 < argc) {
       sweep_threads = parse_list(argv[++i]);
     } else if (arg == "--sweep-merge" && i + 1 < argc) {
@@ -341,6 +345,20 @@ int main(int argc, char** argv) {
       fprintf(stderr, "  Skipping %s (square, %dx%d)\n",
               name.c_str(), (int)A.rows(), (int)A.cols());
       continue;
+    }
+    if (randomize) {
+      // Replace values with N(0,1) random entries, preserving sparsity.
+      srand(42);
+      for (int k = 0; k < A.outerSize(); ++k) {
+        for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it) {
+          // Box-Muller for N(0,1).
+          double u1 = (static_cast<double>(rand()) + 1.0) / (RAND_MAX + 2.0);
+          double u2 = static_cast<double>(rand()) / (RAND_MAX + 1.0);
+          it.valueRef() = std::sqrt(-2.0 * std::log(u1)) *
+                          std::cos(2.0 * M_PI * u2);
+        }
+      }
+      name += "_rand";
     }
     matrices.push_back({path, name, std::move(A)});
   }
