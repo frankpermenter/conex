@@ -197,7 +197,7 @@ void T::SetEliminationOrder(
   for (auto s : subsystems_) {
     s->SetVariableOrdering(variable_to_elimination_position_);
   }
-  for (auto& s : assembler_to_subsystem_adapter_) {
+  for (auto& s : contributors_) {
     s->SetEliminationPosition(variable_to_elimination_position);
   }
   // Cache permutation vectors and number_of_variables for fast solve.
@@ -331,9 +331,9 @@ void T::UpdateAssemblerData() {
   END_TIMER
   ResetUpdateDataTimers();
   START_TIMER(AdapterUpdateData)
-  ForEachTask(assembler_to_subsystem_adapter_.size(),
+  ForEachTask(contributors_.size(),
               EffectiveThreadCount(num_threads_), [&](size_t i) {
-                assembler_to_subsystem_adapter_.at(i)->UpdateData();
+                contributors_.at(i)->UpdateData();
               });
   END_TIMER
   PrintUpdateDataTimers();
@@ -440,9 +440,9 @@ std::vector<int> T::ClassifyCliques(
     }
   }
 
-  std::vector<int> adapter_to_clique(assembler_to_subsystem_adapter_.size());
-  for (size_t ai = 0; ai < assembler_to_subsystem_adapter_.size(); ++ai) {
-    const auto& adapter = assembler_to_subsystem_adapter_[ai];
+  std::vector<int> adapter_to_clique(contributors_.size());
+  for (size_t ai = 0; ai < contributors_.size(); ++ai) {
+    const auto& adapter = contributors_[ai];
     const auto vars = adapter->variables();
     std::set<int> candidates;
     for (int v : vars) {
@@ -520,8 +520,8 @@ void T::ComputeSolveOrder() {
 }
 
 void T::BindContributors(const std::vector<int>& adapter_to_clique) {
-  for (size_t ai = 0; ai < assembler_to_subsystem_adapter_.size(); ++ai) {
-    auto& adapter = assembler_to_subsystem_adapter_[ai];
+  for (size_t ai = 0; ai < contributors_.size(); ++ai) {
+    auto& adapter = contributors_[ai];
     KKTSubsystemBase* match = subsystems_[adapter_to_clique[ai]];
     SubmatrixContributor contrib;
     contrib.subsystem_ = match;
@@ -881,7 +881,7 @@ Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
 }
 
 void T::push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system) {
-  assembler_to_subsystem_adapter_.emplace_back(std::move(system));
+  contributors_.emplace_back(std::move(system));
 }
 
 }  // namespace conex

@@ -273,7 +273,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<KKTSubsystemBase*> subsystems_;
   std::vector<std::unique_ptr<KKTSubsystemBase>> owned_subsystems_;
   std::vector<std::unique_ptr<KKTAssemblerToSubsystemAdapter>>
-      assembler_to_subsystem_adapter_;
+      contributors_;
   std::vector<int> variable_to_elimination_position_;
   std::vector<int> subsystem_to_parent_;
   bool auto_update_assemblers_ = false;
