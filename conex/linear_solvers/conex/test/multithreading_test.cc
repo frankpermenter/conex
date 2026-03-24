@@ -237,7 +237,6 @@ GTEST_TEST(Multithreading, LeafParallelFactorization) {
       SolverConfiguration cfg;
       cfg.num_threads = threads;
       auto solver = MakeTreeSolver(&s.cm, cfg);
-      solver->SetUseLeafParallel(true);
       ASSERT_TRUE(solver->AssembleAndFactor());
       VectorXd sol = solver->Solve(rhs);
       EXPECT_NEAR((sol - ref).norm(), 0, 1e-10 * ref.norm())
@@ -274,7 +273,6 @@ GTEST_TEST(Multithreading, LeafParallelFactorization) {
       SolverConfiguration cfg;
       cfg.num_threads = threads;
       auto solver = MakeTreeSolver(&s.cm, cfg);
-      solver->SetUseLeafParallel(true);
       ASSERT_TRUE(solver->AssembleAndFactor());
       VectorXd sol = solver->Solve(rhs);
       EXPECT_NEAR((sol - ref).norm(), 0, 1e-10 * ref.norm())
@@ -302,7 +300,6 @@ GTEST_TEST(Multithreading, LeafParallelFactorization) {
       SolverConfiguration cfg;
       cfg.num_threads = threads;
       auto solver = MakeTreeSolver(&s.cm, cfg);
-      solver->SetUseLeafParallel(true);
       ASSERT_TRUE(solver->AssembleAndFactor());
       VectorXd sol = solver->Solve(rhs);
       EXPECT_NEAR((sol - ref).norm(), 0, 1e-10 * ref.norm())

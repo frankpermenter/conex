@@ -362,26 +362,7 @@ void T::DoAssemble() {
 }
 
 bool T::DoAssembleAndFactor() {
-  if (use_leaf_parallel_) {
-    return DoAssembleAndFactorLeafParallel();
-  }
-  if (auto_update_assemblers_) {
-    START_TIMER(UpdateAssemblerData)
-    UpdateAssemblerData();
-    END_TIMER
-  }
-  std::atomic<bool> success(true);
-  START_TIMER(TreeFactorization)
-  ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_), [&](size_t i) {
-    if (!success.load(std::memory_order_relaxed)) {
-      return;
-    }
-    if (!roots_.at(i)->AssembleAndFactor()) {
-      success.store(false, std::memory_order_relaxed);
-    }
-  });
-  END_TIMER
-  return success.load(std::memory_order_relaxed);
+  return DoAssembleAndFactorLeafParallel();
 }
 
 bool T::DoFactor() {
@@ -402,8 +383,10 @@ bool T::DoAssembleAndFactorLeafParallel() {
     UpdateAssemblerData();
   }
 
-  // Initialize pending child counters.
+  // Leaf-parallel requires scatter-to-parent and left-looking gather.
   for (auto* s : subsystems_) {
+    s->SetScatterToParent(true);
+    s->SetFactorizationMode(true);
     s->pending_children_.store(static_cast<int>(s->children().size()),
                                std::memory_order_relaxed);
   }
