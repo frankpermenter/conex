@@ -424,9 +424,11 @@ bool T::DoAssembleAndFactorLeafParallel() {
 }
 
 void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
+  // Map each adapter to its containing clique index.  Used for both
+  // subsystem creation (indefiniteness) and contributor binding.
+  std::vector<int> adapter_to_clique;
+
   // Auto-create subsystems when none were provided.
-  // Determine each clique's factorization type before creation by mapping
-  // indefinite adapters to their containing clique (original variable order).
   if (subsystems_.empty()) {
     owned_subsystems_.clear();
     const size_t num_nodes = clique_tree.supernodes.size();
@@ -439,12 +441,12 @@ void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
       }
     }
 
-    // For each indefinite adapter, find the smallest containing clique.
+    // Map each adapter to its containing clique (smallest clique whose
+    // supernodes ∪ separators contain all adapter variables).
     std::vector<bool> needs_indefinite(num_nodes, false);
-    for (const auto& adapter : assembler_to_subsystem_adapter_) {
-      if (adapter->contribution_type() != ContributionType::kIndefinite) {
-        continue;
-      }
+    adapter_to_clique.resize(assembler_to_subsystem_adapter_.size());
+    for (size_t ai = 0; ai < assembler_to_subsystem_adapter_.size(); ++ai) {
+      const auto& adapter = assembler_to_subsystem_adapter_[ai];
       const auto vars = adapter->variables();
       std::set<int> candidates;
       for (int v : vars) {
@@ -453,9 +455,13 @@ void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
           candidates.insert(it->second);
         }
       }
+      int match = -1;
+      size_t match_size = std::numeric_limits<size_t>::max();
       for (int ci : candidates) {
         const auto& sn = clique_tree.supernodes[ci];
         const auto& sep = clique_tree.separators[ci];
+        size_t total = sn.size() + sep.size();
+        if (total >= match_size) continue;
         bool all_found = true;
         for (int v : vars) {
           if (std::find(sn.begin(), sn.end(), v) != sn.end()) continue;
@@ -464,9 +470,14 @@ void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
           break;
         }
         if (all_found) {
-          needs_indefinite[ci] = true;
-          break;
+          match = ci;
+          match_size = total;
         }
+      }
+      CONEX_DEMAND(match >= 0, "No clique found for adapter.");
+      adapter_to_clique[ai] = match;
+      if (adapter->contribution_type() == ContributionType::kIndefinite) {
+        needs_indefinite[match] = true;
       }
     }
 
@@ -516,23 +527,39 @@ void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
     }
   }
 
-  // Build lookup: elimination position -> subsystem that owns it as a
-  // supernode.  Each variable is a supernode of exactly one subsystem.
-  std::unordered_map<int, KKTSubsystemBase*> elim_pos_to_subsystem;
-  for (auto* subsystem : subsystems_) {
-    for (int sn : subsystem->supernodes()) {
-      elim_pos_to_subsystem[sn] = subsystem;
-    }
-  }
-
   // Bind contributors to adapters.
-  for (auto& adapter : assembler_to_subsystem_adapter_) {
-    auto c = std::make_unique<SubmatrixContributor>(
-        MakeContributorFromLookup(adapter->elimination_positions(),
-                                  elim_pos_to_subsystem));
-    c->set_type(adapter->contribution_type());
-    c->PrecomputeLazyOrder(adapter->elimination_positions());
-    adapter->BindContributor(std::move(c));
+  if (adapter_to_clique.empty()) {
+    // User-provided subsystems: fall back to lookup-based binding.
+    std::unordered_map<int, KKTSubsystemBase*> elim_pos_to_subsystem;
+    for (auto* subsystem : subsystems_) {
+      for (int sn : subsystem->supernodes()) {
+        elim_pos_to_subsystem[sn] = subsystem;
+      }
+    }
+    for (auto& adapter : assembler_to_subsystem_adapter_) {
+      auto c = std::make_unique<SubmatrixContributor>(
+          MakeContributorFromLookup(adapter->elimination_positions(),
+                                    elim_pos_to_subsystem));
+      c->set_type(adapter->contribution_type());
+      c->PrecomputeLazyOrder(adapter->elimination_positions());
+      adapter->BindContributor(std::move(c));
+    }
+  } else {
+    // Use precomputed adapter → clique mapping.
+    for (size_t ai = 0; ai < assembler_to_subsystem_adapter_.size(); ++ai) {
+      auto& adapter = assembler_to_subsystem_adapter_[ai];
+      KKTSubsystemBase* match = subsystems_[adapter_to_clique[ai]];
+      SubmatrixContributor contrib;
+      contrib.subsystem_ = match;
+      const auto& sn = match->supernodes();
+      contrib.sn_start_ = sn.empty() ? 0 : sn.front();
+      contrib.sn_count_ = static_cast<int>(sn.size());
+      contrib.sep_indices_ = match->separators();
+      auto c = std::make_unique<SubmatrixContributor>(std::move(contrib));
+      c->set_type(adapter->contribution_type());
+      c->PrecomputeLazyOrder(adapter->elimination_positions());
+      adapter->BindContributor(std::move(c));
+    }
   }
   AllocateSolveArena();
 }
