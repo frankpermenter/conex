@@ -374,7 +374,6 @@ class KKTCholeskySystem : public KKTSubsystem {
   }
 
   void DoInitialize() override {
-    KKTSubsystem::DoInitialize();
     factorization_ = std::make_unique<FactorizationType>(
         supernode_submatrix(), separator_rows(), separator_schur_complement());
     if (factorization_temp_ptr_) {

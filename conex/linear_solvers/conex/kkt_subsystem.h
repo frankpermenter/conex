@@ -81,7 +81,6 @@ namespace conex {
 class KKTSubsystemStorage {
  public:
   virtual ~KKTSubsystemStorage() = default;
-  virtual void Initialize(size_t num_supernodes, size_t num_separators) = 0;
   virtual size_t RequiredArenaBytes(size_t num_supernodes,
                                     size_t num_separators) const = 0;
   virtual void BindArenaMemory(double* ptr, size_t bytes, size_t num_supernodes,
@@ -100,7 +99,6 @@ class DenseKKTSubsystemStorage final : public KKTSubsystemStorage {
   using AlignedMatrixMap =
       Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>,
                  Eigen::Aligned>;
-  void Initialize(size_t num_supernodes, size_t num_separators) override;
   size_t RequiredArenaBytes(size_t num_supernodes,
                             size_t num_separators) const override;
   void BindArenaMemory(double* ptr, size_t bytes, size_t num_supernodes,
@@ -328,9 +326,6 @@ class KKTSubsystem : public KKTSubsystemBase {
   KKTSubsystem();
   explicit KKTSubsystem(std::unique_ptr<KKTSubsystemStorage>&& storage);
 
-  void DoInitialize() override {
-    storage_->Initialize(supernodes_.size(), separators_.size());
-  }
   size_t RequiredArenaBytes() const override;
   void BindArenaMemory(double* ptr, size_t bytes) override;
 

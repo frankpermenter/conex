@@ -436,17 +436,6 @@ ArenaLayout ComputeArenaLayout(size_t n1, size_t n2) {
 }
 }  // namespace
 
-void DenseKKTSubsystemStorage::Initialize(size_t num_supernodes,
-                                          size_t num_separators) {
-  if (!using_arena_memory_) {
-    supernode_submatrix_storage_.resize(static_cast<int>(num_supernodes),
-                                        static_cast<int>(num_supernodes));
-    separator_rows_storage_.resize(static_cast<int>(num_separators),
-                                   static_cast<int>(num_supernodes));
-    separator_schur_complement_storage_.resize(
-        static_cast<int>(num_separators), static_cast<int>(num_separators));
-  }
-}
 
 size_t DenseKKTSubsystemStorage::RequiredArenaBytes(
     size_t num_supernodes, size_t num_separators) const {
