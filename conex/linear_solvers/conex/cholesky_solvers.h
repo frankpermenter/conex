@@ -415,11 +415,6 @@ class LUSolver : public KKTSubsystem {
   Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
 };
 
-using LLTSolver =
-    KKTCholeskySystem<CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, false>>;
-template <bool is_positive_definite>
-using FactorizationMethod =
-    typename std::conditional<is_positive_definite, LLTSolver, LUSolver>::type;
 
 // A subsystem that dynamically selects LLT or LU factorization at runtime.
 // All contributions are assumed positive-definite (LLT) unless MarkIndefinite()
@@ -483,5 +478,67 @@ class DynamicSubsystem : public KKTSubsystem {
   Eigen::RLDLT<MatrixXd> rldlt_;
   MatrixXd temp_;
 };
+
+
+class WorkingLLTSubsystem : public KKTSubsystem {
+
+ private:
+  bool DoEliminateSupernodeColumns() override {
+    llt_.compute(supernode_submatrix());
+    return llt_.info() == Eigen::Success;
+  }
+
+  void DoComputeSeparatorSchurComplement() override {
+    if (separator_rows().rows() == 0 || separator_rows().cols() == 0) return;
+    const int sn = separator_rows().cols();
+    const int sep = separator_rows().rows();
+
+    temp_ = separator_rows().transpose();
+    llt_.matrixL().solveInPlace(temp_);
+    for (int j = 0; j < sep; j++) {
+      separator_schur_complement().col(j).tail(sep - j).noalias() -=
+          temp_.rightCols(sep - j).transpose() * temp_.col(j);
+    }
+  }
+
+  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    if (y.rows() == 0) return;
+    llt_.matrixL().solveInPlace(y);
+  }
+
+  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    if (y.rows() == 0) return;
+    llt_.matrixL().transpose().solveInPlace(y);
+  }
+
+  Eigen::LLT<MatrixXd> llt_;
+  MatrixXd temp_;
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+using LLTSolver = WorkingLLTSubsystem;
+//using LLTSolver =
+//    KKTCholeskySystem<CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, false>>;
+
+
+//template <bool is_positive_definite>
+//using FactorizationMethod =
+//    typename std::conditional<is_positive_definite, LLTSolver, LUSolver>::type;
+
 
 }  // namespace conex
