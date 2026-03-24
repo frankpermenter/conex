@@ -109,7 +109,8 @@ ContributionType ClassifyCliqueContribution(
 }
 
 ProfileResult ProfileMatrix(const std::string& name,
-                            const Eigen::SparseMatrix<double>& A) {
+                            const Eigen::SparseMatrix<double>& A,
+                            const SolverConfiguration& cfg) {
   ProfileResult res;
   res.name = name;
   res.rows = A.rows();
@@ -149,7 +150,6 @@ ProfileResult ProfileMatrix(const std::string& name,
   // --- Stage 2: Clique tree construction ---
   auto t2 = Clock::now();
   std::vector<std::vector<int>> maximal_cliques;
-  SolverConfiguration cfg;
   CliqueTree clique_tree = MakeCliqueTreeMinDegreeFromRowSupports(
       cliques, &maximal_cliques, cfg.tree.max_merge_supernode_size,
       cfg.tree.supernode_reorder_method, {});
@@ -177,10 +177,10 @@ ProfileResult ProfileMatrix(const std::string& name,
 
   // --- Stage 4: Finalize (elimination order, subsystem creation, arena) ---
   auto t6 = Clock::now();
-  tree_solver->Finalize(clique_tree);
+  tree_solver->Finalize(clique_tree, cfg.rhs_cols);
   tree_solver->SetFactorizationMode(cfg.tree.left_looking);
   tree_solver->EnableAutoUpdateAtAssemble(true);
-  tree_solver->SetNumThreads(1);
+  tree_solver->SetNumThreads(cfg.num_threads);
   auto t7 = Clock::now();
   res.finalize_us = us(t6, t7);
 
@@ -235,80 +235,158 @@ ProfileResult ProfileMatrix(const std::string& name,
 }  // namespace
 }  // namespace conex
 
-int main(int argc, char** argv) {
-  using namespace conex;
+using namespace conex;
 
-  if (argc < 2) {
-    fprintf(stderr, "Usage: %s <file.mtx> [file2.mtx ...]\n", argv[0]);
-    return 1;
-  }
-
-  printf("\n");
-  printf("%-20s %6s %6s %8s %6s | %10s %10s %10s %10s | %10s %10s | %10s | %10s\n",
-         "Matrix", "rows", "cols", "nnz", "cliq",
+void PrintHeader() {
+  printf("%-20s %4s %4s %6s | %10s %10s %10s %10s | %10s %10s | %10s | %10s\n",
+         "Matrix", "thrd", "merg", "cliq",
          "rowsup", "cliqtree", "decomp", "finalize",
          "asm+fac", "solve",
          "setup_tot", "residual");
-  printf("%s\n", std::string(140, '-').c_str());
+  printf("%s\n", std::string(130, '-').c_str());
+}
+
+void PrintResult(const ProfileResult& res, const SolverConfiguration& cfg) {
+  if (res.assemble_factor_us < 0) {
+    printf("%-20s %4d %4d %6d | %9.0fus %9.0fus %9.0fus %9.0fus |  FACTOR FAILED          | %9.0fus | rank-def\n",
+           res.name.c_str(), cfg.num_threads,
+           cfg.tree.max_merge_supernode_size, res.num_cliques,
+           res.row_support_us, res.clique_tree_us,
+           res.decompose_us, res.finalize_us,
+           res.total_setup_us);
+  } else {
+    printf("%-20s %4d %4d %6d | %9.0fus %9.0fus %9.0fus %9.0fus | %9.0fus %9.0fus | %9.0fus | %10.2e\n",
+           res.name.c_str(), cfg.num_threads,
+           cfg.tree.max_merge_supernode_size, res.num_cliques,
+           res.row_support_us, res.clique_tree_us,
+           res.decompose_us, res.finalize_us,
+           res.assemble_factor_us, res.solve_us,
+           res.total_setup_us, res.residual);
+  }
+}
+
+struct MatrixFile {
+  std::string path;
+  std::string name;
+  Eigen::SparseMatrix<double> A;
+};
+
+int main(int argc, char** argv) {
+  if (argc < 2) {
+    fprintf(stderr,
+      "Usage: %s [options] <file.mtx> [file2.mtx ...]\n"
+      "\n"
+      "Options:\n"
+      "  --threads <n>          Number of threads (default: 1)\n"
+      "  --merge <n>            max_merge_supernode_size (default: 5)\n"
+      "  --reorder <n>          supernode_reorder_method (default: 0)\n"
+      "  --generic              Use generic (RLDLT) factorization\n"
+      "  --sweep-threads <list> Sweep thread counts (comma-separated, e.g. 1,2,4)\n"
+      "  --sweep-merge <list>   Sweep merge sizes (comma-separated, e.g. 0,3,5,10)\n"
+      , argv[0]);
+    return 1;
+  }
+
+  SolverConfiguration cfg;
+  std::vector<int> sweep_threads;
+  std::vector<int> sweep_merge;
+  std::vector<std::string> mtx_paths;
+
+  auto parse_list = [](const char* s) {
+    std::vector<int> vals;
+    std::istringstream ss(s);
+    std::string tok;
+    while (std::getline(ss, tok, ',')) {
+      vals.push_back(std::stoi(tok));
+    }
+    return vals;
+  };
 
   for (int i = 1; i < argc; ++i) {
-    std::string path = argv[i];
-    // Extract matrix name from path.
+    std::string arg = argv[i];
+    if (arg == "--threads" && i + 1 < argc) {
+      cfg.num_threads = std::stoi(argv[++i]);
+    } else if (arg == "--merge" && i + 1 < argc) {
+      cfg.tree.max_merge_supernode_size = std::stoi(argv[++i]);
+    } else if (arg == "--reorder" && i + 1 < argc) {
+      cfg.tree.supernode_reorder_method = std::stoi(argv[++i]);
+    } else if (arg == "--generic") {
+      cfg.tree.use_generic_factorization = true;
+    } else if (arg == "--sweep-threads" && i + 1 < argc) {
+      sweep_threads = parse_list(argv[++i]);
+    } else if (arg == "--sweep-merge" && i + 1 < argc) {
+      sweep_merge = parse_list(argv[++i]);
+    } else if (arg[0] != '-') {
+      mtx_paths.push_back(arg);
+    } else {
+      fprintf(stderr, "Unknown option: %s\n", arg.c_str());
+      return 1;
+    }
+  }
+
+  // Load matrices.
+  std::vector<MatrixFile> matrices;
+  for (const auto& path : mtx_paths) {
     std::string name = path;
     auto pos = name.rfind('/');
     if (pos != std::string::npos) name = name.substr(pos + 1);
     pos = name.rfind('.');
     if (pos != std::string::npos) name = name.substr(0, pos);
 
-    // Skip _b (rhs) files.
     if (name.size() > 2 && name.substr(name.size() - 2) == "_b") continue;
 
     auto A = ReadMTX(path);
-
-    if (A.rows() == 0 && A.cols() == 0) continue;  // skipped format
-
-    // For symmetric pattern matrices (A^T A sparsity), A is square symmetric.
-    // We need a rectangular A for least squares. Use it directly if rectangular,
-    // otherwise skip (not a LS problem).
+    if (A.rows() == 0 && A.cols() == 0) continue;
     if (A.rows() == A.cols()) {
-      fprintf(stderr, "  Skipping %s (square, %dx%d) -- not a LS matrix\n",
+      fprintf(stderr, "  Skipping %s (square, %dx%d)\n",
               name.c_str(), (int)A.rows(), (int)A.cols());
       continue;
     }
+    matrices.push_back({path, name, std::move(A)});
+  }
 
-    ProfileResult res;
-    try {
-      res = ProfileMatrix(name, A);
-    } catch (const std::exception& e) {
-      fprintf(stderr, "  %s: exception: %s\n", name.c_str(), e.what());
-      continue;
-    }
+  // Build list of configurations to run.
+  struct Run { SolverConfiguration cfg; };
+  std::vector<Run> runs;
 
-    if (res.assemble_factor_us < 0) {
-      printf("%-20s %6d %6d %8d %6d | %9.0fus %9.0fus %9.0fus %9.0fus |  FACTOR FAILED          | %9.0fus | rank-def\n",
-             res.name.c_str(), res.rows, res.cols, res.nnz, res.num_cliques,
-             res.row_support_us, res.clique_tree_us,
-             res.decompose_us, res.finalize_us,
-             res.total_setup_us);
-    } else {
-      printf("%-20s %6d %6d %8d %6d | %9.0fus %9.0fus %9.0fus %9.0fus | %9.0fus %9.0fus | %9.0fus | %10.2e\n",
-             res.name.c_str(), res.rows, res.cols, res.nnz, res.num_cliques,
-             res.row_support_us, res.clique_tree_us,
-             res.decompose_us, res.finalize_us,
-             res.assemble_factor_us, res.solve_us,
-             res.total_setup_us, res.residual);
+  if (!sweep_threads.empty() || !sweep_merge.empty()) {
+    auto threads_list = sweep_threads.empty()
+        ? std::vector<int>{cfg.num_threads} : sweep_threads;
+    auto merge_list = sweep_merge.empty()
+        ? std::vector<int>{cfg.tree.max_merge_supernode_size} : sweep_merge;
+    for (int t : threads_list) {
+      for (int m : merge_list) {
+        SolverConfiguration c = cfg;
+        c.num_threads = t;
+        c.tree.max_merge_supernode_size = m;
+        runs.push_back({c});
+      }
     }
+  } else {
+    runs.push_back({cfg});
   }
 
   printf("\n");
-  printf("Stages:\n");
-  printf("  rowsup    = SparseLinearConstraint construction (row support grouping)\n");
-  printf("  cliqtree  = Clique tree construction (min-degree ordering)\n");
-  printf("  decomp    = Decompose into per-clique constraints + adapter creation\n");
-  printf("  finalize  = Elimination order, subsystem creation, arena allocation\n");
-  printf("  asm+fac   = AssembleAndFactor (median of repeated runs)\n");
-  printf("  solve     = Triangular solve (median of repeated runs)\n");
-  printf("  setup_tot = Total one-time setup (rowsup + cliqtree + decomp + finalize)\n");
+  PrintHeader();
+
+  for (const auto& run : runs) {
+    for (const auto& mat : matrices) {
+      ProfileResult res;
+      try {
+        res = ProfileMatrix(mat.name, mat.A, run.cfg);
+      } catch (const std::exception& e) {
+        fprintf(stderr, "  %s: exception: %s\n", mat.name.c_str(), e.what());
+        continue;
+      }
+      PrintResult(res, run.cfg);
+    }
+    if (runs.size() > 1) printf("\n");
+  }
+
+  printf("\n");
+  printf("Columns: thrd=num_threads, merg=max_merge_supernode_size, cliq=num_cliques\n");
+  printf("Stages:  rowsup/cliqtree/decomp/finalize are one-time setup\n");
+  printf("         asm+fac/solve are median of repeated runs\n");
   printf("\n");
 
   return 0;
