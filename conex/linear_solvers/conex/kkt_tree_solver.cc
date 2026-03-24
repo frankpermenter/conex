@@ -391,8 +391,6 @@ bool T::DoAssembleAndFactorLeafParallel() {
     while (current != nullptr) {
       if (!success.load(std::memory_order_relaxed)) return;
 
-      current->DoInitialize();
-
       // Gather from children (scatter-to-parent: non-recursive, O(children)).
       current->GatherFromChildren();
 

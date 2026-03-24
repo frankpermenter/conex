@@ -652,7 +652,6 @@ void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
 }
 
 bool T::AssembleAndFactor() {
-  DoInitialize();
   for (auto child : children_) {
     if (!child->AssembleAndFactor()) {
       return false;
@@ -681,7 +680,6 @@ bool T::AssembleAndFactor() {
 }
 
 void T::Assemble() {
-  DoInitialize();
   for (auto& child : children_) {
     child->Assemble();
   }
