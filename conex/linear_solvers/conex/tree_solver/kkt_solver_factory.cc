@@ -1,8 +1,8 @@
-#include "conex/kkt_solver_factory.h"
+#include "conex/tree_solver/kkt_solver_factory.h"
 
-#include "conex/clique_ordering.h"
-#include "conex/kkt_tree_solver.h"
-#include "conex/tree_utils.h"
+#include "conex/common/clique_ordering.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/tree_solver/tree_utils.h"
 
 namespace conex {
 using std::vector;

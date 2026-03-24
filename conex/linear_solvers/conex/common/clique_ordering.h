@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 
-#include "conex/tree_utils.h"
+#include "conex/tree_solver/tree_utils.h"
 
 namespace conex {
 

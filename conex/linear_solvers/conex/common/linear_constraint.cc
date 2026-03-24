@@ -1,4 +1,4 @@
-#include "linear_constraint.h"
+#include "conex/common/linear_constraint.h"
 
 namespace conex {
 

@@ -1,7 +1,7 @@
 #pragma once
-#include "conex/conex.h"
-#include "conex/constraint_manager.h"
-#include "conex/kkt_tree_solver.h"
+#include "conex/common/conex.h"
+#include "conex/common/constraint_manager.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
 
 namespace conex {
 

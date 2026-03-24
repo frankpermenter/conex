@@ -5,10 +5,10 @@
 #include <type_traits>
 #include <utility>
 
-#include "conex/constraint.h"
-#include "conex/equality_constraint.h"
-#include "conex/error_checking_macros.h"
-#include "conex/workspace.h"
+#include "conex/common/constraint.h"
+#include "conex/common/equality_constraint.h"
+#include "conex/common/error_checking_macros.h"
+#include "conex/common/workspace.h"
 #define CONEX_ID int
 
 namespace conex {

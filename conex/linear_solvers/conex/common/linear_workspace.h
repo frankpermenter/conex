@@ -1,6 +1,6 @@
 #pragma once
-#include "conex/debug_macros.h"
-#include "conex/memory_utils.h"
+#include "conex/common/debug_macros.h"
+#include "conex/common/memory_utils.h"
 #include <Eigen/Dense>
 namespace conex {
 

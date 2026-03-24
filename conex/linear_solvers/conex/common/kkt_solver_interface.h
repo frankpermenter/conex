@@ -1,6 +1,6 @@
 #pragma once
 
-#include "conex/error_checking_macros.h"
+#include "conex/common/error_checking_macros.h"
 #include <Eigen/Dense>
 
 namespace conex {

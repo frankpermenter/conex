@@ -1,10 +1,10 @@
-#include "conex/tree_utils.h"
+#include "conex/tree_solver/tree_utils.h"
 
 #include <algorithm>
 #include <stack>
 #include <vector>
 
-#include "conex/error_checking_macros.h"
+#include "conex/common/error_checking_macros.h"
 
 using std::array;
 using std::vector;

@@ -1,6 +1,6 @@
 #include <iostream>
 
-#include "conex/error_codes.h"
+#include "conex/common/error_codes.h"
 
 namespace conex {
 

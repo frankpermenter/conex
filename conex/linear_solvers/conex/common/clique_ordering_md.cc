@@ -11,8 +11,8 @@
 #include <Eigen/Sparse>
 
 
-#include "conex/clique_ordering.h"
-#include "conex/pq_tree.h"
+#include "conex/common/clique_ordering.h"
+#include "conex/common/pq_tree.h"
 
 namespace conex {
 namespace {

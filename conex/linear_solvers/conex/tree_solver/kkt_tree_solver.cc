@@ -1,4 +1,4 @@
-#include "conex/kkt_tree_solver.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
 
 #include <algorithm>
 #include <atomic>
@@ -10,10 +10,10 @@
 #include <thread>
 #include <unordered_map>
 
-#include "conex/cholesky_solvers.h"
-#include "conex/debug_macros.h"
-#include "conex/static_subsystem.h"
-#include "conex/tree_utils.h"
+#include "conex/tree_solver/cholesky_solvers.h"
+#include "conex/common/debug_macros.h"
+#include "conex/tree_solver/static_subsystem.h"
+#include "conex/tree_solver/tree_utils.h"
 
 namespace conex {
 

@@ -1,7 +1,7 @@
-#include "conex/static_subsystem.h"
+#include "conex/tree_solver/static_subsystem.h"
 
-#include "conex/debug_macros.h"
-#include "conex/kkt_tree_solver.h"
+#include "conex/common/debug_macros.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
 
 namespace conex {
 using T = KKTAssemblerToSubsystemAdapter;

@@ -5,8 +5,8 @@
 #include <optional>
 #include <vector>
 
-#include "conex/debug_macros.h"
-#include "conex/error_checking_macros.h"
+#include "conex/common/debug_macros.h"
+#include "conex/common/error_checking_macros.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 // A KKT sub-system is a symmetric system of linear equations of the

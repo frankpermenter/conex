@@ -16,42 +16,42 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(googletest)
 
-# Use this directory as an include root so that #include "conex/foo.h" works.
+# Use this directory as an include root so that #include "conex/common/foo.h" works.
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 # --- Tree solver core ---
 add_library(tree_solver
-  conex/kkt_tree_solver.cc
-  conex/kkt_subsystem.cc
-  conex/static_subsystem.cc
-  conex/tree_utils.cc
+  conex/tree_solver/kkt_tree_solver.cc
+  conex/tree_solver/kkt_subsystem.cc
+  conex/tree_solver/static_subsystem.cc
+  conex/tree_solver/tree_utils.cc
 )
 target_link_libraries(tree_solver PUBLIC Eigen3::Eigen)
 
 # --- Clique ordering ---
 add_library(clique_ordering
-  conex/clique_ordering_md.cc
-  conex/pq_tree.cc
+  conex/common/clique_ordering_md.cc
+  conex/common/pq_tree.cc
 )
 target_link_libraries(clique_ordering PUBLIC tree_solver)
 
 # --- Constraint infrastructure ---
 add_library(constraints
-  conex/linear_constraint.cc
-  conex/equality_constraint.cc
-  conex/constraint_manager.cc
+  conex/common/linear_constraint.cc
+  conex/common/equality_constraint.cc
+  conex/common/constraint_manager.cc
 )
 target_link_libraries(constraints PUBLIC tree_solver clique_ordering)
 
 # --- Solver factory (MakeTreeSolver only) ---
 add_library(kkt_solver_factory
-  conex/kkt_solver_factory.cc
+  conex/tree_solver/kkt_solver_factory.cc
 )
 target_link_libraries(kkt_solver_factory PUBLIC tree_solver clique_ordering constraints)
 
 # --- Sparse linear constraint ---
 add_library(sparse_linear_constraint
-  conex/sparse_linear_constraint.cc
+  conex/common/sparse_linear_constraint.cc
 )
 target_link_libraries(sparse_linear_constraint PUBLIC constraints kkt_solver_factory)
 
@@ -82,6 +82,17 @@ target_link_libraries(benchmark
 )
 target_compile_options(benchmark PRIVATE -O2 -fno-omit-frame-pointer -DEIGEN_RUNTIME_NO_MALLOC)
 target_link_libraries(benchmark openblas)
+
+add_executable(profile_mtx
+  conex/test/profile_mtx.cc
+)
+target_link_libraries(profile_mtx
+  sparse_linear_constraint
+  clique_ordering
+  kkt_solver_factory
+  tree_solver
+)
+target_compile_options(profile_mtx PRIVATE -O2 -fno-omit-frame-pointer)
 
 include(GoogleTest)
 gtest_discover_tests(sparse_linear_constraint_test)

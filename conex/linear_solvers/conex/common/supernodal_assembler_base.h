@@ -2,7 +2,7 @@
 #include <memory>
 #include <vector>
 
-#include "conex/constraint_interface.h"
+#include "conex/common/constraint_interface.h"
 #include <Eigen/Dense>
 namespace conex {
 

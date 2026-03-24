@@ -1,4 +1,4 @@
-#include "conex/pq_tree.h"
+#include "conex/common/pq_tree.h"
 
 #include <algorithm>
 #include <cassert>

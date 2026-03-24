@@ -1,6 +1,6 @@
 #pragma once
-#include "conex/RLDLT.h"
-#include "conex/kkt_subsystem.h"
+#include "conex/tree_solver/RLDLT.h"
+#include "conex/tree_solver/kkt_subsystem.h"
 
 namespace conex {
 

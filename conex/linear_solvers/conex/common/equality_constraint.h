@@ -2,10 +2,10 @@
 
 #include <vector>
 
-#include "conex/constraint.h"
-#include "conex/error_checking_macros.h"
-#include "conex/supernodal_assembler_base.h"
-#include "conex/workspace.h"
+#include "conex/common/constraint.h"
+#include "conex/common/error_checking_macros.h"
+#include "conex/common/supernodal_assembler_base.h"
+#include "conex/common/workspace.h"
 #include <Eigen/Dense>
 namespace conex {
 

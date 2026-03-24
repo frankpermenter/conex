@@ -3,10 +3,10 @@
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
-#include "conex/kkt_solver_interface.h"
-#include "conex/kkt_subsystem.h"
-#include "conex/static_subsystem.h"
-#include "conex/tree_utils.h"
+#include "conex/common/kkt_solver_interface.h"
+#include "conex/tree_solver/kkt_subsystem.h"
+#include "conex/tree_solver/static_subsystem.h"
+#include "conex/tree_solver/tree_utils.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 

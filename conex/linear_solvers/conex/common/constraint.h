@@ -1,8 +1,8 @@
 #pragma once
 #include <vector>
 
-#include "conex/supernodal_assembler_base.h"
-#include "conex/workspace.h"
+#include "conex/common/supernodal_assembler_base.h"
+#include "conex/common/workspace.h"
 #include <Eigen/Dense>
 
 namespace conex {

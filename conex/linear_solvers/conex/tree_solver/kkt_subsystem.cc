@@ -1,12 +1,12 @@
 #define CONEX_ENABLE_TIMER 0
-#include "conex/kkt_subsystem.h"
+#include "conex/tree_solver/kkt_subsystem.h"
 
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <thread>
 
-#include "conex/debug_macros.h"
+#include "conex/common/debug_macros.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;

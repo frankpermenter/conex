@@ -1,4 +1,4 @@
-#include "conex/sparse_linear_constraint.h"
+#include "conex/common/sparse_linear_constraint.h"
 
 #include <algorithm>
 #include <chrono>
@@ -7,8 +7,8 @@
 #include <set>
 #include <vector>
 
-#include "conex/constraint_manager.h"
-#include "conex/kkt_solver_factory.h"
+#include "conex/common/constraint_manager.h"
+#include "conex/tree_solver/kkt_solver_factory.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 

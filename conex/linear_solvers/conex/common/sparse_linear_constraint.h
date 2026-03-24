@@ -6,8 +6,8 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
-#include "conex/constraint.h"
-#include "conex/linear_constraint.h"
+#include "conex/common/constraint.h"
+#include "conex/common/linear_constraint.h"
 
 namespace conex {
 

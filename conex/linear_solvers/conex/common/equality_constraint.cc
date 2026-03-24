@@ -1,4 +1,4 @@
-#include "conex/equality_constraint.h"
+#include "conex/common/equality_constraint.h"
 
 namespace conex {
 

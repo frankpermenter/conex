@@ -3,7 +3,7 @@
 #include <stack>
 #include <vector>
 
-#include "debug_macros.h"
+#include "conex/common/debug_macros.h"
 
 using std::array;
 using std::vector;

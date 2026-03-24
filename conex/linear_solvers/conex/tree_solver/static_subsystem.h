@@ -1,6 +1,6 @@
 #pragma once
-#include "conex/kkt_subsystem.h"
-#include "conex/supernodal_assembler_base.h"
+#include "conex/tree_solver/kkt_subsystem.h"
+#include "conex/common/supernodal_assembler_base.h"
 
 namespace conex {
 

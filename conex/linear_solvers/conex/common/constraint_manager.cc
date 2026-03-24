@@ -1,4 +1,4 @@
-#include "conex/constraint_manager.h"
+#include "conex/common/constraint_manager.h"
 namespace conex {
 using T = ConstraintManager;
 

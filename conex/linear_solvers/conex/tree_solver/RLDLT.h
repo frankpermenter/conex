@@ -1,4 +1,4 @@
-#include "conex/debug_macros.h"
+#include "conex/common/debug_macros.h"
 #include <Eigen/Dense>
 // This file is part of Eigen, a lightweight C++ template library
 // for linear algebra.
