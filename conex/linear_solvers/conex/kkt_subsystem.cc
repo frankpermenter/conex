@@ -129,7 +129,7 @@ void AddOffsetBlocks(Eigen::Ref<Eigen::MatrixXd> destination,
   }
 }
 
-void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
+void PartialScatter(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
   const auto& supernode_offsets =
       destination->local_supernode_to_source_separator(source);
   const auto& separator_offsets =
@@ -147,7 +147,7 @@ void Update(const KKTSubsystemBase* source, KKTSubsystemBase* destination) {
 // The sep×sep scatter into separator_schur_complement ensures the parent's
 // sep_schur accumulates all descendant contributions, eliminating the need
 // for recursive ancestor walks.
-void UpdateToParent(const KKTSubsystemBase* source,
+void Scatter(const KKTSubsystemBase* source,
                     KKTSubsystemBase* destination) {
   const auto& supernode_offsets =
       destination->local_supernode_to_source_separator(source);
@@ -762,7 +762,7 @@ void T::ReceiveColumnUpdate(const KKTSubsystemBase* source,
     return;
   }
 
-  Update(source, this);
+  PartialScatter(source, this);
 
   size_t col_index = start_index;
   for (; col_index < vars.size(); col_index++) {
@@ -781,7 +781,7 @@ void T::ReceiveColumnUpdate(const KKTSubsystemBase* source,
 void T::DoScatterSeparatorSubmatrix() {
   if (parent_ && separators_.size() > 0) {
     if (scatter_to_parent_) {
-      UpdateToParent(this, parent_);
+      Scatter(this, parent_);
     } else {
       parent_->ReceiveColumnUpdate(this, 0 /*start index*/);
     }
@@ -799,7 +799,7 @@ void T::ComputeSeparatorOffsets() {
 }
 
 // Update target columns with local separator schur complement information.
-// We update target column i if their is a local separator pair (j, i),
+// We update target column i if there is a local separator pair (j, i),
 // with (j \ge i).
 void T::ProvideColumnUpdate(KKTSubsystemBase* target) {
   const std::vector<int>& target_supernodes = target->supernodes();
@@ -813,11 +813,11 @@ void T::ProvideColumnUpdate(KKTSubsystemBase* target) {
   if (scatter_to_parent_) {
     // Scatter to direct parent only (sn×sn + sep×sn + sep×sep).
     // Parent's sep_schur accumulates all descendant contributions.
-    UpdateToParent(this, target);
+    Scatter(this, target);
   } else {
     // Legacy: scatter sn×sn + sep×sn, then recurse into children
     // to scatter their sep×sep contributions to ancestors.
-    Update(this, target);
+    PartialScatter(this, target);
     for (auto& c : children_) {
       c->ProvideColumnUpdate(target);
     }
