@@ -103,21 +103,30 @@ class DenseKKTSubsystemStorage final : public KKTSubsystemStorage {
                             size_t num_separators) const override;
   void BindArenaMemory(double* ptr, size_t bytes, size_t num_supernodes,
                        size_t num_separators) override;
-  Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override;
-  Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override;
-  Eigen::Ref<Eigen::MatrixXd> separator_rows() override;
-  Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const override;
-  Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement() const override;
-  Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override;
+
+  Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override {
+    return supernode_submatrix_;
+  }
+  Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() override {
+    return separator_schur_complement_;
+  }
+  Eigen::Ref<Eigen::MatrixXd> separator_rows() override {
+    return separator_rows_;
+  }
+  Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const override {
+    return supernode_submatrix_;
+  }
+  Eigen::Ref<const Eigen::MatrixXd> separator_schur_complement() const override {
+    return separator_schur_complement_;
+  }
+  Eigen::Ref<const Eigen::MatrixXd> separator_rows() const override {
+    return separator_rows_;
+  }
 
  private:
-  bool using_arena_memory_ = false;
-  std::optional<AlignedMatrixMap> separator_schur_complement_map_;
-  std::optional<AlignedMatrixMap> supernode_submatrix_map_;
-  std::optional<AlignedMatrixMap> separator_rows_map_;
-  Eigen::MatrixXd separator_schur_complement_storage_;
-  Eigen::MatrixXd supernode_submatrix_storage_;
-  Eigen::MatrixXd separator_rows_storage_;
+  AlignedMatrixMap supernode_submatrix_{nullptr, 0, 0};
+  AlignedMatrixMap separator_rows_{nullptr, 0, 0};
+  AlignedMatrixMap separator_schur_complement_{nullptr, 0, 0};
 };
 
 class KKTSubsystemBase {

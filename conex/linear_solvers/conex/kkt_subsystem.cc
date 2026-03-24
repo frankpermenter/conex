@@ -448,77 +448,19 @@ void DenseKKTSubsystemStorage::BindArenaMemory(double* ptr, size_t bytes,
   const size_t n1 = num_supernodes;
   const size_t n2 = num_separators;
   const auto layout = ComputeArenaLayout(n1, n2);
-  const size_t required_bytes = layout.total_bytes;
-  CONEX_DEMAND(bytes >= required_bytes, "Insufficient arena memory provided.");
-  using_arena_memory_ = true;
+  CONEX_DEMAND(bytes >= layout.total_bytes,
+               "Insufficient arena memory provided.");
 
   char* base = reinterpret_cast<char*>(ptr);
-  auto* supernode_ptr =
-      reinterpret_cast<double*>(base + layout.supernode_offset_bytes);
-  auto* separator_rows_ptr =
-      reinterpret_cast<double*>(base + layout.separator_rows_offset_bytes);
-  auto* separator_schur_ptr =
-      reinterpret_cast<double*>(base + layout.separator_schur_offset_bytes);
-  constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
-  CONEX_DEMAND(IsAligned(supernode_ptr, kAlign),
-               "Supernode arena pointer must be aligned.");
-  CONEX_DEMAND(IsAligned(separator_rows_ptr, kAlign),
-               "Separator rows arena pointer must be aligned.");
-  CONEX_DEMAND(IsAligned(separator_schur_ptr, kAlign),
-               "Separator schur arena pointer must be aligned.");
-
-  supernode_submatrix_map_.emplace(supernode_ptr, static_cast<int>(n1),
-                                   static_cast<int>(n1));
-  separator_rows_map_.emplace(separator_rows_ptr, static_cast<int>(n2),
-                              static_cast<int>(n1));
-  separator_schur_complement_map_.emplace(
-      separator_schur_ptr, static_cast<int>(n2), static_cast<int>(n2));
-}
-
-Eigen::Ref<Eigen::MatrixXd> DenseKKTSubsystemStorage::supernode_submatrix() {
-  if (supernode_submatrix_map_) {
-    return *supernode_submatrix_map_;
-  }
-  return supernode_submatrix_storage_;
-}
-
-Eigen::Ref<Eigen::MatrixXd>
-DenseKKTSubsystemStorage::separator_schur_complement() {
-  if (separator_schur_complement_map_) {
-    return *separator_schur_complement_map_;
-  }
-  return separator_schur_complement_storage_;
-}
-
-Eigen::Ref<Eigen::MatrixXd> DenseKKTSubsystemStorage::separator_rows() {
-  if (separator_rows_map_) {
-    return *separator_rows_map_;
-  }
-  return separator_rows_storage_;
-}
-
-Eigen::Ref<const Eigen::MatrixXd>
-DenseKKTSubsystemStorage::supernode_submatrix() const {
-  if (supernode_submatrix_map_) {
-    return *supernode_submatrix_map_;
-  }
-  return supernode_submatrix_storage_;
-}
-
-Eigen::Ref<const Eigen::MatrixXd>
-DenseKKTSubsystemStorage::separator_schur_complement() const {
-  if (separator_schur_complement_map_) {
-    return *separator_schur_complement_map_;
-  }
-  return separator_schur_complement_storage_;
-}
-
-Eigen::Ref<const Eigen::MatrixXd> DenseKKTSubsystemStorage::separator_rows()
-    const {
-  if (separator_rows_map_) {
-    return *separator_rows_map_;
-  }
-  return separator_rows_storage_;
+  new (&supernode_submatrix_) AlignedMatrixMap(
+      reinterpret_cast<double*>(base + layout.supernode_offset_bytes),
+      static_cast<int>(n1), static_cast<int>(n1));
+  new (&separator_rows_) AlignedMatrixMap(
+      reinterpret_cast<double*>(base + layout.separator_rows_offset_bytes),
+      static_cast<int>(n2), static_cast<int>(n1));
+  new (&separator_schur_complement_) AlignedMatrixMap(
+      reinterpret_cast<double*>(base + layout.separator_schur_offset_bytes),
+      static_cast<int>(n2), static_cast<int>(n2));
 }
 
 KKTSubsystem::KKTSubsystem()
