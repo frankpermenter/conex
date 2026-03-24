@@ -2,8 +2,8 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <map>
 #include <set>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -365,7 +365,8 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
     return CliqueTree{};
   }
 
-  std::map<int, int> to_compact;
+  std::unordered_map<int, int> to_compact;
+  to_compact.reserve(n);
   for (int i = 0; i < n; i++) to_compact[unique_vars[i]] = i;
 
   std::vector<std::vector<int>> supports_compact;
@@ -418,13 +419,10 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
   std::vector<int> order;
   order.reserve(n);
 
-  // Store elimination cliques as bitsets (each n/64 words).
-  std::vector<uint64_t> elim_bits(static_cast<size_t>(n) * words, 0);
-  auto elim_row = [&](int i) -> uint64_t* {
-    return &elim_bits[static_cast<size_t>(i) * words];
-  };
-  // Also track their sizes for later sorting.
-  std::vector<int> elim_size(n, 0);
+  // Build "later" sets directly during elimination instead of from bitsets.
+  std::vector<std::vector<int>> later(static_cast<size_t>(n));
+  std::vector<int> parent_col(static_cast<size_t>(n), -1);
+  std::vector<int> child_count(static_cast<size_t>(n), 0);
 
   std::vector<uint64_t> clique_mask(words);
   std::vector<int> nbrs;
@@ -456,11 +454,8 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
       for (int u : nbrs) has_eliminated_neighbor[u] = 1;
     }
 
-    // Record elimination clique bitset = {best} ∪ nbrs
-    auto* eb = elim_row(best);
-    std::memcpy(eb, rb, words * sizeof(uint64_t));
-    eb[best >> 6] |= (1ULL << (best & 63));  // include self
-    elim_size[best] = static_cast<int>(nbrs.size()) + 1;
+    // Build later[best] = living neighbors (exactly those eliminated after best).
+    later[static_cast<size_t>(best)] = nbrs;
 
     // Build clique mask from neighbors
     std::memset(clique_mask.data(), 0, words * sizeof(uint64_t));
@@ -496,32 +491,17 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
   // ===================================================================
   // Phase 2: CHOLMOD-like supernode forest from elimination columns
   // ===================================================================
+  // later[v] was built during elimination.  Sort by elimination position
+  // and compute parent_col / child_count.
   std::vector<int> pos(static_cast<size_t>(n), -1);
   for (int k = 0; k < n; ++k) {
     pos[static_cast<size_t>(order[static_cast<size_t>(k)])] = k;
   }
-
-  std::vector<std::vector<int>> later(static_cast<size_t>(n));
-  std::vector<int> parent_col(static_cast<size_t>(n), -1);
-  std::vector<int> child_count(static_cast<size_t>(n), 0);
   for (int k = 0; k < n; ++k) {
     const int v = order[static_cast<size_t>(k)];
-    std::vector<int> lv;
-    const auto* ev = elim_row(v);
-    for (int w = 0; w < words; ++w) {
-      uint64_t bits = ev[w];
-      while (bits) {
-        const int b = __builtin_ctzll(bits);
-        const int u = (w << 6) + b;
-        if (u < n && u != v && pos[static_cast<size_t>(u)] > k) {
-          lv.push_back(u);
-        }
-        bits &= (bits - 1);
-      }
-    }
+    auto& lv = later[static_cast<size_t>(v)];
     std::sort(lv.begin(), lv.end(),
               [&](int a, int b) { return pos[static_cast<size_t>(a)] < pos[static_cast<size_t>(b)]; });
-    later[static_cast<size_t>(v)] = lv;
     if (!lv.empty()) {
       parent_col[static_cast<size_t>(v)] = lv.front();
       child_count[static_cast<size_t>(lv.front())]++;
@@ -572,13 +552,18 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
   for (int si = 0; si < k; ++si) {
     const auto& cols = super_cols[static_cast<size_t>(si)];
     const int first = cols.front();
-    std::set<int> bag_set(cols.begin(), cols.end());
-    for (int u : later[static_cast<size_t>(first)]) {
-      bag_set.insert(u);
-    }
+    // Build bag = sorted union of cols and later[first].
+    // Both are small; merge-sort is faster than std::set.
+    std::vector<int> merged;
+    merged.reserve(cols.size() + later[static_cast<size_t>(first)].size());
+    merged.insert(merged.end(), cols.begin(), cols.end());
+    merged.insert(merged.end(), later[static_cast<size_t>(first)].begin(),
+                  later[static_cast<size_t>(first)].end());
+    std::sort(merged.begin(), merged.end());
+    merged.erase(std::unique(merged.begin(), merged.end()), merged.end());
     auto& bag = cliques[static_cast<size_t>(si)];
-    bag.reserve(bag_set.size());
-    for (int v : bag_set) {
+    bag.reserve(merged.size());
+    for (int v : merged) {
       bag.push_back(unique_vars[static_cast<size_t>(v)]);
     }
     std::sort(bag.begin(), bag.end());
