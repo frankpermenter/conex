@@ -1,134 +1,108 @@
 Tree Solver Refactoring Plan: Structured Subsystem Support
 ==========================================================
 
-Goal: Allow the tree solver to exploit structure (diagonal + low-rank)
-in supernode blocks instead of always using dense factorization.
-For sparse least-squares, every constraint A contributes A^T A which
-is rank-m, so cliques can be factored in O(n*r^2) instead of O(n^3).
+Goal: Exploit the fact that each LinearConstraint contributes A^T W A
+(rank m) to its clique. Instead of materializing the dense Gram matrix
+and factoring it in O(n^3), keep A and use Woodbury in O(n*r^2).
 
 Current state (done):
-- LowRankPlusDiagonalSubsystem: Woodbury-based factor/solve for D + UU^T
+- LowRankPlusDiagonalSubsystem: Woodbury factor/solve for D + UU^T
 - LowRankDiagonalAdapter: bypasses lazy evaluator, writes d/U directly
-- LowRankDiagonalDataSource: interface for providing d/U data
 - UpdateData() and variables() are virtual on the adapter base class
-- Tests pass for single-clique solve, Schur complement, adapter path
+- Tests: single-clique solve, Schur complement, adapter UpdateData
 
-Key design principle:
-  Providers describe their own contributions in their own natural format.
-  The tree solver mediates: it collects contributions per clique, picks
-  a subsystem type, and translates. Providers never see subsystem types.
+What exists today that can be removed for the structured path:
+  WorkspaceLinear       -- holds W (weights), temps, weighted_constraints
+  GramEvaluator         -- computes (WA)^T(WA) block-by-block
+  LazySymmetricMatrix   -- interface for block-by-block Gram extraction
+  WriteSymmetricLazy    -- contributor writes lazy blocks into subsystem storage
+  Constraint::workspace -- only exists for WorkspaceLinear
+  owned_workspace_memory_ in Decompose -- allocates WorkspaceLinear buffers
 
-Architecture:
-
-  Provider            Tree Solver              Subsystem
-  --------            -----------              ---------
-  "I have A (m x n)   Collects per clique:     LowRankPlusDiagonal:
-   on variables v"     stacks A^T into U,       stores D + UU^T,
-                       picks subsystem type      factors via Woodbury
-
-  Provider is just:
-    variables() -> which variables
-    rows()      -> rank of my contribution (= rows of A)
-    WriteRows(dest, start_row, elim_positions) -> write A into a slot
-
-  The provider does NOT know about D, U, subsystems, or Woodbury.
-  The tree solver does the stacking: U = [A1^T | A2^T | A3^T].
-
-Subsystem selection per clique:
-  total_rank = sum of provider.rows() for all providers in this clique
-  n = clique size (supernodes)
-  if total_rank < n:
-    Use LowRankPlusDiagonalSubsystem (O(n * r^2) factorization)
-  else:
-    Fall back to dense (current LLT/RLDLT path, O(n^3))
-
-  The crossover is automatic — no per-provider "am I dense or structured?"
-  flag needed. A single large constraint that fills the whole clique
-  naturally triggers the dense fallback.
+This entire chain exists to materialize A^T W A into dense storage.
+With Woodbury, the subsystem holds A directly (as U = A^T) and W
+folds into D or into U via sqrt(W)*A.
 
 Remaining work:
 
-1. Provider interface
-------------------------
-New interface for least-squares contributions:
+1. New Decompose path that keeps A instead of creating LinearConstraint
+--------------------------------------------------------------------------
+SparseLinearConstraintAssembler::Decompose currently creates
+LinearConstraint objects (which allocate WorkspaceLinear, GramEvaluator).
 
-  class IConstraintProvider {
-    virtual std::vector<int> variables() const = 0;
-    virtual int rows() const = 0;
-    virtual void WriteRows(Eigen::Ref<MatrixXd> dest,
-                           const std::vector<int>& elim_positions) const = 0;
+Add an alternative that produces lightweight data holders:
+
+  struct ConstraintBlock {
+    MatrixXd A;          // m x n_clique
+    VectorXd b;          // m
+    vector<int> variables;
   };
 
-WriteRows writes the constraint matrix A (m x n_clique) into dest,
-reordered to elimination order. The tree solver calls this during
-UpdateData to populate U in the subsystem.
+Decompose already computes these (the RowGroup struct is identical).
+The new path skips LinearConstraint/workspace creation entirely.
 
-LinearConstraint implements this: WriteRows just copies A (possibly
-reordered by elim_positions).
-
-2. Tree solver stacking logic
----------------------------------
-In UpdateAssemblerData (or a new structured equivalent):
-  For each clique with structured providers:
-    auto& sys = clique's LowRankPlusDiagonalSubsystem;
-    sys.diagonal().setZero();        // or add regularization
-    sys.low_rank_factor().setZero();
-    int col = 0;
-    for (auto* provider : providers_for_clique) {
-      // provider writes A into U.block(0, col, n, provider->rows())^T
-      provider->WriteRows(U_block, elim_positions);
-      col += provider->rows();
-    }
-
-The tree solver owns this loop. Providers just write rows.
-
-3. Subsystem creation
-------------------------
-During Finalize, per clique:
-  total_rank = sum of rows across providers
+2. Tree solver factory: per-clique rank check and subsystem selection
+------------------------------------------------------------------------
+In MakeTreeSolver, after Decompose:
+  For each clique, sum the row counts of all ConstraintBlocks assigned to it.
+  total_rank = sum of m_i
   n = supernode size
+
   if total_rank < n:
-    create LowRankPlusDiagonalSubsystem
-    pre-allocate U as (n x total_rank)
+    Create LowRankPlusDiagonalSubsystem
+    Stack: U = [A1^T | A2^T | ...]  (n x total_rank)
+    d = 0 (or regularization)
   else:
-    create LLTSolver / DynamicSubsystem (current path)
+    Fall back to current dense path (LinearConstraint + lazy evaluator)
 
-No CreateSubsystem() on the provider — the tree solver decides.
+The crossover is automatic. No flags, no per-constraint annotations.
 
-4. Wire into SparseLinearConstraint pipeline
-------------------------------------------------
-Currently: SparseLinearConstraintAssembler::Decompose() creates
-LinearConstraint objects -> lazy evaluator -> dense subsystem.
-
-Change: Decompose() creates IConstraintProvider objects instead.
-Each holds its A block and variable list. The tree solver factory
-(MakeTreeSolver) collects them, computes total rank per clique,
-and creates the appropriate subsystem.
-
-For A of size m x n_clique: contribution is A^T A = (A^T)(A^T)^T,
-so U = A^T (n_clique x m). Provider just writes A; tree solver
-transposes into U.
-
-5. Refactor class hierarchy (deferred)
+3. UpdateData for the structured path
 -----------------------------------------
-Current: SupernodalAssemblerBase -> Constraint -> LinearConstraint
-         KKTAssemblerToSubsystemAdapter + SubmatrixContributor
+Each structured clique needs an adapter whose UpdateData() writes
+the stacked A^T into the subsystem. Two options:
 
-Target:
-  ICliqueProblem        -- variables(), get_cliques(), Decompose()
-  IConstraintProvider   -- rows(), WriteRows()
-  LinearConstraint      -- implements both
-  SubmatrixContributor  -- internal to dense fallback path only
+  a) One LowRankDiagonalAdapter per clique that holds references to
+     all ConstraintBlocks for that clique. UpdateData stacks them.
 
-The lazy evaluator path (GetLazyEvaluator, WriteSymmetricLazy,
-SubmatrixContributor) stays as the dense fallback but moves out of
-the base interfaces.
+  b) One adapter per ConstraintBlock, each writing into a column range
+     of the subsystem's U. Requires the subsystem to pre-allocate U
+     with the right total rank.
 
-6. Remove GetLazyEvaluator from assembler base
---------------------------------------------------
-Once the structured path handles the common case, GetLazyEvaluator
-becomes internal to the dense fallback adapter. Not on any base class.
+Option (a) is simpler. The adapter replaces the current per-constraint
+KKTAssemblerToSubsystemAdapter + SubmatrixContributor chain.
 
-Ordering: 1 -> 3 -> 4 -> 2 -> 5 -> 6
-(Provider interface first since it's new and isolated. Then subsystem
-creation and pipeline wiring. Hierarchy refactor last.)
+4. Handle weights (W)
+------------------------
+Currently W lives in WorkspaceLinear and is used by GramEvaluator to
+compute A^T W A. With the structured path:
+
+  D + UU^T  where  U = sqrt(W) * A^T
+
+Or equivalently: D + A^T W A, where D absorbs any diagonal contribution
+and U = (sqrt(W) * A)^T.
+
+For the initial implementation, W = I (unweighted least squares).
+Weighted case: the data source multiplies A by sqrt(W) before writing.
+This keeps the subsystem unchanged.
+
+5. Cleanup: remove dead code from structured path
+-----------------------------------------------------
+Once the structured path works end-to-end, for cliques that use it:
+- No WorkspaceLinear allocation
+- No GramEvaluator
+- No LazySymmetricMatrix dispatch
+- No SubmatrixContributor::WriteSymmetricLazy
+- No Constraint::workspace() / do_get_workspace()
+
+These stay for the dense fallback (total_rank >= n). Eventually, if
+all LS cliques use the structured path, LinearConstraint can be
+simplified to just (A, b, variables) with no workspace/evaluator.
+
+6. Remove GetLazyEvaluator from base classes
+------------------------------------------------
+GetLazyEvaluator on SupernodalAssemblerBase and Constraint is only
+needed for the dense path. Move it into the dense-specific adapter.
+Base interfaces become: variables(), get_cliques(), Decompose().
+
+Ordering: 1 -> 2 -> 3 -> 4 -> 5 -> 6
