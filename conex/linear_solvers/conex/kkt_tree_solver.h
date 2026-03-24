@@ -232,7 +232,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void SetFactorizationMode(bool left_looking);
   void SetScatterToParent(bool enable);
   void SetNumThreads(int num_threads);
-  void SetParallelizeRootsOnly(bool enable);
   void SetUseRecursiveSolve(bool enable) { use_recursive_solve_ = enable; }
   void EnableAutoUpdateAtAssemble(bool enable) {
     auto_update_assemblers_ = enable;
@@ -281,7 +280,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<int> subsystem_to_parent_;
   bool auto_update_assemblers_ = false;
   int num_threads_ = 1;
-  bool parallelize_roots_only_ = false;
   bool use_recursive_solve_ = false;
   // Leaf-parallel factorization: launch tasks from leaves, propagate up.
   std::vector<KKTSubsystemBase*> leaves_;

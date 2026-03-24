@@ -162,58 +162,6 @@ GTEST_TEST(Multithreading, ParallelRecursiveSolve) {
   EXPECT_NEAR((sol1 - sol3).norm(), 0, 1e-10 * x_true.norm());
 }
 
-// Test parallelize-roots-only with block-diagonal sparsity.
-// Block-diagonal structure produces independent subtrees (multiple roots).
-GTEST_TEST(Multithreading, ParallelizeRootsOnly) {
-  srand(33);
-  int num_blocks = 8;
-  int rows_per_block = 10;
-  int cols_per_block = 5;
-
-  std::vector<MatrixXd> blocks(num_blocks);
-  for (int i = 0; i < num_blocks; i++) {
-    blocks[i] = MatrixXd::Random(rows_per_block, cols_per_block);
-  }
-  auto A_sparse = BlockDiagonal(blocks);
-  int num_vars = A_sparse.cols();
-
-  VectorXd x_true = VectorXd::Random(num_vars);
-  MatrixXd A_dense(A_sparse);
-  VectorXd rhs = A_dense.transpose() * (A_dense * x_true);
-
-  // Single-threaded reference.
-  auto s1 = MakeSetup(A_sparse);
-  SolverConfiguration config1;
-  config1.num_threads = 1;
-  auto solver1 = MakeTreeSolver(&s1.cm, config1);
-  ASSERT_TRUE(solver1->AssembleAndFactor());
-  VectorXd sol1 = solver1->Solve(rhs);
-  EXPECT_NEAR((sol1 - x_true).norm(), 0, 1e-8 * x_true.norm());
-
-  // Multi-threaded with parallelize_roots_only = true.
-  auto s2 = MakeSetup(A_sparse);
-  SolverConfiguration config2;
-  config2.num_threads = 4;
-  auto solver2 = MakeTreeSolver(&s2.cm, config2);
-  solver2->SetParallelizeRootsOnly(true);
-  ASSERT_TRUE(solver2->AssembleAndFactor());
-  VectorXd sol2 = solver2->Solve(rhs);
-  EXPECT_NEAR((sol2 - x_true).norm(), 0, 1e-8 * x_true.norm());
-  EXPECT_NEAR((sol1 - sol2).norm(), 0, 1e-10 * x_true.norm());
-
-  // Also test with recursive solve path.
-  auto s3 = MakeSetup(A_sparse);
-  SolverConfiguration config3;
-  config3.num_threads = 4;
-  auto solver3 = MakeTreeSolver(&s3.cm, config3);
-  solver3->SetParallelizeRootsOnly(true);
-  solver3->SetUseRecursiveSolve(true);
-  ASSERT_TRUE(solver3->AssembleAndFactor());
-  VectorXd sol3 = solver3->Solve(rhs);
-  EXPECT_NEAR((sol3 - x_true).norm(), 0, 1e-8 * x_true.norm());
-  EXPECT_NEAR((sol1 - sol3).norm(), 0, 1e-10 * x_true.norm());
-}
-
 // Test leaf-parallel factorization on various graph structures.
 // Each leaf gets a worker thread; the last child to finish a parent
 // propagates up the tree.
