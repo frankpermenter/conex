@@ -614,10 +614,7 @@ void T::AllocateArenaAndBind(int rhs_cols) {
   size_t workspace_bytes = 0;
   for (const auto* subsystem : subsystems_) {
     const auto& sn = subsystem->supernodes();
-    int sn_rows = 0;
-    if (!sn.empty()) {
-      sn_rows = sn.back() - sn.front() + 1;
-    }
+    int sn_rows = static_cast<int>(sn.size());
     int sep_rows = static_cast<int>(subsystem->separators().size());
     workspace_bytes += align(sn_rows * rhs_cols * sizeof(double));
     workspace_bytes += align(sn_rows * rhs_cols * sizeof(double));
@@ -654,10 +651,7 @@ void T::AllocateArenaAndBind(int rhs_cols) {
   size_t ws_cursor = 0;
   for (auto* subsystem : subsystems_) {
     const auto& sn = subsystem->supernodes();
-    int sn_rows = 0;
-    if (!sn.empty()) {
-      sn_rows = sn.back() - sn.front() + 1;
-    }
+    int sn_rows = static_cast<int>(sn.size());
     int sep_rows = static_cast<int>(subsystem->separators().size());
 
     ws_cursor = align(ws_cursor);
