@@ -96,7 +96,7 @@ OffsetPattern DetectUniformStridePattern(
   return pattern;
 }
 
-void AddOffsetBlocks(Eigen::Ref<Eigen::MatrixXd> destination,
+void BlockwiseIncrement(Eigen::Ref<Eigen::MatrixXd> destination,
                      Eigen::Ref<const Eigen::MatrixXd> source,
                      const std::vector<KKTSubsystemBase::Offset>& row_offsets,
                      const std::vector<KKTSubsystemBase::Offset>& col_offsets) {
@@ -137,9 +137,9 @@ void PartialScatter(const KKTSubsystemBase* source, KKTSubsystemBase* destinatio
   auto destination_supernode = destination->supernode_submatrix();
   auto destination_separator_rows = destination->separator_rows();
   const auto source_separator_schur = source->separator_schur_complement();
-  AddOffsetBlocks(destination_supernode, source_separator_schur,
+  BlockwiseIncrement(destination_supernode, source_separator_schur,
                   supernode_offsets, supernode_offsets);
-  AddOffsetBlocks(destination_separator_rows, source_separator_schur,
+  BlockwiseIncrement(destination_separator_rows, source_separator_schur,
                   separator_offsets, supernode_offsets);
 }
 
@@ -154,11 +154,11 @@ void Scatter(const KKTSubsystemBase* source,
   const auto& separator_offsets =
       destination->local_separator_to_source_separator(source);
   const auto source_separator_schur = source->separator_schur_complement();
-  AddOffsetBlocks(destination->supernode_submatrix(), source_separator_schur,
+  BlockwiseIncrement(destination->supernode_submatrix(), source_separator_schur,
                   supernode_offsets, supernode_offsets);
-  AddOffsetBlocks(destination->separator_rows(), source_separator_schur,
+  BlockwiseIncrement(destination->separator_rows(), source_separator_schur,
                   separator_offsets, supernode_offsets);
-  AddOffsetBlocks(destination->separator_schur_complement(),
+  BlockwiseIncrement(destination->separator_schur_complement(),
                   source_separator_schur, separator_offsets, separator_offsets);
 }
 
@@ -171,9 +171,9 @@ void AccumulateUpdate(const KKTSubsystemBase* source,
   const auto& separator_offsets =
       destination->local_separator_to_source_separator(source);
   const auto source_separator_schur = source->separator_schur_complement();
-  AddOffsetBlocks(supernode_delta, source_separator_schur, supernode_offsets,
+  BlockwiseIncrement(supernode_delta, source_separator_schur, supernode_offsets,
                   supernode_offsets);
-  AddOffsetBlocks(separator_delta, source_separator_schur, separator_offsets,
+  BlockwiseIncrement(separator_delta, source_separator_schur, separator_offsets,
                   supernode_offsets);
 }
 
