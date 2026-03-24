@@ -105,9 +105,12 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     }
     for (int ci = 0; ci < num_cliques; ++ci) {
       int sn_size = static_cast<int>(clique_tree.supernodes[ci].size());
-      // Only use structured when rank is meaningfully smaller than sn_size.
-      // With ratio threshold 0.5, a 10-supernode clique needs rank < 5.
-      if (clique_rank[ci] > 0 && clique_rank[ci] * 2 < sn_size) {
+      // Only use structured for leaf cliques (no children scatter into them).
+      bool is_leaf = true;
+      for (int j = 0; j < num_cliques; ++j) {
+        if (clique_tree.node_to_parent[j] == ci) { is_leaf = false; break; }
+      }
+      if (is_leaf && clique_rank[ci] > 0 && clique_rank[ci] < sn_size) {
         use_structured[ci] = true;
       }
     }
