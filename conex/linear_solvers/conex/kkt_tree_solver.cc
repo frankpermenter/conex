@@ -490,6 +490,12 @@ void T::SetFactorizationMode(bool left_looking) {
   }
 }
 
+void T::SetScatterToParent(bool enable) {
+  for (auto s : subsystems_) {
+    s->SetScatterToParent(enable);
+  }
+}
+
 void T::AllocateArenaAndBind(int rhs_cols) {
   constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
   auto align = [kAlign](size_t v) {

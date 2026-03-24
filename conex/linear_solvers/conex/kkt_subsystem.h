@@ -137,6 +137,7 @@ class KKTSubsystemBase {
   //  virtual Eigen::Ref<const Eigen::MatrixXd> separator_columns() const = 0;
 
   void SetFactorizationMode(bool left_looking) { left_looking_ = left_looking; }
+  void SetScatterToParent(bool enable) { scatter_to_parent_ = enable; }
   void SetSeparators(const std::vector<int>& separators) {
     separators_ = separators;
   }
@@ -280,6 +281,7 @@ class KKTSubsystemBase {
   std::vector<int> separators_;
   std::vector<int> supernodes_;
   bool left_looking_ = true;
+  bool scatter_to_parent_ = false;
   bool variable_set_equals_sorted_supernodes_;
   bool variable_set_equals_sorted_separators_;
   int num_threads_ = 1;

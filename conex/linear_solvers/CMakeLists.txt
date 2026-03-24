@@ -80,7 +80,7 @@ target_link_libraries(benchmark
   sparse_linear_constraint
   clique_ordering
 )
-target_compile_options(benchmark PRIVATE -O2 -DNDEBUG -fno-omit-frame-pointer)
+target_compile_options(benchmark PRIVATE -O2 -fno-omit-frame-pointer -DEIGEN_RUNTIME_NO_MALLOC)
 target_link_libraries(benchmark openblas)
 
 include(GoogleTest)

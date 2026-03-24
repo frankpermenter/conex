@@ -15,8 +15,12 @@
 namespace conex {
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+using Clock = std::chrono::high_resolution_clock;
 
-// Chain of k cliques, supernode size s, overlap (separator) sep.
+double us(Clock::time_point t0, Clock::time_point t1) {
+  return std::chrono::duration<double, std::micro>(t1 - t0).count();
+}
+
 Eigen::SparseMatrix<double> MakeChain(int s, int sep, int k, int rpc) {
   int nv = k * s + sep;
   int cs = s + sep;
@@ -38,24 +42,10 @@ Eigen::SparseMatrix<double> MakeChain(int s, int sep, int k, int rpc) {
   return A_unperm * P;
 }
 
-}  // namespace conex
-
-int main() {
-  using namespace conex;
-  srand(42);
-
-  const int s = 10, sep = 10, k = 30;
-  const int rpc = s + sep + s;
-  const int num_iters = 5000;
-
-  auto A = MakeChain(s, sep, k, rpc);
+double BenchAssembleAndFactor(const Eigen::SparseMatrix<double>& A,
+                              bool scatter_to_parent, int iters) {
   int nv = A.cols();
-
-  VectorXd x_true = VectorXd::Random(nv);
-  Eigen::MatrixXd Ad(A);
-  VectorXd rhs = Ad.transpose() * (Ad * x_true);
   VectorXd b0 = VectorXd::Zero(A.rows());
-
   auto slc = std::make_unique<SparseLinearConstraint>(A, b0);
   std::set<int> vs;
   for (const auto& sup : slc->row_supports()) vs.insert(sup.begin(), sup.end());
@@ -65,21 +55,67 @@ int main() {
   cm.AddCustomAssembler(asm_.get());
   SolverConfiguration cfg;
   cfg.num_threads = 1;
+  cfg.tree.max_merge_supernode_size = 0;
   auto solver = MakeTreeSolver(&cm, cfg);
+  if (scatter_to_parent) {
+    solver->SetScatterToParent(true);
+  }
 
   // Warm up.
   solver->AssembleAndFactor();
-  solver->Solve(rhs);
 
-  // Hot loop.
-  for (int i = 0; i < num_iters; i++) {
-    solver->AssembleAndFactor();
-    VectorXd sol = solver->Solve(rhs);
+  // Verify correctness.
+  VectorXd x_true = VectorXd::Random(nv);
+  MatrixXd Ad(A);
+  VectorXd rhs = Ad.transpose() * (Ad * x_true);
+  VectorXd sol = solver->Solve(rhs);
+  double err = (sol - x_true).norm() / x_true.norm();
+  if (err > 1e-8) {
+    fprintf(stderr, "ERROR: residual %.2e (scatter_to_parent=%d)\n",
+            err, scatter_to_parent);
   }
 
-  solver->AssembleAndFactor();
-  VectorXd sol = solver->Solve(rhs);
-  printf("chain s=%d sep=%d k=%d  n=%d  iters=%d  err=%.2e\n",
-         s, sep, k, nv, num_iters, (sol - x_true).norm() / x_true.norm());
+  // Benchmark.
+  auto t0 = Clock::now();
+  for (int i = 0; i < iters; i++) {
+    solver->AssembleAndFactor();
+  }
+  auto t1 = Clock::now();
+  return us(t0, t1) / iters;
+}
+
+}  // namespace conex
+
+int main() {
+  using namespace conex;
+
+  printf("%-30s  %8s %8s %8s\n", "Graph", "Legacy", "ScatPar", "Speedup");
+  printf("%s\n", std::string(65, '-').c_str());
+
+  struct Case { int s; int sep; int k; };
+  std::vector<Case> cases = {
+      {1, 10, 30}, {1, 10, 60}, {1, 20, 30},
+      {5, 10, 30}, {5, 10, 60},
+      {10, 10, 30}, {10, 10, 60},
+      {10, 20, 10}, {10, 20, 30},
+  };
+
+  for (const auto& c : cases) {
+    srand(42);
+    int rpc = c.s + c.sep + c.s;
+    int nv = c.k * c.s + c.sep;
+    auto A = MakeChain(c.s, c.sep, c.k, rpc);
+    int iters = std::max(50, 5000 / nv);
+
+    double legacy = BenchAssembleAndFactor(A, false, iters);
+    double scatter = BenchAssembleAndFactor(A, true, iters);
+
+    char label[64];
+    snprintf(label, sizeof(label), "chain s=%d sep=%d k=%d n=%d",
+             c.s, c.sep, c.k, nv);
+    printf("%-30s  %7.0fus %7.0fus  %5.2fx\n",
+           label, legacy, scatter, legacy / scatter);
+  }
+
   return 0;
 }

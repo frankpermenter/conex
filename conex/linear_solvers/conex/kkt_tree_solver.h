@@ -230,6 +230,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void Finalize(const CliqueTree& clique_tree, int rhs_cols = 1);
 
   void SetFactorizationMode(bool left_looking);
+  void SetScatterToParent(bool enable);
   void SetNumThreads(int num_threads);
   void SetParallelizeRootsOnly(bool enable);
   void SetUseRecursiveSolve(bool enable) { use_recursive_solve_ = enable; }
