@@ -494,29 +494,33 @@ void T::CreateSubsystems(const std::vector<bool>& needs_indefinite) {
 
 void T::ComputeEliminationOrder(const CliqueTree& clique_tree) {
   SetEliminationTree(clique_tree.node_to_parent);
-  SetEliminationOrder(ComputePostOrdering());
-  ComputeSeparatorOffsets();
-}
 
-void T::ComputeSolveOrder() {
+  // Single post-order traversal: assign elimination positions, collect
+  // solve order, and identify leaves.
+  std::vector<int> variable_to_elimination_position(number_of_variables());
+  int offset = 0;
   solve_order_.clear();
   solve_order_.reserve(subsystems_.size());
+  leaves_.clear();
+
   std::function<void(KKTSubsystemBase*)> visit = [&](KKTSubsystemBase* node) {
     for (auto* child : node->children()) {
       visit(child);
     }
+    for (auto& s : node->supernodes()) {
+      variable_to_elimination_position.at(s) = offset++;
+    }
     solve_order_.push_back(node);
+    if (node->children().empty()) {
+      leaves_.push_back(node);
+    }
   };
   for (auto* root : roots_) {
     visit(root);
   }
 
-  leaves_.clear();
-  for (auto* s : subsystems_) {
-    if (s->children().empty()) {
-      leaves_.push_back(s);
-    }
-  }
+  SetEliminationOrder(variable_to_elimination_position);
+  ComputeSeparatorOffsets();
 }
 
 void T::BindContributors(const std::vector<int>& adapter_to_clique) {
@@ -556,7 +560,6 @@ void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
   }
 
   ComputeEliminationOrder(clique_tree);
-  ComputeSolveOrder();
   BindContributors(adapter_to_clique);
   AllocateSolveArena();
 }
@@ -578,15 +581,6 @@ void T::SetEliminationTree(const std::vector<int>& parent) {
   }
 }
 
-std::vector<int> T::ComputePostOrdering() const {
-  // Post-order
-  std::vector<int> variable_to_elimination_position(number_of_variables());
-  int first = 0;
-  for (auto r : roots_) {
-    first = r->ComputePostOrdering(first, &variable_to_elimination_position);
-  }
-  return variable_to_elimination_position;
-}
 
 void T::SetFactorizationMode(bool left_looking) {
   for (auto s : subsystems_) {
