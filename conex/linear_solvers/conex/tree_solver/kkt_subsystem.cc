@@ -238,8 +238,12 @@ void T::AccumulateColumnUpdate(
     return;
   }
   AccumulateUpdate(this, target, supernode_delta, separator_delta);
-  for (auto& c : children_) {
-    c->AccumulateColumnUpdate(target, supernode_delta, separator_delta);
+  if (!scatter_to_parent_) {
+    // With scatter-to-parent, separator_schur_complement already includes
+    // all descendant contributions — recursion would double-count.
+    for (auto& c : children_) {
+      c->AccumulateColumnUpdate(target, supernode_delta, separator_delta);
+    }
   }
 }
 
