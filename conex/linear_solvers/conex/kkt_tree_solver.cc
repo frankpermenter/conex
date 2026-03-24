@@ -487,9 +487,9 @@ void T::CreateSubsystems(const std::vector<bool>& needs_indefinite) {
         subsystems_.push_back(ds.get());
         owned_subsystems_.push_back(std::move(ds));
     } else {
-      auto ds = std::make_unique<DynamicSubsystem>();
-      subsystems_.push_back(ds.get());
-      owned_subsystems_.push_back(std::move(ds));
+      auto s = std::make_unique<LLTSolver>();
+      subsystems_.push_back(s.get());
+      owned_subsystems_.push_back(std::move(s));
     }
   }
 }
