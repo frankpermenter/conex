@@ -104,6 +104,10 @@ class DenseKKTSubsystemStorage final : public KKTSubsystemStorage {
   void BindArenaMemory(double* ptr, size_t bytes, size_t num_supernodes,
                        size_t num_separators) override;
 
+  AlignedMatrixMap& supernode_map() { return supernode_submatrix_; }
+  AlignedMatrixMap& separator_rows_map() { return separator_rows_; }
+  AlignedMatrixMap& separator_schur_map() { return separator_schur_complement_; }
+
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override {
     return supernode_submatrix_;
   }
@@ -337,6 +341,10 @@ class KKTSubsystem : public KKTSubsystemBase {
 
   size_t RequiredArenaBytes() const override;
   void BindArenaMemory(double* ptr, size_t bytes) override;
+
+  DenseKKTSubsystemStorage& dense_storage() {
+    return static_cast<DenseKKTSubsystemStorage&>(*storage_);
+  }
 
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override {
     return storage_->supernode_submatrix();
