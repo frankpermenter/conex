@@ -513,6 +513,14 @@ class WorkingLLTSubsystem : public KKTSubsystem {
     llt_.matrixL().transpose().solveInPlace(y);
   }
 
+  // Use cached L^{-1} S^T (computed in DoComputeSeparatorSchurComplement)
+  // to avoid recomputing the triangular solve during backward scatter.
+  void DoBackwardScatterFromGatheredSeparator(
+      Eigen::Ref<MatrixXd> output,
+      Eigen::Ref<const MatrixXd> gathered_sep) const override {
+    output.noalias() = temp_ * gathered_sep;
+  }
+
   Eigen::LLT<MatrixXd> llt_;
   MatrixXd temp_;
 };
