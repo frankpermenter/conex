@@ -786,4 +786,52 @@ GTEST_TEST(SparseLeastSquares, ScatterToParent) {
   }
 }
 
+// Verify repeated AssembleAndFactor + Solve produces the same answer.
+GTEST_TEST(SparseLeastSquares, RepeatedAssembleAndFactor) {
+  srand(55);
+  int n = 60, bw = 10, rpg = 8;
+  int ng = n - bw + 1, nr = rpg * ng;
+  std::vector<Eigen::Triplet<double>> triplets;
+  for (int g = 0; g < ng; g++)
+    for (int r = 0; r < rpg; r++)
+      for (int j = 0; j < bw; j++)
+        triplets.emplace_back(g * rpg + r, g + j,
+                              0.5 + static_cast<double>(rand()) / RAND_MAX);
+  Eigen::SparseMatrix<double> A(nr, n);
+  A.setFromTriplets(triplets.begin(), triplets.end());
+
+  Eigen::VectorXd b0 = Eigen::VectorXd::Zero(nr);
+  auto slc = std::make_unique<SparseLinearConstraint>(A, b0);
+  std::set<int> vs;
+  for (const auto& s : slc->row_supports()) vs.insert(s.begin(), s.end());
+  std::vector<int> av(vs.begin(), vs.end());
+  ConstraintManager cm(n);
+  auto asm_ = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc), av);
+  cm.AddCustomAssembler(asm_.get());
+  SolverConfiguration cfg;
+  auto solver = MakeTreeSolver(&cm, cfg);
+
+  VectorXd x_true = VectorXd::Random(n);
+  MatrixXd Ad(A);
+  VectorXd rhs = Ad.transpose() * (Ad * x_true);
+
+  // First solve.
+  ASSERT_TRUE(solver->AssembleAndFactor());
+  VectorXd sol1 = solver->Solve(rhs);
+  EXPECT_NEAR((sol1 - x_true).norm(), 0, 1e-8 * x_true.norm());
+
+  // Second solve — must produce identical result.
+  ASSERT_TRUE(solver->AssembleAndFactor());
+  VectorXd sol2 = solver->Solve(rhs);
+  EXPECT_NEAR((sol2 - x_true).norm(), 0, 1e-8 * x_true.norm());
+  EXPECT_EQ((sol1 - sol2).norm(), 0);
+
+  // Third solve — same.
+  ASSERT_TRUE(solver->AssembleAndFactor());
+  VectorXd sol3 = solver->Solve(rhs);
+  EXPECT_NEAR((sol3 - x_true).norm(), 0, 1e-8 * x_true.norm());
+  EXPECT_EQ((sol1 - sol3).norm(), 0);
+}
+
 }  // namespace conex
