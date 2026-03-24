@@ -4,10 +4,13 @@
 #include <numeric>
 #include <set>
 
+#include "conex/cholesky_solvers.h"
 #include "conex/clique_ordering.h"
 #include "conex/constraint_manager.h"
 #include "conex/equality_constraint.h"
 #include "conex/kkt_solver_factory.h"
+#include "conex/kkt_tree_solver.h"
+#include "conex/static_subsystem.h"
 #include "conex/tree_utils.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
@@ -832,6 +835,87 @@ GTEST_TEST(SparseLeastSquares, RepeatedAssembleAndFactor) {
   VectorXd sol3 = solver->Solve(rhs);
   EXPECT_NEAR((sol3 - x_true).norm(), 0, 1e-8 * x_true.norm());
   EXPECT_EQ((sol1 - sol3).norm(), 0);
+}
+
+// Test using LLTSolver (KKTCholeskySystem) subsystems.
+GTEST_TEST(SparseLeastSquares, LLTSolverSubsystems) {
+  srand(42);
+  int n = 50, bw = 8, rpg = 10;
+  int ng = n - bw + 1, nr = rpg * ng;
+  std::vector<Eigen::Triplet<double>> triplets;
+  for (int g = 0; g < ng; g++)
+    for (int r = 0; r < rpg; r++)
+      for (int j = 0; j < bw; j++)
+        triplets.emplace_back(g * rpg + r, g + j,
+                              0.5 + static_cast<double>(rand()) / RAND_MAX);
+  Eigen::SparseMatrix<double> A(nr, n);
+  A.setFromTriplets(triplets.begin(), triplets.end());
+
+  Eigen::VectorXd b0 = Eigen::VectorXd::Zero(nr);
+  VectorXd x_true = VectorXd::Random(n);
+  MatrixXd Ad(A);
+  VectorXd rhs = Ad.transpose() * (Ad * x_true);
+
+  // Reference: default DynamicSubsystem.
+  auto slc1 = std::make_unique<SparseLinearConstraint>(A, b0);
+  std::set<int> vs;
+  for (const auto& s : slc1->row_supports()) vs.insert(s.begin(), s.end());
+  std::vector<int> av(vs.begin(), vs.end());
+  ConstraintManager cm1(n);
+  auto asm1 = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc1), av);
+  cm1.AddCustomAssembler(asm1.get());
+  SolverConfiguration cfg;
+  auto solver1 = MakeTreeSolver(&cm1, cfg);
+  ASSERT_TRUE(solver1->AssembleAndFactor());
+  VectorXd ref = solver1->Solve(rhs);
+  EXPECT_NEAR((ref - x_true).norm(), 0, 1e-8 * x_true.norm());
+
+  // LUSolver: pre-create LUSolver subsystems, then Finalize.
+  auto slc2 = std::make_unique<SparseLinearConstraint>(A, b0);
+  ConstraintManager cm2(n);
+  auto asm2 = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc2), av);
+  cm2.AddCustomAssembler(asm2.get());
+
+  // Build clique tree to know how many subsystems we need.
+  auto clique_assemblers = cm2.clique_assemblers();
+  std::vector<std::vector<int>> cliques;
+  for (const auto* a : clique_assemblers) {
+    auto c = a->get_cliques();
+    cliques.insert(cliques.end(), c.begin(), c.end());
+  }
+  std::vector<int> dual_vars;
+  std::vector<std::vector<int>> maximal_cliques;
+  CliqueTree ct = MakeCliqueTreeMinDegreeFromRowSupports(
+      cliques, &maximal_cliques, cfg.tree.max_merge_supernode_size,
+      cfg.tree.supernode_reorder_method, dual_vars);
+
+  auto solver2 = std::make_unique<SymmetricLinearSystemTreeSolver>();
+  for (size_t i = 0; i < ct.supernodes.size(); i++) {
+    solver2->AddSubsystem(std::make_unique<LLTSolver>());
+  }
+
+  // Decompose and add adapters.
+  std::vector<SupernodalAssemblerBase*> decomposed;
+  for (auto* a : clique_assemblers) {
+    auto subs = a->Decompose(maximal_cliques);
+    decomposed.insert(decomposed.end(), subs.begin(), subs.end());
+  }
+  int num_primal = cm2.GetNumberOfVariables();
+  for (auto* a : decomposed) {
+    auto adapter = std::make_unique<KKTAssemblerToSubsystemAdapter>(a);
+    adapter->set_contribution_type(
+        a->is_positive_definite() ? ContributionType::kPositiveDefinite
+                                  : ContributionType::kIndefinite);
+    solver2->push_back(std::move(adapter));
+  }
+  solver2->Finalize(ct);
+  solver2->EnableAutoUpdateAtAssemble(true);
+  ASSERT_TRUE(solver2->AssembleAndFactor());
+  VectorXd sol2 = solver2->Solve(rhs);
+  EXPECT_NEAR((sol2 - x_true).norm(), 0, 1e-8 * x_true.norm());
+  EXPECT_NEAR((sol2 - ref).norm(), 0, 1e-10 * ref.norm());
 }
 
 }  // namespace conex

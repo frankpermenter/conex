@@ -233,6 +233,14 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void SetScatterToParent(bool enable);
   void SetNumThreads(int num_threads);
   void SetUseRecursiveSolve(bool enable) { use_recursive_solve_ = enable; }
+  // Add a pre-created subsystem. Must be called before Finalize.
+  // If any subsystems are added, Finalize will use them instead of
+  // auto-creating DynamicSubsystem instances.
+  void AddSubsystem(std::unique_ptr<KKTSubsystemBase> subsystem) {
+    subsystems_.push_back(subsystem.get());
+    owned_subsystems_.push_back(std::move(subsystem));
+  }
+
   void EnableAutoUpdateAtAssemble(bool enable) {
     auto_update_assemblers_ = enable;
   }
