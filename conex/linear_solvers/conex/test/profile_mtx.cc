@@ -177,7 +177,6 @@ ProfileResult ProfileMatrix(const std::string& name,
 
   // --- Stage 4: Finalize (elimination order, subsystem creation, arena) ---
   auto t6 = Clock::now();
-  tree_solver->SetUseGenericFactorization(true);
   tree_solver->Finalize(clique_tree);
   tree_solver->SetFactorizationMode(cfg.tree.left_looking);
   tree_solver->EnableAutoUpdateAtAssemble(true);
