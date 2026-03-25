@@ -290,6 +290,7 @@ int main(int argc, char** argv) {
 
   SolverConfiguration cfg;
   bool randomize = false;
+  bool drop_zero_cols = false;
   std::vector<int> sweep_threads;
   std::vector<int> sweep_merge;
   std::vector<std::string> mtx_paths;
@@ -316,6 +317,8 @@ int main(int argc, char** argv) {
       cfg.tree.use_generic_factorization = true;
     } else if (arg == "--randomize") {
       randomize = true;
+    } else if (arg == "--drop-zero-cols") {
+      drop_zero_cols = true;
     } else if (arg == "--sweep-threads" && i + 1 < argc) {
       sweep_threads = parse_list(argv[++i]);
     } else if (arg == "--sweep-merge" && i + 1 < argc) {
@@ -345,6 +348,31 @@ int main(int argc, char** argv) {
       fprintf(stderr, "  Skipping %s (square, %dx%d)\n",
               name.c_str(), (int)A.rows(), (int)A.cols());
       continue;
+    }
+    if (drop_zero_cols) {
+      // Remove columns with no nonzeros.
+      std::vector<bool> has_nz(A.cols(), false);
+      for (int k = 0; k < A.outerSize(); ++k)
+        for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it)
+          has_nz[it.col()] = true;
+      std::vector<int> col_map;  // old col -> new col
+      for (int c = 0; c < A.cols(); ++c)
+        if (has_nz[c]) col_map.push_back(c);
+      if (static_cast<int>(col_map.size()) < A.cols()) {
+        int new_cols = static_cast<int>(col_map.size());
+        std::vector<Eigen::Triplet<double>> trips;
+        std::vector<int> inv_map(A.cols(), -1);
+        for (int i = 0; i < new_cols; ++i) inv_map[col_map[i]] = i;
+        for (int k = 0; k < A.outerSize(); ++k)
+          for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it)
+            if (inv_map[it.col()] >= 0)
+              trips.emplace_back(it.row(), inv_map[it.col()], it.value());
+        fprintf(stderr, "  %s: dropped %d zero columns (%d -> %d)\n",
+                name.c_str(), A.cols() - new_cols, (int)A.cols(), new_cols);
+        Eigen::SparseMatrix<double> A2(A.rows(), new_cols);
+        A2.setFromTriplets(trips.begin(), trips.end());
+        A = std::move(A2);
+      }
     }
     if (randomize) {
       // Replace values with N(0,1) random entries, preserving sparsity.
