@@ -420,14 +420,33 @@ class LUSolver : public KKTSubsystem {
 // All contributions are assumed positive-definite (LLT) unless MarkIndefinite()
 // is called, in which case LU is used.  Created automatically by the tree
 // solver when the contributor workflow is used without explicit subsystems.
+// Factorization mode for DynamicSubsystem.
+enum class IndefiniteFactorization { kRLDLT, kLU };
+
 class DynamicSubsystem : public KKTSubsystem {
  public:
   void MarkIndefinite() override { indefinite_ = true; }
   bool is_indefinite() const { return indefinite_; }
+  void SetIndefiniteFactorization(IndefiniteFactorization f) {
+    indefinite_factorization_ = f;
+  }
 
  private:
+  bool use_lu() const {
+    return indefinite_ &&
+           indefinite_factorization_ == IndefiniteFactorization::kLU;
+  }
+  bool use_rldlt() const {
+    return indefinite_ &&
+           indefinite_factorization_ == IndefiniteFactorization::kRLDLT;
+  }
+
   bool DoEliminateSupernodeColumns() override {
-    if (indefinite_) {
+    if (use_lu()) {
+      lu_.compute(supernode_submatrix());
+      return lu_.determinant() != 0;
+    }
+    if (use_rldlt()) {
       rldlt_.compute(supernode_submatrix());
       return rldlt_.info() == Eigen::Success;
     }
@@ -437,9 +456,16 @@ class DynamicSubsystem : public KKTSubsystem {
 
   void DoComputeSeparatorSchurComplement() override {
     if (separator_rows().rows() == 0 || separator_rows().cols() == 0) return;
-    const int sn = separator_rows().cols();
     const int sep = separator_rows().rows();
-    if (indefinite_) {
+    if (use_lu()) {
+      temp_.noalias() = lu_.solve(separator_rows().transpose());
+      for (int j = 0; j < sep; j++) {
+        separator_schur_complement().col(j).tail(sep - j).noalias() -=
+            separator_rows().bottomRows(sep - j) * temp_.col(j);
+      }
+      return;
+    }
+    if (use_rldlt()) {
       temp_.noalias() = rldlt_.solve(separator_rows().transpose());
       for (int j = 0; j < sep; j++) {
         separator_schur_complement().col(j).tail(sep - j).noalias() -=
@@ -458,7 +484,9 @@ class DynamicSubsystem : public KKTSubsystem {
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
     if (y.rows() == 0) return;
-    if (indefinite_) {
+    if (use_lu()) {
+      y = lu_.solve(y);
+    } else if (use_rldlt()) {
       y = rldlt_.solve(y);
     } else {
       llt_.matrixL().solveInPlace(y);
@@ -471,11 +499,15 @@ class DynamicSubsystem : public KKTSubsystem {
     if (!indefinite_) {
       llt_.matrixL().transpose().solveInPlace(y);
     }
+    // LU and RLDLT: right factor is identity (Schur complement mode).
   }
 
   bool indefinite_ = false;
+  IndefiniteFactorization indefinite_factorization_ =
+      IndefiniteFactorization::kRLDLT;
   Eigen::LLT<MatrixXd> llt_;
   Eigen::RLDLT<MatrixXd> rldlt_;
+  Eigen::PartialPivLU<MatrixXd> lu_;
   MatrixXd temp_;
 };
 

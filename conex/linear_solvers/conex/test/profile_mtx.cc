@@ -315,6 +315,8 @@ int main(int argc, char** argv) {
       cfg.tree.supernode_reorder_method = std::stoi(argv[++i]);
     } else if (arg == "--generic") {
       cfg.tree.use_generic_factorization = true;
+    } else if (arg == "--lu") {
+      cfg.tree.use_lu_for_indefinite = true;
     } else if (arg == "--randomize") {
       randomize = true;
     } else if (arg == "--drop-zero-cols") {

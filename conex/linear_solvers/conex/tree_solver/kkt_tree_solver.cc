@@ -490,10 +490,16 @@ void T::CreateSubsystems(const std::vector<bool>& needs_indefinite) {
     } else if (needs_indefinite[i]) {
         auto ds = std::make_unique<DynamicSubsystem>();
         ds->MarkIndefinite();
+        if (use_lu_for_indefinite_) {
+          ds->SetIndefiniteFactorization(IndefiniteFactorization::kLU);
+        }
         subsystems_.push_back(ds.get());
         owned_subsystems_.push_back(std::move(ds));
     } else if (use_generic_factorization_) {
         auto ds = std::make_unique<DynamicSubsystem>();
+        if (use_lu_for_indefinite_) {
+          ds->SetIndefiniteFactorization(IndefiniteFactorization::kLU);
+        }
         subsystems_.push_back(ds.get());
         owned_subsystems_.push_back(std::move(ds));
     } else {

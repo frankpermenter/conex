@@ -234,6 +234,9 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void SetUseGenericFactorization(bool enable) {
     use_generic_factorization_ = enable;
   }
+  void SetUseLUForIndefinite(bool enable) {
+    use_lu_for_indefinite_ = enable;
+  }
   void EnableAutoUpdateAtAssemble(bool enable) {
     auto_update_assemblers_ = enable;
   }
@@ -297,6 +300,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   int num_threads_ = 1;
   bool use_recursive_solve_ = false;
   bool use_generic_factorization_ = false;
+  bool use_lu_for_indefinite_ = false;
   // Leaf-parallel factorization: launch tasks from leaves, propagate up.
   std::vector<KKTSubsystemBase*> leaves_;
   bool DoAssembleAndFactorLeafParallel();
