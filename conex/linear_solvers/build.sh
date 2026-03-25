@@ -9,8 +9,8 @@ if [ -f CMakeCache.txt ]; then
   cached_dir=$(grep 'CMAKE_HOME_DIRECTORY:INTERNAL' CMakeCache.txt 2>/dev/null | cut -d= -f2)
   if [ -n "$cached_dir" ] && [ "$cached_dir" != "$(pwd)" ]; then
     echo "Stale CMake cache (was: $cached_dir, now: $(pwd)). Reconfiguring."
-    rm -f CMakeCache.txt
-    rm -rf CMakeFiles/
+    rm -f CMakeCache.txt cmake_install.cmake Makefile CTestTestfile.cmake
+    rm -rf CMakeFiles/ _deps/ Testing/
   fi
 fi
 
