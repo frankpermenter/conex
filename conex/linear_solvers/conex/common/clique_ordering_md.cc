@@ -720,13 +720,6 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
     }
   }
 
-#if 0  // CHOLMOD reference comparison (disabled)
-#if CONEX_MD_HAS_CHOLMOD
-  {
-    const TreeAndCliques ref = BuildFromCholmodReference(supports_compact, unique_vars, n);
-  }
-#endif
-#endif
 
   if (maximal_cliques_out) *maximal_cliques_out = cliques;
   return ct;

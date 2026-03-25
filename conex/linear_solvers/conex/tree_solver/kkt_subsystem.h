@@ -159,9 +159,6 @@ class KKTSubsystemBase {
   };
 
   void Initialize() { DoInitialize(); }
-  void AddSupernode(int i) { supernodes_.push_back(i); }
-
-  void AddSeparator(int i) { separators_.push_back(i); }
 
   int ComputePostOrdering(int offset,
                           std::vector<int>* variable_to_elimination_position);

@@ -170,23 +170,6 @@ class CholeskySolver : public KKTSubsystemBase {
     }
     return factored_;
   }
-#if 0
-  void DoComputeSeparatorSchurComplement() override {
-    separator_columns_ = separator_rows_.transpose();
-    if (separator_rows_.size()) {
-      llt_->matrixL().solveInPlace(separator_columns_);
-      int n = separator_schur_complement_.rows();
-      int d = separator_rows_.cols();
-       if (OnlyLowerTriangularPart(n, d)) {
-        for (int j = 0; j < n; j++) {
-          separator_schur_complement_.col(j).tail(n - j).noalias() -= separator_columns_.rightCols(n - j).transpose() * separator_columns_.col(j);
-        }
-        } else {
-          separator_schur_complement_.noalias() -= separator_columns_.transpose() * separator_columns_;
-      }
-    }
-  }
-#endif
 
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
@@ -300,126 +283,6 @@ class CholeskySolver : public KKTSubsystemBase {
   bool factored_ = false;
 };
 
-template <typename FactorizationType>
-class KKTCholeskySystem : public KKTSubsystem {
- public:
-  bool DoEliminateSupernodeColumns() override {
-    return factorization_->DoEliminateSupernodeColumns();
-  }
-
-  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    factorization_->DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(y);
-  }
-
-  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    factorization_->DoApplyInverseOfRightFactorOfSupernodeSubmatrix(y);
-  }
-
-  void DoComputeSeparatorSchurComplement() override {
-    factorization_->DoComputeSeparatorSchurComplement();
-  }
-
-  void DoBackwardScatter(Eigen::Ref<MatrixXd> output,
-                         Eigen::Ref<const MatrixXd> input) const override {
-    if (!factorization_->cache_arena_ptr_ &&
-        factorization_->schur_complement_factor_cached_.size() == 0) {
-      KKTSubsystemBase::DoBackwardScatter(output, input);
-      return;
-    }
-    Eigen::Ref<Eigen::MatrixXd> gathered =
-        ws3().topLeftCorner(static_cast<int>(separators_.size()),
-                                        input.cols());
-    for (int i = 0; i < static_cast<int>(separators_.size()); ++i) {
-      gathered.row(i) = input.row(separators_.at(i));
-    }
-    output.noalias() = factorization_->cache_map().transpose() * gathered;
-  }
-  void DoBackwardScatterFromGatheredSeparator(
-      Eigen::Ref<MatrixXd> output,
-      Eigen::Ref<const MatrixXd> gathered_sep) const override {
-    factorization_->DoBackwardScatterFromGatheredSeparator(output, gathered_sep);
-  }
-
-  static size_t AlignUpBytes(size_t v) {
-    constexpr size_t a = EIGEN_MAX_ALIGN_BYTES;
-    return ((v + a - 1) / a) * a;
-  }
-
-  size_t RequiredArenaBytes() const override {
-    size_t base = KKTSubsystem::RequiredArenaBytes();
-    const size_t sn = supernodes_.size();
-    const size_t sep = separators_.size();
-    if (sn > 0 && sep > 0) {
-      base = AlignUpBytes(base);
-      base += AlignUpBytes(sep * sn * sizeof(double));
-      base += AlignUpBytes(sn * sep * sizeof(double));
-    }
-    return base;
-  }
-
-  void BindArenaMemory(double* ptr, size_t bytes) override {
-    size_t base_bytes = KKTSubsystem::RequiredArenaBytes();
-    KKTSubsystem::BindArenaMemory(ptr, base_bytes);
-    const size_t sn = supernodes_.size();
-    const size_t sep = separators_.size();
-    if (sn > 0 && sep > 0) {
-      char* base = reinterpret_cast<char*>(ptr);
-      size_t cursor = AlignUpBytes(base_bytes);
-      factorization_temp_ptr_ = reinterpret_cast<double*>(base + cursor);
-      cursor += AlignUpBytes(sep * sn * sizeof(double));
-      factorization_cache_ptr_ = reinterpret_cast<double*>(base + cursor);
-    }
-  }
-
-  void DoInitialize() override {
-    factorization_ = std::make_unique<FactorizationType>(
-        supernode_submatrix(), separator_rows(), separator_schur_complement());
-    if (factorization_temp_ptr_) {
-      factorization_->BindFactorizationBuffers(
-          factorization_temp_ptr_, factorization_cache_ptr_,
-          static_cast<int>(separators_.size()),
-          static_cast<int>(supernodes_.size()));
-    }
-  }
-
- protected:
-  std::unique_ptr<FactorizationType> factorization_;
-  double* factorization_temp_ptr_ = nullptr;
-  double* factorization_cache_ptr_ = nullptr;
-};
-
-class LUSolver : public KKTSubsystem {
- public:
-  bool DoEliminateSupernodeColumns() override {
-    lu_.compute(supernode_submatrix());
-    return lu_.determinant() != 0;
-  }
-
-  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    y = lu_.solve(y);
-  }
-
-  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
-      Eigen::Ref<MatrixXd> y) const override {
-    CONEX_NOOP(y);
-  }
-
-  void DoComputeSeparatorSchurComplement() override {
-    separator_schur_complement() -=
-        separator_rows() * lu_.solve(separator_rows().transpose());
-  }
-
-  Eigen::PartialPivLU<Eigen::MatrixXd> lu_;
-};
-
-
-// A subsystem that dynamically selects LLT or LU factorization at runtime.
-// All contributions are assumed positive-definite (LLT) unless MarkIndefinite()
-// is called, in which case LU is used.  Created automatically by the tree
-// solver when the contributor workflow is used without explicit subsystems.
 // Factorization mode for DynamicSubsystem.
 enum class IndefiniteFactorization { kRLDLT, kLU };
 
@@ -621,13 +484,5 @@ class WorkingLLTSubsystem : public KKTSubsystem {
 
 
 using LLTSolver = WorkingLLTSubsystem;
-//using LLTSolver =
-//    KKTCholeskySystem<CholeskySolver<Eigen::LLT<Eigen::MatrixXd>, false>>;
-
-
-//template <bool is_positive_definite>
-//using FactorizationMethod =
-//    typename std::conditional<is_positive_definite, LLTSolver, LUSolver>::type;
-
 
 }  // namespace conex
