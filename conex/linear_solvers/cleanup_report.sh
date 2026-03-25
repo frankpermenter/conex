@@ -65,18 +65,26 @@ fi
 SRC_DIR=conex
 
 # 3a. Unused classes: declared in .h, never referenced in other files.
+# Also checks for internal usage: using aliases, member types, base classes
+# within the same file (beyond the class declaration line itself).
 UNUSED_CLASSES=""
 while IFS= read -r match; do
   cls=$(echo "$match" | sed -E 's/.*class ([A-Z][A-Za-z_0-9]*).*/\1/')
   decl_file=$(echo "$match" | cut -d: -f1)
+  decl_line=$(echo "$match" | cut -d: -f2)
   # Count files referencing this class (excluding declaration file).
   ref_count=$(grep -rl "\b${cls}\b" "$SRC_DIR" --include='*.h' --include='*.cc' 2>/dev/null \
     | grep -v "$decl_file" | wc -l)
-  # Also check for using aliases within the same file (e.g., "using X = ClassName;").
-  alias_count=$(grep -cE "using.*=.*${cls}" "$decl_file" 2>/dev/null || true)
-  alias_count=${alias_count:-0}
-  if [ "$ref_count" -eq 0 ] && [ "$alias_count" -eq 0 ]; then
-    line_num=$(echo "$match" | cut -d: -f2)
+  # Check for internal usage in the same file (excluding the declaration line
+  # and comments). Catches member types, base classes, using aliases.
+  internal_uses=$(grep -n "\b${cls}\b" "$decl_file" 2>/dev/null \
+    | grep -v "^${decl_line}:" \
+    | grep -v '^\s*//' \
+    | grep -v '^[0-9]*:\s*//' \
+    | grep -v '#if 0' \
+    | wc -l)
+  if [ "$ref_count" -eq 0 ] && [ "$internal_uses" -le 0 ]; then
+    line_num=$decl_line
     UNUSED_CLASSES="${UNUSED_CLASSES}| \`${cls}\` | \`${decl_file}:${line_num}\` | No references outside declaring file |\n"
   fi
 done < <(grep -rn '^class [A-Z]' "$SRC_DIR" --include='*.h' | grep -v '//' | grep -v 'template')
@@ -103,7 +111,7 @@ done < <(grep -rn '^\s*//\s*\(using\|template\)' "$SRC_DIR" --include='*.h' --in
 
 # 3d. Unused methods: AddSupernode, AddSeparator, set_variable_indices, variable_indices_.
 UNUSED_MEMBERS=""
-for name in AddSupernode AddSeparator set_variable_indices variable_indices_; do
+for name in AddSupernode AddSeparator; do
   decl=$(grep -rn "\b${name}\b" "$SRC_DIR" --include='*.h' | head -1)
   if [ -n "$decl" ]; then
     decl_file=$(echo "$decl" | cut -d: -f1)
