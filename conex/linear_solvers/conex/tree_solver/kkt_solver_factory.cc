@@ -103,14 +103,59 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     for (const auto& rb : raw_blocks) {
       clique_rank[rb.clique_index] += rb.A.rows();
     }
+
+    // Compute elimination ordering from clique tree (post-order traversal).
+    int num_primal_vars = c->GetNumberOfVariables();
+    vector<int> var_to_elim(num_primal_vars, -1);
+    {
+      int epos = 0;
+      for (int ci : clique_tree.post_order_position_to_clique) {
+        for (int v : clique_tree.supernodes[ci]) {
+          if (v >= 0 && v < num_primal_vars) var_to_elim[v] = epos++;
+        }
+      }
+    }
+
+    // Remap supernodes and separators to elimination order and sort.
+    auto remapped_sn = clique_tree.supernodes;
+    auto remapped_sep = clique_tree.separators;
+    for (auto& sn : remapped_sn) {
+      for (auto& v : sn) {
+        if (v >= 0 && v < num_primal_vars) v = var_to_elim[v];
+      }
+      std::sort(sn.begin(), sn.end());
+    }
+    for (auto& sep : remapped_sep) {
+      for (auto& v : sep) {
+        if (v >= 0 && v < num_primal_vars) v = var_to_elim[v];
+      }
+      std::sort(sep.begin(), sep.end());
+    }
+
+    // Check if any child's separator overlaps the parent's supernodes.
+    // If so, the child scatters a dense Schur complement block into the
+    // parent's supernode storage, producing off-diagonal entries.
+    // Only cliques with NO supernode overlap from children can use the
+    // diagonal-only structured path.
+    auto has_no_supernode_scatter = [&](int ci) -> bool {
+      for (int j = 0; j < num_cliques; ++j) {
+        if (clique_tree.node_to_parent[j] != ci) continue;
+        // Check if child j's separator overlaps parent ci's supernodes.
+        const auto& parent_sn = remapped_sn[ci];
+        const auto& child_sep = remapped_sep[j];
+        for (int v : child_sep) {
+          if (std::binary_search(parent_sn.begin(), parent_sn.end(), v)) {
+            return false;  // overlap → dense scatter into supernode
+          }
+        }
+      }
+      return true;
+    };
+
     for (int ci = 0; ci < num_cliques; ++ci) {
       int sn_size = static_cast<int>(clique_tree.supernodes[ci].size());
-      // Only use structured for leaf cliques (no children scatter into them).
-      bool is_leaf = true;
-      for (int j = 0; j < num_cliques; ++j) {
-        if (clique_tree.node_to_parent[j] == ci) { is_leaf = false; break; }
-      }
-      if (is_leaf && clique_rank[ci] > 0 && clique_rank[ci] < sn_size) {
+      if (clique_rank[ci] > 0 && clique_rank[ci] < sn_size &&
+          has_no_supernode_scatter(ci)) {
         use_structured[ci] = true;
       }
     }
