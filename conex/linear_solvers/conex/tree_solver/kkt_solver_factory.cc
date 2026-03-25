@@ -132,20 +132,22 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
       std::sort(sep.begin(), sep.end());
     }
 
-    // Check if any child's separator overlaps the parent's supernodes.
-    // If so, the child scatters a dense Schur complement block into the
-    // parent's supernode storage, producing off-diagonal entries.
-    // Only cliques with NO supernode overlap from children can use the
-    // diagonal-only structured path.
-    auto has_no_supernode_scatter = [&](int ci) -> bool {
+    // Check that all children's scatter into the parent's supernode block
+    // is diagonal.  A child scatters its separator Schur complement (dense)
+    // into the parent.  The scatter is diagonal only when the child has at
+    // most ONE separator variable overlapping the parent's supernodes
+    // (a scalar 1×1 update).  Multiple overlapping variables produce
+    // off-diagonal cross-terms from the dense Schur complement.
+    auto has_diagonal_scatter = [&](int ci) -> bool {
+      const auto& parent_sn = remapped_sn[ci];
       for (int j = 0; j < num_cliques; ++j) {
         if (clique_tree.node_to_parent[j] != ci) continue;
-        // Check if child j's separator overlaps parent ci's supernodes.
-        const auto& parent_sn = remapped_sn[ci];
         const auto& child_sep = remapped_sep[j];
+        int overlap_count = 0;
         for (int v : child_sep) {
           if (std::binary_search(parent_sn.begin(), parent_sn.end(), v)) {
-            return false;  // overlap → dense scatter into supernode
+            overlap_count++;
+            if (overlap_count > 1) return false;
           }
         }
       }
@@ -155,7 +157,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     for (int ci = 0; ci < num_cliques; ++ci) {
       int sn_size = static_cast<int>(clique_tree.supernodes[ci].size());
       if (clique_rank[ci] > 0 && clique_rank[ci] < sn_size &&
-          has_no_supernode_scatter(ci)) {
+          has_diagonal_scatter(ci)) {
         use_structured[ci] = true;
       }
     }
