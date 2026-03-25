@@ -14,5 +14,9 @@ if [ -f CMakeCache.txt ]; then
   fi
 fi
 
+# Touch all source files to fix stale timestamps from shared folders
+# (VirtualBox/Vagrant don't propagate mtime across the VM boundary).
+find conex/ -name '*.h' -o -name '*.cc' | xargs touch 2>/dev/null
+
 cmake -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE:-Release}" . "$@"
 make -j"$(nproc)"
