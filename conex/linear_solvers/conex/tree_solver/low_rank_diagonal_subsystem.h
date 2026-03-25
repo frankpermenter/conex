@@ -127,6 +127,13 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystemBase {
     // Absorb diagonal updates from supernode_submatrix (e.g., regularization
     // or children's diagonal Schur complement contributions).
     if (sn_diag_map_.data() != nullptr && sn_diag_map_.rows() == n) {
+      // Verify no significant off-diagonal entries were written.
+      // Off-diagonals would require a dense factorization path.
+      double diag_norm = sn_diag_map_.diagonal().squaredNorm();
+      double off_diag_norm = sn_diag_map_.squaredNorm() - diag_norm;
+      CONEX_DEMAND(off_diag_norm < 1e-20 * (diag_norm + 1.0),
+                   "LowRankPlusDiagonalSubsystem received off-diagonal "
+                   "supernode updates. Use a dense subsystem instead.");
       d_ += sn_diag_map_.diagonal();
     }
 
