@@ -35,6 +35,12 @@ add_library(clique_ordering
 )
 target_link_libraries(clique_ordering PUBLIC tree_solver)
 
+# --- Structural rank ---
+add_library(structural_rank
+  conex/common/structural_rank.cc
+)
+target_link_libraries(structural_rank PUBLIC Eigen3::Eigen)
+
 # --- Constraint infrastructure ---
 add_library(constraints
   conex/common/linear_constraint.cc
