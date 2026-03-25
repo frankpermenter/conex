@@ -124,6 +124,11 @@ GTEST_TEST(SparseLeastSquares, BlockDiagonal) {
 
   EXPECT_NEAR((result.x - x_true).norm(), 0, 1e-8 * x_true.norm());
 
+  // Verify normal equation: A^T A x = rhs (= A^T A x_true).
+  VectorXd normal_residual = A_dense.transpose() * (A_dense * result.x) - rhs;
+  EXPECT_NEAR(normal_residual.norm(), 0, 1e-8 * rhs.norm())
+      << "Normal equation not satisfied";
+
   std::cout << "SparseLeastSquares (block-diagonal " << A.rows() << "x"
             << A.cols() << ", " << A.nonZeros() << " nnz):\n"
             << "  construction:       " << result.construction_time_us
@@ -161,6 +166,11 @@ GTEST_TEST(SparseLeastSquares, Banded) {
   auto result = SparseLeastSquares(A, rhs);
 
   EXPECT_NEAR((result.x - x_true).norm(), 0, 1e-8 * x_true.norm());
+
+  // Verify normal equation: A^T A x = rhs.
+  VectorXd normal_residual = A_dense.transpose() * (A_dense * result.x) - rhs;
+  EXPECT_NEAR(normal_residual.norm(), 0, 1e-8 * rhs.norm())
+      << "Normal equation not satisfied";
 
   std::cout << "SparseLeastSquares (banded " << A.rows() << "x" << A.cols()
             << ", " << A.nonZeros() << " nnz):\n"
