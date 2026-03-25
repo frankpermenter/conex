@@ -176,6 +176,55 @@ TEST(LowRankDiagonal, SchurComplement) {
   EXPECT_LT(err, 1e-10) << "Schur complement error: " << err;
 }
 
+// Test diagonal update via supernode_submatrix().
+TEST(LowRankDiagonal, DiagonalUpdate) {
+  const int n = 12;
+  const int r = 3;
+
+  srand(42);
+  Eigen::VectorXd d = Eigen::VectorXd::Random(n).array().abs() + 0.1;
+  Eigen::MatrixXd U = Eigen::MatrixXd::Random(n, r);
+  Eigen::VectorXd d_update = Eigen::VectorXd::Random(n).array().abs() + 0.1;
+
+  // Reference: (d + d_update) + UU^T
+  Eigen::VectorXd d_total = d + d_update;
+  Eigen::MatrixXd A_full = d_total.asDiagonal();
+  A_full.noalias() += U * U.transpose();
+
+  Eigen::VectorXd x_true = Eigen::VectorXd::Random(n);
+  Eigen::VectorXd rhs = A_full * x_true;
+
+  LowRankPlusDiagonalSubsystem subsystem;
+  std::vector<int> supernodes(n);
+  std::iota(supernodes.begin(), supernodes.end(), 0);
+  subsystem.SetSupernodes(supernodes);
+  subsystem.SetSeparators({});
+
+  size_t arena_bytes = subsystem.RequiredArenaBytes();
+  void* arena = nullptr;
+  posix_memalign(&arena, 64, arena_bytes);
+  std::memset(arena, 0, arena_bytes);
+  subsystem.BindArenaMemory(static_cast<double*>(arena), arena_bytes);
+  subsystem.Initialize();
+
+  // Set base D and U.
+  subsystem.SetData(d, U);
+
+  // Write diagonal update into supernode_submatrix.
+  subsystem.supernode_submatrix().diagonal() = d_update;
+
+  ASSERT_TRUE(subsystem.AssembleAndFactor());
+
+  Eigen::MatrixXd y = rhs;
+  subsystem.ApplyInverseOfLeftFactor(y);
+  subsystem.ApplyInverseOfRightFactor(y);
+
+  double err = (y - x_true).norm() / x_true.norm();
+  EXPECT_LT(err, 1e-12) << "Diagonal update solve error: " << err;
+
+  free(arena);
+}
+
 // Test the adapter's UpdateData path.
 TEST(LowRankDiagonal, AdapterUpdateData) {
   const int n = 8;

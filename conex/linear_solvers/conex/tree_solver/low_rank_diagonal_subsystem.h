@@ -51,15 +51,15 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystemBase {
   Eigen::MatrixXd& low_rank_factor() { return U_; }
   const Eigen::MatrixXd& low_rank_factor() const { return U_; }
 
-  // --- Storage accessors ---
-  // Supernode submatrix is not used; accessing it is a bug.
+  // Supernode submatrix: returns a diagonal-only n×n matrix.
+  // Only the diagonal is meaningful — writing off-diagonal entries
+  // is accepted but they are ignored at factorization time.
+  // The diagonal is added to d_ in DoEliminateSupernodeColumns.
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override {
-    throw std::logic_error(
-        "LowRankPlusDiagonalSubsystem: supernode_submatrix not available");
+    return sn_diag_map_;
   }
   Eigen::Ref<const Eigen::MatrixXd> supernode_submatrix() const override {
-    throw std::logic_error(
-        "LowRankPlusDiagonalSubsystem: supernode_submatrix not available");
+    return sn_diag_map_;
   }
 
   Eigen::Ref<Eigen::MatrixXd> separator_rows() override {
@@ -76,31 +76,40 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystemBase {
     return sep_schur_map_;
   }
 
-  // Arena: only separator storage (no supernode matrix).
+  // Arena: supernode diagonal matrix + separator storage.
+  // The supernode matrix is allocated at full n×n so that children can
+  // scatter into it, but only the diagonal is used at factorization time.
   size_t RequiredArenaBytes() const override {
     const size_t sn = supernodes_.size();
     const size_t sep = separators_.size();
-    if (sep == 0) return 0;
-    constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
     auto align = [](size_t v) {
       constexpr size_t a = EIGEN_MAX_ALIGN_BYTES;
       return ((v + a - 1) / a) * a;
     };
-    return align(sep * sn * sizeof(double)) +
-           align(sep * sep * sizeof(double));
+    size_t bytes = 0;
+    if (sn > 0) bytes += align(sn * sn * sizeof(double));
+    if (sep > 0) {
+      bytes += align(sep * sn * sizeof(double));
+      bytes += align(sep * sep * sizeof(double));
+    }
+    return bytes;
   }
 
   void BindArenaMemory(double* ptr, size_t bytes) override {
     const int sn = static_cast<int>(supernodes_.size());
     const int sep = static_cast<int>(separators_.size());
-    constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
     auto align = [](size_t v) {
       constexpr size_t a = EIGEN_MAX_ALIGN_BYTES;
       return ((v + a - 1) / a) * a;
     };
+    char* base = reinterpret_cast<char*>(ptr);
+    size_t cursor = 0;
+    if (sn > 0) {
+      new (&sn_diag_map_) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
+          reinterpret_cast<double*>(base + cursor), sn, sn);
+      cursor += align(sn * sn * sizeof(double));
+    }
     if (sep > 0) {
-      char* base = reinterpret_cast<char*>(ptr);
-      size_t cursor = 0;
       new (&sep_rows_map_) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
           reinterpret_cast<double*>(base + cursor), sep, sn);
       cursor += align(sep * sn * sizeof(double));
@@ -114,6 +123,12 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystemBase {
     const int n = static_cast<int>(d_.size());
     const int r = static_cast<int>(U_.cols());
     if (n == 0) return true;
+
+    // Absorb diagonal updates from supernode_submatrix (e.g., regularization
+    // or children's diagonal Schur complement contributions).
+    if (sn_diag_map_.data() != nullptr && sn_diag_map_.rows() == n) {
+      d_ += sn_diag_map_.diagonal();
+    }
 
     d_inv_.resize(n);
     for (int i = 0; i < n; ++i) {
@@ -169,7 +184,8 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystemBase {
     (void)y;
   }
 
-  // Separator-only storage maps (bound to arena).
+  // Arena-backed storage maps.
+  Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> sn_diag_map_{nullptr, 0, 0};
   Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> sep_rows_map_{nullptr, 0, 0};
   Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> sep_schur_map_{nullptr, 0, 0};
 
