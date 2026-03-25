@@ -134,12 +134,10 @@ void PartialScatter(const KKTSubsystemBase* source, KKTSubsystemBase* destinatio
       destination->local_supernode_to_source_separator(source);
   const auto& separator_offsets =
       destination->local_separator_to_source_separator(source);
-  auto destination_supernode = destination->supernode_submatrix();
-  auto destination_separator_rows = destination->separator_rows();
   const auto source_separator_schur = source->separator_schur_complement();
-  BlockwiseIncrement(destination_supernode, source_separator_schur,
-                  supernode_offsets, supernode_offsets);
-  BlockwiseIncrement(destination_separator_rows, source_separator_schur,
+  destination->BlockwiseAccumulateIntoSupernode(
+      source_separator_schur, supernode_offsets, supernode_offsets);
+  BlockwiseIncrement(destination->separator_rows(), source_separator_schur,
                   separator_offsets, supernode_offsets);
 }
 
@@ -154,8 +152,8 @@ void Scatter(const KKTSubsystemBase* source,
   const auto& separator_offsets =
       destination->local_separator_to_source_separator(source);
   const auto source_separator_schur = source->separator_schur_complement();
-  BlockwiseIncrement(destination->supernode_submatrix(), source_separator_schur,
-                  supernode_offsets, supernode_offsets);
+  destination->BlockwiseAccumulateIntoSupernode(
+      source_separator_schur, supernode_offsets, supernode_offsets);
   BlockwiseIncrement(destination->separator_rows(), source_separator_schur,
                   separator_offsets, supernode_offsets);
   BlockwiseIncrement(destination->separator_schur_complement(),
@@ -247,12 +245,28 @@ void T::AccumulateColumnUpdate(
   }
 }
 
+void T::AccumulateIntoSupernode(
+    Eigen::Ref<const Eigen::MatrixXd> delta) {
+  supernode_submatrix() += delta;
+}
+
+void T::BlockwiseAccumulateIntoSupernode(
+    Eigen::Ref<const Eigen::MatrixXd> source,
+    const std::vector<Offset>& row_offsets,
+    const std::vector<Offset>& col_offsets) {
+  BlockwiseIncrement(supernode_submatrix(), source, row_offsets, col_offsets);
+}
+
+std::pair<int, int> T::supernode_dimensions() const {
+  auto sn = supernode_submatrix();
+  return {static_cast<int>(sn.rows()), static_cast<int>(sn.cols())};
+}
+
 void T::GatherFromChildren() {
   if (!left_looking_ || children_.empty()) {
     return;
   }
-  const int supernode_rows = supernode_submatrix().rows();
-  const int supernode_cols = supernode_submatrix().cols();
+  auto [supernode_rows, supernode_cols] = supernode_dimensions();
   const int separator_row_count = this->separator_rows().rows();
   const int separator_col_count = this->separator_rows().cols();
   const long long update_entries_per_accumulator =
@@ -311,7 +325,7 @@ void T::GatherFromChildren() {
   }
 
   for (size_t i = 0; i < worker_count; ++i) {
-    supernode_submatrix() += supernode_deltas.at(i);
+    AccumulateIntoSupernode(supernode_deltas.at(i));
     separator_rows() += separator_deltas.at(i);
   }
 }

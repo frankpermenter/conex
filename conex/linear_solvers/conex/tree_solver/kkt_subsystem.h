@@ -214,6 +214,20 @@ class KKTSubsystemBase {
   bool variable_set_equals_sorted_supernodes() {
     return variable_set_equals_sorted_supernodes_;
   }
+  // Virtual scatter hooks for supernode updates.  Scatter/PartialScatter
+  // and GatherFromChildren route through these instead of writing directly
+  // to supernode_submatrix().  Subclasses (e.g., diagonal-only subsystems)
+  // can override to intercept or validate writes.
+  virtual void AccumulateIntoSupernode(
+      Eigen::Ref<const Eigen::MatrixXd> delta);
+  virtual void BlockwiseAccumulateIntoSupernode(
+      Eigen::Ref<const Eigen::MatrixXd> source,
+      const std::vector<Offset>& row_offsets,
+      const std::vector<Offset>& col_offsets);
+  // Supernode dimensions for sizing temporaries (may differ from
+  // supernode_submatrix() shape for structured subsystems).
+  virtual std::pair<int, int> supernode_dimensions() const;
+
   virtual void MarkIndefinite() {}
   virtual size_t RequiredArenaBytes() const { return 0; }
   virtual void BindArenaMemory(double* /*ptr*/, size_t /*bytes*/) {}

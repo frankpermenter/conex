@@ -210,8 +210,9 @@ TEST(LowRankDiagonal, DiagonalUpdate) {
   // Set base D and U.
   subsystem.SetData(d, U);
 
-  // Write diagonal update into supernode_submatrix.
-  subsystem.supernode_submatrix().diagonal() = d_update;
+  // Write diagonal update via AccumulateIntoSupernode.
+  Eigen::MatrixXd diag_matrix = d_update.asDiagonal();
+  subsystem.AccumulateIntoSupernode(diag_matrix);
 
   ASSERT_TRUE(subsystem.AssembleAndFactor());
 
@@ -286,6 +287,59 @@ TEST(LowRankDiagonal, AdapterUpdateData) {
   double U_err = (subsystem.low_rank_factor() - U).norm();
   EXPECT_LT(d_err, 1e-14) << "Diagonal mismatch";
   EXPECT_LT(U_err, 1e-14) << "Low-rank factor mismatch";
+}
+
+// Test that off-diagonal AccumulateIntoSupernode throws.
+TEST(LowRankDiagonal, OffDiagonalAccumulateThrows) {
+  const int n = 5;
+  LowRankPlusDiagonalSubsystem subsystem;
+  std::vector<int> supernodes(n);
+  std::iota(supernodes.begin(), supernodes.end(), 0);
+  subsystem.SetSupernodes(supernodes);
+  subsystem.SetSeparators({});
+  subsystem.SetData(Eigen::VectorXd::Ones(n), Eigen::MatrixXd::Zero(n, 1));
+
+  // Diagonal matrix: should succeed.
+  Eigen::MatrixXd diag = Eigen::VectorXd::Ones(n).asDiagonal();
+  EXPECT_NO_THROW(subsystem.AccumulateIntoSupernode(diag));
+
+  // Dense matrix with off-diagonals: should throw.
+  Eigen::MatrixXd dense = Eigen::MatrixXd::Ones(n, n);
+  EXPECT_THROW(subsystem.AccumulateIntoSupernode(dense), std::runtime_error);
+}
+
+// Test BlockwiseAccumulateIntoSupernode with diagonal offsets.
+TEST(LowRankDiagonal, BlockwiseDiagonalAccumulate) {
+  const int n = 8;
+  const int r = 2;
+  srand(42);
+  Eigen::VectorXd d = Eigen::VectorXd::Random(n).array().abs() + 0.5;
+  Eigen::MatrixXd U = Eigen::MatrixXd::Random(n, r);
+
+  LowRankPlusDiagonalSubsystem subsystem;
+  std::vector<int> supernodes(n);
+  std::iota(supernodes.begin(), supernodes.end(), 0);
+  subsystem.SetSupernodes(supernodes);
+  subsystem.SetSeparators({});
+  subsystem.SetData(d, U);
+
+  // Simulate a diagonal scatter: source is a 3x3 diagonal block,
+  // offset maps positions 2..4 in supernode to positions 0..2 in source.
+  Eigen::MatrixXd source = Eigen::MatrixXd::Zero(4, 4);
+  source(0, 0) = 1.0;
+  source(1, 1) = 2.0;
+  source(2, 2) = 3.0;
+
+  using Offset = KKTSubsystemBase::Offset;
+  std::vector<Offset> offsets = {Offset(2, 0, 3)};
+  subsystem.BlockwiseAccumulateIntoSupernode(source, offsets, offsets);
+
+  EXPECT_DOUBLE_EQ(subsystem.diagonal()(2), d(2) + 1.0);
+  EXPECT_DOUBLE_EQ(subsystem.diagonal()(3), d(3) + 2.0);
+  EXPECT_DOUBLE_EQ(subsystem.diagonal()(4), d(4) + 3.0);
+  // Untouched entries.
+  EXPECT_DOUBLE_EQ(subsystem.diagonal()(0), d(0));
+  EXPECT_DOUBLE_EQ(subsystem.diagonal()(1), d(1));
 }
 
 }  // namespace

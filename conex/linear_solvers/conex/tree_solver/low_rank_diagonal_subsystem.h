@@ -36,9 +36,9 @@ class LowRankDiagonalDataSource {
 // This is efficient when r << n: factorization is O(n r^2) instead of O(n^3).
 //
 // Inherits from KKTSubsystemBase directly (not KKTSubsystem) to avoid
-// allocating a dense n×n supernode matrix that the Woodbury path doesn't use.
-// Only separator storage (separator_rows, separator_schur_complement) is
-// allocated via a small arena.
+// allocating a dense n×n supernode matrix.  Only a diagonal vector (n doubles)
+// and separator storage are arena-allocated.  Scatter operations are
+// intercepted via virtual hooks; off-diagonal supernode writes throw.
 class LowRankPlusDiagonalSubsystem : public KKTSubsystemBase {
  public:
   void SetData(const Eigen::VectorXd& d, const Eigen::MatrixXd& U) {
@@ -51,10 +51,9 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystemBase {
   Eigen::MatrixXd& low_rank_factor() { return U_; }
   const Eigen::MatrixXd& low_rank_factor() const { return U_; }
 
-  // Supernode submatrix: returns a diagonal-only n×n matrix.
-  // Only the diagonal is meaningful — writing off-diagonal entries
-  // is accepted but they are ignored at factorization time.
-  // The diagonal is added to d_ in DoEliminateSupernodeColumns.
+  // Supernode submatrix: returns an n×1 column (the diagonal stored as a
+  // vector).  Indexing (i, j) with j>0 triggers Eigen bounds check.
+  // All scatter writes are routed through the virtual hooks below.
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override {
     return sn_diag_map_;
   }
@@ -76,9 +75,68 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystemBase {
     return sep_schur_map_;
   }
 
-  // Arena: supernode diagonal matrix + separator storage.
-  // The supernode matrix is allocated at full n×n so that children can
-  // scatter into it, but only the diagonal is used at factorization time.
+  // --- Virtual scatter hooks ---
+  std::pair<int, int> supernode_dimensions() const override {
+    int n = static_cast<int>(supernodes_.size());
+    return {n, n};
+  }
+
+  void AccumulateIntoSupernode(
+      Eigen::Ref<const Eigen::MatrixXd> delta) override {
+    double diag_sq = delta.diagonal().squaredNorm();
+    double off_sq = delta.squaredNorm() - diag_sq;
+    CONEX_DEMAND(off_sq < 1e-20 * (diag_sq + 1.0),
+                 "LowRankPlusDiagonalSubsystem: off-diagonal supernode "
+                 "update. Use a dense subsystem for this clique.");
+    d_ += delta.diagonal();
+  }
+
+  void BlockwiseAccumulateIntoSupernode(
+      Eigen::Ref<const Eigen::MatrixXd> source,
+      const std::vector<Offset>& row_offsets,
+      const std::vector<Offset>& col_offsets) override {
+    for (const auto& c : col_offsets) {
+      for (const auto& r : row_offsets) {
+        if (r.first == c.first && r.second == c.second && r.size == c.size) {
+          // Diagonal block: extract diagonal entries.
+          auto blk = source.block(r.second, c.second, r.size, c.size);
+          double diag_sq = blk.diagonal().squaredNorm();
+          double off_sq = blk.squaredNorm() - diag_sq;
+          CONEX_DEMAND(off_sq < 1e-20 * (diag_sq + 1.0),
+                       "LowRankPlusDiagonalSubsystem: off-diagonal in "
+                       "scatter block.");
+          for (int k = 0; k < r.size; ++k) {
+            d_(r.first + k) += source(r.second + k, c.second + k);
+          }
+        } else {
+          // Off-diagonal block: must be zero.
+          auto blk = source.block(r.second, c.second, r.size, c.size);
+          CONEX_DEMAND(blk.squaredNorm() < 1e-20,
+                       "LowRankPlusDiagonalSubsystem: non-zero off-diagonal "
+                       "scatter block.");
+        }
+      }
+    }
+  }
+
+  // Reconstruct full matrix for debug (MakeKKTMatrix).
+  void MakeKKTMatrix(Eigen::MatrixXd* M) const {
+    for (auto* child : children()) child->MakeKKTMatrix(M);
+    const int n = static_cast<int>(supernodes_.size());
+    const int n_sep = static_cast<int>(separators_.size());
+    Eigen::MatrixXd block = d_.head(n).asDiagonal();
+    if (U_.rows() == n && U_.cols() > 0) {
+      block.noalias() += U_ * U_.transpose();
+    }
+    for (int j = 0; j < n; j++)
+      for (int i = 0; i < n; i++)
+        (*M)(supernodes_[i], supernodes_[j]) = block(i, j);
+    for (int j = 0; j < n; j++)
+      for (int i = 0; i < n_sep; i++)
+        (*M)(separators_[i], supernodes_[j]) = separator_rows()(i, j);
+  }
+
+  // Arena: diagonal vector (n doubles) + separator storage.
   size_t RequiredArenaBytes() const override {
     const size_t sn = supernodes_.size();
     const size_t sep = separators_.size();
@@ -87,7 +145,7 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystemBase {
       return ((v + a - 1) / a) * a;
     };
     size_t bytes = 0;
-    if (sn > 0) bytes += align(sn * sn * sizeof(double));
+    if (sn > 0) bytes += align(sn * sizeof(double));
     if (sep > 0) {
       bytes += align(sep * sn * sizeof(double));
       bytes += align(sep * sep * sizeof(double));
@@ -106,8 +164,8 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystemBase {
     size_t cursor = 0;
     if (sn > 0) {
       new (&sn_diag_map_) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
-          reinterpret_cast<double*>(base + cursor), sn, sn);
-      cursor += align(sn * sn * sizeof(double));
+          reinterpret_cast<double*>(base + cursor), sn, 1);
+      cursor += align(sn * sizeof(double));
     }
     if (sep > 0) {
       new (&sep_rows_map_) Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(
@@ -124,17 +182,9 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystemBase {
     const int r = static_cast<int>(U_.cols());
     if (n == 0) return true;
 
-    // Absorb diagonal updates from supernode_submatrix (e.g., regularization
-    // or children's diagonal Schur complement contributions).
+    // Absorb diagonal updates from the arena vector.
     if (sn_diag_map_.data() != nullptr && sn_diag_map_.rows() == n) {
-      // Verify no significant off-diagonal entries were written.
-      // Off-diagonals would require a dense factorization path.
-      double diag_norm = sn_diag_map_.diagonal().squaredNorm();
-      double off_diag_norm = sn_diag_map_.squaredNorm() - diag_norm;
-      CONEX_DEMAND(off_diag_norm < 1e-20 * (diag_norm + 1.0),
-                   "LowRankPlusDiagonalSubsystem received off-diagonal "
-                   "supernode updates. Use a dense subsystem instead.");
-      d_ += sn_diag_map_.diagonal();
+      d_ += sn_diag_map_.col(0);
     }
 
     d_inv_.resize(n);
