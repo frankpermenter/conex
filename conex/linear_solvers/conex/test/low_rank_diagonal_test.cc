@@ -289,6 +289,107 @@ TEST(LowRankDiagonal, AdapterUpdateData) {
   EXPECT_LT(U_err, 1e-14) << "Low-rank factor mismatch";
 }
 
+// Test StackedLowRankAdapter::UpdateData with a multi-block clique
+// that has both supernode and separator variables.
+TEST(LowRankDiagonal, StackedAdapterUpdateData) {
+  const int n_sn = 6, n_sep = 2;
+
+  // Two constraint blocks assigned to this clique.
+  // Block 0: 2 rows touching sn vars {0,1,2} + sep var {6}.
+  // Block 1: 3 rows touching sn vars {3,4,5} + sep var {7}.
+  srand(42);
+  Eigen::MatrixXd A0 = Eigen::MatrixXd::Random(2, 4);  // 2x4 (3 sn + 1 sep)
+  Eigen::MatrixXd A1 = Eigen::MatrixXd::Random(3, 4);  // 3x4 (3 sn + 1 sep)
+
+  std::vector<int> vars0 = {0, 1, 2, 6};
+  std::vector<int> vars1 = {3, 4, 5, 7};
+  std::vector<int> all_vars = {0, 1, 2, 3, 4, 5, 6, 7};
+
+  std::vector<StackedLowRankAdapter::Block> blocks;
+  blocks.push_back({A0, vars0});
+  blocks.push_back({A1, vars1});
+
+  LowRankPlusDiagonalSubsystem subsystem;
+  std::vector<int> supernodes = {0, 1, 2, 3, 4, 5};
+  std::vector<int> separators = {6, 7};
+  subsystem.SetSupernodes(supernodes);
+  subsystem.SetSeparators(separators);
+
+  size_t arena_bytes = subsystem.RequiredArenaBytes();
+  void* arena = nullptr;
+  posix_memalign(&arena, 64, arena_bytes);
+  std::memset(arena, 0, arena_bytes);
+  subsystem.BindArenaMemory(static_cast<double*>(arena), arena_bytes);
+  subsystem.Initialize();
+
+  StackedLowRankAdapter adapter(std::move(blocks), all_vars);
+  adapter.BindSubsystem(&subsystem);
+
+  // Identity elimination position (no reordering).
+  std::vector<int> identity(8);
+  std::iota(identity.begin(), identity.end(), 0);
+  adapter.SetEliminationPosition(identity);
+
+  adapter.UpdateData();
+
+  // Add regularization so D + UU^T is full rank (UU^T alone is rank 5 on 6 vars).
+  subsystem.diagonal().setConstant(n_sn, 0.01);
+
+  // Verify U: should be n_sn x (2+3) = 6x5.
+  EXPECT_EQ(subsystem.low_rank_factor().rows(), n_sn);
+  EXPECT_EQ(subsystem.low_rank_factor().cols(), 5);
+
+  // Verify: U * U^T should equal A_S^T A_S for the supernode block.
+  Eigen::MatrixXd AtA_expected = 0.01 * Eigen::MatrixXd::Identity(n_sn, n_sn);
+  // Block 0 contributes to supernode rows 0,1,2.
+  AtA_expected.block(0, 0, 3, 3) += A0.leftCols(3).transpose() * A0.leftCols(3);
+  // Block 1 contributes to supernode rows 3,4,5.
+  AtA_expected.block(3, 3, 3, 3) += A1.leftCols(3).transpose() * A1.leftCols(3);
+
+  auto& U = subsystem.low_rank_factor();
+  Eigen::MatrixXd DpUUt = subsystem.diagonal().asDiagonal();
+  DpUUt.noalias() += U * U.transpose();
+  double sn_err = (DpUUt - AtA_expected).norm() / AtA_expected.norm();
+  EXPECT_LT(sn_err, 1e-12) << "D + U * U^T mismatch: " << sn_err;
+
+  // Verify separator_rows = A_P^T A_S (unchanged by D).
+  Eigen::MatrixXd sep_rows_expected = Eigen::MatrixXd::Zero(n_sep, n_sn);
+  sep_rows_expected.row(0).head(3) =
+      (A0.col(3).transpose() * A0.leftCols(3));
+  sep_rows_expected.row(1).tail(3) =
+      (A1.col(3).transpose() * A1.leftCols(3));
+
+  double sep_err =
+      (subsystem.separator_rows() - sep_rows_expected).norm() /
+      (sep_rows_expected.norm() + 1e-15);
+  EXPECT_LT(sep_err, 1e-12) << "separator_rows mismatch: " << sep_err;
+
+  // Factor and solve: (D + UU^T) x_sn = rhs_sn, with D = 0.
+  ASSERT_TRUE(subsystem.AssembleAndFactor());
+
+  // Verify Schur complement: sep_schur should be
+  // A_P^T A_P - sep_rows * (UU^T)^{-1} * sep_rows^T.
+  Eigen::MatrixXd ApAp = Eigen::MatrixXd::Zero(n_sep, n_sep);
+  ApAp(0, 0) = A0.col(3).squaredNorm();
+  ApAp(1, 1) = A1.col(3).squaredNorm();
+
+  Eigen::MatrixXd schur_ref = ApAp - sep_rows_expected * AtA_expected.inverse() *
+                                          sep_rows_expected.transpose();
+  auto got = subsystem.separator_schur_complement();
+  double schur_err = 0, schur_norm = 0;
+  for (int j = 0; j < n_sep; j++) {
+    for (int i = j; i < n_sep; i++) {
+      double diff = got(i, j) - schur_ref(i, j);
+      schur_err += diff * diff;
+      schur_norm += schur_ref(i, j) * schur_ref(i, j);
+    }
+  }
+  schur_err = std::sqrt(schur_err / (schur_norm + 1e-15));
+  EXPECT_LT(schur_err, 1e-10) << "Schur complement mismatch";
+
+  free(arena);
+}
+
 // Test that off-diagonal AccumulateIntoSupernode throws.
 TEST(LowRankDiagonal, OffDiagonalAccumulateThrows) {
   const int n = 5;
