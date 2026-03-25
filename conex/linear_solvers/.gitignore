@@ -1,0 +1,30 @@
+# CMake build artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+Testing/
+_deps/
+
+# Build outputs
+*.a
+lib/
+benchmark
+profile_mtx
+low_rank_diagonal_test
+sparse_linear_constraint_test
+multithreading_test
+*_include.cmake
+*_tests.cmake
+
+# Profiling
+perf.data
+perf.data.old
+
+# Editor
+*.swp
+*~
+
+# Scripts output
+run.sh
