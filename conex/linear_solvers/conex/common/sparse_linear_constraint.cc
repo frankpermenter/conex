@@ -233,6 +233,37 @@ void SparseLinearConstraintAssembler::SetWeights(
   }
 }
 
+Eigen::VectorXd SparseLinearConstraintAssembler::ComputeResiduals(
+    const Eigen::VectorXd& x) const {
+  // Compute per-clique residuals and scatter to global vector.
+  // Each constraint holds a dense A_clique and b_clique.
+
+  // Step 1: compute per-constraint residuals.
+  std::vector<Eigen::VectorXd> local_residuals(owned_constraints_.size());
+  for (size_t ci = 0; ci < owned_constraints_.size(); ++ci) {
+    const auto& constraint = owned_constraints_[ci];
+    const auto& vars = constraint->primal_variables();
+    const int nv = static_cast<int>(vars.size());
+
+    Eigen::VectorXd x_local(nv);
+    for (int j = 0; j < nv; ++j) {
+      x_local(j) = x(vars[j]);
+    }
+    local_residuals[ci] = constraint->ComputeResidual(x_local);
+  }
+
+  // Step 2: scatter to global using row_map_ (O(m), not O(m * num_constraints)).
+  Eigen::VectorXd residuals = Eigen::VectorXd::Zero(num_global_rows_);
+  for (int global = 0; global < num_global_rows_; ++global) {
+    const auto& m = row_map_[global];
+    if (m.constraint_index >= 0) {
+      residuals(global) = local_residuals[m.constraint_index](m.local_row);
+    }
+  }
+
+  return residuals;
+}
+
 SparseLinearConstraintAssembler::SparseLinearConstraintAssembler(
     std::unique_ptr<SparseLinearConstraint> slc,
     const std::vector<int>& all_variables)

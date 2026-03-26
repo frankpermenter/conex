@@ -99,6 +99,11 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
   // Distributes to per-clique W vectors and updates each GramEvaluator.
   void SetWeights(const Eigen::VectorXd& weights);
 
+  // Compute residuals r = A x - b per-clique, returned as a global vector.
+  // x is the solution in original variable order (size = num columns of A).
+  // Returns a vector of size num_global_rows_.
+  Eigen::VectorXd ComputeResiduals(const Eigen::VectorXd& x) const;
+
  private:
   std::unique_ptr<SparseLinearConstraint> slc_;
 

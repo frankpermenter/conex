@@ -113,6 +113,13 @@ class LinearConstraint : public Constraint {
 
   int num_rows() const { return constraint_matrix_.rows(); }
 
+  // Compute residual r = A * x_local - b for this constraint's variables.
+  // x_local must have size == number_of_variables().
+  Eigen::VectorXd ComputeResidual(
+      Eigen::Ref<const Eigen::VectorXd> x_local) const {
+    return constraint_matrix_ * x_local - constraint_affine_;
+  }
+
  private:
   Workspace do_get_workspace() override { return Workspace(workspace()); }
 

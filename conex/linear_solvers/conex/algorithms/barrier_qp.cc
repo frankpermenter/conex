@@ -68,8 +68,9 @@ BarrierQPResult SolveBarrierQP(
     for (int newton = 0; newton < max_newton_steps; ++newton) {
       result.total_newton_steps++;
 
-      // Slacks: s = b - A x.
-      Eigen::VectorXd s = b - A * x;
+      // Slacks: s = b - A x.  ComputeResiduals returns A*x (since
+      // the SparseLinearConstraint was built with b_zero).
+      Eigen::VectorXd s = b - a_asm_ptr->ComputeResiduals(x);
 
       // Check feasibility.
       if (s.minCoeff() <= 0) {
@@ -103,8 +104,8 @@ BarrierQPResult SolveBarrierQP(
       // Backtracking line search to maintain feasibility.
       double alpha = 1.0;
 
-      // Max step to stay feasible: s + alpha * A dx > 0.
-      Eigen::VectorXd Adx = A * dx;
+      // Max step to stay feasible: s - alpha * A dx > 0.
+      Eigen::VectorXd Adx = a_asm_ptr->ComputeResiduals(dx);
       for (int i = 0; i < m; ++i) {
         if (Adx(i) > 0) {
           // s(i) - alpha * Adx(i) > 0  =>  alpha < s(i) / Adx(i)
@@ -120,7 +121,7 @@ BarrierQPResult SolveBarrierQP(
 
       for (int ls = 0; ls < 20; ++ls) {
         Eigen::VectorXd x_new = x + alpha * dx;
-        Eigen::VectorXd s_new = b - A * x_new;
+        Eigen::VectorXd s_new = b - a_asm_ptr->ComputeResiduals(x_new);
         if (s_new.minCoeff() <= 0) {
           alpha *= beta;
           continue;
