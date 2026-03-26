@@ -264,6 +264,40 @@ Eigen::VectorXd SparseLinearConstraintAssembler::ComputeResiduals(
   return residuals;
 }
 
+Eigen::VectorXd SparseLinearConstraintAssembler::ComputeTransposeProduct(
+    const Eigen::VectorXd& v) const {
+  // Compute A^T * v per-clique using the decomposed dense blocks.
+  // Each constraint holds A_clique (m_i x n_i). We compute
+  // A_clique^T * v_local and scatter to the global result.
+  const int n = slc_ ? slc_->A().cols() : 0;
+  Eigen::VectorXd result = Eigen::VectorXd::Zero(n);
+
+  // Step 1: gather v into per-constraint local vectors using row_map_.
+  std::vector<Eigen::VectorXd> v_locals(owned_constraints_.size());
+  for (size_t ci = 0; ci < owned_constraints_.size(); ++ci) {
+    v_locals[ci] = Eigen::VectorXd::Zero(owned_constraints_[ci]->num_rows());
+  }
+  for (int global = 0; global < num_global_rows_; ++global) {
+    const auto& m = row_map_[global];
+    if (m.constraint_index >= 0) {
+      v_locals[m.constraint_index](m.local_row) = v(global);
+    }
+  }
+
+  // Step 2: compute A_clique^T * v_local and scatter to result.
+  for (size_t ci = 0; ci < owned_constraints_.size(); ++ci) {
+    const auto& constraint = owned_constraints_[ci];
+    const auto& vars = constraint->primal_variables();
+    Eigen::VectorXd atv =
+        constraint->constraint_matrix().transpose() * v_locals[ci];
+    for (int j = 0; j < static_cast<int>(vars.size()); ++j) {
+      result(vars[j]) += atv(j);
+    }
+  }
+
+  return result;
+}
+
 SparseLinearConstraintAssembler::SparseLinearConstraintAssembler(
     std::unique_ptr<SparseLinearConstraint> slc,
     const std::vector<int>& all_variables)

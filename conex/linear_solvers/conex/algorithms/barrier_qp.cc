@@ -90,7 +90,8 @@ BarrierQPResult SolveBarrierQP(
       //        = Q x + c - A^T d   where d = -1/(t * s)
       Eigen::VectorXd inv_s(m);
       for (int i = 0; i < m; ++i) inv_s(i) = 1.0 / s(i);
-      Eigen::VectorXd grad = Q * x + c + (1.0 / t) * A.transpose() * inv_s;
+      Eigen::VectorXd grad =
+          Q * x + c + (1.0 / t) * a_asm_ptr->ComputeTransposeProduct(inv_s);
 
       // Solve (Q + A^T W A) dx = -grad.
       bool ok = solver->AssembleAndFactor();

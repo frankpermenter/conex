@@ -255,6 +255,35 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     return contributors_.at(index).get();
   }
 
+  // Access the block-partitioned solve matrix.  After Solve(), this contains
+  // the solution scattered into per-supernode blocks.  Can also be used to
+  // scatter/gather vectors without solving:
+  //   partition().ScatterFrom(x);   // original order -> blocks
+  //   partition().GatherInto(x);    // blocks -> original order
+  //   partition().supernode(k)      // access block k's supernode values
+  //   partition().separator(k)      // access block k's separator values
+  const SupernodePartitionMatrix& partition() const { return solve_matrix_; }
+  SupernodePartitionMatrix& partition() { return solve_matrix_; }
+
+  // Scatter a vector into the block partition (original variable order).
+  void ScatterToBlocks(Eigen::Ref<const Eigen::VectorXd> x) {
+    if (solve_matrix_.cols() != 1) solve_matrix_.Resize(1);
+    solve_matrix_.SetZero();
+    solve_matrix_.ScatterFrom(x);
+  }
+
+  // Gather from the block partition back to original variable order.
+  void GatherFromBlocks(Eigen::Ref<Eigen::VectorXd> x) const {
+    solve_matrix_.GatherInto(x);
+  }
+
+  // Number of subsystems (blocks in the partition).
+  int num_subsystems() const { return static_cast<int>(subsystems_.size()); }
+
+  // Access the elimination permutation.
+  const Eigen::VectorXi& perm() const { return cached_perm_; }
+  const Eigen::VectorXi& perm_inv() const { return cached_perm_inv_; }
+
   // Pre-inject a subsystem for a specific clique index.  Must be called
   // before Finalize.  CreateSubsystems will use injected subsystems instead
   // of creating default ones.
