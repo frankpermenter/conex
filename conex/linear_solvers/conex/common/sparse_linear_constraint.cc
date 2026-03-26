@@ -265,16 +265,123 @@ Eigen::VectorXd SparseLinearConstraintAssembler::ComputeResiduals(
   return residuals;
 }
 
+void SparseLinearConstraintAssembler::BindPartition(
+    const SymmetricLinearSystemTreeSolver& solver) {
+  block_info_.resize(owned_constraints_.size());
+  const auto& perm = solver.perm();
+  const auto& partition = solver.partition();
+
+  for (size_t ci = 0; ci < owned_constraints_.size(); ++ci) {
+    const auto& constraint = owned_constraints_[ci];
+    const auto& vars = constraint->primal_variables();
+
+    // Ensure the evaluator has been initialized (set_order called).
+    auto* evaluator = const_cast<LinearConstraint*>(constraint.get())
+                          ->GetLazyEvaluator();
+    auto* gram = static_cast<GramEvaluator*>(evaluator);
+
+    // Find which block contains this constraint's first supernode variable.
+    // The constraint's variables are in original order. After permutation,
+    // the supernode variables are contiguous in one block.
+    // Use the partition's ScatterFrom mapping: for any original variable,
+    // perm(var) gives the elimination position, and the partition maps
+    // elimination positions to blocks.
+    //
+    // We find the block by checking which block's supernode range contains
+    // the first supernode elimination position.
+    int sn_count = gram->sn_count();
+    block_info_[ci].sn_count = sn_count;
+
+    // The evaluator's cached_perm_ maps: permuted index -> constraint variable index.
+    // permuted index 0..sn_count-1 are supernode, rest are separator.
+    // constraint variable index i -> original var = vars[i].
+    // original var -> elimination position = perm(original_var).
+    // The supernode block start = first supernode's elimination position.
+    // All supernode variables for this constraint are contiguous in one block.
+
+    // Find block: scan blocks to match.
+    int block_idx = -1;
+    if (sn_count > 0 && !vars.empty()) {
+      // Get the elimination position of the first supernode variable.
+      // The gram evaluator's cached_perm_[0] is the constraint variable index
+      // that maps to the first supernode position. But we don't have access
+      // to cached_perm_ directly. Instead, use: after set_order, A_perm_
+      // columns 0..sn_count-1 correspond to supernode variables sorted by
+      // elimination position. The first supernode variable's elim position
+      // is the block's sn_start.
+
+      // Simpler: just use the partition's var_mapping via ScatterFrom/GatherInto.
+      // Or: find block by brute force — check which block has supernode rows
+      // that include perm(vars[0]).
+
+      // Actually: each block k has supernode positions
+      // [sn_start_k, sn_start_k + sn_rows_k). We need to find k such that
+      // perm(vars[j]) is in this range for some j.
+      // The partition doesn't expose sn_start directly, but we can infer it.
+
+      // Use the solver's subsystem list indirectly:
+      // For each variable in this constraint, check its elimination position.
+      // Find which block contains it.
+      for (int v : vars) {
+        int ep = perm(v);
+        // Linear scan to find block. Only need to do this once per constraint.
+        int cum = 0;
+        for (int k = 0; k < solver.num_subsystems(); ++k) {
+          int sn_rows = partition.supernode_rows(k);
+          if (ep >= cum && ep < cum + sn_rows) {
+            block_idx = k;
+            break;
+          }
+          cum += sn_rows;
+        }
+        if (block_idx >= 0) break;
+      }
+    }
+    block_info_[ci].block_index = block_idx;
+  }
+}
+
 Eigen::VectorXd SparseLinearConstraintAssembler::ComputeBlockResiduals(
     const SymmetricLinearSystemTreeSolver& solver) const {
-  // Gather solution from blocks into a global vector, then use
-  // per-clique residual computation.
-  // TODO: store constraint-to-block mapping after Finalize to avoid
-  // this intermediate global gather.
-  const int n = solver.number_of_variables();
-  Eigen::VectorXd x_global(n);
-  solver.GatherFromBlocks(x_global);
-  return ComputeResiduals(x_global);
+  if (!partition_bound()) {
+    // Fall back to gather path.
+    const int n = solver.number_of_variables();
+    Eigen::VectorXd x_global(n);
+    solver.GatherFromBlocks(x_global);
+    return ComputeResiduals(x_global);
+  }
+
+  const auto& partition = solver.partition();
+
+  // Step 1: compute per-constraint residuals from block data.
+  std::vector<Eigen::VectorXd> local_residuals(owned_constraints_.size());
+  for (size_t ci = 0; ci < owned_constraints_.size(); ++ci) {
+    const auto& constraint = owned_constraints_[ci];
+    const auto& info = block_info_[ci];
+
+    if (info.block_index < 0) {
+      local_residuals[ci] = Eigen::VectorXd::Zero(constraint->num_rows());
+      continue;
+    }
+
+    int k = info.block_index;
+    auto x_sn = partition.supernode(k);
+    auto x_sep = partition.separator(k);
+
+    local_residuals[ci] =
+        constraint->ComputeBlockResidual(x_sn, x_sep);
+  }
+
+  // Step 2: scatter to global using row_map_ (O(m)).
+  Eigen::VectorXd residuals = Eigen::VectorXd::Zero(num_global_rows_);
+  for (int global = 0; global < num_global_rows_; ++global) {
+    const auto& m = row_map_[global];
+    if (m.constraint_index >= 0) {
+      residuals(global) = local_residuals[m.constraint_index](m.local_row);
+    }
+  }
+
+  return residuals;
 }
 
 Eigen::VectorXd SparseLinearConstraintAssembler::ComputeTransposeProduct(

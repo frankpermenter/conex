@@ -114,11 +114,23 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
   // v is a per-row vector (size = num_global_rows_).
   Eigen::VectorXd ComputeTransposeProduct(const Eigen::VectorXd& v) const;
 
+  // Bind partition info after Finalize. Maps each constraint to its
+  // block in the SupernodePartitionMatrix.  Must be called once after
+  // MakeTreeSolver so ComputeBlockResiduals can avoid gather.
+  struct BlockInfo {
+    int block_index;   // index into partition.supernode(k) / separator(k)
+    int sn_count;      // columns of A_perm_ that are in the supernode block
+  };
+  void BindPartition(const class SymmetricLinearSystemTreeSolver& solver);
+  bool partition_bound() const { return !block_info_.empty(); }
+
  private:
   std::unique_ptr<SparseLinearConstraint> slc_;
 
   // Owned storage for decomposed constraints.
   std::vector<std::unique_ptr<LinearConstraint>> owned_constraints_;
+  // Per-constraint block mapping (set by BindPartition).
+  std::vector<BlockInfo> block_info_;
   // Persistent workspace memory for each LinearConstraint's WorkspaceLinear.
   std::list<Eigen::VectorXd> owned_workspace_memory_;
   // Global row → per-clique mapping (indexed by global row).
