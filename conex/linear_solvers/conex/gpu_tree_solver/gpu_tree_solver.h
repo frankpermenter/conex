@@ -104,13 +104,13 @@ class GpuTreeSolver : public KKTSolverBase {
   // Host staging buffer for assembly.
   std::vector<Eigen::MatrixXd> host_data_;
 
-  // CUDA handles.
-  cusolverDnContext* cusolver_ = nullptr;
-  cublasContext* cublas_ = nullptr;
-  cudaStream_t stream_ = nullptr;
+  // CUDA handles (mutable: solve is logically const but uses GPU state).
+  mutable cusolverDnContext* cusolver_ = nullptr;
+  mutable cublasContext* cublas_ = nullptr;
+  mutable cudaStream_t stream_ = nullptr;
 
-  // Host-side partition for algorithm access.
-  DenseBlockPartition partition_;
+  // Host-side partition for algorithm access (mutable for DoSolveInPlace).
+  mutable DenseBlockPartition partition_;
 
   // Pre-flattened scatter ops (host side, uploaded to d_scatter_ops_).
   std::vector<ScatterOp> host_scatter_ops_;

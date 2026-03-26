@@ -48,16 +48,16 @@ class GpuDeviceArena {
   size_t bytes() const { return arena_bytes_; }
 
   // Device pointer to a specific block.
-  double* sn_ptr(const SupernodeDescriptor& d) {
+  double* sn_ptr(const SupernodeDescriptor& d) const {
     return d_arena_ + d.sn_offset / sizeof(double);
   }
-  double* sep_rows_ptr(const SupernodeDescriptor& d) {
+  double* sep_rows_ptr(const SupernodeDescriptor& d) const {
     return d_arena_ + d.sep_rows_offset / sizeof(double);
   }
-  double* sep_schur_ptr(const SupernodeDescriptor& d) {
+  double* sep_schur_ptr(const SupernodeDescriptor& d) const {
     return d_arena_ + d.sep_schur_offset / sizeof(double);
   }
-  double* temp_ptr(const SupernodeDescriptor& d) {
+  double* temp_ptr(const SupernodeDescriptor& d) const {
     return d_arena_ + d.temp_offset / sizeof(double);
   }
 

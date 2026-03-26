@@ -465,7 +465,7 @@ void GpuTreeSolver::ForwardSolve(double* d_x, int cols) const {
       }
       double* x_sn = d_x + sn_start;
 
-      Check(cublasDtrsm(const_cast<cublasContext*>(cublas_),
+      Check(cublasDtrsm(cublas_,
                         CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER,
                         CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT,
                         d.sn_size, cols, &one,
@@ -485,7 +485,7 @@ void GpuTreeSolver::ForwardSolve(double* d_x, int cols) const {
 
       // Compute temp = sep * x_sn (sep_size x cols).
       double* temp = arena_.temp_ptr(d);
-      Check(cublasDgemm(const_cast<cublasContext*>(cublas_),
+      Check(cublasDgemm(cublas_,
                         CUBLAS_OP_N, CUBLAS_OP_N,
                         d.sep_size, cols, d.sn_size, &neg_one,
                         sep, d.sep_size,
@@ -502,7 +502,7 @@ void GpuTreeSolver::ForwardSolve(double* d_x, int cols) const {
       // TODO: device scatter kernel for solve.
     }
 
-    Check(cudaStreamSynchronize(const_cast<cudaStream_t>(stream_)),
+    Check(cudaStreamSynchronize(stream_),
           "sync forward level");
   }
 }
@@ -535,7 +535,7 @@ void GpuTreeSolver::BackwardSolve(double* d_x, int cols) const {
       }
 
       // x_sn = L^{-T} * x_sn.
-      Check(cublasDtrsm(const_cast<cublasContext*>(cublas_),
+      Check(cublasDtrsm(cublas_,
                         CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER,
                         CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT,
                         d.sn_size, cols, &one,
@@ -544,7 +544,7 @@ void GpuTreeSolver::BackwardSolve(double* d_x, int cols) const {
             "backward trsm");
     }
 
-    Check(cudaStreamSynchronize(const_cast<cudaStream_t>(stream_)),
+    Check(cudaStreamSynchronize(stream_),
           "sync backward level");
   }
 }
@@ -565,9 +565,9 @@ void GpuTreeSolver::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
   // Copy to device.
   Check(cudaMemcpyAsync(d_rhs_, b_perm.data(), n * cols * sizeof(double),
                         cudaMemcpyHostToDevice,
-                        const_cast<cudaStream_t>(stream_)),
+                        stream_),
         "memcpy rhs H2D");
-  Check(cudaStreamSynchronize(const_cast<cudaStream_t>(stream_)), "sync H2D");
+  Check(cudaStreamSynchronize(stream_), "sync H2D");
 
   // Forward then backward.
   ForwardSolve(d_rhs_, cols);
@@ -576,9 +576,9 @@ void GpuTreeSolver::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
   // Copy back to host.
   Check(cudaMemcpyAsync(b_perm.data(), d_rhs_, n * cols * sizeof(double),
                         cudaMemcpyDeviceToHost,
-                        const_cast<cudaStream_t>(stream_)),
+                        stream_),
         "memcpy rhs D2H");
-  Check(cudaStreamSynchronize(const_cast<cudaStream_t>(stream_)), "sync D2H");
+  Check(cudaStreamSynchronize(stream_), "sync D2H");
 
   // Un-permute.
   if (permute) {

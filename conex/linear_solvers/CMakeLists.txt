@@ -159,6 +159,9 @@ if(CMAKE_CUDA_COMPILER)
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
   set(CMAKE_CUDA_STANDARD 17)
+  if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES "native" CACHE STRING "CUDA architectures")
+  endif()
 
   add_library(gpu_tree_solver
     conex/gpu_tree_solver/gpu_tree_solver.cu
