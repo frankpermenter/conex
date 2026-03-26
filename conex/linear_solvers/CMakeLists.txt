@@ -174,7 +174,20 @@ if(CMAKE_CUDA_COMPILER)
   )
   target_include_directories(gpu_tree_solver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-  message(STATUS "CUDA found — building gpu_tree_solver")
+  add_executable(gpu_tree_solver_test
+    conex/test/gpu_tree_solver_test.cu
+  )
+  target_link_libraries(gpu_tree_solver_test
+    gpu_tree_solver
+    sparse_linear_constraint
+    clique_ordering
+    kkt_solver_factory
+    tree_solver
+    GTest::gtest_main
+  )
+  gtest_discover_tests(gpu_tree_solver_test)
+
+  message(STATUS "CUDA found — building gpu_tree_solver + tests")
 else()
   message(STATUS "CUDA not found — skipping gpu_tree_solver")
 endif()
