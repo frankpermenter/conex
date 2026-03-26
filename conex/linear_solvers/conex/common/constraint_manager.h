@@ -9,6 +9,7 @@
 #include "conex/common/equality_constraint.h"
 #include "conex/common/error_checking_macros.h"
 #include "conex/common/workspace.h"
+#include <Eigen/Dense>
 #define CONEX_ID int
 
 namespace conex {
@@ -30,6 +31,9 @@ class ConstraintManager {
   ConstraintManager(){};
 
   int GetNumberOfVariables() const { return max_number_of_variables_; }
+  int GetOriginalNumberOfVariables() const {
+    return was_reduced_ ? original_num_variables_ : max_number_of_variables_;
+  }
 
   int SizeOfKKTSystem() const;
 
@@ -63,6 +67,16 @@ class ConstraintManager {
   }
   const std::vector<std::vector<int>>& equality_constraint_multipliers() const;
 
+  // Check structural rank of SparseLinearConstraint assemblers.
+  // If rank-deficient, drops dependent columns and rebuilds assemblers.
+  // Call after registering all assemblers, before MakeTreeSolver.
+  void Preprocess();
+
+  bool was_reduced() const { return was_reduced_; }
+  const std::vector<int>& column_map() const { return column_map_; }
+  Eigen::VectorXd ExpandSolution(const Eigen::VectorXd& x_reduced) const;
+  Eigen::VectorXd ReduceVector(const Eigen::VectorXd& v_original) const;
+
  private:
   CONEX_STATUS Validate(const std::vector<int>& variables);
   mutable std::vector<std::vector<int>> dual_vars_;
@@ -76,6 +90,12 @@ class ConstraintManager {
   std::vector<std::unique_ptr<SupernodalAssemblerBase>> owned_custom_assemblers_;
   int max_number_of_variables_ = 0;
   int new_dual_variable_start_ = 0;
+
+  // Column reduction state (set by Preprocess).
+  bool was_reduced_ = false;
+  int original_num_variables_ = 0;
+  std::vector<int> column_map_;
+  std::vector<int> inverse_col_map_;
 };
 
 }  // namespace conex

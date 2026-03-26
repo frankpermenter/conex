@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <numeric>
 #include <set>
 
 #include "conex/common/constraint_manager.h"
@@ -40,26 +41,53 @@ BarrierQPResult SolveBarrierQP(
   std::vector<int> all_vars(var_set.begin(), var_set.end());
 
   ConstraintManager cm(n);
-  auto a_assembler = std::make_unique<SparseLinearConstraintAssembler>(
-      std::move(slc), all_vars);
-  auto* a_asm_ptr = a_assembler.get();
-  cm.AddCustomAssembler(a_asm_ptr);
+  cm.AddCustomAssembler(std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc), all_vars));
+  cm.Preprocess();
 
-  auto q_assembler = std::make_unique<SparseQuadraticTermAssembler>(Q, all_vars);
+  auto* a_asm_ptr = dynamic_cast<SparseLinearConstraintAssembler*>(
+      cm.clique_assemblers().front());
+
+  // Reduce Q, c, x0 to the (possibly reduced) variable space.
+  Eigen::VectorXd c_r = cm.ReduceVector(c);
+  Eigen::VectorXd x0_r = cm.ReduceVector(x0);
+
+  Eigen::SparseMatrix<double> Q_r;
+  if (cm.was_reduced()) {
+    const auto& col_map = cm.column_map();
+    int nr = cm.GetNumberOfVariables();
+    std::vector<int> inv(n, -1);
+    for (int i = 0; i < nr; ++i) inv[col_map[i]] = i;
+    std::vector<Eigen::Triplet<double>> qt;
+    for (int k = 0; k < Q.outerSize(); ++k)
+      for (Eigen::SparseMatrix<double>::InnerIterator it(Q, k); it; ++it) {
+        int ri = inv[it.row()], rj = inv[it.col()];
+        if (ri >= 0 && rj >= 0) qt.emplace_back(ri, rj, it.value());
+      }
+    Q_r.resize(nr, nr);
+    Q_r.setFromTriplets(qt.begin(), qt.end());
+  } else {
+    Q_r = Q;
+  }
+
+  // Add Q assembler after Preprocess, using reduced variables.
+  int nr = cm.GetNumberOfVariables();
+  std::vector<int> reduced_vars(nr);
+  std::iota(reduced_vars.begin(), reduced_vars.end(), 0);
+  auto q_assembler = std::make_unique<SparseQuadraticTermAssembler>(
+      Q_r, reduced_vars);
   cm.AddCustomAssembler(q_assembler.get());
 
   SolverConfiguration config;
   auto solver = MakeTreeSolver(&cm, config);
 
-  // First assembly to initialize evaluators (needed for BindPartition).
   solver->AssembleAndFactor();
-  // Try tree-specific BindPartition optimization.
   if (auto* tree = dynamic_cast<SymmetricLinearSystemTreeSolver*>(solver.get()))
     a_asm_ptr->BindPartition(*tree);
 
   auto t_start = clock::now();
 
-  Eigen::VectorXd x = x0;
+  Eigen::VectorXd x = x0_r;
   double t = 1.0;
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
@@ -91,7 +119,7 @@ BarrierQPResult SolveBarrierQP(
       Eigen::VectorXd inv_s(m);
       for (int i = 0; i < m; ++i) inv_s(i) = 1.0 / s(i);
       Eigen::VectorXd grad =
-          Q * x + c + (1.0 / t) * a_asm_ptr->ComputeTransposeProduct(inv_s);
+          Q_r * x + c_r + (1.0 / t) * a_asm_ptr->ComputeTransposeProduct(inv_s);
 
       // Solve (Q + A^T W A) dx = -grad.
       bool ok = solver->AssembleAndFactor();
@@ -117,7 +145,7 @@ BarrierQPResult SolveBarrierQP(
       // Backtracking on barrier objective.
       const double beta = 0.5;
       const double armijo = 0.01;
-      double f0 = 0.5 * x.dot(Q * x) + c.dot(x);
+      double f0 = 0.5 * x.dot(Q_r * x) + c_r.dot(x);
       for (int i = 0; i < m; ++i) f0 -= (1.0 / t) * std::log(s(i));
 
       for (int ls = 0; ls < 20; ++ls) {
@@ -129,7 +157,7 @@ BarrierQPResult SolveBarrierQP(
           alpha *= beta;
           continue;
         }
-        double f_new = 0.5 * x_new.dot(Q * x_new) + c.dot(x_new);
+        double f_new = 0.5 * x_new.dot(Q_r * x_new) + c_r.dot(x_new);
         for (int i = 0; i < m; ++i) f_new -= (1.0 / t) * std::log(s_new(i));
         if (f_new <= f0 + armijo * alpha * grad.dot(dx)) break;
         alpha *= beta;
@@ -143,8 +171,8 @@ BarrierQPResult SolveBarrierQP(
   }
 
   auto t_end = clock::now();
-  result.x = x;
-  result.objective = 0.5 * x.dot(Q * x) + c.dot(x);
+  result.x = cm.ExpandSolution(x);
+  result.objective = 0.5 * result.x.dot(Q * result.x) + c.dot(result.x);
   result.duality_gap = static_cast<double>(m) / t;
   result.solve_time_us =
       std::chrono::duration<double, std::micro>(t_end - t_start).count();

@@ -6,7 +6,6 @@
 #include <set>
 
 #include "conex/common/constraint_manager.h"
-#include "conex/common/structural_rank.h"
 #include "conex/tree_solver/kkt_solver_factory.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
 #include "conex/common/linear_constraint.h"
@@ -117,83 +116,6 @@ SparseLinearConstraint::GetConstraints(
   return result;
 }
 
-SparseLeastSquaresResult SparseLeastSquares(
-    const Eigen::SparseMatrix<double>& A,
-    const Eigen::VectorXd& rhs) {
-  using clock = std::chrono::high_resolution_clock;
-  SparseLeastSquaresResult result;
-  const int num_vars_original = A.cols();
-
-  auto t0 = clock::now();
-
-  // Remove structurally rank-deficient columns.  The reduced matrix
-  // A_reduced has structural rank == number of columns, so A_reduced^T
-  // A_reduced is generically non-singular.
-  std::vector<int> col_map;
-  Eigen::SparseMatrix<double> A_reduced =
-      DropStructurallyDependentColumns(A, &col_map);
-  const int num_vars = A_reduced.cols();
-
-  // Build the reduced RHS: A_reduced^T * (A_reduced * x) = rhs_reduced
-  // But rhs is already A^T * b for some b.  Since we dropped columns,
-  // rhs_reduced = rows of rhs corresponding to kept columns.
-  Eigen::VectorXd rhs_reduced(num_vars);
-  for (int i = 0; i < num_vars; ++i) {
-    rhs_reduced(i) = rhs(col_map[i]);
-  }
-
-  Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(A_reduced.rows());
-  auto slc = std::make_unique<SparseLinearConstraint>(A_reduced, b_zero);
-
-  std::set<int> var_set;
-  for (const auto& support : slc->row_supports()) {
-    var_set.insert(support.begin(), support.end());
-  }
-  std::vector<int> all_vars(var_set.begin(), var_set.end());
-
-  ConstraintManager cm(num_vars);
-  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
-      std::move(slc), all_vars);
-  cm.AddCustomAssembler(assembler.get());
-
-  auto t_grouped = clock::now();
-
-  SolverConfiguration config;
-  auto tree_solver = MakeTreeSolver(&cm, config);
-
-  auto t1 = clock::now();
-
-  bool ok = tree_solver->AssembleAndFactor();
-  CONEX_DEMAND(ok, "AssembleAndFactor failed.");
-
-  auto t2 = clock::now();
-
-  Eigen::VectorXd x_reduced = tree_solver->Solve(rhs_reduced);
-
-  auto t3 = clock::now();
-
-  // Expand solution: insert zeros for dropped columns.
-  result.x = Eigen::VectorXd::Zero(num_vars_original);
-  for (int i = 0; i < num_vars; ++i) {
-    result.x(col_map[i]) = x_reduced(i);
-  }
-
-  result.grouping_us =
-      std::chrono::duration<double, std::micro>(t_grouped - t0).count();
-  result.add_constraints_us = 0;
-  result.init_workspace_us = 0;
-  result.clique_extraction_us = 0;
-  result.finalize_us =
-      std::chrono::duration<double, std::micro>(t1 - t_grouped).count();
-  result.construction_time_us =
-      std::chrono::duration<double, std::micro>(t1 - t0).count();
-  result.assemble_and_factor_time_us =
-      std::chrono::duration<double, std::micro>(t2 - t1).count();
-  result.solve_time_us =
-      std::chrono::duration<double, std::micro>(t3 - t2).count();
-
-  return result;
-}
 
 std::vector<SparseLinearConstraint::RowGroup>
 SparseLinearConstraintAssembler::DecomposeRaw(

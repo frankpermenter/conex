@@ -35,7 +35,7 @@ add_library(clique_ordering
   conex/common/clique_ordering_md.cc
   conex/common/pq_tree.cc
 )
-target_link_libraries(clique_ordering PUBLIC tree_solver)
+target_link_libraries(clique_ordering PUBLIC Eigen3::Eigen)
 
 # --- Structural rank ---
 add_library(structural_rank
@@ -49,7 +49,7 @@ add_library(constraints
   conex/common/equality_constraint.cc
   conex/common/constraint_manager.cc
 )
-target_link_libraries(constraints PUBLIC tree_solver clique_ordering)
+target_link_libraries(constraints PUBLIC Eigen3::Eigen clique_ordering)
 
 # --- Solver factory (MakeTreeSolver only) ---
 add_library(kkt_solver_factory
@@ -61,6 +61,7 @@ target_link_libraries(kkt_solver_factory PUBLIC tree_solver clique_ordering cons
 add_library(sparse_linear_constraint
   conex/common/sparse_linear_constraint.cc
   conex/common/sparse_quadratic_term.cc
+  conex/common/constraint_manager_preprocess.cc
 )
 target_link_libraries(sparse_linear_constraint PUBLIC constraints kkt_solver_factory structural_rank)
 
@@ -68,6 +69,7 @@ target_link_libraries(sparse_linear_constraint PUBLIC constraints kkt_solver_fac
 add_library(algorithms
   conex/algorithms/irls.cc
   conex/algorithms/barrier_qp.cc
+  conex/algorithms/least_squares.cc
 )
 target_link_libraries(algorithms PUBLIC sparse_linear_constraint)
 
@@ -77,6 +79,7 @@ add_executable(sparse_linear_constraint_test
   conex/test/sparse_linear_constraint_test.cc
 )
 target_link_libraries(sparse_linear_constraint_test
+  algorithms
   sparse_linear_constraint
   clique_ordering
   GTest::gtest_main
@@ -125,6 +128,7 @@ add_executable(sparse_quadratic_term_test
   conex/test/sparse_quadratic_term_test.cc
 )
 target_link_libraries(sparse_quadratic_term_test
+  algorithms
   sparse_linear_constraint
   clique_ordering
   kkt_solver_factory
@@ -147,6 +151,33 @@ target_link_libraries(dense_kkt_solver_test
   tree_solver
   GTest::gtest_main
 )
+
+# --- Optional: GPU tree solver (requires CUDA) ---
+include(CheckLanguage)
+check_language(CUDA)
+if(CMAKE_CUDA_COMPILER)
+  enable_language(CUDA)
+  find_package(CUDAToolkit REQUIRED)
+  set(CMAKE_CUDA_STANDARD 17)
+
+  add_library(gpu_tree_solver
+    conex/gpu_tree_solver/gpu_tree_solver.cu
+    conex/gpu_tree_solver/gpu_device_arena.cu
+    conex/gpu_tree_solver/gpu_extend_add.cu
+  )
+  target_link_libraries(gpu_tree_solver PUBLIC
+    tree_solver
+    Eigen3::Eigen
+    CUDA::cusolver
+    CUDA::cublas
+    CUDA::cudart
+  )
+  target_include_directories(gpu_tree_solver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+  message(STATUS "CUDA found — building gpu_tree_solver")
+else()
+  message(STATUS "CUDA not found — skipping gpu_tree_solver")
+endif()
 
 include(GoogleTest)
 gtest_discover_tests(dense_kkt_solver_test)

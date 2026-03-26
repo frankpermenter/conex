@@ -32,25 +32,25 @@ IRLSResult SolveIRLS(
   std::vector<int> all_vars(var_set.begin(), var_set.end());
 
   ConstraintManager cm(n);
-  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
-      std::move(slc), all_vars);
-  auto* asm_ptr = assembler.get();
-  cm.AddCustomAssembler(asm_ptr);
+  cm.AddCustomAssembler(std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc), all_vars));
+  cm.Preprocess();
+
+  auto* asm_ptr = dynamic_cast<SparseLinearConstraintAssembler*>(
+      cm.clique_assemblers().back());
 
   SolverConfiguration config;
   auto solver = MakeTreeSolver(&cm, config);
 
-  // First assembly to initialize evaluators for BindPartition.
   solver->AssembleAndFactor();
-  // Try tree-specific BindPartition optimization.
   if (auto* tree = dynamic_cast<SymmetricLinearSystemTreeSolver*>(solver.get()))
     asm_ptr->BindPartition(*tree);
 
   auto t0 = clock::now();
 
-  // Initial solve: uniform weights (standard least squares).
+  const int n_solve = cm.GetNumberOfVariables();
   Eigen::VectorXd weights = Eigen::VectorXd::Ones(m);
-  Eigen::VectorXd x = Eigen::VectorXd::Zero(n);
+  Eigen::VectorXd x = Eigen::VectorXd::Zero(n_solve);
 
   double prev_obj = std::numeric_limits<double>::max();
 
@@ -85,7 +85,7 @@ IRLSResult SolveIRLS(
   }
 
   auto t1 = clock::now();
-  result.x = x;
+  result.x = cm.ExpandSolution(x);
   solver->ScatterToBlocks(x);
   result.l1_objective =
       (asm_ptr->ComputeBlockResiduals(*solver) - b).lpNorm<1>();

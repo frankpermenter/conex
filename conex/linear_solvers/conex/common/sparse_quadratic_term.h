@@ -131,22 +131,7 @@ class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
   std::vector<BlockInfo> block_info_;
 };
 
-// Solve (Q + A^T A) x = rhs.
-struct SparseQuadraticTermLeastSquaresResult {
-  Eigen::VectorXd x;
-  double construction_time_us;
-  double factor_time_us;
-  double solve_time_us;
-};
-
-SparseQuadraticTermLeastSquaresResult SparseQuadraticTermLeastSquares(
-    const Eigen::SparseMatrix<double>& Q,
-    const Eigen::SparseMatrix<double>& A,
-    const Eigen::VectorXd& rhs);
-
-SparseQuadraticTermLeastSquaresResult SparseQuadraticTermLeastSquares(
-    const Eigen::MatrixXd& Q,
-    const Eigen::SparseMatrix<double>& A,
-    const Eigen::VectorXd& rhs);
-
 }  // namespace conex
+
+// For backward compatibility — types moved to algorithms/least_squares.h.
+#include "conex/algorithms/least_squares.h"

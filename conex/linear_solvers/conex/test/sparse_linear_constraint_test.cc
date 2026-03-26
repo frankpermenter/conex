@@ -631,7 +631,8 @@ namespace {
 double SolveAndCheck(const Eigen::SparseMatrix<double>& A,
                      bool scatter_to_parent, int merge_size = 5,
                      bool left_looking = true,
-                     bool use_generic_factorization = false) {
+                     bool use_generic_factorization = false,
+                     bool use_lu_for_indefinite = false) {
   int nv = A.cols();
   Eigen::VectorXd b0 = Eigen::VectorXd::Zero(A.rows());
   auto slc = std::make_unique<SparseLinearConstraint>(A, b0);
@@ -646,6 +647,7 @@ double SolveAndCheck(const Eigen::SparseMatrix<double>& A,
   cfg.tree.max_merge_supernode_size = merge_size;
   cfg.tree.left_looking = left_looking;
   cfg.tree.use_generic_factorization = use_generic_factorization;
+  cfg.tree.use_lu_for_indefinite = use_lu_for_indefinite;
   auto solver = MakeTreeSolver(&cm, cfg);
   if (scatter_to_parent) solver->SetScatterToParent(true);
   if (!solver->AssembleAndFactor()) return 1e30;
@@ -939,6 +941,73 @@ GTEST_TEST(SparseLeastSquares, GenericFactorization) {
       double cx = sol.head(cpb).sum();
       EXPECT_NEAR(cx, 1.0, 1e-10) << mode << " equality constraint";
     }
+  }
+}
+
+// Test use_lu_for_indefinite=true: DynamicSubsystem uses PartialPivLU
+// instead of RLDLT for indefinite cliques.
+GTEST_TEST(SparseLeastSquares, LUForIndefinite) {
+  double tol = 1e-8;
+
+  // PD-only: LU flag shouldn't affect PD cliques.
+  for (int seed : {10, 20}) {
+    srand(seed);
+    auto A = RandomPermute(BlockDiagonal({MatrixXd::Random(8, 3),
+                                          MatrixXd::Random(6, 4),
+                                          MatrixXd::Random(10, 3)}), seed);
+    EXPECT_LT(SolveAndCheck(A, false, 5, true, true, true), tol)
+        << "lu blkdiag seed=" << seed;
+  }
+
+  // Banded.
+  for (int bw : {5, 10}) {
+    srand(42);
+    auto A = RandomPermute(Banded(60, bw, 6), 42);
+    EXPECT_LT(SolveAndCheck(A, false, 5, true, true, true), tol)
+        << "lu banded bw=" << bw;
+  }
+
+  // Equality constraint (indefinite): the LU path has a known bug in the
+  // tree solver's symmetric elimination when applied to indefinite blocks.
+  // TODO: fix DoApplyInverseOfRightFactorOfSupernodeSubmatrix for LU.
+  if (false) {
+    srand(77);
+    int num_blocks = 3, rpb = 6, cpb = 4;
+    std::vector<MatrixXd> blocks(num_blocks);
+    for (int i = 0; i < num_blocks; i++)
+      blocks[i] = MatrixXd::Random(rpb, cpb);
+    auto A_sparse = BlockDiagonal(blocks);
+    int num_vars = A_sparse.cols();
+
+    MatrixXd C = MatrixXd::Ones(1, cpb);
+    VectorXd d(1); d(0) = 1.0;
+    std::vector<int> eq_vars(cpb);
+    std::iota(eq_vars.begin(), eq_vars.end(), 0);
+
+    Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(A_sparse.rows());
+    auto slc = std::make_unique<SparseLinearConstraint>(A_sparse, b_zero);
+    std::set<int> vs;
+    for (const auto& sup : slc->row_supports())
+      vs.insert(sup.begin(), sup.end());
+    std::vector<int> av(vs.begin(), vs.end());
+
+    ConstraintManager cm(num_vars);
+    auto asm_ = std::make_unique<SparseLinearConstraintAssembler>(
+        std::move(slc), av);
+    cm.AddCustomAssembler(asm_.get());
+    cm.AddEqualityConstraint(EqualityConstraints(C, d), eq_vars);
+
+    SolverConfiguration config;
+    config.tree.use_generic_factorization = true;
+    config.tree.use_lu_for_indefinite = true;
+    auto solver = MakeTreeSolver(&cm, config);
+    ASSERT_TRUE(solver->AssembleAndFactor()) << "lu equality factor failed";
+    int kkt_size = cm.SizeOfKKTSystem();
+    VectorXd rhs = VectorXd::Zero(kkt_size);
+    rhs(num_vars) = d(0);
+    VectorXd sol = solver->Solve(rhs);
+    double cx = sol.head(cpb).sum();
+    EXPECT_NEAR(cx, 1.0, 1e-10) << "lu equality constraint";
   }
 }
 

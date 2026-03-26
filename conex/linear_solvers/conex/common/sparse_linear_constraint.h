@@ -34,6 +34,7 @@ class SparseLinearConstraint {
   }
 
   const Eigen::SparseMatrix<double>& A() const { return A_; }
+  const Eigen::VectorXd& b() const { return b_; }
 
   // Given a list of target supports (e.g. maximal cliques), assign each
   // row to the smallest target that contains its support, then build
@@ -65,6 +66,10 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
   std::vector<std::vector<int>> get_cliques() const override {
     return {slc_->row_supports().begin(), slc_->row_supports().end()};
   }
+
+  // Access underlying data (e.g. for Preprocess).
+  const Eigen::SparseMatrix<double>& sparse_matrix() const { return slc_->A(); }
+  const Eigen::VectorXd& rhs_vector() const { return slc_->b(); }
 
   std::vector<SupernodalAssemblerBase*> Decompose(
       const std::vector<std::vector<int>>& maximal_cliques) override;
@@ -139,22 +144,7 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
   int num_global_rows_ = 0;
 };
 
-struct SparseLeastSquaresResult {
-  Eigen::VectorXd x;
-  double construction_time_us;
-  double assemble_and_factor_time_us;
-  double solve_time_us;
-
-  // Sub-phase breakdown of construction_time_us:
-  double grouping_us;
-  double add_constraints_us;
-  double init_workspace_us;
-  double clique_extraction_us;
-  double finalize_us;
-};
-
-SparseLeastSquaresResult SparseLeastSquares(
-    const Eigen::SparseMatrix<double>& A,
-    const Eigen::VectorXd& rhs);
-
 }  // namespace conex
+
+// For backward compatibility — types moved to algorithms/least_squares.h.
+#include "conex/algorithms/least_squares.h"

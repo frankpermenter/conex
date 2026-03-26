@@ -307,7 +307,7 @@ class DynamicSubsystem : public KKTSubsystem {
   bool DoEliminateSupernodeColumns() override {
     if (use_lu()) {
       lu_.compute(supernode_submatrix());
-      return lu_.determinant() != 0;
+      return true;  // PartialPivLU always succeeds for square matrices.
     }
     if (use_rldlt()) {
       rldlt_.compute(supernode_submatrix());

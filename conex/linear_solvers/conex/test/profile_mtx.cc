@@ -133,10 +133,15 @@ ProfileResult ProfileMatrix(const std::string& name,
   std::vector<int> all_vars(var_set.begin(), var_set.end());
 
   ConstraintManager cm(num_vars);
-  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
-      std::move(slc), all_vars);
-  auto* asm_ptr = assembler.get();
-  cm.AddCustomAssembler(asm_ptr);
+  cm.AddCustomAssembler(std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc), all_vars));
+  cm.Preprocess();
+  if (cm.was_reduced()) {
+    int orig = cm.GetOriginalNumberOfVariables();
+    int reduced = cm.GetNumberOfVariables();
+    fprintf(stderr, "  %s: structural rank %d / %d (dropped %d columns)\n",
+            name.c_str(), reduced, orig, orig - reduced);
+  }
 
   auto clique_assemblers = cm.clique_assemblers();
 
