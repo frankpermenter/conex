@@ -43,6 +43,8 @@ GpuTreeSolver::~GpuTreeSolver() {
   if (d_rhs_) cudaFree(d_rhs_);
   if (d_info_) cudaFree(d_info_);
   if (d_scatter_ops_) cudaFree(d_scatter_ops_);
+  if (d_sep_indices_) cudaFree(d_sep_indices_);
+  if (d_gather_buf_) cudaFree(d_gather_buf_);
   if (cublas_) cublasDestroy(cublas_);
   if (cusolver_) cusolverDnDestroy(cusolver_);
   if (stream_) cudaStreamDestroy(stream_);
@@ -63,6 +65,10 @@ GpuTreeSolver::GpuTreeSolver(GpuTreeSolver&& o) noexcept
       scatter_op_offsets_(std::move(o.scatter_op_offsets_)),
       scatter_op_counts_(std::move(o.scatter_op_counts_)),
       host_data_(std::move(o.host_data_)),
+      d_sep_indices_(o.d_sep_indices_),
+      sep_indices_offsets_(std::move(o.sep_indices_offsets_)),
+      d_gather_buf_(o.d_gather_buf_),
+      max_sep_size_(o.max_sep_size_),
       cusolver_(o.cusolver_),
       cublas_(o.cublas_),
       stream_(o.stream_),
@@ -71,6 +77,8 @@ GpuTreeSolver::GpuTreeSolver(GpuTreeSolver&& o) noexcept
   o.d_rhs_ = nullptr;
   o.d_info_ = nullptr;
   o.d_scatter_ops_ = nullptr;
+  o.d_sep_indices_ = nullptr;
+  o.d_gather_buf_ = nullptr;
   o.cusolver_ = nullptr;
   o.cublas_ = nullptr;
   o.stream_ = nullptr;
@@ -113,6 +121,11 @@ void GpuTreeSolver::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
         epos++;
       }
     }
+  }
+  if (epos != num_vars_) {
+    throw std::runtime_error(
+        "Elimination ordering incomplete: " + std::to_string(epos) +
+        " of " + std::to_string(num_vars_) + " variables assigned.");
   }
 
   // --- Build descriptors ---
@@ -218,44 +231,47 @@ void GpuTreeSolver::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
       // For simplicity, emit one ScatterOp per entry pair. A production
       // implementation would merge contiguous ranges.
       for (int i = 0; i < child_sep_size; ++i) {
-        auto [type_i, idx_i] = find_pos_in_parent(child_sep[i]);
+        auto pos_i = find_pos_in_parent(child_sep[i]);
+        int type_i = pos_i.first, idx_i = pos_i.second;
         if (type_i < 0) continue;
 
         for (int j = 0; j <= i; ++j) {
-          auto [type_j, idx_j] = find_pos_in_parent(child_sep[j]);
+          auto pos_j = find_pos_in_parent(child_sep[j]);
+          int type_j = pos_j.first, idx_j = pos_j.second;
           if (type_j < 0) continue;
 
           ScatterOp op;
           op.src_ptr = arena_.sep_schur_ptr(descriptors_[ci]);
-          op.src_row = j;  // lower triangle: row >= col
-          op.src_col = i;
+          // Read from lower triangle (row >= col, i.e., i >= j).
+          op.src_row = i;
+          op.src_col = j;
           op.src_ld = child_sep_size;
           op.block_size = 1;
 
           // Determine destination based on parent block types.
           if (type_i == 0 && type_j == 0) {
-            // Both in parent supernode.
+            // Both in parent supernode (symmetric, write lower triangle).
             op.dst_ptr = arena_.sn_ptr(descriptors_[pi]);
-            op.dst_row = idx_j;
-            op.dst_col = idx_i;
+            op.dst_row = std::max(idx_i, idx_j);
+            op.dst_col = std::min(idx_i, idx_j);
             op.dst_ld = descriptors_[pi].sn_size;
           } else if (type_i == 0 && type_j == 1) {
-            // i in supernode, j in separator -> separator_rows block.
+            // i in supernode, j in separator -> separator_rows(sep_idx, sn_idx).
             op.dst_ptr = arena_.sep_rows_ptr(descriptors_[pi]);
             op.dst_row = idx_j;
             op.dst_col = idx_i;
             op.dst_ld = descriptors_[pi].sep_size;
           } else if (type_i == 1 && type_j == 0) {
-            // i in separator, j in supernode -> separator_rows^T block.
+            // i in separator, j in supernode -> separator_rows(sep_idx, sn_idx).
             op.dst_ptr = arena_.sep_rows_ptr(descriptors_[pi]);
             op.dst_row = idx_i;
             op.dst_col = idx_j;
             op.dst_ld = descriptors_[pi].sep_size;
           } else {
-            // Both in parent separator.
+            // Both in parent separator (symmetric, write lower triangle).
             op.dst_ptr = arena_.sep_schur_ptr(descriptors_[pi]);
-            op.dst_row = idx_j;
-            op.dst_col = idx_i;
+            op.dst_row = std::max(idx_i, idx_j);
+            op.dst_col = std::min(idx_i, idx_j);
             op.dst_ld = descriptors_[pi].sep_size;
           }
 
@@ -283,11 +299,50 @@ void GpuTreeSolver::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
   // --- Host staging ---
   host_data_.resize(num_cliques);
 
+  // --- Separator indices for gather/scatter in solve ---
+  // For each supernode, store the elimination positions of its separator
+  // variables so the solve kernels can gather/scatter non-contiguous entries.
+  std::vector<int> all_sep_indices;
+  sep_indices_offsets_.resize(num_cliques);
+  max_sep_size_ = 0;
+
+  for (int ci = 0; ci < num_cliques; ++ci) {
+    sep_indices_offsets_[ci] = static_cast<int>(all_sep_indices.size());
+    for (int v : clique_tree_.separators[ci]) {
+      if (perm_(v) < 0 || perm_(v) >= num_vars_) {
+        throw std::runtime_error(
+            "Separator variable " + std::to_string(v) +
+            " of supernode " + std::to_string(ci) +
+            " has invalid elimination position " + std::to_string(perm_(v)));
+      }
+      all_sep_indices.push_back(perm_(v));
+    }
+    max_sep_size_ = std::max(max_sep_size_, descriptors_[ci].sep_size);
+  }
+
+  if (d_sep_indices_) cudaFree(d_sep_indices_);
+  d_sep_indices_ = nullptr;
+  if (!all_sep_indices.empty()) {
+    Check(cudaMalloc(&d_sep_indices_,
+                     all_sep_indices.size() * sizeof(int)),
+          "cudaMalloc sep_indices");
+    Check(cudaMemcpy(d_sep_indices_, all_sep_indices.data(),
+                     all_sep_indices.size() * sizeof(int),
+                     cudaMemcpyHostToDevice),
+          "cudaMemcpy sep_indices");
+  }
+
+  // Gather buffer for solve: max_sep_size x rhs_cols.
+  if (d_gather_buf_) cudaFree(d_gather_buf_);
+  d_gather_buf_ = nullptr;
+  if (max_sep_size_ > 0) {
+    Check(cudaMalloc(&d_gather_buf_,
+                     max_sep_size_ * rhs_cols_ * sizeof(double)),
+          "cudaMalloc gather_buf");
+  }
+
   // --- Partition ---
   partition_ = DenseBlockPartition(num_vars_);
-
-  // Allocate cuSOLVER workspace for the largest supernode.
-  // (cuSOLVER allocates internally, so we just need d_info.)
 }
 
 // --------------------------------------------------------------------------
@@ -306,7 +361,6 @@ void GpuTreeSolver::DoAssemble() {
     const auto& d = descriptors_[i];
     if (host_data_[i].size() == 0) continue;
 
-    int total = d.total_size;
     const auto& M = host_data_[i];
 
     // Copy supernode block (top-left sn x sn).
@@ -350,7 +404,6 @@ void GpuTreeSolver::DoAssemble() {
 bool GpuTreeSolver::FactorLevel(int lev) {
   const double one = 1.0;
   const double neg_one = -1.0;
-  const double zero = 0.0;
 
   for (int ci : levels_[lev]) {
     const auto& d = descriptors_[ci];
@@ -476,30 +529,27 @@ void GpuTreeSolver::ForwardSolve(double* d_x, int cols) const {
       if (d.sep_size == 0) continue;
 
       // x_sep -= sep * x_sn.
-      // sep is sep_size x sn_size, x_sn is sn_size x cols.
-      // Scatter the result to separator positions in d_x.
-      // For simplicity, use a temporary buffer on device.
-      // TODO: direct scatter to separator positions.
-      // For now, we use the dense layout where separator variables
-      // are at their elimination positions in d_x.
+      // sep (sep_size x sn_size) contains S * L^{-T} from factorization.
+      // Gather x_sep from non-contiguous positions, update, scatter back.
+      const int* sep_idx = d_sep_indices_ + sep_indices_offsets_[ci];
 
-      // Compute temp = sep * x_sn (sep_size x cols).
-      double* temp = arena_.temp_ptr(d);
+      // Gather x_sep into contiguous buffer.
+      LaunchGather(d_gather_buf_, d_x, sep_idx,
+                   d.sep_size, cols, num_vars_, stream_);
+
+      // d_gather_buf -= sep * x_sn.
       Check(cublasDgemm(cublas_,
                         CUBLAS_OP_N, CUBLAS_OP_N,
                         d.sep_size, cols, d.sn_size, &neg_one,
                         sep, d.sep_size,
                         x_sn, num_vars_,
-                        &one,  // Note: we need to subtract from existing x_sep.
-                        // This requires gathering separator positions.
-                        // Simplified: assume contiguous for now.
-                        temp, d.sep_size),
+                        &one,
+                        d_gather_buf_, d.sep_size),
             "forward gemm");
 
-      // Scatter temp back to separator positions in d_x.
-      // Each separator variable has a known elimination position.
-      // This requires a small scatter kernel. For now, do it on host.
-      // TODO: device scatter kernel for solve.
+      // Scatter back to d_x.
+      LaunchScatter(d_gather_buf_, d_x, sep_idx,
+                    d.sep_size, cols, num_vars_, stream_);
     }
 
     Check(cudaStreamSynchronize(stream_),
@@ -509,7 +559,6 @@ void GpuTreeSolver::ForwardSolve(double* d_x, int cols) const {
 
 void GpuTreeSolver::BackwardSolve(double* d_x, int cols) const {
   const double one = 1.0;
-  const double neg_one = -1.0;
 
   // Process levels root-to-leaf.
   for (int lev = num_levels() - 1; lev >= 0; --lev) {
@@ -518,7 +567,6 @@ void GpuTreeSolver::BackwardSolve(double* d_x, int cols) const {
       if (d.sn_size == 0) continue;
 
       double* sn = arena_.sn_ptr(d);
-      double* temp = arena_.temp_ptr(d);
 
       int sn_start = 0;
       for (int v : clique_tree_.supernodes[ci]) {
@@ -528,10 +576,26 @@ void GpuTreeSolver::BackwardSolve(double* d_x, int cols) const {
       double* x_sn = d_x + sn_start;
 
       if (d.sep_size > 0) {
-        // x_sn -= L^{-T} * sep^T * x_sep.
-        // temp holds L^{-1} S^T (sn x sep) from factorization.
-        // x_sn -= temp * x_sep.
-        // TODO: gather x_sep from separator positions, multiply, scatter.
+        // x_sn -= sep^T * x_sep.
+        // sep (sep_size x sn_size) contains S * L^{-T} from factorization.
+        // sep^T is sn_size x sep_size.
+        const double neg_one = -1.0;
+        const int* sep_idx = d_sep_indices_ + sep_indices_offsets_[ci];
+
+        // Gather x_sep from non-contiguous positions.
+        LaunchGather(d_gather_buf_, d_x, sep_idx,
+                     d.sep_size, cols, num_vars_, stream_);
+
+        // x_sn -= sep^T * x_sep_gathered.
+        double* sep = arena_.sep_rows_ptr(d);
+        Check(cublasDgemm(cublas_,
+                          CUBLAS_OP_T, CUBLAS_OP_N,
+                          d.sn_size, cols, d.sep_size, &neg_one,
+                          sep, d.sep_size,
+                          d_gather_buf_, d.sep_size,
+                          &one,
+                          x_sn, num_vars_),
+              "backward gemm");
       }
 
       // x_sn = L^{-T} * x_sn.

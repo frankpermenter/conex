@@ -1,8 +1,8 @@
 # GPU Tree Solver TODOs
 
 ## Solve path
-- [ ] Scatter kernel for forward solve: separator variables are non-contiguous in the global solution vector. Need a small CUDA kernel to gather separator entries from `d_x` into a local buffer before `cublasDgemm`, and scatter the result back. Currently the forward/backward solve assumes contiguous layout.
-- [ ] Backward solve separator update: `x_sn -= temp * x_sep` requires gathering `x_sep` from non-contiguous positions, multiplying by cached `L^{-1} S^T`, and scattering back into `x_sn`.
+- [x] Gather/scatter kernels for forward solve: separator variables gathered from non-contiguous positions, updated via `cublasDgemm`, and scattered back.
+- [x] Backward solve separator update: `x_sn -= sep^T * x_sep` with gather from non-contiguous separator positions.
 
 ## Factorization performance
 - [ ] Batched cuSOLVER for same-size supernodes within a level (`cusolverDnDpotrfBatched`). Currently each supernode is factored with an individual `cusolverDnDpotrf` call.
@@ -27,10 +27,10 @@
 - [ ] Test against CPU solver: verify `||x_gpu - x_cpu|| / ||x_cpu|| < tol` on the benchmark MTX matrices.
 
 ## Compiler warnings
-- [ ] Remove unused variables (`total`, `zero`, `neg_one`) in gpu_tree_solver.cu.
+- [x] Remove unused variables (`total`, `zero`, `neg_one`) in gpu_tree_solver.cc.
 
 ## Build
-- [x] Compiles with CUDA 12.0 (verified on Ubuntu 24.04, no GPU device).
+- [x] Compiles with CUDA 11.5+ and GCC 11 (host-only files renamed `.cc` to avoid nvcc/GCC 11 `<functional>` incompatibility; only `gpu_extend_add.cu` needs nvcc).
 - [x] Gated behind `check_language(CUDA)` — CPU build unaffected.
 - [x] Unit test binary builds (`gpu_tree_solver_test`). Needs GPU to run.
 - [ ] CI with CUDA: add a GPU build job that compiles and runs the GPU solver tests.

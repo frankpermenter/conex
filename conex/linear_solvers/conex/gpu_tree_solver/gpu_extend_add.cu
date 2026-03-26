@@ -44,4 +44,56 @@ void LaunchExtendAdd(const ScatterOp* d_ops, int num_ops, void* stream) {
   }
 }
 
+// Gather kernel: dst[i + col*n] = src[indices[i] + col*src_ld].
+__global__ void GatherKernel(double* dst, const double* src,
+                             const int* indices, int n, int cols,
+                             int src_ld) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n) return;
+  int idx = indices[i];
+  for (int c = 0; c < cols; ++c) {
+    dst[i + c * n] = src[idx + c * src_ld];
+  }
+}
+
+void LaunchGather(double* dst, const double* src, const int* indices,
+                  int n, int cols, int src_ld, void* stream) {
+  if (n == 0) return;
+  int threads = 256;
+  int blocks = (n + threads - 1) / threads;
+  GatherKernel<<<blocks, threads, 0, static_cast<cudaStream_t>(stream)>>>(
+      dst, src, indices, n, cols, src_ld);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    throw std::runtime_error(std::string("Gather kernel launch: ") +
+                             cudaGetErrorString(err));
+  }
+}
+
+// Scatter kernel: dst[indices[i] + col*dst_ld] = src[i + col*n].
+__global__ void ScatterKernel(const double* src, double* dst,
+                              const int* indices, int n, int cols,
+                              int dst_ld) {
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= n) return;
+  int idx = indices[i];
+  for (int c = 0; c < cols; ++c) {
+    dst[idx + c * dst_ld] = src[i + c * n];
+  }
+}
+
+void LaunchScatter(const double* src, double* dst, const int* indices,
+                   int n, int cols, int dst_ld, void* stream) {
+  if (n == 0) return;
+  int threads = 256;
+  int blocks = (n + threads - 1) / threads;
+  ScatterKernel<<<blocks, threads, 0, static_cast<cudaStream_t>(stream)>>>(
+      src, dst, indices, n, cols, dst_ld);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    throw std::runtime_error(std::string("Scatter kernel launch: ") +
+                             cudaGetErrorString(err));
+  }
+}
+
 }  // namespace conex

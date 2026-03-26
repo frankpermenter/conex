@@ -22,4 +22,15 @@ struct ScatterOp {
 // stream: CUDA stream for async execution.
 void LaunchExtendAdd(const ScatterOp* d_ops, int num_ops, void* stream);
 
+// Gather: dst[i, :] = src[indices[i], :] for i in [0, n).
+// src has leading dimension src_ld, dst has leading dimension n.
+// Both are column-major with `cols` columns.
+void LaunchGather(double* dst, const double* src, const int* indices,
+                  int n, int cols, int src_ld, void* stream);
+
+// Scatter: dst[indices[i], :] = src[i, :] for i in [0, n).
+// dst has leading dimension dst_ld, src has leading dimension n.
+void LaunchScatter(const double* src, double* dst, const int* indices,
+                   int n, int cols, int dst_ld, void* stream);
+
 }  // namespace conex

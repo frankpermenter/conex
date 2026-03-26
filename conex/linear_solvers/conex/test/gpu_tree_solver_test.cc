@@ -12,6 +12,7 @@
 #include "conex/tree_solver/kkt_tree_solver.h"
 
 #include <set>
+#include <unordered_map>
 
 namespace conex {
 namespace {
@@ -142,23 +143,133 @@ Eigen::VectorXd SolveOnGpu(const TestProblem& prob) {
   GpuTreeSolver gpu;
   gpu.Finalize(ct);
 
-  // Assemble A^T A into per-supernode dense blocks.
-  // Each supernode ci has variables = supernodes[ci] ∪ separators[ci].
-  // The dense block is (A_clique)^T * (A_clique) where A_clique has
-  // columns corresponding to the clique's variables.
-  Eigen::MatrixXd AtA(prob.A.transpose() * prob.A);
+  // Build elimination ordering (same as GpuTreeSolver::Finalize).
+  Eigen::VectorXi perm = Eigen::VectorXi::Constant(n, -1);
+  int epos = 0;
+  for (int ci : ct.post_order_position_to_clique) {
+    for (int v : ct.supernodes[ci]) {
+      if (v >= 0 && v < n) perm(v) = epos++;
+    }
+  }
+
+  // Build per-clique variable sets for lookup.
+  std::vector<std::set<int>> clique_vars(num_cliques);
+  for (int ci = 0; ci < num_cliques; ++ci) {
+    for (int v : ct.supernodes[ci]) clique_vars[ci].insert(v);
+    for (int v : ct.separators[ci]) clique_vars[ci].insert(v);
+  }
+
+  // For each clique, build a map from variable to local index.
+  std::vector<std::vector<int>> clique_var_list(num_cliques);
+  std::vector<std::unordered_map<int, int>> var_to_local(num_cliques);
+  for (int ci = 0; ci < num_cliques; ++ci) {
+    auto& vars = clique_var_list[ci];
+    vars = ct.supernodes[ci];
+    vars.insert(vars.end(), ct.separators[ci].begin(), ct.separators[ci].end());
+    for (int k = 0; k < static_cast<int>(vars.size()); ++k) {
+      var_to_local[ci][vars[k]] = k;
+    }
+  }
+
+  // Assemble per-row contributions: each row of A contributes A_r^T A_r
+  // to the clique that owns the first-eliminated variable of the row's support.
+  std::vector<Eigen::MatrixXd> blocks(num_cliques);
+  for (int ci = 0; ci < num_cliques; ++ci) {
+    int total = static_cast<int>(clique_var_list[ci].size());
+    blocks[ci] = Eigen::MatrixXd::Zero(total, total);
+  }
+
+  // For each row of A, find its support and assign to the owning clique.
+  Eigen::SparseMatrix<double, Eigen::RowMajor> A_row(prob.A);
+  for (int r = 0; r < A_row.rows(); ++r) {
+    // Collect the row's support (nonzero columns).
+    std::vector<std::pair<int, double>> row_entries;
+    for (Eigen::SparseMatrix<double, Eigen::RowMajor>::InnerIterator it(A_row, r);
+         it; ++it) {
+      row_entries.push_back({static_cast<int>(it.col()), it.value()});
+    }
+    if (row_entries.empty()) continue;
+
+    // Find the clique whose supernode contains the first-eliminated variable.
+    int first_elim_var = -1;
+    int first_elim_pos = n;
+    for (const auto& e : row_entries) {
+      if (perm(e.first) < first_elim_pos) {
+        first_elim_pos = perm(e.first);
+        first_elim_var = e.first;
+      }
+    }
+
+    // Find the clique whose supernode contains first_elim_var.
+    int owner = -1;
+    for (int ci = 0; ci < num_cliques; ++ci) {
+      for (int v : ct.supernodes[ci]) {
+        if (v == first_elim_var) { owner = ci; break; }
+      }
+      if (owner >= 0) break;
+    }
+    EXPECT_GE(owner, 0) << "No clique owns variable " << first_elim_var;
+
+    // Verify the row's support is a subset of the owning clique's variables.
+    // If not, find the ancestor clique that contains all support variables.
+    const auto& owner_vars = clique_vars[owner];
+    bool all_in_owner = true;
+    for (const auto& e : row_entries) {
+      if (owner_vars.find(e.first) == owner_vars.end()) {
+        all_in_owner = false;
+        break;
+      }
+    }
+
+    if (!all_in_owner) {
+      // Search for a clique that contains ALL of this row's support.
+      std::set<int> row_support;
+      for (const auto& e : row_entries) row_support.insert(e.first);
+
+      owner = -1;
+      for (int ci = 0; ci < num_cliques; ++ci) {
+        bool contains_all = true;
+        for (int v : row_support) {
+          if (clique_vars[ci].find(v) == clique_vars[ci].end()) {
+            contains_all = false;
+            break;
+          }
+        }
+        if (contains_all) {
+          // Among cliques that contain all vars, pick the one with
+          // the earliest-eliminated supernode variable.
+          if (owner < 0) {
+            owner = ci;
+          } else {
+            int min_elim_ci = n, min_elim_owner = n;
+            for (int v : ct.supernodes[ci])
+              min_elim_ci = std::min(min_elim_ci, (int)perm(v));
+            for (int v : ct.supernodes[owner])
+              min_elim_owner = std::min(min_elim_owner, (int)perm(v));
+            if (min_elim_ci < min_elim_owner) owner = ci;
+          }
+        }
+      }
+      EXPECT_GE(owner, 0) << "No clique covers row " << r << "'s support";
+    }
+
+    // Add A_r^T * A_r to the owning clique's block.
+    const auto& local_map = var_to_local[owner];
+    for (const auto& ei : row_entries) {
+      auto it_i = local_map.find(ei.first);
+      EXPECT_NE(it_i, local_map.end());
+      if (it_i == local_map.end()) continue;
+      for (const auto& ej : row_entries) {
+        auto it_j = local_map.find(ej.first);
+        EXPECT_NE(it_j, local_map.end());
+        if (it_j == local_map.end()) continue;
+        blocks[owner](it_i->second, it_j->second) += ei.second * ej.second;
+      }
+    }
+  }
 
   for (int ci = 0; ci < num_cliques; ++ci) {
-    std::vector<int> vars = ct.supernodes[ci];
-    vars.insert(vars.end(), ct.separators[ci].begin(), ct.separators[ci].end());
-    int total = static_cast<int>(vars.size());
-
-    Eigen::MatrixXd block(total, total);
-    for (int i = 0; i < total; ++i)
-      for (int j = 0; j < total; ++j)
-        block(i, j) = AtA(vars[i], vars[j]);
-
-    gpu.SetSupernodeData(ci, block);
+    gpu.SetSupernodeData(ci, blocks[ci]);
   }
 
   EXPECT_TRUE(gpu.AssembleAndFactor());

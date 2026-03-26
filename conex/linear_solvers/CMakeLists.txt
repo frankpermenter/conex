@@ -158,14 +158,14 @@ check_language(CUDA)
 if(CMAKE_CUDA_COMPILER)
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
-  set(CMAKE_CUDA_STANDARD 17)
+  set(CMAKE_CUDA_STANDARD 14)  # nvcc 11.x can't parse GCC 11's <functional> at C++17
   if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR CMAKE_CUDA_ARCHITECTURES STREQUAL "")
     set(CMAKE_CUDA_ARCHITECTURES "60;70;80" CACHE STRING "CUDA architectures" FORCE)
   endif()
 
   add_library(gpu_tree_solver
-    conex/gpu_tree_solver/gpu_tree_solver.cu
-    conex/gpu_tree_solver/gpu_device_arena.cu
+    conex/gpu_tree_solver/gpu_tree_solver.cc
+    conex/gpu_tree_solver/gpu_device_arena.cc
     conex/gpu_tree_solver/gpu_extend_add.cu
   )
   target_link_libraries(gpu_tree_solver PUBLIC
@@ -178,7 +178,7 @@ if(CMAKE_CUDA_COMPILER)
   target_include_directories(gpu_tree_solver PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
   add_executable(gpu_tree_solver_test
-    conex/test/gpu_tree_solver_test.cu
+    conex/test/gpu_tree_solver_test.cc
   )
   target_link_libraries(gpu_tree_solver_test
     gpu_tree_solver

@@ -104,6 +104,12 @@ class GpuTreeSolver : public KKTSolverBase {
   // Host staging buffer for assembly.
   std::vector<Eigen::MatrixXd> host_data_;
 
+  // Per-supernode separator elimination positions (for gather/scatter in solve).
+  int* d_sep_indices_ = nullptr;       // flat device array of all separator elim positions
+  std::vector<int> sep_indices_offsets_;  // per-supernode offset into d_sep_indices_
+  double* d_gather_buf_ = nullptr;     // contiguous buffer for gathered separator entries
+  int max_sep_size_ = 0;
+
   // CUDA handles (mutable: solve is logically const but uses GPU state).
   mutable cusolverDnContext* cusolver_ = nullptr;
   mutable cublasContext* cublas_ = nullptr;
