@@ -64,6 +64,13 @@ add_library(sparse_linear_constraint
 )
 target_link_libraries(sparse_linear_constraint PUBLIC constraints kkt_solver_factory structural_rank)
 
+# --- Algorithms (built on top of solver, no downward dependency) ---
+add_library(algorithms
+  conex/algorithms/irls.cc
+  conex/algorithms/barrier_qp.cc
+)
+target_link_libraries(algorithms PUBLIC sparse_linear_constraint)
+
 # --- Test ---
 enable_testing()
 add_executable(sparse_linear_constraint_test
@@ -125,8 +132,17 @@ target_link_libraries(sparse_quadratic_term_test
   GTest::gtest_main
 )
 
+add_executable(algorithms_test
+  conex/test/algorithms_test.cc
+)
+target_link_libraries(algorithms_test
+  algorithms
+  GTest::gtest_main
+)
+
 include(GoogleTest)
 gtest_discover_tests(sparse_linear_constraint_test)
 gtest_discover_tests(multithreading_test)
 gtest_discover_tests(low_rank_diagonal_test)
 gtest_discover_tests(sparse_quadratic_term_test)
+gtest_discover_tests(algorithms_test)
