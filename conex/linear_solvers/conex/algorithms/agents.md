@@ -1,115 +1,141 @@
-# Block-Space API for Iterative Algorithms
+# Algorithms Guide
 
-This directory contains algorithms (IRLS, barrier QP) built on top of the
-tree solver. The solver is a pure linear algebra layer — it knows nothing
-about convergence, barriers, or iteration. Algorithms interact through
-a small public API.
+This directory contains iterative algorithms built on the solver abstraction.
+The solver is a pure linear algebra layer — algorithms interact through
+`KKTSolverBase` and `ConstraintManager`, not solver internals.
 
-## Core Loop
+## Available Algorithms
 
-Build the solver once, then iterate:
+| File | Algorithm | Problem |
+|------|-----------|---------|
+| `least_squares.cc` | Direct solve | `min \|Ax - b\|_2^2` and `(Q + A^T A)x = rhs` |
+| `irls.cc` | IRLS | `min \|Ax - b\|_1` (L1 minimization) |
+| `barrier_qp.cc` | Log-barrier IPM | `min 0.5 x^T Q x + c^T x` s.t. `Ax <= b` |
+
+## Solver Abstraction
+
+All algorithms use `KKTSolverBase` (not the tree solver directly).
+Two implementations exist:
+
+- **`SymmetricLinearSystemTreeSolver`** — supernodal chordal sparse Cholesky
+- **`DenseKKTSolver`** — dense LLT (reference / small problems)
+- **`GpuTreeSolver`** — GPU version of tree solver (requires CUDA)
+
+## Standard Pattern
 
 ```cpp
-// Setup (once):
+// 1. Register constraints.
+ConstraintManager cm(n);
+cm.AddCustomAssembler(std::make_unique<SparseLinearConstraintAssembler>(...));
+cm.Preprocess();  // drops structurally rank-deficient columns
+
+// 2. Build solver (currently always a tree solver).
 auto solver = MakeTreeSolver(&cm, config);
-auto* tree_solver = dynamic_cast<SymmetricLinearSystemTreeSolver*>(solver.get());
-solver->AssembleAndFactor();            // initializes evaluators
-a_assembler->BindPartition(*tree_solver); // maps constraints to blocks
 
-// Iteration:
-a_assembler->SetWeights(weights);       // update W (per-row)
-solver->AssembleAndFactor();            // re-assembles A^T W A, re-factors
+// 3. Optionally bind partition for fast block-space residuals.
+solver->AssembleAndFactor();
+if (auto* tree = dynamic_cast<SymmetricLinearSystemTreeSolver*>(solver.get()))
+    assembler->BindPartition(*tree);
+
+// 4. Iterative loop.
+assembler->SetWeights(weights);
+solver->AssembleAndFactor();
 Eigen::VectorXd dx = solver->Solve(rhs);
+
+// 5. Expand solution if Preprocess reduced the problem.
+result.x = cm.ExpandSolution(x);
 ```
 
-## Block Space
+## ConstraintManager::Preprocess
 
-After `Solve`, the solution lives in the `SupernodePartitionMatrix` — a
-collection of per-clique dense blocks (supernode + separator). You can
-compute residuals and products without leaving this representation.
-
-### Scatter / Gather
+Call after registering all assemblers, before building the solver.
+Checks structural rank of all `SparseLinearConstraintAssembler`s.
+If rank-deficient, drops columns and rebuilds assemblers in reduced space.
 
 ```cpp
-tree_solver->ScatterToBlocks(x);     // original-order vector → per-block storage
-tree_solver->GatherFromBlocks(x);    // per-block storage → original-order vector
+cm.Preprocess();
+// After Preprocess:
+cm.was_reduced()          // true if columns were dropped
+cm.GetNumberOfVariables() // reduced count
+cm.column_map()           // reduced_col -> original_col
+cm.ExpandSolution(x)      // zero-pads dropped variables
+cm.ReduceVector(v)        // slices to kept variables
 ```
 
-### A*x (residual)
+For barrier QP with a Q matrix, reduce Q and c manually:
+```cpp
+cm.Preprocess();
+Eigen::VectorXd c_r = cm.ReduceVector(c);
+// Reduce Q using cm.column_map() ...
+// Add Q assembler AFTER Preprocess with reduced variables.
+```
+
+## Block Partition
+
+Every solver provides a `BlockPartition` via `solver->partition()`.
+This abstracts the per-block decomposition of the solution vector.
 
 ```cpp
-tree_solver->ScatterToBlocks(x);
-Eigen::VectorXd Ax = a_assembler->ComputeBlockResiduals(*tree_solver);
+solver->ScatterToBlocks(x);     // vector → blocks
+solver->GatherFromBlocks(x);    // blocks → vector
+auto& p = solver->partition();
+p.num_blocks();                  // tree: num supernodes, dense: 1
+p.block(k);                      // Eigen::Ref to block k
 ```
 
-Uses `A_perm_` (columns permuted to elimination order) directly on contiguous
-block data. No per-variable gather. Dense BLAS on each clique's sub-block.
+## Residuals and Products (Block Space)
 
-**Requires** `BindPartition` after the first `AssembleAndFactor`.
-
-### A^T * v
+After solving, compute residuals without gathering to a global vector:
 
 ```cpp
-Eigen::VectorXd Atv = a_assembler->ComputeTransposeProduct(v);
+// A * x (block-space, fast for large dense cliques):
+solver->ScatterToBlocks(x);
+Eigen::VectorXd Ax = assembler->ComputeBlockResiduals(*solver);
+
+// A^T * v (per-clique dense A^T multiply):
+Eigen::VectorXd Atv = assembler->ComputeTransposeProduct(v);
+
+// Q * x (gathers globally, uses sparse Q):
+Eigen::VectorXd Qx = q_assembler->ComputeBlockProduct(*solver);
 ```
 
-Per-clique dense `A_clique^T * v_local`, scattered to global result.
+`ComputeBlockResiduals` takes `const KKTSolverBase&` — works with any solver.
+If `BindPartition` was called (tree solver only), uses the fast path with
+`A_perm_` on contiguous supernode/separator blocks. Otherwise falls back
+to gather + sparse matvec.
 
-### Q * x
-
-```cpp
-Eigen::VectorXd Qx = q_assembler->ComputeBlockProduct(*tree_solver);
-```
-
-Currently gathers to global then uses sparse Q. Per-clique Q_perm_ path
-is available but not yet wired end-to-end.
-
-### SetWeights
-
-```cpp
-a_assembler->SetWeights(weights);   // size = A.rows()
-```
-
-Distributes to per-clique `LinearConstraint` W vectors (stores `sqrt(w)`
-since the evaluator computes `(WA)^T(WA) = A^T W^2 A`). Calls
-`update_weights()` on each `GramEvaluator`.
-
-## Block Structure
-
-Each clique in the tree has:
-- **Supernode block**: dense n_sn × n_sn matrix (factored in-place)
-- **Separator rows**: dense n_sep × n_sn off-diagonal
-- **Separator Schur complement**: dense n_sep × n_sep
-
-The `A_perm_` for each constraint has columns ordered as
-`[supernode_cols | separator_cols]`, matching the partition layout.
-The `sn_count` on the `GramEvaluator` tracks the split point.
-
-## What Lives Where
+## Dependency Structure
 
 ```
-algorithms/         ← iterative algorithms (this directory)
-  irls.cc           ← IRLS for L1 minimization
-  barrier_qp.cc     ← barrier method for Ax <= b QP
+algorithms/         depends on  common/, tree_solver/ (for MakeTreeSolver)
+  irls.cc
+  barrier_qp.cc
+  least_squares.cc
 
-common/             ← constraint types, assemblers, decomposition
-  sparse_linear_constraint.h  ← SetWeights, ComputeResiduals, ComputeBlockResiduals
-  sparse_quadratic_term.h     ← Q assembler, ComputeBlockProduct
-  linear_constraint.h         ← per-clique LinearConstraint, ComputeBlockResidual
+common/             no dependency on tree_solver/
+  constraint_manager.h    ← Preprocess, ExpandSolution, ReduceVector
+  kkt_solver_interface.h  ← KKTSolverBase (abstract)
+  block_partition.h       ← BlockPartition (abstract)
+  sparse_linear_constraint.h ← assemblers, SetWeights, residuals
+  clique_tree.h           ← CliqueTree (data struct, no solver logic)
 
-tree_solver/        ← factorization, solve, block partition
-  kkt_solver_factory.h  ← MakeTreeSolver (entry point)
-  kkt_tree_solver.h     ← partition(), ScatterToBlocks, GatherFromBlocks
+tree_solver/        implements KKTSolverBase
+  kkt_tree_solver.h  ← SymmetricLinearSystemTreeSolver
+  kkt_solver_factory.h ← MakeTreeSolver
+
+gpu_tree_solver/    implements KKTSolverBase (requires CUDA)
+  gpu_tree_solver.h  ← GpuTreeSolver
 ```
 
-Algorithms depend on `common/` and `tree_solver/`. The tree solver has
-zero imports from `algorithms/`.
+`common/` has zero imports from `tree_solver/` or `gpu_tree_solver/`.
+Algorithms import `tree_solver/` only for `MakeTreeSolver`.
 
-## Performance
+## Adding a New Algorithm
 
-Block-space A*x is 2-3x faster than sparse A*x for problems with dense
-cliques (block size ≥ 20). The speedup comes from dense BLAS on contiguous
-memory vs sparse column iteration with indirect indexing.
-
-For small cliques or highly sparse A, the sparse matvec is faster.
-Use `ComputeResiduals(x)` (gather path) for those cases.
+1. Create `conex/algorithms/my_algo.h` and `.cc`.
+2. Use `ConstraintManager` + `MakeTreeSolver` to build the solver.
+3. Call `cm.Preprocess()` before building the solver.
+4. Use `SetWeights` + `AssembleAndFactor` + `Solve` loop.
+5. Return `cm.ExpandSolution(x)` if the problem might be rank-deficient.
+6. Add to `CMakeLists.txt` in the `algorithms` library.
+7. Add tests in `conex/test/algorithms_test.cc`.
