@@ -3,10 +3,10 @@
 #include <chrono>
 #include <cmath>
 #include <set>
-#include <vector>
 
 #include "conex/common/constraint_manager.h"
 #include "conex/common/conex.h"
+#include "conex/common/sparse_linear_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
 #include "conex/tree_solver/kkt_solver_factory.h"
 
@@ -15,110 +15,135 @@ namespace conex {
 BarrierQPResult SolveBarrierQP(
     const Eigen::SparseMatrix<double>& Q,
     const Eigen::VectorXd& c,
-    const Eigen::VectorXd& lb,
-    const Eigen::VectorXd& ub,
+    const Eigen::SparseMatrix<double>& A,
+    const Eigen::VectorXd& b,
+    const Eigen::VectorXd& x0,
     int max_outer_iterations,
-    int max_newton_steps_per_outer,
+    int max_newton_steps,
     double mu,
     double tolerance) {
   using clock = std::chrono::high_resolution_clock;
   BarrierQPResult result;
   const int n = Q.cols();
+  const int m = A.rows();
   result.total_newton_steps = 0;
+  result.outer_iterations = 0;
 
-  // Starting point: center of the box.
-  Eigen::VectorXd x = 0.5 * (lb + ub);
+  // Build solver once: the Newton system is (Q + A^T W A) dx = rhs.
+  // Q is the quadratic cost, A defines the inequality constraints.
+  // W changes each iteration but the sparsity structure is fixed.
+  Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(m);
+  auto slc = std::make_unique<SparseLinearConstraint>(A, b_zero);
+  std::set<int> var_set;
+  for (const auto& sup : slc->row_supports())
+    var_set.insert(sup.begin(), sup.end());
+  for (int i = 0; i < n; ++i) var_set.insert(i);
+  std::vector<int> all_vars(var_set.begin(), var_set.end());
 
-  // Number of inequality constraints (2n for box constraints).
-  const int num_ineq = 2 * n;
-  double t = 1.0;  // barrier parameter
+  ConstraintManager cm(n);
+  auto a_assembler = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc), all_vars);
+  auto* a_asm_ptr = a_assembler.get();
+  cm.AddCustomAssembler(a_asm_ptr);
 
-  auto t0 = clock::now();
+  auto q_assembler = std::make_unique<SparseQuadraticTermAssembler>(Q, all_vars);
+  cm.AddCustomAssembler(q_assembler.get());
 
-  // For each barrier subproblem, we solve:
-  //   (Q + D) dx = -grad
-  // where D = (1/t)(diag(1/(x-lb)^2) + diag(1/(ub-x)^2))
-  //       grad = Q*x + c - (1/t)(1/(x-lb) - 1/(ub-x))
-  //
-  // We build Q + D as a sparse matrix and use SparseQuadraticTermLeastSquares
-  // with A = 0 (pure quadratic, no least-squares term).
-  Eigen::SparseMatrix<double> A_empty(0, n);
+  SolverConfiguration config;
+  auto solver = MakeTreeSolver(&cm, config);
+
+  auto t_start = clock::now();
+
+  Eigen::VectorXd x = x0;
+  double t = 1.0;
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
-    // Check duality gap: num_ineq / t.
-    double gap = static_cast<double>(num_ineq) / t;
-    if (gap < tolerance) break;
     result.outer_iterations = outer + 1;
 
-    // Newton's method for the barrier subproblem.
-    for (int newton = 0; newton < max_newton_steps_per_outer; ++newton) {
+    // Duality gap estimate: m / t.
+    double gap = static_cast<double>(m) / t;
+    if (gap < tolerance) break;
+
+    // Newton's method on the barrier subproblem.
+    for (int newton = 0; newton < max_newton_steps; ++newton) {
       result.total_newton_steps++;
 
-      // Compute barrier Hessian diagonal.
-      Eigen::VectorXd sl = x - lb;  // slack lower
-      Eigen::VectorXd su = ub - x;  // slack upper
+      // Slacks: s = b - A x.
+      Eigen::VectorXd s = b - A * x;
 
-      // Clamp to avoid division by zero.
-      for (int i = 0; i < n; ++i) {
-        sl(i) = std::max(sl(i), 1e-15);
-        su(i) = std::max(su(i), 1e-15);
+      // Check feasibility.
+      if (s.minCoeff() <= 0) {
+        // Infeasible — should not happen with proper line search.
+        break;
       }
 
-      Eigen::VectorXd d_barrier(n);
-      for (int i = 0; i < n; ++i) {
-        d_barrier(i) = (1.0 / t) * (1.0 / (sl(i) * sl(i)) +
-                                     1.0 / (su(i) * su(i)));
+      // Barrier weights: W_ii = 1 / (t * s_i^2).
+      Eigen::VectorXd weights(m);
+      for (int i = 0; i < m; ++i) {
+        weights(i) = 1.0 / (t * s(i) * s(i));
       }
+      a_asm_ptr->SetWeights(weights);
 
-      // Build Q + D as sparse.
-      std::vector<Eigen::Triplet<double>> trips;
-      for (int k = 0; k < Q.outerSize(); ++k)
-        for (Eigen::SparseMatrix<double>::InnerIterator it(Q, k); it; ++it)
-          trips.emplace_back(it.row(), it.col(), it.value());
-      for (int i = 0; i < n; ++i)
-        trips.emplace_back(i, i, d_barrier(i));
-      Eigen::SparseMatrix<double> H(n, n);
-      H.setFromTriplets(trips.begin(), trips.end());
+      // Gradient of barrier subproblem:
+      //   grad = Q x + c + (1/t) A^T (1/s)
+      //        = Q x + c - A^T d   where d = -1/(t * s)
+      Eigen::VectorXd inv_s(m);
+      for (int i = 0; i < m; ++i) inv_s(i) = 1.0 / s(i);
+      Eigen::VectorXd grad = Q * x + c + (1.0 / t) * A.transpose() * inv_s;
 
-      // Gradient: Q*x + c - (1/t)(1/sl - 1/su).
-      Eigen::VectorXd grad = Q * x + c;
-      for (int i = 0; i < n; ++i) {
-        grad(i) -= (1.0 / t) * (1.0 / sl(i) - 1.0 / su(i));
-      }
+      // Solve (Q + A^T W A) dx = -grad.
+      bool ok = solver->AssembleAndFactor();
+      if (!ok) break;
+      Eigen::VectorXd dx = solver->Solve(-grad);
 
-      // Solve H dx = -grad.
-      Eigen::VectorXd neg_grad = -grad;
-      auto step_result = SparseQuadraticTermLeastSquares(H, A_empty, neg_grad);
-      Eigen::VectorXd dx = step_result.x;
+      // Newton decrement: lambda^2 = -grad^T dx.
+      double lambda_sq = -grad.dot(dx);
+      if (lambda_sq / 2.0 < tolerance * 0.01) break;
 
-      // Line search: ensure x + alpha*dx stays in (lb, ub).
+      // Backtracking line search to maintain feasibility.
       double alpha = 1.0;
-      for (int i = 0; i < n; ++i) {
-        if (dx(i) < 0) {
-          double max_step = -(x(i) - lb(i)) / dx(i);
-          alpha = std::min(alpha, 0.99 * max_step);
-        } else if (dx(i) > 0) {
-          double max_step = (ub(i) - x(i)) / dx(i);
-          alpha = std::min(alpha, 0.99 * max_step);
+
+      // Max step to stay feasible: s + alpha * A dx > 0.
+      Eigen::VectorXd Adx = A * dx;
+      for (int i = 0; i < m; ++i) {
+        if (Adx(i) > 0) {
+          // s(i) - alpha * Adx(i) > 0  =>  alpha < s(i) / Adx(i)
+          alpha = std::min(alpha, 0.99 * s(i) / Adx(i));
         }
       }
 
-      x += alpha * dx;
+      // Backtracking on barrier objective.
+      const double beta = 0.5;
+      const double armijo = 0.01;
+      double f0 = 0.5 * x.dot(Q * x) + c.dot(x);
+      for (int i = 0; i < m; ++i) f0 -= (1.0 / t) * std::log(s(i));
 
-      // Check Newton decrement.
-      double newton_decrement = dx.dot(-grad);
-      if (newton_decrement / 2.0 < tolerance * 0.01) break;
+      for (int ls = 0; ls < 20; ++ls) {
+        Eigen::VectorXd x_new = x + alpha * dx;
+        Eigen::VectorXd s_new = b - A * x_new;
+        if (s_new.minCoeff() <= 0) {
+          alpha *= beta;
+          continue;
+        }
+        double f_new = 0.5 * x_new.dot(Q * x_new) + c.dot(x_new);
+        for (int i = 0; i < m; ++i) f_new -= (1.0 / t) * std::log(s_new(i));
+        if (f_new <= f0 + armijo * alpha * grad.dot(dx)) break;
+        alpha *= beta;
+      }
+
+      x += alpha * dx;
     }
 
     // Increase barrier parameter.
     t *= mu;
   }
 
-  auto t1 = clock::now();
+  auto t_end = clock::now();
   result.x = x;
   result.objective = 0.5 * x.dot(Q * x) + c.dot(x);
+  result.duality_gap = static_cast<double>(m) / t;
   result.solve_time_us =
-      std::chrono::duration<double, std::micro>(t1 - t0).count();
+      std::chrono::duration<double, std::micro>(t_end - t_start).count();
   return result;
 }
 

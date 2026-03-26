@@ -4,43 +4,40 @@
 
 namespace conex {
 
-// Barrier method for box-constrained quadratic programming.
+// Barrier method for linearly-constrained convex QP.
 //
 // Solves: min  0.5 x^T Q x + c^T x
-//         s.t. lb <= x <= ub
+//         s.t. A x <= b
 //
-// via iterating on the barrier subproblem:
-//   min  0.5 x^T Q x + c^T x - (1/t) sum log(x_i - lb_i)
-//                               - (1/t) sum log(ub_i - x_i)
+// via the log-barrier:
+//   min_x  t (0.5 x^T Q x + c^T x) - sum_i log(b_i - a_i^T x)
 //
-// The Newton step solves:
-//   (Q + D(x,t)) dx = -(Q x + c - (1/t)(d_lower - d_upper))
-// where D(x,t) = (1/t)(diag(1/(x-lb)^2) + diag(1/(ub-x)^2))
-// is a diagonal Hessian of the barrier terms.
+// The Newton step at each iteration solves:
+//   (Q + A^T W A) dx = -(Q x + c + A^T d)
+// where s = b - A x (slacks), W = diag(1/(t * s_i^2)), d = -1/(t * s_i).
 //
-// This maps to our reweighting framework: D is a diagonal matrix that
-// changes each iteration. We solve (Q + A^T W A + D) dx = rhs
-// where A^T W A is the original quadratic term (if any) and D comes
-// from the barrier.
-//
-// For pure QP with Q sparse, we use SparseQuadraticTermLeastSquares
-// with Q_iter = Q + D(x,t) at each Newton step.
+// This maps directly to our reweighting framework:
+// - Build solver once from Q and A (fixes the clique tree)
+// - Each Newton step: update W via SetWeights, re-factor, solve
+// - Increase t by factor mu each outer iteration
 struct BarrierQPResult {
   Eigen::VectorXd x;
-  int outer_iterations;   // barrier parameter updates
+  int outer_iterations;
   int total_newton_steps;
   double objective;
+  double duality_gap;
   double solve_time_us;
 };
 
 BarrierQPResult SolveBarrierQP(
-    const Eigen::SparseMatrix<double>& Q,
-    const Eigen::VectorXd& c,
-    const Eigen::VectorXd& lb,
-    const Eigen::VectorXd& ub,
-    int max_outer_iterations = 20,
-    int max_newton_steps_per_outer = 20,
-    double mu = 10.0,       // barrier parameter growth rate
+    const Eigen::SparseMatrix<double>& Q,  // n x n, PSD
+    const Eigen::VectorXd& c,              // n
+    const Eigen::SparseMatrix<double>& A,  // m x n, inequality constraints
+    const Eigen::VectorXd& b,              // m, A x <= b
+    const Eigen::VectorXd& x0,            // n, strictly feasible start (A x0 < b)
+    int max_outer_iterations = 30,
+    int max_newton_steps = 50,
+    double mu = 10.0,
     double tolerance = 1e-8);
 
 }  // namespace conex
