@@ -253,7 +253,8 @@ class KKTSubsystemBase {
   void AccumulateColumnUpdate(
       const KKTSubsystemBase* target,
       Eigen::Ref<Eigen::MatrixXd> supernode_delta,
-      Eigen::Ref<Eigen::MatrixXd> separator_delta) const;
+      Eigen::Ref<Eigen::MatrixXd> separator_delta,
+      Eigen::Ref<Eigen::MatrixXd> separator_schur_delta) const;
   void GatherFromChildren();
   void ProvideColumnUpdate(KKTSubsystemBase* target);
   void ReceiveColumnUpdate(const KKTSubsystemBase* source,

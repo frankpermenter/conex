@@ -163,7 +163,8 @@ void Scatter(const KKTSubsystemBase* source,
 void AccumulateUpdate(const KKTSubsystemBase* source,
                       const KKTSubsystemBase* destination,
                       Eigen::Ref<Eigen::MatrixXd> supernode_delta,
-                      Eigen::Ref<Eigen::MatrixXd> separator_delta) {
+                      Eigen::Ref<Eigen::MatrixXd> separator_delta,
+                      Eigen::Ref<Eigen::MatrixXd> separator_schur_delta) {
   const auto& supernode_offsets =
       destination->local_supernode_to_source_separator(source);
   const auto& separator_offsets =
@@ -173,6 +174,8 @@ void AccumulateUpdate(const KKTSubsystemBase* source,
                   supernode_offsets);
   BlockwiseIncrement(separator_delta, source_separator_schur, separator_offsets,
                   supernode_offsets);
+  BlockwiseIncrement(separator_schur_delta, source_separator_schur,
+                  separator_offsets, separator_offsets);
 }
 
 }  // namespace
@@ -227,7 +230,8 @@ bool T::IsRoot() const { return parent_ == nullptr; }
 
 void T::AccumulateColumnUpdate(
     const KKTSubsystemBase* target, Eigen::Ref<Eigen::MatrixXd> supernode_delta,
-    Eigen::Ref<Eigen::MatrixXd> separator_delta) const {
+    Eigen::Ref<Eigen::MatrixXd> separator_delta,
+    Eigen::Ref<Eigen::MatrixXd> separator_schur_delta) const {
   const std::vector<int>& target_supernodes = target->supernodes();
   if (target_supernodes.size() == 0) {
     return;
@@ -235,12 +239,12 @@ void T::AccumulateColumnUpdate(
   if (separators_.size() == 0 || target_supernodes.at(0) > separators_.back()) {
     return;
   }
-  AccumulateUpdate(this, target, supernode_delta, separator_delta);
+  AccumulateUpdate(this, target, supernode_delta, separator_delta,
+                   separator_schur_delta);
   if (!scatter_to_parent_) {
-    // With scatter-to-parent, separator_schur_complement already includes
-    // all descendant contributions — recursion would double-count.
     for (auto& c : children_) {
-      c->AccumulateColumnUpdate(target, supernode_delta, separator_delta);
+      c->AccumulateColumnUpdate(target, supernode_delta, separator_delta,
+                                separator_schur_delta);
     }
   }
 }
@@ -295,12 +299,15 @@ void T::GatherFromChildren() {
       std::min<size_t>(static_cast<size_t>(num_threads_), children_.size());
   std::vector<Eigen::MatrixXd> supernode_deltas(worker_count);
   std::vector<Eigen::MatrixXd> separator_deltas(worker_count);
+  std::vector<Eigen::MatrixXd> separator_schur_deltas(worker_count);
 
   for (size_t i = 0; i < worker_count; ++i) {
     supernode_deltas.at(i) =
         Eigen::MatrixXd::Zero(supernode_rows, supernode_cols);
     separator_deltas.at(i) =
         Eigen::MatrixXd::Zero(separator_row_count, separator_col_count);
+    separator_schur_deltas.at(i) =
+        Eigen::MatrixXd::Zero(separator_row_count, separator_row_count);
   }
 
   std::atomic<size_t> next_child(0);
@@ -316,7 +323,8 @@ void T::GatherFromChildren() {
         }
         children_.at(child_index)
             ->AccumulateColumnUpdate(this, supernode_deltas.at(t),
-                                     separator_deltas.at(t));
+                                     separator_deltas.at(t),
+                                     separator_schur_deltas.at(t));
       }
     });
   }
@@ -327,6 +335,7 @@ void T::GatherFromChildren() {
   for (size_t i = 0; i < worker_count; ++i) {
     AccumulateIntoSupernode(supernode_deltas.at(i));
     separator_rows() += separator_deltas.at(i);
+    separator_schur_complement() += separator_schur_deltas.at(i);
   }
 }
 
