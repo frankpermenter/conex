@@ -102,6 +102,7 @@ SparseLinearConstraint::GetConstraints(
     int ncols = static_cast<int>(vars.size());
     RowGroup group;
     group.variables = vars;
+    group.global_rows = rows;
     group.A.resize(nrows, ncols);
     group.b.resize(nrows);
     for (int i = 0; i < nrows; ++i) {
@@ -209,6 +210,29 @@ SparseLinearConstraintAssembler::DecomposeRaw(
   return slc_->GetConstraints(primal_cliques);
 }
 
+void SparseLinearConstraintAssembler::SetWeights(
+    const Eigen::VectorXd& weights) {
+  CONEX_DEMAND(weights.size() == num_global_rows_,
+               "Weight vector size must match number of rows in A.");
+  CONEX_DEMAND(!owned_constraints_.empty(),
+               "Decompose must be called before SetWeights.");
+
+  // The Gram evaluator computes (WA)^T (WA) = A^T W^2 A.
+  // So to get A^T diag(weights) A, we store sqrt(weights) in W.
+  for (int global = 0; global < num_global_rows_; ++global) {
+    const auto& m = row_map_[global];
+    if (m.constraint_index < 0) continue;
+    owned_constraints_[m.constraint_index]->workspace()->W(m.local_row) =
+        std::sqrt(weights(global));
+  }
+
+  // Update each constraint's Gram evaluator.
+  for (auto& c : owned_constraints_) {
+    c->GetLazyEvaluator();  // Ensure evaluator is bound.
+    static_cast<GramEvaluator*>(c->GetLazyEvaluator())->update_weights();
+  }
+}
+
 SparseLinearConstraintAssembler::SparseLinearConstraintAssembler(
     std::unique_ptr<SparseLinearConstraint> slc,
     const std::vector<int>& all_variables)
@@ -236,10 +260,22 @@ SparseLinearConstraintAssembler::Decompose(
   }
   auto groups = slc_->GetConstraints(primal_cliques);
 
+  // Build row mapping: global row → (constraint index, local row).
+  num_global_rows_ = slc_->A().rows();
+  row_map_.resize(num_global_rows_, {-1, -1});
+
   std::vector<SupernodalAssemblerBase*> result;
+  int constraint_index = 0;
   for (auto& group : groups) {
     auto constraint = std::make_unique<LinearConstraint>(group.A, group.b);
     constraint->SetPrimalVariables(group.variables);
+
+    // Record row mapping.
+    for (int local = 0; local < static_cast<int>(group.global_rows.size());
+         ++local) {
+      int global = group.global_rows[local];
+      row_map_[global] = {constraint_index, local};
+    }
 
     // Allocate persistent workspace memory for this constraint's
     // WorkspaceLinear (W, r, temp_1, temp_2, weighted_constraints).
@@ -250,6 +286,7 @@ SparseLinearConstraintAssembler::Decompose(
 
     result.push_back(constraint.get());
     owned_constraints_.push_back(std::move(constraint));
+    constraint_index++;
   }
   return result;
 }

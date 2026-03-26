@@ -94,6 +94,25 @@ class LinearConstraint : public Constraint {
   Eigen::MatrixXd constraint_matrix() const { return constraint_matrix_; }
   Eigen::MatrixXd affine_term() const { return constraint_affine_; }
 
+  // Set per-row weights and update the Gram evaluator.
+  // weights must have size == number of rows (constraint_matrix_.rows()).
+  // The Gram evaluator computes (WA)^T(WA) = A^T W^2 A, so W stores
+  // sqrt(weight).  This method takes the actual weights and applies sqrt.
+  void SetWeights(const Eigen::VectorXd& weights) {
+    CONEX_DEMAND(weights.size() == constraint_matrix_.rows(),
+                 "Weight vector size must match number of constraint rows.");
+    workspace_.W = weights.array().sqrt().matrix();
+    gram_evaluator_.update_weights();
+  }
+
+  // Set a single row weight (takes actual weight, applies sqrt internally).
+  void SetWeight(int row, double w) {
+    workspace_.W(row) = std::sqrt(w);
+    gram_evaluator_.update_weights();
+  }
+
+  int num_rows() const { return constraint_matrix_.rows(); }
+
  private:
   Workspace do_get_workspace() override { return Workspace(workspace()); }
 

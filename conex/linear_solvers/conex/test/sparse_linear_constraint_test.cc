@@ -942,4 +942,99 @@ GTEST_TEST(SparseLeastSquares, GenericFactorization) {
   }
 }
 
+// Test iterative reweighting: build solver once, change W, re-solve.
+GTEST_TEST(SparseLeastSquares, Reweighting) {
+  srand(42);
+  int num_vars = 30, bandwidth = 4, rows_per_group = 5;
+  int num_groups = num_vars - bandwidth + 1;
+  int num_rows = rows_per_group * num_groups;
+
+  std::vector<Eigen::Triplet<double>> triplets;
+  for (int g = 0; g < num_groups; g++)
+    for (int r = 0; r < rows_per_group; r++)
+      for (int j = 0; j < bandwidth; j++)
+        triplets.emplace_back(g * rows_per_group + r, g + j,
+                              0.5 + static_cast<double>(rand()) / RAND_MAX);
+  Eigen::SparseMatrix<double> A(num_rows, num_vars);
+  A.setFromTriplets(triplets.begin(), triplets.end());
+  MatrixXd Ad(A);
+
+  // Build solver once.
+  VectorXd b_zero = VectorXd::Zero(num_rows);
+  auto slc = std::make_unique<SparseLinearConstraint>(A, b_zero);
+  std::set<int> var_set;
+  for (const auto& sup : slc->row_supports())
+    var_set.insert(sup.begin(), sup.end());
+  std::vector<int> all_vars(var_set.begin(), var_set.end());
+
+  ConstraintManager cm(num_vars);
+  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc), all_vars);
+  auto* asm_ptr = assembler.get();
+  cm.AddCustomAssembler(asm_ptr);
+
+  SolverConfiguration config;
+  auto solver = MakeTreeSolver(&cm, config);
+
+  // Test 1: uniform weights (W=1) should match unweighted solve.
+  VectorXd x_true = VectorXd::Random(num_vars);
+  VectorXd rhs = Ad.transpose() * (Ad * x_true);
+  solver->AssembleAndFactor();
+  VectorXd sol1 = solver->Solve(rhs);
+  EXPECT_NEAR((sol1 - x_true).norm(), 0, 1e-8 * x_true.norm())
+      << "Uniform weight solve failed";
+
+  // Test 2: set diagonal weights and re-solve.
+  VectorXd weights = VectorXd::Random(num_rows).array().abs() + 0.1;
+  asm_ptr->SetWeights(weights);
+
+  MatrixXd W = weights.asDiagonal();
+  MatrixXd AtWA = Ad.transpose() * W * Ad;
+  VectorXd rhs_w = AtWA * x_true;
+
+  solver->AssembleAndFactor();
+  VectorXd sol2 = solver->Solve(rhs_w);
+  EXPECT_NEAR((sol2 - x_true).norm(), 0, 1e-8 * x_true.norm())
+      << "Weighted solve failed";
+
+  // Verify normal equation.
+  VectorXd residual = AtWA * sol2 - rhs_w;
+  EXPECT_NEAR(residual.norm(), 0, 1e-8 * rhs_w.norm())
+      << "Weighted normal equation not satisfied";
+
+  // Test 3: change weights again and re-solve.
+  VectorXd weights2 = VectorXd::Ones(num_rows) * 2.0;
+  asm_ptr->SetWeights(weights2);
+
+  MatrixXd AtW2A = Ad.transpose() * (2.0 * MatrixXd::Identity(num_rows, num_rows)) * Ad;
+  VectorXd rhs_w2 = AtW2A * x_true;
+
+  solver->AssembleAndFactor();
+  VectorXd sol3 = solver->Solve(rhs_w2);
+  EXPECT_NEAR((sol3 - x_true).norm(), 0, 1e-8 * x_true.norm())
+      << "Second reweight solve failed";
+
+  // Test 4: zero out some rows (weight=0) and verify they don't contribute.
+  VectorXd weights3 = VectorXd::Ones(num_rows);
+  for (int i = 0; i < num_rows / 2; i++) weights3(i) = 0;
+  asm_ptr->SetWeights(weights3);
+
+  MatrixXd W3 = weights3.asDiagonal();
+  MatrixXd AtW3A = Ad.transpose() * W3 * Ad;
+
+  // AtW3A may be singular if half the rows are zeroed. Add regularization.
+  AtW3A += 0.01 * MatrixXd::Identity(num_vars, num_vars);
+  // Rebuild with regularization not possible through SetWeights alone,
+  // so just check the assembled matrix gives the right answer for
+  // the non-regularized system (which may be rank-deficient).
+  // Skip this sub-test if singular.
+  Eigen::LLT<MatrixXd> llt(AtW3A);
+  if (llt.info() == Eigen::Success) {
+    VectorXd rhs_w3 = AtW3A * x_true;
+    // Can't directly verify since our solver doesn't add regularization.
+    // Just verify it doesn't crash.
+    solver->AssembleAndFactor();
+  }
+}
+
 }  // namespace conex

@@ -25,6 +25,7 @@ class SparseLinearConstraint {
     Eigen::MatrixXd A;
     Eigen::VectorXd b;
     std::vector<int> variables;
+    std::vector<int> global_rows;  // row indices in the original A
   };
 
   // The unique row supports of A (sorted, deduplicated).
@@ -85,6 +86,19 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
     }
   }
 
+  // Row mapping: global row index → (constraint index, local row).
+  // Available after Decompose().
+  struct RowMapping {
+    int constraint_index;
+    int local_row;
+  };
+  const std::vector<RowMapping>& row_map() const { return row_map_; }
+  int num_global_rows() const { return num_global_rows_; }
+
+  // Set per-row weights from a global weight vector (size = A.rows()).
+  // Distributes to per-clique W vectors and updates each GramEvaluator.
+  void SetWeights(const Eigen::VectorXd& weights);
+
  private:
   std::unique_ptr<SparseLinearConstraint> slc_;
 
@@ -92,6 +106,9 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
   std::vector<std::unique_ptr<LinearConstraint>> owned_constraints_;
   // Persistent workspace memory for each LinearConstraint's WorkspaceLinear.
   std::list<Eigen::VectorXd> owned_workspace_memory_;
+  // Global row → per-clique mapping (indexed by global row).
+  std::vector<RowMapping> row_map_;
+  int num_global_rows_ = 0;
 };
 
 struct SparseLeastSquaresResult {
