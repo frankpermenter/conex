@@ -691,35 +691,8 @@ CliqueTree MakeCliqueTreeImpl(
     ReorderSupernodes(ct, supernode_reorder_method);
 
   // Connect disconnected forest roots into a single tree.
-  // Make all secondary roots children of the first root.
-  {
-    const int nk = static_cast<int>(ct.supernodes.size());
-    std::vector<int> roots;
-    for (int i = 0; i < nk; ++i) {
-      if (ct.node_to_parent[i] == -1) roots.push_back(i);
-    }
-    if (roots.size() > 1) {
-      const int main_root = roots[0];
-      for (size_t ri = 1; ri < roots.size(); ++ri) {
-        const int r = roots[ri];
-        ct.node_to_parent[r] = main_root;
-        // Separator = intersection of cliques[r] and cliques[main_root].
-        ct.separators[r].clear();
-        std::set_intersection(
-            cliques[r].begin(), cliques[r].end(),
-            cliques[main_root].begin(), cliques[main_root].end(),
-            std::back_inserter(ct.separators[r]));
-        // Recompute supernode = clique \ separator.
-        ct.supernodes[r].clear();
-        std::set_difference(
-            cliques[r].begin(), cliques[r].end(),
-            ct.separators[r].begin(), ct.separators[r].end(),
-            std::back_inserter(ct.supernodes[r]));
-      }
-    }
-  }
-
-  // Build post-order traversal.
+  // Build post-order traversal.  The tree may be a forest (multiple roots)
+  // when the graph has disconnected components.
   {
     const int nk = static_cast<int>(ct.supernodes.size());
     std::vector<std::vector<int>> children(nk);
