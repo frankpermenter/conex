@@ -342,8 +342,12 @@ void ReorderSupernodes(CliqueTree& ct, int supernode_reorder_method) {
 }
 }  // namespace
 
-CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
+namespace {
+// Internal implementation that optionally accepts a sparse matrix for
+// pairwise edges (from Q's sparsity pattern).
+CliqueTree MakeCliqueTreeImpl(
     const std::vector<std::vector<int>>& row_supports,
+    const Eigen::SparseMatrix<double>* Q_sparsity,
     std::vector<std::vector<int>>* maximal_cliques_out,
     int max_merge_supernode_size,
     int supernode_reorder_method,
@@ -353,6 +357,16 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
   for (const auto& row : row_supports) {
     for (int v : row) {
       if (v >= 0) unique_vars.push_back(v);
+    }
+  }
+  // Also collect variables from Q's sparsity pattern.
+  if (Q_sparsity) {
+    for (int k = 0; k < Q_sparsity->outerSize(); ++k) {
+      for (Eigen::SparseMatrix<double>::InnerIterator it(*Q_sparsity, k);
+           it; ++it) {
+        if (it.row() >= 0) unique_vars.push_back(it.row());
+        if (it.col() >= 0) unique_vars.push_back(it.col());
+      }
     }
   }
   std::sort(unique_vars.begin(), unique_vars.end());
@@ -411,6 +425,24 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
         row(u)[v >> 6] |= (1ULL << (v & 63));
         row(v)[u >> 6] |= (1ULL << (u & 63));
       }
+  }
+
+  // Add individual edges from Q's sparsity pattern.
+  if (Q_sparsity) {
+    for (int k = 0; k < Q_sparsity->outerSize(); ++k) {
+      for (Eigen::SparseMatrix<double>::InnerIterator it(*Q_sparsity, k);
+           it; ++it) {
+        auto it_u = to_compact.find(it.row());
+        auto it_v = to_compact.find(it.col());
+        if (it_u != to_compact.end() && it_v != to_compact.end()) {
+          int u = it_u->second, v = it_v->second;
+          if (u != v) {
+            row(u)[v >> 6] |= (1ULL << (v & 63));
+            row(v)[u >> 6] |= (1ULL << (u & 63));
+          }
+        }
+      }
+    }
   }
 
   std::vector<int> deg(n);
@@ -723,6 +755,31 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
 
   if (maximal_cliques_out) *maximal_cliques_out = cliques;
   return ct;
+}
+
+}  // anonymous namespace
+
+CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
+    const std::vector<std::vector<int>>& row_supports,
+    std::vector<std::vector<int>>* maximal_cliques_out,
+    int max_merge_supernode_size,
+    int supernode_reorder_method,
+    const std::vector<int>& dual_variables) {
+  return MakeCliqueTreeImpl(row_supports, nullptr, maximal_cliques_out,
+                            max_merge_supernode_size, supernode_reorder_method,
+                            dual_variables);
+}
+
+CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
+    const std::vector<std::vector<int>>& row_supports,
+    const Eigen::SparseMatrix<double>& Q_sparsity,
+    std::vector<std::vector<int>>* maximal_cliques_out,
+    int max_merge_supernode_size,
+    int supernode_reorder_method,
+    const std::vector<int>& dual_variables) {
+  return MakeCliqueTreeImpl(row_supports, &Q_sparsity, maximal_cliques_out,
+                            max_merge_supernode_size, supernode_reorder_method,
+                            dual_variables);
 }
 
 }  // namespace conex

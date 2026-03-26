@@ -60,6 +60,7 @@ target_link_libraries(kkt_solver_factory PUBLIC tree_solver clique_ordering cons
 # --- Sparse linear constraint ---
 add_library(sparse_linear_constraint
   conex/common/sparse_linear_constraint.cc
+  conex/common/sparse_psd_constraint.cc
 )
 target_link_libraries(sparse_linear_constraint PUBLIC constraints kkt_solver_factory structural_rank)
 
@@ -113,7 +114,19 @@ target_link_libraries(low_rank_diagonal_test
   GTest::gtest_main
 )
 
+add_executable(sparse_psd_test
+  conex/test/sparse_psd_test.cc
+)
+target_link_libraries(sparse_psd_test
+  sparse_linear_constraint
+  clique_ordering
+  kkt_solver_factory
+  tree_solver
+  GTest::gtest_main
+)
+
 include(GoogleTest)
 gtest_discover_tests(sparse_linear_constraint_test)
 gtest_discover_tests(multithreading_test)
 gtest_discover_tests(low_rank_diagonal_test)
+gtest_discover_tests(sparse_psd_test)
