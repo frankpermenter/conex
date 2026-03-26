@@ -26,6 +26,12 @@
 - [ ] Threshold heuristic: auto-select GPU vs CPU based on problem size (total supernode volume, number of levels). GPU overhead isn't worth it for small problems.
 - [ ] Test against CPU solver: verify `||x_gpu - x_cpu|| / ||x_cpu|| < tol` on the benchmark MTX matrices.
 
+## Compiler warnings
+- [ ] Remove unused variables (`total`, `zero`, `neg_one`) in gpu_tree_solver.cu.
+
 ## Build
+- [x] Compiles with CUDA 12.0 (verified on Ubuntu 24.04, no GPU device).
+- [x] Gated behind `check_language(CUDA)` — CPU build unaffected.
+- [x] Unit test binary builds (`gpu_tree_solver_test`). Needs GPU to run.
 - [ ] CI with CUDA: add a GPU build job that compiles and runs the GPU solver tests.
 - [ ] Min compute capability: document requirement (>= 6.0 for `atomicAdd(double*)`).
