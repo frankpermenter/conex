@@ -68,6 +68,27 @@ class GramEvaluator : public LazySymmetricMatrix {
   bool is_active() const { return order_set_; }
   void invalidate_order() { order_set_ = false; }
 
+  // Number of supernode columns in A_perm_ (first sn_count_ cols).
+  int sn_count() const { return sn_count_; }
+  void set_sn_count(int c) override { sn_count_ = c; }
+
+  // Compute r = A_perm_(:, 0:sn) * x_sn + A_perm_(:, sn:end) * x_sep - b.
+  // Both x_sn and x_sep are contiguous block data from the partition.
+  Eigen::VectorXd ComputeBlockResidual(
+      Eigen::Ref<const Eigen::MatrixXd> x_sn,
+      Eigen::Ref<const Eigen::MatrixXd> x_sep,
+      const Eigen::MatrixXd& b) const {
+    const int m = A_perm_.rows();
+    const int ns = sn_count_;
+    Eigen::VectorXd r(m);
+    r.noalias() = A_perm_.leftCols(ns) * x_sn;
+    if (A_perm_.cols() > ns) {
+      r.noalias() += A_perm_.rightCols(A_perm_.cols() - ns) * x_sep;
+    }
+    r -= b;
+    return r;
+  }
+
  private:
   WorkspaceLinear* ws_ = nullptr;
   const Eigen::MatrixXd* A_ = nullptr;
@@ -76,6 +97,7 @@ class GramEvaluator : public LazySymmetricMatrix {
   Eigen::MatrixXd G_;
   bool order_set_ = false;
   bool precompute_gram_ = false;
+  int sn_count_ = 0;
 };
 
 class LinearConstraint : public Constraint {
@@ -118,6 +140,16 @@ class LinearConstraint : public Constraint {
   Eigen::VectorXd ComputeResidual(
       Eigen::Ref<const Eigen::VectorXd> x_local) const {
     return constraint_matrix_ * x_local - constraint_affine_;
+  }
+
+  // Compute residual using the elimination-ordered A_perm_ directly.
+  // x_sn = supernode block values (contiguous, size = sn_count)
+  // x_sep = separator block values (contiguous, size = num_vars - sn_count)
+  // Requires set_order() to have been called (via the lazy evaluator path).
+  Eigen::VectorXd ComputeBlockResidual(
+      Eigen::Ref<const Eigen::MatrixXd> x_sn,
+      Eigen::Ref<const Eigen::MatrixXd> x_sep) const {
+    return gram_evaluator_.ComputeBlockResidual(x_sn, x_sep, constraint_affine_);
   }
 
  private:

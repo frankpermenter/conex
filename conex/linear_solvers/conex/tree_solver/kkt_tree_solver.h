@@ -160,6 +160,7 @@ void SubmatrixContributor::WriteSymmetricLazy(
   }
 
   lazy.set_order(cached_perm_);
+  lazy.set_sn_count(sn_count_);
 
   // Dispatch blocks into storage using lazy evaluation.
   auto sn_sub = supernode_submatrix();

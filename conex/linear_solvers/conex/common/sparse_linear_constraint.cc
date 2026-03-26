@@ -8,6 +8,7 @@
 #include "conex/common/constraint_manager.h"
 #include "conex/common/structural_rank.h"
 #include "conex/tree_solver/kkt_solver_factory.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
 #include "conex/common/linear_constraint.h"
 #include "conex/common/workspace.h"
 
@@ -262,6 +263,18 @@ Eigen::VectorXd SparseLinearConstraintAssembler::ComputeResiduals(
   }
 
   return residuals;
+}
+
+Eigen::VectorXd SparseLinearConstraintAssembler::ComputeBlockResiduals(
+    const SymmetricLinearSystemTreeSolver& solver) const {
+  // Gather solution from blocks into a global vector, then use
+  // per-clique residual computation.
+  // TODO: store constraint-to-block mapping after Finalize to avoid
+  // this intermediate global gather.
+  const int n = solver.number_of_variables();
+  Eigen::VectorXd x_global(n);
+  solver.GatherFromBlocks(x_global);
+  return ComputeResiduals(x_global);
 }
 
 Eigen::VectorXd SparseLinearConstraintAssembler::ComputeTransposeProduct(

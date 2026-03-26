@@ -25,6 +25,9 @@ class LazySymmetricMatrix {
 
   virtual int rows() const = 0;
   virtual int cols() const = 0;
+
+  // Number of supernode columns in the permuted layout (set by contributor).
+  virtual void set_sn_count(int) {}
 };
 
 // Base class for assemblers that feed data into the tree solver.

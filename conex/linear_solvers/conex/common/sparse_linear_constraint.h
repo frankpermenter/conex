@@ -104,6 +104,12 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
   // Returns a vector of size num_global_rows_.
   Eigen::VectorXd ComputeResiduals(const Eigen::VectorXd& x) const;
 
+  // Compute residuals using the block partition from a solved system.
+  // The solver must have been used to solve (so the partition is populated).
+  // Uses A_perm_ directly on contiguous supernode/separator blocks — no gather.
+  Eigen::VectorXd ComputeBlockResiduals(
+      const class SymmetricLinearSystemTreeSolver& solver) const;
+
   // Compute A^T * v per-clique, returned as a global vector of size n.
   // v is a per-row vector (size = num_global_rows_).
   Eigen::VectorXd ComputeTransposeProduct(const Eigen::VectorXd& v) const;
