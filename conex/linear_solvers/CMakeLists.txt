@@ -140,7 +140,16 @@ target_link_libraries(algorithms_test
   GTest::gtest_main
 )
 
+add_executable(dense_kkt_solver_test
+  conex/test/dense_kkt_solver_test.cc
+)
+target_link_libraries(dense_kkt_solver_test
+  tree_solver
+  GTest::gtest_main
+)
+
 include(GoogleTest)
+gtest_discover_tests(dense_kkt_solver_test)
 gtest_discover_tests(sparse_linear_constraint_test)
 gtest_discover_tests(multithreading_test)
 gtest_discover_tests(low_rank_diagonal_test)

@@ -9,6 +9,7 @@
 #include "conex/common/sparse_linear_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
 #include "conex/tree_solver/kkt_solver_factory.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
 
 namespace conex {
 
@@ -30,8 +31,6 @@ BarrierQPResult SolveBarrierQP(
   result.outer_iterations = 0;
 
   // Build solver once: the Newton system is (Q + A^T W A) dx = rhs.
-  // Q is the quadratic cost, A defines the inequality constraints.
-  // W changes each iteration but the sparsity structure is fixed.
   Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(m);
   auto slc = std::make_unique<SparseLinearConstraint>(A, b_zero);
   std::set<int> var_set;
@@ -51,12 +50,12 @@ BarrierQPResult SolveBarrierQP(
 
   SolverConfiguration config;
   auto solver = MakeTreeSolver(&cm, config);
-  auto* tree_solver = dynamic_cast<SymmetricLinearSystemTreeSolver*>(
-      solver.get());
 
   // First assembly to initialize evaluators (needed for BindPartition).
   solver->AssembleAndFactor();
-  a_asm_ptr->BindPartition(*tree_solver);
+  // Try tree-specific BindPartition optimization.
+  if (auto* tree = dynamic_cast<SymmetricLinearSystemTreeSolver*>(solver.get()))
+    a_asm_ptr->BindPartition(*tree);
 
   auto t_start = clock::now();
 
@@ -74,15 +73,12 @@ BarrierQPResult SolveBarrierQP(
     for (int newton = 0; newton < max_newton_steps; ++newton) {
       result.total_newton_steps++;
 
-      // Slacks: s = b - A x.  Use block residuals (A_perm * x_block).
-      tree_solver->ScatterToBlocks(x);
-      Eigen::VectorXd s = b - a_asm_ptr->ComputeBlockResiduals(*tree_solver);
+      // Slacks: s = b - A x.
+      solver->ScatterToBlocks(x);
+      Eigen::VectorXd s = b - a_asm_ptr->ComputeBlockResiduals(*solver);
 
       // Check feasibility.
-      if (s.minCoeff() <= 0) {
-        // Infeasible — should not happen with proper line search.
-        break;
-      }
+      if (s.minCoeff() <= 0) break;
 
       // Barrier weights: W_ii = 1 / (t * s_i^2).
       Eigen::VectorXd weights(m);
@@ -91,9 +87,7 @@ BarrierQPResult SolveBarrierQP(
       }
       a_asm_ptr->SetWeights(weights);
 
-      // Gradient of barrier subproblem:
-      //   grad = Q x + c + (1/t) A^T (1/s)
-      //        = Q x + c - A^T d   where d = -1/(t * s)
+      // Gradient: grad = Q x + c + (1/t) A^T (1/s).
       Eigen::VectorXd inv_s(m);
       for (int i = 0; i < m; ++i) inv_s(i) = 1.0 / s(i);
       Eigen::VectorXd grad =
@@ -112,11 +106,10 @@ BarrierQPResult SolveBarrierQP(
       double alpha = 1.0;
 
       // Max step to stay feasible: s - alpha * A dx > 0.
-      tree_solver->ScatterToBlocks(dx);
-      Eigen::VectorXd Adx = a_asm_ptr->ComputeBlockResiduals(*tree_solver);
+      solver->ScatterToBlocks(dx);
+      Eigen::VectorXd Adx = a_asm_ptr->ComputeBlockResiduals(*solver);
       for (int i = 0; i < m; ++i) {
         if (Adx(i) > 0) {
-          // s(i) - alpha * Adx(i) > 0  =>  alpha < s(i) / Adx(i)
           alpha = std::min(alpha, 0.99 * s(i) / Adx(i));
         }
       }
@@ -129,9 +122,9 @@ BarrierQPResult SolveBarrierQP(
 
       for (int ls = 0; ls < 20; ++ls) {
         Eigen::VectorXd x_new = x + alpha * dx;
-        tree_solver->ScatterToBlocks(x_new);
+        solver->ScatterToBlocks(x_new);
         Eigen::VectorXd s_new =
-            b - a_asm_ptr->ComputeBlockResiduals(*tree_solver);
+            b - a_asm_ptr->ComputeBlockResiduals(*solver);
         if (s_new.minCoeff() <= 0) {
           alpha *= beta;
           continue;

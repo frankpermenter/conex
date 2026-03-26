@@ -1,5 +1,6 @@
 #pragma once
 
+#include "conex/common/block_partition.h"
 #include "conex/common/error_checking_macros.h"
 #include <Eigen/Dense>
 
@@ -48,6 +49,24 @@ class KKTSolverBase {
                  "System has not been assembled or is factored in place.");
     return DoKKTMatrix(permute_to_elimination_order);
   }
+
+  // Block partition for the solution vector.  After Solve(), the
+  // partition contains the solution distributed across blocks.
+  virtual BlockPartition& partition() = 0;
+  virtual const BlockPartition& partition() const = 0;
+
+  // Convenience: scatter/gather through the partition.
+  void ScatterToBlocks(Eigen::Ref<const Eigen::VectorXd> x) {
+    auto& p = partition();
+    if (p.cols() != 1) p.Resize(1);
+    p.SetZero();
+    p.ScatterFrom(x);
+  }
+  void GatherFromBlocks(Eigen::Ref<Eigen::VectorXd> x) const {
+    partition().GatherInto(x);
+  }
+
+  virtual int number_of_variables() const = 0;
 
   virtual ~KKTSolverBase() = default;
 

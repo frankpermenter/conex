@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include "conex/common/block_partition.h"
 #include "conex/common/kkt_solver_interface.h"
 #include "conex/tree_solver/kkt_subsystem.h"
 #include "conex/tree_solver/static_subsystem.h"
@@ -11,6 +12,40 @@
 #include <Eigen/Sparse>
 
 namespace conex {
+
+// Forward declaration.
+class SupernodePartitionMatrix;
+
+// BlockPartition adapter for the tree solver's supernodal partition.
+// Each block corresponds to one supernode in the elimination tree.
+// Scatter/gather use the elimination ordering's variable mapping.
+class TreeBlockPartition : public BlockPartition {
+ public:
+  TreeBlockPartition() = default;
+  void Bind(SupernodePartitionMatrix* spm, int num_vars) {
+    spm_ = spm;
+    num_vars_ = num_vars;
+  }
+
+  int num_blocks() const override;
+  int block_size(int k) const override;
+  int num_variables() const override { return num_vars_; }
+  int cols() const override;
+  void Resize(int cols) override;
+  void SetZero() override;
+  void ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> x) override;
+  void GatherInto(Eigen::Ref<Eigen::MatrixXd> x) const override;
+  Eigen::Ref<Eigen::MatrixXd> block(int k) override;
+  Eigen::Ref<const Eigen::MatrixXd> block(int k) const override;
+
+  // Tree-specific: access supernode/separator separately.
+  SupernodePartitionMatrix& raw() { return *spm_; }
+  const SupernodePartitionMatrix& raw() const { return *spm_; }
+
+ private:
+  SupernodePartitionMatrix* spm_ = nullptr;
+  int num_vars_ = 0;
+};
 
 // A matrix partitioned by the supernode structure of the elimination tree.
 // Each node contributes a supernode block (sn_rows x cols) and a separator
@@ -57,6 +92,7 @@ class SupernodePartitionMatrix {
 
   int supernode_rows(int k) const { return blocks_[k].sn_rows; }
   int separator_rows(int k) const { return blocks_[k].sep_rows; }
+  int num_blocks_internal() const { return static_cast<int>(blocks_.size()); }
 
  private:
   struct Block {
@@ -224,7 +260,7 @@ void SubmatrixContributor::WriteSymmetricLazy(
 
 class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
  public:
-  int number_of_variables() const;
+  int number_of_variables() const override;
 
   void Finalize(const CliqueTree& clique_tree, int rhs_cols = 1);
 
@@ -256,27 +292,13 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     return contributors_.at(index).get();
   }
 
-  // Access the block-partitioned solve matrix.  After Solve(), this contains
-  // the solution scattered into per-supernode blocks.  Can also be used to
-  // scatter/gather vectors without solving:
-  //   partition().ScatterFrom(x);   // original order -> blocks
-  //   partition().GatherInto(x);    // blocks -> original order
-  //   partition().supernode(k)      // access block k's supernode values
-  //   partition().separator(k)      // access block k's separator values
-  const SupernodePartitionMatrix& partition() const { return solve_matrix_; }
-  SupernodePartitionMatrix& partition() { return solve_matrix_; }
+  // BlockPartition interface (from KKTSolverBase).
+  BlockPartition& partition() override { return block_partition_; }
+  const BlockPartition& partition() const override { return block_partition_; }
 
-  // Scatter a vector into the block partition (original variable order).
-  void ScatterToBlocks(Eigen::Ref<const Eigen::VectorXd> x) {
-    if (solve_matrix_.cols() != 1) solve_matrix_.Resize(1);
-    solve_matrix_.SetZero();
-    solve_matrix_.ScatterFrom(x);
-  }
-
-  // Gather from the block partition back to original variable order.
-  void GatherFromBlocks(Eigen::Ref<Eigen::VectorXd> x) const {
-    solve_matrix_.GatherInto(x);
-  }
+  // Tree-specific: access the raw SupernodePartitionMatrix.
+  SupernodePartitionMatrix& raw_partition() { return solve_matrix_; }
+  const SupernodePartitionMatrix& raw_partition() const { return solve_matrix_; }
 
   // Number of subsystems (blocks in the partition).
   int num_subsystems() const { return static_cast<int>(subsystems_.size()); }
@@ -346,6 +368,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   size_t arena_bytes_ = 0;
   // Block-partitioned solve data (mutable: scratch space used in const solve).
   mutable SupernodePartitionMatrix solve_matrix_;
+  mutable TreeBlockPartition block_partition_;
   // Per-node precomputed child scatter info for blocked solve.
   struct ChildScatterOp {
     int child_block_index;

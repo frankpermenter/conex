@@ -106,9 +106,10 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
 
   // Compute residuals using the block partition from a solved system.
   // The solver must have been used to solve (so the partition is populated).
-  // Uses A_perm_ directly on contiguous supernode/separator blocks — no gather.
+  // If BindPartition was called, uses tree-specific fast path; otherwise
+  // gathers globally and falls back to ComputeResiduals.
   Eigen::VectorXd ComputeBlockResiduals(
-      const class SymmetricLinearSystemTreeSolver& solver) const;
+      const class KKTSolverBase& solver) const;
 
   // Compute A^T * v per-clique, returned as a global vector of size n.
   // v is a per-row vector (size = num_global_rows_).

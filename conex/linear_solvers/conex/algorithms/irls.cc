@@ -39,12 +39,12 @@ IRLSResult SolveIRLS(
 
   SolverConfiguration config;
   auto solver = MakeTreeSolver(&cm, config);
-  auto* tree_solver = dynamic_cast<SymmetricLinearSystemTreeSolver*>(
-      solver.get());
 
   // First assembly to initialize evaluators for BindPartition.
   solver->AssembleAndFactor();
-  asm_ptr->BindPartition(*tree_solver);
+  // Try tree-specific BindPartition optimization.
+  if (auto* tree = dynamic_cast<SymmetricLinearSystemTreeSolver*>(solver.get()))
+    asm_ptr->BindPartition(*tree);
 
   auto t0 = clock::now();
 
@@ -66,8 +66,8 @@ IRLSResult SolveIRLS(
     x = solver->Solve(rhs);
 
     // Compute residual using block partition (no gather for A*x).
-    tree_solver->ScatterToBlocks(x);
-    Eigen::VectorXd r = asm_ptr->ComputeBlockResiduals(*tree_solver) - b;
+    solver->ScatterToBlocks(x);
+    Eigen::VectorXd r = asm_ptr->ComputeBlockResiduals(*solver) - b;
     double obj = r.lpNorm<1>();
 
     // Check convergence.
@@ -86,9 +86,9 @@ IRLSResult SolveIRLS(
 
   auto t1 = clock::now();
   result.x = x;
-  tree_solver->ScatterToBlocks(x);
+  solver->ScatterToBlocks(x);
   result.l1_objective =
-      (asm_ptr->ComputeBlockResiduals(*tree_solver) - b).lpNorm<1>();
+      (asm_ptr->ComputeBlockResiduals(*solver) - b).lpNorm<1>();
   result.solve_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
   return result;

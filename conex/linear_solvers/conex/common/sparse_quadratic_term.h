@@ -104,21 +104,20 @@ class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
   // Not used directly — Decompose creates sub-assemblers.
   LazySymmetricMatrix* GetLazyEvaluator() override { return nullptr; }
 
-  // Bind partition info for block-space operations.
-  void BindPartition(const class SymmetricLinearSystemTreeSolver& solver);
+  // Bind partition info for block-space operations (no-op for now).
+  void BindPartition(const class KKTSolverBase& solver);
   bool partition_bound() const { return !block_info_.empty(); }
 
   // Compute Q*x in block space: reads x from partition blocks,
   // accumulates Q_perm * x_block into result (global vector, size n).
   Eigen::VectorXd ComputeBlockProduct(
-      const class SymmetricLinearSystemTreeSolver& solver) const;
+      const class KKTSolverBase& solver) const;
 
-  // Accumulate Q*x into an existing partition (adds to supernode/separator
-  // blocks in-place). For building the gradient Q*x + c + A^T*v without
-  // leaving block space.
+  // Accumulate Q*x into an existing partition (adds to blocks in-place).
+  // For building the gradient Q*x + c + A^T*v without leaving block space.
   void AccumulateBlockProduct(
-      class SymmetricLinearSystemTreeSolver& solver,
-      const class SupernodePartitionMatrix& x_partition) const;
+      class KKTSolverBase& solver,
+      const class BlockPartition& x_partition) const;
 
  private:
   const Eigen::SparseMatrix<double>* Q_sparse_ = nullptr;
