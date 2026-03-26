@@ -35,7 +35,9 @@ std::vector<std::vector<int>> SparseQuadraticTermAssembler::get_cliques() const 
     // Return one big clique.
     cliques.push_back(vars);
   } else if (Q_sparse_) {
-    // Sparse Q: return individual edges.
+    // Sparse Q: return individual edges for off-diagonal entries,
+    // and singletons for diagonal-only variables.
+    std::vector<bool> has_edge(vars.size(), false);
     for (int k = 0; k < Q_sparse_->outerSize(); ++k) {
       for (Eigen::SparseMatrix<double>::InnerIterator it(*Q_sparse_, k);
            it; ++it) {
@@ -43,7 +45,16 @@ std::vector<std::vector<int>> SparseQuadraticTermAssembler::get_cliques() const 
         if (r > c && r < static_cast<int>(vars.size()) &&
             c < static_cast<int>(vars.size())) {
           cliques.push_back({vars[c], vars[r]});
+          has_edge[r] = true;
+          has_edge[c] = true;
         }
+      }
+    }
+    // Include diagonal-only variables as singletons so they appear
+    // in the clique tree.
+    for (int i = 0; i < static_cast<int>(vars.size()); ++i) {
+      if (!has_edge[i] && Q_sparse_->coeff(i, i) != 0) {
+        cliques.push_back({vars[i]});
       }
     }
   }
