@@ -42,11 +42,17 @@ class DenseQuadraticTermLazyEvaluator : public LazySymmetricMatrix {
 
   int rows() const override { return Q_ ? static_cast<int>(Q_->rows()) : 0; }
   int cols() const override { return Q_ ? static_cast<int>(Q_->cols()) : 0; }
+  void set_sn_count(int c) override { sn_count_ = c; }
+  int sn_count() const { return sn_count_; }
+
+  const Eigen::MatrixXd& Q_perm() const { return Q_perm_; }
+  bool is_active() const { return order_set_; }
 
  private:
   const Eigen::MatrixXd* Q_ = nullptr;
   Eigen::MatrixXd Q_perm_;
   bool order_set_ = false;
+  int sn_count_ = 0;
 };
 
 // Per-clique assembler for a dense sub-block of Q.
@@ -61,6 +67,9 @@ class DenseQuadraticTermSubAssembler : public SupernodalAssemblerBase {
   LazySymmetricMatrix* GetLazyEvaluator() override { return &evaluator_; }
   bool is_positive_definite() const override { return true; }
   bool is_dynamic() const override { return false; }
+
+  const Eigen::MatrixXd& Q_block() const { return Q_block_; }
+  const DenseQuadraticTermLazyEvaluator& evaluator() const { return evaluator_; }
 
  private:
   Eigen::MatrixXd Q_block_;
@@ -95,6 +104,22 @@ class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
   // Not used directly — Decompose creates sub-assemblers.
   LazySymmetricMatrix* GetLazyEvaluator() override { return nullptr; }
 
+  // Bind partition info for block-space operations.
+  void BindPartition(const class SymmetricLinearSystemTreeSolver& solver);
+  bool partition_bound() const { return !block_info_.empty(); }
+
+  // Compute Q*x in block space: reads x from partition blocks,
+  // accumulates Q_perm * x_block into result (global vector, size n).
+  Eigen::VectorXd ComputeBlockProduct(
+      const class SymmetricLinearSystemTreeSolver& solver) const;
+
+  // Accumulate Q*x into an existing partition (adds to supernode/separator
+  // blocks in-place). For building the gradient Q*x + c + A^T*v without
+  // leaving block space.
+  void AccumulateBlockProduct(
+      class SymmetricLinearSystemTreeSolver& solver,
+      const class SupernodePartitionMatrix& x_partition) const;
+
  private:
   const Eigen::SparseMatrix<double>* Q_sparse_ = nullptr;
   const Eigen::MatrixXd* Q_dense_ = nullptr;
@@ -102,6 +127,9 @@ class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
 
   // Owned sub-assemblers created by Decompose.
   std::list<DenseQuadraticTermSubAssembler> owned_sub_assemblers_;
+  // Per-sub-assembler block mapping (set by BindPartition).
+  struct BlockInfo { int block_index; };
+  std::vector<BlockInfo> block_info_;
 };
 
 // Solve (Q + A^T A) x = rhs.

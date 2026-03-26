@@ -8,6 +8,7 @@
 #include "conex/common/conex.h"
 #include "conex/common/sparse_linear_constraint.h"
 #include "conex/tree_solver/kkt_solver_factory.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
 
 namespace conex {
 
@@ -38,12 +39,17 @@ IRLSResult SolveIRLS(
 
   SolverConfiguration config;
   auto solver = MakeTreeSolver(&cm, config);
+  auto* tree_solver = dynamic_cast<SymmetricLinearSystemTreeSolver*>(
+      solver.get());
+
+  // First assembly to initialize evaluators for BindPartition.
+  solver->AssembleAndFactor();
+  asm_ptr->BindPartition(*tree_solver);
 
   auto t0 = clock::now();
 
   // Initial solve: uniform weights (standard least squares).
   Eigen::VectorXd weights = Eigen::VectorXd::Ones(m);
-  Eigen::MatrixXd Ad(A);
   Eigen::VectorXd x = Eigen::VectorXd::Zero(n);
 
   double prev_obj = std::numeric_limits<double>::max();
@@ -54,11 +60,14 @@ IRLSResult SolveIRLS(
     bool ok = solver->AssembleAndFactor();
     if (!ok) break;
 
-    Eigen::VectorXd rhs = Ad.transpose() * (weights.asDiagonal() * b);
+    // RHS = A^T W b.  Use per-clique A^T product.
+    Eigen::VectorXd wb = weights.asDiagonal() * b;
+    Eigen::VectorXd rhs = asm_ptr->ComputeTransposeProduct(wb);
     x = solver->Solve(rhs);
 
-    // Compute residual and update weights.
-    Eigen::VectorXd r = Ad * x - b;
+    // Compute residual using block partition (no gather for A*x).
+    tree_solver->ScatterToBlocks(x);
+    Eigen::VectorXd r = asm_ptr->ComputeBlockResiduals(*tree_solver) - b;
     double obj = r.lpNorm<1>();
 
     // Check convergence.
@@ -77,7 +86,9 @@ IRLSResult SolveIRLS(
 
   auto t1 = clock::now();
   result.x = x;
-  result.l1_objective = (Ad * x - b).lpNorm<1>();
+  tree_solver->ScatterToBlocks(x);
+  result.l1_objective =
+      (asm_ptr->ComputeBlockResiduals(*tree_solver) - b).lpNorm<1>();
   result.solve_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
   return result;

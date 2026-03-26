@@ -51,6 +51,12 @@ BarrierQPResult SolveBarrierQP(
 
   SolverConfiguration config;
   auto solver = MakeTreeSolver(&cm, config);
+  auto* tree_solver = dynamic_cast<SymmetricLinearSystemTreeSolver*>(
+      solver.get());
+
+  // First assembly to initialize evaluators (needed for BindPartition).
+  solver->AssembleAndFactor();
+  a_asm_ptr->BindPartition(*tree_solver);
 
   auto t_start = clock::now();
 
@@ -68,9 +74,9 @@ BarrierQPResult SolveBarrierQP(
     for (int newton = 0; newton < max_newton_steps; ++newton) {
       result.total_newton_steps++;
 
-      // Slacks: s = b - A x.  ComputeResiduals returns A*x (since
-      // the SparseLinearConstraint was built with b_zero).
-      Eigen::VectorXd s = b - a_asm_ptr->ComputeResiduals(x);
+      // Slacks: s = b - A x.  Use block residuals (A_perm * x_block).
+      tree_solver->ScatterToBlocks(x);
+      Eigen::VectorXd s = b - a_asm_ptr->ComputeBlockResiduals(*tree_solver);
 
       // Check feasibility.
       if (s.minCoeff() <= 0) {
@@ -106,7 +112,8 @@ BarrierQPResult SolveBarrierQP(
       double alpha = 1.0;
 
       // Max step to stay feasible: s - alpha * A dx > 0.
-      Eigen::VectorXd Adx = a_asm_ptr->ComputeResiduals(dx);
+      tree_solver->ScatterToBlocks(dx);
+      Eigen::VectorXd Adx = a_asm_ptr->ComputeBlockResiduals(*tree_solver);
       for (int i = 0; i < m; ++i) {
         if (Adx(i) > 0) {
           // s(i) - alpha * Adx(i) > 0  =>  alpha < s(i) / Adx(i)
@@ -122,7 +129,9 @@ BarrierQPResult SolveBarrierQP(
 
       for (int ls = 0; ls < 20; ++ls) {
         Eigen::VectorXd x_new = x + alpha * dx;
-        Eigen::VectorXd s_new = b - a_asm_ptr->ComputeResiduals(x_new);
+        tree_solver->ScatterToBlocks(x_new);
+        Eigen::VectorXd s_new =
+            b - a_asm_ptr->ComputeBlockResiduals(*tree_solver);
         if (s_new.minCoeff() <= 0) {
           alpha *= beta;
           continue;

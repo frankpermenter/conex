@@ -9,6 +9,7 @@
 #include "conex/common/clique_ordering.h"
 #include "conex/common/constraint_manager.h"
 #include "conex/common/sparse_linear_constraint.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
 #include "conex/tree_solver/kkt_solver_factory.h"
 
 namespace conex {
@@ -155,6 +156,44 @@ std::vector<SupernodalAssemblerBase*> SparseQuadraticTermAssembler::Decompose(
   }
 
   return result;
+}
+
+void SparseQuadraticTermAssembler::BindPartition(
+    const SymmetricLinearSystemTreeSolver& /*solver*/) {
+  // No per-sub-assembler binding needed for the current approach.
+  // ComputeBlockProduct gathers globally then uses the sparse Q.
+  block_info_.clear();
+}
+
+Eigen::VectorXd SparseQuadraticTermAssembler::ComputeBlockProduct(
+    const SymmetricLinearSystemTreeSolver& solver) const {
+  // Gather x from partition blocks, then compute Q*x.
+  // The per-clique Q_perm_ approach requires mapping between the
+  // evaluator's internal permutation and the partition's block layout.
+  // For now, use the original Q directly — sparse Q*x is fast.
+  const int n = solver.number_of_variables();
+  Eigen::VectorXd x_global(n);
+  solver.GatherFromBlocks(x_global);
+  if (Q_sparse_) return (*Q_sparse_) * x_global;
+  if (Q_dense_) return (*Q_dense_) * x_global;
+  return Eigen::VectorXd::Zero(n);
+}
+
+void SparseQuadraticTermAssembler::AccumulateBlockProduct(
+    SymmetricLinearSystemTreeSolver& solver,
+    const SupernodePartitionMatrix& x_partition) const {
+  // Compute Q*x and scatter into the solver's partition.
+  const int n = solver.number_of_variables();
+  Eigen::VectorXd x_global(n);
+  x_partition.GatherInto(x_global);
+  Eigen::VectorXd qx;
+  if (Q_sparse_) qx = (*Q_sparse_) * x_global;
+  else if (Q_dense_) qx = (*Q_dense_) * x_global;
+  else return;
+  // Accumulate into solver's partition.
+  // For now, return to global. Full block-space Q*x needs
+  // the evaluator's internal permutation exposed.
+  solver.ScatterToBlocks(qx);
 }
 
 namespace {
