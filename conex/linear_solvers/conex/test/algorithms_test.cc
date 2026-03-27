@@ -1720,6 +1720,7 @@ TEST(TreeSolverBuilder, AutoTreeStochastic) {
 
   // Auto tree (no parents specified).
   TreeSolverBuilder b_auto;
+  b_auto.EnableRIPCheck();
   std::vector<int> cid_a(N);
   for (int i = 0; i < N; ++i)
     cid_a[i] = b_auto.AddClique();  // all roots
@@ -1832,6 +1833,7 @@ TEST(FillComparison, StochasticTree) {
 
     // Quotient AMD path (auto tree).
     TreeSolverBuilder b_quot;
+    b_quot.EnableRIPCheck();
     std::vector<int> cid_q(N);
     for (int i = 0; i < N; ++i) cid_q[i] = b_quot.AddClique();
     for (int i = 0; i < N; ++i) add_blocks(b_quot, cid_q[i], i);
@@ -1926,6 +1928,7 @@ TEST(FillComparison, SolvePerformance) {
 
     // Quotient AMD path.
     TreeSolverBuilder b_q;
+    b_q.EnableRIPCheck();
     std::vector<int> cid_q(N);
     for (int i = 0; i < N; ++i) cid_q[i] = b_q.AddClique();
     for (int i = 0; i < N; ++i) add_blocks(b_q, cid_q[i], i);

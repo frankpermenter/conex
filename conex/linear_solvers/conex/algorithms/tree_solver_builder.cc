@@ -178,15 +178,11 @@ void TreeSolverBuilder::ComputeEliminationTree() {
       cliques_[parent[i]].children.push_back(i);
   }
 
-  // Propagate variable sets (separator vars must be in parent).
-  // Process in elimination order (children before parents).
-  for (int c : elim_order) {
-    int p = cliques_[c].parent;
-    if (p < 0) continue;
-    for (int v : cliques_[c].all_vars) {
-      if (work_vars[p].count(v))
-        cliques_[p].all_vars.insert(v);
-    }
+  // Update all_vars from the fill-propagated working sets.
+  // The AMD process propagates separator variables through the tree;
+  // Build() needs these in all_vars to compute separators correctly.
+  for (int i = 0; i < C; ++i) {
+    cliques_[i].all_vars = work_vars[i];
   }
 }
 
