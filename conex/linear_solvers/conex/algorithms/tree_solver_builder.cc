@@ -2,10 +2,15 @@
 
 #include <algorithm>
 #include <functional>
+#include <numeric>
 #include <sstream>
 
 #include "conex/common/clique_tree.h"
+#include "conex/common/constraint_manager.h"
 #include "conex/common/error_checking_macros.h"
+#include "conex/common/sparse_equality_constraint.h"
+#include "conex/common/sparse_linear_constraint.h"
+#include "conex/tree_solver/kkt_solver_factory.h"
 #include "conex/tree_solver/static_subsystem.h"
 
 namespace conex {
@@ -160,7 +165,64 @@ TreeSolverBuilder::Result TreeSolverBuilder::Build() {
   solver->SetFactorizationMode(true);
   solver->EnableAutoUpdateAtAssemble(true);
 
-  return {std::move(solver), num_variables};
+  Result result;
+  result.solver = std::move(solver);
+  result.num_variables = num_variables;
+  return result;
+}
+
+struct TreeSolverBuilder::Result::Storage {
+  Eigen::SparseMatrix<double> Q;
+  ConstraintManager cm;
+};
+
+TreeSolverBuilder::Result::Result() = default;
+TreeSolverBuilder::Result::~Result() = default;
+TreeSolverBuilder::Result::Result(Result&&) noexcept = default;
+TreeSolverBuilder::Result& TreeSolverBuilder::Result::operator=(Result&&) noexcept = default;
+
+TreeSolverBuilder::Result TreeSolverBuilder::BuildFromSparseMatrices(
+    const Eigen::SparseMatrix<double>& Q,
+    const Eigen::SparseMatrix<double>& C,
+    const Eigen::VectorXd& d) {
+  auto storage = std::make_unique<Result::Storage>();
+  storage->Q = Q;  // own a copy
+  const int n_primal = Q.cols();
+  const int n_eq = C.rows();
+
+  std::set<int> q_var_set;
+  for (int k = 0; k < storage->Q.outerSize(); ++k)
+    for (Eigen::SparseMatrix<double>::InnerIterator it(storage->Q, k); it;
+         ++it) {
+      q_var_set.insert(it.row());
+      q_var_set.insert(it.col());
+    }
+  std::vector<int> q_vars(q_var_set.begin(), q_var_set.end());
+
+  storage->cm = ConstraintManager(n_primal);
+  auto q_asm =
+      std::make_unique<SparseQuadraticTermAssembler>(storage->Q, q_vars);
+  storage->cm.AddCustomAssembler(std::move(q_asm));
+
+  auto sec = std::make_unique<SparseEqualityConstraint>(C, d);
+  std::set<int> eq_set;
+  for (const auto& s : sec->row_supports())
+    eq_set.insert(s.begin(), s.end());
+  std::vector<int> eq_primal(eq_set.begin(), eq_set.end());
+  auto dual_vars = storage->cm.AllocateDualVariables(n_eq);
+  auto eq_asm = std::make_unique<SparseEqualityConstraintAssembler>(
+      std::move(sec), eq_primal, dual_vars);
+  storage->cm.AddCustomAssembler(std::move(eq_asm));
+
+  SolverConfiguration config;
+  auto solver = MakeTreeSolver(&storage->cm, config);
+  int n_vars = storage->cm.SizeOfKKTSystem();
+
+  Result result;
+  result.solver = std::move(solver);
+  result.num_variables = n_vars;
+  result.storage_ = std::move(storage);
+  return result;
 }
 
 }  // namespace conex

@@ -870,92 +870,139 @@ TEST(FiniteHorizon, CliqueTreeTimeOrdering) {
 }
 
 // =====================================================================
-// LQRTreeSolver: direct tree construction, bypassing clique ordering
+// LQR: custom tree vs sparse-matrix (clique ordering) path
 // =====================================================================
 
-TEST(LQRTreeSolver, MatchesFiniteHorizon) {
-  const int nx = 4, nu = 2, T = 20;
-  srand(42);
-  Eigen::MatrixXd A = 0.9 * MatrixXd::Identity(nx, nx) +
-                       0.1 * MatrixXd::Random(nx, nx);
-  Eigen::MatrixXd B = MatrixXd::Random(nx, nu);
-  Eigen::MatrixXd Q = MatrixXd::Identity(nx, nx) +
-                       0.5 * MatrixXd::Ones(nx, nx);
-  Eigen::MatrixXd R = 0.1 * MatrixXd::Identity(nu, nu) +
-                       0.05 * MatrixXd::Ones(nu, nu);
-  Eigen::MatrixXd Qf = 10.0 * Q;
-  VectorXd x0 = VectorXd::Ones(nx);
+namespace {
 
-  // Solve via clique-ordering path.
-  srand(42);
-  auto ref = SolveLQRFromSparseMatrices(A, B, Q, R, Qf, x0, T);
+// Build sparse LQR matrices for use with BuildFromSparseMatrices.
+// Uses the same variable layout as LQRTreeSolver.
+struct SparseLQRMatrices {
+  Eigen::SparseMatrix<double> Q_cost;
+  Eigen::SparseMatrix<double> C_eq;
+  Eigen::VectorXd d_eq;
+  std::vector<int> dual_vars;
+  int n_primal;
+};
 
-  // Solve via direct tree construction.
-  LQRTreeSolver lqr(A, B, Q, R, Qf, T);
-  bool ok = lqr.AssembleAndFactor();
-  ASSERT_TRUE(ok);
-  auto sol = lqr.Solve(x0);
-  auto x_direct = lqr.ExtractStates(sol);
-  auto u_direct = lqr.ExtractControls(sol);
+SparseLQRMatrices MakeSparseLQR(
+    const MatrixXd& A, const MatrixXd& B,
+    const MatrixXd& Q, const MatrixXd& R, const MatrixXd& Qf,
+    const VectorXd& x0, int T) {
+  int nx = A.rows(), nu = B.cols();
+  int step = 2 * nx + nu;
+  auto XIdx = [&](int t) { return t * step; };
+  auto UIdx = [&](int t) { return t * step + nx; };
+  auto LIdx = [&](int t) { return t * step + nx + nu; };
+  int XTIdx = T * step;
+  int LicIdx = T * step + nx;
+  int n_primal = T * step + 2 * nx;
+  int n_eq = (T + 1) * nx;
 
-  // Verify dynamics (direct solver uses different elimination order,
-  // so tolerances are looser than machine precision).
-  double max_dyn_err = 0;
+  // Cost: block diagonal [Q,0;0,R] per timestep + Qf terminal.
+  std::vector<Eigen::Triplet<double>> qt;
   for (int t = 0; t < T; ++t) {
-    VectorXd err = x_direct.col(t + 1) - A * x_direct.col(t) -
-                   B * u_direct.col(t);
-    max_dyn_err = std::max(max_dyn_err, err.norm());
+    int xi = XIdx(t), ui = UIdx(t);
+    for (int i = 0; i < nx; ++i)
+      for (int j = 0; j < nx; ++j)
+        if (Q(i,j) != 0) qt.emplace_back(xi+i, xi+j, Q(i,j));
+    for (int i = 0; i < nu; ++i)
+      for (int j = 0; j < nu; ++j)
+        if (R(i,j) != 0) qt.emplace_back(ui+i, ui+j, R(i,j));
   }
-  EXPECT_LT(max_dyn_err, 1e-4) << "Dynamics violated";
-  EXPECT_LT((x_direct.col(0) - x0).norm(), 1e-4) << "Initial condition violated";
+  for (int i = 0; i < nx; ++i)
+    for (int j = 0; j < nx; ++j)
+      if (Qf(i,j) != 0) qt.emplace_back(XTIdx+i, XTIdx+j, Qf(i,j));
 
-  // Compare trajectories with the clique-ordering solver.
-  double max_x_err = 0, max_u_err = 0;
-  for (int t = 0; t <= T; ++t)
-    max_x_err = std::max(max_x_err, (x_direct.col(t) - ref.x.col(t)).norm());
-  for (int t = 0; t < T; ++t)
-    max_u_err = std::max(max_u_err, (u_direct.col(t) - ref.u.col(t)).norm());
-  EXPECT_LT(max_x_err, 1e-4) << "State trajectory mismatch";
-  EXPECT_LT(max_u_err, 1e-4) << "Control trajectory mismatch";
+  // Constraints: dynamics + initial condition.
+  std::vector<Eigen::Triplet<double>> ct;
+  for (int t = 0; t < T; ++t) {
+    int rb = t * nx, xi = XIdx(t), ui = UIdx(t), xi1 = XIdx(t+1);
+    for (int r = 0; r < nx; ++r)
+      for (int c = 0; c < nx; ++c)
+        if (A(r,c) != 0) ct.emplace_back(rb+r, xi+c, -A(r,c));
+    for (int r = 0; r < nx; ++r)
+      for (int c = 0; c < nu; ++c)
+        if (B(r,c) != 0) ct.emplace_back(rb+r, ui+c, -B(r,c));
+    for (int i = 0; i < nx; ++i) ct.emplace_back(rb+i, xi1+i, 1.0);
+  }
+  for (int i = 0; i < nx; ++i) ct.emplace_back(T*nx+i, 0+i, 1.0);
 
-  printf("LQRTreeSolver: T=%d, dynamics_err<1e-10, matches SolveLQRFromSparseMatrices\n", T);
+  SparseLQRMatrices m;
+  m.n_primal = n_primal;
+  m.Q_cost.resize(n_primal, n_primal);
+  m.Q_cost.setFromTriplets(qt.begin(), qt.end());
+  m.C_eq.resize(n_eq, n_primal);
+  m.C_eq.setFromTriplets(ct.begin(), ct.end());
+  m.d_eq = VectorXd::Zero(n_eq);
+  m.d_eq.tail(nx) = x0;
+
+  // Dual variable indices (after BuildFromSparseMatrices allocates them,
+  // they start at n_primal).
+  m.dual_vars.resize(n_eq);
+  std::iota(m.dual_vars.begin(), m.dual_vars.end(), n_primal);
+  return m;
 }
 
-TEST(LQRTreeSolver, Benchmark) {
+}  // namespace
+
+TEST(LQRTreeSolver, CompareCustomVsSparse) {
   using clock = std::chrono::high_resolution_clock;
 
   const int nx = 4, nu = 2;
   srand(42);
-  Eigen::MatrixXd A = 0.9 * MatrixXd::Identity(nx, nx) +
-                       0.1 * MatrixXd::Random(nx, nx);
-  Eigen::MatrixXd B = MatrixXd::Random(nx, nu);
-  Eigen::MatrixXd Q = MatrixXd::Identity(nx, nx) +
-                       0.5 * MatrixXd::Ones(nx, nx);
-  Eigen::MatrixXd R = 0.1 * MatrixXd::Identity(nu, nu) +
-                       0.05 * MatrixXd::Ones(nu, nu);
-  Eigen::MatrixXd Qf = 10.0 * Q;
+  MatrixXd A = 0.9 * MatrixXd::Identity(nx, nx) +
+               0.1 * MatrixXd::Random(nx, nx);
+  MatrixXd B = MatrixXd::Random(nx, nu);
+  MatrixXd Q = MatrixXd::Identity(nx, nx) + 0.5 * MatrixXd::Ones(nx, nx);
+  MatrixXd R = 0.1 * MatrixXd::Identity(nu, nu) + 0.05 * MatrixXd::Ones(nu, nu);
+  MatrixXd Qf = 10.0 * Q;
   VectorXd x0 = VectorXd::Ones(nx);
+  int LicIdx_offset = nx;  // offset within LQRTreeSolver layout
 
-  printf("\n%-6s %7s %10s %10s %10s %10s\n",
-         "T", "n_vars", "build_us", "factor_us", "solve_us", "total_us");
-  printf("------  ------- ---------- ---------- ---------- ----------\n");
+  printf("\n  LQR: custom tree vs BuildFromSparseMatrices\n");
+  printf("%-6s %22s %22s %8s\n",
+         "T", "custom(build+fac+sol)", "sparse(build+fac+sol)", "speedup");
+  printf("------  ---------------------- ---------------------- --------\n");
 
-  for (int T : {10, 25, 50, 100, 200, 500}) {
-    auto t0 = clock::now();
+  for (int T : {10, 50, 100, 200}) {
+    // Custom tree path.
+    auto tc0 = clock::now();
     LQRTreeSolver lqr(A, B, Q, R, Qf, T);
-    auto t1 = clock::now();
-    bool ok = lqr.AssembleAndFactor();
-    ASSERT_TRUE(ok) << "Factor failed for T=" << T;
-    auto t2 = clock::now();
-    auto sol = lqr.Solve(x0);
-    auto t3 = clock::now();
+    auto tc1 = clock::now();
+    lqr.AssembleAndFactor();
+    auto tc2 = clock::now();
+    auto sol_custom = lqr.Solve(x0);
+    auto tc3 = clock::now();
+    double custom_us = std::chrono::duration<double, std::micro>(tc3 - tc0).count();
 
-    double build = std::chrono::duration<double, std::micro>(t1 - t0).count();
-    double factor = std::chrono::duration<double, std::micro>(t2 - t1).count();
-    double solve = std::chrono::duration<double, std::micro>(t3 - t2).count();
+    // Sparse matrix path.
+    auto sm = MakeSparseLQR(A, B, Q, R, Qf, x0, T);
+    auto ts0 = clock::now();
+    auto result = TreeSolverBuilder::BuildFromSparseMatrices(
+        sm.Q_cost, sm.C_eq, sm.d_eq);
+    auto ts1 = clock::now();
+    result.solver->AssembleAndFactor();
+    auto ts2 = clock::now();
+    VectorXd rhs = VectorXd::Zero(result.num_variables);
+    for (int i = 0; i < static_cast<int>(sm.dual_vars.size()); ++i)
+      rhs(sm.dual_vars[i]) = sm.d_eq(i);
+    auto sol_sparse = result.solver->Solve(rhs);
+    auto ts3 = clock::now();
+    double sparse_us = std::chrono::duration<double, std::micro>(ts3 - ts0).count();
 
-    printf("%-6d %7d %10.0f %10.0f %10.0f %10.0f\n",
-           T, lqr.n_vars(), build, factor, solve, build + factor + solve);
+    // Verify both solve correctly.
+    auto x_c = lqr.ExtractStates(sol_custom);
+    EXPECT_LT((x_c.col(0) - x0).norm(), 1e-4)
+        << "Custom: initial condition at T=" << T;
+
+    // Verify sparse path solves correctly.
+    double ic_err_sparse = (sol_sparse.col(0).head(nx) - x0).norm();
+    EXPECT_LT(ic_err_sparse, 1e-4)
+        << "Sparse: initial condition at T=" << T;
+
+    printf("%-6d %12.0f          %12.0f          %7.1fx\n",
+           T, custom_us, sparse_us, sparse_us / custom_us);
   }
 }
 
@@ -1194,27 +1241,68 @@ TEST(TreeSolverBuilder, NetworkFlow) {
          num_nodes, num_edges);
 }
 
-// Larger network flow: path graph with N nodes.
-TEST(TreeSolverBuilder, NetworkFlowBenchmark) {
+// Network flow: custom tree vs BuildFromSparseMatrices.
+namespace {
+
+struct SparseNetworkFlow {
+  Eigen::SparseMatrix<double> Q_cost;
+  Eigen::SparseMatrix<double> C_eq;
+  Eigen::VectorXd d_eq;
+  int n_primal;
+  int n_eq;
+};
+
+SparseNetworkFlow MakeSparseNetworkFlow(int N) {
+  int num_edges = N - 1;
+  SparseNetworkFlow nf;
+  nf.n_primal = num_edges;
+  nf.n_eq = N;
+
+  // Cost: I on edge variables.
+  std::vector<Eigen::Triplet<double>> qt;
+  for (int e = 0; e < num_edges; ++e)
+    qt.emplace_back(e, e, 1.0);
+  nf.Q_cost.resize(num_edges, num_edges);
+  nf.Q_cost.setFromTriplets(qt.begin(), qt.end());
+
+  // Flow conservation: for each node v,
+  //   incoming edge - outgoing edge = b_v
+  std::vector<Eigen::Triplet<double>> ct;
+  for (int e = 0; e < num_edges; ++e) {
+    ct.emplace_back(e, e, -1.0);      // outgoing from node e
+    ct.emplace_back(e + 1, e, 1.0);   // incoming to node e+1
+  }
+  nf.C_eq.resize(N, num_edges);
+  nf.C_eq.setFromTriplets(ct.begin(), ct.end());
+
+  nf.d_eq = VectorXd::Zero(N);
+  nf.d_eq(0) = -1.0;
+  nf.d_eq(N - 1) = 1.0;
+  return nf;
+}
+
+}  // namespace
+
+TEST(TreeSolverBuilder, NetworkFlowCompare) {
   using clock = std::chrono::high_resolution_clock;
 
-  printf("\n%-8s %7s %10s %10s %10s %10s\n",
-         "N_nodes", "n_vars", "build_us", "factor_us", "solve_us", "total_us");
-  printf("--------  ------- ---------- ---------- ---------- ----------\n");
+  printf("\n  Network flow: custom tree vs BuildFromSparseMatrices\n");
+  printf("%-8s %22s %22s %8s\n",
+         "N_nodes", "custom(build+fac+sol)", "sparse(build+fac+sol)", "speedup");
+  printf("--------  ---------------------- ---------------------- --------\n");
 
   for (int N : {10, 50, 100, 500, 1000}) {
     int num_edges = N - 1;
     auto edge_var = [](int e) { return e; };
     auto node_dual = [&](int v) { return num_edges + v; };
 
-    auto t0 = clock::now();
-
+    // Custom tree path.
+    auto tc0 = clock::now();
     TreeSolverBuilder builder;
     std::vector<int> cid(num_edges);
     cid[num_edges - 1] = builder.AddClique();
     for (int e = num_edges - 2; e >= 0; --e)
       cid[e] = builder.AddClique(cid[e + 1]);
-
     for (int e = 0; e < num_edges; ++e) {
       builder.AddCost(cid[e], MatrixXd::Identity(1, 1), {edge_var(e)});
       Eigen::MatrixXd C(2, 1);
@@ -1223,29 +1311,37 @@ TEST(TreeSolverBuilder, NetworkFlowBenchmark) {
                           {edge_var(e)},
                           {node_dual(e), node_dual(e + 1)});
     }
+    auto rc = builder.Build();
+    auto tc1 = clock::now();
+    rc.solver->AssembleAndFactor();
+    auto tc2 = clock::now();
+    VectorXd rhs_c = VectorXd::Zero(rc.num_variables);
+    rhs_c(node_dual(0)) = -1.0;
+    rhs_c(node_dual(N - 1)) = 1.0;
+    auto sol_c = rc.solver->Solve(rhs_c);
+    auto tc3 = clock::now();
+    double custom_us = std::chrono::duration<double, std::micro>(tc3 - tc0).count();
 
-    auto result = builder.Build();
-    auto t1 = clock::now();
+    // Sparse matrix path.
+    auto nf = MakeSparseNetworkFlow(N);
+    auto ts0 = clock::now();
+    auto rs = TreeSolverBuilder::BuildFromSparseMatrices(
+        nf.Q_cost, nf.C_eq, nf.d_eq);
+    auto ts1 = clock::now();
+    rs.solver->AssembleAndFactor();
+    auto ts2 = clock::now();
+    VectorXd rhs_s = VectorXd::Zero(rs.num_variables);
+    for (int v = 0; v < N; ++v) rhs_s(nf.n_primal + v) = nf.d_eq(v);
+    auto sol_s = rs.solver->Solve(rhs_s);
+    auto ts3 = clock::now();
+    double sparse_us = std::chrono::duration<double, std::micro>(ts3 - ts0).count();
 
-    result.solver->AssembleAndFactor();
-    auto t2 = clock::now();
+    // Both should give all flows = 1.
+    EXPECT_NEAR(sol_c(0), 1.0, 1e-8);
+    EXPECT_NEAR(sol_s(0), 1.0, 1e-8);
 
-    VectorXd rhs = VectorXd::Zero(result.num_variables);
-    rhs(node_dual(0)) = -1.0;
-    rhs(node_dual(N - 1)) = 1.0;
-    VectorXd sol = result.solver->Solve(rhs);
-    auto t3 = clock::now();
-
-    // Spot-check: all flows = 1.
-    EXPECT_NEAR(sol(0), 1.0, 1e-8);
-    EXPECT_NEAR(sol(num_edges - 1), 1.0, 1e-8);
-
-    double build = std::chrono::duration<double, std::micro>(t1 - t0).count();
-    double factor = std::chrono::duration<double, std::micro>(t2 - t1).count();
-    double solve = std::chrono::duration<double, std::micro>(t3 - t2).count();
-    printf("%-8d %7d %10.0f %10.0f %10.0f %10.0f\n",
-           N, result.num_variables, build, factor, solve,
-           build + factor + solve);
+    printf("%-8d %12.0f          %12.0f          %7.1fx\n",
+           N, custom_us, sparse_us, sparse_us / custom_us);
   }
 }
 

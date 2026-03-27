@@ -5,6 +5,8 @@
 #include <set>
 #include <vector>
 
+#include <Eigen/Sparse>
+
 #include "conex/common/equality_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
@@ -45,6 +47,13 @@ class TreeSolverBuilder {
   struct Result {
     std::unique_ptr<SymmetricLinearSystemTreeSolver> solver;
     int num_variables;
+    // Opaque storage for assemblers/matrices that must outlive the solver.
+    struct Storage;
+    std::unique_ptr<Storage> storage_;
+    Result();
+    ~Result();
+    Result(Result&&) noexcept;
+    Result& operator=(Result&&) noexcept;
   };
 
   // Enable running intersection property (RIP) validation in Build().
@@ -56,6 +65,16 @@ class TreeSolverBuilder {
   // Validate and build the tree solver.
   // Computes supernodes/separators, creates adapters, calls Finalize.
   Result Build();
+
+  // Convenience: build a tree solver from sparse matrices using the generic
+  // clique-ordering path (SparseQuadraticTermAssembler +
+  // SparseEqualityConstraintAssembler + MakeTreeSolver).  This ignores
+  // any cliques/blocks added via Add* methods.
+  // Solves: min z'Qz  s.t.  Cz = d.
+  static Result BuildFromSparseMatrices(
+      const Eigen::SparseMatrix<double>& Q,
+      const Eigen::SparseMatrix<double>& C,
+      const Eigen::VectorXd& d);
 
  private:
   struct CliqueInfo {
