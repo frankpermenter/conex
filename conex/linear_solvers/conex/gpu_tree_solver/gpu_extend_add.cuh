@@ -33,4 +33,25 @@ void LaunchGather(double* dst, const double* src, const int* indices,
 void LaunchScatter(const double* src, double* dst, const int* indices,
                    int n, int cols, int dst_ld, void* stream);
 
+// Batched gather: for batch element b, gather n entries from src using
+// indices at all_indices[offsets[b] .. offsets[b]+n-1] into
+// dst[b*n .. b*n+n-1].  Total threads = batch_size * n.
+void LaunchBatchGather(double* dst, const double* src,
+                       const int* all_indices, const int* d_offsets,
+                       int n, int batch_size, int cols, int src_ld,
+                       void* stream);
+
+// Batched scatter: reverse of batched gather.
+void LaunchBatchScatter(const double* src, double* dst,
+                        const int* all_indices, const int* d_offsets,
+                        int n, int batch_size, int cols, int dst_ld,
+                        void* stream);
+
+// Batched atomic-add scatter: dst[indices[offsets[b]+k]] += src[b*n+k].
+// Use when multiple batch elements write to overlapping positions.
+void LaunchBatchScatterAdd(const double* src, double* dst,
+                           const int* all_indices, const int* d_offsets,
+                           int n, int batch_size, int cols, int dst_ld,
+                           void* stream);
+
 }  // namespace conex

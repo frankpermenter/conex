@@ -96,4 +96,106 @@ void LaunchScatter(const double* src, double* dst, const int* indices,
   }
 }
 
+// Batched gather: thread tid handles one (batch_element, entry) pair.
+// dst layout: [batch_0: n entries][batch_1: n entries]...
+// For cols > 1: dst[tid + c * total] = src[idx + c * src_ld].
+__global__ void BatchGatherKernel(double* dst, const double* src,
+                                  const int* all_indices, const int* offsets,
+                                  int n, int batch_size, int cols,
+                                  int src_ld) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  int total = batch_size * n;
+  if (tid >= total) return;
+  int b = tid / n;
+  int k = tid % n;
+  int idx = all_indices[offsets[b] + k];
+  for (int c = 0; c < cols; ++c) {
+    dst[tid + c * total] = src[idx + c * src_ld];
+  }
+}
+
+void LaunchBatchGather(double* dst, const double* src,
+                       const int* all_indices, const int* d_offsets,
+                       int n, int batch_size, int cols, int src_ld,
+                       void* stream) {
+  int total = batch_size * n;
+  if (total == 0) return;
+  int threads = 256;
+  int blocks = (total + threads - 1) / threads;
+  BatchGatherKernel<<<blocks, threads, 0, static_cast<cudaStream_t>(stream)>>>(
+      dst, src, all_indices, d_offsets, n, batch_size, cols, src_ld);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    throw std::runtime_error(std::string("BatchGather kernel launch: ") +
+                             cudaGetErrorString(err));
+  }
+}
+
+// Batched scatter: reverse of batched gather.
+__global__ void BatchScatterKernel(const double* src, double* dst,
+                                   const int* all_indices, const int* offsets,
+                                   int n, int batch_size, int cols,
+                                   int dst_ld) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  int total = batch_size * n;
+  if (tid >= total) return;
+  int b = tid / n;
+  int k = tid % n;
+  int idx = all_indices[offsets[b] + k];
+  for (int c = 0; c < cols; ++c) {
+    dst[idx + c * dst_ld] = src[tid + c * total];
+  }
+}
+
+void LaunchBatchScatter(const double* src, double* dst,
+                        const int* all_indices, const int* d_offsets,
+                        int n, int batch_size, int cols, int dst_ld,
+                        void* stream) {
+  int total = batch_size * n;
+  if (total == 0) return;
+  int threads = 256;
+  int blocks = (total + threads - 1) / threads;
+  BatchScatterKernel<<<blocks, threads, 0, static_cast<cudaStream_t>(stream)>>>(
+      src, dst, all_indices, d_offsets, n, batch_size, cols, dst_ld);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    throw std::runtime_error(std::string("BatchScatter kernel launch: ") +
+                             cudaGetErrorString(err));
+  }
+}
+
+// Batched atomic-add scatter for overlapping indices.
+__global__ void BatchScatterAddKernel(const double* src, double* dst,
+                                      const int* all_indices,
+                                      const int* offsets, int n,
+                                      int batch_size, int cols, int dst_ld) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  int total = batch_size * n;
+  if (tid >= total) return;
+  int b = tid / n;
+  int k = tid % n;
+  int idx = all_indices[offsets[b] + k];
+  for (int c = 0; c < cols; ++c) {
+    atomicAdd(&dst[idx + c * dst_ld], src[tid + c * total]);
+  }
+}
+
+void LaunchBatchScatterAdd(const double* src, double* dst,
+                           const int* all_indices, const int* d_offsets,
+                           int n, int batch_size, int cols, int dst_ld,
+                           void* stream) {
+  int total = batch_size * n;
+  if (total == 0) return;
+  int threads = 256;
+  int blocks = (total + threads - 1) / threads;
+  BatchScatterAddKernel<<<blocks, threads, 0,
+                          static_cast<cudaStream_t>(stream)>>>(
+      src, dst, all_indices, d_offsets, n, batch_size, cols, dst_ld);
+  cudaError_t err = cudaGetLastError();
+  if (err != cudaSuccess) {
+    throw std::runtime_error(std::string("BatchScatterAdd kernel launch: ") +
+                             cudaGetErrorString(err));
+  }
+}
+
 }  // namespace conex

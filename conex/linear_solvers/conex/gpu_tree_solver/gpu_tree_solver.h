@@ -123,7 +123,9 @@ class GpuTreeSolver : public KKTSolverBase {
   };
   std::vector<std::vector<BatchGroup>> level_groups_;  // [level] -> groups
   double** d_batch_ptrs_ = nullptr;  // device buffer for pointer arrays
+  int* d_batch_sep_offsets_ = nullptr;  // device buffer for batched sep index offsets
   int max_batch_size_ = 0;
+  int max_batch_gather_ = 0;  // max(sep_size * batch_size) for gather buffer
 
   // CUDA handles (mutable: solve is logically const but uses GPU state).
   mutable cusolverDnContext* cusolver_ = nullptr;

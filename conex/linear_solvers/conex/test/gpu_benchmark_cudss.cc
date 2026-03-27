@@ -273,10 +273,8 @@ TimingResult BenchTreeSolver(const BenchProblem& prob, int warmup, int trials) {
 
     cudaDeviceSynchronize();
     auto t0 = std::chrono::high_resolution_clock::now();
-    gpu.Assemble();
-    cudaDeviceSynchronize();
-    auto t1 = std::chrono::high_resolution_clock::now();
-    gpu.Factor();
+    auto t1 = t0;  // assembly not timed separately for now
+    gpu.AssembleAndFactor();
     cudaDeviceSynchronize();
     auto t2 = std::chrono::high_resolution_clock::now();
     x_gpu = gpu.Solve(prob.rhs);
@@ -606,12 +604,8 @@ int main() {
            cusp.factor_ms, cusp.solve_ms,
            cpu.factor_ms, cpu.solve_ms);
 
-    bool warn = gpu.rel_err > 1e-6 || dss.rel_err > 1e-6 ||
-                cusp.rel_err > 1e-6 || cpu.rel_err > 1e-6;
-    if (warn) {
-      printf("  err: gpu=%.1e dss=%.1e cusp=%.1e cpu=%.1e\n",
-             gpu.rel_err, dss.rel_err, cusp.rel_err, cpu.rel_err);
-    }
+    printf("  rel_err: gpu=%.1e  dss=%.1e  cusp=%.1e  cpu=%.1e\n",
+           gpu.rel_err, dss.rel_err, cusp.rel_err, cpu.rel_err);
   }
 
   printf("\nDone.\n");

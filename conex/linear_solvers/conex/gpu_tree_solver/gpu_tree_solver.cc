@@ -48,6 +48,7 @@ GpuTreeSolver::~GpuTreeSolver() {
   if (d_gather_buf_) cudaFree(d_gather_buf_);
   if (d_potrf_work_) cudaFree(d_potrf_work_);
   if (d_batch_ptrs_) cudaFree(d_batch_ptrs_);
+  if (d_batch_sep_offsets_) cudaFree(d_batch_sep_offsets_);
   if (cublas_) cublasDestroy(cublas_);
   if (cusolver_) cusolverDnDestroy(cusolver_);
   if (stream_) cudaStreamDestroy(stream_);
@@ -76,7 +77,9 @@ GpuTreeSolver::GpuTreeSolver(GpuTreeSolver&& o) noexcept
       potrf_work_size_(o.potrf_work_size_),
       level_groups_(std::move(o.level_groups_)),
       d_batch_ptrs_(o.d_batch_ptrs_),
+      d_batch_sep_offsets_(o.d_batch_sep_offsets_),
       max_batch_size_(o.max_batch_size_),
+      max_batch_gather_(o.max_batch_gather_),
       cusolver_(o.cusolver_),
       cublas_(o.cublas_),
       stream_(o.stream_),
@@ -89,6 +92,7 @@ GpuTreeSolver::GpuTreeSolver(GpuTreeSolver&& o) noexcept
   o.d_gather_buf_ = nullptr;
   o.d_potrf_work_ = nullptr;
   o.d_batch_ptrs_ = nullptr;
+  o.d_batch_sep_offsets_ = nullptr;
   o.cusolver_ = nullptr;
   o.cublas_ = nullptr;
   o.stream_ = nullptr;
@@ -350,12 +354,13 @@ void GpuTreeSolver::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
           "cudaMemcpy sep_indices");
   }
 
-  // Gather buffer for solve: max_sep_size x rhs_cols.
+  // Gather buffer for solve: sized for batched gather (max_batch_gather entries).
+  int gather_buf_size = std::max(max_sep_size_, max_batch_gather_);
   if (d_gather_buf_) cudaFree(d_gather_buf_);
   d_gather_buf_ = nullptr;
-  if (max_sep_size_ > 0) {
+  if (gather_buf_size > 0) {
     Check(cudaMalloc(&d_gather_buf_,
-                     max_sep_size_ * rhs_cols_ * sizeof(double)),
+                     gather_buf_size * rhs_cols_ * sizeof(double)),
           "cudaMalloc gather_buf");
   }
 
@@ -397,6 +402,8 @@ void GpuTreeSolver::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
       g.indices = std::move(indices);
       max_batch_size_ = std::max(max_batch_size_,
                                   static_cast<int>(g.indices.size()));
+      max_batch_gather_ = std::max(max_batch_gather_,
+          g.sep_size * static_cast<int>(g.indices.size()));
       level_groups_[lev].push_back(std::move(g));
     }
   }
@@ -409,6 +416,15 @@ void GpuTreeSolver::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
     Check(cudaMalloc(&d_batch_ptrs_,
                      4 * max_batch_size_ * sizeof(double*)),
           "cudaMalloc batch_ptrs");
+  }
+
+  // Device buffer for batched separator index offsets (for batched gather/scatter).
+  if (d_batch_sep_offsets_) cudaFree(d_batch_sep_offsets_);
+  d_batch_sep_offsets_ = nullptr;
+  if (max_batch_size_ > 0) {
+    Check(cudaMalloc(&d_batch_sep_offsets_,
+                     max_batch_size_ * sizeof(int)),
+          "cudaMalloc batch_sep_offsets");
   }
 
   // --- Partition ---
@@ -464,8 +480,7 @@ void GpuTreeSolver::DoAssemble() {
     }
   }
 
-  // No sync needed — the first FactorLevel call will synchronize
-  // after its operations complete on the same stream.
+  Check(cudaStreamSynchronize(stream_), "sync after assemble");
 }
 
 // --------------------------------------------------------------------------
@@ -502,7 +517,6 @@ bool GpuTreeSolver::FactorLevel(int lev) {
     // Upload pointer arrays to device.
     Check(cudaMemcpyAsync(d_sn_ptrs, h_sn.data(), bs * sizeof(double*),
                           cudaMemcpyHostToDevice, stream_), "cp sn_ptrs");
-
     // 1. Batched Cholesky.
     Check(cusolverDnDpotrfBatched(cusolver_, CUBLAS_FILL_MODE_LOWER,
                                    sn, d_sn_ptrs, sn, d_info_, bs),
@@ -628,7 +642,8 @@ void GpuTreeSolver::ForwardSolve(double* d_x, int cols) const {
       if (sep == 0) continue;
 
       // Separator update: sequential gather-gemm-scatter per supernode.
-      // (Separator positions differ across supernodes, hard to batch.)
+      // Separator positions may overlap between supernodes (e.g., block-arrow),
+      // so batching requires atomicAdd which loses precision. Keep sequential.
       for (int i = 0; i < bs; ++i) {
         int ci = group.indices[i];
         const auto& d = descriptors_[ci];
@@ -666,7 +681,7 @@ void GpuTreeSolver::BackwardSolve(double* d_x, int cols) const {
       const int sn = group.sn_size;
       const int sep = group.sep_size;
 
-      // Separator update first (before trsm): sequential gather-gemm.
+      // Separator update (before trsm): sequential gather-gemm.
       if (sep > 0) {
         for (int i = 0; i < bs; ++i) {
           int ci = group.indices[i];
