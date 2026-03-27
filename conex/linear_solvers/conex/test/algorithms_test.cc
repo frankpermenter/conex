@@ -1783,8 +1783,7 @@ TEST(TreeSolverBuilder, AutoTreeStochastic) {
       sol_auto.col(0), tree, x_off, u_off, Ad, Bd, x0, nx, nu);
 
   EXPECT_LT(e_res, 1e-10) << "Explicit: constraint residual";
-  // Auto tree: quotient AMD may produce suboptimal ordering for KKT.
-  EXPECT_LT(a_res, 1e-4) << "Auto: constraint residual";
+  EXPECT_LT(a_res, 1e-10) << "Auto: constraint residual";
 
   printf("AutoTree Stochastic: S=%d, N=%d\n"
          "  explicit: res=%.2e\n"

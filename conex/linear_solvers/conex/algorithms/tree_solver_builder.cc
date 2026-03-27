@@ -143,106 +143,60 @@ EliminationOrdering TreeSolverBuilder::ComputeQuotientAMDOrdering() {
   // then shared vars (separator candidates, will be re-eliminated in parent).
   // Only emit each variable once (first occurrence).
 
+  // Collect variables that participate in PD blocks (cost or A'A).
+  std::unordered_set<int> has_pd;
+  for (const auto& pa : pending_) {
+    if (pa.type == ContributionType::kPositiveDefinite) {
+      for (int v : pa.assembler->primal_variables())
+        has_pd.insert(v);
+    }
+  }
+
+  // Build clique step map for "is later" checks.
+  std::vector<int> clique_step(NC);
+  for (int s = 0; s < NC; ++s) clique_step[clique_order[s]] = s;
+
   std::set<int> emitted;
   std::vector<int> var_order;
-  // Collect all variables for sizing.
   std::set<int> all_var_set;
   for (const auto& ci : cliques_) all_var_set.insert(ci.all_vars.begin(), ci.all_vars.end());
   var_order.reserve(all_var_set.size());
 
   for (int ci : clique_order) {
-    // Exclusive vars first (not in any later clique).
-    std::vector<int> exclusive, shared;
+    // Partition this clique's unemitted variables into:
+    //   pd_exclusive: PD vars not in any later clique (eliminated here)
+    //   pd_shared:    PD vars in some later clique (separator candidates)
+    //   non_pd:       vars without PD contribution (duals, uncovered primals)
+    // Order: pd_exclusive, pd_shared, non_pd.
+    // This ensures PD vars appear before non-PD vars in the elimination
+    // order, so indefinite blocks see nonzero pivots from PD neighbors.
+    std::vector<int> pd_exclusive, pd_shared, non_pd;
     for (int v : cliques_[ci].all_vars) {
       if (emitted.count(v)) continue;
+      if (!has_pd.count(v)) {
+        non_pd.push_back(v);
+        continue;
+      }
       bool in_later = false;
-      for (auto& [nb, w] : adj[ci])
-        if (!eliminated[nb]) {}  // all eliminated at this point
-      // Check if v appears in any clique eliminated after ci.
-      in_later = false;
       for (int j = 0; j < NC; ++j) {
-        if (j == ci) continue;
-        if (cliques_[j].all_vars.count(v)) {
-          // Is j eliminated after ci?
-          bool j_after = false;
-          for (size_t s = 0; s < clique_order.size(); ++s) {
-            if (clique_order[s] == ci) { j_after = false; break; }
-            if (clique_order[s] == j) { j_after = true; break; }
-          }
-          // Actually: j is after ci if j appears later in clique_order.
-          // Let me use a step map.
-          if (!in_later) {
-            // Build step map once outside? Let me simplify.
-          }
-          in_later = true;
-          break;
+        if (j == ci && clique_step[j] > clique_step[ci] &&
+            cliques_[j].all_vars.count(v)) {
+          in_later = true; break;
+        }
+        if (j != ci && clique_step[j] > clique_step[ci] &&
+            cliques_[j].all_vars.count(v)) {
+          in_later = true; break;
         }
       }
-      if (in_later) shared.push_back(v);
-      else exclusive.push_back(v);
+      if (in_later) pd_shared.push_back(v);
+      else pd_exclusive.push_back(v);
     }
-    for (int v : exclusive) { var_order.push_back(v); emitted.insert(v); }
-    for (int v : shared) { var_order.push_back(v); emitted.insert(v); }
+    for (int v : pd_exclusive) { var_order.push_back(v); emitted.insert(v); }
+    for (int v : pd_shared) { var_order.push_back(v); emitted.insert(v); }
+    for (int v : non_pd) { var_order.push_back(v); emitted.insert(v); }
   }
-  // Any variables not yet emitted (shouldn't happen, but safety).
   for (int v : all_var_set)
     if (!emitted.count(v)) { var_order.push_back(v); emitted.insert(v); }
-
-  // --- Step 2b: Dual delay post-processing ---
-  // Push dual variables later in the order if none of their neighbors
-  // (in the variable graph) have been eliminated yet.  This prevents
-  // dual variables from landing in supernodes too early, which creates
-  // zero diagonal blocks in indefinite factorizations.
-  {
-    // Collect dual variable set from equality blocks.
-    std::unordered_set<int> is_dual;
-    for (const auto& pa : pending_) {
-      if (pa.type == ContributionType::kIndefinite) {
-        for (int v : pa.assembler->dual_variables())
-          is_dual.insert(v);
-      }
-    }
-
-    if (!is_dual.empty()) {
-      // Build variable adjacency: var -> set of neighbor vars.
-      // (From the clique structure: all vars in a clique are neighbors.)
-      std::unordered_map<int, std::unordered_set<int>> var_neighbors;
-      for (const auto& ci : cliques_)
-        for (int u : ci.all_vars)
-          for (int v : ci.all_vars)
-            if (u != v) var_neighbors[u].insert(v);
-
-      // Scan var_order; if a dual variable has no earlier neighbor,
-      // defer it by swapping with the next non-dual variable.
-      std::unordered_set<int> already_placed;
-      for (int i = 0; i < static_cast<int>(var_order.size()); ++i) {
-        int v = var_order[i];
-        if (is_dual.count(v)) {
-          // Check if any neighbor is already placed.
-          bool has_earlier_neighbor = false;
-          auto it = var_neighbors.find(v);
-          if (it != var_neighbors.end()) {
-            for (int nb : it->second) {
-              if (already_placed.count(nb)) {
-                has_earlier_neighbor = true;
-                break;
-              }
-            }
-          }
-          if (!has_earlier_neighbor) {
-            // Find next non-dual var to swap with.
-            for (int j = i + 1; j < static_cast<int>(var_order.size()); ++j) {
-              if (!is_dual.count(var_order[j])) {
-                std::swap(var_order[i], var_order[j]);
-                break;
-              }
-            }
-          }
-        }
-        already_placed.insert(var_order[i]);
-      }
-    }
-  }
 
   // --- Step 3: Build variable adjacency graph ---
   // Each clique's all_vars forms a clique in the variable graph.
