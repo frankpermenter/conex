@@ -47,6 +47,9 @@ class TreeSolverBuilder {
   struct Result {
     std::unique_ptr<SymmetricLinearSystemTreeSolver> solver;
     int num_variables;
+    int num_cliques;
+    int max_clique_size;  // max(|sn| + |sep|) over all cliques
+    long long fill;       // Σ (|sn| + |sep|)^2
     // Opaque storage for assemblers/matrices that must outlive the solver.
     struct Storage;
     std::unique_ptr<Storage> storage_;

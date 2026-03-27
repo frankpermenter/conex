@@ -5,6 +5,7 @@
 #include <numeric>
 #include <sstream>
 
+#include "conex/common/clique_ordering.h"
 #include "conex/common/clique_tree.h"
 #include "conex/common/constraint_manager.h"
 #include "conex/common/error_checking_macros.h"
@@ -307,9 +308,21 @@ TreeSolverBuilder::Result TreeSolverBuilder::Build() {
   solver->SetFactorizationMode(true);
   solver->EnableAutoUpdateAtAssemble(true);
 
+  // Compute fill statistics.
+  long long fill = 0;
+  int max_cs = 0;
+  for (int i = 0; i < num_cliques; ++i) {
+    int cs = static_cast<int>(supernodes[i].size() + separators[i].size());
+    fill += static_cast<long long>(cs) * cs;
+    max_cs = std::max(max_cs, cs);
+  }
+
   Result result;
   result.solver = std::move(solver);
   result.num_variables = num_variables;
+  result.num_cliques = num_cliques;
+  result.max_clique_size = max_cs;
+  result.fill = fill;
   return result;
 }
 
@@ -356,6 +369,31 @@ TreeSolverBuilder::Result TreeSolverBuilder::BuildFromSparseMatrices(
       std::move(sec), eq_primal, dual_vars);
   storage->cm.AddCustomAssembler(std::move(eq_asm));
 
+  // Collect cliques and dual vars for fill measurement.
+  std::vector<std::vector<int>> all_cliques;
+  std::vector<int> dual_flat;
+  for (auto* asm_ptr : storage->cm.clique_assemblers()) {
+    auto c = asm_ptr->get_cliques();
+    all_cliques.insert(all_cliques.end(), c.begin(), c.end());
+    auto dv = asm_ptr->dual_variables();
+    dual_flat.insert(dual_flat.end(), dv.begin(), dv.end());
+  }
+
+  // Build clique tree for fill statistics (cheap relative to solver build).
+  std::vector<std::vector<int>> maximal_cliques;
+  auto ctree = MakeCliqueTreeMinDegreeFromRowSupports(
+      all_cliques, &maximal_cliques, 0, 0, dual_flat);
+
+  long long fill = 0;
+  int max_cs = 0;
+  int nc = static_cast<int>(ctree.supernodes.size());
+  for (int i = 0; i < nc; ++i) {
+    int cs = static_cast<int>(ctree.supernodes[i].size() +
+                              ctree.separators[i].size());
+    fill += static_cast<long long>(cs) * cs;
+    max_cs = std::max(max_cs, cs);
+  }
+
   SolverConfiguration config;
   auto solver = MakeTreeSolver(&storage->cm, config);
   int n_vars = storage->cm.SizeOfKKTSystem();
@@ -363,6 +401,9 @@ TreeSolverBuilder::Result TreeSolverBuilder::BuildFromSparseMatrices(
   Result result;
   result.solver = std::move(solver);
   result.num_variables = n_vars;
+  result.num_cliques = nc;
+  result.max_clique_size = max_cs;
+  result.fill = fill;
   result.storage_ = std::move(storage);
   return result;
 }

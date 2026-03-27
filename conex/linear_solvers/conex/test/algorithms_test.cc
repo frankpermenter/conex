@@ -1755,5 +1755,101 @@ TEST(TreeSolverBuilder, AutoTreeStochastic) {
          S, N, ic_auto, max_diff);
 }
 
+// =====================================================================
+// Fill-in comparison: quotient AMD vs KKT AMD
+// Generate synthetic stochastic trees and compare fill (Σ clique_size²)
+// between the builder's auto-tree (quotient AMD) and the sparse path
+// (full KKT AMD via BuildFromSparseMatrices).
+// =====================================================================
+
+TEST(FillComparison, StochasticTree) {
+  const int nx = 4, nu = 2;
+  srand(42);
+  MatrixXd Ad = 0.9 * MatrixXd::Identity(nx, nx) +
+                0.1 * MatrixXd::Random(nx, nx);
+  MatrixXd Bd = MatrixXd::Random(nx, nu);
+  MatrixXd Q = MatrixXd::Identity(nx, nx) + 0.5 * MatrixXd::Ones(nx, nx);
+  MatrixXd R = 0.1 * MatrixXd::Identity(nu, nu) + 0.05 * MatrixXd::Ones(nu, nu);
+  MatrixXd Qf = 10.0 * Q;
+  VectorXd x0 = VectorXd::Ones(nx);
+  MatrixXd C_dyn(nx, nx + nu + nx);
+  C_dyn << -Ad, -Bd, MatrixXd::Identity(nx, nx);
+  VectorXd d_zero = VectorXd::Zero(nx);
+  MatrixXd QR = MatrixXd::Zero(nx + nu, nx + nu);
+  QR.topLeftCorner(nx, nx) = Q;
+  QR.bottomRightCorner(nu, nu) = R;
+
+  printf("\n  Fill comparison: quotient AMD vs KKT AMD (stochastic tree)\n");
+  printf("%-3s %-4s %6s %7s %12s %8s %12s %8s %8s\n",
+         "S", "B", "nodes", "n_vars",
+         "quot_fill", "quot_mc", "kkt_fill", "kkt_mc", "ratio");
+  printf("--- ---- ------ ------- ------------ -------- "
+         "------------ -------- --------\n");
+
+  for (auto [S, B] : std::vector<std::pair<int,int>>{{3,2},{4,2},{5,2},{4,3},{5,3},{6,2}}) {
+    auto tree = MakeScenarioTree(B, S);
+    int N = static_cast<int>(tree.size());
+
+    // Variable offsets.
+    std::vector<int> x_off(N), u_off(N), lam_off(N);
+    int var_offset = 0;
+    for (int i = 0; i < N; ++i) {
+      x_off[i] = var_offset; var_offset += nx;
+      u_off[i] = tree[i].children.empty() ? -1 : var_offset;
+      if (!tree[i].children.empty()) var_offset += nu;
+      lam_off[i] = var_offset; var_offset += nx;
+    }
+    int n_vars = var_offset;
+
+    auto add_blocks = [&](TreeSolverBuilder& builder, int cid, int i) {
+      bool is_leaf = tree[i].children.empty();
+      bool is_root = (tree[i].parent == -1);
+      if (is_leaf) {
+        std::vector<int> cv;
+        for (int j = 0; j < nx; ++j) cv.push_back(x_off[i] + j);
+        builder.AddCost(cid, Qf, cv);
+      } else {
+        std::vector<int> cv;
+        for (int j = 0; j < nx; ++j) cv.push_back(x_off[i] + j);
+        for (int j = 0; j < nu; ++j) cv.push_back(u_off[i] + j);
+        builder.AddCost(cid, QR, cv);
+      }
+      if (is_root) {
+        std::vector<int> ic_p, ic_d;
+        for (int j = 0; j < nx; ++j) ic_p.push_back(x_off[0] + j);
+        for (int j = 0; j < nx; ++j) ic_d.push_back(lam_off[0] + j);
+        builder.AddEquality(cid, MatrixXd::Identity(nx, nx), d_zero, ic_p, ic_d);
+      } else {
+        int p = tree[i].parent;
+        std::vector<int> dp, dd;
+        for (int j = 0; j < nx; ++j) dp.push_back(x_off[p] + j);
+        for (int j = 0; j < nu; ++j) dp.push_back(u_off[p] + j);
+        for (int j = 0; j < nx; ++j) dp.push_back(x_off[i] + j);
+        for (int j = 0; j < nx; ++j) dd.push_back(lam_off[i] + j);
+        builder.AddEquality(cid, C_dyn, d_zero, dp, dd);
+      }
+    };
+
+    // Quotient AMD path (auto tree).
+    TreeSolverBuilder b_quot;
+    std::vector<int> cid_q(N);
+    for (int i = 0; i < N; ++i) cid_q[i] = b_quot.AddClique();
+    for (int i = 0; i < N; ++i) add_blocks(b_quot, cid_q[i], i);
+    auto r_quot = b_quot.Build();
+
+    // KKT AMD path (sparse matrices).
+    auto ss = MakeSparseStochastic(tree, Ad, Bd, Q, R, Qf, x0, nx, nu);
+    auto r_kkt = TreeSolverBuilder::BuildFromSparseMatrices(
+        ss.Q_cost, ss.C_eq, ss.d_eq);
+
+    printf("%-3d %-4d %6d %7d %12lld %8d %12lld %8d %7.2fx\n",
+           S, B, N, n_vars,
+           r_quot.fill, r_quot.max_clique_size,
+           r_kkt.fill, r_kkt.max_clique_size,
+           static_cast<double>(r_kkt.fill) /
+               std::max(r_quot.fill, 1LL));
+  }
+}
+
 }  // namespace
 }  // namespace conex
