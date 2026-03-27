@@ -2,6 +2,7 @@
 
 #include <set>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "conex/common/clique_ordering.h"
 #include "conex/common/sparse_linear_constraint.h"
@@ -34,19 +35,41 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
   auto tree_solver_ =
       std::make_unique<::conex::SymmetricLinearSystemTreeSolver>();
 
-  vector<int> dual_vars_flat;
-  for (const auto& dv : c->equality_constraint_multipliers()) {
-    dual_vars_flat.insert(dual_vars_flat.end(), dv.begin(), dv.end());
+  // Delayed variables: dual vars + primal vars that appear only in
+  // indefinite (equality) assemblers and not in any PD assembler.
+  std::unordered_set<int> pd_vars;
+  for (auto* assembler : clique_assemblers_ptrs_) {
+    if (assembler->is_positive_definite()) {
+      for (int v : assembler->primal_variables())
+        pd_vars.insert(v);
+    }
   }
+
+  vector<int> delayed_vars;
+  for (auto* assembler : clique_assemblers_ptrs_) {
+    // All dual variables are delayed.
+    for (int v : assembler->dual_variables())
+      delayed_vars.push_back(v);
+    // Primal variables that appear only in indefinite assemblers.
+    if (!assembler->is_positive_definite()) {
+      for (int v : assembler->primal_variables()) {
+        if (!pd_vars.count(v)) delayed_vars.push_back(v);
+      }
+    }
+  }
+  // Deduplicate.
+  std::sort(delayed_vars.begin(), delayed_vars.end());
+  delayed_vars.erase(std::unique(delayed_vars.begin(), delayed_vars.end()),
+                     delayed_vars.end());
 
   vector<vector<int>> maximal_cliques;
   CliqueTree clique_tree = MakeCliqueTreeMinDegreeFromRowSupports(
       cliques, &maximal_cliques, config.tree.max_merge_supernode_size,
-      config.tree.supernode_reorder_method, dual_vars_flat);
+      config.tree.supernode_reorder_method, delayed_vars);
 
   // --- Check if structured (low-rank) path is available ---
-  // Requirements: all assemblers are SLC, no dual variables.
-  bool can_use_structured = dual_vars_flat.empty();
+  // Requirements: all assemblers are PD, no delayed variables.
+  bool can_use_structured = delayed_vars.empty();
   vector<SparseLinearConstraintAssembler*> slc_assemblers;
   for (auto* assembler : clique_assemblers_ptrs_) {
     auto* slc = dynamic_cast<SparseLinearConstraintAssembler*>(assembler);
