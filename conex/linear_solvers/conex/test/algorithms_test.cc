@@ -2001,7 +2001,7 @@ TEST(FillComparison, SolvePerformance) {
 // =====================================================================
 // PD-only benchmark: chain of least-squares blocks (no dual variables).
 // min Σ_t ||A_t [x_t; x_{t+1}] - b_t||^2
-// This is entirely positive-definite, so auto-tree AMD should work well.
+// This is entirely positive-definite, so quotient AMD should work well.
 // =====================================================================
 
 TEST(TreeSolverBuilder, PDChainAutoVsExplicit) {
@@ -2015,12 +2015,12 @@ TEST(TreeSolverBuilder, PDChainAutoVsExplicit) {
   MatrixXd A_block = MatrixXd::Random(m, 2 * nx);
   VectorXd b_block = VectorXd::Random(m);
 
-  printf("\n  PD chain (A'A only): auto-tree AMD vs explicit tree\n");
+  printf("\n  PD chain (A'A only): quotient AMD vs explicit tree\n");
   printf("%-6s %7s  %8s %8s %8s  %8s %8s %8s  %8s %6s %6s\n",
          "T", "n_vars",
-         "auto_bld", "auto_fac", "auto_sol",
+         "q_bld", "q_fac", "q_sol",
          "expl_bld", "expl_fac", "expl_sol",
-         "fac_rat", "a_res", "e_res");
+         "fac_rat", "q_res", "e_res");
   printf("------  -------  -------- -------- --------  "
          "-------- -------- --------  -------- ------ ------\n");
 
@@ -2100,20 +2100,20 @@ TEST(TreeSolverBuilder, PDChainAutoVsExplicit) {
     double max_diff = (sol_a.col(0).head(n_vars) -
                        sol_e.col(0).head(n_vars)).cwiseAbs().maxCoeff();
     EXPECT_LT(max_diff, 1e-8)
-        << "Auto and explicit solutions differ at T=" << T;
+        << "Quotient and explicit solutions differ at T=" << T;
 
-    double auto_bld = std::chrono::duration<double, std::micro>(ta1 - ta0).count();
-    double auto_fac = std::chrono::duration<double, std::micro>(ta2 - ta1).count();
-    double auto_sol = std::chrono::duration<double, std::micro>(ta3 - ta2).count();
+    double q_bld = std::chrono::duration<double, std::micro>(ta1 - ta0).count();
+    double q_fac = std::chrono::duration<double, std::micro>(ta2 - ta1).count();
+    double q_sol = std::chrono::duration<double, std::micro>(ta3 - ta2).count();
     double expl_bld = std::chrono::duration<double, std::micro>(te1 - te0).count();
     double expl_fac = std::chrono::duration<double, std::micro>(te2 - te1).count();
     double expl_sol = std::chrono::duration<double, std::micro>(te3 - te2).count();
 
     printf("%-6d %7d  %7.0fus %7.0fus %7.0fus  %7.0fus %7.0fus %7.0fus  %7.2fx  %.0e %.0e\n",
            T, n_vars,
-           auto_bld, auto_fac, auto_sol,
+           q_bld, q_fac, q_sol,
            expl_bld, expl_fac, expl_sol,
-           expl_fac / std::max(auto_fac, 1.0),
+           expl_fac / std::max(q_fac, 1.0),
            res_a, res_e);
   }
 }
