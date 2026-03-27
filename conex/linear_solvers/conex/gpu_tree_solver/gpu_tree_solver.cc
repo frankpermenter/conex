@@ -171,6 +171,14 @@ void GpuTreeSolver::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
     levels_[level[i]].push_back(i);
   }
 
+  // --- Precompute supernode start positions in elimination order ---
+  sn_starts_.resize(num_cliques);
+  for (int ci = 0; ci < num_cliques; ++ci) {
+    sn_starts_[ci] = clique_tree_.supernodes[ci].empty()
+                         ? 0
+                         : perm_(clique_tree_.supernodes[ci][0]);
+  }
+
   // --- Allocate device arena ---
   arena_.Allocate(descriptors_);
 
@@ -577,118 +585,136 @@ void GpuTreeSolver::ForwardSolve(double* d_x, int cols) const {
   const double one = 1.0;
   const double neg_one = -1.0;
 
+  // d_batch_ptrs_ layout: [0..bs) = A ptrs, [bs..2bs) = B ptrs
+  double** d_A_ptrs = d_batch_ptrs_;
+  double** d_B_ptrs = d_batch_ptrs_ + max_batch_size_;
+
   // Process levels leaf-to-root.
   for (int lev = 0; lev < num_levels(); ++lev) {
-    for (int ci : levels_[lev]) {
-      const auto& d = descriptors_[ci];
-      if (d.sn_size == 0) continue;
+    for (const auto& group : level_groups_[lev]) {
+      const int bs = static_cast<int>(group.indices.size());
+      const int sn = group.sn_size;
+      const int sep = group.sep_size;
 
-      double* sn = arena_.sn_ptr(d);
-      double* sep = arena_.sep_rows_ptr(d);
-
-      // x_sn = L^{-1} * x_sn.
-      // Use dtrsm with side=Left, uplo=Lower, trans=NoTrans.
-      // x_sn is a contiguous block in d_x starting at the supernode's
-      // first elimination position.
-      int sn_start = 0;
-      for (int v : clique_tree_.supernodes[ci]) {
-        sn_start = perm_(v);
-        break;
+      // Batched forward trsm: x_sn = L^{-1} x_sn.
+      if (bs == 1) {
+        // Single supernode: unbatched trsm avoids batched API overhead.
+        Check(cublasDtrsm(cublas_,
+                          CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER,
+                          CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT,
+                          sn, cols, &one,
+                          arena_.sn_ptr(descriptors_[group.indices[0]]), sn,
+                          d_x + sn_starts_[group.indices[0]], num_vars_),
+              "forward trsm");
+      } else {
+        std::vector<double*> h_A(bs), h_B(bs);
+        for (int i = 0; i < bs; ++i) {
+          h_A[i] = arena_.sn_ptr(descriptors_[group.indices[i]]);
+          h_B[i] = d_x + sn_starts_[group.indices[i]];
+        }
+        Check(cudaMemcpyAsync(d_A_ptrs, h_A.data(), bs * sizeof(double*),
+                              cudaMemcpyHostToDevice, stream_), "cp A");
+        Check(cudaMemcpyAsync(d_B_ptrs, h_B.data(), bs * sizeof(double*),
+                              cudaMemcpyHostToDevice, stream_), "cp B");
+        Check(cublasDtrsmBatched(cublas_,
+                                  CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER,
+                                  CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT,
+                                  sn, cols, &one,
+                                  d_A_ptrs, sn,
+                                  d_B_ptrs, num_vars_, bs),
+              "forward trsmBatched");
       }
-      double* x_sn = d_x + sn_start;
 
-      Check(cublasDtrsm(cublas_,
-                        CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER,
-                        CUBLAS_OP_N, CUBLAS_DIAG_NON_UNIT,
-                        d.sn_size, cols, &one,
-                        sn, d.sn_size,
-                        x_sn, num_vars_),
-            "forward trsm");
+      if (sep == 0) continue;
 
-      if (d.sep_size == 0) continue;
+      // Separator update: sequential gather-gemm-scatter per supernode.
+      // (Separator positions differ across supernodes, hard to batch.)
+      for (int i = 0; i < bs; ++i) {
+        int ci = group.indices[i];
+        const auto& d = descriptors_[ci];
+        double* x_sn = d_x + sn_starts_[ci];
+        const int* sep_idx = d_sep_indices_ + sep_indices_offsets_[ci];
 
-      // x_sep -= sep * x_sn.
-      // sep (sep_size x sn_size) contains S * L^{-T} from factorization.
-      // Gather x_sep from non-contiguous positions, update, scatter back.
-      const int* sep_idx = d_sep_indices_ + sep_indices_offsets_[ci];
-
-      // Gather x_sep into contiguous buffer.
-      LaunchGather(d_gather_buf_, d_x, sep_idx,
-                   d.sep_size, cols, num_vars_, stream_);
-
-      // d_gather_buf -= sep * x_sn.
-      Check(cublasDgemm(cublas_,
-                        CUBLAS_OP_N, CUBLAS_OP_N,
-                        d.sep_size, cols, d.sn_size, &neg_one,
-                        sep, d.sep_size,
-                        x_sn, num_vars_,
-                        &one,
-                        d_gather_buf_, d.sep_size),
-            "forward gemm");
-
-      // Scatter back to d_x.
-      LaunchScatter(d_gather_buf_, d_x, sep_idx,
-                    d.sep_size, cols, num_vars_, stream_);
+        LaunchGather(d_gather_buf_, d_x, sep_idx,
+                     sep, cols, num_vars_, stream_);
+        Check(cublasDgemm(cublas_, CUBLAS_OP_N, CUBLAS_OP_N,
+                          sep, cols, sn, &neg_one,
+                          arena_.sep_rows_ptr(d), sep,
+                          x_sn, num_vars_, &one,
+                          d_gather_buf_, sep),
+              "forward gemm");
+        LaunchScatter(d_gather_buf_, d_x, sep_idx,
+                      sep, cols, num_vars_, stream_);
+      }
     }
 
-    Check(cudaStreamSynchronize(stream_),
-          "sync forward level");
+    Check(cudaStreamSynchronize(stream_), "sync forward level");
   }
 }
 
 void GpuTreeSolver::BackwardSolve(double* d_x, int cols) const {
   const double one = 1.0;
+  const double neg_one = -1.0;
+
+  double** d_A_ptrs = d_batch_ptrs_;
+  double** d_B_ptrs = d_batch_ptrs_ + max_batch_size_;
 
   // Process levels root-to-leaf.
   for (int lev = num_levels() - 1; lev >= 0; --lev) {
-    for (int ci : levels_[lev]) {
-      const auto& d = descriptors_[ci];
-      if (d.sn_size == 0) continue;
+    for (const auto& group : level_groups_[lev]) {
+      const int bs = static_cast<int>(group.indices.size());
+      const int sn = group.sn_size;
+      const int sep = group.sep_size;
 
-      double* sn = arena_.sn_ptr(d);
+      // Separator update first (before trsm): sequential gather-gemm.
+      if (sep > 0) {
+        for (int i = 0; i < bs; ++i) {
+          int ci = group.indices[i];
+          const auto& d = descriptors_[ci];
+          double* x_sn = d_x + sn_starts_[ci];
+          const int* sep_idx = d_sep_indices_ + sep_indices_offsets_[ci];
 
-      int sn_start = 0;
-      for (int v : clique_tree_.supernodes[ci]) {
-        sn_start = perm_(v);
-        break;
-      }
-      double* x_sn = d_x + sn_start;
-
-      if (d.sep_size > 0) {
-        // x_sn -= sep^T * x_sep.
-        // sep (sep_size x sn_size) contains S * L^{-T} from factorization.
-        // sep^T is sn_size x sep_size.
-        const double neg_one = -1.0;
-        const int* sep_idx = d_sep_indices_ + sep_indices_offsets_[ci];
-
-        // Gather x_sep from non-contiguous positions.
-        LaunchGather(d_gather_buf_, d_x, sep_idx,
-                     d.sep_size, cols, num_vars_, stream_);
-
-        // x_sn -= sep^T * x_sep_gathered.
-        double* sep = arena_.sep_rows_ptr(d);
-        Check(cublasDgemm(cublas_,
-                          CUBLAS_OP_T, CUBLAS_OP_N,
-                          d.sn_size, cols, d.sep_size, &neg_one,
-                          sep, d.sep_size,
-                          d_gather_buf_, d.sep_size,
-                          &one,
-                          x_sn, num_vars_),
-              "backward gemm");
+          LaunchGather(d_gather_buf_, d_x, sep_idx,
+                       sep, cols, num_vars_, stream_);
+          Check(cublasDgemm(cublas_, CUBLAS_OP_T, CUBLAS_OP_N,
+                            sn, cols, sep, &neg_one,
+                            arena_.sep_rows_ptr(d), sep,
+                            d_gather_buf_, sep, &one,
+                            x_sn, num_vars_),
+                "backward gemm");
+        }
       }
 
-      // x_sn = L^{-T} * x_sn.
-      Check(cublasDtrsm(cublas_,
-                        CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER,
-                        CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT,
-                        d.sn_size, cols, &one,
-                        sn, d.sn_size,
-                        x_sn, num_vars_),
-            "backward trsm");
+      // Batched backward trsm: x_sn = L^{-T} x_sn.
+      if (bs == 1) {
+        Check(cublasDtrsm(cublas_,
+                          CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER,
+                          CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT,
+                          sn, cols, &one,
+                          arena_.sn_ptr(descriptors_[group.indices[0]]), sn,
+                          d_x + sn_starts_[group.indices[0]], num_vars_),
+              "backward trsm");
+      } else {
+        std::vector<double*> h_A(bs), h_B(bs);
+        for (int i = 0; i < bs; ++i) {
+          h_A[i] = arena_.sn_ptr(descriptors_[group.indices[i]]);
+          h_B[i] = d_x + sn_starts_[group.indices[i]];
+        }
+        Check(cudaMemcpyAsync(d_A_ptrs, h_A.data(), bs * sizeof(double*),
+                              cudaMemcpyHostToDevice, stream_), "cp A");
+        Check(cudaMemcpyAsync(d_B_ptrs, h_B.data(), bs * sizeof(double*),
+                              cudaMemcpyHostToDevice, stream_), "cp B");
+        Check(cublasDtrsmBatched(cublas_,
+                                  CUBLAS_SIDE_LEFT, CUBLAS_FILL_MODE_LOWER,
+                                  CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT,
+                                  sn, cols, &one,
+                                  d_A_ptrs, sn,
+                                  d_B_ptrs, num_vars_, bs),
+              "backward trsmBatched");
+      }
     }
 
-    Check(cudaStreamSynchronize(stream_),
-          "sync backward level");
+    Check(cudaStreamSynchronize(stream_), "sync backward level");
   }
 }
 

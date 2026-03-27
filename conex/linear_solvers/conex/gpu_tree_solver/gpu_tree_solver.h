@@ -90,6 +90,7 @@ class GpuTreeSolver : public KKTSolverBase {
   // Per-supernode descriptors and level assignment.
   std::vector<SupernodeDescriptor> descriptors_;
   std::vector<std::vector<int>> levels_;  // levels_[k] = supernodes at depth k
+  std::vector<int> sn_starts_;  // elimination position of first var per supernode
 
   // Device memory.
   GpuDeviceArena arena_;
