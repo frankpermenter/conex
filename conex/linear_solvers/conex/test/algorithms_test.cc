@@ -1,5 +1,6 @@
 #include "conex/algorithms/barrier_qp.h"
 #include "conex/algorithms/equality_constrained_least_squares.h"
+#include "conex/algorithms/finite_horizon.h"
 #include "conex/algorithms/irls.h"
 #include "conex/common/clique_ordering.h"
 #include "conex/common/constraint_manager.h"
@@ -646,56 +647,91 @@ TEST(EqualityConstrainedLS, DualVarsInMaximalCliques) {
 }
 
 // =====================================================================
-// Finite-horizon optimal control benchmark:
+// Finite-horizon optimal control:
 //   min  Σ x_t'Q x_t + u_t'R u_t  +  x_T'Qf x_T
 //   s.t. x_{t+1} = A x_t + B u_t,  x_0 = x_init
-//
-// Decision variables: z = [x_0, u_0, x_1, u_1, ..., u_{T-1}, x_T]
-// Sparse block-diagonal cost + sparse block-banded equality constraints.
 // =====================================================================
 
 namespace {
 
-struct FiniteHorizonProblem {
-  int nx, nu, T;
-  int n_vars;       // (T+1)*nx + T*nu
-  int n_eq;         // (T+1)*nx  (T dynamics + 1 initial condition)
-  Eigen::SparseMatrix<double> Q_cost;  // block-diagonal cost
-  Eigen::SparseMatrix<double> C_eq;    // dynamics + initial condition
-  Eigen::VectorXd d_eq;               // RHS (zeros + x_init)
-};
+// Variable layout helper: z = [x_0, u_0, x_1, u_1, ..., u_{T-1}, x_T]
+int XIdx(int t, int nx, int nu) { return t * (nx + nu); }
+int UIdx(int t, int nx, int nu) { return t * (nx + nu) + nx; }
 
-// Variable layout: [x_0, u_0, x_1, u_1, ..., u_{T-1}, x_T]
-int XIndex(int t, int nx, int nu) { return t * (nx + nu); }
-int UIndex(int t, int nx, int nu) { return t * (nx + nu) + nx; }
+// Return the timestep that primal variable v belongs to.
+int VarTimestep(int v, int nx, int nu, int T) {
+  int block = nx + nu;
+  if (v >= T * block) return T;  // terminal x_T
+  return v / block;
+}
 
-FiniteHorizonProblem MakeFiniteHorizon(int nx, int nu, int T, int seed = 42) {
-  srand(seed);
-  FiniteHorizonProblem prob;
-  prob.nx = nx;
-  prob.nu = nu;
-  prob.T = T;
-  prob.n_vars = (T + 1) * nx + T * nu;
-  prob.n_eq = (T + 1) * nx;
+}  // namespace
 
-  // Random stable dynamics: A = 0.9*I + 0.1*rand, B = rand.
-  Eigen::MatrixXd Ad = 0.9 * Eigen::MatrixXd::Identity(nx, nx) +
-                        0.1 * Eigen::MatrixXd::Random(nx, nx);
-  Eigen::MatrixXd Bd = Eigen::MatrixXd::Random(nx, nu);
+// Benchmark: sweep horizon lengths, call the algorithm, print timing table.
+TEST(FiniteHorizon, Benchmark) {
+  const int nx = 4, nu = 2;
+  Eigen::MatrixXd A = 0.9 * MatrixXd::Identity(nx, nx) +
+                       0.1 * MatrixXd::Random(nx, nx);
+  Eigen::MatrixXd B = MatrixXd::Random(nx, nu);
+  Eigen::MatrixXd Q = MatrixXd::Identity(nx, nx) +
+                       0.5 * MatrixXd::Ones(nx, nx);
+  Eigen::MatrixXd R = 0.1 * MatrixXd::Identity(nu, nu) +
+                       0.05 * MatrixXd::Ones(nu, nu);
+  Eigen::MatrixXd Qf = 10.0 * Q;
+  VectorXd x0 = VectorXd::Ones(nx);
 
-  // Cost: Q = dense SPD (nx x nx), R = dense SPD (nu x nu), Qf = 10*Q.
-  // Using dense blocks ensures each timestep's variables form a clique
-  // in the cost, which the tree solver can map correctly.
-  Eigen::MatrixXd Qx = Eigen::MatrixXd::Identity(nx, nx);
-  Qx += 0.5 * Eigen::MatrixXd::Ones(nx, nx);  // dense, SPD
-  Eigen::MatrixXd Ru = 0.1 * Eigen::MatrixXd::Identity(nu, nu);
-  Ru += 0.05 * Eigen::MatrixXd::Ones(nu, nu);
+  printf("\n%-6s %7s %10s %10s %10s %10s %10s\n",
+         "T", "n_vars", "build_us", "factor_us", "solve_us",
+         "total_us", "dyn_err");
+  printf("------  ------- ---------- ---------- ---------- ----------"
+         " ----------\n");
 
-  // Build sparse cost matrix (block diagonal with dense sub-blocks).
+  for (int T : {10, 25, 50, 100, 200}) {
+    srand(42);
+    auto result = SolveFiniteHorizon(A, B, Q, R, Qf, x0, T);
+
+    // Verify dynamics.
+    double dyn_err = 0;
+    for (int t = 0; t < T; ++t) {
+      VectorXd err = result.x.col(t + 1) - A * result.x.col(t) -
+                     B * result.u.col(t);
+      dyn_err = std::max(dyn_err, err.norm());
+    }
+    double ic_err = (result.x.col(0) - x0).norm();
+    dyn_err = std::max(dyn_err, ic_err);
+    EXPECT_LT(dyn_err, 1e-6) << "Dynamics violated for T=" << T;
+
+    int n_vars = (T + 1) * nx + T * nu;
+    double total = result.construction_time_us + result.factor_time_us +
+                   result.solve_time_us;
+    printf("%-6d %7d %10.0f %10.0f %10.0f %10.0f %10.2e\n",
+           T, n_vars, result.construction_time_us, result.factor_time_us,
+           result.solve_time_us, total, dyn_err);
+  }
+}
+
+// Verify that the clique tree has chain structure ordered in time:
+// maximal cliques are ordered so that clique i overlaps only with i±1,
+// and the elimination order processes earlier timesteps first.
+TEST(FiniteHorizon, CliqueTreeTimeOrdering) {
+  const int nx = 4, nu = 2, T = 10;
+  const int n_vars = (T + 1) * nx + T * nu;
+  const int n_eq = (T + 1) * nx;
+
+  srand(42);
+  Eigen::MatrixXd A = 0.9 * MatrixXd::Identity(nx, nx) +
+                       0.1 * MatrixXd::Random(nx, nx);
+  Eigen::MatrixXd B = MatrixXd::Random(nx, nu);
+
+  // Build cost and constraint matrices (same construction as the algorithm).
+  Eigen::MatrixXd Qx = MatrixXd::Identity(nx, nx) +
+                        0.5 * MatrixXd::Ones(nx, nx);
+  Eigen::MatrixXd Ru = 0.1 * MatrixXd::Identity(nu, nu) +
+                        0.05 * MatrixXd::Ones(nu, nu);
+
   std::vector<Eigen::Triplet<double>> qt;
   for (int t = 0; t < T; ++t) {
-    int xi = XIndex(t, nx, nu);
-    int ui = UIndex(t, nx, nu);
+    int xi = XIdx(t, nx, nu), ui = UIdx(t, nx, nu);
     for (int i = 0; i < nx; ++i)
       for (int j = 0; j < nx; ++j)
         qt.emplace_back(xi + i, xi + j, Qx(i, j));
@@ -703,140 +739,132 @@ FiniteHorizonProblem MakeFiniteHorizon(int nx, int nu, int T, int seed = 42) {
       for (int j = 0; j < nu; ++j)
         qt.emplace_back(ui + i, ui + j, Ru(i, j));
   }
-  // Terminal cost.
-  int xT = XIndex(T, nx, nu);
+  int xT = XIdx(T, nx, nu);
   for (int i = 0; i < nx; ++i)
     for (int j = 0; j < nx; ++j)
       qt.emplace_back(xT + i, xT + j, 10.0 * Qx(i, j));
-  prob.Q_cost.resize(prob.n_vars, prob.n_vars);
-  prob.Q_cost.setFromTriplets(qt.begin(), qt.end());
+  Eigen::SparseMatrix<double> Q_cost(n_vars, n_vars);
+  Q_cost.setFromTriplets(qt.begin(), qt.end());
 
-  // Build equality constraint matrix.
-  // Rows 0..(T*nx-1): dynamics x_{t+1} = A x_t + B u_t
-  //   → [-A, -B, I] on [x_t, u_t, x_{t+1}]
-  // Rows T*nx..((T+1)*nx-1): initial condition x_0 = x_init
-  //   → [I] on x_0
   std::vector<Eigen::Triplet<double>> ct;
   for (int t = 0; t < T; ++t) {
-    int row_base = t * nx;
-    int xi = XIndex(t, nx, nu);
-    int ui = UIndex(t, nx, nu);
-    int xi1 = XIndex(t + 1, nx, nu);
-    // -A block.
+    int rb = t * nx, xi = XIdx(t, nx, nu);
+    int ui = UIdx(t, nx, nu), xi1 = XIdx(t + 1, nx, nu);
     for (int r = 0; r < nx; ++r)
       for (int c = 0; c < nx; ++c)
-        if (Ad(r, c) != 0)
-          ct.emplace_back(row_base + r, xi + c, -Ad(r, c));
-    // -B block.
+        if (A(r, c) != 0) ct.emplace_back(rb + r, xi + c, -A(r, c));
     for (int r = 0; r < nx; ++r)
       for (int c = 0; c < nu; ++c)
-        if (Bd(r, c) != 0)
-          ct.emplace_back(row_base + r, ui + c, -Bd(r, c));
-    // I block for x_{t+1}.
-    for (int i = 0; i < nx; ++i)
-      ct.emplace_back(row_base + i, xi1 + i, 1.0);
+        if (B(r, c) != 0) ct.emplace_back(rb + r, ui + c, -B(r, c));
+    for (int i = 0; i < nx; ++i) ct.emplace_back(rb + i, xi1 + i, 1.0);
   }
-  // Initial condition: x_0 = x_init.
-  int ic_row = T * nx;
-  for (int i = 0; i < nx; ++i)
-    ct.emplace_back(ic_row + i, i, 1.0);
+  for (int i = 0; i < nx; ++i) ct.emplace_back(T * nx + i, i, 1.0);
+  Eigen::SparseMatrix<double> C_eq(n_eq, n_vars);
+  C_eq.setFromTriplets(ct.begin(), ct.end());
+  VectorXd d_eq = VectorXd::Zero(n_eq);
+  d_eq.tail(nx) = VectorXd::Ones(nx);
 
-  prob.C_eq.resize(prob.n_eq, prob.n_vars);
-  prob.C_eq.setFromTriplets(ct.begin(), ct.end());
+  // Build assemblers and collect cliques.
+  std::set<int> q_var_set;
+  for (int k = 0; k < Q_cost.outerSize(); ++k)
+    for (Eigen::SparseMatrix<double>::InnerIterator it(Q_cost, k); it; ++it) {
+      q_var_set.insert(it.row());
+      q_var_set.insert(it.col());
+    }
+  std::vector<int> q_vars(q_var_set.begin(), q_var_set.end());
+  SparseQuadraticTermAssembler q_asm(Q_cost, q_vars);
 
-  // RHS: zeros for dynamics, x_init for initial condition.
-  prob.d_eq = Eigen::VectorXd::Zero(prob.n_eq);
-  Eigen::VectorXd x_init = Eigen::VectorXd::Ones(nx);
-  prob.d_eq.tail(nx) = x_init;
+  auto sec = std::make_unique<SparseEqualityConstraint>(C_eq, d_eq);
+  std::set<int> eq_set;
+  for (auto& s : sec->row_supports()) eq_set.insert(s.begin(), s.end());
+  std::vector<int> eq_primal(eq_set.begin(), eq_set.end());
+  std::vector<int> dual(n_eq);
+  std::iota(dual.begin(), dual.end(), n_vars);
+  SparseEqualityConstraintAssembler eq_asm(std::move(sec), eq_primal, dual);
 
-  return prob;
-}
+  std::vector<std::vector<int>> all_cliques;
+  for (auto& c : q_asm.get_cliques()) all_cliques.push_back(c);
+  for (auto& c : eq_asm.get_cliques()) all_cliques.push_back(c);
 
-}  // namespace
+  std::vector<std::vector<int>> maximal_cliques;
+  auto tree = MakeCliqueTreeMinDegreeFromRowSupports(
+      all_cliques, &maximal_cliques, 0, 0, dual);
 
-TEST(FiniteHorizon, Benchmark) {
-  using clock = std::chrono::high_resolution_clock;
-
-  printf("\n%-6s %7s %7s %10s %10s %10s %10s %10s\n",
-         "T", "n_vars", "n_eq", "build_us", "factor_us", "solve_us",
-         "total_us", "dyn_err");
-  printf("%-6s %7s %7s %10s %10s %10s %10s %10s\n",
-         "------", "-------", "-------", "----------", "----------",
-         "----------", "----------", "----------");
-
-  const int nx = 4, nu = 2;
-
-  for (int T : {10, 25, 50, 100, 200}) {
-    auto prob = MakeFiniteHorizon(nx, nu, T);
-
-    auto t0 = clock::now();
-
-    // Cost assembler.
-    std::set<int> q_var_set;
-    for (int k = 0; k < prob.Q_cost.outerSize(); ++k)
-      for (Eigen::SparseMatrix<double>::InnerIterator it(prob.Q_cost, k); it;
-           ++it) {
-        q_var_set.insert(it.row());
-        q_var_set.insert(it.col());
-      }
-    std::vector<int> q_vars(q_var_set.begin(), q_var_set.end());
-
-    ConstraintManager cm(prob.n_vars);
-
-    auto q_asm = std::make_unique<SparseQuadraticTermAssembler>(
-        prob.Q_cost, q_vars);
-    cm.AddCustomAssembler(std::move(q_asm));
-
-    // Equality constraint assembler.
-    auto sec = std::make_unique<SparseEqualityConstraint>(
-        prob.C_eq, prob.d_eq);
-    std::set<int> eq_var_set;
-    for (const auto& s : sec->row_supports())
-      eq_var_set.insert(s.begin(), s.end());
-    std::vector<int> eq_primal(eq_var_set.begin(), eq_var_set.end());
-    auto dual_vars = cm.AllocateDualVariables(prob.n_eq);
-    auto eq_asm = std::make_unique<SparseEqualityConstraintAssembler>(
-        std::move(sec), eq_primal, dual_vars);
-    cm.AddCustomAssembler(std::move(eq_asm));
-
-    SolverConfiguration config;
-    auto solver = MakeTreeSolver(&cm, config);
-
-    auto t1 = clock::now();
-
-    bool ok = solver->AssembleAndFactor();
-    ASSERT_TRUE(ok) << "AssembleAndFactor failed for T=" << T;
-
-    auto t2 = clock::now();
-
-    // RHS = [0 (primal); d (dual)].
-    int sys_size = cm.SizeOfKKTSystem();
-    Eigen::VectorXd rhs = Eigen::VectorXd::Zero(sys_size);
-    for (int i = 0; i < prob.n_eq; ++i)
-      rhs(dual_vars[i]) = prob.d_eq(i);
-
-    Eigen::VectorXd sol = solver->Solve(rhs);
-
-    auto t3 = clock::now();
-
-    Eigen::VectorXd z = sol.head(prob.n_vars);
-
-    // Verify dynamics: C z = d.
-    double dyn_err = (prob.C_eq * z - prob.d_eq).norm();
-    EXPECT_LT(dyn_err, 1e-6) << "Dynamics violated for T=" << T;
-
-    double build_us =
-        std::chrono::duration<double, std::micro>(t1 - t0).count();
-    double factor_us =
-        std::chrono::duration<double, std::micro>(t2 - t1).count();
-    double solve_us =
-        std::chrono::duration<double, std::micro>(t3 - t2).count();
-    double total_us = build_us + factor_us + solve_us;
-
-    printf("%-6d %7d %7d %10.0f %10.0f %10.0f %10.0f %10.2e\n",
-           T, prob.n_vars, prob.n_eq, build_us, factor_us, solve_us,
-           total_us, dyn_err);
+  // --- Check 1: Compute the "time" of each maximal clique as the
+  //     minimum timestep of its primal variables. ---
+  int num_mc = static_cast<int>(maximal_cliques.size());
+  std::vector<int> mc_min_time(num_mc, T + 1);
+  std::vector<int> mc_max_time(num_mc, -1);
+  for (int i = 0; i < num_mc; ++i) {
+    for (int v : maximal_cliques[i]) {
+      if (v >= n_vars) continue;  // skip dual
+      int ts = VarTimestep(v, nx, nu, T);
+      mc_min_time[i] = std::min(mc_min_time[i], ts);
+      mc_max_time[i] = std::max(mc_max_time[i], ts);
+    }
   }
+
+  // --- Check 2: Each maximal clique spans at most 2 consecutive timesteps
+  //     (t and t+1 due to the dynamics constraint linking them). ---
+  for (int i = 0; i < num_mc; ++i) {
+    if (mc_max_time[i] < 0) continue;  // dual-only clique
+    EXPECT_LE(mc_max_time[i] - mc_min_time[i], 1)
+        << "Maximal clique " << i << " spans timesteps "
+        << mc_min_time[i] << " to " << mc_max_time[i]
+        << " (should span at most 2 consecutive)";
+  }
+
+  // --- Check 3: Overlap between maximal cliques only if they share
+  //     a consecutive timestep boundary. ---
+  for (int i = 0; i < num_mc; ++i) {
+    for (int j = i + 1; j < num_mc; ++j) {
+      // Check primal overlap.
+      std::set<int> si, sj;
+      for (int v : maximal_cliques[i])
+        if (v < n_vars) si.insert(v);
+      for (int v : maximal_cliques[j])
+        if (v < n_vars) sj.insert(v);
+      std::vector<int> overlap;
+      std::set_intersection(si.begin(), si.end(), sj.begin(), sj.end(),
+                            std::back_inserter(overlap));
+      if (overlap.empty()) continue;
+
+      // Overlapping cliques must be at adjacent timesteps.
+      int gap = std::max(mc_min_time[i], mc_min_time[j]) -
+                std::min(mc_max_time[i], mc_max_time[j]);
+      EXPECT_LE(gap, 0)
+          << "Non-adjacent cliques " << i << " (t=" << mc_min_time[i]
+          << "-" << mc_max_time[i] << ") and " << j
+          << " (t=" << mc_min_time[j] << "-" << mc_max_time[j]
+          << ") have primal overlap";
+    }
+  }
+
+  // --- Check 4: Elimination order is time-monotone for supernodes.
+  //     For a chain structure, the post-order may go forward (0→T) or
+  //     backward (T→0).  Either direction is valid; verify monotonicity. ---
+  std::vector<int> sn_times;
+  for (int pos = 0; pos < static_cast<int>(tree.post_order_position_to_clique.size()); ++pos) {
+    int ci = tree.post_order_position_to_clique[pos];
+    int sn_min_time = T + 1;
+    for (int v : tree.supernodes[ci]) {
+      if (v < n_vars)
+        sn_min_time = std::min(sn_min_time, VarTimestep(v, nx, nu, T));
+    }
+    if (sn_min_time <= T) sn_times.push_back(sn_min_time);
+  }
+  // Check monotone non-decreasing OR non-increasing.
+  bool increasing = true, decreasing = true;
+  for (int i = 1; i < static_cast<int>(sn_times.size()); ++i) {
+    if (sn_times[i] < sn_times[i - 1]) increasing = false;
+    if (sn_times[i] > sn_times[i - 1]) decreasing = false;
+  }
+  EXPECT_TRUE(increasing || decreasing)
+      << "Elimination order is not time-monotone";
+
+  printf("CliqueTreeTimeOrdering: %d maximal cliques, "
+         "chain structure verified for T=%d\n",
+         num_mc, T);
 }
 
 }  // namespace
