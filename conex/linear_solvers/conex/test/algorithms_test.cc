@@ -5,12 +5,14 @@
 #include "conex/common/constraint_manager.h"
 #include "conex/common/sparse_equality_constraint.h"
 #include "conex/common/sparse_linear_constraint.h"
+#include "conex/common/sparse_quadratic_term.h"
 #include "conex/tree_solver/kkt_solver_factory.h"
 
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <numeric>
 #include <set>
@@ -641,6 +643,200 @@ TEST(EqualityConstrainedLS, DualVarsInMaximalCliques) {
          static_cast<int>(found_dual.size()),
          static_cast<int>(dual.size()),
          static_cast<int>(decomposed.size()));
+}
+
+// =====================================================================
+// Finite-horizon optimal control benchmark:
+//   min  Σ x_t'Q x_t + u_t'R u_t  +  x_T'Qf x_T
+//   s.t. x_{t+1} = A x_t + B u_t,  x_0 = x_init
+//
+// Decision variables: z = [x_0, u_0, x_1, u_1, ..., u_{T-1}, x_T]
+// Sparse block-diagonal cost + sparse block-banded equality constraints.
+// =====================================================================
+
+namespace {
+
+struct FiniteHorizonProblem {
+  int nx, nu, T;
+  int n_vars;       // (T+1)*nx + T*nu
+  int n_eq;         // (T+1)*nx  (T dynamics + 1 initial condition)
+  Eigen::SparseMatrix<double> Q_cost;  // block-diagonal cost
+  Eigen::SparseMatrix<double> C_eq;    // dynamics + initial condition
+  Eigen::VectorXd d_eq;               // RHS (zeros + x_init)
+};
+
+// Variable layout: [x_0, u_0, x_1, u_1, ..., u_{T-1}, x_T]
+int XIndex(int t, int nx, int nu) { return t * (nx + nu); }
+int UIndex(int t, int nx, int nu) { return t * (nx + nu) + nx; }
+
+FiniteHorizonProblem MakeFiniteHorizon(int nx, int nu, int T, int seed = 42) {
+  srand(seed);
+  FiniteHorizonProblem prob;
+  prob.nx = nx;
+  prob.nu = nu;
+  prob.T = T;
+  prob.n_vars = (T + 1) * nx + T * nu;
+  prob.n_eq = (T + 1) * nx;
+
+  // Random stable dynamics: A = 0.9*I + 0.1*rand, B = rand.
+  Eigen::MatrixXd Ad = 0.9 * Eigen::MatrixXd::Identity(nx, nx) +
+                        0.1 * Eigen::MatrixXd::Random(nx, nx);
+  Eigen::MatrixXd Bd = Eigen::MatrixXd::Random(nx, nu);
+
+  // Cost: Q = dense SPD (nx x nx), R = dense SPD (nu x nu), Qf = 10*Q.
+  // Using dense blocks ensures each timestep's variables form a clique
+  // in the cost, which the tree solver can map correctly.
+  Eigen::MatrixXd Qx = Eigen::MatrixXd::Identity(nx, nx);
+  Qx += 0.5 * Eigen::MatrixXd::Ones(nx, nx);  // dense, SPD
+  Eigen::MatrixXd Ru = 0.1 * Eigen::MatrixXd::Identity(nu, nu);
+  Ru += 0.05 * Eigen::MatrixXd::Ones(nu, nu);
+
+  // Build sparse cost matrix (block diagonal with dense sub-blocks).
+  std::vector<Eigen::Triplet<double>> qt;
+  for (int t = 0; t < T; ++t) {
+    int xi = XIndex(t, nx, nu);
+    int ui = UIndex(t, nx, nu);
+    for (int i = 0; i < nx; ++i)
+      for (int j = 0; j < nx; ++j)
+        qt.emplace_back(xi + i, xi + j, Qx(i, j));
+    for (int i = 0; i < nu; ++i)
+      for (int j = 0; j < nu; ++j)
+        qt.emplace_back(ui + i, ui + j, Ru(i, j));
+  }
+  // Terminal cost.
+  int xT = XIndex(T, nx, nu);
+  for (int i = 0; i < nx; ++i)
+    for (int j = 0; j < nx; ++j)
+      qt.emplace_back(xT + i, xT + j, 10.0 * Qx(i, j));
+  prob.Q_cost.resize(prob.n_vars, prob.n_vars);
+  prob.Q_cost.setFromTriplets(qt.begin(), qt.end());
+
+  // Build equality constraint matrix.
+  // Rows 0..(T*nx-1): dynamics x_{t+1} = A x_t + B u_t
+  //   → [-A, -B, I] on [x_t, u_t, x_{t+1}]
+  // Rows T*nx..((T+1)*nx-1): initial condition x_0 = x_init
+  //   → [I] on x_0
+  std::vector<Eigen::Triplet<double>> ct;
+  for (int t = 0; t < T; ++t) {
+    int row_base = t * nx;
+    int xi = XIndex(t, nx, nu);
+    int ui = UIndex(t, nx, nu);
+    int xi1 = XIndex(t + 1, nx, nu);
+    // -A block.
+    for (int r = 0; r < nx; ++r)
+      for (int c = 0; c < nx; ++c)
+        if (Ad(r, c) != 0)
+          ct.emplace_back(row_base + r, xi + c, -Ad(r, c));
+    // -B block.
+    for (int r = 0; r < nx; ++r)
+      for (int c = 0; c < nu; ++c)
+        if (Bd(r, c) != 0)
+          ct.emplace_back(row_base + r, ui + c, -Bd(r, c));
+    // I block for x_{t+1}.
+    for (int i = 0; i < nx; ++i)
+      ct.emplace_back(row_base + i, xi1 + i, 1.0);
+  }
+  // Initial condition: x_0 = x_init.
+  int ic_row = T * nx;
+  for (int i = 0; i < nx; ++i)
+    ct.emplace_back(ic_row + i, i, 1.0);
+
+  prob.C_eq.resize(prob.n_eq, prob.n_vars);
+  prob.C_eq.setFromTriplets(ct.begin(), ct.end());
+
+  // RHS: zeros for dynamics, x_init for initial condition.
+  prob.d_eq = Eigen::VectorXd::Zero(prob.n_eq);
+  Eigen::VectorXd x_init = Eigen::VectorXd::Ones(nx);
+  prob.d_eq.tail(nx) = x_init;
+
+  return prob;
+}
+
+}  // namespace
+
+TEST(FiniteHorizon, Benchmark) {
+  using clock = std::chrono::high_resolution_clock;
+
+  printf("\n%-6s %7s %7s %10s %10s %10s %10s %10s\n",
+         "T", "n_vars", "n_eq", "build_us", "factor_us", "solve_us",
+         "total_us", "dyn_err");
+  printf("%-6s %7s %7s %10s %10s %10s %10s %10s\n",
+         "------", "-------", "-------", "----------", "----------",
+         "----------", "----------", "----------");
+
+  const int nx = 4, nu = 2;
+
+  for (int T : {10, 25, 50, 100, 200}) {
+    auto prob = MakeFiniteHorizon(nx, nu, T);
+
+    auto t0 = clock::now();
+
+    // Cost assembler.
+    std::set<int> q_var_set;
+    for (int k = 0; k < prob.Q_cost.outerSize(); ++k)
+      for (Eigen::SparseMatrix<double>::InnerIterator it(prob.Q_cost, k); it;
+           ++it) {
+        q_var_set.insert(it.row());
+        q_var_set.insert(it.col());
+      }
+    std::vector<int> q_vars(q_var_set.begin(), q_var_set.end());
+
+    ConstraintManager cm(prob.n_vars);
+
+    auto q_asm = std::make_unique<SparseQuadraticTermAssembler>(
+        prob.Q_cost, q_vars);
+    cm.AddCustomAssembler(std::move(q_asm));
+
+    // Equality constraint assembler.
+    auto sec = std::make_unique<SparseEqualityConstraint>(
+        prob.C_eq, prob.d_eq);
+    std::set<int> eq_var_set;
+    for (const auto& s : sec->row_supports())
+      eq_var_set.insert(s.begin(), s.end());
+    std::vector<int> eq_primal(eq_var_set.begin(), eq_var_set.end());
+    auto dual_vars = cm.AllocateDualVariables(prob.n_eq);
+    auto eq_asm = std::make_unique<SparseEqualityConstraintAssembler>(
+        std::move(sec), eq_primal, dual_vars);
+    cm.AddCustomAssembler(std::move(eq_asm));
+
+    SolverConfiguration config;
+    auto solver = MakeTreeSolver(&cm, config);
+
+    auto t1 = clock::now();
+
+    bool ok = solver->AssembleAndFactor();
+    ASSERT_TRUE(ok) << "AssembleAndFactor failed for T=" << T;
+
+    auto t2 = clock::now();
+
+    // RHS = [0 (primal); d (dual)].
+    int sys_size = cm.SizeOfKKTSystem();
+    Eigen::VectorXd rhs = Eigen::VectorXd::Zero(sys_size);
+    for (int i = 0; i < prob.n_eq; ++i)
+      rhs(dual_vars[i]) = prob.d_eq(i);
+
+    Eigen::VectorXd sol = solver->Solve(rhs);
+
+    auto t3 = clock::now();
+
+    Eigen::VectorXd z = sol.head(prob.n_vars);
+
+    // Verify dynamics: C z = d.
+    double dyn_err = (prob.C_eq * z - prob.d_eq).norm();
+    EXPECT_LT(dyn_err, 1e-6) << "Dynamics violated for T=" << T;
+
+    double build_us =
+        std::chrono::duration<double, std::micro>(t1 - t0).count();
+    double factor_us =
+        std::chrono::duration<double, std::micro>(t2 - t1).count();
+    double solve_us =
+        std::chrono::duration<double, std::micro>(t3 - t2).count();
+    double total_us = build_us + factor_us + solve_us;
+
+    printf("%-6d %7d %7d %10.0f %10.0f %10.0f %10.0f %10.2e\n",
+           T, prob.n_vars, prob.n_eq, build_us, factor_us, solve_us,
+           total_us, dyn_err);
+  }
 }
 
 }  // namespace

@@ -459,11 +459,19 @@ std::vector<int> T::ClassifyCliques(
   const size_t num_nodes = clique_tree.supernodes.size();
   *needs_indefinite = std::vector<bool>(num_nodes, false);
 
-  // Build supernode → clique-node-index lookup (original variable order).
+  // Build variable → clique-node-index lookup (original variable order).
+  // Maps both supernode and separator variables so that adapters whose
+  // variables are entirely in separators can still find candidate nodes.
   std::unordered_map<int, int> sn_to_node;
   for (size_t i = 0; i < num_nodes; ++i) {
     for (int sn : clique_tree.supernodes[i]) {
       sn_to_node[sn] = static_cast<int>(i);
+    }
+  }
+  std::unordered_multimap<int, int> sep_to_node;
+  for (size_t i = 0; i < num_nodes; ++i) {
+    for (int v : clique_tree.separators[i]) {
+      sep_to_node.emplace(v, static_cast<int>(i));
     }
   }
 
@@ -476,6 +484,10 @@ std::vector<int> T::ClassifyCliques(
       auto it = sn_to_node.find(v);
       if (it != sn_to_node.end()) {
         candidates.insert(it->second);
+      }
+      auto range = sep_to_node.equal_range(v);
+      for (auto jt = range.first; jt != range.second; ++jt) {
+        candidates.insert(jt->second);
       }
     }
     int match = -1;

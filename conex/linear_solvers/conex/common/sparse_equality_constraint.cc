@@ -57,45 +57,57 @@ std::vector<SparseEqualityConstraint::RowGroup>
 SparseEqualityConstraint::GetConstraints(
     const std::vector<std::vector<int>>& target_supports,
     const std::vector<int>& row_to_dual) const {
-  // Assign each support group to the smallest target containing it.
-  std::vector<int> target_index(support_groups_.size(), -1);
+  // Assign each ROW (not support group) to the smallest target containing
+  // both its primal support AND its dual variable.  Rows with the same
+  // support may end up in different targets if their duals differ.
+  std::vector<std::vector<int>> rows_per_target(target_supports.size());
 
-  for (size_t si = 0; si < support_groups_.size(); ++si) {
-    const auto& support = support_groups_[si].support;
-    int best = -1;
-    size_t best_size = std::numeric_limits<size_t>::max();
-    for (size_t ti = 0; ti < target_supports.size(); ++ti) {
-      const auto& target = target_supports[ti];
-      if (target.size() < support.size()) continue;
-      if (target.size() >= best_size) continue;
-      if (IsSubset(support, target)) {
-        best = static_cast<int>(ti);
-        best_size = target.size();
-      }
-    }
-    CONEX_DEMAND(best >= 0,
-                 "No target support contains a row support set.");
-    target_index[si] = best;
+  // Precompute sets for fast membership testing.
+  std::vector<std::set<int>> target_sets(target_supports.size());
+  for (size_t ti = 0; ti < target_supports.size(); ++ti) {
+    target_sets[ti].insert(target_supports[ti].begin(),
+                           target_supports[ti].end());
   }
 
-  // Collect rows per target.
-  std::vector<std::vector<int>> rows_per_target(target_supports.size());
-  for (size_t si = 0; si < support_groups_.size(); ++si) {
-    auto& dst = rows_per_target[target_index[si]];
-    dst.insert(dst.end(), support_groups_[si].rows.begin(),
-               support_groups_[si].rows.end());
+  for (const auto& sg : support_groups_) {
+    const auto& support = sg.support;
+    for (int row : sg.rows) {
+      int dual_var = row_to_dual[row];
+      int best = -1;
+      size_t best_size = std::numeric_limits<size_t>::max();
+      for (size_t ti = 0; ti < target_supports.size(); ++ti) {
+        if (target_supports[ti].size() >= best_size) continue;
+        if (!target_sets[ti].count(dual_var)) continue;
+        if (!IsSubset(support, target_supports[ti])) continue;
+        best = static_cast<int>(ti);
+        best_size = target_supports[ti].size();
+      }
+      CONEX_DEMAND(best >= 0,
+                   "No target contains both primal support and dual var.");
+      rows_per_target[best].push_back(row);
+    }
   }
 
   // Build dense sub-blocks with dual variables.
+  // Target supports may contain both primal and dual variable indices;
+  // only primal indices (< C.cols()) are used as columns of the dense block.
+  const int num_cols = C_.cols();
   std::vector<RowGroup> result;
   for (size_t ti = 0; ti < target_supports.size(); ++ti) {
     if (rows_per_target[ti].empty()) continue;
-    const auto& vars = target_supports[ti];
+    const auto& full_vars = target_supports[ti];
     const auto& rows = rows_per_target[ti];
+
+    // Split into primal columns.
+    std::vector<int> primal_vars;
+    for (int v : full_vars) {
+      if (v < num_cols) primal_vars.push_back(v);
+    }
+
     int nrows = static_cast<int>(rows.size());
-    int ncols = static_cast<int>(vars.size());
+    int ncols = static_cast<int>(primal_vars.size());
     RowGroup group;
-    group.primal_variables = vars;
+    group.primal_variables = primal_vars;
     group.global_rows = rows;
     group.C.resize(nrows, ncols);
     group.d.resize(nrows);
@@ -104,7 +116,7 @@ SparseEqualityConstraint::GetConstraints(
       group.d(i) = d_(rows[i]);
       group.dual_variables[i] = row_to_dual[rows[i]];
       for (int j = 0; j < ncols; ++j) {
-        group.C(i, j) = C_.coeff(rows[i], vars[j]);
+        group.C(i, j) = C_.coeff(rows[i], primal_vars[j]);
       }
     }
     result.push_back(std::move(group));
@@ -172,19 +184,10 @@ SparseEqualityConstraintAssembler::get_cliques() const {
 std::vector<SupernodalAssemblerBase*>
 SparseEqualityConstraintAssembler::Decompose(
     const std::vector<std::vector<int>>& maximal_cliques) {
-  // Filter maximal cliques to primal-only variables.
-  const int num_cols = sec_->C().cols();
-  std::vector<std::vector<int>> primal_cliques;
-  primal_cliques.reserve(maximal_cliques.size());
-  for (const auto& clique : maximal_cliques) {
-    std::vector<int> filtered;
-    for (int v : clique) {
-      if (v < num_cols) filtered.push_back(v);
-    }
-    if (!filtered.empty()) primal_cliques.push_back(std::move(filtered));
-  }
-
-  auto groups = sec_->GetConstraints(primal_cliques, row_to_dual_);
+  // Pass full maximal cliques — GetConstraints handles the primal/dual
+  // split internally.  Row assignment uses IsSubset which works because
+  // row supports are primal-only (< C.cols()) and primal < dual in index.
+  auto groups = sec_->GetConstraints(maximal_cliques, row_to_dual_);
 
   std::vector<SupernodalAssemblerBase*> result;
   for (auto& group : groups) {
