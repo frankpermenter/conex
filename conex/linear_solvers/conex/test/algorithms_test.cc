@@ -1345,5 +1345,270 @@ TEST(TreeSolverBuilder, NetworkFlowCompare) {
   }
 }
 
+// =====================================================================
+// Multi-stage stochastic optimization:
+//   min  Σ_nodes  x_i'Q x_i + u_i'R u_i
+//   s.t. x_child = A x_parent + B u_parent,  x_root = x0
+//
+// The scenario tree IS the junction tree.  Each node becomes a clique
+// with supernode {x_i, u_i, λ_i} and separator {x_parent}.
+// =====================================================================
+
+namespace {
+
+struct ScenarioNode {
+  int parent;                // -1 for root
+  std::vector<int> children;
+  int stage;
+};
+
+// Build a balanced scenario tree: B children per non-leaf, S stages.
+std::vector<ScenarioNode> MakeScenarioTree(int B, int S) {
+  std::vector<ScenarioNode> nodes;
+  nodes.push_back({-1, {}, 0});  // root
+  for (int s = 1; s < S; ++s) {
+    int prev_start = 0, prev_end = static_cast<int>(nodes.size());
+    for (int i = prev_start; i < prev_end; ++i) {
+      if (nodes[i].stage != s - 1) continue;
+      for (int b = 0; b < B; ++b) {
+        int child_id = static_cast<int>(nodes.size());
+        nodes[i].children.push_back(child_id);
+        nodes.push_back({i, {}, s});
+      }
+    }
+  }
+  return nodes;
+}
+
+// Build sparse KKT matrices for the stochastic problem.
+struct SparseStochastic {
+  Eigen::SparseMatrix<double> Q_cost;
+  Eigen::SparseMatrix<double> C_eq;
+  Eigen::VectorXd d_eq;
+  int n_primal, n_eq;
+};
+
+SparseStochastic MakeSparseStochastic(
+    const std::vector<ScenarioNode>& tree,
+    const MatrixXd& Ad, const MatrixXd& Bd,
+    const MatrixXd& Q, const MatrixXd& R, const MatrixXd& Qf,
+    const VectorXd& x0, int nx, int nu) {
+  int N = static_cast<int>(tree.size());
+  // Variable layout: node i gets [x_i (nx)] + [u_i (nu)] if non-leaf.
+  std::vector<int> node_offset(N);
+  int offset = 0;
+  for (int i = 0; i < N; ++i) {
+    node_offset[i] = offset;
+    offset += nx + (tree[i].children.empty() ? 0 : nu);
+  }
+  int n_primal = offset;
+
+  // Count equality rows: nx per non-root node (dynamics) + nx (initial cond).
+  int n_eq = (N - 1) * nx + nx;
+
+  // Cost.
+  std::vector<Eigen::Triplet<double>> qt;
+  for (int i = 0; i < N; ++i) {
+    int xi = node_offset[i];
+    const auto& Qi = tree[i].children.empty() ? Qf : Q;
+    for (int r = 0; r < nx; ++r)
+      for (int c = 0; c < nx; ++c)
+        if (Qi(r,c) != 0) qt.emplace_back(xi+r, xi+c, Qi(r,c));
+    if (!tree[i].children.empty()) {
+      int ui = xi + nx;
+      for (int r = 0; r < nu; ++r)
+        for (int c = 0; c < nu; ++c)
+          if (R(r,c) != 0) qt.emplace_back(ui+r, ui+c, R(r,c));
+    }
+  }
+
+  // Constraints: dynamics for each non-root node.
+  std::vector<Eigen::Triplet<double>> ct;
+  int eq_row = 0;
+  for (int i = 1; i < N; ++i) {
+    int p = tree[i].parent;
+    int xi = node_offset[i];
+    int xp = node_offset[p];
+    int up = xp + nx;
+    // x_i - A x_p - B u_p = 0
+    for (int r = 0; r < nx; ++r) {
+      ct.emplace_back(eq_row + r, xi + r, 1.0);
+      for (int c = 0; c < nx; ++c)
+        if (Ad(r,c) != 0) ct.emplace_back(eq_row+r, xp+c, -Ad(r,c));
+      for (int c = 0; c < nu; ++c)
+        if (Bd(r,c) != 0) ct.emplace_back(eq_row+r, up+c, -Bd(r,c));
+    }
+    eq_row += nx;
+  }
+  // Initial condition: x_root = x0.
+  for (int i = 0; i < nx; ++i)
+    ct.emplace_back(eq_row + i, i, 1.0);
+
+  SparseStochastic ss;
+  ss.n_primal = n_primal;
+  ss.n_eq = n_eq;
+  ss.Q_cost.resize(n_primal, n_primal);
+  ss.Q_cost.setFromTriplets(qt.begin(), qt.end());
+  ss.C_eq.resize(n_eq, n_primal);
+  ss.C_eq.setFromTriplets(ct.begin(), ct.end());
+  ss.d_eq = VectorXd::Zero(n_eq);
+  ss.d_eq.tail(nx) = x0;
+  return ss;
+}
+
+}  // namespace
+
+TEST(StochasticOpt, CompareCustomVsSparse) {
+  using clock = std::chrono::high_resolution_clock;
+
+  const int nx = 4, nu = 2, B = 3;  // branching factor
+  srand(42);
+  MatrixXd Ad = 0.9 * MatrixXd::Identity(nx, nx) +
+                0.1 * MatrixXd::Random(nx, nx);
+  MatrixXd Bd = MatrixXd::Random(nx, nu);
+  MatrixXd Q = MatrixXd::Identity(nx, nx) + 0.5 * MatrixXd::Ones(nx, nx);
+  MatrixXd R = 0.1 * MatrixXd::Identity(nu, nu) + 0.05 * MatrixXd::Ones(nu, nu);
+  MatrixXd Qf = 10.0 * Q;
+  VectorXd x0 = VectorXd::Ones(nx);
+
+  // Dynamics constraint: [-A, -B, I]
+  MatrixXd C_dyn(nx, nx + nu + nx);
+  C_dyn << -Ad, -Bd, MatrixXd::Identity(nx, nx);
+  VectorXd d_zero = VectorXd::Zero(nx);
+
+  // Cost block.
+  MatrixXd QR = MatrixXd::Zero(nx + nu, nx + nu);
+  QR.topLeftCorner(nx, nx) = Q;
+  QR.bottomRightCorner(nu, nu) = R;
+
+  printf("\n  Stochastic opt (branch=%d, nx=%d, nu=%d): "
+         "custom tree vs BuildFromSparseMatrices\n", B, nx, nu);
+  printf("%-7s %6s %7s %22s %22s %8s\n",
+         "stages", "nodes", "n_vars",
+         "custom(build+fac+sol)", "sparse(build+fac+sol)", "speedup");
+  printf("-------  ------ ------- ---------------------- "
+         "---------------------- --------\n");
+
+  for (int S : {3, 4, 5, 6}) {
+    auto tree = MakeScenarioTree(B, S);
+    int N = static_cast<int>(tree.size());
+
+    // --- Custom tree path ---
+    // Variable layout: node i → [x_i, u_i, λ_i] in supernode,
+    // separator = {x_parent}.
+    // λ_i is the dynamics dual for coupling to parent.
+    // Root has no dynamics dual but has initial condition dual λ_ic.
+
+    // Compute variable offsets for the custom path.
+    // Each non-root node: x(nx), u(nu if non-leaf), λ(nx dynamics dual)
+    // Root: x(nx), u(nu), λ_ic(nx)
+    std::vector<int> x_off(N), u_off(N), lam_off(N);
+    int var_offset = 0;
+    for (int i = 0; i < N; ++i) {
+      x_off[i] = var_offset;
+      var_offset += nx;
+      if (!tree[i].children.empty()) {
+        u_off[i] = var_offset;
+        var_offset += nu;
+      } else {
+        u_off[i] = -1;
+      }
+      // Dual: dynamics coupling (non-root) or initial condition (root).
+      lam_off[i] = var_offset;
+      var_offset += nx;
+    }
+    int n_custom = var_offset;
+
+    auto tc0 = clock::now();
+
+    TreeSolverBuilder builder;
+
+    // Create cliques: need parent-before-child for AddClique.
+    // Nodes are already in BFS order (parent index < child index).
+    std::vector<int> cid(N);
+    cid[0] = builder.AddClique();  // root
+    for (int i = 1; i < N; ++i)
+      cid[i] = builder.AddClique(cid[tree[i].parent]);
+
+    for (int i = 0; i < N; ++i) {
+      bool is_leaf = tree[i].children.empty();
+      bool is_root = (tree[i].parent == -1);
+
+      // Cost block.
+      if (is_leaf) {
+        std::vector<int> cv;
+        for (int j = 0; j < nx; ++j) cv.push_back(x_off[i] + j);
+        builder.AddCost(cid[i], Qf, cv);
+      } else {
+        std::vector<int> cv;
+        for (int j = 0; j < nx; ++j) cv.push_back(x_off[i] + j);
+        for (int j = 0; j < nu; ++j) cv.push_back(u_off[i] + j);
+        builder.AddCost(cid[i], QR, cv);
+      }
+
+      if (is_root) {
+        // Initial condition: I on x_root, dual = λ_ic.
+        std::vector<int> ic_p, ic_d;
+        for (int j = 0; j < nx; ++j) ic_p.push_back(x_off[0] + j);
+        for (int j = 0; j < nx; ++j) ic_d.push_back(lam_off[0] + j);
+        builder.AddEquality(cid[0], MatrixXd::Identity(nx, nx),
+                            d_zero, ic_p, ic_d);
+      } else {
+        // Dynamics: x_i = A x_parent + B u_parent
+        // C = [-A, -B, I], primal = {x_parent, u_parent, x_i}, dual = {λ_i}
+        int p = tree[i].parent;
+        std::vector<int> dp, dd;
+        for (int j = 0; j < nx; ++j) dp.push_back(x_off[p] + j);
+        for (int j = 0; j < nu; ++j) dp.push_back(u_off[p] + j);
+        for (int j = 0; j < nx; ++j) dp.push_back(x_off[i] + j);
+        for (int j = 0; j < nx; ++j) dd.push_back(lam_off[i] + j);
+        builder.AddEquality(cid[i], C_dyn, d_zero, dp, dd);
+      }
+    }
+
+    auto rc = builder.Build();
+    auto tc1 = clock::now();
+    ASSERT_TRUE(rc.solver->AssembleAndFactor());
+    auto tc2 = clock::now();
+
+    VectorXd rhs_c = VectorXd::Zero(rc.num_variables);
+    for (int j = 0; j < nx; ++j) rhs_c(lam_off[0] + j) = x0(j);
+    auto sol_c = rc.solver->Solve(rhs_c);
+    auto tc3 = clock::now();
+    double custom_us =
+        std::chrono::duration<double, std::micro>(tc3 - tc0).count();
+
+    // Verify initial condition.
+    double ic_err_c = 0;
+    for (int j = 0; j < nx; ++j)
+      ic_err_c = std::max(ic_err_c, std::abs(sol_c(x_off[0] + j, 0) - x0(j)));
+    EXPECT_LT(ic_err_c, 1e-4) << "Custom: initial condition at S=" << S;
+
+    // --- Sparse matrix path ---
+    auto ss = MakeSparseStochastic(tree, Ad, Bd, Q, R, Qf, x0, nx, nu);
+    auto ts0 = clock::now();
+    auto rs = TreeSolverBuilder::BuildFromSparseMatrices(
+        ss.Q_cost, ss.C_eq, ss.d_eq);
+    auto ts1 = clock::now();
+    ASSERT_TRUE(rs.solver->AssembleAndFactor());
+    auto ts2 = clock::now();
+    VectorXd rhs_s = VectorXd::Zero(rs.num_variables);
+    for (int j = 0; j < ss.n_eq; ++j)
+      rhs_s(ss.n_primal + j) = ss.d_eq(j);
+    auto sol_s = rs.solver->Solve(rhs_s);
+    auto ts3 = clock::now();
+    double sparse_us =
+        std::chrono::duration<double, std::micro>(ts3 - ts0).count();
+
+    // Verify sparse initial condition.
+    double ic_err_s = (sol_s.col(0).head(nx) - x0).norm();
+    EXPECT_LT(ic_err_s, 1e-4) << "Sparse: initial condition at S=" << S;
+
+    printf("%-7d %6d %7d %12.0f          %12.0f          %7.1fx\n",
+           S, N, n_custom, custom_us, sparse_us,
+           sparse_us / custom_us);
+  }
+}
+
 }  // namespace
 }  // namespace conex
