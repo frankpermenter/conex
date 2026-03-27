@@ -61,6 +61,7 @@ target_link_libraries(kkt_solver_factory PUBLIC tree_solver clique_ordering cons
 add_library(sparse_linear_constraint
   conex/common/sparse_linear_constraint.cc
   conex/common/sparse_quadratic_term.cc
+  conex/common/sparse_equality_constraint.cc
   conex/common/constraint_manager_preprocess.cc
 )
 target_link_libraries(sparse_linear_constraint PUBLIC constraints kkt_solver_factory structural_rank)

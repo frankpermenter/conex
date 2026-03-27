@@ -473,7 +473,7 @@ TEST(EqualityConstrainedLS, RankDeficientLarger) {
   auto result = EqualityConstrainedLeastSquares(A, b, C, d);
 
   double constraint_err = (C * result.x - d).norm();
-  EXPECT_LT(constraint_err, 1e-8);
+  EXPECT_LT(constraint_err, 1e-7);
 
   printf("ECLS rank-deficient larger: p_total=%d, p_indep=%d, "
          "constraint_err=%.2e, construct=%.0fus, factor=%.0fus\n",

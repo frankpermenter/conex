@@ -40,6 +40,15 @@ class ConstraintManager {
   CONEX_ID AddEqualityConstraint(const EqualityConstraints& x,
                                  const std::vector<int>& variables);
 
+  // Allocate dual variable indices.  Returns a vector of size count
+  // with consecutive indices starting at the current dual variable offset.
+  std::vector<int> AllocateDualVariables(int count) {
+    std::vector<int> vars(count);
+    std::iota(vars.begin(), vars.end(), new_dual_variable_start_);
+    new_dual_variable_start_ += count;
+    return vars;
+  }
+
   // Register a custom assembler (caller retains ownership).
   void AddCustomAssembler(SupernodalAssemblerBase* assembler) {
     custom_assemblers_.push_back(assembler);

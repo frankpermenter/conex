@@ -1,16 +1,68 @@
 #include "conex/algorithms/equality_constrained_least_squares.h"
 
 #include <chrono>
+#include <cmath>
 #include <numeric>
 #include <set>
 
 #include "conex/common/conex.h"
 #include "conex/common/constraint_manager.h"
-#include "conex/common/equality_constraint.h"
+#include "conex/common/error_checking_macros.h"
+#include "conex/common/sparse_equality_constraint.h"
 #include "conex/common/sparse_linear_constraint.h"
+#include "conex/common/structural_rank.h"
 #include "conex/tree_solver/kkt_solver_factory.h"
 
 namespace conex {
+
+namespace {
+
+// Check consistency of dropped equality rows before removal.
+void CheckDroppedRowConsistency(
+    const Eigen::SparseMatrix<double>& C,
+    const Eigen::VectorXd& d,
+    const std::vector<int>& row_map) {
+  int nr = C.rows();
+  int nr_new = static_cast<int>(row_map.size());
+  if (nr_new == nr) return;
+
+  std::vector<bool> kept(nr, false);
+  for (int idx : row_map) kept[idx] = true;
+
+  Eigen::MatrixXd C_kept(nr_new, C.cols());
+  Eigen::VectorXd d_kept(nr_new);
+  for (int i = 0; i < nr_new; ++i) {
+    for (int j = 0; j < C.cols(); ++j) {
+      C_kept(i, j) = C.coeff(row_map[i], j);
+    }
+    d_kept(i) = d(row_map[i]);
+  }
+
+  auto qr = C_kept.transpose().colPivHouseholderQr();
+
+  for (int r = 0; r < nr; ++r) {
+    if (kept[r]) continue;
+    Eigen::VectorXd c_dropped(C.cols());
+    for (int j = 0; j < C.cols(); ++j) c_dropped(j) = C.coeff(r, j);
+    double d_dropped = d(r);
+
+    Eigen::VectorXd lambda = qr.solve(c_dropped);
+    double c_residual = (C_kept.transpose() * lambda - c_dropped).norm();
+    double c_scale = std::max(c_dropped.norm(), 1.0);
+
+    if (c_residual < 1e-10 * c_scale) {
+      double d_predicted = lambda.dot(d_kept);
+      double d_err = std::abs(d_predicted - d_dropped);
+      double d_scale = std::max(std::abs(d_dropped), 1.0);
+      CONEX_DEMAND(d_err < 1e-10 * d_scale,
+                   "Inconsistent equality constraints: a structurally "
+                   "dependent row is in the row space of the kept rows "
+                   "but its right-hand side is incompatible.");
+    }
+  }
+}
+
+}  // namespace
 
 EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
     const Eigen::SparseMatrix<double>& A,
@@ -22,6 +74,18 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
   const int num_vars = A.cols();
 
   auto t0 = clock::now();
+
+  // Drop structurally dependent equality rows (with consistency check).
+  std::vector<int> row_map;
+  Eigen::SparseMatrix<double> C_reduced =
+      DropStructurallyDependentRows(C, &row_map);
+  CheckDroppedRowConsistency(C, d, row_map);
+
+  Eigen::VectorXd d_reduced(row_map.size());
+  for (int i = 0; i < static_cast<int>(row_map.size()); ++i) {
+    d_reduced(i) = d(row_map[i]);
+  }
+  const int num_eq = C_reduced.rows();
 
   // Build SparseLinearConstraint for A (assembles A^T A).
   Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(A.rows());
@@ -35,19 +99,24 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
 
   ConstraintManager cm(num_vars);
 
-  auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
+  auto slc_assembler = std::make_unique<SparseLinearConstraintAssembler>(
       std::move(slc), all_vars);
-  cm.AddCustomAssembler(std::move(assembler));
+  cm.AddCustomAssembler(std::move(slc_assembler));
 
-  // Add equality constraints Cx = d.
-  std::vector<int> eq_vars(num_vars);
-  std::iota(eq_vars.begin(), eq_vars.end(), 0);
-  Eigen::MatrixXd C_dense(C);
-  EqualityConstraints eq(C_dense, d);
-  cm.AddEqualityConstraint(eq, eq_vars);
+  // Build SparseEqualityConstraint (decomposes C into per-clique blocks).
+  auto sec = std::make_unique<SparseEqualityConstraint>(C_reduced, d_reduced);
 
-  // Preprocess: drop structurally dependent columns and equality rows.
-  cm.Preprocess();
+  std::set<int> eq_var_set;
+  for (const auto& s : sec->row_supports()) {
+    eq_var_set.insert(s.begin(), s.end());
+  }
+  std::vector<int> eq_primal(eq_var_set.begin(), eq_var_set.end());
+
+  std::vector<int> dual_vars = cm.AllocateDualVariables(num_eq);
+
+  auto eq_assembler = std::make_unique<SparseEqualityConstraintAssembler>(
+      std::move(sec), eq_primal, dual_vars);
+  cm.AddCustomAssembler(std::move(eq_assembler));
 
   SolverConfiguration config;
   auto tree_solver = MakeTreeSolver(&cm, config);
@@ -59,38 +128,19 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
 
   auto t2 = clock::now();
 
-  // Build RHS = [A^T b; d_reduced] in the (possibly reduced) system.
-  int num_primal = cm.GetNumberOfVariables();
+  // Build RHS = [A^T b; d_reduced].
   int system_size = cm.SizeOfKKTSystem();
   Eigen::VectorXd rhs = Eigen::VectorXd::Zero(system_size);
-
-  Eigen::VectorXd atb = A.transpose() * b;
-  if (cm.was_reduced()) {
-    rhs.head(num_primal) = cm.ReduceVector(atb);
-  } else {
-    rhs.head(num_primal) = atb;
-  }
-
-  // Dual part: use the (possibly reduced) equality constraint RHS.
-  int dual_offset = num_primal;
-  for (const auto& eq_data : cm.equality_constraints().data) {
-    int p = eq_data.b_.rows();
-    for (int i = 0; i < p; ++i) {
-      rhs(dual_offset + i) = eq_data.b_(i);
-    }
-    dual_offset += p;
+  rhs.head(num_vars) = A.transpose() * b;
+  for (int i = 0; i < num_eq; ++i) {
+    rhs(dual_vars[i]) = d_reduced(i);
   }
 
   Eigen::VectorXd sol = tree_solver->Solve(rhs);
 
   auto t3 = clock::now();
 
-  if (cm.was_reduced()) {
-    result.x = cm.ExpandSolution(sol.head(num_primal));
-  } else {
-    result.x = sol.head(num_vars);
-  }
-
+  result.x = sol.head(num_vars);
   result.construction_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
   result.assemble_and_factor_time_us =
