@@ -488,18 +488,18 @@ TreeSolverBuilder::Result TreeSolverBuilder::BuildFromSparseMatrices(
 
   // Collect cliques and dual vars for fill measurement.
   std::vector<std::vector<int>> all_cliques;
-  std::vector<int> dual_flat;
+  std::vector<int> delayed_flat;
   for (auto* asm_ptr : storage->cm.clique_assemblers()) {
     auto c = asm_ptr->get_cliques();
     all_cliques.insert(all_cliques.end(), c.begin(), c.end());
     auto dv = asm_ptr->dual_variables();
-    dual_flat.insert(dual_flat.end(), dv.begin(), dv.end());
+    delayed_flat.insert(delayed_flat.end(), dv.begin(), dv.end());
   }
 
   // Build clique tree for fill statistics (cheap relative to solver build).
   std::vector<std::vector<int>> maximal_cliques;
   auto ctree = MakeCliqueTreeMinDegreeFromRowSupports(
-      all_cliques, &maximal_cliques, 0, 0, dual_flat);
+      all_cliques, &maximal_cliques, 0, 0, delayed_flat);
 
   long long fill = 0;
   int max_cs = 0;

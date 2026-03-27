@@ -20,25 +20,26 @@ enum : int {
 
 // Build a clique tree using minimum-degree elimination on row supports.
 // Uses bitset-based min-degree ordering, then extracts a supernodal tree.
-// Falls back to CHOLMOD supernodal factorization when available.
+//
+// delayed_variables: variables that must not be eliminated until at least
+// one of their neighbors has been eliminated first.  This includes dual
+// variables in KKT systems and any variable without a positive-definite
+// diagonal contribution.  (Previously called "dual_variables".)
 CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
     const std::vector<std::vector<int>>& row_supports,
     std::vector<std::vector<int>>* maximal_cliques_out = nullptr,
     int max_merge_supernode_size = 0,
     int supernode_reorder_method = SUPERNODE_REORDER_BFS_GREEDY,
-    const std::vector<int>& dual_variables = {});
+    const std::vector<int>& delayed_variables = {});
 
 // Overload that also accepts pairwise edges from a sparse symmetric matrix.
-// Row supports (from A) add all-pairs edges within each support (cliques).
-// The sparse matrix Q adds individual edges {i,j} for each Q(i,j)!=0.
-// This correctly handles Q's sparsity without creating false cliques.
 CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
     const std::vector<std::vector<int>>& row_supports,
     const Eigen::SparseMatrix<double>& Q_sparsity,
     std::vector<std::vector<int>>* maximal_cliques_out = nullptr,
     int max_merge_supernode_size = 0,
     int supernode_reorder_method = SUPERNODE_REORDER_BFS_GREEDY,
-    const std::vector<int>& dual_variables = {});
+    const std::vector<int>& delayed_variables = {});
 
 // Elimination result from Phase 1 (AMD or user-provided ordering).
 // Contains everything Phase 2 needs to build the clique tree.

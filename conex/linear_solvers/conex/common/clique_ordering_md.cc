@@ -351,7 +351,7 @@ CliqueTree MakeCliqueTreeImpl(
     std::vector<std::vector<int>>* maximal_cliques_out,
     int max_merge_supernode_size,
     int supernode_reorder_method,
-    const std::vector<int>& dual_variables) {
+    const std::vector<int>& delayed_variables) {
   // --- Compact variable indices to [0, n) ---
   std::vector<int> unique_vars;
   for (const auto& row : row_supports) {
@@ -399,11 +399,11 @@ CliqueTree MakeCliqueTreeImpl(
 
   // Map dual variables to compact indices.  Use an unordered_set for O(1)
   // lookup — efficient when few variables are dual relative to n.
-  std::unordered_set<int> is_dual;
-  is_dual.reserve(dual_variables.size());
-  for (int v : dual_variables) {
+  std::unordered_set<int> is_delayed;
+  is_delayed.reserve(delayed_variables.size());
+  for (int v : delayed_variables) {
     auto it = to_compact.find(v);
-    if (it != to_compact.end()) is_dual.insert(it->second);
+    if (it != to_compact.end()) is_delayed.insert(it->second);
   }
 
   const int words = (n + 63) / 64;
@@ -469,7 +469,7 @@ CliqueTree MakeCliqueTreeImpl(
     for (int v = 0; v < n; v++) {
       if (deg[v] < 0) continue;
       // A dual variable must have a neighbor eliminated first.
-      if (is_dual.count(v) && !has_eliminated_neighbor[v]) continue;
+      if (is_delayed.count(v) && !has_eliminated_neighbor[v]) continue;
       if (deg[v] < best_deg) {
         best_deg = deg[v];
         best = v;
@@ -482,7 +482,7 @@ CliqueTree MakeCliqueTreeImpl(
     BitsToVec(rb, words, n, &nbrs);
 
     // Mark living neighbors as having an eliminated neighbor.
-    if (!is_dual.empty()) {
+    if (!is_delayed.empty()) {
       for (int u : nbrs) has_eliminated_neighbor[u] = 1;
     }
 
@@ -739,10 +739,10 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
     std::vector<std::vector<int>>* maximal_cliques_out,
     int max_merge_supernode_size,
     int supernode_reorder_method,
-    const std::vector<int>& dual_variables) {
+    const std::vector<int>& delayed_variables) {
   return MakeCliqueTreeImpl(row_supports, nullptr, maximal_cliques_out,
                             max_merge_supernode_size, supernode_reorder_method,
-                            dual_variables);
+                            delayed_variables);
 }
 
 CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
@@ -751,10 +751,10 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
     std::vector<std::vector<int>>* maximal_cliques_out,
     int max_merge_supernode_size,
     int supernode_reorder_method,
-    const std::vector<int>& dual_variables) {
+    const std::vector<int>& delayed_variables) {
   return MakeCliqueTreeImpl(row_supports, &Q_sparsity, maximal_cliques_out,
                             max_merge_supernode_size, supernode_reorder_method,
-                            dual_variables);
+                            delayed_variables);
 }
 
 }  // namespace conex
