@@ -3,6 +3,7 @@
 #include "conex/algorithms/finite_horizon.h"
 #include "conex/algorithms/irls.h"
 #include "conex/algorithms/lqr_tree_solver.h"
+#include "conex/algorithms/tree_solver_builder.h"
 #include "conex/common/clique_ordering.h"
 #include "conex/common/constraint_manager.h"
 #include "conex/common/sparse_equality_constraint.h"
@@ -956,6 +957,135 @@ TEST(LQRTreeSolver, Benchmark) {
     printf("%-6d %7d %10.0f %10.0f %10.0f %10.0f\n",
            T, lqr.n_vars(), build, factor, solve, build + factor + solve);
   }
+}
+
+// =====================================================================
+// TreeSolverBuilder
+// =====================================================================
+
+// Small 2-clique chain: min x'Qx s.t. Cx = d.
+// Clique 0 (child): sn={x0,x1,lam}, sep={x2}
+// Clique 1 (root):  sn={x2}
+TEST(TreeSolverBuilder, SmallChain) {
+  // min x0^2 + x1^2 + x2^2 s.t. x0 + x1 - x2 = 0, x0 = 1
+  TreeSolverBuilder b;
+  int root = b.AddClique();       // clique for x2
+  int child = b.AddClique(root);  // clique for x0, x1, constraints
+
+  // Cost: Q=I on {x0,x1} in child, Q=I on {x2} in root.
+  b.AddCost(child, MatrixXd::Identity(2, 2), {0, 1});
+  b.AddCost(root, MatrixXd::Identity(1, 1), {2});
+
+  // Constraint 1: x0 + x1 - x2 = 0 → C=[1,1,-1], primal={0,1,2}, dual={3}
+  Eigen::MatrixXd C1(1, 3);
+  C1 << 1, 1, -1;
+  b.AddEquality(child, C1, VectorXd::Zero(1), {0, 1, 2}, {3});
+
+  // Constraint 2: x0 = 1 → C=[1], primal={0}, dual={4}
+  b.AddEquality(child, MatrixXd::Identity(1, 1), VectorXd::Zero(1), {0}, {4});
+
+  auto result = b.Build();
+  ASSERT_TRUE(result.solver->AssembleAndFactor());
+
+  // RHS: dual for constraint 2 gets d=1.
+  VectorXd rhs = VectorXd::Zero(result.num_variables);
+  rhs(4) = 1.0;  // x0 = 1
+
+  VectorXd sol = result.solver->Solve(rhs);
+
+  // x0 = 1 (from constraint), x0 + x1 = x2.
+  // Optimal: min x0^2+x1^2+x2^2 s.t. x0=1, x2=x0+x1.
+  // Substituting: min 1 + x1^2 + (1+x1)^2 = 2 + 2x1 + 2x1^2.
+  // Derivative: 2 + 4x1 = 0 → x1 = -0.5, x2 = 0.5.
+  EXPECT_NEAR(sol(0), 1.0, 1e-10);
+  EXPECT_NEAR(sol(1), -0.5, 1e-10);
+  EXPECT_NEAR(sol(2), 0.5, 1e-10);
+
+  printf("TreeSolverBuilder SmallChain: x=[%.4f, %.4f, %.4f]\n",
+         sol(0), sol(1), sol(2));
+}
+
+// Rebuild LQR via the builder and verify it matches LQRTreeSolver.
+TEST(TreeSolverBuilder, LQRViaBuilder) {
+  const int nx = 4, nu = 2, T = 20;
+  srand(42);
+  Eigen::MatrixXd A = 0.9 * MatrixXd::Identity(nx, nx) +
+                       0.1 * MatrixXd::Random(nx, nx);
+  Eigen::MatrixXd B = MatrixXd::Random(nx, nu);
+  Eigen::MatrixXd Q = MatrixXd::Identity(nx, nx) +
+                       0.5 * MatrixXd::Ones(nx, nx);
+  Eigen::MatrixXd R = 0.1 * MatrixXd::Identity(nu, nu) +
+                       0.05 * MatrixXd::Ones(nu, nu);
+  Eigen::MatrixXd Qf = 10.0 * Q;
+  VectorXd x0 = VectorXd::Ones(nx);
+
+  // Variable layout: same as LQRTreeSolver.
+  const int step = 2 * nx + nu;
+  auto XIdx = [&](int t) { return t * step; };
+  auto UIdx = [&](int t) { return t * step + nx; };
+  auto LIdx = [&](int t) { return t * step + nx + nu; };
+  int XTIdx = T * step;
+  int LicIdx = T * step + nx;
+
+  // Build via TreeSolverBuilder.
+  TreeSolverBuilder builder;
+
+  // Create cliques: chain 0 → 1 → ... → T (root).
+  std::vector<int> cid(T + 1);
+  cid[T] = builder.AddClique();  // root
+  for (int t = T - 1; t >= 0; --t)
+    cid[t] = builder.AddClique(cid[t + 1]);
+
+  // Dynamics: [-A, -B, I] with primal={x_t, u_t, x_{t+1}}, dual={λ_t}.
+  Eigen::MatrixXd C_dyn(nx, nx + nu + nx);
+  C_dyn << -A, -B, MatrixXd::Identity(nx, nx);
+  VectorXd d_zero = VectorXd::Zero(nx);
+
+  Eigen::MatrixXd QR = MatrixXd::Zero(nx + nu, nx + nu);
+  QR.topLeftCorner(nx, nx) = Q;
+  QR.bottomRightCorner(nu, nu) = R;
+
+  for (int t = 0; t < T; ++t) {
+    std::vector<int> cost_vars, dyn_primal, dyn_dual;
+    for (int i = 0; i < nx; ++i) cost_vars.push_back(XIdx(t) + i);
+    for (int i = 0; i < nu; ++i) cost_vars.push_back(UIdx(t) + i);
+    builder.AddCost(cid[t], QR, cost_vars);
+
+    dyn_primal = cost_vars;
+    for (int i = 0; i < nx; ++i) dyn_primal.push_back(XIdx(t + 1) + i);
+    for (int i = 0; i < nx; ++i) dyn_dual.push_back(LIdx(t) + i);
+    builder.AddEquality(cid[t], C_dyn, d_zero, dyn_primal, dyn_dual);
+
+    if (t == 0) {
+      std::vector<int> ic_primal, ic_dual;
+      for (int i = 0; i < nx; ++i) ic_primal.push_back(XIdx(0) + i);
+      for (int i = 0; i < nx; ++i) ic_dual.push_back(LicIdx + i);
+      builder.AddEquality(cid[0], MatrixXd::Identity(nx, nx), d_zero,
+                          ic_primal, ic_dual);
+    }
+  }
+
+  // Terminal cost.
+  std::vector<int> term_vars;
+  for (int i = 0; i < nx; ++i) term_vars.push_back(XTIdx + i);
+  builder.AddCost(cid[T], Qf, term_vars);
+
+  auto result = builder.Build();
+  ASSERT_TRUE(result.solver->AssembleAndFactor());
+
+  VectorXd rhs = VectorXd::Zero(result.num_variables);
+  for (int i = 0; i < nx; ++i) rhs(LicIdx + i) = x0(i);
+  VectorXd sol = result.solver->Solve(rhs);
+
+  // Compare with LQRTreeSolver.
+  LQRTreeSolver lqr(A, B, Q, R, Qf, T);
+  lqr.AssembleAndFactor();
+  VectorXd sol_ref = lqr.Solve(x0);
+
+  double max_err = (sol.head(sol_ref.size()) - sol_ref).cwiseAbs().maxCoeff();
+  EXPECT_LT(max_err, 1e-10) << "Builder solution doesn't match LQRTreeSolver";
+
+  printf("TreeSolverBuilder LQR: T=%d, max_err=%.2e\n", T, max_err);
 }
 
 }  // namespace
