@@ -1088,5 +1088,166 @@ TEST(TreeSolverBuilder, LQRViaBuilder) {
   printf("TreeSolverBuilder LQR: T=%d, max_err=%.2e\n", T, max_err);
 }
 
+// RIP violation: variable in child and grandparent but missing from parent.
+TEST(TreeSolverBuilder, RIPViolationDetected) {
+  TreeSolverBuilder b;
+  b.EnableRIPCheck();
+
+  int root = b.AddClique();
+  int mid = b.AddClique(root);
+  int leaf = b.AddClique(mid);
+
+  // Variable 0 in leaf and root, but NOT in mid → RIP violation.
+  b.AddCost(leaf, MatrixXd::Identity(2, 2), {0, 1});
+  b.AddCost(mid, MatrixXd::Identity(1, 1), {2});  // no var 0
+  b.AddCost(root, MatrixXd::Identity(2, 2), {0, 3});
+
+  EXPECT_THROW(b.Build(), std::runtime_error);
+}
+
+// =====================================================================
+// Network flow QP via TreeSolverBuilder:
+//   min  Σ_e c_e * x_e²
+//   s.t. Σ_{e∈δ+(v)} x_e - Σ_{e∈δ-(v)} x_e = b_v   ∀ nodes v
+//
+// Tree graph: 0 - 1 - 2 - 3 - 4  (path graph, 4 edges)
+// Edge variables: x_01, x_12, x_23, x_34
+// Node dual variables: λ_0, ..., λ_4
+// Flow conservation at each node.
+// =====================================================================
+
+TEST(TreeSolverBuilder, NetworkFlow) {
+  const int num_nodes = 5;
+  const int num_edges = num_nodes - 1;
+
+  // Variable layout:
+  //   Edge flow: x_e at index e  (0..3)
+  //   Node dual: λ_v at index num_edges + v  (4..8)
+  auto edge_var = [](int e) { return e; };
+  auto node_dual = [&](int v) { return num_edges + v; };
+
+  // Edge costs: c_e * x_e² with c_e = 1 for all edges.
+  // Flow conservation: for internal node v,
+  //   x_{v-1,v} - x_{v,v+1} = b_v
+  // For node 0: -x_{0,1} = b_0  (only outgoing)
+  // For node 4:  x_{3,4} = b_4  (only incoming)
+  // Here edge e connects node e to node e+1.
+
+  // Supply/demand: source at node 0, sink at node 4.
+  VectorXd b = VectorXd::Zero(num_nodes);
+  b(0) = -1.0;  // supply (outgoing)
+  b(4) = 1.0;   // demand (incoming)
+
+  // Build tree: one clique per edge.
+  // Edge e's clique has: edge var x_e, node duals λ_e and λ_{e+1}.
+  // Chain: clique 0 → clique 1 → ... → clique (num_edges-1) as root.
+  TreeSolverBuilder builder;
+  builder.EnableRIPCheck();
+
+  std::vector<int> cid(num_edges);
+  cid[num_edges - 1] = builder.AddClique();
+  for (int e = num_edges - 2; e >= 0; --e)
+    cid[e] = builder.AddClique(cid[e + 1]);
+
+  for (int e = 0; e < num_edges; ++e) {
+    // Cost: c_e * x_e² (1x1 block).
+    builder.AddCost(cid[e], MatrixXd::Identity(1, 1), {edge_var(e)});
+
+    // Flow conservation at node e: contribution of edge e.
+    // Node e is the "from" node: -x_e appears in λ_e's constraint.
+    // Node e+1 is the "to" node: +x_e appears in λ_{e+1}'s constraint.
+    // Combined: C = [-1; 1] on primal {x_e}, dual {λ_e, λ_{e+1}}.
+    Eigen::MatrixXd C(2, 1);
+    C << -1.0, 1.0;
+    VectorXd d_zero = VectorXd::Zero(2);
+    builder.AddEquality(cid[e], C, d_zero,
+                        {edge_var(e)},
+                        {node_dual(e), node_dual(e + 1)});
+  }
+
+  auto result = builder.Build();
+  ASSERT_TRUE(result.solver->AssembleAndFactor());
+
+  // RHS: dual part gets the supply/demand vector.
+  VectorXd rhs = VectorXd::Zero(result.num_variables);
+  for (int v = 0; v < num_nodes; ++v)
+    rhs(node_dual(v)) = b(v);
+
+  VectorXd sol = result.solver->Solve(rhs);
+
+  // All edge flows should equal 1 (unit flow from source to sink).
+  for (int e = 0; e < num_edges; ++e) {
+    EXPECT_NEAR(sol(edge_var(e)), 1.0, 1e-10)
+        << "Edge " << e << " flow incorrect";
+  }
+
+  // Verify flow conservation: for each node, sum of incoming - outgoing = b.
+  for (int v = 0; v < num_nodes; ++v) {
+    double net = 0;
+    if (v > 0) net += sol(edge_var(v - 1));         // incoming
+    if (v < num_nodes - 1) net -= sol(edge_var(v));  // outgoing
+    EXPECT_NEAR(net, b(v), 1e-10) << "Flow conservation at node " << v;
+  }
+
+  printf("NetworkFlow: %d nodes, %d edges, all flows=1.0, "
+         "conservation verified\n",
+         num_nodes, num_edges);
+}
+
+// Larger network flow: path graph with N nodes.
+TEST(TreeSolverBuilder, NetworkFlowBenchmark) {
+  using clock = std::chrono::high_resolution_clock;
+
+  printf("\n%-8s %7s %10s %10s %10s %10s\n",
+         "N_nodes", "n_vars", "build_us", "factor_us", "solve_us", "total_us");
+  printf("--------  ------- ---------- ---------- ---------- ----------\n");
+
+  for (int N : {10, 50, 100, 500, 1000}) {
+    int num_edges = N - 1;
+    auto edge_var = [](int e) { return e; };
+    auto node_dual = [&](int v) { return num_edges + v; };
+
+    auto t0 = clock::now();
+
+    TreeSolverBuilder builder;
+    std::vector<int> cid(num_edges);
+    cid[num_edges - 1] = builder.AddClique();
+    for (int e = num_edges - 2; e >= 0; --e)
+      cid[e] = builder.AddClique(cid[e + 1]);
+
+    for (int e = 0; e < num_edges; ++e) {
+      builder.AddCost(cid[e], MatrixXd::Identity(1, 1), {edge_var(e)});
+      Eigen::MatrixXd C(2, 1);
+      C << -1.0, 1.0;
+      builder.AddEquality(cid[e], C, VectorXd::Zero(2),
+                          {edge_var(e)},
+                          {node_dual(e), node_dual(e + 1)});
+    }
+
+    auto result = builder.Build();
+    auto t1 = clock::now();
+
+    result.solver->AssembleAndFactor();
+    auto t2 = clock::now();
+
+    VectorXd rhs = VectorXd::Zero(result.num_variables);
+    rhs(node_dual(0)) = -1.0;
+    rhs(node_dual(N - 1)) = 1.0;
+    VectorXd sol = result.solver->Solve(rhs);
+    auto t3 = clock::now();
+
+    // Spot-check: all flows = 1.
+    EXPECT_NEAR(sol(0), 1.0, 1e-8);
+    EXPECT_NEAR(sol(num_edges - 1), 1.0, 1e-8);
+
+    double build = std::chrono::duration<double, std::micro>(t1 - t0).count();
+    double factor = std::chrono::duration<double, std::micro>(t2 - t1).count();
+    double solve = std::chrono::duration<double, std::micro>(t3 - t2).count();
+    printf("%-8d %7d %10.0f %10.0f %10.0f %10.0f\n",
+           N, result.num_variables, build, factor, solve,
+           build + factor + solve);
+  }
+}
+
 }  // namespace
 }  // namespace conex

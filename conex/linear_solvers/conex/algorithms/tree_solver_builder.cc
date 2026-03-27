@@ -97,11 +97,33 @@ TreeSolverBuilder::Result TreeSolverBuilder::Build() {
           supernodes[c].push_back(v);
         }
       }
-      // Validate RIP: separator vars must be in parent's variable set.
-      // (This is guaranteed by construction above, but check explicitly.)
-      for (int v : separators[c]) {
-        CONEX_DEMAND(parent_vars.count(v),
-                     "RIP violation: separator variable not in parent.");
+    }
+  }
+
+  // Optional RIP validation: for every variable v in clique c that also
+  // appears in some ancestor a, v must appear in every clique on the
+  // path from c to a.  Without this, a variable could land in a supernode
+  // when it should be a separator, producing a silently wrong factorization.
+  if (check_rip_) {
+    for (int c = 0; c < num_cliques; ++c) {
+      for (int v : cliques_[c].all_vars) {
+        // Walk from c's parent toward the root.  If v reappears in an
+        // ancestor, every intermediate clique must also contain v.
+        bool found_gap = false;
+        int gap_clique = -1;
+        for (int a = cliques_[c].parent; a >= 0; a = cliques_[a].parent) {
+          if (cliques_[a].all_vars.count(v)) {
+            // v is in ancestor a.  If we had a gap, that's a violation.
+            CONEX_DEMAND(!found_gap,
+                         "Running intersection property violated: variable "
+                         "appears in a child and ancestor but is missing "
+                         "from an intermediate clique.");
+            break;
+          }
+          // v is NOT in this intermediate clique — record the gap.
+          found_gap = true;
+          gap_clique = a;
+        }
       }
     }
   }

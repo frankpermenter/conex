@@ -47,6 +47,12 @@ class TreeSolverBuilder {
     int num_variables;
   };
 
+  // Enable running intersection property (RIP) validation in Build().
+  // When enabled, Build() checks that every variable appearing in a clique
+  // and any ancestor also appears in every intermediate clique on the path.
+  // Off by default (O(V * depth) cost).
+  void EnableRIPCheck(bool enable = true) { check_rip_ = enable; }
+
   // Validate and build the tree solver.
   // Computes supernodes/separators, creates adapters, calls Finalize.
   Result Build();
@@ -65,6 +71,7 @@ class TreeSolverBuilder {
     ContributionType type;
   };
   std::vector<PendingAdapter> pending_;
+  bool check_rip_ = false;
 
   // Owned assembler storage (std::list for pointer stability).
   std::list<DenseQuadraticTermSubAssembler> cost_assemblers_;
