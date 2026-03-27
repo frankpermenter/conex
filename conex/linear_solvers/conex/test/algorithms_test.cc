@@ -1773,10 +1773,10 @@ TEST(TreeSolverBuilder, AutoTreeStochastic) {
 }
 
 // =====================================================================
-// Fill-in comparison: explicit tree vs KKT AMD
+// Fill-in comparison: explicit tree vs sparse-matrix AMD
 // Generate synthetic stochastic trees and compare fill (Σ clique_size²)
 // between the builder's auto-tree (quotient AMD) and the sparse path
-// (full KKT AMD via BuildFromSparseMatrices).
+// (full sparse-matrix AMD via BuildFromSparseMatrices).
 // =====================================================================
 
 TEST(FillComparison, StochasticTree) {
@@ -1796,10 +1796,10 @@ TEST(FillComparison, StochasticTree) {
   QR.topLeftCorner(nx, nx) = Q;
   QR.bottomRightCorner(nu, nu) = R;
 
-  printf("\n  Fill comparison: explicit tree vs KKT AMD (stochastic tree)\n");
+  printf("\n  Fill comparison: explicit tree vs sparse-matrix AMD (stochastic tree)\n");
   printf("%-3s %-4s %6s %7s %12s %8s %12s %8s %8s\n",
          "S", "B", "nodes", "n_vars",
-         "expl_fill", "expl_mc", "kkt_fill", "kkt_mc", "ratio");
+         "expl_fill", "expl_mc", "sp_fill", "sp_mc", "ratio");
   printf("--- ---- ------ ------- ------------ -------- "
          "------------ -------- --------\n");
 
@@ -1857,7 +1857,7 @@ TEST(FillComparison, StochasticTree) {
     for (int i = 0; i < N; ++i) add_blocks(b_quot, cid_q[i], i);
     auto r_quot = b_quot.Build();
 
-    // KKT AMD path (sparse matrices).
+    // sparse-matrix AMD path (sparse matrices).
     auto ss = MakeSparseStochastic(tree, Ad, Bd, Q, R, Qf, x0, nx, nu);
     auto r_kkt = TreeSolverBuilder::BuildFromSparseMatrices(
         ss.Q_cost, ss.C_eq, ss.d_eq);
@@ -1871,7 +1871,7 @@ TEST(FillComparison, StochasticTree) {
   }
 }
 
-// Solve performance comparison: explicit tree vs KKT AMD.
+// Solve performance comparison: explicit tree vs sparse-matrix AMD.
 // Both paths build a solver, then we time factor+solve separately
 // from construction.
 TEST(FillComparison, SolvePerformance) {
@@ -1893,12 +1893,12 @@ TEST(FillComparison, SolvePerformance) {
   QR.topLeftCorner(nx, nx) = Q;
   QR.bottomRightCorner(nu, nu) = R;
 
-  printf("\n  Solve performance: explicit tree vs KKT AMD\n");
+  printf("\n  Solve performance: explicit tree vs sparse-matrix AMD\n");
   printf("%-3s %-4s %6s  %8s %8s %8s  %8s %8s %8s  %8s %6s %6s\n",
          "S", "B", "nodes",
          "e_fac", "e_sol", "e_fill",
-         "k_fac", "k_sol", "k_fill",
-         "fac_rat", "e_res", "k_res");
+         "s_fac", "s_sol", "s_fill",
+         "fac_rat", "e_res", "s_res");
   printf("--- ---- ------  -------- -------- --------  "
          "-------- -------- --------  -------- ------ ------\n");
 
@@ -1964,7 +1964,7 @@ TEST(FillComparison, SolvePerformance) {
     double e_fac = std::chrono::duration<double, std::micro>(tq1 - tq0).count();
     double e_sol = std::chrono::duration<double, std::micro>(tq2 - tq1).count();
 
-    // KKT AMD path.
+    // sparse-matrix AMD path.
     auto ss = MakeSparseStochastic(tree, Ad, Bd, Q, R, Qf, x0, nx, nu);
     auto r_k = TreeSolverBuilder::BuildFromSparseMatrices(
         ss.Q_cost, ss.C_eq, ss.d_eq);
@@ -1977,24 +1977,24 @@ TEST(FillComparison, SolvePerformance) {
       rhs_k(ss.n_primal + j) = ss.d_eq(j);
     r_k.solver->Solve(rhs_k);
     auto tk2 = clock::now();
-    double k_fac = std::chrono::duration<double, std::micro>(tk1 - tk0).count();
-    double k_sol = std::chrono::duration<double, std::micro>(tk2 - tk1).count();
+    double s_fac = std::chrono::duration<double, std::micro>(tk1 - tk0).count();
+    double s_sol = std::chrono::duration<double, std::micro>(tk2 - tk1).count();
 
     // Check residual: Cx - d for both.
     auto sol_q = r_q.solver->Solve(rhs_q);
     auto sol_k = r_k.solver->Solve(rhs_k);
-    double q_ic_err = 0, k_ic_err = 0;
+    double q_ic_err = 0, s_ic_err = 0;
     for (int j = 0; j < nx; ++j) {
       q_ic_err = std::max(q_ic_err, std::abs(sol_q(x_off[0] + j, 0) - x0(j)));
-      k_ic_err = std::max(k_ic_err, std::abs(sol_k(0 + j, 0) - x0(j)));
+      s_ic_err = std::max(s_ic_err, std::abs(sol_k(0 + j, 0) - x0(j)));
     }
 
     printf("%-3d %-4d %6d  %7.0fus %7.0fus %8lld  %7.0fus %7.0fus %8lld  %7.2fx  %.0e %.0e\n",
            S, B, N,
            e_fac, e_sol, r_q.fill,
-           k_fac, k_sol, r_k.fill,
-           k_fac / std::max(e_fac, 1.0),
-           q_ic_err, k_ic_err);
+           s_fac, s_sol, r_k.fill,
+           s_fac / std::max(e_fac, 1.0),
+           q_ic_err, s_ic_err);
   }
 }
 
@@ -2086,15 +2086,15 @@ TEST(TreeSolverBuilder, PDChainAutoVsExplicit) {
     auto te3 = clock::now();
 
     // Residual: ||A x - b|| for a representative block.
-    auto check_residual = [&](const auto& sol) {
+    auto checs_residual = [&](const auto& sol) {
       auto xt = x_idx(0), xt1 = x_idx(1);
       VectorXd xcat(2 * nx);
       for (int j = 0; j < nx; ++j) xcat(j) = sol(xt[j], 0);
       for (int j = 0; j < nx; ++j) xcat(nx + j) = sol(xt1[j], 0);
       return (A_block * xcat - b_block).norm();
     };
-    double res_a = check_residual(sol_a);
-    double res_e = check_residual(sol_e);
+    double res_a = checs_residual(sol_a);
+    double res_e = checs_residual(sol_e);
 
     // Also check solutions match.
     double max_diff = (sol_a.col(0).head(n_vars) -
