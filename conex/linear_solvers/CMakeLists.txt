@@ -73,6 +73,7 @@ add_library(algorithms
   conex/algorithms/least_squares.cc
   conex/algorithms/equality_constrained_least_squares.cc
   conex/algorithms/finite_horizon.cc
+  conex/algorithms/lqr_tree_solver.cc
 )
 target_link_libraries(algorithms PUBLIC sparse_linear_constraint)
 

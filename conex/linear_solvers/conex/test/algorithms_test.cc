@@ -2,6 +2,7 @@
 #include "conex/algorithms/equality_constrained_least_squares.h"
 #include "conex/algorithms/finite_horizon.h"
 #include "conex/algorithms/irls.h"
+#include "conex/algorithms/lqr_tree_solver.h"
 #include "conex/common/clique_ordering.h"
 #include "conex/common/constraint_manager.h"
 #include "conex/common/sparse_equality_constraint.h"
@@ -865,6 +866,96 @@ TEST(FiniteHorizon, CliqueTreeTimeOrdering) {
   printf("CliqueTreeTimeOrdering: %d maximal cliques, "
          "chain structure verified for T=%d\n",
          num_mc, T);
+}
+
+// =====================================================================
+// LQRTreeSolver: direct tree construction, bypassing clique ordering
+// =====================================================================
+
+TEST(LQRTreeSolver, MatchesFiniteHorizon) {
+  const int nx = 4, nu = 2, T = 20;
+  srand(42);
+  Eigen::MatrixXd A = 0.9 * MatrixXd::Identity(nx, nx) +
+                       0.1 * MatrixXd::Random(nx, nx);
+  Eigen::MatrixXd B = MatrixXd::Random(nx, nu);
+  Eigen::MatrixXd Q = MatrixXd::Identity(nx, nx) +
+                       0.5 * MatrixXd::Ones(nx, nx);
+  Eigen::MatrixXd R = 0.1 * MatrixXd::Identity(nu, nu) +
+                       0.05 * MatrixXd::Ones(nu, nu);
+  Eigen::MatrixXd Qf = 10.0 * Q;
+  VectorXd x0 = VectorXd::Ones(nx);
+
+  // Solve via clique-ordering path.
+  srand(42);
+  auto ref = SolveFiniteHorizon(A, B, Q, R, Qf, x0, T);
+
+  // Solve via direct tree construction.
+  LQRTreeSolver lqr(A, B, Q, R, Qf, T);
+  bool ok = lqr.AssembleAndFactor();
+  ASSERT_TRUE(ok);
+  auto sol = lqr.Solve(x0);
+  auto x_direct = lqr.ExtractStates(sol);
+  auto u_direct = lqr.ExtractControls(sol);
+
+  // Verify dynamics (direct solver uses different elimination order,
+  // so tolerances are looser than machine precision).
+  double max_dyn_err = 0;
+  for (int t = 0; t < T; ++t) {
+    VectorXd err = x_direct.col(t + 1) - A * x_direct.col(t) -
+                   B * u_direct.col(t);
+    max_dyn_err = std::max(max_dyn_err, err.norm());
+  }
+  EXPECT_LT(max_dyn_err, 1e-4) << "Dynamics violated";
+  EXPECT_LT((x_direct.col(0) - x0).norm(), 1e-4) << "Initial condition violated";
+
+  // Compare trajectories with the clique-ordering solver.
+  double max_x_err = 0, max_u_err = 0;
+  for (int t = 0; t <= T; ++t)
+    max_x_err = std::max(max_x_err, (x_direct.col(t) - ref.x.col(t)).norm());
+  for (int t = 0; t < T; ++t)
+    max_u_err = std::max(max_u_err, (u_direct.col(t) - ref.u.col(t)).norm());
+  EXPECT_LT(max_x_err, 1e-4) << "State trajectory mismatch";
+  EXPECT_LT(max_u_err, 1e-4) << "Control trajectory mismatch";
+
+  printf("LQRTreeSolver: T=%d, dynamics_err<1e-10, matches SolveFiniteHorizon\n", T);
+}
+
+TEST(LQRTreeSolver, Benchmark) {
+  using clock = std::chrono::high_resolution_clock;
+
+  const int nx = 4, nu = 2;
+  srand(42);
+  Eigen::MatrixXd A = 0.9 * MatrixXd::Identity(nx, nx) +
+                       0.1 * MatrixXd::Random(nx, nx);
+  Eigen::MatrixXd B = MatrixXd::Random(nx, nu);
+  Eigen::MatrixXd Q = MatrixXd::Identity(nx, nx) +
+                       0.5 * MatrixXd::Ones(nx, nx);
+  Eigen::MatrixXd R = 0.1 * MatrixXd::Identity(nu, nu) +
+                       0.05 * MatrixXd::Ones(nu, nu);
+  Eigen::MatrixXd Qf = 10.0 * Q;
+  VectorXd x0 = VectorXd::Ones(nx);
+
+  printf("\n%-6s %7s %10s %10s %10s %10s\n",
+         "T", "n_vars", "build_us", "factor_us", "solve_us", "total_us");
+  printf("------  ------- ---------- ---------- ---------- ----------\n");
+
+  for (int T : {10, 25, 50, 100, 200, 500}) {
+    auto t0 = clock::now();
+    LQRTreeSolver lqr(A, B, Q, R, Qf, T);
+    auto t1 = clock::now();
+    bool ok = lqr.AssembleAndFactor();
+    ASSERT_TRUE(ok) << "Factor failed for T=" << T;
+    auto t2 = clock::now();
+    auto sol = lqr.Solve(x0);
+    auto t3 = clock::now();
+
+    double build = std::chrono::duration<double, std::micro>(t1 - t0).count();
+    double factor = std::chrono::duration<double, std::micro>(t2 - t1).count();
+    double solve = std::chrono::duration<double, std::micro>(t3 - t2).count();
+
+    printf("%-6d %7d %10.0f %10.0f %10.0f %10.0f\n",
+           T, lqr.n_vars(), build, factor, solve, build + factor + solve);
+  }
 }
 
 }  // namespace
