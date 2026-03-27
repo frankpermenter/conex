@@ -7,6 +7,7 @@
 
 #include <Eigen/Sparse>
 
+#include "conex/common/clique_ordering.h"
 #include "conex/common/equality_constraint.h"
 #include "conex/common/linear_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
@@ -117,9 +118,12 @@ class TreeSolverBuilder {
   // Arena memory for LinearConstraint workspaces (allocated in Build).
   std::vector<double> workspace_arena_;
 
-  // If all parents are -1, compute an elimination tree automatically
-  // via weighted AMD on the quotient graph of clique intersections.
-  void ComputeEliminationTree();
+  // If all parents are -1, compute an elimination ordering via weighted
+  // AMD on the quotient graph, then run symbolic elimination on the
+  // variable graph to get proper fill and maximal cliques.
+  // Returns the EliminationOrdering for use with
+  // MakeCliqueTreeFromEliminationOrdering.
+  EliminationOrdering ComputeQuotientAMDOrdering();
 };
 
 }  // namespace conex
