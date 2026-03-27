@@ -1610,5 +1610,150 @@ TEST(StochasticOpt, CompareCustomVsSparse) {
   }
 }
 
+// =====================================================================
+// Weighted AMD on quotient graph: auto-computed elimination tree
+// =====================================================================
+
+// Small chain: same problem as SmallChain but without specifying parents.
+TEST(TreeSolverBuilder, AutoTreeSmallChain) {
+  TreeSolverBuilder b;
+  int c0 = b.AddClique();  // no parent
+  int c1 = b.AddClique();  // no parent
+
+  b.AddCost(c0, MatrixXd::Identity(2, 2), {0, 1});
+  b.AddCost(c1, MatrixXd::Identity(1, 1), {2});
+
+  Eigen::MatrixXd C1(1, 3);
+  C1 << 1, 1, -1;
+  b.AddEquality(c0, C1, VectorXd::Zero(1), {0, 1, 2}, {3});
+  b.AddEquality(c0, MatrixXd::Identity(1, 1), VectorXd::Zero(1), {0}, {4});
+
+  auto result = b.Build();
+  ASSERT_TRUE(result.solver->AssembleAndFactor());
+
+  VectorXd rhs = VectorXd::Zero(result.num_variables);
+  rhs(4) = 1.0;
+  VectorXd sol = result.solver->Solve(rhs);
+
+  EXPECT_NEAR(sol(0), 1.0, 1e-10);
+  EXPECT_NEAR(sol(1), -0.5, 1e-10);
+  EXPECT_NEAR(sol(2), 0.5, 1e-10);
+  printf("AutoTree SmallChain: x=[%.4f, %.4f, %.4f]\n",
+         sol(0), sol(1), sol(2));
+}
+
+// Stochastic opt with auto-computed tree vs explicit tree.
+TEST(TreeSolverBuilder, AutoTreeStochastic) {
+  const int nx = 4, nu = 2, B = 3, S = 5;
+  srand(42);
+  MatrixXd Ad = 0.9 * MatrixXd::Identity(nx, nx) +
+                0.1 * MatrixXd::Random(nx, nx);
+  MatrixXd Bd = MatrixXd::Random(nx, nu);
+  MatrixXd Q = MatrixXd::Identity(nx, nx) + 0.5 * MatrixXd::Ones(nx, nx);
+  MatrixXd R = 0.1 * MatrixXd::Identity(nu, nu) + 0.05 * MatrixXd::Ones(nu, nu);
+  MatrixXd Qf = 10.0 * Q;
+  VectorXd x0 = VectorXd::Ones(nx);
+
+  MatrixXd C_dyn(nx, nx + nu + nx);
+  C_dyn << -Ad, -Bd, MatrixXd::Identity(nx, nx);
+  VectorXd d_zero = VectorXd::Zero(nx);
+  MatrixXd QR = MatrixXd::Zero(nx + nu, nx + nu);
+  QR.topLeftCorner(nx, nx) = Q;
+  QR.bottomRightCorner(nu, nu) = R;
+
+  auto tree = MakeScenarioTree(B, S);
+  int N = static_cast<int>(tree.size());
+
+  // Variable offsets (same as CompareCustomVsSparse).
+  std::vector<int> x_off(N), u_off(N), lam_off(N);
+  int var_offset = 0;
+  for (int i = 0; i < N; ++i) {
+    x_off[i] = var_offset; var_offset += nx;
+    u_off[i] = tree[i].children.empty() ? -1 : var_offset;
+    if (!tree[i].children.empty()) var_offset += nu;
+    lam_off[i] = var_offset; var_offset += nx;
+  }
+
+  // Helper to add blocks for a scenario node to a builder.
+  auto add_node_blocks = [&](TreeSolverBuilder& builder, int cid, int i) {
+    bool is_leaf = tree[i].children.empty();
+    bool is_root = (tree[i].parent == -1);
+    if (is_leaf) {
+      std::vector<int> cv;
+      for (int j = 0; j < nx; ++j) cv.push_back(x_off[i] + j);
+      builder.AddCost(cid, Qf, cv);
+    } else {
+      std::vector<int> cv;
+      for (int j = 0; j < nx; ++j) cv.push_back(x_off[i] + j);
+      for (int j = 0; j < nu; ++j) cv.push_back(u_off[i] + j);
+      builder.AddCost(cid, QR, cv);
+    }
+    if (is_root) {
+      std::vector<int> ic_p, ic_d;
+      for (int j = 0; j < nx; ++j) ic_p.push_back(x_off[0] + j);
+      for (int j = 0; j < nx; ++j) ic_d.push_back(lam_off[0] + j);
+      builder.AddEquality(cid, MatrixXd::Identity(nx, nx), d_zero, ic_p, ic_d);
+    } else {
+      int p = tree[i].parent;
+      std::vector<int> dp, dd;
+      for (int j = 0; j < nx; ++j) dp.push_back(x_off[p] + j);
+      for (int j = 0; j < nu; ++j) dp.push_back(u_off[p] + j);
+      for (int j = 0; j < nx; ++j) dp.push_back(x_off[i] + j);
+      for (int j = 0; j < nx; ++j) dd.push_back(lam_off[i] + j);
+      builder.AddEquality(cid, C_dyn, d_zero, dp, dd);
+    }
+  };
+
+  // Explicit tree (reference).
+  TreeSolverBuilder b_explicit;
+  std::vector<int> cid_e(N);
+  cid_e[0] = b_explicit.AddClique();
+  for (int i = 1; i < N; ++i)
+    cid_e[i] = b_explicit.AddClique(cid_e[tree[i].parent]);
+  for (int i = 0; i < N; ++i)
+    add_node_blocks(b_explicit, cid_e[i], i);
+  auto r_explicit = b_explicit.Build();
+  ASSERT_TRUE(r_explicit.solver->AssembleAndFactor());
+  VectorXd rhs = VectorXd::Zero(r_explicit.num_variables);
+  for (int j = 0; j < nx; ++j) rhs(lam_off[0] + j) = x0(j);
+  auto sol_explicit = r_explicit.solver->Solve(rhs);
+
+  // Auto tree (no parents specified).
+  TreeSolverBuilder b_auto;
+  std::vector<int> cid_a(N);
+  for (int i = 0; i < N; ++i)
+    cid_a[i] = b_auto.AddClique();  // all roots
+  for (int i = 0; i < N; ++i)
+    add_node_blocks(b_auto, cid_a[i], i);
+  auto r_auto = b_auto.Build();
+  ASSERT_TRUE(r_auto.solver->AssembleAndFactor());
+  VectorXd rhs_a = VectorXd::Zero(r_auto.num_variables);
+  for (int j = 0; j < nx; ++j) rhs_a(lam_off[0] + j) = x0(j);
+  auto sol_auto = r_auto.solver->Solve(rhs_a);
+
+  // Compare: both should give the same initial condition.
+  double ic_explicit = 0, ic_auto = 0;
+  for (int j = 0; j < nx; ++j) {
+    ic_explicit = std::max(ic_explicit,
+        std::abs(sol_explicit(x_off[0] + j, 0) - x0(j)));
+    ic_auto = std::max(ic_auto,
+        std::abs(sol_auto(x_off[0] + j, 0) - x0(j)));
+  }
+  EXPECT_LT(ic_explicit, 1e-4);
+  EXPECT_LT(ic_auto, 1e-4);
+
+  // Compare root state between explicit and auto.
+  double max_diff = 0;
+  for (int j = 0; j < nx; ++j)
+    max_diff = std::max(max_diff,
+        std::abs(sol_explicit(x_off[0] + j, 0) - sol_auto(x_off[0] + j, 0)));
+  EXPECT_LT(max_diff, 1e-4)
+      << "Auto tree solution differs from explicit tree";
+
+  printf("AutoTree Stochastic: S=%d, N=%d, ic_err=%.2e, "
+         "explicit_vs_auto_diff=%.2e\n",
+         S, N, ic_auto, max_diff);
+}
+
 }  // namespace
 }  // namespace conex

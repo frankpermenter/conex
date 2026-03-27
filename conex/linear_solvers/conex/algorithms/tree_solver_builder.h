@@ -95,6 +95,10 @@ class TreeSolverBuilder {
   // Owned assembler storage (std::list for pointer stability).
   std::list<DenseQuadraticTermSubAssembler> cost_assemblers_;
   std::list<SupernodalAssemblerEqualities> eq_assemblers_;
+
+  // If all parents are -1, compute an elimination tree automatically
+  // via weighted AMD on the quotient graph of clique intersections.
+  void ComputeEliminationTree();
 };
 
 }  // namespace conex

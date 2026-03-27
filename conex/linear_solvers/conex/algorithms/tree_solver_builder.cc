@@ -56,11 +56,153 @@ void TreeSolverBuilder::AddEquality(int clique, const Eigen::MatrixXd& C,
       {&eq_assemblers_.back(), clique, ContributionType::kIndefinite});
 }
 
+void TreeSolverBuilder::ComputeEliminationTree() {
+  const int C = static_cast<int>(cliques_.size());
+
+  // Build quotient graph: edge weight = number of shared variables.
+  // Use var_to_cliques map to only compare clique pairs sharing variables.
+  std::unordered_map<int, std::vector<int>> var_to_cliques;
+  for (int i = 0; i < C; ++i)
+    for (int v : cliques_[i].all_vars)
+      var_to_cliques[v].push_back(i);
+
+  // Adjacency: adj[i] = {(j, weight)}. Use map for easy updates.
+  std::vector<std::unordered_map<int, int>> adj(C);
+  for (auto& [var, clist] : var_to_cliques) {
+    for (int a = 0; a < static_cast<int>(clist.size()); ++a)
+      for (int b = a + 1; b < static_cast<int>(clist.size()); ++b) {
+        adj[clist[a]][clist[b]]++;
+        adj[clist[b]][clist[a]]++;
+      }
+  }
+
+  // Weighted min-degree elimination.
+  std::vector<bool> eliminated(C, false);
+  std::vector<int> elim_order;
+  elim_order.reserve(C);
+  std::vector<int> parent(C, -1);
+
+  // Maintain working copies of variable sets for fill propagation.
+  std::vector<std::set<int>> work_vars(C);
+  for (int i = 0; i < C; ++i) work_vars[i] = cliques_[i].all_vars;
+
+  for (int step = 0; step < C; ++step) {
+    // Find clique with minimum weighted degree.
+    int best = -1;
+    int best_deg = std::numeric_limits<int>::max();
+    for (int i = 0; i < C; ++i) {
+      if (eliminated[i]) continue;
+      int deg = 0;
+      for (auto& [nb, w] : adj[i])
+        if (!eliminated[nb]) deg += w;
+      if (deg < best_deg) {
+        best_deg = deg;
+        best = i;
+      }
+    }
+    CONEX_DEMAND(best >= 0, "No clique to eliminate.");
+    eliminated[best] = true;
+    elim_order.push_back(best);
+
+    // Collect uneliminated neighbors.
+    std::vector<int> nbrs;
+    for (auto& [nb, w] : adj[best])
+      if (!eliminated[nb]) nbrs.push_back(nb);
+
+    // Parent = the uneliminated neighbor that will be eliminated next
+    // (lowest future weighted degree). Use current degree as heuristic.
+    if (!nbrs.empty()) {
+      int best_parent = nbrs[0];
+      int best_parent_deg = std::numeric_limits<int>::max();
+      for (int nb : nbrs) {
+        int deg = 0;
+        for (auto& [nn, w] : adj[nb])
+          if (!eliminated[nn]) deg += w;
+        if (deg < best_parent_deg) {
+          best_parent_deg = deg;
+          best_parent = nb;
+        }
+      }
+      parent[best] = best_parent;
+    }
+
+    // Separator of best = variables shared with remaining neighbors.
+    std::set<int> separator;
+    for (int nb : nbrs) {
+      for (int v : work_vars[best]) {
+        if (work_vars[nb].count(v)) separator.insert(v);
+      }
+    }
+
+    // Propagate separator variables to parent for RIP.
+    if (parent[best] >= 0) {
+      for (int v : separator)
+        work_vars[parent[best]].insert(v);
+    }
+
+    // Fill: connect all pairs of uneliminated neighbors.
+    for (int a = 0; a < static_cast<int>(nbrs.size()); ++a) {
+      for (int b = a + 1; b < static_cast<int>(nbrs.size()); ++b) {
+        int u = nbrs[a], v = nbrs[b];
+        if (adj[u].count(v) == 0) {
+          // Fill edge: weight = shared variables through eliminated clique.
+          int fill_weight = 0;
+          for (int var : work_vars[u])
+            if (work_vars[v].count(var)) fill_weight++;
+          if (fill_weight > 0) {
+            adj[u][v] = fill_weight;
+            adj[v][u] = fill_weight;
+          }
+        }
+      }
+    }
+  }
+
+  // Handle disconnected components: cliques with parent=-1 after AMD
+  // (more than one root). Connect extra roots to the last-eliminated root.
+  int last_root = elim_order.back();
+  for (int i = 0; i < C; ++i) {
+    if (i != last_root && parent[i] == -1) {
+      parent[i] = last_root;
+    }
+  }
+
+  // Set parents and rebuild children lists.
+  for (int i = 0; i < C; ++i) {
+    cliques_[i].parent = parent[i];
+    cliques_[i].children.clear();
+  }
+  for (int i = 0; i < C; ++i) {
+    if (parent[i] >= 0)
+      cliques_[parent[i]].children.push_back(i);
+  }
+
+  // Propagate variable sets (separator vars must be in parent).
+  // Process in elimination order (children before parents).
+  for (int c : elim_order) {
+    int p = cliques_[c].parent;
+    if (p < 0) continue;
+    for (int v : cliques_[c].all_vars) {
+      if (work_vars[p].count(v))
+        cliques_[p].all_vars.insert(v);
+    }
+  }
+}
+
 TreeSolverBuilder::Result TreeSolverBuilder::Build() {
   const int num_cliques = static_cast<int>(cliques_.size());
   CONEX_DEMAND(num_cliques > 0, "No cliques added.");
 
-  // Validate: exactly one root.
+  // Count roots.  If all parents are -1, run weighted AMD to compute tree.
+  int num_roots = 0;
+  for (int i = 0; i < num_cliques; ++i)
+    if (cliques_[i].parent == -1) num_roots++;
+
+  if (num_roots == num_cliques && num_cliques > 1) {
+    ComputeEliminationTree();
+  }
+
+  // Validate: exactly one root after possible AMD.
   int root = -1;
   for (int i = 0; i < num_cliques; ++i) {
     if (cliques_[i].parent == -1) {
