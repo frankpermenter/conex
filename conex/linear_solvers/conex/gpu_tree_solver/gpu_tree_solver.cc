@@ -1,6 +1,7 @@
 #include "conex/gpu_tree_solver/gpu_tree_solver.h"
 
 #include <algorithm>
+#include <map>
 #include <numeric>
 #include <stdexcept>
 
@@ -46,6 +47,7 @@ GpuTreeSolver::~GpuTreeSolver() {
   if (d_sep_indices_) cudaFree(d_sep_indices_);
   if (d_gather_buf_) cudaFree(d_gather_buf_);
   if (d_potrf_work_) cudaFree(d_potrf_work_);
+  if (d_batch_ptrs_) cudaFree(d_batch_ptrs_);
   if (cublas_) cublasDestroy(cublas_);
   if (cusolver_) cusolverDnDestroy(cusolver_);
   if (stream_) cudaStreamDestroy(stream_);
@@ -72,6 +74,9 @@ GpuTreeSolver::GpuTreeSolver(GpuTreeSolver&& o) noexcept
       max_sep_size_(o.max_sep_size_),
       d_potrf_work_(o.d_potrf_work_),
       potrf_work_size_(o.potrf_work_size_),
+      level_groups_(std::move(o.level_groups_)),
+      d_batch_ptrs_(o.d_batch_ptrs_),
+      max_batch_size_(o.max_batch_size_),
       cusolver_(o.cusolver_),
       cublas_(o.cublas_),
       stream_(o.stream_),
@@ -83,6 +88,7 @@ GpuTreeSolver::GpuTreeSolver(GpuTreeSolver&& o) noexcept
   o.d_sep_indices_ = nullptr;
   o.d_gather_buf_ = nullptr;
   o.d_potrf_work_ = nullptr;
+  o.d_batch_ptrs_ = nullptr;
   o.cusolver_ = nullptr;
   o.cublas_ = nullptr;
   o.stream_ = nullptr;
@@ -365,6 +371,38 @@ void GpuTreeSolver::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
           "cudaMalloc potrf_work");
   }
 
+  // --- Batch groups per level (group same-size supernodes for batched APIs) ---
+  level_groups_.resize(levels_.size());
+  max_batch_size_ = 0;
+  for (int lev = 0; lev < static_cast<int>(levels_.size()); ++lev) {
+    // Sort supernodes at this level by (sn_size, sep_size).
+    std::map<std::pair<int, int>, std::vector<int>> groups;
+    for (int ci : levels_[lev]) {
+      const auto& d = descriptors_[ci];
+      if (d.sn_size == 0) continue;
+      groups[{d.sn_size, d.sep_size}].push_back(ci);
+    }
+    for (auto& [key, indices] : groups) {
+      BatchGroup g;
+      g.sn_size = key.first;
+      g.sep_size = key.second;
+      g.indices = std::move(indices);
+      max_batch_size_ = std::max(max_batch_size_,
+                                  static_cast<int>(g.indices.size()));
+      level_groups_[lev].push_back(std::move(g));
+    }
+  }
+
+  // Device buffer for batched pointer arrays.
+  // Need up to 4 pointer arrays simultaneously (sn, sep, schur, temp).
+  if (d_batch_ptrs_) cudaFree(d_batch_ptrs_);
+  d_batch_ptrs_ = nullptr;
+  if (max_batch_size_ > 0) {
+    Check(cudaMalloc(&d_batch_ptrs_,
+                     4 * max_batch_size_ * sizeof(double*)),
+          "cudaMalloc batch_ptrs");
+  }
+
   // --- Partition ---
   partition_ = DenseBlockPartition(num_vars_);
 }
@@ -430,43 +468,71 @@ bool GpuTreeSolver::FactorLevel(int lev) {
   const double one = 1.0;
   const double neg_one = -1.0;
 
-  for (int ci : levels_[lev]) {
-    const auto& d = descriptors_[ci];
-    if (d.sn_size == 0) continue;
+  // d_batch_ptrs_ layout: 4 arrays of max_batch_size_ each.
+  // [0..bs): sn_ptrs, [bs..2bs): sep_ptrs, [2bs..3bs): schur_ptrs, [3bs..4bs): temp_ptrs
+  double** d_sn_ptrs = d_batch_ptrs_;
+  double** d_sep_ptrs = d_batch_ptrs_ + max_batch_size_;
+  double** d_schur_ptrs = d_batch_ptrs_ + 2 * max_batch_size_;
+  double** d_temp_ptrs = d_batch_ptrs_ + 3 * max_batch_size_;
 
-    double* sn = arena_.sn_ptr(d);
-    double* sep = arena_.sep_rows_ptr(d);
-    double* schur = arena_.sep_schur_ptr(d);
-    double* temp = arena_.temp_ptr(d);
+  for (const auto& group : level_groups_[lev]) {
+    const int bs = static_cast<int>(group.indices.size());
+    const int sn = group.sn_size;
+    const int sep = group.sep_size;
 
-    // 1. Cholesky factorization (uses persistent workspace).
-    Check(cusolverDnDpotrf(cusolver_, CUBLAS_FILL_MODE_LOWER,
-                           d.sn_size, sn, d.sn_size,
-                           d_potrf_work_, potrf_work_size_, d_info_ + ci),
-          "potrf");
+    // Build host pointer arrays.
+    std::vector<double*> h_sn(bs), h_sep(bs), h_schur(bs), h_temp(bs);
+    std::vector<int*> h_info(bs);
+    for (int i = 0; i < bs; ++i) {
+      const auto& d = descriptors_[group.indices[i]];
+      h_sn[i] = arena_.sn_ptr(d);
+      h_sep[i] = arena_.sep_rows_ptr(d);
+      h_schur[i] = arena_.sep_schur_ptr(d);
+      h_temp[i] = arena_.temp_ptr(d);
+    }
 
-    if (d.sep_size == 0) continue;
+    // Upload pointer arrays to device.
+    Check(cudaMemcpyAsync(d_sn_ptrs, h_sn.data(), bs * sizeof(double*),
+                          cudaMemcpyHostToDevice, stream_), "cp sn_ptrs");
 
-    // 2. Triangular solve: sep = sep * L^{-T}.
-    Check(cublasDtrsm(cublas_, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER,
-                      CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT,
-                      d.sep_size, d.sn_size, &one,
-                      sn, d.sn_size,
-                      sep, d.sep_size),
-          "trsm");
+    // 1. Batched Cholesky.
+    Check(cusolverDnDpotrfBatched(cusolver_, CUBLAS_FILL_MODE_LOWER,
+                                   sn, d_sn_ptrs, sn, d_info_, bs),
+          "potrfBatched");
 
-    // 3. Cache sep for backward solve.
-    Check(cudaMemcpyAsync(temp, sep,
-                          d.sep_size * d.sn_size * sizeof(double),
-                          cudaMemcpyDeviceToDevice, stream_),
-          "copy temp");
+    if (sep > 0) {
+      // Upload remaining pointer arrays.
+      Check(cudaMemcpyAsync(d_sep_ptrs, h_sep.data(), bs * sizeof(double*),
+                            cudaMemcpyHostToDevice, stream_), "cp sep_ptrs");
+      Check(cudaMemcpyAsync(d_schur_ptrs, h_schur.data(), bs * sizeof(double*),
+                            cudaMemcpyHostToDevice, stream_), "cp schur_ptrs");
 
-    // 4. Schur complement update: schur -= sep * sep^T.
-    Check(cublasDsyrk(cublas_, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N,
-                      d.sep_size, d.sn_size, &neg_one,
-                      sep, d.sep_size, &one,
-                      schur, d.sep_size),
-          "syrk");
+      // 2. Batched triangular solve: sep = sep * L^{-T}.
+      Check(cublasDtrsmBatched(cublas_, CUBLAS_SIDE_RIGHT,
+                                CUBLAS_FILL_MODE_LOWER,
+                                CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT,
+                                sep, sn, &one,
+                                d_sn_ptrs, sn,
+                                d_sep_ptrs, sep, bs),
+            "trsmBatched");
+
+      // 3. Cache sep for backward solve (async copies, pipelined on stream).
+      for (int i = 0; i < bs; ++i) {
+        Check(cudaMemcpyAsync(h_temp[i], h_sep[i],
+                              sep * sn * sizeof(double),
+                              cudaMemcpyDeviceToDevice, stream_),
+              "copy temp");
+      }
+
+      // 4. Batched Schur complement: schur -= sep * sep^T.
+      //    Using gemmBatched (writes both triangles; dpotrf only reads lower).
+      Check(cublasDgemmBatched(cublas_, CUBLAS_OP_N, CUBLAS_OP_T,
+                                sep, sep, sn, &neg_one,
+                                (const double**)d_sep_ptrs, sep,
+                                (const double**)d_sep_ptrs, sep, &one,
+                                d_schur_ptrs, sep, bs),
+            "gemmBatched");
+    }
   }
 
   // 5. Extend-add: scatter children's Schur complements into parents.
@@ -475,14 +541,18 @@ bool GpuTreeSolver::FactorLevel(int lev) {
                     scatter_op_counts_[lev], stream_);
   }
 
-  // Sync and batch-check factorization info for all supernodes at this level.
+  // Sync and batch-check factorization info.
   Check(cudaStreamSynchronize(stream_), "sync level");
-  for (int ci : levels_[lev]) {
-    if (descriptors_[ci].sn_size == 0) continue;
-    int h_info = 0;
-    Check(cudaMemcpy(&h_info, d_info_ + ci, sizeof(int),
+  // cusolverDnDpotrfBatched writes info to d_info_[0..bs-1] (not per-supernode index).
+  // Check all entries.
+  for (const auto& group : level_groups_[lev]) {
+    int bs = static_cast<int>(group.indices.size());
+    std::vector<int> h_info(bs);
+    Check(cudaMemcpy(h_info.data(), d_info_, bs * sizeof(int),
                      cudaMemcpyDeviceToHost), "memcpy info");
-    if (h_info != 0) return false;
+    for (int i = 0; i < bs; ++i) {
+      if (h_info[i] != 0) return false;
+    }
   }
   return true;
 }

@@ -114,6 +114,16 @@ class GpuTreeSolver : public KKTSolverBase {
   double* d_potrf_work_ = nullptr;
   int potrf_work_size_ = 0;
 
+  // Batched factorization: groups of same-size supernodes per level.
+  struct BatchGroup {
+    int sn_size;
+    int sep_size;
+    std::vector<int> indices;  // supernode indices in this group
+  };
+  std::vector<std::vector<BatchGroup>> level_groups_;  // [level] -> groups
+  double** d_batch_ptrs_ = nullptr;  // device buffer for pointer arrays
+  int max_batch_size_ = 0;
+
   // CUDA handles (mutable: solve is logically const but uses GPU state).
   mutable cusolverDnContext* cusolver_ = nullptr;
   mutable cublasContext* cublas_ = nullptr;

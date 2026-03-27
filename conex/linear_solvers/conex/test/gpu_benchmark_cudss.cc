@@ -237,8 +237,9 @@ CsrLowerTriangle BuildCsrLower(const BenchProblem& prob) {
 // ============================================================================
 
 struct TimingResult {
-  double factor_ms;
-  double solve_ms;
+  double assemble_ms;  // H2D transfer (tree solver) or N/A
+  double factor_ms;    // numeric factorization only
+  double solve_ms;     // triangular solve (incl. permute + H2D/D2H for tree solver)
   double rel_err;
 };
 
@@ -263,7 +264,7 @@ TimingResult BenchTreeSolver(const BenchProblem& prob, int warmup, int trials) {
   for (int ci = 0; ci < num_cliques; ++ci)
     gpu.SetSupernodeData(ci, assembled.blocks[ci]);
 
-  double total_factor = 0, total_solve = 0;
+  double total_asm = 0, total_factor = 0, total_solve = 0;
   Eigen::VectorXd x_gpu;
 
   for (int t = 0; t < warmup + trials; ++t) {
@@ -272,23 +273,29 @@ TimingResult BenchTreeSolver(const BenchProblem& prob, int warmup, int trials) {
 
     cudaDeviceSynchronize();
     auto t0 = std::chrono::high_resolution_clock::now();
-    gpu.AssembleAndFactor();
+    gpu.Assemble();
     cudaDeviceSynchronize();
     auto t1 = std::chrono::high_resolution_clock::now();
-    x_gpu = gpu.Solve(prob.rhs);
+    gpu.Factor();
     cudaDeviceSynchronize();
     auto t2 = std::chrono::high_resolution_clock::now();
+    x_gpu = gpu.Solve(prob.rhs);
+    cudaDeviceSynchronize();
+    auto t3 = std::chrono::high_resolution_clock::now();
 
     if (t >= warmup) {
-      total_factor +=
+      total_asm +=
           std::chrono::duration<double, std::milli>(t1 - t0).count();
-      total_solve +=
+      total_factor +=
           std::chrono::duration<double, std::milli>(t2 - t1).count();
+      total_solve +=
+          std::chrono::duration<double, std::milli>(t3 - t2).count();
     }
   }
 
   double rel_err = (x_gpu - prob.x_true).norm() / prob.x_true.norm();
-  return {total_factor / trials, total_solve / trials, rel_err};
+  return {total_asm / trials, total_factor / trials, total_solve / trials,
+          rel_err};
 }
 
 // ============================================================================
@@ -376,7 +383,7 @@ TimingResult BenchCuSolverSp(const BenchProblem& prob, int warmup,
   cudaFree(d_val);
   cudaFree(d_b);
   cudaFree(d_x);
-  return {total_factor / trials, total_solve / trials, rel_err};
+  return {0.0, total_factor / trials, total_solve / trials, rel_err};
 }
 
 // ============================================================================
@@ -488,7 +495,7 @@ TimingResult BenchCuDSS(const BenchProblem& prob, int warmup, int trials) {
   cudaFree(d_b);
   cudaFree(d_x);
 
-  return {total_factor / trials, total_solve / trials, rel_err};
+  return {0.0, total_factor / trials, total_solve / trials, rel_err};
 }
 
 // ============================================================================
@@ -531,7 +538,7 @@ TimingResult BenchCpuTreeSolver(const BenchProblem& prob, int warmup,
   }
 
   double rel_err = (x_cpu - prob.x_true).norm() / prob.x_true.norm();
-  return {total_factor / trials, total_solve / trials, rel_err};
+  return {0.0, total_factor / trials, total_solve / trials, rel_err};
 }
 
 }  // namespace
@@ -548,30 +555,39 @@ int main() {
   };
 
   std::vector<Config> configs = {
-      {10, 10, 5, 15},
-      {20, 20, 10, 30},
-      {10, 50, 10, 60},
-      {20, 50, 10, 60},
-      {10, 100, 10, 120},
+      // Single dense block — sanity check.
+      {1, 100, 0, 120},
+      {1, 400, 0, 480},
+      {1, 1600, 0, 1920},
+      // Block diagonal (no separator coupling).
+      {10, 100, 0, 120},
+      {20, 100, 0, 120},
+      {50, 100, 0, 120},
+      {100, 100, 0, 120},
+      {10, 200, 0, 240},
+      {20, 200, 0, 240},
+      {50, 200, 0, 240},
+      // Block-arrow with separators.
       {10, 100, 20, 120},
       {20, 100, 20, 120},
+      {50, 100, 20, 120},
       {10, 200, 20, 240},
       {5, 400, 20, 480},
   };
 
   int warmup = 2, trials = 5;
 
-  printf("%-5s %-5s %-4s %-6s | %-19s | %-19s | %-19s | %-19s\n",
+  printf("%-5s %-5s %-4s %-6s | %-28s | %-19s | %-19s | %-19s\n",
          "blks", "bsz", "sep", "n",
-         "  GPU tree (ms)  ", "   cuDSS (ms)    ",
+         "     GPU tree (ms)        ", "   cuDSS (ms)    ",
          " cuSOLVER-Sp (ms)", "    CPU (ms)     ");
-  printf("%-5s %-5s %-4s %-6s | %8s %8s  | %8s %8s  | %8s %8s  | %8s %8s\n",
+  printf("%-5s %-5s %-4s %-6s | %7s %7s %7s  | %8s %8s  | %8s %8s  | %8s %8s\n",
          "", "", "", "",
-         "factor", "solve",
+         "asm", "factor", "solve",
          "factor", "solve",
          "factor", "solve",
          "factor", "solve");
-  printf("%s\n", std::string(107, '-').c_str());
+  printf("%s\n", std::string(117, '-').c_str());
 
   for (const auto& cfg : configs) {
     int n = cfg.num_blocks * cfg.block_size + cfg.sep_size;
@@ -583,9 +599,9 @@ int main() {
     auto cusp = BenchCuSolverSp(prob, warmup, trials);
     auto cpu = BenchCpuTreeSolver(prob, warmup, trials);
 
-    printf("%-5d %-5d %-4d %-6d | %7.2f  %7.2f  | %7.2f  %7.2f  | %7.2f  %7.2f  | %7.2f  %7.2f\n",
+    printf("%-5d %-5d %-4d %-6d | %6.2f  %6.2f  %6.2f  | %7.2f  %7.2f  | %7.2f  %7.2f  | %7.2f  %7.2f\n",
            cfg.num_blocks, cfg.block_size, cfg.sep_size, n,
-           gpu.factor_ms, gpu.solve_ms,
+           gpu.assemble_ms, gpu.factor_ms, gpu.solve_ms,
            dss.factor_ms, dss.solve_ms,
            cusp.factor_ms, cusp.solve_ms,
            cpu.factor_ms, cpu.solve_ms);

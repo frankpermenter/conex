@@ -5,7 +5,7 @@
 - [x] Backward solve separator update: `x_sn -= sep^T * x_sep` with gather from non-contiguous separator positions.
 
 ## Factorization performance
-- [ ] Batched cuSOLVER for same-size supernodes within a level (`cusolverDnDpotrfBatched`). Currently each supernode is factored with an individual `cusolverDnDpotrf` call.
+- [x] Batched cuSOLVER for same-size supernodes within a level: `cusolverDnDpotrfBatched`, `cublasDtrsmBatched`, `cublasDgemmBatched`.
 - [ ] Custom shared-memory kernel for small supernodes (sn_size <= 32). Kernel launch overhead dominates for tiny blocks — a single kernel that factors many small blocks in shared memory would be faster.
 - [x] Persistent cuSOLVER workspace: pre-allocated once in Finalize for the largest supernode.
 - [x] Batch info check: factorization success checked once per level instead of per-supernode sync.
