@@ -520,15 +520,43 @@ CliqueTree MakeCliqueTreeImpl(
     deg[best] = -1;  // mark eliminated
   }
 
-  // ===================================================================
-  // Phase 2: CHOLMOD-like supernode forest from elimination columns
-  // ===================================================================
-  // later[v] was built during elimination.  Sort by elimination position
-  // and compute parent_col / child_count.
-  std::vector<int> pos(static_cast<size_t>(n), -1);
-  for (int k = 0; k < n; ++k) {
-    pos[static_cast<size_t>(order[static_cast<size_t>(k)])] = k;
+  // Package Phase 1 results for Phase 2.
+  EliminationOrdering elim;
+  elim.order = std::move(order);
+  elim.later = std::move(later);
+  elim.parent_col = std::move(parent_col);
+  elim.unique_vars = std::move(unique_vars);
+
+  return MakeCliqueTreeFromEliminationOrdering(
+      elim, maximal_cliques_out, max_merge_supernode_size,
+      supernode_reorder_method);
+}
+
+}  // anonymous namespace
+
+CliqueTree MakeCliqueTreeFromEliminationOrdering(
+    const EliminationOrdering& elim,
+    std::vector<std::vector<int>>* maximal_cliques_out,
+    int max_merge_supernode_size,
+    int supernode_reorder_method) {
+  const auto& order = elim.order;
+  const auto& unique_vars = elim.unique_vars;
+  const int n = static_cast<int>(order.size());
+
+  if (n == 0) {
+    if (maximal_cliques_out) maximal_cliques_out->clear();
+    return CliqueTree{};
   }
+
+  // Sort later sets by elimination position and compute parent_col / child_count.
+  std::vector<std::vector<int>> later = elim.later;
+  std::vector<int> parent_col = elim.parent_col;
+  std::vector<int> child_count(static_cast<size_t>(n), 0);
+
+  std::vector<int> pos(static_cast<size_t>(n), -1);
+  for (int k = 0; k < n; ++k)
+    pos[static_cast<size_t>(order[static_cast<size_t>(k)])] = k;
+
   for (int k = 0; k < n; ++k) {
     const int v = order[static_cast<size_t>(k)];
     auto& lv = later[static_cast<size_t>(v)];
@@ -540,6 +568,7 @@ CliqueTree MakeCliqueTreeImpl(
     }
   }
 
+  // Supernode detection.
   std::vector<int> col_to_super(static_cast<size_t>(n), -1);
   std::vector<std::vector<int>> super_cols;
   super_cols.reserve(static_cast<size_t>(n));
@@ -553,20 +582,12 @@ CliqueTree MakeCliqueTreeImpl(
       const int p = parent_col[static_cast<size_t>(cur)];
       if (p < 0) break;
       if (pos[static_cast<size_t>(p)] != pos[static_cast<size_t>(cur)] + 1) break;
-      // Note: we intentionally do NOT require child_count[p] == 1 here.
-      // The later-set check below is sufficient: if later[cur] == {p} ∪
-      // later[p], then p's elimination clique is a subset of cur's, so
-      // they belong in the same fundamental supernode even when p has
-      // multiple children (e.g. a dense root clique fed by many leaves).
       const auto& lc = later[static_cast<size_t>(cur)];
       const auto& lp = later[static_cast<size_t>(p)];
       bool same = lc.size() == lp.size() + 1 && !lc.empty() && lc.front() == p;
       if (same) {
         for (size_t t = 1; t < lc.size(); ++t) {
-          if (lc[t] != lp[t - 1]) {
-            same = false;
-            break;
-          }
+          if (lc[t] != lp[t - 1]) { same = false; break; }
         }
       }
       if (!same) break;
@@ -578,14 +599,13 @@ CliqueTree MakeCliqueTreeImpl(
     super_cols.push_back(std::move(cols));
   }
 
-  const int k = static_cast<int>(super_cols.size());
-  std::vector<std::vector<int>> cliques(static_cast<size_t>(k));
-  std::vector<int> parent(static_cast<size_t>(k), -1);
-  for (int si = 0; si < k; ++si) {
+  // Build cliques (supernode ∪ separator) and parent pointers.
+  const int num_supers = static_cast<int>(super_cols.size());
+  std::vector<std::vector<int>> cliques(static_cast<size_t>(num_supers));
+  std::vector<int> tree_parent(static_cast<size_t>(num_supers), -1);
+  for (int si = 0; si < num_supers; ++si) {
     const auto& cols = super_cols[static_cast<size_t>(si)];
     const int first = cols.front();
-    // Build bag = sorted union of cols and later[first].
-    // Both are small; merge-sort is faster than std::set.
     std::vector<int> merged;
     merged.reserve(cols.size() + later[static_cast<size_t>(first)].size());
     merged.insert(merged.end(), cols.begin(), cols.end());
@@ -595,43 +615,38 @@ CliqueTree MakeCliqueTreeImpl(
     merged.erase(std::unique(merged.begin(), merged.end()), merged.end());
     auto& bag = cliques[static_cast<size_t>(si)];
     bag.reserve(merged.size());
-    for (int v : merged) {
+    for (int v : merged)
       bag.push_back(unique_vars[static_cast<size_t>(v)]);
-    }
     std::sort(bag.begin(), bag.end());
 
     const int top = cols.back();
     const int pcol = parent_col[static_cast<size_t>(top)];
-    if (pcol >= 0) {
-      parent[static_cast<size_t>(si)] = col_to_super[static_cast<size_t>(pcol)];
-    }
+    if (pcol >= 0)
+      tree_parent[static_cast<size_t>(si)] = col_to_super[static_cast<size_t>(pcol)];
   }
 
+  // Build CliqueTree with supernodes/separators.
   CliqueTree ct;
-  ct.node_to_parent = parent;
-  ct.supernodes.resize(static_cast<size_t>(k));
-  ct.separators.resize(static_cast<size_t>(k));
-  for (int i = 0; i < k; ++i) {
-    const int pidx = parent[static_cast<size_t>(i)];
+  ct.node_to_parent = tree_parent;
+  ct.supernodes.resize(static_cast<size_t>(num_supers));
+  ct.separators.resize(static_cast<size_t>(num_supers));
+  for (int i = 0; i < num_supers; ++i) {
+    const int pidx = tree_parent[static_cast<size_t>(i)];
     if (pidx >= 0) {
       std::set_intersection(
-          cliques[static_cast<size_t>(i)].begin(),
-          cliques[static_cast<size_t>(i)].end(),
-          cliques[static_cast<size_t>(pidx)].begin(),
-          cliques[static_cast<size_t>(pidx)].end(),
+          cliques[static_cast<size_t>(i)].begin(), cliques[static_cast<size_t>(i)].end(),
+          cliques[static_cast<size_t>(pidx)].begin(), cliques[static_cast<size_t>(pidx)].end(),
           std::back_inserter(ct.separators[static_cast<size_t>(i)]));
     }
     std::set_difference(
-        cliques[static_cast<size_t>(i)].begin(),
-        cliques[static_cast<size_t>(i)].end(),
-        ct.separators[static_cast<size_t>(i)].begin(),
-        ct.separators[static_cast<size_t>(i)].end(),
+        cliques[static_cast<size_t>(i)].begin(), cliques[static_cast<size_t>(i)].end(),
+        ct.separators[static_cast<size_t>(i)].begin(), ct.separators[static_cast<size_t>(i)].end(),
         std::back_inserter(ct.supernodes[static_cast<size_t>(i)]));
   }
 
-  // Merge singleton supernodes into their parents.
-  // This creates larger dense blocks that are more BLAS3-friendly.
+  // Merge small supernodes into parents.
   {
+    int k = num_supers;
     bool merged_any = true;
     while (merged_any) {
       merged_any = false;
@@ -640,19 +655,11 @@ CliqueTree MakeCliqueTreeImpl(
           continue;
         const int p = ct.node_to_parent[i];
         if (p < 0) continue;
-
-        // Move all supernode variables to parent's supernode.
         auto& psn = ct.supernodes[p];
-        for (int v : ct.supernodes[i]) {
-          psn.push_back(v);
-        }
+        for (int v : ct.supernodes[i]) psn.push_back(v);
         std::sort(psn.begin(), psn.end());
-
-        // Reparent children of i to p.
         for (int j = 0; j < k; ++j)
           if (ct.node_to_parent[j] == i) ct.node_to_parent[j] = p;
-
-        // Mark deleted.
         ct.supernodes[i].clear();
         ct.separators[i].clear();
         ct.node_to_parent[i] = -2;
@@ -660,7 +667,7 @@ CliqueTree MakeCliqueTreeImpl(
       }
     }
 
-    // Compact: remove deleted nodes and renumber.
+    // Compact.
     std::vector<int> old_to_new(k, -1);
     int new_k = 0;
     for (int i = 0; i < k; ++i)
@@ -688,11 +695,9 @@ CliqueTree MakeCliqueTreeImpl(
     cliques = std::move(new_cliques);
   }
 
-    ReorderSupernodes(ct, supernode_reorder_method);
+  ReorderSupernodes(ct, supernode_reorder_method);
 
-  // Connect disconnected forest roots into a single tree.
-  // Build post-order traversal.  The tree may be a forest (multiple roots)
-  // when the graph has disconnected components.
+  // Post-order traversal.
   {
     const int nk = static_cast<int>(ct.supernodes.size());
     std::vector<std::vector<int>> children(nk);
@@ -725,12 +730,9 @@ CliqueTree MakeCliqueTreeImpl(
     }
   }
 
-
   if (maximal_cliques_out) *maximal_cliques_out = cliques;
   return ct;
 }
-
-}  // anonymous namespace
 
 CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
     const std::vector<std::vector<int>>& row_supports,

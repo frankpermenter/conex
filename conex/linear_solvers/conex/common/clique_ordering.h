@@ -40,4 +40,22 @@ CliqueTree MakeCliqueTreeMinDegreeFromRowSupports(
     int supernode_reorder_method = SUPERNODE_REORDER_BFS_GREEDY,
     const std::vector<int>& dual_variables = {});
 
+// Elimination result from Phase 1 (AMD or user-provided ordering).
+// Contains everything Phase 2 needs to build the clique tree.
+struct EliminationOrdering {
+  std::vector<int> order;       // elimination order (variable indices in compact space)
+  std::vector<std::vector<int>> later;  // later[v] = living neighbors when v was eliminated
+  std::vector<int> parent_col;  // parent_col[v] = first neighbor eliminated after v
+  std::vector<int> unique_vars; // compact → original variable mapping
+};
+
+// Phase 2: Build a clique tree from a pre-computed elimination ordering.
+// Performs supernode detection, tree construction, supernode merging,
+// reordering, and post-order computation.
+CliqueTree MakeCliqueTreeFromEliminationOrdering(
+    const EliminationOrdering& elim,
+    std::vector<std::vector<int>>* maximal_cliques_out = nullptr,
+    int max_merge_supernode_size = 0,
+    int supernode_reorder_method = SUPERNODE_REORDER_BFS_GREEDY);
+
 }  // namespace conex
