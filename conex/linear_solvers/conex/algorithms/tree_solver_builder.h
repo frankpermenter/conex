@@ -1,3 +1,11 @@
+// TODO: Merge TreeSolverBuilder and ConstraintManager into a single class.
+// Both collect assemblers and produce a SymmetricLinearSystemTreeSolver.
+// ConstraintManager adds Preprocess (structural rank reduction, row dropping)
+// and automatic dual variable allocation.  TreeSolverBuilder adds explicit
+// tree specification, quotient AMD, per-clique block registration, and
+// arena allocation.  A unified class would support both the automatic path
+// (sparse matrices in, clique ordering discovers structure) and the
+// structured path (user specifies tree topology) through a single API.
 #pragma once
 #include <Eigen/Dense>
 #include <list>
