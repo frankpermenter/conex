@@ -190,6 +190,42 @@ if(CMAKE_CUDA_COMPILER)
   )
   gtest_discover_tests(gpu_tree_solver_test)
 
+  add_executable(gpu_benchmark
+    conex/test/gpu_benchmark.cc
+  )
+  target_link_libraries(gpu_benchmark
+    gpu_tree_solver
+    sparse_linear_constraint
+    clique_ordering
+    kkt_solver_factory
+    tree_solver
+  )
+
+  # cuDSS benchmark (optional, requires cuDSS + CUDA 12 headers).
+  find_library(CUDSS_LIB cudss HINTS /usr/lib/x86_64-linux-gnu/libcudss/12)
+  if(CUDSS_LIB)
+    add_executable(gpu_benchmark_cudss
+      conex/test/gpu_benchmark_cudss.cc
+    )
+    # cuDSS header needs CUDA 12 library_types.h and cuda_runtime.h.
+    target_include_directories(gpu_benchmark_cudss PRIVATE
+      /usr/include/libcudss/12
+      /usr/local/cuda-12.2/include
+    )
+    target_link_libraries(gpu_benchmark_cudss
+      gpu_tree_solver
+      sparse_linear_constraint
+      clique_ordering
+      kkt_solver_factory
+      tree_solver
+      ${CUDSS_LIB}
+      /usr/local/cuda-12.2/lib64/libcudart.so
+    )
+    message(STATUS "cuDSS found — building gpu_benchmark_cudss")
+  else()
+    message(STATUS "cuDSS not found — skipping gpu_benchmark_cudss")
+  endif()
+
   message(STATUS "CUDA found — building gpu_tree_solver + tests")
 else()
   message(STATUS "CUDA not found — skipping gpu_tree_solver")
