@@ -1,10 +1,13 @@
 #include "conex/common/constraint_manager.h"
 
+#include <cmath>
 #include <numeric>
 #include <set>
 
+#include "conex/common/error_checking_macros.h"
 #include "conex/common/sparse_linear_constraint.h"
 #include "conex/common/structural_rank.h"
+#include <Eigen/Dense>
 #include <Eigen/Sparse>
 
 namespace conex {
@@ -128,6 +131,46 @@ void ConstraintManager::Preprocess() {
 
     if (static_cast<int>(row_map.size()) < nr) {
       int nr_new = static_cast<int>(row_map.size());
+
+      // Check dropped rows for inconsistency before removing them.
+      // A dropped row c_j^T x = d_j is inconsistent if c_j is in the
+      // row space of the kept rows C_k but d_j != lambda^T d_k
+      // (where c_j = lambda^T C_k).
+      std::vector<bool> kept(nr, false);
+      for (int idx : row_map) kept[idx] = true;
+
+      Eigen::MatrixXd C_kept(nr_new, eq.A_.cols());
+      Eigen::VectorXd d_kept(nr_new);
+      for (int i = 0; i < nr_new; ++i) {
+        C_kept.row(i) = eq.A_.row(row_map[i]);
+        d_kept(i) = eq.b_(row_map[i]);
+      }
+
+      // Factorize C_kept^T once for all dropped rows.
+      auto qr = C_kept.transpose().colPivHouseholderQr();
+
+      for (int r = 0; r < nr; ++r) {
+        if (kept[r]) continue;
+        Eigen::VectorXd c_dropped = eq.A_.row(r).transpose();
+        double d_dropped = eq.b_(r);
+
+        // Solve C_kept^T * lambda = c_dropped.
+        Eigen::VectorXd lambda = qr.solve(c_dropped);
+        double c_residual = (C_kept.transpose() * lambda - c_dropped).norm();
+        double c_scale = std::max(c_dropped.norm(), 1.0);
+
+        // Only check RHS if the row is numerically in the row space.
+        if (c_residual < 1e-10 * c_scale) {
+          double d_predicted = lambda.dot(d_kept);
+          double d_err = std::abs(d_predicted - d_dropped);
+          double d_scale = std::max(std::abs(d_dropped), 1.0);
+          CONEX_DEMAND(d_err < 1e-10 * d_scale,
+                       "Inconsistent equality constraints: a structurally "
+                       "dependent row is in the row space of the kept rows "
+                       "but its right-hand side is incompatible.");
+        }
+      }
+
       Eigen::MatrixXd C_reduced(nr_new, eq.A_.cols());
       Eigen::MatrixXd b_reduced(nr_new, eq.b_.cols());
       for (int i = 0; i < nr_new; ++i) {

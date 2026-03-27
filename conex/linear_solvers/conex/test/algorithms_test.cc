@@ -502,5 +502,59 @@ TEST(EqualityConstrainedLS, RankDeficientLarger) {
          result.construction_time_us, result.assemble_and_factor_time_us);
 }
 
+// Inconsistent redundant equalities should be detected and rejected.
+// Three rows all touching only {x0}: structural rank 1, so 2 are dropped.
+// Row 2 is numerically inconsistent with row 0.
+TEST(EqualityConstrainedLS, InconsistentEqualitiesDetected) {
+  const int m = 10, n = 3;
+
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; ++r)
+    for (int c = 0; c < n; ++c)
+      trips.emplace_back(r, c, (double)rand() / RAND_MAX + 0.1);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  VectorXd b = VectorXd::Random(m);
+
+  // 3 rows, all with support {0}: structural rank = 1.
+  //   Row 0:  x0 = 3
+  //   Row 1: 2x0 = 6   (consistent: 2*3)
+  //   Row 2: 3x0 = 10  (inconsistent: should be 9)
+  MatrixXd C = MatrixXd::Zero(3, n);
+  C(0, 0) = 1.0;
+  C(1, 0) = 2.0;
+  C(2, 0) = 3.0;
+  VectorXd d(3);
+  d << 3.0, 6.0, 10.0;
+
+  EXPECT_THROW(EqualityConstrainedLeastSquares(A, b, C, d),
+               std::runtime_error);
+}
+
+// Consistent redundant rows should NOT throw.
+// 3 rows all touching {x0}, all consistent multiples.
+TEST(EqualityConstrainedLS, ConsistentProportionalRows) {
+  const int m = 10, n = 3;
+
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; ++r)
+    for (int c = 0; c < n; ++c)
+      trips.emplace_back(r, c, (double)rand() / RAND_MAX + 0.1);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  VectorXd b = VectorXd::Random(m);
+
+  MatrixXd C = MatrixXd::Zero(3, n);
+  C(0, 0) = 1.0;
+  C(1, 0) = 2.0;
+  C(2, 0) = 3.0;
+  VectorXd d(3);
+  d << 3.0, 6.0, 9.0;  // all consistent: 6=2*3, 9=3*3
+
+  EXPECT_NO_THROW(EqualityConstrainedLeastSquares(A, b, C, d));
+}
+
 }  // namespace
 }  // namespace conex
