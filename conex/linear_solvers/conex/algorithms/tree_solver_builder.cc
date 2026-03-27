@@ -188,6 +188,62 @@ EliminationOrdering TreeSolverBuilder::ComputeQuotientAMDOrdering() {
   for (int v : all_var_set)
     if (!emitted.count(v)) { var_order.push_back(v); emitted.insert(v); }
 
+  // --- Step 2b: Dual delay post-processing ---
+  // Push dual variables later in the order if none of their neighbors
+  // (in the variable graph) have been eliminated yet.  This prevents
+  // dual variables from landing in supernodes too early, which creates
+  // zero diagonal blocks in indefinite factorizations.
+  {
+    // Collect dual variable set from equality blocks.
+    std::unordered_set<int> is_dual;
+    for (const auto& pa : pending_) {
+      if (pa.type == ContributionType::kIndefinite) {
+        for (int v : pa.assembler->dual_variables())
+          is_dual.insert(v);
+      }
+    }
+
+    if (!is_dual.empty()) {
+      // Build variable adjacency: var -> set of neighbor vars.
+      // (From the clique structure: all vars in a clique are neighbors.)
+      std::unordered_map<int, std::unordered_set<int>> var_neighbors;
+      for (const auto& ci : cliques_)
+        for (int u : ci.all_vars)
+          for (int v : ci.all_vars)
+            if (u != v) var_neighbors[u].insert(v);
+
+      // Scan var_order; if a dual variable has no earlier neighbor,
+      // defer it by swapping with the next non-dual variable.
+      std::unordered_set<int> already_placed;
+      for (int i = 0; i < static_cast<int>(var_order.size()); ++i) {
+        int v = var_order[i];
+        if (is_dual.count(v)) {
+          // Check if any neighbor is already placed.
+          bool has_earlier_neighbor = false;
+          auto it = var_neighbors.find(v);
+          if (it != var_neighbors.end()) {
+            for (int nb : it->second) {
+              if (already_placed.count(nb)) {
+                has_earlier_neighbor = true;
+                break;
+              }
+            }
+          }
+          if (!has_earlier_neighbor) {
+            // Find next non-dual var to swap with.
+            for (int j = i + 1; j < static_cast<int>(var_order.size()); ++j) {
+              if (!is_dual.count(var_order[j])) {
+                std::swap(var_order[i], var_order[j]);
+                break;
+              }
+            }
+          }
+        }
+        already_placed.insert(var_order[i]);
+      }
+    }
+  }
+
   // --- Step 3: Build variable adjacency graph ---
   // Each clique's all_vars forms a clique in the variable graph.
   const int n = static_cast<int>(var_order.size());
