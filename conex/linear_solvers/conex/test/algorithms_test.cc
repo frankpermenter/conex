@@ -1,4 +1,5 @@
 #include "conex/algorithms/barrier_qp.h"
+#include "conex/algorithms/equality_constrained_least_squares.h"
 #include "conex/algorithms/irls.h"
 
 #include "gtest/gtest.h"
@@ -221,6 +222,194 @@ TEST(BarrierQP, SolverReuse) {
   printf("QP reuse: obj=%.6f, gap=%.2e, %d outer, %d newton, %.0fus\n",
          result.objective, result.duality_gap,
          result.outer_iterations, result.total_newton_steps,
+         result.solve_time_us);
+}
+
+// =====================================================================
+// Equality-constrained least squares tests:
+//   min ||Ax - b||^2  subject to  Cx = d
+// =====================================================================
+
+// Small dense problem with known solution.
+// A = [1 0; 0 1; 1 1], b = [1; 2; 0], C = [1 1], d = [3].
+// Solution: min ||Ax - b||^2 s.t. x1 + x2 = 3.
+// Lagrangian: A^T(Ax - b) + C^T lambda = 0, Cx = d.
+TEST(EqualityConstrainedLS, SmallDense) {
+  const int m = 3, n = 2, p = 1;
+  std::vector<Eigen::Triplet<double>> trips;
+  trips.emplace_back(0, 0, 1.0);
+  trips.emplace_back(1, 1, 1.0);
+  trips.emplace_back(2, 0, 1.0);
+  trips.emplace_back(2, 1, 1.0);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  VectorXd b(m);
+  b << 1, 2, 0;
+
+  MatrixXd C(p, n);
+  C << 1, 1;
+  VectorXd d(p);
+  d << 3;
+
+  auto result = EqualityConstrainedLeastSquares(A, b, C, d);
+
+  // Check constraint satisfaction.
+  double constraint_err = (C * result.x - d).norm();
+  EXPECT_LT(constraint_err, 1e-10) << "Equality constraint violated";
+
+  // Verify against closed-form KKT solution.
+  MatrixXd Ad(A);
+  MatrixXd AtA = Ad.transpose() * Ad;
+  VectorXd Atb = Ad.transpose() * b;
+  // KKT: [AtA C'; C 0] [x; lam] = [Atb; d]
+  MatrixXd KKT = MatrixXd::Zero(n + p, n + p);
+  KKT.topLeftCorner(n, n) = AtA;
+  KKT.topRightCorner(n, p) = C.transpose();
+  KKT.bottomLeftCorner(p, n) = C;
+  VectorXd rhs(n + p);
+  rhs << Atb, d;
+  VectorXd sol = KKT.lu().solve(rhs);
+  VectorXd x_expected = sol.head(n);
+
+  double err = (result.x - x_expected).norm();
+  EXPECT_LT(err, 1e-10) << "Solution does not match KKT reference";
+
+  printf("ECLS small: x=[%.4f, %.4f], constraint_err=%.2e, "
+         "construct=%.0fus, factor=%.0fus, solve=%.0fus\n",
+         result.x(0), result.x(1), constraint_err,
+         result.construction_time_us, result.assemble_and_factor_time_us,
+         result.solve_time_us);
+}
+
+// Larger sparse problem: banded A, random equality constraints.
+TEST(EqualityConstrainedLS, SparseBanded) {
+  srand(42);
+  const int n = 50, m = 80, p = 5;
+
+  // Banded A with bandwidth 3.
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; ++r) {
+    int col_start = (r * n) / m;
+    for (int j = 0; j < 3 && col_start + j < n; ++j) {
+      trips.emplace_back(r, col_start + j, (double)rand() / RAND_MAX + 0.1);
+    }
+  }
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  // Random C: each row touches 4 variables.
+  MatrixXd C = MatrixXd::Zero(p, n);
+  for (int r = 0; r < p; ++r) {
+    for (int j = 0; j < 4; ++j) {
+      C(r, rand() % n) = (double)rand() / RAND_MAX - 0.5;
+    }
+  }
+
+  // Choose x_true satisfying Cx = d, then b = A * x_true + noise.
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd d = C * x_true;
+  VectorXd b = MatrixXd(A) * x_true + 0.01 * VectorXd::Random(m);
+
+  auto result = EqualityConstrainedLeastSquares(A, b, C, d);
+
+  double constraint_err = (C * result.x - d).norm();
+  EXPECT_LT(constraint_err, 1e-8) << "Equality constraint violated";
+
+  // Verify KKT optimality: A^T(Ax - b) + C^T lambda = 0.
+  // We don't have lambda, but we can check that the gradient projected
+  // onto the null space of C is zero.
+  VectorXd grad = A.transpose() * (MatrixXd(A) * result.x - b);
+  // Null-space projector: I - C^T (C C^T)^{-1} C
+  MatrixXd CCt = C * C.transpose();
+  MatrixXd P = MatrixXd::Identity(n, n) - C.transpose() * CCt.lu().solve(C);
+  double projected_grad_norm = (P * grad).norm();
+  EXPECT_LT(projected_grad_norm, 1e-8)
+      << "Projected gradient not zero at solution";
+
+  printf("ECLS sparse: n=%d, m=%d, p=%d, constraint_err=%.2e, "
+         "proj_grad=%.2e, construct=%.0fus, factor=%.0fus, solve=%.0fus\n",
+         n, m, p, constraint_err, projected_grad_norm,
+         result.construction_time_us, result.assemble_and_factor_time_us,
+         result.solve_time_us);
+}
+
+// When the unconstrained solution already satisfies the constraints,
+// the constrained and unconstrained solutions should match.
+TEST(EqualityConstrainedLS, MatchesUnconstrainedWhenFeasible) {
+  srand(123);
+  const int n = 10, m = 20, p = 2;
+
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; ++r)
+    for (int c = 0; c < n; ++c)
+      trips.emplace_back(r, c, (double)rand() / RAND_MAX - 0.5);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  // Solve unconstrained first.
+  MatrixXd Ad(A);
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd b = Ad * x_true;  // Exact fit, so x_true is the LS solution.
+
+  // Constraints satisfied by x_true.
+  MatrixXd C = MatrixXd::Random(p, n);
+  VectorXd d = C * x_true;
+
+  auto result = EqualityConstrainedLeastSquares(A, b, C, d);
+
+  double err = (result.x - x_true).norm() / x_true.norm();
+  EXPECT_LT(err, 1e-8);
+
+  double constraint_err = (C * result.x - d).norm();
+  EXPECT_LT(constraint_err, 1e-10);
+
+  printf("ECLS feasible: err=%.2e, constraint_err=%.2e\n", err, constraint_err);
+}
+
+// Benchmark: larger problem for timing.
+// Uses banded A to ensure every column is touched (avoids singular A^T A).
+TEST(EqualityConstrainedLS, Benchmark) {
+  srand(42);
+  const int n = 500, m = 1000, p = 20;
+  const int bandwidth = 5;
+
+  // Banded A: each row touches a contiguous band of columns.
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; ++r) {
+    int col_start = (r * n) / m;
+    for (int j = 0; j < bandwidth && col_start + j < n; ++j) {
+      trips.emplace_back(r, col_start + j, (double)rand() / RAND_MAX + 0.1);
+    }
+  }
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  // Equality constraints: each row touches a few consecutive variables.
+  MatrixXd C = MatrixXd::Zero(p, n);
+  for (int r = 0; r < p; ++r) {
+    int start = (r * n) / p;
+    for (int j = 0; j < 5 && start + j < n; ++j) {
+      C(r, start + j) = (double)rand() / RAND_MAX - 0.5;
+    }
+  }
+
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd d = C * x_true;
+  VectorXd b = MatrixXd(A) * x_true + 0.01 * VectorXd::Random(m);
+
+  auto result = EqualityConstrainedLeastSquares(A, b, C, d);
+
+  double constraint_err = (C * result.x - d).norm();
+  EXPECT_LT(constraint_err, 1e-6);
+
+  double total_us = result.construction_time_us +
+                    result.assemble_and_factor_time_us +
+                    result.solve_time_us;
+  printf("ECLS benchmark: n=%d, m=%d, p=%d, constraint_err=%.2e, "
+         "total=%.0fus (construct=%.0fus, factor=%.0fus, solve=%.0fus)\n",
+         n, m, p, constraint_err, total_us,
+         result.construction_time_us, result.assemble_and_factor_time_us,
          result.solve_time_us);
 }
 

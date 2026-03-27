@@ -70,6 +70,7 @@ add_library(algorithms
   conex/algorithms/irls.cc
   conex/algorithms/barrier_qp.cc
   conex/algorithms/least_squares.cc
+  conex/algorithms/equality_constrained_least_squares.cc
 )
 target_link_libraries(algorithms PUBLIC sparse_linear_constraint)
 
