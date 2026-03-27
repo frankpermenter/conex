@@ -141,4 +141,19 @@ Eigen::SparseMatrix<double> DropStructurallyDependentColumns(
   return B;
 }
 
+Eigen::SparseMatrix<double> DropStructurallyDependentRows(
+    const Eigen::SparseMatrix<double>& A,
+    std::vector<int>* row_map_out) {
+  // Rows of A are columns of A^T; drop dependent columns of A^T,
+  // then transpose back.
+  Eigen::SparseMatrix<double> At = A.transpose();
+  std::vector<int> col_map;
+  Eigen::SparseMatrix<double> At_reduced =
+      DropStructurallyDependentColumns(At, &col_map);
+  if (row_map_out) *row_map_out = col_map;
+  Eigen::SparseMatrix<double> result = At_reduced.transpose();
+  result.makeCompressed();
+  return result;
+}
+
 }  // namespace conex

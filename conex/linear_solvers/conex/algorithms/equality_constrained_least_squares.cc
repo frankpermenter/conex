@@ -20,7 +20,6 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
   using clock = std::chrono::high_resolution_clock;
   EqualityConstrainedLeastSquaresResult result;
   const int num_vars = A.cols();
-  const int num_eq = C.rows();
 
   auto t0 = clock::now();
 
@@ -38,13 +37,16 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
 
   auto assembler = std::make_unique<SparseLinearConstraintAssembler>(
       std::move(slc), all_vars);
-  cm.AddCustomAssembler(assembler.get());
+  cm.AddCustomAssembler(std::move(assembler));
 
   // Add equality constraints Cx = d.
   std::vector<int> eq_vars(num_vars);
   std::iota(eq_vars.begin(), eq_vars.end(), 0);
   EqualityConstraints eq(C, d);
   cm.AddEqualityConstraint(eq, eq_vars);
+
+  // Preprocess: drop structurally dependent columns and equality rows.
+  cm.Preprocess();
 
   SolverConfiguration config;
   auto tree_solver = MakeTreeSolver(&cm, config);
@@ -56,20 +58,38 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
 
   auto t2 = clock::now();
 
-  // RHS = [A^T b; d].
+  // Build RHS = [A^T b; d_reduced] in the (possibly reduced) system.
+  int num_primal = cm.GetNumberOfVariables();
   int system_size = cm.SizeOfKKTSystem();
   Eigen::VectorXd rhs = Eigen::VectorXd::Zero(system_size);
+
   Eigen::VectorXd atb = A.transpose() * b;
-  rhs.head(num_vars) = atb;
-  for (int i = 0; i < num_eq; ++i) {
-    rhs(num_vars + i) = d(i);
+  if (cm.was_reduced()) {
+    rhs.head(num_primal) = cm.ReduceVector(atb);
+  } else {
+    rhs.head(num_primal) = atb;
+  }
+
+  // Dual part: use the (possibly reduced) equality constraint RHS.
+  int dual_offset = num_primal;
+  for (const auto& eq_data : cm.equality_constraints().data) {
+    int p = eq_data.b_.rows();
+    for (int i = 0; i < p; ++i) {
+      rhs(dual_offset + i) = eq_data.b_(i);
+    }
+    dual_offset += p;
   }
 
   Eigen::VectorXd sol = tree_solver->Solve(rhs);
 
   auto t3 = clock::now();
 
-  result.x = sol.head(num_vars);
+  if (cm.was_reduced()) {
+    result.x = cm.ExpandSolution(sol.head(num_primal));
+  } else {
+    result.x = sol.head(num_vars);
+  }
+
   result.construction_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
   result.assemble_and_factor_time_us =

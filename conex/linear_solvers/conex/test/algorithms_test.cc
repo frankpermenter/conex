@@ -413,5 +413,94 @@ TEST(EqualityConstrainedLS, Benchmark) {
          result.solve_time_us);
 }
 
+// Structurally rank-deficient equality constraints: redundant rows
+// should be removed by Preprocess without affecting the solution.
+// C has 4 rows but only 2 structurally independent ones.
+TEST(EqualityConstrainedLS, RankDeficientEqualities) {
+  const int m = 20, n = 5, p_independent = 2;
+
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; ++r)
+    for (int c = 0; c < n; ++c)
+      trips.emplace_back(r, c, (double)rand() / RAND_MAX + 0.1);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  // Two independent constraints: row 0 touches {0,1}, row 1 touches {2,3}.
+  // Two redundant rows: row 2 same support as row 0, row 3 same as row 1.
+  MatrixXd C = MatrixXd::Zero(4, n);
+  C(0, 0) = 1.0; C(0, 1) = 2.0;           // support {0,1}
+  C(1, 2) = 3.0; C(1, 3) = -1.0;          // support {2,3}
+  C(2, 0) = 0.5; C(2, 1) = -1.0;          // support {0,1} — redundant
+  C(3, 2) = 2.0; C(3, 3) = 1.0;           // support {2,3} — redundant
+
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd d = C * x_true;
+  VectorXd b = MatrixXd(A) * x_true;
+
+  auto result = EqualityConstrainedLeastSquares(A, b, C, d);
+
+  // All 4 constraints should be satisfied (the 2 kept ones imply the
+  // 2 dropped ones since x_true satisfies all of them).
+  double constraint_err = (C * result.x - d).norm();
+  EXPECT_LT(constraint_err, 1e-8)
+      << "Equality constraints violated after rank reduction";
+
+  // Solution should match x_true (exact fit + constraints).
+  double err = (result.x - x_true).norm() / x_true.norm();
+  EXPECT_LT(err, 1e-8);
+
+  printf("ECLS rank-deficient: p_orig=4, p_indep=%d, err=%.2e, "
+         "constraint_err=%.2e\n",
+         p_independent, err, constraint_err);
+}
+
+// Larger problem with many redundant equality rows.
+TEST(EqualityConstrainedLS, RankDeficientLarger) {
+  srand(42);
+  const int n = 50, m = 80;
+  const int p_indep = 5, p_redundant = 10, p_total = p_indep + p_redundant;
+
+  // Banded A.
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; ++r) {
+    int col_start = (r * n) / m;
+    for (int j = 0; j < 3 && col_start + j < n; ++j)
+      trips.emplace_back(r, col_start + j, (double)rand() / RAND_MAX + 0.1);
+  }
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  // Build C: p_indep independent rows, each touching a unique pair of vars.
+  // Then p_redundant rows that duplicate the support of existing rows.
+  MatrixXd C = MatrixXd::Zero(p_total, n);
+  for (int r = 0; r < p_indep; ++r) {
+    int base = r * 2;
+    C(r, base) = (double)rand() / RAND_MAX + 0.5;
+    C(r, base + 1) = (double)rand() / RAND_MAX + 0.5;
+  }
+  for (int r = 0; r < p_redundant; ++r) {
+    // Copy support from an independent row but with different coefficients.
+    int src = r % p_indep;
+    int base = src * 2;
+    C(p_indep + r, base) = (double)rand() / RAND_MAX + 0.5;
+    C(p_indep + r, base + 1) = (double)rand() / RAND_MAX + 0.5;
+  }
+
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd d = C * x_true;
+  VectorXd b = MatrixXd(A) * x_true + 0.01 * VectorXd::Random(m);
+
+  auto result = EqualityConstrainedLeastSquares(A, b, C, d);
+
+  double constraint_err = (C * result.x - d).norm();
+  EXPECT_LT(constraint_err, 1e-8);
+
+  printf("ECLS rank-deficient larger: p_total=%d, p_indep=%d, "
+         "constraint_err=%.2e, construct=%.0fus, factor=%.0fus\n",
+         p_total, p_indep, constraint_err,
+         result.construction_time_us, result.assemble_and_factor_time_us);
+}
+
 }  // namespace
 }  // namespace conex
