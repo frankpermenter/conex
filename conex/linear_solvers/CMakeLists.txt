@@ -196,18 +196,7 @@ if(CMAKE_CUDA_COMPILER)
   )
   gtest_discover_tests(gpu_tree_solver_test)
 
-  add_executable(gpu_benchmark
-    conex/test/gpu_benchmark.cc
-  )
-  target_link_libraries(gpu_benchmark
-    gpu_tree_solver
-    sparse_linear_constraint
-    clique_ordering
-    kkt_solver_factory
-    tree_solver
-  )
-
-  # cuDSS benchmark (optional, requires cuDSS).
+  # GPU benchmark (optional, requires cuDSS).
   find_library(CUDSS_LIB cudss HINTS /usr/lib/x86_64-linux-gnu/libcudss/12)
   if(CUDSS_LIB)
     add_executable(gpu_benchmark_cudss
