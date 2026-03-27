@@ -1,38 +1,38 @@
 # GPU Tree Solver TODOs
 
-## Solve path
-- [x] Gather/scatter kernels for forward solve: separator variables gathered from non-contiguous positions, updated via `cublasDgemm`, and scattered back.
-- [x] Backward solve separator update: `x_sn -= sep^T * x_sep` with gather from non-contiguous separator positions.
+## Current performance (block-arrow, RTX 5000 Ada)
 
-## Factorization performance
-- [x] Batched cuSOLVER for same-size supernodes within a level: `cusolverDnDpotrfBatched`, `cublasDtrsmBatched`, `cublasDgemmBatched`.
-- [ ] Custom shared-memory kernel for small supernodes (sn_size <= 32). Kernel launch overhead dominates for tiny blocks — a single kernel that factors many small blocks in shared memory would be faster.
-- [x] Persistent cuSOLVER workspace: pre-allocated once in Finalize for the largest supernode.
-- [x] Batch info check: factorization success checked once per level instead of per-supernode sync.
-- [ ] Stream concurrency: independent subtrees at the same level could use separate streams for overlap.
+| Problem | GPU tree | cuDSS | cuSOLVER-Sp | CPU |
+|---|---|---|---|---|
+| 100×100 blk-diag n=10k | factor 2.2ms, solve 0.6ms | 0.7+0.2ms | 2.4+1.5ms | 233+0.8ms |
+| 50×100+sep20 arrow n=5k | factor 2.3ms, solve 3.1ms | 0.6+0.2ms | 17+1.5ms | 84+0.6ms |
+| 5×400+sep20 arrow n=2k | factor 5.5ms, solve 2.2ms | 3.0+0.7ms | 13+3.9ms | 74+0.7ms |
+
+## Solve path
+- [x] Gather/scatter kernels for non-contiguous separator variables.
+- [x] Batched trsm (`cublasDtrsmBatched`) for forward/backward solve.
+- [ ] Batched separator gemm: siblings sharing separator positions need a reduction-based approach (atomicAdd gives ~3% error from non-deterministic ordering). Currently sequential gather-gemm-scatter — dominates solve time for block-arrow (3.1ms of 5.4ms total at 50×100+sep20).
+
+## Factorization
+- [x] Batched Cholesky: `cusolverDnDpotrfBatched` + `cublasDtrsmBatched` + `cublasDgemmBatched` for same-size supernodes. 20-56× speedup over sequential.
+- [x] Persistent cuSOLVER workspace, batched info check.
+- [ ] Custom shared-memory Cholesky for small supernodes (sn_size ≤ 32). Kernel launch overhead still significant at this size.
+- [ ] Stream concurrency: independent subtrees could use separate streams.
 
 ## Extend-add
-- [ ] Merge contiguous ScatterOps: currently emits one op per entry pair (block_size=1). Detecting contiguous ranges in the parent and merging into larger block copies would reduce kernel launch overhead and improve coalescing.
-- [ ] Benchmark atomicAdd vs segmented scatter for the case where multiple children write to the same parent.
+- [ ] Merge contiguous ScatterOps: currently one op per entry pair (block_size=1, 16×16 threads to copy one double). Detecting contiguous ranges would reduce kernel launches.
 
 ## Assembly
-- [ ] Device-side assembly path: allow contributors to write directly to device memory, skipping the host staging + H2D copy. Requires extending `SupernodalAssemblerBase` with device pointers.
+- [ ] Device-side assembly: write directly to device memory, skip H2D staging.
 - [ ] Async assembly: overlap H2D copies with factorization of already-assembled levels.
 
-## KKTMatrix
-- [ ] Implement `DoKKTMatrix`: download per-supernode blocks from device and reconstruct the full assembled matrix. Low priority (only used for debugging).
-
 ## Integration
-- [ ] Factory function: `MakeGpuTreeSolver(ConstraintManager*, SolverConfiguration*)` that mirrors `MakeTreeSolver` but returns a `GpuTreeSolver`. Reuses the CPU symbolic analysis (clique ordering, Decompose) then hands off numeric data to the GPU solver.
-- [ ] Threshold heuristic: auto-select GPU vs CPU based on problem size (total supernode volume, number of levels). GPU overhead isn't worth it for small problems.
-- [ ] Test against CPU solver: verify `||x_gpu - x_cpu|| / ||x_cpu|| < tol` on the benchmark MTX matrices.
-
-## Compiler warnings
-- [x] Remove unused variables (`total`, `zero`, `neg_one`) in gpu_tree_solver.cc.
+- [ ] `MakeGpuTreeSolver(ConstraintManager*, SolverConfiguration*)` factory function.
+- [ ] Auto-select GPU vs CPU based on problem size.
+- [ ] Test against CPU solver on SuiteSparse MTX matrices.
 
 ## Build
-- [x] Uses CUDA 12.2 (auto-detected from `/usr/local/cuda-12.2`; C++17 enabled; arch includes Ada/89).
+- [x] CUDA 12.2 with Ada (sm_89). Auto-detects `/usr/local/cuda-12.2`.
 - [x] Gated behind `check_language(CUDA)` — CPU build unaffected.
-- [x] Unit test binary builds (`gpu_tree_solver_test`). Needs GPU to run.
-- [ ] CI with CUDA: add a GPU build job that compiles and runs the GPU solver tests.
-- [ ] Min compute capability: document requirement (>= 6.0 for `atomicAdd(double*)`).
+- [x] Benchmark: `gpu_benchmark_cudss` compares GPU tree vs cuDSS vs cuSOLVER-Sp vs CPU.
+- [ ] CI with CUDA.
