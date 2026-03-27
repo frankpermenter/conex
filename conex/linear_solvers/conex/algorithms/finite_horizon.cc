@@ -19,7 +19,7 @@ int UIndex(int t, int nx, int nu) { return t * (nx + nu) + nx; }
 
 }  // namespace
 
-FiniteHorizonResult SolveFiniteHorizon(
+LQRFromSparseMatricesResult SolveLQRFromSparseMatrices(
     const Eigen::MatrixXd& A,
     const Eigen::MatrixXd& B,
     const Eigen::MatrixXd& Q,
@@ -28,7 +28,7 @@ FiniteHorizonResult SolveFiniteHorizon(
     const Eigen::VectorXd& x0,
     int T) {
   using clock = std::chrono::high_resolution_clock;
-  FiniteHorizonResult result;
+  LQRFromSparseMatricesResult result;
 
   const int nx = A.rows();
   const int nu = B.cols();

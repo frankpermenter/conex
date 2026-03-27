@@ -12,7 +12,7 @@ namespace conex {
 // Uses a sparse quadratic cost assembler (block-diagonal) and a sparse
 // equality constraint assembler (block-banded dynamics) fed into the
 // tree solver.  The resulting KKT system has chain structure.
-struct FiniteHorizonResult {
+struct LQRFromSparseMatricesResult {
   Eigen::MatrixXd x;   // nx x (T+1), state trajectory
   Eigen::MatrixXd u;   // nu x T, control trajectory
   double construction_time_us;
@@ -20,7 +20,7 @@ struct FiniteHorizonResult {
   double solve_time_us;
 };
 
-FiniteHorizonResult SolveFiniteHorizon(
+LQRFromSparseMatricesResult SolveLQRFromSparseMatrices(
     const Eigen::MatrixXd& A,      // nx x nx, dynamics
     const Eigen::MatrixXd& B,      // nx x nu, input matrix
     const Eigen::MatrixXd& Q,      // nx x nx, state cost (PSD)

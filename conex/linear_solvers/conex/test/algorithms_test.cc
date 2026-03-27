@@ -689,7 +689,7 @@ TEST(FiniteHorizon, Benchmark) {
 
   for (int T : {10, 25, 50, 100, 200}) {
     srand(42);
-    auto result = SolveFiniteHorizon(A, B, Q, R, Qf, x0, T);
+    auto result = SolveLQRFromSparseMatrices(A, B, Q, R, Qf, x0, T);
 
     // Verify dynamics.
     double dyn_err = 0;
@@ -887,7 +887,7 @@ TEST(LQRTreeSolver, MatchesFiniteHorizon) {
 
   // Solve via clique-ordering path.
   srand(42);
-  auto ref = SolveFiniteHorizon(A, B, Q, R, Qf, x0, T);
+  auto ref = SolveLQRFromSparseMatrices(A, B, Q, R, Qf, x0, T);
 
   // Solve via direct tree construction.
   LQRTreeSolver lqr(A, B, Q, R, Qf, T);
@@ -917,7 +917,7 @@ TEST(LQRTreeSolver, MatchesFiniteHorizon) {
   EXPECT_LT(max_x_err, 1e-4) << "State trajectory mismatch";
   EXPECT_LT(max_u_err, 1e-4) << "Control trajectory mismatch";
 
-  printf("LQRTreeSolver: T=%d, dynamics_err<1e-10, matches SolveFiniteHorizon\n", T);
+  printf("LQRTreeSolver: T=%d, dynamics_err<1e-10, matches SolveLQRFromSparseMatrices\n", T);
 }
 
 TEST(LQRTreeSolver, Benchmark) {
