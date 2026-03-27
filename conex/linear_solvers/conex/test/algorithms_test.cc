@@ -1380,6 +1380,48 @@ std::vector<ScenarioNode> MakeScenarioTree(int B, int S) {
   return nodes;
 }
 
+// Compute constraint residual for a stochastic problem.
+// Checks dynamics x_i = A x_p + B u_p for all non-root nodes, and
+// initial condition x_0 = x0.  Returns max ||error|| over all constraints.
+// x_off/u_off are the variable offsets in the solution vector.
+double StochasticResidual(
+    const Eigen::Ref<const VectorXd>& sol,
+    const std::vector<ScenarioNode>& tree,
+    const std::vector<int>& x_off,
+    const std::vector<int>& u_off,
+    const MatrixXd& Ad, const MatrixXd& Bd,
+    const VectorXd& x0, int nx, int nu) {
+  int N = static_cast<int>(tree.size());
+  double max_err = 0;
+  // Initial condition.
+  max_err = std::max(max_err, (sol.segment(x_off[0], nx) - x0).norm());
+  // Dynamics.
+  for (int i = 1; i < N; ++i) {
+    int p = tree[i].parent;
+    VectorXd x_i = sol.segment(x_off[i], nx);
+    VectorXd x_p = sol.segment(x_off[p], nx);
+    VectorXd u_p = sol.segment(u_off[p], nu);
+    double err = (x_i - Ad * x_p - Bd * u_p).norm();
+    max_err = std::max(max_err, err);
+  }
+  return max_err;
+}
+
+// Compute full KKT residual: ||[Q*z + C'*lam; C*z - d]|| / (1 + ||rhs||).
+// sol = [z; lam] (full KKT solution), Q is n_primal x n_primal,
+// C is n_eq x n_primal.
+double KKTResidual(const Eigen::Ref<const VectorXd>& sol,
+                   const Eigen::SparseMatrix<double>& Q,
+                   const Eigen::SparseMatrix<double>& C,
+                   const VectorXd& d, int n_primal) {
+  VectorXd z = sol.head(n_primal);
+  VectorXd lam = sol.tail(sol.size() - n_primal);
+  VectorXd r1 = Q * z + C.transpose() * lam;  // primal optimality
+  VectorXd r2 = C * z - d;                     // primal feasibility
+  double rhs_norm = std::max(d.norm(), 1.0);
+  return std::max(r1.norm(), r2.norm()) / rhs_norm;
+}
+
 // Build sparse KKT matrices for the stochastic problem.
 struct SparseStochastic {
   Eigen::SparseMatrix<double> Q_cost;
@@ -1578,11 +1620,10 @@ TEST(StochasticOpt, CompareCustomVsSparse) {
     double custom_us =
         std::chrono::duration<double, std::micro>(tc3 - tc0).count();
 
-    // Verify initial condition.
-    double ic_err_c = 0;
-    for (int j = 0; j < nx; ++j)
-      ic_err_c = std::max(ic_err_c, std::abs(sol_c(x_off[0] + j, 0) - x0(j)));
-    EXPECT_LT(ic_err_c, 1e-4) << "Custom: initial condition at S=" << S;
+    // Verify custom path: dynamics residual.
+    double c_res = StochasticResidual(
+        sol_c.col(0), tree, x_off, u_off, Ad, Bd, x0, nx, nu);
+    EXPECT_LT(c_res, 1e-4) << "Custom: residual at S=" << S;
 
     // --- Sparse matrix path ---
     auto ss = MakeSparseStochastic(tree, Ad, Bd, Q, R, Qf, x0, nx, nu);
@@ -1600,9 +1641,10 @@ TEST(StochasticOpt, CompareCustomVsSparse) {
     double sparse_us =
         std::chrono::duration<double, std::micro>(ts3 - ts0).count();
 
-    // Verify sparse initial condition.
-    double ic_err_s = (sol_s.col(0).head(nx) - x0).norm();
-    EXPECT_LT(ic_err_s, 1e-4) << "Sparse: initial condition at S=" << S;
+    // Verify sparse path: KKT residual.
+    double s_res = KKTResidual(
+        sol_s.col(0), ss.Q_cost, ss.C_eq, ss.d_eq, ss.n_primal);
+    EXPECT_LT(s_res, 1e-4) << "Sparse: residual at S=" << S;
 
     printf("%-7d %6d %7d %12.0f          %12.0f          %7.1fx\n",
            S, N, n_custom, custom_us, sparse_us,
@@ -1734,42 +1776,20 @@ TEST(TreeSolverBuilder, AutoTreeStochastic) {
   for (int j = 0; j < nx; ++j) rhs_a(lam_off[0] + j) = x0(j);
   auto sol_auto = r_auto.solver->Solve(rhs_a);
 
-  // Verify: check ALL dynamics constraints, not just initial condition.
-  double max_dyn_err_e = 0, max_dyn_err_a = 0;
-  for (int i = 1; i < N; ++i) {
-    int p = tree[i].parent;
-    // x_i = A x_p + B u_p
-    VectorXd x_i_e = sol_explicit.col(0).segment(x_off[i], nx);
-    VectorXd x_p_e = sol_explicit.col(0).segment(x_off[p], nx);
-    VectorXd u_p_e = sol_explicit.col(0).segment(u_off[p], nu);
-    double err_e = (x_i_e - Ad * x_p_e - Bd * u_p_e).norm();
-    max_dyn_err_e = std::max(max_dyn_err_e, err_e);
+  // Check residuals using shared functions.
+  double e_res = StochasticResidual(
+      sol_explicit.col(0), tree, x_off, u_off, Ad, Bd, x0, nx, nu);
+  double a_res = StochasticResidual(
+      sol_auto.col(0), tree, x_off, u_off, Ad, Bd, x0, nx, nu);
 
-    VectorXd x_i_a = sol_auto.col(0).segment(x_off[i], nx);
-    VectorXd x_p_a = sol_auto.col(0).segment(x_off[p], nx);
-    VectorXd u_p_a = sol_auto.col(0).segment(u_off[p], nu);
-    double err_a = (x_i_a - Ad * x_p_a - Bd * u_p_a).norm();
-    max_dyn_err_a = std::max(max_dyn_err_a, err_a);
-  }
-
-  double ic_explicit = (sol_explicit.col(0).head(nx) - x0).norm();
-  double ic_auto = (sol_auto.col(0).head(nx) - x0).norm();
-
-  EXPECT_LT(ic_explicit, 1e-10) << "Explicit: initial condition";
-  EXPECT_LT(max_dyn_err_e, 1e-10) << "Explicit: dynamics";
-  // Auto tree uses AMD on the quotient graph, which may produce a
-  // suboptimal elimination order for indefinite KKT systems.  The AMD
-  // can eliminate a "hub" clique too early, placing its cost data in
-  // a separator block rather than a supernode, leading to reduced
-  // accuracy.  The explicit tree avoids this by preserving the natural
-  // problem structure.
-  EXPECT_LT(ic_auto, 1e-4) << "Auto: initial condition";
-  EXPECT_LT(max_dyn_err_a, 1e-4) << "Auto: dynamics";
+  EXPECT_LT(e_res, 1e-10) << "Explicit: constraint residual";
+  // Auto tree: quotient AMD may produce suboptimal ordering for KKT.
+  EXPECT_LT(a_res, 1e-4) << "Auto: constraint residual";
 
   printf("AutoTree Stochastic: S=%d, N=%d\n"
-         "  explicit: ic=%.2e dyn=%.2e\n"
-         "  auto:     ic=%.2e dyn=%.2e\n",
-         S, N, ic_explicit, max_dyn_err_e, ic_auto, max_dyn_err_a);
+         "  explicit: res=%.2e\n"
+         "  auto:     res=%.2e\n",
+         S, N, e_res, a_res);
 }
 
 // =====================================================================
@@ -1980,21 +2000,23 @@ TEST(FillComparison, SolvePerformance) {
     double s_fac = std::chrono::duration<double, std::micro>(tk1 - tk0).count();
     double s_sol = std::chrono::duration<double, std::micro>(tk2 - tk1).count();
 
-    // Check residual: Cx - d for both.
+    // Check constraint residuals using both methods.
     auto sol_q = r_q.solver->Solve(rhs_q);
     auto sol_k = r_k.solver->Solve(rhs_k);
-    double q_ic_err = 0, s_ic_err = 0;
-    for (int j = 0; j < nx; ++j) {
-      q_ic_err = std::max(q_ic_err, std::abs(sol_q(x_off[0] + j, 0) - x0(j)));
-      s_ic_err = std::max(s_ic_err, std::abs(sol_k(0 + j, 0) - x0(j)));
-    }
+
+    // Explicit tree: dynamics check on primal variables.
+    double e_res = StochasticResidual(
+        sol_q.col(0), tree, x_off, u_off, Ad, Bd, x0, nx, nu);
+    // Sparse-matrix path: full KKT residual.
+    double s_res = KKTResidual(
+        sol_k.col(0), ss.Q_cost, ss.C_eq, ss.d_eq, ss.n_primal);
 
     printf("%-3d %-4d %6d  %7.0fus %7.0fus %8lld  %7.0fus %7.0fus %8lld  %7.2fx  %.0e %.0e\n",
            S, B, N,
            e_fac, e_sol, r_q.fill,
            s_fac, s_sol, r_k.fill,
            s_fac / std::max(e_fac, 1.0),
-           q_ic_err, s_ic_err);
+           e_res, s_res);
   }
 }
 
