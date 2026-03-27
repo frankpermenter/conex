@@ -8,6 +8,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/common/equality_constraint.h"
+#include "conex/common/linear_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
 
@@ -36,6 +37,12 @@ class TreeSolverBuilder {
   // vars = variable indices that Q operates on.
   void AddCost(int clique, const Eigen::MatrixXd& Q,
                const std::vector<int>& vars);
+
+  // Add a dense linear constraint A x = b to a clique.
+  // Assembles A'A (positive definite) on vars.
+  void AddLinearConstraint(int clique, const Eigen::MatrixXd& A,
+                           const Eigen::VectorXd& b,
+                           const std::vector<int>& vars);
 
   // Add an indefinite equality constraint block to a clique.
   // Assembles [0, C'; C, 0] on (primal_vars, dual_vars).
@@ -104,6 +111,8 @@ class TreeSolverBuilder {
 
   // Owned assembler storage (std::list for pointer stability).
   std::list<DenseQuadraticTermSubAssembler> cost_assemblers_;
+  std::list<LinearConstraint> linear_assemblers_;
+  std::list<Eigen::VectorXd> workspace_memory_;
   std::list<SupernodalAssemblerEqualities> eq_assemblers_;
 
   // If all parents are -1, compute an elimination tree automatically

@@ -41,6 +41,26 @@ void TreeSolverBuilder::AddCost(int clique, const Eigen::MatrixXd& Q,
       {&cost_assemblers_.back(), clique, ContributionType::kPositiveDefinite});
 }
 
+void TreeSolverBuilder::AddLinearConstraint(
+    int clique, const Eigen::MatrixXd& A, const Eigen::VectorXd& b,
+    const std::vector<int>& vars) {
+  CONEX_DEMAND(clique >= 0 && clique < static_cast<int>(cliques_.size()),
+               "Invalid clique id.");
+  CONEX_DEMAND(A.cols() == static_cast<int>(vars.size()),
+               "A cols must match vars size.");
+  CONEX_DEMAND(A.rows() == b.rows(), "A rows must match b size.");
+  cliques_[clique].all_vars.insert(vars.begin(), vars.end());
+  linear_assemblers_.emplace_back(A, b);
+  auto& lc = linear_assemblers_.back();
+  lc.SetPrimalVariables(vars);
+  // Allocate and initialize workspace (W, temp, etc.).
+  WorkspaceLinear* ws = lc.workspace();
+  workspace_memory_.emplace_back(SizeOf(*ws));
+  Initialize(ws, workspace_memory_.back().data());
+  pending_.push_back(
+      {&lc, clique, ContributionType::kPositiveDefinite});
+}
+
 void TreeSolverBuilder::AddEquality(int clique, const Eigen::MatrixXd& C,
                                     const Eigen::VectorXd& d,
                                     const std::vector<int>& primal_vars,

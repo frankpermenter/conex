@@ -1998,5 +1998,125 @@ TEST(FillComparison, SolvePerformance) {
   }
 }
 
+// =====================================================================
+// PD-only benchmark: chain of least-squares blocks (no dual variables).
+// min Σ_t ||A_t [x_t; x_{t+1}] - b_t||^2
+// This is entirely positive-definite, so auto-tree AMD should work well.
+// =====================================================================
+
+TEST(TreeSolverBuilder, PDChainAutoVsExplicit) {
+  using clock = std::chrono::high_resolution_clock;
+  srand(42);
+
+  const int nx = 6;  // state dimension
+  const int m = 10;  // measurements per timestep
+
+  // Random A coupling consecutive timesteps: A_t is m x 2*nx.
+  MatrixXd A_block = MatrixXd::Random(m, 2 * nx);
+  VectorXd b_block = VectorXd::Random(m);
+
+  printf("\n  PD chain (A'A only): auto-tree AMD vs explicit tree\n");
+  printf("%-6s %7s  %8s %8s %8s  %8s %8s %8s  %8s %6s %6s\n",
+         "T", "n_vars",
+         "auto_bld", "auto_fac", "auto_sol",
+         "expl_bld", "expl_fac", "expl_sol",
+         "fac_rat", "a_res", "e_res");
+  printf("------  -------  -------- -------- --------  "
+         "-------- -------- --------  -------- ------ ------\n");
+
+  for (int T : {10, 25, 50, 100, 200}) {
+    int n_vars = (T + 1) * nx;
+
+    // Variable layout: x_t at [t*nx .. t*nx + nx - 1].
+    auto x_idx = [&](int t) -> std::vector<int> {
+      std::vector<int> v(nx);
+      std::iota(v.begin(), v.end(), t * nx);
+      return v;
+    };
+
+    // Build auto-tree (all parents = -1).
+    auto ta0 = clock::now();
+    TreeSolverBuilder b_auto;
+    std::vector<int> cid_a(T);
+    for (int t = 0; t < T; ++t)
+      cid_a[t] = b_auto.AddClique();
+    for (int t = 0; t < T; ++t) {
+      // A_t [x_t; x_{t+1}] = b_t → vars = {x_t, x_{t+1}}
+      std::vector<int> vars;
+      auto xt = x_idx(t), xt1 = x_idx(t + 1);
+      vars.insert(vars.end(), xt.begin(), xt.end());
+      vars.insert(vars.end(), xt1.begin(), xt1.end());
+      b_auto.AddLinearConstraint(cid_a[t], A_block, b_block, vars);
+    }
+    auto r_auto = b_auto.Build();
+    auto ta1 = clock::now();
+    ASSERT_TRUE(r_auto.solver->AssembleAndFactor());
+    auto ta2 = clock::now();
+    VectorXd rhs_a = VectorXd::Zero(r_auto.num_variables);
+    // RHS = Σ A_t' b_t, scattered into the right positions.
+    for (int t = 0; t < T; ++t) {
+      auto vars_t = x_idx(t);
+      auto vars_t1 = x_idx(t + 1);
+      VectorXd atb = A_block.transpose() * b_block;
+      for (int j = 0; j < nx; ++j) rhs_a(vars_t[j]) += atb(j);
+      for (int j = 0; j < nx; ++j) rhs_a(vars_t1[j]) += atb(nx + j);
+    }
+    auto sol_a = r_auto.solver->Solve(rhs_a);
+    auto ta3 = clock::now();
+
+    // Build explicit tree (chain: 0 → 1 → ... → T-1).
+    auto te0 = clock::now();
+    TreeSolverBuilder b_expl;
+    std::vector<int> cid_e(T);
+    cid_e[T - 1] = b_expl.AddClique();
+    for (int t = T - 2; t >= 0; --t)
+      cid_e[t] = b_expl.AddClique(cid_e[t + 1]);
+    for (int t = 0; t < T; ++t) {
+      std::vector<int> vars;
+      auto xt = x_idx(t), xt1 = x_idx(t + 1);
+      vars.insert(vars.end(), xt.begin(), xt.end());
+      vars.insert(vars.end(), xt1.begin(), xt1.end());
+      b_expl.AddLinearConstraint(cid_e[t], A_block, b_block, vars);
+    }
+    auto r_expl = b_expl.Build();
+    auto te1 = clock::now();
+    ASSERT_TRUE(r_expl.solver->AssembleAndFactor());
+    auto te2 = clock::now();
+    auto sol_e = r_expl.solver->Solve(rhs_a);
+    auto te3 = clock::now();
+
+    // Residual: ||A x - b|| for a representative block.
+    auto check_residual = [&](const auto& sol) {
+      auto xt = x_idx(0), xt1 = x_idx(1);
+      VectorXd xcat(2 * nx);
+      for (int j = 0; j < nx; ++j) xcat(j) = sol(xt[j], 0);
+      for (int j = 0; j < nx; ++j) xcat(nx + j) = sol(xt1[j], 0);
+      return (A_block * xcat - b_block).norm();
+    };
+    double res_a = check_residual(sol_a);
+    double res_e = check_residual(sol_e);
+
+    // Also check solutions match.
+    double max_diff = (sol_a.col(0).head(n_vars) -
+                       sol_e.col(0).head(n_vars)).cwiseAbs().maxCoeff();
+    EXPECT_LT(max_diff, 1e-8)
+        << "Auto and explicit solutions differ at T=" << T;
+
+    double auto_bld = std::chrono::duration<double, std::micro>(ta1 - ta0).count();
+    double auto_fac = std::chrono::duration<double, std::micro>(ta2 - ta1).count();
+    double auto_sol = std::chrono::duration<double, std::micro>(ta3 - ta2).count();
+    double expl_bld = std::chrono::duration<double, std::micro>(te1 - te0).count();
+    double expl_fac = std::chrono::duration<double, std::micro>(te2 - te1).count();
+    double expl_sol = std::chrono::duration<double, std::micro>(te3 - te2).count();
+
+    printf("%-6d %7d  %7.0fus %7.0fus %7.0fus  %7.0fus %7.0fus %7.0fus  %7.2fx  %.0e %.0e\n",
+           T, n_vars,
+           auto_bld, auto_fac, auto_sol,
+           expl_bld, expl_fac, expl_sol,
+           expl_fac / std::max(auto_fac, 1.0),
+           res_a, res_e);
+  }
+}
+
 }  // namespace
 }  // namespace conex
