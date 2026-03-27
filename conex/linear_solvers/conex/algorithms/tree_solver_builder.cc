@@ -51,14 +51,10 @@ void TreeSolverBuilder::AddLinearConstraint(
   CONEX_DEMAND(A.rows() == b.rows(), "A rows must match b size.");
   cliques_[clique].all_vars.insert(vars.begin(), vars.end());
   linear_assemblers_.emplace_back(A, b);
-  auto& lc = linear_assemblers_.back();
-  lc.SetPrimalVariables(vars);
-  // Allocate and initialize workspace (W, temp, etc.).
-  WorkspaceLinear* ws = lc.workspace();
-  workspace_memory_.emplace_back(SizeOf(*ws));
-  Initialize(ws, workspace_memory_.back().data());
+  linear_assemblers_.back().SetPrimalVariables(vars);
+  // Workspace is arena-allocated in Build().
   pending_.push_back(
-      {&lc, clique, ContributionType::kPositiveDefinite});
+      {&linear_assemblers_.back(), clique, ContributionType::kPositiveDefinite});
 }
 
 void TreeSolverBuilder::AddEquality(int clique, const Eigen::MatrixXd& C,
@@ -334,6 +330,22 @@ TreeSolverBuilder::Result TreeSolverBuilder::Build() {
     tree.node_to_parent[i] = cliques_[i].parent;
   }
   tree.post_order_position_to_clique = post_order;
+
+  // Arena-allocate LinearConstraint workspaces.
+  {
+    size_t total = 0;
+    for (auto& lc : linear_assemblers_)
+      total += lc.RequiredArenaBytes();
+    if (total > 0) {
+      workspace_arena_.resize(total / sizeof(double) + 1);
+      double* cursor = workspace_arena_.data();
+      for (auto& lc : linear_assemblers_) {
+        size_t bytes = lc.RequiredArenaBytes();
+        lc.BindArenaMemory(cursor, bytes);
+        cursor += bytes / sizeof(double);
+      }
+    }
+  }
 
   // Build solver.
   auto solver = std::make_unique<SymmetricLinearSystemTreeSolver>();

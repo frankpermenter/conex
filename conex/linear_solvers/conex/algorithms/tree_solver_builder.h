@@ -112,8 +112,10 @@ class TreeSolverBuilder {
   // Owned assembler storage (std::list for pointer stability).
   std::list<DenseQuadraticTermSubAssembler> cost_assemblers_;
   std::list<LinearConstraint> linear_assemblers_;
-  std::list<Eigen::VectorXd> workspace_memory_;
   std::list<SupernodalAssemblerEqualities> eq_assemblers_;
+
+  // Arena memory for LinearConstraint workspaces (allocated in Build).
+  std::vector<double> workspace_arena_;
 
   // If all parents are -1, compute an elimination tree automatically
   // via weighted AMD on the quotient graph of clique intersections.

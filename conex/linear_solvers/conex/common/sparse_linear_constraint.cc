@@ -358,12 +358,10 @@ SparseLinearConstraintAssembler::Decompose(
       row_map_[global] = {constraint_index, local};
     }
 
-    // Allocate persistent workspace memory for this constraint's
-    // WorkspaceLinear (W, r, temp_1, temp_2, weighted_constraints).
-    WorkspaceLinear* ws = constraint->workspace();
-    owned_workspace_memory_.emplace_back(SizeOf(*ws));
-    Eigen::VectorXd& mem = owned_workspace_memory_.back();
-    Initialize(ws, mem.data());
+    // Allocate workspace via ArenaAllocatable interface.
+    size_t bytes = constraint->RequiredArenaBytes();
+    owned_workspace_memory_.emplace_back(bytes / sizeof(double) + 1);
+    constraint->BindArenaMemory(owned_workspace_memory_.back().data(), bytes);
 
     result.push_back(constraint.get());
     owned_constraints_.push_back(std::move(constraint));

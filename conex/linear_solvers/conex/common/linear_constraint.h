@@ -1,4 +1,5 @@
 #pragma once
+#include "conex/common/arena_allocatable.h"
 #include "conex/common/constraint.h"
 #include "conex/common/error_checking_macros.h"
 #include "conex/common/supernodal_assembler_base.h"
@@ -100,7 +101,7 @@ class GramEvaluator : public LazySymmetricMatrix {
   int sn_count_ = 0;
 };
 
-class LinearConstraint : public Constraint {
+class LinearConstraint : public Constraint, public ArenaAllocatable {
  public:
   LinearConstraint(const Eigen::MatrixXd& constraint_matrix,
                    const Eigen::MatrixXd& constraint_affine);
@@ -151,6 +152,16 @@ class LinearConstraint : public Constraint {
       Eigen::Ref<const Eigen::MatrixXd> x_sep) const {
     return gram_evaluator_.ComputeBlockResidual(x_sn, x_sep, constraint_affine_);
   }
+
+  // ArenaAllocatable interface.
+  size_t RequiredArenaBytes() const override {
+    return SizeOf(workspace_) * sizeof(double);
+  }
+  void BindArenaMemory(double* ptr, size_t /*bytes*/) override {
+    Initialize(&workspace_, ptr);
+  }
+
+  bool workspace_bound() const { return workspace_.W.data() != nullptr; }
 
  private:
   Workspace do_get_workspace() override { return Workspace(workspace()); }

@@ -5,6 +5,7 @@
 #include <optional>
 #include <vector>
 
+#include "conex/common/arena_allocatable.h"
 #include "conex/common/debug_macros.h"
 #include "conex/common/error_checking_macros.h"
 #include <Eigen/Dense>
@@ -133,11 +134,10 @@ class DenseKKTSubsystemStorage final : public KKTSubsystemStorage {
   AlignedMatrixMap separator_schur_complement_{nullptr, 0, 0};
 };
 
-class KKTSubsystemBase {
+class KKTSubsystemBase : public ArenaAllocatable {
  public:
   std::vector<int> separators() const { return separators_; }
   std::vector<int> supernodes() const { return supernodes_; }
-  virtual ~KKTSubsystemBase() = default;
   virtual Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() = 0;
   virtual Eigen::Ref<Eigen::MatrixXd> separator_schur_complement() = 0;
   virtual Eigen::Ref<Eigen::MatrixXd> separator_rows() = 0;
@@ -226,8 +226,8 @@ class KKTSubsystemBase {
   virtual std::pair<int, int> supernode_dimensions() const;
 
   virtual void MarkIndefinite() {}
-  virtual size_t RequiredArenaBytes() const { return 0; }
-  virtual void BindArenaMemory(double* /*ptr*/, size_t /*bytes*/) {}
+  size_t RequiredArenaBytes() const override { return 0; }
+  void BindArenaMemory(double* /*ptr*/, size_t /*bytes*/) override {}
 
   // Bind externally-owned memory for solve workspaces.
   // The tree solver calls this to consolidate all workspace allocations.
