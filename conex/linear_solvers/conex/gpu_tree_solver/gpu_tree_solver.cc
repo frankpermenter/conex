@@ -45,6 +45,7 @@ GpuTreeSolver::~GpuTreeSolver() {
   if (d_scatter_ops_) cudaFree(d_scatter_ops_);
   if (d_sep_indices_) cudaFree(d_sep_indices_);
   if (d_gather_buf_) cudaFree(d_gather_buf_);
+  if (d_potrf_work_) cudaFree(d_potrf_work_);
   if (cublas_) cublasDestroy(cublas_);
   if (cusolver_) cusolverDnDestroy(cusolver_);
   if (stream_) cudaStreamDestroy(stream_);
@@ -69,6 +70,8 @@ GpuTreeSolver::GpuTreeSolver(GpuTreeSolver&& o) noexcept
       sep_indices_offsets_(std::move(o.sep_indices_offsets_)),
       d_gather_buf_(o.d_gather_buf_),
       max_sep_size_(o.max_sep_size_),
+      d_potrf_work_(o.d_potrf_work_),
+      potrf_work_size_(o.potrf_work_size_),
       cusolver_(o.cusolver_),
       cublas_(o.cublas_),
       stream_(o.stream_),
@@ -79,6 +82,7 @@ GpuTreeSolver::GpuTreeSolver(GpuTreeSolver&& o) noexcept
   o.d_scatter_ops_ = nullptr;
   o.d_sep_indices_ = nullptr;
   o.d_gather_buf_ = nullptr;
+  o.d_potrf_work_ = nullptr;
   o.cusolver_ = nullptr;
   o.cublas_ = nullptr;
   o.stream_ = nullptr;
@@ -341,6 +345,26 @@ void GpuTreeSolver::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
           "cudaMalloc gather_buf");
   }
 
+  // --- Persistent cuSOLVER workspace (sized for largest supernode) ---
+  int max_sn_size = 0;
+  for (const auto& d : descriptors_)
+    max_sn_size = std::max(max_sn_size, d.sn_size);
+
+  if (d_potrf_work_) cudaFree(d_potrf_work_);
+  d_potrf_work_ = nullptr;
+  potrf_work_size_ = 0;
+  if (max_sn_size > 0) {
+    // Query workspace for the largest supernode.  cuSOLVER workspace
+    // size is monotone in matrix dimension, so this covers all supernodes.
+    int ws = 0;
+    Check(cusolverDnDpotrf_bufferSize(cusolver_, CUBLAS_FILL_MODE_LOWER,
+                                       max_sn_size, nullptr, max_sn_size, &ws),
+          "potrf bufferSize (max)");
+    potrf_work_size_ = ws;
+    Check(cudaMalloc(&d_potrf_work_, ws * sizeof(double)),
+          "cudaMalloc potrf_work");
+  }
+
   // --- Partition ---
   partition_ = DenseBlockPartition(num_vars_);
 }
@@ -394,7 +418,8 @@ void GpuTreeSolver::DoAssemble() {
     }
   }
 
-  Check(cudaStreamSynchronize(stream_), "sync after assemble");
+  // No sync needed — the first FactorLevel call will synchronize
+  // after its operations complete on the same stream.
 }
 
 // --------------------------------------------------------------------------
@@ -414,36 +439,15 @@ bool GpuTreeSolver::FactorLevel(int lev) {
     double* schur = arena_.sep_schur_ptr(d);
     double* temp = arena_.temp_ptr(d);
 
-    // 1. Cholesky factorization of supernode block: sn = L * L^T.
-    int work_size = 0;
-    Check(cusolverDnDpotrf_bufferSize(cusolver_, CUBLAS_FILL_MODE_LOWER,
-                                      d.sn_size, sn, d.sn_size, &work_size),
-          "potrf bufferSize");
-
-    double* d_work = nullptr;
-    Check(cudaMalloc(&d_work, work_size * sizeof(double)), "malloc work");
-
+    // 1. Cholesky factorization (uses persistent workspace).
     Check(cusolverDnDpotrf(cusolver_, CUBLAS_FILL_MODE_LOWER,
                            d.sn_size, sn, d.sn_size,
-                           d_work, work_size, d_info_ + ci),
+                           d_potrf_work_, potrf_work_size_, d_info_ + ci),
           "potrf");
-
-    cudaFree(d_work);
-
-    // Check factorization success.
-    int h_info = 0;
-    Check(cudaMemcpyAsync(&h_info, d_info_ + ci, sizeof(int),
-                          cudaMemcpyDeviceToHost, stream_),
-          "memcpy info");
-    Check(cudaStreamSynchronize(stream_), "sync info");
-    if (h_info != 0) return false;
 
     if (d.sep_size == 0) continue;
 
     // 2. Triangular solve: sep = sep * L^{-T}.
-    //    sep is stored as sep_size x sn_size.
-    //    Solve: X * L^T = sep  =>  X = sep * L^{-T}.
-    //    cuBLAS dtrsm: op(A) * X = B  with side=Right, uplo=Lower, trans=Trans.
     Check(cublasDtrsm(cublas_, CUBLAS_SIDE_RIGHT, CUBLAS_FILL_MODE_LOWER,
                       CUBLAS_OP_T, CUBLAS_DIAG_NON_UNIT,
                       d.sep_size, d.sn_size, &one,
@@ -451,16 +455,13 @@ bool GpuTreeSolver::FactorLevel(int lev) {
                       sep, d.sep_size),
           "trsm");
 
-    // 3. Cache L^{-1} S^T in temp for backward solve.
-    //    temp = L^{-1} * sep^T.  Actually we need sep * L^{-T} which
-    //    is already in sep after step 2.  Copy sep to temp.
+    // 3. Cache sep for backward solve.
     Check(cudaMemcpyAsync(temp, sep,
                           d.sep_size * d.sn_size * sizeof(double),
                           cudaMemcpyDeviceToDevice, stream_),
           "copy temp");
 
     // 4. Schur complement update: schur -= sep * sep^T.
-    //    schur (sep x sep) -= sep (sep x sn) * sep^T (sn x sep).
     Check(cublasDsyrk(cublas_, CUBLAS_FILL_MODE_LOWER, CUBLAS_OP_N,
                       d.sep_size, d.sn_size, &neg_one,
                       sep, d.sep_size, &one,
@@ -474,7 +475,15 @@ bool GpuTreeSolver::FactorLevel(int lev) {
                     scatter_op_counts_[lev], stream_);
   }
 
+  // Sync and batch-check factorization info for all supernodes at this level.
   Check(cudaStreamSynchronize(stream_), "sync level");
+  for (int ci : levels_[lev]) {
+    if (descriptors_[ci].sn_size == 0) continue;
+    int h_info = 0;
+    Check(cudaMemcpy(&h_info, d_info_ + ci, sizeof(int),
+                     cudaMemcpyDeviceToHost), "memcpy info");
+    if (h_info != 0) return false;
+  }
   return true;
 }
 

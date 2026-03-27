@@ -7,7 +7,8 @@
 ## Factorization performance
 - [ ] Batched cuSOLVER for same-size supernodes within a level (`cusolverDnDpotrfBatched`). Currently each supernode is factored with an individual `cusolverDnDpotrf` call.
 - [ ] Custom shared-memory kernel for small supernodes (sn_size <= 32). Kernel launch overhead dominates for tiny blocks — a single kernel that factors many small blocks in shared memory would be faster.
-- [ ] Persistent cuSOLVER workspace: currently allocates/frees `d_work` per supernode per level. Pre-allocate once for the largest supernode.
+- [x] Persistent cuSOLVER workspace: pre-allocated once in Finalize for the largest supernode.
+- [x] Batch info check: factorization success checked once per level instead of per-supernode sync.
 - [ ] Stream concurrency: independent subtrees at the same level could use separate streams for overlap.
 
 ## Extend-add

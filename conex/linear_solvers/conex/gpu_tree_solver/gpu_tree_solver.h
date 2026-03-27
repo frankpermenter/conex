@@ -110,6 +110,10 @@ class GpuTreeSolver : public KKTSolverBase {
   double* d_gather_buf_ = nullptr;     // contiguous buffer for gathered separator entries
   int max_sep_size_ = 0;
 
+  // Persistent cuSOLVER workspace (avoids per-supernode cudaMalloc/cudaFree).
+  double* d_potrf_work_ = nullptr;
+  int potrf_work_size_ = 0;
+
   // CUDA handles (mutable: solve is logically const but uses GPU state).
   mutable cusolverDnContext* cusolver_ = nullptr;
   mutable cublasContext* cublas_ = nullptr;
