@@ -230,47 +230,46 @@ TEST(BarrierQP, SolverReuse) {
 //   min ||Ax - b||^2  subject to  Cx = d
 // =====================================================================
 
+// Helper: build sparse matrix from triplets.
+Eigen::SparseMatrix<double> MakeSparse(
+    int rows, int cols,
+    const std::vector<Eigen::Triplet<double>>& trips) {
+  Eigen::SparseMatrix<double> M(rows, cols);
+  M.setFromTriplets(trips.begin(), trips.end());
+  return M;
+}
+
 // Small dense problem with known solution.
 // A = [1 0; 0 1; 1 1], b = [1; 2; 0], C = [1 1], d = [3].
-// Solution: min ||Ax - b||^2 s.t. x1 + x2 = 3.
-// Lagrangian: A^T(Ax - b) + C^T lambda = 0, Cx = d.
 TEST(EqualityConstrainedLS, SmallDense) {
   const int m = 3, n = 2, p = 1;
-  std::vector<Eigen::Triplet<double>> trips;
-  trips.emplace_back(0, 0, 1.0);
-  trips.emplace_back(1, 1, 1.0);
-  trips.emplace_back(2, 0, 1.0);
-  trips.emplace_back(2, 1, 1.0);
-  Eigen::SparseMatrix<double> A(m, n);
-  A.setFromTriplets(trips.begin(), trips.end());
+  Eigen::SparseMatrix<double> A = MakeSparse(m, n, {
+      {0, 0, 1.0}, {1, 1, 1.0}, {2, 0, 1.0}, {2, 1, 1.0}});
 
   VectorXd b(m);
   b << 1, 2, 0;
 
-  MatrixXd C(p, n);
-  C << 1, 1;
+  Eigen::SparseMatrix<double> C = MakeSparse(p, n, {{0, 0, 1.0}, {0, 1, 1.0}});
   VectorXd d(p);
   d << 3;
 
   auto result = EqualityConstrainedLeastSquares(A, b, C, d);
 
-  // Check constraint satisfaction.
   double constraint_err = (C * result.x - d).norm();
   EXPECT_LT(constraint_err, 1e-10) << "Equality constraint violated";
 
   // Verify against closed-form KKT solution.
+  MatrixXd Cd(C);
   MatrixXd Ad(A);
   MatrixXd AtA = Ad.transpose() * Ad;
   VectorXd Atb = Ad.transpose() * b;
-  // KKT: [AtA C'; C 0] [x; lam] = [Atb; d]
   MatrixXd KKT = MatrixXd::Zero(n + p, n + p);
   KKT.topLeftCorner(n, n) = AtA;
-  KKT.topRightCorner(n, p) = C.transpose();
-  KKT.bottomLeftCorner(p, n) = C;
+  KKT.topRightCorner(n, p) = Cd.transpose();
+  KKT.bottomLeftCorner(p, n) = Cd;
   VectorXd rhs(n + p);
   rhs << Atb, d;
-  VectorXd sol = KKT.lu().solve(rhs);
-  VectorXd x_expected = sol.head(n);
+  VectorXd x_expected = KKT.lu().solve(rhs).head(n);
 
   double err = (result.x - x_expected).norm();
   EXPECT_LT(err, 1e-10) << "Solution does not match KKT reference";
@@ -287,26 +286,21 @@ TEST(EqualityConstrainedLS, SparseBanded) {
   srand(42);
   const int n = 50, m = 80, p = 5;
 
-  // Banded A with bandwidth 3.
   std::vector<Eigen::Triplet<double>> trips;
   for (int r = 0; r < m; ++r) {
     int col_start = (r * n) / m;
-    for (int j = 0; j < 3 && col_start + j < n; ++j) {
+    for (int j = 0; j < 3 && col_start + j < n; ++j)
       trips.emplace_back(r, col_start + j, (double)rand() / RAND_MAX + 0.1);
-    }
   }
-  Eigen::SparseMatrix<double> A(m, n);
-  A.setFromTriplets(trips.begin(), trips.end());
+  Eigen::SparseMatrix<double> A = MakeSparse(m, n, trips);
 
-  // Random C: each row touches 4 variables.
-  MatrixXd C = MatrixXd::Zero(p, n);
-  for (int r = 0; r < p; ++r) {
-    for (int j = 0; j < 4; ++j) {
-      C(r, rand() % n) = (double)rand() / RAND_MAX - 0.5;
-    }
-  }
+  // Random sparse C: each row touches 4 variables.
+  std::vector<Eigen::Triplet<double>> ct;
+  for (int r = 0; r < p; ++r)
+    for (int j = 0; j < 4; ++j)
+      ct.emplace_back(r, rand() % n, (double)rand() / RAND_MAX - 0.5);
+  Eigen::SparseMatrix<double> C = MakeSparse(p, n, ct);
 
-  // Choose x_true satisfying Cx = d, then b = A * x_true + noise.
   VectorXd x_true = VectorXd::Random(n);
   VectorXd d = C * x_true;
   VectorXd b = MatrixXd(A) * x_true + 0.01 * VectorXd::Random(m);
@@ -316,13 +310,11 @@ TEST(EqualityConstrainedLS, SparseBanded) {
   double constraint_err = (C * result.x - d).norm();
   EXPECT_LT(constraint_err, 1e-8) << "Equality constraint violated";
 
-  // Verify KKT optimality: A^T(Ax - b) + C^T lambda = 0.
-  // We don't have lambda, but we can check that the gradient projected
-  // onto the null space of C is zero.
+  // Verify KKT optimality: projected gradient onto null(C) is zero.
   VectorXd grad = A.transpose() * (MatrixXd(A) * result.x - b);
-  // Null-space projector: I - C^T (C C^T)^{-1} C
-  MatrixXd CCt = C * C.transpose();
-  MatrixXd P = MatrixXd::Identity(n, n) - C.transpose() * CCt.lu().solve(C);
+  MatrixXd Cd(C);
+  MatrixXd CCt = Cd * Cd.transpose();
+  MatrixXd P = MatrixXd::Identity(n, n) - Cd.transpose() * CCt.lu().solve(Cd);
   double projected_grad_norm = (P * grad).norm();
   EXPECT_LT(projected_grad_norm, 1e-8)
       << "Projected gradient not zero at solution";
@@ -344,16 +336,14 @@ TEST(EqualityConstrainedLS, MatchesUnconstrainedWhenFeasible) {
   for (int r = 0; r < m; ++r)
     for (int c = 0; c < n; ++c)
       trips.emplace_back(r, c, (double)rand() / RAND_MAX - 0.5);
-  Eigen::SparseMatrix<double> A(m, n);
-  A.setFromTriplets(trips.begin(), trips.end());
+  Eigen::SparseMatrix<double> A = MakeSparse(m, n, trips);
 
-  // Solve unconstrained first.
-  MatrixXd Ad(A);
   VectorXd x_true = VectorXd::Random(n);
-  VectorXd b = Ad * x_true;  // Exact fit, so x_true is the LS solution.
+  VectorXd b = MatrixXd(A) * x_true;
 
-  // Constraints satisfied by x_true.
-  MatrixXd C = MatrixXd::Random(p, n);
+  // Dense C converted to sparse — constraints satisfied by x_true.
+  MatrixXd Cd = MatrixXd::Random(p, n);
+  Eigen::SparseMatrix<double> C = Cd.sparseView();
   VectorXd d = C * x_true;
 
   auto result = EqualityConstrainedLeastSquares(A, b, C, d);
@@ -368,31 +358,26 @@ TEST(EqualityConstrainedLS, MatchesUnconstrainedWhenFeasible) {
 }
 
 // Benchmark: larger problem for timing.
-// Uses banded A to ensure every column is touched (avoids singular A^T A).
 TEST(EqualityConstrainedLS, Benchmark) {
   srand(42);
   const int n = 500, m = 1000, p = 20;
   const int bandwidth = 5;
 
-  // Banded A: each row touches a contiguous band of columns.
   std::vector<Eigen::Triplet<double>> trips;
   for (int r = 0; r < m; ++r) {
     int col_start = (r * n) / m;
-    for (int j = 0; j < bandwidth && col_start + j < n; ++j) {
+    for (int j = 0; j < bandwidth && col_start + j < n; ++j)
       trips.emplace_back(r, col_start + j, (double)rand() / RAND_MAX + 0.1);
-    }
   }
-  Eigen::SparseMatrix<double> A(m, n);
-  A.setFromTriplets(trips.begin(), trips.end());
+  Eigen::SparseMatrix<double> A = MakeSparse(m, n, trips);
 
-  // Equality constraints: each row touches a few consecutive variables.
-  MatrixXd C = MatrixXd::Zero(p, n);
+  std::vector<Eigen::Triplet<double>> ct;
   for (int r = 0; r < p; ++r) {
     int start = (r * n) / p;
-    for (int j = 0; j < 5 && start + j < n; ++j) {
-      C(r, start + j) = (double)rand() / RAND_MAX - 0.5;
-    }
+    for (int j = 0; j < 5 && start + j < n; ++j)
+      ct.emplace_back(r, start + j, (double)rand() / RAND_MAX - 0.5);
   }
+  Eigen::SparseMatrix<double> C = MakeSparse(p, n, ct);
 
   VectorXd x_true = VectorXd::Random(n);
   VectorXd d = C * x_true;
@@ -423,16 +408,15 @@ TEST(EqualityConstrainedLS, RankDeficientEqualities) {
   for (int r = 0; r < m; ++r)
     for (int c = 0; c < n; ++c)
       trips.emplace_back(r, c, (double)rand() / RAND_MAX + 0.1);
-  Eigen::SparseMatrix<double> A(m, n);
-  A.setFromTriplets(trips.begin(), trips.end());
+  Eigen::SparseMatrix<double> A = MakeSparse(m, n, trips);
 
   // Two independent constraints: row 0 touches {0,1}, row 1 touches {2,3}.
   // Two redundant rows: row 2 same support as row 0, row 3 same as row 1.
-  MatrixXd C = MatrixXd::Zero(4, n);
-  C(0, 0) = 1.0; C(0, 1) = 2.0;           // support {0,1}
-  C(1, 2) = 3.0; C(1, 3) = -1.0;          // support {2,3}
-  C(2, 0) = 0.5; C(2, 1) = -1.0;          // support {0,1} — redundant
-  C(3, 2) = 2.0; C(3, 3) = 1.0;           // support {2,3} — redundant
+  Eigen::SparseMatrix<double> C = MakeSparse(4, n, {
+      {0, 0, 1.0}, {0, 1, 2.0},
+      {1, 2, 3.0}, {1, 3, -1.0},
+      {2, 0, 0.5}, {2, 1, -1.0},
+      {3, 2, 2.0}, {3, 3, 1.0}});
 
   VectorXd x_true = VectorXd::Random(n);
   VectorXd d = C * x_true;
@@ -440,13 +424,10 @@ TEST(EqualityConstrainedLS, RankDeficientEqualities) {
 
   auto result = EqualityConstrainedLeastSquares(A, b, C, d);
 
-  // All 4 constraints should be satisfied (the 2 kept ones imply the
-  // 2 dropped ones since x_true satisfies all of them).
   double constraint_err = (C * result.x - d).norm();
   EXPECT_LT(constraint_err, 1e-8)
       << "Equality constraints violated after rank reduction";
 
-  // Solution should match x_true (exact fit + constraints).
   double err = (result.x - x_true).norm() / x_true.norm();
   EXPECT_LT(err, 1e-8);
 
@@ -461,31 +442,29 @@ TEST(EqualityConstrainedLS, RankDeficientLarger) {
   const int n = 50, m = 80;
   const int p_indep = 5, p_redundant = 10, p_total = p_indep + p_redundant;
 
-  // Banded A.
   std::vector<Eigen::Triplet<double>> trips;
   for (int r = 0; r < m; ++r) {
     int col_start = (r * n) / m;
     for (int j = 0; j < 3 && col_start + j < n; ++j)
       trips.emplace_back(r, col_start + j, (double)rand() / RAND_MAX + 0.1);
   }
-  Eigen::SparseMatrix<double> A(m, n);
-  A.setFromTriplets(trips.begin(), trips.end());
+  Eigen::SparseMatrix<double> A = MakeSparse(m, n, trips);
 
-  // Build C: p_indep independent rows, each touching a unique pair of vars.
-  // Then p_redundant rows that duplicate the support of existing rows.
-  MatrixXd C = MatrixXd::Zero(p_total, n);
+  // p_indep independent rows, each touching a unique pair of vars.
+  // p_redundant rows that duplicate the support of existing rows.
+  std::vector<Eigen::Triplet<double>> ct;
   for (int r = 0; r < p_indep; ++r) {
     int base = r * 2;
-    C(r, base) = (double)rand() / RAND_MAX + 0.5;
-    C(r, base + 1) = (double)rand() / RAND_MAX + 0.5;
+    ct.emplace_back(r, base, (double)rand() / RAND_MAX + 0.5);
+    ct.emplace_back(r, base + 1, (double)rand() / RAND_MAX + 0.5);
   }
   for (int r = 0; r < p_redundant; ++r) {
-    // Copy support from an independent row but with different coefficients.
     int src = r % p_indep;
     int base = src * 2;
-    C(p_indep + r, base) = (double)rand() / RAND_MAX + 0.5;
-    C(p_indep + r, base + 1) = (double)rand() / RAND_MAX + 0.5;
+    ct.emplace_back(p_indep + r, base, (double)rand() / RAND_MAX + 0.5);
+    ct.emplace_back(p_indep + r, base + 1, (double)rand() / RAND_MAX + 0.5);
   }
+  Eigen::SparseMatrix<double> C = MakeSparse(p_total, n, ct);
 
   VectorXd x_true = VectorXd::Random(n);
   VectorXd d = C * x_true;
@@ -512,19 +491,15 @@ TEST(EqualityConstrainedLS, InconsistentEqualitiesDetected) {
   for (int r = 0; r < m; ++r)
     for (int c = 0; c < n; ++c)
       trips.emplace_back(r, c, (double)rand() / RAND_MAX + 0.1);
-  Eigen::SparseMatrix<double> A(m, n);
-  A.setFromTriplets(trips.begin(), trips.end());
+  Eigen::SparseMatrix<double> A = MakeSparse(m, n, trips);
 
   VectorXd b = VectorXd::Random(m);
 
-  // 3 rows, all with support {0}: structural rank = 1.
   //   Row 0:  x0 = 3
-  //   Row 1: 2x0 = 6   (consistent: 2*3)
+  //   Row 1: 2x0 = 6   (consistent)
   //   Row 2: 3x0 = 10  (inconsistent: should be 9)
-  MatrixXd C = MatrixXd::Zero(3, n);
-  C(0, 0) = 1.0;
-  C(1, 0) = 2.0;
-  C(2, 0) = 3.0;
+  Eigen::SparseMatrix<double> C = MakeSparse(3, n, {
+      {0, 0, 1.0}, {1, 0, 2.0}, {2, 0, 3.0}});
   VectorXd d(3);
   d << 3.0, 6.0, 10.0;
 
@@ -533,7 +508,6 @@ TEST(EqualityConstrainedLS, InconsistentEqualitiesDetected) {
 }
 
 // Consistent redundant rows should NOT throw.
-// 3 rows all touching {x0}, all consistent multiples.
 TEST(EqualityConstrainedLS, ConsistentProportionalRows) {
   const int m = 10, n = 3;
 
@@ -541,17 +515,14 @@ TEST(EqualityConstrainedLS, ConsistentProportionalRows) {
   for (int r = 0; r < m; ++r)
     for (int c = 0; c < n; ++c)
       trips.emplace_back(r, c, (double)rand() / RAND_MAX + 0.1);
-  Eigen::SparseMatrix<double> A(m, n);
-  A.setFromTriplets(trips.begin(), trips.end());
+  Eigen::SparseMatrix<double> A = MakeSparse(m, n, trips);
 
   VectorXd b = VectorXd::Random(m);
 
-  MatrixXd C = MatrixXd::Zero(3, n);
-  C(0, 0) = 1.0;
-  C(1, 0) = 2.0;
-  C(2, 0) = 3.0;
+  Eigen::SparseMatrix<double> C = MakeSparse(3, n, {
+      {0, 0, 1.0}, {1, 0, 2.0}, {2, 0, 3.0}});
   VectorXd d(3);
-  d << 3.0, 6.0, 9.0;  // all consistent: 6=2*3, 9=3*3
+  d << 3.0, 6.0, 9.0;
 
   EXPECT_NO_THROW(EqualityConstrainedLeastSquares(A, b, C, d));
 }

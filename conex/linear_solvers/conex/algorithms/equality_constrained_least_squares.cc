@@ -15,7 +15,7 @@ namespace conex {
 EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
     const Eigen::SparseMatrix<double>& A,
     const Eigen::VectorXd& b,
-    const Eigen::MatrixXd& C,
+    const Eigen::SparseMatrix<double>& C,
     const Eigen::VectorXd& d) {
   using clock = std::chrono::high_resolution_clock;
   EqualityConstrainedLeastSquaresResult result;
@@ -42,7 +42,8 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
   // Add equality constraints Cx = d.
   std::vector<int> eq_vars(num_vars);
   std::iota(eq_vars.begin(), eq_vars.end(), 0);
-  EqualityConstraints eq(C, d);
+  Eigen::MatrixXd C_dense(C);
+  EqualityConstraints eq(C_dense, d);
   cm.AddEqualityConstraint(eq, eq_vars);
 
   // Preprocess: drop structurally dependent columns and equality rows.

@@ -17,7 +17,7 @@ struct EqualityConstrainedLeastSquaresResult {
 EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
     const Eigen::SparseMatrix<double>& A,  // m x n, least-squares matrix
     const Eigen::VectorXd& b,              // m, target vector
-    const Eigen::MatrixXd& C,              // p x n, equality constraint matrix
+    const Eigen::SparseMatrix<double>& C,  // p x n, equality constraint matrix
     const Eigen::VectorXd& d);             // p, equality constraint RHS
 
 }  // namespace conex
