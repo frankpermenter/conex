@@ -30,7 +30,7 @@
 - [x] Remove unused variables (`total`, `zero`, `neg_one`) in gpu_tree_solver.cc.
 
 ## Build
-- [x] Compiles with CUDA 11.5+ and GCC 11 (host-only files renamed `.cc` to avoid nvcc/GCC 11 `<functional>` incompatibility; only `gpu_extend_add.cu` needs nvcc).
+- [x] Uses CUDA 12.2 (auto-detected from `/usr/local/cuda-12.2`; C++17 enabled; arch includes Ada/89).
 - [x] Gated behind `check_language(CUDA)` — CPU build unaffected.
 - [x] Unit test binary builds (`gpu_tree_solver_test`). Needs GPU to run.
 - [ ] CI with CUDA: add a GPU build job that compiles and runs the GPU solver tests.

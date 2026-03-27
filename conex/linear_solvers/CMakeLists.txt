@@ -153,14 +153,20 @@ target_link_libraries(dense_kkt_solver_test
 )
 
 # --- Optional: GPU tree solver (requires CUDA) ---
+# Prefer CUDA 12 if available (needed for cuDSS, fixes nvcc 11.x + GCC 11 issues).
+find_program(CUDA12_NVCC nvcc PATHS /usr/local/cuda-12.2/bin /usr/local/cuda-12/bin NO_DEFAULT_PATH)
+if(CUDA12_NVCC)
+  set(CMAKE_CUDA_COMPILER ${CUDA12_NVCC} CACHE FILEPATH "CUDA compiler" FORCE)
+endif()
+
 include(CheckLanguage)
 check_language(CUDA)
 if(CMAKE_CUDA_COMPILER)
   enable_language(CUDA)
   find_package(CUDAToolkit REQUIRED)
-  set(CMAKE_CUDA_STANDARD 14)  # nvcc 11.x can't parse GCC 11's <functional> at C++17
+  set(CMAKE_CUDA_STANDARD 17)
   if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR CMAKE_CUDA_ARCHITECTURES STREQUAL "")
-    set(CMAKE_CUDA_ARCHITECTURES "60;70;80" CACHE STRING "CUDA architectures" FORCE)
+    set(CMAKE_CUDA_ARCHITECTURES "60;70;80;89" CACHE STRING "CUDA architectures" FORCE)
   endif()
 
   add_library(gpu_tree_solver
@@ -201,16 +207,14 @@ if(CMAKE_CUDA_COMPILER)
     tree_solver
   )
 
-  # cuDSS benchmark (optional, requires cuDSS + CUDA 12 headers).
+  # cuDSS benchmark (optional, requires cuDSS).
   find_library(CUDSS_LIB cudss HINTS /usr/lib/x86_64-linux-gnu/libcudss/12)
   if(CUDSS_LIB)
     add_executable(gpu_benchmark_cudss
       conex/test/gpu_benchmark_cudss.cc
     )
-    # cuDSS header needs CUDA 12 library_types.h and cuda_runtime.h.
     target_include_directories(gpu_benchmark_cudss PRIVATE
       /usr/include/libcudss/12
-      /usr/local/cuda-12.2/include
     )
     target_link_libraries(gpu_benchmark_cudss
       gpu_tree_solver
@@ -219,7 +223,6 @@ if(CMAKE_CUDA_COMPILER)
       kkt_solver_factory
       tree_solver
       ${CUDSS_LIB}
-      /usr/local/cuda-12.2/lib64/libcudart.so
     )
     message(STATUS "cuDSS found — building gpu_benchmark_cudss")
   else()
