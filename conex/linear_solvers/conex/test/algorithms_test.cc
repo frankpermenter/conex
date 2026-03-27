@@ -1,11 +1,19 @@
 #include "conex/algorithms/barrier_qp.h"
 #include "conex/algorithms/equality_constrained_least_squares.h"
 #include "conex/algorithms/irls.h"
+#include "conex/common/clique_ordering.h"
+#include "conex/common/constraint_manager.h"
+#include "conex/common/sparse_equality_constraint.h"
+#include "conex/common/sparse_linear_constraint.h"
+#include "conex/tree_solver/kkt_solver_factory.h"
 
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+#include <algorithm>
 #include <cstdio>
+#include <numeric>
+#include <set>
 
 namespace conex {
 namespace {
@@ -525,6 +533,114 @@ TEST(EqualityConstrainedLS, ConsistentProportionalRows) {
   d << 3.0, 6.0, 9.0;
 
   EXPECT_NO_THROW(EqualityConstrainedLeastSquares(A, b, C, d));
+}
+
+// Verify that each decomposed equality assembler's dual variables
+// are present in the maximal clique the assembler was assigned to.
+TEST(EqualityConstrainedLS, DualVarsInMaximalCliques) {
+  const int n = 10;
+
+  // C has 3 rows with different supports:
+  //   row 0: cols {0, 1}
+  //   row 1: cols {2, 3, 4}
+  //   row 2: cols {0, 1}  (same support as row 0)
+  Eigen::SparseMatrix<double> C = MakeSparse(3, n, {
+      {0, 0, 1.0}, {0, 1, 2.0},
+      {1, 2, 3.0}, {1, 3, 1.0}, {1, 4, -1.0},
+      {2, 0, 0.5}, {2, 1, -1.0}});
+  VectorXd d(3);
+  d << 1, 2, 3;
+
+  auto sec = std::make_unique<SparseEqualityConstraint>(C, d);
+
+  // Primal variables that C touches.
+  std::set<int> pset;
+  for (const auto& s : sec->row_supports()) pset.insert(s.begin(), s.end());
+  std::vector<int> primal(pset.begin(), pset.end());
+
+  // Dual variables: one per row, starting at n.
+  std::vector<int> dual = {n, n + 1, n + 2};
+
+  auto assembler = std::make_unique<SparseEqualityConstraintAssembler>(
+      std::move(sec), primal, dual);
+
+  // --- Check 1: get_cliques() includes dual vars ---
+  auto cliques = assembler->get_cliques();
+
+  // Support group {0,1} has rows 0,2 → duals {n, n+2}.
+  // Support group {2,3,4} has row 1 → dual {n+1}.
+  bool found_01 = false, found_234 = false;
+  for (const auto& clique : cliques) {
+    std::set<int> cs(clique.begin(), clique.end());
+    if (cs.count(0) && cs.count(1)) {
+      EXPECT_TRUE(cs.count(n)) << "Dual var " << n << " missing from clique";
+      EXPECT_TRUE(cs.count(n + 2))
+          << "Dual var " << n + 2 << " missing from clique";
+      found_01 = true;
+    }
+    if (cs.count(2) && cs.count(3) && cs.count(4)) {
+      EXPECT_TRUE(cs.count(n + 1))
+          << "Dual var " << n + 1 << " missing from clique";
+      found_234 = true;
+    }
+  }
+  EXPECT_TRUE(found_01) << "No clique for support {0,1}";
+  EXPECT_TRUE(found_234) << "No clique for support {2,3,4}";
+
+  // --- Check 2: Build clique tree and verify all dual vars appear ---
+  // Also add SLC cliques (diagonal A) to represent primal structure.
+  std::vector<std::vector<int>> all_cliques = cliques;
+  for (int i = 0; i < n; ++i) all_cliques.push_back({i});
+
+  std::vector<std::vector<int>> maximal_cliques;
+  auto tree = MakeCliqueTreeMinDegreeFromRowSupports(
+      all_cliques, &maximal_cliques, 0, 0, dual);
+
+  // Every dual variable must appear in some maximal clique.
+  std::set<int> all_dual(dual.begin(), dual.end());
+  std::set<int> found_dual;
+  for (const auto& mc : maximal_cliques) {
+    for (int v : mc) {
+      if (all_dual.count(v)) found_dual.insert(v);
+    }
+  }
+  for (int dv : dual) {
+    EXPECT_TRUE(found_dual.count(dv))
+        << "Dual variable " << dv
+        << " not found in any maximal clique";
+  }
+
+  // --- Check 3: Decompose assigns dual vars to per-clique assemblers ---
+  auto sec2 = std::make_unique<SparseEqualityConstraint>(C, d);
+  auto asm2 = std::make_unique<SparseEqualityConstraintAssembler>(
+      std::move(sec2), primal, dual);
+
+  auto decomposed = asm2->Decompose(maximal_cliques);
+
+  // Each decomposed assembler's {primal ∪ dual} must be a subset of
+  // some maximal clique.
+  for (auto* sub : decomposed) {
+    auto vars = sub->variables();  // primal + dual
+    std::set<int> vset(vars.begin(), vars.end());
+
+    bool contained = false;
+    for (const auto& mc : maximal_cliques) {
+      std::set<int> mset(mc.begin(), mc.end());
+      if (std::includes(mset.begin(), mset.end(),
+                        vset.begin(), vset.end())) {
+        contained = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(contained)
+        << "Decomposed assembler variables not contained in any maximal clique";
+  }
+
+  printf("DualVarsInMaximalCliques: %d/%d dual vars in clique tree, "
+         "%d decomposed assemblers all contained\n",
+         static_cast<int>(found_dual.size()),
+         static_cast<int>(dual.size()),
+         static_cast<int>(decomposed.size()));
 }
 
 }  // namespace
