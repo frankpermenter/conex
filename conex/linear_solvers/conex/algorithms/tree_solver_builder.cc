@@ -4,6 +4,7 @@
 #include <functional>
 #include <numeric>
 #include <sstream>
+#include <unordered_set>
 
 #include "conex/common/clique_ordering.h"
 #include "conex/common/clique_tree.h"
@@ -83,6 +84,12 @@ void TreeSolverBuilder::ComputeEliminationTree() {
   elim_order.reserve(C);
   std::vector<int> parent(C, -1);
 
+  // Track original edges (before fill) for parent selection.
+  std::vector<std::unordered_set<int>> original_neighbors(C);
+  for (int i = 0; i < C; ++i)
+    for (auto& [nb, w] : adj[i])
+      original_neighbors[i].insert(nb);
+
   // Maintain working copies of variable sets for fill propagation.
   std::vector<std::set<int>> work_vars(C);
   for (int i = 0; i < C; ++i) work_vars[i] = cliques_[i].all_vars;
@@ -91,13 +98,30 @@ void TreeSolverBuilder::ComputeEliminationTree() {
     // Find clique with minimum weighted degree.
     int best = -1;
     int best_deg = std::numeric_limits<int>::max();
+    int best_exclusive = -1;
     for (int i = 0; i < C; ++i) {
       if (eliminated[i]) continue;
       int deg = 0;
       for (auto& [nb, w] : adj[i])
         if (!eliminated[nb]) deg += w;
-      if (deg < best_deg) {
+      // Count exclusive variables: vars not shared with any neighbor.
+      // Prefer more exclusive vars — these are "local" to this clique
+      // and don't affect other cliques when eliminated.
+      int exclusive = 0;
+      for (int v : work_vars[i]) {
+        bool shared = false;
+        for (auto& [nb, w] : adj[i]) {
+          if (!eliminated[nb] && work_vars[nb].count(v)) {
+            shared = true;
+            break;
+          }
+        }
+        if (!shared) exclusive++;
+      }
+      if (deg < best_deg ||
+          (deg == best_deg && exclusive > best_exclusive)) {
         best_deg = deg;
+        best_exclusive = exclusive;
         best = i;
       }
     }
@@ -110,22 +134,7 @@ void TreeSolverBuilder::ComputeEliminationTree() {
     for (auto& [nb, w] : adj[best])
       if (!eliminated[nb]) nbrs.push_back(nb);
 
-    // Parent = the uneliminated neighbor that will be eliminated next
-    // (lowest future weighted degree). Use current degree as heuristic.
-    if (!nbrs.empty()) {
-      int best_parent = nbrs[0];
-      int best_parent_deg = std::numeric_limits<int>::max();
-      for (int nb : nbrs) {
-        int deg = 0;
-        for (auto& [nn, w] : adj[nb])
-          if (!eliminated[nn]) deg += w;
-        if (deg < best_parent_deg) {
-          best_parent_deg = deg;
-          best_parent = nb;
-        }
-      }
-      parent[best] = best_parent;
-    }
+    // (Parent assignment is done after the full elimination.)
 
     // Separator of best = variables shared with remaining neighbors.
     std::set<int> separator;
@@ -159,6 +168,24 @@ void TreeSolverBuilder::ComputeEliminationTree() {
     }
   }
 
+  // Assign parents using the ORIGINAL graph edges: parent of c is the
+  // original neighbor eliminated soonest after c.  This respects the
+  // problem's coupling structure rather than fill edges.
+  std::vector<int> elim_step(C);
+  for (int s = 0; s < C; ++s) elim_step[elim_order[s]] = s;
+
+  for (int c = 0; c < C; ++c) {
+    int best_parent = -1;
+    int best_step = C;  // later than any valid step
+    for (int nb : original_neighbors[c]) {
+      if (elim_step[nb] > elim_step[c] && elim_step[nb] < best_step) {
+        best_step = elim_step[nb];
+        best_parent = nb;
+      }
+    }
+    parent[c] = best_parent;
+  }
+
   // Handle disconnected components: cliques with parent=-1 after AMD
   // (more than one root). Connect extra roots to the last-eliminated root.
   int last_root = elim_order.back();
@@ -179,11 +206,10 @@ void TreeSolverBuilder::ComputeEliminationTree() {
   }
 
   // Update all_vars from the fill-propagated working sets.
-  // The AMD process propagates separator variables through the tree;
-  // Build() needs these in all_vars to compute separators correctly.
   for (int i = 0; i < C; ++i) {
     cliques_[i].all_vars = work_vars[i];
   }
+
 }
 
 TreeSolverBuilder::Result TreeSolverBuilder::Build() {

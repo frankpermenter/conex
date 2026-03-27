@@ -65,6 +65,13 @@ class TreeSolverBuilder {
   // Off by default (O(V * depth) cost).
   void EnableRIPCheck(bool enable = true) { check_rip_ = enable; }
 
+  // NOTE: Auto-tree mode (all parents = -1) uses weighted AMD on the
+  // quotient graph of clique intersections to compute an elimination tree.
+  // This works well for positive-definite systems but may produce suboptimal
+  // orderings for indefinite KKT systems where the AMD can eliminate "hub"
+  // cliques too early, placing cost data in separator blocks.  For
+  // structured problems (LQR, stochastic opt), prefer the explicit tree.
+
   // Validate and build the tree solver.
   // Computes supernodes/separators, creates adapters, calls Finalize.
   Result Build();
