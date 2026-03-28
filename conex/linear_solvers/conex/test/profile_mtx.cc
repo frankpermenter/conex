@@ -214,13 +214,36 @@ ProfileResult ProfileMatrix(const std::string& name,
   res.assemble_factor_us = af_times[iters / 2];
 
   // --- Stage 6: Solve (repeated, take median) ---
-  // Use the reduced variable count if Preprocess dropped columns.
+  // Build RHS in the reduced space: x_true is random in reduced coords,
+  // rhs = A_reduced' * (A_reduced * x_true) so the system is consistent.
   const int n_solve = cm.GetNumberOfVariables();
-  Eigen::VectorXd x_true_orig = Eigen::VectorXd::Random(num_vars);
-  Eigen::MatrixXd Ad(A);
-  Eigen::VectorXd rhs_orig = Ad.transpose() * (Ad * x_true_orig);
-  Eigen::VectorXd rhs = cm.ReduceVector(rhs_orig);
-  Eigen::VectorXd x_true = cm.ReduceVector(x_true_orig);
+  Eigen::VectorXd x_true = Eigen::VectorXd::Random(n_solve);
+  Eigen::VectorXd rhs = Eigen::VectorXd::Zero(n_solve);
+  // Assemble A'A x_true by using the tree solver's own assembly:
+  // factor once with unit data, then compute rhs = (A'A) x_true.
+  // Simpler: just use the sparse matrix directly in reduced space.
+  {
+    // Build reduced A if columns were dropped.
+    Eigen::SparseMatrix<double> A_solve = A;
+    if (cm.was_reduced()) {
+      const auto& col_map = cm.column_map();
+      std::vector<Eigen::Triplet<double>> trips;
+      for (int k = 0; k < A.outerSize(); ++k)
+        for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it) {
+          // Find new column index.
+          for (int j = 0; j < static_cast<int>(col_map.size()); ++j) {
+            if (col_map[j] == it.col()) {
+              trips.emplace_back(it.row(), j, it.value());
+              break;
+            }
+          }
+        }
+      A_solve.resize(A.rows(), n_solve);
+      A_solve.setFromTriplets(trips.begin(), trips.end());
+    }
+    rhs = Eigen::MatrixXd(A_solve).transpose() *
+          (Eigen::MatrixXd(A_solve) * x_true);
+  }
 
   // Warm up.
   tree_solver->Solve(rhs);
