@@ -601,6 +601,7 @@ void T::BindContributors(const std::vector<int>& adapter_to_clique) {
     contrib.sn_start_ = sn.empty() ? 0 : sn.front();
     contrib.sn_count_ = static_cast<int>(sn.size());
     contrib.sep_indices_ = match->separators();
+    contrib.clique_id_ = adapter_to_clique[ai];
     auto c = std::make_unique<SubmatrixContributor>(std::move(contrib));
     c->set_type(adapter->contribution_type());
     c->PrecomputeLazyOrder(adapter->elimination_positions());

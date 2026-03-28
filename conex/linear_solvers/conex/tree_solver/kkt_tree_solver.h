@@ -164,11 +164,15 @@ class SubmatrixContributor {
   // indefinite, the solver uses LU factorization for that clique.
   void set_type(ContributionType type);
 
+  // Clique (subsystem) index this contributor writes to.
+  int clique_id() const { return clique_id_; }
+
  private:
   friend class SymmetricLinearSystemTreeSolver;
   KKTSubsystemBase* subsystem_ = nullptr;
   int sn_start_ = 0;
   int sn_count_ = 0;
+  int clique_id_ = -1;
   std::vector<int> sep_indices_;
 
   // Cached lazy-order data (computed by PrecomputeLazyOrder).
@@ -179,6 +183,7 @@ class SubmatrixContributor {
     int local_start;
   };
   bool lazy_order_cached_ = false;
+  bool use_two_phase_ = false;
   std::vector<int> cached_perm_;
   std::vector<Run> cached_runs_;
 };
@@ -193,12 +198,91 @@ void SubmatrixContributor::WriteSymmetricLazy(
 
   if (!lazy_order_cached_) {
     PrecomputeLazyOrder(elim_positions);
+
+    // Try two-phase protocol: build BlockContribution list from runs
+    // and offer it to the lazy matrix.
+    auto sn_sub = supernode_submatrix();
+    auto sep_r = separator_rows();
+    auto sep_sc = separator_schur_complement();
+
+    std::vector<BlockContribution> blocks;
+    const int nr = static_cast<int>(cached_runs_.size());
+    for (int ci = 0; ci < nr; ++ci) {
+      const auto& cr = cached_runs_[ci];
+      for (int ri = ci; ri < nr; ++ri) {
+        const auto& rr = cached_runs_[ri];
+        BlockContribution bc;
+        bc.lower_only = (ri == ci);
+
+        if (ri == ci) {
+          bc.q_row = rr.q_start;
+          bc.q_col = rr.q_start;
+          bc.rows = rr.length;
+          bc.cols = rr.length;
+          if (rr.is_sn) {
+            auto blk = sn_sub.block(rr.local_start, rr.local_start,
+                                    rr.length, rr.length);
+            bc.dest = blk.data();
+            bc.dest_ld = sn_sub.outerStride();
+          } else {
+            auto blk = sep_sc.block(rr.local_start, rr.local_start,
+                                    rr.length, rr.length);
+            bc.dest = blk.data();
+            bc.dest_ld = sep_sc.outerStride();
+          }
+        } else if (rr.is_sn && cr.is_sn) {
+          if (rr.local_start > cr.local_start) {
+            bc.q_row = rr.q_start; bc.q_col = cr.q_start;
+            bc.rows = rr.length; bc.cols = cr.length;
+            bc.dest = &sn_sub(rr.local_start, cr.local_start);
+            bc.dest_ld = sn_sub.outerStride();
+          } else {
+            bc.q_row = cr.q_start; bc.q_col = rr.q_start;
+            bc.rows = cr.length; bc.cols = rr.length;
+            bc.dest = &sn_sub(cr.local_start, rr.local_start);
+            bc.dest_ld = sn_sub.outerStride();
+          }
+        } else if (!rr.is_sn && cr.is_sn) {
+          bc.q_row = rr.q_start; bc.q_col = cr.q_start;
+          bc.rows = rr.length; bc.cols = cr.length;
+          bc.dest = &sep_r(rr.local_start, cr.local_start);
+          bc.dest_ld = sep_r.outerStride();
+        } else if (rr.is_sn && !cr.is_sn) {
+          bc.q_row = cr.q_start; bc.q_col = rr.q_start;
+          bc.rows = cr.length; bc.cols = rr.length;
+          bc.dest = &sep_r(cr.local_start, rr.local_start);
+          bc.dest_ld = sep_r.outerStride();
+        } else {
+          if (rr.local_start > cr.local_start) {
+            bc.q_row = rr.q_start; bc.q_col = cr.q_start;
+            bc.rows = rr.length; bc.cols = cr.length;
+            bc.dest = &sep_sc(rr.local_start, cr.local_start);
+            bc.dest_ld = sep_sc.outerStride();
+          } else {
+            bc.q_row = cr.q_start; bc.q_col = rr.q_start;
+            bc.rows = cr.length; bc.cols = rr.length;
+            bc.dest = &sep_sc(cr.local_start, rr.local_start);
+            bc.dest_ld = sep_sc.outerStride();
+          }
+        }
+        blocks.push_back(bc);
+      }
+    }
+
+    use_two_phase_ = lazy.RegisterContributions(
+        clique_id_, cached_perm_, blocks);
   }
 
+  // Assembly: use two-phase if registered, else legacy path.
+  if (use_two_phase_) {
+    lazy.ContributeBlocks(clique_id_);
+    return;
+  }
+
+  // Legacy path.
   lazy.set_order(cached_perm_);
   lazy.set_sn_count(sn_count_);
 
-  // Dispatch blocks into storage using lazy evaluation.
   auto sn_sub = supernode_submatrix();
   auto sep_r = separator_rows();
   auto sep_sc = separator_schur_complement();
