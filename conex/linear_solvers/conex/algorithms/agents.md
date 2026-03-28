@@ -1,141 +1,161 @@
 # Algorithms Guide
 
-This directory contains iterative algorithms built on the solver abstraction.
-The solver is a pure linear algebra layer — algorithms interact through
-`KKTSolverBase` and `ConstraintManager`, not solver internals.
+This directory contains algorithms and solver construction utilities built
+on the tree solver.  There are two paths for building a solver:
+
+1. **Automatic** — `ConstraintManager` + `MakeTreeSolver` discovers the
+   clique tree via AMD on the sparse matrix.
+2. **Custom** — `TreeSolverBuilder` constructs the clique tree directly
+   from a known problem structure (LQR chain, scenario tree, etc.).
 
 ## Available Algorithms
 
-| File | Algorithm | Problem |
-|------|-----------|---------|
-| `least_squares.cc` | Direct solve | `min \|Ax - b\|_2^2` and `(Q + A^T A)x = rhs` |
-| `irls.cc` | IRLS | `min \|Ax - b\|_1` (L1 minimization) |
-| `barrier_qp.cc` | Log-barrier IPM | `min 0.5 x^T Q x + c^T x` s.t. `Ax <= b` |
+| File | Entry Point | Problem |
+|------|-------------|---------|
+| `least_squares.cc` | `SparseLeastSquares` | min ‖Ax - b‖² |
+| `least_squares.cc` | `SparseQuadraticTermLeastSquares` | (Q + A'A)x = rhs |
+| `equality_constrained_least_squares.cc` | `EqualityConstrainedLeastSquares` | min ‖Ax - b‖² s.t. Cx = d |
+| `irls.cc` | `SolveIRLS` | min ‖Ax - b‖₁ (L1 via IRLS) |
+| `barrier_qp.cc` | `SolveBarrierQP` | min 0.5 x'Qx + c'x s.t. Ax ≤ b |
+| `finite_horizon.cc` | `SolveLQRFromSparseMatrices` | LQR via sparse matrices + clique ordering |
+| `lqr_tree_solver.cc` | `LQRTreeSolver` | LQR via direct chain tree construction |
+| `tree_solver_builder.cc` | `TreeSolverBuilder` | Declarative tree solver construction |
 
-## Solver Abstraction
+## Solver Construction Paths
 
-All algorithms use `KKTSolverBase` (not the tree solver directly).
-Two implementations exist:
-
-- **`SymmetricLinearSystemTreeSolver`** — supernodal chordal sparse Cholesky
-- **`DenseKKTSolver`** — dense LLT (reference / small problems)
-- **`GpuTreeSolver`** — GPU version of tree solver (requires CUDA)
-
-## Standard Pattern
+### Path 1: Automatic (ConstraintManager)
 
 ```cpp
-// 1. Register constraints.
 ConstraintManager cm(n);
 cm.AddCustomAssembler(std::make_unique<SparseLinearConstraintAssembler>(...));
 cm.Preprocess();  // drops structurally rank-deficient columns
-
-// 2. Build solver (currently always a tree solver).
 auto solver = MakeTreeSolver(&cm, config);
-
-// 3. Optionally bind partition for fast block-space residuals.
 solver->AssembleAndFactor();
-if (auto* tree = dynamic_cast<SymmetricLinearSystemTreeSolver*>(solver.get()))
-    assembler->BindPartition(*tree);
-
-// 4. Iterative loop.
-assembler->SetWeights(weights);
-solver->AssembleAndFactor();
-Eigen::VectorXd dx = solver->Solve(rhs);
-
-// 5. Expand solution if Preprocess reduced the problem.
-result.x = cm.ExpandSolution(x);
+auto x = solver->Solve(rhs);
+result = cm.ExpandSolution(x);
 ```
+
+### Path 2: Custom (TreeSolverBuilder)
+
+```cpp
+TreeSolverBuilder b;
+int root = b.AddClique();
+int child = b.AddClique(root);
+b.AddCost(child, Q, vars);                        // PD: Q block
+b.AddLinearConstraint(child, A, b, vars);          // PD: A'A block
+b.AddEquality(child, C, d, primal_vars, dual_vars); // indefinite: [0,C';C,0]
+auto result = b.Build();
+result.solver->AssembleAndFactor();
+auto x = result.solver->Solve(rhs);
+```
+
+The builder automatically computes supernodes/separators from the
+parent-child relationships and variable overlap.  If all parents are
+unspecified, it runs weighted AMD on the quotient graph of clique
+intersections to find an elimination tree automatically.
+
+### Path 3: Static convenience
+
+```cpp
+auto result = TreeSolverBuilder::BuildFromSparseMatrices(Q, C, d);
+```
+
+Constructs sparse assemblers and runs variable-level AMD internally.
+
+## Key Classes
+
+### Assemblers (provide data to the tree solver)
+
+| Class | File | Assembles | PD? |
+|-------|------|-----------|-----|
+| `SparseLinearConstraintAssembler` | `sparse_linear_constraint.h` | A'W²A | yes |
+| `SparseQuadraticTermAssembler` | `sparse_quadratic_term.h` | sparse Q | yes |
+| `SparseEqualityConstraintAssembler` | `sparse_equality_constraint.h` | sparse [0,C';C,0] | no |
+| `SupernodalAssemblerEqualities` | `equality_constraint.h` | dense [0,C';C,0] | no |
+| `DenseQuadraticTermSubAssembler` | `sparse_quadratic_term.h` | dense Q block | yes |
+| `LinearConstraint` | `linear_constraint.h` | dense A'W²A | yes |
+
+### Block Assembly Protocol
+
+All assemblers provide a `BlockAssembler` (renamed from `LazySymmetricMatrix`)
+via `GetBlockAssembler()`.  The tree solver uses a two-phase protocol:
+
+1. **Register** (once at Finalize): the `BlockAssembler` receives permutation,
+   block destinations (raw pointers + strides), and precomputes its internal
+   layout.
+2. **Assemble** (each AssembleAndFactor): `ContributeBlocks(clique_id)` writes
+   all blocks using saved destinations.  No per-call block info computation.
+
+Implementations: `GramEvaluator` (A'W²A with deferred weights),
+`EqualityLazyMatrix`, `DenseQuadraticTermLazyEvaluator`, `DensePSDLazyEvaluator`.
+
+### Infrastructure
+
+| Class | File | Purpose |
+|-------|------|---------|
+| `ArenaAllocatable` | `arena_allocatable.h` | Base for arena-allocated workspace |
+| `BlockContribution` | `supernodal_assembler_base.h` | Block dest/size/stride descriptor |
+| `EliminationOrdering` | `clique_ordering.h` | Phase 1 output (order, later sets) |
+
+## Clique Ordering
+
+Split into two phases:
+
+- **Phase 1** (`MakeCliqueTreeMinDegreeFromRowSupports`): bitset AMD on the
+  variable graph.  `delayed_variables` (any variable without PD diagonal
+  contribution) are eliminated after their neighbors.
+- **Phase 2** (`MakeCliqueTreeFromEliminationOrdering`): supernode detection,
+  tree construction, merging, post-order.  Can be called with a user-provided
+  elimination ordering (e.g., from quotient AMD).
 
 ## ConstraintManager::Preprocess
 
-Call after registering all assemblers, before building the solver.
-Checks structural rank of all `SparseLinearConstraintAssembler`s.
-If rank-deficient, drops columns and rebuilds assemblers in reduced space.
+Handles structurally rank-deficient columns (SLC assemblers) and
+structurally redundant equality rows (with consistency checking).
 
 ```cpp
 cm.Preprocess();
-// After Preprocess:
 cm.was_reduced()          // true if columns were dropped
 cm.GetNumberOfVariables() // reduced count
-cm.column_map()           // reduced_col -> original_col
 cm.ExpandSolution(x)      // zero-pads dropped variables
 cm.ReduceVector(v)        // slices to kept variables
 ```
 
-For barrier QP with a Q matrix, reduce Q and c manually:
-```cpp
-cm.Preprocess();
-Eigen::VectorXd c_r = cm.ReduceVector(c);
-// Reduce Q using cm.column_map() ...
-// Add Q assembler AFTER Preprocess with reduced variables.
-```
-
-## Block Partition
-
-Every solver provides a `BlockPartition` via `solver->partition()`.
-This abstracts the per-block decomposition of the solution vector.
-
-```cpp
-solver->ScatterToBlocks(x);     // vector → blocks
-solver->GatherFromBlocks(x);    // blocks → vector
-auto& p = solver->partition();
-p.num_blocks();                  // tree: num supernodes, dense: 1
-p.block(k);                      // Eigen::Ref to block k
-```
-
-## Residuals and Products (Block Space)
-
-After solving, compute residuals without gathering to a global vector:
-
-```cpp
-// A * x (block-space, fast for large dense cliques):
-solver->ScatterToBlocks(x);
-Eigen::VectorXd Ax = assembler->ComputeBlockResiduals(*solver);
-
-// A^T * v (per-clique dense A^T multiply):
-Eigen::VectorXd Atv = assembler->ComputeTransposeProduct(v);
-
-// Q * x (gathers globally, uses sparse Q):
-Eigen::VectorXd Qx = q_assembler->ComputeBlockProduct(*solver);
-```
-
-`ComputeBlockResiduals` takes `const KKTSolverBase&` — works with any solver.
-If `BindPartition` was called (tree solver only), uses the fast path with
-`A_perm_` on contiguous supernode/separator blocks. Otherwise falls back
-to gather + sparse matvec.
-
 ## Dependency Structure
 
 ```
-algorithms/         depends on  common/, tree_solver/ (for MakeTreeSolver)
+algorithms/              depends on common/, tree_solver/
+  least_squares.cc
+  equality_constrained_least_squares.cc
   irls.cc
   barrier_qp.cc
-  least_squares.cc
+  finite_horizon.cc
+  lqr_tree_solver.cc
+  tree_solver_builder.cc
 
-common/             no dependency on tree_solver/
-  constraint_manager.h    ← Preprocess, ExpandSolution, ReduceVector
-  kkt_solver_interface.h  ← KKTSolverBase (abstract)
-  block_partition.h       ← BlockPartition (abstract)
-  sparse_linear_constraint.h ← assemblers, SetWeights, residuals
-  clique_tree.h           ← CliqueTree (data struct, no solver logic)
+common/                  no dependency on tree_solver/
+  constraint_manager.h       Preprocess, ExpandSolution, ReduceVector
+  supernodal_assembler_base.h  BlockAssembler, BlockContribution
+  arena_allocatable.h        ArenaAllocatable base class
+  sparse_linear_constraint.h SparseLinearConstraintAssembler
+  sparse_equality_constraint.h SparseEqualityConstraintAssembler
+  sparse_quadratic_term.h    SparseQuadraticTermAssembler
+  equality_constraint.h      SupernodalAssemblerEqualities
+  linear_constraint.h        LinearConstraint, GramEvaluator
+  clique_ordering.h          EliminationOrdering, Phase 1 + Phase 2
+  structural_rank.h          DropStructurallyDependentColumns/Rows
 
-tree_solver/        implements KKTSolverBase
-  kkt_tree_solver.h  ← SymmetricLinearSystemTreeSolver
-  kkt_solver_factory.h ← MakeTreeSolver
+tree_solver/             implements KKTSolverBase
+  kkt_tree_solver.h      SymmetricLinearSystemTreeSolver
+  kkt_solver_factory.h   MakeTreeSolver
 
-gpu_tree_solver/    implements KKTSolverBase (requires CUDA)
-  gpu_tree_solver.h  ← GpuTreeSolver
+gpu_tree_solver/         implements KKTSolverBase (requires CUDA)
+  gpu_tree_solver.h      GpuTreeSolver
 ```
 
-`common/` has zero imports from `tree_solver/` or `gpu_tree_solver/`.
-Algorithms import `tree_solver/` only for `MakeTreeSolver`.
+## TODOs
 
-## Adding a New Algorithm
-
-1. Create `conex/algorithms/my_algo.h` and `.cc`.
-2. Use `ConstraintManager` + `MakeTreeSolver` to build the solver.
-3. Call `cm.Preprocess()` before building the solver.
-4. Use `SetWeights` + `AssembleAndFactor` + `Solve` loop.
-5. Return `cm.ExpandSolution(x)` if the problem might be rank-deficient.
-6. Add to `CMakeLists.txt` in the `algorithms` library.
-7. Add tests in `conex/test/algorithms_test.cc`.
+- Merge `TreeSolverBuilder` and `ConstraintManager` into a single class.
+- Deduplicate `DensePSDLazyEvaluator` (identical to `DenseQuadraticTermLazyEvaluator`).
+- Remove legacy `add_block`/`add_block_lower` path from `BlockAssembler`
+  (all evaluators now use `RegisterContributions`/`ContributeBlocks`).

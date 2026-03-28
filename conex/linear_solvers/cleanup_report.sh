@@ -301,6 +301,22 @@ echo "**Safe to remove:**"
   fi
 } | awk '{print NR". "$0}'
 
+# Check agents.md lists all algorithm source files.
+AGENTS_MD="conex/algorithms/agents.md"
+MISSING_FROM_DOC=""
+if [ -f "$AGENTS_MD" ]; then
+  for src in conex/algorithms/*.cc; do
+    base=$(basename "$src")
+    if ! grep -q "$base" "$AGENTS_MD" 2>/dev/null; then
+      MISSING_FROM_DOC="${MISSING_FROM_DOC}${base} "
+    fi
+  done
+fi
+if [ -n "$MISSING_FROM_DOC" ]; then
+  echo ""
+  echo "**agents.md out of sync:** missing ${MISSING_FROM_DOC}"
+fi
+
 echo ""
 echo "---"
 echo "Generated: $(date -u '+%Y-%m-%d %H:%M UTC')"
