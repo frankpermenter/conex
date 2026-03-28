@@ -214,9 +214,13 @@ ProfileResult ProfileMatrix(const std::string& name,
   res.assemble_factor_us = af_times[iters / 2];
 
   // --- Stage 6: Solve (repeated, take median) ---
-  Eigen::VectorXd x_true = Eigen::VectorXd::Random(num_vars);
+  // Use the reduced variable count if Preprocess dropped columns.
+  const int n_solve = cm.GetNumberOfVariables();
+  Eigen::VectorXd x_true_orig = Eigen::VectorXd::Random(num_vars);
   Eigen::MatrixXd Ad(A);
-  Eigen::VectorXd rhs = Ad.transpose() * (Ad * x_true);
+  Eigen::VectorXd rhs_orig = Ad.transpose() * (Ad * x_true_orig);
+  Eigen::VectorXd rhs = cm.ReduceVector(rhs_orig);
+  Eigen::VectorXd x_true = cm.ReduceVector(x_true_orig);
 
   // Warm up.
   tree_solver->Solve(rhs);
