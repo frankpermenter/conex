@@ -15,7 +15,7 @@ class Constraint : public SupernodalAssemblerBase {
 
   int number_of_variables() const override { return do_number_of_variables(); }
 
-  virtual LazySymmetricMatrix* GetLazyEvaluator() { return nullptr; }
+  virtual BlockAssembler* GetBlockAssembler() { return nullptr; }
   virtual void set_precompute_gram(bool) {}
 
   bool is_dynamic() const override { return true; }

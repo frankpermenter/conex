@@ -9,7 +9,7 @@
 
 namespace conex {
 
-class GramEvaluator : public LazySymmetricMatrix {
+class GramEvaluator : public BlockAssembler {
  public:
   GramEvaluator() = default;
   void bind(WorkspaceLinear* ws, const Eigen::MatrixXd* A) {
@@ -155,7 +155,7 @@ class LinearConstraint : public Constraint, public ArenaAllocatable {
   WorkspaceLinear* workspace() { return &workspace_; }
 
   int number_of_variables() const override { return constraint_matrix_.cols(); }
-  LazySymmetricMatrix* GetLazyEvaluator() override {
+  BlockAssembler* GetBlockAssembler() override {
     gram_evaluator_.bind(&workspace_, &constraint_matrix_);
     return &gram_evaluator_;
   }

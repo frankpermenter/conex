@@ -149,14 +149,14 @@ class SubmatrixContributor {
 
   // Register: precompute permutation, runs, and block destinations.
   // Called once at Finalize time with elimination positions.
-  // Offers the two-phase protocol to the lazy matrix.
-  template <typename LazyMatrix>
-  void Register(LazyMatrix& lazy, const std::vector<int>& elim_positions);
+  // Offers the two-phase protocol to the block assembler.
+  template <typename BlockAssemblerT>
+  void Register(BlockAssemblerT& lazy, const std::vector<int>& elim_positions);
 
-  // Assemble: write the lazy evaluator's data into subsystem storage.
+  // Assemble: write the block assembler's data into subsystem storage.
   // Called at each AssembleAndFactor with no position arguments.
-  template <typename LazyMatrix>
-  void Assemble(LazyMatrix& lazy);
+  template <typename BlockAssemblerT>
+  void Assemble(BlockAssemblerT& lazy);
 
   // Declare the contribution type.  If any contributor to a subsystem is
   // indefinite, the solver uses LU factorization for that clique.
@@ -180,7 +180,7 @@ class SubmatrixContributor {
     bool is_sn;
     int local_start;
   };
-  bool lazy_order_cached_ = false;
+  bool order_cached_ = false;
   bool use_two_phase_ = false;
   std::vector<int> cached_perm_;
   std::vector<Run> cached_runs_;
@@ -188,9 +188,9 @@ class SubmatrixContributor {
 
 // --- Template implementations ---
 
-template <typename LazyMatrix>
+template <typename BlockAssemblerT>
 void SubmatrixContributor::Register(
-    LazyMatrix& lazy, const std::vector<int>& elim_positions) {
+    BlockAssemblerT& lazy, const std::vector<int>& elim_positions) {
   const int n = static_cast<int>(elim_positions.size());
   CONEX_DEMAND(lazy.rows() == n && lazy.cols() == n,
                "Lazy matrix dimensions must match elim_positions size.");
@@ -265,9 +265,9 @@ void SubmatrixContributor::Register(
       clique_id_, cached_perm_, blocks);
 }
 
-template <typename LazyMatrix>
-void SubmatrixContributor::Assemble(LazyMatrix& lazy) {
-  CONEX_DEMAND(lazy_order_cached_, "Register must be called before Assemble.");
+template <typename BlockAssemblerT>
+void SubmatrixContributor::Assemble(BlockAssemblerT& lazy) {
+  CONEX_DEMAND(order_cached_, "Register must be called before Assemble.");
 
   if (use_two_phase_) {
     lazy.ContributeBlocks(clique_id_);

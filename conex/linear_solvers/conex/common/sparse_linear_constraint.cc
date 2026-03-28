@@ -151,8 +151,8 @@ void SparseLinearConstraintAssembler::SetWeights(
 
   // Update each constraint's Gram evaluator.
   for (auto& c : owned_constraints_) {
-    c->GetLazyEvaluator();  // Ensure evaluator is bound.
-    static_cast<GramEvaluator*>(c->GetLazyEvaluator())->update_weights();
+    c->GetBlockAssembler();  // Ensure evaluator is bound.
+    static_cast<GramEvaluator*>(c->GetBlockAssembler())->update_weights();
   }
 }
 
@@ -198,7 +198,7 @@ void SparseLinearConstraintAssembler::BindPartition(
     const auto& vars = constraint->primal_variables();
 
     auto* evaluator = const_cast<LinearConstraint*>(constraint.get())
-                          ->GetLazyEvaluator();
+                          ->GetBlockAssembler();
     auto* gram = static_cast<GramEvaluator*>(evaluator);
 
     int sn_count = gram->sn_count();

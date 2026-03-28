@@ -829,7 +829,7 @@ void SubmatrixContributor::PrecomputeLazyOrder(
     i += run.length;
   }
 
-  lazy_order_cached_ = true;
+  order_cached_ = true;
 }
 
 

@@ -24,23 +24,23 @@ struct BlockContribution {
 //
 // Two-phase protocol:
 //   1. RegisterContributions(perm, blocks): called once at Finalize.
-//      The lazy matrix saves perm and block destinations, precomputes
+//      The block assembler saves perm and block destinations, precomputes
 //      permuted data and scatter tables.
 //   2. ContributeBlocks(): called at each assembly with no arguments.
 //      Uses the saved info to write all blocks.
 //
 // Legacy protocol (add_block/add_block_lower) is still supported for
 // backward compatibility but should be replaced by the two-phase protocol.
-class LazySymmetricMatrix {
+class BlockAssembler {
  public:
-  virtual ~LazySymmetricMatrix() = default;
+  virtual ~BlockAssembler() = default;
   virtual void set_order(const std::vector<int>& perm) = 0;
 
   // --- Two-phase protocol ---
 
   // Register block contributions for a clique.  Called once at Finalize.
   // clique_id identifies the clique (subsystem index in the tree solver).
-  // The lazy matrix should save perm, blocks, and precompute accordingly.
+  // The block assembler should save perm, blocks, and precompute accordingly.
   // Returns true if the two-phase protocol is supported; if false,
   // the caller falls back to the legacy add_block/add_block_lower path.
   virtual bool RegisterContributions(
@@ -78,7 +78,7 @@ class LazySymmetricMatrix {
 };
 
 // Base class for assemblers that feed data into the tree solver.
-// Subclasses provide a LazySymmetricMatrix via GetLazyEvaluator() so the
+// Subclasses provide a BlockAssembler via GetBlockAssembler() so the
 // tree solver can write blocks directly into subsystem storage.
 class SupernodalAssemblerBase : public IVariableShape {
  public:
@@ -125,7 +125,7 @@ class SupernodalAssemblerBase : public IVariableShape {
     return dual_variables_;
   }
 
-  virtual LazySymmetricMatrix* GetLazyEvaluator() { return nullptr; }
+  virtual BlockAssembler* GetBlockAssembler() { return nullptr; }
   virtual void set_precompute_gram(bool) {}
 
   void SetPrimalVariables(const std::vector<int>& variables) {

@@ -45,20 +45,20 @@ void T::SetEliminationPosition(
 
 void T::RegisterWithLazy() {
   CONEX_DEMAND(contributor_, "Contributor not bound.");
-  auto* lazy = assembler_->GetLazyEvaluator();
-  CONEX_DEMAND(lazy, "Assembler must provide a lazy evaluator.");
-  contributor_->Register(*lazy, variable_index_to_elimination_position_);
+  auto* block_assembler = assembler_->GetBlockAssembler();
+  CONEX_DEMAND(block_assembler, "Assembler must provide a block assembler.");
+  contributor_->Register(*block_assembler, variable_index_to_elimination_position_);
 }
 
 void T::UpdateData() {
   CONEX_DEMAND(contributor_, "Contributor not bound.");
-  auto* lazy = assembler_->GetLazyEvaluator();
-  CONEX_DEMAND(lazy, "Assembler must provide a lazy evaluator.");
+  auto* block_assembler = assembler_->GetBlockAssembler();
+  CONEX_DEMAND(block_assembler, "Assembler must provide a block assembler.");
 
 #if CONEX_ENABLE_TIMER
   auto t0 = std::chrono::high_resolution_clock::now();
 #endif
-  contributor_->Assemble(*lazy);
+  contributor_->Assemble(*block_assembler);
 #if CONEX_ENABLE_TIMER
   auto t1 = std::chrono::high_resolution_clock::now();
   g_write_lazy_us +=

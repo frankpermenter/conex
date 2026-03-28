@@ -43,7 +43,7 @@ class EqualityConstraints : public Constraint {
 };
 
 // Lazy evaluator for the indefinite equality constraint matrix [0 A'; A 0].
-class EqualityLazyMatrix : public LazySymmetricMatrix {
+class EqualityLazyMatrix : public BlockAssembler {
  public:
   EqualityLazyMatrix() = default;
   void bind(const Eigen::MatrixXd* A, int num_primal) {
@@ -142,7 +142,7 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
   bool is_dynamic() const override { return false; }
   bool is_positive_definite() const override { return false; }
 
-  LazySymmetricMatrix* GetLazyEvaluator() override {
+  BlockAssembler* GetBlockAssembler() override {
     lazy_.bind(&A_, static_cast<int>(primal_variables().size()));
     return &lazy_;
   }

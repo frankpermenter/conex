@@ -12,7 +12,7 @@ namespace conex {
 
 // Lazy evaluator for a dense symmetric sub-block of Q.
 // Used for per-clique sub-assemblers after Decompose.
-class DenseQuadraticTermLazyEvaluator : public LazySymmetricMatrix {
+class DenseQuadraticTermLazyEvaluator : public BlockAssembler {
  public:
   void bind(const Eigen::MatrixXd* Q_block) { Q_ = Q_block; }
 
@@ -91,7 +91,7 @@ class DenseQuadraticTermSubAssembler : public SupernodalAssemblerBase {
     evaluator_.bind(&Q_block_);
   }
 
-  LazySymmetricMatrix* GetLazyEvaluator() override { return &evaluator_; }
+  BlockAssembler* GetBlockAssembler() override { return &evaluator_; }
   bool is_positive_definite() const override { return true; }
   bool is_dynamic() const override { return false; }
 
@@ -129,7 +129,7 @@ class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
   }
 
   // Not used directly — Decompose creates sub-assemblers.
-  LazySymmetricMatrix* GetLazyEvaluator() override { return nullptr; }
+  BlockAssembler* GetBlockAssembler() override { return nullptr; }
 
   // Bind partition info for block-space operations (no-op for now).
   void BindPartition(const class KKTSolverBase& solver);

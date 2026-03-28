@@ -16,7 +16,7 @@ namespace conex {
 
 // Lazy evaluator for a dense symmetric sub-block of Q.
 // Used for per-clique sub-assemblers after Decompose.
-class DensePSDLazyEvaluator : public LazySymmetricMatrix {
+class DensePSDLazyEvaluator : public BlockAssembler {
  public:
   void bind(const Eigen::MatrixXd* Q_block) { Q_ = Q_block; }
 
@@ -89,7 +89,7 @@ class DensePSDSubAssembler : public SupernodalAssemblerBase {
     evaluator_.bind(&Q_block_);
   }
 
-  LazySymmetricMatrix* GetLazyEvaluator() override { return &evaluator_; }
+  BlockAssembler* GetBlockAssembler() override { return &evaluator_; }
   bool is_positive_definite() const override { return true; }
   bool is_dynamic() const override { return false; }
 
@@ -124,7 +124,7 @@ class SparsePSDAssembler : public SupernodalAssemblerBase {
   }
 
   // Not used directly — Decompose creates sub-assemblers.
-  LazySymmetricMatrix* GetLazyEvaluator() override { return nullptr; }
+  BlockAssembler* GetBlockAssembler() override { return nullptr; }
 
  private:
   const Eigen::SparseMatrix<double>* Q_sparse_ = nullptr;
