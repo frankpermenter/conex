@@ -43,6 +43,13 @@ void T::SetEliminationPosition(
   }
 }
 
+void T::RegisterWithLazy() {
+  CONEX_DEMAND(contributor_, "Contributor not bound.");
+  auto* lazy = assembler_->GetLazyEvaluator();
+  CONEX_DEMAND(lazy, "Assembler must provide a lazy evaluator.");
+  contributor_->Register(*lazy, variable_index_to_elimination_position_);
+}
+
 void T::UpdateData() {
   CONEX_DEMAND(contributor_, "Contributor not bound.");
   auto* lazy = assembler_->GetLazyEvaluator();
@@ -51,8 +58,7 @@ void T::UpdateData() {
 #if CONEX_ENABLE_TIMER
   auto t0 = std::chrono::high_resolution_clock::now();
 #endif
-  contributor_->WriteSymmetricLazy(
-      *lazy, variable_index_to_elimination_position_);
+  contributor_->Assemble(*lazy);
 #if CONEX_ENABLE_TIMER
   auto t1 = std::chrono::high_resolution_clock::now();
   g_write_lazy_us +=

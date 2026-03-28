@@ -604,8 +604,8 @@ void T::BindContributors(const std::vector<int>& adapter_to_clique) {
     contrib.clique_id_ = adapter_to_clique[ai];
     auto c = std::make_unique<SubmatrixContributor>(std::move(contrib));
     c->set_type(adapter->contribution_type());
-    c->PrecomputeLazyOrder(adapter->elimination_positions());
     adapter->BindContributor(std::move(c));
+    adapter->RegisterWithLazy();
   }
 }
 

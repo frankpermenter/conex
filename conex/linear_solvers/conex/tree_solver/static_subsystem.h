@@ -18,8 +18,9 @@ class KKTAssemblerToSubsystemAdapter {
   void set_contribution_type(ContributionType type);
   ContributionType contribution_type() const;
 
-  // Bind a contributor (called internally by the tree solver).
+  // Bind a contributor and register block info with the lazy evaluator.
   void BindContributor(std::unique_ptr<SubmatrixContributor> contributor);
+  void RegisterWithLazy();
 
   // Original variable indices from the assembler.
   virtual std::vector<int> variables() const { return assembler_->variables(); }

@@ -147,18 +147,16 @@ class SubmatrixContributor {
   // reuse the cached data.
   void PrecomputeLazyOrder(const std::vector<int>& elim_positions);
 
-  // Lazy variant: LazyMatrix must provide:
-  //   void set_order(const std::vector<int>& perm);
-  //   Eigen::MatrixXd block(int row, int col, int rows, int cols) const;
-  //   int rows() const;
-  //   int cols() const;
-  // set_order is called once (at precompute time or on first call) with a
-  // permutation that reorders the lazy matrix's indices to maximize
-  // contiguous block writes (supernodes first, then separators, each
-  // sorted by local elimination index).
+  // Register: precompute permutation, runs, and block destinations.
+  // Called once at Finalize time with elimination positions.
+  // Offers the two-phase protocol to the lazy matrix.
   template <typename LazyMatrix>
-  void WriteSymmetricLazy(LazyMatrix& lazy,
-                          const std::vector<int>& elim_positions);
+  void Register(LazyMatrix& lazy, const std::vector<int>& elim_positions);
+
+  // Assemble: write the lazy evaluator's data into subsystem storage.
+  // Called at each AssembleAndFactor with no position arguments.
+  template <typename LazyMatrix>
+  void Assemble(LazyMatrix& lazy);
 
   // Declare the contribution type.  If any contributor to a subsystem is
   // indefinite, the solver uses LU factorization for that clique.
@@ -188,98 +186,94 @@ class SubmatrixContributor {
   std::vector<Run> cached_runs_;
 };
 
-// --- Template implementation of WriteSymmetricLazy ---
+// --- Template implementations ---
+
 template <typename LazyMatrix>
-void SubmatrixContributor::WriteSymmetricLazy(
+void SubmatrixContributor::Register(
     LazyMatrix& lazy, const std::vector<int>& elim_positions) {
   const int n = static_cast<int>(elim_positions.size());
   CONEX_DEMAND(lazy.rows() == n && lazy.cols() == n,
                "Lazy matrix dimensions must match elim_positions size.");
 
-  if (!lazy_order_cached_) {
-    PrecomputeLazyOrder(elim_positions);
+  PrecomputeLazyOrder(elim_positions);
 
-    // Try two-phase protocol: build BlockContribution list from runs
-    // and offer it to the lazy matrix.
-    auto sn_sub = supernode_submatrix();
-    auto sep_r = separator_rows();
-    auto sep_sc = separator_schur_complement();
+  // Build BlockContribution list from cached runs.
+  auto sn_sub = supernode_submatrix();
+  auto sep_r = separator_rows();
+  auto sep_sc = separator_schur_complement();
 
-    std::vector<BlockContribution> blocks;
-    const int nr = static_cast<int>(cached_runs_.size());
-    for (int ci = 0; ci < nr; ++ci) {
-      const auto& cr = cached_runs_[ci];
-      for (int ri = ci; ri < nr; ++ri) {
-        const auto& rr = cached_runs_[ri];
-        BlockContribution bc;
-        bc.lower_only = (ri == ci);
+  std::vector<BlockContribution> blocks;
+  const int nr = static_cast<int>(cached_runs_.size());
+  for (int ci = 0; ci < nr; ++ci) {
+    const auto& cr = cached_runs_[ci];
+    for (int ri = ci; ri < nr; ++ri) {
+      const auto& rr = cached_runs_[ri];
+      BlockContribution bc;
+      bc.lower_only = (ri == ci);
 
-        if (ri == ci) {
-          bc.q_row = rr.q_start;
-          bc.q_col = rr.q_start;
-          bc.rows = rr.length;
-          bc.cols = rr.length;
-          if (rr.is_sn) {
-            auto blk = sn_sub.block(rr.local_start, rr.local_start,
-                                    rr.length, rr.length);
-            bc.dest = blk.data();
-            bc.dest_ld = sn_sub.outerStride();
-          } else {
-            auto blk = sep_sc.block(rr.local_start, rr.local_start,
-                                    rr.length, rr.length);
-            bc.dest = blk.data();
-            bc.dest_ld = sep_sc.outerStride();
-          }
-        } else if (rr.is_sn && cr.is_sn) {
-          if (rr.local_start > cr.local_start) {
-            bc.q_row = rr.q_start; bc.q_col = cr.q_start;
-            bc.rows = rr.length; bc.cols = cr.length;
-            bc.dest = &sn_sub(rr.local_start, cr.local_start);
-            bc.dest_ld = sn_sub.outerStride();
-          } else {
-            bc.q_row = cr.q_start; bc.q_col = rr.q_start;
-            bc.rows = cr.length; bc.cols = rr.length;
-            bc.dest = &sn_sub(cr.local_start, rr.local_start);
-            bc.dest_ld = sn_sub.outerStride();
-          }
-        } else if (!rr.is_sn && cr.is_sn) {
+      if (ri == ci) {
+        bc.q_row = rr.q_start;
+        bc.q_col = rr.q_start;
+        bc.rows = rr.length;
+        bc.cols = rr.length;
+        if (rr.is_sn) {
+          bc.dest = &sn_sub(rr.local_start, rr.local_start);
+          bc.dest_ld = sn_sub.outerStride();
+        } else {
+          bc.dest = &sep_sc(rr.local_start, rr.local_start);
+          bc.dest_ld = sep_sc.outerStride();
+        }
+      } else if (rr.is_sn && cr.is_sn) {
+        if (rr.local_start > cr.local_start) {
           bc.q_row = rr.q_start; bc.q_col = cr.q_start;
           bc.rows = rr.length; bc.cols = cr.length;
-          bc.dest = &sep_r(rr.local_start, cr.local_start);
-          bc.dest_ld = sep_r.outerStride();
-        } else if (rr.is_sn && !cr.is_sn) {
+          bc.dest = &sn_sub(rr.local_start, cr.local_start);
+        } else {
           bc.q_row = cr.q_start; bc.q_col = rr.q_start;
           bc.rows = cr.length; bc.cols = rr.length;
-          bc.dest = &sep_r(cr.local_start, rr.local_start);
-          bc.dest_ld = sep_r.outerStride();
-        } else {
-          if (rr.local_start > cr.local_start) {
-            bc.q_row = rr.q_start; bc.q_col = cr.q_start;
-            bc.rows = rr.length; bc.cols = cr.length;
-            bc.dest = &sep_sc(rr.local_start, cr.local_start);
-            bc.dest_ld = sep_sc.outerStride();
-          } else {
-            bc.q_row = cr.q_start; bc.q_col = rr.q_start;
-            bc.rows = cr.length; bc.cols = rr.length;
-            bc.dest = &sep_sc(cr.local_start, rr.local_start);
-            bc.dest_ld = sep_sc.outerStride();
-          }
+          bc.dest = &sn_sub(cr.local_start, rr.local_start);
         }
-        blocks.push_back(bc);
+        bc.dest_ld = sn_sub.outerStride();
+      } else if (!rr.is_sn && cr.is_sn) {
+        bc.q_row = rr.q_start; bc.q_col = cr.q_start;
+        bc.rows = rr.length; bc.cols = cr.length;
+        bc.dest = &sep_r(rr.local_start, cr.local_start);
+        bc.dest_ld = sep_r.outerStride();
+      } else if (rr.is_sn && !cr.is_sn) {
+        bc.q_row = cr.q_start; bc.q_col = rr.q_start;
+        bc.rows = cr.length; bc.cols = rr.length;
+        bc.dest = &sep_r(cr.local_start, rr.local_start);
+        bc.dest_ld = sep_r.outerStride();
+      } else {
+        if (rr.local_start > cr.local_start) {
+          bc.q_row = rr.q_start; bc.q_col = cr.q_start;
+          bc.rows = rr.length; bc.cols = cr.length;
+          bc.dest = &sep_sc(rr.local_start, cr.local_start);
+        } else {
+          bc.q_row = cr.q_start; bc.q_col = rr.q_start;
+          bc.rows = cr.length; bc.cols = rr.length;
+          bc.dest = &sep_sc(cr.local_start, rr.local_start);
+        }
+        bc.dest_ld = sep_sc.outerStride();
       }
+      blocks.push_back(bc);
     }
-
-    use_two_phase_ = lazy.RegisterContributions(
-        clique_id_, cached_perm_, blocks);
   }
 
-  // Assembly: use two-phase if registered, else legacy path.
+  use_two_phase_ = lazy.RegisterContributions(
+      clique_id_, cached_perm_, blocks);
+}
+
+template <typename LazyMatrix>
+void SubmatrixContributor::Assemble(LazyMatrix& lazy) {
+  CONEX_DEMAND(lazy_order_cached_, "Register must be called before Assemble.");
+
   if (use_two_phase_) {
     lazy.ContributeBlocks(clique_id_);
     return;
   }
 
-  // Legacy path.
+  // Legacy fallback.
   lazy.set_order(cached_perm_);
   lazy.set_sn_count(sn_count_);
 

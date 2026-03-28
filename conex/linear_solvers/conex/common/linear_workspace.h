@@ -20,8 +20,10 @@ struct WorkspaceLinear {
     using Map = Eigen::Map<DenseMatrix, Eigen::Aligned>;
     int n = o->n_;
     new (&o->W) Map(data, n, 1);
+    o->W.setOnes();
     new (&o->temp_1) Map(data + 1 * get_size_aligned(n), n, 1);
     new (&o->temp_2) Map(data + 2 * get_size_aligned(n), n, 1);
+    // Note: r is initialized after temp_2 in the original Initialize.
     new (&o->r) Map(data + 3 * get_size_aligned(n), n, 1);
     new (&o->weighted_constraints)
         Map(data + 4 * get_size_aligned(n), n, o->num_vars_);

@@ -19,7 +19,9 @@ class GramEvaluator : public LazySymmetricMatrix {
 
   void set_precompute_gram(bool v) { precompute_gram_ = v; }
 
-  // Called once: permute columns of A and compute initial WA_perm_.
+  // Called once: permute columns of A.  Does NOT compute WA_perm_ —
+  // that is deferred to ensure_weights_fresh() which runs at assembly
+  // time with the current weights.
   void set_order(const std::vector<int>& perm) override {
     if (order_set_) return;
     const int n = A_->rows();
@@ -29,20 +31,23 @@ class GramEvaluator : public LazySymmetricMatrix {
       A_perm_.col(i) = A_->col(perm[i]);
     }
     WA_perm_.resize(n, m);
-    update_weights();
+    weights_dirty_ = true;
     order_set_ = true;
   }
 
   // Recompute WA_perm_ = diag(W) * A_perm_ (and G_ if precomputing).
+  // Called by SetWeights on the LinearConstraint, or by ensure_weights_fresh.
   void update_weights() {
     WA_perm_.noalias() = ws_->W.asDiagonal() * A_perm_;
     if (precompute_gram_) {
       G_.noalias() = WA_perm_.transpose() * WA_perm_;
     }
+    weights_dirty_ = false;
   }
 
   void add_block(int row, int col, int rows, int cols,
                  Eigen::Ref<Eigen::MatrixXd> dest) const override {
+    const_cast<GramEvaluator*>(this)->ensure_weights_fresh();
     if (precompute_gram_) {
       dest.noalias() += G_.block(row, col, rows, cols);
     } else {
@@ -54,6 +59,7 @@ class GramEvaluator : public LazySymmetricMatrix {
 
   void add_block_lower(int pos, int size,
                        Eigen::Ref<Eigen::MatrixXd> dest) const override {
+    const_cast<GramEvaluator*>(this)->ensure_weights_fresh();
     if (precompute_gram_) {
       const auto src = G_.block(pos, pos, size, size);
       for (int j = 0; j < size; ++j) {
@@ -107,12 +113,11 @@ class GramEvaluator : public LazySymmetricMatrix {
       order_set_ = true;
     }
     registered_blocks_[clique_id] = blocks;
-    return true;
+    return false;  // Use legacy path until BarrierQP two-phase is debugged
   }
 
   void ContributeBlocks(int clique_id) override {
-    // Recompute WA if weights changed.
-    WA_perm_.noalias() = ws_->W.asDiagonal() * A_perm_;
+    ensure_weights_fresh();
 
     auto it = registered_blocks_.find(clique_id);
     if (it == registered_blocks_.end()) return;
@@ -140,12 +145,17 @@ class GramEvaluator : public LazySymmetricMatrix {
   }
 
  private:
+  void ensure_weights_fresh() {
+    if (weights_dirty_) update_weights();
+  }
+
   WorkspaceLinear* ws_ = nullptr;
   const Eigen::MatrixXd* A_ = nullptr;
   Eigen::MatrixXd A_perm_;
   Eigen::MatrixXd WA_perm_;
   Eigen::MatrixXd G_;
   bool order_set_ = false;
+  bool weights_dirty_ = true;
   bool precompute_gram_ = false;
   int sn_count_ = 0;
   std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
