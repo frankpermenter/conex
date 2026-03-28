@@ -96,6 +96,7 @@ struct ProfileResult {
   double solve_us;             // Solve (median of repeats)
   double total_setup_us;       // row_support + clique_tree + decompose + finalize
   double residual;
+  double cond_AtA = 0;         // condition number of A'A (reduced)
 };
 
 ContributionType ClassifyCliqueContribution(
@@ -240,8 +241,15 @@ ProfileResult ProfileMatrix(const std::string& name,
       A_solve.resize(A.rows(), n_solve);
       A_solve.setFromTriplets(trips.begin(), trips.end());
     }
-    rhs = Eigen::MatrixXd(A_solve).transpose() *
-          (Eigen::MatrixXd(A_solve) * x_true);
+    Eigen::MatrixXd Ad_solve(A_solve);
+    rhs = Ad_solve.transpose() * (Ad_solve * x_true);
+
+    // Condition number of A'A via SVD of A.
+    Eigen::JacobiSVD<Eigen::MatrixXd> svd(Ad_solve);
+    auto sv = svd.singularValues();
+    res.cond_AtA = (sv(sv.size() - 1) > 0)
+        ? (sv(0) / sv(sv.size() - 1)) * (sv(0) / sv(sv.size() - 1))
+        : std::numeric_limits<double>::infinity();
   }
 
   // Warm up.
@@ -269,12 +277,12 @@ ProfileResult ProfileMatrix(const std::string& name,
 using namespace conex;
 
 void PrintHeader() {
-  printf("%-20s %4s %4s %6s | %10s %10s %10s %10s | %10s %10s | %10s | %10s\n",
+  printf("%-20s %4s %4s %6s | %10s %10s %10s %10s | %10s %10s | %10s | %10s %10s\n",
          "Matrix", "thrd", "merg", "cliq",
          "rowsup", "cliqtree", "decomp", "finalize",
          "asm+fac", "solve",
-         "setup_tot", "residual");
-  printf("%s\n", std::string(130, '-').c_str());
+         "setup_tot", "residual", "cond(A'A)");
+  printf("%s\n", std::string(142, '-').c_str());
 }
 
 void PrintResult(const ProfileResult& res, const SolverConfiguration& cfg) {
