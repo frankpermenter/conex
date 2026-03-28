@@ -5,6 +5,7 @@
 #pragma once
 #include <list>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "conex/common/supernodal_assembler_base.h"
@@ -47,10 +48,36 @@ class DensePSDLazyEvaluator : public LazySymmetricMatrix {
   int rows() const override { return Q_ ? static_cast<int>(Q_->rows()) : 0; }
   int cols() const override { return Q_ ? static_cast<int>(Q_->cols()) : 0; }
 
+  bool RegisterContributions(
+      int clique_id, const std::vector<int>& perm,
+      const std::vector<BlockContribution>& blocks) override {
+    if (!order_set_) set_order(perm);
+    registered_blocks_[clique_id] = blocks;
+    return true;
+  }
+
+  void ContributeBlocks(int clique_id) override {
+    auto it = registered_blocks_.find(clique_id);
+    if (it == registered_blocks_.end()) return;
+    for (const auto& bc : it->second) {
+      using StrideType = Eigen::Stride<Eigen::Dynamic, 1>;
+      Eigen::Map<Eigen::MatrixXd, 0, StrideType> dest(
+          bc.dest, bc.rows, bc.cols, StrideType(bc.dest_ld, 1));
+      if (bc.lower_only) {
+        const auto src = Q_perm_.block(bc.q_row, bc.q_col, bc.rows, bc.cols);
+        for (int j = 0; j < bc.cols; ++j)
+          dest.col(j).tail(bc.rows - j) += src.col(j).tail(bc.rows - j);
+      } else {
+        dest.noalias() += Q_perm_.block(bc.q_row, bc.q_col, bc.rows, bc.cols);
+      }
+    }
+  }
+
  private:
   const Eigen::MatrixXd* Q_ = nullptr;
   Eigen::MatrixXd Q_perm_;
   bool order_set_ = false;
+  std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
 };
 
 // Per-clique assembler for a dense sub-block of Q.
