@@ -1,4 +1,6 @@
 #pragma once
+#include <unordered_map>
+
 #include "conex/common/arena_allocatable.h"
 #include "conex/common/constraint.h"
 #include "conex/common/error_checking_macros.h"
@@ -74,7 +76,6 @@ class GramEvaluator : public LazySymmetricMatrix {
   void set_sn_count(int c) override { sn_count_ = c; }
 
   // Compute r = A_perm_(:, 0:sn) * x_sn + A_perm_(:, sn:end) * x_sep - b.
-  // Both x_sn and x_sep are contiguous block data from the partition.
   Eigen::VectorXd ComputeBlockResidual(
       Eigen::Ref<const Eigen::MatrixXd> x_sn,
       Eigen::Ref<const Eigen::MatrixXd> x_sep,
@@ -90,6 +91,54 @@ class GramEvaluator : public LazySymmetricMatrix {
     return r;
   }
 
+  // --- Two-phase protocol ---
+
+  bool RegisterContributions(
+      int clique_id, const std::vector<int>& perm,
+      const std::vector<BlockContribution>& blocks) override {
+    // Permute A columns (same as set_order but we save the blocks too).
+    if (!order_set_) {
+      const int n = A_->rows();
+      const int m = static_cast<int>(perm.size());
+      A_perm_.resize(n, m);
+      for (int i = 0; i < m; ++i) A_perm_.col(i) = A_->col(perm[i]);
+      WA_perm_.resize(n, m);
+      update_weights();
+      order_set_ = true;
+    }
+    registered_blocks_[clique_id] = blocks;
+    return true;
+  }
+
+  void ContributeBlocks(int clique_id) override {
+    // Recompute WA if weights changed.
+    WA_perm_.noalias() = ws_->W.asDiagonal() * A_perm_;
+
+    auto it = registered_blocks_.find(clique_id);
+    if (it == registered_blocks_.end()) return;
+
+    for (const auto& bc : it->second) {
+      Eigen::Map<Eigen::MatrixXd> dest(bc.dest, bc.rows, bc.cols);
+      // Note: dest is column-major with stride bc.dest_ld, but for
+      // contiguous blocks within the subsystem arena, stride == rows.
+      // Use Map with explicit stride for safety.
+      using StrideType = Eigen::Stride<Eigen::Dynamic, 1>;
+      Eigen::Map<Eigen::MatrixXd, 0, StrideType> dest_strided(
+          bc.dest, bc.rows, bc.cols, StrideType(bc.dest_ld, 1));
+
+      if (bc.lower_only) {
+        // Diagonal block: dest.lower += (WA_col_block)' * (WA_col_block)
+        dest_strided.selfadjointView<Eigen::Lower>().rankUpdate(
+            WA_perm_.middleCols(bc.q_row, bc.rows).transpose());
+      } else {
+        // Off-diagonal: dest += (WA_row_cols)' * (WA_col_cols)
+        dest_strided.noalias() +=
+            WA_perm_.middleCols(bc.q_row, bc.rows).transpose() *
+            WA_perm_.middleCols(bc.q_col, bc.cols);
+      }
+    }
+  }
+
  private:
   WorkspaceLinear* ws_ = nullptr;
   const Eigen::MatrixXd* A_ = nullptr;
@@ -99,6 +148,7 @@ class GramEvaluator : public LazySymmetricMatrix {
   bool order_set_ = false;
   bool precompute_gram_ = false;
   int sn_count_ = 0;
+  std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
 };
 
 class LinearConstraint : public Constraint, public ArenaAllocatable {
