@@ -102,18 +102,9 @@ class GramEvaluator : public LazySymmetricMatrix {
   bool RegisterContributions(
       int clique_id, const std::vector<int>& perm,
       const std::vector<BlockContribution>& blocks) override {
-    // Permute A columns (same as set_order but we save the blocks too).
-    if (!order_set_) {
-      const int n = A_->rows();
-      const int m = static_cast<int>(perm.size());
-      A_perm_.resize(n, m);
-      for (int i = 0; i < m; ++i) A_perm_.col(i) = A_->col(perm[i]);
-      WA_perm_.resize(n, m);
-      update_weights();
-      order_set_ = true;
-    }
+    if (!order_set_) set_order(perm);
     registered_blocks_[clique_id] = blocks;
-    return false;  // Use legacy path until BarrierQP two-phase is debugged
+    return true;
   }
 
   void ContributeBlocks(int clique_id) override {
@@ -123,24 +114,19 @@ class GramEvaluator : public LazySymmetricMatrix {
     if (it == registered_blocks_.end()) return;
 
     for (const auto& bc : it->second) {
-      Eigen::Map<Eigen::MatrixXd> dest(bc.dest, bc.rows, bc.cols);
-      // Note: dest is column-major with stride bc.dest_ld, but for
-      // contiguous blocks within the subsystem arena, stride == rows.
-      // Use Map with explicit stride for safety.
       using StrideType = Eigen::Stride<Eigen::Dynamic, 1>;
       Eigen::Map<Eigen::MatrixXd, 0, StrideType> dest_strided(
           bc.dest, bc.rows, bc.cols, StrideType(bc.dest_ld, 1));
 
       if (bc.lower_only) {
-        // Diagonal block: dest.lower += (WA_col_block)' * (WA_col_block)
         dest_strided.selfadjointView<Eigen::Lower>().rankUpdate(
             WA_perm_.middleCols(bc.q_row, bc.rows).transpose());
       } else {
-        // Off-diagonal: dest += (WA_row_cols)' * (WA_col_cols)
         dest_strided.noalias() +=
             WA_perm_.middleCols(bc.q_row, bc.rows).transpose() *
             WA_perm_.middleCols(bc.q_col, bc.cols);
       }
+
     }
   }
 

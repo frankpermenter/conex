@@ -196,6 +196,7 @@ void SubmatrixContributor::Register(
                "Lazy matrix dimensions must match elim_positions size.");
 
   PrecomputeLazyOrder(elim_positions);
+  lazy.set_sn_count(sn_count_);
 
   // Build BlockContribution list from cached runs.
   auto sn_sub = supernode_submatrix();
