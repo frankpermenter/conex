@@ -223,20 +223,19 @@ ProfileResult ProfileMatrix(const std::string& name,
   // factor once with unit data, then compute rhs = (A'A) x_true.
   // Simpler: just use the sparse matrix directly in reduced space.
   {
-    // Build reduced A if columns were dropped.
+    // Build reduced A matching what Preprocess produces internally.
     Eigen::SparseMatrix<double> A_solve = A;
     if (cm.was_reduced()) {
       const auto& col_map = cm.column_map();
+      // Build inverse map: original_col → new_col (-1 if dropped).
+      std::vector<int> inv(num_vars, -1);
+      for (int j = 0; j < static_cast<int>(col_map.size()); ++j)
+        inv[col_map[j]] = j;
       std::vector<Eigen::Triplet<double>> trips;
       for (int k = 0; k < A.outerSize(); ++k)
         for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it) {
-          // Find new column index.
-          for (int j = 0; j < static_cast<int>(col_map.size()); ++j) {
-            if (col_map[j] == it.col()) {
-              trips.emplace_back(it.row(), j, it.value());
-              break;
-            }
-          }
+          int nc = inv[it.col()];
+          if (nc >= 0) trips.emplace_back(it.row(), nc, it.value());
         }
       A_solve.resize(A.rows(), n_solve);
       A_solve.setFromTriplets(trips.begin(), trips.end());
