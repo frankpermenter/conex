@@ -1,3 +1,7 @@
+// TODO: DensePSDLazyEvaluator and DensePSDSubAssembler are identical to
+// DenseQuadraticTermLazyEvaluator and DenseQuadraticTermSubAssembler in
+// sparse_quadratic_term.h.  Remove this duplicate and reuse the one in
+// sparse_quadratic_term.h.
 #pragma once
 #include <list>
 #include <memory>
