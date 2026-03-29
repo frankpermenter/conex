@@ -408,13 +408,15 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     injected_subsystems_[clique_index] = std::move(subsystem);
   }
 
-  // Solve using the internal solve_matrix_ which must already contain
-  // the RHS scattered into supernode/separator blocks.  The solution
-  // overwrites solve_matrix_ in place.  No dense vector involved.
+  // Solve using the internal solve_matrix_ (supernode + separator scratch).
   void SolveBlockedInPlace() const;
 
-  // Blocked solve: copy rhs partition blocks into solve_matrix_,
-  // run forward/backward passes, copy result into dest partition.
+  // Solve with supernodes from an external partition.  The partition's
+  // block(k) is used as supernode(k); separator scratch is internal.
+  // The partition is modified in place (RHS in, solution out).
+  void SolveBlockedInPlace(BlockPartition& supernodes) const;
+
+  // DoSolveBlocked: solves directly in rhs's partition, copies to dest.
   bool DoSolveBlocked(const BlockPartition& rhs,
                       BlockPartition& dest) const override;
 
@@ -469,6 +471,34 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   // Block-partitioned solve data (mutable: scratch space used in const solve).
   mutable SupernodePartitionMatrix solve_matrix_;
   mutable TreeBlockPartition block_partition_;
+
+  // Separator scratch: one block per subsystem, sized sep_rows × cols.
+  // Used by SolveBlockedInPlace(BlockPartition&) to avoid touching
+  // solve_matrix_ for separator temporaries.
+  struct SeparatorScratch {
+    std::vector<int> sep_rows;       // sep_rows[k] for subsystem k
+    mutable Eigen::MatrixXd data;    // flat storage, cols set at solve time
+    std::vector<int> offsets;        // data offset for subsystem k
+    int total_rows = 0;
+    void Init(const std::vector<KKTSubsystemBase*>& subsystems) {
+      sep_rows.clear();
+      offsets.clear();
+      int off = 0;
+      for (auto* s : subsystems) {
+        int sr = static_cast<int>(s->separators().size());
+        sep_rows.push_back(sr);
+        offsets.push_back(off);
+        off += sr;
+      }
+      total_rows = off;
+    }
+    void Resize(int cols) const { data.resize(total_rows, cols); }
+    void SetZero() const { data.setZero(); }
+    Eigen::Ref<Eigen::MatrixXd> block(int k) const {
+      return data.middleRows(offsets[k], sep_rows[k]);
+    }
+  };
+  mutable SeparatorScratch sep_scratch_;
   // Per-node precomputed child scatter info for blocked solve.
   struct ChildScatterOp {
     int child_block_index;

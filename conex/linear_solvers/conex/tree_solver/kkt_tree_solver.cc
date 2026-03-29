@@ -243,24 +243,66 @@ bool T::DoSolveBlocked(const BlockPartition& rhs,
                        BlockPartition& dest) const {
   if (solve_matrix_.empty() || use_recursive_solve_) return false;
 
-  // Copy rhs supernode blocks directly into solve_matrix_.
-  // Separator blocks are zeroed — the forward pass fills them.
-  if (solve_matrix_.cols() != 1) solve_matrix_.Resize(1);
-  solve_matrix_.SetZero();
-  const int n = solve_matrix_.num_blocks_internal();
-  for (int k = 0; k < n; ++k) {
-    auto sn = solve_matrix_.supernode(k);
-    sn = rhs.block(k);
-  }
-
-  SolveBlockedInPlace();
-
-  // Copy solution supernode blocks out to dest.
+  // Copy rhs into dest, then solve in place in dest's partition.
+  const int n = rhs.num_blocks();
   if (dest.cols() != 1) dest.Resize(1);
   for (int k = 0; k < n; ++k) {
-    dest.block(k) = solve_matrix_.supernode(k);
+    dest.block(k) = rhs.block(k);
   }
+
+  SolveBlockedInPlace(dest);
   return true;
+}
+
+void T::SolveBlockedInPlace(BlockPartition& supernodes) const {
+  sep_scratch_.Resize(1);
+  sep_scratch_.SetZero();
+
+  const int num_solve = static_cast<int>(solve_order_.size());
+
+  // Forward pass.
+  for (int idx = 0; idx < num_solve; ++idx) {
+    const auto& info = solve_scatter_info_[idx];
+    const int k = info.block_index;
+    auto sn = supernodes.block(k);
+    auto sep = sep_scratch_.block(k);
+
+    for (const auto& cop : info.children) {
+      auto child_sep = sep_scratch_.block(cop.child_block_index);
+      for (const auto& off : cop.sn_offsets) {
+        sn.middleRows(off.first, off.size) -=
+            child_sep.middleRows(off.second, off.size);
+      }
+      for (const auto& off : cop.sep_offsets) {
+        sep.middleRows(off.first, off.size) +=
+            child_sep.middleRows(off.second, off.size);
+      }
+    }
+
+    solve_order_[idx]->ForwardSolveBlocked(sn, sep);
+  }
+
+  // Backward pass.
+  for (int idx = num_solve - 1; idx >= 0; --idx) {
+    const auto& info = solve_scatter_info_[idx];
+    const int k = info.block_index;
+    auto sn = supernodes.block(k);
+    auto sep = sep_scratch_.block(k);
+
+    solve_order_[idx]->BackwardSolveBlocked(sn, sep);
+
+    for (const auto& cop : info.children) {
+      auto child_sep = sep_scratch_.block(cop.child_block_index);
+      for (const auto& off : cop.sn_offsets) {
+        child_sep.middleRows(off.second, off.size) =
+            sn.middleRows(off.first, off.size);
+      }
+      for (const auto& off : cop.sep_offsets) {
+        child_sep.middleRows(off.second, off.size) =
+            sep.middleRows(off.first, off.size);
+      }
+    }
+  }
 }
 
 void T::SolveBlockedInPlace() const {
@@ -657,6 +699,7 @@ void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
   BindContributors(adapter_to_clique);
   AllocateSolveArena();
   block_partition_.Bind(&solve_matrix_, cached_num_vars_);
+  sep_scratch_.Init(subsystems_);
 }
 
 void T::SetEliminationTree(const std::vector<int>& parent) {
