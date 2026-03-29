@@ -243,9 +243,14 @@ bool T::DoSolveBlocked(const BlockPartition& rhs,
                        BlockPartition& dest) const {
   if (solve_matrix_.empty() || use_recursive_solve_) return false;
 
+  const int nc = rhs.cols();
+  CONEX_DEMAND(nc > 0, "BlockVariable has zero columns.");
+  CONEX_DEMAND(nc <= reserved_solve_workspace_cols_,
+               "BlockVariable has more columns than pre-allocated workspace.");
+
   // Copy rhs into dest, then solve in place in dest's partition.
   const int n = rhs.num_blocks();
-  if (dest.cols() != 1) dest.Resize(1);
+  if (dest.cols() != nc) dest.Resize(nc);
   for (int k = 0; k < n; ++k) {
     dest.block(k) = rhs.block(k);
   }
@@ -255,7 +260,8 @@ bool T::DoSolveBlocked(const BlockPartition& rhs,
 }
 
 void T::SolveBlockedInPlace(BlockPartition& supernodes) const {
-  sep_scratch_.Resize(1);
+  const int nc = supernodes.cols();
+  sep_scratch_.Resize(nc);
   sep_scratch_.SetZero();
 
   const int num_solve = static_cast<int>(solve_order_.size());

@@ -2398,5 +2398,56 @@ TEST(BlockVariable, MultipleBlockVariables) {
          (x_block - x_dense).norm() / x_dense.norm());
 }
 
+TEST(BlockVariable, MultiColumnSolve) {
+  // Build a small problem and solve with batched RHS.
+  srand(42);
+  const int m = 20, n = 8, nrhs = 4;
+
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; ++r)
+    for (int c = 0; c < n; ++c)
+      trips.emplace_back(r, c, (double)rand() / RAND_MAX - 0.5);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  VectorXd b_zero = VectorXd::Zero(m);
+  auto slc = std::make_unique<SparseLinearConstraint>(A, b_zero);
+  std::set<int> var_set;
+  for (const auto& s : slc->row_supports())
+    var_set.insert(s.begin(), s.end());
+  std::vector<int> all_vars(var_set.begin(), var_set.end());
+
+  ConstraintManager cm(n);
+  cm.AddCustomAssembler(std::make_unique<SparseLinearConstraintAssembler>(
+      std::move(slc), all_vars));
+
+  SolverConfiguration config;
+  config.rhs_cols = nrhs;
+  auto solver = MakeTreeSolver(&cm, config);
+  ASSERT_TRUE(solver->AssembleAndFactor());
+
+  // Multi-column RHS.
+  MatrixXd rhs_dense = MatrixXd::Random(n, nrhs);
+  auto rhs = solver->MakeBlockVariable(rhs_dense);
+  EXPECT_EQ(rhs.cols(), nrhs);
+
+  auto dest = solver->MakeBlockVariable(nrhs);
+  solver->SolveInto(rhs, dest);
+
+  // Compare with dense multi-column Solve.
+  MatrixXd x_dense = solver->Solve(rhs_dense);
+  MatrixXd x_block = dest.Gather();
+
+  double err = (x_block - x_dense).norm() / x_dense.norm();
+  EXPECT_LT(err, 1e-10) << "Multi-column BlockVariable solve mismatch";
+
+  // Verify roundtrip.
+  MatrixXd rhs_rt = rhs.Gather();
+  EXPECT_LT((rhs_rt - rhs_dense).norm(), 1e-12);
+
+  printf("MultiColumnSolve: nrhs=%d, solve_err=%.2e, roundtrip_err=%.2e\n",
+         nrhs, err, (rhs_rt - rhs_dense).norm());
+}
+
 }  // namespace
 }  // namespace conex

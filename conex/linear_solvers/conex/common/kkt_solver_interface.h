@@ -68,13 +68,13 @@ class KKTSolverBase {
   }
 
   // Create a BlockVariable with the same partition structure as this solver.
-  BlockVariable MakeBlockVariable() {
-    return BlockVariable(MakePartition());
+  BlockVariable MakeBlockVariable(int cols = 1) {
+    return BlockVariable(MakePartition(), cols);
   }
 
-  // Create a BlockVariable initialized from a dense vector.
-  BlockVariable MakeBlockVariable(const Eigen::VectorXd& x) {
-    auto bv = MakeBlockVariable();
+  // Create a BlockVariable initialized from a dense vector or matrix.
+  BlockVariable MakeBlockVariable(Eigen::Ref<const Eigen::MatrixXd> x) {
+    auto bv = MakeBlockVariable(x.cols());
     bv.ScatterFrom(x);
     return bv;
   }
@@ -82,13 +82,14 @@ class KKTSolverBase {
   // Solve into a BlockVariable.  If the solver supports blocked solve,
   // copies blocks directly without forming a dense vector.  Otherwise
   // falls back to gather → Solve → scatter.
+  // rhs and dest may be single or multi-column (batched RHS).
   void SolveInto(const BlockVariable& rhs, BlockVariable& dest) const {
     CONEX_DEMAND(factored_, "System has not been factored.");
     if (DoSolveBlocked(rhs.partition(), dest.partition())) return;
     // Fallback: dense round-trip.
-    Eigen::VectorXd b = rhs.Gather();
+    Eigen::MatrixXd b = rhs.Gather();
     Eigen::MatrixXd x = Solve(b);
-    dest.ScatterFrom(x.col(0));
+    dest.ScatterFrom(x);
   }
 
   virtual int number_of_variables() const = 0;

@@ -6,29 +6,30 @@
 
 namespace conex {
 
-// A vector stored in block-partitioned form.  Created via
+// A matrix stored in block-partitioned form.  Created via
 // solver.MakeBlockVariable() to get a partition that matches the
 // solver's block structure (supernodes/separators).
 //
-// Supports scatter/gather to move between block and dense forms,
-// and element access for inspection.
+// Supports single-column (vector) and multi-column (batched RHS) use.
 class BlockVariable {
  public:
   BlockVariable() = default;
-  explicit BlockVariable(std::unique_ptr<BlockPartition> partition)
+  explicit BlockVariable(std::unique_ptr<BlockPartition> partition,
+                         int cols = 1)
       : partition_(std::move(partition)) {
-    partition_->Resize(1);
+    partition_->Resize(cols);
     partition_->SetZero();
   }
 
-  // Scatter a dense vector into block storage.
-  void ScatterFrom(const Eigen::VectorXd& x) {
+  // Scatter a dense matrix into block storage.
+  void ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> x) {
+    if (partition_->cols() != x.cols()) partition_->Resize(x.cols());
     partition_->ScatterFrom(x);
   }
 
-  // Gather block storage into a dense vector.
-  Eigen::VectorXd Gather() const {
-    Eigen::VectorXd x(partition_->num_variables());
+  // Gather block storage into a dense matrix.
+  Eigen::MatrixXd Gather() const {
+    Eigen::MatrixXd x(partition_->num_variables(), partition_->cols());
     partition_->GatherInto(x);
     return x;
   }
@@ -36,8 +37,11 @@ class BlockVariable {
   // Set all blocks to zero.
   void SetZero() { partition_->SetZero(); }
 
-  // Number of scalar variables.
+  // Number of scalar variables (rows).
   int size() const { return partition_->num_variables(); }
+
+  // Number of columns.
+  int cols() const { return partition_->cols(); }
 
   // Access the underlying partition (for block-level operations).
   BlockPartition& partition() { return *partition_; }
