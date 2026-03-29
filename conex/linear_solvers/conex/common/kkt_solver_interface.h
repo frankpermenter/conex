@@ -79,10 +79,13 @@ class KKTSolverBase {
     return bv;
   }
 
-  // Solve into a BlockVariable: gathers rhs to dense, solves, scatters
-  // the result into dest.
+  // Solve into a BlockVariable.  If the solver supports blocked solve,
+  // copies blocks directly without forming a dense vector.  Otherwise
+  // falls back to gather → Solve → scatter.
   void SolveInto(const BlockVariable& rhs, BlockVariable& dest) const {
     CONEX_DEMAND(factored_, "System has not been factored.");
+    if (DoSolveBlocked(rhs.partition(), dest.partition())) return;
+    // Fallback: dense round-trip.
     Eigen::VectorXd b = rhs.Gather();
     Eigen::MatrixXd x = Solve(b);
     dest.ScatterFrom(x.col(0));
@@ -96,6 +99,16 @@ class KKTSolverBase {
   // Subclasses override to provide the right partition type.
   virtual std::unique_ptr<BlockPartition> MakePartition() {
     return std::make_unique<DenseBlockPartition>(number_of_variables());
+  }
+
+  // Blocked solve: copy rhs blocks into the solver's internal partition,
+  // solve in place, copy result into dest blocks.  Returns true if
+  // the blocked path was used.  Default returns false (use dense fallback).
+  virtual bool DoSolveBlocked(const BlockPartition& rhs,
+                              BlockPartition& dest) const {
+    (void)rhs;
+    (void)dest;
+    return false;
   }
 
  private:

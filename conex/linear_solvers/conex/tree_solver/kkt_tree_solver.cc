@@ -239,6 +239,75 @@ void T::SetEliminationOrder(
     cached_perm_inv_(variable_to_elimination_position_[i]) = i;
   }
 }
+bool T::DoSolveBlocked(const BlockPartition& rhs,
+                       BlockPartition& dest) const {
+  if (solve_matrix_.empty() || use_recursive_solve_) return false;
+
+  // Gather rhs into a dense vector, scatter into solve_matrix_ via
+  // the standard path, solve, and scatter result into dest.
+  // This avoids block-by-block copy which misses separator data.
+  const int nv = rhs.num_variables();
+  Eigen::VectorXd b(nv);
+  rhs.GatherInto(b);
+
+  if (solve_matrix_.cols() != 1) solve_matrix_.Resize(1);
+  solve_matrix_.SetZero();
+  solve_matrix_.ScatterFrom(b);
+
+  SolveBlockedInPlace();
+
+  solve_matrix_.GatherInto(b);
+  dest.ScatterFrom(b);
+  return true;
+}
+
+void T::SolveBlockedInPlace() const {
+  // Forward pass (post-order).
+  const int num_solve = static_cast<int>(solve_order_.size());
+  for (int idx = 0; idx < num_solve; ++idx) {
+    const auto& info = solve_scatter_info_[idx];
+    const int k = info.block_index;
+    auto sn = solve_matrix_.supernode(k);
+    auto sep = solve_matrix_.separator(k);
+
+    for (const auto& cop : info.children) {
+      auto child_sep = solve_matrix_.separator(cop.child_block_index);
+      for (const auto& off : cop.sn_offsets) {
+        sn.middleRows(off.first, off.size) -=
+            child_sep.middleRows(off.second, off.size);
+      }
+      for (const auto& off : cop.sep_offsets) {
+        sep.middleRows(off.first, off.size) +=
+            child_sep.middleRows(off.second, off.size);
+      }
+    }
+
+    solve_order_[idx]->ForwardSolveBlocked(sn, sep);
+  }
+
+  // Backward pass (reverse post-order).
+  for (int idx = num_solve - 1; idx >= 0; --idx) {
+    const auto& info = solve_scatter_info_[idx];
+    const int k = info.block_index;
+    auto sn = solve_matrix_.supernode(k);
+    auto sep = solve_matrix_.separator(k);
+
+    solve_order_[idx]->BackwardSolveBlocked(sn, sep);
+
+    for (const auto& cop : info.children) {
+      auto child_sep = solve_matrix_.separator(cop.child_block_index);
+      for (const auto& off : cop.sn_offsets) {
+        child_sep.middleRows(off.second, off.size) =
+            sn.middleRows(off.first, off.size);
+      }
+      for (const auto& off : cop.sep_offsets) {
+        child_sep.middleRows(off.second, off.size) =
+            sep.middleRows(off.first, off.size);
+      }
+    }
+  }
+}
+
 void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                        bool in_original_order) const {
   const int n = cached_num_vars_ > 0 ? cached_num_vars_ : number_of_variables();
@@ -251,7 +320,6 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                "Set rhs_cols in SolverConfiguration or Finalize().");
 
   if (!solve_matrix_.empty() && !use_recursive_solve_) {
-    // Block-partitioned path: scatter into per-node blocks, solve, gather.
     if (solve_matrix_.cols() != b.cols()) {
       solve_matrix_.Resize(b.cols());
     }
@@ -262,52 +330,7 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
       solve_matrix_.ScatterFromElimOrder(b);
     }
 
-    // Forward pass (post-order).
-    const int num_solve = static_cast<int>(solve_order_.size());
-    for (int idx = 0; idx < num_solve; ++idx) {
-      const auto& info = solve_scatter_info_[idx];
-      const int k = info.block_index;
-      auto sn = solve_matrix_.supernode(k);
-      auto sep = solve_matrix_.separator(k);
-
-      // Scatter children's separator outputs into this node's blocks.
-      for (const auto& cop : info.children) {
-        auto child_sep = solve_matrix_.separator(cop.child_block_index);
-        for (const auto& off : cop.sn_offsets) {
-          sn.middleRows(off.first, off.size) -=
-              child_sep.middleRows(off.second, off.size);
-        }
-        for (const auto& off : cop.sep_offsets) {
-          sep.middleRows(off.first, off.size) +=
-              child_sep.middleRows(off.second, off.size);
-        }
-      }
-
-      solve_order_[idx]->ForwardSolveBlocked(sn, sep);
-    }
-
-    // Backward pass (reverse post-order).
-    for (int idx = num_solve - 1; idx >= 0; --idx) {
-      const auto& info = solve_scatter_info_[idx];
-      const int k = info.block_index;
-      auto sn = solve_matrix_.supernode(k);
-      auto sep = solve_matrix_.separator(k);
-
-      solve_order_[idx]->BackwardSolveBlocked(sn, sep);
-
-      // Push solution values to children.
-      for (const auto& cop : info.children) {
-        auto child_sep = solve_matrix_.separator(cop.child_block_index);
-        for (const auto& off : cop.sn_offsets) {
-          child_sep.middleRows(off.second, off.size) =
-              sn.middleRows(off.first, off.size);
-        }
-        for (const auto& off : cop.sep_offsets) {
-          child_sep.middleRows(off.second, off.size) =
-              sep.middleRows(off.first, off.size);
-        }
-      }
-    }
+    SolveBlockedInPlace();
 
     if (in_original_order) {
       solve_matrix_.GatherInto(b);
