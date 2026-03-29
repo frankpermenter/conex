@@ -94,17 +94,16 @@ class StandaloneBlockPartition : public BlockPartition {
  public:
   // block_sizes[k] = number of rows in block k.
   // perm[orig_var] = elimination position, perm_inv[elim_pos] = orig_var.
+  // block_sizes[k] = number of supernode rows in subsystem k.
+  // block_starts[k] = first elimination position of subsystem k's supernode.
+  // perm[orig_var] = elimination position, perm_inv[elim_pos] = orig_var.
   StandaloneBlockPartition(const std::vector<int>& block_sizes,
+                           const std::vector<int>& block_starts,
                            const Eigen::VectorXi& perm,
                            const Eigen::VectorXi& perm_inv)
-      : block_sizes_(block_sizes), perm_(perm), perm_inv_(perm_inv) {
-    int total = 0;
-    block_offsets_.resize(block_sizes_.size());
-    for (size_t k = 0; k < block_sizes_.size(); ++k) {
-      block_offsets_[k] = total;
-      total += block_sizes_[k];
-    }
-    total_rows_ = total;
+      : block_sizes_(block_sizes), block_offsets_(block_starts),
+        perm_(perm), perm_inv_(perm_inv) {
+    total_rows_ = perm.size();
   }
 
   int num_blocks() const override {

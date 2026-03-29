@@ -376,16 +376,14 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   const BlockPartition& partition() const override { return block_partition_; }
 
   std::unique_ptr<BlockPartition> MakePartition() override {
-    // Block sizes match TreeBlockPartition: supernode rows only.
-    // The full permutation handles scatter/gather of all variables
-    // (both supernode and separator).
-    std::vector<int> block_sizes;
+    std::vector<int> block_sizes, block_starts;
     for (int k = 0; k < num_subsystems(); ++k) {
-      block_sizes.push_back(
-          static_cast<int>(subsystems_[k]->supernodes().size()));
+      const auto& sn = subsystems_[k]->supernodes();
+      block_sizes.push_back(static_cast<int>(sn.size()));
+      block_starts.push_back(sn.empty() ? 0 : sn.front());
     }
     return std::make_unique<StandaloneBlockPartition>(
-        block_sizes, perm(), perm_inv());
+        block_sizes, block_starts, perm(), perm_inv());
   }
 
   // Tree-specific: access the raw SupernodePartitionMatrix.

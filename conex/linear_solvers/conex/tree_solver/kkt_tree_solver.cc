@@ -243,21 +243,23 @@ bool T::DoSolveBlocked(const BlockPartition& rhs,
                        BlockPartition& dest) const {
   if (solve_matrix_.empty() || use_recursive_solve_) return false;
 
-  // Gather rhs into a dense vector, scatter into solve_matrix_ via
-  // the standard path, solve, and scatter result into dest.
-  // This avoids block-by-block copy which misses separator data.
-  const int nv = rhs.num_variables();
-  Eigen::VectorXd b(nv);
-  rhs.GatherInto(b);
-
+  // Copy rhs supernode blocks directly into solve_matrix_.
+  // Separator blocks are zeroed — the forward pass fills them.
   if (solve_matrix_.cols() != 1) solve_matrix_.Resize(1);
   solve_matrix_.SetZero();
-  solve_matrix_.ScatterFrom(b);
+  const int n = solve_matrix_.num_blocks_internal();
+  for (int k = 0; k < n; ++k) {
+    auto sn = solve_matrix_.supernode(k);
+    sn = rhs.block(k);
+  }
 
   SolveBlockedInPlace();
 
-  solve_matrix_.GatherInto(b);
-  dest.ScatterFrom(b);
+  // Copy solution supernode blocks out to dest.
+  if (dest.cols() != 1) dest.Resize(1);
+  for (int k = 0; k < n; ++k) {
+    dest.block(k) = solve_matrix_.supernode(k);
+  }
   return true;
 }
 
