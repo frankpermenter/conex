@@ -261,7 +261,8 @@ bool T::DoSolveBlocked(const BlockPartition& rhs,
 
 void T::SolveBlockedInPlace(BlockPartition& supernodes) const {
   const int nc = supernodes.cols();
-  sep_scratch_.Resize(nc);
+  CONEX_DEMAND(nc <= sep_scratch_.reserved_cols,
+               "BlockVariable has more columns than reserved at Finalize.");
   sep_scratch_.SetZero();
 
   const int num_solve = static_cast<int>(solve_order_.size());
@@ -271,10 +272,10 @@ void T::SolveBlockedInPlace(BlockPartition& supernodes) const {
     const auto& info = solve_scatter_info_[idx];
     const int k = info.block_index;
     auto sn = supernodes.block(k);
-    auto sep = sep_scratch_.block(k);
+    auto sep = sep_scratch_.block(k, nc);
 
     for (const auto& cop : info.children) {
-      auto child_sep = sep_scratch_.block(cop.child_block_index);
+      auto child_sep = sep_scratch_.block(cop.child_block_index, nc);
       for (const auto& off : cop.sn_offsets) {
         sn.middleRows(off.first, off.size) -=
             child_sep.middleRows(off.second, off.size);
@@ -293,12 +294,12 @@ void T::SolveBlockedInPlace(BlockPartition& supernodes) const {
     const auto& info = solve_scatter_info_[idx];
     const int k = info.block_index;
     auto sn = supernodes.block(k);
-    auto sep = sep_scratch_.block(k);
+    auto sep = sep_scratch_.block(k, nc);
 
     solve_order_[idx]->BackwardSolveBlocked(sn, sep);
 
     for (const auto& cop : info.children) {
-      auto child_sep = sep_scratch_.block(cop.child_block_index);
+      auto child_sep = sep_scratch_.block(cop.child_block_index, nc);
       for (const auto& off : cop.sn_offsets) {
         child_sep.middleRows(off.second, off.size) =
             sn.middleRows(off.first, off.size);
@@ -705,7 +706,7 @@ void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
   BindContributors(adapter_to_clique);
   AllocateSolveArena();
   block_partition_.Bind(&solve_matrix_, cached_num_vars_);
-  sep_scratch_.Init(subsystems_);
+  sep_scratch_.Init(subsystems_, rhs_cols);
 }
 
 void T::SetEliminationTree(const std::vector<int>& parent) {

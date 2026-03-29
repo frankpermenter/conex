@@ -472,15 +472,18 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   mutable SupernodePartitionMatrix solve_matrix_;
   mutable TreeBlockPartition block_partition_;
 
-  // Separator scratch: one block per subsystem, sized sep_rows × cols.
-  // Used by SolveBlockedInPlace(BlockPartition&) to avoid touching
-  // solve_matrix_ for separator temporaries.
+  // Separator scratch: arena-allocated storage for separator temporaries
+  // during SolveBlockedInPlace(BlockPartition&).  Allocated once at
+  // Finalize with reserved_solve_workspace_cols_ columns.
   struct SeparatorScratch {
-    std::vector<int> sep_rows;       // sep_rows[k] for subsystem k
-    mutable Eigen::MatrixXd data;    // flat storage, cols set at solve time
-    std::vector<int> offsets;        // data offset for subsystem k
+    std::vector<int> sep_rows;
+    std::vector<int> offsets;
     int total_rows = 0;
-    void Init(const std::vector<KKTSubsystemBase*>& subsystems) {
+    int reserved_cols = 0;
+    std::unique_ptr<void, decltype(&std::free)> arena{nullptr, &std::free};
+    std::vector<double*> block_ptrs;  // pointer per subsystem
+
+    void Init(const std::vector<KKTSubsystemBase*>& subsystems, int cols) {
       sep_rows.clear();
       offsets.clear();
       int off = 0;
@@ -491,11 +494,36 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
         off += sr;
       }
       total_rows = off;
+      reserved_cols = cols;
+
+      // Arena allocate with SIMD alignment.
+      constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
+      size_t bytes = static_cast<size_t>(total_rows) * cols * sizeof(double);
+      bytes = ((bytes + kAlign - 1) / kAlign) * kAlign;
+      if (bytes > 0) {
+        void* raw = nullptr;
+        if (posix_memalign(&raw, kAlign, bytes) != 0) throw std::bad_alloc();
+        arena.reset(raw);
+      }
+
+      // Set per-block pointers.
+      block_ptrs.resize(sep_rows.size());
+      double* base = static_cast<double*>(arena.get());
+      for (size_t k = 0; k < sep_rows.size(); ++k) {
+        block_ptrs[k] = base ? base + offsets[k] : nullptr;
+      }
     }
-    void Resize(int cols) const { data.resize(total_rows, cols); }
-    void SetZero() const { data.setZero(); }
-    Eigen::Ref<Eigen::MatrixXd> block(int k) const {
-      return data.middleRows(offsets[k], sep_rows[k]);
+
+    void SetZero() const {
+      if (arena) {
+        std::memset(arena.get(), 0,
+                    static_cast<size_t>(total_rows) * reserved_cols *
+                        sizeof(double));
+      }
+    }
+
+    Eigen::Map<Eigen::MatrixXd> block(int k, int cols) const {
+      return {block_ptrs[k], sep_rows[k], cols};
     }
   };
   mutable SeparatorScratch sep_scratch_;
