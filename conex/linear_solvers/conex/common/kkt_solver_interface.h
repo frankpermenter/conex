@@ -1,6 +1,7 @@
 #pragma once
 
 #include "conex/common/block_partition.h"
+#include "conex/common/block_variable.h"
 #include "conex/common/error_checking_macros.h"
 #include <Eigen/Dense>
 
@@ -66,9 +67,36 @@ class KKTSolverBase {
     partition().GatherInto(x);
   }
 
+  // Create a BlockVariable with the same partition structure as this solver.
+  BlockVariable MakeBlockVariable() {
+    return BlockVariable(MakePartition());
+  }
+
+  // Create a BlockVariable initialized from a dense vector.
+  BlockVariable MakeBlockVariable(const Eigen::VectorXd& x) {
+    auto bv = MakeBlockVariable();
+    bv.ScatterFrom(x);
+    return bv;
+  }
+
+  // Solve into a BlockVariable: gathers rhs to dense, solves, scatters
+  // the result into dest.
+  void SolveInto(const BlockVariable& rhs, BlockVariable& dest) const {
+    CONEX_DEMAND(factored_, "System has not been factored.");
+    Eigen::VectorXd b = rhs.Gather();
+    Eigen::MatrixXd x = Solve(b);
+    dest.ScatterFrom(x.col(0));
+  }
+
   virtual int number_of_variables() const = 0;
 
   virtual ~KKTSolverBase() = default;
+
+  // Create a fresh partition matching this solver's block structure.
+  // Subclasses override to provide the right partition type.
+  virtual std::unique_ptr<BlockPartition> MakePartition() {
+    return std::make_unique<DenseBlockPartition>(number_of_variables());
+  }
 
  private:
   virtual void DoAssemble() = 0;

@@ -87,4 +87,72 @@ class DenseBlockPartition : public BlockPartition {
   Eigen::MatrixXd data_;
 };
 
+// A standalone block partition that owns its own storage.
+// Created by MakePartition() to match a solver's block structure
+// without sharing the solver's internal arena.
+class StandaloneBlockPartition : public BlockPartition {
+ public:
+  // block_sizes[k] = number of rows in block k.
+  // perm[orig_var] = elimination position, perm_inv[elim_pos] = orig_var.
+  StandaloneBlockPartition(const std::vector<int>& block_sizes,
+                           const Eigen::VectorXi& perm,
+                           const Eigen::VectorXi& perm_inv)
+      : block_sizes_(block_sizes), perm_(perm), perm_inv_(perm_inv) {
+    int total = 0;
+    block_offsets_.resize(block_sizes_.size());
+    for (size_t k = 0; k < block_sizes_.size(); ++k) {
+      block_offsets_[k] = total;
+      total += block_sizes_[k];
+    }
+    total_rows_ = total;
+  }
+
+  int num_blocks() const override {
+    return static_cast<int>(block_sizes_.size());
+  }
+  int block_size(int k) const override { return block_sizes_[k]; }
+  int num_variables() const override { return perm_.size(); }
+  int cols() const override { return data_.cols(); }
+
+  void Resize(int cols) override {
+    if (data_.rows() != total_rows_ || data_.cols() != cols) {
+      data_.resize(total_rows_, cols);
+    }
+  }
+
+  void SetZero() override { data_.setZero(); }
+
+  void ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> x) override {
+    const int n = static_cast<int>(perm_.size());
+    if (data_.rows() != total_rows_ || data_.cols() != x.cols())
+      data_.resize(total_rows_, x.cols());
+    for (int i = 0; i < n; ++i) {
+      int ep = perm_(i);
+      data_.row(ep) = x.row(i);
+    }
+  }
+
+  void GatherInto(Eigen::Ref<Eigen::MatrixXd> x) const override {
+    const int n = static_cast<int>(perm_.size());
+    for (int i = 0; i < n; ++i) {
+      int ep = perm_(i);
+      x.row(i) = data_.row(ep);
+    }
+  }
+
+  Eigen::Ref<Eigen::MatrixXd> block(int k) override {
+    return data_.middleRows(block_offsets_[k], block_sizes_[k]);
+  }
+  Eigen::Ref<const Eigen::MatrixXd> block(int k) const override {
+    return data_.middleRows(block_offsets_[k], block_sizes_[k]);
+  }
+
+ private:
+  std::vector<int> block_sizes_;
+  std::vector<int> block_offsets_;
+  Eigen::VectorXi perm_, perm_inv_;
+  int total_rows_ = 0;
+  Eigen::MatrixXd data_;
+};
+
 }  // namespace conex
