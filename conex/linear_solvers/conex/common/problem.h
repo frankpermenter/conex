@@ -101,6 +101,10 @@ class Problem {
     return constraints_.at(id);
   }
 
+  const std::vector<ConstraintData>& constraints() const {
+    return constraints_;
+  }
+
   // Compute the number of variables from all constraints.
   int num_variables() const {
     int n = 0;
@@ -131,5 +135,34 @@ class Problem {
     return id;
   }
 };
+
+// Maps a reduced solution back to the original variable space.
+struct Expansion {
+  std::vector<int> col_map;  // reduced_col → original_col
+  int original_n;
+
+  Eigen::VectorXd Expand(const Eigen::VectorXd& x_reduced) const {
+    Eigen::VectorXd x(original_n);
+    x.setZero();
+    for (int i = 0; i < static_cast<int>(col_map.size()); ++i)
+      x(col_map[i]) = x_reduced(i);
+    return x;
+  }
+
+  Eigen::VectorXd Reduce(const Eigen::VectorXd& x_full) const {
+    Eigen::VectorXd x(col_map.size());
+    for (int i = 0; i < static_cast<int>(col_map.size()); ++i)
+      x(i) = x_full(col_map[i]);
+    return x;
+  }
+
+  bool was_reduced() const {
+    return static_cast<int>(col_map.size()) < original_n;
+  }
+};
+
+// Preprocess: drop structurally rank-deficient columns from linear
+// constraints.  Returns (reduced_problem, expansion).
+std::pair<Problem, Expansion> Preprocess(const Problem& problem);
 
 }  // namespace conex

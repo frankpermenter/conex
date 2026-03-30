@@ -2708,5 +2708,80 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
   printf("ProblemSolver.SetWeightsAndResolve: err=%.2e\n", err);
 }
 
+TEST(ProblemSolver, Preprocess) {
+  srand(42);
+  const int m = 10, n = 6;
+  // Columns 0-3 have data, columns 4-5 are zero (structurally dependent).
+  Eigen::SparseMatrix<double> A(m, n);
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; ++r)
+    for (int c = 0; c < 4; ++c)
+      trips.emplace_back(r, c, (double)rand() / RAND_MAX - 0.5);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
+
+  auto [reduced, expansion] = Preprocess(problem);
+  EXPECT_TRUE(expansion.was_reduced());
+  EXPECT_EQ(static_cast<int>(expansion.col_map.size()), 4);
+
+  auto solver = Solver::Build(reduced);
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  VectorXd rhs_full = VectorXd::Random(n);
+  VectorXd rhs_reduced = expansion.Reduce(rhs_full);
+  VectorXd x_reduced = solver.Solve(rhs_reduced);
+  VectorXd x_full = expansion.Expand(x_reduced);
+
+  EXPECT_NEAR(x_full(4), 0.0, 1e-15);
+  EXPECT_NEAR(x_full(5), 0.0, 1e-15);
+
+  printf("ProblemSolver.Preprocess: n=%d→%d\n",
+         n, static_cast<int>(expansion.col_map.size()));
+}
+
+TEST(ProblemSolver, CustomTree) {
+  srand(42);
+  const int nx = 2;
+  MatrixXd Q = MatrixXd::Identity(nx, nx);
+  MatrixXd A_couple = MatrixXd::Random(3, 2 * nx);
+
+  std::vector<int> vars0 = {0, 1};
+  std::vector<int> vars1 = {2, 3};
+  std::vector<int> vars_all = {0, 1, 2, 3};
+
+  Problem problem;
+  auto c0 = problem.AddQuadraticCost(Q, vars0);
+  auto c1 = problem.AddQuadraticCost(Q, vars1);
+  auto c2 = problem.AddLinearConstraint(
+      A_couple, VectorXd::Zero(3), vars_all);
+
+  TreeSpec tree;
+  int root = tree.AddClique();
+  int child = tree.AddClique(root);
+  tree.Assign(c0, child);
+  tree.Assign(c1, root);
+  tree.Assign(c2, child);
+
+  auto solver_custom = Solver::Build(problem, tree);
+  ASSERT_TRUE(solver_custom.AssembleAndFactor());
+
+  VectorXd rhs = VectorXd::Random(4);
+  VectorXd x_custom = solver_custom.Solve(rhs);
+
+  auto solver_auto = Solver::Build(problem);
+  ASSERT_TRUE(solver_auto.AssembleAndFactor());
+  VectorXd x_auto = solver_auto.Solve(rhs);
+
+  double err = (x_custom - x_auto).norm() / x_auto.norm();
+  EXPECT_LT(err, 1e-10);
+
+  printf("ProblemSolver.CustomTree: err=%.2e\n", err);
+}
+
 }  // namespace
 }  // namespace conex

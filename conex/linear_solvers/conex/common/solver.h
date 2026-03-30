@@ -5,6 +5,8 @@
 #include "conex/common/block_variable.h"
 #include "conex/common/conex.h"
 #include "conex/common/problem.h"
+#include "conex/common/tree_spec.h"
+#include "conex/algorithms/tree_solver_builder.h"
 #include "conex/common/sparse_linear_constraint.h"
 #include "conex/common/sparse_psd_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
@@ -25,6 +27,15 @@ class Solver {
                       const SolverConfiguration& config = {}) {
     Solver s;
     s.BuildInternal(problem, config);
+    return s;
+  }
+
+  // Build with a custom tree topology.
+  static Solver Build(const Problem& problem,
+                      const TreeSpec& tree,
+                      const SolverConfiguration& config = {}) {
+    Solver s;
+    s.BuildFromTree(problem, tree, config);
     return s;
   }
 
@@ -121,6 +132,54 @@ class Solver {
     tree_solver_ = MakeTreeSolver(cm_.get(), config);
   }
 
+  void BuildFromTree(const Problem& problem,
+                     const TreeSpec& tree,
+                     const SolverConfiguration& config) {
+    builder_ = std::make_unique<TreeSolverBuilder>();
+
+    std::vector<int> cids(tree.num_cliques());
+    for (int k = 0; k < tree.num_cliques(); ++k) {
+      if (tree.parent(k) < 0)
+        cids[k] = builder_->AddClique();
+      else
+        cids[k] = builder_->AddClique(cids[tree.parent(k)]);
+    }
+
+    linear_assemblers_.resize(problem.num_constraints(), nullptr);
+
+    for (int i = 0; i < problem.num_constraints(); ++i) {
+      int clique = tree.clique_of(i);
+      std::visit([&](const auto& data) {
+        using T = std::decay_t<decltype(data)>;
+        if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+          Eigen::MatrixXd Ad(data.A);
+          builder_->AddLinearConstraint(cids[clique], Ad, data.b, data.vars);
+        } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
+          int nv = static_cast<int>(data.vars.size());
+          Eigen::MatrixXd Qd(nv, nv);
+          if (data.Q_dense.size() > 0) {
+            Qd = data.Q_dense;
+          } else {
+            Eigen::MatrixXd Qfull(data.Q_sparse);
+            for (int r = 0; r < nv; ++r)
+              for (int c = 0; c < nv; ++c)
+                Qd(r, c) = Qfull(data.vars[r], data.vars[c]);
+          }
+          builder_->AddCost(cids[clique], Qd, data.vars);
+        } else if constexpr (std::is_same_v<T,
+                                            Problem::EqualityConstraintData>) {
+          Eigen::MatrixXd Cd(data.C);
+          builder_->AddEquality(cids[clique], Cd, data.d,
+                                data.primal_vars, data.dual_vars);
+        }
+      }, problem.constraint(i));
+    }
+
+    auto result = builder_->Build();
+    tree_solver_ = std::move(result.solver);
+  }
+
+  std::unique_ptr<TreeSolverBuilder> builder_;
   std::unique_ptr<ConstraintManager> cm_;
   std::unique_ptr<SymmetricLinearSystemTreeSolver> tree_solver_;
   // Per-constraint assembler pointers (nullptr for non-linear constraints).
