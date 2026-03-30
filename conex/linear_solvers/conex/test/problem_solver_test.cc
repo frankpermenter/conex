@@ -460,6 +460,189 @@ TEST(ProblemSolver, DenseSolverIndefinite) {
          eq_err, sol_err);
 }
 
+TEST(ProblemSolver, RankDeficientEqualities) {
+  // Equality constraint C has 4 rows but structural rank 2.
+  // Preprocess should drop 2 redundant rows.
+  const int m = 20, n = 5;
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; ++r)
+    for (int c = 0; c < n; ++c)
+      trips.emplace_back(r, c, (double)rand() / RAND_MAX + 0.1);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  // Two independent rows: {0,1} and {2,3}.  Two redundant copies.
+  Eigen::SparseMatrix<double> C(4, n);
+  std::vector<Eigen::Triplet<double>> ct = {
+      {0, 0, 1.0}, {0, 1, 2.0},
+      {1, 2, 3.0}, {1, 3, -1.0},
+      {2, 0, 0.5}, {2, 1, -1.0},   // same support as row 0
+      {3, 2, 2.0}, {3, 3, 1.0}};   // same support as row 1
+  C.setFromTriplets(ct.begin(), ct.end());
+
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd d = Eigen::MatrixXd(C) * x_true;
+  VectorXd b = Eigen::MatrixXd(A) * x_true;
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
+  problem.AddEqualityConstraint(C, d, vars);
+
+  auto [reduced, expansion] = Preprocess(problem);
+  auto solver = Solver::Build(reduced);
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  // Build RHS in reduced space.
+  VectorXd rhs = VectorXd::Zero(solver.num_variables());
+  VectorXd rhs_primal = expansion.Reduce(
+      Eigen::MatrixXd(A).transpose() * b);
+  rhs.head(rhs_primal.size()) = rhs_primal;
+
+  // Set equality RHS via dual variables.
+  // The equality constraint is the second constraint (id=1).
+  const auto& duals = solver.dual_variables(1);
+  // d was reduced by Preprocess (dropped rows).
+  // The reduced equality constraint has fewer rows.
+  auto* eq = std::get_if<Problem::EqualityConstraintData>(
+      &reduced.constraint(1));
+  ASSERT_TRUE(eq != nullptr);
+  for (int i = 0; i < static_cast<int>(duals.size()); ++i)
+    rhs(duals[i]) = eq->d(i);
+
+  VectorXd sol = solver.Solve(rhs);
+  VectorXd x_sol = expansion.Expand(sol.head(expansion.col_map.size()));
+
+  double constraint_err = (Eigen::MatrixXd(C) * x_sol - d).norm();
+  EXPECT_LT(constraint_err, 1e-8) << "Equality constraints violated";
+
+  printf("ProblemSolver.RankDeficientEqualities: constraint_err=%.2e\n",
+         constraint_err);
+}
+
+TEST(ProblemSolver, InconsistentEqualities) {
+  // Three rows all touching {x0}: structural rank 1.
+  // Row 2 is inconsistent (3*x0 = 10 but should be 9).
+  const int n = 3;
+  std::vector<int> vars = {0, 1, 2};
+
+  Eigen::SparseMatrix<double> A(10, n);
+  std::vector<Eigen::Triplet<double>> at;
+  for (int r = 0; r < 10; ++r)
+    for (int c = 0; c < n; ++c)
+      at.emplace_back(r, c, (double)rand() / RAND_MAX + 0.1);
+  A.setFromTriplets(at.begin(), at.end());
+
+  Eigen::SparseMatrix<double> C(3, n);
+  std::vector<Eigen::Triplet<double>> ct = {
+      {0, 0, 1.0}, {1, 0, 2.0}, {2, 0, 3.0}};
+  C.setFromTriplets(ct.begin(), ct.end());
+  VectorXd d(3);
+  d << 3.0, 6.0, 10.0;  // inconsistent: should be 9.0
+
+  Problem problem;
+  problem.AddLinearConstraint(A, VectorXd::Zero(10), vars);
+  problem.AddEqualityConstraint(C, d, vars);
+
+  EXPECT_THROW(Preprocess(problem), std::runtime_error);
+}
+
+TEST(ProblemSolver, ConsistentEqualities) {
+  // Same as above but consistent.
+  const int n = 3;
+  std::vector<int> vars = {0, 1, 2};
+
+  Eigen::SparseMatrix<double> A(10, n);
+  std::vector<Eigen::Triplet<double>> at;
+  for (int r = 0; r < 10; ++r)
+    for (int c = 0; c < n; ++c)
+      at.emplace_back(r, c, (double)rand() / RAND_MAX + 0.1);
+  A.setFromTriplets(at.begin(), at.end());
+
+  Eigen::SparseMatrix<double> C(3, n);
+  std::vector<Eigen::Triplet<double>> ct = {
+      {0, 0, 1.0}, {1, 0, 2.0}, {2, 0, 3.0}};
+  C.setFromTriplets(ct.begin(), ct.end());
+  VectorXd d(3);
+  d << 3.0, 6.0, 9.0;  // consistent
+
+  Problem problem;
+  problem.AddLinearConstraint(A, VectorXd::Zero(10), vars);
+  problem.AddEqualityConstraint(C, d, vars);
+
+  EXPECT_NO_THROW(Preprocess(problem));
+}
+
+TEST(ProblemSolver, BlockDiagonalPattern) {
+  // Block-diagonal A: 5 blocks of 8×3.
+  srand(99);
+  const int num_blocks = 5, rows_per = 8, cols_per = 3;
+  const int n = num_blocks * cols_per;
+  const int m = num_blocks * rows_per;
+
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int b = 0; b < num_blocks; ++b)
+    for (int r = 0; r < rows_per; ++r)
+      for (int c = 0; c < cols_per; ++c)
+        trips.emplace_back(b * rows_per + r, b * cols_per + c,
+                           (double)rand() / RAND_MAX);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd rhs = Eigen::MatrixXd(A).transpose() *
+                  (Eigen::MatrixXd(A) * x_true);
+
+  Problem problem;
+  problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
+  auto solver = Solver::Build(problem);
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  VectorXd x_sol = solver.Solve(rhs);
+  double err = (x_sol - x_true).norm() / x_true.norm();
+  EXPECT_LT(err, 1e-8);
+  printf("ProblemSolver.BlockDiagonalPattern: err=%.2e\n", err);
+}
+
+TEST(ProblemSolver, BandedPattern) {
+  // Banded A: 50 vars, bandwidth 5.
+  srand(42);
+  const int n = 50, bw = 5, rows_per = 10;
+  const int num_groups = n - bw + 1;
+  const int m = rows_per * num_groups;
+
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int g = 0; g < num_groups; ++g)
+    for (int r = 0; r < rows_per; ++r)
+      for (int j = 0; j < bw; ++j)
+        trips.emplace_back(g * rows_per + r, g + j,
+                           0.5 + (double)rand() / RAND_MAX);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd rhs = Eigen::MatrixXd(A).transpose() *
+                  (Eigen::MatrixXd(A) * x_true);
+
+  Problem problem;
+  problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
+  auto solver = Solver::Build(problem);
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  VectorXd x_sol = solver.Solve(rhs);
+  double err = (x_sol - x_true).norm() / x_true.norm();
+  EXPECT_LT(err, 1e-8);
+  printf("ProblemSolver.BandedPattern: err=%.2e\n", err);
+}
+
 // =====================================================================
 // Gaussian MRF on a tree: purely PD, no equality constraints.
 // =====================================================================
