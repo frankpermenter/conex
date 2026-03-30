@@ -154,6 +154,9 @@ class Solver {
 
     linear_assemblers_.resize(problem.num_constraints(), nullptr);
 
+    // Allocate dual variables: start after the max primal index.
+    int next_dual = problem.num_variables();
+
     for (int i = 0; i < problem.num_constraints(); ++i) {
       int clique = tree.clique_of(i);
       std::visit([&](const auto& data) {
@@ -175,9 +178,13 @@ class Solver {
           builder_->AddCost(cids[clique], Qd, data.vars);
         } else if constexpr (std::is_same_v<T,
                                             Problem::EqualityConstraintData>) {
+          int p = data.C.rows();
+          std::vector<int> dual(p);
+          for (int j = 0; j < p; ++j) dual[j] = next_dual++;
+          dual_var_map_[i] = dual;
           Eigen::MatrixXd Cd(data.C);
           builder_->AddEquality(cids[clique], Cd, data.d,
-                                data.primal_vars, data.dual_vars);
+                                data.primal_vars, dual);
         }
       }, problem.constraint(i));
     }

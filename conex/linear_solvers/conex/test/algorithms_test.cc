@@ -2803,7 +2803,7 @@ TEST(ProblemSolver, EqualityConstrainedLS) {
       VectorXd::Zero(m), primal_vars);
   auto c_eq = problem.AddEqualityConstraint(
       Eigen::SparseMatrix<double>(C.sparseView()),
-      d, primal_vars, {});  // dual vars allocated by solver
+      d, primal_vars);  // dual vars allocated by solver
 
   auto solver = Solver::Build(problem);
   ASSERT_TRUE(solver.AssembleAndFactor());

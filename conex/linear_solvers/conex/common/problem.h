@@ -59,14 +59,14 @@ class Problem {
   }
 
   // Add an equality constraint: Cx = d.
+  // Dual variables are allocated by the Solver, not by the user.
   ConstraintId AddEqualityConstraint(
       const Eigen::SparseMatrix<double>& C,
       const Eigen::VectorXd& d,
-      const std::vector<int>& primal_vars,
-      const std::vector<int>& dual_vars) {
+      const std::vector<int>& primal_vars) {
     int id = static_cast<int>(constraints_.size());
     constraints_.push_back(
-        EqualityConstraintData{C, d, primal_vars, dual_vars});
+        EqualityConstraintData{C, d, primal_vars});
     return id;
   }
 
@@ -91,7 +91,6 @@ class Problem {
     Eigen::SparseMatrix<double> C;
     Eigen::VectorXd d;
     std::vector<int> primal_vars;
-    std::vector<int> dual_vars;
   };
 
   using ConstraintData = std::variant<
@@ -113,7 +112,6 @@ class Problem {
         if constexpr (std::is_same_v<std::decay_t<decltype(data)>,
                                      EqualityConstraintData>) {
           for (int v : data.primal_vars) n = std::max(n, v + 1);
-          for (int v : data.dual_vars) n = std::max(n, v + 1);
         } else {
           for (int v : data.vars) n = std::max(n, v + 1);
         }

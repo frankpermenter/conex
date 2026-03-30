@@ -103,13 +103,12 @@ std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
           }
         Eigen::SparseMatrix<double> C_new(data.C.rows(), n_reduced);
         C_new.setFromTriplets(t.begin(), t.end());
-        std::vector<int> new_primal, new_dual;
+        std::vector<int> new_primal;
         for (int v : data.primal_vars) {
           int nv = inv[v];
           if (nv >= 0) new_primal.push_back(nv);
         }
-        // Dual vars are allocated by the solver, not remapped here.
-        reduced.AddEqualityConstraint(C_new, data.d, new_primal, data.dual_vars);
+        reduced.AddEqualityConstraint(C_new, data.d, new_primal);
       }
     }, problem.constraint(i));
   }
