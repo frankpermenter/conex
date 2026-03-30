@@ -643,6 +643,190 @@ TEST(ProblemSolver, BandedPattern) {
   printf("ProblemSolver.BandedPattern: err=%.2e\n", err);
 }
 
+TEST(ProblemSolver, LQRCustomVsAutomatic) {
+  // Compare custom tree (TreeSpec) vs automatic (AMD) for LQR.
+  // Custom tree knows the chain structure; automatic discovers it.
+  using clock = std::chrono::high_resolution_clock;
+  srand(42);
+
+  const int nx = 4, nu = 2;
+  MatrixXd Ad = 0.9 * MatrixXd::Identity(nx, nx) +
+                0.1 * MatrixXd::Random(nx, nx);
+  MatrixXd Bd = MatrixXd::Random(nx, nu);
+  MatrixXd Q = MatrixXd::Identity(nx, nx) + 0.5 * MatrixXd::Ones(nx, nx);
+  MatrixXd R = 0.1 * MatrixXd::Identity(nu, nu) + 0.05 * MatrixXd::Ones(nu, nu);
+  MatrixXd Qf = 10.0 * Q;
+  VectorXd x0 = VectorXd::Ones(nx);
+
+  printf("\n  LQR: custom tree (TreeSpec) vs automatic (AMD)\n");
+  printf("%-6s %22s %22s %8s\n",
+         "T", "custom(build+fac+sol)", "auto(build+fac+sol)", "speedup");
+  printf("------  ---------------------- ---------------------- --------\n");
+
+  for (int T : {10, 50, 100, 200}) {
+    int step = nx + nu;
+    int n_vars = (T + 1) * nx + T * nu;
+
+    auto x_idx = [&](int t) -> std::vector<int> {
+      std::vector<int> v(nx);
+      int base = t * (nx + nu);
+      std::iota(v.begin(), v.end(), base);
+      return v;
+    };
+    auto u_idx = [&](int t) -> std::vector<int> {
+      std::vector<int> v(nu);
+      std::iota(v.begin(), v.end(), t * (nx + nu) + nx);
+      return v;
+    };
+    auto xT_idx = [&]() -> std::vector<int> {
+      std::vector<int> v(nx);
+      std::iota(v.begin(), v.end(), T * (nx + nu));
+      return v;
+    };
+
+    // Build Problem (shared by both paths).
+    auto build_problem = [&]() {
+      Problem problem;
+      std::vector<ConstraintId> cost_ids, dyn_ids;
+
+      // Sparse cost Q_cost.
+      std::vector<Eigen::Triplet<double>> qt;
+      for (int t = 0; t < T; ++t) {
+        auto xi = x_idx(t), ui = u_idx(t);
+        for (int i = 0; i < nx; ++i)
+          for (int j = 0; j < nx; ++j)
+            if (Q(i,j) != 0) qt.emplace_back(xi[i], xi[j], Q(i,j));
+        for (int i = 0; i < nu; ++i)
+          for (int j = 0; j < nu; ++j)
+            if (R(i,j) != 0) qt.emplace_back(ui[i], ui[j], R(i,j));
+      }
+      auto xTi = xT_idx();
+      for (int i = 0; i < nx; ++i)
+        for (int j = 0; j < nx; ++j)
+          if (Qf(i,j) != 0) qt.emplace_back(xTi[i], xTi[j], Qf(i,j));
+      Eigen::SparseMatrix<double> Q_cost(n_vars, n_vars);
+      Q_cost.setFromTriplets(qt.begin(), qt.end());
+
+      std::vector<int> all_vars(n_vars);
+      std::iota(all_vars.begin(), all_vars.end(), 0);
+      problem.AddQuadraticCost(Q_cost, all_vars);
+
+      // Dynamics + IC as one equality constraint.
+      int n_eq = (T + 1) * nx;
+      std::vector<Eigen::Triplet<double>> ct;
+      for (int t = 0; t < T; ++t) {
+        int rb = t * nx;
+        auto xi = x_idx(t), ui = u_idx(t);
+        auto xi1 = (t < T-1) ? x_idx(t+1) : xT_idx();
+        for (int r = 0; r < nx; ++r)
+          for (int c = 0; c < nx; ++c)
+            if (Ad(r,c) != 0) ct.emplace_back(rb+r, xi[c], -Ad(r,c));
+        for (int r = 0; r < nx; ++r)
+          for (int c = 0; c < nu; ++c)
+            if (Bd(r,c) != 0) ct.emplace_back(rb+r, ui[c], -Bd(r,c));
+        for (int i = 0; i < nx; ++i)
+          ct.emplace_back(rb+i, xi1[i], 1.0);
+      }
+      int ic_row = T * nx;
+      for (int i = 0; i < nx; ++i)
+        ct.emplace_back(ic_row+i, x_idx(0)[i], 1.0);
+      Eigen::SparseMatrix<double> C_eq(n_eq, n_vars);
+      C_eq.setFromTriplets(ct.begin(), ct.end());
+
+      VectorXd d_eq = VectorXd::Zero(n_eq);
+      d_eq.tail(nx) = x0;
+
+      auto c_eq = problem.AddEqualityConstraint(C_eq, d_eq, all_vars);
+      return std::make_pair(problem, c_eq);
+    };
+
+    // --- Custom tree path ---
+    auto [prob_c, ceq_c] = build_problem();
+
+    // TreeSpec: chain 0 → 1 → ... → T.
+    // Each clique t gets cost(t) + dynamics(t).
+    // But we have ONE big Q and ONE big C, not per-timestep.
+    // For custom tree, we need per-timestep constraints.
+    // Build a separate problem with per-timestep blocks.
+    Problem prob_custom;
+    TreeSpec tree;
+    std::vector<int> cliques(T + 1);
+    cliques[T] = tree.AddClique();
+    for (int t = T-1; t >= 0; --t)
+      cliques[t] = tree.AddClique(cliques[t+1]);
+
+    MatrixXd QR = MatrixXd::Zero(nx+nu, nx+nu);
+    QR.topLeftCorner(nx,nx) = Q;
+    QR.bottomRightCorner(nu,nu) = R;
+
+    MatrixXd C_dyn(nx, nx+nu+nx);
+    C_dyn << -Ad, -Bd, MatrixXd::Identity(nx,nx);
+    VectorXd d_zero = VectorXd::Zero(nx);
+
+    for (int t = 0; t < T; ++t) {
+      std::vector<int> xu;
+      auto xi = x_idx(t), ui = u_idx(t);
+      xu.insert(xu.end(), xi.begin(), xi.end());
+      xu.insert(xu.end(), ui.begin(), ui.end());
+      tree.Assign(prob_custom.AddQuadraticCost(QR, xu), cliques[t]);
+
+      std::vector<int> dyn_p;
+      auto xi1 = (t < T-1) ? x_idx(t+1) : xT_idx();
+      dyn_p.insert(dyn_p.end(), xi.begin(), xi.end());
+      dyn_p.insert(dyn_p.end(), ui.begin(), ui.end());
+      dyn_p.insert(dyn_p.end(), xi1.begin(), xi1.end());
+      tree.Assign(prob_custom.AddEqualityConstraint(
+          Eigen::SparseMatrix<double>(C_dyn.sparseView()),
+          d_zero, dyn_p), cliques[t]);
+    }
+    tree.Assign(prob_custom.AddQuadraticCost(Qf, xT_idx()), cliques[T]);
+    auto c_ic = prob_custom.AddEqualityConstraint(
+        Eigen::SparseMatrix<double>(MatrixXd::Identity(nx,nx).sparseView()),
+        d_zero, x_idx(0));
+    tree.Assign(c_ic, cliques[0]);
+
+    auto tc0 = clock::now();
+    auto solver_c = Solver::Build(prob_custom, tree);
+    auto tc1 = clock::now();
+    solver_c.AssembleAndFactor();
+    auto tc2 = clock::now();
+    const auto& ic_duals = solver_c.dual_variables(c_ic);
+    VectorXd rhs_c = VectorXd::Zero(solver_c.num_variables());
+    for (int i = 0; i < nx; ++i) rhs_c(ic_duals[i]) = x0(i);
+    VectorXd sol_c = solver_c.Solve(rhs_c);
+    auto tc3 = clock::now();
+    double custom_us = std::chrono::duration<double, std::micro>(tc3 - tc0).count();
+
+    // --- Automatic path ---
+    auto [prob_a, ceq_a] = build_problem();
+    auto ta0 = clock::now();
+    auto solver_a = Solver::Build(prob_a);
+    auto ta1 = clock::now();
+    solver_a.AssembleAndFactor();
+    auto ta2 = clock::now();
+    const auto& duals_a = solver_a.dual_variables(ceq_a);
+    VectorXd rhs_a = VectorXd::Zero(solver_a.num_variables());
+    int n_eq = (T+1)*nx;
+    VectorXd d_eq = VectorXd::Zero(n_eq);
+    d_eq.tail(nx) = x0;
+    for (int i = 0; i < n_eq; ++i) rhs_a(duals_a[i]) = d_eq(i);
+    VectorXd sol_a = solver_a.Solve(rhs_a);
+    auto ta3 = clock::now();
+    double auto_us = std::chrono::duration<double, std::micro>(ta3 - ta0).count();
+
+    // Verify both produce reasonable solutions.
+    VectorXd x0_c(nx), x0_a(nx);
+    auto xi0 = x_idx(0);
+    for (int i = 0; i < nx; ++i) x0_c(i) = sol_c(xi0[i]);
+    for (int i = 0; i < nx; ++i) x0_a(i) = sol_a(xi0[i]);
+    EXPECT_LT((x0_c - x0).norm(), 1e-4) << "Custom IC at T=" << T;
+    EXPECT_LT((x0_a - x0).norm(), 1e-4) << "Auto IC at T=" << T;
+
+    printf("%-6d %12.0f          %12.0f          %7.1fx\n",
+           T, custom_us, auto_us, auto_us / custom_us);
+  }
+}
+
 // =====================================================================
 // Gaussian MRF on a tree: purely PD, no equality constraints.
 // =====================================================================
