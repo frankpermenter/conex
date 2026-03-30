@@ -2553,15 +2553,30 @@ TEST(ComputeBlockResidual, PartialSupport) {
   EXPECT_LT(full_residual.norm(), 1e-8)
       << "Solve residual too large";
 
-  // The key test: ComputeBlockResidual for A2 would fail because
-  // A2 has 3 variables but the clique's supernode has 4 rows.
-  // A_perm_ is 3 columns but x_sn is 4 rows → dimension mismatch.
-  // This documents the known limitation.
-  printf("PartialSupport: solve_residual=%.2e, A2_dense_residual=%.2e\n",
-         full_residual.norm(), dense_residual_A2.norm());
-  printf("  NOTE: ComputeBlockResidual would fail for A2 (3 vars vs 4-row supernode).\n");
-  printf("  The assembly (A2'A2 contribution) is correct; only the block\n");
-  printf("  residual computation assumes full clique support.\n");
+  // Verify the dimension mismatch that would cause ComputeBlockResidual
+  // to fail for A2.  The partition's supernode has 4 rows (full clique)
+  // but A2 has only 3 variables → A_perm_ has 3 columns, x_sn has 4 rows.
+  auto* tree_solver = dynamic_cast<SymmetricLinearSystemTreeSolver*>(
+      result.solver.get());
+  ASSERT_TRUE(tree_solver != nullptr);
+  result.solver->ScatterToBlocks(x_sol);
+  const auto& partition = tree_solver->raw_partition();
+
+  // The single clique's supernode has all 4 variables.
+  EXPECT_EQ(partition.supernode_rows(0), n);
+
+  // A2's contributor was registered with sn_count = 3 (its var count).
+  // Calling ComputeBlockResidual(supernode(0), separator(0)) on A2
+  // would attempt A_perm_.leftCols(3) * supernode(0) where
+  // supernode(0) is 4×1 → dimension mismatch.
+  // This is undefined behavior in Release, assertion failure in Debug.
+  auto* adapter = tree_solver->GetContributor(1);
+  EXPECT_EQ(static_cast<int>(adapter->variables().size()), 3);
+
+  printf("PartialSupport: solve_residual=%.2e\n", full_residual.norm());
+  printf("  supernode_rows=%d, A2_vars=%d → mismatch confirmed\n",
+         partition.supernode_rows(0),
+         static_cast<int>(adapter->variables().size()));
 }
 
 }  // namespace
