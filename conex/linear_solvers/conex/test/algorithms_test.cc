@@ -5,6 +5,8 @@
 #include "conex/algorithms/lqr_tree_solver.h"
 #include "conex/algorithms/tree_solver_builder.h"
 #include "conex/common/clique_ordering.h"
+#include "conex/common/problem.h"
+#include "conex/common/solver.h"
 #include "conex/common/constraint_manager.h"
 #include "conex/common/sparse_equality_constraint.h"
 #include "conex/common/sparse_linear_constraint.h"
@@ -2195,29 +2197,27 @@ TEST(GaussianMRF, TreeSolver) {
   using clock = std::chrono::high_resolution_clock;
   srand(42);
 
-  const int d = 4;  // variable dimension per node
+  const int d = 4;
 
-  // Variable layout: node v → indices [v*d .. v*d + d - 1].
   auto var_idx = [&](int v) -> std::vector<int> {
     std::vector<int> idx(d);
     std::iota(idx.begin(), idx.end(), v * d);
     return idx;
   };
 
-  // Random SPD node potential: Λ_v = I + 0.5*rand'*rand.
   auto make_node_potential = [&]() {
     MatrixXd R = MatrixXd::Random(d, d) * 0.5;
-    return MatrixXd::Identity(d, d) + R.transpose() * R;
+    MatrixXd RtR = R.transpose() * R;
+    return MatrixXd(MatrixXd::Identity(d, d) + RtR);
   };
 
-  // Random SPD edge potential on {u,v}: block matrix that couples u and v.
-  // Λ_{uv} = [A, C'; C, B] where the whole thing is SPD.
   auto make_edge_potential = [&]() {
     MatrixXd R = MatrixXd::Random(2 * d, 2 * d) * 0.3;
-    return MatrixXd::Identity(2 * d, 2 * d) + R.transpose() * R;
+    MatrixXd RtR = R.transpose() * R;
+    return MatrixXd(MatrixXd::Identity(2 * d, 2 * d) + RtR);
   };
 
-  printf("\n  Gaussian MRF on tree (d=%d): explicit tree via builder\n", d);
+  printf("\n  Gaussian MRF on tree (d=%d): Problem + Solver + TreeSpec\n", d);
   printf("%-6s %-6s %6s %7s  %8s %8s %8s  %10s\n",
          "B", "D", "nodes", "n_vars", "build", "factor", "solve", "residual");
   printf("------  ------ ------ -------  -------- -------- --------"
@@ -2230,71 +2230,88 @@ TEST(GaussianMRF, TreeSolver) {
 
     auto t0 = clock::now();
 
-    TreeSolverBuilder builder;
+    // Build problem: node + edge potentials as quadratic costs.
+    Problem problem;
+    TreeSpec tree;
 
-    // One clique per edge.  Edge (p,c): clique for child c, parent is
-    // the clique for c's parent edge (or root clique).
-    // For the root node (no parent edge), create a root clique.
-    // Map: node → clique that "owns" it (the edge clique where it's a child,
-    // or the root clique for node 0).
+    // One clique per node.  Root clique for node 0, child cliques for others.
+    std::vector<int> cliques(N);
+    cliques[0] = tree.AddClique();
+    for (int c = 1; c < N; ++c)
+      cliques[c] = tree.AddClique(cliques[graph.parent[c]]);
 
-    // Clique per edge, indexed by child node (edges are (parent[c], c)).
-    // Root node 0 gets its own clique.
-    std::vector<int> cid(N, -1);
+    // Node potential for root.
+    MatrixXd Q0 = make_node_potential();
+    auto c_root = problem.AddQuadraticCost(Q0, var_idx(0));
+    tree.Assign(c_root, cliques[0]);
 
-    // Root clique.
-    cid[0] = builder.AddClique();
-    builder.AddCost(cid[0], make_node_potential(), var_idx(0));
+    // Store potentials for residual check.
+    std::vector<MatrixXd> node_pots(N), edge_pots(N);
+    node_pots[0] = Q0;
 
-    // Edge cliques: one per non-root node.
-    // Process in order so parent cliques exist before children.
     for (int c = 1; c < N; ++c) {
       int p = graph.parent[c];
-      cid[c] = builder.AddClique(cid[p]);
 
-      // Edge potential: 2d×2d on {x_p, x_c}.
+      // Edge potential.
       std::vector<int> edge_vars;
       auto vp = var_idx(p), vc = var_idx(c);
       edge_vars.insert(edge_vars.end(), vp.begin(), vp.end());
       edge_vars.insert(edge_vars.end(), vc.begin(), vc.end());
-      builder.AddCost(cid[c], make_edge_potential(), edge_vars);
+      MatrixXd Qe = make_edge_potential();
+      edge_pots[c] = Qe;
+      auto ce = problem.AddQuadraticCost(Qe, edge_vars);
+      tree.Assign(ce, cliques[c]);
 
-      // Node potential for child c: d×d on {x_c}.
-      builder.AddCost(cid[c], make_node_potential(), var_idx(c));
+      // Node potential for child.
+      MatrixXd Qn = make_node_potential();
+      node_pots[c] = Qn;
+      auto cn = problem.AddQuadraticCost(Qn, var_idx(c));
+      tree.Assign(cn, cliques[c]);
     }
 
-    auto result = builder.Build();
+    auto solver = Solver::Build(problem, tree);
     auto t1 = clock::now();
 
-    ASSERT_TRUE(result.solver->AssembleAndFactor());
+    ASSERT_TRUE(solver.AssembleAndFactor());
     auto t2 = clock::now();
 
-    // RHS: random information vector h.
     VectorXd h = VectorXd::Random(n_vars);
-    // Pad to system size (builder may have more vars from fill).
-    VectorXd rhs = VectorXd::Zero(result.num_variables);
-    rhs.head(n_vars) = h;
-
-    auto sol = result.solver->Solve(rhs);
+    auto rhs_bv = solver.MakeBlockVariable(h);
+    auto x_bv = solver.MakeBlockVariable();
+    solver.SolveInto(rhs_bv, x_bv);
+    VectorXd x = x_bv.Gather().col(0);
     auto t3 = clock::now();
 
-    // Verify: compute J*x and check ||J*x - h||.
-    // J = Σ node potentials + Σ edge potentials (assembled manually).
-    // Too expensive to form J explicitly for large N.  Instead check
-    // a few local constraints: for each edge, verify the edge
-    // contribution is consistent.
-    // Simple check: re-solve should give same answer.
-    auto sol2 = result.solver->Solve(rhs);
-    double resolve_err = (sol.col(0).head(n_vars) -
-                          sol2.col(0).head(n_vars)).norm();
-    EXPECT_LT(resolve_err, 1e-12) << "Re-solve inconsistency";
+    // Verify: assemble J*x and check ||J*x - h||.
+    // J = Σ node_pot[v] (on vars v) + Σ edge_pot[c] (on vars {p,c}).
+    VectorXd Jx = VectorXd::Zero(n_vars);
+    for (int v = 0; v < N; ++v) {
+      auto vi = var_idx(v);
+      VectorXd xv(d);
+      for (int i = 0; i < d; ++i) xv(i) = x(vi[i]);
+      VectorXd contrib = node_pots[v] * xv;
+      for (int i = 0; i < d; ++i) Jx(vi[i]) += contrib(i);
+    }
+    for (int c = 1; c < N; ++c) {
+      int p = graph.parent[c];
+      auto vp = var_idx(p), vc = var_idx(c);
+      VectorXd xpxc(2 * d);
+      for (int i = 0; i < d; ++i) xpxc(i) = x(vp[i]);
+      for (int i = 0; i < d; ++i) xpxc(d + i) = x(vc[i]);
+      VectorXd contrib = edge_pots[c] * xpxc;
+      for (int i = 0; i < d; ++i) Jx(vp[i]) += contrib(i);
+      for (int i = 0; i < d; ++i) Jx(vc[i]) += contrib(d + i);
+    }
+
+    double residual = (Jx - h).norm() / h.norm();
+    EXPECT_LT(residual, 1e-10) << "J*x != h";
 
     double build_us = std::chrono::duration<double, std::micro>(t1 - t0).count();
     double fac_us = std::chrono::duration<double, std::micro>(t2 - t1).count();
     double sol_us = std::chrono::duration<double, std::micro>(t3 - t2).count();
 
     printf("%-6d %-6d %6d %7d  %7.0fus %7.0fus %7.0fus  %.2e\n",
-           B, D, N, n_vars, build_us, fac_us, sol_us, resolve_err);
+           B, D, N, n_vars, build_us, fac_us, sol_us, residual);
   }
 }
 
