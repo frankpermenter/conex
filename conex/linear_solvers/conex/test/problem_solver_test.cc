@@ -376,6 +376,90 @@ TEST(ProblemSolver, EqualityConstrainedLS) {
          eq_err, opt_err, sol_err);
 }
 
+TEST(ProblemSolver, DenseSolverPD) {
+  srand(42);
+  const int m = 20, n = 8;
+  MatrixXd A = MatrixXd::Random(m, n);
+  MatrixXd Q = MatrixXd::Identity(n, n) * 0.1;
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
+  problem.AddQuadraticCost(Q, vars);
+
+  auto solver = Solver::BuildDense(problem);
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  VectorXd rhs = VectorXd::Random(n);
+  VectorXd x_sol = solver.Solve(rhs);
+
+  MatrixXd M = Q + A.transpose() * A;
+  VectorXd x_ref = M.ldlt().solve(rhs);
+
+  double err = (x_sol.head(n) - x_ref).norm() / x_ref.norm();
+  EXPECT_LT(err, 1e-10);
+  printf("ProblemSolver.DenseSolverPD: err=%.2e\n", err);
+}
+
+TEST(ProblemSolver, DenseSolverIndefinite) {
+  // min ||Ax-b||^2 s.t. Cx=d via dense solver.
+  srand(42);
+  const int m = 15, n = 6, p = 2;
+  MatrixXd A = MatrixXd::Random(m, n);
+  VectorXd b = VectorXd::Random(m);
+  MatrixXd C = MatrixXd::Random(p, n);
+  VectorXd d = VectorXd::Random(p);
+
+  std::vector<int> primal_vars(n);
+  std::iota(primal_vars.begin(), primal_vars.end(), 0);
+
+  Problem problem;
+  problem.AddLinearConstraint(
+      Eigen::SparseMatrix<double>(A.sparseView()),
+      VectorXd::Zero(m), primal_vars);
+  auto c_eq = problem.AddEqualityConstraint(
+      Eigen::SparseMatrix<double>(C.sparseView()),
+      d, primal_vars);
+
+  auto solver = Solver::BuildDense(problem);
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  const auto& dual_vars = solver.dual_variables(c_eq);
+  int n_total = solver.num_variables();
+  VectorXd rhs = VectorXd::Zero(n_total);
+  rhs.head(n) = A.transpose() * b;
+  for (int i = 0; i < p; ++i) rhs(dual_vars[i]) = d(i);
+
+  // Solve via BlockVariable.
+  auto rhs_bv = solver.MakeBlockVariable(rhs);
+  auto x_bv = solver.MakeBlockVariable();
+  solver.SolveInto(rhs_bv, x_bv);
+  VectorXd sol = x_bv.Gather().col(0);
+
+  VectorXd x_sol = sol.head(n);
+
+  // Check equality constraint.
+  double eq_err = (C * x_sol - d).norm();
+  EXPECT_LT(eq_err, 1e-10) << "Equality constraint violated";
+
+  // Compare with direct dense KKT solve.
+  MatrixXd K = MatrixXd::Zero(n + p, n + p);
+  K.topLeftCorner(n, n) = A.transpose() * A;
+  K.topRightCorner(n, p) = C.transpose();
+  K.bottomLeftCorner(p, n) = C;
+  VectorXd kkt_rhs(n + p);
+  kkt_rhs.head(n) = A.transpose() * b;
+  kkt_rhs.tail(p) = d;
+  VectorXd kkt_sol = K.fullPivLu().solve(kkt_rhs);
+  double sol_err = (x_sol - kkt_sol.head(n)).norm() / kkt_sol.head(n).norm();
+  EXPECT_LT(sol_err, 1e-10);
+
+  printf("ProblemSolver.DenseSolverIndefinite: eq=%.2e sol=%.2e\n",
+         eq_err, sol_err);
+}
+
 // =====================================================================
 // Gaussian MRF on a tree: purely PD, no equality constraints.
 // =====================================================================

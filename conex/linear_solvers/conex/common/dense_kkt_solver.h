@@ -5,21 +5,16 @@
 namespace conex {
 
 // Dense KKT solver: stores and factors a full n×n matrix.
-// Uses a trivial 1-block partition (DenseBlockPartition).
-// Useful as a reference implementation and for small problems.
+// Supports both PD (LLT) and indefinite (LDLT) systems.
+// Uses the base class's DenseBlockPartition (trivial 1-block partition).
 class DenseKKTSolver : public KKTSolverBase {
  public:
   explicit DenseKKTSolver(int n) : n_(n), partition_(n) {
     M_.setZero(n, n);
   }
 
-  // Set the matrix directly.
   void SetMatrix(const Eigen::MatrixXd& M) { M_ = M; }
-
-  // Add to the matrix (for accumulating Q + A^T W A).
   void AddToMatrix(const Eigen::MatrixXd& delta) { M_ += delta; }
-
-  // Zero the matrix (before re-assembly).
   void ZeroMatrix() { M_.setZero(); }
 
   Eigen::MatrixXd& matrix() { return M_; }
@@ -31,21 +26,18 @@ class DenseKKTSolver : public KKTSolverBase {
   const BlockPartition& partition() const override { return partition_; }
 
  private:
-  void DoAssemble() override {}  // No-op; matrix set externally.
+  void DoAssemble() override {}
 
   bool DoFactor() override {
-    llt_.compute(M_);
-    return llt_.info() == Eigen::Success;
+    ldlt_.compute(M_);
+    return ldlt_.info() == Eigen::Success;
   }
 
-  bool DoAssembleAndFactor() override {
-    return DoFactor();
-  }
+  bool DoAssembleAndFactor() override { return DoFactor(); }
 
   void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                       bool /*permute*/) const override {
-    b = llt_.solve(b);
-    // Update partition with solution.
+    b = ldlt_.solve(b);
     partition_.ScatterFrom(b);
   }
 
@@ -55,7 +47,7 @@ class DenseKKTSolver : public KKTSolverBase {
 
   int n_;
   Eigen::MatrixXd M_;
-  Eigen::LLT<Eigen::MatrixXd> llt_;
+  Eigen::LDLT<Eigen::MatrixXd> ldlt_;
   mutable DenseBlockPartition partition_;
 };
 

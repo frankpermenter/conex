@@ -5,6 +5,7 @@
 
 #include "conex/common/block_variable.h"
 #include "conex/common/conex.h"
+#include "conex/common/dense_kkt_solver.h"
 #include "conex/common/problem.h"
 #include "conex/common/tree_spec.h"
 #include "conex/algorithms/tree_solver_builder.h"
@@ -40,25 +41,33 @@ class Solver {
     return s;
   }
 
+  // Build a dense solver (reference / small problems).
+  // Assembles the full KKT matrix from the Problem.
+  static Solver BuildDense(const Problem& problem) {
+    Solver s;
+    s.BuildDenseInternal(problem);
+    return s;
+  }
+
   // Factor the assembled system.  Must be called before SolveInto.
-  bool AssembleAndFactor() { return tree_solver_->AssembleAndFactor(); }
+  bool AssembleAndFactor() { return solver()->AssembleAndFactor(); }
 
   // Create a BlockVariable matching this solver's partition.
   BlockVariable MakeBlockVariable(int cols = 1) {
-    return tree_solver_->MakeBlockVariable(cols);
+    return solver()->MakeBlockVariable(cols);
   }
   BlockVariable MakeBlockVariable(Eigen::Ref<const Eigen::MatrixXd> x) {
-    return tree_solver_->MakeBlockVariable(x);
+    return solver()->MakeBlockVariable(x);
   }
 
   // Solve: rhs in, solution out (blocked, no dense vectors).
   void SolveInto(const BlockVariable& rhs, BlockVariable& dest) const {
-    tree_solver_->SolveInto(rhs, dest);
+    solver()->SolveInto(rhs, dest);
   }
 
   // Dense solve (convenience).
   Eigen::VectorXd Solve(Eigen::Ref<const Eigen::VectorXd> rhs) const {
-    return tree_solver_->Solve(rhs);
+    return solver()->Solve(rhs);
   }
 
   // Set per-row weights on a linear constraint (for IRLS/barrier).
@@ -108,13 +117,21 @@ class Solver {
     result.ScatterFrom(slca->ComputeTransposeProduct(v));
   }
 
-  // Access the underlying tree solver (for ScatterToBlocks etc).
-  SymmetricLinearSystemTreeSolver& tree_solver() { return *tree_solver_; }
-  const SymmetricLinearSystemTreeSolver& tree_solver() const {
-    return *tree_solver_;
+  // Access the underlying solver.
+  KKTSolverBase* solver() {
+    if (dense_solver_) return static_cast<KKTSolverBase*>(dense_solver_.get());
+    return static_cast<KKTSolverBase*>(tree_solver_.get());
+  }
+  const KKTSolverBase* solver() const {
+    if (dense_solver_) return static_cast<const KKTSolverBase*>(dense_solver_.get());
+    return static_cast<const KKTSolverBase*>(tree_solver_.get());
   }
 
-  int num_variables() const { return tree_solver_->number_of_variables(); }
+  // Access the tree solver specifically (nullptr if dense).
+  SymmetricLinearSystemTreeSolver* tree_solver() { return tree_solver_.get(); }
+  const SymmetricLinearSystemTreeSolver* tree_solver() const { return tree_solver_.get(); }
+
+  int num_variables() const { return solver()->number_of_variables(); }
 
   // Get the dual variable indices allocated for an equality constraint.
   const std::vector<int>& dual_variables(ConstraintId id) const {
@@ -216,9 +233,62 @@ class Solver {
     tree_solver_ = std::move(result.solver);
   }
 
+  void BuildDenseInternal(const Problem& problem) {
+    int n = problem.num_variables();
+
+    // Allocate dual variables for equality constraints.
+    int next_dual = n;
+    for (int i = 0; i < problem.num_constraints(); ++i) {
+      if (auto* eq = std::get_if<Problem::EqualityConstraintData>(
+              &problem.constraint(i))) {
+        int p = eq->C.rows();
+        std::vector<int> dual(p);
+        for (int j = 0; j < p; ++j) dual[j] = next_dual++;
+        dual_var_map_[i] = dual;
+      }
+    }
+    int n_total = next_dual;
+
+    auto ds = std::make_unique<DenseKKTSolver>(n_total);
+
+    // Assemble the full KKT matrix.
+    for (int i = 0; i < problem.num_constraints(); ++i) {
+      std::visit([&](const auto& data) {
+        using T = std::decay_t<decltype(data)>;
+        if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+          // A'A on vars.
+          Eigen::MatrixXd Ad(data.A);
+          Eigen::MatrixXd AtA = Ad.transpose() * Ad;
+          for (int r = 0; r < static_cast<int>(data.vars.size()); ++r)
+            for (int c = 0; c < static_cast<int>(data.vars.size()); ++c)
+              ds->matrix()(data.vars[r], data.vars[c]) += AtA(r, c);
+        } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
+          Eigen::MatrixXd Qd = data.Q_dense.size() > 0
+              ? data.Q_dense : Eigen::MatrixXd(data.Q_sparse);
+          for (int r = 0; r < static_cast<int>(data.vars.size()); ++r)
+            for (int c = 0; c < static_cast<int>(data.vars.size()); ++c)
+              ds->matrix()(data.vars[r], data.vars[c]) += Qd(r, c);
+        } else if constexpr (std::is_same_v<T,
+                                            Problem::EqualityConstraintData>) {
+          const auto& dual = dual_var_map_.at(i);
+          Eigen::MatrixXd Cd(data.C);
+          // [0, C'; C, 0] block.
+          for (int r = 0; r < Cd.rows(); ++r)
+            for (int c = 0; c < static_cast<int>(data.primal_vars.size()); ++c) {
+              ds->matrix()(dual[r], data.primal_vars[c]) += Cd(r, c);
+              ds->matrix()(data.primal_vars[c], dual[r]) += Cd(r, c);
+            }
+        }
+      }, problem.constraint(i));
+    }
+
+    dense_solver_ = std::move(ds);
+  }
+
   std::unique_ptr<TreeSolverBuilder> builder_;
   std::unique_ptr<ConstraintManager> cm_;
   std::unique_ptr<SymmetricLinearSystemTreeSolver> tree_solver_;
+  std::unique_ptr<DenseKKTSolver> dense_solver_;
   std::vector<SparseLinearConstraintAssembler*> linear_assemblers_;
   std::unordered_map<int, std::vector<int>> dual_var_map_;
 };
