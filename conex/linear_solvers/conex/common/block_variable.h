@@ -43,6 +43,19 @@ class BlockVariable {
   // Number of columns.
   int cols() const { return partition_->cols(); }
 
+  // Dot product with a dense vector.
+  double dot(const Eigen::VectorXd& v) const {
+    return Gather().col(0).dot(v);
+  }
+
+  // Axpy: this += alpha * other (block-wise).
+  void AddScaled(double alpha, const BlockVariable& other) {
+    int nb = partition_->num_blocks();
+    for (int k = 0; k < nb; ++k) {
+      partition_->block(k) += alpha * other.partition().block(k);
+    }
+  }
+
   // Access the underlying partition (for block-level operations).
   BlockPartition& partition() { return *partition_; }
   const BlockPartition& partition() const { return *partition_; }

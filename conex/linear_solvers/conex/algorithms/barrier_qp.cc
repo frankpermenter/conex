@@ -26,7 +26,6 @@ BarrierQPResult SolveBarrierQP(
   result.total_newton_steps = 0;
   result.outer_iterations = 0;
 
-  // Build problem: A'WA (reweighted) + Q.
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
@@ -34,20 +33,10 @@ BarrierQPResult SolveBarrierQP(
   auto c_ineq = problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
   problem.AddQuadraticCost(Q, vars);
 
-  // Preprocess (drop structurally dependent columns).
   auto [reduced, expansion] = Preprocess(problem);
   const int nr = reduced.num_variables();
 
-  // Reduce Q, c, x0, A to the reduced space.
   Eigen::VectorXd c_r = expansion.Reduce(c);
-  Eigen::VectorXd x0_r = expansion.Reduce(x0);
-
-  Eigen::MatrixXd A_r(A);
-  if (expansion.was_reduced()) {
-    A_r.resize(m, nr);
-    for (int j = 0; j < nr; ++j)
-      A_r.col(j) = Eigen::MatrixXd(A).col(expansion.col_map[j]);
-  }
   Eigen::SparseMatrix<double> Q_r;
   if (expansion.was_reduced()) {
     std::vector<Eigen::Triplet<double>> qt;
@@ -67,12 +56,13 @@ BarrierQPResult SolveBarrierQP(
   auto solver = Solver::Build(reduced);
   solver.AssembleAndFactor();
 
-  auto rhs_bv = solver.MakeBlockVariable();
-  auto dx_bv = solver.MakeBlockVariable();
+  // BlockVariables for the solve path.
+  auto x = solver.MakeBlockVariable(expansion.Reduce(x0));
+  auto dx = solver.MakeBlockVariable();
+  auto grad_bv = solver.MakeBlockVariable();
 
   auto t_start = clock::now();
 
-  Eigen::VectorXd x = x0_r;
   double t = 1.0;
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
@@ -84,35 +74,41 @@ BarrierQPResult SolveBarrierQP(
     for (int newton = 0; newton < max_newton_steps; ++newton) {
       result.total_newton_steps++;
 
-      // Slacks: s = b - A x.
-      Eigen::VectorXd s = b - A_r * x;
+      // Slacks: s = b - A x (uses per-clique A, reads x's blocks).
+      Eigen::VectorXd s = b - solver.MultiplyA(c_ineq, x);
       if (s.minCoeff() <= 0) break;
 
-      // Barrier weights: W_ii = 1 / (t * s_i^2).
+      // Barrier weights.
       Eigen::VectorXd weights(m);
       for (int i = 0; i < m; ++i)
         weights(i) = 1.0 / (t * s(i) * s(i));
       solver.SetWeights(c_ineq, weights);
 
       // Gradient: grad = Q x + c + (1/t) A^T (1/s).
+      // Q*x needs dense x (sparse matvec).
+      Eigen::VectorXd x_dense = x.Gather().col(0);
       Eigen::VectorXd inv_s(m);
       for (int i = 0; i < m; ++i) inv_s(i) = 1.0 / s(i);
-      Eigen::VectorXd grad =
-          Q_r * x + c_r + (1.0 / t) * (A_r.transpose() * inv_s);
+
+      Eigen::VectorXd grad = Q_r * x_dense + c_r;
+      // Add (1/t) A^T (1/s) via per-clique transpose product.
+      Eigen::VectorXd at_inv_s =
+          solver.ComputeTransposeProduct(c_ineq, inv_s);
+      grad += (1.0 / t) * at_inv_s;
 
       // Solve (Q + A^T W A) dx = -grad.
       if (!solver.AssembleAndFactor()) break;
-      rhs_bv.ScatterFrom(-grad);
-      solver.SolveInto(rhs_bv, dx_bv);
-      Eigen::VectorXd dx = dx_bv.Gather();
+      grad_bv.ScatterFrom(-grad);
+      solver.SolveInto(grad_bv, dx);
 
       // Newton decrement.
-      double lambda_sq = -grad.dot(dx);
-      if (lambda_sq / 2.0 < tolerance * 0.01) break;
+      Eigen::VectorXd dx_dense = dx.Gather().col(0);
+      double lambda_sq = grad.dot(dx_dense);  // -grad^T * dx
+      if (-lambda_sq / 2.0 < tolerance * 0.01) break;
 
       // Backtracking line search.
       double alpha = 1.0;
-      Eigen::VectorXd Adx = A_r * dx;
+      Eigen::VectorXd Adx = solver.MultiplyA(c_ineq, dx);
       for (int i = 0; i < m; ++i) {
         if (Adx(i) > 0)
           alpha = std::min(alpha, 0.99 * s(i) / Adx(i));
@@ -120,28 +116,30 @@ BarrierQPResult SolveBarrierQP(
 
       const double beta = 0.5;
       const double armijo = 0.01;
-      double f0 = 0.5 * x.dot(Q_r * x) + c_r.dot(x);
+      double f0 = 0.5 * x_dense.dot(Q_r * x_dense) + c_r.dot(x_dense);
       for (int i = 0; i < m; ++i) f0 -= (1.0 / t) * std::log(s(i));
 
       for (int ls = 0; ls < 20; ++ls) {
-        Eigen::VectorXd x_new = x + alpha * dx;
-        Eigen::VectorXd s_new = b - A_r * x_new;
+        Eigen::VectorXd x_new = x_dense + alpha * dx_dense;
+        auto x_new_bv = solver.MakeBlockVariable(x_new);
+        Eigen::VectorXd s_new = b - solver.MultiplyA(c_ineq, x_new_bv);
         if (s_new.minCoeff() <= 0) { alpha *= beta; continue; }
         double f_new = 0.5 * x_new.dot(Q_r * x_new) + c_r.dot(x_new);
         for (int i = 0; i < m; ++i)
           f_new -= (1.0 / t) * std::log(s_new(i));
-        if (f_new <= f0 + armijo * alpha * grad.dot(dx)) break;
+        if (f_new <= f0 + armijo * alpha * (-grad).dot(dx_dense)) break;
         alpha *= beta;
       }
 
-      x += alpha * dx;
+      x.AddScaled(alpha, dx);
     }
 
     t *= mu;
   }
 
   auto t_end = clock::now();
-  result.x = expansion.Expand(x);
+  Eigen::VectorXd x_final = x.Gather().col(0);
+  result.x = expansion.Expand(x_final);
   result.objective = 0.5 * result.x.dot(Q * result.x) + c.dot(result.x);
   result.duality_gap = static_cast<double>(m) / t;
   result.solve_time_us =

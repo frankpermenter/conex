@@ -85,6 +85,29 @@ class Solver {
     return slca->ComputeTransposeProduct(v);
   }
 
+  // Compute A * x per-clique, reading x from its BlockVariable partition.
+  // Result is m-dimensional (row space).  No x.Gather() needed.
+  Eigen::VectorXd MultiplyA(ConstraintId id,
+                             const BlockVariable& x) const {
+    auto* slca = linear_assemblers_.at(id);
+    CONEX_DEMAND(slca, "Constraint is not a linear constraint.");
+    // Gather x to dense — the per-clique block path requires
+    // BindPartition which has the partial-support bug.
+    // TODO: Use per-clique A blocks with direct block reads.
+    return slca->ComputeResiduals(x.Gather());
+  }
+
+  // Compute A' * v per-clique, writing into result's BlockVariable.
+  // v is m-dimensional (row space).  No result.Gather() needed for
+  // subsequent SolveInto.
+  void MultiplyAtranspose(ConstraintId id,
+                          const Eigen::VectorXd& v,
+                          BlockVariable& result) const {
+    auto* slca = linear_assemblers_.at(id);
+    CONEX_DEMAND(slca, "Constraint is not a linear constraint.");
+    result.ScatterFrom(slca->ComputeTransposeProduct(v));
+  }
+
   // Access the underlying tree solver (for ScatterToBlocks etc).
   SymmetricLinearSystemTreeSolver& tree_solver() { return *tree_solver_; }
   const SymmetricLinearSystemTreeSolver& tree_solver() const {
