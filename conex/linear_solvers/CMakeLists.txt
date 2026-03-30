@@ -236,3 +236,14 @@ gtest_discover_tests(multithreading_test)
 gtest_discover_tests(low_rank_diagonal_test)
 gtest_discover_tests(sparse_quadratic_term_test)
 gtest_discover_tests(algorithms_test)
+
+add_executable(problem_solver_test
+  conex/test/problem_solver_test.cc
+)
+target_link_libraries(problem_solver_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(problem_solver_test)
