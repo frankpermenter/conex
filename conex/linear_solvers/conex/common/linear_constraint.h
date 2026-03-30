@@ -17,67 +17,28 @@ class GramEvaluator : public BlockAssembler {
     A_ = A;
   }
 
-  void set_precompute_gram(bool v) { precompute_gram_ = v; }
-
-  // Called once: permute columns of A.  Does NOT compute WA_perm_ —
-  // that is deferred to ensure_weights_fresh() which runs at assembly
-  // time with the current weights.
+  // Permute columns of A.  Weight computation is deferred.
   void set_order(const std::vector<int>& perm) override {
     if (order_set_) return;
     const int n = A_->rows();
     const int m = static_cast<int>(perm.size());
     A_perm_.resize(n, m);
-    for (int i = 0; i < m; ++i) {
-      A_perm_.col(i) = A_->col(perm[i]);
-    }
+    for (int i = 0; i < m; ++i) A_perm_.col(i) = A_->col(perm[i]);
     WA_perm_.resize(n, m);
     weights_dirty_ = true;
     order_set_ = true;
   }
 
-  // Recompute WA_perm_ = diag(W) * A_perm_ (and G_ if precomputing).
+  // Recompute WA_perm_ = diag(W) * A_perm_.
   // Called by SetWeights on the LinearConstraint, or by ensure_weights_fresh.
   void update_weights() {
     WA_perm_.noalias() = ws_->W.asDiagonal() * A_perm_;
-    if (precompute_gram_) {
-      G_.noalias() = WA_perm_.transpose() * WA_perm_;
-    }
     weights_dirty_ = false;
-  }
-
-  void add_block(int row, int col, int rows, int cols,
-                 Eigen::Ref<Eigen::MatrixXd> dest) const override {
-    const_cast<GramEvaluator*>(this)->ensure_weights_fresh();
-    if (precompute_gram_) {
-      dest.noalias() += G_.block(row, col, rows, cols);
-    } else {
-      dest.noalias() +=
-          WA_perm_.middleCols(row, rows).transpose() *
-          WA_perm_.middleCols(col, cols);
-    }
-  }
-
-  void add_block_lower(int pos, int size,
-                       Eigen::Ref<Eigen::MatrixXd> dest) const override {
-    const_cast<GramEvaluator*>(this)->ensure_weights_fresh();
-    if (precompute_gram_) {
-      const auto src = G_.block(pos, pos, size, size);
-      for (int j = 0; j < size; ++j) {
-        dest.col(j).tail(size - j) += src.col(j).tail(size - j);
-      }
-    } else {
-      dest.selfadjointView<Eigen::Lower>().rankUpdate(
-          WA_perm_.middleCols(pos, size).transpose());
-    }
   }
 
   int rows() const override { return ws_->num_vars_; }
   int cols() const override { return ws_->num_vars_; }
 
-  bool is_active() const { return order_set_; }
-  void invalidate_order() { order_set_ = false; }
-
-  // Number of supernode columns in A_perm_ (first sn_count_ cols).
   int sn_count() const { return sn_count_; }
   void set_sn_count(int c) override { sn_count_ = c; }
 
@@ -90,14 +51,11 @@ class GramEvaluator : public BlockAssembler {
     const int ns = sn_count_;
     Eigen::VectorXd r(m);
     r.noalias() = A_perm_.leftCols(ns) * x_sn;
-    if (A_perm_.cols() > ns) {
+    if (A_perm_.cols() > ns)
       r.noalias() += A_perm_.rightCols(A_perm_.cols() - ns) * x_sep;
-    }
     r -= b;
     return r;
   }
-
-  // --- Two-phase protocol ---
 
   bool RegisterContributions(
       int clique_id, const std::vector<int>& perm,
@@ -109,24 +67,20 @@ class GramEvaluator : public BlockAssembler {
 
   void ContributeBlocks(int clique_id) override {
     ensure_weights_fresh();
-
     auto it = registered_blocks_.find(clique_id);
     if (it == registered_blocks_.end()) return;
-
     for (const auto& bc : it->second) {
       using StrideType = Eigen::Stride<Eigen::Dynamic, 1>;
-      Eigen::Map<Eigen::MatrixXd, 0, StrideType> dest_strided(
+      Eigen::Map<Eigen::MatrixXd, 0, StrideType> dest(
           bc.dest, bc.rows, bc.cols, StrideType(bc.dest_ld, 1));
-
       if (bc.lower_only) {
-        dest_strided.selfadjointView<Eigen::Lower>().rankUpdate(
+        dest.selfadjointView<Eigen::Lower>().rankUpdate(
             WA_perm_.middleCols(bc.q_row, bc.rows).transpose());
       } else {
-        dest_strided.noalias() +=
+        dest.noalias() +=
             WA_perm_.middleCols(bc.q_row, bc.rows).transpose() *
             WA_perm_.middleCols(bc.q_col, bc.cols);
       }
-
     }
   }
 
@@ -139,10 +93,8 @@ class GramEvaluator : public BlockAssembler {
   const Eigen::MatrixXd* A_ = nullptr;
   Eigen::MatrixXd A_perm_;
   Eigen::MatrixXd WA_perm_;
-  Eigen::MatrixXd G_;
   bool order_set_ = false;
   bool weights_dirty_ = true;
-  bool precompute_gram_ = false;
   int sn_count_ = 0;
   std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
 };
@@ -159,7 +111,6 @@ class LinearConstraint : public Constraint, public ArenaAllocatable {
     gram_evaluator_.bind(&workspace_, &constraint_matrix_);
     return &gram_evaluator_;
   }
-  void set_precompute_gram(bool v) { gram_evaluator_.set_precompute_gram(v); }
   Eigen::MatrixXd constraint_matrix() const { return constraint_matrix_; }
   Eigen::MatrixXd affine_term() const { return constraint_affine_; }
 

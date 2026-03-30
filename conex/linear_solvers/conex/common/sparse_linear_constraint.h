@@ -85,12 +85,6 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
     return owned_constraints_;
   }
 
-  void set_precompute_gram(bool v) override {
-    for (auto& c : owned_constraints_) {
-      c->set_precompute_gram(v);
-    }
-  }
-
   // Row mapping: global row index → (constraint index, local row).
   // Available after Decompose().
   struct RowMapping {

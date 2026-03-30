@@ -18,57 +18,29 @@ struct BlockContribution {
   bool lower_only;  // if true, only write lower triangle (diagonal block)
 };
 
-// Interface for lazy evaluation of a symmetric matrix.  Provides block
-// accessors so that entries can be computed on demand and written directly
-// into tree-solver storage without materializing the full matrix.
+// Interface for assembling a symmetric matrix into tree-solver storage.
 //
 // Two-phase protocol:
-//   1. RegisterContributions(perm, blocks): called once at Finalize.
-//      The block assembler saves perm and block destinations, precomputes
-//      permuted data and scatter tables.
-//   2. ContributeBlocks(): called at each assembly with no arguments.
-//      Uses the saved info to write all blocks.
-//
-// Legacy protocol (add_block/add_block_lower) is still supported for
-// backward compatibility but should be replaced by the two-phase protocol.
+//   1. RegisterContributions(clique_id, perm, blocks): called once at
+//      Finalize.  The assembler saves perm and block destinations,
+//      precomputes permuted data and scatter tables.
+//   2. ContributeBlocks(clique_id): called at each assembly.
+//      Uses saved info to write all blocks.
 class BlockAssembler {
  public:
   virtual ~BlockAssembler() = default;
+
+  // Permute internal data layout.  Called during RegisterContributions.
   virtual void set_order(const std::vector<int>& perm) = 0;
 
-  // --- Two-phase protocol ---
-
   // Register block contributions for a clique.  Called once at Finalize.
-  // clique_id identifies the clique (subsystem index in the tree solver).
-  // The block assembler should save perm, blocks, and precompute accordingly.
-  // Returns true if the two-phase protocol is supported; if false,
-  // the caller falls back to the legacy add_block/add_block_lower path.
   virtual bool RegisterContributions(
       int clique_id,
       const std::vector<int>& perm,
-      const std::vector<BlockContribution>& blocks) {
-    (void)clique_id;
-    (void)perm;
-    (void)blocks;
-    return false;
-  }
+      const std::vector<BlockContribution>& blocks) = 0;
 
   // Write all blocks for the given clique.  Called at each assembly.
-  // Only valid after RegisterContributions(clique_id, ...) returned true.
-  virtual void ContributeBlocks(int clique_id) {
-    (void)clique_id;
-  }
-
-  // --- Legacy protocol ---
-
-  // Add block to dest:  dest += Q(row:row+rows, col:col+cols)
-  virtual void add_block(int row, int col, int rows, int cols,
-                         Eigen::Ref<Eigen::MatrixXd> dest) const = 0;
-
-  // Add lower triangle of diagonal block:
-  //   dest.triangularView<Lower>() += Q(pos:pos+size, pos:pos+size)
-  virtual void add_block_lower(int pos, int size,
-                               Eigen::Ref<Eigen::MatrixXd> dest) const = 0;
+  virtual void ContributeBlocks(int clique_id) = 0;
 
   virtual int rows() const = 0;
   virtual int cols() const = 0;
@@ -126,7 +98,6 @@ class SupernodalAssemblerBase : public IVariableShape {
   }
 
   virtual BlockAssembler* GetBlockAssembler() { return nullptr; }
-  virtual void set_precompute_gram(bool) {}
 
   void SetPrimalVariables(const std::vector<int>& variables) {
     primal_variables_ = variables;

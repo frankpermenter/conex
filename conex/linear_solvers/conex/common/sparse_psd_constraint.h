@@ -33,18 +33,6 @@ class DensePSDLazyEvaluator : public BlockAssembler {
     order_set_ = true;
   }
 
-  void add_block(int row, int col, int rows, int cols,
-                 Eigen::Ref<Eigen::MatrixXd> dest) const override {
-    dest.noalias() += Q_perm_.block(row, col, rows, cols);
-  }
-
-  void add_block_lower(int pos, int size,
-                       Eigen::Ref<Eigen::MatrixXd> dest) const override {
-    const auto src = Q_perm_.block(pos, pos, size, size);
-    for (int j = 0; j < size; ++j)
-      dest.col(j).tail(size - j) += src.col(j).tail(size - j);
-  }
-
   int rows() const override { return Q_ ? static_cast<int>(Q_->rows()) : 0; }
   int cols() const override { return Q_ ? static_cast<int>(Q_->cols()) : 0; }
 

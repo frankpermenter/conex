@@ -181,7 +181,6 @@ class SubmatrixContributor {
     int local_start;
   };
   bool order_cached_ = false;
-  bool use_two_phase_ = false;
   std::vector<int> cached_perm_;
   std::vector<Run> cached_runs_;
 };
@@ -261,80 +260,14 @@ void SubmatrixContributor::Register(
     }
   }
 
-  use_two_phase_ = lazy.RegisterContributions(
-      clique_id_, cached_perm_, blocks);
+  bool ok = lazy.RegisterContributions(clique_id_, cached_perm_, blocks);
+  CONEX_DEMAND(ok, "BlockAssembler must support RegisterContributions.");
 }
 
 template <typename BlockAssemblerT>
-void SubmatrixContributor::Assemble(BlockAssemblerT& lazy) {
+void SubmatrixContributor::Assemble(BlockAssemblerT& assembler) {
   CONEX_DEMAND(order_cached_, "Register must be called before Assemble.");
-
-  if (use_two_phase_) {
-    lazy.ContributeBlocks(clique_id_);
-    return;
-  }
-
-  // Legacy fallback.
-  lazy.set_order(cached_perm_);
-  lazy.set_sn_count(sn_count_);
-
-  auto sn_sub = supernode_submatrix();
-  auto sep_r = separator_rows();
-  auto sep_sc = separator_schur_complement();
-
-  const int nr = static_cast<int>(cached_runs_.size());
-  for (int ci = 0; ci < nr; ++ci) {
-    const auto& cr = cached_runs_[ci];
-    for (int ri = ci; ri < nr; ++ri) {
-      const auto& rr = cached_runs_[ri];
-
-      if (ri == ci) {
-        if (rr.is_sn) {
-          lazy.add_block_lower(
-              rr.q_start, rr.length,
-              sn_sub.block(rr.local_start, rr.local_start, rr.length,
-                           rr.length));
-        } else {
-          lazy.add_block_lower(
-              rr.q_start, rr.length,
-              sep_sc.block(rr.local_start, rr.local_start, rr.length,
-                           rr.length));
-        }
-      } else if (rr.is_sn && cr.is_sn) {
-        if (rr.local_start > cr.local_start) {
-          lazy.add_block(
-              rr.q_start, cr.q_start, rr.length, cr.length,
-              sn_sub.block(rr.local_start, cr.local_start, rr.length,
-                           cr.length));
-        } else {
-          lazy.add_block(
-              cr.q_start, rr.q_start, cr.length, rr.length,
-              sn_sub.block(cr.local_start, rr.local_start, cr.length,
-                           rr.length));
-        }
-      } else if (!rr.is_sn && cr.is_sn) {
-        lazy.add_block(
-            rr.q_start, cr.q_start, rr.length, cr.length,
-            sep_r.block(rr.local_start, cr.local_start, rr.length, cr.length));
-      } else if (rr.is_sn && !cr.is_sn) {
-        lazy.add_block(
-            cr.q_start, rr.q_start, cr.length, rr.length,
-            sep_r.block(cr.local_start, rr.local_start, cr.length, rr.length));
-      } else {
-        if (rr.local_start > cr.local_start) {
-          lazy.add_block(
-              rr.q_start, cr.q_start, rr.length, cr.length,
-              sep_sc.block(rr.local_start, cr.local_start, rr.length,
-                           cr.length));
-        } else {
-          lazy.add_block(
-              cr.q_start, rr.q_start, cr.length, rr.length,
-              sep_sc.block(cr.local_start, rr.local_start, cr.length,
-                           rr.length));
-        }
-      }
-    }
-  }
+  assembler.ContributeBlocks(clique_id_);
 }
 
 class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
@@ -408,8 +341,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     injected_subsystems_[clique_index] = std::move(subsystem);
   }
 
-  // Solve using the internal solve_matrix_ (supernode + separator scratch).
-  void SolveBlockedInPlace() const;
 
   // Solve with supernodes from an external partition.  The partition's
   // block(k) is used as supernode(k); separator scratch is internal.
@@ -424,6 +355,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
       const std::vector<int>& variable_to_elimination_position);
 
  private:
+  // Solve using the internal solve_matrix_ (supernode + separator scratch).
+  void SolveBlockedInPlace() const;
   void SetEliminationOrder(
       const std::vector<int>& variable_to_elimination_position);
   Eigen::MatrixXd DoKKTMatrix(

@@ -16,7 +16,6 @@ class Constraint : public SupernodalAssemblerBase {
   int number_of_variables() const override { return do_number_of_variables(); }
 
   virtual BlockAssembler* GetBlockAssembler() { return nullptr; }
-  virtual void set_precompute_gram(bool) {}
 
   bool is_dynamic() const override { return true; }
   bool is_positive_definite() const override { return true; }
