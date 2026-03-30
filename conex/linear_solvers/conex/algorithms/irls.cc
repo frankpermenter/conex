@@ -1,16 +1,11 @@
-// TODO: Migrate to Problem + Solver API (conex/common/problem.h, solver.h).
-// Currently uses ConstraintManager + MakeTreeSolver directly.
 #include "conex/algorithms/irls.h"
 
 #include <chrono>
 #include <cmath>
-#include <set>
+#include <numeric>
 
-#include "conex/common/constraint_manager.h"
-#include "conex/common/conex.h"
-#include "conex/common/sparse_linear_constraint.h"
-#include "conex/tree_solver/kkt_solver_factory.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/common/problem.h"
+#include "conex/common/solver.h"
 
 namespace conex {
 
@@ -25,54 +20,47 @@ IRLSResult SolveIRLS(
   const int m = A.rows();
   const int n = A.cols();
 
+  // Build problem.
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  auto c = problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
+
+  // Preprocess (drop structurally dependent columns).
+  auto [reduced, expansion] = Preprocess(problem);
+  const int n_solve = reduced.num_variables();
+
   // Build solver once.
-  Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(m);
-  auto slc = std::make_unique<SparseLinearConstraint>(A, b_zero);
-  std::set<int> var_set;
-  for (const auto& sup : slc->row_supports())
-    var_set.insert(sup.begin(), sup.end());
-  std::vector<int> all_vars(var_set.begin(), var_set.end());
-
-  ConstraintManager cm(n);
-  cm.AddCustomAssembler(std::make_unique<SparseLinearConstraintAssembler>(
-      std::move(slc), all_vars));
-  cm.Preprocess();
-
-  auto* asm_ptr = dynamic_cast<SparseLinearConstraintAssembler*>(
-      cm.clique_assemblers().back());
-
-  SolverConfiguration config;
-  auto solver = MakeTreeSolver(&cm, config);
-
-  solver->AssembleAndFactor();
-  if (auto* tree = dynamic_cast<SymmetricLinearSystemTreeSolver*>(solver.get()))
-    asm_ptr->BindPartition(*tree);
+  auto solver = Solver::Build(reduced);
+  solver.AssembleAndFactor();
 
   auto t0 = clock::now();
 
-  const int n_solve = cm.GetNumberOfVariables();
   Eigen::VectorXd weights = Eigen::VectorXd::Ones(m);
   Eigen::VectorXd x = Eigen::VectorXd::Zero(n_solve);
-
   double prev_obj = std::numeric_limits<double>::max();
 
+  // Dense A in reduced space for residual/transpose computation.
+  Eigen::MatrixXd A_reduced(A);
+  if (expansion.was_reduced()) {
+    A_reduced.resize(m, n_solve);
+    for (int j = 0; j < n_solve; ++j)
+      A_reduced.col(j) = Eigen::MatrixXd(A).col(expansion.col_map[j]);
+  }
+
   for (int iter = 0; iter < max_iterations; ++iter) {
-    // Set weights and solve A^T W A x = A^T W b.
-    asm_ptr->SetWeights(weights);
-    bool ok = solver->AssembleAndFactor();
-    if (!ok) break;
+    solver.SetWeights(c, weights);
+    if (!solver.AssembleAndFactor()) break;
 
-    // RHS = A^T W b.  Use per-clique A^T product.
-    Eigen::VectorXd wb = weights.asDiagonal() * b;
-    Eigen::VectorXd rhs = asm_ptr->ComputeTransposeProduct(wb);
-    x = solver->Solve(rhs);
+    // RHS = A^T W b.
+    Eigen::VectorXd rhs = A_reduced.transpose() * (weights.asDiagonal() * b);
+    x = solver.Solve(rhs);
 
-    // Compute residual using block partition (no gather for A*x).
-    solver->ScatterToBlocks(x);
-    Eigen::VectorXd r = asm_ptr->ComputeBlockResiduals(*solver) - b;
+    // Residual: r = A x - b.
+    Eigen::VectorXd r = A_reduced * x - b;
     double obj = r.lpNorm<1>();
 
-    // Check convergence.
     if (std::abs(prev_obj - obj) < tolerance * std::abs(obj) + 1e-15) {
       result.iterations = iter + 1;
       break;
@@ -80,17 +68,14 @@ IRLSResult SolveIRLS(
     prev_obj = obj;
     result.iterations = iter + 1;
 
-    // IRLS weight update: w_i = 1 / max(|r_i|, epsilon).
-    for (int i = 0; i < m; ++i) {
+    // IRLS weight update.
+    for (int i = 0; i < m; ++i)
       weights(i) = 1.0 / std::max(std::abs(r(i)), epsilon);
-    }
   }
 
   auto t1 = clock::now();
-  result.x = cm.ExpandSolution(x);
-  solver->ScatterToBlocks(x);
-  result.l1_objective =
-      (asm_ptr->ComputeBlockResiduals(*solver) - b).lpNorm<1>();
+  result.x = expansion.Expand(x);
+  result.l1_objective = (A_reduced * x - b).lpNorm<1>();
   result.solve_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
   return result;
