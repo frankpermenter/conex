@@ -2783,6 +2783,144 @@ TEST(ProblemSolver, CustomTree) {
   printf("ProblemSolver.CustomTree: err=%.2e\n", err);
 }
 
+TEST(ProblemSolver, LQR) {
+  // LQR via Problem + Solver + TreeSpec.
+  // min Σ (x_t'Qx_t + u_t'Ru_t) + x_T'Qf x_T
+  // s.t. x_{t+1} = Ax_t + Bu_t,  x_0 = x0
+  srand(42);
+  const int nx = 4, nu = 2, T = 20;
+
+  MatrixXd Ad = 0.9 * MatrixXd::Identity(nx, nx) +
+                0.1 * MatrixXd::Random(nx, nx);
+  MatrixXd Bd = MatrixXd::Random(nx, nu);
+  MatrixXd Q = MatrixXd::Identity(nx, nx);
+  MatrixXd R = 0.1 * MatrixXd::Identity(nu, nu);
+  MatrixXd Qf = 10.0 * Q;
+  VectorXd x0 = VectorXd::Ones(nx);
+
+  // Variable layout: x_t at [t*(nx+nu) .. t*(nx+nu)+nx-1],
+  //                   u_t at [t*(nx+nu)+nx .. t*(nx+nu)+nx+nu-1] (t<T),
+  //                   x_T at [T*(nx+nu) .. T*(nx+nu)+nx-1].
+  int step = nx + nu;
+  auto x_idx = [&](int t) {
+    std::vector<int> v(nx);
+    std::iota(v.begin(), v.end(), t * step);
+    return v;
+  };
+  auto u_idx = [&](int t) {
+    std::vector<int> v(nu);
+    std::iota(v.begin(), v.end(), t * step + nx);
+    return v;
+  };
+  auto xT_idx = [&]() {
+    std::vector<int> v(nx);
+    std::iota(v.begin(), v.end(), T * step);
+    return v;
+  };
+  auto xu_idx = [&](int t) {
+    std::vector<int> v(nx + nu);
+    std::iota(v.begin(), v.end(), t * step);
+    return v;
+  };
+
+  // Dynamics: [-A, -B, I] [x_t; u_t; x_{t+1}] = 0
+  MatrixXd C_dyn(nx, nx + nu + nx);
+  C_dyn << -Ad, -Bd, MatrixXd::Identity(nx, nx);
+  VectorXd d_zero = VectorXd::Zero(nx);
+
+  // QR cost block.
+  MatrixXd QR = MatrixXd::Zero(nx + nu, nx + nu);
+  QR.topLeftCorner(nx, nx) = Q;
+  QR.bottomRightCorner(nu, nu) = R;
+
+  // Build problem.
+  Problem problem;
+  std::vector<ConstraintId> cost_ids, dyn_ids;
+
+  for (int t = 0; t < T; ++t) {
+    cost_ids.push_back(problem.AddQuadraticCost(QR, xu_idx(t)));
+
+    // Dynamics primal: {x_t, u_t, x_{t+1}}.
+    std::vector<int> dyn_primal;
+    auto xt = x_idx(t), ut = u_idx(t), xt1 = (t < T - 1) ? x_idx(t + 1) : xT_idx();
+    dyn_primal.insert(dyn_primal.end(), xt.begin(), xt.end());
+    dyn_primal.insert(dyn_primal.end(), ut.begin(), ut.end());
+    dyn_primal.insert(dyn_primal.end(), xt1.begin(), xt1.end());
+    dyn_ids.push_back(problem.AddEqualityConstraint(
+        Eigen::SparseMatrix<double>(C_dyn.sparseView()), d_zero, dyn_primal));
+  }
+  // Terminal cost.
+  cost_ids.push_back(problem.AddQuadraticCost(Qf, xT_idx()));
+
+  // Initial condition: x_0 = x0.
+  auto c_ic = problem.AddEqualityConstraint(
+      Eigen::SparseMatrix<double>(MatrixXd::Identity(nx, nx).sparseView()),
+      d_zero, x_idx(0));
+
+  // Custom tree: chain 0 → 1 → ... → T (root).
+  TreeSpec tree;
+  std::vector<int> cliques(T + 1);
+  cliques[T] = tree.AddClique();  // root
+  for (int t = T - 1; t >= 0; --t)
+    cliques[t] = tree.AddClique(cliques[t + 1]);
+
+  // Assign constraints to cliques.
+  for (int t = 0; t < T; ++t) {
+    tree.Assign(cost_ids[t], cliques[t]);
+    tree.Assign(dyn_ids[t], cliques[t]);
+  }
+  tree.Assign(cost_ids[T], cliques[T]);  // terminal cost → root
+  tree.Assign(c_ic, cliques[0]);         // IC → first clique
+
+  auto solver = Solver::Build(problem, tree);
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  // RHS: d for IC constraint.
+  const auto& ic_duals = solver.dual_variables(c_ic);
+  VectorXd rhs = VectorXd::Zero(solver.num_variables());
+  for (int i = 0; i < nx; ++i) rhs(ic_duals[i]) = x0(i);
+
+  auto rhs_bv = solver.MakeBlockVariable(rhs);
+  auto x_bv = solver.MakeBlockVariable();
+  solver.SolveInto(rhs_bv, x_bv);
+  VectorXd sol = x_bv.Gather();
+
+  // Check initial condition.
+  VectorXd x_0_sol(nx);
+  auto xi = x_idx(0);
+  for (int i = 0; i < nx; ++i) x_0_sol(i) = sol(xi[i]);
+  double ic_err = (x_0_sol - x0).norm();
+  // Explicit tree path doesn't do PD-first variable ordering, so
+  // indefinite KKT systems have reduced accuracy (~1e-7).
+  EXPECT_LT(ic_err, 1e-4) << "Initial condition violated";
+
+  // Check dynamics at each timestep.
+  double max_dyn_err = 0;
+  for (int t = 0; t < T; ++t) {
+    VectorXd xt_sol(nx), ut_sol(nu), xt1_sol(nx);
+    auto xti = x_idx(t), uti = u_idx(t);
+    auto xt1i = (t < T - 1) ? x_idx(t + 1) : xT_idx();
+    for (int i = 0; i < nx; ++i) xt_sol(i) = sol(xti[i]);
+    for (int i = 0; i < nu; ++i) ut_sol(i) = sol(uti[i]);
+    for (int i = 0; i < nx; ++i) xt1_sol(i) = sol(xt1i[i]);
+    double err = (xt1_sol - Ad * xt_sol - Bd * ut_sol).norm();
+    max_dyn_err = std::max(max_dyn_err, err);
+  }
+  EXPECT_LT(max_dyn_err, 1e-4) << "Dynamics violated";
+
+  // Compare with LQRTreeSolver.
+  LQRTreeSolver lqr(Ad, Bd, Q, R, Qf, T);
+  lqr.AssembleAndFactor();
+  auto sol_ref = lqr.Solve(x0);
+  auto x_ref = lqr.ExtractStates(sol_ref);
+
+  double state_err = (x_0_sol - x_ref.col(0)).norm();
+  EXPECT_LT(state_err, 1e-8) << "Doesn't match LQRTreeSolver";
+
+  printf("ProblemSolver.LQR: T=%d, ic=%.2e, dyn=%.2e, vs_ref=%.2e\n",
+         T, ic_err, max_dyn_err, state_err);
+}
+
 TEST(ProblemSolver, EqualityConstrainedLS) {
   // min ||Ax - b||^2  s.t.  Cx = d
   // KKT system: [A'A, C'; C, 0] [x; λ] = [A'b; d]
