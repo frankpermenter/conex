@@ -237,16 +237,22 @@ int main(int argc, char* argv[]) {
       sweep_threads = ParseList(argv[++i]);
     } else if (arg == "--sweep-merge" && i + 1 < argc) {
       sweep_merge = ParseList(argv[++i]);
+    } else if (arg == "--reorder" && i + 1 < argc) {
+      cfg.tree.supernode_reorder_method = std::stoi(argv[++i]);
+    } else if (arg == "--generic") {
+      cfg.tree.use_generic_factorization = true;
     } else if (arg[0] != '-') {
       mtx_paths.push_back(arg);
     } else {
       fprintf(stderr,
         "Usage: %s [options] file.mtx ...\n"
-        "  --randomize          Replace nonzeros with random values\n"
-        "  --threads <n>        Number of threads (default: 1)\n"
-        "  --merge <n>          Max merge supernode size (default: 5)\n"
-        "  --sweep-threads <list>  Sweep thread counts (e.g. 1,2,4)\n"
-        "  --sweep-merge <list>    Sweep merge thresholds (e.g. 0,5,10,20)\n",
+        "  --randomize              Replace nonzeros with random values\n"
+        "  --threads <n>            Number of threads (default: 1)\n"
+        "  --merge <n>              Max merge supernode size (default: 5)\n"
+        "  --reorder <n>            Supernode reorder method (default: 0)\n"
+        "  --generic                Use generic (RLDLT) factorization\n"
+        "  --sweep-threads <list>   Sweep thread counts (e.g. 1,2,4)\n"
+        "  --sweep-merge <list>     Sweep merge thresholds (e.g. 0,5,10,20)\n",
         argv[0]);
       return 1;
     }
