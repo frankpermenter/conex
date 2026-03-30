@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <numeric>
 
 #include <Eigen/Dense>
@@ -373,6 +374,155 @@ TEST(ProblemSolver, EqualityConstrainedLS) {
 
   printf("ProblemSolver.EqualityConstrainedLS: eq=%.2e opt=%.2e sol=%.2e\n",
          eq_err, opt_err, sol_err);
+}
+
+// =====================================================================
+// Gaussian MRF on a tree: purely PD, no equality constraints.
+// =====================================================================
+
+struct TreeGraph {
+  int num_nodes;
+  std::vector<std::pair<int, int>> edges;
+  std::vector<int> parent;
+};
+
+TreeGraph MakeBalancedTree(int B, int D) {
+  TreeGraph g;
+  g.parent.push_back(-1);
+  for (int d = 1; d < D; ++d) {
+    int prev_start = 0, prev_end = static_cast<int>(g.parent.size());
+    for (int i = prev_start; i < prev_end; ++i) {
+      if (static_cast<int>(g.parent.size()) - i >
+          prev_end - prev_start) continue;
+      bool is_leaf = true;
+      for (int j = prev_end; j < static_cast<int>(g.parent.size()); ++j)
+        if (g.parent[j] == i) { is_leaf = false; break; }
+      if (!is_leaf) continue;
+      for (int b = 0; b < B; ++b) {
+        int child = static_cast<int>(g.parent.size());
+        g.edges.push_back({i, child});
+        g.parent.push_back(i);
+      }
+    }
+  }
+  g.num_nodes = static_cast<int>(g.parent.size());
+  g.edges.clear();
+  for (int i = 1; i < g.num_nodes; ++i)
+    g.edges.push_back({g.parent[i], i});
+  return g;
+}
+
+TEST(ProblemSolver, GaussianMRF) {
+  using clock = std::chrono::high_resolution_clock;
+  srand(42);
+
+  const int d = 4;
+
+  auto var_idx = [&](int v) -> std::vector<int> {
+    std::vector<int> idx(d);
+    std::iota(idx.begin(), idx.end(), v * d);
+    return idx;
+  };
+
+  auto make_node_potential = [&]() {
+    MatrixXd R = MatrixXd::Random(d, d) * 0.5;
+    MatrixXd RtR = R.transpose() * R;
+    return MatrixXd(MatrixXd::Identity(d, d) + RtR);
+  };
+
+  auto make_edge_potential = [&]() {
+    MatrixXd R = MatrixXd::Random(2 * d, 2 * d) * 0.3;
+    MatrixXd RtR = R.transpose() * R;
+    return MatrixXd(MatrixXd::Identity(2 * d, 2 * d) + RtR);
+  };
+
+  printf("\n  Gaussian MRF (d=%d): Problem + Solver + TreeSpec\n", d);
+  printf("%-6s %-6s %6s %7s  %8s %8s %8s  %10s\n",
+         "B", "D", "nodes", "n_vars", "build", "factor", "solve", "residual");
+  printf("------  ------ ------ -------  -------- -------- --------"
+         "  ----------\n");
+
+  for (auto [B, D] : std::vector<std::pair<int,int>>{{2,5},{3,4},{2,8},{3,5},{2,10}}) {
+    auto graph = MakeBalancedTree(B, D);
+    int N = graph.num_nodes;
+    int n_vars = N * d;
+
+    auto t0 = clock::now();
+
+    Problem problem;
+    TreeSpec tree;
+
+    std::vector<int> cliques(N);
+    cliques[0] = tree.AddClique();
+    for (int c = 1; c < N; ++c)
+      cliques[c] = tree.AddClique(cliques[graph.parent[c]]);
+
+    MatrixXd Q0 = make_node_potential();
+    auto c_root = problem.AddQuadraticCost(Q0, var_idx(0));
+    tree.Assign(c_root, cliques[0]);
+
+    std::vector<MatrixXd> node_pots(N), edge_pots(N);
+    node_pots[0] = Q0;
+
+    for (int c = 1; c < N; ++c) {
+      int p = graph.parent[c];
+      std::vector<int> edge_vars;
+      auto vp = var_idx(p), vc = var_idx(c);
+      edge_vars.insert(edge_vars.end(), vp.begin(), vp.end());
+      edge_vars.insert(edge_vars.end(), vc.begin(), vc.end());
+      MatrixXd Qe = make_edge_potential();
+      edge_pots[c] = Qe;
+      auto ce = problem.AddQuadraticCost(Qe, edge_vars);
+      tree.Assign(ce, cliques[c]);
+
+      MatrixXd Qn = make_node_potential();
+      node_pots[c] = Qn;
+      auto cn = problem.AddQuadraticCost(Qn, var_idx(c));
+      tree.Assign(cn, cliques[c]);
+    }
+
+    auto solver = Solver::Build(problem, tree);
+    auto t1 = clock::now();
+    ASSERT_TRUE(solver.AssembleAndFactor());
+    auto t2 = clock::now();
+
+    VectorXd h = VectorXd::Random(n_vars);
+    auto rhs_bv = solver.MakeBlockVariable(h);
+    auto x_bv = solver.MakeBlockVariable();
+    solver.SolveInto(rhs_bv, x_bv);
+    VectorXd x = x_bv.Gather().col(0);
+    auto t3 = clock::now();
+
+    // Verify: J*x = h.
+    VectorXd Jx = VectorXd::Zero(n_vars);
+    for (int v = 0; v < N; ++v) {
+      auto vi = var_idx(v);
+      VectorXd xv(d);
+      for (int i = 0; i < d; ++i) xv(i) = x(vi[i]);
+      VectorXd contrib = node_pots[v] * xv;
+      for (int i = 0; i < d; ++i) Jx(vi[i]) += contrib(i);
+    }
+    for (int c = 1; c < N; ++c) {
+      int p = graph.parent[c];
+      auto vp = var_idx(p), vc = var_idx(c);
+      VectorXd xpxc(2 * d);
+      for (int i = 0; i < d; ++i) xpxc(i) = x(vp[i]);
+      for (int i = 0; i < d; ++i) xpxc(d + i) = x(vc[i]);
+      VectorXd contrib = edge_pots[c] * xpxc;
+      for (int i = 0; i < d; ++i) Jx(vp[i]) += contrib(i);
+      for (int i = 0; i < d; ++i) Jx(vc[i]) += contrib(d + i);
+    }
+
+    double residual = (Jx - h).norm() / h.norm();
+    EXPECT_LT(residual, 1e-10) << "J*x != h";
+
+    printf("%-6d %-6d %6d %7d  %7.0fus %7.0fus %7.0fus  %.2e\n",
+           B, D, N, n_vars,
+           std::chrono::duration<double, std::micro>(t1 - t0).count(),
+           std::chrono::duration<double, std::micro>(t2 - t1).count(),
+           std::chrono::duration<double, std::micro>(t3 - t2).count(),
+           residual);
+  }
 }
 
 }  // namespace
