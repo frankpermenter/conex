@@ -2783,5 +2783,77 @@ TEST(ProblemSolver, CustomTree) {
   printf("ProblemSolver.CustomTree: err=%.2e\n", err);
 }
 
+TEST(ProblemSolver, EqualityConstrainedLS) {
+  // min ||Ax - b||^2  s.t.  Cx = d
+  // KKT system: [A'A, C'; C, 0] [x; λ] = [A'b; d]
+  srand(42);
+  const int m = 15, n = 6, p = 2;
+
+  MatrixXd A = MatrixXd::Random(m, n);
+  VectorXd b = VectorXd::Random(m);
+  MatrixXd C = MatrixXd::Random(p, n);
+  VectorXd d = VectorXd::Random(p);
+
+  std::vector<int> primal_vars(n);
+  std::iota(primal_vars.begin(), primal_vars.end(), 0);
+
+  Problem problem;
+  problem.AddLinearConstraint(
+      Eigen::SparseMatrix<double>(A.sparseView()),
+      VectorXd::Zero(m), primal_vars);
+  auto c_eq = problem.AddEqualityConstraint(
+      Eigen::SparseMatrix<double>(C.sparseView()),
+      d, primal_vars, {});  // dual vars allocated by solver
+
+  auto solver = Solver::Build(problem);
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  // Get the solver-allocated dual variable indices.
+  const auto& dual_vars = solver.dual_variables(c_eq);
+  ASSERT_EQ(static_cast<int>(dual_vars.size()), p);
+
+  // RHS: [A'b; d]
+  int n_total = solver.num_variables();
+  VectorXd rhs = VectorXd::Zero(n_total);
+  rhs.head(n) = A.transpose() * b;
+  for (int i = 0; i < p; ++i) rhs(dual_vars[i]) = d(i);
+
+  // Solve via BlockVariable.
+  auto rhs_bv = solver.MakeBlockVariable(rhs);
+  auto x_bv = solver.MakeBlockVariable();
+  solver.SolveInto(rhs_bv, x_bv);
+  VectorXd sol = x_bv.Gather();
+
+  VectorXd x_sol = sol.head(n);
+  VectorXd lam_sol(p);
+  for (int i = 0; i < p; ++i) lam_sol(i) = sol(dual_vars[i]);
+
+  // Check equality constraint: Cx = d.
+  double eq_err = (C * x_sol - d).norm();
+  EXPECT_LT(eq_err, 1e-10) << "Equality constraint violated";
+
+  // Check KKT optimality: A'Ax + C'λ = A'b.
+  double opt_err = (A.transpose() * A * x_sol +
+                    C.transpose() * lam_sol -
+                    A.transpose() * b).norm();
+  EXPECT_LT(opt_err, 1e-10) << "KKT optimality violated";
+
+  // Compare with dense KKT solve.
+  MatrixXd K = MatrixXd::Zero(n + p, n + p);
+  K.topLeftCorner(n, n) = A.transpose() * A;
+  K.topRightCorner(n, p) = C.transpose();
+  K.bottomLeftCorner(p, n) = C;
+  VectorXd kkt_rhs(n + p);
+  kkt_rhs.head(n) = A.transpose() * b;
+  kkt_rhs.tail(p) = d;
+  VectorXd kkt_sol = K.fullPivLu().solve(kkt_rhs);
+  double sol_err = (x_sol - kkt_sol.head(n)).norm() /
+                   kkt_sol.head(n).norm();
+  EXPECT_LT(sol_err, 1e-10);
+
+  printf("ProblemSolver.EqualityConstrainedLS: eq=%.2e opt=%.2e sol=%.2e\n",
+         eq_err, opt_err, sol_err);
+}
+
 }  // namespace
 }  // namespace conex

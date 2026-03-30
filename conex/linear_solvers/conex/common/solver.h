@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "conex/common/block_variable.h"
@@ -92,6 +93,11 @@ class Solver {
 
   int num_variables() const { return tree_solver_->number_of_variables(); }
 
+  // Get the dual variable indices allocated for an equality constraint.
+  const std::vector<int>& dual_variables(ConstraintId id) const {
+    return dual_var_map_.at(id);
+  }
+
  private:
   void BuildInternal(const Problem& problem,
                      const SolverConfiguration& config) {
@@ -122,6 +128,7 @@ class Solver {
           auto sec = std::make_unique<SparseEqualityConstraint>(
               data.C, data.d);
           auto dual = cm_->AllocateDualVariables(data.C.rows());
+          dual_var_map_[i] = dual;
           auto asm_ptr = std::make_unique<SparseEqualityConstraintAssembler>(
               std::move(sec), data.primal_vars, dual);
           cm_->AddCustomAssembler(std::move(asm_ptr));
@@ -182,8 +189,8 @@ class Solver {
   std::unique_ptr<TreeSolverBuilder> builder_;
   std::unique_ptr<ConstraintManager> cm_;
   std::unique_ptr<SymmetricLinearSystemTreeSolver> tree_solver_;
-  // Per-constraint assembler pointers (nullptr for non-linear constraints).
   std::vector<SparseLinearConstraintAssembler*> linear_assemblers_;
+  std::unordered_map<int, std::vector<int>> dual_var_map_;
 };
 
 }  // namespace conex
