@@ -714,6 +714,98 @@ TEST(ProblemSolver, QuotientAMDChain) {
   printf("ProblemSolver.QuotientAMDChain: n=%d, err=%.2e\n", n, err);
 }
 
+TEST(ProblemSolver, MultiThreaded) {
+  // Same banded problem solved with 1, 2, and 4 threads.
+  srand(42);
+  const int n = 50, bw = 5, rows_per = 10;
+  const int num_groups = n - bw + 1;
+  const int m = rows_per * num_groups;
+
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int g = 0; g < num_groups; ++g)
+    for (int r = 0; r < rows_per; ++r)
+      for (int j = 0; j < bw; ++j)
+        trips.emplace_back(g * rows_per + r, g + j,
+                           0.5 + (double)rand() / RAND_MAX);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd rhs = Eigen::MatrixXd(A).transpose() *
+                  (Eigen::MatrixXd(A) * x_true);
+
+  VectorXd x_ref;
+  for (int threads : {1, 2, 4}) {
+    Problem problem;
+    problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
+
+    SolverConfiguration cfg;
+    cfg.num_threads = threads;
+    auto solver = Solver::Build(problem, cfg);
+    ASSERT_TRUE(solver.AssembleAndFactor());
+
+    VectorXd x_sol = solver.Solve(rhs);
+    if (threads == 1) {
+      x_ref = x_sol;
+    } else {
+      double err = (x_sol - x_ref).norm() / x_ref.norm();
+      EXPECT_LT(err, 1e-10)
+          << "Multi-threaded result differs at threads=" << threads;
+    }
+  }
+  double err = (x_ref - x_true).norm() / x_true.norm();
+  EXPECT_LT(err, 1e-8);
+  printf("ProblemSolver.MultiThreaded: err=%.2e\n", err);
+}
+
+TEST(ProblemSolver, PQTreeReorder) {
+  // Use PQ-tree supernode reordering (method 1).
+  srand(42);
+  const int n = 30, bw = 4, rows_per = 6;
+  const int num_groups = n - bw + 1;
+  const int m = rows_per * num_groups;
+
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int g = 0; g < num_groups; ++g)
+    for (int r = 0; r < rows_per; ++r)
+      for (int j = 0; j < bw; ++j)
+        trips.emplace_back(g * rows_per + r, g + j,
+                           0.5 + (double)rand() / RAND_MAX);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd rhs = Eigen::MatrixXd(A).transpose() *
+                  (Eigen::MatrixXd(A) * x_true);
+
+  // Solve with each reorder method and verify all match.
+  VectorXd x_ref;
+  const char* names[] = {"BFS_GREEDY", "PQ_TREE", "NONE", "BFS_GREEDY_LARGEST"};
+  for (int method = 0; method <= 3; ++method) {
+    Problem problem;
+    problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
+
+    SolverConfiguration cfg;
+    cfg.tree.supernode_reorder_method = method;
+    auto solver = Solver::Build(problem, cfg);
+    ASSERT_TRUE(solver.AssembleAndFactor());
+
+    VectorXd x_sol = solver.Solve(rhs);
+    if (method == 0) {
+      x_ref = x_sol;
+    }
+    double err = (x_sol - x_true).norm() / x_true.norm();
+    EXPECT_LT(err, 1e-8) << "Failed with reorder method " << names[method];
+  }
+  printf("ProblemSolver.PQTreeReorder: all 4 methods match (err<1e-8)\n");
+}
+
 // Scenario tree for stochastic optimization.
 struct ScenarioNode {
   int parent;
