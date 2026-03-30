@@ -113,65 +113,19 @@ Problem/Solver Refactor Plan
 Goal: Replace ConstraintManager with Problem + Solver architecture.
 Focus: Least squares algorithm first, then generalize.
 
-Phase 1: Problem class
------------------------
-- [ ] Create conex/common/problem.h
-- [ ] ConstraintId = int handle returned by Add* methods
-- [ ] AddLinearConstraint(A, b, vars) → ConstraintId
-- [ ] AddQuadraticCost(Q, vars) → ConstraintId
-- [ ] AddEqualityConstraint(C, d, primal_vars, dual_vars) → ConstraintId
-- [ ] Data only — no tree structure, no solver details
+Phase 1: Problem class — DONE
+Phase 2: Solver class — DONE
+Phase 3: Standalone Preprocess — DONE
+Phase 4: TreeSpec (custom tree) — DONE
+Phase 5: Least squares via Problem + Solver — DONE
+Phase 6: Tests — DONE (7 tests in problem_solver_test.cc)
+Phase 7: Deprecate ConstraintManager — DONE (barrier_qp + irls migrated)
 
-Phase 2: Solver class
------------------------
-- [ ] Create conex/common/solver.h
-- [ ] MakeSolver(problem, config) → Solver (automatic tree via AMD)
-- [ ] MakeSolver(problem, tree_spec, config) → Solver (custom tree)
-- [ ] Internally: creates assemblers, runs clique ordering, calls Finalize
-- [ ] Maps ConstraintId → per-clique evaluators + block info
-- [ ] SetWeights(constraint_id, weights)
-- [ ] ComputeResidual(constraint_id, BlockVariable) → VectorXd
-- [ ] ComputeTransposeProduct(constraint_id, v) → BlockVariable
-- [ ] MakeBlockVariable() / SolveInto() from underlying tree solver
-- [ ] AssembleAndFactor() from underlying tree solver
-
-Phase 3: Standalone Preprocess
--------------------------------
-- [ ] Extract Preprocess from ConstraintManager into standalone function
-- [ ] Preprocess(problem) → (reduced_problem, Expansion)
-- [ ] Expansion.Expand(x) maps reduced solution back
-
-Phase 4: TreeSpec (custom tree)
---------------------------------
-- [ ] Create conex/common/tree_spec.h
-- [ ] AddClique(parent) — tree topology
-- [ ] Assign(constraint_id, clique_id) — assigns constraint to clique
-- [ ] Passed to MakeSolver alongside Problem
-
-Phase 5: Least squares via Problem + Solver
----------------------------------------------
-- [ ] Rewrite SparseLeastSquares using Problem + Solver + BlockVariable
-- [ ] No dense vectors in the solve loop
-- [ ] solver.SolveInto(rhs, x) using BlockVariable
-
-Phase 6: Tests
----------------
-- [ ] Problem + MakeSolver + SolveInto matches dense solve
-- [ ] SetWeights + re-solve (IRLS-style)
-- [ ] ComputeResidual matches dense A*x
-- [ ] Custom tree via TreeSpec matches automatic tree
-- [ ] Preprocess + expand roundtrip
-
-Phase 7: Deprecate ConstraintManager
---------------------------------------
-- [ ] Migrate barrier_qp.cc to Problem + Solver
-- [ ] Migrate irls.cc to Problem + Solver
-- [ ] Remove ConstraintManager, MakeTreeSolver factory
-- [ ] Update agents.md
-
-Remaining bugs / cleanup
---------------------------
+Remaining
+---------
 - [ ] Fix GaussianMRF Debug assertion (ContributeBlocks stride mismatch)
 - [ ] Fix ComputeBlockResidual partial support (vars ⊂ clique)
-- [ ] Remove precompute_gram from SolverConfiguration
-- [ ] Deduplicate DensePSDLazyEvaluator / DenseQuadraticTermLazyEvaluator
+- [ ] Remove ConstraintManager (still used by least_squares.cc,
+      equality_constrained_least_squares.cc, finite_horizon.cc, profile_mtx)
+- [ ] Add row partition for fully blocked residual computation
+- [ ] Add delayed variable support to explicit tree path in TreeSolverBuilder

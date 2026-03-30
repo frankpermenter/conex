@@ -1,90 +1,18 @@
-// TODO: DensePSDLazyEvaluator and DensePSDSubAssembler are identical to
-// DenseQuadraticTermLazyEvaluator and DenseQuadraticTermSubAssembler in
-// sparse_quadratic_term.h.  Remove this duplicate and reuse the one in
-// sparse_quadratic_term.h.
 #pragma once
 #include <list>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
-#include "conex/common/supernodal_assembler_base.h"
+#include "conex/common/sparse_quadratic_term.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
 namespace conex {
 
-// Lazy evaluator for a dense symmetric sub-block of Q.
-// Used for per-clique sub-assemblers after Decompose.
-class DensePSDLazyEvaluator : public BlockAssembler {
- public:
-  void bind(const Eigen::MatrixXd* Q_block) { Q_ = Q_block; }
-
-  void set_order(const std::vector<int>& perm) override {
-    if (order_set_) return;
-    const int m = static_cast<int>(perm.size());
-    Q_perm_.resize(m, m);
-    for (int i = 0; i < m; ++i)
-      for (int j = 0; j <= i; ++j) {
-        double val = (*Q_)(perm[i], perm[j]);
-        Q_perm_(i, j) = val;
-        Q_perm_(j, i) = val;
-      }
-    order_set_ = true;
-  }
-
-  int rows() const override { return Q_ ? static_cast<int>(Q_->rows()) : 0; }
-  int cols() const override { return Q_ ? static_cast<int>(Q_->cols()) : 0; }
-
-  bool RegisterContributions(
-      int clique_id, const std::vector<int>& perm,
-      const std::vector<BlockContribution>& blocks) override {
-    if (!order_set_) set_order(perm);
-    registered_blocks_[clique_id] = blocks;
-    return true;
-  }
-
-  void ContributeBlocks(int clique_id) override {
-    auto it = registered_blocks_.find(clique_id);
-    if (it == registered_blocks_.end()) return;
-    for (const auto& bc : it->second) {
-      using StrideType = Eigen::Stride<Eigen::Dynamic, 1>;
-      Eigen::Map<Eigen::MatrixXd, 0, StrideType> dest(
-          bc.dest, bc.rows, bc.cols, StrideType(bc.dest_ld, 1));
-      if (bc.lower_only) {
-        const auto src = Q_perm_.block(bc.q_row, bc.q_col, bc.rows, bc.cols);
-        for (int j = 0; j < bc.cols; ++j)
-          dest.col(j).tail(bc.rows - j) += src.col(j).tail(bc.rows - j);
-      } else {
-        dest.noalias() += Q_perm_.block(bc.q_row, bc.q_col, bc.rows, bc.cols);
-      }
-    }
-  }
-
- private:
-  const Eigen::MatrixXd* Q_ = nullptr;
-  Eigen::MatrixXd Q_perm_;
-  bool order_set_ = false;
-  std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
-};
-
-// Per-clique assembler for a dense sub-block of Q.
-class DensePSDSubAssembler : public SupernodalAssemblerBase {
- public:
-  DensePSDSubAssembler(Eigen::MatrixXd Q_block,
-                        const std::vector<int>& variables)
-      : SupernodalAssemblerBase(variables), Q_block_(std::move(Q_block)) {
-    evaluator_.bind(&Q_block_);
-  }
-
-  BlockAssembler* GetBlockAssembler() override { return &evaluator_; }
-  bool is_positive_definite() const override { return true; }
-  bool is_dynamic() const override { return false; }
-
- private:
-  Eigen::MatrixXd Q_block_;
-  DensePSDLazyEvaluator evaluator_;
-};
+// Aliases: DensePSDLazyEvaluator and DensePSDSubAssembler are identical
+// to DenseQuadraticTermLazyEvaluator and DenseQuadraticTermSubAssembler.
+using DensePSDLazyEvaluator = DenseQuadraticTermLazyEvaluator;
+using DensePSDSubAssembler = DenseQuadraticTermSubAssembler;
 
 // Top-level assembler for a sparse PSD matrix Q.
 // Provides cliques (edges from Q's sparsity) to the clique tree builder.

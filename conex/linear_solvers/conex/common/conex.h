@@ -7,7 +7,6 @@ enum : int {
 };
 
 struct TreeSolverOptions {
-  bool precompute_gram = false;
   bool left_looking = true;
   // Use DynamicSubsystem for all cliques (LLT+RLDLT/LU runtime dispatch).
   // When false, positive-definite cliques use LLTSolver (in-place LLT).
