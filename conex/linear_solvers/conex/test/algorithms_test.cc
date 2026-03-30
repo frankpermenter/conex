@@ -2146,66 +2146,12 @@ TEST(TreeSolverBuilder, PDChainAutoVsExplicit) {
 
 // GaussianMRF test moved to problem_solver_test.cc.
 
+// BlockVariable.MakeAndSolve removed — superseded by
+// ProblemSolver.LeastSquares in problem_solver_test.cc.
+
 // =====================================================================
-// BlockVariable: block-partitioned vectors via solver factory
+// BlockVariable: remaining tests use TreeSolverBuilder (no ConstraintManager)
 // =====================================================================
-
-TEST(BlockVariable, MakeAndSolve) {
-  // Build a small least-squares problem: min ||Ax - b||^2.
-  srand(42);
-  const int m = 20, n = 8;
-  std::vector<Eigen::Triplet<double>> trips;
-  for (int r = 0; r < m; ++r)
-    for (int c = 0; c < n; ++c)
-      trips.emplace_back(r, c, (double)rand() / RAND_MAX - 0.5);
-  Eigen::SparseMatrix<double> A(m, n);
-  A.setFromTriplets(trips.begin(), trips.end());
-
-  auto result = SparseLeastSquares(A, VectorXd::Random(n));
-  // result.x is the solution — but we want to test BlockVariable.
-
-  // Build solver manually to get a live solver object.
-  VectorXd b_zero = VectorXd::Zero(m);
-  auto slc = std::make_unique<SparseLinearConstraint>(A, b_zero);
-  std::set<int> var_set;
-  for (const auto& s : slc->row_supports())
-    var_set.insert(s.begin(), s.end());
-  std::vector<int> all_vars(var_set.begin(), var_set.end());
-
-  ConstraintManager cm(n);
-  auto asm_ptr = std::make_unique<SparseLinearConstraintAssembler>(
-      std::move(slc), all_vars);
-  cm.AddCustomAssembler(std::move(asm_ptr));
-
-  SolverConfiguration config;
-  auto solver = MakeTreeSolver(&cm, config);
-  ASSERT_TRUE(solver->AssembleAndFactor());
-
-  // Create a BlockVariable for the RHS.
-  VectorXd rhs_dense = MatrixXd(A).transpose() * VectorXd::Random(m);
-  auto rhs = solver->MakeBlockVariable(rhs_dense);
-
-  // Verify scatter/gather roundtrip.
-  VectorXd rhs_rt = rhs.Gather();
-  EXPECT_LT((rhs_rt - rhs_dense).norm(), 1e-12)
-      << "Scatter/gather roundtrip failed";
-
-  // Create a dest BlockVariable.
-  auto dest = solver->MakeBlockVariable();
-
-  // Solve into dest.
-  solver->SolveInto(rhs, dest);
-  VectorXd x_block = dest.Gather();
-
-  // Compare with dense Solve.
-  VectorXd x_dense = solver->Solve(rhs_dense);
-  EXPECT_LT((x_block - x_dense).norm() / x_dense.norm(), 1e-10)
-      << "BlockVariable solve doesn't match dense solve";
-
-  printf("BlockVariable: n=%d, roundtrip_err=%.2e, solve_err=%.2e\n",
-         n, (rhs_rt - rhs_dense).norm(),
-         (x_block - x_dense).norm() / x_dense.norm());
-}
 
 TEST(BlockVariable, MultipleBlockVariables) {
   // Build a problem with known block structure via TreeSolverBuilder.
