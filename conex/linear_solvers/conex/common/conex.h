@@ -26,6 +26,12 @@ struct SolverConfiguration {
   // Set to the expected column count to avoid reallocation on first Solve().
   int rhs_cols = 1;
 
+  // Use quotient AMD: run weighted min-degree on the constraint graph
+  // (one node per constraint, edge weight = shared variables) instead of
+  // variable-level AMD on the full KKT matrix.  Faster for problems
+  // with known block structure.
+  bool use_quotient_amd = false;
+
   TreeSolverOptions tree;
 };
 

@@ -643,6 +643,77 @@ TEST(ProblemSolver, BandedPattern) {
   printf("ProblemSolver.BandedPattern: err=%.2e\n", err);
 }
 
+TEST(ProblemSolver, QuotientAMD) {
+  // PD problem: quotient AMD should match variable-level AMD.
+  srand(42);
+  const int m = 20, n = 8;
+  MatrixXd A = MatrixXd::Random(m, n);
+  MatrixXd Q = MatrixXd::Identity(n, n) * 0.1;
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
+  problem.AddQuadraticCost(Q, vars);
+
+  SolverConfiguration cfg;
+  cfg.use_quotient_amd = true;
+  auto solver_q = Solver::Build(problem, cfg);
+  ASSERT_TRUE(solver_q.AssembleAndFactor());
+
+  cfg.use_quotient_amd = false;
+  auto solver_v = Solver::Build(problem, cfg);
+  ASSERT_TRUE(solver_v.AssembleAndFactor());
+
+  VectorXd rhs = VectorXd::Random(n);
+  VectorXd x_q = solver_q.Solve(rhs);
+  VectorXd x_v = solver_v.Solve(rhs);
+
+  // Both should match the reference.
+  MatrixXd M = Q + A.transpose() * A;
+  VectorXd x_ref = M.ldlt().solve(rhs);
+  double err_q = (x_q - x_ref).norm() / x_ref.norm();
+  double err_v = (x_v - x_ref).norm() / x_ref.norm();
+  EXPECT_LT(err_q, 1e-10);
+  EXPECT_LT(err_v, 1e-10);
+
+  printf("ProblemSolver.QuotientAMD: quotient=%.2e variable=%.2e\n",
+         err_q, err_v);
+}
+
+TEST(ProblemSolver, QuotientAMDChain) {
+  // Banded problem: quotient AMD should discover chain structure.
+  srand(42);
+  const int n = 30, bw = 3, rows_per = 5;
+  const int num_groups = n - bw + 1;
+
+  Problem problem;
+  for (int g = 0; g < num_groups; ++g) {
+    MatrixXd A_block = MatrixXd::Random(rows_per, bw);
+    std::vector<int> block_vars(bw);
+    std::iota(block_vars.begin(), block_vars.end(), g);
+    problem.AddLinearConstraint(A_block, VectorXd::Zero(rows_per), block_vars);
+  }
+
+  SolverConfiguration cfg;
+  cfg.use_quotient_amd = true;
+  auto solver = Solver::Build(problem, cfg);
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  // Build reference via dense.
+  auto solver_d = Solver::BuildDense(problem);
+  ASSERT_TRUE(solver_d.AssembleAndFactor());
+
+  VectorXd rhs = VectorXd::Random(n);
+  VectorXd x_q = solver.Solve(rhs);
+  VectorXd x_d = solver_d.Solve(rhs);
+
+  double err = (x_q - x_d).norm() / x_d.norm();
+  EXPECT_LT(err, 1e-10);
+  printf("ProblemSolver.QuotientAMDChain: n=%d, err=%.2e\n", n, err);
+}
+
 // Scenario tree for stochastic optimization.
 struct ScenarioNode {
   int parent;

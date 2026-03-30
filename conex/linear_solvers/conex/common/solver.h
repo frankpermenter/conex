@@ -24,11 +24,18 @@ namespace conex {
 // ComputeResidual, and ComputeTransposeProduct.
 class Solver {
  public:
-  // Build a solver from a problem (automatic tree via AMD).
+  // Build a solver from a problem.
+  // If config.use_quotient_amd is true, uses weighted AMD on the
+  // constraint graph (faster for problems with known block structure).
+  // Otherwise uses variable-level AMD on the full KKT matrix.
   static Solver Build(const Problem& problem,
                       const SolverConfiguration& config = {}) {
     Solver s;
-    s.BuildInternal(problem, config);
+    if (config.use_quotient_amd) {
+      s.BuildQuotientAMD(problem, config);
+    } else {
+      s.BuildInternal(problem, config);
+    }
     return s;
   }
 
@@ -224,6 +231,55 @@ class Solver {
           dual_var_map_[i] = dual;
           Eigen::MatrixXd Cd(data.C);
           builder_->AddEquality(cids[clique], Cd, data.d,
+                                data.primal_vars, dual);
+        }
+      }, problem.constraint(i));
+    }
+
+    auto result = builder_->Build();
+    tree_solver_ = std::move(result.solver);
+  }
+
+  void BuildQuotientAMD(const Problem& problem,
+                        const SolverConfiguration& config) {
+    builder_ = std::make_unique<TreeSolverBuilder>();
+    linear_assemblers_.resize(problem.num_constraints(), nullptr);
+
+    // Allocate dual variables.
+    int next_dual = problem.num_variables();
+
+    // One clique per constraint, all with parent = -1.
+    // TreeSolverBuilder's quotient AMD will discover the tree.
+    std::vector<int> cids(problem.num_constraints());
+    for (int i = 0; i < problem.num_constraints(); ++i)
+      cids[i] = builder_->AddClique();  // no parent → triggers quotient AMD
+
+    for (int i = 0; i < problem.num_constraints(); ++i) {
+      std::visit([&](const auto& data) {
+        using T = std::decay_t<decltype(data)>;
+        if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+          Eigen::MatrixXd Ad(data.A);
+          builder_->AddLinearConstraint(cids[i], Ad, data.b, data.vars);
+        } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
+          int nv = static_cast<int>(data.vars.size());
+          Eigen::MatrixXd Qd(nv, nv);
+          if (data.Q_dense.size() > 0) {
+            Qd = data.Q_dense;
+          } else {
+            Eigen::MatrixXd Qfull(data.Q_sparse);
+            for (int r = 0; r < nv; ++r)
+              for (int c = 0; c < nv; ++c)
+                Qd(r, c) = Qfull(data.vars[r], data.vars[c]);
+          }
+          builder_->AddCost(cids[i], Qd, data.vars);
+        } else if constexpr (std::is_same_v<T,
+                                            Problem::EqualityConstraintData>) {
+          int p = data.C.rows();
+          std::vector<int> dual(p);
+          for (int j = 0; j < p; ++j) dual[j] = next_dual++;
+          dual_var_map_[i] = dual;
+          Eigen::MatrixXd Cd(data.C);
+          builder_->AddEquality(cids[i], Cd, data.d,
                                 data.primal_vars, dual);
         }
       }, problem.constraint(i));
