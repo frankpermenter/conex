@@ -23,7 +23,32 @@ on the tree solver.  There are two paths for building a solver:
 
 ## Solver Construction Paths
 
-### Path 1: Automatic (ConstraintManager)
+### Path 0: Problem + Solver (preferred)
+
+```cpp
+Problem p;
+auto c1 = p.AddLinearConstraint(A, b, vars);
+auto c2 = p.AddQuadraticCost(Q, vars);
+auto [reduced, expansion] = Preprocess(p);  // optional
+auto solver = Solver::Build(reduced);
+solver.AssembleAndFactor();
+auto x = solver.MakeBlockVariable();
+auto rhs = solver.MakeBlockVariable(rhs_dense);
+solver.SolveInto(rhs, x);
+auto result = expansion.Expand(x.Gather());
+```
+
+With custom tree:
+```cpp
+TreeSpec tree;
+int root = tree.AddClique();
+int child = tree.AddClique(root);
+tree.Assign(c1, child);
+tree.Assign(c2, root);
+auto solver = Solver::Build(p, tree);
+```
+
+### Path 1: Automatic (ConstraintManager) — deprecated
 
 ```cpp
 ConstraintManager cm(n);

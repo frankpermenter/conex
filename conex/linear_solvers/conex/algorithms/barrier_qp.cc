@@ -1,3 +1,5 @@
+// TODO: Migrate to Problem + Solver API (conex/common/problem.h, solver.h).
+// Currently uses ConstraintManager + MakeTreeSolver directly.
 #include "conex/algorithms/barrier_qp.h"
 
 #include <chrono>
