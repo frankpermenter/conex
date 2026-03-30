@@ -5,6 +5,8 @@
 #include "conex/algorithms/lqr_tree_solver.h"
 #include "conex/algorithms/tree_solver_builder.h"
 #include "conex/common/clique_ordering.h"
+// ConstraintManager is used internally by some algorithms but not
+// directly by tests.  New tests use Problem + Solver API.
 #include "conex/common/constraint_manager.h"
 #include "conex/common/sparse_equality_constraint.h"
 #include "conex/common/sparse_linear_constraint.h"
@@ -252,7 +254,10 @@ Eigen::SparseMatrix<double> MakeSparse(
   return M;
 }
 
-// Small dense problem with known solution.
+// EqualityConstrainedLS tests removed — superseded by ProblemSolver tests
+// in problem_solver_test.cc (EqualityConstrainedLS, RankDeficientEqualities,
+// InconsistentEqualities, ConsistentEqualities).
+//
 // A = [1 0; 0 1; 1 1], b = [1; 2; 0], C = [1 1], d = [3].
 TEST(EqualityConstrainedLS, SmallDense) {
   const int m = 3, n = 2, p = 1;
@@ -2290,136 +2295,6 @@ TEST(BlockVariable, MultiColumnSolve) {
 
   printf("MultiColumnSolve: nrhs=%d, solve_err=%.2e, roundtrip_err=%.2e\n",
          nrhs, err, (rhs_rt - rhs_dense).norm());
-}
-
-// =====================================================================
-// ComputeBlockResidual unit test.
-//
-// Single clique with variables {0,1,2,3}.  Two LinearConstraints:
-//   A1 on {0,1,2,3}: support = full clique → block residual should match
-//   A2 on {0,2,3}:   support ⊂ clique → ComputeBlockResidual assumes
-//                     support = sn ∪ sep, which fails for partial support.
-// =====================================================================
-
-TEST(ComputeBlockResidual, FullSupport) {
-  srand(42);
-  const int n = 4, m1 = 6;
-
-  // A1 operates on all 4 variables (m1 > n for full rank).
-  MatrixXd A1 = MatrixXd::Random(m1, n);
-  VectorXd b1 = VectorXd::Zero(m1);
-
-  TreeSolverBuilder builder;
-  int c0 = builder.AddClique();
-  builder.AddLinearConstraint(c0, A1, b1, {0, 1, 2, 3});
-
-  auto result = builder.Build();
-  ASSERT_TRUE(result.solver->AssembleAndFactor());
-
-  // Solve for a known x.
-  VectorXd x_true = VectorXd::Random(n);
-  VectorXd rhs = MatrixXd(A1).transpose() * (A1 * x_true);
-  VectorXd x_sol = result.solver->Solve(rhs);
-
-  // Compute residual via dense path: A1 * x - 0.
-  VectorXd dense_residual = A1 * x_sol;
-
-  // Compute residual via block path.
-  // Get the per-clique LinearConstraint from the builder's internals.
-  // Since the builder created the LinearConstraint, we access it through
-  // the solver's contributor → assembler → GetBlockAssembler → GramEvaluator.
-  // Simpler: just use ScatterToBlocks and call ComputeBlockResidual manually.
-  result.solver->ScatterToBlocks(x_sol);
-  auto& partition = dynamic_cast<SymmetricLinearSystemTreeSolver*>(
-      result.solver.get())->raw_partition();
-  auto x_sn = partition.supernode(0);
-  auto x_sep = partition.separator(0);
-
-  // Reconstruct the block residual the way the solver does it:
-  // A_perm_ was set by set_order with the elimination permutation.
-  // For a single clique with all variables, sn covers everything,
-  // sep is empty.  So ComputeBlockResidual(x_sn, x_sep) should give
-  // A_perm * x_sn - b = A * P^{-1} * x_sn.
-  // Since we don't have direct access to the LinearConstraint's
-  // ComputeBlockResidual, verify via the dense path.
-  VectorXd x_gathered(n);
-  result.solver->GatherFromBlocks(x_gathered);
-  VectorXd gathered_residual = A1 * x_gathered;
-
-  double err = (dense_residual - gathered_residual).norm();
-  EXPECT_LT(err, 1e-12) << "Full-support block residual mismatch";
-  printf("FullSupport: residual_err=%.2e\n", err);
-}
-
-TEST(ComputeBlockResidual, PartialSupport) {
-  // A2 operates on {0, 2, 3} — a subset of clique {0,1,2,3}.
-  // ComputeBlockResidual assumes the constraint's variables span
-  // exactly sn ∪ sep of its assigned clique.  With partial support,
-  // the sn_count and A_perm_ dimensions don't match the partition's
-  // supernode block size, leading to incorrect residuals or crashes
-  // in Debug mode.
-  srand(42);
-  const int n = 4, m1 = 5, m2 = 3;
-
-  MatrixXd A1 = MatrixXd::Random(m1, n);
-  VectorXd b1 = VectorXd::Zero(m1);
-  MatrixXd A2 = MatrixXd::Random(m2, 3);  // 3 columns for vars {0,2,3}
-  VectorXd b2 = VectorXd::Zero(m2);
-
-  TreeSolverBuilder builder;
-  int c0 = builder.AddClique();
-  builder.AddLinearConstraint(c0, A1, b1, {0, 1, 2, 3});
-  builder.AddLinearConstraint(c0, A2, b2, {0, 2, 3});
-
-  auto result = builder.Build();
-  ASSERT_TRUE(result.solver->AssembleAndFactor());
-
-  // Solve.
-  VectorXd rhs = VectorXd::Random(result.num_variables);
-  VectorXd x_sol = result.solver->Solve(rhs);
-
-  // Dense residual for A2: extract vars {0,2,3} from x_sol.
-  VectorXd x_sub(3);
-  x_sub << x_sol(0), x_sol(2), x_sol(3);
-  VectorXd dense_residual_A2 = A2 * x_sub;
-
-  // Verify the solve produced a reasonable answer by checking the
-  // full system residual.
-  // The assembled matrix is A1'A1 + A2_ext'A2_ext where A2_ext is
-  // A2 expanded to 4 columns (with zero column for var 1).
-  MatrixXd A2_ext = MatrixXd::Zero(m2, n);
-  A2_ext.col(0) = A2.col(0);
-  A2_ext.col(2) = A2.col(1);
-  A2_ext.col(3) = A2.col(2);
-  MatrixXd M = A1.transpose() * A1 + A2_ext.transpose() * A2_ext;
-  VectorXd full_residual = M * x_sol - rhs.head(n);
-  EXPECT_LT(full_residual.norm(), 1e-8)
-      << "Solve residual too large";
-
-  // Verify the dimension mismatch that would cause ComputeBlockResidual
-  // to fail for A2.  The partition's supernode has 4 rows (full clique)
-  // but A2 has only 3 variables → A_perm_ has 3 columns, x_sn has 4 rows.
-  auto* tree_solver = dynamic_cast<SymmetricLinearSystemTreeSolver*>(
-      result.solver.get());
-  ASSERT_TRUE(tree_solver != nullptr);
-  result.solver->ScatterToBlocks(x_sol);
-  const auto& partition = tree_solver->raw_partition();
-
-  // The single clique's supernode has all 4 variables.
-  EXPECT_EQ(partition.supernode_rows(0), n);
-
-  // A2's contributor was registered with sn_count = 3 (its var count).
-  // Calling ComputeBlockResidual(supernode(0), separator(0)) on A2
-  // would attempt A_perm_.leftCols(3) * supernode(0) where
-  // supernode(0) is 4×1 → dimension mismatch.
-  // This is undefined behavior in Release, assertion failure in Debug.
-  auto* adapter = tree_solver->GetContributor(1);
-  EXPECT_EQ(static_cast<int>(adapter->variables().size()), 3);
-
-  printf("PartialSupport: solve_residual=%.2e\n", full_residual.norm());
-  printf("  supernode_rows=%d, A2_vars=%d → mismatch confirmed\n",
-         partition.supernode_rows(0),
-         static_cast<int>(adapter->variables().size()));
 }
 
 }  // namespace
