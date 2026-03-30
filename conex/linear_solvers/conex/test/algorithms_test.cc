@@ -2579,5 +2579,134 @@ TEST(ComputeBlockResidual, PartialSupport) {
          static_cast<int>(adapter->variables().size()));
 }
 
+// =====================================================================
+// Problem + Solver API tests
+// =====================================================================
+
+}  // namespace
+}  // namespace conex
+
+#include "conex/common/problem.h"
+#include "conex/common/solver.h"
+
+namespace conex {
+namespace {
+
+TEST(ProblemSolver, LeastSquares) {
+  srand(42);
+  const int m = 30, n = 10;
+  Eigen::SparseMatrix<double> A(m, n);
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; ++r)
+    for (int c = 0; c < n; ++c)
+      if ((r + c) % 3 != 0)  // sparse pattern
+        trips.emplace_back(r, c, (double)rand() / RAND_MAX - 0.5);
+  A.setFromTriplets(trips.begin(), trips.end());
+  VectorXd b = VectorXd::Random(m);
+
+  // Build via Problem + Solver.
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  auto c1 = problem.AddLinearConstraint(A, b, vars);
+
+  auto solver = Solver::Build(problem);
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  // Solve using BlockVariable (no dense vectors in solve path).
+  VectorXd rhs_dense = Eigen::MatrixXd(A).transpose() *
+                        (Eigen::MatrixXd(A) * VectorXd::Random(n));
+  auto rhs = solver.MakeBlockVariable(rhs_dense);
+  auto x = solver.MakeBlockVariable();
+  solver.SolveInto(rhs, x);
+
+  // Compare with dense solve.
+  VectorXd x_dense = solver.Solve(rhs_dense);
+  VectorXd x_block = x.Gather();
+  double err = (x_block - x_dense).norm() / x_dense.norm();
+  EXPECT_LT(err, 1e-10) << "BlockVariable solve doesn't match dense";
+
+  printf("ProblemSolver.LeastSquares: n=%d, solve_err=%.2e\n", n, err);
+}
+
+TEST(ProblemSolver, QuadraticCostPlusLinear) {
+  // Solve (Q + A'A) x = rhs via Problem + Solver.
+  srand(42);
+  const int m = 20, n = 8;
+
+  MatrixXd A = MatrixXd::Random(m, n);
+  VectorXd b = VectorXd::Zero(m);
+  MatrixXd Q = MatrixXd::Identity(n, n) * 0.1;
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  problem.AddLinearConstraint(A, b, vars);
+  problem.AddQuadraticCost(Q, vars);
+
+  auto solver = Solver::Build(problem);
+  ASSERT_TRUE(solver.AssembleAndFactor());
+
+  VectorXd rhs = VectorXd::Random(n);
+  VectorXd x_sol = solver.Solve(rhs);
+
+  // Reference: (Q + A'A) x = rhs.
+  MatrixXd M = Q + A.transpose() * A;
+  VectorXd x_ref = M.ldlt().solve(rhs);
+
+  double err = (x_sol - x_ref).norm() / x_ref.norm();
+  EXPECT_LT(err, 1e-10);
+
+  printf("ProblemSolver.QuadraticCostPlusLinear: n=%d, err=%.2e\n", n, err);
+}
+
+TEST(ProblemSolver, SetWeightsAndResolve) {
+  // IRLS-style: solve, reweight, re-solve.
+  srand(42);
+  const int m = 20, n = 8;
+
+  MatrixXd A = MatrixXd::Random(m, n);
+  VectorXd b = VectorXd::Zero(m);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  auto c1 = problem.AddLinearConstraint(A, b, vars);
+
+  auto solver = Solver::Build(problem);
+
+  // Solve with unit weights.
+  ASSERT_TRUE(solver.AssembleAndFactor());
+  VectorXd rhs = VectorXd::Random(n);
+  VectorXd x1 = solver.Solve(rhs);
+
+  // Reference for unit weights.
+  MatrixXd M1 = A.transpose() * A;
+  VectorXd x1_ref = M1.ldlt().solve(rhs);
+  EXPECT_LT((x1 - x1_ref).norm() / x1_ref.norm(), 1e-10);
+
+  // Reweight: W = diag(1..m).
+  VectorXd weights(m);
+  for (int i = 0; i < m; ++i) weights(i) = i + 1.0;
+  solver.SetWeights(c1, weights);
+  ASSERT_TRUE(solver.AssembleAndFactor());
+  VectorXd x2 = solver.Solve(rhs);
+
+  // Reference for weighted.
+  MatrixXd W = weights.asDiagonal();
+  MatrixXd M2 = A.transpose() * W * A;
+  VectorXd x2_ref = M2.ldlt().solve(rhs);
+  double err = (x2 - x2_ref).norm() / x2_ref.norm();
+  EXPECT_LT(err, 1e-10);
+
+  // x1 and x2 should differ (different weights).
+  EXPECT_GT((x1 - x2).norm(), 1e-6);
+
+  printf("ProblemSolver.SetWeightsAndResolve: err=%.2e\n", err);
+}
+
 }  // namespace
 }  // namespace conex
