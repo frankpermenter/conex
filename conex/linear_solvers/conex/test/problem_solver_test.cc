@@ -6,6 +6,8 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
+#include "conex/algorithms/barrier_qp.h"
+#include "conex/algorithms/irls.h"
 #include "conex/algorithms/lqr_tree_solver.h"
 #include "conex/common/problem.h"
 #include "conex/common/solver.h"
@@ -15,6 +17,173 @@ using Eigen::VectorXd;
 
 namespace conex {
 namespace {
+
+// =====================================================================
+// IRLS tests
+// =====================================================================
+
+TEST(IRLS, BasicL1) {
+  srand(42);
+  const int m = 50, n = 5;
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; r++)
+    for (int c = 0; c < n; c++)
+      trips.emplace_back(r, c, (double)rand() / RAND_MAX - 0.5);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd b = MatrixXd(A) * x_true;
+  for (int i = 0; i < m / 10; i++)
+    b(rand() % m) += 10.0 * ((double)rand() / RAND_MAX - 0.5);
+
+  auto result = SolveIRLS(A, b, 50, 1e-6, 1e-8);
+  double err = (result.x - x_true).norm() / x_true.norm();
+  EXPECT_LT(err, 0.5);
+  EXPECT_GT(result.iterations, 1);
+  printf("IRLS: %d iters, L1=%.4f, err=%.4f, %.0fus\n",
+         result.iterations, result.l1_objective, err, result.solve_time_us);
+}
+
+TEST(IRLS, ConvergesToL2WithoutOutliers) {
+  srand(42);
+  const int m = 30, n = 5;
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int r = 0; r < m; r++)
+    for (int c = 0; c < n; c++)
+      trips.emplace_back(r, c, (double)rand() / RAND_MAX - 0.5);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd b = MatrixXd(A) * x_true;
+  auto result = SolveIRLS(A, b, 50, 1e-8, 1e-10);
+  double err = (result.x - x_true).norm() / x_true.norm();
+  EXPECT_LT(err, 1e-6);
+}
+
+// =====================================================================
+// Barrier QP tests
+// =====================================================================
+
+TEST(BarrierQP, UnconstrainedInsideFeasible) {
+  const int n = 2, m = 3;
+  std::vector<Eigen::Triplet<double>> qt;
+  qt.emplace_back(0, 0, 1.0); qt.emplace_back(1, 1, 1.0);
+  Eigen::SparseMatrix<double> Q(n, n);
+  Q.setFromTriplets(qt.begin(), qt.end());
+  VectorXd c = VectorXd::Zero(n);
+
+  std::vector<Eigen::Triplet<double>> at;
+  at.emplace_back(0, 0, 1.0); at.emplace_back(0, 1, 1.0);
+  at.emplace_back(1, 0, -1.0);
+  at.emplace_back(2, 1, -1.0);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(at.begin(), at.end());
+  VectorXd b(m); b << 1.0, 0.0, 0.0;
+  VectorXd x0(n); x0 << 0.3, 0.3;
+
+  auto result = SolveBarrierQP(Q, c, A, b, x0);
+  EXPECT_NEAR(result.x(0), 0.0, 0.01);
+  EXPECT_NEAR(result.x(1), 0.0, 0.01);
+  EXPECT_NEAR(result.objective, 0.0, 0.01);
+  printf("QP unconstrained: obj=%.6f, x=[%.4f, %.4f], gap=%.2e, "
+         "%d outer, %d newton, %.0fus\n",
+         result.objective, result.x(0), result.x(1), result.duality_gap,
+         result.outer_iterations, result.total_newton_steps,
+         result.solve_time_us);
+}
+
+TEST(BarrierQP, ActiveConstraint) {
+  const int n = 2, m = 3;
+  std::vector<Eigen::Triplet<double>> qt;
+  qt.emplace_back(0, 0, 0.001); qt.emplace_back(1, 1, 0.001);
+  Eigen::SparseMatrix<double> Q(n, n);
+  Q.setFromTriplets(qt.begin(), qt.end());
+  VectorXd c(n); c << 1.0, 0.0;
+
+  std::vector<Eigen::Triplet<double>> at;
+  at.emplace_back(0, 0, 1.0); at.emplace_back(0, 1, 1.0);
+  at.emplace_back(1, 0, -1.0);
+  at.emplace_back(2, 1, -1.0);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(at.begin(), at.end());
+  VectorXd b(m); b << 1.0, 0.0, 0.0;
+  VectorXd x0(n); x0 << 0.3, 0.3;
+
+  auto result = SolveBarrierQP(Q, c, A, b, x0, 30, 50, 10.0, 1e-8);
+  EXPECT_LT(result.x(0), 0.05);
+  EXPECT_GE(result.x(0), -0.01);
+  printf("QP active: obj=%.6f, x=[%.4f, %.4f], gap=%.2e, "
+         "%d outer, %d newton, %.0fus\n",
+         result.objective, result.x(0), result.x(1), result.duality_gap,
+         result.outer_iterations, result.total_newton_steps,
+         result.solve_time_us);
+}
+
+TEST(BarrierQP, SparseQP) {
+  srand(42);
+  const int n = 20, m = 15;
+  std::vector<Eigen::Triplet<double>> qt;
+  for (int i = 0; i < n; i++) {
+    qt.emplace_back(i, i, 4.0);
+    if (i + 1 < n) {
+      qt.emplace_back(i, i + 1, -1.0);
+      qt.emplace_back(i + 1, i, -1.0);
+    }
+  }
+  Eigen::SparseMatrix<double> Q(n, n);
+  Q.setFromTriplets(qt.begin(), qt.end());
+  VectorXd c = VectorXd::Random(n) * 0.5;
+
+  std::vector<Eigen::Triplet<double>> at;
+  for (int r = 0; r < m; r++)
+    for (int j = 0; j < 3; j++)
+      at.emplace_back(r, rand() % n, (double)rand() / RAND_MAX);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(at.begin(), at.end());
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd x0 = VectorXd::Zero(n);
+
+  auto result = SolveBarrierQP(Q, c, A, b, x0, 30, 50, 10.0, 1e-6);
+  VectorXd slack = b - A * result.x;
+  EXPECT_GE(slack.minCoeff(), -1e-6);
+  printf("QP sparse: obj=%.6f, gap=%.2e, slack_min=%.2e, "
+         "%d outer, %d newton, %.0fus\n",
+         result.objective, result.duality_gap, slack.minCoeff(),
+         result.outer_iterations, result.total_newton_steps,
+         result.solve_time_us);
+}
+
+TEST(BarrierQP, SolverReuse) {
+  const int n = 10, m = 5;
+  std::vector<Eigen::Triplet<double>> qt;
+  for (int i = 0; i < n; i++) qt.emplace_back(i, i, 2.0);
+  Eigen::SparseMatrix<double> Q(n, n);
+  Q.setFromTriplets(qt.begin(), qt.end());
+  VectorXd c = VectorXd::Random(n);
+
+  std::vector<Eigen::Triplet<double>> at;
+  for (int r = 0; r < m; r++) at.emplace_back(r, r, 1.0);
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(at.begin(), at.end());
+  VectorXd b = VectorXd::Ones(m) * 5.0;
+  VectorXd x0 = VectorXd::Zero(n);
+
+  auto result = SolveBarrierQP(Q, c, A, b, x0, 20, 30, 10.0, 1e-8);
+  EXPECT_GT(result.total_newton_steps, 1);
+  EXPECT_LT(result.duality_gap, 1e-6);
+  VectorXd slack = b - A * result.x;
+  EXPECT_GE(slack.minCoeff(), -1e-6);
+  printf("QP reuse: obj=%.6f, gap=%.2e, %d outer, %d newton, %.0fus\n",
+         result.objective, result.duality_gap,
+         result.outer_iterations, result.total_newton_steps,
+         result.solve_time_us);
+}
+
+// =====================================================================
+// ProblemSolver tests
+// =====================================================================
 
 TEST(ProblemSolver, LeastSquares) {
   srand(42);
