@@ -1,18 +1,11 @@
-// TODO: Migrate to Problem + Solver API (conex/common/problem.h, solver.h).
-// Currently uses ConstraintManager + MakeTreeSolver directly.
 #include "conex/algorithms/barrier_qp.h"
 
 #include <chrono>
 #include <cmath>
 #include <numeric>
-#include <set>
 
-#include "conex/common/constraint_manager.h"
-#include "conex/common/conex.h"
-#include "conex/common/sparse_linear_constraint.h"
-#include "conex/common/sparse_quadratic_term.h"
-#include "conex/tree_solver/kkt_solver_factory.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/common/problem.h"
+#include "conex/common/solver.h"
 
 namespace conex {
 
@@ -33,34 +26,33 @@ BarrierQPResult SolveBarrierQP(
   result.total_newton_steps = 0;
   result.outer_iterations = 0;
 
-  // Build solver once: the Newton system is (Q + A^T W A) dx = rhs.
-  Eigen::VectorXd b_zero = Eigen::VectorXd::Zero(m);
-  auto slc = std::make_unique<SparseLinearConstraint>(A, b_zero);
-  std::set<int> var_set;
-  for (const auto& sup : slc->row_supports())
-    var_set.insert(sup.begin(), sup.end());
-  for (int i = 0; i < n; ++i) var_set.insert(i);
-  std::vector<int> all_vars(var_set.begin(), var_set.end());
+  // Build problem: A'WA (reweighted) + Q.
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
 
-  ConstraintManager cm(n);
-  cm.AddCustomAssembler(std::make_unique<SparseLinearConstraintAssembler>(
-      std::move(slc), all_vars));
-  cm.Preprocess();
+  Problem problem;
+  auto c_ineq = problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
+  problem.AddQuadraticCost(Q, vars);
 
-  auto* a_asm_ptr = dynamic_cast<SparseLinearConstraintAssembler*>(
-      cm.clique_assemblers().front());
+  // Preprocess (drop structurally dependent columns).
+  auto [reduced, expansion] = Preprocess(problem);
+  const int nr = reduced.num_variables();
 
-  // Reduce Q, c, x0 to the (possibly reduced) variable space.
-  Eigen::VectorXd c_r = cm.ReduceVector(c);
-  Eigen::VectorXd x0_r = cm.ReduceVector(x0);
+  // Reduce Q, c, x0, A to the reduced space.
+  Eigen::VectorXd c_r = expansion.Reduce(c);
+  Eigen::VectorXd x0_r = expansion.Reduce(x0);
 
+  Eigen::MatrixXd A_r(A);
+  if (expansion.was_reduced()) {
+    A_r.resize(m, nr);
+    for (int j = 0; j < nr; ++j)
+      A_r.col(j) = Eigen::MatrixXd(A).col(expansion.col_map[j]);
+  }
   Eigen::SparseMatrix<double> Q_r;
-  if (cm.was_reduced()) {
-    const auto& col_map = cm.column_map();
-    int nr = cm.GetNumberOfVariables();
-    std::vector<int> inv(n, -1);
-    for (int i = 0; i < nr; ++i) inv[col_map[i]] = i;
+  if (expansion.was_reduced()) {
     std::vector<Eigen::Triplet<double>> qt;
+    std::vector<int> inv(n, -1);
+    for (int i = 0; i < nr; ++i) inv[expansion.col_map[i]] = i;
     for (int k = 0; k < Q.outerSize(); ++k)
       for (Eigen::SparseMatrix<double>::InnerIterator it(Q, k); it; ++it) {
         int ri = inv[it.row()], rj = inv[it.col()];
@@ -72,20 +64,11 @@ BarrierQPResult SolveBarrierQP(
     Q_r = Q;
   }
 
-  // Add Q assembler after Preprocess, using reduced variables.
-  int nr = cm.GetNumberOfVariables();
-  std::vector<int> reduced_vars(nr);
-  std::iota(reduced_vars.begin(), reduced_vars.end(), 0);
-  auto q_assembler = std::make_unique<SparseQuadraticTermAssembler>(
-      Q_r, reduced_vars);
-  cm.AddCustomAssembler(q_assembler.get());
+  auto solver = Solver::Build(reduced);
+  solver.AssembleAndFactor();
 
-  SolverConfiguration config;
-  auto solver = MakeTreeSolver(&cm, config);
-
-  solver->AssembleAndFactor();
-  if (auto* tree = dynamic_cast<SymmetricLinearSystemTreeSolver*>(solver.get()))
-    a_asm_ptr->BindPartition(*tree);
+  auto rhs_bv = solver.MakeBlockVariable();
+  auto dx_bv = solver.MakeBlockVariable();
 
   auto t_start = clock::now();
 
@@ -95,56 +78,46 @@ BarrierQPResult SolveBarrierQP(
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
     result.outer_iterations = outer + 1;
 
-    // Duality gap estimate: m / t.
     double gap = static_cast<double>(m) / t;
     if (gap < tolerance) break;
 
-    // Newton's method on the barrier subproblem.
     for (int newton = 0; newton < max_newton_steps; ++newton) {
       result.total_newton_steps++;
 
       // Slacks: s = b - A x.
-      solver->ScatterToBlocks(x);
-      Eigen::VectorXd s = b - a_asm_ptr->ComputeBlockResiduals(*solver);
-
-      // Check feasibility.
+      Eigen::VectorXd s = b - A_r * x;
       if (s.minCoeff() <= 0) break;
 
       // Barrier weights: W_ii = 1 / (t * s_i^2).
       Eigen::VectorXd weights(m);
-      for (int i = 0; i < m; ++i) {
+      for (int i = 0; i < m; ++i)
         weights(i) = 1.0 / (t * s(i) * s(i));
-      }
-      a_asm_ptr->SetWeights(weights);
+      solver.SetWeights(c_ineq, weights);
 
       // Gradient: grad = Q x + c + (1/t) A^T (1/s).
       Eigen::VectorXd inv_s(m);
       for (int i = 0; i < m; ++i) inv_s(i) = 1.0 / s(i);
       Eigen::VectorXd grad =
-          Q_r * x + c_r + (1.0 / t) * a_asm_ptr->ComputeTransposeProduct(inv_s);
+          Q_r * x + c_r + (1.0 / t) * (A_r.transpose() * inv_s);
 
       // Solve (Q + A^T W A) dx = -grad.
-      bool ok = solver->AssembleAndFactor();
-      if (!ok) break;
-      Eigen::VectorXd dx = solver->Solve(-grad);
+      if (!solver.AssembleAndFactor()) break;
+      rhs_bv.ScatterFrom(-grad);
+      solver.SolveInto(rhs_bv, dx_bv);
+      Eigen::VectorXd dx = dx_bv.Gather();
 
-      // Newton decrement: lambda^2 = -grad^T dx.
+      // Newton decrement.
       double lambda_sq = -grad.dot(dx);
       if (lambda_sq / 2.0 < tolerance * 0.01) break;
 
-      // Backtracking line search to maintain feasibility.
+      // Backtracking line search.
       double alpha = 1.0;
-
-      // Max step to stay feasible: s - alpha * A dx > 0.
-      solver->ScatterToBlocks(dx);
-      Eigen::VectorXd Adx = a_asm_ptr->ComputeBlockResiduals(*solver);
+      Eigen::VectorXd Adx = A_r * dx;
       for (int i = 0; i < m; ++i) {
-        if (Adx(i) > 0) {
+        if (Adx(i) > 0)
           alpha = std::min(alpha, 0.99 * s(i) / Adx(i));
-        }
       }
 
-      // Backtracking on barrier objective.
       const double beta = 0.5;
       const double armijo = 0.01;
       double f0 = 0.5 * x.dot(Q_r * x) + c_r.dot(x);
@@ -152,15 +125,11 @@ BarrierQPResult SolveBarrierQP(
 
       for (int ls = 0; ls < 20; ++ls) {
         Eigen::VectorXd x_new = x + alpha * dx;
-        solver->ScatterToBlocks(x_new);
-        Eigen::VectorXd s_new =
-            b - a_asm_ptr->ComputeBlockResiduals(*solver);
-        if (s_new.minCoeff() <= 0) {
-          alpha *= beta;
-          continue;
-        }
+        Eigen::VectorXd s_new = b - A_r * x_new;
+        if (s_new.minCoeff() <= 0) { alpha *= beta; continue; }
         double f_new = 0.5 * x_new.dot(Q_r * x_new) + c_r.dot(x_new);
-        for (int i = 0; i < m; ++i) f_new -= (1.0 / t) * std::log(s_new(i));
+        for (int i = 0; i < m; ++i)
+          f_new -= (1.0 / t) * std::log(s_new(i));
         if (f_new <= f0 + armijo * alpha * grad.dot(dx)) break;
         alpha *= beta;
       }
@@ -168,12 +137,11 @@ BarrierQPResult SolveBarrierQP(
       x += alpha * dx;
     }
 
-    // Increase barrier parameter.
     t *= mu;
   }
 
   auto t_end = clock::now();
-  result.x = cm.ExpandSolution(x);
+  result.x = expansion.Expand(x);
   result.objective = 0.5 * result.x.dot(Q * result.x) + c.dot(result.x);
   result.duality_gap = static_cast<double>(m) / t;
   result.solve_time_us =
