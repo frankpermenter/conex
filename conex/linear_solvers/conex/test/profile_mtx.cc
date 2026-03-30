@@ -210,10 +210,20 @@ struct MatrixFile {
   Eigen::SparseMatrix<double> A;
 };
 
+// Parse comma-separated int list: "1,2,4" → {1, 2, 4}.
+std::vector<int> ParseList(const std::string& s) {
+  std::vector<int> result;
+  std::istringstream ss(s);
+  std::string token;
+  while (std::getline(ss, token, ',')) result.push_back(std::stoi(token));
+  return result;
+}
+
 int main(int argc, char* argv[]) {
   SolverConfiguration cfg;
   bool randomize = false;
   std::vector<std::string> mtx_paths;
+  std::vector<int> sweep_threads, sweep_merge;
 
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
@@ -223,11 +233,21 @@ int main(int argc, char* argv[]) {
       cfg.num_threads = std::stoi(argv[++i]);
     } else if (arg == "--merge" && i + 1 < argc) {
       cfg.tree.max_merge_supernode_size = std::stoi(argv[++i]);
+    } else if (arg == "--sweep-threads" && i + 1 < argc) {
+      sweep_threads = ParseList(argv[++i]);
+    } else if (arg == "--sweep-merge" && i + 1 < argc) {
+      sweep_merge = ParseList(argv[++i]);
     } else if (arg[0] != '-') {
       mtx_paths.push_back(arg);
     } else {
-      fprintf(stderr, "Usage: %s [--randomize] [--threads <n>] [--merge <n>] file.mtx ...\n",
-              argv[0]);
+      fprintf(stderr,
+        "Usage: %s [options] file.mtx ...\n"
+        "  --randomize          Replace nonzeros with random values\n"
+        "  --threads <n>        Number of threads (default: 1)\n"
+        "  --merge <n>          Max merge supernode size (default: 5)\n"
+        "  --sweep-threads <list>  Sweep thread counts (e.g. 1,2,4)\n"
+        "  --sweep-merge <list>    Sweep merge thresholds (e.g. 0,5,10,20)\n",
+        argv[0]);
       return 1;
     }
   }
@@ -242,7 +262,6 @@ int main(int argc, char* argv[]) {
   for (const auto& path : mtx_paths) {
     MatrixFile mf;
     mf.path = path;
-    // Extract name from path.
     auto slash = path.rfind('/');
     auto dot = path.rfind('.');
     mf.name = path.substr(slash == std::string::npos ? 0 : slash + 1,
@@ -253,7 +272,6 @@ int main(int argc, char* argv[]) {
       fprintf(stderr, "  %s: %s\n", mf.name.c_str(), e.what());
       continue;
     }
-    // Skip square matrices (not least-squares problems).
     if (mf.A.rows() == mf.A.cols()) {
       fprintf(stderr, "  Skipping %s (square, %dx%d)\n",
               mf.name.c_str(), (int)mf.A.rows(), (int)mf.A.cols());
@@ -269,17 +287,30 @@ int main(int argc, char* argv[]) {
     matrices.push_back(std::move(mf));
   }
 
-  PrintHeader();
-  for (auto& mf : matrices) {
-    try {
-      auto res = ProfileMatrix(mf.name, mf.A, cfg);
-      PrintResult(res, cfg);
-    } catch (const std::exception& e) {
-      fprintf(stderr, "  %s: exception: %s\n", mf.name.c_str(), e.what());
+  // Build sweep configurations.
+  if (sweep_threads.empty()) sweep_threads = {cfg.num_threads};
+  if (sweep_merge.empty()) sweep_merge = {cfg.tree.max_merge_supernode_size};
+
+  for (int threads : sweep_threads) {
+    for (int merge : sweep_merge) {
+      SolverConfiguration run_cfg = cfg;
+      run_cfg.num_threads = threads;
+      run_cfg.tree.max_merge_supernode_size = merge;
+
+      PrintHeader();
+      for (auto& mf : matrices) {
+        try {
+          auto res = ProfileMatrix(mf.name, mf.A, run_cfg);
+          PrintResult(res, run_cfg);
+        } catch (const std::exception& e) {
+          fprintf(stderr, "  %s: exception: %s\n", mf.name.c_str(), e.what());
+        }
+      }
+      printf("\n");
     }
   }
 
-  printf("\nColumns: thrd=num_threads, merg=max_merge_supernode_size, cliq=num_cliques\n");
+  printf("Columns: thrd=num_threads, merg=max_merge_supernode_size, cliq=num_cliques\n");
   printf("Stages:  build=solver construction, asm+fac/solve are median of repeated runs\n");
 
   return 0;
