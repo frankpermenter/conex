@@ -261,11 +261,27 @@ Eigen::VectorXd SparseLinearConstraintAssembler::ComputeBlockResiduals(
     }
 
     int k = info.block_index;
-    auto x_sn = partition.supernode(k);
-    auto x_sep = partition.separator(k);
+    int ns = info.sn_count;
+    int n_vars = constraint->number_of_variables();
+    auto full_sn = partition.supernode(k);
+    auto full_sep = partition.separator(k);
 
-    local_residuals[ci] =
-        constraint->ComputeBlockResidual(x_sn, x_sep);
+    // After supernode merging, the partition's supernode/separator
+    // sizes may exceed this constraint's sn/sep split.  If dimensions
+    // match, use the fast block path; otherwise fall back to global.
+    if (full_sn.rows() == ns &&
+        full_sep.rows() == n_vars - ns) {
+      local_residuals[ci] =
+          constraint->ComputeBlockResidual(full_sn, full_sep);
+    } else {
+      // Gather this constraint's variables globally and compute.
+      Eigen::VectorXd x_global(solver.number_of_variables());
+      solver.GatherFromBlocks(x_global);
+      const auto& vars = constraint->primal_variables();
+      Eigen::VectorXd x_local(n_vars);
+      for (int j = 0; j < n_vars; ++j) x_local(j) = x_global(vars[j]);
+      local_residuals[ci] = constraint->ComputeResidual(x_local);
+    }
   }
 
   // Step 2: scatter to global using row_map_ (O(m)).
