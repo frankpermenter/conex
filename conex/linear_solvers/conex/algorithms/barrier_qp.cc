@@ -30,8 +30,8 @@ BarrierQPResult SolveBarrierQP(
   std::iota(vars.begin(), vars.end(), 0);
 
   Problem problem;
-  auto c_ineq_id = problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
-  auto c_quad_id = problem.AddQuadraticCost(Q, vars);
+  problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
+  problem.AddQuadraticCost(Q, vars);
 
   auto [reduced, expansion] = Preprocess(problem);
   const int nr = reduced.num_variables();
@@ -39,13 +39,14 @@ BarrierQPResult SolveBarrierQP(
   Eigen::VectorXd c_r = expansion.Reduce(c);
 
   auto solver = Solver::Build(reduced);
-  solver.AssembleAndFactor();
+  auto* kkt = solver.solver();
+  kkt->AssembleAndFactor();
 
-  // BlockVariables for the solve path.
-  auto x = solver.MakeBlockVariable(expansion.Reduce(x0));
-  auto dx = solver.MakeBlockVariable();
-  auto grad_bv = solver.MakeBlockVariable();
-  auto qx_bv = solver.MakeBlockVariable();
+  auto x = kkt->MakeTreeRHS();
+  x = solver.MakeBlockVariable(expansion.Reduce(x0));
+  auto dx = kkt->MakeTreeRHS();
+  auto row = kkt->MakeRowSpace();
+  auto c_bv = solver.MakeBlockVariable(c_r);
 
   auto t_start = clock::now();
 
@@ -60,61 +61,63 @@ BarrierQPResult SolveBarrierQP(
     for (int newton = 0; newton < max_newton_steps; ++newton) {
       result.total_newton_steps++;
 
-      // Slacks: s = b - A x (uses per-clique A, reads x's blocks).
-      Eigen::VectorXd s = b - solver.MultiplyA(c_ineq_id, x);
+      // Slacks: s = b - A x.
+      kkt->MultiplyA(x, row);
+      Eigen::VectorXd s = b - row.data;
       if (s.minCoeff() <= 0) break;
 
-      // Barrier weights.
-      Eigen::VectorXd weights(m);
+      // Barrier weights: w_i = 1/(t * s_i^2).
+      RowSpace weights = kkt->MakeRowSpace();
       for (int i = 0; i < m; ++i)
-        weights(i) = 1.0 / (t * s(i) * s(i));
-      solver.SetWeights(c_ineq_id, weights);
+        weights.data(i) = 1.0 / (t * s(i) * s(i));
+      kkt->SetWeights(weights);
 
-      // Gradient: grad = Q x + c + (1/t) A^T (1/s).
-      Eigen::VectorXd inv_s(m);
-      for (int i = 0; i < m; ++i) inv_s(i) = 1.0 / s(i);
-      Eigen::VectorXd scaled_inv_s = (1.0 / t) * inv_s;
+      // A^T term: (1/t) * A^T * (1/s).
+      RowSpace scaled_inv_s = kkt->MakeRowSpace();
+      for (int i = 0; i < m; ++i)
+        scaled_inv_s.data(i) = 1.0 / (t * s(i));
 
       // Solve (Q + A^T W A) dx = -(Q*x + c + (1/t) A^T(1/s)).
-      if (!solver.AssembleAndFactor()) break;
+      if (!kkt->AssembleAndFactor()) break;
 
-      auto* ts = solver.tree_solver();
-      if (ts) {
-        // Fused path: build RHS in tree form, then solve.
-        ts->ScatterSeparators(x.partition(), ts->sep_scratch_in());
-        TreeRHS x_rhs = {&x.partition(), &ts->sep_scratch_in(), false};
-        auto rhs = ts->MakeTreeRHS(dx);
-        rhs = solver.MakeBlockVariable(c_r);
-        solver.AccumulateQx(c_quad_id, x_rhs, rhs);
-        solver.AccumulateAtranspose(c_ineq_id, scaled_inv_s, rhs);
-        rhs *= -1.0;
-        ts->SolveBlockedInPlace(rhs);
-      } else {
-        // Dense fallback.
-        solver.MultiplyQ(c_quad_id, x, qx_bv);
-        Eigen::VectorXd Qx = qx_bv.Gather().col(0);
-        Eigen::VectorXd at_inv_s =
-            solver.ComputeTransposeProduct(c_ineq_id, scaled_inv_s);
-        Eigen::VectorXd grad = Qx + c_r + at_inv_s;
-        grad_bv.ScatterFrom(-grad);
-        solver.SolveInto(grad_bv, dx);
-      }
+      dx = c_bv;  // init with c
+      kkt->AccumulateQx(x, dx);
+      kkt->AccumulateAtranspose(scaled_inv_s, dx);
+      dx *= -1.0;
+      kkt->SolveTreeRHS(dx);
+      // dx now holds the Newton step.
 
-      // Newton decrement: lambda^2 = -grad^T dx.
-      // Reconstruct grad densely for decrement and line search.
-      Eigen::VectorXd dx_dense = dx.Gather().col(0);
-      Eigen::VectorXd x_dense = x.Gather().col(0);
-      solver.MultiplyQ(c_quad_id, x, qx_bv);
-      Eigen::VectorXd Qx = qx_bv.Gather().col(0);
+      // Newton decrement (dense for scalar products).
+      Eigen::VectorXd dx_dense(nr), x_dense(nr);
+      dx.supernodes->GatherInto(dx_dense);
+      x.supernodes->GatherInto(x_dense);
+
+      // grad = Q*x + c + (1/t) A^T(1/s) via dense gather of Qx.
+      auto qx = kkt->MakeTreeRHS();
+      qx.SetZero();
+      kkt->AccumulateQx(x, qx);
+      Eigen::VectorXd Qx(nr);
+      qx.supernodes->GatherInto(Qx);
       Eigen::VectorXd grad = Qx + c_r;
-      grad += solver.ComputeTransposeProduct(c_ineq_id, scaled_inv_s);
+      kkt->AccumulateAtranspose(scaled_inv_s, qx);
+      qx.supernodes->GatherInto(grad);
+      // grad now has Qx + A^T scaled_inv_s; add c.
+      // Actually, let's just recompute cleanly:
+      grad = Qx + c_r;
+      auto atv_rhs = kkt->MakeTreeRHS();
+      atv_rhs.SetZero();
+      kkt->AccumulateAtranspose(scaled_inv_s, atv_rhs);
+      Eigen::VectorXd atv(nr);
+      atv_rhs.supernodes->GatherInto(atv);
+      grad += atv;
 
-      double lambda_sq = grad.dot(dx_dense);  // -grad^T * dx
+      double lambda_sq = grad.dot(dx_dense);
       if (-lambda_sq / 2.0 < tolerance * 0.01) break;
 
       // Backtracking line search.
       double alpha = 1.0;
-      Eigen::VectorXd Adx = solver.MultiplyA(c_ineq_id, dx);
+      kkt->MultiplyA(dx, row);
+      Eigen::VectorXd Adx = row.data;
       for (int i = 0; i < m; ++i) {
         if (Adx(i) > 0)
           alpha = std::min(alpha, 0.99 * s(i) / Adx(i));
@@ -127,11 +130,16 @@ BarrierQPResult SolveBarrierQP(
 
       for (int ls = 0; ls < 20; ++ls) {
         Eigen::VectorXd x_new = x_dense + alpha * dx_dense;
-        auto x_new_bv = solver.MakeBlockVariable(x_new);
-        Eigen::VectorXd s_new = b - solver.MultiplyA(c_ineq_id, x_new_bv);
+        auto x_new_rhs = kkt->MakeTreeRHS();
+        x_new_rhs = solver.MakeBlockVariable(x_new);
+        kkt->MultiplyA(x_new_rhs, row);
+        Eigen::VectorXd s_new = b - row.data;
         if (s_new.minCoeff() <= 0) { alpha *= beta; continue; }
-        solver.MultiplyQ(c_quad_id, x_new_bv, qx_bv);
-        Eigen::VectorXd Qx_new = qx_bv.Gather().col(0);
+        auto qx_new = kkt->MakeTreeRHS();
+        qx_new.SetZero();
+        kkt->AccumulateQx(x_new_rhs, qx_new);
+        Eigen::VectorXd Qx_new(nr);
+        qx_new.supernodes->GatherInto(Qx_new);
         double f_new = 0.5 * x_new.dot(Qx_new) + c_r.dot(x_new);
         for (int i = 0; i < m; ++i)
           f_new -= (1.0 / t) * std::log(s_new(i));
@@ -139,14 +147,17 @@ BarrierQPResult SolveBarrierQP(
         alpha *= beta;
       }
 
-      x.AddScaled(alpha, dx);
+      // Update x += alpha * dx.
+      Eigen::VectorXd x_updated = x_dense + alpha * dx_dense;
+      x = solver.MakeBlockVariable(x_updated);
     }
 
     t *= mu;
   }
 
   auto t_end = clock::now();
-  Eigen::VectorXd x_final = x.Gather().col(0);
+  Eigen::VectorXd x_final(nr);
+  x.supernodes->GatherInto(x_final);
   result.x = expansion.Expand(x_final);
   result.objective = 0.5 * result.x.dot(Q * result.x) + c.dot(result.x);
   result.duality_gap = static_cast<double>(m) / t;
