@@ -260,10 +260,15 @@ bool T::DoSolveBlocked(const BlockPartition& rhs,
 }
 
 void T::SolveBlockedInPlace(BlockPartition& supernodes) const {
-  const int nc = supernodes.cols();
-  CONEX_DEMAND(nc <= sep_scratch_.reserved_cols,
-               "BlockVariable has more columns than reserved at Finalize.");
   sep_scratch_.SetZero();
+  SolveBlockedInPlace(supernodes, sep_scratch_);
+}
+
+void T::SolveBlockedInPlace(BlockPartition& supernodes,
+                             SeparatorScratch& scratch) const {
+  const int nc = supernodes.cols();
+  CONEX_DEMAND(nc <= scratch.reserved_cols,
+               "BlockVariable has more columns than reserved at Finalize.");
 
   const int num_solve = static_cast<int>(solve_order_.size());
 
@@ -272,10 +277,10 @@ void T::SolveBlockedInPlace(BlockPartition& supernodes) const {
     const auto& info = solve_scatter_info_[idx];
     const int k = info.block_index;
     auto sn = supernodes.block(k);
-    auto sep = sep_scratch_.block(k, nc);
+    auto sep = scratch.block(k, nc);
 
     for (const auto& cop : info.children) {
-      auto child_sep = sep_scratch_.block(cop.child_block_index, nc);
+      auto child_sep = scratch.block(cop.child_block_index, nc);
       for (const auto& off : cop.sn_offsets) {
         sn.middleRows(off.first, off.size) -=
             child_sep.middleRows(off.second, off.size);
@@ -294,12 +299,12 @@ void T::SolveBlockedInPlace(BlockPartition& supernodes) const {
     const auto& info = solve_scatter_info_[idx];
     const int k = info.block_index;
     auto sn = supernodes.block(k);
-    auto sep = sep_scratch_.block(k, nc);
+    auto sep = scratch.block(k, nc);
 
     solve_order_[idx]->BackwardSolveBlocked(sn, sep);
 
     for (const auto& cop : info.children) {
-      auto child_sep = sep_scratch_.block(cop.child_block_index, nc);
+      auto child_sep = scratch.block(cop.child_block_index, nc);
       for (const auto& off : cop.sn_offsets) {
         child_sep.middleRows(off.second, off.size) =
             sn.middleRows(off.first, off.size);

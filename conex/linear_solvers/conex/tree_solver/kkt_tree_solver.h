@@ -440,6 +440,12 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     }
   };
 
+  // Solve using a pre-populated separator scratch (no zero).
+  // Use when RHS separator contributions are already in scratch
+  // (e.g. from AccumulateQx/AccumulateAtranspose).
+  void SolveBlockedInPlace(BlockPartition& supernodes,
+                           SeparatorScratch& scratch) const;
+
   // Populate a sep scratch from a BlockPartition's supernode blocks.
   // Top-down: copies parent sn/sep into child separator scratch.
   void ScatterSeparators(const BlockPartition& supernodes,

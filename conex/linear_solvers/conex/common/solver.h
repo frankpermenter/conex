@@ -211,6 +211,44 @@ class Solver {
     }
   }
 
+  // Fused: build gradient in-place then solve, no GatherSeparators.
+  // grad = Q*x + A^T*v + c, then solve (Q + A^T W A) dx = -grad.
+  // sep_scratch_in must be pre-populated via ScatterSeparators(x).
+  // Result is written into dx's partition.
+  void AccumulateAndSolve(ConstraintId c_quad, ConstraintId c_linear,
+                          const BlockVariable& x,
+                          const Eigen::VectorXd& v,
+                          const Eigen::VectorXd& c,
+                          BlockVariable& dx) {
+    CONEX_DEMAND(tree_solver_, "Fused path requires tree solver.");
+    int nc = dx.cols();
+    auto& sep_out = tree_solver_->sep_scratch_out();
+
+    // Build -grad into dx's partition + sep_out.
+    dx.SetZero();
+    sep_out.SetZero();
+    AccumulateQx(c_quad, x, dx);
+    AccumulateAtranspose(c_linear, v, dx);
+
+    // Add c to supernode blocks and negate: dx = -(Q*x + A^T*v + c).
+    // c is in original order — scatter into dx then negate.
+    // Since dx already has Q*x + A^T*v, add c then negate everything.
+    Eigen::VectorXd c_contrib = c;
+    auto c_bv = MakeBlockVariable(c_contrib);
+    int nb = dx.partition().num_blocks();
+    for (int k = 0; k < nb; ++k) {
+      dx.partition().block(k) += c_bv.partition().block(k);
+      dx.partition().block(k) *= -1.0;
+    }
+    // Negate sep_out too.
+    for (int k = 0; k < tree_solver_->num_subsystems(); ++k) {
+      sep_out.block(k, nc) *= -1.0;
+    }
+
+    // Solve in-place using pre-populated sep_out.
+    tree_solver_->SolveBlockedInPlace(dx.partition(), sep_out);
+  }
+
   // Convenience: compute A^T * v with full gather.
   void MultiplyAtranspose(ConstraintId id,
                           const Eigen::VectorXd& v,

@@ -71,26 +71,38 @@ BarrierQPResult SolveBarrierQP(
       solver.SetWeights(c_ineq, weights);
 
       // Gradient: grad = Q x + c + (1/t) A^T (1/s).
-      solver.MultiplyQ(c_quad, x, qx_bv);
-      Eigen::VectorXd Qx = qx_bv.Gather().col(0);
-      Eigen::VectorXd x_dense = x.Gather().col(0);
-
       Eigen::VectorXd inv_s(m);
       for (int i = 0; i < m; ++i) inv_s(i) = 1.0 / s(i);
+      Eigen::VectorXd scaled_inv_s = (1.0 / t) * inv_s;
 
-      Eigen::VectorXd grad = Qx + c_r;
-      // Add (1/t) A^T (1/s) via per-clique transpose product.
-      Eigen::VectorXd at_inv_s =
-          solver.ComputeTransposeProduct(c_ineq, inv_s);
-      grad += (1.0 / t) * at_inv_s;
-
-      // Solve (Q + A^T W A) dx = -grad.
+      // Solve (Q + A^T W A) dx = -(Q*x + c + (1/t) A^T(1/s)).
       if (!solver.AssembleAndFactor()) break;
-      grad_bv.ScatterFrom(-grad);
-      solver.SolveInto(grad_bv, dx);
 
-      // Newton decrement.
+      auto* ts = solver.tree_solver();
+      if (ts) {
+        // Fused path: build gradient + solve in one pass.
+        ts->ScatterSeparators(x.partition(), ts->sep_scratch_in());
+        solver.AccumulateAndSolve(c_quad, c_ineq, x, scaled_inv_s, c_r, dx);
+      } else {
+        // Dense fallback.
+        solver.MultiplyQ(c_quad, x, qx_bv);
+        Eigen::VectorXd Qx = qx_bv.Gather().col(0);
+        Eigen::VectorXd at_inv_s =
+            solver.ComputeTransposeProduct(c_ineq, scaled_inv_s);
+        Eigen::VectorXd grad = Qx + c_r + at_inv_s;
+        grad_bv.ScatterFrom(-grad);
+        solver.SolveInto(grad_bv, dx);
+      }
+
+      // Newton decrement: lambda^2 = -grad^T dx.
+      // Reconstruct grad densely for decrement and line search.
       Eigen::VectorXd dx_dense = dx.Gather().col(0);
+      Eigen::VectorXd x_dense = x.Gather().col(0);
+      solver.MultiplyQ(c_quad, x, qx_bv);
+      Eigen::VectorXd Qx = qx_bv.Gather().col(0);
+      Eigen::VectorXd grad = Qx + c_r;
+      grad += solver.ComputeTransposeProduct(c_ineq, scaled_inv_s);
+
       double lambda_sq = grad.dot(dx_dense);  // -grad^T * dx
       if (-lambda_sq / 2.0 < tolerance * 0.01) break;
 
