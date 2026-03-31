@@ -148,9 +148,8 @@ class Solver {
   }
 
   // Accumulate Q * x into a TreeRHS.
-  // sep_scratch_in must be pre-populated via ScatterSeparators(x).
   void AccumulateQx(ConstraintId id,
-                    const BlockVariable& x,
+                    const TreeRHS& x,
                     TreeRHS& rhs) const {
     CONEX_DEMAND(tree_solver_, "AccumulateQx requires tree solver.");
     auto* qasm = quadratic_assemblers_.at(id);
@@ -200,8 +199,10 @@ class Solver {
                                      tree_solver_->sep_scratch_in());
     result.SetZero();
     tree_solver_->sep_scratch_out().SetZero();
+    auto x_rhs = TreeRHS{const_cast<BlockPartition*>(&x.partition()),
+                          &tree_solver_->sep_scratch_in(), true};
     auto rhs = tree_solver_->MakeTreeRHS(result);
-    AccumulateQx(id, x, rhs);
+    AccumulateQx(id, x_rhs, rhs);
     tree_solver_->GatherSeparators(result.partition(),
                                     tree_solver_->sep_scratch_out());
   }
@@ -268,6 +269,7 @@ class Solver {
     }
 
     tree_solver_ = MakeTreeSolver(cm_.get(), config);
+    RegisterAssemblersWithTreeSolver();
   }
 
   void BuildFromTree(const Problem& problem,
@@ -323,6 +325,7 @@ class Solver {
 
     auto result = builder_->Build();
     tree_solver_ = std::move(result.solver);
+    RegisterAssemblersWithTreeSolver();
   }
 
   void BuildQuotientAMD(const Problem& problem,
@@ -373,6 +376,7 @@ class Solver {
 
     auto result = builder_->Build();
     tree_solver_ = std::move(result.solver);
+    RegisterAssemblersWithTreeSolver();
   }
 
   void BuildDenseInternal(const Problem& problem) {
@@ -425,6 +429,14 @@ class Solver {
     }
 
     dense_solver_ = std::move(ds);
+  }
+
+  void RegisterAssemblersWithTreeSolver() {
+    if (!tree_solver_) return;
+    for (auto* slca : linear_assemblers_)
+      if (slca) tree_solver_->RegisterLinearAssembler(slca);
+    for (auto* qasm : quadratic_assemblers_)
+      if (qasm) tree_solver_->RegisterQuadraticAssembler(qasm);
   }
 
   std::unique_ptr<TreeSolverBuilder> builder_;
