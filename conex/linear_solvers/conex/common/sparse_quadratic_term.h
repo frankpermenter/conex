@@ -4,6 +4,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "conex/common/block_partition.h"
 #include "conex/common/supernodal_assembler_base.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -167,6 +168,11 @@ class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
   void AccumulateBlockProduct(
       class KKTSolverBase& solver,
       const class BlockPartition& x_partition) const;
+
+  // Access decomposed sub-assemblers (available after Decompose).
+  const std::list<DenseQuadraticTermSubAssembler>& sub_assemblers() const {
+    return owned_sub_assemblers_;
+  }
 
  private:
   const Eigen::SparseMatrix<double>* Q_sparse_ = nullptr;

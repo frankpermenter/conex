@@ -179,6 +179,31 @@ class Solver {
     tree_solver_->GatherSeparators(result.partition());
   }
 
+  // Compute Q * x using per-clique Q_perm blocks.
+  // Reads x from BlockVariable, writes Q*x into result.
+  void MultiplyQ(ConstraintId id,
+                 const BlockVariable& x,
+                 BlockVariable& result) const {
+    auto* qasm = quadratic_assemblers_.at(id);
+    CONEX_DEMAND(qasm, "Constraint is not a quadratic cost.");
+
+    // Per-clique: gather x for this clique's variables, multiply by
+    // Q_perm, scatter back.  Uses original-order variables.
+    Eigen::VectorXd x_dense = x.Gather().col(0);
+    Eigen::VectorXd Qx = Eigen::VectorXd::Zero(x_dense.size());
+    for (const auto& sub : qasm->sub_assemblers()) {
+      const auto& vars = sub.primal_variables();
+      int nv = static_cast<int>(vars.size());
+      Eigen::VectorXd xl(nv);
+      for (int j = 0; j < nv; ++j) xl(j) = x_dense(vars[j]);
+      Eigen::VectorXd ql = sub.Q_block() * xl;
+      for (int j = 0; j < nv; ++j) Qx(vars[j]) += ql(j);
+    }
+    result.ScatterFrom(Qx);
+    // TODO: Use VectorBlockContribution path with double-buffered
+    // sep_scratch to avoid gather/scatter.
+  }
+
   // Access the underlying solver.
   KKTSolverBase* solver() {
     if (dense_solver_) return static_cast<KKTSolverBase*>(dense_solver_.get());
@@ -208,6 +233,7 @@ class Solver {
 
     // Map each constraint to its assembler.
     linear_assemblers_.resize(problem.num_constraints(), nullptr);
+    quadratic_assemblers_.resize(problem.num_constraints(), nullptr);
 
     for (int i = 0; i < problem.num_constraints(); ++i) {
       std::visit([&](const auto& data) {
@@ -256,6 +282,7 @@ class Solver {
     }
 
     linear_assemblers_.resize(problem.num_constraints(), nullptr);
+    quadratic_assemblers_.resize(problem.num_constraints(), nullptr);
 
     // Allocate dual variables: start after the max primal index.
     int next_dual = problem.num_variables();
@@ -300,6 +327,7 @@ class Solver {
                         const SolverConfiguration& config) {
     builder_ = std::make_unique<TreeSolverBuilder>();
     linear_assemblers_.resize(problem.num_constraints(), nullptr);
+    quadratic_assemblers_.resize(problem.num_constraints(), nullptr);
 
     // Allocate dual variables.
     int next_dual = problem.num_variables();
@@ -402,6 +430,7 @@ class Solver {
   std::unique_ptr<SymmetricLinearSystemTreeSolver> tree_solver_;
   std::unique_ptr<DenseKKTSolver> dense_solver_;
   std::vector<SparseLinearConstraintAssembler*> linear_assemblers_;
+  std::vector<SparseQuadraticTermAssembler*> quadratic_assemblers_;
   std::unordered_map<int, std::vector<int>> dual_var_map_;
 };
 

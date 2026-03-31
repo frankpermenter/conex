@@ -31,27 +31,12 @@ BarrierQPResult SolveBarrierQP(
 
   Problem problem;
   auto c_ineq = problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
-  problem.AddQuadraticCost(Q, vars);
+  auto c_quad = problem.AddQuadraticCost(Q, vars);
 
   auto [reduced, expansion] = Preprocess(problem);
   const int nr = reduced.num_variables();
 
   Eigen::VectorXd c_r = expansion.Reduce(c);
-  Eigen::SparseMatrix<double> Q_r;
-  if (expansion.was_reduced()) {
-    std::vector<Eigen::Triplet<double>> qt;
-    std::vector<int> inv(n, -1);
-    for (int i = 0; i < nr; ++i) inv[expansion.col_map[i]] = i;
-    for (int k = 0; k < Q.outerSize(); ++k)
-      for (Eigen::SparseMatrix<double>::InnerIterator it(Q, k); it; ++it) {
-        int ri = inv[it.row()], rj = inv[it.col()];
-        if (ri >= 0 && rj >= 0) qt.emplace_back(ri, rj, it.value());
-      }
-    Q_r.resize(nr, nr);
-    Q_r.setFromTriplets(qt.begin(), qt.end());
-  } else {
-    Q_r = Q;
-  }
 
   auto solver = Solver::Build(reduced);
   solver.AssembleAndFactor();
@@ -60,6 +45,7 @@ BarrierQPResult SolveBarrierQP(
   auto x = solver.MakeBlockVariable(expansion.Reduce(x0));
   auto dx = solver.MakeBlockVariable();
   auto grad_bv = solver.MakeBlockVariable();
+  auto qx_bv = solver.MakeBlockVariable();
 
   auto t_start = clock::now();
 
@@ -85,12 +71,14 @@ BarrierQPResult SolveBarrierQP(
       solver.SetWeights(c_ineq, weights);
 
       // Gradient: grad = Q x + c + (1/t) A^T (1/s).
-      // Q*x needs dense x (sparse matvec).
+      solver.MultiplyQ(c_quad, x, qx_bv);
+      Eigen::VectorXd Qx = qx_bv.Gather().col(0);
       Eigen::VectorXd x_dense = x.Gather().col(0);
+
       Eigen::VectorXd inv_s(m);
       for (int i = 0; i < m; ++i) inv_s(i) = 1.0 / s(i);
 
-      Eigen::VectorXd grad = Q_r * x_dense + c_r;
+      Eigen::VectorXd grad = Qx + c_r;
       // Add (1/t) A^T (1/s) via per-clique transpose product.
       Eigen::VectorXd at_inv_s =
           solver.ComputeTransposeProduct(c_ineq, inv_s);
@@ -116,7 +104,7 @@ BarrierQPResult SolveBarrierQP(
 
       const double beta = 0.5;
       const double armijo = 0.01;
-      double f0 = 0.5 * x_dense.dot(Q_r * x_dense) + c_r.dot(x_dense);
+      double f0 = 0.5 * x_dense.dot(Qx) + c_r.dot(x_dense);
       for (int i = 0; i < m; ++i) f0 -= (1.0 / t) * std::log(s(i));
 
       for (int ls = 0; ls < 20; ++ls) {
@@ -124,7 +112,9 @@ BarrierQPResult SolveBarrierQP(
         auto x_new_bv = solver.MakeBlockVariable(x_new);
         Eigen::VectorXd s_new = b - solver.MultiplyA(c_ineq, x_new_bv);
         if (s_new.minCoeff() <= 0) { alpha *= beta; continue; }
-        double f_new = 0.5 * x_new.dot(Q_r * x_new) + c_r.dot(x_new);
+        solver.MultiplyQ(c_quad, x_new_bv, qx_bv);
+        Eigen::VectorXd Qx_new = qx_bv.Gather().col(0);
+        double f_new = 0.5 * x_new.dot(Qx_new) + c_r.dot(x_new);
         for (int i = 0; i < m; ++i)
           f_new -= (1.0 / t) * std::log(s_new(i));
         if (f_new <= f0 + armijo * alpha * (-grad).dot(dx_dense)) break;
