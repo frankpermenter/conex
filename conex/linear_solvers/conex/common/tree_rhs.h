@@ -149,6 +149,42 @@ struct TreeRHS {
       supernodes->block(k) += bv.partition().block(k);
     return *this;
   }
+
+  // Dot product (block-wise, no dense gather).
+  // Both operands must be scattered (data fully in supernode blocks).
+  double dot(const TreeRHS& other) const {
+    double result = 0;
+    int nb = supernodes->num_blocks();
+    for (int k = 0; k < nb; ++k)
+      result += supernodes->block(k)
+                    .cwiseProduct(other.supernodes->block(k))
+                    .sum();
+    return result;
+  }
+
+  // Dot product with a BlockVariable (block-wise).
+  double dot(const BlockVariable& bv) const {
+    double result = 0;
+    int nb = supernodes->num_blocks();
+    for (int k = 0; k < nb; ++k)
+      result += supernodes->block(k)
+                    .cwiseProduct(bv.partition().block(k))
+                    .sum();
+    return result;
+  }
+
+  // AddScaled: this += alpha * other (block-wise).
+  TreeRHS& AddScaled(double alpha, const TreeRHS& other) {
+    int nb = supernodes->num_blocks();
+    int nc = cols();
+    for (int k = 0; k < nb; ++k)
+      supernodes->block(k) += alpha * other.supernodes->block(k);
+    if (!is_scattered && !other.is_scattered) {
+      for (int k = 0; k < nb; ++k)
+        separators->block(k, nc) += alpha * other.separators->block(k, nc);
+    }
+    return *this;
+  }
 };
 
 // Concatenated row-space vector for all linear constraints.

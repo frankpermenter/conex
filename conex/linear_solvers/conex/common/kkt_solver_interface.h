@@ -140,6 +140,13 @@ class KKTSolverBase {
   virtual void AccumulateAtranspose(const RowSpace& /*v*/, TreeRHS& /*rhs*/) {}
   virtual void AccumulateQx(const TreeRHS& /*x*/, TreeRHS& /*rhs*/) {}
   virtual void SetWeights(const RowSpace& /*w*/) {}
+
+  // Gather unscattered separator data into supernode blocks.
+  // No-op for dense solver (data is always scattered).
+  virtual void GatherSeparators(TreeRHS& rhs) {
+    rhs.is_scattered = true;
+  }
+
   virtual void SolveTreeRHS(TreeRHS& rhs) {
     // Default: gather, solve dense, scatter back.
     CONEX_DEMAND(factored_, "System has not been factored.");

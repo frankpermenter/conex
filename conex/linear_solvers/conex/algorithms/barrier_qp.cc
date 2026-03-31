@@ -45,8 +45,11 @@ BarrierQPResult SolveBarrierQP(
   auto x = kkt->MakeTreeRHS();
   x = solver.MakeBlockVariable(expansion.Reduce(x0));
   auto dx = kkt->MakeTreeRHS();
+  auto grad = kkt->MakeTreeRHS();
   auto row = kkt->MakeRowSpace();
   auto c_bv = solver.MakeBlockVariable(c_r);
+  auto x_trial = kkt->MakeTreeRHS();
+  auto qx_trial = kkt->MakeTreeRHS();
 
   auto t_start = clock::now();
 
@@ -77,79 +80,70 @@ BarrierQPResult SolveBarrierQP(
       for (int i = 0; i < m; ++i)
         scaled_inv_s.data(i) = 1.0 / (t * s(i));
 
-      // Solve (Q + A^T W A) dx = -(Q*x + c + (1/t) A^T(1/s)).
-      if (!kkt->AssembleAndFactor()) break;
+      // Build gradient: grad = Q*x + c + (1/t) A^T(1/s).
+      grad = c_bv;
+      kkt->AccumulateQx(x, grad);
+      kkt->AccumulateAtranspose(scaled_inv_s, grad);
+      kkt->GatherSeparators(grad);
 
-      dx = c_bv;  // init with c
-      kkt->AccumulateQx(x, dx);
-      kkt->AccumulateAtranspose(scaled_inv_s, dx);
+      // Solve (Q + A^T W A) dx = -grad.
+      if (!kkt->AssembleAndFactor()) break;
+      dx = grad;
       dx *= -1.0;
       kkt->SolveTreeRHS(dx);
-      // dx now holds the Newton step.
 
-      // Newton decrement (dense for scalar products).
-      Eigen::VectorXd dx_dense(nr), x_dense(nr);
-      dx.supernodes->GatherInto(dx_dense);
-      x.supernodes->GatherInto(x_dense);
-
-      // grad = Q*x + c + (1/t) A^T(1/s) via dense gather of Qx.
-      auto qx = kkt->MakeTreeRHS();
-      qx.SetZero();
-      kkt->AccumulateQx(x, qx);
-      Eigen::VectorXd Qx(nr);
-      qx.supernodes->GatherInto(Qx);
-      Eigen::VectorXd grad = Qx + c_r;
-      kkt->AccumulateAtranspose(scaled_inv_s, qx);
-      qx.supernodes->GatherInto(grad);
-      // grad now has Qx + A^T scaled_inv_s; add c.
-      // Actually, let's just recompute cleanly:
-      grad = Qx + c_r;
-      auto atv_rhs = kkt->MakeTreeRHS();
-      atv_rhs.SetZero();
-      kkt->AccumulateAtranspose(scaled_inv_s, atv_rhs);
-      Eigen::VectorXd atv(nr);
-      atv_rhs.supernodes->GatherInto(atv);
-      grad += atv;
-
-      double lambda_sq = grad.dot(dx_dense);
+      // Newton decrement: lambda^2 = grad^T * dx (block-wise dot).
+      double lambda_sq = grad.dot(dx);
       if (-lambda_sq / 2.0 < tolerance * 0.01) break;
 
       // Backtracking line search.
       double alpha = 1.0;
       kkt->MultiplyA(dx, row);
-      Eigen::VectorXd Adx = row.data;
       for (int i = 0; i < m; ++i) {
-        if (Adx(i) > 0)
-          alpha = std::min(alpha, 0.99 * s(i) / Adx(i));
+        if (row.data(i) > 0)
+          alpha = std::min(alpha, 0.99 * s(i) / row.data(i));
       }
+
+      // Objective at current point: f = 0.5 x^T Q x + c^T x - (1/t) sum log(s).
+      // x^T Q x = (grad - c - A^T scaled_inv_s)^T x = grad^T x - c^T x - scaled_inv_s^T (Ax)
+      // But simpler: use Q*x already in grad.
+      // grad = Qx + c + Atv, so Qx = grad - c - Atv.
+      // x^T Qx via: qx = grad - c_bv - atv.  Then x.dot(qx).
+      // Actually, just compute f0 = 0.5 * (grad - c_bv).dot(x) + c_bv.dot(x) - barrier
+      //                            = 0.5 * grad.dot(x) + 0.5 * c_bv.dot(x) - barrier
+      // No — that includes the A^T term.  Simpler to compute Qx directly.
+      qx_trial.SetZero();
+      kkt->AccumulateQx(x, qx_trial);
+      kkt->GatherSeparators(qx_trial);
+      double f0 = 0.5 * x.dot(qx_trial) + x.dot(c_bv);
+      for (int i = 0; i < m; ++i) f0 -= (1.0 / t) * std::log(s(i));
 
       const double beta = 0.5;
       const double armijo = 0.01;
-      double f0 = 0.5 * x_dense.dot(Qx) + c_r.dot(x_dense);
-      for (int i = 0; i < m; ++i) f0 -= (1.0 / t) * std::log(s(i));
+      double grad_dot_dx = lambda_sq;  // = grad^T dx
 
       for (int ls = 0; ls < 20; ++ls) {
-        Eigen::VectorXd x_new = x_dense + alpha * dx_dense;
-        auto x_new_rhs = kkt->MakeTreeRHS();
-        x_new_rhs = solver.MakeBlockVariable(x_new);
-        kkt->MultiplyA(x_new_rhs, row);
+        // x_trial = x + alpha * dx.
+        x_trial = x;
+        x_trial.AddScaled(alpha, dx);
+
+        kkt->MultiplyA(x_trial, row);
         Eigen::VectorXd s_new = b - row.data;
         if (s_new.minCoeff() <= 0) { alpha *= beta; continue; }
-        auto qx_new = kkt->MakeTreeRHS();
-        qx_new.SetZero();
-        kkt->AccumulateQx(x_new_rhs, qx_new);
-        Eigen::VectorXd Qx_new(nr);
-        qx_new.supernodes->GatherInto(Qx_new);
-        double f_new = 0.5 * x_new.dot(Qx_new) + c_r.dot(x_new);
+
+        qx_trial.SetZero();
+        kkt->AccumulateQx(x_trial, qx_trial);
+        kkt->GatherSeparators(qx_trial);
+        double f_new = 0.5 * x_trial.dot(qx_trial) + x_trial.dot(c_bv);
         for (int i = 0; i < m; ++i)
           f_new -= (1.0 / t) * std::log(s_new(i));
-        if (f_new <= f0 + armijo * alpha * (-grad).dot(dx_dense)) break;
+
+        if (f_new <= f0 + armijo * alpha * (-grad_dot_dx)) break;
         alpha *= beta;
       }
 
       // Update x += alpha * dx.
-      Eigen::VectorXd x_updated = x_dense + alpha * dx_dense;
-      x = solver.MakeBlockVariable(x_updated);
+      x.AddScaled(alpha, dx);
     }
 
     t *= mu;
