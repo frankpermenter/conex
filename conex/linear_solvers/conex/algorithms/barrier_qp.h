@@ -4,22 +4,9 @@
 
 namespace conex {
 
-// Barrier method for linearly-constrained convex QP.
-//
-// Solves: min  0.5 x^T Q x + c^T x
-//         s.t. A x <= b
-//
-// via the log-barrier:
-//   min_x  t (0.5 x^T Q x + c^T x) - sum_i log(b_i - a_i^T x)
-//
-// The Newton step at each iteration solves:
-//   (Q + A^T W A) dx = -(Q x + c + A^T d)
-// where s = b - A x (slacks), W = diag(1/(t * s_i^2)), d = -1/(t * s_i).
-//
-// This maps directly to our reweighting framework:
-// - Build solver once from Q and A (fixes the clique tree)
-// - Each Newton step: update W via SetWeights, re-factor, solve
-// - Increase t by factor mu each outer iteration
+class Problem;
+class KKTSolverBase;
+
 struct BarrierQPResult {
   Eigen::VectorXd x;
   int outer_iterations;
@@ -29,12 +16,27 @@ struct BarrierQPResult {
   double solve_time_us;
 };
 
+// Barrier method on an already-built solver.
+// The Problem must have linear constraints (inequalities) and optionally
+// quadratic costs.  b is the inequality RHS (row-space sized),
+// c is the linear cost (variable-space sized), x0 is a strictly feasible start.
 BarrierQPResult SolveBarrierQP(
-    const Eigen::SparseMatrix<double>& Q,  // n x n, PSD
-    const Eigen::VectorXd& c,              // n
-    const Eigen::SparseMatrix<double>& A,  // m x n, inequality constraints
-    const Eigen::VectorXd& b,              // m, A x <= b
-    const Eigen::VectorXd& x0,            // n, strictly feasible start (A x0 < b)
+    KKTSolverBase& kkt,
+    const Eigen::VectorXd& b,   // inequality RHS (row-space)
+    const Eigen::VectorXd& c,   // linear cost (variable-space)
+    const Eigen::VectorXd& x0,  // strictly feasible start
+    int max_outer_iterations = 30,
+    int max_newton_steps = 50,
+    double mu = 10.0,
+    double tolerance = 1e-8);
+
+// Convenience: builds Problem + Solver from raw matrices.
+BarrierQPResult SolveBarrierQP(
+    const Eigen::SparseMatrix<double>& Q,
+    const Eigen::VectorXd& c,
+    const Eigen::SparseMatrix<double>& A,
+    const Eigen::VectorXd& b,
+    const Eigen::VectorXd& x0,
     int max_outer_iterations = 30,
     int max_newton_steps = 50,
     double mu = 10.0,
