@@ -5,7 +5,9 @@
 #include <vector>
 
 #include "conex/common/block_partition.h"
+#include "conex/common/block_variable.h"
 #include "conex/common/supernodal_assembler_base.h"
+#include "conex/common/tree_rhs.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
@@ -182,6 +184,12 @@ class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
   const std::list<DenseQuadraticTermSubAssembler>& sub_assemblers() const {
     return owned_sub_assemblers_;
   }
+
+  // Accumulate Q * x into a TreeRHS.
+  // sep_in must be pre-populated via ScatterSeparators(x).
+  void ComputeProduct(const BlockVariable& x,
+                      const SeparatorScratch& sep_in,
+                      TreeRHS& rhs) const;
 
  private:
   const Eigen::SparseMatrix<double>* Q_sparse_ = nullptr;

@@ -330,6 +330,28 @@ Eigen::VectorXd SparseLinearConstraintAssembler::ComputeTransposeProduct(
   return result;
 }
 
+void SparseLinearConstraintAssembler::ComputeTransposeProduct(
+    const Eigen::VectorXd& v, TreeRHS& rhs) const {
+  int nc = rhs.cols();
+
+  // Step 1: distribute v to per-constraint locals via row_map.
+  std::vector<Eigen::VectorXd> v_locals(owned_constraints_.size());
+  for (size_t ci = 0; ci < owned_constraints_.size(); ++ci)
+    v_locals[ci] = Eigen::VectorXd::Zero(owned_constraints_[ci]->num_rows());
+  for (int global = 0; global < num_global_rows_; ++global) {
+    const auto& m = row_map_[global];
+    if (m.constraint_index >= 0)
+      v_locals[m.constraint_index](m.local_row) = v(global);
+  }
+
+  // Step 2: each constraint accumulates A_perm^T * v_local into rhs
+  // via VectorBlockContributions.
+  for (size_t ci = 0; ci < owned_constraints_.size(); ++ci) {
+    owned_constraints_[ci]->gram().ContributeAtranspose(
+        v_locals[ci], *rhs.supernodes, *rhs.separators, nc);
+  }
+}
+
 SparseLinearConstraintAssembler::SparseLinearConstraintAssembler(
     std::unique_ptr<SparseLinearConstraint> slc,
     const std::vector<int>& all_variables)

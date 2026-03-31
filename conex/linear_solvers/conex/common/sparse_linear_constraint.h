@@ -8,6 +8,7 @@
 
 #include "conex/common/constraint.h"
 #include "conex/common/linear_constraint.h"
+#include "conex/common/tree_rhs.h"
 
 namespace conex {
 
@@ -113,6 +114,10 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
   // Compute A^T * v per-clique, returned as a global vector of size n.
   // v is a per-row vector (size = num_global_rows_).
   Eigen::VectorXd ComputeTransposeProduct(const Eigen::VectorXd& v) const;
+
+  // Accumulate A^T * v into a TreeRHS using VectorBlockContributions.
+  // v is a per-row vector (size = num_global_rows_).
+  void ComputeTransposeProduct(const Eigen::VectorXd& v, TreeRHS& rhs) const;
 
   // Bind partition info after Finalize. Maps each constraint to its
   // block in the SupernodePartitionMatrix.  Must be called once after

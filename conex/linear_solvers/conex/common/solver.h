@@ -136,53 +136,26 @@ class Solver {
     return result;
   }
 
-  using TreeRHS = SymmetricLinearSystemTreeSolver::TreeRHS;
+  // TreeRHS is now in conex namespace (from tree_rhs.h).
 
   // Accumulate A^T * v into a TreeRHS.
-  // Uses VectorBlockContributions to write directly to parent blocks.
   void AccumulateAtranspose(ConstraintId id,
                             const Eigen::VectorXd& v,
                             TreeRHS& rhs) const {
-    CONEX_DEMAND(tree_solver_, "AccumulateAtranspose requires tree solver.");
     auto* slca = linear_assemblers_.at(id);
     CONEX_DEMAND(slca, "Constraint is not a linear constraint.");
-
-    const auto& constraints = slca->constraints();
-    const auto& row_map = slca->row_map();
-    int nc = rhs.supernodes->cols();
-
-    std::vector<Eigen::VectorXd> v_locals(constraints.size());
-    for (size_t ci = 0; ci < constraints.size(); ++ci)
-      v_locals[ci] = Eigen::VectorXd::Zero(constraints[ci]->num_rows());
-    for (int r = 0; r < slca->num_global_rows(); ++r) {
-      const auto& rm = row_map[r];
-      if (rm.constraint_index >= 0)
-        v_locals[rm.constraint_index](rm.local_row) = v(r);
-    }
-
-    for (size_t ci = 0; ci < constraints.size(); ++ci) {
-      constraints[ci]->gram().ContributeAtranspose(
-          v_locals[ci], *rhs.supernodes, *rhs.separators, nc);
-    }
+    slca->ComputeTransposeProduct(v, rhs);
   }
 
   // Accumulate Q * x into a TreeRHS.
-  // Reads x from supernode blocks + sep_scratch_in (must be pre-populated).
+  // sep_scratch_in must be pre-populated via ScatterSeparators(x).
   void AccumulateQx(ConstraintId id,
                     const BlockVariable& x,
                     TreeRHS& rhs) const {
     CONEX_DEMAND(tree_solver_, "AccumulateQx requires tree solver.");
     auto* qasm = quadratic_assemblers_.at(id);
     CONEX_DEMAND(qasm, "Constraint is not a quadratic cost.");
-
-    auto& sep_in = tree_solver_->sep_scratch_in();
-    int nc = x.cols();
-
-    for (const auto& sub : qasm->sub_assemblers()) {
-      sub.evaluator().MultiplyQx(
-          x.partition(), sep_in,
-          *rhs.supernodes, *rhs.separators, nc);
-    }
+    qasm->ComputeProduct(x, tree_solver_->sep_scratch_in(), rhs);
   }
 
   // Convenience: compute A^T * v with full gather.
