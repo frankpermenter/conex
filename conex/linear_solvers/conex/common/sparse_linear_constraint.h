@@ -126,6 +126,9 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
     int block_index;   // index into partition.supernode(k) / separator(k)
     int sn_count;      // columns of A_perm_ that are in the supernode block
   };
+  // Get the affine term (b vector) in global row order.
+  Eigen::VectorXd GetAffineTerm() const;
+
   void BindPartition(const class SymmetricLinearSystemTreeSolver& solver);
   bool partition_bound() const { return !block_info_.empty(); }
   const BlockInfo& block_info_at(size_t ci) const { return block_info_[ci]; }

@@ -141,6 +141,10 @@ class KKTSolverBase {
   virtual void AccumulateQx(const TreeRHS& /*x*/, TreeRHS& /*rhs*/) {}
   virtual void SetWeights(const RowSpace& /*w*/) {}
 
+  // Get the affine terms (b vectors) for all linear constraints,
+  // concatenated in RowSpace order.
+  virtual RowSpace GetAffineTerm() { return MakeRowSpace(); }
+
   // Gather unscattered separator data into supernode blocks.
   // No-op for dense solver (data is always scattered).
   virtual void GatherSeparators(TreeRHS& rhs) {

@@ -17,12 +17,12 @@ struct BarrierQPResult {
 };
 
 // Barrier method on an already-built solver.
-// The Problem must have linear constraints (inequalities) and optionally
-// quadratic costs.  b is the inequality RHS (row-space sized),
+// The Problem must have linear constraints (inequalities, with b stored
+// as the affine term) and optionally quadratic costs.
 // c is the linear cost (variable-space sized), x0 is a strictly feasible start.
+// The inequality RHS b is read from the solver via GetAffineTerm().
 BarrierQPResult SolveBarrierQP(
     KKTSolverBase& kkt,
-    const Eigen::VectorXd& b,   // inequality RHS (row-space)
     const Eigen::VectorXd& c,   // linear cost (variable-space)
     const Eigen::VectorXd& x0,  // strictly feasible start
     int max_outer_iterations = 30,

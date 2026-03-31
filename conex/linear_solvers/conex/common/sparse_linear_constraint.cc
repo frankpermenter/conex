@@ -330,6 +330,20 @@ Eigen::VectorXd SparseLinearConstraintAssembler::ComputeTransposeProduct(
   return result;
 }
 
+Eigen::VectorXd SparseLinearConstraintAssembler::GetAffineTerm() const {
+  Eigen::VectorXd b = Eigen::VectorXd::Zero(num_global_rows_);
+  for (size_t ci = 0; ci < owned_constraints_.size(); ++ci) {
+    const auto& constraint = owned_constraints_[ci];
+    Eigen::VectorXd b_local = constraint->affine_term();
+    for (int r = 0; r < num_global_rows_; ++r) {
+      const auto& m = row_map_[r];
+      if (m.constraint_index == static_cast<int>(ci))
+        b(r) = b_local(m.local_row);
+    }
+  }
+  return b;
+}
+
 void SparseLinearConstraintAssembler::ComputeTransposeProduct(
     const Eigen::VectorXd& v, TreeRHS& rhs) const {
   int nc = rhs.cols();

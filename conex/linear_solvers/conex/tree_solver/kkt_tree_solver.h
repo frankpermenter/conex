@@ -413,6 +413,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void AccumulateAtranspose(const RowSpace& v, TreeRHS& rhs) override;
   void AccumulateQx(const TreeRHS& x, TreeRHS& rhs) override;
   void SetWeights(const RowSpace& w) override;
+  RowSpace GetAffineTerm() override;
   void GatherSeparators(TreeRHS& rhs) override {
     GatherSeparators(*rhs.supernodes, *rhs.separators);
     rhs.is_scattered = true;

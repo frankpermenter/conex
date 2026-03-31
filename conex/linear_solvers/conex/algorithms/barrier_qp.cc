@@ -12,7 +12,6 @@ namespace conex {
 
 BarrierQPResult SolveBarrierQP(
     KKTSolverBase& kkt,
-    const Eigen::VectorXd& b,
     const Eigen::VectorXd& c,
     const Eigen::VectorXd& x0,
     int max_outer_iterations,
@@ -21,8 +20,11 @@ BarrierQPResult SolveBarrierQP(
     double tolerance) {
   using clock = std::chrono::high_resolution_clock;
   BarrierQPResult result;
-  const int m = b.size();
   const int nr = kkt.number_of_variables();
+
+  RowSpace b_row = kkt.GetAffineTerm();
+  const Eigen::VectorXd& b = b_row.data;
+  const int m = b.size();
   result.total_newton_steps = 0;
   result.outer_iterations = 0;
 
@@ -160,7 +162,7 @@ BarrierQPResult SolveBarrierQP(
   std::iota(vars.begin(), vars.end(), 0);
 
   Problem problem;
-  problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
+  problem.AddLinearConstraint(A, b, vars);
   problem.AddQuadraticCost(Q, vars);
 
   auto [reduced, expansion] = Preprocess(problem);
@@ -170,7 +172,7 @@ BarrierQPResult SolveBarrierQP(
 
   auto solver = Solver::Build(reduced);
 
-  auto result = SolveBarrierQP(*solver.solver(), b, c_r, x0_r,
+  auto result = SolveBarrierQP(*solver.solver(), c_r, x0_r,
                                 max_outer_iterations, max_newton_steps,
                                 mu, tolerance);
 

@@ -1094,6 +1094,14 @@ void T::AccumulateQx(const TreeRHS& x, TreeRHS& rhs) {
   }
 }
 
+RowSpace T::GetAffineTerm() {
+  RowSpace rs = MakeRowSpace();
+  for (int ci = 0; ci < static_cast<int>(linear_assemblers_.size()); ++ci) {
+    rs.segment(ci) = linear_assemblers_[ci]->GetAffineTerm();
+  }
+  return rs;
+}
+
 void T::SetWeights(const RowSpace& w) {
   for (int ci = 0; ci < static_cast<int>(linear_assemblers_.size()); ++ci) {
     linear_assemblers_[ci]->SetWeights(w.segment(ci));
