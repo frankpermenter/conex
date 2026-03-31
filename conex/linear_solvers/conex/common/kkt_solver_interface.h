@@ -116,6 +116,25 @@ class KKTSolverBase {
   // --- Generic solver interface (no ConstraintId) ---
   // Solver loops over all constraints/costs internally.
 
+  // Create a TreeRHS with owned partition + empty separator scratch.
+  virtual TreeRHS MakeTreeRHS(int cols = 1) {
+    TreeRHS rhs;
+    rhs.supernodes = nullptr;
+    rhs.separators = nullptr;
+    rhs.is_scattered = true;
+    // Allocate partition.
+    auto p = MakePartition();
+    p->Resize(cols);
+    p->SetZero();
+    rhs.supernodes = p.get();
+    // Store ownership in a static-duration holder — caller must not
+    // outlive the solver.  (Tree solver overrides with proper ownership.)
+    owned_tree_rhs_partitions_.push_back(std::move(p));
+    owned_tree_rhs_scratches_.push_back(std::make_unique<SeparatorScratch>());
+    rhs.separators = owned_tree_rhs_scratches_.back().get();
+    return rhs;
+  }
+
   virtual RowSpace MakeRowSpace() { return {}; }
   virtual void MultiplyA(const TreeRHS& /*x*/, RowSpace& /*out*/) {}
   virtual void AccumulateAtranspose(const RowSpace& /*v*/, TreeRHS& /*rhs*/) {}
@@ -143,6 +162,11 @@ class KKTSolverBase {
       bool permute_to_elimination_order) const = 0;
   bool factored_ = false;
   bool assembled_ = false;
+
+ protected:
+  // Owned storage for MakeTreeRHS allocations.
+  std::vector<std::unique_ptr<BlockPartition>> owned_tree_rhs_partitions_;
+  std::vector<std::unique_ptr<SeparatorScratch>> owned_tree_rhs_scratches_;
 };
 
 }  // namespace conex

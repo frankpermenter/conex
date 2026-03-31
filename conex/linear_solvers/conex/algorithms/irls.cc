@@ -24,45 +24,42 @@ IRLSResult SolveIRLS(
   std::iota(vars.begin(), vars.end(), 0);
 
   Problem problem;
-  auto c = problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
+  problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
 
   auto [reduced, expansion] = Preprocess(problem);
-  const int n_solve = reduced.num_variables();
 
   auto solver = Solver::Build(reduced);
-  solver.AssembleAndFactor();
+  auto* kkt = solver.solver();
+  kkt->AssembleAndFactor();
 
-  // BlockVariables for solve (no dense vectors in the solve path).
-  auto x = solver.MakeBlockVariable();
-  auto rhs_bv = solver.MakeBlockVariable();
+  auto x = kkt->MakeTreeRHS();
+  auto rhs = kkt->MakeTreeRHS();
+  auto row = kkt->MakeRowSpace();
 
   auto t0 = clock::now();
 
-  Eigen::VectorXd weights = Eigen::VectorXd::Ones(m);
+  RowSpace w = kkt->MakeRowSpace();
+  for (int i = 0; i < w.total_rows(); ++i) w.data(i) = 1.0;
   double prev_obj = std::numeric_limits<double>::max();
 
-  // Dense A in reduced space for rhs/residual computation.
-  Eigen::MatrixXd A_reduced(A);
-  if (expansion.was_reduced()) {
-    A_reduced.resize(m, n_solve);
-    for (int j = 0; j < n_solve; ++j)
-      A_reduced.col(j) = Eigen::MatrixXd(A).col(expansion.col_map[j]);
-  }
-
   for (int iter = 0; iter < max_iterations; ++iter) {
-    solver.SetWeights(c, weights);
-    if (!solver.AssembleAndFactor()) break;
+    kkt->SetWeights(w);
+    if (!kkt->AssembleAndFactor()) break;
 
-    // RHS = A'Wb → scatter into BlockVariable.
-    Eigen::VectorXd rhs = A_reduced.transpose() * (weights.asDiagonal() * b);
-    rhs_bv.ScatterFrom(rhs);
+    // RHS = A^T W b.
+    RowSpace wb = kkt->MakeRowSpace();
+    wb.data = w.data.asDiagonal() * b;
+    rhs.SetZero();
+    kkt->AccumulateAtranspose(wb, rhs);
 
-    // Solve directly into x's blocks.
-    solver.SolveInto(rhs_bv, x);
+    // Solve.
+    kkt->SolveTreeRHS(rhs);
+    // rhs now holds x.
+    x = rhs;
 
-    // Residual: r = Ax - b (dense — lives in measurement space).
-    Eigen::VectorXd x_dense = x.Gather();
-    Eigen::VectorXd r = A_reduced * x_dense - b;
+    // Residual: r = Ax - b.
+    kkt->MultiplyA(x, row);
+    Eigen::VectorXd r = row.data - b;
     double obj = r.lpNorm<1>();
 
     if (std::abs(prev_obj - obj) < tolerance * std::abs(obj) + 1e-15) {
@@ -73,13 +70,15 @@ IRLSResult SolveIRLS(
     result.iterations = iter + 1;
 
     for (int i = 0; i < m; ++i)
-      weights(i) = 1.0 / std::max(std::abs(r(i)), epsilon);
+      w.data(i) = 1.0 / std::max(std::abs(r(i)), epsilon);
   }
 
   auto t1 = clock::now();
-  Eigen::VectorXd x_final = x.Gather();
+  Eigen::VectorXd x_final(reduced.num_variables());
+  x.supernodes->GatherInto(x_final);
   result.x = expansion.Expand(x_final);
-  result.l1_objective = (A_reduced * x_final - b).lpNorm<1>();
+  kkt->MultiplyA(x, row);
+  result.l1_objective = (row.data - b).lpNorm<1>();
   result.solve_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
   return result;

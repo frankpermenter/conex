@@ -1022,6 +1022,21 @@ void T::push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system) {
   contributors_.emplace_back(std::move(system));
 }
 
+TreeRHS T::MakeTreeRHS(int cols) {
+  TreeRHS rhs;
+  auto p = MakePartition();
+  p->Resize(cols);
+  p->SetZero();
+  rhs.supernodes = p.get();
+  owned_tree_rhs_partitions_.push_back(std::move(p));
+  auto sep = std::make_unique<SeparatorScratch>();
+  sep->Init(subsystems_, cols);
+  rhs.separators = sep.get();
+  owned_tree_rhs_scratches_.push_back(std::move(sep));
+  rhs.is_scattered = false;
+  return rhs;
+}
+
 RowSpace T::MakeRowSpace() {
   RowSpace rs;
   int offset = 0;
