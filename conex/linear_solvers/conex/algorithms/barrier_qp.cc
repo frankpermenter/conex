@@ -86,15 +86,8 @@ BarrierQPResult SolveBarrierQP(
         rhs.SetZero();
         solver.AccumulateQx(c_quad_id, x, rhs);
         solver.AccumulateAtranspose(c_ineq_id, scaled_inv_s, rhs);
-        // Add c and negate: rhs = -(Q*x + A^T*v + c).
-        auto c_bv = solver.MakeBlockVariable(c_r);
-        int nb = dx.partition().num_blocks();
-        for (int k = 0; k < nb; ++k) {
-          dx.partition().block(k) += c_bv.partition().block(k);
-          dx.partition().block(k) *= -1.0;
-        }
-        for (int k = 0; k < ts->num_subsystems(); ++k)
-          rhs.separators->block(k, dx.cols()) *= -1.0;
+        rhs += solver.MakeBlockVariable(c_r);
+        rhs *= -1.0;
         ts->SolveBlockedInPlace(rhs);
       } else {
         // Dense fallback.

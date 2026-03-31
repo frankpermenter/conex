@@ -443,19 +443,98 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   // A right-hand side in elimination-tree form: one supernode block per
   // clique plus unscattered separator contributions.  The forward pass
   // consumes separator data incrementally (child sep → parent sn/sep).
+  //
+  // is_scattered: if true, separator data has been gathered into
+  // supernode blocks (e.g. after GatherSeparators).  If false,
+  // separator contributions are still in the scratch buffer.
   struct TreeRHS {
     BlockPartition* supernodes;
     SeparatorScratch* separators;
+    bool is_scattered = false;
 
     void SetZero() {
       supernodes->SetZero();
       separators->SetZero();
+      is_scattered = false;
+    }
+
+    int cols() const { return supernodes->cols(); }
+    int num_blocks() const { return supernodes->num_blocks(); }
+
+    // Assign from a BlockVariable (scatters into supernode blocks, zeros sep).
+    TreeRHS& operator=(const BlockVariable& bv) {
+      int nb = supernodes->num_blocks();
+      for (int k = 0; k < nb; ++k)
+        supernodes->block(k) = bv.partition().block(k);
+      separators->SetZero();
+      is_scattered = true;
+      return *this;
+    }
+
+    // Assign from another TreeRHS (copy blocks + sep).
+    TreeRHS& operator=(const TreeRHS& other) {
+      if (this == &other) return *this;
+      int nb = supernodes->num_blocks();
+      int nc = cols();
+      for (int k = 0; k < nb; ++k)
+        supernodes->block(k) = other.supernodes->block(k);
+      for (int k = 0; k < nb; ++k)
+        separators->block(k, nc) = other.separators->block(k, nc);
+      is_scattered = other.is_scattered;
+      return *this;
+    }
+
+    // Negate in place.
+    TreeRHS& operator*=(double alpha) {
+      int nb = supernodes->num_blocks();
+      int nc = cols();
+      for (int k = 0; k < nb; ++k)
+        supernodes->block(k) *= alpha;
+      if (!is_scattered) {
+        for (int k = 0; k < nb; ++k)
+          separators->block(k, nc) *= alpha;
+      }
+      return *this;
+    }
+
+    // Add another TreeRHS.
+    TreeRHS& operator+=(const TreeRHS& other) {
+      int nb = supernodes->num_blocks();
+      int nc = cols();
+      for (int k = 0; k < nb; ++k)
+        supernodes->block(k) += other.supernodes->block(k);
+      if (!is_scattered && !other.is_scattered) {
+        for (int k = 0; k < nb; ++k)
+          separators->block(k, nc) += other.separators->block(k, nc);
+      }
+      return *this;
+    }
+
+    // Subtract another TreeRHS.
+    TreeRHS& operator-=(const TreeRHS& other) {
+      int nb = supernodes->num_blocks();
+      int nc = cols();
+      for (int k = 0; k < nb; ++k)
+        supernodes->block(k) -= other.supernodes->block(k);
+      if (!is_scattered && !other.is_scattered) {
+        for (int k = 0; k < nb; ++k)
+          separators->block(k, nc) -= other.separators->block(k, nc);
+      }
+      return *this;
+    }
+
+    // Add a BlockVariable (scattered data — only touches supernode blocks).
+    TreeRHS& operator+=(const BlockVariable& bv) {
+      int nb = supernodes->num_blocks();
+      for (int k = 0; k < nb; ++k)
+        supernodes->block(k) += bv.partition().block(k);
+      return *this;
     }
   };
 
   // Make a TreeRHS backed by a BlockVariable's partition + sep_scratch_out.
   TreeRHS MakeTreeRHS(BlockVariable& bv) const {
-    return {&bv.partition(), &sep_scratch_out_};
+    return {&bv.partition(), &sep_scratch_out_, false};
   }
 
   // Solve using a pre-populated separator scratch (no zero).
