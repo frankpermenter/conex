@@ -440,19 +440,30 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     }
   };
 
-  // Populate sep_scratch_ from a BlockPartition's supernode blocks.
-  // After calling, separator_scratch(k) returns the separator data
-  // for subsystem k, assembled from ancestor supernode blocks.
-  void ScatterSeparators(const BlockPartition& supernodes) const;
+  // Populate a sep scratch from a BlockPartition's supernode blocks.
+  // Top-down: copies parent sn/sep into child separator scratch.
+  void ScatterSeparators(const BlockPartition& supernodes,
+                         SeparatorScratch& scratch) const;
 
-  // Gather separator scratch back into supernode blocks.
-  // Reverse of ScatterSeparators: child sep → parent sn (additive).
-  void GatherSeparators(BlockPartition& supernodes) const;
+  // Gather separator scratch back into supernode blocks (additive).
+  // Bottom-up: accumulates child separator scratch into parent sn/sep.
+  void GatherSeparators(BlockPartition& supernodes,
+                        const SeparatorScratch& scratch) const;
 
-  // Access the separator scratch workspace.
+  // Convenience: use the primary sep_scratch_.
+  void ScatterSeparators(const BlockPartition& supernodes) const {
+    ScatterSeparators(supernodes, sep_scratch_);
+  }
+  void GatherSeparators(BlockPartition& supernodes) const {
+    GatherSeparators(supernodes, sep_scratch_);
+  }
+
+  // Two scratch buffers: input (for reading x) and output (for accumulating).
+  SeparatorScratch& sep_scratch_in() const { return sep_scratch_; }
+  SeparatorScratch& sep_scratch_out() const { return sep_scratch_out_; }
+
+  // Legacy accessors.
   SeparatorScratch& sep_scratch() const { return sep_scratch_; }
-
-  // Access sep_scratch_ block k (after ScatterSeparators).
   Eigen::Map<Eigen::MatrixXd> separator_scratch(int k, int cols) const {
     return sep_scratch_.block(k, cols);
   }
@@ -516,6 +527,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   mutable TreeBlockPartition block_partition_;
 
   mutable SeparatorScratch sep_scratch_;
+  mutable SeparatorScratch sep_scratch_out_;
   // Per-node precomputed child scatter info for blocked solve.
   struct ChildScatterOp {
     int child_block_index;

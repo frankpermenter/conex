@@ -77,19 +77,28 @@ class DenseQuadraticTermLazyEvaluator : public BlockAssembler {
       const auto& vi = vector_blocks_[i];
       for (int j = 0; j < nv; ++j) {
         const auto& vj = vector_blocks_[j];
-        // Read x from block j.
-        Eigen::Ref<const Eigen::MatrixXd> x_block =
-            vj.dest_is_sn
-              ? x_sn.block(vj.dest_block).middleRows(vj.dest_offset, vj.length)
-              : x_sep.block(vj.dest_block, nc).middleRows(vj.dest_offset, vj.length);
-        // Q_perm_(vi rows, vj cols) * x_block → accumulate into block i.
         auto Q_sub = Q_perm_.block(vi.q_start, vj.q_start, vi.length, vj.length);
-        if (vi.dest_is_sn) {
-          out_sn.block(vi.dest_block)
-              .middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
+        // Read x from block j, multiply, accumulate into block i.
+        if (vj.dest_is_sn) {
+          auto x_block = x_sn.block(vj.dest_block)
+              .middleRows(vj.dest_offset, vj.length);
+          if (vi.dest_is_sn) {
+            out_sn.block(vi.dest_block)
+                .middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
+          } else {
+            out_sep.block(vi.dest_block, nc)
+                .middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
+          }
         } else {
-          out_sep.block(vi.dest_block, nc)
-              .middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
+          auto x_block = x_sep.block(vj.dest_block, nc)
+              .middleRows(vj.dest_offset, vj.length);
+          if (vi.dest_is_sn) {
+            out_sn.block(vi.dest_block)
+                .middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
+          } else {
+            out_sep.block(vi.dest_block, nc)
+                .middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
+          }
         }
       }
     }
