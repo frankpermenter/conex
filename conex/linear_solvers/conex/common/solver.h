@@ -136,30 +136,20 @@ class Solver {
     return result;
   }
 
-  // Accumulate A^T * v into result's partition + sep_scratch_out.
+  using TreeRHS = SymmetricLinearSystemTreeSolver::TreeRHS;
+
+  // Accumulate A^T * v into a TreeRHS.
   // Uses VectorBlockContributions to write directly to parent blocks.
-  // Does NOT call GatherSeparators — caller may accumulate more
-  // (e.g. Q*x) before gathering.
   void AccumulateAtranspose(ConstraintId id,
                             const Eigen::VectorXd& v,
-                            BlockVariable& result) const {
+                            TreeRHS& rhs) const {
     auto* slca = linear_assemblers_.at(id);
     CONEX_DEMAND(slca, "Constraint is not a linear constraint.");
 
-    if (!tree_solver_ || !slca->partition_bound()) {
-      // Dense fallback: accumulate into result.
-      Eigen::VectorXd atv = slca->ComputeTransposeProduct(v);
-      Eigen::VectorXd cur = result.Gather().col(0);
-      result.ScatterFrom(cur + atv);
-      return;
-    }
-
     const auto& constraints = slca->constraints();
     const auto& row_map = slca->row_map();
-    int nc = result.cols();
-    auto& sep_out = tree_solver_->sep_scratch_out();
+    int nc = rhs.supernodes->cols();
 
-    // Distribute v to per-constraint local vectors.
     std::vector<Eigen::VectorXd> v_locals(constraints.size());
     for (size_t ci = 0; ci < constraints.size(); ++ci)
       v_locals[ci] = Eigen::VectorXd::Zero(constraints[ci]->num_rows());
@@ -171,82 +161,26 @@ class Solver {
 
     for (size_t ci = 0; ci < constraints.size(); ++ci) {
       constraints[ci]->gram().ContributeAtranspose(
-          v_locals[ci], result.partition(), sep_out, nc);
+          v_locals[ci], *rhs.supernodes, *rhs.separators, nc);
     }
   }
 
-  // Accumulate Q * x into result's partition + sep_scratch_out.
-  // Reads x from supernode blocks + sep_scratch_in.
-  // Does NOT call GatherSeparators.
+  // Accumulate Q * x into a TreeRHS.
+  // Reads x from supernode blocks + sep_scratch_in (must be pre-populated).
   void AccumulateQx(ConstraintId id,
                     const BlockVariable& x,
-                    BlockVariable& result) const {
+                    TreeRHS& rhs) const {
     auto* qasm = quadratic_assemblers_.at(id);
     CONEX_DEMAND(qasm, "Constraint is not a quadratic cost.");
 
-    if (!tree_solver_) {
-      Eigen::VectorXd x_dense = x.Gather().col(0);
-      Eigen::VectorXd Qx = Eigen::VectorXd::Zero(x_dense.size());
-      for (const auto& sub : qasm->sub_assemblers()) {
-        const auto& vars = sub.primal_variables();
-        int nv = static_cast<int>(vars.size());
-        Eigen::VectorXd xl(nv);
-        for (int j = 0; j < nv; ++j) xl(j) = x_dense(vars[j]);
-        Eigen::VectorXd ql = sub.Q_block() * xl;
-        for (int j = 0; j < nv; ++j) Qx(vars[j]) += ql(j);
-      }
-      Eigen::VectorXd cur = result.Gather().col(0);
-      result.ScatterFrom(cur + Qx);
-      return;
-    }
-
     auto& sep_in = tree_solver_->sep_scratch_in();
-    auto& sep_out = tree_solver_->sep_scratch_out();
     int nc = x.cols();
 
     for (const auto& sub : qasm->sub_assemblers()) {
       sub.evaluator().MultiplyQx(
           x.partition(), sep_in,
-          result.partition(), sep_out, nc);
+          *rhs.supernodes, *rhs.separators, nc);
     }
-  }
-
-  // Fused: build gradient in-place then solve, no GatherSeparators.
-  // grad = Q*x + A^T*v + c, then solve (Q + A^T W A) dx = -grad.
-  // sep_scratch_in must be pre-populated via ScatterSeparators(x).
-  // Result is written into dx's partition.
-  void AccumulateAndSolve(ConstraintId c_quad, ConstraintId c_linear,
-                          const BlockVariable& x,
-                          const Eigen::VectorXd& v,
-                          const Eigen::VectorXd& c,
-                          BlockVariable& dx) {
-    CONEX_DEMAND(tree_solver_, "Fused path requires tree solver.");
-    int nc = dx.cols();
-    auto& sep_out = tree_solver_->sep_scratch_out();
-
-    // Build -grad into dx's partition + sep_out.
-    dx.SetZero();
-    sep_out.SetZero();
-    AccumulateQx(c_quad, x, dx);
-    AccumulateAtranspose(c_linear, v, dx);
-
-    // Add c to supernode blocks and negate: dx = -(Q*x + A^T*v + c).
-    // c is in original order — scatter into dx then negate.
-    // Since dx already has Q*x + A^T*v, add c then negate everything.
-    Eigen::VectorXd c_contrib = c;
-    auto c_bv = MakeBlockVariable(c_contrib);
-    int nb = dx.partition().num_blocks();
-    for (int k = 0; k < nb; ++k) {
-      dx.partition().block(k) += c_bv.partition().block(k);
-      dx.partition().block(k) *= -1.0;
-    }
-    // Negate sep_out too.
-    for (int k = 0; k < tree_solver_->num_subsystems(); ++k) {
-      sep_out.block(k, nc) *= -1.0;
-    }
-
-    // Solve in-place using pre-populated sep_out.
-    tree_solver_->SolveBlockedInPlace(dx.partition(), sep_out);
   }
 
   // Convenience: compute A^T * v with full gather.
@@ -261,7 +195,8 @@ class Solver {
     }
     result.SetZero();
     tree_solver_->sep_scratch_out().SetZero();
-    AccumulateAtranspose(id, v, result);
+    auto rhs = tree_solver_->MakeTreeRHS(result);
+    AccumulateAtranspose(id, v, rhs);
     tree_solver_->GatherSeparators(result.partition(),
                                     tree_solver_->sep_scratch_out());
   }
@@ -290,7 +225,8 @@ class Solver {
                                      tree_solver_->sep_scratch_in());
     result.SetZero();
     tree_solver_->sep_scratch_out().SetZero();
-    AccumulateQx(id, x, result);
+    auto rhs = tree_solver_->MakeTreeRHS(result);
+    AccumulateQx(id, x, rhs);
     tree_solver_->GatherSeparators(result.partition(),
                                     tree_solver_->sep_scratch_out());
   }

@@ -440,11 +440,33 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     }
   };
 
+  // A right-hand side in elimination-tree form: one supernode block per
+  // clique plus unscattered separator contributions.  The forward pass
+  // consumes separator data incrementally (child sep → parent sn/sep).
+  struct TreeRHS {
+    BlockPartition* supernodes;
+    SeparatorScratch* separators;
+
+    void SetZero() {
+      supernodes->SetZero();
+      separators->SetZero();
+    }
+  };
+
+  // Make a TreeRHS backed by a BlockVariable's partition + sep_scratch_out.
+  TreeRHS MakeTreeRHS(BlockVariable& bv) const {
+    return {&bv.partition(), &sep_scratch_out_};
+  }
+
   // Solve using a pre-populated separator scratch (no zero).
-  // Use when RHS separator contributions are already in scratch
-  // (e.g. from AccumulateQx/AccumulateAtranspose).
   void SolveBlockedInPlace(BlockPartition& supernodes,
                            SeparatorScratch& scratch) const;
+
+  // Solve a TreeRHS in place. Separator contributions are consumed
+  // during the forward pass — no GatherSeparators needed.
+  void SolveBlockedInPlace(TreeRHS& rhs) const {
+    SolveBlockedInPlace(*rhs.supernodes, *rhs.separators);
+  }
 
   // Populate a sep scratch from a BlockPartition's supernode blocks.
   // Top-down: copies parent sn/sep into child separator scratch.

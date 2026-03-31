@@ -30,8 +30,8 @@ BarrierQPResult SolveBarrierQP(
   std::iota(vars.begin(), vars.end(), 0);
 
   Problem problem;
-  auto c_ineq = problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
-  auto c_quad = problem.AddQuadraticCost(Q, vars);
+  auto c_ineq_id = problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
+  auto c_quad_id = problem.AddQuadraticCost(Q, vars);
 
   auto [reduced, expansion] = Preprocess(problem);
   const int nr = reduced.num_variables();
@@ -61,14 +61,14 @@ BarrierQPResult SolveBarrierQP(
       result.total_newton_steps++;
 
       // Slacks: s = b - A x (uses per-clique A, reads x's blocks).
-      Eigen::VectorXd s = b - solver.MultiplyA(c_ineq, x);
+      Eigen::VectorXd s = b - solver.MultiplyA(c_ineq_id, x);
       if (s.minCoeff() <= 0) break;
 
       // Barrier weights.
       Eigen::VectorXd weights(m);
       for (int i = 0; i < m; ++i)
         weights(i) = 1.0 / (t * s(i) * s(i));
-      solver.SetWeights(c_ineq, weights);
+      solver.SetWeights(c_ineq_id, weights);
 
       // Gradient: grad = Q x + c + (1/t) A^T (1/s).
       Eigen::VectorXd inv_s(m);
@@ -80,15 +80,28 @@ BarrierQPResult SolveBarrierQP(
 
       auto* ts = solver.tree_solver();
       if (ts) {
-        // Fused path: build gradient + solve in one pass.
+        // Fused path: build RHS in tree form, then solve.
         ts->ScatterSeparators(x.partition(), ts->sep_scratch_in());
-        solver.AccumulateAndSolve(c_quad, c_ineq, x, scaled_inv_s, c_r, dx);
+        auto rhs = ts->MakeTreeRHS(dx);
+        rhs.SetZero();
+        solver.AccumulateQx(c_quad_id, x, rhs);
+        solver.AccumulateAtranspose(c_ineq_id, scaled_inv_s, rhs);
+        // Add c and negate: rhs = -(Q*x + A^T*v + c).
+        auto c_bv = solver.MakeBlockVariable(c_r);
+        int nb = dx.partition().num_blocks();
+        for (int k = 0; k < nb; ++k) {
+          dx.partition().block(k) += c_bv.partition().block(k);
+          dx.partition().block(k) *= -1.0;
+        }
+        for (int k = 0; k < ts->num_subsystems(); ++k)
+          rhs.separators->block(k, dx.cols()) *= -1.0;
+        ts->SolveBlockedInPlace(rhs);
       } else {
         // Dense fallback.
-        solver.MultiplyQ(c_quad, x, qx_bv);
+        solver.MultiplyQ(c_quad_id, x, qx_bv);
         Eigen::VectorXd Qx = qx_bv.Gather().col(0);
         Eigen::VectorXd at_inv_s =
-            solver.ComputeTransposeProduct(c_ineq, scaled_inv_s);
+            solver.ComputeTransposeProduct(c_ineq_id, scaled_inv_s);
         Eigen::VectorXd grad = Qx + c_r + at_inv_s;
         grad_bv.ScatterFrom(-grad);
         solver.SolveInto(grad_bv, dx);
@@ -98,17 +111,17 @@ BarrierQPResult SolveBarrierQP(
       // Reconstruct grad densely for decrement and line search.
       Eigen::VectorXd dx_dense = dx.Gather().col(0);
       Eigen::VectorXd x_dense = x.Gather().col(0);
-      solver.MultiplyQ(c_quad, x, qx_bv);
+      solver.MultiplyQ(c_quad_id, x, qx_bv);
       Eigen::VectorXd Qx = qx_bv.Gather().col(0);
       Eigen::VectorXd grad = Qx + c_r;
-      grad += solver.ComputeTransposeProduct(c_ineq, scaled_inv_s);
+      grad += solver.ComputeTransposeProduct(c_ineq_id, scaled_inv_s);
 
       double lambda_sq = grad.dot(dx_dense);  // -grad^T * dx
       if (-lambda_sq / 2.0 < tolerance * 0.01) break;
 
       // Backtracking line search.
       double alpha = 1.0;
-      Eigen::VectorXd Adx = solver.MultiplyA(c_ineq, dx);
+      Eigen::VectorXd Adx = solver.MultiplyA(c_ineq_id, dx);
       for (int i = 0; i < m; ++i) {
         if (Adx(i) > 0)
           alpha = std::min(alpha, 0.99 * s(i) / Adx(i));
@@ -122,9 +135,9 @@ BarrierQPResult SolveBarrierQP(
       for (int ls = 0; ls < 20; ++ls) {
         Eigen::VectorXd x_new = x_dense + alpha * dx_dense;
         auto x_new_bv = solver.MakeBlockVariable(x_new);
-        Eigen::VectorXd s_new = b - solver.MultiplyA(c_ineq, x_new_bv);
+        Eigen::VectorXd s_new = b - solver.MultiplyA(c_ineq_id, x_new_bv);
         if (s_new.minCoeff() <= 0) { alpha *= beta; continue; }
-        solver.MultiplyQ(c_quad, x_new_bv, qx_bv);
+        solver.MultiplyQ(c_quad_id, x_new_bv, qx_bv);
         Eigen::VectorXd Qx_new = qx_bv.Gather().col(0);
         double f_new = 0.5 * x_new.dot(Qx_new) + c_r.dot(x_new);
         for (int i = 0; i < m; ++i)
