@@ -143,6 +143,7 @@ class Solver {
   void AccumulateAtranspose(ConstraintId id,
                             const Eigen::VectorXd& v,
                             TreeRHS& rhs) const {
+    CONEX_DEMAND(tree_solver_, "AccumulateAtranspose requires tree solver.");
     auto* slca = linear_assemblers_.at(id);
     CONEX_DEMAND(slca, "Constraint is not a linear constraint.");
 
@@ -170,6 +171,7 @@ class Solver {
   void AccumulateQx(ConstraintId id,
                     const BlockVariable& x,
                     TreeRHS& rhs) const {
+    CONEX_DEMAND(tree_solver_, "AccumulateQx requires tree solver.");
     auto* qasm = quadratic_assemblers_.at(id);
     CONEX_DEMAND(qasm, "Constraint is not a quadratic cost.");
 
