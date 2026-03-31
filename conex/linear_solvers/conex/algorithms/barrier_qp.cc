@@ -82,9 +82,10 @@ BarrierQPResult SolveBarrierQP(
       if (ts) {
         // Fused path: build RHS in tree form, then solve.
         ts->ScatterSeparators(x.partition(), ts->sep_scratch_in());
+        TreeRHS x_rhs = {&x.partition(), &ts->sep_scratch_in(), false};
         auto rhs = ts->MakeTreeRHS(dx);
         rhs = solver.MakeBlockVariable(c_r);
-        solver.AccumulateQx(c_quad_id, x, rhs);
+        solver.AccumulateQx(c_quad_id, x_rhs, rhs);
         solver.AccumulateAtranspose(c_ineq_id, scaled_inv_s, rhs);
         rhs *= -1.0;
         ts->SolveBlockedInPlace(rhs);

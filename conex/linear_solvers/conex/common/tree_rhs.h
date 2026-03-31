@@ -151,4 +151,25 @@ struct TreeRHS {
   }
 };
 
+// Concatenated row-space vector for all linear constraints.
+struct RowSpace {
+  Eigen::VectorXd data;
+  std::vector<int> offsets;
+  std::vector<int> sizes;
+
+  Eigen::Ref<Eigen::VectorXd> segment(int i) {
+    return data.segment(offsets[i], sizes[i]);
+  }
+  Eigen::Ref<const Eigen::VectorXd> segment(int i) const {
+    return data.segment(offsets[i], sizes[i]);
+  }
+  int total_rows() const { return static_cast<int>(data.size()); }
+  int num_constraints() const { return static_cast<int>(sizes.size()); }
+  void SetZero() { data.setZero(); }
+
+  RowSpace& operator*=(double alpha) { data *= alpha; return *this; }
+  RowSpace& operator+=(const RowSpace& o) { data += o.data; return *this; }
+  RowSpace& operator-=(const RowSpace& o) { data -= o.data; return *this; }
+};
+
 }  // namespace conex

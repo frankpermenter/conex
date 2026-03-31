@@ -1,4 +1,6 @@
 #include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/common/sparse_linear_constraint.h"
+#include "conex/common/sparse_quadratic_term.h"
 
 // TreeBlockPartition implementation — delegates to SupernodePartitionMatrix.
 namespace conex {
@@ -1018,6 +1020,69 @@ Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
 
 void T::push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system) {
   contributors_.emplace_back(std::move(system));
+}
+
+RowSpace T::MakeRowSpace() {
+  RowSpace rs;
+  int offset = 0;
+  for (auto* slca : linear_assemblers_) {
+    int m = slca->num_global_rows();
+    rs.offsets.push_back(offset);
+    rs.sizes.push_back(m);
+    offset += m;
+  }
+  rs.data.resize(offset);
+  rs.data.setZero();
+  return rs;
+}
+
+void T::MultiplyA(const TreeRHS& x, RowSpace& out) {
+  if (x.is_scattered) {
+    ScatterSeparators(*x.supernodes, sep_scratch_);
+  }
+  const auto& sep_read = x.is_scattered ? sep_scratch_ : *x.separators;
+  int nc = x.cols();
+  for (int ci = 0; ci < static_cast<int>(linear_assemblers_.size()); ++ci) {
+    auto* slca = linear_assemblers_[ci];
+    const auto& constraints = slca->constraints();
+    const auto& row_map = slca->row_map();
+    int m = slca->num_global_rows();
+
+    std::vector<Eigen::MatrixXd> locals(constraints.size());
+    for (size_t j = 0; j < constraints.size(); ++j) {
+      locals[j] = constraints[j]->gram().MultiplyA(
+          *x.supernodes, sep_read, nc);
+    }
+
+    auto seg = out.segment(ci);
+    for (int r = 0; r < m; ++r) {
+      const auto& rm = row_map[r];
+      if (rm.constraint_index >= 0)
+        seg(r) = locals[rm.constraint_index](rm.local_row, 0);
+    }
+  }
+}
+
+void T::AccumulateAtranspose(const RowSpace& v, TreeRHS& rhs) {
+  for (int ci = 0; ci < static_cast<int>(linear_assemblers_.size()); ++ci) {
+    linear_assemblers_[ci]->ComputeTransposeProduct(v.segment(ci), rhs);
+  }
+}
+
+void T::AccumulateQx(const TreeRHS& x, TreeRHS& rhs) {
+  if (x.is_scattered) {
+    ScatterSeparators(*x.supernodes, sep_scratch_);
+  }
+  const auto& sep_read = x.is_scattered ? sep_scratch_ : *x.separators;
+  for (auto* qasm : quadratic_assemblers_) {
+    qasm->ComputeProduct(x, sep_read, rhs);
+  }
+}
+
+void T::SetWeights(const RowSpace& w) {
+  for (int ci = 0; ci < static_cast<int>(linear_assemblers_.size()); ++ci) {
+    linear_assemblers_[ci]->SetWeights(w.segment(ci));
+  }
 }
 
 }  // namespace conex

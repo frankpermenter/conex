@@ -190,12 +190,12 @@ void SparseQuadraticTermAssembler::AccumulateBlockProduct(
 }
 
 void SparseQuadraticTermAssembler::ComputeProduct(
-    const BlockVariable& x, const SeparatorScratch& sep_in,
+    const TreeRHS& x, const SeparatorScratch& sep_in,
     TreeRHS& rhs) const {
   int nc = x.cols();
   for (const auto& sub : owned_sub_assemblers_) {
     sub.evaluator().MultiplyQx(
-        x.partition(), sep_in,
+        *x.supernodes, sep_in,
         *rhs.supernodes, *rhs.separators, nc);
   }
 }

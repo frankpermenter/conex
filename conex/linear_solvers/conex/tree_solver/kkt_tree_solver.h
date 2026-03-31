@@ -406,6 +406,24 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     SolveBlockedInPlace(*rhs.supernodes, *rhs.separators);
   }
 
+  // --- KKTSolverBase overrides ---
+  RowSpace MakeRowSpace() override;
+  void MultiplyA(const TreeRHS& x, RowSpace& out) override;
+  void AccumulateAtranspose(const RowSpace& v, TreeRHS& rhs) override;
+  void AccumulateQx(const TreeRHS& x, TreeRHS& rhs) override;
+  void SetWeights(const RowSpace& w) override;
+  void SolveTreeRHS(TreeRHS& rhs) override {
+    SolveBlockedInPlace(*rhs.supernodes, *rhs.separators);
+  }
+
+  // Register assemblers for the generic interface.
+  void RegisterLinearAssembler(class SparseLinearConstraintAssembler* a) {
+    linear_assemblers_.push_back(a);
+  }
+  void RegisterQuadraticAssembler(class SparseQuadraticTermAssembler* a) {
+    quadratic_assemblers_.push_back(a);
+  }
+
   // Populate a sep scratch from a BlockPartition's supernode blocks.
   // Top-down: copies parent sn/sep into child separator scratch.
   void ScatterSeparators(const BlockPartition& supernodes,
@@ -494,6 +512,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
 
   mutable SeparatorScratch sep_scratch_;
   mutable SeparatorScratch sep_scratch_out_;
+  std::vector<class SparseLinearConstraintAssembler*> linear_assemblers_;
+  std::vector<class SparseQuadraticTermAssembler*> quadratic_assemblers_;
   // Per-node precomputed child scatter info for blocked solve.
   struct ChildScatterOp {
     int child_block_index;

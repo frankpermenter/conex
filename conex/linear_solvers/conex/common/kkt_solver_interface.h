@@ -3,6 +3,7 @@
 #include "conex/common/block_partition.h"
 #include "conex/common/block_variable.h"
 #include "conex/common/error_checking_macros.h"
+#include "conex/common/tree_rhs.h"
 #include <Eigen/Dense>
 
 namespace conex {
@@ -110,6 +111,23 @@ class KKTSolverBase {
     (void)rhs;
     (void)dest;
     return false;
+  }
+
+  // --- Generic solver interface (no ConstraintId) ---
+  // Solver loops over all constraints/costs internally.
+
+  virtual RowSpace MakeRowSpace() { return {}; }
+  virtual void MultiplyA(const TreeRHS& /*x*/, RowSpace& /*out*/) {}
+  virtual void AccumulateAtranspose(const RowSpace& /*v*/, TreeRHS& /*rhs*/) {}
+  virtual void AccumulateQx(const TreeRHS& /*x*/, TreeRHS& /*rhs*/) {}
+  virtual void SetWeights(const RowSpace& /*w*/) {}
+  virtual void SolveTreeRHS(TreeRHS& rhs) {
+    // Default: gather, solve dense, scatter back.
+    CONEX_DEMAND(factored_, "System has not been factored.");
+    Eigen::MatrixXd b(number_of_variables(), rhs.cols());
+    rhs.supernodes->GatherInto(b);
+    DoSolveInPlace(b, true);
+    rhs.supernodes->ScatterFrom(b);
   }
 
  private:
