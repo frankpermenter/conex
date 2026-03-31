@@ -187,7 +187,7 @@ class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
 
   // Accumulate Q * x into a TreeRHS.
   // sep_in must be pre-populated via ScatterSeparators(x).
-  void ComputeProduct(const TreeRHS& x,
+  void ComputeProduct(const BlockVariable& x,
                       const SeparatorScratch& sep_in,
                       TreeRHS& rhs) const;
 

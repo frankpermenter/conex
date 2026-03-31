@@ -70,12 +70,9 @@ struct SeparatorScratch {
 // supernode blocks (e.g. after GatherSeparators).  If false,
 // separator contributions are still in the scratch buffer.
 struct TreeRHS {
-  BlockPartition* supernodes = nullptr;
-  SeparatorScratch* separators = nullptr;
+  BlockPartition* supernodes;
+  SeparatorScratch* separators;
   bool is_scattered = false;
-  // Optional owned storage (partition allocated by MakeTreeRHS).
-  std::shared_ptr<BlockPartition> owned_partition;
-  std::shared_ptr<SeparatorScratch> owned_separators;
 
   void SetZero() {
     supernodes->SetZero();
@@ -152,30 +149,6 @@ struct TreeRHS {
       supernodes->block(k) += bv.partition().block(k);
     return *this;
   }
-};
-
-// Concatenated row-space vector for all linear constraints.
-// Each constraint owns a contiguous segment.
-struct RowSpace {
-  Eigen::VectorXd data;
-  std::vector<int> offsets;  // offsets[i] = start of constraint i's rows
-  std::vector<int> sizes;    // sizes[i] = number of rows for constraint i
-
-  Eigen::Ref<Eigen::VectorXd> segment(int i) {
-    return data.segment(offsets[i], sizes[i]);
-  }
-  Eigen::Ref<const Eigen::VectorXd> segment(int i) const {
-    return data.segment(offsets[i], sizes[i]);
-  }
-
-  int total_rows() const { return static_cast<int>(data.size()); }
-  int num_constraints() const { return static_cast<int>(sizes.size()); }
-
-  void SetZero() { data.setZero(); }
-
-  RowSpace& operator*=(double alpha) { data *= alpha; return *this; }
-  RowSpace& operator+=(const RowSpace& other) { data += other.data; return *this; }
-  RowSpace& operator-=(const RowSpace& other) { data -= other.data; return *this; }
 };
 
 }  // namespace conex

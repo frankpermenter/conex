@@ -3,7 +3,6 @@
 #include "conex/common/block_partition.h"
 #include "conex/common/block_variable.h"
 #include "conex/common/error_checking_macros.h"
-#include "conex/common/tree_rhs.h"
 #include <Eigen/Dense>
 
 namespace conex {
@@ -112,49 +111,6 @@ class KKTSolverBase {
     (void)dest;
     return false;
   }
-
-  // --- Generic TreeRHS / RowSpace interface ---
-
-  // Create a TreeRHS matching this solver's structure.
-  virtual TreeRHS MakeTreeRHS(int cols = 1) {
-    TreeRHS rhs;
-    rhs.owned_partition = std::shared_ptr<BlockPartition>(MakePartition());
-    rhs.owned_partition->Resize(cols);
-    rhs.owned_partition->SetZero();
-    rhs.supernodes = rhs.owned_partition.get();
-    rhs.owned_separators = std::make_shared<SeparatorScratch>();
-    rhs.separators = rhs.owned_separators.get();
-    rhs.is_scattered = true;  // no separator data for dense
-    return rhs;
-  }
-
-  // Create a RowSpace for all linear constraints.
-  virtual RowSpace MakeRowSpace() { return {}; }
-
-  // A * x for all linear constraints → row space.
-  virtual void MultiplyA(const TreeRHS& /*x*/, RowSpace& /*out*/) {}
-
-  // Accumulate A^T * v for all linear constraints into rhs.
-  virtual void AccumulateAtranspose(const RowSpace& /*v*/, TreeRHS& /*rhs*/) {}
-
-  // Accumulate Q * x for all quadratic costs into rhs.
-  // If the solver needs separator data for x, it manages that internally.
-  virtual void AccumulateQx(const TreeRHS& /*x*/, TreeRHS& /*rhs*/) {}
-
-  // Set weights for all linear constraints from a row-space vector.
-  virtual void SetWeights(const RowSpace& /*w*/) {}
-
-  // Solve in place: rhs becomes the solution.
-  virtual void SolveTreeRHS(TreeRHS& rhs) {
-    // Default: gather to dense, solve, scatter back.
-    CONEX_DEMAND(factored_, "System has not been factored.");
-    Eigen::MatrixXd b(number_of_variables(), rhs.cols());
-    rhs.supernodes->GatherInto(b);
-    DoSolveInPlace(b, true);
-    rhs.supernodes->ScatterFrom(b);
-  }
-
- private:
 
  private:
   virtual void DoAssemble() = 0;
