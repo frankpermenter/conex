@@ -12,8 +12,8 @@ namespace conex {
 
 BarrierQPResult SolveBarrierQP(
     KKTSolverBase& kkt,
-    const Eigen::VectorXd& c,
-    const Eigen::VectorXd& x0,
+    const TreeRHS& c_rhs,
+    TreeRHS& x,
     int max_outer_iterations,
     int max_newton_steps,
     double mu,
@@ -30,12 +30,9 @@ BarrierQPResult SolveBarrierQP(
 
   kkt.AssembleAndFactor();
 
-  auto x = kkt.MakeTreeRHS();
-  x = kkt.MakeBlockVariable(x0);
   auto dx = kkt.MakeTreeRHS();
   auto grad = kkt.MakeTreeRHS();
   auto row = kkt.MakeRowSpace();
-  auto c_bv = kkt.MakeBlockVariable(c);
   auto x_trial = kkt.MakeTreeRHS();
   auto qx_trial = kkt.MakeTreeRHS();
 
@@ -69,7 +66,7 @@ BarrierQPResult SolveBarrierQP(
         scaled_inv_s.data(i) = 1.0 / (t * s(i));
 
       // Build gradient: grad = Q*x + c + (1/t) A^T(1/s).
-      grad = c_bv;
+      grad = c_rhs;
       kkt.AccumulateQx(x, grad);
       kkt.AccumulateAtranspose(scaled_inv_s, grad);
       kkt.GatherSeparators(grad);
@@ -96,7 +93,7 @@ BarrierQPResult SolveBarrierQP(
       qx_trial.SetZero();
       kkt.AccumulateQx(x, qx_trial);
       kkt.GatherSeparators(qx_trial);
-      double f0 = 0.5 * x.dot(qx_trial) + x.dot(c_bv);
+      double f0 = 0.5 * x.dot(qx_trial) + x.dot(c_rhs);
       for (int i = 0; i < m; ++i) f0 -= (1.0 / t) * std::log(s(i));
 
       // Backtracking line search.
@@ -113,7 +110,7 @@ BarrierQPResult SolveBarrierQP(
         qx_trial.SetZero();
         kkt.AccumulateQx(x_trial, qx_trial);
         kkt.GatherSeparators(qx_trial);
-        double f_new = 0.5 * x_trial.dot(qx_trial) + x_trial.dot(c_bv);
+        double f_new = 0.5 * x_trial.dot(qx_trial) + x_trial.dot(c_rhs);
         for (int i = 0; i < m; ++i)
           f_new -= (1.0 / t) * std::log(s_new(i));
 
@@ -136,7 +133,7 @@ BarrierQPResult SolveBarrierQP(
   qx_trial.SetZero();
   kkt.AccumulateQx(x, qx_trial);
   kkt.GatherSeparators(qx_trial);
-  result.objective = 0.5 * x.dot(qx_trial) + x.dot(c_bv);
+  result.objective = 0.5 * x.dot(qx_trial) + x.dot(c_rhs);
 
   result.duality_gap = static_cast<double>(m) / t;
   result.solve_time_us =
@@ -171,8 +168,14 @@ BarrierQPResult SolveBarrierQP(
   Eigen::VectorXd x0_r = expansion.Reduce(x0);
 
   auto solver = Solver::Build(reduced);
+  auto* kkt = solver.solver();
 
-  auto result = SolveBarrierQP(*solver.solver(), c_r, x0_r,
+  auto c_rhs = kkt->MakeTreeRHS();
+  c_rhs = kkt->MakeBlockVariable(c_r);
+  auto x = kkt->MakeTreeRHS();
+  x = kkt->MakeBlockVariable(x0_r);
+
+  auto result = SolveBarrierQP(*kkt, c_rhs, x,
                                 max_outer_iterations, max_newton_steps,
                                 mu, tolerance);
 
