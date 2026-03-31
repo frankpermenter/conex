@@ -61,12 +61,46 @@ class DenseQuadraticTermLazyEvaluator : public BlockAssembler {
     }
   }
 
+  void RegisterVectorContributions(
+      const std::vector<VectorBlockContribution>& blocks) override {
+    vector_blocks_ = blocks;
+  }
+
+  // Compute Q_perm_ * x, reading x from supernode blocks + sep scratch.
+  // Result is accumulated into the SAME blocks (Q maps x-space to x-space).
+  template <typename SepAccessor>
+  void MultiplyQx(const BlockPartition& x_sn, const SepAccessor& x_sep,
+                   BlockPartition& out_sn, SepAccessor& out_sep, int nc) const {
+    const int nv = static_cast<int>(vector_blocks_.size());
+    for (int i = 0; i < nv; ++i) {
+      const auto& vi = vector_blocks_[i];
+      for (int j = 0; j < nv; ++j) {
+        const auto& vj = vector_blocks_[j];
+        // Read x from block j.
+        Eigen::Ref<const Eigen::MatrixXd> x_block =
+            vj.dest_is_sn
+              ? x_sn.block(vj.dest_block).middleRows(vj.dest_offset, vj.length)
+              : x_sep.block(vj.dest_block, nc).middleRows(vj.dest_offset, vj.length);
+        // Q_perm_(vi rows, vj cols) * x_block → accumulate into block i.
+        auto Q_sub = Q_perm_.block(vi.q_start, vj.q_start, vi.length, vj.length);
+        if (vi.dest_is_sn) {
+          out_sn.block(vi.dest_block)
+              .middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
+        } else {
+          out_sep.block(vi.dest_block, nc)
+              .middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
+        }
+      }
+    }
+  }
+
  private:
   const Eigen::MatrixXd* Q_ = nullptr;
   Eigen::MatrixXd Q_perm_;
   bool order_set_ = false;
   int sn_count_ = 0;
   std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
+  std::vector<VectorBlockContribution> vector_blocks_;
 };
 
 // Per-clique assembler for a dense sub-block of Q.
@@ -83,6 +117,7 @@ class DenseQuadraticTermSubAssembler : public SupernodalAssemblerBase {
   bool is_dynamic() const override { return false; }
 
   const Eigen::MatrixXd& Q_block() const { return Q_block_; }
+  DenseQuadraticTermLazyEvaluator& evaluator() { return evaluator_; }
   const DenseQuadraticTermLazyEvaluator& evaluator() const { return evaluator_; }
 
  private:

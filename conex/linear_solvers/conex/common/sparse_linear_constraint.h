@@ -123,6 +123,7 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
   };
   void BindPartition(const class SymmetricLinearSystemTreeSolver& solver);
   bool partition_bound() const { return !block_info_.empty(); }
+  const BlockInfo& block_info_at(size_t ci) const { return block_info_[ci]; }
 
  private:
   std::unique_ptr<SparseLinearConstraint> slc_;

@@ -2,6 +2,7 @@
 #include <unordered_map>
 
 #include "conex/common/arena_allocatable.h"
+#include "conex/common/block_partition.h"
 #include "conex/common/constraint.h"
 #include "conex/common/error_checking_macros.h"
 #include "conex/common/supernodal_assembler_base.h"
@@ -42,19 +43,38 @@ class GramEvaluator : public BlockAssembler {
   int sn_count() const { return sn_count_; }
   void set_sn_count(int c) override { sn_count_ = c; }
 
-  // Compute r = A_perm_(:, 0:sn) * x_sn + A_perm_(:, sn:end) * x_sep - b.
-  Eigen::VectorXd ComputeBlockResidual(
+  // Compute A_perm_ * [x_sn; x_sep].
+  Eigen::VectorXd MultiplyBlock(
       Eigen::Ref<const Eigen::MatrixXd> x_sn,
-      Eigen::Ref<const Eigen::MatrixXd> x_sep,
-      const Eigen::MatrixXd& b) const {
+      Eigen::Ref<const Eigen::MatrixXd> x_sep) const {
     const int m = A_perm_.rows();
     const int ns = sn_count_;
     Eigen::VectorXd r(m);
     r.noalias() = A_perm_.leftCols(ns) * x_sn;
     if (A_perm_.cols() > ns)
       r.noalias() += A_perm_.rightCols(A_perm_.cols() - ns) * x_sep;
+    return r;
+  }
+
+  // Compute r = A_perm_ * [x_sn; x_sep] - b.
+  Eigen::VectorXd ComputeBlockResidual(
+      Eigen::Ref<const Eigen::MatrixXd> x_sn,
+      Eigen::Ref<const Eigen::MatrixXd> x_sep,
+      const Eigen::MatrixXd& b) const {
+    Eigen::VectorXd r = MultiplyBlock(x_sn, x_sep);
     r -= b;
     return r;
+  }
+
+  // Accumulate A_perm_^T * v into [x_sn; x_sep].
+  void MultiplyBlockTransposeAdd(
+      const Eigen::VectorXd& v,
+      Eigen::Ref<Eigen::MatrixXd> x_sn,
+      Eigen::Ref<Eigen::MatrixXd> x_sep) const {
+    const int ns = sn_count_;
+    x_sn.noalias() += A_perm_.leftCols(ns).transpose() * v;
+    if (A_perm_.cols() > ns)
+      x_sep.noalias() += A_perm_.rightCols(A_perm_.cols() - ns).transpose() * v;
   }
 
   bool RegisterContributions(
@@ -63,6 +83,49 @@ class GramEvaluator : public BlockAssembler {
     if (!order_set_) set_order(perm);
     registered_blocks_[clique_id] = blocks;
     return true;
+  }
+
+  void RegisterVectorContributions(
+      const std::vector<VectorBlockContribution>& blocks) override {
+    vector_blocks_ = blocks;
+  }
+
+  // Accumulate A_perm_^T * V into supernode blocks and separator scratch.
+  // V is (m x batch).  Writes directly to parent destinations.
+  template <typename SepAccessor>
+  void ContributeAtranspose(
+      const Eigen::Ref<const Eigen::MatrixXd>& V,
+      BlockPartition& supernodes, SepAccessor& sep, int nc) const {
+    for (const auto& vbc : vector_blocks_) {
+      auto atv = A_perm_.middleCols(vbc.q_start, vbc.length).transpose() * V;
+      if (vbc.dest_is_sn) {
+        supernodes.block(vbc.dest_block)
+            .middleRows(vbc.dest_offset, vbc.length) += atv;
+      } else {
+        sep.block(vbc.dest_block, nc)
+            .middleRows(vbc.dest_offset, vbc.length) += atv;
+      }
+    }
+  }
+
+  // Compute A_perm_ * x by reading from supernode blocks and separator scratch.
+  template <typename SepAccessor>
+  Eigen::MatrixXd MultiplyA(
+      const BlockPartition& supernodes, const SepAccessor& sep, int nc) const {
+    Eigen::MatrixXd result = Eigen::MatrixXd::Zero(A_perm_.rows(), nc);
+    for (const auto& vbc : vector_blocks_) {
+      auto cols = A_perm_.middleCols(vbc.q_start, vbc.length);
+      if (vbc.dest_is_sn) {
+        result.noalias() += cols *
+            supernodes.block(vbc.dest_block)
+                .middleRows(vbc.dest_offset, vbc.length);
+      } else {
+        result.noalias() += cols *
+            sep.block(vbc.dest_block, nc)
+                .middleRows(vbc.dest_offset, vbc.length);
+      }
+    }
+    return result;
   }
 
   void ContributeBlocks(int clique_id) override {
@@ -97,6 +160,7 @@ class GramEvaluator : public BlockAssembler {
   bool weights_dirty_ = true;
   int sn_count_ = 0;
   std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
+  std::vector<VectorBlockContribution> vector_blocks_;
 };
 
 class LinearConstraint : public Constraint, public ArenaAllocatable {
@@ -149,6 +213,26 @@ class LinearConstraint : public Constraint, public ArenaAllocatable {
       Eigen::Ref<const Eigen::MatrixXd> x_sep) const {
     return gram_evaluator_.ComputeBlockResidual(x_sn, x_sep, constraint_affine_);
   }
+
+  // A_perm_ * [x_sn; x_sep]
+  Eigen::VectorXd MultiplyBlock(
+      Eigen::Ref<const Eigen::MatrixXd> x_sn,
+      Eigen::Ref<const Eigen::MatrixXd> x_sep) const {
+    return gram_evaluator_.MultiplyBlock(x_sn, x_sep);
+  }
+
+  // Accumulate A_perm_^T * v into [x_sn; x_sep].
+  void MultiplyBlockTransposeAdd(
+      const Eigen::VectorXd& v,
+      Eigen::Ref<Eigen::MatrixXd> x_sn,
+      Eigen::Ref<Eigen::MatrixXd> x_sep) const {
+    gram_evaluator_.MultiplyBlockTransposeAdd(v, x_sn, x_sep);
+  }
+
+  int sn_count() const { return gram_evaluator_.sn_count(); }
+
+  // Access the GramEvaluator for vector block operations.
+  const GramEvaluator& gram() const { return gram_evaluator_; }
 
   // ArenaAllocatable interface.
   size_t RequiredArenaBytes() const override {

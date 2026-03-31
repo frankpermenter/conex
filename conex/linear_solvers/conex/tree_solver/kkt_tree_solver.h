@@ -171,6 +171,7 @@ class SubmatrixContributor {
   int sn_start_ = 0;
   int sn_count_ = 0;
   int clique_id_ = -1;
+  int parent_clique_id_ = -1;
   std::vector<int> sep_indices_;
 
   // Cached lazy-order data (computed by PrecomputeLazyOrder).
@@ -262,6 +263,48 @@ void SubmatrixContributor::Register(
 
   bool ok = lazy.RegisterContributions(clique_id_, cached_perm_, blocks);
   CONEX_DEMAND(ok, "BlockAssembler must support RegisterContributions.");
+
+  // Build VectorBlockContributions for A^T*v / A*x.
+  std::vector<VectorBlockContribution> vblocks;
+  auto* parent = subsystem_->parent();
+  for (const auto& run : cached_runs_) {
+    if (run.is_sn) {
+      // Supernode run → own supernode block.
+      vblocks.push_back({run.q_start, run.length,
+                         clique_id_, run.local_start, true});
+    } else if (parent) {
+      // Separator run → map to parent sn/sep via parent's offset tables.
+      // Scan parent's sn_offsets for ranges overlapping this run.
+      for (const auto& off :
+           parent->local_supernode_to_source_separator(subsystem_)) {
+        int overlap_start = std::max(run.local_start, off.second);
+        int overlap_end =
+            std::min(run.local_start + run.length, off.second + off.size);
+        if (overlap_start < overlap_end) {
+          int q_offset = overlap_start - run.local_start;
+          int p_offset = off.first + (overlap_start - off.second);
+          vblocks.push_back({run.q_start + q_offset,
+                             overlap_end - overlap_start,
+                             parent_clique_id_, p_offset, true});
+        }
+      }
+      // Scan parent's sep_offsets for ranges overlapping this run.
+      for (const auto& off :
+           parent->local_separator_to_source_separator(subsystem_)) {
+        int overlap_start = std::max(run.local_start, off.second);
+        int overlap_end =
+            std::min(run.local_start + run.length, off.second + off.size);
+        if (overlap_start < overlap_end) {
+          int q_offset = overlap_start - run.local_start;
+          int p_offset = off.first + (overlap_start - off.second);
+          vblocks.push_back({run.q_start + q_offset,
+                             overlap_end - overlap_start,
+                             parent_clique_id_, p_offset, false});
+        }
+      }
+    }
+  }
+  lazy.RegisterVectorContributions(vblocks);
 }
 
 template <typename BlockAssemblerT>
@@ -347,6 +390,73 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   // The partition is modified in place (RHS in, solution out).
   void SolveBlockedInPlace(BlockPartition& supernodes) const;
 
+  // Separator scratch: arena-allocated storage for separator temporaries
+  // during SolveBlockedInPlace(BlockPartition&) and vector multiply.
+  struct SeparatorScratch {
+    std::vector<int> sep_rows;
+    std::vector<int> offsets;
+    int total_rows = 0;
+    int reserved_cols = 0;
+    std::unique_ptr<void, decltype(&std::free)> arena{nullptr, &std::free};
+    std::vector<double*> block_ptrs;
+
+    void Init(const std::vector<KKTSubsystemBase*>& subsystems, int cols) {
+      sep_rows.clear();
+      offsets.clear();
+      int off = 0;
+      for (auto* s : subsystems) {
+        int sr = static_cast<int>(s->separators().size());
+        sep_rows.push_back(sr);
+        offsets.push_back(off);
+        off += sr;
+      }
+      total_rows = off;
+      reserved_cols = cols;
+      constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
+      size_t bytes = static_cast<size_t>(total_rows) * cols * sizeof(double);
+      bytes = ((bytes + kAlign - 1) / kAlign) * kAlign;
+      if (bytes > 0) {
+        void* raw = nullptr;
+        if (posix_memalign(&raw, kAlign, bytes) != 0) throw std::bad_alloc();
+        arena.reset(raw);
+      }
+      block_ptrs.resize(sep_rows.size());
+      double* base = static_cast<double*>(arena.get());
+      for (size_t k = 0; k < sep_rows.size(); ++k) {
+        block_ptrs[k] = base ? base + offsets[k] : nullptr;
+      }
+    }
+
+    void SetZero() const {
+      if (arena) {
+        std::memset(arena.get(), 0,
+                    static_cast<size_t>(total_rows) * reserved_cols *
+                        sizeof(double));
+      }
+    }
+
+    Eigen::Map<Eigen::MatrixXd> block(int k, int cols) const {
+      return {block_ptrs[k], sep_rows[k], cols};
+    }
+  };
+
+  // Populate sep_scratch_ from a BlockPartition's supernode blocks.
+  // After calling, separator_scratch(k) returns the separator data
+  // for subsystem k, assembled from ancestor supernode blocks.
+  void ScatterSeparators(const BlockPartition& supernodes) const;
+
+  // Gather separator scratch back into supernode blocks.
+  // Reverse of ScatterSeparators: child sep → parent sn (additive).
+  void GatherSeparators(BlockPartition& supernodes) const;
+
+  // Access the separator scratch workspace.
+  SeparatorScratch& sep_scratch() const { return sep_scratch_; }
+
+  // Access sep_scratch_ block k (after ScatterSeparators).
+  Eigen::Map<Eigen::MatrixXd> separator_scratch(int k, int cols) const {
+    return sep_scratch_.block(k, cols);
+  }
+
   // DoSolveBlocked: solves directly in rhs's partition, copies to dest.
   bool DoSolveBlocked(const BlockPartition& rhs,
                       BlockPartition& dest) const override;
@@ -405,60 +515,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   mutable SupernodePartitionMatrix solve_matrix_;
   mutable TreeBlockPartition block_partition_;
 
-  // Separator scratch: arena-allocated storage for separator temporaries
-  // during SolveBlockedInPlace(BlockPartition&).  Allocated once at
-  // Finalize with reserved_solve_workspace_cols_ columns.
-  struct SeparatorScratch {
-    std::vector<int> sep_rows;
-    std::vector<int> offsets;
-    int total_rows = 0;
-    int reserved_cols = 0;
-    std::unique_ptr<void, decltype(&std::free)> arena{nullptr, &std::free};
-    std::vector<double*> block_ptrs;  // pointer per subsystem
-
-    void Init(const std::vector<KKTSubsystemBase*>& subsystems, int cols) {
-      sep_rows.clear();
-      offsets.clear();
-      int off = 0;
-      for (auto* s : subsystems) {
-        int sr = static_cast<int>(s->separators().size());
-        sep_rows.push_back(sr);
-        offsets.push_back(off);
-        off += sr;
-      }
-      total_rows = off;
-      reserved_cols = cols;
-
-      // Arena allocate with SIMD alignment.
-      constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
-      size_t bytes = static_cast<size_t>(total_rows) * cols * sizeof(double);
-      bytes = ((bytes + kAlign - 1) / kAlign) * kAlign;
-      if (bytes > 0) {
-        void* raw = nullptr;
-        if (posix_memalign(&raw, kAlign, bytes) != 0) throw std::bad_alloc();
-        arena.reset(raw);
-      }
-
-      // Set per-block pointers.
-      block_ptrs.resize(sep_rows.size());
-      double* base = static_cast<double*>(arena.get());
-      for (size_t k = 0; k < sep_rows.size(); ++k) {
-        block_ptrs[k] = base ? base + offsets[k] : nullptr;
-      }
-    }
-
-    void SetZero() const {
-      if (arena) {
-        std::memset(arena.get(), 0,
-                    static_cast<size_t>(total_rows) * reserved_cols *
-                        sizeof(double));
-      }
-    }
-
-    Eigen::Map<Eigen::MatrixXd> block(int k, int cols) const {
-      return {block_ptrs[k], sep_rows[k], cols};
-    }
-  };
   mutable SeparatorScratch sep_scratch_;
   // Per-node precomputed child scatter info for blocked solve.
   struct ChildScatterOp {

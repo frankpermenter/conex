@@ -18,6 +18,17 @@ struct BlockContribution {
   bool lower_only;  // if true, only write lower triangle (diagonal block)
 };
 
+// A vector contribution descriptor: where to accumulate A_perm_^T * v.
+// Unlike BlockContribution, stores offsets (not pointers) since the
+// destination (BlockVariable partition) changes between calls.
+struct VectorBlockContribution {
+  int q_start;       // column offset in A_perm_
+  int length;        // number of contiguous columns
+  int dest_block;    // subsystem index of destination block
+  int dest_offset;   // row offset within the destination block
+  bool dest_is_sn;   // true = supernode block, false = separator scratch
+};
+
 // Interface for assembling a symmetric matrix into tree-solver storage.
 //
 // Two-phase protocol:
@@ -47,6 +58,10 @@ class BlockAssembler {
 
   // Number of supernode columns in the permuted layout (set by contributor).
   virtual void set_sn_count(int) {}
+
+  // Register vector block contributions.  Called once at Finalize.
+  virtual void RegisterVectorContributions(
+      const std::vector<VectorBlockContribution>& /*blocks*/) {}
 };
 
 // Base class for assemblers that feed data into the tree solver.

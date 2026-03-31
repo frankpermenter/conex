@@ -312,6 +312,57 @@ void T::SolveBlockedInPlace(BlockPartition& supernodes) const {
   }
 }
 
+void T::ScatterSeparators(const BlockPartition& supernodes) const {
+  const int nc = supernodes.cols();
+  sep_scratch_.SetZero();
+
+  // Top-down: copy parent supernode/separator data into child separators.
+  const int num_solve = static_cast<int>(solve_order_.size());
+  for (int idx = num_solve - 1; idx >= 0; --idx) {
+    const auto& info = solve_scatter_info_[idx];
+    const int k = info.block_index;
+    auto sn = supernodes.block(k);
+    auto sep = sep_scratch_.block(k, nc);
+
+    for (const auto& cop : info.children) {
+      auto child_sep = sep_scratch_.block(cop.child_block_index, nc);
+      for (const auto& off : cop.sn_offsets) {
+        child_sep.middleRows(off.second, off.size) =
+            sn.middleRows(off.first, off.size);
+      }
+      for (const auto& off : cop.sep_offsets) {
+        child_sep.middleRows(off.second, off.size) =
+            sep.middleRows(off.first, off.size);
+      }
+    }
+  }
+}
+
+void T::GatherSeparators(BlockPartition& supernodes) const {
+  const int nc = supernodes.cols();
+
+  // Bottom-up: accumulate child separator data into parent sn/sep.
+  const int num_solve = static_cast<int>(solve_order_.size());
+  for (int idx = 0; idx < num_solve; ++idx) {
+    const auto& info = solve_scatter_info_[idx];
+    const int k = info.block_index;
+    auto sn = supernodes.block(k);
+    auto sep = sep_scratch_.block(k, nc);
+
+    for (const auto& cop : info.children) {
+      auto child_sep = sep_scratch_.block(cop.child_block_index, nc);
+      for (const auto& off : cop.sn_offsets) {
+        sn.middleRows(off.first, off.size) +=
+            child_sep.middleRows(off.second, off.size);
+      }
+      for (const auto& off : cop.sep_offsets) {
+        sep.middleRows(off.first, off.size) +=
+            child_sep.middleRows(off.second, off.size);
+      }
+    }
+  }
+}
+
 void T::SolveBlockedInPlace() const {
   // Forward pass (post-order).
   const int num_solve = static_cast<int>(solve_order_.size());
@@ -666,6 +717,19 @@ void T::ComputeEliminationOrder(const CliqueTree& clique_tree) {
 }
 
 void T::BindContributors(const std::vector<int>& adapter_to_clique) {
+  // Build subsystem_to_parent_ from subsystem parent pointers.
+  const int ns = static_cast<int>(subsystems_.size());
+  std::unordered_map<const KKTSubsystemBase*, int> subsystem_index;
+  for (int k = 0; k < ns; ++k) subsystem_index[subsystems_[k]] = k;
+  subsystem_to_parent_.resize(ns, -1);
+  for (int k = 0; k < ns; ++k) {
+    auto* p = subsystems_[k]->parent();
+    if (p) {
+      auto it = subsystem_index.find(p);
+      if (it != subsystem_index.end()) subsystem_to_parent_[k] = it->second;
+    }
+  }
+
   for (size_t ai = 0; ai < contributors_.size(); ++ai) {
     auto& adapter = contributors_[ai];
     KKTSubsystemBase* match = subsystems_[adapter_to_clique[ai]];
@@ -676,6 +740,7 @@ void T::BindContributors(const std::vector<int>& adapter_to_clique) {
     contrib.sn_count_ = static_cast<int>(sn.size());
     contrib.sep_indices_ = match->separators();
     contrib.clique_id_ = adapter_to_clique[ai];
+    contrib.parent_clique_id_ = subsystem_to_parent_[contrib.clique_id_];
     auto c = std::make_unique<SubmatrixContributor>(std::move(contrib));
     c->set_type(adapter->contribution_type());
     adapter->BindContributor(std::move(c));

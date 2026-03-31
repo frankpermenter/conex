@@ -101,27 +101,82 @@ class Solver {
     return slca->ComputeTransposeProduct(v);
   }
 
-  // Compute A * x per-clique, reading x from its BlockVariable partition.
-  // Result is m-dimensional (row space).  No x.Gather() needed.
+  // Compute A * x per-clique using VectorBlockContributions.
+  // Scatters separators from x, then each constraint reads directly
+  // from supernode blocks and separator scratch via registered offsets.
   Eigen::VectorXd MultiplyA(ConstraintId id,
                              const BlockVariable& x) const {
     auto* slca = linear_assemblers_.at(id);
     CONEX_DEMAND(slca, "Constraint is not a linear constraint.");
-    // Gather x to dense — the per-clique block path requires
-    // BindPartition which has the partial-support bug.
-    // TODO: Use per-clique A blocks with direct block reads.
-    return slca->ComputeResiduals(x.Gather());
+
+    if (!tree_solver_ || !slca->partition_bound()) {
+      return slca->ComputeResiduals(x.Gather());
+    }
+
+    tree_solver_->ScatterSeparators(x.partition());
+
+    const auto& constraints = slca->constraints();
+    const auto& row_map = slca->row_map();
+    int m = slca->num_global_rows();
+    int nc = x.cols();
+
+    std::vector<Eigen::MatrixXd> locals(constraints.size());
+    for (size_t ci = 0; ci < constraints.size(); ++ci) {
+      locals[ci] = constraints[ci]->gram().MultiplyA(
+          x.partition(), tree_solver_->sep_scratch(), nc);
+    }
+
+    Eigen::VectorXd result = Eigen::VectorXd::Zero(m);
+    for (int r = 0; r < m; ++r) {
+      const auto& rm = row_map[r];
+      if (rm.constraint_index >= 0)
+        result(r) = locals[rm.constraint_index](rm.local_row, 0);
+    }
+    return result;
   }
 
-  // Compute A' * v per-clique, writing into result's BlockVariable.
-  // v is m-dimensional (row space).  No result.Gather() needed for
-  // subsequent SolveInto.
+  // Compute A' * v per-clique using VectorBlockContributions.
+  // Each constraint writes A_perm_^T * v directly into parent supernode
+  // blocks and parent separator scratch.  No separate gather pass needed
+  // — the solve's forward pass consumes the data as-is.
   void MultiplyAtranspose(ConstraintId id,
                           const Eigen::VectorXd& v,
                           BlockVariable& result) const {
     auto* slca = linear_assemblers_.at(id);
     CONEX_DEMAND(slca, "Constraint is not a linear constraint.");
-    result.ScatterFrom(slca->ComputeTransposeProduct(v));
+
+    if (!tree_solver_ || !slca->partition_bound()) {
+      result.ScatterFrom(slca->ComputeTransposeProduct(v));
+      return;
+    }
+
+    const auto& constraints = slca->constraints();
+    const auto& row_map = slca->row_map();
+    int nc = result.cols();
+
+    // Distribute v to per-constraint local vectors.
+    std::vector<Eigen::VectorXd> v_locals(constraints.size());
+    for (size_t ci = 0; ci < constraints.size(); ++ci)
+      v_locals[ci] = Eigen::VectorXd::Zero(constraints[ci]->num_rows());
+    for (int r = 0; r < slca->num_global_rows(); ++r) {
+      const auto& rm = row_map[r];
+      if (rm.constraint_index >= 0)
+        v_locals[rm.constraint_index](rm.local_row) = v(r);
+    }
+
+    result.SetZero();
+    tree_solver_->sep_scratch().SetZero();
+
+    for (size_t ci = 0; ci < constraints.size(); ++ci) {
+      constraints[ci]->gram().ContributeAtranspose(
+          v_locals[ci], result.partition(),
+          tree_solver_->sep_scratch(), nc);
+    }
+
+    // Separator contributions are now in sep_scratch, ready for the
+    // solve's forward pass.  GatherSeparators folds them into the
+    // supernode blocks for callers that need a fully-assembled result.
+    tree_solver_->GatherSeparators(result.partition());
   }
 
   // Access the underlying solver.
@@ -168,6 +223,7 @@ class Solver {
         } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
           auto asm_ptr = std::make_unique<SparseQuadraticTermAssembler>(
               data.Q_sparse, data.vars);
+          quadratic_assemblers_[i] = asm_ptr.get();
           cm_->AddCustomAssembler(std::move(asm_ptr));
 
         } else if constexpr (std::is_same_v<T,
