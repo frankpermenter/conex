@@ -9,9 +9,13 @@
 #include "conex/algorithms/barrier_qp.h"
 #include "conex/algorithms/irls.h"
 #include "conex/algorithms/lqr_tree_solver.h"
-#include "conex/common/problem.h"
 #include "conex/common/clique_ordering.h"
+#include "conex/common/constraint_manager.h"
+#include "conex/common/problem.h"
 #include "conex/common/solver.h"
+#include "conex/common/sparse_linear_constraint.h"
+#include "conex/common/sparse_quadratic_term.h"
+#include "conex/tree_solver/kkt_solver_factory.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -1563,6 +1567,218 @@ TEST(ProblemSolver, GaussianMRF) {
            std::chrono::duration<double, std::micro>(t2 - t1).count(),
            std::chrono::duration<double, std::micro>(t3 - t2).count(),
            residual);
+  }
+}
+
+// Test the generic KKTSolverBase interface (MultiplyA, AccumulateAtranspose,
+// AccumulateQx, SetWeights, SolveTreeRHS) with multiple linear constraints
+// and multiple quadratic costs.  Compares against a dense reference.
+TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
+  srand(123);
+  const int n = 8;
+
+  // Two linear constraints with overlapping variables.
+  MatrixXd A1 = MatrixXd::Random(5, n);
+  MatrixXd A2 = MatrixXd::Random(4, n);
+  VectorXd b1 = VectorXd::Zero(5);
+  VectorXd b2 = VectorXd::Zero(4);
+
+  // Two quadratic costs.
+  MatrixXd Q1_half = MatrixXd::Random(3, n);
+  MatrixXd Q1 = Q1_half.transpose() * Q1_half;  // PSD
+  MatrixXd Q2 = MatrixXd::Identity(n, n) * 0.5;
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  // Build problem with multiple constraints/costs.
+  Problem problem;
+  problem.AddLinearConstraint(Eigen::SparseMatrix<double>(A1.sparseView()),
+                               b1, vars);
+  problem.AddLinearConstraint(Eigen::SparseMatrix<double>(A2.sparseView()),
+                               b2, vars);
+  problem.AddQuadraticCost(Eigen::SparseMatrix<double>(Q1.sparseView()), vars);
+  problem.AddQuadraticCost(Eigen::SparseMatrix<double>(Q2.sparseView()), vars);
+
+  fprintf(stderr, "  start\n"); fflush(stderr);
+  // Dense reference: M = Q1 + Q2 + A1'A1 + A2'A2
+  MatrixXd M_ref = Q1 + Q2 + A1.transpose() * A1 + A2.transpose() * A2;
+  VectorXd rhs_ref = VectorXd::Random(n);
+  VectorXd x_ref = M_ref.ldlt().solve(rhs_ref);
+  fprintf(stderr, "  ref computed\n"); fflush(stderr);
+
+  // --- Test via Consolidate + Build ---
+  auto solver = Solver::Build(problem);
+  fprintf(stderr, "  solver built\n"); fflush(stderr);
+  auto* kkt = solver.solver();
+  fprintf(stderr, "  kkt=%p\n", (void*)kkt); fflush(stderr);
+  ASSERT_TRUE(kkt->AssembleAndFactor());
+  fprintf(stderr, "  factored\n"); fflush(stderr);
+  VectorXd x_sol = kkt->Solve(rhs_ref);
+  double err_solve = (x_sol - x_ref).norm() / x_ref.norm();
+  EXPECT_LT(err_solve, 1e-10);
+
+  // --- Test generic interface: MultiplyA ---
+  auto x_rhs = kkt->MakeTreeRHS();
+  x_rhs = kkt->MakeBlockVariable(x_ref);
+  auto row = kkt->MakeRowSpace();
+  kkt->MultiplyA(x_rhs, row);
+
+  // Dense reference: A_stacked * x
+  VectorXd Ax_ref(9);
+  Ax_ref.head(5) = A1 * x_ref;
+  Ax_ref.tail(4) = A2 * x_ref;
+  double err_multiply_a = (row.data - Ax_ref).norm() / Ax_ref.norm();
+  EXPECT_LT(err_multiply_a, 1e-10);
+
+  // --- Test generic interface: AccumulateAtranspose ---
+  VectorXd v = VectorXd::Random(9);
+  RowSpace v_row = kkt->MakeRowSpace();
+  v_row.data = v;
+  auto atv_rhs = kkt->MakeTreeRHS();
+  atv_rhs.SetZero();
+  kkt->AccumulateAtranspose(v_row, atv_rhs);
+  kkt->GatherSeparators(atv_rhs);
+  VectorXd atv_sol(n);
+  atv_rhs.supernodes->GatherInto(atv_sol);
+
+  // Dense reference: A1' * v1 + A2' * v2
+  VectorXd atv_ref = A1.transpose() * v.head(5) + A2.transpose() * v.tail(4);
+  double err_at = (atv_sol - atv_ref).norm() / atv_ref.norm();
+  EXPECT_LT(err_at, 1e-10);
+
+  // --- Test generic interface: AccumulateQx ---
+  auto qx_rhs = kkt->MakeTreeRHS();
+  qx_rhs.SetZero();
+  kkt->AccumulateQx(x_rhs, qx_rhs);
+  kkt->GatherSeparators(qx_rhs);
+  VectorXd qx_sol(n);
+  qx_rhs.supernodes->GatherInto(qx_sol);
+
+  // Dense reference: (Q1 + Q2) * x
+  VectorXd qx_ref = (Q1 + Q2) * x_ref;
+  double err_qx = (qx_sol - qx_ref).norm() / qx_ref.norm();
+  EXPECT_LT(err_qx, 1e-10);
+
+  // --- Test generic interface: SetWeights + re-solve ---
+  RowSpace weights = kkt->MakeRowSpace();
+  for (int i = 0; i < 5; ++i) weights.data(i) = 2.0;
+  for (int i = 5; i < 9; ++i) weights.data(i) = 3.0;
+  kkt->SetWeights(weights);
+  ASSERT_TRUE(kkt->AssembleAndFactor());
+
+  MatrixXd M_w = Q1 + Q2 +
+      2.0 * A1.transpose() * A1 + 3.0 * A2.transpose() * A2;
+  VectorXd x_w_ref = M_w.ldlt().solve(rhs_ref);
+  VectorXd x_w_sol = kkt->Solve(rhs_ref);
+  double err_w = (x_w_sol - x_w_ref).norm() / x_w_ref.norm();
+  EXPECT_LT(err_w, 1e-10);
+
+  printf("MultipleConstraints (consolidated): solve=%.2e, A*x=%.2e, A'v=%.2e, "
+         "Q*x=%.2e, weighted=%.2e\n",
+         err_solve, err_multiply_a, err_at, err_qx, err_w);
+
+  // --- Test WITHOUT Consolidate ---
+  // Build with multiple assemblers registered directly on the tree solver.
+  // This exercises the multi-assembler loop in MultiplyA/AccumulateAtranspose/
+  // AccumulateQx.
+  {
+    // Build the tree solver via ConstraintManager (no Consolidate).
+    ConstraintManager cm(n);
+
+    auto slc1 = std::make_unique<SparseLinearConstraint>(
+        Eigen::SparseMatrix<double>(A1.sparseView()), b1);
+    auto asm1 = std::make_unique<SparseLinearConstraintAssembler>(
+        std::move(slc1), vars);
+    auto* asm1_ptr = asm1.get();
+    cm.AddCustomAssembler(std::move(asm1));
+
+    auto slc2 = std::make_unique<SparseLinearConstraint>(
+        Eigen::SparseMatrix<double>(A2.sparseView()), b2);
+    auto asm2 = std::make_unique<SparseLinearConstraintAssembler>(
+        std::move(slc2), vars);
+    auto* asm2_ptr = asm2.get();
+    cm.AddCustomAssembler(std::move(asm2));
+
+    auto qasm1 = std::make_unique<SparseQuadraticTermAssembler>(
+        Eigen::SparseMatrix<double>(Q1.sparseView()), vars);
+    auto* qasm1_ptr = qasm1.get();
+    cm.AddCustomAssembler(std::move(qasm1));
+
+    auto qasm2 = std::make_unique<SparseQuadraticTermAssembler>(
+        Eigen::SparseMatrix<double>(Q2.sparseView()), vars);
+    auto* qasm2_ptr = qasm2.get();
+    cm.AddCustomAssembler(std::move(qasm2));
+
+    SolverConfiguration config;
+    auto ts = MakeTreeSolver(&cm, config);
+    fprintf(stderr, "  tree solver built\n"); fflush(stderr);
+    ts->RegisterLinearAssembler(asm1_ptr);
+    ts->RegisterLinearAssembler(asm2_ptr);
+    ts->RegisterQuadraticAssembler(qasm1_ptr);
+    ts->RegisterQuadraticAssembler(qasm2_ptr);
+    fprintf(stderr, "  assemblers registered\n"); fflush(stderr);
+
+    ASSERT_TRUE(ts->AssembleAndFactor());
+    fprintf(stderr, "  factored\n"); fflush(stderr);
+
+    // Verify solve (dense path — does not use generic interface).
+    VectorXd x_sol2 = ts->Solve(rhs_ref);
+    double err_s2 = (x_sol2 - x_ref).norm() / x_ref.norm();
+    EXPECT_LT(err_s2, 1e-10);
+    printf("  solve ok: %.2e\n", err_s2);
+
+    // Test MakeRowSpace.
+    auto row2_test = ts->MakeRowSpace();
+    printf("  MakeRowSpace: %d rows, %d constraints\n",
+           row2_test.total_rows(), row2_test.num_constraints());
+    ASSERT_EQ(row2_test.total_rows(), 9);
+
+    // Test MultiplyA with two assemblers.
+    auto x_rhs2 = ts->MakeTreeRHS();
+    x_rhs2 = ts->MakeBlockVariable(x_ref);
+    auto row2 = ts->MakeRowSpace();
+    ts->MultiplyA(x_rhs2, row2);
+    // row2 should have 5+4=9 rows: A1*x then A2*x.
+    ASSERT_EQ(row2.total_rows(), 9);
+    double err_a2 = (row2.data - Ax_ref).norm() / Ax_ref.norm();
+    EXPECT_LT(err_a2, 1e-10);
+
+    // Test AccumulateAtranspose with two assemblers.
+    RowSpace v_row2 = ts->MakeRowSpace();
+    v_row2.data = v;
+    auto atv_rhs2 = ts->MakeTreeRHS();
+    atv_rhs2.SetZero();
+    ts->AccumulateAtranspose(v_row2, atv_rhs2);
+    ts->GatherSeparators(atv_rhs2);
+    VectorXd atv_sol2(n);
+    atv_rhs2.supernodes->GatherInto(atv_sol2);
+    double err_at2 = (atv_sol2 - atv_ref).norm() / atv_ref.norm();
+    EXPECT_LT(err_at2, 1e-10);
+
+    // Test AccumulateQx with two assemblers.
+    auto qx_rhs2 = ts->MakeTreeRHS();
+    qx_rhs2.SetZero();
+    ts->AccumulateQx(x_rhs2, qx_rhs2);
+    ts->GatherSeparators(qx_rhs2);
+    VectorXd qx_sol2(n);
+    qx_rhs2.supernodes->GatherInto(qx_sol2);
+    double err_qx2 = (qx_sol2 - qx_ref).norm() / qx_ref.norm();
+    EXPECT_LT(err_qx2, 1e-10);
+
+    // Test SetWeights with two assemblers.
+    RowSpace w2 = ts->MakeRowSpace();
+    for (int i = 0; i < 5; ++i) w2.data(i) = 2.0;
+    for (int i = 5; i < 9; ++i) w2.data(i) = 3.0;
+    ts->SetWeights(w2);
+    ASSERT_TRUE(ts->AssembleAndFactor());
+    VectorXd x_w2 = ts->Solve(rhs_ref);
+    double err_w2 = (x_w2 - x_w_ref).norm() / x_w_ref.norm();
+    EXPECT_LT(err_w2, 1e-10);
+
+    printf("MultipleConstraints (no consolidate): solve=%.2e, A*x=%.2e, "
+           "A'v=%.2e, Q*x=%.2e, weighted=%.2e\n",
+           err_s2, err_a2, err_at2, err_qx2, err_w2);
   }
 }
 
