@@ -78,14 +78,13 @@ class Solver {
  private:
   void BuildInternal(const Problem& problem,
                      const SolverConfiguration& config) {
-    auto consolidated = problem.Consolidate();
-    const int n = consolidated.num_variables();
+    const int n = problem.num_variables();
     cm_ = std::make_unique<ConstraintManager>(n);
 
-    linear_assemblers_.resize(consolidated.num_constraints(), nullptr);
-    quadratic_assemblers_.resize(consolidated.num_constraints(), nullptr);
+    linear_assemblers_.resize(problem.num_constraints(), nullptr);
+    quadratic_assemblers_.resize(problem.num_constraints(), nullptr);
 
-    for (int i = 0; i < consolidated.num_constraints(); ++i) {
+    for (int i = 0; i < problem.num_constraints(); ++i) {
       std::visit([&](const auto& data) {
         using T = std::decay_t<decltype(data)>;
 
@@ -112,7 +111,7 @@ class Solver {
               std::move(sec), data.primal_vars, dual);
           cm_->AddCustomAssembler(std::move(asm_ptr));
         }
-      }, consolidated.constraint(i));
+      }, problem.constraint(i));
     }
 
     tree_solver_ = MakeTreeSolver(cm_.get(), config);
@@ -280,10 +279,19 @@ class Solver {
 
   void RegisterAssemblersWithTreeSolver() {
     if (!tree_solver_) return;
-    for (auto* slca : linear_assemblers_)
-      if (slca) tree_solver_->RegisterLinearAssembler(slca);
-    for (auto* qasm : quadratic_assemblers_)
-      if (qasm) tree_solver_->RegisterQuadraticAssembler(qasm);
+    // Register decomposed sub-assemblers (not top-level assemblers).
+    // Sub-assemblers have VectorBlockContributions from Register.
+    for (auto* slca : linear_assemblers_) {
+      if (!slca) continue;
+      for (const auto& lc : slca->constraints())
+        tree_solver_->RegisterLinearSubAssembler(lc.get());
+    }
+    for (auto* qasm : quadratic_assemblers_) {
+      if (!qasm) continue;
+      for (const auto& sub : qasm->sub_assemblers())
+        tree_solver_->RegisterQuadraticSubAssembler(
+            &const_cast<DenseQuadraticTermSubAssembler&>(sub).evaluator());
+    }
   }
 
   std::unique_ptr<TreeSolverBuilder> builder_;

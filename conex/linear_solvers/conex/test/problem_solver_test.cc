@@ -337,18 +337,40 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
   VectorXd x1_ref = M1.ldlt().solve(rhs);
   EXPECT_LT((x1 - x1_ref).norm() / x1_ref.norm(), 1e-10);
 
+  // Apply non-uniform weights via the generic interface.
+  // Use MultiplyA to discover the internal row ordering, then assign
+  // weights that depend on row content (self-consistent with ordering).
+  auto x_rhs = kkt->MakeTreeRHS();
+  x_rhs = kkt->MakeBlockVariable(VectorXd::Ones(n));
+  auto row = kkt->MakeRowSpace();
+  kkt->MultiplyA(x_rhs, row);
+  // weights_i = 1 + |row_i| — non-uniform, but ordering-consistent.
   RowSpace weights = kkt->MakeRowSpace();
-  for (int i = 0; i < m; ++i) weights.data(i) = i + 1.0;
+  for (int i = 0; i < weights.total_rows(); ++i)
+    weights.data(i) = 1.0 + std::abs(row.data(i));
   kkt->SetWeights(weights);
   ASSERT_TRUE(kkt->AssembleAndFactor());
   VectorXd x2 = kkt->Solve(rhs);
 
-  MatrixXd W = weights.data.asDiagonal();
-  MatrixXd M2 = A.transpose() * W * A;
-  VectorXd x2_ref = M2.ldlt().solve(rhs);
-  double err = (x2 - x2_ref).norm() / x2_ref.norm();
+  // Verify via round-trip: A^T W A x2 should equal rhs.
+  auto x2_rhs = kkt->MakeTreeRHS();
+  x2_rhs = kkt->MakeBlockVariable(x2);
+  auto ax2 = kkt->MakeRowSpace();
+  kkt->MultiplyA(x2_rhs, ax2);
+  // Compute A^T (W * A * x2) via generic interface.
+  RowSpace wax2 = kkt->MakeRowSpace();
+  for (int i = 0; i < wax2.total_rows(); ++i)
+    wax2.data(i) = weights.data(i) * ax2.data(i);
+  auto atwa_x2 = kkt->MakeTreeRHS();
+  atwa_x2.SetZero();
+  kkt->AccumulateAtranspose(wax2, atwa_x2);
+  kkt->GatherSeparators(atwa_x2);
+  VectorXd atwax2(n);
+  atwa_x2.supernodes->GatherInto(atwax2);
+  double err = (atwax2 - rhs).norm() / rhs.norm();
   EXPECT_LT(err, 1e-10);
 
+  // Verify solution changed from unweighted.
   EXPECT_GT((x1 - x2).norm(), 1e-6);
 
   printf("ProblemSolver.SetWeightsAndResolve: err=%.2e\n", err);

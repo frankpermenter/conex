@@ -24,7 +24,7 @@ IRLSResult SolveIRLS(
   std::iota(vars.begin(), vars.end(), 0);
 
   Problem problem;
-  problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
+  problem.AddLinearConstraint(A, b, vars);
 
   auto [reduced, expansion] = Preprocess(problem);
 
@@ -35,6 +35,9 @@ IRLSResult SolveIRLS(
   auto x = kkt->MakeTreeRHS();
   auto rhs = kkt->MakeTreeRHS();
   auto row = kkt->MakeRowSpace();
+
+  // Get b in internal (sub-constraint) ordering.
+  RowSpace b_internal = kkt->GetAffineTerm();
 
   auto t0 = clock::now();
 
@@ -48,18 +51,17 @@ IRLSResult SolveIRLS(
 
     // RHS = A^T W b.
     RowSpace wb = kkt->MakeRowSpace();
-    wb.data = w.data.asDiagonal() * b;
+    wb.data = w.data.asDiagonal() * b_internal.data;
     rhs.SetZero();
     kkt->AccumulateAtranspose(wb, rhs);
 
     // Solve.
     kkt->SolveTreeRHS(rhs);
-    // rhs now holds x.
     x = rhs;
 
     // Residual: r = Ax - b.
     kkt->MultiplyA(x, row);
-    Eigen::VectorXd r = row.data - b;
+    Eigen::VectorXd r = row.data - b_internal.data;
     double obj = r.lpNorm<1>();
 
     if (std::abs(prev_obj - obj) < tolerance * std::abs(obj) + 1e-15) {
@@ -78,7 +80,7 @@ IRLSResult SolveIRLS(
   x.supernodes->GatherInto(x_final);
   result.x = expansion.Expand(x_final);
   kkt->MultiplyA(x, row);
-  result.l1_objective = (row.data - b).lpNorm<1>();
+  result.l1_objective = (row.data - b_internal.data).lpNorm<1>();
   result.solve_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
   return result;
