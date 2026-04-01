@@ -92,11 +92,8 @@ class TreeSolverBuilder {
   // Computes supernodes/separators, creates adapters, calls Finalize.
   Result Build();
 
-  // Convenience: build a tree solver from sparse matrices using the generic
-  // clique-ordering path (SparseQuadraticTermAssembler +
-  // SparseEqualityConstraintAssembler + MakeTreeSolver).  This ignores
-  // any cliques/blocks added via Add* methods.
-  // Solves: min z'Qz  s.t.  Cz = d.
+  // TODO: Delete — replaced by Problem + Solver::Build path.
+  // Only called from algorithms_test.cc.
   static Result BuildFromSparseMatrices(
       const Eigen::SparseMatrix<double>& Q,
       const Eigen::SparseMatrix<double>& C,

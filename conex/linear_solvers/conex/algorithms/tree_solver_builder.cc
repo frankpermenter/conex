@@ -453,6 +453,8 @@ TreeSolverBuilder::Result::~Result() = default;
 TreeSolverBuilder::Result::Result(Result&&) noexcept = default;
 TreeSolverBuilder::Result& TreeSolverBuilder::Result::operator=(Result&&) noexcept = default;
 
+// TODO: Delete — replaced by Problem + Solver::Build path.
+// Only called from algorithms_test.cc.
 TreeSolverBuilder::Result TreeSolverBuilder::BuildFromSparseMatrices(
     const Eigen::SparseMatrix<double>& Q,
     const Eigen::SparseMatrix<double>& C,
