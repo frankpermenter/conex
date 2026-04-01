@@ -1,6 +1,5 @@
 #include "conex/tree_solver/kkt_tree_solver.h"
 #include "conex/common/linear_constraint.h"
-#include "conex/common/sparse_linear_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
 
 // TreeBlockPartition implementation — delegates to SupernodePartitionMatrix.
@@ -1041,19 +1040,10 @@ TreeRHS T::MakeTreeRHS(int cols) {
 RowSpace T::MakeRowSpace() {
   RowSpace rs;
   int offset = 0;
-  if (!linear_sub_assemblers_.empty()) {
-    for (auto* lc : linear_sub_assemblers_) {
-      rs.offsets.push_back(offset);
-      rs.sizes.push_back(lc->num_rows());
-      offset += lc->num_rows();
-    }
-  } else {
-    for (auto* slca : linear_assemblers_) {
-      int m = slca->num_global_rows();
-      rs.offsets.push_back(offset);
-      rs.sizes.push_back(m);
-      offset += m;
-    }
+  for (auto* lc : linear_sub_assemblers_) {
+    rs.offsets.push_back(offset);
+    rs.sizes.push_back(lc->num_rows());
+    offset += lc->num_rows();
   }
   rs.data.resize(offset);
   rs.data.setZero();
@@ -1066,49 +1056,18 @@ void T::MultiplyA(const TreeRHS& x, RowSpace& out) {
   }
   const auto& sep_read = x.is_scattered ? sep_scratch_ : *x.separators;
   int nc = x.cols();
-
-  if (!linear_sub_assemblers_.empty()) {
-    for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
-      auto result = linear_sub_assemblers_[ci]->gram().MultiplyA(
-          *x.supernodes, sep_read, nc);
-      out.segment(ci) = result.col(0);
-    }
-    return;
-  }
-
-  for (int ci = 0; ci < static_cast<int>(linear_assemblers_.size()); ++ci) {
-    auto* slca = linear_assemblers_[ci];
-    const auto& constraints = slca->constraints();
-    const auto& row_map = slca->row_map();
-    int m = slca->num_global_rows();
-
-    std::vector<Eigen::MatrixXd> locals(constraints.size());
-    for (size_t j = 0; j < constraints.size(); ++j) {
-      locals[j] = constraints[j]->gram().MultiplyA(
-          *x.supernodes, sep_read, nc);
-    }
-
-    auto seg = out.segment(ci);
-    for (int r = 0; r < m; ++r) {
-      const auto& rm = row_map[r];
-      if (rm.constraint_index >= 0)
-        seg(r) = locals[rm.constraint_index](rm.local_row, 0);
-    }
+  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
+    auto result = linear_sub_assemblers_[ci]->gram().MultiplyA(
+        *x.supernodes, sep_read, nc);
+    out.segment(ci) = result.col(0);
   }
 }
 
 void T::AccumulateAtranspose(const RowSpace& v, TreeRHS& rhs) {
-  if (!linear_sub_assemblers_.empty()) {
-    int nc = rhs.cols();
-    for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
-      linear_sub_assemblers_[ci]->gram().ContributeAtranspose(
-          v.segment(ci), *rhs.supernodes, *rhs.separators, nc);
-    }
-    return;
-  }
-
-  for (int ci = 0; ci < static_cast<int>(linear_assemblers_.size()); ++ci) {
-    linear_assemblers_[ci]->ComputeTransposeProduct(v.segment(ci), rhs);
+  int nc = rhs.cols();
+  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
+    linear_sub_assemblers_[ci]->gram().ContributeAtranspose(
+        v.segment(ci), *rhs.supernodes, *rhs.separators, nc);
   }
 }
 
@@ -1118,43 +1077,23 @@ void T::AccumulateQx(const TreeRHS& x, TreeRHS& rhs) {
   }
   const auto& sep_read = x.is_scattered ? sep_scratch_ : *x.separators;
   int nc = x.cols();
-
-  if (!quadratic_sub_assemblers_.empty()) {
-    for (auto* eval : quadratic_sub_assemblers_) {
-      eval->MultiplyQx(*x.supernodes, sep_read,
-                        *rhs.supernodes, *rhs.separators, nc);
-    }
-    return;
-  }
-
-  for (auto* qasm : quadratic_assemblers_) {
-    qasm->ComputeProduct(x, sep_read, rhs);
+  for (auto* eval : quadratic_sub_assemblers_) {
+    eval->MultiplyQx(*x.supernodes, sep_read,
+                      *rhs.supernodes, *rhs.separators, nc);
   }
 }
 
 RowSpace T::GetAffineTerm() {
   RowSpace rs = MakeRowSpace();
-  if (!linear_sub_assemblers_.empty()) {
-    for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
-      rs.segment(ci) = linear_sub_assemblers_[ci]->affine_term();
-    }
-  } else {
-    for (int ci = 0; ci < static_cast<int>(linear_assemblers_.size()); ++ci) {
-      rs.segment(ci) = linear_assemblers_[ci]->GetAffineTerm();
-    }
+  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
+    rs.segment(ci) = linear_sub_assemblers_[ci]->affine_term();
   }
   return rs;
 }
 
 void T::SetWeights(const RowSpace& w) {
-  if (!linear_sub_assemblers_.empty()) {
-    for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
-      linear_sub_assemblers_[ci]->SetWeights(w.segment(ci));
-    }
-  } else {
-    for (int ci = 0; ci < static_cast<int>(linear_assemblers_.size()); ++ci) {
-      linear_assemblers_[ci]->SetWeights(w.segment(ci));
-    }
+  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
+    linear_sub_assemblers_[ci]->SetWeights(w.segment(ci));
   }
 }
 
