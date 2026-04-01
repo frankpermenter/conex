@@ -84,21 +84,22 @@ LQRFromSparseMatricesResult SolveLQRFromSparseMatrices(
   auto c_eq = problem.AddEqualityConstraint(C_eq, d_eq, vars);
 
   auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
 
   auto t1 = clock::now();
 
-  bool ok = solver.AssembleAndFactor();
+  bool ok = kkt->AssembleAndFactor();
   CONEX_DEMAND(ok, "AssembleAndFactor failed.");
 
   auto t2 = clock::now();
 
   // RHS: dual vars get d_eq.
   const auto& dual_vars = solver.dual_variables(c_eq);
-  Eigen::VectorXd rhs = Eigen::VectorXd::Zero(solver.num_variables());
+  Eigen::VectorXd rhs = Eigen::VectorXd::Zero(kkt->number_of_variables());
   for (int i = 0; i < n_eq; ++i)
     rhs(dual_vars[i]) = d_eq(i);
 
-  Eigen::VectorXd sol = solver.Solve(rhs);
+  Eigen::VectorXd sol = kkt->Solve(rhs);
 
   auto t3 = clock::now();
 

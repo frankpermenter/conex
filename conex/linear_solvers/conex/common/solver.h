@@ -56,27 +56,6 @@ class Solver {
     return s;
   }
 
-  // Factor the assembled system.  Must be called before SolveInto.
-  bool AssembleAndFactor() { return solver()->AssembleAndFactor(); }
-
-  // Create a BlockVariable matching this solver's partition.
-  BlockVariable MakeBlockVariable(int cols = 1) {
-    return solver()->MakeBlockVariable(cols);
-  }
-  BlockVariable MakeBlockVariable(Eigen::Ref<const Eigen::MatrixXd> x) {
-    return solver()->MakeBlockVariable(x);
-  }
-
-  // Solve: rhs in, solution out (blocked, no dense vectors).
-  void SolveInto(const BlockVariable& rhs, BlockVariable& dest) const {
-    solver()->SolveInto(rhs, dest);
-  }
-
-  // Dense solve (convenience).
-  Eigen::VectorXd Solve(Eigen::Ref<const Eigen::VectorXd> rhs) const {
-    return solver()->Solve(rhs);
-  }
-
   // Access the underlying solver.
   KKTSolverBase* solver() {
     if (dense_solver_) return static_cast<KKTSolverBase*>(dense_solver_.get());
@@ -90,8 +69,6 @@ class Solver {
   // Access the tree solver specifically (nullptr if dense).
   SymmetricLinearSystemTreeSolver* tree_solver() { return tree_solver_.get(); }
   const SymmetricLinearSystemTreeSolver* tree_solver() const { return tree_solver_.get(); }
-
-  int num_variables() const { return solver()->number_of_variables(); }
 
   // Get the dual variable indices allocated for an equality constraint.
   const std::vector<int>& dual_variables(ConstraintId id) const {

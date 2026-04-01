@@ -262,15 +262,15 @@ TEST(ProblemSolver, LeastSquares) {
   auto c1 = problem.AddLinearConstraint(A, b, vars);
 
   auto solver = Solver::Build(problem);
-  ASSERT_TRUE(solver.AssembleAndFactor());
+  ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
   VectorXd rhs_dense = Eigen::MatrixXd(A).transpose() *
                         (Eigen::MatrixXd(A) * VectorXd::Random(n));
-  auto rhs = solver.MakeBlockVariable(rhs_dense);
-  auto x = solver.MakeBlockVariable();
-  solver.SolveInto(rhs, x);
+  auto rhs = solver.solver()->MakeBlockVariable(rhs_dense);
+  auto x = solver.solver()->MakeBlockVariable();
+  solver.solver()->SolveInto(rhs, x);
 
-  VectorXd x_dense = solver.Solve(rhs_dense);
+  VectorXd x_dense = solver.solver()->Solve(rhs_dense);
   VectorXd x_block = x.Gather();
   double err = (x_block - x_dense).norm() / x_dense.norm();
   EXPECT_LT(err, 1e-10) << "BlockVariable solve doesn't match dense";
@@ -294,10 +294,10 @@ TEST(ProblemSolver, QuadraticCostPlusLinear) {
   problem.AddQuadraticCost(Q, vars);
 
   auto solver = Solver::Build(problem);
-  ASSERT_TRUE(solver.AssembleAndFactor());
+  ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
   VectorXd rhs = VectorXd::Random(n);
-  VectorXd x_sol = solver.Solve(rhs);
+  VectorXd x_sol = solver.solver()->Solve(rhs);
 
   MatrixXd M = Q + A.transpose() * A;
   VectorXd x_ref = M.ldlt().solve(rhs);
@@ -370,11 +370,11 @@ TEST(ProblemSolver, Preprocess) {
   EXPECT_EQ(static_cast<int>(expansion.col_map.size()), 4);
 
   auto solver = Solver::Build(reduced);
-  ASSERT_TRUE(solver.AssembleAndFactor());
+  ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
   VectorXd rhs_full = VectorXd::Random(n);
   VectorXd rhs_reduced = expansion.Reduce(rhs_full);
-  VectorXd x_reduced = solver.Solve(rhs_reduced);
+  VectorXd x_reduced = solver.solver()->Solve(rhs_reduced);
   VectorXd x_full = expansion.Expand(x_reduced);
 
   EXPECT_NEAR(x_full(4), 0.0, 1e-15);
@@ -408,14 +408,14 @@ TEST(ProblemSolver, CustomTree) {
   tree.Assign(c2, child);
 
   auto solver_custom = Solver::Build(problem, tree);
-  ASSERT_TRUE(solver_custom.AssembleAndFactor());
+  ASSERT_TRUE(solver_custom.solver()->AssembleAndFactor());
 
   VectorXd rhs = VectorXd::Random(4);
-  VectorXd x_custom = solver_custom.Solve(rhs);
+  VectorXd x_custom = solver_custom.solver()->Solve(rhs);
 
   auto solver_auto = Solver::Build(problem);
-  ASSERT_TRUE(solver_auto.AssembleAndFactor());
-  VectorXd x_auto = solver_auto.Solve(rhs);
+  ASSERT_TRUE(solver_auto.solver()->AssembleAndFactor());
+  VectorXd x_auto = solver_auto.solver()->Solve(rhs);
 
   double err = (x_custom - x_auto).norm() / x_auto.norm();
   EXPECT_LT(err, 1e-10);
@@ -498,15 +498,15 @@ TEST(ProblemSolver, LQR) {
   tree.Assign(c_ic, cliques[0]);
 
   auto solver = Solver::Build(problem, tree);
-  ASSERT_TRUE(solver.AssembleAndFactor());
+  ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
   const auto& ic_duals = solver.dual_variables(c_ic);
-  VectorXd rhs = VectorXd::Zero(solver.num_variables());
+  VectorXd rhs = VectorXd::Zero(solver.solver()->number_of_variables());
   for (int i = 0; i < nx; ++i) rhs(ic_duals[i]) = x0(i);
 
-  auto rhs_bv = solver.MakeBlockVariable(rhs);
-  auto x_bv = solver.MakeBlockVariable();
-  solver.SolveInto(rhs_bv, x_bv);
+  auto rhs_bv = solver.solver()->MakeBlockVariable(rhs);
+  auto x_bv = solver.solver()->MakeBlockVariable();
+  solver.solver()->SolveInto(rhs_bv, x_bv);
   VectorXd sol = x_bv.Gather();
 
   VectorXd x_0_sol(nx);
@@ -561,19 +561,19 @@ TEST(ProblemSolver, EqualityConstrainedLS) {
       d, primal_vars);
 
   auto solver = Solver::Build(problem);
-  ASSERT_TRUE(solver.AssembleAndFactor());
+  ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
   const auto& dual_vars = solver.dual_variables(c_eq);
   ASSERT_EQ(static_cast<int>(dual_vars.size()), p);
 
-  int n_total = solver.num_variables();
+  int n_total = solver.solver()->number_of_variables();
   VectorXd rhs = VectorXd::Zero(n_total);
   rhs.head(n) = A.transpose() * b;
   for (int i = 0; i < p; ++i) rhs(dual_vars[i]) = d(i);
 
-  auto rhs_bv = solver.MakeBlockVariable(rhs);
-  auto x_bv = solver.MakeBlockVariable();
-  solver.SolveInto(rhs_bv, x_bv);
+  auto rhs_bv = solver.solver()->MakeBlockVariable(rhs);
+  auto x_bv = solver.solver()->MakeBlockVariable();
+  solver.solver()->SolveInto(rhs_bv, x_bv);
   VectorXd sol = x_bv.Gather();
 
   VectorXd x_sol = sol.head(n);
@@ -618,10 +618,10 @@ TEST(ProblemSolver, DenseSolverPD) {
   problem.AddQuadraticCost(Q, vars);
 
   auto solver = Solver::BuildDense(problem);
-  ASSERT_TRUE(solver.AssembleAndFactor());
+  ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
   VectorXd rhs = VectorXd::Random(n);
-  VectorXd x_sol = solver.Solve(rhs);
+  VectorXd x_sol = solver.solver()->Solve(rhs);
 
   MatrixXd M = Q + A.transpose() * A;
   VectorXd x_ref = M.ldlt().solve(rhs);
@@ -652,18 +652,18 @@ TEST(ProblemSolver, DenseSolverIndefinite) {
       d, primal_vars);
 
   auto solver = Solver::BuildDense(problem);
-  ASSERT_TRUE(solver.AssembleAndFactor());
+  ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
   const auto& dual_vars = solver.dual_variables(c_eq);
-  int n_total = solver.num_variables();
+  int n_total = solver.solver()->number_of_variables();
   VectorXd rhs = VectorXd::Zero(n_total);
   rhs.head(n) = A.transpose() * b;
   for (int i = 0; i < p; ++i) rhs(dual_vars[i]) = d(i);
 
   // Solve via BlockVariable.
-  auto rhs_bv = solver.MakeBlockVariable(rhs);
-  auto x_bv = solver.MakeBlockVariable();
-  solver.SolveInto(rhs_bv, x_bv);
+  auto rhs_bv = solver.solver()->MakeBlockVariable(rhs);
+  auto x_bv = solver.solver()->MakeBlockVariable();
+  solver.solver()->SolveInto(rhs_bv, x_bv);
   VectorXd sol = x_bv.Gather().col(0);
 
   VectorXd x_sol = sol.head(n);
@@ -721,10 +721,10 @@ TEST(ProblemSolver, RankDeficientEqualities) {
 
   auto [reduced, expansion] = Preprocess(problem);
   auto solver = Solver::Build(reduced);
-  ASSERT_TRUE(solver.AssembleAndFactor());
+  ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
   // Build RHS in reduced space.
-  VectorXd rhs = VectorXd::Zero(solver.num_variables());
+  VectorXd rhs = VectorXd::Zero(solver.solver()->number_of_variables());
   VectorXd rhs_primal = expansion.Reduce(
       Eigen::MatrixXd(A).transpose() * b);
   rhs.head(rhs_primal.size()) = rhs_primal;
@@ -740,7 +740,7 @@ TEST(ProblemSolver, RankDeficientEqualities) {
   for (int i = 0; i < static_cast<int>(duals.size()); ++i)
     rhs(duals[i]) = eq->d(i);
 
-  VectorXd sol = solver.Solve(rhs);
+  VectorXd sol = solver.solver()->Solve(rhs);
   VectorXd x_sol = expansion.Expand(sol.head(expansion.col_map.size()));
 
   double constraint_err = (Eigen::MatrixXd(C) * x_sol - d).norm();
@@ -829,9 +829,9 @@ TEST(ProblemSolver, BlockDiagonalPattern) {
   Problem problem;
   problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
   auto solver = Solver::Build(problem);
-  ASSERT_TRUE(solver.AssembleAndFactor());
+  ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
-  VectorXd x_sol = solver.Solve(rhs);
+  VectorXd x_sol = solver.solver()->Solve(rhs);
   double err = (x_sol - x_true).norm() / x_true.norm();
   EXPECT_LT(err, 1e-8);
   printf("ProblemSolver.BlockDiagonalPattern: err=%.2e\n", err);
@@ -863,9 +863,9 @@ TEST(ProblemSolver, BandedPattern) {
   Problem problem;
   problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
   auto solver = Solver::Build(problem);
-  ASSERT_TRUE(solver.AssembleAndFactor());
+  ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
-  VectorXd x_sol = solver.Solve(rhs);
+  VectorXd x_sol = solver.solver()->Solve(rhs);
   double err = (x_sol - x_true).norm() / x_true.norm();
   EXPECT_LT(err, 1e-8);
   printf("ProblemSolver.BandedPattern: err=%.2e\n", err);
@@ -888,15 +888,15 @@ TEST(ProblemSolver, QuotientAMD) {
   SolverConfiguration cfg;
   cfg.use_quotient_amd = true;
   auto solver_q = Solver::Build(problem, cfg);
-  ASSERT_TRUE(solver_q.AssembleAndFactor());
+  ASSERT_TRUE(solver_q.solver()->AssembleAndFactor());
 
   cfg.use_quotient_amd = false;
   auto solver_v = Solver::Build(problem, cfg);
-  ASSERT_TRUE(solver_v.AssembleAndFactor());
+  ASSERT_TRUE(solver_v.solver()->AssembleAndFactor());
 
   VectorXd rhs = VectorXd::Random(n);
-  VectorXd x_q = solver_q.Solve(rhs);
-  VectorXd x_v = solver_v.Solve(rhs);
+  VectorXd x_q = solver_q.solver()->Solve(rhs);
+  VectorXd x_v = solver_v.solver()->Solve(rhs);
 
   // Both should match the reference.
   MatrixXd M = Q + A.transpose() * A;
@@ -927,15 +927,15 @@ TEST(ProblemSolver, QuotientAMDChain) {
   SolverConfiguration cfg;
   cfg.use_quotient_amd = true;
   auto solver = Solver::Build(problem, cfg);
-  ASSERT_TRUE(solver.AssembleAndFactor());
+  ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
   // Build reference via dense.
   auto solver_d = Solver::BuildDense(problem);
-  ASSERT_TRUE(solver_d.AssembleAndFactor());
+  ASSERT_TRUE(solver_d.solver()->AssembleAndFactor());
 
   VectorXd rhs = VectorXd::Random(n);
-  VectorXd x_q = solver.Solve(rhs);
-  VectorXd x_d = solver_d.Solve(rhs);
+  VectorXd x_q = solver.solver()->Solve(rhs);
+  VectorXd x_d = solver_d.solver()->Solve(rhs);
 
   double err = (x_q - x_d).norm() / x_d.norm();
   EXPECT_LT(err, 1e-10);
@@ -973,9 +973,9 @@ TEST(ProblemSolver, MultiThreaded) {
     SolverConfiguration cfg;
     cfg.num_threads = threads;
     auto solver = Solver::Build(problem, cfg);
-    ASSERT_TRUE(solver.AssembleAndFactor());
+    ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
-    VectorXd x_sol = solver.Solve(rhs);
+    VectorXd x_sol = solver.solver()->Solve(rhs);
     if (threads == 1) {
       x_ref = x_sol;
     } else {
@@ -1022,9 +1022,9 @@ TEST(ProblemSolver, PQTreeReorder) {
     SolverConfiguration cfg;
     cfg.tree.supernode_reorder_method = method;
     auto solver = Solver::Build(problem, cfg);
-    ASSERT_TRUE(solver.AssembleAndFactor());
+    ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 
-    VectorXd x_sol = solver.Solve(rhs);
+    VectorXd x_sol = solver.solver()->Solve(rhs);
     if (method == 0) {
       x_ref = x_sol;
     }
@@ -1151,11 +1151,11 @@ TEST(ProblemSolver, StochasticCustomVsAutomatic) {
 
     auto tc0 = clock::now();
     auto solver_c = Solver::Build(prob_c, tree_spec);
-    solver_c.AssembleAndFactor();
+    solver_c.solver()->AssembleAndFactor();
     const auto& ic_duals = solver_c.dual_variables(c_ic);
-    VectorXd rhs_c = VectorXd::Zero(solver_c.num_variables());
+    VectorXd rhs_c = VectorXd::Zero(solver_c.solver()->number_of_variables());
     for (int j = 0; j < nx; ++j) rhs_c(ic_duals[j]) = x0(j);
-    VectorXd sol_c = solver_c.Solve(rhs_c);
+    VectorXd sol_c = solver_c.solver()->Solve(rhs_c);
     auto tc1 = clock::now();
     double custom_us = std::chrono::duration<double, std::micro>(tc1 - tc0).count();
 
@@ -1215,11 +1215,11 @@ TEST(ProblemSolver, StochasticCustomVsAutomatic) {
 
     auto ta0 = clock::now();
     auto solver_a = Solver::Build(prob_a);
-    solver_a.AssembleAndFactor();
+    solver_a.solver()->AssembleAndFactor();
     const auto& duals_a = solver_a.dual_variables(ceq_a);
-    VectorXd rhs_a = VectorXd::Zero(solver_a.num_variables());
+    VectorXd rhs_a = VectorXd::Zero(solver_a.solver()->number_of_variables());
     for (int j = 0; j < n_eq; ++j) rhs_a(duals_a[j]) = d_eq(j);
-    VectorXd sol_a = solver_a.Solve(rhs_a);
+    VectorXd sol_a = solver_a.solver()->Solve(rhs_a);
     auto ta1 = clock::now();
     double auto_us = std::chrono::duration<double, std::micro>(ta1 - ta0).count();
 
@@ -1377,12 +1377,12 @@ TEST(ProblemSolver, LQRCustomVsAutomatic) {
     auto tc0 = clock::now();
     auto solver_c = Solver::Build(prob_custom, tree);
     auto tc1 = clock::now();
-    solver_c.AssembleAndFactor();
+    solver_c.solver()->AssembleAndFactor();
     auto tc2 = clock::now();
     const auto& ic_duals = solver_c.dual_variables(c_ic);
-    VectorXd rhs_c = VectorXd::Zero(solver_c.num_variables());
+    VectorXd rhs_c = VectorXd::Zero(solver_c.solver()->number_of_variables());
     for (int i = 0; i < nx; ++i) rhs_c(ic_duals[i]) = x0(i);
-    VectorXd sol_c = solver_c.Solve(rhs_c);
+    VectorXd sol_c = solver_c.solver()->Solve(rhs_c);
     auto tc3 = clock::now();
     double custom_us = std::chrono::duration<double, std::micro>(tc3 - tc0).count();
 
@@ -1391,15 +1391,15 @@ TEST(ProblemSolver, LQRCustomVsAutomatic) {
     auto ta0 = clock::now();
     auto solver_a = Solver::Build(prob_a);
     auto ta1 = clock::now();
-    solver_a.AssembleAndFactor();
+    solver_a.solver()->AssembleAndFactor();
     auto ta2 = clock::now();
     const auto& duals_a = solver_a.dual_variables(ceq_a);
-    VectorXd rhs_a = VectorXd::Zero(solver_a.num_variables());
+    VectorXd rhs_a = VectorXd::Zero(solver_a.solver()->number_of_variables());
     int n_eq = (T+1)*nx;
     VectorXd d_eq = VectorXd::Zero(n_eq);
     d_eq.tail(nx) = x0;
     for (int i = 0; i < n_eq; ++i) rhs_a(duals_a[i]) = d_eq(i);
-    VectorXd sol_a = solver_a.Solve(rhs_a);
+    VectorXd sol_a = solver_a.solver()->Solve(rhs_a);
     auto ta3 = clock::now();
     double auto_us = std::chrono::duration<double, std::micro>(ta3 - ta0).count();
 
@@ -1523,13 +1523,13 @@ TEST(ProblemSolver, GaussianMRF) {
 
     auto solver = Solver::Build(problem, tree);
     auto t1 = clock::now();
-    ASSERT_TRUE(solver.AssembleAndFactor());
+    ASSERT_TRUE(solver.solver()->AssembleAndFactor());
     auto t2 = clock::now();
 
     VectorXd h = VectorXd::Random(n_vars);
-    auto rhs_bv = solver.MakeBlockVariable(h);
-    auto x_bv = solver.MakeBlockVariable();
-    solver.SolveInto(rhs_bv, x_bv);
+    auto rhs_bv = solver.solver()->MakeBlockVariable(h);
+    auto x_bv = solver.solver()->MakeBlockVariable();
+    solver.solver()->SolveInto(rhs_bv, x_bv);
     VectorXd x = x_bv.Gather().col(0);
     auto t3 = clock::now();
 

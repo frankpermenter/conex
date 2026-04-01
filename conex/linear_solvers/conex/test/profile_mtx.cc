@@ -106,6 +106,7 @@ ProfileResult ProfileMatrix(const std::string& name,
   // Build solver.
   auto t0 = Clock::now();
   auto solver = Solver::Build(reduced, cfg);
+  auto* kkt = solver.solver();
   auto t1 = Clock::now();
   res.build_us = us(t0, t1);
   res.num_cliques = solver.tree_solver()
@@ -113,7 +114,7 @@ ProfileResult ProfileMatrix(const std::string& name,
   res.total_setup_us = res.build_us;
 
   // AssembleAndFactor.
-  bool ok = solver.AssembleAndFactor();
+  bool ok = kkt->AssembleAndFactor();
   if (!ok) {
     res.assemble_factor_us = -1;
     res.solve_us = -1;
@@ -125,7 +126,7 @@ ProfileResult ProfileMatrix(const std::string& name,
   std::vector<double> af_times(iters);
   for (int i = 0; i < iters; ++i) {
     auto ta = Clock::now();
-    solver.AssembleAndFactor();
+    kkt->AssembleAndFactor();
     auto tb = Clock::now();
     af_times[i] = us(ta, tb);
   }
@@ -158,12 +159,12 @@ ProfileResult ProfileMatrix(const std::string& name,
       : std::numeric_limits<double>::infinity();
 
   // Solve timing.
-  solver.Solve(rhs);  // warm up
+  kkt->Solve(rhs);  // warm up
   std::vector<double> s_times(iters);
   Eigen::VectorXd sol;
   for (int i = 0; i < iters; ++i) {
     auto ta = Clock::now();
-    sol = solver.Solve(rhs);
+    sol = kkt->Solve(rhs);
     auto tb = Clock::now();
     s_times[i] = us(ta, tb);
   }

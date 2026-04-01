@@ -30,17 +30,18 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
   auto [reduced, expansion] = Preprocess(problem);
 
   auto solver = Solver::Build(reduced);
+  auto* kkt = solver.solver();
 
   auto t1 = clock::now();
 
-  bool ok = solver.AssembleAndFactor();
+  bool ok = kkt->AssembleAndFactor();
   CONEX_DEMAND(ok, "AssembleAndFactor failed.");
 
   auto t2 = clock::now();
 
   // Build RHS = [A'b; d_reduced] in reduced space.
   const auto& duals = solver.dual_variables(c_eq);
-  Eigen::VectorXd rhs = Eigen::VectorXd::Zero(solver.num_variables());
+  Eigen::VectorXd rhs = Eigen::VectorXd::Zero(kkt->number_of_variables());
   rhs.head(reduced.num_variables()) =
       expansion.Reduce(Eigen::VectorXd(A.transpose() * b));
 
@@ -52,7 +53,7 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
       rhs(duals[i]) = eq->d(i);
   }
 
-  Eigen::VectorXd sol = solver.Solve(rhs);
+  Eigen::VectorXd sol = kkt->Solve(rhs);
 
   auto t3 = clock::now();
 
