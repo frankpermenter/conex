@@ -231,14 +231,14 @@ class Solver {
  private:
   void BuildInternal(const Problem& problem,
                      const SolverConfiguration& config) {
-    const int n = problem.num_variables();
+    auto consolidated = problem.Consolidate();
+    const int n = consolidated.num_variables();
     cm_ = std::make_unique<ConstraintManager>(n);
 
-    // Map each constraint to its assembler.
-    linear_assemblers_.resize(problem.num_constraints(), nullptr);
-    quadratic_assemblers_.resize(problem.num_constraints(), nullptr);
+    linear_assemblers_.resize(consolidated.num_constraints(), nullptr);
+    quadratic_assemblers_.resize(consolidated.num_constraints(), nullptr);
 
-    for (int i = 0; i < problem.num_constraints(); ++i) {
+    for (int i = 0; i < consolidated.num_constraints(); ++i) {
       std::visit([&](const auto& data) {
         using T = std::decay_t<decltype(data)>;
 
@@ -265,7 +265,7 @@ class Solver {
               std::move(sec), data.primal_vars, dual);
           cm_->AddCustomAssembler(std::move(asm_ptr));
         }
-      }, problem.constraint(i));
+      }, consolidated.constraint(i));
     }
 
     tree_solver_ = MakeTreeSolver(cm_.get(), config);

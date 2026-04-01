@@ -162,8 +162,7 @@ BarrierQPResult SolveBarrierQP(
   problem.AddLinearConstraint(A, b, vars);
   problem.AddQuadraticCost(Q, vars);
 
-  auto consolidated = problem.Consolidate();
-  auto [reduced, expansion] = Preprocess(consolidated);
+  auto [reduced, expansion] = Preprocess(problem);
 
   Eigen::VectorXd c_r = expansion.Reduce(c);
   Eigen::VectorXd x0_r = expansion.Reduce(x0);
