@@ -1600,22 +1600,16 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   problem.AddQuadraticCost(Eigen::SparseMatrix<double>(Q1.sparseView()), vars);
   problem.AddQuadraticCost(Eigen::SparseMatrix<double>(Q2.sparseView()), vars);
 
-  fprintf(stderr, "  start\n"); fflush(stderr);
   // Dense reference: M = Q1 + Q2 + A1'A1 + A2'A2
   MatrixXd M_ref = Q1 + Q2 + A1.transpose() * A1 + A2.transpose() * A2;
   VectorXd rhs_ref = VectorXd::Random(n);
   VectorXd x_ref = M_ref.ldlt().solve(rhs_ref);
-  fprintf(stderr, "  ref computed\n"); fflush(stderr);
 
   // --- Test via Consolidate + Build ---
   auto solver = Solver::Build(problem);
-  fprintf(stderr, "  solver built\n"); fflush(stderr);
   auto* kkt = solver.solver();
-  fprintf(stderr, "  kkt=%p\n", (void*)kkt); fflush(stderr);
   ASSERT_TRUE(kkt->AssembleAndFactor());
-  fprintf(stderr, "  factored\n"); fflush(stderr);
   VectorXd x_sol = kkt->Solve(rhs_ref);
-  fprintf(stderr, "  solved\n"); fflush(stderr);
   double err_solve = (x_sol - x_ref).norm() / x_ref.norm();
   EXPECT_LT(err_solve, 1e-10);
 
@@ -1623,9 +1617,7 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   auto x_rhs = kkt->MakeTreeRHS();
   x_rhs = kkt->MakeBlockVariable(x_ref);
   auto row = kkt->MakeRowSpace();
-  fprintf(stderr, "  calling MultiplyA\n"); fflush(stderr);
   kkt->MultiplyA(x_rhs, row);
-  fprintf(stderr, "  MultiplyA done, row.size=%d\n", row.total_rows()); fflush(stderr);
 
   // Dense reference: A_stacked * x
   VectorXd Ax_ref(9);
@@ -1635,15 +1627,12 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   EXPECT_LT(err_multiply_a, 1e-10);
 
   // --- Test generic interface: AccumulateAtranspose ---
-  fprintf(stderr, "  AccumulateAtranspose\n"); fflush(stderr);
   VectorXd v = VectorXd::Random(9);
   RowSpace v_row = kkt->MakeRowSpace();
   v_row.data = v;
   auto atv_rhs = kkt->MakeTreeRHS();
-  fprintf(stderr, "  atv_rhs made\n"); fflush(stderr);
   atv_rhs.SetZero();
   kkt->AccumulateAtranspose(v_row, atv_rhs);
-  fprintf(stderr, "  AccumulateAtranspose done\n"); fflush(stderr);
   kkt->GatherSeparators(atv_rhs);
   VectorXd atv_sol(n);
   atv_rhs.supernodes->GatherInto(atv_sol);
@@ -1654,19 +1643,10 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   EXPECT_LT(err_at, 1e-10);
 
   // --- Test generic interface: AccumulateQx ---
-  fprintf(stderr, "  AccumulateQx\n"); fflush(stderr);
   auto qx_rhs = kkt->MakeTreeRHS();
   qx_rhs.SetZero();
   kkt->AccumulateQx(x_rhs, qx_rhs);
-  fprintf(stderr, "  AccumulateQx done\n"); fflush(stderr);
   kkt->GatherSeparators(qx_rhs);
-  fprintf(stderr, "  GatherSep done\n"); fflush(stderr);
-  {
-    VectorXd qx_sol(n);
-    fprintf(stderr, "  calling GatherInto\n"); fflush(stderr);
-    qx_rhs.supernodes->GatherInto(qx_sol);
-    fprintf(stderr, "  GatherInto done\n"); fflush(stderr);
-  }
   VectorXd qx_sol(n);
   qx_rhs.supernodes->GatherInto(qx_sol);
 
@@ -1715,13 +1695,13 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
     auto* asm2_ptr = asm2.get();
     cm.AddCustomAssembler(std::move(asm2));
 
-    auto qasm1 = std::make_unique<SparseQuadraticTermAssembler>(
-        Eigen::SparseMatrix<double>(Q1.sparseView()), vars);
+    Eigen::SparseMatrix<double> Q1s = Q1.sparseView();
+    auto qasm1 = std::make_unique<SparseQuadraticTermAssembler>(Q1s, vars);
     auto* qasm1_ptr = qasm1.get();
     cm.AddCustomAssembler(std::move(qasm1));
 
-    auto qasm2 = std::make_unique<SparseQuadraticTermAssembler>(
-        Eigen::SparseMatrix<double>(Q2.sparseView()), vars);
+    Eigen::SparseMatrix<double> Q2s = Q2.sparseView();
+    auto qasm2 = std::make_unique<SparseQuadraticTermAssembler>(Q2s, vars);
     auto* qasm2_ptr = qasm2.get();
     cm.AddCustomAssembler(std::move(qasm2));
 

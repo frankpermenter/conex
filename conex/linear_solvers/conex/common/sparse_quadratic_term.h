@@ -6,6 +6,7 @@
 
 #include "conex/common/block_partition.h"
 #include "conex/common/block_variable.h"
+#include "conex/common/error_checking_macros.h"
 #include "conex/common/supernodal_assembler_base.h"
 #include "conex/common/tree_rhs.h"
 #include <Eigen/Dense>
@@ -79,27 +80,41 @@ class DenseQuadraticTermLazyEvaluator : public BlockAssembler {
       const auto& vi = vector_blocks_[i];
       for (int j = 0; j < nv; ++j) {
         const auto& vj = vector_blocks_[j];
+        CONEX_DEMAND(vi.q_start + vi.length <= Q_perm_.rows() &&
+                     vj.q_start + vj.length <= Q_perm_.cols(),
+                     "Q_perm_ block out of bounds");
         auto Q_sub = Q_perm_.block(vi.q_start, vj.q_start, vi.length, vj.length);
-        // Read x from block j, multiply, accumulate into block i.
         if (vj.dest_is_sn) {
-          auto x_block = x_sn.block(vj.dest_block)
-              .middleRows(vj.dest_offset, vj.length);
+          auto xblk = x_sn.block(vj.dest_block);
+          CONEX_DEMAND(vj.dest_offset + vj.length <= xblk.rows(),
+                       "VBC Qx sn read out of bounds");
+          auto x_block = xblk.middleRows(vj.dest_offset, vj.length);
           if (vi.dest_is_sn) {
-            out_sn.block(vi.dest_block)
-                .middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
+            auto oblk = out_sn.block(vi.dest_block);
+            CONEX_DEMAND(vi.dest_offset + vi.length <= oblk.rows(),
+                         "VBC Qx sn write out of bounds");
+            oblk.middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
           } else {
-            out_sep.block(vi.dest_block, nc)
-                .middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
+            auto oblk = out_sep.block(vi.dest_block, nc);
+            CONEX_DEMAND(vi.dest_offset + vi.length <= oblk.rows(),
+                         "VBC Qx sep write out of bounds");
+            oblk.middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
           }
         } else {
-          auto x_block = x_sep.block(vj.dest_block, nc)
-              .middleRows(vj.dest_offset, vj.length);
+          auto xblk = x_sep.block(vj.dest_block, nc);
+          CONEX_DEMAND(vj.dest_offset + vj.length <= xblk.rows(),
+                       "VBC Qx sep read out of bounds");
+          auto x_block = xblk.middleRows(vj.dest_offset, vj.length);
           if (vi.dest_is_sn) {
-            out_sn.block(vi.dest_block)
-                .middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
+            auto oblk = out_sn.block(vi.dest_block);
+            CONEX_DEMAND(vi.dest_offset + vi.length <= oblk.rows(),
+                         "VBC Qx sn write out of bounds");
+            oblk.middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
           } else {
-            out_sep.block(vi.dest_block, nc)
-                .middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
+            auto oblk = out_sep.block(vi.dest_block, nc);
+            CONEX_DEMAND(vi.dest_offset + vi.length <= oblk.rows(),
+                         "VBC Qx sep write out of bounds");
+            oblk.middleRows(vi.dest_offset, vi.length) += Q_sub * x_block;
           }
         }
       }

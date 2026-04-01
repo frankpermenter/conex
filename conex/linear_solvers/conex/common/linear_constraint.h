@@ -90,6 +90,7 @@ class GramEvaluator : public BlockAssembler {
     vector_blocks_ = blocks;
   }
 
+
   // Accumulate A_perm_^T * V into supernode blocks and separator scratch.
   // V is (m x batch).  Writes directly to parent destinations.
   template <typename SepAccessor>
@@ -99,11 +100,15 @@ class GramEvaluator : public BlockAssembler {
     for (const auto& vbc : vector_blocks_) {
       auto atv = A_perm_.middleCols(vbc.q_start, vbc.length).transpose() * V;
       if (vbc.dest_is_sn) {
-        supernodes.block(vbc.dest_block)
-            .middleRows(vbc.dest_offset, vbc.length) += atv;
+        auto blk = supernodes.block(vbc.dest_block);
+        CONEX_DEMAND(vbc.dest_offset + vbc.length <= blk.rows(),
+                     "VBC sn write out of bounds");
+        blk.middleRows(vbc.dest_offset, vbc.length) += atv;
       } else {
-        sep.block(vbc.dest_block, nc)
-            .middleRows(vbc.dest_offset, vbc.length) += atv;
+        auto blk = sep.block(vbc.dest_block, nc);
+        CONEX_DEMAND(vbc.dest_offset + vbc.length <= blk.rows(),
+                     "VBC sep write out of bounds");
+        blk.middleRows(vbc.dest_offset, vbc.length) += atv;
       }
     }
   }
@@ -116,13 +121,15 @@ class GramEvaluator : public BlockAssembler {
     for (const auto& vbc : vector_blocks_) {
       auto cols = A_perm_.middleCols(vbc.q_start, vbc.length);
       if (vbc.dest_is_sn) {
-        result.noalias() += cols *
-            supernodes.block(vbc.dest_block)
-                .middleRows(vbc.dest_offset, vbc.length);
+        auto blk = supernodes.block(vbc.dest_block);
+        CONEX_DEMAND(vbc.dest_offset + vbc.length <= blk.rows(),
+                     "VBC sn read out of bounds");
+        result.noalias() += cols * blk.middleRows(vbc.dest_offset, vbc.length);
       } else {
-        result.noalias() += cols *
-            sep.block(vbc.dest_block, nc)
-                .middleRows(vbc.dest_offset, vbc.length);
+        auto blk = sep.block(vbc.dest_block, nc);
+        CONEX_DEMAND(vbc.dest_offset + vbc.length <= blk.rows(),
+                     "VBC sep read out of bounds");
+        result.noalias() += cols * blk.middleRows(vbc.dest_offset, vbc.length);
       }
     }
     return result;

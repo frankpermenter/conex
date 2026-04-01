@@ -350,9 +350,6 @@ void T::ScatterSeparators(const BlockPartition& supernodes,
 void T::GatherSeparators(BlockPartition& supernodes,
                           const SeparatorScratch& scratch) const {
   const int nc = supernodes.cols();
-  fprintf(stderr, "    GatherSep: nc=%d, num_solve=%d, scratch.total=%d\n",
-          nc, static_cast<int>(solve_order_.size()), scratch.total_rows);
-  fflush(stderr);
 
   // Bottom-up: accumulate child separator data into parent sn/sep.
   const int num_solve = static_cast<int>(solve_order_.size());
