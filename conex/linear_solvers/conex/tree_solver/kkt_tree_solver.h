@@ -423,11 +423,20 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   }
 
   // Register assemblers for the generic interface.
+  // Legacy: top-level assemblers (used by Solver::RegisterAssemblersWithTreeSolver).
   void RegisterLinearAssembler(class SparseLinearConstraintAssembler* a) {
     linear_assemblers_.push_back(a);
   }
   void RegisterQuadraticAssembler(class SparseQuadraticTermAssembler* a) {
     quadratic_assemblers_.push_back(a);
+  }
+
+  // Register a decomposed sub-assembler for the generic interface.
+  void RegisterLinearSubAssembler(class LinearConstraint* lc) {
+    linear_sub_assemblers_.push_back(lc);
+  }
+  void RegisterQuadraticSubAssembler(class DenseQuadraticTermLazyEvaluator* eval) {
+    quadratic_sub_assemblers_.push_back(eval);
   }
 
   // Populate a sep scratch from a BlockPartition's supernode blocks.
@@ -520,6 +529,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   mutable SeparatorScratch sep_scratch_out_;
   std::vector<class SparseLinearConstraintAssembler*> linear_assemblers_;
   std::vector<class SparseQuadraticTermAssembler*> quadratic_assemblers_;
+  std::vector<class LinearConstraint*> linear_sub_assemblers_;
+  std::vector<class DenseQuadraticTermLazyEvaluator*> quadratic_sub_assemblers_;
   // Per-node precomputed child scatter info for blocked solve.
   struct ChildScatterOp {
     int child_block_index;

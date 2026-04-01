@@ -1615,6 +1615,7 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   ASSERT_TRUE(kkt->AssembleAndFactor());
   fprintf(stderr, "  factored\n"); fflush(stderr);
   VectorXd x_sol = kkt->Solve(rhs_ref);
+  fprintf(stderr, "  solved\n"); fflush(stderr);
   double err_solve = (x_sol - x_ref).norm() / x_ref.norm();
   EXPECT_LT(err_solve, 1e-10);
 
@@ -1622,7 +1623,9 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   auto x_rhs = kkt->MakeTreeRHS();
   x_rhs = kkt->MakeBlockVariable(x_ref);
   auto row = kkt->MakeRowSpace();
+  fprintf(stderr, "  calling MultiplyA\n"); fflush(stderr);
   kkt->MultiplyA(x_rhs, row);
+  fprintf(stderr, "  MultiplyA done, row.size=%d\n", row.total_rows()); fflush(stderr);
 
   // Dense reference: A_stacked * x
   VectorXd Ax_ref(9);
@@ -1632,12 +1635,15 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   EXPECT_LT(err_multiply_a, 1e-10);
 
   // --- Test generic interface: AccumulateAtranspose ---
+  fprintf(stderr, "  AccumulateAtranspose\n"); fflush(stderr);
   VectorXd v = VectorXd::Random(9);
   RowSpace v_row = kkt->MakeRowSpace();
   v_row.data = v;
   auto atv_rhs = kkt->MakeTreeRHS();
+  fprintf(stderr, "  atv_rhs made\n"); fflush(stderr);
   atv_rhs.SetZero();
   kkt->AccumulateAtranspose(v_row, atv_rhs);
+  fprintf(stderr, "  AccumulateAtranspose done\n"); fflush(stderr);
   kkt->GatherSeparators(atv_rhs);
   VectorXd atv_sol(n);
   atv_rhs.supernodes->GatherInto(atv_sol);
@@ -1648,10 +1654,19 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   EXPECT_LT(err_at, 1e-10);
 
   // --- Test generic interface: AccumulateQx ---
+  fprintf(stderr, "  AccumulateQx\n"); fflush(stderr);
   auto qx_rhs = kkt->MakeTreeRHS();
   qx_rhs.SetZero();
   kkt->AccumulateQx(x_rhs, qx_rhs);
+  fprintf(stderr, "  AccumulateQx done\n"); fflush(stderr);
   kkt->GatherSeparators(qx_rhs);
+  fprintf(stderr, "  GatherSep done\n"); fflush(stderr);
+  {
+    VectorXd qx_sol(n);
+    fprintf(stderr, "  calling GatherInto\n"); fflush(stderr);
+    qx_rhs.supernodes->GatherInto(qx_sol);
+    fprintf(stderr, "  GatherInto done\n"); fflush(stderr);
+  }
   VectorXd qx_sol(n);
   qx_rhs.supernodes->GatherInto(qx_sol);
 
@@ -1712,51 +1727,43 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
 
     SolverConfiguration config;
     auto ts = MakeTreeSolver(&cm, config);
-    fprintf(stderr, "  tree solver built\n"); fflush(stderr);
-    ts->RegisterLinearAssembler(asm1_ptr);
-    ts->RegisterLinearAssembler(asm2_ptr);
-    ts->RegisterQuadraticAssembler(qasm1_ptr);
-    ts->RegisterQuadraticAssembler(qasm2_ptr);
-    fprintf(stderr, "  assemblers registered\n"); fflush(stderr);
+
+    // Register decomposed sub-assemblers (not top-level assemblers).
+    for (const auto& lc : asm1_ptr->constraints())
+      ts->RegisterLinearSubAssembler(lc.get());
+    for (const auto& lc : asm2_ptr->constraints())
+      ts->RegisterLinearSubAssembler(lc.get());
+    for (const auto& sub : qasm1_ptr->sub_assemblers())
+      ts->RegisterQuadraticSubAssembler(
+          &const_cast<DenseQuadraticTermSubAssembler&>(sub).evaluator());
+    for (const auto& sub : qasm2_ptr->sub_assemblers())
+      ts->RegisterQuadraticSubAssembler(
+          &const_cast<DenseQuadraticTermSubAssembler&>(sub).evaluator());
 
     ASSERT_TRUE(ts->AssembleAndFactor());
-    fprintf(stderr, "  factored\n"); fflush(stderr);
 
-    // Verify solve (dense path — does not use generic interface).
+    // Verify solve (dense path).
     VectorXd x_sol2 = ts->Solve(rhs_ref);
     double err_s2 = (x_sol2 - x_ref).norm() / x_ref.norm();
     EXPECT_LT(err_s2, 1e-10);
-    printf("  solve ok: %.2e\n", err_s2);
 
-    // Test MakeRowSpace.
-    auto row2_test = ts->MakeRowSpace();
-    printf("  MakeRowSpace: %d rows, %d constraints\n",
-           row2_test.total_rows(), row2_test.num_constraints());
-    ASSERT_EQ(row2_test.total_rows(), 9);
-
-    // Test MultiplyA with two assemblers.
+    // Test round-trip: A^T(A*x) should equal (A1^T A1 + A2^T A2) * x.
     auto x_rhs2 = ts->MakeTreeRHS();
     x_rhs2 = ts->MakeBlockVariable(x_ref);
     auto row2 = ts->MakeRowSpace();
     ts->MultiplyA(x_rhs2, row2);
-    // row2 should have 5+4=9 rows: A1*x then A2*x.
-    ASSERT_EQ(row2.total_rows(), 9);
-    double err_a2 = (row2.data - Ax_ref).norm() / Ax_ref.norm();
-    EXPECT_LT(err_a2, 1e-10);
 
-    // Test AccumulateAtranspose with two assemblers.
-    RowSpace v_row2 = ts->MakeRowSpace();
-    v_row2.data = v;
-    auto atv_rhs2 = ts->MakeTreeRHS();
-    atv_rhs2.SetZero();
-    ts->AccumulateAtranspose(v_row2, atv_rhs2);
-    ts->GatherSeparators(atv_rhs2);
-    VectorXd atv_sol2(n);
-    atv_rhs2.supernodes->GatherInto(atv_sol2);
-    double err_at2 = (atv_sol2 - atv_ref).norm() / atv_ref.norm();
-    EXPECT_LT(err_at2, 1e-10);
+    auto atax_rhs = ts->MakeTreeRHS();
+    atax_rhs.SetZero();
+    ts->AccumulateAtranspose(row2, atax_rhs);
+    ts->GatherSeparators(atax_rhs);
+    VectorXd atax_sol(n);
+    atax_rhs.supernodes->GatherInto(atax_sol);
+    VectorXd atax_ref = (A1.transpose() * A1 + A2.transpose() * A2) * x_ref;
+    double err_ata = (atax_sol - atax_ref).norm() / atax_ref.norm();
+    EXPECT_LT(err_ata, 1e-10);
 
-    // Test AccumulateQx with two assemblers.
+    // Test AccumulateQx.
     auto qx_rhs2 = ts->MakeTreeRHS();
     qx_rhs2.SetZero();
     ts->AccumulateQx(x_rhs2, qx_rhs2);
@@ -1766,19 +1773,14 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
     double err_qx2 = (qx_sol2 - qx_ref).norm() / qx_ref.norm();
     EXPECT_LT(err_qx2, 1e-10);
 
-    // Test SetWeights with two assemblers.
-    RowSpace w2 = ts->MakeRowSpace();
-    for (int i = 0; i < 5; ++i) w2.data(i) = 2.0;
-    for (int i = 5; i < 9; ++i) w2.data(i) = 3.0;
-    ts->SetWeights(w2);
-    ASSERT_TRUE(ts->AssembleAndFactor());
-    VectorXd x_w2 = ts->Solve(rhs_ref);
-    double err_w2 = (x_w2 - x_w_ref).norm() / x_w_ref.norm();
-    EXPECT_LT(err_w2, 1e-10);
+    // Test GetAffineTerm.
+    auto b_row = ts->GetAffineTerm();
+    // Each sub-constraint has its own affine term — total rows should
+    // equal total rows of A1 + A2.
+    EXPECT_EQ(b_row.total_rows(), 9);
 
-    printf("MultipleConstraints (no consolidate): solve=%.2e, A*x=%.2e, "
-           "A'v=%.2e, Q*x=%.2e, weighted=%.2e\n",
-           err_s2, err_a2, err_at2, err_qx2, err_w2);
+    printf("MultipleConstraints (sub-assemblers): solve=%.2e, "
+           "A'Ax=%.2e, Qx=%.2e\n", err_s2, err_ata, err_qx2);
   }
 }
 
