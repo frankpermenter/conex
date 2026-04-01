@@ -1,4 +1,5 @@
 #pragma once
+#include <map>
 #include <set>
 #include <vector>
 
@@ -10,27 +11,34 @@ struct CliqueTree {
   std::vector<int> node_to_parent;
   std::vector<int> post_order_position_to_clique;
 
-  // Check the running intersection property: for every variable v in
-  // clique c, the set of cliques containing v forms a connected subtree.
-  // Returns true if the property holds.
+  // Check the running intersection property via two conditions:
+  // 1) Each clique's separator is contained in the parent clique.
+  // 2) Each variable is a supernode of exactly one clique.
   bool CheckRunningIntersectionProperty() const {
     int nc = static_cast<int>(supernodes.size());
+
+    // Check 1: separator ⊆ parent clique.
     for (int c = 0; c < nc; ++c) {
-      std::set<int> vars(supernodes[c].begin(), supernodes[c].end());
-      vars.insert(separators[c].begin(), separators[c].end());
-      for (int v : vars) {
-        bool found_gap = false;
-        for (int a = node_to_parent[c]; a >= 0; a = node_to_parent[a]) {
-          std::set<int> a_vars(supernodes[a].begin(), supernodes[a].end());
-          a_vars.insert(separators[a].begin(), separators[a].end());
-          if (a_vars.count(v)) {
-            if (found_gap) return false;
-            break;
-          }
-          found_gap = true;
-        }
+      int p = node_to_parent[c];
+      if (p < 0) continue;  // root has no parent
+      std::set<int> parent_vars(supernodes[p].begin(), supernodes[p].end());
+      parent_vars.insert(separators[p].begin(), separators[p].end());
+      for (int v : separators[c]) {
+        if (!parent_vars.count(v)) return false;
       }
     }
+
+    // Check 2: each variable is a supernode of exactly one clique.
+    std::map<int, int> supernode_count;
+    for (int c = 0; c < nc; ++c) {
+      for (int v : supernodes[c]) {
+        supernode_count[v]++;
+      }
+    }
+    for (const auto& [v, count] : supernode_count) {
+      if (count != 1) return false;
+    }
+
     return true;
   }
 };

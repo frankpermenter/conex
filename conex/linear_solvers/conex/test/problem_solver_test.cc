@@ -1576,15 +1576,19 @@ TEST(CliqueTree, RunningIntersectionProperty) {
   auto tree = MakeCliqueTreeMinDegreeFromRowSupports(supports);
   EXPECT_TRUE(tree.CheckRunningIntersectionProperty());
 
-  // Manually construct a tree that violates RIP:
-  // clique 0 = {0,1}, clique 1 = {2,3}, clique 2 = {0,3}
-  // parent: 1→0, 2→1.  Variable 0 is in clique 0 and clique 2
-  // but not in clique 1 — gap in the path.
-  CliqueTree bad;
-  bad.supernodes = {{0, 1}, {2, 3}, {0, 3}};
-  bad.separators = {{}, {}, {}};
-  bad.node_to_parent = {-1, 0, 1};
-  EXPECT_FALSE(bad.CheckRunningIntersectionProperty());
+  // Violates check 2: variable 0 is a supernode of two cliques.
+  CliqueTree bad_dup;
+  bad_dup.supernodes = {{0, 1}, {2, 3}, {0, 3}};
+  bad_dup.separators = {{}, {}, {}};
+  bad_dup.node_to_parent = {-1, 0, 1};
+  EXPECT_FALSE(bad_dup.CheckRunningIntersectionProperty());
+
+  // Violates check 1: separator {5} of clique 1 is not in parent clique 0.
+  CliqueTree bad_sep;
+  bad_sep.supernodes = {{0, 1}, {2, 3}};
+  bad_sep.separators = {{}, {5}};
+  bad_sep.node_to_parent = {-1, 0};
+  EXPECT_FALSE(bad_sep.CheckRunningIntersectionProperty());
 }
 
 }  // namespace
