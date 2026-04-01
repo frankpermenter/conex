@@ -133,7 +133,7 @@ SparseLinearConstraintAssembler::DecomposeRaw(
 SparseLinearConstraintAssembler::SparseLinearConstraintAssembler(
     std::unique_ptr<SparseLinearConstraint> slc,
     const std::vector<int>& all_variables)
-    : SupernodalAssemblerBase(all_variables), slc_(std::move(slc)) {}
+    : CliqueProvider(all_variables), slc_(std::move(slc)) {}
 
 std::vector<SupernodalAssemblerBase*>
 SparseLinearConstraintAssembler::Decompose(

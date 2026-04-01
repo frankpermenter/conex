@@ -92,26 +92,16 @@ const std::vector<std::vector<int>>& T::equality_constraint_multipliers()
   return dual_vars_;
 }
 
-std::vector<SupernodalAssemblerBase*> T::clique_assemblers() {
-  std::vector<SupernodalAssemblerBase*> supernodal_assemblers_pointers_;
-  for (auto& q : equality_constraints_.assemblers) {
-    supernodal_assemblers_pointers_.push_back(&q);
-  }
-  for (auto* q : custom_assemblers_) {
-    supernodal_assemblers_pointers_.push_back(q);
-  }
-  return supernodal_assemblers_pointers_;
+std::vector<CliqueProvider*> T::clique_assemblers() {
+  // All constraints are now registered via AddCustomAssembler as
+  // CliqueProvider*.  The old equality_constraints_ path is unused.
+  return custom_assemblers_;
 }
 
-std::vector<const SupernodalAssemblerBase*> T::clique_assemblers() const {
-  std::vector<const SupernodalAssemblerBase*> supernodal_assemblers_pointers_;
-  for (auto& q : equality_constraints_.assemblers) {
-    supernodal_assemblers_pointers_.push_back(&q);
-  }
-  for (auto* q : custom_assemblers_) {
-    supernodal_assemblers_pointers_.push_back(q);
-  }
-  return supernodal_assemblers_pointers_;
+std::vector<const CliqueProvider*> T::clique_assemblers() const {
+  std::vector<const CliqueProvider*> result(custom_assemblers_.begin(),
+                                             custom_assemblers_.end());
+  return result;
 }
 
 }  // namespace conex

@@ -13,8 +13,9 @@
 namespace conex {
 using std::vector;
 
+template <typename T>
 ContributionType ClassifyCliqueContribution(
-    const SupernodalAssemblerBase* assembler, int number_of_primal_variables) {
+    const T* assembler, int number_of_primal_variables) {
   for (auto v : assembler->variables()) {
     if (v >= number_of_primal_variables) {
       return ContributionType::kIndefinite;
@@ -24,7 +25,7 @@ ContributionType ClassifyCliqueContribution(
 }
 
 std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
-    const std::vector<SupernodalAssemblerBase*>& clique_assemblers_ptrs_,
+    const std::vector<CliqueProvider*>& clique_assemblers_ptrs_,
     int num_primal_vars,
     const SolverConfiguration& config) {
   vector<vector<int>> cliques;

@@ -54,7 +54,7 @@ class SparseEqualityConstraint {
 // Assembler that decomposes sparse equality constraints into per-clique
 // SupernodalAssemblerEqualities.  Each row of C gets a dual variable;
 // the indefinite [0 C'; C 0] blocks are split across maximal cliques.
-class SparseEqualityConstraintAssembler : public SupernodalAssemblerBase {
+class SparseEqualityConstraintAssembler : public CliqueProvider {
  public:
   // primal_variables: column indices of C that are nonzero.
   // dual_variables: one per row of C (size == C.rows()).

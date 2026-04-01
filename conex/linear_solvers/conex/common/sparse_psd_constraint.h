@@ -17,7 +17,7 @@ using DensePSDSubAssembler = DenseQuadraticTermSubAssembler;
 // Top-level assembler for a sparse PSD matrix Q.
 // Provides cliques (edges from Q's sparsity) to the clique tree builder.
 // Decompose() extracts per-clique dense sub-blocks.
-class SparsePSDAssembler : public SupernodalAssemblerBase {
+class SparsePSDAssembler : public CliqueProvider {
  public:
   SparsePSDAssembler(const Eigen::SparseMatrix<double>& Q,
                       const std::vector<int>& variables);
@@ -40,7 +40,7 @@ class SparsePSDAssembler : public SupernodalAssemblerBase {
   }
 
   // Not used directly — Decompose creates sub-assemblers.
-  BlockAssembler* GetBlockAssembler() override { return nullptr; }
+  BlockAssembler* GetBlockAssembler() { return nullptr; }
 
  private:
   const Eigen::SparseMatrix<double>* Q_sparse_ = nullptr;

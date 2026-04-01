@@ -64,9 +64,52 @@ class BlockAssembler {
       const std::vector<VectorBlockContribution>& /*blocks*/) {}
 };
 
-// Base class for assemblers that feed data into the tree solver.
-// Subclasses provide a BlockAssembler via GetBlockAssembler() so the
-// tree solver can write blocks directly into subsystem storage.
+// Construction-time interface: provides sparsity (cliques), variable
+// lists, and Decompose for the clique tree builder.
+class CliqueProvider {
+ public:
+  CliqueProvider() = default;
+  CliqueProvider(const std::vector<int>& primal_vars)
+      : primal_variables_(primal_vars) {}
+  CliqueProvider(const std::vector<int>& primal_vars,
+                 const std::vector<int>& dual_vars)
+      : primal_variables_(primal_vars), dual_variables_(dual_vars) {}
+  virtual ~CliqueProvider() = default;
+
+  virtual int number_of_variables() const {
+    return primal_variables_.size() + dual_variables_.size();
+  }
+  virtual std::vector<std::vector<int>> get_cliques() const {
+    return {variables()};
+  }
+  virtual std::vector<int> variables() const {
+    std::vector<int> v = primal_variables_;
+    v.insert(v.end(), dual_variables_.begin(), dual_variables_.end());
+    return v;
+  }
+  virtual const std::vector<int>& primal_variables() const {
+    return primal_variables_;
+  }
+  virtual const std::vector<int>& dual_variables() const {
+    return dual_variables_;
+  }
+  virtual bool is_positive_definite() const { return true; }
+  virtual bool is_dynamic() const { return false; }
+
+  // Decompose into per-clique sub-assemblers.
+  virtual std::vector<class SupernodalAssemblerBase*> Decompose(
+      const std::vector<std::vector<int>>& maximal_cliques) = 0;
+
+  void SetPrimalVariables(const std::vector<int>& v) { primal_variables_ = v; }
+  void SetDualVariables(const std::vector<int>& v) { dual_variables_ = v; }
+
+ protected:
+  std::vector<int> primal_variables_;
+  std::vector<int> dual_variables_;
+};
+
+// Runtime sub-assembler base: variable list + BlockAssembler.
+// Produced by CliqueProvider::Decompose.
 class SupernodalAssemblerBase : public IVariableShape {
  public:
   SupernodalAssemblerBase(const std::vector<int>& shared_variables) {

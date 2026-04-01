@@ -16,13 +16,13 @@ namespace conex {
 SparseQuadraticTermAssembler::SparseQuadraticTermAssembler(
     const Eigen::SparseMatrix<double>& Q,
     const std::vector<int>& variables)
-    : SupernodalAssemblerBase(variables),
+    : CliqueProvider(variables),
       Q_sparse_(&Q) {}
 
 SparseQuadraticTermAssembler::SparseQuadraticTermAssembler(
     const Eigen::MatrixXd& Q,
     const std::vector<int>& variables)
-    : SupernodalAssemblerBase(variables),
+    : CliqueProvider(variables),
       Q_dense_(&Q), dense_(true) {}
 
 std::vector<std::vector<int>> SparseQuadraticTermAssembler::get_cliques() const {

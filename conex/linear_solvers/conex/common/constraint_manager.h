@@ -50,12 +50,12 @@ class ConstraintManager {
   }
 
   // Register a custom assembler (caller retains ownership).
-  void AddCustomAssembler(SupernodalAssemblerBase* assembler) {
+  void AddCustomAssembler(CliqueProvider* assembler) {
     custom_assemblers_.push_back(assembler);
   }
 
   // Register a custom assembler (takes ownership).
-  void AddCustomAssembler(std::unique_ptr<SupernodalAssemblerBase> assembler) {
+  void AddCustomAssembler(std::unique_ptr<CliqueProvider> assembler) {
     custom_assemblers_.push_back(assembler.get());
     owned_custom_assemblers_.push_back(std::move(assembler));
   }
@@ -64,8 +64,8 @@ class ConstraintManager {
     return static_cast<int>(custom_assemblers_.size());
   }
 
-  std::vector<SupernodalAssemblerBase*> clique_assemblers();
-  std::vector<const SupernodalAssemblerBase*> clique_assemblers() const;
+  std::vector<CliqueProvider*> clique_assemblers();
+  std::vector<const CliqueProvider*> clique_assemblers() const;
 
   const EqualityConstraintManager& equality_constraints() const {
     return equality_constraints_;
@@ -95,8 +95,8 @@ class ConstraintManager {
 
   EqualityConstraintManager equality_constraints_;
 
-  std::vector<SupernodalAssemblerBase*> custom_assemblers_;
-  std::vector<std::unique_ptr<SupernodalAssemblerBase>> owned_custom_assemblers_;
+  std::vector<CliqueProvider*> custom_assemblers_;
+  std::vector<std::unique_ptr<CliqueProvider>> owned_custom_assemblers_;
   int max_number_of_variables_ = 0;
   int new_dual_variable_start_ = 0;
 

@@ -128,7 +128,7 @@ SparseEqualityConstraintAssembler::SparseEqualityConstraintAssembler(
     std::unique_ptr<SparseEqualityConstraint> sec,
     const std::vector<int>& primal_variables,
     const std::vector<int>& dual_variables)
-    : SupernodalAssemblerBase(primal_variables, dual_variables),
+    : CliqueProvider(primal_variables, dual_variables),
       sec_(std::move(sec)),
       row_to_dual_(dual_variables) {}
 

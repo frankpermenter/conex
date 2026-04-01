@@ -155,7 +155,7 @@ class DenseQuadraticTermSubAssembler : public SupernodalAssemblerBase {
 // Top-level assembler for a sparse quadratic term Q.
 // Provides cliques (edges from Q's sparsity) to the clique tree builder.
 // Decompose() extracts per-clique dense sub-blocks.
-class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
+class SparseQuadraticTermAssembler : public CliqueProvider {
  public:
   SparseQuadraticTermAssembler(const Eigen::SparseMatrix<double>& Q,
                       const std::vector<int>& variables);
@@ -178,7 +178,7 @@ class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
   }
 
   // Not used directly — Decompose creates sub-assemblers.
-  BlockAssembler* GetBlockAssembler() override { return nullptr; }
+  BlockAssembler* GetBlockAssembler() { return nullptr; }
 
   // Access decomposed sub-assemblers (available after Decompose).
   const std::list<DenseQuadraticTermSubAssembler>& sub_assemblers() const {

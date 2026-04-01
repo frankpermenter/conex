@@ -6,7 +6,7 @@
 namespace conex {
 
 std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
-    const std::vector<SupernodalAssemblerBase*>& assemblers,
+    const std::vector<CliqueProvider*>& assemblers,
     int num_primal_variables,
     const SolverConfiguration& config);
 

@@ -15,13 +15,13 @@ namespace conex {
 SparsePSDAssembler::SparsePSDAssembler(
     const Eigen::SparseMatrix<double>& Q,
     const std::vector<int>& variables)
-    : SupernodalAssemblerBase(variables),
+    : CliqueProvider(variables),
       Q_sparse_(&Q) {}
 
 SparsePSDAssembler::SparsePSDAssembler(
     const Eigen::MatrixXd& Q,
     const std::vector<int>& variables)
-    : SupernodalAssemblerBase(variables),
+    : CliqueProvider(variables),
       Q_dense_(&Q), dense_(true) {}
 
 std::vector<std::vector<int>> SparsePSDAssembler::get_cliques() const {

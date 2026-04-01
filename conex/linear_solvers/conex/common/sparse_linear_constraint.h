@@ -57,7 +57,7 @@ class SparseLinearConstraint {
 // Assembler that wraps a SparseLinearConstraint.  Its variables() returns
 // the union of all row supports.  Decompose() splits it into per-clique
 // LinearConstraint assemblers.
-class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
+class SparseLinearConstraintAssembler : public CliqueProvider {
  public:
   SparseLinearConstraintAssembler(
       std::unique_ptr<SparseLinearConstraint> slc,
