@@ -319,25 +319,26 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
   std::iota(vars.begin(), vars.end(), 0);
 
   Problem problem;
-  auto c1 = problem.AddLinearConstraint(A, b, vars);
+  problem.AddLinearConstraint(A, b, vars);
 
   auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
 
-  ASSERT_TRUE(solver.AssembleAndFactor());
+  ASSERT_TRUE(kkt->AssembleAndFactor());
   VectorXd rhs = VectorXd::Random(n);
-  VectorXd x1 = solver.Solve(rhs);
+  VectorXd x1 = kkt->Solve(rhs);
 
   MatrixXd M1 = A.transpose() * A;
   VectorXd x1_ref = M1.ldlt().solve(rhs);
   EXPECT_LT((x1 - x1_ref).norm() / x1_ref.norm(), 1e-10);
 
-  VectorXd weights(m);
-  for (int i = 0; i < m; ++i) weights(i) = i + 1.0;
-  solver.SetWeights(c1, weights);
-  ASSERT_TRUE(solver.AssembleAndFactor());
-  VectorXd x2 = solver.Solve(rhs);
+  RowSpace weights = kkt->MakeRowSpace();
+  for (int i = 0; i < m; ++i) weights.data(i) = i + 1.0;
+  kkt->SetWeights(weights);
+  ASSERT_TRUE(kkt->AssembleAndFactor());
+  VectorXd x2 = kkt->Solve(rhs);
 
-  MatrixXd W = weights.asDiagonal();
+  MatrixXd W = weights.data.asDiagonal();
   MatrixXd M2 = A.transpose() * W * A;
   VectorXd x2_ref = M2.ldlt().solve(rhs);
   double err = (x2 - x2_ref).norm() / x2_ref.norm();
