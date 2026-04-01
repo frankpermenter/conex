@@ -24,8 +24,9 @@ ContributionType ClassifyCliqueContribution(
 }
 
 std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
-    ConstraintManager* c, const SolverConfiguration& config) {
-  auto clique_assemblers_ptrs_ = c->clique_assemblers();
+    const std::vector<SupernodalAssemblerBase*>& clique_assemblers_ptrs_,
+    int num_primal_vars,
+    const SolverConfiguration& config) {
   vector<vector<int>> cliques;
   for (const auto& assembler : clique_assemblers_ptrs_) {
     auto c_cliques = assembler->get_cliques();
@@ -128,7 +129,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     }
 
     // Compute elimination ordering from clique tree (post-order traversal).
-    int num_primal_vars = c->GetNumberOfVariables();
+    // num_primal_vars passed as parameter.
     vector<int> var_to_elim(num_primal_vars, -1);
     {
       int epos = 0;
@@ -196,7 +197,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
       auto subs = assembler->Decompose(maximal_cliques);
       decomposed.insert(decomposed.end(), subs.begin(), subs.end());
     }
-    int num_primal_d = c->GetNumberOfVariables();
+    int num_primal_d = num_primal_vars;
     for (auto* assembler : decomposed) {
       auto adapter =
           std::make_unique<KKTAssemblerToSubsystemAdapter>(assembler);
@@ -233,7 +234,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
   }
 
   // Map each decomposed constraint to its clique (same logic as ClassifyCliques).
-  int num_primal = c->GetNumberOfVariables();
+  int num_primal = num_primal_vars;
   vector<int> decomposed_to_clique(decomposed.size(), -1);
   {
     std::unordered_map<int, int> sn_to_node;
