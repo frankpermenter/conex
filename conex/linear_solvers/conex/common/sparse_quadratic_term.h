@@ -180,21 +180,6 @@ class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
   // Not used directly — Decompose creates sub-assemblers.
   BlockAssembler* GetBlockAssembler() override { return nullptr; }
 
-  // Bind partition info for block-space operations (no-op for now).
-  void BindPartition(const class KKTSolverBase& solver);
-  bool partition_bound() const { return !block_info_.empty(); }
-
-  // Compute Q*x in block space: reads x from partition blocks,
-  // accumulates Q_perm * x_block into result (global vector, size n).
-  Eigen::VectorXd ComputeBlockProduct(
-      const class KKTSolverBase& solver) const;
-
-  // Accumulate Q*x into an existing partition (adds to blocks in-place).
-  // For building the gradient Q*x + c + A^T*v without leaving block space.
-  void AccumulateBlockProduct(
-      class KKTSolverBase& solver,
-      const class BlockPartition& x_partition) const;
-
   // Access decomposed sub-assemblers (available after Decompose).
   const std::list<DenseQuadraticTermSubAssembler>& sub_assemblers() const {
     return owned_sub_assemblers_;
@@ -220,9 +205,6 @@ class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
 
   // Owned sub-assemblers created by Decompose.
   std::list<DenseQuadraticTermSubAssembler> owned_sub_assemblers_;
-  // Per-sub-assembler block mapping (set by BindPartition).
-  struct BlockInfo { int block_index; };
-  std::vector<BlockInfo> block_info_;
 };
 
 }  // namespace conex

@@ -8,7 +8,6 @@
 
 #include "conex/common/constraint.h"
 #include "conex/common/linear_constraint.h"
-#include "conex/common/tree_rhs.h"
 
 namespace conex {
 
@@ -95,51 +94,11 @@ class SparseLinearConstraintAssembler : public SupernodalAssemblerBase {
   const std::vector<RowMapping>& row_map() const { return row_map_; }
   int num_global_rows() const { return num_global_rows_; }
 
-  // Set per-row weights from a global weight vector (size = A.rows()).
-  // Distributes to per-clique W vectors and updates each GramEvaluator.
-  void SetWeights(const Eigen::VectorXd& weights);
-
-  // Compute residuals r = A x - b per-clique, returned as a global vector.
-  // x is the solution in original variable order (size = num columns of A).
-  // Returns a vector of size num_global_rows_.
-  Eigen::VectorXd ComputeResiduals(const Eigen::VectorXd& x) const;
-
-  // Compute residuals using the block partition from a solved system.
-  // The solver must have been used to solve (so the partition is populated).
-  // If BindPartition was called, uses tree-specific fast path; otherwise
-  // gathers globally and falls back to ComputeResiduals.
-  Eigen::VectorXd ComputeBlockResiduals(
-      const class KKTSolverBase& solver) const;
-
-  // Compute A^T * v per-clique, returned as a global vector of size n.
-  // v is a per-row vector (size = num_global_rows_).
-  Eigen::VectorXd ComputeTransposeProduct(const Eigen::VectorXd& v) const;
-
-  // Accumulate A^T * v into a TreeRHS using VectorBlockContributions.
-  // v is a per-row vector (size = num_global_rows_).
-  void ComputeTransposeProduct(const Eigen::VectorXd& v, TreeRHS& rhs) const;
-
-  // Bind partition info after Finalize. Maps each constraint to its
-  // block in the SupernodePartitionMatrix.  Must be called once after
-  // MakeTreeSolver so ComputeBlockResiduals can avoid gather.
-  struct BlockInfo {
-    int block_index;   // index into partition.supernode(k) / separator(k)
-    int sn_count;      // columns of A_perm_ that are in the supernode block
-  };
-  // Get the affine term (b vector) in global row order.
-  Eigen::VectorXd GetAffineTerm() const;
-
-  void BindPartition(const class SymmetricLinearSystemTreeSolver& solver);
-  bool partition_bound() const { return !block_info_.empty(); }
-  const BlockInfo& block_info_at(size_t ci) const { return block_info_[ci]; }
-
  private:
   std::unique_ptr<SparseLinearConstraint> slc_;
 
   // Owned storage for decomposed constraints.
   std::vector<std::unique_ptr<LinearConstraint>> owned_constraints_;
-  // Per-constraint block mapping (set by BindPartition).
-  std::vector<BlockInfo> block_info_;
   // Persistent workspace memory for each LinearConstraint's WorkspaceLinear.
   std::list<Eigen::VectorXd> owned_workspace_memory_;
   // Global row → per-clique mapping (indexed by global row).

@@ -157,36 +157,4 @@ std::vector<SupernodalAssemblerBase*> SparseQuadraticTermAssembler::Decompose(
   return result;
 }
 
-void SparseQuadraticTermAssembler::BindPartition(
-    const KKTSolverBase& /*solver*/) {
-  // No per-sub-assembler binding needed for the current approach.
-  // ComputeBlockProduct gathers globally then uses the sparse Q.
-  block_info_.clear();
-}
-
-Eigen::VectorXd SparseQuadraticTermAssembler::ComputeBlockProduct(
-    const KKTSolverBase& solver) const {
-  // Gather x from partition blocks, then compute Q*x.
-  const int n = solver.number_of_variables();
-  Eigen::VectorXd x_global(n);
-  solver.GatherFromBlocks(x_global);
-  if (Q_sparse_) return (*Q_sparse_) * x_global;
-  if (Q_dense_) return (*Q_dense_) * x_global;
-  return Eigen::VectorXd::Zero(n);
-}
-
-void SparseQuadraticTermAssembler::AccumulateBlockProduct(
-    KKTSolverBase& solver,
-    const BlockPartition& x_partition) const {
-  // Compute Q*x and scatter into the solver's partition.
-  const int n = solver.number_of_variables();
-  Eigen::VectorXd x_global(n);
-  x_partition.GatherInto(x_global);
-  Eigen::VectorXd qx;
-  if (Q_sparse_) qx = (*Q_sparse_) * x_global;
-  else if (Q_dense_) qx = (*Q_dense_) * x_global;
-  else return;
-  solver.ScatterToBlocks(qx);
-}
-
 }  // namespace conex
