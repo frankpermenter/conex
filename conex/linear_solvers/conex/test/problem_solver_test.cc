@@ -181,6 +181,64 @@ TEST(BarrierQP, SolverReuse) {
          result.solve_time_us);
 }
 
+TEST(BarrierQP, ConsolidateMultipleConstraints) {
+  // Same QP as UnconstrainedInsideFeasible but with constraints split
+  // into two separate AddLinearConstraint calls.
+  // min 0.5 x^T I x  s.t.  x1+x2 <= 1, -x1 <= 0, -x2 <= 0
+  const int n = 2;
+
+  Eigen::SparseMatrix<double> Q(n, n);
+  std::vector<Eigen::Triplet<double>> qt;
+  qt.emplace_back(0, 0, 1.0); qt.emplace_back(1, 1, 1.0);
+  Q.setFromTriplets(qt.begin(), qt.end());
+  VectorXd c = VectorXd::Zero(n);
+
+  // Constraint 1: x1 + x2 <= 1.
+  Eigen::SparseMatrix<double> A1(1, n);
+  std::vector<Eigen::Triplet<double>> a1t;
+  a1t.emplace_back(0, 0, 1.0); a1t.emplace_back(0, 1, 1.0);
+  A1.setFromTriplets(a1t.begin(), a1t.end());
+  VectorXd b1(1); b1 << 1.0;
+
+  // Constraint 2: -x1 <= 0, -x2 <= 0.
+  Eigen::SparseMatrix<double> A2(2, n);
+  std::vector<Eigen::Triplet<double>> a2t;
+  a2t.emplace_back(0, 0, -1.0);
+  a2t.emplace_back(1, 1, -1.0);
+  A2.setFromTriplets(a2t.begin(), a2t.end());
+  VectorXd b2(2); b2 << 0.0, 0.0;
+
+  std::vector<int> vars = {0, 1};
+
+  Problem problem;
+  problem.AddLinearConstraint(A1, b1, vars);
+  problem.AddLinearConstraint(A2, b2, vars);
+  problem.AddQuadraticCost(Q, vars);
+
+  auto consolidated = problem.Consolidate();
+  auto [reduced, expansion] = Preprocess(consolidated);
+  VectorXd c_r = expansion.Reduce(c);
+  VectorXd x0_r = expansion.Reduce(VectorXd::Constant(n, 0.3));
+
+  auto solver = Solver::Build(reduced);
+  auto* kkt = solver.solver();
+
+  auto c_rhs = kkt->MakeTreeRHS();
+  c_rhs = kkt->MakeBlockVariable(c_r);
+  auto x = kkt->MakeTreeRHS();
+  x = kkt->MakeBlockVariable(x0_r);
+
+  auto result = SolveBarrierQP(*kkt, c_rhs, x);
+  result.x = expansion.Expand(result.x);
+
+  EXPECT_NEAR(result.x(0), 0.0, 0.01);
+  EXPECT_NEAR(result.x(1), 0.0, 0.01);
+  printf("QP consolidated: obj=%.6f, x=[%.4f, %.4f], gap=%.2e, "
+         "%d outer, %d newton\n",
+         result.objective, result.x(0), result.x(1), result.duality_gap,
+         result.outer_iterations, result.total_newton_steps);
+}
+
 // =====================================================================
 // ProblemSolver tests
 // =====================================================================
