@@ -189,7 +189,14 @@ class SparseQuadraticTermAssembler : public SupernodalAssemblerBase {
   // sep_in must be pre-populated via ScatterSeparators(x).
   void ComputeProduct(const TreeRHS& x,
                       const SeparatorScratch& sep_in,
-                      TreeRHS& rhs) const;
+                      TreeRHS& rhs) const {
+    int nc = x.cols();
+    for (const auto& sub : owned_sub_assemblers_) {
+      sub.evaluator().MultiplyQx(
+          *x.supernodes, sep_in,
+          *rhs.supernodes, *rhs.separators, nc);
+    }
+  }
 
  private:
   const Eigen::SparseMatrix<double>* Q_sparse_ = nullptr;

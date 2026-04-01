@@ -189,15 +189,4 @@ void SparseQuadraticTermAssembler::AccumulateBlockProduct(
   solver.ScatterToBlocks(qx);
 }
 
-void SparseQuadraticTermAssembler::ComputeProduct(
-    const TreeRHS& x, const SeparatorScratch& sep_in,
-    TreeRHS& rhs) const {
-  int nc = x.cols();
-  for (const auto& sub : owned_sub_assemblers_) {
-    sub.evaluator().MultiplyQx(
-        *x.supernodes, sep_in,
-        *rhs.supernodes, *rhs.separators, nc);
-  }
-}
-
 }  // namespace conex
