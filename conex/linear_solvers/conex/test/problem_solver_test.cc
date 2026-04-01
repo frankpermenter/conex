@@ -10,6 +10,7 @@
 #include "conex/algorithms/irls.h"
 #include "conex/algorithms/lqr_tree_solver.h"
 #include "conex/common/problem.h"
+#include "conex/common/clique_ordering.h"
 #include "conex/common/solver.h"
 
 using Eigen::MatrixXd;
@@ -1563,6 +1564,27 @@ TEST(ProblemSolver, GaussianMRF) {
            std::chrono::duration<double, std::micro>(t3 - t2).count(),
            residual);
   }
+}
+
+TEST(CliqueTree, RunningIntersectionProperty) {
+  // Build a valid clique tree from a banded pattern and verify RIP holds.
+  const int n = 20;
+  std::vector<std::vector<int>> supports;
+  for (int i = 0; i < n - 2; ++i)
+    supports.push_back({i, i + 1, i + 2});
+
+  auto tree = MakeCliqueTreeMinDegreeFromRowSupports(supports);
+  EXPECT_TRUE(tree.CheckRunningIntersectionProperty());
+
+  // Manually construct a tree that violates RIP:
+  // clique 0 = {0,1}, clique 1 = {2,3}, clique 2 = {0,3}
+  // parent: 1→0, 2→1.  Variable 0 is in clique 0 and clique 2
+  // but not in clique 1 — gap in the path.
+  CliqueTree bad;
+  bad.supernodes = {{0, 1}, {2, 3}, {0, 3}};
+  bad.separators = {{}, {}, {}};
+  bad.node_to_parent = {-1, 0, 1};
+  EXPECT_FALSE(bad.CheckRunningIntersectionProperty());
 }
 
 }  // namespace

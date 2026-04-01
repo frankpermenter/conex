@@ -364,19 +364,8 @@ TreeSolverBuilder::Result TreeSolverBuilder::Build() {
     }
 
     if (check_rip_) {
-      for (int c = 0; c < num_cliques; ++c) {
-        for (int v : cliques_[c].all_vars) {
-          bool found_gap = false;
-          for (int a = cliques_[c].parent; a >= 0; a = cliques_[a].parent) {
-            if (cliques_[a].all_vars.count(v)) {
-              CONEX_DEMAND(!found_gap,
-                           "Running intersection property violated.");
-              break;
-            }
-            found_gap = true;
-          }
-        }
-      }
+      CONEX_DEMAND(tree.CheckRunningIntersectionProperty(),
+                   "Running intersection property violated.");
     }
 
     std::set<int> all_vars;
