@@ -123,10 +123,11 @@ struct TreeRHS {
     int nc = cols();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) += other.supernodes->block(k);
-    if (!blocks_fully_gathered && !other.blocks_fully_gathered) {
+    if (!other.blocks_fully_gathered) {
       for (int k = 0; k < nb; ++k)
         separators->block(k, nc) += other.separators->block(k, nc);
     }
+    blocks_fully_gathered = blocks_fully_gathered && other.blocks_fully_gathered;
     return *this;
   }
 
@@ -135,10 +136,11 @@ struct TreeRHS {
     int nc = cols();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) -= other.supernodes->block(k);
-    if (!blocks_fully_gathered && !other.blocks_fully_gathered) {
+    if (!other.blocks_fully_gathered) {
       for (int k = 0; k < nb; ++k)
         separators->block(k, nc) -= other.separators->block(k, nc);
     }
+    blocks_fully_gathered = blocks_fully_gathered && other.blocks_fully_gathered;
     return *this;
   }
 
@@ -179,10 +181,11 @@ struct TreeRHS {
     int nc = cols();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) += alpha * other.supernodes->block(k);
-    if (!blocks_fully_gathered && !other.blocks_fully_gathered) {
+    if (!other.blocks_fully_gathered) {
       for (int k = 0; k < nb; ++k)
         separators->block(k, nc) += alpha * other.separators->block(k, nc);
     }
+    blocks_fully_gathered = blocks_fully_gathered && other.blocks_fully_gathered;
     return *this;
   }
 };
