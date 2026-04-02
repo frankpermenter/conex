@@ -66,18 +66,18 @@ struct SeparatorScratch {
 // clique plus unscattered separator contributions.  The forward pass
 // consumes separator data incrementally (child sep → parent sn/sep).
 //
-// is_scattered: if true, separator data has been gathered into
-// supernode blocks (e.g. after GatherSeparators).  If false,
-// separator contributions are still in the scratch buffer.
+// blocks_fully_gathered: if true, all data is in supernode blocks
+// and separator scratch can be ignored.  If false, separator
+// contributions are still in the scratch buffer.
 struct TreeRHS {
   BlockPartition* supernodes;
   SeparatorScratch* separators;
-  bool is_scattered = false;
+  bool blocks_fully_gathered = false;
 
   void SetZero() {
     supernodes->SetZero();
     separators->SetZero();
-    is_scattered = false;
+    blocks_fully_gathered = false;
   }
 
   int cols() const { return supernodes->cols(); }
@@ -89,7 +89,7 @@ struct TreeRHS {
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) = bv.partition().block(k);
     separators->SetZero();
-    is_scattered = true;
+    blocks_fully_gathered = true;
     return *this;
   }
 
@@ -102,7 +102,7 @@ struct TreeRHS {
       supernodes->block(k) = other.supernodes->block(k);
     for (int k = 0; k < nb; ++k)
       separators->block(k, nc) = other.separators->block(k, nc);
-    is_scattered = other.is_scattered;
+    blocks_fully_gathered = other.blocks_fully_gathered;
     return *this;
   }
 
@@ -111,7 +111,7 @@ struct TreeRHS {
     int nc = cols();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) *= alpha;
-    if (!is_scattered) {
+    if (!blocks_fully_gathered) {
       for (int k = 0; k < nb; ++k)
         separators->block(k, nc) *= alpha;
     }
@@ -123,7 +123,7 @@ struct TreeRHS {
     int nc = cols();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) += other.supernodes->block(k);
-    if (!is_scattered && !other.is_scattered) {
+    if (!blocks_fully_gathered && !other.blocks_fully_gathered) {
       for (int k = 0; k < nb; ++k)
         separators->block(k, nc) += other.separators->block(k, nc);
     }
@@ -135,7 +135,7 @@ struct TreeRHS {
     int nc = cols();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) -= other.supernodes->block(k);
-    if (!is_scattered && !other.is_scattered) {
+    if (!blocks_fully_gathered && !other.blocks_fully_gathered) {
       for (int k = 0; k < nb; ++k)
         separators->block(k, nc) -= other.separators->block(k, nc);
     }
@@ -179,7 +179,7 @@ struct TreeRHS {
     int nc = cols();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) += alpha * other.supernodes->block(k);
-    if (!is_scattered && !other.is_scattered) {
+    if (!blocks_fully_gathered && !other.blocks_fully_gathered) {
       for (int k = 0; k < nb; ++k)
         separators->block(k, nc) += alpha * other.separators->block(k, nc);
     }

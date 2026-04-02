@@ -416,7 +416,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   RowSpace GetAffineTerm() override;
   void GatherSeparators(TreeRHS& rhs) override {
     GatherSeparators(*rhs.supernodes, *rhs.separators);
-    rhs.is_scattered = true;
+    rhs.blocks_fully_gathered = true;
   }
   void SolveTreeRHS(TreeRHS& rhs) override {
     SolveBlockedInPlace(*rhs.supernodes, *rhs.separators);

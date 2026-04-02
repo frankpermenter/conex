@@ -121,7 +121,7 @@ class KKTSolverBase {
     TreeRHS rhs;
     rhs.supernodes = nullptr;
     rhs.separators = nullptr;
-    rhs.is_scattered = true;
+    rhs.blocks_fully_gathered = true;
     // Allocate partition.
     auto p = MakePartition();
     p->Resize(cols);
@@ -148,7 +148,7 @@ class KKTSolverBase {
   // Gather unscattered separator data into supernode blocks.
   // No-op for dense solver (data is always scattered).
   virtual void GatherSeparators(TreeRHS& rhs) {
-    rhs.is_scattered = true;
+    rhs.blocks_fully_gathered = true;
   }
 
   virtual void SolveTreeRHS(TreeRHS& rhs) {

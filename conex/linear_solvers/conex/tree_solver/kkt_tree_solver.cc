@@ -1033,7 +1033,7 @@ TreeRHS T::MakeTreeRHS(int cols) {
   sep->Init(subsystems_, cols);
   rhs.separators = sep.get();
   owned_tree_rhs_scratches_.push_back(std::move(sep));
-  rhs.is_scattered = false;
+  rhs.blocks_fully_gathered = false;
   return rhs;
 }
 
@@ -1051,10 +1051,10 @@ RowSpace T::MakeRowSpace() {
 }
 
 void T::MultiplyA(const TreeRHS& x, RowSpace& out) {
-  if (x.is_scattered) {
+  if (x.blocks_fully_gathered) {
     ScatterSeparators(*x.supernodes, sep_scratch_);
   }
-  const auto& sep_read = x.is_scattered ? sep_scratch_ : *x.separators;
+  const auto& sep_read = x.blocks_fully_gathered ? sep_scratch_ : *x.separators;
   int nc = x.cols();
   for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
     auto result = linear_sub_assemblers_[ci]->gram().MultiplyA(
@@ -1072,10 +1072,10 @@ void T::AccumulateAtranspose(const RowSpace& v, TreeRHS& rhs) {
 }
 
 void T::AccumulateQx(const TreeRHS& x, TreeRHS& rhs) {
-  if (x.is_scattered) {
+  if (x.blocks_fully_gathered) {
     ScatterSeparators(*x.supernodes, sep_scratch_);
   }
-  const auto& sep_read = x.is_scattered ? sep_scratch_ : *x.separators;
+  const auto& sep_read = x.blocks_fully_gathered ? sep_scratch_ : *x.separators;
   int nc = x.cols();
   for (auto* eval : quadratic_sub_assemblers_) {
     eval->MultiplyQx(*x.supernodes, sep_read,
