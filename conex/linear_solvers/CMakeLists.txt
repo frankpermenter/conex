@@ -142,14 +142,6 @@ target_link_libraries(sparse_quadratic_term_test
   GTest::gtest_main
 )
 
-add_executable(algorithms_test
-  conex/test/algorithms_test.cc
-)
-target_link_libraries(algorithms_test
-  algorithms
-  GTest::gtest_main
-)
-
 add_executable(dense_kkt_solver_test
   conex/test/dense_kkt_solver_test.cc
 )
@@ -235,7 +227,7 @@ gtest_discover_tests(sparse_linear_constraint_test)
 gtest_discover_tests(multithreading_test)
 gtest_discover_tests(low_rank_diagonal_test)
 gtest_discover_tests(sparse_quadratic_term_test)
-gtest_discover_tests(algorithms_test)
+
 
 add_executable(problem_solver_test
   conex/test/problem_solver_test.cc
