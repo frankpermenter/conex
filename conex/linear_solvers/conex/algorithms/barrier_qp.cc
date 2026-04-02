@@ -32,9 +32,12 @@ BarrierQPResult SolveBarrierQP(
 
   auto dx = kkt.MakeTreeRHS();
   auto grad = kkt.MakeTreeRHS();
+  auto qx = kkt.MakeTreeRHS();       // reusable Q*x storage
   auto row = kkt.MakeRowSpace();
+  auto row_trial = kkt.MakeRowSpace();
+  RowSpace weights = kkt.MakeRowSpace();      // #5: allocate once
+  RowSpace scaled_inv_s = kkt.MakeRowSpace(); // #5: allocate once
   auto x_trial = kkt.MakeTreeRHS();
-  auto qx_trial = kkt.MakeTreeRHS();
 
   auto t_start = clock::now();
 
@@ -51,23 +54,27 @@ BarrierQPResult SolveBarrierQP(
 
       // Slacks: s = b - A x.
       kkt.MultiplyA(x, row);
-      Eigen::VectorXd s = b - row.data;
+      row.data = b - row.data;  // #6: row.data now holds s
+      const Eigen::VectorXd& s = row.data;
       if (s.minCoeff() <= 0) break;
 
       // Barrier weights: w_i = 1/(t * s_i^2).
-      RowSpace weights = kkt.MakeRowSpace();
       for (int i = 0; i < m; ++i)
         weights.data(i) = 1.0 / (t * s(i) * s(i));
       kkt.SetWeights(weights);
 
       // A^T term: (1/t) * A^T * (1/s).
-      RowSpace scaled_inv_s = kkt.MakeRowSpace();
       for (int i = 0; i < m; ++i)
         scaled_inv_s.data(i) = 1.0 / (t * s(i));
 
+      // #3: Compute Q*x once, reuse for gradient and objective.
+      qx.SetZero();
+      kkt.AccumulateQx(x, qx);
+      kkt.GatherSeparators(qx);
+
       // Build gradient: grad = Q*x + c + (1/t) A^T(1/s).
       grad = c_rhs;
-      kkt.AccumulateQx(x, grad);
+      grad += qx;
       kkt.AccumulateAtranspose(scaled_inv_s, grad);
       kkt.GatherSeparators(grad);
 
@@ -83,17 +90,14 @@ BarrierQPResult SolveBarrierQP(
 
       // Max step for feasibility.
       double alpha = 1.0;
-      kkt.MultiplyA(dx, row);
+      kkt.MultiplyA(dx, row_trial);
       for (int i = 0; i < m; ++i) {
-        if (row.data(i) > 0)
-          alpha = std::min(alpha, 0.99 * s(i) / row.data(i));
+        if (row_trial.data(i) > 0)
+          alpha = std::min(alpha, 0.99 * s(i) / row_trial.data(i));
       }
 
-      // Objective at current point.
-      qx_trial.SetZero();
-      kkt.AccumulateQx(x, qx_trial);
-      kkt.GatherSeparators(qx_trial);
-      double f0 = 0.5 * x.dot(qx_trial) + x.dot(c_rhs);
+      // Objective at current point (reuses qx from gradient).
+      double f0 = 0.5 * x.dot(qx) + x.dot(c_rhs);
       for (int i = 0; i < m; ++i) f0 -= (1.0 / t) * std::log(s(i));
 
       // Backtracking line search.
@@ -103,16 +107,20 @@ BarrierQPResult SolveBarrierQP(
         x_trial = x;
         x_trial.AddScaled(alpha, dx);
 
-        kkt.MultiplyA(x_trial, row);
-        Eigen::VectorXd s_new = b - row.data;
-        if (s_new.minCoeff() <= 0) { alpha *= beta; continue; }
+        // #4: compute A*x_trial and Q*x_trial (scatter happens once
+        // inside MultiplyA; AccumulateQx sees blocks_fully_gathered=true
+        // from the AddScaled and re-scatters — unavoidable without
+        // caching at the solver level).
+        kkt.MultiplyA(x_trial, row_trial);
+        row_trial.data = b - row_trial.data;
+        if (row_trial.data.minCoeff() <= 0) { alpha *= beta; continue; }
 
-        qx_trial.SetZero();
-        kkt.AccumulateQx(x_trial, qx_trial);
-        kkt.GatherSeparators(qx_trial);
-        double f_new = 0.5 * x_trial.dot(qx_trial) + x_trial.dot(c_rhs);
+        qx.SetZero();
+        kkt.AccumulateQx(x_trial, qx);
+        kkt.GatherSeparators(qx);
+        double f_new = 0.5 * x_trial.dot(qx) + x_trial.dot(c_rhs);
         for (int i = 0; i < m; ++i)
-          f_new -= (1.0 / t) * std::log(s_new(i));
+          f_new -= (1.0 / t) * std::log(row_trial.data(i));
 
         if (f_new <= f0 + armijo * alpha * (-lambda_sq)) break;
         alpha *= beta;
@@ -130,10 +138,10 @@ BarrierQPResult SolveBarrierQP(
   result.x = x_final;
 
   // Objective: 0.5 x^T Q x + c^T x.
-  qx_trial.SetZero();
-  kkt.AccumulateQx(x, qx_trial);
-  kkt.GatherSeparators(qx_trial);
-  result.objective = 0.5 * x.dot(qx_trial) + x.dot(c_rhs);
+  qx.SetZero();
+  kkt.AccumulateQx(x, qx);
+  kkt.GatherSeparators(qx);
+  result.objective = 0.5 * x.dot(qx) + x.dot(c_rhs);
 
   result.duality_gap = static_cast<double>(m) / t;
   result.solve_time_us =
