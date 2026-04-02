@@ -67,16 +67,16 @@ BarrierQPResult SolveBarrierQP(
       for (int i = 0; i < m; ++i)
         scaled_inv_s.data(i) = 1.0 / (t * s(i));
 
-      // #3: Compute Q*x once, reuse for gradient and objective.
+      // Compute Q*x once (ungathered), reuse for gradient and objective.
       qx.SetZero();
       kkt.AccumulateQx(x, qx);
-      kkt.GatherSeparators(qx);
 
       // Build gradient: grad = Q*x + c + (1/t) A^T(1/s).
+      // qx has pending separators — += propagates them into grad.
       grad = c_rhs;
       grad += qx;
       kkt.AccumulateAtranspose(scaled_inv_s, grad);
-      kkt.GatherSeparators(grad);
+      // grad has pending separators — solve and dot handle lazily.
 
       // Solve (Q + A^T W A) dx = -grad.
       if (!kkt.AssembleAndFactor()) break;
@@ -84,8 +84,8 @@ BarrierQPResult SolveBarrierQP(
       dx *= -1.0;
       kkt.SolveTreeRHS(dx);
 
-      // Newton decrement.
-      double lambda_sq = grad.dot(dx);
+      // Newton decrement (lazy gather on grad).
+      double lambda_sq = kkt.dot(grad, dx);
       if (-lambda_sq / 2.0 < tolerance * 0.01) break;
 
       // Max step for feasibility.
@@ -96,8 +96,8 @@ BarrierQPResult SolveBarrierQP(
           alpha = std::min(alpha, 0.99 * s(i) / row_trial.data(i));
       }
 
-      // Objective at current point (reuses qx from gradient).
-      double f0 = 0.5 * x.dot(qx) + x.dot(c_rhs);
+      // Objective at current point (lazy gather on qx).
+      double f0 = 0.5 * kkt.dot(x, qx) + x.dot(c_rhs);
       for (int i = 0; i < m; ++i) f0 -= (1.0 / t) * std::log(s(i));
 
       // Backtracking line search.
@@ -117,8 +117,7 @@ BarrierQPResult SolveBarrierQP(
 
         qx.SetZero();
         kkt.AccumulateQx(x_trial, qx);
-        kkt.GatherSeparators(qx);
-        double f_new = 0.5 * x_trial.dot(qx) + x_trial.dot(c_rhs);
+        double f_new = 0.5 * kkt.dot(x_trial, qx) + x_trial.dot(c_rhs);
         for (int i = 0; i < m; ++i)
           f_new -= (1.0 / t) * std::log(row_trial.data(i));
 
@@ -140,8 +139,7 @@ BarrierQPResult SolveBarrierQP(
   // Objective: 0.5 x^T Q x + c^T x.
   qx.SetZero();
   kkt.AccumulateQx(x, qx);
-  kkt.GatherSeparators(qx);
-  result.objective = 0.5 * x.dot(qx) + x.dot(c_rhs);
+  result.objective = 0.5 * kkt.dot(x, qx) + x.dot(c_rhs);
 
   result.duality_gap = static_cast<double>(m) / t;
   result.solve_time_us =

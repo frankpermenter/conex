@@ -151,6 +151,17 @@ class KKTSolverBase {
     rhs.blocks_fully_gathered = true;
   }
 
+  // Dot product with lazy gather: gathers either operand if needed.
+  double dot(TreeRHS& a, TreeRHS& b) {
+    if (!a.blocks_fully_gathered) GatherSeparators(a);
+    if (!b.blocks_fully_gathered) GatherSeparators(b);
+    return a.dot(b);
+  }
+  double dot(TreeRHS& a, const BlockVariable& b) {
+    if (!a.blocks_fully_gathered) GatherSeparators(a);
+    return a.dot(b);
+  }
+
   virtual void SolveTreeRHS(TreeRHS& rhs) {
     // Default: gather, solve dense, scatter back.
     CONEX_DEMAND(factored_, "System has not been factored.");
