@@ -56,28 +56,6 @@ done
 
 $FOUND || echo "| (none found) | |"
 
-# Also report dead members from grep-based analysis.
-echo ""
-echo "## Unused declarations (grep-based)"
-echo ""
-echo "| Item | File | Notes |"
-echo "|------|------|-------|"
-FOUND=false
-for name in set_variable_indices variable_indices_ AddSupernode AddSeparator; do
-  decl=$(grep -rn "\b${name}\b" "$SRC_DIR" --include='*.h' | head -1)
-  if [ -n "$decl" ]; then
-    decl_file=$(echo "$decl" | cut -d: -f1)
-    usage=$(grep -rn "\b${name}\b" "$SRC_DIR" --include='*.h' --include='*.cc' 2>/dev/null \
-      | grep -v "$decl_file" | grep -v '^\s*//' | wc -l)
-    if [ "$usage" -eq 0 ]; then
-      line_num=$(echo "$decl" | cut -d: -f2)
-      echo "| \`${name}\` | \`${decl_file}:${line_num}\` | Never called |"
-      FOUND=true
-    fi
-  fi
-done
-$FOUND || echo "| (none found) | | |"
-
 echo ""
 echo "---"
 echo "Generated: $(date -u '+%Y-%m-%d %H:%M UTC')"
