@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "conex/common/block_partition.h"
 #include "conex/common/error_checking_macros.h"
 #include "conex/common/supernodal_assembler_base.h"
 #include <Eigen/Dense>
@@ -25,6 +26,14 @@ class EqualityConstraint final : public SupernodalAssemblerBase {
   }
 
   bool is_positive_definite() const { return false; }
+
+  // Multiply by the saddle-point matrix [0 C'; C 0].
+  template <typename SepAccessor>
+  void MultiplySaddlePoint(
+      const BlockPartition& x_sn, const SepAccessor& x_sep,
+      BlockPartition& out_sn, SepAccessor& out_sep, int nc) const {
+    assembler_.MultiplySaddlePoint(x_sn, x_sep, out_sn, out_sep, nc);
+  }
 
   const Eigen::MatrixXd& constraint_matrix() const { return A_; }
   const Eigen::VectorXd& affine_term() const { return b_; }
@@ -70,6 +79,45 @@ class EqualityConstraint final : public SupernodalAssemblerBase {
       return true;
     }
 
+    void RegisterVectorContributions(
+        const std::vector<VectorBlockContribution>& blocks) override {
+      vector_blocks_ = blocks;
+    }
+
+    // Multiply by the saddle-point matrix [0 C'; C 0] in elimination order.
+    // Given [x; lambda], accumulates [C^T lambda; Cx] into the output.
+    // Same VectorBlockContribution pattern as QuadraticCost::MultiplyQx.
+    template <typename SepAccessor>
+    void MultiplySaddlePoint(
+        const BlockPartition& x_sn, const SepAccessor& x_sep,
+        BlockPartition& out_sn, SepAccessor& out_sep, int nc) const {
+      const int nv = static_cast<int>(vector_blocks_.size());
+      for (int i = 0; i < nv; ++i) {
+        const auto& vi = vector_blocks_[i];
+        for (int j = 0; j < nv; ++j) {
+          const auto& vj = vector_blocks_[j];
+          auto Q_sub = Q_perm_.block(vi.q_start, vj.q_start,
+                                     vi.length, vj.length);
+          if (Q_sub.squaredNorm() < 1e-30) continue;
+          Eigen::MatrixXd prod;
+          if (vj.dest_is_sn) {
+            prod = Q_sub * x_sn.block(vj.dest_block)
+                       .middleRows(vj.dest_offset, vj.length);
+          } else {
+            prod = Q_sub * x_sep.block(vj.dest_block, nc)
+                       .middleRows(vj.dest_offset, vj.length);
+          }
+          if (vi.dest_is_sn) {
+            out_sn.block(vi.dest_block)
+                .middleRows(vi.dest_offset, vi.length) += prod;
+          } else {
+            out_sep.block(vi.dest_block, nc)
+                .middleRows(vi.dest_offset, vi.length) += prod;
+          }
+        }
+      }
+    }
+
     void ContributeBlocks(int clique_id) override {
       auto it = registered_blocks_.find(clique_id);
       if (it == registered_blocks_.end()) return;
@@ -94,6 +142,7 @@ class EqualityConstraint final : public SupernodalAssemblerBase {
     Eigen::MatrixXd Q_perm_;
     bool order_set_ = false;
     std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
+    std::vector<VectorBlockContribution> vector_blocks_;
   };
 
  private:

@@ -1,4 +1,5 @@
 #include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/common/equality_constraint.h"
 #include "conex/common/linear_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
 
@@ -1064,6 +1065,18 @@ void T::AccumulateQx(const SolverRHS& x, SolverRHS& rhs) {
   for (auto* eval : quadratic_sub_assemblers_) {
     eval->MultiplyQx(*x.supernodes, sep_read,
                       *rhs.supernodes, *rhs.separators, nc);
+  }
+}
+
+void T::AccumulateCtranspose(const SolverRHS& x, SolverRHS& rhs) {
+  if (x.blocks_fully_gathered) {
+    ScatterSeparators(*x.supernodes, sep_scratch_);
+  }
+  const auto& sep_read = x.blocks_fully_gathered ? sep_scratch_ : *x.separators;
+  int nc = x.cols();
+  for (auto* ec : equality_sub_assemblers_) {
+    ec->MultiplySaddlePoint(*x.supernodes, sep_read,
+                            *rhs.supernodes, *rhs.separators, nc);
   }
 }
 

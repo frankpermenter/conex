@@ -769,35 +769,34 @@ TEST(ProblemSolver, EqualityConstraintVectorOps) {
     EXPECT_LT(eq_err, 1e-10) << "Equality constraint violated";
   }
 
-  // 2. Optimality via SolverRHS: A^T A x + C^T lambda = A^T b.
-  //    Use MultiplyA to get residual r = Ax, then AccumulateAtranspose
-  //    to get A^T r.  Compare with rhs.
-  auto x_rhs = kkt->MakeSolverRHS();
-  x_rhs.supernodes->ScatterFrom(sol);
-  x_rhs.blocks_fully_gathered = true;
+  // 2. Optimality: A^T(Ax) + C^T lambda = A^T b.
+  //    All terms computed via generic vector ops on SolverRHS.
+  auto sol_rhs = kkt->MakeSolverRHS();
+  sol_rhs.supernodes->ScatterFrom(sol);
+  sol_rhs.blocks_fully_gathered = true;
 
-  // A * x
+  // A * x (via generic interface)
   RowSpace ax = kkt->MakeRowSpace();
-  kkt->MultiplyA(x_rhs, ax);
+  kkt->MultiplyA(sol_rhs, ax);
 
-  // A^T (A x) = A^T A x + C^T lambda (the full KKT product)
-  auto ata_x = kkt->MakeSolverRHS();
-  ata_x.SetZero();
-  // Weights = 1 (unweighted normal equations).
-  RowSpace w = kkt->MakeRowSpace();
-  w.data.setOnes();
-  kkt->SetWeights(w);
-  kkt->AssembleAndFactor();
-  kkt->AccumulateAtranspose(ax, ata_x);
-  ts->GatherSeparators(ata_x);
+  // Accumulate A^T(Ax) into grad.
+  auto grad = kkt->MakeSolverRHS();
+  grad.SetZero();
+  kkt->AccumulateAtranspose(ax, grad);
 
-  VectorXd ata_x_dense(n_total);
-  ata_x.supernodes->GatherInto(ata_x_dense);
+  // Accumulate C^T lambda (via AccumulateCtranspose on tree solver).
+  // sol_rhs contains both x and lambda; the saddle-point product
+  // [0 C'; C 0] * [x; lambda] = [C^T lambda; Cx] is accumulated.
+  ts->AccumulateCtranspose(sol_rhs, grad);
+  ts->GatherSeparators(grad);
 
-  // The primal part of A^T(Ax) should equal A^T b (since lambda contributes
-  // through the KKT matrix, which we verified via direct solve).
-  double opt_err = (ata_x_dense.head(n) - A.transpose() * (A * x_sol)).norm();
-  EXPECT_LT(opt_err, 1e-10) << "A^T A x mismatch";
+  VectorXd grad_dense(n_total);
+  grad.supernodes->GatherInto(grad_dense);
+
+  // Full KKT residual (primal block): A^T(Ax) + C^T lambda - A^T b = 0.
+  VectorXd kkt_residual = grad_dense.head(n) - A.transpose() * b;
+  double opt_err = kkt_residual.norm();
+  EXPECT_LT(opt_err, 1e-10) << "KKT optimality residual nonzero";
 
   // 3. Dense reference.
   MatrixXd K = MatrixXd::Zero(n + p, n + p);

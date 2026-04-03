@@ -381,6 +381,11 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     return equality_sub_assemblers_;
   }
 
+  // Accumulate saddle-point product [0 C'; C 0] * [x; lambda] into rhs.
+  // Reads from x_rhs (which contains both primal and dual in the block
+  // structure) and accumulates into rhs.
+  void AccumulateCtranspose(const SolverRHS& x, SolverRHS& rhs);
+
   // Populate a sep scratch from a BlockPartition's supernode blocks.
   // Top-down: copies parent sn/sep into child separator scratch.
   void ScatterSeparators(const BlockPartition& supernodes,
