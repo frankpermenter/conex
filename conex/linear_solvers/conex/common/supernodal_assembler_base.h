@@ -2,7 +2,6 @@
 #include <memory>
 #include <vector>
 
-#include "conex/common/constraint_interface.h"
 #include <Eigen/Dense>
 namespace conex {
 
@@ -79,9 +78,7 @@ class CliqueProvider {
   virtual int number_of_variables() const {
     return primal_variables_.size() + dual_variables_.size();
   }
-  virtual std::vector<std::vector<int>> get_cliques() const {
-    return {variables()};
-  }
+  virtual std::vector<std::vector<int>> get_cliques() const = 0;
   virtual std::vector<int> variables() const {
     std::vector<int> v = primal_variables_;
     v.insert(v.end(), dual_variables_.begin(), dual_variables_.end());
@@ -110,7 +107,7 @@ class CliqueProvider {
 
 // Runtime sub-assembler base: variable list + BlockAssembler.
 // Produced by CliqueProvider::Decompose.
-class SupernodalAssemblerBase : public IVariableShape {
+class SupernodalAssemblerBase {
  public:
   SupernodalAssemblerBase(const std::vector<int>& shared_variables) {
     SetPrimalVariables(shared_variables);
@@ -123,7 +120,7 @@ class SupernodalAssemblerBase : public IVariableShape {
   SupernodalAssemblerBase(){};
   virtual ~SupernodalAssemblerBase(){};
 
-  int number_of_variables() const override {
+  virtual int number_of_variables() const {
     return primal_variables().size() + dual_variables().size();
   }
 
@@ -145,7 +142,7 @@ class SupernodalAssemblerBase : public IVariableShape {
                      dual_variables_.end());
     return variables;
   }
-  std::vector<std::vector<int>> get_cliques() const override {
+  virtual std::vector<std::vector<int>> get_cliques() const {
     return {variables()};
   }
   virtual const std::vector<int>& primal_variables() const {
@@ -155,7 +152,7 @@ class SupernodalAssemblerBase : public IVariableShape {
     return dual_variables_;
   }
 
-  virtual BlockAssembler* GetBlockAssembler() { return nullptr; }
+  virtual BlockAssembler* GetBlockAssembler() = 0;
 
   void SetPrimalVariables(const std::vector<int>& variables) {
     primal_variables_ = variables;

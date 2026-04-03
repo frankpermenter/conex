@@ -174,10 +174,7 @@ class KKTSolverBase {
  private:
   virtual void DoAssemble() = 0;
   virtual bool DoFactor() = 0;
-  virtual bool DoAssembleAndFactor() {
-    DoAssemble();
-    return DoFactor();
-  }
+  virtual bool DoAssembleAndFactor() = 0;
   virtual void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                               bool permute_to_elimination_order) const = 0;
   virtual Eigen::MatrixXd DoKKTMatrix(
