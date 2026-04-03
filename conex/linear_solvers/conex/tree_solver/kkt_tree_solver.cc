@@ -1044,7 +1044,7 @@ SolverRHS T::MakeSolverRHS(int cols) {
   auto sep = std::make_unique<SeparatorScratch>();
   sep->Init(subsystems_, cols);
   rhs.separators = sep.get();
-  owned_tree_rhs_scratches_.push_back(std::move(sep));
+  owned_solver_rhs_scratches_.push_back(std::move(sep));
   rhs.blocks_fully_gathered = false;
   return rhs;
 }

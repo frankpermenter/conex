@@ -62,22 +62,22 @@ struct SeparatorScratch {
   }
 };
 
-// A right-hand side in elimination-tree form: one supernode block per
-// clique plus unscattered separator contributions.  The forward pass
-// consumes separator data incrementally (child sep → parent sn/sep).
-//
-// blocks_fully_gathered: if true, all data is in supernode blocks
-// and separator scratch can be ignored.  If false, separator
-// contributions are still in the scratch buffer.
+// Solver-agnostic right-hand side: supernode blocks plus optional
+// separator scratch.  For dense/GPU solvers, separators is null and
+// all data lives in the supernode blocks.  For the tree solver,
+// separators holds unscattered contributions that get folded during
+// the blocked solve.
 struct SolverRHS {
-  BlockPartition* supernodes;
-  SeparatorScratch* separators;
-  bool blocks_fully_gathered = false;
+  BlockPartition* supernodes = nullptr;
+  SeparatorScratch* separators = nullptr;  // null for dense/GPU solvers
+  bool blocks_fully_gathered = true;
+
+  bool has_separators() const { return separators != nullptr; }
 
   void SetZero() {
     supernodes->SetZero();
-    separators->SetZero();
-    blocks_fully_gathered = false;
+    if (has_separators()) separators->SetZero();
+    blocks_fully_gathered = !has_separators();
   }
 
   int cols() const { return supernodes->cols(); }
@@ -88,7 +88,7 @@ struct SolverRHS {
     int nb = supernodes->num_blocks();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) = bv.partition().block(k);
-    separators->SetZero();
+    if (has_separators()) separators->SetZero();
     blocks_fully_gathered = true;
     return *this;
   }
@@ -97,21 +97,23 @@ struct SolverRHS {
   SolverRHS& operator=(const SolverRHS& other) {
     if (this == &other) return *this;
     int nb = supernodes->num_blocks();
-    int nc = cols();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) = other.supernodes->block(k);
-    for (int k = 0; k < nb; ++k)
-      separators->block(k, nc) = other.separators->block(k, nc);
+    if (has_separators() && other.has_separators()) {
+      int nc = cols();
+      for (int k = 0; k < nb; ++k)
+        separators->block(k, nc) = other.separators->block(k, nc);
+    }
     blocks_fully_gathered = other.blocks_fully_gathered;
     return *this;
   }
 
   SolverRHS& operator*=(double alpha) {
     int nb = supernodes->num_blocks();
-    int nc = cols();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) *= alpha;
-    if (!blocks_fully_gathered) {
+    if (has_separators() && !blocks_fully_gathered) {
+      int nc = cols();
       for (int k = 0; k < nb; ++k)
         separators->block(k, nc) *= alpha;
     }
@@ -120,10 +122,10 @@ struct SolverRHS {
 
   SolverRHS& operator+=(const SolverRHS& other) {
     int nb = supernodes->num_blocks();
-    int nc = cols();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) += other.supernodes->block(k);
-    if (!other.blocks_fully_gathered) {
+    if (has_separators() && !other.blocks_fully_gathered) {
+      int nc = cols();
       for (int k = 0; k < nb; ++k)
         separators->block(k, nc) += other.separators->block(k, nc);
     }
@@ -133,10 +135,10 @@ struct SolverRHS {
 
   SolverRHS& operator-=(const SolverRHS& other) {
     int nb = supernodes->num_blocks();
-    int nc = cols();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) -= other.supernodes->block(k);
-    if (!other.blocks_fully_gathered) {
+    if (has_separators() && !other.blocks_fully_gathered) {
+      int nc = cols();
       for (int k = 0; k < nb; ++k)
         separators->block(k, nc) -= other.separators->block(k, nc);
     }
@@ -153,7 +155,6 @@ struct SolverRHS {
   }
 
   // Dot product (block-wise, no dense gather).
-  // Both operands must be scattered (data fully in supernode blocks).
   double dot(const SolverRHS& other) const {
     double result = 0;
     int nb = supernodes->num_blocks();
@@ -178,10 +179,10 @@ struct SolverRHS {
   // AddScaled: this += alpha * other (block-wise).
   SolverRHS& AddScaled(double alpha, const SolverRHS& other) {
     int nb = supernodes->num_blocks();
-    int nc = cols();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) += alpha * other.supernodes->block(k);
-    if (!other.blocks_fully_gathered) {
+    if (has_separators() && !other.blocks_fully_gathered) {
+      int nc = cols();
       for (int k = 0; k < nb; ++k)
         separators->block(k, nc) += alpha * other.separators->block(k, nc);
     }

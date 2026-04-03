@@ -486,6 +486,9 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   };
   std::vector<NodeScatterInfo> solve_scatter_info_;  // indexed by solve_order pos
   void AllocateSolveArena();
+
+  // Owned separator scratches for MakeSolverRHS allocations.
+  std::vector<std::unique_ptr<SeparatorScratch>> owned_solver_rhs_scratches_;
 };
 
 }  // namespace conex
