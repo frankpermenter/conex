@@ -154,20 +154,13 @@ class KKTSolverBase {
   // concatenated in RowSpace order.
   virtual RowSpace GetAffineTerm() = 0;
 
-  // Gather unscattered separator data into supernode blocks.
-  // No-op for dense solver (data is always scattered).
-  virtual void GatherSeparators(TreeRHS& rhs) {
-    rhs.blocks_fully_gathered = true;
-  }
-
-  // Dot product with lazy gather: gathers either operand if needed.
-  double dot(TreeRHS& a, TreeRHS& b) {
-    if (!a.blocks_fully_gathered) GatherSeparators(a);
-    if (!b.blocks_fully_gathered) GatherSeparators(b);
+  // Dot product with lazy gather: tree solver overrides to fold
+  // unscattered separator data before computing the dot product.
+  // Default assumes blocks_fully_gathered is always true.
+  virtual double dot(TreeRHS& a, TreeRHS& b) {
     return a.dot(b);
   }
-  double dot(TreeRHS& a, const BlockVariable& b) {
-    if (!a.blocks_fully_gathered) GatherSeparators(a);
+  virtual double dot(TreeRHS& a, const BlockVariable& b) {
     return a.dot(b);
   }
 

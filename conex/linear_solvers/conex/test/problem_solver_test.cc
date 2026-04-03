@@ -363,7 +363,7 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
   auto atwa_x2 = kkt->MakeTreeRHS();
   atwa_x2.SetZero();
   kkt->AccumulateAtranspose(wax2, atwa_x2);
-  kkt->GatherSeparators(atwa_x2);
+  solver.tree_solver()->GatherSeparators(atwa_x2);
   VectorXd atwax2(n);
   atwa_x2.supernodes->GatherInto(atwax2);
   double err = (atwax2 - rhs).norm() / rhs.norm();
@@ -1847,7 +1847,7 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   auto atv_rhs = kkt->MakeTreeRHS();
   atv_rhs.SetZero();
   kkt->AccumulateAtranspose(v_row, atv_rhs);
-  kkt->GatherSeparators(atv_rhs);
+  solver.tree_solver()->GatherSeparators(atv_rhs);
   VectorXd atv_sol(n);
   atv_rhs.supernodes->GatherInto(atv_sol);
 
@@ -1860,7 +1860,7 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   auto qx_rhs = kkt->MakeTreeRHS();
   qx_rhs.SetZero();
   kkt->AccumulateQx(x_rhs, qx_rhs);
-  kkt->GatherSeparators(qx_rhs);
+  solver.tree_solver()->GatherSeparators(qx_rhs);
   VectorXd qx_sol(n);
   qx_rhs.supernodes->GatherInto(qx_sol);
 

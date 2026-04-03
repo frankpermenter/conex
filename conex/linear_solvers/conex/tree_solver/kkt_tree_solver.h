@@ -374,10 +374,22 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void AccumulateQx(const TreeRHS& x, TreeRHS& rhs) override;
   void SetWeights(const RowSpace& w) override;
   RowSpace GetAffineTerm() override;
-  void GatherSeparators(TreeRHS& rhs) override {
+  // Gather unscattered separator data into supernode blocks.
+  void GatherSeparators(TreeRHS& rhs) {
     GatherSeparators(*rhs.supernodes, *rhs.separators);
     rhs.blocks_fully_gathered = true;
   }
+
+  double dot(TreeRHS& a, TreeRHS& b) override {
+    if (!a.blocks_fully_gathered) GatherSeparators(a);
+    if (!b.blocks_fully_gathered) GatherSeparators(b);
+    return a.dot(b);
+  }
+  double dot(TreeRHS& a, const BlockVariable& bv) override {
+    if (!a.blocks_fully_gathered) GatherSeparators(a);
+    return a.dot(bv);
+  }
+
   void SolveTreeRHS(TreeRHS& rhs) override {
     SolveBlockedInPlace(*rhs.supernodes, *rhs.separators);
   }
