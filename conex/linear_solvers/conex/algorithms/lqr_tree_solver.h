@@ -59,7 +59,7 @@ class LQRTreeSolver {
   int LicIdx() const { return T_ * step() + nx_; }
 
   // Owned assembler storage.
-  std::list<QuadraticConstraint> cost_assemblers_;
+  std::list<QuadraticCost> cost_assemblers_;
   std::list<SupernodalAssemblerEqualities> dynamics_assemblers_;
 
   std::unique_ptr<SymmetricLinearSystemTreeSolver> solver_;

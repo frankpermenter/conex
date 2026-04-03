@@ -17,9 +17,9 @@ namespace conex {
 // Per-clique dense symmetric Q sub-block.  Parallel to LinearConstraint:
 // owns data, implements BlockAssembler for normal-equation assembly,
 // and provides MultiplyQx for the generic KKTSolverBase interface.
-class QuadraticConstraint : public SupernodalAssemblerBase {
+class QuadraticCost : public SupernodalAssemblerBase {
  public:
-  QuadraticConstraint(Eigen::MatrixXd Q_block,
+  QuadraticCost(Eigen::MatrixXd Q_block,
                       const std::vector<int>& variables)
       : SupernodalAssemblerBase(variables), Q_block_(std::move(Q_block)) {
     assembler_.bind(&Q_block_);
@@ -155,7 +155,7 @@ class QuadraticConstraint : public SupernodalAssemblerBase {
 
 // Top-level assembler for a sparse quadratic term Q.
 // Provides cliques (edges from Q's sparsity) to the clique tree builder.
-// Decompose() extracts per-clique dense sub-blocks as QuadraticConstraint.
+// Decompose() extracts per-clique dense sub-blocks as QuadraticCost.
 class SparseQuadraticTermAssembler : public CliqueProvider {
  public:
   SparseQuadraticTermAssembler(const Eigen::SparseMatrix<double>& Q,
@@ -174,10 +174,10 @@ class SparseQuadraticTermAssembler : public CliqueProvider {
   bool is_dynamic() const override { return false; }
 
   // Access decomposed sub-assemblers (available after Decompose).
-  std::list<QuadraticConstraint>& constraints() {
+  std::list<QuadraticCost>& constraints() {
     return owned_sub_assemblers_;
   }
-  const std::list<QuadraticConstraint>& constraints() const {
+  const std::list<QuadraticCost>& constraints() const {
     return owned_sub_assemblers_;
   }
 
@@ -187,7 +187,7 @@ class SparseQuadraticTermAssembler : public CliqueProvider {
   bool dense_ = false;
 
   // Owned sub-assemblers created by Decompose.
-  std::list<QuadraticConstraint> owned_sub_assemblers_;
+  std::list<QuadraticCost> owned_sub_assemblers_;
 };
 
 }  // namespace conex

@@ -109,7 +109,7 @@ class TreeSolverBuilder {
   bool check_rip_ = false;
 
   // Owned assembler storage (std::list for pointer stability).
-  std::list<QuadraticConstraint> cost_assemblers_;
+  std::list<QuadraticCost> cost_assemblers_;
   std::list<LinearConstraint> linear_assemblers_;
   std::list<SupernodalAssemblerEqualities> eq_assemblers_;
 
