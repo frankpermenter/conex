@@ -68,6 +68,26 @@ done
 echo "# Unused Code Report (llvm-cov)"
 echo ""
 
+# Test binary inventory.
+echo "## Test binaries"
+echo ""
+echo "| Binary | Profiled |"
+echo "|--------|----------|"
+for bin in ./*_test; do
+  name=$(basename "$bin")
+  if [ -f "profraw/${name}.profraw" ]; then
+    echo "| \`${name}\` | yes |"
+  elif [ -x "$bin" ]; then
+    echo "| \`${name}\` | **no** (ran but no profile) |"
+  else
+    echo "| \`${name}\` | **no** (not built) |"
+  fi
+done
+PROFILE_COUNT=$(ls profraw/*.profraw 2>/dev/null | wc -l)
+echo ""
+echo "Profiles merged: ${PROFILE_COUNT}"
+echo ""
+
 # File-level coverage summary (native llvm-cov output, no parsing).
 echo "## File coverage summary"
 echo ""
