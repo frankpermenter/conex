@@ -1186,6 +1186,73 @@ TEST(ProblemSolver, MultiColumnSolve) {
   printf("ProblemSolver.MultiColumnSolve: 1,2,3 columns pass\n");
 }
 
+TEST(ProblemSolver, RepeatedAssembleAndFactor) {
+  srand(55);
+  const int n = 30, bw = 6, rpg = 5;
+  int ng = n - bw + 1, nr = rpg * ng;
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int g = 0; g < ng; ++g)
+    for (int r = 0; r < rpg; ++r)
+      for (int j = 0; j < bw; ++j)
+        trips.emplace_back(g * rpg + r, g + j,
+                           0.5 + (double)rand() / RAND_MAX);
+  Eigen::SparseMatrix<double> A(nr, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd rhs = MatrixXd(A).transpose() * (MatrixXd(A) * x_true);
+
+  Problem problem;
+  problem.AddLinearConstraint(A, VectorXd::Zero(nr), vars);
+  auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
+
+  // Factor and solve multiple times — should produce identical results.
+  for (int iter = 0; iter < 3; ++iter) {
+    ASSERT_TRUE(kkt->AssembleAndFactor());
+    VectorXd sol = kkt->Solve(rhs);
+    double err = (sol - x_true).norm() / x_true.norm();
+    EXPECT_LT(err, 1e-8) << "iter=" << iter;
+  }
+  printf("ProblemSolver.RepeatedAssembleAndFactor: 3 iterations match\n");
+}
+
+TEST(ProblemSolver, LUForIndefinite) {
+  srand(42);
+  const int n = 20, bw = 5, rpg = 4;
+  int ng = n - bw + 1, nr = rpg * ng;
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int g = 0; g < ng; ++g)
+    for (int r = 0; r < rpg; ++r)
+      for (int j = 0; j < bw; ++j)
+        trips.emplace_back(g * rpg + r, g + j,
+                           0.5 + (double)rand() / RAND_MAX);
+  Eigen::SparseMatrix<double> A(nr, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd rhs = MatrixXd(A).transpose() * (MatrixXd(A) * x_true);
+
+  // PD system: use_lu_for_indefinite shouldn't affect PD cliques.
+  for (bool lu : {false, true}) {
+    Problem problem;
+    problem.AddLinearConstraint(A, VectorXd::Zero(nr), vars);
+    SolverConfiguration cfg;
+    cfg.tree.use_generic_factorization = true;
+    cfg.tree.use_lu_for_indefinite = lu;
+    auto solver = Solver::Build(problem, cfg);
+    ASSERT_TRUE(solver.solver()->AssembleAndFactor());
+    VectorXd sol = solver.solver()->Solve(rhs);
+    double err = (sol - x_true).norm() / x_true.norm();
+    EXPECT_LT(err, 1e-8) << (lu ? "lu" : "rldlt");
+  }
+  printf("ProblemSolver.LUForIndefinite: PD system unaffected by LU flag\n");
+}
+
 // Scenario tree for stochastic optimization.
 struct ScenarioNode {
   int parent;
