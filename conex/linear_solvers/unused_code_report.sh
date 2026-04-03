@@ -36,8 +36,7 @@ if [ "$SKIP_BUILD" = false ]; then
     . >/dev/null 2>&1
   TEST_TARGETS=$(grep -oP '(?<=add_executable\()[\w]+_test' CMakeLists.txt | tr '\n' ' ')
   echo "Building: $TEST_TARGETS" >&2
-  make -j"$(nproc)" $TEST_TARGETS >/dev/null 2>&1
-  echo "Built $(echo $TEST_TARGETS | wc -w) test targets." >&2
+  make -k -j"$(nproc)" $TEST_TARGETS 2>&1 | tail -1 >&2
 
   echo "Running tests..." >&2
   mkdir -p profraw
