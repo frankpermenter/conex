@@ -144,15 +144,15 @@ class KKTSolverBase {
     return rhs;
   }
 
-  virtual RowSpace MakeRowSpace() { return {}; }
-  virtual void MultiplyA(const TreeRHS& /*x*/, RowSpace& /*out*/) {}
-  virtual void AccumulateAtranspose(const RowSpace& /*v*/, TreeRHS& /*rhs*/) {}
-  virtual void AccumulateQx(const TreeRHS& /*x*/, TreeRHS& /*rhs*/) {}
-  virtual void SetWeights(const RowSpace& /*w*/) {}
+  virtual RowSpace MakeRowSpace() = 0;
+  virtual void MultiplyA(const TreeRHS& x, RowSpace& out) = 0;
+  virtual void AccumulateAtranspose(const RowSpace& v, TreeRHS& rhs) = 0;
+  virtual void AccumulateQx(const TreeRHS& x, TreeRHS& rhs) = 0;
+  virtual void SetWeights(const RowSpace& w) = 0;
 
   // Get the affine terms (b vectors) for all linear constraints,
   // concatenated in RowSpace order.
-  virtual RowSpace GetAffineTerm() { return MakeRowSpace(); }
+  virtual RowSpace GetAffineTerm() = 0;
 
   // Gather unscattered separator data into supernode blocks.
   // No-op for dense solver (data is always scattered).

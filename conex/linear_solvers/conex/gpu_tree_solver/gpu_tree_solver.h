@@ -56,6 +56,14 @@ class GpuTreeSolver : public KKTSolverBase {
   const BlockPartition& partition() const override { return partition_; }
   int number_of_variables() const override { return num_vars_; }
 
+  // Generic interface stubs (GPU solver uses raw matrix path, not constraints).
+  RowSpace MakeRowSpace() override { return {}; }
+  void MultiplyA(const TreeRHS&, RowSpace&) override {}
+  void AccumulateAtranspose(const RowSpace&, TreeRHS&) override {}
+  void AccumulateQx(const TreeRHS&, TreeRHS&) override {}
+  void SetWeights(const RowSpace&) override {}
+  RowSpace GetAffineTerm() override { return {}; }
+
   // Access internals for testing.
   const std::vector<SupernodeDescriptor>& descriptors() const {
     return descriptors_;
