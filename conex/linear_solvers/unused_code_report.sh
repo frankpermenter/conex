@@ -33,17 +33,20 @@ if [ "$SKIP_BUILD" = false ]; then
     -DCMAKE_EXE_LINKER_FLAGS="-fprofile-instr-generate" \
     . >/dev/null 2>&1
   TEST_TARGETS=$(grep -oP '(?<=add_executable\()[\w]+_test' CMakeLists.txt | tr '\n' ' ')
-  make -j"$(nproc)" $TEST_TARGETS 2>&1 | tail -1 >&2
+  echo "Building: $TEST_TARGETS" >&2
+  make -j"$(nproc)" $TEST_TARGETS >/dev/null 2>&1
+  echo "Built $(echo $TEST_TARGETS | wc -w) test targets." >&2
 
   echo "Running tests..." >&2
   mkdir -p profraw
   for bin in ./*_test; do
     [ -x "$bin" ] || continue
+    echo "  $(basename "$bin")" >&2
     LLVM_PROFILE_FILE="profraw/$(basename "$bin").profraw" \
       "$bin" >/dev/null 2>&1 || true
   done
 
-  echo "Merging profiles..." >&2
+  echo "Merging $(ls profraw/*.profraw 2>/dev/null | wc -l) profiles..." >&2
   llvm-profdata merge -sparse profraw/*.profraw -o "$PROFDATA" 2>/dev/null
 fi
 
@@ -63,12 +66,21 @@ done
 
 echo "# Unused Code Report (llvm-cov)"
 echo ""
+
+# File-level coverage summary (native llvm-cov output, no parsing).
+echo "## File coverage summary"
+echo ""
+echo '```'
+llvm-cov report $OBJECTS -instr-profile="$PROFDATA" 2>/dev/null | grep -E "^(Filename|------|conex/|TOTAL)"
+echo '```'
+echo ""
+
+# Uncovered function names require the JSON export + demangling.
 echo "## Uncovered functions (0 execution count)"
 echo ""
 echo "| Function | Source file |"
 echo "|----------|------------|"
 
-# Export JSON, parse with Python for clean demangled output.
 llvm-cov export $OBJECTS -instr-profile="$PROFDATA" 2>/dev/null | python3 -c "
 import json, sys, subprocess
 
