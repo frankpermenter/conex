@@ -433,10 +433,6 @@ size_t AlignUp(size_t value, size_t alignment) {
   return ((value + alignment - 1) / alignment) * alignment;
 }
 
-bool IsAligned(const void* ptr, size_t alignment) {
-  return (reinterpret_cast<std::uintptr_t>(ptr) & (alignment - 1)) == 0;
-}
-
 struct ArenaLayout {
   size_t supernode_offset_bytes = 0;
   size_t separator_rows_offset_bytes = 0;
