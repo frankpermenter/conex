@@ -3,10 +3,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "conex/common/constraint.h"
 #include "conex/common/error_checking_macros.h"
 #include "conex/common/supernodal_assembler_base.h"
-#include "conex/common/workspace.h"
 #include <Eigen/Dense>
 namespace conex {
 

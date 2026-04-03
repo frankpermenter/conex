@@ -6,7 +6,6 @@
 #include <set>
 
 #include "conex/common/linear_constraint.h"
-#include "conex/common/workspace.h"
 
 namespace conex {
 
