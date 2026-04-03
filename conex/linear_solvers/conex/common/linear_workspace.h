@@ -1,5 +1,4 @@
 #pragma once
-#include "conex/common/debug_macros.h"
 #include "conex/common/memory_utils.h"
 #include <Eigen/Dense>
 namespace conex {
@@ -29,12 +28,6 @@ struct WorkspaceLinear {
         Map(data + 4 * get_size_aligned(n), n, o->num_vars_);
     o->W.setConstant(1);
     o->r.setConstant(1);
-  }
-
-  friend void print(const WorkspaceLinear& o) {
-    DUMP(o.W);
-    DUMP(o.temp_1);
-    DUMP(o.temp_2);
   }
 
   Eigen::Map<DenseMatrix, Eigen::Aligned> W{NULL, 0, 0};

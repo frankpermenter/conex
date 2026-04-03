@@ -8,17 +8,6 @@
 #include <Eigen/Dense>
 namespace conex {
 
-struct WorkspaceEqualityConstraints {
-  using DenseMatrix = Eigen::MatrixXd;
-
-  friend int SizeOf(const WorkspaceEqualityConstraints&) { return 0; }
-
-  friend void Initialize(WorkspaceEqualityConstraints*, double*) {}
-
-  friend void print(const WorkspaceEqualityConstraints&) {}
-  Eigen::Map<DenseMatrix, Eigen::Aligned> W{NULL, 0, 0};
-};
-
 // Lazy evaluator for the indefinite equality constraint matrix [0 A'; A 0].
 class EqualityLazyMatrix : public BlockAssembler {
  public:
