@@ -1,14 +1,13 @@
 #!/bin/bash
-# Unused code detection using lcov merged coverage data.
-# Builds in a clean git worktree, runs all tests, generates lcov report,
-# then parses FNDA:0 entries to find functions never called.
+# Unused code detection using Clang source-based coverage.
+# Builds in a clean git worktree, runs tests, reports uncovered functions.
 # Usage: ./unused_code_report.sh [--skip-build]
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")" && git rev-parse --show-toplevel)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKTREE="/tmp/conex-coverage"
-INFO_FILE="$SCRIPT_DIR/coverage_filtered.info"
+PROFDATA="$WORKTREE/conex/linear_solvers/merged.profdata"
 
 SKIP_BUILD=false
 for arg in "$@"; do
@@ -18,7 +17,7 @@ for arg in "$@"; do
 done
 
 if [ "$SKIP_BUILD" = false ]; then
-  echo "Setting up clean worktree at $WORKTREE..." >&2
+  echo "Setting up clean worktree..." >&2
   cd "$REPO_ROOT"
   git worktree remove "$WORKTREE" 2>/dev/null || true
   git worktree add "$WORKTREE" HEAD 2>/dev/null
@@ -26,90 +25,84 @@ if [ "$SKIP_BUILD" = false ]; then
   BUILD_DIR="$WORKTREE/conex/linear_solvers"
   cd "$BUILD_DIR"
 
-  echo "Building with coverage..." >&2
+  echo "Building with Clang coverage..." >&2
   cmake -DCMAKE_BUILD_TYPE=Debug \
-    -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage" . >/dev/null 2>&1
-  make -j"$(nproc)" >/dev/null 2>&1
+    -DCMAKE_C_COMPILER=clang \
+    -DCMAKE_CXX_COMPILER=clang++ \
+    -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping" \
+    -DCMAKE_EXE_LINKER_FLAGS="-fprofile-instr-generate" \
+    . >/dev/null 2>&1
+  TEST_TARGETS=$(grep -oP '(?<=add_executable\()[\w]+_test' CMakeLists.txt | tr '\n' ' ')
+  make -j"$(nproc)" $TEST_TARGETS 2>&1 | tail -1 >&2
 
   echo "Running tests..." >&2
-  lcov --zerocounters --directory . >/dev/null 2>&1
-  # Run all test binaries found in the build directory.
+  mkdir -p profraw
   for bin in ./*_test; do
-    [ -x "$bin" ] && "$bin" >/dev/null 2>&1 || true
+    [ -x "$bin" ] || continue
+    LLVM_PROFILE_FILE="profraw/$(basename "$bin").profraw" \
+      "$bin" >/dev/null 2>&1 || true
   done
 
-  echo "Capturing coverage..." >&2
-  lcov --capture --directory . --output-file coverage.info --no-external \
-    --ignore-errors mismatch,negative >/dev/null 2>&1
-  lcov --remove coverage.info '*/test/*' '*/_deps/*' '*/RLDLT.h' \
-    --output-file "$INFO_FILE" \
-    --ignore-errors mismatch,negative >/dev/null 2>&1
+  echo "Merging profiles..." >&2
+  llvm-profdata merge -sparse profraw/*.profraw -o "$PROFDATA" 2>/dev/null
 fi
 
-cd "$SCRIPT_DIR"
+BUILD_DIR="$WORKTREE/conex/linear_solvers"
+cd "$BUILD_DIR"
 
-if [ ! -f "$INFO_FILE" ]; then
-  echo "No coverage file found: $INFO_FILE"
-  echo "Run without --skip-build to generate coverage data."
+if [ ! -f "$PROFDATA" ]; then
+  echo "No profile data found. Run without --skip-build first."
   exit 1
 fi
 
-echo "# Unused Code Report"
+# Collect all test binaries as -object args.
+OBJECTS=""
+for bin in ./*_test; do
+  [ -x "$bin" ] && OBJECTS="$OBJECTS -object=$bin"
+done
+
+echo "# Unused Code Report (llvm-cov)"
 echo ""
-echo "Source: $INFO_FILE"
-echo ""
-echo "## Uncovered functions (never called)"
+echo "## Uncovered functions (0 execution count)"
 echo ""
 echo "| Function | Source file |"
 echo "|----------|------------|"
 
-FOUND=false
-CURRENT_FILE=""
+# Export JSON, parse with Python for clean demangled output.
+llvm-cov export $OBJECTS -instr-profile="$PROFDATA" 2>/dev/null | python3 -c "
+import json, sys, subprocess
 
-while IFS= read -r line; do
-  # Track current source file.
-  if [[ "$line" == SF:* ]]; then
-    CURRENT_FILE="${line#SF:}"
-    # Only report conex/ sources, skip test/deps.
-    if echo "$CURRENT_FILE" | grep -qE '/test/|/_deps/|RLDLT\.h'; then
-      CURRENT_FILE=""
-    fi
-    continue
-  fi
+data = json.load(sys.stdin)
+for file_data in data.get('data', []):
+    for fn in file_data.get('functions', []):
+        if fn.get('count', 1) != 0:
+            continue
+        filenames = fn.get('filenames', [])
+        if not filenames:
+            continue
+        fname = filenames[0]
+        if '/test/' in fname or '/_deps/' in fname or 'RLDLT.h' in fname:
+            continue
+        if '/conex/' not in fname:
+            continue
 
-  # Skip if not in a conex source file.
-  [ -z "$CURRENT_FILE" ] && continue
+        mangled = fn.get('name', '')
+        try:
+            result = subprocess.run(['c++filt', mangled], capture_output=True, text=True, timeout=1)
+            name = result.stdout.strip()
+        except:
+            name = mangled
 
-  # FNDA:count,name — function was called 'count' times.
-  if [[ "$line" == FNDA:0,* ]]; then
-    mangled="${line#FNDA:0,}"
-    demangled=$(echo "$mangled" | c++filt 2>/dev/null)
+        if 'conex::' not in name:
+            continue
+        if any(s in name for s in ['~', 'lambda', 'operator delete', '__cxx']):
+            continue
 
-    # Filter to conex:: namespace only.
-    echo "$demangled" | grep -q 'conex::' || continue
-    # Skip destructors, lambdas, template noise.
-    echo "$demangled" | grep -qE '~|lambda|operator delete|__cxx' && continue
-    # Skip PQTree — gcov false positive (verified live via canary test).
-    echo "$demangled" | grep -q 'PQTree' && continue
-    # Skip virtual base class defaults — overrides are covered separately.
-    echo "$demangled" | grep -qE 'KKTSolverBase::|SupernodalAssemblerBase::|CliqueProvider::|conex::Constraint::|IVariableShape::|BlockAssembler::(set_sn_count|RegisterVector)' && continue
-    # Skip header-only classes whose coverage is misattributed across TUs.
-    echo "$demangled" | grep -qE 'StandaloneBlockPartition::|DenseBlockPartition::|TreeBlockPartition::|SeparatorScratch::|TreeRHS::|RowSpace::|Workspace::' && continue
-    # Skip tree solver internals — called via virtual dispatch but gcov
-    # can't attribute hits across static library boundaries.
-    echo "$demangled" | grep -qE 'SymmetricLinearSystemTreeSolver::|SupernodePartitionMatrix::|KKTSubsystemBase::|LinearConstraint::|GramEvaluator::' && continue
+        short = name.replace('conex::', '').replace('(anonymous namespace)::', '')
+        file_short = fname.split('/conex/')[-1] if '/conex/' in fname else fname
 
-    # Shorten for display.
-    short=$(echo "$demangled" | sed 's/conex:://g; s/(anonymous namespace):://g')
-    # Shorten the file path.
-    file_short=$(echo "$CURRENT_FILE" | sed 's|.*/conex/|conex/|')
-
-    echo "| \`${short}\` | \`${file_short}\` |"
-    FOUND=true
-  fi
-done < "$INFO_FILE"
-
-$FOUND || echo "| (none found) | |"
+        print(f'| \`{short}\` | \`conex/{file_short}\` |')
+"
 
 echo ""
 echo "---"
