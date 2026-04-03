@@ -19,18 +19,20 @@ done
 if [ "$SKIP_BUILD" = false ]; then
   echo "Setting up clean worktree..." >&2
   cd "$REPO_ROOT"
-  git worktree remove "$WORKTREE" 2>/dev/null || true
-  git worktree add "$WORKTREE" HEAD 2>/dev/null
+  git worktree remove --force "$WORKTREE" 2>/dev/null || true
+  git worktree add "$WORKTREE" HEAD
 
   BUILD_DIR="$WORKTREE/conex/linear_solvers"
   cd "$BUILD_DIR"
 
   echo "Building with Clang coverage..." >&2
+  rm -rf CMakeCache.txt CMakeFiles
   cmake -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++ \
     -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping" \
     -DCMAKE_EXE_LINKER_FLAGS="-fprofile-instr-generate" \
+    -DCMAKE_CUDA_COMPILER=NOTFOUND \
     . >/dev/null 2>&1
   TEST_TARGETS=$(grep -oP '(?<=add_executable\()[\w]+_test' CMakeLists.txt | tr '\n' ' ')
   echo "Building: $TEST_TARGETS" >&2
