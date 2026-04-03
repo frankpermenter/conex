@@ -145,7 +145,7 @@ add_executable(dense_kkt_solver_test
   conex/test/dense_kkt_solver_test.cc
 )
 target_link_libraries(dense_kkt_solver_test
-  tree_solver
+  algorithms tree_solver
   GTest::gtest_main
 )
 

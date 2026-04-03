@@ -1,4 +1,5 @@
 #include "conex/common/dense_kkt_solver.h"
+#include "conex/algorithms/barrier_qp.h"
 #include <gtest/gtest.h>
 
 namespace conex {
@@ -167,69 +168,71 @@ TEST(DenseKKTSolver, MakePartition) {
   EXPECT_EQ(blk.cols(), 2);
 }
 
-TEST(DenseKKTSolver, BarrierQPManual) {
+TEST(DenseKKTSolver, BarrierQPGenericInterface) {
   // Solve min 0.5 x^T Q x + c^T x  s.t. A x <= b
-  // using DenseKKTSolver to form the weighted normal equation at each step.
+  // using the generic SolveBarrierQP(KKTSolverBase&, ...) interface
+  // with DenseKKTSolver providing the constraint-based overrides.
   //
   // Problem: min 0.5 ||x||^2  s.t.  x_i <= 1  (box constraints, n=2)
-  // Optimal: x* = (0, 0).
+  // Optimal: x* = (0, 0), objective = 0.
   const int n = 2;
-  const int m = 2;
   Eigen::MatrixXd Q = Eigen::MatrixXd::Identity(n, n);
   Eigen::VectorXd c = Eigen::VectorXd::Zero(n);
-  Eigen::MatrixXd A = Eigen::MatrixXd::Identity(m, n);  // x <= 1
-  Eigen::VectorXd b = Eigen::VectorXd::Ones(m);
+  Eigen::MatrixXd A = Eigen::MatrixXd::Identity(n, n);  // x <= 1
+  Eigen::VectorXd b = Eigen::VectorXd::Ones(n);
 
-  Eigen::VectorXd x = Eigen::VectorXd::Zero(n);  // feasible start
+  DenseKKTSolver solver(n);
+  solver.SetConstraintData(Q, A, b);
 
-  double t = 1.0;
-  const double mu = 10.0;
-  const double tol = 1e-8;
+  auto c_rhs = solver.MakeTreeRHS();
+  c_rhs.supernodes->ScatterFrom(c);
+  c_rhs.blocks_fully_gathered = true;
 
-  for (int outer = 0; outer < 20; ++outer) {
-    double gap = static_cast<double>(m) / t;
-    if (gap < tol) break;
+  auto x = solver.MakeTreeRHS();
+  x.supernodes->SetZero();  // feasible start at origin
+  x.blocks_fully_gathered = true;
 
-    for (int newton = 0; newton < 50; ++newton) {
-      Eigen::VectorXd s = b - A * x;
-      if (s.minCoeff() <= 0) break;
+  auto result = SolveBarrierQP(solver, c_rhs, x);
 
-      // Weights: w_i = 1/(t * s_i^2)
-      Eigen::VectorXd w(m);
-      for (int i = 0; i < m; ++i) w(i) = 1.0 / (t * s(i) * s(i));
+  EXPECT_LT(result.x.norm(), 1e-4);
+  EXPECT_LT(std::abs(result.objective), 1e-6);
+  EXPECT_LT(result.duality_gap, 1e-6);
+}
 
-      // Weighted KKT: (Q + A^T diag(w) A)
-      Eigen::MatrixXd H = Q + A.transpose() * w.asDiagonal() * A;
+TEST(DenseKKTSolver, BarrierQPNonTrivial) {
+  // min 0.5 x^T Q x + c^T x  s.t. A x <= b
+  // Q = I, c = (-1, -1), A = [1 0; 0 1; 1 1], b = (2, 2, 3)
+  // Unconstrained min at (1,1); all constraints satisfied there.
+  const int n = 2;
+  const int m = 3;
+  Eigen::MatrixXd Q = Eigen::MatrixXd::Identity(n, n);
+  Eigen::VectorXd c(n);
+  c << -1, -1;
+  Eigen::MatrixXd A(m, n);
+  A << 1, 0,
+       0, 1,
+       1, 1;
+  Eigen::VectorXd b(m);
+  b << 2, 2, 3;
 
-      // Gradient: Q x + c + (1/t) A^T (1/s)
-      Eigen::VectorXd inv_s(m);
-      for (int i = 0; i < m; ++i) inv_s(i) = 1.0 / (t * s(i));
-      Eigen::VectorXd grad = Q * x + c + A.transpose() * inv_s;
+  DenseKKTSolver solver(n);
+  solver.SetConstraintData(Q, A, b);
 
-      // Solve H dx = -grad using DenseKKTSolver.
-      DenseKKTSolver solver(n);
-      solver.SetMatrix(H);
-      ASSERT_TRUE(solver.AssembleAndFactor());
-      Eigen::VectorXd dx = solver.Solve(-grad);
+  auto c_rhs = solver.MakeTreeRHS();
+  c_rhs.supernodes->ScatterFrom(c);
+  c_rhs.blocks_fully_gathered = true;
 
-      double lambda_sq = grad.dot(-dx);
-      if (-lambda_sq / 2.0 < tol * 0.01) break;
+  // Feasible start at origin.
+  auto x = solver.MakeTreeRHS();
+  x.supernodes->SetZero();
+  x.blocks_fully_gathered = true;
 
-      // Step with feasibility check.
-      double alpha = 1.0;
-      Eigen::VectorXd Adx = A * dx;
-      for (int i = 0; i < m; ++i)
-        if (Adx(i) > 0) alpha = std::min(alpha, 0.99 * s(i) / Adx(i));
+  auto result = SolveBarrierQP(solver, c_rhs, x);
 
-      x += alpha * dx;
-    }
-    t *= mu;
-  }
-
-  // Optimal is x* = (0,0), objective = 0.
-  EXPECT_LT(x.norm(), 1e-6);
-  double obj = 0.5 * x.dot(Q * x) + c.dot(x);
-  EXPECT_LT(std::abs(obj), 1e-10);
+  // Optimal: x* = (1, 1), objective = 0.5*(1+1) + (-1-1) = -1.
+  EXPECT_NEAR(result.x(0), 1.0, 1e-5);
+  EXPECT_NEAR(result.x(1), 1.0, 1e-5);
+  EXPECT_NEAR(result.objective, -1.0, 1e-5);
 }
 
 }  // namespace

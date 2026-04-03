@@ -130,7 +130,16 @@ class KKTSolverBase {
     // Store ownership in a static-duration holder — caller must not
     // outlive the solver.  (Tree solver overrides with proper ownership.)
     owned_tree_rhs_partitions_.push_back(std::move(p));
-    owned_tree_rhs_scratches_.push_back(std::make_unique<SeparatorScratch>());
+    auto scratch = std::make_unique<SeparatorScratch>();
+    // Initialize with one block per supernode block, each with 0 sep rows,
+    // so TreeRHS copy/arithmetic can iterate blocks without out-of-bounds.
+    int nb = rhs.supernodes->num_blocks();
+    scratch->sep_rows.assign(nb, 0);
+    scratch->offsets.assign(nb, 0);
+    scratch->total_rows = 0;
+    scratch->reserved_cols = cols;
+    scratch->block_ptrs.assign(nb, nullptr);
+    owned_tree_rhs_scratches_.push_back(std::move(scratch));
     rhs.separators = owned_tree_rhs_scratches_.back().get();
     return rhs;
   }
