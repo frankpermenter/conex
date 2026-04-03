@@ -39,10 +39,6 @@ class TreeBlockPartition : public BlockPartition {
   Eigen::Ref<Eigen::MatrixXd> block(int k) override;
   Eigen::Ref<const Eigen::MatrixXd> block(int k) const override;
 
-  // Tree-specific: access supernode/separator separately.
-  SupernodePartitionMatrix& raw() { return *spm_; }
-  const SupernodePartitionMatrix& raw() const { return *spm_; }
-
  private:
   SupernodePartitionMatrix* spm_ = nullptr;
   int num_vars_ = 0;
@@ -92,7 +88,6 @@ class SupernodePartitionMatrix {
   }
 
   int supernode_rows(int k) const { return blocks_[k].sn_rows; }
-  int separator_rows(int k) const { return blocks_[k].sep_rows; }
   int num_blocks_internal() const { return static_cast<int>(blocks_.size()); }
 
  private:
@@ -122,13 +117,6 @@ enum class ContributionType { kPositiveDefinite, kIndefinite };
 class SubmatrixContributor {
  public:
   SubmatrixContributor() = default;
-
-  // Supernode range in elimination order (always contiguous).
-  int supernode_start() const { return sn_start_; }
-  int supernode_count() const { return sn_count_; }
-
-  // Separator indices in elimination order (sorted).
-  const std::vector<int>& separator_indices() const { return sep_indices_; }
 
   // Mutable access to the three storage blocks.
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() {
@@ -162,9 +150,6 @@ class SubmatrixContributor {
   // Declare the contribution type.  If any contributor to a subsystem is
   // indefinite, the solver uses LU factorization for that clique.
   void set_type(ContributionType type);
-
-  // Clique (subsystem) index this contributor writes to.
-  int clique_id() const { return clique_id_; }
 
  private:
   friend class SymmetricLinearSystemTreeSolver;
@@ -335,18 +320,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   }
   void UpdateAssemblerData();
 
-  std::vector<int> subsystem_to_parent() { return subsystem_to_parent_; }
-  const std::vector<int>& variable_to_elimination_position() const {
-    return variable_to_elimination_position_;
-  }
-
   void ComputeSeparatorOffsets();
   void push_back(std::unique_ptr<AssemblerAdapter>&& system);
-
-  // Access contributor (adapter) by index.
-  AssemblerAdapter* GetContributor(int index) {
-    return contributors_.at(index).get();
-  }
 
   // BlockPartition interface (from KKTSolverBase).
   BlockPartition& partition() override { return block_partition_; }
@@ -362,10 +337,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     return std::make_unique<StandaloneBlockPartition>(
         block_sizes, block_starts, perm(), perm_inv());
   }
-
-  // Tree-specific: access the raw SupernodePartitionMatrix.
-  SupernodePartitionMatrix& raw_partition() { return solve_matrix_; }
-  const SupernodePartitionMatrix& raw_partition() const { return solve_matrix_; }
 
   // Number of subsystems (blocks in the partition).
   int num_subsystems() const { return static_cast<int>(subsystems_.size()); }
@@ -391,20 +362,9 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   // The partition is modified in place (RHS in, solution out).
   void SolveBlockedInPlace(BlockPartition& supernodes) const;
 
-  // Make a TreeRHS backed by a BlockVariable's partition + sep_scratch_out.
-  TreeRHS MakeTreeRHS(BlockVariable& bv) const {
-    return {&bv.partition(), &sep_scratch_out_, false};
-  }
-
   // Solve using a pre-populated separator scratch (no zero).
   void SolveBlockedInPlace(BlockPartition& supernodes,
                            SeparatorScratch& scratch) const;
-
-  // Solve a TreeRHS in place. Separator contributions are consumed
-  // during the forward pass — no GatherSeparators needed.
-  void SolveBlockedInPlace(TreeRHS& rhs) const {
-    SolveBlockedInPlace(*rhs.supernodes, *rhs.separators);
-  }
 
   // --- KKTSolverBase overrides ---
   TreeRHS MakeTreeRHS(int cols = 1) override;
@@ -439,24 +399,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   // Bottom-up: accumulates child separator scratch into parent sn/sep.
   void GatherSeparators(BlockPartition& supernodes,
                         const SeparatorScratch& scratch) const;
-
-  // Convenience: use the primary sep_scratch_.
-  void ScatterSeparators(const BlockPartition& supernodes) const {
-    ScatterSeparators(supernodes, sep_scratch_);
-  }
-  void GatherSeparators(BlockPartition& supernodes) const {
-    GatherSeparators(supernodes, sep_scratch_);
-  }
-
-  // Two scratch buffers: input (for reading x) and output (for accumulating).
-  SeparatorScratch& sep_scratch_in() const { return sep_scratch_; }
-  SeparatorScratch& sep_scratch_out() const { return sep_scratch_out_; }
-
-  // Legacy accessors.
-  SeparatorScratch& sep_scratch() const { return sep_scratch_; }
-  Eigen::Map<Eigen::MatrixXd> separator_scratch(int k, int cols) const {
-    return sep_scratch_.block(k, cols);
-  }
 
   // DoSolveBlocked: solves directly in rhs's partition, copies to dest.
   bool DoSolveBlocked(const BlockPartition& rhs,

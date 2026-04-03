@@ -404,30 +404,6 @@ void T::BindSolveWorkspace(double* ws1, int ws1_rows, int ws1_cols,
   ws_arena_bound_ = true;
 }
 
-void T::ReserveSolveWorkspace(int rhs_cols) {
-  for (auto child : children_) {
-    child->ReserveSolveWorkspace(rhs_cols);
-  }
-  CONEX_DEMAND(AreContiguousLabels(supernodes_),
-               "Non-contiguous supernodes are not supported in solve path.");
-  if (rhs_cols <= solve_workspace_cols_) {
-    return;
-  }
-  // If workspaces are arena-bound, the tree solver handles reallocation.
-  if (ws1_data_) {
-    return;
-  }
-  solve_workspace_cols_ = rhs_cols;
-  int supernode_rows = 0;
-  if (!supernodes_.empty()) {
-    supernode_rows = supernodes_.back() - supernodes_.front() + 1;
-  }
-  const int separator_rows = static_cast<int>(separators_.size());
-  solve_workspace1_.resize(supernode_rows, solve_workspace_cols_);
-  solve_workspace2_.resize(supernode_rows, solve_workspace_cols_);
-  solve_workspace3_.resize(separator_rows, solve_workspace_cols_);
-}
-
 namespace {
 size_t AlignUp(size_t value, size_t alignment) {
   return ((value + alignment - 1) / alignment) * alignment;
@@ -600,22 +576,6 @@ void T::ComputeOffsets(const KKTSubsystemBase* descendant, int start_index) {
   }
 }
 
-void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
-  for (auto child : children_) {
-    child->MakeKKTMatrix(full_matrix);
-  }
-  for (size_t j = 0; j < supernodes_.size(); j++) {
-    for (size_t i = 0; i < supernodes_.size(); i++) {
-      (*full_matrix)(supernodes_.at(i), supernodes_.at(j)) =
-          supernode_submatrix()(i, j);
-    }
-    for (size_t i = 0; i < separators_.size(); i++) {
-      (*full_matrix)(separators_.at(i), supernodes_.at(j)) =
-          separator_rows()(i, j);
-    }
-  }
-}
-
 bool T::AssembleAndFactor() {
   for (auto child : children_) {
     if (!child->AssembleAndFactor()) {
@@ -642,6 +602,22 @@ bool T::AssembleAndFactor() {
     END_TIMER
   }
   return true;
+}
+
+void T::MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const {
+  for (auto child : children_) {
+    child->MakeKKTMatrix(full_matrix);
+  }
+  for (size_t j = 0; j < supernodes_.size(); j++) {
+    for (size_t i = 0; i < supernodes_.size(); i++) {
+      (*full_matrix)(supernodes_.at(i), supernodes_.at(j)) =
+          supernode_submatrix()(i, j);
+    }
+    for (size_t i = 0; i < separators_.size(); i++) {
+      (*full_matrix)(separators_.at(i), supernodes_.at(j)) =
+          separator_rows()(i, j);
+    }
+  }
 }
 
 void T::Assemble() {
@@ -671,8 +647,6 @@ bool T::Factor() {
       return false;
     }
   }
-  // We assume that Assemble() has been called and already
-  // scattered the separator sub-matrix.
   separator_schur_complement().setZero();
   DoComputeSeparatorSchurComplement();
   if (!IsRoot() && !left_looking_) {
@@ -680,18 +654,6 @@ bool T::Factor() {
   }
   return true;
 }
-
-int T::ComputePostOrdering(int offset,
-                           std::vector<int>* variable_to_elimination_position) {
-  for (auto& child : children_) {
-    offset =
-        child->ComputePostOrdering(offset, variable_to_elimination_position);
-  }
-  for (auto& s : supernodes_) {
-    variable_to_elimination_position->at(s) = offset++;
-  }
-  return offset;
-};
 
 void T::SetVariableOrdering(
     const std::vector<int>& shared_variable_to_elimination_position) {

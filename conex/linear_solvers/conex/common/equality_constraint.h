@@ -92,18 +92,6 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
                                 const std::vector<int>& primal_variables,
                                 const std::vector<int>& dual_variables);
 
-  int UpdateMatrix(double value, int row, int col) {
-    CONEX_RETURN_ON_FAIL(row < A_.rows() && col < A_.cols(),
-                         "Indices are out of bounds.");
-
-    A_(row, col) = value;
-    return CONEX_SUCCESS;
-  }
-
-  const Eigen::VectorXd& affine_term() const { return b_; }
-  const Eigen::MatrixXd& constraint_matrix() const { return A_; }
-
-  bool is_dynamic() const override { return false; }
   bool is_positive_definite() const override { return false; }
 
   BlockAssembler* GetBlockAssembler() override {

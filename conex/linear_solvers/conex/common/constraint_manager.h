@@ -39,10 +39,6 @@ class ConstraintManager {
     owned_custom_assemblers_.push_back(std::move(assembler));
   }
 
-  int num_custom_assemblers() const {
-    return static_cast<int>(custom_assemblers_.size());
-  }
-
   std::vector<CliqueProvider*> clique_assemblers();
 
  private:

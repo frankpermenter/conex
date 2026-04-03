@@ -106,8 +106,6 @@ class DenseKKTSubsystemStorage final : public KKTSubsystemStorage {
                        size_t num_separators) override;
 
   AlignedMatrixMap& supernode_map() { return supernode_submatrix_; }
-  AlignedMatrixMap& separator_rows_map() { return separator_rows_; }
-  AlignedMatrixMap& separator_schur_map() { return separator_schur_complement_; }
 
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override {
     return supernode_submatrix_;
@@ -160,9 +158,6 @@ class KKTSubsystemBase : public ArenaAllocatable {
 
   void Initialize() { DoInitialize(); }
 
-  int ComputePostOrdering(int offset,
-                          std::vector<int>* variable_to_elimination_position);
-
   void SetVariableOrdering(
       const std::vector<int>& variable_to_elimination_position);
   void SetNumThreads(int num_threads) {
@@ -174,7 +169,6 @@ class KKTSubsystemBase : public ArenaAllocatable {
 
   void Assemble();
   bool Factor();
-
   void MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const;
   bool AssembleAndFactor();
 
@@ -187,8 +181,6 @@ class KKTSubsystemBase : public ArenaAllocatable {
                            Eigen::Ref<Eigen::MatrixXd> sep) const;
   void BackwardSolveBlocked(Eigen::Ref<Eigen::MatrixXd> sn,
                             Eigen::Ref<const Eigen::MatrixXd> sep) const;
-  void ReserveSolveWorkspace(int rhs_cols);
-
   struct Offset {
     Offset(int x, int y, int z) : first(x), second(y), size(z) {}
     int first;
@@ -205,12 +197,8 @@ class KKTSubsystemBase : public ArenaAllocatable {
   }
 
   void ComputeSeparatorOffsets();
-  bool variable_set_equals_sorted_separators() {
-    return variable_set_equals_sorted_separators_;
-  }
-  bool variable_set_equals_sorted_supernodes() {
-    return variable_set_equals_sorted_supernodes_;
-  }
+  virtual void MarkIndefinite() {}
+
   // Virtual scatter hooks for supernode updates.  Scatter/PartialScatter
   // and GatherFromChildren route through these instead of writing directly
   // to supernode_submatrix().  Subclasses (e.g., diagonal-only subsystems)
@@ -225,7 +213,6 @@ class KKTSubsystemBase : public ArenaAllocatable {
   // supernode_submatrix() shape for structured subsystems).
   virtual std::pair<int, int> supernode_dimensions() const;
 
-  virtual void MarkIndefinite() {}
 
   // Bind externally-owned memory for solve workspaces.
   // The tree solver calls this to consolidate all workspace allocations.

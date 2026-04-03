@@ -84,15 +84,6 @@ class SparseLinearConstraintAssembler : public CliqueProvider {
     return owned_constraints_;
   }
 
-  // Row mapping: global row index → (constraint index, local row).
-  // Available after Decompose().
-  struct RowMapping {
-    int constraint_index;
-    int local_row;
-  };
-  const std::vector<RowMapping>& row_map() const { return row_map_; }
-  int num_global_rows() const { return num_global_rows_; }
-
  private:
   std::unique_ptr<SparseLinearConstraint> slc_;
 
@@ -101,6 +92,10 @@ class SparseLinearConstraintAssembler : public CliqueProvider {
   // Persistent workspace memory for each LinearConstraint's WorkspaceLinear.
   std::list<Eigen::VectorXd> owned_workspace_memory_;
   // Global row → per-clique mapping (indexed by global row).
+  struct RowMapping {
+    int constraint_index;
+    int local_row;
+  };
   std::vector<RowMapping> row_map_;
   int num_global_rows_ = 0;
 };
