@@ -1,15 +1,41 @@
 #!/bin/bash
 # Unused code detection using lcov merged coverage data.
-# Requires: coverage_filtered.info from a coverage build + test run.
-# Usage: ./unused_code_report.sh [coverage_filtered.info]
+# Builds with coverage, runs all tests, generates lcov report, then
+# parses FNDA:0 entries to find functions never called.
+# Usage: ./unused_code_report.sh [--skip-build]
 set -uo pipefail
 cd "$(dirname "$0")"
 
-INFO_FILE="${1:-coverage_filtered.info}"
+SKIP_BUILD=false
+for arg in "$@"; do
+  case $arg in
+    --skip-build) SKIP_BUILD=true ;;
+  esac
+done
+
+INFO_FILE="coverage_filtered.info"
+
+if [ "$SKIP_BUILD" = false ]; then
+  echo "Building with coverage..." >&2
+  cmake -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage" . >/dev/null 2>&1
+  make -j"$(nproc)" >/dev/null 2>&1
+
+  echo "Running tests..." >&2
+  lcov --zerocounters --directory . >/dev/null 2>&1
+  ctest --output-on-failure >/dev/null 2>&1
+
+  echo "Capturing coverage..." >&2
+  lcov --capture --directory . --output-file coverage.info --no-external \
+    --ignore-errors mismatch,negative >/dev/null 2>&1
+  lcov --remove coverage.info '*/test/*' '*/_deps/*' '*/RLDLT.h' \
+    --output-file "$INFO_FILE" \
+    --ignore-errors mismatch,negative >/dev/null 2>&1
+fi
 
 if [ ! -f "$INFO_FILE" ]; then
   echo "No coverage file found: $INFO_FILE"
-  echo "Run cleanup_report.sh first to generate coverage data."
+  echo "Run without --skip-build to generate coverage data."
   exit 1
 fi
 
