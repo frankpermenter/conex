@@ -226,8 +226,6 @@ class KKTSubsystemBase : public ArenaAllocatable {
   virtual std::pair<int, int> supernode_dimensions() const;
 
   virtual void MarkIndefinite() {}
-  size_t RequiredArenaBytes() const override { return 0; }
-  void BindArenaMemory(double* /*ptr*/, size_t /*bytes*/) override {}
 
   // Bind externally-owned memory for solve workspaces.
   // The tree solver calls this to consolidate all workspace allocations.

@@ -40,6 +40,10 @@ class CholeskySolver : public KKTSubsystemBase {
         separator_rows_(separator_rows),
         separator_schur_complement_(separator_schur_complement) {}
 
+  // No arena needed — memory is externally owned via Ref.
+  size_t RequiredArenaBytes() const override { return 0; }
+  void BindArenaMemory(double*, size_t) override {}
+
   Eigen::Ref<Eigen::MatrixXd> supernode_submatrix() override {
     return supernode_submatrix_;
   }
