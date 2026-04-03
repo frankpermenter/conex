@@ -10,7 +10,6 @@
 #include "conex/common/tree_spec.h"
 #include "conex/algorithms/tree_solver_builder.h"
 #include "conex/common/sparse_linear_constraint.h"
-#include "conex/common/sparse_psd_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
 #include "conex/common/sparse_equality_constraint.h"
 #include "conex/common/structural_rank.h"
