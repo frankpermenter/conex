@@ -82,6 +82,7 @@ class Solver {
 
     linear_assemblers_.resize(problem.num_constraints(), nullptr);
     quadratic_assemblers_.resize(problem.num_constraints(), nullptr);
+    equality_assemblers_.resize(problem.num_constraints(), nullptr);
 
     for (int i = 0; i < problem.num_constraints(); ++i) {
       std::visit([&](const auto& data) {
@@ -108,6 +109,7 @@ class Solver {
           dual_var_map_[i] = dual;
           auto asm_ptr = std::make_unique<SparseEqualityConstraintAssembler>(
               std::move(sec), data.primal_vars, dual);
+          equality_assemblers_[i] = asm_ptr.get();
           cm_->AddCustomAssembler(std::move(asm_ptr));
         }
       }, problem.constraint(i));
@@ -290,6 +292,11 @@ class Solver {
       for (auto& qc : qasm->constraints())
         tree_solver_->RegisterQuadraticSubAssembler(&qc);
     }
+    for (auto* easm : equality_assemblers_) {
+      if (!easm) continue;
+      for (auto& ec : easm->constraints())
+        tree_solver_->RegisterEqualitySubAssembler(&ec);
+    }
   }
 
   std::unique_ptr<TreeSolverBuilder> builder_;
@@ -298,6 +305,7 @@ class Solver {
   std::unique_ptr<DenseKKTSolver> dense_solver_;
   std::vector<SparseLinearConstraintAssembler*> linear_assemblers_;
   std::vector<SparseQuadraticTermAssembler*> quadratic_assemblers_;
+  std::vector<SparseEqualityConstraintAssembler*> equality_assemblers_;
   std::unordered_map<int, std::vector<int>> dual_var_map_;
 };
 

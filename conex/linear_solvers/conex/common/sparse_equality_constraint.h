@@ -76,6 +76,11 @@ class SparseEqualityConstraintAssembler : public CliqueProvider {
   }
   const Eigen::VectorXd& rhs_vector() const { return sec_->d(); }
 
+  std::list<EqualityConstraint>& constraints() { return owned_assemblers_; }
+  const std::list<EqualityConstraint>& constraints() const {
+    return owned_assemblers_;
+  }
+
  private:
   std::unique_ptr<SparseEqualityConstraint> sec_;
   std::vector<int> row_to_dual_;

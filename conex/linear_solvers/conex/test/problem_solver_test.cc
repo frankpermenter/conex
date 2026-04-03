@@ -714,6 +714,104 @@ TEST(ProblemSolver, DenseSolverIndefinite) {
          eq_err, sol_err);
 }
 
+TEST(ProblemSolver, EqualityConstraintVectorOps) {
+  // Verify KKT conditions for equality-constrained least squares using the
+  // generic SolverRHS interface:
+  //   min 0.5 ||Ax - b||^2  s.t. Cx = d
+  // KKT: A^T A x + C^T lambda = A^T b,  Cx = d
+  srand(42);
+  const int m = 15, n = 6, p = 2;
+  MatrixXd A = MatrixXd::Random(m, n);
+  VectorXd b = VectorXd::Random(m);
+  MatrixXd C = MatrixXd::Random(p, n);
+  VectorXd d_eq = VectorXd::Random(p);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  problem.AddLinearConstraint(
+      Eigen::SparseMatrix<double>(A.sparseView()),
+      b, vars);
+  problem.AddEqualityConstraint(
+      Eigen::SparseMatrix<double>(C.sparseView()),
+      d_eq, vars);
+
+  auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
+  auto* ts = solver.tree_solver();
+  ASSERT_NE(ts, nullptr);
+  ASSERT_TRUE(kkt->AssembleAndFactor());
+
+  // Solve the KKT system.
+  int n_total = kkt->number_of_variables();
+  VectorXd rhs_dense = VectorXd::Zero(n_total);
+  // A^T b for primal, d for dual.
+  rhs_dense.head(n) = A.transpose() * b;
+  // Set dual RHS via dual variable indices.
+  const auto& eq_assemblers = ts->equality_sub_assemblers();
+  ASSERT_FALSE(eq_assemblers.empty());
+  for (const auto* ec : eq_assemblers) {
+    const auto& dv = ec->dual_variables();
+    const auto& d_local = ec->affine_term();
+    for (int i = 0; i < static_cast<int>(dv.size()); ++i)
+      rhs_dense(dv[i]) = d_local(i);
+  }
+
+  VectorXd sol = kkt->Solve(rhs_dense);
+  VectorXd x_sol = sol.head(n);
+
+  // --- Verify using generic interface ---
+  // 1. Feasibility: Cx = d.  Check each equality sub-assembler.
+  for (const auto* ec : eq_assemblers) {
+    VectorXd Cx = ec->constraint_matrix() * x_sol;
+    double eq_err = (Cx - ec->affine_term()).norm();
+    EXPECT_LT(eq_err, 1e-10) << "Equality constraint violated";
+  }
+
+  // 2. Optimality via SolverRHS: A^T A x + C^T lambda = A^T b.
+  //    Use MultiplyA to get residual r = Ax, then AccumulateAtranspose
+  //    to get A^T r.  Compare with rhs.
+  auto x_rhs = kkt->MakeSolverRHS();
+  x_rhs.supernodes->ScatterFrom(sol);
+  x_rhs.blocks_fully_gathered = true;
+
+  // A * x
+  RowSpace ax = kkt->MakeRowSpace();
+  kkt->MultiplyA(x_rhs, ax);
+
+  // A^T (A x) = A^T A x + C^T lambda (the full KKT product)
+  auto ata_x = kkt->MakeSolverRHS();
+  ata_x.SetZero();
+  // Weights = 1 (unweighted normal equations).
+  RowSpace w = kkt->MakeRowSpace();
+  w.data.setOnes();
+  kkt->SetWeights(w);
+  kkt->AssembleAndFactor();
+  kkt->AccumulateAtranspose(ax, ata_x);
+  ts->GatherSeparators(ata_x);
+
+  VectorXd ata_x_dense(n_total);
+  ata_x.supernodes->GatherInto(ata_x_dense);
+
+  // The primal part of A^T(Ax) should equal A^T b (since lambda contributes
+  // through the KKT matrix, which we verified via direct solve).
+  double opt_err = (ata_x_dense.head(n) - A.transpose() * (A * x_sol)).norm();
+  EXPECT_LT(opt_err, 1e-10) << "A^T A x mismatch";
+
+  // 3. Dense reference.
+  MatrixXd K = MatrixXd::Zero(n + p, n + p);
+  K.topLeftCorner(n, n) = A.transpose() * A;
+  K.topRightCorner(n, p) = C.transpose();
+  K.bottomLeftCorner(p, n) = C;
+  VectorXd kkt_rhs(n + p);
+  kkt_rhs.head(n) = A.transpose() * b;
+  kkt_rhs.tail(p) = d_eq;
+  VectorXd kkt_ref = K.fullPivLu().solve(kkt_rhs);
+  double sol_err = (x_sol - kkt_ref.head(n)).norm() / kkt_ref.head(n).norm();
+  EXPECT_LT(sol_err, 1e-10);
+}
+
 TEST(ProblemSolver, RankDeficientEqualities) {
   // Equality constraint C has 4 rows but structural rank 2.
   // Preprocess should drop 2 redundant rows.

@@ -26,6 +26,10 @@ class EqualityConstraint final : public SupernodalAssemblerBase {
 
   bool is_positive_definite() const { return false; }
 
+  const Eigen::MatrixXd& constraint_matrix() const { return A_; }
+  const Eigen::VectorXd& affine_term() const { return b_; }
+  int num_rows() const { return A_.rows(); }
+
   // Block assembler for the indefinite [0 C'; C 0] matrix.
   class Assembler : public BlockAssembler {
    public:
