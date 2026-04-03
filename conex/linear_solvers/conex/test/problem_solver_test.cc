@@ -186,7 +186,7 @@ TEST(BarrierQP, SolverReuse) {
          result.solve_time_us);
 }
 
-TEST(BarrierQP, ConsolidateMultipleConstraints) {
+TEST(BarrierQP, MultipleConstraints) {
   // Same QP as UnconstrainedInsideFeasible but with constraints split
   // into two separate AddLinearConstraint calls.
   // min 0.5 x^T I x  s.t.  x1+x2 <= 1, -x1 <= 0, -x2 <= 0
@@ -220,8 +220,7 @@ TEST(BarrierQP, ConsolidateMultipleConstraints) {
   problem.AddLinearConstraint(A2, b2, vars);
   problem.AddQuadraticCost(Q, vars);
 
-  auto consolidated = problem.Consolidate();
-  auto [reduced, expansion] = Preprocess(consolidated);
+  auto [reduced, expansion] = Preprocess(problem);
   VectorXd c_r = expansion.Reduce(c);
   VectorXd x0_r = expansion.Reduce(VectorXd::Constant(n, 0.3));
 
@@ -238,7 +237,7 @@ TEST(BarrierQP, ConsolidateMultipleConstraints) {
 
   EXPECT_NEAR(result.x(0), 0.0, 0.01);
   EXPECT_NEAR(result.x(1), 0.0, 0.01);
-  printf("QP consolidated: obj=%.6f, x=[%.4f, %.4f], gap=%.2e, "
+  printf("QP multiple constraints: obj=%.6f, x=[%.4f, %.4f], gap=%.2e, "
          "%d outer, %d newton\n",
          result.objective, result.x(0), result.x(1), result.duality_gap,
          result.outer_iterations, result.total_newton_steps);

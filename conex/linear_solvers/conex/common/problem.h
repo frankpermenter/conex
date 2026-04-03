@@ -1,8 +1,6 @@
 #pragma once
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
-#include <set>
-#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -120,82 +118,6 @@ class Problem {
       }, c);
     }
     return n;
-  }
-
-  // Return a new Problem with all linear constraints merged into one
-  // and all quadratic costs merged into one.  Equality constraints
-  // are copied as-is.
-  Problem Consolidate() const {
-    const int n = num_variables();
-    Problem out;
-
-    // Aggregate linear constraints: stack rows, map columns to global.
-    std::vector<Eigen::Triplet<double>> A_trips;
-    std::vector<double> b_vals;
-    std::set<int> lin_vars_set;
-    int total_rows = 0;
-    for (const auto& c : constraints_) {
-      if (auto* lc = std::get_if<LinearConstraintData>(&c)) {
-        for (int k = 0; k < lc->A.outerSize(); ++k)
-          for (Eigen::SparseMatrix<double>::InnerIterator it(lc->A, k); it; ++it)
-            A_trips.emplace_back(total_rows + it.row(),
-                                  lc->vars[it.col()], it.value());
-        for (int r = 0; r < static_cast<int>(lc->b.size()); ++r)
-          b_vals.push_back(lc->b(r));
-        total_rows += lc->A.rows();
-        lin_vars_set.insert(lc->vars.begin(), lc->vars.end());
-      }
-    }
-    if (total_rows > 0) {
-      std::vector<int> lin_vars(lin_vars_set.begin(), lin_vars_set.end());
-      int nv = static_cast<int>(lin_vars.size());
-      std::unordered_map<int, int> g2l;
-      for (int j = 0; j < nv; ++j) g2l[lin_vars[j]] = j;
-      std::vector<Eigen::Triplet<double>> A_local;
-      A_local.reserve(A_trips.size());
-      for (const auto& t : A_trips)
-        A_local.emplace_back(t.row(), g2l.at(t.col()), t.value());
-      Eigen::SparseMatrix<double> A(total_rows, nv);
-      A.setFromTriplets(A_local.begin(), A_local.end());
-      Eigen::VectorXd b =
-          Eigen::Map<const Eigen::VectorXd>(b_vals.data(), total_rows);
-      out.AddLinearConstraint(A, b, lin_vars);
-    }
-
-    // Aggregate quadratic costs: sum into one Q.
-    std::vector<Eigen::Triplet<double>> Q_trips;
-    std::set<int> quad_vars_set;
-    for (const auto& c : constraints_) {
-      if (auto* qc = std::get_if<QuadraticCostData>(&c)) {
-        for (int k = 0; k < qc->Q_sparse.outerSize(); ++k)
-          for (Eigen::SparseMatrix<double>::InnerIterator it(qc->Q_sparse, k);
-               it; ++it)
-            Q_trips.emplace_back(qc->vars[it.row()], qc->vars[it.col()],
-                                  it.value());
-        quad_vars_set.insert(qc->vars.begin(), qc->vars.end());
-      }
-    }
-    if (!Q_trips.empty()) {
-      std::vector<int> quad_vars(quad_vars_set.begin(), quad_vars_set.end());
-      int nv = static_cast<int>(quad_vars.size());
-      std::unordered_map<int, int> g2l;
-      for (int j = 0; j < nv; ++j) g2l[quad_vars[j]] = j;
-      std::vector<Eigen::Triplet<double>> Q_local;
-      Q_local.reserve(Q_trips.size());
-      for (const auto& t : Q_trips)
-        Q_local.emplace_back(g2l.at(t.row()), g2l.at(t.col()), t.value());
-      Eigen::SparseMatrix<double> Q(nv, nv);
-      Q.setFromTriplets(Q_local.begin(), Q_local.end());
-      out.AddQuadraticCost(Q, quad_vars);
-    }
-
-    // Copy equality constraints.
-    for (const auto& c : constraints_) {
-      if (auto* ec = std::get_if<EqualityConstraintData>(&c))
-        out.AddEqualityConstraint(ec->C, ec->d, ec->primal_vars);
-    }
-
-    return out;
   }
 
  private:

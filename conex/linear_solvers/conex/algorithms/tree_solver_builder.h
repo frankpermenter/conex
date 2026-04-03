@@ -92,13 +92,6 @@ class TreeSolverBuilder {
   // Computes supernodes/separators, creates adapters, calls FinalizeStructure.
   Result Build();
 
-  // TODO: Delete — replaced by Problem + Solver::Build path.
-  // Only called from algorithms_test.cc.
-  static Result BuildFromSparseMatrices(
-      const Eigen::SparseMatrix<double>& Q,
-      const Eigen::SparseMatrix<double>& C,
-      const Eigen::VectorXd& d);
-
  private:
   struct CliqueInfo {
     int parent;
