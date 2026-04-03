@@ -111,7 +111,7 @@ class TreeSolverBuilder {
   // Owned assembler storage (std::list for pointer stability).
   std::list<QuadraticCost> cost_assemblers_;
   std::list<LinearConstraint> linear_assemblers_;
-  std::list<SupernodalAssemblerEqualities> eq_assemblers_;
+  std::list<EqualityConstraint> eq_assemblers_;
 
   // Arena memory for LinearConstraint workspaces (allocated in Build).
   std::vector<double> workspace_arena_;

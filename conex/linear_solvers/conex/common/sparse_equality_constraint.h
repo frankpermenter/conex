@@ -52,7 +52,7 @@ class SparseEqualityConstraint {
 };
 
 // Assembler that decomposes sparse equality constraints into per-clique
-// SupernodalAssemblerEqualities.  Each row of C gets a dual variable;
+// EqualityConstraint.  Each row of C gets a dual variable;
 // the indefinite [0 C'; C 0] blocks are split across maximal cliques.
 class SparseEqualityConstraintAssembler : public CliqueProvider {
  public:
@@ -79,7 +79,7 @@ class SparseEqualityConstraintAssembler : public CliqueProvider {
  private:
   std::unique_ptr<SparseEqualityConstraint> sec_;
   std::vector<int> row_to_dual_;
-  std::list<SupernodalAssemblerEqualities> owned_assemblers_;
+  std::list<EqualityConstraint> owned_assemblers_;
 };
 
 }  // namespace conex

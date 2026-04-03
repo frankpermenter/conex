@@ -60,7 +60,7 @@ class LQRTreeSolver {
 
   // Owned assembler storage.
   std::list<QuadraticCost> cost_assemblers_;
-  std::list<SupernodalAssemblerEqualities> dynamics_assemblers_;
+  std::list<EqualityConstraint> dynamics_assemblers_;
 
   std::unique_ptr<SymmetricLinearSystemTreeSolver> solver_;
 };
