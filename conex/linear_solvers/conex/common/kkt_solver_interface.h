@@ -116,9 +116,9 @@ class KKTSolverBase {
   // --- Generic solver interface (no ConstraintId) ---
   // Solver loops over all constraints/costs internally.
 
-  // Create a TreeRHS with owned partition + empty separator scratch.
-  virtual TreeRHS MakeTreeRHS(int cols = 1) {
-    TreeRHS rhs;
+  // Create a SolverRHS with owned partition + empty separator scratch.
+  virtual SolverRHS MakeSolverRHS(int cols = 1) {
+    SolverRHS rhs;
     rhs.supernodes = nullptr;
     rhs.separators = nullptr;
     rhs.blocks_fully_gathered = true;
@@ -132,7 +132,7 @@ class KKTSolverBase {
     owned_tree_rhs_partitions_.push_back(std::move(p));
     auto scratch = std::make_unique<SeparatorScratch>();
     // Initialize with one block per supernode block, each with 0 sep rows,
-    // so TreeRHS copy/arithmetic can iterate blocks without out-of-bounds.
+    // so SolverRHS copy/arithmetic can iterate blocks without out-of-bounds.
     int nb = rhs.supernodes->num_blocks();
     scratch->sep_rows.assign(nb, 0);
     scratch->offsets.assign(nb, 0);
@@ -145,9 +145,9 @@ class KKTSolverBase {
   }
 
   virtual RowSpace MakeRowSpace() = 0;
-  virtual void MultiplyA(const TreeRHS& x, RowSpace& out) = 0;
-  virtual void AccumulateAtranspose(const RowSpace& v, TreeRHS& rhs) = 0;
-  virtual void AccumulateQx(const TreeRHS& x, TreeRHS& rhs) = 0;
+  virtual void MultiplyA(const SolverRHS& x, RowSpace& out) = 0;
+  virtual void AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) = 0;
+  virtual void AccumulateQx(const SolverRHS& x, SolverRHS& rhs) = 0;
   virtual void SetWeights(const RowSpace& w) = 0;
 
   // Get the affine terms (b vectors) for all linear constraints,
@@ -157,14 +157,14 @@ class KKTSolverBase {
   // Dot product with lazy gather: tree solver overrides to fold
   // unscattered separator data before computing the dot product.
   // Default assumes blocks_fully_gathered is always true.
-  virtual double dot(TreeRHS& a, TreeRHS& b) {
+  virtual double dot(SolverRHS& a, SolverRHS& b) {
     return a.dot(b);
   }
-  virtual double dot(TreeRHS& a, const BlockVariable& b) {
+  virtual double dot(SolverRHS& a, const BlockVariable& b) {
     return a.dot(b);
   }
 
-  virtual void SolveTreeRHS(TreeRHS& rhs) {
+  virtual void SolveSolverRHS(SolverRHS& rhs) {
     // Default: gather, solve dense, scatter back.
     CONEX_DEMAND(factored_, "System has not been factored.");
     Eigen::MatrixXd b(number_of_variables(), rhs.cols());
@@ -185,7 +185,7 @@ class KKTSolverBase {
   bool assembled_ = false;
 
  protected:
-  // Owned storage for MakeTreeRHS allocations.
+  // Owned storage for MakeSolverRHS allocations.
   std::vector<std::unique_ptr<BlockPartition>> owned_tree_rhs_partitions_;
   std::vector<std::unique_ptr<SeparatorScratch>> owned_tree_rhs_scratches_;
 };

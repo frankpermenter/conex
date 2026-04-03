@@ -50,14 +50,14 @@ class DenseKKTSolver : public KKTSolverBase {
     return rs;
   }
 
-  void MultiplyA(const TreeRHS& x, RowSpace& out) override {
+  void MultiplyA(const SolverRHS& x, RowSpace& out) override {
     if (!has_constraints_) return;
     Eigen::VectorXd xv(n_);
     x.supernodes->GatherInto(xv);
     out.data = A_ * xv;
   }
 
-  void AccumulateAtranspose(const RowSpace& v, TreeRHS& rhs) override {
+  void AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) override {
     if (!has_constraints_) return;
     Eigen::VectorXd atv = A_.transpose() * v.data;
     Eigen::MatrixXd cur(n_, 1);
@@ -67,7 +67,7 @@ class DenseKKTSolver : public KKTSolverBase {
     rhs.blocks_fully_gathered = true;
   }
 
-  void AccumulateQx(const TreeRHS& x, TreeRHS& rhs) override {
+  void AccumulateQx(const SolverRHS& x, SolverRHS& rhs) override {
     if (!has_constraints_) return;
     Eigen::VectorXd xv(n_);
     x.supernodes->GatherInto(xv);

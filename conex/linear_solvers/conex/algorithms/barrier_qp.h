@@ -16,16 +16,16 @@ struct BarrierQPResult {
   double solve_time_us;
 };
 
-struct TreeRHS;
+struct SolverRHS;
 
 // Barrier method on an already-built solver.
-// All inputs/outputs in the solver's native TreeRHS format.
+// All inputs/outputs in the solver's native SolverRHS format.
 // c_rhs = linear cost, x0 = strictly feasible start.
 // b is read from the solver via GetAffineTerm().
 BarrierQPResult SolveBarrierQP(
     KKTSolverBase& kkt,
-    const TreeRHS& c_rhs,
-    TreeRHS& x0,
+    const SolverRHS& c_rhs,
+    SolverRHS& x0,
     int max_outer_iterations = 30,
     int max_newton_steps = 50,
     double mu = 10.0,

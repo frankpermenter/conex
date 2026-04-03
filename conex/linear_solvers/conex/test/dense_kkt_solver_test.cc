@@ -184,11 +184,11 @@ TEST(DenseKKTSolver, BarrierQPGenericInterface) {
   DenseKKTSolver solver(n);
   solver.SetConstraintData(Q, A, b);
 
-  auto c_rhs = solver.MakeTreeRHS();
+  auto c_rhs = solver.MakeSolverRHS();
   c_rhs.supernodes->ScatterFrom(c);
   c_rhs.blocks_fully_gathered = true;
 
-  auto x = solver.MakeTreeRHS();
+  auto x = solver.MakeSolverRHS();
   x.supernodes->SetZero();  // feasible start at origin
   x.blocks_fully_gathered = true;
 
@@ -218,12 +218,12 @@ TEST(DenseKKTSolver, BarrierQPNonTrivial) {
   DenseKKTSolver solver(n);
   solver.SetConstraintData(Q, A, b);
 
-  auto c_rhs = solver.MakeTreeRHS();
+  auto c_rhs = solver.MakeSolverRHS();
   c_rhs.supernodes->ScatterFrom(c);
   c_rhs.blocks_fully_gathered = true;
 
   // Feasible start at origin.
-  auto x = solver.MakeTreeRHS();
+  auto x = solver.MakeSolverRHS();
   x.supernodes->SetZero();
   x.blocks_fully_gathered = true;
 

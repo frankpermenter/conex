@@ -69,7 +69,7 @@ struct SeparatorScratch {
 // blocks_fully_gathered: if true, all data is in supernode blocks
 // and separator scratch can be ignored.  If false, separator
 // contributions are still in the scratch buffer.
-struct TreeRHS {
+struct SolverRHS {
   BlockPartition* supernodes;
   SeparatorScratch* separators;
   bool blocks_fully_gathered = false;
@@ -84,7 +84,7 @@ struct TreeRHS {
   int num_blocks() const { return supernodes->num_blocks(); }
 
   // Assign from a BlockVariable (copies supernode blocks, zeros sep).
-  TreeRHS& operator=(const BlockVariable& bv) {
+  SolverRHS& operator=(const BlockVariable& bv) {
     int nb = supernodes->num_blocks();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) = bv.partition().block(k);
@@ -93,8 +93,8 @@ struct TreeRHS {
     return *this;
   }
 
-  // Assign from another TreeRHS (copy blocks + sep).
-  TreeRHS& operator=(const TreeRHS& other) {
+  // Assign from another SolverRHS (copy blocks + sep).
+  SolverRHS& operator=(const SolverRHS& other) {
     if (this == &other) return *this;
     int nb = supernodes->num_blocks();
     int nc = cols();
@@ -106,7 +106,7 @@ struct TreeRHS {
     return *this;
   }
 
-  TreeRHS& operator*=(double alpha) {
+  SolverRHS& operator*=(double alpha) {
     int nb = supernodes->num_blocks();
     int nc = cols();
     for (int k = 0; k < nb; ++k)
@@ -118,7 +118,7 @@ struct TreeRHS {
     return *this;
   }
 
-  TreeRHS& operator+=(const TreeRHS& other) {
+  SolverRHS& operator+=(const SolverRHS& other) {
     int nb = supernodes->num_blocks();
     int nc = cols();
     for (int k = 0; k < nb; ++k)
@@ -131,7 +131,7 @@ struct TreeRHS {
     return *this;
   }
 
-  TreeRHS& operator-=(const TreeRHS& other) {
+  SolverRHS& operator-=(const SolverRHS& other) {
     int nb = supernodes->num_blocks();
     int nc = cols();
     for (int k = 0; k < nb; ++k)
@@ -145,7 +145,7 @@ struct TreeRHS {
   }
 
   // Add a BlockVariable (scattered data — only touches supernode blocks).
-  TreeRHS& operator+=(const BlockVariable& bv) {
+  SolverRHS& operator+=(const BlockVariable& bv) {
     int nb = supernodes->num_blocks();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) += bv.partition().block(k);
@@ -154,7 +154,7 @@ struct TreeRHS {
 
   // Dot product (block-wise, no dense gather).
   // Both operands must be scattered (data fully in supernode blocks).
-  double dot(const TreeRHS& other) const {
+  double dot(const SolverRHS& other) const {
     double result = 0;
     int nb = supernodes->num_blocks();
     for (int k = 0; k < nb; ++k)
@@ -176,7 +176,7 @@ struct TreeRHS {
   }
 
   // AddScaled: this += alpha * other (block-wise).
-  TreeRHS& AddScaled(double alpha, const TreeRHS& other) {
+  SolverRHS& AddScaled(double alpha, const SolverRHS& other) {
     int nb = supernodes->num_blocks();
     int nc = cols();
     for (int k = 0; k < nb; ++k)

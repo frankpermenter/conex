@@ -58,9 +58,9 @@ class GpuTreeSolver : public KKTSolverBase {
 
   // Generic interface stubs (GPU solver uses raw matrix path, not constraints).
   RowSpace MakeRowSpace() override { return {}; }
-  void MultiplyA(const TreeRHS&, RowSpace&) override {}
-  void AccumulateAtranspose(const RowSpace&, TreeRHS&) override {}
-  void AccumulateQx(const TreeRHS&, TreeRHS&) override {}
+  void MultiplyA(const SolverRHS&, RowSpace&) override {}
+  void AccumulateAtranspose(const RowSpace&, SolverRHS&) override {}
+  void AccumulateQx(const SolverRHS&, SolverRHS&) override {}
   void SetWeights(const RowSpace&) override {}
   RowSpace GetAffineTerm() override { return {}; }
 

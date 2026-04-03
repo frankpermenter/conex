@@ -183,11 +183,11 @@ class SparseQuadraticTermAssembler : public CliqueProvider {
     return owned_sub_assemblers_;
   }
 
-  // Accumulate Q * x into a TreeRHS.
+  // Accumulate Q * x into a SolverRHS.
   // sep_in must be pre-populated via ScatterSeparators(x).
-  void ComputeProduct(const TreeRHS& x,
+  void ComputeProduct(const SolverRHS& x,
                       const SeparatorScratch& sep_in,
-                      TreeRHS& rhs) const {
+                      SolverRHS& rhs) const {
     int nc = x.cols();
     for (const auto& sub : owned_sub_assemblers_) {
       sub.evaluator().MultiplyQx(

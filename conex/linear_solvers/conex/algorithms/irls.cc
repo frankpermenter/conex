@@ -32,8 +32,8 @@ IRLSResult SolveIRLS(
   auto* kkt = solver.solver();
   kkt->AssembleAndFactor();
 
-  auto x = kkt->MakeTreeRHS();
-  auto rhs = kkt->MakeTreeRHS();
+  auto x = kkt->MakeSolverRHS();
+  auto rhs = kkt->MakeSolverRHS();
   auto row = kkt->MakeRowSpace();
 
   // Get b in internal (sub-constraint) ordering.
@@ -56,7 +56,7 @@ IRLSResult SolveIRLS(
     kkt->AccumulateAtranspose(wb, rhs);
 
     // Solve.
-    kkt->SolveTreeRHS(rhs);
+    kkt->SolveSolverRHS(rhs);
     x = rhs;
 
     // Residual: r = Ax - b.

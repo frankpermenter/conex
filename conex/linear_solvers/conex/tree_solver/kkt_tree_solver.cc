@@ -1034,8 +1034,8 @@ void T::push_back(std::unique_ptr<AssemblerAdapter>&& system) {
   contributors_.emplace_back(std::move(system));
 }
 
-TreeRHS T::MakeTreeRHS(int cols) {
-  TreeRHS rhs;
+SolverRHS T::MakeSolverRHS(int cols) {
+  SolverRHS rhs;
   auto p = MakePartition();
   p->Resize(cols);
   p->SetZero();
@@ -1062,7 +1062,7 @@ RowSpace T::MakeRowSpace() {
   return rs;
 }
 
-void T::MultiplyA(const TreeRHS& x, RowSpace& out) {
+void T::MultiplyA(const SolverRHS& x, RowSpace& out) {
   if (x.blocks_fully_gathered) {
     ScatterSeparators(*x.supernodes, sep_scratch_);
   }
@@ -1075,7 +1075,7 @@ void T::MultiplyA(const TreeRHS& x, RowSpace& out) {
   }
 }
 
-void T::AccumulateAtranspose(const RowSpace& v, TreeRHS& rhs) {
+void T::AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) {
   int nc = rhs.cols();
   for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
     linear_sub_assemblers_[ci]->gram().ContributeAtranspose(
@@ -1083,7 +1083,7 @@ void T::AccumulateAtranspose(const RowSpace& v, TreeRHS& rhs) {
   }
 }
 
-void T::AccumulateQx(const TreeRHS& x, TreeRHS& rhs) {
+void T::AccumulateQx(const SolverRHS& x, SolverRHS& rhs) {
   if (x.blocks_fully_gathered) {
     ScatterSeparators(*x.supernodes, sep_scratch_);
   }

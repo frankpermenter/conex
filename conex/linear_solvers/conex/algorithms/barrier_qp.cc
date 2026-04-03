@@ -12,8 +12,8 @@ namespace conex {
 
 BarrierQPResult SolveBarrierQP(
     KKTSolverBase& kkt,
-    const TreeRHS& c_rhs,
-    TreeRHS& x,
+    const SolverRHS& c_rhs,
+    SolverRHS& x,
     int max_outer_iterations,
     int max_newton_steps,
     double mu,
@@ -30,14 +30,14 @@ BarrierQPResult SolveBarrierQP(
 
   kkt.AssembleAndFactor();
 
-  auto dx = kkt.MakeTreeRHS();
-  auto grad = kkt.MakeTreeRHS();
-  auto qx = kkt.MakeTreeRHS();       // reusable Q*x storage
+  auto dx = kkt.MakeSolverRHS();
+  auto grad = kkt.MakeSolverRHS();
+  auto qx = kkt.MakeSolverRHS();       // reusable Q*x storage
   auto row = kkt.MakeRowSpace();
   auto row_trial = kkt.MakeRowSpace();
   RowSpace weights = kkt.MakeRowSpace();      // #5: allocate once
   RowSpace scaled_inv_s = kkt.MakeRowSpace(); // #5: allocate once
-  auto x_trial = kkt.MakeTreeRHS();
+  auto x_trial = kkt.MakeSolverRHS();
 
   auto t_start = clock::now();
 
@@ -82,7 +82,7 @@ BarrierQPResult SolveBarrierQP(
       if (!kkt.AssembleAndFactor()) break;
       dx = grad;
       dx *= -1.0;
-      kkt.SolveTreeRHS(dx);
+      kkt.SolveSolverRHS(dx);
 
       // Newton decrement (lazy gather on grad).
       double lambda_sq = kkt.dot(grad, dx);
@@ -176,9 +176,9 @@ BarrierQPResult SolveBarrierQP(
   auto solver = Solver::Build(reduced);
   auto* kkt = solver.solver();
 
-  auto c_rhs = kkt->MakeTreeRHS();
+  auto c_rhs = kkt->MakeSolverRHS();
   c_rhs = kkt->MakeBlockVariable(c_r);
-  auto x = kkt->MakeTreeRHS();
+  auto x = kkt->MakeSolverRHS();
   x = kkt->MakeBlockVariable(x0_r);
 
   auto result = SolveBarrierQP(*kkt, c_rhs, x,

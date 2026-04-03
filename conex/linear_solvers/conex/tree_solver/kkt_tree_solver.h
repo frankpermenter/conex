@@ -367,30 +367,30 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
                            SeparatorScratch& scratch) const;
 
   // --- KKTSolverBase overrides ---
-  TreeRHS MakeTreeRHS(int cols = 1) override;
+  SolverRHS MakeSolverRHS(int cols = 1) override;
   RowSpace MakeRowSpace() override;
-  void MultiplyA(const TreeRHS& x, RowSpace& out) override;
-  void AccumulateAtranspose(const RowSpace& v, TreeRHS& rhs) override;
-  void AccumulateQx(const TreeRHS& x, TreeRHS& rhs) override;
+  void MultiplyA(const SolverRHS& x, RowSpace& out) override;
+  void AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) override;
+  void AccumulateQx(const SolverRHS& x, SolverRHS& rhs) override;
   void SetWeights(const RowSpace& w) override;
   RowSpace GetAffineTerm() override;
   // Gather unscattered separator data into supernode blocks.
-  void GatherSeparators(TreeRHS& rhs) {
+  void GatherSeparators(SolverRHS& rhs) {
     GatherSeparators(*rhs.supernodes, *rhs.separators);
     rhs.blocks_fully_gathered = true;
   }
 
-  double dot(TreeRHS& a, TreeRHS& b) override {
+  double dot(SolverRHS& a, SolverRHS& b) override {
     if (!a.blocks_fully_gathered) GatherSeparators(a);
     if (!b.blocks_fully_gathered) GatherSeparators(b);
     return a.dot(b);
   }
-  double dot(TreeRHS& a, const BlockVariable& bv) override {
+  double dot(SolverRHS& a, const BlockVariable& bv) override {
     if (!a.blocks_fully_gathered) GatherSeparators(a);
     return a.dot(bv);
   }
 
-  void SolveTreeRHS(TreeRHS& rhs) override {
+  void SolveSolverRHS(SolverRHS& rhs) override {
     SolveBlockedInPlace(*rhs.supernodes, *rhs.separators);
   }
 

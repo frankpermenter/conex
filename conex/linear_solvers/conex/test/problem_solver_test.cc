@@ -227,9 +227,9 @@ TEST(BarrierQP, MultipleConstraints) {
   auto solver = Solver::Build(reduced);
   auto* kkt = solver.solver();
 
-  auto c_rhs = kkt->MakeTreeRHS();
+  auto c_rhs = kkt->MakeSolverRHS();
   c_rhs = kkt->MakeBlockVariable(c_r);
-  auto x = kkt->MakeTreeRHS();
+  auto x = kkt->MakeSolverRHS();
   x = kkt->MakeBlockVariable(x0_r);
 
   auto result = SolveBarrierQP(*kkt, c_rhs, x);
@@ -339,7 +339,7 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
   // Apply non-uniform weights via the generic interface.
   // Use MultiplyA to discover the internal row ordering, then assign
   // weights that depend on row content (self-consistent with ordering).
-  auto x_rhs = kkt->MakeTreeRHS();
+  auto x_rhs = kkt->MakeSolverRHS();
   x_rhs = kkt->MakeBlockVariable(VectorXd::Ones(n));
   auto row = kkt->MakeRowSpace();
   kkt->MultiplyA(x_rhs, row);
@@ -352,7 +352,7 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
   VectorXd x2 = kkt->Solve(rhs);
 
   // Verify via round-trip: A^T W A x2 should equal rhs.
-  auto x2_rhs = kkt->MakeTreeRHS();
+  auto x2_rhs = kkt->MakeSolverRHS();
   x2_rhs = kkt->MakeBlockVariable(x2);
   auto ax2 = kkt->MakeRowSpace();
   kkt->MultiplyA(x2_rhs, ax2);
@@ -360,7 +360,7 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
   RowSpace wax2 = kkt->MakeRowSpace();
   for (int i = 0; i < wax2.total_rows(); ++i)
     wax2.data(i) = weights.data(i) * ax2.data(i);
-  auto atwa_x2 = kkt->MakeTreeRHS();
+  auto atwa_x2 = kkt->MakeSolverRHS();
   atwa_x2.SetZero();
   kkt->AccumulateAtranspose(wax2, atwa_x2);
   solver.tree_solver()->GatherSeparators(atwa_x2);
@@ -1785,7 +1785,7 @@ TEST(ProblemSolver, GaussianMRF) {
 }
 
 // Test the generic KKTSolverBase interface (MultiplyA, AccumulateAtranspose,
-// AccumulateQx, SetWeights, SolveTreeRHS) with multiple linear constraints
+// AccumulateQx, SetWeights, SolveSolverRHS) with multiple linear constraints
 // and multiple quadratic costs.  Compares against a dense reference.
 TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   srand(123);
@@ -1828,7 +1828,7 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   EXPECT_LT(err_solve, 1e-10);
 
   // --- Test generic interface: MultiplyA ---
-  auto x_rhs = kkt->MakeTreeRHS();
+  auto x_rhs = kkt->MakeSolverRHS();
   x_rhs = kkt->MakeBlockVariable(x_ref);
   auto row = kkt->MakeRowSpace();
   kkt->MultiplyA(x_rhs, row);
@@ -1844,7 +1844,7 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   VectorXd v = VectorXd::Random(9);
   RowSpace v_row = kkt->MakeRowSpace();
   v_row.data = v;
-  auto atv_rhs = kkt->MakeTreeRHS();
+  auto atv_rhs = kkt->MakeSolverRHS();
   atv_rhs.SetZero();
   kkt->AccumulateAtranspose(v_row, atv_rhs);
   solver.tree_solver()->GatherSeparators(atv_rhs);
@@ -1857,7 +1857,7 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   EXPECT_LT(err_at, 1e-10);
 
   // --- Test generic interface: AccumulateQx ---
-  auto qx_rhs = kkt->MakeTreeRHS();
+  auto qx_rhs = kkt->MakeSolverRHS();
   qx_rhs.SetZero();
   kkt->AccumulateQx(x_rhs, qx_rhs);
   solver.tree_solver()->GatherSeparators(qx_rhs);
@@ -1942,12 +1942,12 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
     EXPECT_LT(err_s2, 1e-10);
 
     // Test round-trip: A^T(A*x) should equal (A1^T A1 + A2^T A2) * x.
-    auto x_rhs2 = ts->MakeTreeRHS();
+    auto x_rhs2 = ts->MakeSolverRHS();
     x_rhs2 = ts->MakeBlockVariable(x_ref);
     auto row2 = ts->MakeRowSpace();
     ts->MultiplyA(x_rhs2, row2);
 
-    auto atax_rhs = ts->MakeTreeRHS();
+    auto atax_rhs = ts->MakeSolverRHS();
     atax_rhs.SetZero();
     ts->AccumulateAtranspose(row2, atax_rhs);
     ts->GatherSeparators(atax_rhs);
@@ -1958,7 +1958,7 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
     EXPECT_LT(err_ata, 1e-10);
 
     // Test AccumulateQx.
-    auto qx_rhs2 = ts->MakeTreeRHS();
+    auto qx_rhs2 = ts->MakeSolverRHS();
     qx_rhs2.SetZero();
     ts->AccumulateQx(x_rhs2, qx_rhs2);
     ts->GatherSeparators(qx_rhs2);
