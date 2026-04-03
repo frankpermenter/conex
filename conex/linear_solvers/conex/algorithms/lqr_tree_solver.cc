@@ -4,7 +4,7 @@
 
 #include "conex/common/clique_tree.h"
 #include "conex/common/error_checking_macros.h"
-#include "conex/tree_solver/static_subsystem.h"
+#include "conex/tree_solver/assembler_adapter.h"
 
 namespace conex {
 
@@ -78,7 +78,7 @@ LQRTreeSolver::LQRTreeSolver(
     for (int i = 0; i < nx_; ++i) cost_vars.push_back(XIdx(t) + i);
     for (int i = 0; i < nu_; ++i) cost_vars.push_back(UIdx(t) + i);
     cost_assemblers_.emplace_back(QR, cost_vars);
-    auto cost_adapter = std::make_unique<KKTAssemblerToSubsystemAdapter>(
+    auto cost_adapter = std::make_unique<AssemblerAdapter>(
         &cost_assemblers_.back());
     cost_adapter->set_contribution_type(ContributionType::kPositiveDefinite);
     solver_->push_back(std::move(cost_adapter));
@@ -91,7 +91,7 @@ LQRTreeSolver::LQRTreeSolver(
     std::vector<int> dyn_dual;
     for (int i = 0; i < nx_; ++i) dyn_dual.push_back(LIdx(t) + i);
     dynamics_assemblers_.emplace_back(C_dyn, d_zero, dyn_primal, dyn_dual);
-    auto dyn_adapter = std::make_unique<KKTAssemblerToSubsystemAdapter>(
+    auto dyn_adapter = std::make_unique<AssemblerAdapter>(
         &dynamics_assemblers_.back());
     dyn_adapter->set_contribution_type(ContributionType::kIndefinite);
     solver_->push_back(std::move(dyn_adapter));
@@ -103,7 +103,7 @@ LQRTreeSolver::LQRTreeSolver(
       std::vector<int> ic_dual;
       for (int i = 0; i < nx_; ++i) ic_dual.push_back(LicIdx() + i);
       dynamics_assemblers_.emplace_back(C_ic, d_zero, ic_primal, ic_dual);
-      auto ic_adapter = std::make_unique<KKTAssemblerToSubsystemAdapter>(
+      auto ic_adapter = std::make_unique<AssemblerAdapter>(
           &dynamics_assemblers_.back());
       ic_adapter->set_contribution_type(ContributionType::kIndefinite);
       solver_->push_back(std::move(ic_adapter));
@@ -115,7 +115,7 @@ LQRTreeSolver::LQRTreeSolver(
     std::vector<int> term_vars;
     for (int i = 0; i < nx_; ++i) term_vars.push_back(XTIdx() + i);
     cost_assemblers_.emplace_back(Qf, term_vars);
-    auto term_adapter = std::make_unique<KKTAssemblerToSubsystemAdapter>(
+    auto term_adapter = std::make_unique<AssemblerAdapter>(
         &cost_assemblers_.back());
     term_adapter->set_contribution_type(ContributionType::kPositiveDefinite);
     solver_->push_back(std::move(term_adapter));

@@ -8,10 +8,10 @@ namespace conex {
 enum class ContributionType;
 class SubmatrixContributor;
 
-class KKTAssemblerToSubsystemAdapter {
+class AssemblerAdapter {
  public:
-  KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base);
-  virtual ~KKTAssemblerToSubsystemAdapter();
+  AssemblerAdapter(SupernodalAssemblerBase* base);
+  virtual ~AssemblerAdapter();
 
   // Contributor contract: declare contribution type; the tree solver
   // auto-creates subsystems and binds a contributor after FinalizeStructure.

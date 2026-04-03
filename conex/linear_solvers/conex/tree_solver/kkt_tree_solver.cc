@@ -41,7 +41,7 @@ Eigen::Ref<const Eigen::MatrixXd> TreeBlockPartition::block(int k) const {
 
 #include "conex/tree_solver/cholesky_solvers.h"
 #include "conex/common/debug_macros.h"
-#include "conex/tree_solver/static_subsystem.h"
+#include "conex/tree_solver/assembler_adapter.h"
 #include "conex/tree_solver/tree_utils.h"
 
 namespace conex {
@@ -1030,7 +1030,7 @@ Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
   }
 }
 
-void T::push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system) {
+void T::push_back(std::unique_ptr<AssemblerAdapter>&& system) {
   contributors_.emplace_back(std::move(system));
 }
 

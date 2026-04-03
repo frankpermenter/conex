@@ -13,7 +13,7 @@
 #include "conex/common/sparse_equality_constraint.h"
 #include "conex/common/sparse_linear_constraint.h"
 #include "conex/tree_solver/kkt_solver_factory.h"
-#include "conex/tree_solver/static_subsystem.h"
+#include "conex/tree_solver/assembler_adapter.h"
 
 namespace conex {
 
@@ -401,7 +401,7 @@ TreeSolverBuilder::Result TreeSolverBuilder::Build() {
   auto solver = std::make_unique<SymmetricLinearSystemTreeSolver>();
   for (auto& pa : pending_) {
     auto adapter =
-        std::make_unique<KKTAssemblerToSubsystemAdapter>(pa.assembler);
+        std::make_unique<AssemblerAdapter>(pa.assembler);
     adapter->set_contribution_type(pa.type);
     solver->push_back(std::move(adapter));
   }

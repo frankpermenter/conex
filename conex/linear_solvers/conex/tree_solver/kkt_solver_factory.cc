@@ -201,7 +201,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     int num_primal_d = num_primal_vars;
     for (auto* assembler : decomposed) {
       auto adapter =
-          std::make_unique<KKTAssemblerToSubsystemAdapter>(assembler);
+          std::make_unique<AssemblerAdapter>(assembler);
       adapter->set_contribution_type(
           ClassifyCliqueContribution(assembler, num_primal_d));
       tree_solver_->push_back(std::move(adapter));
@@ -218,7 +218,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
 
   // --- Build adapters and subsystems ---
   // For structured cliques: StackedLowRankAdapter + LowRankPlusDiagonalSubsystem
-  // For dense cliques: standard LinearConstraint + KKTAssemblerToSubsystemAdapter
+  // For dense cliques: standard LinearConstraint + AssemblerAdapter
 
   // Group raw blocks by clique.
   vector<vector<int>> clique_block_indices(num_cliques);
@@ -305,7 +305,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     if (ci >= 0 && use_structured[ci]) continue;  // skip structured
 
     auto adapter =
-        std::make_unique<KKTAssemblerToSubsystemAdapter>(decomposed[di]);
+        std::make_unique<AssemblerAdapter>(decomposed[di]);
     adapter->set_contribution_type(
         ClassifyCliqueContribution(decomposed[di], num_primal));
     tree_solver_->push_back(std::move(adapter));

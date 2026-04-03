@@ -1,10 +1,10 @@
-#include "conex/tree_solver/static_subsystem.h"
+#include "conex/tree_solver/assembler_adapter.h"
 
 #include "conex/common/debug_macros.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
 
 namespace conex {
-using T = KKTAssemblerToSubsystemAdapter;
+using T = AssemblerAdapter;
 
 #if CONEX_ENABLE_TIMER
 static double g_write_lazy_us = 0;
@@ -18,10 +18,10 @@ void PrintUpdateDataTimers() {
 void ResetUpdateDataTimers() {}
 void PrintUpdateDataTimers() {}
 #endif
-T::KKTAssemblerToSubsystemAdapter(SupernodalAssemblerBase* base)
+T::AssemblerAdapter(SupernodalAssemblerBase* base)
     : assembler_(base) {}
 
-T::~KKTAssemblerToSubsystemAdapter() = default;
+T::~AssemblerAdapter() = default;
 
 void T::set_contribution_type(ContributionType type) {
   contribution_type_value_ = static_cast<int>(type);

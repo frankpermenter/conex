@@ -25,7 +25,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 add_library(tree_solver
   conex/tree_solver/kkt_tree_solver.cc
   conex/tree_solver/kkt_subsystem.cc
-  conex/tree_solver/static_subsystem.cc
+  conex/tree_solver/assembler_adapter.cc
   conex/tree_solver/tree_utils.cc
 )
 target_link_libraries(tree_solver PUBLIC Eigen3::Eigen)

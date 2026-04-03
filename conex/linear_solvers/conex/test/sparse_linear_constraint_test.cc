@@ -10,7 +10,7 @@
 #include "conex/common/equality_constraint.h"
 #include "conex/tree_solver/kkt_solver_factory.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
-#include "conex/tree_solver/static_subsystem.h"
+#include "conex/tree_solver/assembler_adapter.h"
 #include "conex/tree_solver/tree_utils.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>

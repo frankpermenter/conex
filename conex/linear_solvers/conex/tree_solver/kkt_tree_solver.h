@@ -7,7 +7,7 @@
 #include "conex/common/kkt_solver_interface.h"
 #include "conex/common/tree_rhs.h"
 #include "conex/tree_solver/kkt_subsystem.h"
-#include "conex/tree_solver/static_subsystem.h"
+#include "conex/tree_solver/assembler_adapter.h"
 #include "conex/tree_solver/tree_utils.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -341,10 +341,10 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   }
 
   void ComputeSeparatorOffsets();
-  void push_back(std::unique_ptr<KKTAssemblerToSubsystemAdapter>&& system);
+  void push_back(std::unique_ptr<AssemblerAdapter>&& system);
 
   // Access contributor (adapter) by index.
-  KKTAssemblerToSubsystemAdapter* GetContributor(int index) {
+  AssemblerAdapter* GetContributor(int index) {
     return contributors_.at(index).get();
   }
 
@@ -490,7 +490,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<KKTSubsystemBase*> subsystems_;
   std::vector<std::unique_ptr<KKTSubsystemBase>> owned_subsystems_;
   std::vector<std::unique_ptr<KKTSubsystemBase>> injected_subsystems_;
-  std::vector<std::unique_ptr<KKTAssemblerToSubsystemAdapter>>
+  std::vector<std::unique_ptr<AssemblerAdapter>>
       contributors_;
   std::vector<int> variable_to_elimination_position_;
   std::vector<int> subsystem_to_parent_;

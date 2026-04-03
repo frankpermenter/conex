@@ -1,7 +1,7 @@
 #pragma once
 #include <unordered_map>
 #include "conex/tree_solver/kkt_subsystem.h"
-#include "conex/tree_solver/static_subsystem.h"
+#include "conex/tree_solver/assembler_adapter.h"
 #include <Eigen/Dense>
 
 namespace conex {
@@ -258,10 +258,10 @@ class LowRankPlusDiagonalSubsystem : public KKTSubsystemBase {
 
 // Adapter that writes diagonal + low-rank data into a
 // LowRankPlusDiagonalSubsystem, bypassing the lazy evaluator path.
-class LowRankDiagonalAdapter : public KKTAssemblerToSubsystemAdapter {
+class LowRankDiagonalAdapter : public AssemblerAdapter {
  public:
   LowRankDiagonalAdapter(LowRankDiagonalDataSource* source)
-      : KKTAssemblerToSubsystemAdapter(nullptr), source_(source) {}
+      : AssemblerAdapter(nullptr), source_(source) {}
 
   std::vector<int> variables() const override { return source_->variables(); }
 
@@ -283,7 +283,7 @@ class LowRankDiagonalAdapter : public KKTAssemblerToSubsystemAdapter {
 // Adapter for a structured clique: holds raw A blocks from decomposition
 // and stacks them as U = [A1^T | A2^T | ...] during UpdateData.
 // One instance per structured clique.
-class StackedLowRankAdapter : public KKTAssemblerToSubsystemAdapter {
+class StackedLowRankAdapter : public AssemblerAdapter {
  public:
   struct Block {
     Eigen::MatrixXd A;           // m_i x n_clique (original variable order)
@@ -292,7 +292,7 @@ class StackedLowRankAdapter : public KKTAssemblerToSubsystemAdapter {
 
   StackedLowRankAdapter(std::vector<Block> blocks,
                          const std::vector<int>& clique_variables)
-      : KKTAssemblerToSubsystemAdapter(nullptr),
+      : AssemblerAdapter(nullptr),
         blocks_(std::move(blocks)),
         clique_variables_(clique_variables) {}
 
