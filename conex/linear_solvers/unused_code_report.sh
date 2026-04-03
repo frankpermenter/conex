@@ -33,7 +33,10 @@ if [ "$SKIP_BUILD" = false ]; then
 
   echo "Running tests..." >&2
   lcov --zerocounters --directory . >/dev/null 2>&1
-  ctest --output-on-failure >/dev/null 2>&1
+  # Run all test binaries found in the build directory.
+  for bin in ./*_test; do
+    [ -x "$bin" ] && "$bin" >/dev/null 2>&1 || true
+  done
 
   echo "Capturing coverage..." >&2
   lcov --capture --directory . --output-file coverage.info --no-external \
