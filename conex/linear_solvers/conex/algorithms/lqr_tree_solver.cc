@@ -147,12 +147,4 @@ Eigen::MatrixXd LQRTreeSolver::ExtractStates(
   return x;
 }
 
-Eigen::MatrixXd LQRTreeSolver::ExtractControls(
-    const Eigen::VectorXd& sol) const {
-  Eigen::MatrixXd u(nu_, T_);
-  for (int t = 0; t < T_; ++t)
-    u.col(t) = sol.segment(UIdx(t), nu_);
-  return u;
-}
-
 }  // namespace conex

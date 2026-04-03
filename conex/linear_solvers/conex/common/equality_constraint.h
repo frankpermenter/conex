@@ -21,27 +21,6 @@ struct WorkspaceEqualityConstraints {
   Eigen::Map<DenseMatrix, Eigen::Aligned> W{NULL, 0, 0};
 };
 
-class EqualityConstraints : public Constraint {
- public:
-  EqualityConstraints(){};
-  EqualityConstraints(const Eigen::MatrixXd& A, const Eigen::MatrixXd& b);
-
-  Eigen::MatrixXd constraint_matrix() const { return A_; }
-  Eigen::MatrixXd affine_term() const { return b_; }
-  Eigen::MatrixXd A_;
-  Eigen::MatrixXd b_;
-
-  int number_of_variables() const override { return A_.cols(); }
-
-  WorkspaceEqualityConstraints workspace_;
-  WorkspaceEqualityConstraints* workspace() { return &workspace_; }
-
- private:
-  Workspace do_get_workspace() override { return Workspace(workspace()); }
-
-  int do_number_of_variables() const override { return number_of_variables(); }
-};
-
 // Lazy evaluator for the indefinite equality constraint matrix [0 A'; A 0].
 class EqualityLazyMatrix : public BlockAssembler {
  public:

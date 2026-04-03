@@ -44,7 +44,6 @@ class LQRTreeSolver {
   Eigen::VectorXd Solve(const Eigen::VectorXd& x0);
 
   Eigen::MatrixXd ExtractStates(const Eigen::VectorXd& sol) const;
-  Eigen::MatrixXd ExtractControls(const Eigen::VectorXd& sol) const;
 
   const SymmetricLinearSystemTreeSolver& solver() const { return *solver_; }
 

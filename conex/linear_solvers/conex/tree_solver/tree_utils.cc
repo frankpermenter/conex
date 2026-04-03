@@ -11,27 +11,6 @@ using std::vector;
 
 namespace conex {
 
-vector<int> PathInForest(int x, int y, const std::vector<int>& parent,
-                         const std::vector<int>& distance_from_root) {
-  std::vector<int> path;
-  while (x != y) {
-    if (distance_from_root[x] + distance_from_root[y] == 0) {
-      throw std::runtime_error(
-          "Path does not exist. Points lie in disjoint trees.");
-    }
-
-    if (distance_from_root[x] < distance_from_root[y]) {
-      path.push_back(y);
-      y = parent.at(y);
-    } else {
-      path.push_back(x);
-      x = parent.at(x);
-    }
-  }
-  path.push_back(x);
-  return path;
-}
-
 void MergeChildIntoParent(CliqueTree& tree, int child) {
   const int n = static_cast<int>(tree.node_to_parent.size());
   CONEX_DEMAND(child >= 0 && child < n, "child index out of range");

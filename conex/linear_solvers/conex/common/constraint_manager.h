@@ -19,8 +19,6 @@ class ConstraintManager {
   ConstraintManager(){};
 
   int GetNumberOfVariables() const { return max_number_of_variables_; }
-  int SizeOfKKTSystem() const;
-
   // Allocate dual variable indices.  Returns a vector of size count
   // with consecutive indices starting at the current dual variable offset.
   std::vector<int> AllocateDualVariables(int count) {
@@ -46,7 +44,6 @@ class ConstraintManager {
   }
 
   std::vector<CliqueProvider*> clique_assemblers();
-  std::vector<const CliqueProvider*> clique_assemblers() const;
 
  private:
   std::vector<CliqueProvider*> custom_assemblers_;

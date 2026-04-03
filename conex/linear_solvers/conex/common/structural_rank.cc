@@ -83,20 +83,6 @@ struct HopcroftKarp {
 
 }  // namespace
 
-int StructuralRank(const Eigen::SparseMatrix<double>& A) {
-  const int nr = static_cast<int>(A.rows());
-  const int nc = static_cast<int>(A.cols());
-
-  HopcroftKarp hk(nr, nc);
-  for (int k = 0; k < A.outerSize(); ++k) {
-    for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it) {
-      hk.adj[it.row()].push_back(it.col());
-    }
-  }
-
-  return hk.solve();
-}
-
 Eigen::SparseMatrix<double> DropStructurallyDependentColumns(
     const Eigen::SparseMatrix<double>& A,
     std::vector<int>* col_map_out) {
