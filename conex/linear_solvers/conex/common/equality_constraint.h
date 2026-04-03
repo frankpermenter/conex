@@ -92,8 +92,6 @@ class SupernodalAssemblerEqualities final : public SupernodalAssemblerBase {
                                 const std::vector<int>& primal_variables,
                                 const std::vector<int>& dual_variables);
 
-  bool is_positive_definite() const override { return false; }
-
   BlockAssembler* GetBlockAssembler() override {
     lazy_.bind(&A_, static_cast<int>(primal_variables().size()));
     return &lazy_;

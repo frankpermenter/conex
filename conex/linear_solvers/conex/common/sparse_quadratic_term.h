@@ -140,8 +140,6 @@ class DenseQuadraticTermSubAssembler : public SupernodalAssemblerBase {
   }
 
   BlockAssembler* GetBlockAssembler() override { return &evaluator_; }
-  bool is_positive_definite() const override { return true; }
-  bool is_dynamic() const override { return false; }
 
   const Eigen::MatrixXd& Q_block() const { return Q_block_; }
   DenseQuadraticTermLazyEvaluator& evaluator() { return evaluator_; }

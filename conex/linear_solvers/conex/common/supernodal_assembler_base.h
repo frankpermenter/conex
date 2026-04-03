@@ -124,9 +124,6 @@ class SupernodalAssemblerBase {
     return primal_variables().size() + dual_variables().size();
   }
 
-  virtual bool is_dynamic() const { return false; }
-  virtual bool is_positive_definite() const { return true; }
-
   // Decompose this assembler into sub-assemblers aligned with the given
   // maximal cliques.  Default: returns {this} (no decomposition).
   // Called by the tree solver which provides maximal cliques.
