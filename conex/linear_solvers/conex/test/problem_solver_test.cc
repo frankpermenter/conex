@@ -1060,6 +1060,132 @@ TEST(ProblemSolver, PQTreeReorder) {
   printf("ProblemSolver.PQTreeReorder: all 4 methods match (err<1e-8)\n");
 }
 
+TEST(ProblemSolver, AggressiveCliqueMerging) {
+  srand(55);
+  const int n = 30, bw = 5, rpg = 6;
+  int ng = n - bw + 1, nr = rpg * ng;
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int g = 0; g < ng; ++g)
+    for (int r = 0; r < rpg; ++r)
+      for (int j = 0; j < bw; ++j)
+        trips.emplace_back(g * rpg + r, g + j,
+                           0.5 + (double)rand() / RAND_MAX);
+  Eigen::SparseMatrix<double> A(nr, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd rhs = MatrixXd(A).transpose() * (MatrixXd(A) * x_true);
+
+  // Solve with aggressive merging.
+  for (int merge_size : {0, 5, 10, 20}) {
+    Problem problem;
+    problem.AddLinearConstraint(A, VectorXd::Zero(nr), vars);
+    SolverConfiguration cfg;
+    cfg.tree.max_merge_supernode_size = merge_size;
+    auto solver = Solver::Build(problem, cfg);
+    ASSERT_TRUE(solver.solver()->AssembleAndFactor());
+    VectorXd sol = solver.solver()->Solve(rhs);
+    double err = (sol - x_true).norm() / x_true.norm();
+    EXPECT_LT(err, 1e-8) << "merge_size=" << merge_size;
+  }
+  printf("ProblemSolver.AggressiveCliqueMerging: all merge sizes pass\n");
+}
+
+TEST(ProblemSolver, LeftLookingVsRightLooking) {
+  srand(42);
+  const int n = 40, bw = 8, rpg = 5;
+  int ng = n - bw + 1, nr = rpg * ng;
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int g = 0; g < ng; ++g)
+    for (int r = 0; r < rpg; ++r)
+      for (int j = 0; j < bw; ++j)
+        trips.emplace_back(g * rpg + r, g + j,
+                           0.5 + (double)rand() / RAND_MAX);
+  Eigen::SparseMatrix<double> A(nr, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd rhs = MatrixXd(A).transpose() * (MatrixXd(A) * x_true);
+
+  for (bool left_looking : {true, false}) {
+    Problem problem;
+    problem.AddLinearConstraint(A, VectorXd::Zero(nr), vars);
+    SolverConfiguration cfg;
+    cfg.tree.left_looking = left_looking;
+    auto solver = Solver::Build(problem, cfg);
+    ASSERT_TRUE(solver.solver()->AssembleAndFactor());
+    VectorXd sol = solver.solver()->Solve(rhs);
+    double err = (sol - x_true).norm() / x_true.norm();
+    EXPECT_LT(err, 1e-8) << (left_looking ? "left" : "right") << "-looking";
+  }
+  printf("ProblemSolver.LeftLookingVsRightLooking: both pass\n");
+}
+
+TEST(ProblemSolver, GenericFactorization) {
+  srand(42);
+  const int n = 30, bw = 6, rpg = 5;
+  int ng = n - bw + 1, nr = rpg * ng;
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int g = 0; g < ng; ++g)
+    for (int r = 0; r < rpg; ++r)
+      for (int j = 0; j < bw; ++j)
+        trips.emplace_back(g * rpg + r, g + j,
+                           0.5 + (double)rand() / RAND_MAX);
+  Eigen::SparseMatrix<double> A(nr, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+  VectorXd x_true = VectorXd::Random(n);
+  VectorXd rhs = MatrixXd(A).transpose() * (MatrixXd(A) * x_true);
+
+  for (bool generic : {false, true}) {
+    Problem problem;
+    problem.AddLinearConstraint(A, VectorXd::Zero(nr), vars);
+    SolverConfiguration cfg;
+    cfg.tree.use_generic_factorization = generic;
+    auto solver = Solver::Build(problem, cfg);
+    ASSERT_TRUE(solver.solver()->AssembleAndFactor());
+    VectorXd sol = solver.solver()->Solve(rhs);
+    double err = (sol - x_true).norm() / x_true.norm();
+    EXPECT_LT(err, 1e-8) << (generic ? "generic" : "llt");
+  }
+  printf("ProblemSolver.GenericFactorization: both modes pass\n");
+}
+
+TEST(ProblemSolver, MultiColumnSolve) {
+  srand(44);
+  const int n = 12, m = 32;
+  MatrixXd A = MatrixXd::Random(m, n);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  problem.AddLinearConstraint(
+      Eigen::SparseMatrix<double>(A.sparseView()), VectorXd::Zero(m), vars);
+  SolverConfiguration cfg;
+  cfg.rhs_cols = 3;
+  auto solver = Solver::Build(problem, cfg);
+  auto* kkt = solver.solver();
+  ASSERT_TRUE(kkt->AssembleAndFactor());
+
+  MatrixXd ATA = A.transpose() * A;
+
+  for (int ncols : {1, 2, 3}) {
+    MatrixXd X_true = MatrixXd::Random(n, ncols);
+    MatrixXd rhs = ATA * X_true;
+    MatrixXd sol = kkt->Solve(rhs);
+    double err = (sol - X_true).norm() / X_true.norm();
+    EXPECT_LT(err, 1e-8) << "ncols=" << ncols;
+  }
+  printf("ProblemSolver.MultiColumnSolve: 1,2,3 columns pass\n");
+}
+
 // Scenario tree for stochastic optimization.
 struct ScenarioNode {
   int parent;
