@@ -2,33 +2,6 @@
 #include "conex/common/linear_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
 
-// TreeBlockPartition implementation — delegates to SupernodePartitionMatrix.
-namespace conex {
-int TreeBlockPartition::num_blocks() const {
-  return spm_ ? static_cast<int>(spm_->num_blocks_internal()) : 0;
-}
-int TreeBlockPartition::block_size(int k) const {
-  return spm_ ? spm_->supernode_rows(k) : 0;
-}
-int TreeBlockPartition::cols() const {
-  return spm_ ? spm_->cols() : 0;
-}
-void TreeBlockPartition::Resize(int c) { if (spm_) spm_->Resize(c); }
-void TreeBlockPartition::SetZero() { if (spm_) spm_->SetZero(); }
-void TreeBlockPartition::ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> x) {
-  if (spm_) spm_->ScatterFrom(x);
-}
-void TreeBlockPartition::GatherInto(Eigen::Ref<Eigen::MatrixXd> x) const {
-  if (spm_) spm_->GatherInto(x);
-}
-Eigen::Ref<Eigen::MatrixXd> TreeBlockPartition::block(int k) {
-  return spm_->supernode(k);
-}
-Eigen::Ref<const Eigen::MatrixXd> TreeBlockPartition::block(int k) const {
-  return spm_->supernode(k);
-}
-}  // namespace conex
-
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -791,7 +764,7 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols) {
   ComputeEliminationOrder(clique_tree);
   BindContributors(adapter_to_clique);
   AllocateSolveArena();
-  block_partition_.Bind(&solve_matrix_, cached_num_vars_);
+  dense_partition_ = DenseBlockPartition(cached_num_vars_);
   sep_scratch_.Init(subsystems_, rhs_cols);
   sep_scratch_out_.Init(subsystems_, rhs_cols);
 }

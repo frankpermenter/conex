@@ -20,30 +20,6 @@ class SupernodePartitionMatrix;
 // BlockPartition adapter for the tree solver's supernodal partition.
 // Each block corresponds to one supernode in the elimination tree.
 // Scatter/gather use the elimination ordering's variable mapping.
-class TreeBlockPartition : public BlockPartition {
- public:
-  TreeBlockPartition() = default;
-  void Bind(SupernodePartitionMatrix* spm, int num_vars) {
-    spm_ = spm;
-    num_vars_ = num_vars;
-  }
-
-  int num_blocks() const override;
-  int block_size(int k) const override;
-  int num_variables() const override { return num_vars_; }
-  int cols() const override;
-  void Resize(int cols) override;
-  void SetZero() override;
-  void ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> x) override;
-  void GatherInto(Eigen::Ref<Eigen::MatrixXd> x) const override;
-  Eigen::Ref<Eigen::MatrixXd> block(int k) override;
-  Eigen::Ref<const Eigen::MatrixXd> block(int k) const override;
-
- private:
-  SupernodePartitionMatrix* spm_ = nullptr;
-  int num_vars_ = 0;
-};
-
 // A matrix partitioned by the supernode structure of the elimination tree.
 // Each node contributes a supernode block (sn_rows x cols) and a separator
 // block (sep_rows x cols), stored at SIMD-aligned pointers in a single arena.
@@ -324,8 +300,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void push_back(std::unique_ptr<AssemblerAdapter>&& system);
 
   // BlockPartition interface (from KKTSolverBase).
-  BlockPartition& partition() override { return block_partition_; }
-  const BlockPartition& partition() const override { return block_partition_; }
+  BlockPartition& partition() override { return dense_partition_; }
+  const BlockPartition& partition() const override { return dense_partition_; }
 
   std::unique_ptr<BlockPartition> MakePartition() override {
     std::vector<int> block_sizes, block_starts;
@@ -468,7 +444,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   size_t arena_bytes_ = 0;
   // Block-partitioned solve data (mutable: scratch space used in const solve).
   mutable SupernodePartitionMatrix solve_matrix_;
-  mutable TreeBlockPartition block_partition_;
+  mutable DenseBlockPartition dense_partition_;
 
   mutable SeparatorScratch sep_scratch_;
   mutable SeparatorScratch sep_scratch_out_;
