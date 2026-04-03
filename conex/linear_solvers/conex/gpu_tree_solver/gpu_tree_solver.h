@@ -52,8 +52,6 @@ class GpuTreeSolver : public KKTSolverBase {
   void SetSupernodeData(int sn_idx, const Eigen::MatrixXd& data);
 
   // KKTSolverBase interface.
-  BlockPartition& partition() override { return partition_; }
-  const BlockPartition& partition() const override { return partition_; }
   int number_of_variables() const override { return num_vars_; }
 
   // Generic interface stubs (GPU solver uses raw matrix path, not constraints).
@@ -140,8 +138,6 @@ class GpuTreeSolver : public KKTSolverBase {
   mutable cublasContext* cublas_ = nullptr;
   mutable cudaStream_t stream_ = nullptr;
 
-  // Host-side partition for algorithm access (mutable for DoSolveInPlace).
-  mutable DenseBlockPartition partition_;
 
   // Pre-flattened scatter ops (host side, uploaded to d_scatter_ops_).
   std::vector<ScatterOp> host_scatter_ops_;

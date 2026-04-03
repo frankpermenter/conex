@@ -14,7 +14,7 @@ namespace conex {
 // at each AssembleAndFactor.
 class DenseKKTSolver : public KKTSolverBase {
  public:
-  explicit DenseKKTSolver(int n) : n_(n), partition_(n) {
+  explicit DenseKKTSolver(int n) : n_(n) {
     M_.setZero(n, n);
   }
 
@@ -38,9 +38,6 @@ class DenseKKTSolver : public KKTSolverBase {
   }
 
   int number_of_variables() const override { return n_; }
-
-  BlockPartition& partition() override { return partition_; }
-  const BlockPartition& partition() const override { return partition_; }
 
   // --- Generic KKTSolverBase overrides ---
 
@@ -111,7 +108,6 @@ class DenseKKTSolver : public KKTSolverBase {
   void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                       bool /*permute*/) const override {
     b = ldlt_.solve(b);
-    partition_.ScatterFrom(b);
   }
 
   Eigen::MatrixXd DoKKTMatrix(bool /*permute*/) const override {
@@ -121,7 +117,6 @@ class DenseKKTSolver : public KKTSolverBase {
   int n_;
   Eigen::MatrixXd M_;
   Eigen::LDLT<Eigen::MatrixXd> ldlt_;
-  mutable DenseBlockPartition partition_;
 
   // Constraint data (optional).
   bool has_constraints_ = false;

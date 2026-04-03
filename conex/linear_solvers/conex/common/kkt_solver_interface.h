@@ -52,22 +52,6 @@ class KKTSolverBase {
     return DoKKTMatrix(permute_to_elimination_order);
   }
 
-  // Block partition for the solution vector.  After Solve(), the
-  // partition contains the solution distributed across blocks.
-  virtual BlockPartition& partition() = 0;
-  virtual const BlockPartition& partition() const = 0;
-
-  // Convenience: scatter/gather through the partition.
-  void ScatterToBlocks(Eigen::Ref<const Eigen::VectorXd> x) {
-    auto& p = partition();
-    if (p.cols() != 1) p.Resize(1);
-    p.SetZero();
-    p.ScatterFrom(x);
-  }
-  void GatherFromBlocks(Eigen::Ref<Eigen::VectorXd> x) const {
-    partition().GatherInto(x);
-  }
-
   // Create a BlockVariable with the same partition structure as this solver.
   BlockVariable MakeBlockVariable(int cols = 1) {
     return BlockVariable(MakePartition(), cols);

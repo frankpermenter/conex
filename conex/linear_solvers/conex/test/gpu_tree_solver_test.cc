@@ -368,8 +368,7 @@ TEST(GpuTreeSolver, PartitionInterface) {
   KKTSolverBase* base = &gpu;
   EXPECT_EQ(base->number_of_variables(), prob.A.cols());
 
-  auto& partition = base->partition();
-  EXPECT_EQ(partition.num_variables(), prob.A.cols());
+  EXPECT_EQ(base->number_of_variables(), prob.A.cols());
 }
 
 }  // namespace

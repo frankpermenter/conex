@@ -23,29 +23,6 @@ TEST(DenseKKTSolver, SolveSPD) {
   EXPECT_LT((x - expected).norm(), 1e-12);
 }
 
-TEST(DenseKKTSolver, PartitionScatterGather) {
-  // Verify the partition scatter/gather round-trips.
-  DenseKKTSolver solver(4);
-  Eigen::MatrixXd M = Eigen::MatrixXd::Identity(4, 4) * 2.0;
-  solver.SetMatrix(M);
-  ASSERT_TRUE(solver.AssembleAndFactor());
-
-  Eigen::VectorXd b(4);
-  b << 1, 2, 3, 4;
-  Eigen::VectorXd x = solver.Solve(b);
-
-  // After Solve, partition should contain the solution.
-  auto& partition = solver.partition();
-  EXPECT_EQ(partition.num_blocks(), 1);
-  EXPECT_EQ(partition.block_size(0), 4);
-  EXPECT_EQ(partition.num_variables(), 4);
-
-  // Gather from partition should recover x.
-  Eigen::VectorXd gathered(4);
-  partition.GatherInto(gathered);
-  EXPECT_LT((gathered - x).norm(), 1e-12);
-}
-
 TEST(DenseKKTSolver, PolymorphicAccess) {
   // Use through KKTSolverBase pointer.
   auto solver = std::make_unique<DenseKKTSolver>(2);
@@ -63,12 +40,6 @@ TEST(DenseKKTSolver, PolymorphicAccess) {
   Eigen::VectorXd x = base->Solve(b);
   Eigen::VectorXd expected = M.llt().solve(b);
   EXPECT_LT((x - expected).norm(), 1e-12);
-
-  // Scatter/gather via base.
-  base->ScatterToBlocks(b);
-  Eigen::VectorXd out(2);
-  base->GatherFromBlocks(out);
-  EXPECT_LT((out - b).norm(), 1e-12);
 }
 
 TEST(DenseKKTSolver, AddToMatrixAndResolve) {

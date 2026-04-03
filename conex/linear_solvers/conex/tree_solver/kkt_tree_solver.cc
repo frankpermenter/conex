@@ -764,7 +764,6 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols) {
   ComputeEliminationOrder(clique_tree);
   BindContributors(adapter_to_clique);
   AllocateSolveArena();
-  dense_partition_ = DenseBlockPartition(cached_num_vars_);
   sep_scratch_.Init(subsystems_, rhs_cols);
   sep_scratch_out_.Init(subsystems_, rhs_cols);
 }

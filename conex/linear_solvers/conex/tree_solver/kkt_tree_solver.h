@@ -300,9 +300,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void push_back(std::unique_ptr<AssemblerAdapter>&& system);
 
   // BlockPartition interface (from KKTSolverBase).
-  BlockPartition& partition() override { return dense_partition_; }
-  const BlockPartition& partition() const override { return dense_partition_; }
-
   std::unique_ptr<BlockPartition> MakePartition() override {
     std::vector<int> block_sizes, block_starts;
     for (int k = 0; k < num_subsystems(); ++k) {
@@ -444,7 +441,6 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   size_t arena_bytes_ = 0;
   // Block-partitioned solve data (mutable: scratch space used in const solve).
   mutable SupernodePartitionMatrix solve_matrix_;
-  mutable DenseBlockPartition dense_partition_;
 
   mutable SeparatorScratch sep_scratch_;
   mutable SeparatorScratch sep_scratch_out_;

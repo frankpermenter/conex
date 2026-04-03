@@ -83,7 +83,6 @@ GpuTreeSolver::GpuTreeSolver(GpuTreeSolver&& o) noexcept
       cusolver_(o.cusolver_),
       cublas_(o.cublas_),
       stream_(o.stream_),
-      partition_(std::move(o.partition_)),
       host_scatter_ops_(std::move(o.host_scatter_ops_)) {
   o.d_rhs_ = nullptr;
   o.d_info_ = nullptr;
@@ -427,8 +426,6 @@ void GpuTreeSolver::FinalizeStructure(const CliqueTree& clique_tree, int rhs_col
           "cudaMalloc batch_sep_offsets");
   }
 
-  // --- Partition ---
-  partition_ = DenseBlockPartition(num_vars_);
 }
 
 // --------------------------------------------------------------------------
@@ -771,8 +768,6 @@ void GpuTreeSolver::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
     b = b_perm;
   }
 
-  // Update partition.
-  partition_.ScatterFrom(b);
 }
 
 Eigen::MatrixXd GpuTreeSolver::DoKKTMatrix(bool /*permute*/) const {
