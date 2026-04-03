@@ -41,10 +41,6 @@ if [ "$SKIP_BUILD" = false ]; then
   lcov --remove coverage.info '*/test/*' '*/_deps/*' '*/RLDLT.h' \
     --output-file "$INFO_FILE" \
     --ignore-errors mismatch,negative >/dev/null 2>&1
-
-  echo "Cleaning up worktree..." >&2
-  cd "$REPO_ROOT"
-  git worktree remove "$WORKTREE" 2>/dev/null || true
 fi
 
 cd "$SCRIPT_DIR"
