@@ -513,15 +513,20 @@ bool T::DoAssembleAndFactor() {
     UpdateAssemblerData();
   }
   if (num_threads_ <= 1) {
+    // Serial: recursive post-order factorization per root.
     for (auto* root : roots_) {
       if (!root->AssembleAndFactor()) return false;
     }
     return true;
   }
+  // Multi-threaded: task-parallel factorization. See
+  // DoAssembleAndFactorLeafParallel for details.
   return DoAssembleAndFactorLeafParallel();
 }
 
 bool T::DoFactor() {
+  // NOTE: Only root-parallel, not task-parallel like DoAssembleAndFactor.
+  // For a single-root tree, this is serial.
   std::atomic<bool> success(true);
   ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_), [&](size_t i) {
     if (!success.load(std::memory_order_relaxed)) {
@@ -535,7 +540,12 @@ bool T::DoFactor() {
 }
 
 bool T::DoAssembleAndFactorLeafParallel() {
-  // Leaf-parallel requires scatter-to-parent and left-looking gather.
+  // Task-parallel factorization: one task per leaf, each walks up the
+  // tree factoring nodes.  When a node finishes, it decrements its
+  // parent's pending_children_ counter.  The last child to finish
+  // owns the parent and continues upward.  No level-synchronization
+  // barriers — threads follow independent paths up the tree, and
+  // siblings are factored in parallel by different threads.
   for (auto* s : subsystems_) {
     s->SetScatterToParent(true);
     s->SetFactorizationMode(true);
