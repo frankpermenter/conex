@@ -1,10 +1,14 @@
 #!/bin/bash
 # Unused code detection using lcov merged coverage data.
-# Builds with coverage, runs all tests, generates lcov report, then
-# parses FNDA:0 entries to find functions never called.
+# Builds in a clean git worktree, runs all tests, generates lcov report,
+# then parses FNDA:0 entries to find functions never called.
 # Usage: ./unused_code_report.sh [--skip-build]
 set -uo pipefail
-cd "$(dirname "$0")"
+
+REPO_ROOT="$(cd "$(dirname "$0")" && git rev-parse --show-toplevel)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+WORKTREE="/tmp/conex-coverage"
+INFO_FILE="$SCRIPT_DIR/coverage_filtered.info"
 
 SKIP_BUILD=false
 for arg in "$@"; do
@@ -13,13 +17,18 @@ for arg in "$@"; do
   esac
 done
 
-INFO_FILE="coverage_filtered.info"
-
 if [ "$SKIP_BUILD" = false ]; then
-  echo "Clean building with coverage..." >&2
+  echo "Setting up clean worktree at $WORKTREE..." >&2
+  cd "$REPO_ROOT"
+  git worktree remove "$WORKTREE" 2>/dev/null || true
+  git worktree add "$WORKTREE" HEAD 2>/dev/null
+
+  BUILD_DIR="$WORKTREE/conex/linear_solvers"
+  cd "$BUILD_DIR"
+
+  echo "Building with coverage..." >&2
   cmake -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage" . >/dev/null 2>&1
-  make clean >/dev/null 2>&1
   make -j"$(nproc)" >/dev/null 2>&1
 
   echo "Running tests..." >&2
@@ -32,7 +41,13 @@ if [ "$SKIP_BUILD" = false ]; then
   lcov --remove coverage.info '*/test/*' '*/_deps/*' '*/RLDLT.h' \
     --output-file "$INFO_FILE" \
     --ignore-errors mismatch,negative >/dev/null 2>&1
+
+  echo "Cleaning up worktree..." >&2
+  cd "$REPO_ROOT"
+  git worktree remove "$WORKTREE" 2>/dev/null || true
 fi
+
+cd "$SCRIPT_DIR"
 
 if [ ! -f "$INFO_FILE" ]; then
   echo "No coverage file found: $INFO_FILE"
@@ -75,6 +90,8 @@ while IFS= read -r line; do
     echo "$demangled" | grep -q 'conex::' || continue
     # Skip destructors, lambdas, template noise.
     echo "$demangled" | grep -qE '~|lambda|operator delete|__cxx' && continue
+    # Skip PQTree — gcov false positive (verified live via canary test).
+    echo "$demangled" | grep -q 'PQTree' && continue
 
     # Shorten for display.
     short=$(echo "$demangled" | sed 's/conex:://g; s/(anonymous namespace):://g')
