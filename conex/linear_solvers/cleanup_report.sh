@@ -1,17 +1,18 @@
 #!/bin/bash
 # Cleanup report: build, test, benchmark, and find unused code.
-# Usage: ./cleanup_report.sh [--skip-build] [--skip-bench]
+# Usage: ./cleanup_report.sh [--skip-build] [--skip-bench] [--skip-coverage]
 set -uo pipefail
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
 SKIP_BUILD=false
 SKIP_BENCH=false
-WITH_COVERAGE=true
+SKIP_COVERAGE=false
 for arg in "$@"; do
   case $arg in
     --skip-build) SKIP_BUILD=true ;;
     --skip-bench) SKIP_BENCH=true ;;
-    --coverage) WITH_COVERAGE=true ;;
+    --skip-coverage) SKIP_COVERAGE=true ;;
   esac
 done
 
@@ -19,17 +20,8 @@ done
 # 1. Build and test
 # ===================================================================
 if [ "$SKIP_BUILD" = false ]; then
-  if [ "$WITH_COVERAGE" = true ]; then
-    cmake -DCMAKE_BUILD_TYPE=Debug \
-      -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage" . >/dev/null 2>&1
-  else
-    cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="" . >/dev/null 2>&1
-  fi
+  cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="" . >/dev/null 2>&1
   make -j"$(nproc)" >/dev/null 2>&1
-fi
-
-if [ "$WITH_COVERAGE" = true ]; then
-  lcov --zerocounters --directory . >/dev/null 2>&1
 fi
 
 TEST_OUTPUT=$(ctest --output-on-failure 2>&1)
@@ -71,41 +63,11 @@ if [ "$SKIP_BENCH" = false ] && [ -x ./profile_mtx ]; then
 fi
 
 # ===================================================================
-# 2b. Coverage (if --coverage)
+# 2b. Coverage (via unused_code_report.sh — Clang/llvm-cov)
 # ===================================================================
-COVERAGE_SUMMARY=""
-COVERAGE_FILES=""
-if [ "$WITH_COVERAGE" = true ] && command -v lcov >/dev/null 2>&1; then
-  lcov --capture --directory . --output-file coverage.info --no-external \
-    --ignore-errors mismatch,negative >/dev/null 2>&1
-  lcov --remove coverage.info '*/test/*' '*/_deps/*' '*/RLDLT.h' \
-    --output-file coverage_filtered.info \
-    --ignore-errors mismatch,negative >/dev/null 2>&1
-
-  COVERAGE_SUMMARY=$(lcov --summary coverage_filtered.info 2>&1 \
-    | grep 'lines\|functions')
-
-  # Per-file breakdown: capture genhtml output.
-  COVERAGE_FILES=$(genhtml coverage_filtered.info \
-    --output-directory /tmp/coverage_html \
-    --ignore-errors mismatch,negative 2>&1 \
-    | grep 'Processing\|lines=\|functions=' \
-    | paste - - \
-    | sed 's/Processing file //' \
-    | awk -F'[ =]' '{
-        file=$1;
-        for(i=1;i<=NF;i++) {
-          if($i=="lines") { lines=$(i+1); hit_l=$(i+3) }
-          if($i=="functions") { funcs=$(i+1); hit_f=$(i+3) }
-        }
-        miss_f = funcs - hit_f;
-        if (lines > 0)
-          printf "| %-45s | %3d/%3d (%2d%%) | %2d/%2d (%d uncovered) |\n", file, hit_l, lines, (hit_l*100/lines), hit_f, funcs, miss_f
-      }' | sort -t'(' -k3 -n)
-
-  # Restore release build.
-  cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="" . >/dev/null 2>&1
-  make -j"$(nproc)" >/dev/null 2>&1
+COVERAGE_OUTPUT=""
+if [ "$SKIP_COVERAGE" = false ]; then
+  COVERAGE_OUTPUT=$(bash "$SCRIPT_DIR/unused_code_report.sh")
 fi
 
 # ===================================================================
@@ -227,15 +189,9 @@ else
   echo "(benchmarks skipped)"
 fi
 
-if [ -n "$COVERAGE_SUMMARY" ]; then
+if [ -n "$COVERAGE_OUTPUT" ]; then
   echo ""
-  echo "## 2b. Code Coverage"
-  echo ""
-  echo "$COVERAGE_SUMMARY" | sed 's/^/    /'
-  echo ""
-  echo "| File | Lines | Functions |"
-  echo "|------|-------|-----------|"
-  echo "$COVERAGE_FILES"
+  echo "$COVERAGE_OUTPUT"
   echo ""
 fi
 
