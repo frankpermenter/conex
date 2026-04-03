@@ -1927,12 +1927,10 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
       ts->RegisterLinearSubAssembler(lc.get());
     for (const auto& lc : asm2_ptr->constraints())
       ts->RegisterLinearSubAssembler(lc.get());
-    for (const auto& sub : qasm1_ptr->sub_assemblers())
-      ts->RegisterQuadraticSubAssembler(
-          &const_cast<DenseQuadraticTermSubAssembler&>(sub).evaluator());
-    for (const auto& sub : qasm2_ptr->sub_assemblers())
-      ts->RegisterQuadraticSubAssembler(
-          &const_cast<DenseQuadraticTermSubAssembler&>(sub).evaluator());
+    for (auto& qc : qasm1_ptr->constraints())
+      ts->RegisterQuadraticSubAssembler(&qc);
+    for (auto& qc : qasm2_ptr->constraints())
+      ts->RegisterQuadraticSubAssembler(&qc);
 
     ASSERT_TRUE(ts->AssembleAndFactor());
 

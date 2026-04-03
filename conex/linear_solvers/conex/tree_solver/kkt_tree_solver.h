@@ -371,8 +371,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void RegisterLinearSubAssembler(class LinearConstraint* lc) {
     linear_sub_assemblers_.push_back(lc);
   }
-  void RegisterQuadraticSubAssembler(class DenseQuadraticTermLazyEvaluator* eval) {
-    quadratic_sub_assemblers_.push_back(eval);
+  void RegisterQuadraticSubAssembler(class QuadraticConstraint* qc) {
+    quadratic_sub_assemblers_.push_back(qc);
   }
 
   // Populate a sep scratch from a BlockPartition's supernode blocks.
@@ -445,7 +445,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   mutable SeparatorScratch sep_scratch_;
   mutable SeparatorScratch sep_scratch_out_;
   std::vector<class LinearConstraint*> linear_sub_assemblers_;
-  std::vector<class DenseQuadraticTermLazyEvaluator*> quadratic_sub_assemblers_;
+  std::vector<class QuadraticConstraint*> quadratic_sub_assemblers_;
   // Per-node precomputed child scatter info for blocked solve.
   struct ChildScatterOp {
     int child_block_index;

@@ -287,9 +287,8 @@ class Solver {
     }
     for (auto* qasm : quadratic_assemblers_) {
       if (!qasm) continue;
-      for (const auto& sub : qasm->sub_assemblers())
-        tree_solver_->RegisterQuadraticSubAssembler(
-            &const_cast<DenseQuadraticTermSubAssembler&>(sub).evaluator());
+      for (auto& qc : qasm->constraints())
+        tree_solver_->RegisterQuadraticSubAssembler(&qc);
     }
   }
 
