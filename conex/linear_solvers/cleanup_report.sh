@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 SKIP_BUILD=false
 SKIP_BENCH=false
-WITH_COVERAGE=false
+WITH_COVERAGE=true
 for arg in "$@"; do
   case $arg in
     --skip-build) SKIP_BUILD=true ;;
