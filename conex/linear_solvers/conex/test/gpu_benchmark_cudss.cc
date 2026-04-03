@@ -260,7 +260,7 @@ TimingResult BenchTreeSolver(const BenchProblem& prob, int warmup, int trials) {
   auto assembled = AssembleBlocks(prob);
 
   GpuTreeSolver gpu;
-  gpu.Finalize(ct);
+  gpu.FinalizeStructure(ct);
   for (int ci = 0; ci < num_cliques; ++ci)
     gpu.SetSupernodeData(ci, assembled.blocks[ci]);
 

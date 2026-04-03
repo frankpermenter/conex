@@ -78,7 +78,7 @@ TEST(LowRankDiagonal, SingleCliqueSolve) {
   ct.node_to_parent = {-1};
   ct.post_order_position_to_clique = {0};
 
-  // Manual Finalize steps:
+  // Manual FinalizeStructure steps:
   // 1. Create subsystem.
   auto subsystem = std::make_unique<LowRankPlusDiagonalSubsystem>();
   auto* subsystem_ptr = subsystem.get();
@@ -88,7 +88,7 @@ TEST(LowRankDiagonal, SingleCliqueSolve) {
   std::vector<bool> needs_indefinite = {false};
 
   // We need to use the solver's internal machinery. Since we can't easily
-  // inject a custom subsystem through the existing Finalize, let's test
+  // inject a custom subsystem through the existing FinalizeStructure, let's test
   // the subsystem directly through its public KKTSubsystemBase interface.
 
   // Set up the subsystem.

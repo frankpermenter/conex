@@ -33,7 +33,7 @@ struct VectorBlockContribution {
 //
 // Two-phase protocol:
 //   1. RegisterContributions(clique_id, perm, blocks): called once at
-//      Finalize.  The assembler saves perm and block destinations,
+//      FinalizeStructure.  The assembler saves perm and block destinations,
 //      precomputes permuted data and scatter tables.
 //   2. ContributeBlocks(clique_id): called at each assembly.
 //      Uses saved info to write all blocks.
@@ -44,7 +44,7 @@ class BlockAssembler {
   // Permute internal data layout.  Called during RegisterContributions.
   virtual void set_order(const std::vector<int>& perm) = 0;
 
-  // Register block contributions for a clique.  Called once at Finalize.
+  // Register block contributions for a clique.  Called once at FinalizeStructure.
   virtual bool RegisterContributions(
       int clique_id,
       const std::vector<int>& perm,
@@ -59,7 +59,7 @@ class BlockAssembler {
   // Number of supernode columns in the permuted layout (set by contributor).
   virtual void set_sn_count(int) {}
 
-  // Register vector block contributions.  Called once at Finalize.
+  // Register vector block contributions.  Called once at FinalizeStructure.
   virtual void RegisterVectorContributions(
       const std::vector<VectorBlockContribution>& /*blocks*/) {}
 };

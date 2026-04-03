@@ -123,7 +123,7 @@ LQRTreeSolver::LQRTreeSolver(
 
   solver_->SetUseGenericFactorization(false);
   solver_->SetUseLUForIndefinite(false);
-  solver_->Finalize(tree);
+  solver_->FinalizeStructure(tree);
   solver_->SetFactorizationMode(true);
   solver_->EnableAutoUpdateAtAssemble(true);
 }

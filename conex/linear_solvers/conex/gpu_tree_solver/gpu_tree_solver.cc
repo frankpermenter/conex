@@ -107,10 +107,10 @@ GpuTreeSolver& GpuTreeSolver::operator=(GpuTreeSolver&& o) noexcept {
 }
 
 // --------------------------------------------------------------------------
-// Finalize: symbolic setup
+// FinalizeStructure: symbolic setup
 // --------------------------------------------------------------------------
 
-void GpuTreeSolver::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
+void GpuTreeSolver::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols) {
   clique_tree_ = clique_tree;
   rhs_cols_ = rhs_cols;
   const int num_cliques = static_cast<int>(clique_tree_.supernodes.size());

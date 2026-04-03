@@ -408,7 +408,7 @@ TreeSolverBuilder::Result TreeSolverBuilder::Build() {
 
   solver->SetUseGenericFactorization(false);
   solver->SetUseLUForIndefinite(false);
-  solver->Finalize(tree);
+  solver->FinalizeStructure(tree);
   solver->SetFactorizationMode(true);
   solver->EnableAutoUpdateAtAssemble(true);
 

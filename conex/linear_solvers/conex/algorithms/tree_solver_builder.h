@@ -89,7 +89,7 @@ class TreeSolverBuilder {
   // structured problems (LQR, stochastic opt), prefer the explicit tree.
 
   // Validate and build the tree solver.
-  // Computes supernodes/separators, creates adapters, calls Finalize.
+  // Computes supernodes/separators, creates adapters, calls FinalizeStructure.
   Result Build();
 
   // TODO: Delete — replaced by Problem + Solver::Build path.

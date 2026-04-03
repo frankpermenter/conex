@@ -149,7 +149,7 @@ class SubmatrixContributor {
   void PrecomputeLazyOrder(const std::vector<int>& elim_positions);
 
   // Register: precompute permutation, runs, and block destinations.
-  // Called once at Finalize time with elimination positions.
+  // Called once at FinalizeStructure time with elimination positions.
   // Offers the two-phase protocol to the block assembler.
   template <typename BlockAssemblerT>
   void Register(BlockAssemblerT& lazy, const std::vector<int>& elim_positions);
@@ -318,7 +318,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
  public:
   int number_of_variables() const override;
 
-  void Finalize(const CliqueTree& clique_tree, int rhs_cols = 1);
+  void FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols = 1);
 
   void SetFactorizationMode(bool left_looking);
   void SetScatterToParent(bool enable);
@@ -375,7 +375,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   const Eigen::VectorXi& perm_inv() const { return cached_perm_inv_; }
 
   // Pre-inject a subsystem for a specific clique index.  Must be called
-  // before Finalize.  CreateSubsystems will use injected subsystems instead
+  // before FinalizeStructure.  CreateSubsystems will use injected subsystems instead
   // of creating default ones.
   void InjectSubsystem(int clique_index,
                         std::unique_ptr<KKTSubsystemBase> subsystem) {

@@ -270,7 +270,7 @@ void T::SolveBlockedInPlace(BlockPartition& supernodes,
                              SeparatorScratch& scratch) const {
   const int nc = supernodes.cols();
   CONEX_DEMAND(nc <= scratch.reserved_cols,
-               "BlockVariable has more columns than reserved at Finalize.");
+               "BlockVariable has more columns than reserved at FinalizeStructure.");
 
   const int num_solve = static_cast<int>(solve_order_.size());
 
@@ -428,7 +428,7 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
   }
   CONEX_DEMAND(b.cols() <= reserved_solve_workspace_cols_,
                "RHS has more columns than pre-allocated workspace. "
-               "Set rhs_cols in SolverConfiguration or Finalize().");
+               "Set rhs_cols in SolverConfiguration or FinalizeStructure().");
 
   if (!solve_matrix_.empty() && !use_recursive_solve_) {
     if (solve_matrix_.cols() != b.cols()) {
@@ -508,6 +508,8 @@ void T::DoAssemble() {
               [&](size_t i) { roots_.at(i)->Assemble(); });
 }
 
+// Numeric phase: assemble matrix values from contributors and factor.
+// Sparsity structure was fixed by FinalizeStructure; this updates values only.
 bool T::DoAssembleAndFactor() {
   if (auto_update_assemblers_) {
     UpdateAssemblerData();
@@ -767,7 +769,7 @@ void T::BindContributors(const std::vector<int>& adapter_to_clique) {
   }
 }
 
-void T::Finalize(const CliqueTree& clique_tree, int rhs_cols) {
+void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols) {
   std::vector<bool> needs_indefinite;
   auto adapter_to_clique = ClassifyCliques(clique_tree, &needs_indefinite);
 

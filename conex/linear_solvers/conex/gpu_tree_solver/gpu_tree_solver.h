@@ -41,7 +41,7 @@ class GpuTreeSolver : public KKTSolverBase {
   // This computes the elimination ordering, level assignment,
   // arena layout, and extend-add offset tables.
   // Must be called before Assemble/Factor/Solve.
-  void Finalize(const CliqueTree& clique_tree, int rhs_cols = 1);
+  void FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols = 1);
 
   // Set the host-side assembler data for a supernode.
   // The caller provides the dense block data that will be copied

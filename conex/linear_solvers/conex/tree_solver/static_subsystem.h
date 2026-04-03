@@ -14,7 +14,7 @@ class KKTAssemblerToSubsystemAdapter {
   virtual ~KKTAssemblerToSubsystemAdapter();
 
   // Contributor contract: declare contribution type; the tree solver
-  // auto-creates subsystems and binds a contributor after Finalize.
+  // auto-creates subsystems and binds a contributor after FinalizeStructure.
   void set_contribution_type(ContributionType type);
   ContributionType contribution_type() const;
 

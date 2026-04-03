@@ -141,9 +141,9 @@ Eigen::VectorXd SolveOnGpu(const TestProblem& prob) {
   const int num_cliques = static_cast<int>(ct.supernodes.size());
 
   GpuTreeSolver gpu;
-  gpu.Finalize(ct);
+  gpu.FinalizeStructure(ct);
 
-  // Build elimination ordering (same as GpuTreeSolver::Finalize).
+  // Build elimination ordering (same as GpuTreeSolver::FinalizeStructure).
   Eigen::VectorXi perm = Eigen::VectorXi::Constant(n, -1);
   int epos = 0;
   for (int ci : ct.post_order_position_to_clique) {
@@ -278,11 +278,11 @@ Eigen::VectorXd SolveOnGpu(const TestProblem& prob) {
 
 // --- Tests ---
 
-TEST(GpuTreeSolver, Finalize) {
+TEST(GpuTreeSolver, FinalizeStructure) {
   auto prob = MakeBlockDiagonal(3, 6, 4);
 
   GpuTreeSolver gpu;
-  gpu.Finalize(prob.clique_tree);
+  gpu.FinalizeStructure(prob.clique_tree);
 
   EXPECT_EQ(gpu.number_of_variables(), prob.A.cols());
   EXPECT_GT(gpu.num_levels(), 0);
@@ -329,7 +329,7 @@ TEST(GpuTreeSolver, RepeatedSolve) {
   const int num_cliques = static_cast<int>(ct.supernodes.size());
 
   GpuTreeSolver gpu;
-  gpu.Finalize(ct);
+  gpu.FinalizeStructure(ct);
 
   Eigen::MatrixXd AtA(prob.A.transpose() * prob.A);
   for (int ci = 0; ci < num_cliques; ++ci) {
@@ -362,7 +362,7 @@ TEST(GpuTreeSolver, PartitionInterface) {
   auto prob = MakeBlockDiagonal(2, 6, 4);
 
   GpuTreeSolver gpu;
-  gpu.Finalize(prob.clique_tree);
+  gpu.FinalizeStructure(prob.clique_tree);
 
   // Verify partition is accessible through KKTSolverBase.
   KKTSolverBase* base = &gpu;
