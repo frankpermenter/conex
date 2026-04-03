@@ -16,7 +16,10 @@ done
 INFO_FILE="coverage_filtered.info"
 
 if [ "$SKIP_BUILD" = false ]; then
-  echo "Building with coverage..." >&2
+  echo "Clean building with coverage..." >&2
+  # Delete stale objects to ensure all libraries get coverage instrumentation.
+  find . -name '*.o' -path '*/CMakeFiles/*' -delete 2>/dev/null
+  find . -name '*.a' -delete 2>/dev/null
   cmake -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage" . >/dev/null 2>&1
   make -j"$(nproc)" >/dev/null 2>&1
