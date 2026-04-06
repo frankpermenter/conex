@@ -20,12 +20,14 @@ done
 # ===================================================================
 # 1. Build and test
 # ===================================================================
+BUILD_DIR="$SCRIPT_DIR/build"
 if [ "$SKIP_BUILD" = false ]; then
-  cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="" . >/dev/null 2>&1
-  make -j"$(nproc)" >/dev/null 2>&1
+  mkdir -p "$BUILD_DIR"
+  cmake -S "$SCRIPT_DIR" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS="" >/dev/null 2>&1
+  cmake --build "$BUILD_DIR" -j"$(nproc)" >/dev/null 2>&1
 fi
 
-TEST_OUTPUT=$(ctest --output-on-failure 2>&1)
+TEST_OUTPUT=$(cd "$BUILD_DIR" && ctest --output-on-failure 2>&1)
 # ctest summary: "100% tests passed, 0 tests failed out of 23"
 SUMMARY_LINE=$(echo "$TEST_OUTPUT" | grep 'failed out of' || echo "0 tests passed, 0 tests failed out of 0")
 TOTAL=$(echo "$SUMMARY_LINE" | sed -E 's/.*out of ([0-9]+).*/\1/')
@@ -50,24 +52,8 @@ done <<< "$TEST_OUTPUT"
 # 2. Benchmarks
 # ===================================================================
 BENCH_OUTPUT=""
-if [ "$SKIP_BENCH" = false ] && [ -x ./profile_mtx ]; then
-  # Discover primary .mtx files (name matches parent directory).
-  MTX_FILES=""
-  for dir in \
-    /agent-workspace/interfaces/python/test/benchmark_data \
-    "$SCRIPT_DIR/benchmark_data" \
-    "$REPO_ROOT/benchmark_data"; do
-    if [ -d "$dir" ]; then
-      for subdir in "$dir"/*/; do
-        name=$(basename "$subdir")
-        f="$subdir${name}.mtx"
-        [ -f "$f" ] && MTX_FILES="$MTX_FILES $f"
-      done
-    fi
-  done
-  if [ -n "$MTX_FILES" ]; then
-    BENCH_OUTPUT=$(./profile_mtx --randomize $MTX_FILES 2>&1)
-  fi
+if [ "$SKIP_BENCH" = false ] && [ -x "$SCRIPT_DIR/run_benchmarks.sh" ]; then
+  BENCH_OUTPUT=$(bash "$SCRIPT_DIR/run_benchmarks.sh" --randomize 2>/dev/null)
 fi
 
 # ===================================================================

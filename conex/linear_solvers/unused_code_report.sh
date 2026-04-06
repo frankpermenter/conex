@@ -7,7 +7,7 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")" && git rev-parse --show-toplevel)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKTREE="/tmp/conex-coverage"
-PROFDATA="$WORKTREE/conex/linear_solvers/merged.profdata"
+PROFDATA="$WORKTREE/conex/linear_solvers/build/merged.profdata"
 
 SKIP_BUILD=false
 for arg in "$@"; do
@@ -22,42 +22,44 @@ if [ "$SKIP_BUILD" = false ]; then
   git worktree remove --force "$WORKTREE" 2>/dev/null || true
   git worktree add "$WORKTREE" HEAD
 
-  BUILD_DIR="$WORKTREE/conex/linear_solvers"
-  cd "$BUILD_DIR"
+  SRC_DIR="$WORKTREE/conex/linear_solvers"
+  BUILD_DIR="$SRC_DIR/build"
 
   echo "Building with Clang coverage..." >&2
-  rm -rf CMakeCache.txt CMakeFiles
-  cmake -DCMAKE_BUILD_TYPE=Debug \
+  mkdir -p "$BUILD_DIR"
+  cmake -S "$SRC_DIR" -B "$BUILD_DIR" \
+    -DCMAKE_BUILD_TYPE=Debug \
     -DCMAKE_C_COMPILER=clang \
     -DCMAKE_CXX_COMPILER=clang++ \
     -DCMAKE_CXX_FLAGS="-fprofile-instr-generate -fcoverage-mapping" \
     -DCMAKE_EXE_LINKER_FLAGS="-fprofile-instr-generate" \
     -DCMAKE_CUDA_COMPILER=NOTFOUND \
-    . >/dev/null 2>&1
-  TEST_TARGETS=$(grep -oP '(?<=add_executable\()[\w]+_test' CMakeLists.txt | tr '\n' ' ')
+    >/dev/null 2>&1
+  TEST_TARGETS=$(grep -oP '(?<=add_executable\()[\w]+_test' "$SRC_DIR/CMakeLists.txt" | tr '\n' ' ')
   echo "Building: $TEST_TARGETS" >&2
-  make -k -j"$(nproc)" $TEST_TARGETS 2>&1 | tail -1 >&2
+  cmake --build "$BUILD_DIR" -k -j"$(nproc)" --target $TEST_TARGETS 2>&1 | tail -1 >&2
 
   echo "Running tests..." >&2
-  mkdir -p profraw
-  for bin in ./*_test; do
+  mkdir -p "$BUILD_DIR/profraw"
+  for bin in "$BUILD_DIR"/*_test; do
     [ -x "$bin" ] || continue
     echo "  $(basename "$bin")" >&2
-    LLVM_PROFILE_FILE="profraw/$(basename "$bin").profraw" \
+    LLVM_PROFILE_FILE="$BUILD_DIR/profraw/$(basename "$bin").profraw" \
       "$bin" >/dev/null 2>&1 || true
   done
 
-  echo "Merging $(ls profraw/*.profraw 2>/dev/null | wc -l) profiles..." >&2
-  llvm-profdata merge -sparse profraw/*.profraw -o "$PROFDATA" 2>/dev/null
+  echo "Merging $(ls "$BUILD_DIR"/profraw/*.profraw 2>/dev/null | wc -l) profiles..." >&2
+  llvm-profdata merge -sparse "$BUILD_DIR"/profraw/*.profraw -o "$PROFDATA" 2>/dev/null
 fi
 
-BUILD_DIR="$WORKTREE/conex/linear_solvers"
-cd "$BUILD_DIR"
+BUILD_DIR="$WORKTREE/conex/linear_solvers/build"
 
 if [ ! -f "$PROFDATA" ]; then
   echo "No profile data found. Run without --skip-build first."
   exit 1
 fi
+
+cd "$BUILD_DIR"
 
 # Collect all test binaries as -object args.
 OBJECTS=""

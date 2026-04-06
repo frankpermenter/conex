@@ -1,4 +1,7 @@
-# CMake build artifacts
+# Out-of-source build directory
+build/
+
+# Legacy in-source CMake artifacts (can be removed once fully migrated)
 CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
@@ -10,13 +13,20 @@ _deps/
 # Build outputs
 *.a
 lib/
+*_test
 benchmark
 profile_mtx
-low_rank_diagonal_test
-sparse_linear_constraint_test
-multithreading_test
 *_include.cmake
 *_tests.cmake
+
+# Coverage artifacts
+*.gcov
+*.gcda
+*.gcno
+*.info
+*.profraw
+*.profdata
+profraw/
 
 # Profiling
 perf.data
@@ -25,6 +35,3 @@ perf.data.old
 # Editor
 *.swp
 *~
-
-# Scripts output
-run.sh
