@@ -88,7 +88,8 @@ SparseLinearConstraint::GetConstraints(
                support_groups_[si].rows.end());
   }
 
-  // Build dense sub-blocks.
+  // Build dense sub-blocks by iterating sparse nonzeros (not random access).
+  // Pre-build row and column maps for O(1) lookup.
   std::vector<RowGroup> result;
   for (size_t ti = 0; ti < target_supports.size(); ++ti) {
     if (rows_per_target[ti].empty()) continue;
@@ -99,14 +100,34 @@ SparseLinearConstraint::GetConstraints(
     RowGroup group;
     group.variables = vars;
     group.global_rows = rows;
-    group.A.resize(nrows, ncols);
+    group.A.setZero(nrows, ncols);
     group.b.resize(nrows);
+
+    // Map global row → local row index.
+    std::vector<int> row_map(A_.rows(), -1);
     for (int i = 0; i < nrows; ++i) {
+      row_map[rows[i]] = i;
       group.b(i) = b_(rows[i]);
-      for (int j = 0; j < ncols; ++j) {
-        group.A(i, j) = A_.coeff(rows[i], vars[j]);
+    }
+
+    // Map global col → local col index (only for vars in this target).
+    std::vector<int> col_map(A_.cols(), -1);
+    for (int j = 0; j < ncols; ++j) col_map[vars[j]] = j;
+
+    // Iterate sparse nonzeros: O(nnz) total, not O(nrows * ncols * log).
+    for (int k = 0; k < A_.outerSize(); ++k) {
+      int lj = col_map[k];
+      if (lj < 0) continue;
+      for (Eigen::SparseMatrix<double>::InnerIterator it(A_, k); it; ++it) {
+        int li = row_map[it.row()];
+        if (li >= 0) group.A(li, lj) = it.value();
       }
     }
+
+    // Clear maps for next target.
+    for (int r : rows) row_map[r] = -1;
+    for (int v : vars) col_map[v] = -1;
+
     result.push_back(std::move(group));
   }
   return result;
