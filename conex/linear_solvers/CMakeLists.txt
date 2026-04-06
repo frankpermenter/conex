@@ -62,8 +62,13 @@ add_library(constraints
   conex/common/linear_constraint.cc
   conex/common/equality_constraint.cc
   conex/common/constraint_manager.cc
+  conex/common/blas_wrapper.cc
 )
 target_link_libraries(constraints PUBLIC Eigen3::Eigen clique_ordering)
+if(BLAS_FOUND)
+  target_link_libraries(constraints PUBLIC BLAS::BLAS)
+  target_compile_definitions(constraints PRIVATE EIGEN_USE_BLAS)
+endif()
 
 # --- Solver factory (MakeTreeSolver only) ---
 add_library(kkt_solver_factory

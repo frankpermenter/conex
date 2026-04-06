@@ -2,6 +2,7 @@
 #include <unordered_map>
 
 #include "conex/common/arena_allocatable.h"
+#include "conex/common/blas_wrapper.h"
 #include "conex/common/block_partition.h"
 #include "conex/common/error_checking_macros.h"
 #include "conex/common/supernodal_assembler_base.h"
@@ -103,17 +104,31 @@ class GramEvaluator : public BlockAssembler {
     ensure_weights_fresh();
     auto it = registered_blocks_.find(clique_id);
     if (it == registered_blocks_.end()) return;
+    const int m = WA_perm_.rows();  // number of constraint rows
     for (const auto& bc : it->second) {
-      using StrideType = Eigen::Stride<Eigen::Dynamic, 1>;
-      Eigen::Map<Eigen::MatrixXd, 0, StrideType> dest(
-          bc.dest, bc.rows, bc.cols, StrideType(bc.dest_ld, 1));
       if (bc.lower_only) {
-        dest.selfadjointView<Eigen::Lower>().rankUpdate(
-            WA_perm_.middleCols(bc.q_row, bc.rows).transpose());
+        // Diagonal block: C += WA^T * WA (lower triangle).
+        const double* A_ptr = WA_perm_.data() + bc.q_row * m;
+        if (!blas::Dsyrk(bc.rows, m, 1.0, A_ptr, m, bc.dest, bc.dest_ld)) {
+          using StrideType = Eigen::Stride<Eigen::Dynamic, 1>;
+          Eigen::Map<Eigen::MatrixXd, 0, StrideType> dest(
+              bc.dest, bc.rows, bc.cols, StrideType(bc.dest_ld, 1));
+          dest.selfadjointView<Eigen::Lower>().rankUpdate(
+              WA_perm_.middleCols(bc.q_row, bc.rows).transpose());
+        }
       } else {
-        dest.noalias() +=
-            WA_perm_.middleCols(bc.q_row, bc.rows).transpose() *
-            WA_perm_.middleCols(bc.q_col, bc.cols);
+        // Off-diagonal block: C += WA_row^T * WA_col.
+        const double* A_row = WA_perm_.data() + bc.q_row * m;
+        const double* A_col = WA_perm_.data() + bc.q_col * m;
+        if (!blas::Dgemm(bc.rows, bc.cols, m, 1.0,
+                         A_row, m, A_col, m, bc.dest, bc.dest_ld)) {
+          using StrideType = Eigen::Stride<Eigen::Dynamic, 1>;
+          Eigen::Map<Eigen::MatrixXd, 0, StrideType> dest(
+              bc.dest, bc.rows, bc.cols, StrideType(bc.dest_ld, 1));
+          dest.noalias() +=
+              WA_perm_.middleCols(bc.q_row, bc.rows).transpose() *
+              WA_perm_.middleCols(bc.q_col, bc.cols);
+        }
       }
     }
   }
