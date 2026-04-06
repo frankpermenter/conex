@@ -110,39 +110,42 @@ std::vector<SupernodalAssemblerBase*> SparseQuadraticTermAssembler::Decompose(
   }
 
   // Assign each Q(i,j) to the smallest containing clique.
-  auto get_Q = [&](int qi, int qj) -> double {
-    if (dense_ && Q_dense_) return (*Q_dense_)(qi, qj);
-    if (Q_sparse_) return Q_sparse_->coeff(qi, qj);
-    return 0;
+  // Iterate only nonzeros for sparse Q; fall back to dense loop for dense Q.
+  auto assign_entry = [&](int qi, int qj, double val) {
+    if (val == 0) return;
+    int vi = vars[qi], vj = vars[qj];
+    int best_ci = -1;
+    size_t best_size = std::numeric_limits<size_t>::max();
+    auto it_i = var_to_cliques.find(vi);
+    if (it_i == var_to_cliques.end()) return;
+    for (int ci : it_i->second) {
+      if (maximal_cliques[ci].size() >= best_size) continue;
+      if (infos[ci].var_to_local.count(vj)) {
+        best_ci = ci;
+        best_size = maximal_cliques[ci].size();
+      }
+    }
+    if (best_ci < 0) return;
+    int li = infos[best_ci].var_to_local[vi];
+    int lj = infos[best_ci].var_to_local[vj];
+    Q_blocks[best_ci](li, lj) += val;
+    if (li != lj) Q_blocks[best_ci](lj, li) += val;
   };
 
-  for (int qi = 0; qi < static_cast<int>(vars.size()); ++qi) {
-    int vi = vars[qi];
-    for (int qj = qi; qj < static_cast<int>(vars.size()); ++qj) {
-      int vj = vars[qj];
-      double val = get_Q(qi, qj);
-      if (val == 0 && qi != qj) continue;
-      if (val == 0 && qi == qj) continue;
-
-      // Find smallest clique containing both vi and vj.
-      int best_ci = -1;
-      size_t best_size = std::numeric_limits<size_t>::max();
-      auto it_i = var_to_cliques.find(vi);
-      if (it_i == var_to_cliques.end()) continue;
-      for (int ci : it_i->second) {
-        if (maximal_cliques[ci].size() >= best_size) continue;
-        if (infos[ci].var_to_local.count(vj)) {
-          best_ci = ci;
-          best_size = maximal_cliques[ci].size();
-        }
+  if (Q_sparse_) {
+    // Iterate only nonzeros: O(nnz) instead of O(n²).
+    for (int k = 0; k < Q_sparse_->outerSize(); ++k) {
+      for (Eigen::SparseMatrix<double>::InnerIterator it(*Q_sparse_, k);
+           it; ++it) {
+        int r = it.row(), c = it.col();
+        if (r >= c) assign_entry(c, r, it.value());
       }
-      if (best_ci < 0) continue;
-
-      int li = infos[best_ci].var_to_local[vi];
-      int lj = infos[best_ci].var_to_local[vj];
-      Q_blocks[best_ci](li, lj) += val;
-      if (li != lj) Q_blocks[best_ci](lj, li) += val;
     }
+  } else if (dense_ && Q_dense_) {
+    const int nv = static_cast<int>(vars.size());
+    for (int qi = 0; qi < nv; ++qi)
+      for (int qj = qi; qj < nv; ++qj)
+        assign_entry(qi, qj, (*Q_dense_)(qi, qj));
   }
 
   // Create sub-assemblers for non-zero blocks.
