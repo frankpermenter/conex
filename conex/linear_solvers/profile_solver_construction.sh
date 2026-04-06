@@ -19,22 +19,35 @@ if [ ! -f "$MTX_FILE" ]; then
   exit 1
 fi
 
-# Build with debug symbols + optimization (Release + frame pointers).
-if [ ! -x "$PROFILE_MTX" ]; then
-  echo "Building profile_mtx..." >&2
-  mkdir -p "$BUILD_DIR"
-  cmake -S . -B "$BUILD_DIR" \
-    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    -DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer -g" \
-    >/dev/null 2>&1
-  cmake --build "$BUILD_DIR" -j"$(nproc)" --target profile_mtx >/dev/null 2>&1
-fi
+# Always rebuild to avoid stale binaries.
+echo "Building profile_mtx..." >&2
+mkdir -p "$BUILD_DIR"
+cmake -S . -B "$BUILD_DIR" \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+  -DCMAKE_CXX_FLAGS="-fno-omit-frame-pointer -g" \
+  >/dev/null 2>&1
+cmake --build "$BUILD_DIR" -j"$(nproc)" --target profile_mtx >/dev/null 2>&1
 
 echo "=== Profiling: $(basename "$MTX_FILE") ===" >&2
 echo "Matrix: $MTX_FILE" >&2
 echo "" >&2
 
-# Record with call graph (dwarf for accuracy, fp as fallback).
+# Check perf permissions.
+PARANOID=$(cat /proc/sys/kernel/perf_event_paranoid 2>/dev/null || echo 0)
+if [ "$PARANOID" -gt 1 ]; then
+  echo "perf_event_paranoid=$PARANOID (need <=1). Trying sudo..." >&2
+  sudo sysctl -w kernel.perf_event_paranoid=1 >/dev/null 2>&1 || {
+    echo "Cannot lower perf_event_paranoid. Falling back to timer-based profiling." >&2
+    echo ""
+    echo "=== Timer-based profile (no perf) ==="
+    echo ""
+    # Use Google perftools or just time the run and report.
+    "$PROFILE_MTX" --randomize "$MTX_FILE"
+    exit 0
+  }
+fi
+
+# Record with call graph (dwarf for accuracy).
 PERF_DATA=$(mktemp /tmp/perf.XXXXXX.data)
 perf record -g --call-graph dwarf -o "$PERF_DATA" \
   "$PROFILE_MTX" --randomize "$MTX_FILE" 2>/dev/null
