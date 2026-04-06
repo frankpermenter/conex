@@ -51,14 +51,16 @@ done <<< "$TEST_OUTPUT"
 # ===================================================================
 BENCH_OUTPUT=""
 if [ "$SKIP_BENCH" = false ] && [ -x ./profile_mtx ]; then
-  # Discover .mtx files in common locations.
+  # Discover primary .mtx files (name matches parent directory).
   MTX_FILES=""
   for dir in \
     /agent-workspace/interfaces/python/test/benchmark_data \
     "$SCRIPT_DIR/benchmark_data" \
     "$REPO_ROOT/benchmark_data"; do
     if [ -d "$dir" ]; then
-      for f in "$dir"/*/*.mtx; do
+      for subdir in "$dir"/*/; do
+        name=$(basename "$subdir")
+        f="$subdir${name}.mtx"
         [ -f "$f" ] && MTX_FILES="$MTX_FILES $f"
       done
     fi
@@ -126,20 +128,8 @@ while IFS= read -r match; do
   COMMENTED="${COMMENTED}| \`${file}:${line}\` | \`${content}\` |\n"
 done < <(grep -rn '^\s*//\s*\(using\|template\)' "$SRC_DIR" --include='*.h' --include='*.cc' 2>/dev/null)
 
-# 3d. Unused methods: AddSupernode, AddSeparator, set_variable_indices, variable_indices_.
+# 3d. Unused methods — covered by llvm-cov report; no hardcoded names.
 UNUSED_MEMBERS=""
-for name in AddSupernode AddSeparator; do
-  decl=$(grep -rn "\b${name}\b" "$SRC_DIR" --include='*.h' | head -1)
-  if [ -n "$decl" ]; then
-    decl_file=$(echo "$decl" | cut -d: -f1)
-    usage=$(grep -rn "\b${name}\b" "$SRC_DIR" --include='*.h' --include='*.cc' 2>/dev/null \
-      | grep -v "$decl_file" | grep -v '^\s*//' | wc -l)
-    if [ "$usage" -eq 0 ]; then
-      line_num=$(echo "$decl" | cut -d: -f2)
-      UNUSED_MEMBERS="${UNUSED_MEMBERS}| \`${name}\` | \`${decl_file}:${line_num}\` | Never called |\n"
-    fi
-  fi
-done
 
 # ===================================================================
 # 4. Format report
@@ -176,23 +166,11 @@ echo ""
 echo "## 2. Benchmark Results"
 echo ""
 if [ -n "$BENCH_OUTPUT" ]; then
-  echo "| Matrix | asm+fac | solve | residual |"
-  echo "|--------|---------|-------|----------|"
-  echo "$BENCH_OUTPUT" | grep -E '^[a-zA-Z]' | grep -v '^Matrix\|^Col\|^Sta' | while IFS= read -r line; do
-    name=$(echo "$line" | awk '{print $1}')
-    # Extract fields by position: columns are fixed-width.
-    # asm+fac and solve are the 5th and 6th "Xus" fields.
-    asmfac=$(echo "$line" | grep -oE '[0-9]+us' | sed -n '5p')
-    solve=$(echo "$line" | grep -oE '[0-9]+us' | sed -n '6p')
-    resid=$(echo "$line" | grep -oE '[0-9]+\.[0-9]+e[+-][0-9]+' | tail -1)
-    if [ -n "$asmfac" ] && [ -n "$resid" ]; then
-      echo "| ${name} | ${asmfac} | ${solve} | ${resid} |"
-    elif echo "$line" | grep -q "FACTOR FAILED"; then
-      echo "| ${name} | FACTOR FAILED | - | rank-def |"
-    fi
-  done
+  echo '```'
+  echo "$BENCH_OUTPUT"
+  echo '```'
 else
-  echo "(benchmarks skipped)"
+  echo "(benchmarks skipped — no .mtx files found or profile_mtx not built)"
 fi
 
 if [ -n "$COVERAGE_OUTPUT" ]; then
