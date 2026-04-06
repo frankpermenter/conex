@@ -93,7 +93,9 @@ std::vector<SupernodalAssemblerBase*> SparseQuadraticTermAssembler::Decompose(
     std::unordered_map<int, int> var_to_local;  // var -> local index
   };
   std::vector<CliqueInfo> infos(num_cliques);
-  std::vector<Eigen::MatrixXd> Q_blocks;
+  // Defer Q_block allocation — only allocate for cliques that receive entries.
+  std::vector<Eigen::MatrixXd> Q_blocks(num_cliques);
+  std::vector<bool> Q_block_initialized(num_cliques, false);
 
   for (int ci = 0; ci < num_cliques; ++ci) {
     auto& info = infos[ci];
@@ -105,8 +107,6 @@ std::vector<SupernodalAssemblerBase*> SparseQuadraticTermAssembler::Decompose(
         info.clique_vars.push_back(v);
       }
     }
-    int m = static_cast<int>(info.q_indices.size());
-    Q_blocks.emplace_back(Eigen::MatrixXd::Zero(m, m));
   }
 
   // Assign each Q(i,j) to the smallest containing clique.
@@ -126,6 +126,11 @@ std::vector<SupernodalAssemblerBase*> SparseQuadraticTermAssembler::Decompose(
       }
     }
     if (best_ci < 0) return;
+    if (!Q_block_initialized[best_ci]) {
+      int m = static_cast<int>(infos[best_ci].q_indices.size());
+      Q_blocks[best_ci] = Eigen::MatrixXd::Zero(m, m);
+      Q_block_initialized[best_ci] = true;
+    }
     int li = infos[best_ci].var_to_local[vi];
     int lj = infos[best_ci].var_to_local[vj];
     Q_blocks[best_ci](li, lj) += val;

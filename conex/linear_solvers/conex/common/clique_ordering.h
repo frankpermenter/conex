@@ -54,7 +54,7 @@ struct EliminationOrdering {
 // Performs supernode detection, tree construction, supernode merging,
 // reordering, and post-order computation.
 CliqueTree MakeCliqueTreeFromEliminationOrdering(
-    const EliminationOrdering& elim,
+    EliminationOrdering elim,
     std::vector<std::vector<int>>* maximal_cliques_out = nullptr,
     int max_merge_supernode_size = 0,
     int supernode_reorder_method = SUPERNODE_REORDER_BFS_GREEDY);

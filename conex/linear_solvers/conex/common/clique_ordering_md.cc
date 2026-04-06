@@ -608,7 +608,7 @@ CliqueTree MakeCliqueTreeImpl(
 }  // anonymous namespace
 
 CliqueTree MakeCliqueTreeFromEliminationOrdering(
-    const EliminationOrdering& elim,
+    EliminationOrdering elim,
     std::vector<std::vector<int>>* maximal_cliques_out,
     int max_merge_supernode_size,
     int supernode_reorder_method) {
@@ -621,9 +621,9 @@ CliqueTree MakeCliqueTreeFromEliminationOrdering(
     return CliqueTree{};
   }
 
-  // Sort later sets by elimination position and compute parent_col / child_count.
-  std::vector<std::vector<int>> later = elim.later;
-  std::vector<int> parent_col = elim.parent_col;
+  // Move later/parent_col out of elim — no copy needed.
+  std::vector<std::vector<int>> later = std::move(elim.later);
+  std::vector<int> parent_col = std::move(elim.parent_col);
   std::vector<int> child_count(static_cast<size_t>(n), 0);
 
   std::vector<int> pos(static_cast<size_t>(n), -1);
