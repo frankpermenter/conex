@@ -109,16 +109,34 @@ SparseEqualityConstraint::GetConstraints(
     RowGroup group;
     group.primal_variables = primal_vars;
     group.global_rows = rows;
-    group.C.resize(nrows, ncols);
+    group.C.setZero(nrows, ncols);
     group.d.resize(nrows);
     group.dual_variables.resize(nrows);
+
+    // Map global row/col → local index for O(1) lookup.
+    std::vector<int> row_map(C_.rows(), -1);
     for (int i = 0; i < nrows; ++i) {
+      row_map[rows[i]] = i;
       group.d(i) = d_(rows[i]);
       group.dual_variables[i] = row_to_dual[rows[i]];
-      for (int j = 0; j < ncols; ++j) {
-        group.C(i, j) = C_.coeff(rows[i], primal_vars[j]);
+    }
+    std::vector<int> col_map(C_.cols(), -1);
+    for (int j = 0; j < ncols; ++j) col_map[primal_vars[j]] = j;
+
+    // Iterate sparse nonzeros: O(nnz) instead of O(nrows * ncols * log).
+    for (int k = 0; k < C_.outerSize(); ++k) {
+      int lj = col_map[k];
+      if (lj < 0) continue;
+      for (Eigen::SparseMatrix<double>::InnerIterator it(C_, k); it; ++it) {
+        int li = row_map[it.row()];
+        if (li >= 0) group.C(li, lj) = it.value();
       }
     }
+
+    // Clear maps for next target.
+    for (int r : rows) row_map[r] = -1;
+    for (int v : primal_vars) col_map[v] = -1;
+
     result.push_back(std::move(group));
   }
   return result;
