@@ -6,7 +6,6 @@
 #include <limits>
 #include <set>
 #include <unordered_map>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -399,14 +398,13 @@ CliqueTree MakeCliqueTreeImpl(
     if (!sup.empty()) supports_compact.push_back(std::move(sup));
   }
 
-  // Map dual variables to compact indices.  Use an unordered_set for O(1)
-  // lookup — efficient when few variables are dual relative to n.
-  std::unordered_set<int> is_delayed;
-  is_delayed.reserve(delayed_variables.size());
+  // Optimization 1: vector<bool> for delayed lookup instead of unordered_set.
+  std::vector<char> is_delayed(n, 0);
   for (int v : delayed_variables) {
     auto it = to_compact.find(v);
-    if (it != to_compact.end()) is_delayed.insert(it->second);
+    if (it != to_compact.end()) is_delayed[it->second] = 1;
   }
+  bool has_delayed = !delayed_variables.empty();
 
   const int words = (n + 63) / 64;
 
@@ -462,25 +460,53 @@ CliqueTree MakeCliqueTreeImpl(
   std::vector<int> nbrs;
 
   // Track whether each vertex has at least one eliminated neighbor.
-  // Updated incrementally: when vertex `best` is eliminated, all its
-  // living neighbors get their flag set.
   std::vector<char> has_eliminated_neighbor(n, 0);
+
+  // Optimization 2: Bucket queue for O(1) min-degree extraction.
+  // buckets[d] = doubly-linked list of vertices with degree d.
+  // vertex_bucket[v] = current degree (or -1 if eliminated).
+  // prev[v]/next[v] = linked list pointers.
+  int max_deg = 0;
+  for (int v = 0; v < n; v++) max_deg = std::max(max_deg, deg[v]);
+  std::vector<int> bucket_head(max_deg + n + 1, -1);  // extra room for fill-in
+  std::vector<int> bprev(n, -1), bnext(n, -1);
+
+  auto bucket_insert = [&](int v, int d) {
+    bnext[v] = bucket_head[d];
+    bprev[v] = -1;
+    if (bucket_head[d] >= 0) bprev[bucket_head[d]] = v;
+    bucket_head[d] = v;
+  };
+  auto bucket_remove = [&](int v, int d) {
+    if (bprev[v] >= 0) bnext[bprev[v]] = bnext[v];
+    else bucket_head[d] = bnext[v];
+    if (bnext[v] >= 0) bprev[bnext[v]] = bprev[v];
+    bprev[v] = bnext[v] = -1;
+  };
+
+  for (int v = 0; v < n; v++) {
+    // Skip delayed vertices with no eliminated neighbor — they'll be
+    // inserted when a neighbor is eliminated.
+    if (has_delayed && is_delayed[v]) continue;
+    bucket_insert(v, deg[v]);
+  }
+  int min_bucket = 0;
+
+  // Optimization 3: Track nonzero words in clique_mask to skip zeros.
+  std::vector<int> nz_words;
+  nz_words.reserve(words);
 
   using Clock = std::chrono::high_resolution_clock;
   double t_scan = 0, t_bits = 0, t_fillin = 0, t_remove = 0;
 
   for (int step = 0; step < n; step++) {
     auto t0 = Clock::now();
-    int best = -1, best_deg = std::numeric_limits<int>::max();
-    for (int v = 0; v < n; v++) {
-      if (deg[v] < 0) continue;
-      // A dual variable must have a neighbor eliminated first.
-      if (is_delayed.count(v) && !has_eliminated_neighbor[v]) continue;
-      if (deg[v] < best_deg) {
-        best_deg = deg[v];
-        best = v;
-      }
-    }
+    // Extract min-degree vertex from bucket queue.
+    while (min_bucket < static_cast<int>(bucket_head.size()) &&
+           bucket_head[min_bucket] < 0)
+      min_bucket++;
+    int best = bucket_head[min_bucket];
+    bucket_remove(best, min_bucket);
     auto t1 = Clock::now();
 
     order.push_back(best);
@@ -490,23 +516,38 @@ CliqueTree MakeCliqueTreeImpl(
     auto t2 = Clock::now();
 
     // Mark living neighbors as having an eliminated neighbor.
-    if (!is_delayed.empty()) {
-      for (int u : nbrs) has_eliminated_neighbor[u] = 1;
+    // Insert newly-eligible delayed vertices into the bucket queue.
+    if (has_delayed) {
+      for (int u : nbrs) {
+        if (!has_eliminated_neighbor[u] && is_delayed[u]) {
+          has_eliminated_neighbor[u] = 1;
+          bucket_insert(u, deg[u]);
+        } else {
+          has_eliminated_neighbor[u] = 1;
+        }
+      }
     }
 
-    // Build later[best] = living neighbors (exactly those eliminated after best).
+    // Build later[best] = living neighbors.
     later[static_cast<size_t>(best)] = nbrs;
 
-    // Build clique mask from neighbors
+    // Build clique mask and track nonzero words.
+    nz_words.clear();
     std::memset(clique_mask.data(), 0, words * sizeof(uint64_t));
-    for (int u : nbrs) clique_mask[u >> 6] |= (1ULL << (u & 63));
+    for (int u : nbrs) {
+      int w = u >> 6;
+      if (!clique_mask[w]) nz_words.push_back(w);
+      clique_mask[w] |= (1ULL << (u & 63));
+    }
 
-    // Make neighbors a clique via word-level OR
+    // Make neighbors a clique — only iterate nonzero words.
     for (int u : nbrs) {
       auto* ru = row(u);
       const uint64_t self_bit = 1ULL << (u & 63);
       const int self_word = u >> 6;
-      for (int w = 0; w < words; w++) {
+      int old_deg = deg[u];
+      for (int wi = 0; wi < static_cast<int>(nz_words.size()); wi++) {
+        int w = nz_words[wi];
         uint64_t target = clique_mask[w];
         if (w == self_word) target &= ~self_bit;
         uint64_t new_bits = target & ~ru[w];
@@ -515,18 +556,30 @@ CliqueTree MakeCliqueTreeImpl(
           ru[w] |= new_bits;
         }
       }
+      // Update bucket queue if degree changed.
+      if (deg[u] != old_deg) {
+        bucket_remove(u, old_deg);
+        // Grow bucket_head if needed.
+        if (deg[u] >= static_cast<int>(bucket_head.size()))
+          bucket_head.resize(deg[u] + 1, -1);
+        bucket_insert(u, deg[u]);
+      }
     }
     auto t3 = Clock::now();
 
-    // Remove best from working graph
+    // Remove best from working graph.
     const uint64_t best_bit = 1ULL << (best & 63);
     const int best_word = best >> 6;
     for (int u : nbrs) {
+      int old_deg = deg[u];
       row(u)[best_word] &= ~best_bit;
       deg[u]--;
+      bucket_remove(u, old_deg);
+      bucket_insert(u, deg[u]);
+      if (deg[u] < min_bucket) min_bucket = deg[u];
     }
     std::memset(rb, 0, words * sizeof(uint64_t));
-    deg[best] = -1;  // mark eliminated
+    deg[best] = -1;
     auto t4 = Clock::now();
 
     t_scan += std::chrono::duration<double, std::micro>(t1 - t0).count();
