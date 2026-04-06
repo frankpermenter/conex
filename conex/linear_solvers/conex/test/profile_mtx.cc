@@ -126,21 +126,21 @@ ProfileResult ProfileMatrix(const std::string& name,
       ? solver.tree_solver()->num_subsystems() : 1;
   res.total_setup_us = res.build_us;
 
-  // AssembleAndFactor.
-  bool ok = kkt->AssembleAndFactor();
-  if (!ok) {
-    res.assemble_factor_us = -1;
-    res.solve_us = -1;
-    res.residual = -1;
-    return res;
-  }
-
   int iters = (max_iters >= 0) ? max_iters
                                : std::max(20, 2000 / std::max(1, num_vars));
   if (iters == 0) {
     res.assemble_factor_us = 0;
     res.solve_us = 0;
     res.residual = 0;
+    return res;
+  }
+
+  // AssembleAndFactor.
+  bool ok = kkt->AssembleAndFactor();
+  if (!ok) {
+    res.assemble_factor_us = -1;
+    res.solve_us = -1;
+    res.residual = -1;
     return res;
   }
   std::vector<double> af_times(iters);
