@@ -27,8 +27,17 @@ add_library(tree_solver
   conex/tree_solver/kkt_subsystem.cc
   conex/tree_solver/assembler_adapter.cc
   conex/tree_solver/tree_utils.cc
+  conex/tree_solver/lapack_wrapper.cc
 )
+find_package(BLAS)
 target_link_libraries(tree_solver PUBLIC Eigen3::Eigen)
+if(BLAS_FOUND)
+  target_link_libraries(tree_solver PUBLIC BLAS::BLAS)
+  target_compile_definitions(tree_solver PUBLIC EIGEN_USE_BLAS)
+  # LAPACKE only for lapack_wrapper.cc — keep PRIVATE to avoid macro conflicts.
+  target_compile_definitions(tree_solver PRIVATE EIGEN_USE_LAPACKE)
+  target_link_libraries(tree_solver PUBLIC lapacke)
+endif()
 
 # --- Clique ordering ---
 add_library(clique_ordering

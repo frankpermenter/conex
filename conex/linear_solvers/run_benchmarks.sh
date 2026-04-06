@@ -7,23 +7,20 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 MTX_FILES=(
-  /agent-workspace/interfaces/python/test/benchmark_data/ash958/ash958.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/illc1033/illc1033.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/illc1850/illc1850.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/well1033/well1033.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/well1850/well1850.mtx
- # /agent-workspace/interfaces/python/test/benchmark_data/aircraft/aircraft.mtx
- # /agent-workspace/interfaces/python/test/benchmark_data/lp_fit2p/lp_fit2p.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/p0201/p0201.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/ash292/ash292.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/bcsstk13/bcsstk13.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/bcsstk14/bcsstk14.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/bcsstk16/bcsstk16.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/lshp3466/lshp3466.mtx
-  #/agent-workspace/interfaces/python/test/benchmark_data/west2021/west2021.mtx
-  #/agent-workspace/interfaces/python/test/benchmark_data/steam3/steam3.mtx
-  #/agent-workspace/interfaces/python/test/benchmark_data/orsirr_1/orsirr_1.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/rdb3200l/rdb3200l.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/ash958/ash958.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/illc1033/illc1033.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/illc1850/illc1850.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/well1033/well1033.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/well1850/well1850.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/aircraft/aircraft.mtx
+  /agent-workspace/interfaces/python/test/benchmark_data/lp_fit2p/lp_fit2p.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/p0201/p0201.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/ash292/ash292.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/bcsstk13/bcsstk13.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/bcsstk14/bcsstk14.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/bcsstk16/bcsstk16.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/lshp3466/lshp3466.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/rdb3200l/rdb3200l.mtx
 )
 
 BUILD_DIR="$(dirname "$0")/build"
