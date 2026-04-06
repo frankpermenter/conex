@@ -77,7 +77,8 @@ struct ProfileResult {
 ProfileResult ProfileMatrix(const std::string& name,
                             const Eigen::SparseMatrix<double>& A,
                             bool is_quadratic,
-                            const SolverConfiguration& cfg) {
+                            const SolverConfiguration& cfg,
+                            int max_iters = -1) {
   ProfileResult res;
   res.name = name;
   res.rows = A.rows();
@@ -134,7 +135,14 @@ ProfileResult ProfileMatrix(const std::string& name,
     return res;
   }
 
-  int iters = std::max(20, 2000 / std::max(1, num_vars));
+  int iters = (max_iters >= 0) ? max_iters
+                               : std::max(20, 2000 / std::max(1, num_vars));
+  if (iters == 0) {
+    res.assemble_factor_us = 0;
+    res.solve_us = 0;
+    res.residual = 0;
+    return res;
+  }
   std::vector<double> af_times(iters);
   for (int i = 0; i < iters; ++i) {
     auto ta = Clock::now();
@@ -254,6 +262,7 @@ std::vector<int> ParseList(const std::string& s) {
 int main(int argc, char* argv[]) {
   SolverConfiguration cfg;
   bool randomize = false;
+  int max_iters = -1;  // -1 = auto, 0 = build only
   std::vector<std::string> mtx_paths;
   std::vector<int> sweep_threads, sweep_merge;
 
@@ -273,6 +282,8 @@ int main(int argc, char* argv[]) {
       cfg.tree.supernode_reorder_method = std::stoi(argv[++i]);
     } else if (arg == "--generic") {
       cfg.tree.use_generic_factorization = true;
+    } else if (arg == "--iters" && i + 1 < argc) {
+      max_iters = std::stoi(argv[++i]);
     } else if (arg[0] != '-') {
       mtx_paths.push_back(arg);
     } else {
@@ -283,6 +294,7 @@ int main(int argc, char* argv[]) {
         "  --merge <n>              Max merge supernode size (default: 5)\n"
         "  --reorder <n>            Supernode reorder method (default: 0)\n"
         "  --generic                Use generic (RLDLT) factorization\n"
+        "  --iters <n>             Timing iterations (-1=auto, 0=build only)\n"
         "  --sweep-threads <list>   Sweep thread counts (e.g. 1,2,4)\n"
         "  --sweep-merge <list>     Sweep merge thresholds (e.g. 0,5,10,20)\n",
         argv[0]);
@@ -345,7 +357,7 @@ int main(int argc, char* argv[]) {
       PrintHeader();
       for (auto& mf : matrices) {
         try {
-          auto res = ProfileMatrix(mf.name, mf.A, mf.is_quadratic, run_cfg);
+          auto res = ProfileMatrix(mf.name, mf.A, mf.is_quadratic, run_cfg, max_iters);
           PrintResult(res, run_cfg);
         } catch (const std::exception& e) {
           fprintf(stderr, "  %s: exception: %s\n", mf.name.c_str(), e.what());

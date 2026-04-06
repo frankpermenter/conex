@@ -50,7 +50,7 @@ fi
 # Record with call graph (dwarf for accuracy).
 PERF_DATA=$(mktemp /tmp/perf.XXXXXX.data)
 perf record -g --call-graph dwarf -o "$PERF_DATA" \
-  "$PROFILE_MTX" --randomize "$MTX_FILE" 2>/dev/null
+  "$PROFILE_MTX" --randomize --iters 0 "$MTX_FILE" 2>/dev/null
 
 echo "" >&2
 echo "=== Top functions (flat profile) ===" >&2
