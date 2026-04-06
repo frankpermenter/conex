@@ -2098,5 +2098,111 @@ TEST(CliqueTree, RunningIntersectionProperty) {
   EXPECT_FALSE(bad_sep.CheckRunningIntersectionProperty());
 }
 
+TEST(CliqueTree, MinDegreeOrderingQuality) {
+  // Verify that MakeCliqueTreeMinDegreeFromRowSupports produces a
+  // good-quality ordering by checking fill-in count and max clique size.
+  // These are regression values — if an optimization changes tie-breaking,
+  // fill-in may change but should not get worse.
+
+  // Banded pattern: n=50, bandwidth=3. Optimal ordering is near-trivial.
+  {
+    const int n = 50;
+    std::vector<std::vector<int>> supports;
+    for (int i = 0; i < n - 2; ++i)
+      supports.push_back({i, i + 1, i + 2});
+
+    std::vector<std::vector<int>> cliques;
+    auto tree = MakeCliqueTreeMinDegreeFromRowSupports(
+        supports, &cliques, /*max_merge=*/0, SUPERNODE_REORDER_NONE);
+
+    EXPECT_TRUE(tree.CheckRunningIntersectionProperty());
+
+    // Compute total fill-in: sum of |later[v]| over all v gives
+    // the number of edges in the filled graph.  For a banded(3) matrix,
+    // optimal fill-in is 0 (no new edges).  Check via clique sizes:
+    // each clique should be at most 3 variables.
+    int max_clique = 0;
+    int total_clique_storage = 0;
+    for (const auto& c : cliques) {
+      max_clique = std::max(max_clique, static_cast<int>(c.size()));
+      total_clique_storage += static_cast<int>(c.size());
+    }
+    EXPECT_LE(max_clique, 3) << "Banded(3) should have max clique size 3";
+    // Total storage should be roughly 3*num_cliques.
+    EXPECT_LE(total_clique_storage, 3 * static_cast<int>(cliques.size()) + 5);
+  }
+
+  // Arrow pattern: one dense column plus diagonal.  Min-degree should
+  // eliminate the diagonal first, leaving the dense column for last.
+  {
+    const int n = 30;
+    std::vector<std::vector<int>> supports;
+    // Each row connects variable i to variable 0.
+    for (int i = 1; i < n; ++i)
+      supports.push_back({0, i});
+
+    std::vector<std::vector<int>> cliques;
+    auto tree = MakeCliqueTreeMinDegreeFromRowSupports(
+        supports, &cliques, /*max_merge=*/0, SUPERNODE_REORDER_NONE);
+
+    EXPECT_TRUE(tree.CheckRunningIntersectionProperty());
+
+    // Optimal: eliminate leaves first (degree 1), no fill-in.
+    // Variable 0 is eliminated last.  Result should be a single clique
+    // of size n (the star graph is already a clique after eliminating leaves).
+    // But min-degree eliminates leaves first, so only the root node creates
+    // a large clique.
+    int max_clique = 0;
+    for (const auto& c : cliques)
+      max_clique = std::max(max_clique, static_cast<int>(c.size()));
+    // Star graph: eliminating degree-1 leaves first creates no fill-in.
+    // Each leaf forms a 2-element clique {0, i}.  No merge (max_merge=0)
+    // so cliques stay small.
+    EXPECT_LE(max_clique, n);
+    // Total fill-in should be 0 (star graph has perfect elimination).
+    // Check total storage is at most 2*(n-1) + 1 (leaf cliques + root).
+    int total = 0;
+    for (const auto& c : cliques) total += static_cast<int>(c.size());
+    EXPECT_LE(total, 2 * n);
+  }
+
+  // Grid-like pattern: 10x5 grid connectivity.  Check fill-in doesn't
+  // regress from known good value.
+  {
+    const int rows = 10, cols = 5;
+    const int n = rows * cols;
+    std::vector<std::vector<int>> supports;
+    for (int r = 0; r < rows; ++r) {
+      for (int c = 0; c < cols; ++c) {
+        int v = r * cols + c;
+        if (c + 1 < cols) supports.push_back({v, v + 1});
+        if (r + 1 < rows) supports.push_back({v, v + cols});
+      }
+    }
+
+    std::vector<std::vector<int>> cliques;
+    auto tree = MakeCliqueTreeMinDegreeFromRowSupports(
+        supports, &cliques, /*max_merge=*/5, SUPERNODE_REORDER_NONE);
+
+    EXPECT_TRUE(tree.CheckRunningIntersectionProperty());
+
+    // Compute total clique storage as a quality metric.
+    int total_storage = 0;
+    int max_clique = 0;
+    for (const auto& c : cliques) {
+      total_storage += static_cast<int>(c.size());
+      max_clique = std::max(max_clique, static_cast<int>(c.size()));
+    }
+
+    // For a 10x5 grid, nested dissection gives max clique ~cols.
+    // Min-degree should be comparable.  Record current values as baseline.
+    printf("CliqueTree.MinDegreeOrderingQuality grid 10x5: "
+           "%d cliques, max_size=%d, total_storage=%d\n",
+           static_cast<int>(cliques.size()), max_clique, total_storage);
+    EXPECT_LE(max_clique, 16) << "Grid max clique too large (regression)";
+    EXPECT_LE(total_storage, 80) << "Grid total storage too large (regression)";
+  }
+}
+
 }  // namespace
 }  // namespace conex

@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <set>
@@ -464,7 +466,11 @@ CliqueTree MakeCliqueTreeImpl(
   // living neighbors get their flag set.
   std::vector<char> has_eliminated_neighbor(n, 0);
 
+  using Clock = std::chrono::high_resolution_clock;
+  double t_scan = 0, t_bits = 0, t_fillin = 0, t_remove = 0;
+
   for (int step = 0; step < n; step++) {
+    auto t0 = Clock::now();
     int best = -1, best_deg = std::numeric_limits<int>::max();
     for (int v = 0; v < n; v++) {
       if (deg[v] < 0) continue;
@@ -475,11 +481,13 @@ CliqueTree MakeCliqueTreeImpl(
         best = v;
       }
     }
+    auto t1 = Clock::now();
 
     order.push_back(best);
 
     auto* rb = row(best);
     BitsToVec(rb, words, n, &nbrs);
+    auto t2 = Clock::now();
 
     // Mark living neighbors as having an eliminated neighbor.
     if (!is_delayed.empty()) {
@@ -508,6 +516,7 @@ CliqueTree MakeCliqueTreeImpl(
         }
       }
     }
+    auto t3 = Clock::now();
 
     // Remove best from working graph
     const uint64_t best_bit = 1ULL << (best & 63);
@@ -518,7 +527,18 @@ CliqueTree MakeCliqueTreeImpl(
     }
     std::memset(rb, 0, words * sizeof(uint64_t));
     deg[best] = -1;  // mark eliminated
+    auto t4 = Clock::now();
+
+    t_scan += std::chrono::duration<double, std::micro>(t1 - t0).count();
+    t_bits += std::chrono::duration<double, std::micro>(t2 - t1).count();
+    t_fillin += std::chrono::duration<double, std::micro>(t3 - t2).count();
+    t_remove += std::chrono::duration<double, std::micro>(t4 - t3).count();
   }
+
+  fprintf(stderr, "  MakeCliqueTreeImpl phase1 (n=%d): scan=%.0fus bits=%.0fus "
+          "fillin=%.0fus remove=%.0fus total=%.0fus\n",
+          n, t_scan, t_bits, t_fillin, t_remove,
+          t_scan + t_bits + t_fillin + t_remove);
 
   // Package Phase 1 results for Phase 2.
   EliminationOrdering elim;
