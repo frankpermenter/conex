@@ -35,9 +35,11 @@ if [ "$SKIP_BUILD" = false ]; then
     -DCMAKE_EXE_LINKER_FLAGS="-fprofile-instr-generate" \
     -DCMAKE_CUDA_COMPILER=NOTFOUND \
     >/dev/null 2>&1
-  TEST_TARGETS=$(grep -oP '(?<=add_executable\()[\w]+_test' "$SRC_DIR/CMakeLists.txt" | tr '\n' ' ')
+  TEST_TARGETS=$(grep -oP '(?<=add_executable\()[\w]+_test' "$SRC_DIR/CMakeLists.txt")
   echo "Building: $TEST_TARGETS" >&2
-  cmake --build "$BUILD_DIR" -k -j"$(nproc)" --target $TEST_TARGETS 2>&1 | tail -1 >&2
+  for t in $TEST_TARGETS; do
+    cmake --build "$BUILD_DIR" -j"$(nproc)" --target "$t" 2>&1 | tail -1 >&2 || true
+  done
 
   echo "Running tests..." >&2
   mkdir -p "$BUILD_DIR/profraw"
