@@ -111,6 +111,7 @@ add_executable(profile_mtx
   conex/test/profile_mtx.cc
 )
 target_link_libraries(profile_mtx
+  algorithms
   sparse_linear_constraint
   clique_ordering
   kkt_solver_factory

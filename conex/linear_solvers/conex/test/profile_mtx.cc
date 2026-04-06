@@ -72,11 +72,11 @@ struct ProfileResult {
   double solve_us;
   double total_setup_us;
   double residual;
-  double cond_AtA = 0;
 };
 
 ProfileResult ProfileMatrix(const std::string& name,
                             const Eigen::SparseMatrix<double>& A,
+                            bool is_quadratic,
                             const SolverConfiguration& cfg) {
   ProfileResult res;
   res.name = name;
@@ -92,11 +92,23 @@ ProfileResult ProfileMatrix(const std::string& name,
   std::iota(vars.begin(), vars.end(), 0);
 
   Problem problem;
-  problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
+  int n_solve = num_vars;
+
+  if (is_quadratic) {
+    // Square matrix: treat as Q in min 0.5 x^T Q x.
+    // Symmetrize: Q = A + A^T to ensure SPD-like structure.
+    Eigen::SparseMatrix<double> Q = A + Eigen::SparseMatrix<double>(A.transpose());
+    // Add diagonal to ensure positive definiteness.
+    for (int i = 0; i < num_vars; ++i)
+      Q.coeffRef(i, i) += num_vars;
+    problem.AddQuadraticCost(Q, vars);
+  } else {
+    problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(m), vars);
+  }
 
   // Preprocess.
   auto [reduced, expansion] = Preprocess(problem);
-  const int n_solve = reduced.num_variables();
+  n_solve = reduced.num_variables();
 
   if (expansion.was_reduced()) {
     fprintf(stderr, "  %s: structural rank %d / %d (dropped %d columns)\n",
@@ -133,30 +145,48 @@ ProfileResult ProfileMatrix(const std::string& name,
   std::sort(af_times.begin(), af_times.end());
   res.assemble_factor_us = af_times[iters / 2];
 
-  // Build RHS in reduced space.
+  // Build RHS.
   Eigen::VectorXd x_true = Eigen::VectorXd::Random(n_solve);
-  Eigen::SparseMatrix<double> A_solve = A;
-  if (expansion.was_reduced()) {
-    std::vector<Eigen::Triplet<double>> trips;
-    std::vector<int> inv(num_vars, -1);
-    for (int j = 0; j < n_solve; ++j) inv[expansion.col_map[j]] = j;
-    for (int k = 0; k < A.outerSize(); ++k)
-      for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it) {
-        int nc = inv[it.col()];
-        if (nc >= 0) trips.emplace_back(it.row(), nc, it.value());
-      }
-    A_solve.resize(m, n_solve);
-    A_solve.setFromTriplets(trips.begin(), trips.end());
-  }
-  Eigen::MatrixXd Ad_solve(A_solve);
-  Eigen::VectorXd rhs = Ad_solve.transpose() * (Ad_solve * x_true);
+  Eigen::VectorXd rhs;
 
-  // Condition number.
-  Eigen::JacobiSVD<Eigen::MatrixXd> svd(Ad_solve);
-  auto sv = svd.singularValues();
-  res.cond_AtA = (sv(sv.size() - 1) > 0)
-      ? (sv(0) / sv(sv.size() - 1)) * (sv(0) / sv(sv.size() - 1))
-      : std::numeric_limits<double>::infinity();
+  if (is_quadratic) {
+    // Q x = rhs.  Build Q in reduced space.
+    Eigen::SparseMatrix<double> Q = A + Eigen::SparseMatrix<double>(A.transpose());
+    for (int i = 0; i < num_vars; ++i) Q.coeffRef(i, i) += num_vars;
+    if (expansion.was_reduced()) {
+      // Subselect rows/cols.
+      std::vector<Eigen::Triplet<double>> trips;
+      std::vector<int> inv(num_vars, -1);
+      for (int j = 0; j < n_solve; ++j) inv[expansion.col_map[j]] = j;
+      for (int k = 0; k < Q.outerSize(); ++k)
+        for (Eigen::SparseMatrix<double>::InnerIterator it(Q, k); it; ++it) {
+          int nr = inv[it.row()], nc = inv[it.col()];
+          if (nr >= 0 && nc >= 0) trips.emplace_back(nr, nc, it.value());
+        }
+      Eigen::SparseMatrix<double> Qr(n_solve, n_solve);
+      Qr.setFromTriplets(trips.begin(), trips.end());
+      rhs = Qr * x_true;
+    } else {
+      rhs = Q * x_true;
+    }
+  } else {
+    // A^T A x = rhs.
+    Eigen::SparseMatrix<double> A_solve = A;
+    if (expansion.was_reduced()) {
+      std::vector<Eigen::Triplet<double>> trips;
+      std::vector<int> inv(num_vars, -1);
+      for (int j = 0; j < n_solve; ++j) inv[expansion.col_map[j]] = j;
+      for (int k = 0; k < A.outerSize(); ++k)
+        for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it) {
+          int nc = inv[it.col()];
+          if (nc >= 0) trips.emplace_back(it.row(), nc, it.value());
+        }
+      A_solve.resize(m, n_solve);
+      A_solve.setFromTriplets(trips.begin(), trips.end());
+    }
+    Eigen::MatrixXd Ad_solve(A_solve);
+    rhs = Ad_solve.transpose() * (Ad_solve * x_true);
+  }
 
   // Solve timing.
   kkt->Solve(rhs);  // warm up
@@ -181,12 +211,12 @@ ProfileResult ProfileMatrix(const std::string& name,
 using namespace conex;
 
 void PrintHeader() {
-  printf("%-20s %4s %4s %6s | %10s | %10s %10s | %10s | %10s %10s\n",
+  printf("%-20s %4s %4s %6s | %10s | %10s %10s | %10s | %10s\n",
          "Matrix", "thrd", "merg", "cliq",
          "build",
          "asm+fac", "solve",
-         "setup_tot", "residual", "cond(A'A)");
-  printf("%s\n", std::string(120, '-').c_str());
+         "setup_tot", "residual");
+  printf("%s\n", std::string(110, '-').c_str());
 }
 
 void PrintResult(const ProfileResult& res, const SolverConfiguration& cfg) {
@@ -196,12 +226,12 @@ void PrintResult(const ProfileResult& res, const SolverConfiguration& cfg) {
            cfg.tree.max_merge_supernode_size, res.num_cliques,
            res.build_us, res.total_setup_us);
   } else {
-    printf("%-20s %4d %4d %6d | %9.0fus | %9.0fus %9.0fus | %9.0fus | %10.2e %10.2e\n",
+    printf("%-20s %4d %4d %6d | %9.0fus | %9.0fus %9.0fus | %9.0fus | %10.2e\n",
            res.name.c_str(), cfg.num_threads,
            cfg.tree.max_merge_supernode_size, res.num_cliques,
            res.build_us,
            res.assemble_factor_us, res.solve_us,
-           res.total_setup_us, res.residual, res.cond_AtA);
+           res.total_setup_us, res.residual);
   }
 }
 
@@ -209,6 +239,7 @@ struct MatrixFile {
   std::string path;
   std::string name;
   Eigen::SparseMatrix<double> A;
+  bool is_quadratic = false;  // true for square matrices (Q cost)
 };
 
 // Parse comma-separated int list: "1,2,4" → {1, 2, 4}.
@@ -280,9 +311,16 @@ int main(int argc, char* argv[]) {
       continue;
     }
     if (mf.A.rows() == mf.A.cols()) {
-      fprintf(stderr, "  Skipping %s (square, %dx%d)\n",
+      mf.is_quadratic = true;
+      fprintf(stderr, "  %s: square %dx%d, using as quadratic cost\n",
               mf.name.c_str(), (int)mf.A.rows(), (int)mf.A.cols());
-      continue;
+    }
+    // Transpose wide matrices to make them tall (overdetermined).
+    if (!mf.is_quadratic && mf.A.rows() < mf.A.cols()) {
+      fprintf(stderr, "  Transposing %s (%dx%d -> %dx%d)\n",
+              mf.name.c_str(), (int)mf.A.rows(), (int)mf.A.cols(),
+              (int)mf.A.cols(), (int)mf.A.rows());
+      mf.A = Eigen::SparseMatrix<double>(mf.A.transpose());
     }
     if (randomize) {
       srand(42);
@@ -307,7 +345,7 @@ int main(int argc, char* argv[]) {
       PrintHeader();
       for (auto& mf : matrices) {
         try {
-          auto res = ProfileMatrix(mf.name, mf.A, run_cfg);
+          auto res = ProfileMatrix(mf.name, mf.A, mf.is_quadratic, run_cfg);
           PrintResult(res, run_cfg);
         } catch (const std::exception& e) {
           fprintf(stderr, "  %s: exception: %s\n", mf.name.c_str(), e.what());

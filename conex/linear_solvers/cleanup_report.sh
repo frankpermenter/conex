@@ -3,6 +3,7 @@
 # Usage: ./cleanup_report.sh [--skip-build] [--skip-bench] [--skip-coverage]
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR" && git rev-parse --show-toplevel 2>/dev/null || echo "$SCRIPT_DIR")"
 cd "$SCRIPT_DIR"
 
 SKIP_BUILD=false
@@ -50,12 +51,17 @@ done <<< "$TEST_OUTPUT"
 # ===================================================================
 BENCH_OUTPUT=""
 if [ "$SKIP_BENCH" = false ] && [ -x ./profile_mtx ]; then
+  # Discover .mtx files in common locations.
   MTX_FILES=""
-  for f in \
-    /agent-workspace/interfaces/python/test/benchmark_data/ash958/ash958.mtx \
-    /agent-workspace/interfaces/python/test/benchmark_data/illc1850/illc1850.mtx \
-    /agent-workspace/interfaces/python/test/benchmark_data/well1850/well1850.mtx; do
-    [ -f "$f" ] && MTX_FILES="$MTX_FILES $f"
+  for dir in \
+    /agent-workspace/interfaces/python/test/benchmark_data \
+    "$SCRIPT_DIR/benchmark_data" \
+    "$REPO_ROOT/benchmark_data"; do
+    if [ -d "$dir" ]; then
+      for f in "$dir"/*/*.mtx; do
+        [ -f "$f" ] && MTX_FILES="$MTX_FILES $f"
+      done
+    fi
   done
   if [ -n "$MTX_FILES" ]; then
     BENCH_OUTPUT=$(./profile_mtx --randomize $MTX_FILES 2>&1)
