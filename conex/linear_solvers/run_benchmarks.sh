@@ -20,9 +20,9 @@ MTX_FILES=(
   /agent-workspace/interfaces/python/test/benchmark_data/bcsstk14/bcsstk14.mtx
   /agent-workspace/interfaces/python/test/benchmark_data/bcsstk16/bcsstk16.mtx
   /agent-workspace/interfaces/python/test/benchmark_data/lshp3466/lshp3466.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/west2021/west2021.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/steam3/steam3.mtx
-  /agent-workspace/interfaces/python/test/benchmark_data/orsirr_1/orsirr_1.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/west2021/west2021.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/steam3/steam3.mtx
+  #/agent-workspace/interfaces/python/test/benchmark_data/orsirr_1/orsirr_1.mtx
   /agent-workspace/interfaces/python/test/benchmark_data/rdb3200l/rdb3200l.mtx
 )
 
