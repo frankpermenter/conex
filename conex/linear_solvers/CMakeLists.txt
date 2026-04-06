@@ -116,6 +116,16 @@ target_link_libraries(multithreading_test
   clique_ordering
   GTest::gtest_main
 )
+add_executable(lqr_benchmark
+  conex/test/lqr_benchmark.cc
+)
+target_link_libraries(lqr_benchmark
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+target_compile_options(lqr_benchmark PRIVATE -O2)
+
 add_executable(benchmark
   conex/test/benchmark.cc
 )
