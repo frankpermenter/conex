@@ -1,11 +1,6 @@
 #pragma once
 #include "conex/tree_solver/RLDLT.h"
 #include "conex/tree_solver/kkt_subsystem.h"
-// Forward declaration — implemented in kkt_subsystem.cc to avoid
-// lapacke.h macro conflicts with C++ headers.
-namespace conex { namespace internal {
-int LapackPotrf(int n, double* data, int ld);
-}}  // namespace conex::internal
 
 namespace conex {
 
@@ -434,26 +429,8 @@ class WorkingLLTSubsystem : public KKTSubsystem {
 
   bool DoEliminateSupernodeColumns() override {
     // Factor in-place: the arena-backed Map is overwritten with L.
-    auto& sn = dense_storage().supernode_map();
-    int info = internal::LapackPotrf(sn.rows(), sn.data(), sn.outerStride());
-    if (info == 0) {
-      used_lapack_ = true;
-      return true;
-    }
-    // Fallback to Eigen if LAPACK unavailable (info == -1) or numeric failure.
-    if (info == -1) {
-      llt_ = std::make_unique<LLTType>(sn);
-      return llt_->info() == Eigen::Success;
-    }
-    return false;  // Numeric failure.
-  }
-
-  // Access L (lower triangle of the factored supernode map).
-  // Mutable: solve methods are logically const but need non-const
-  // triangular view for Eigen's solveInPlace.
-  auto matrixL() const {
-    auto& sn = const_cast<WorkingLLTSubsystem*>(this)->dense_storage().supernode_map();
-    return sn.template triangularView<Eigen::Lower>();
+    llt_ = std::make_unique<LLTType>(dense_storage().supernode_map());
+    return llt_->info() == Eigen::Success;
   }
 
   void DoComputeSeparatorSchurComplement() override {
@@ -467,7 +444,7 @@ class WorkingLLTSubsystem : public KKTSubsystem {
     }
 
     temp() = separator_rows().transpose();
-    matrixL().solveInPlace(temp());
+    llt_->matrixL().solveInPlace(temp());
     for (int j = 0; j < sep; j++) {
       separator_schur_complement().col(j).tail(sep - j).noalias() -=
           temp().rightCols(sep - j).transpose() * temp().col(j);
@@ -477,13 +454,13 @@ class WorkingLLTSubsystem : public KKTSubsystem {
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
     if (y.rows() == 0) return;
-    matrixL().solveInPlace(y);
+    llt_->matrixL().solveInPlace(y);
   }
 
   void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
     if (y.rows() == 0) return;
-    matrixL().transpose().solveInPlace(y);
+    llt_->matrixL().transpose().solveInPlace(y);
   }
 
   // Use cached L^{-1} S^T (computed in DoComputeSeparatorSchurComplement).
@@ -493,7 +470,6 @@ class WorkingLLTSubsystem : public KKTSubsystem {
     output.noalias() = temp() * gathered_sep;
   }
 
-  bool used_lapack_ = false;
   std::unique_ptr<LLTType> llt_;
   double* temp_arena_ptr_ = nullptr;
   bool use_arena_temp_ = false;

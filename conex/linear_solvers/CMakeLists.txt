@@ -27,15 +27,20 @@ add_library(tree_solver
   conex/tree_solver/kkt_subsystem.cc
   conex/tree_solver/assembler_adapter.cc
   conex/tree_solver/tree_utils.cc
-  conex/tree_solver/lapack_wrapper.cc
 )
 find_package(BLAS)
 target_link_libraries(tree_solver PUBLIC Eigen3::Eigen)
 if(BLAS_FOUND)
   target_link_libraries(tree_solver PUBLIC BLAS::BLAS)
-  target_compile_definitions(tree_solver PUBLIC EIGEN_USE_BLAS)
-  # LAPACKE only for lapack_wrapper.cc — keep PRIVATE to avoid macro conflicts.
-  target_compile_definitions(tree_solver PRIVATE EIGEN_USE_LAPACKE)
+  target_compile_definitions(tree_solver PUBLIC
+    EIGEN_USE_BLAS EIGEN_USE_LAPACKE
+    # Pre-define lapack_complex types as C++ std::complex before Eigen's
+    # bundled lapacke.h can define them as C99 _Complex (which breaks gtest).
+    "lapack_complex_float=std::complex<float>"
+    "lapack_complex_double=std::complex<double>"
+  )
+  # Ensure <complex> is included before the macros are evaluated.
+  target_compile_options(tree_solver PUBLIC -include complex)
   target_link_libraries(tree_solver PUBLIC lapacke)
 endif()
 
