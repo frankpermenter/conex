@@ -449,7 +449,7 @@ GeodesicResult SolveGeodesicHybrid(
     d_inf = d_vec.lpNorm<Eigen::Infinity>();
     d_sq = d_vec.squaredNorm();
 
-    if (std::abs(gap) < tolerance && d_inf <= 1.0) break;
+    if (std::abs(gap) < tolerance && d_inf <= 1.0 + tolerance) break;
 
     if (gap < 0) {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
