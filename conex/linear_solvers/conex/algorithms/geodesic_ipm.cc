@@ -420,7 +420,12 @@ GeodesicResult SolveGeodesicHybrid(
   // or converged.  Each iteration is one back-solve (reusing factorization).
   int r_updates_this_fac = 0;
   double gap = 0, d_inf = 0, d_sq = 0;
-  bool need_center = false;
+
+  if (verbose) {
+    printf("  %3s  %12s  %12s  %6s  %6s\n",
+           "fac", "gap", "d_inf", "r_upd", "solves");
+    printf("  %s\n", std::string(48, '-').c_str());
+  }
 
   for (int iter = 0; iter < max_iterations; ++iter) {
     auto y = kkt.MakeSolverRHS();
@@ -454,8 +459,7 @@ GeodesicResult SolveGeodesicHybrid(
       if (!kkt.AssembleAndFactor()) break;
       total_fac++;
       if (verbose) {
-        printf("  fac=%2d  gap=%.2e  d_inf=%.2e  "
-               "r_upd=%d  solves=%d  CENTER\n",
+        printf("  %3d  %12.4e  %12.4e  %6d  %6d\n",
                total_fac, gap, d_inf, r_updates_this_fac, total_sol);
       }
       r_updates_this_fac = 0;
@@ -468,9 +472,8 @@ GeodesicResult SolveGeodesicHybrid(
     }
   }
 
-  if (verbose && gap >= 0) {
-    printf("  fac=%2d  gap=%.2e  d_inf=%.2e  "
-           "r_upd=%d  solves=%d  CONVERGED\n",
+  if (verbose) {
+    printf("  %3d  %12.4e  %12.4e  %6d  %6d\n",
            total_fac, gap, d_inf, r_updates_this_fac, total_sol);
   }
 
