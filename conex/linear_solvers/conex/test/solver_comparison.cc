@@ -89,12 +89,12 @@ void RunComparison(int m, int n, int seed) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  // ===== Geodesic IPM (1 centering step) =====
+  // ===== Geodesic IPM (0 centering steps) =====
   {
     auto [solver, cost_rhs] = BuildSolver(lp, vars);
     VectorXd W = VectorXd::Ones(m);
-    auto result = SolveGeodesicLP(*solver.solver(), cost_rhs, W, 30, 1, 1e-8);
-    PrintResult("Geodesic IPM (1 centering step)", result);
+    auto result = SolveGeodesicLP(*solver.solver(), cost_rhs, W, 30, 0, 1e-8);
+    PrintResult("Geodesic IPM (0 centering)", result);
   }
 
   // ===== Geodesic IPM (Hybrid) =====

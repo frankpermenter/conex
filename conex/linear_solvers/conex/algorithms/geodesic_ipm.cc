@@ -340,26 +340,48 @@ GeodesicResult SolveGeodesicLP(
   int total_sol = result.total_solves;
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
-    // Line search: 1 factor + 1 solve (2-column).
-    double k_new = GeodesicLineSearch(kkt, cost_rhs, W);
+    // Decompose: 1 factor + 1 solve (2-column).
+    Eigen::VectorXd d0, d1;
+    ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
     total_fac += 1;
     total_sol += 1;
+
+    // Line search for k.
+    double k_new = std::numeric_limits<double>::max();
+    for (int i = 0; i < m; ++i) {
+      if (d1(i) > 0)
+        k_new = std::min(k_new, (1.0 - d0(i)) / d1(i));
+      else if (d1(i) < 0)
+        k_new = std::min(k_new, (-1.0 - d0(i)) / d1(i));
+    }
     if (k_new <= k) break;
     k = k_new;
 
-    auto cr = GeodesicCenter(kkt, cost_rhs, W, k,
-                             max_centering_steps, 1e-12, verbose);
-    total_fac += cr.total_factorizations;
-    total_sol += cr.total_solves;
+    // Take one geodesic step at k using d = d0 + k * d1.
+    Eigen::VectorXd d = d0 + k * d1;
+    double d_inf = d.lpNorm<Eigen::Infinity>();
+    double d_sq = d.squaredNorm();
+    double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+    W = W.cwiseProduct((alpha * d).array().exp().matrix());
+
+    // Additional centering steps if requested.
+    if (max_centering_steps > 0) {
+      auto cr = GeodesicCenter(kkt, cost_rhs, W, k,
+                               max_centering_steps, 1e-12, verbose);
+      total_fac += cr.total_factorizations;
+      total_sol += cr.total_solves;
+      d_inf = cr.d_inf_norm;
+      d_sq = cr.d_sq_norm;
+    }
 
     double mu = 1.0 / (k * k);
-    double s_dot_x = mu * (m - cr.d_sq_norm);
+    double s_dot_x = mu * (m - d_sq);
 
-    result.iter_stats.push_back({mu, cr.d_inf_norm, cr.d_sq_norm, s_dot_x});
+    result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});
     result.iterations = outer + 1;
     result.mu = mu;
-    result.d_inf_norm = cr.d_inf_norm;
-    result.d_sq_norm = cr.d_sq_norm;
+    result.d_inf_norm = d_inf;
+    result.d_sq_norm = d_sq;
     result.complementarity = s_dot_x;
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
