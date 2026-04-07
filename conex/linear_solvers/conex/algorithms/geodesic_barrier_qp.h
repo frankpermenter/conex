@@ -57,4 +57,14 @@ double GeodesicLineSearch(
     const SolverRHS& cost_rhs,
     const Eigen::VectorXd& W);
 
+// Geodesic IPM with Mehrotra predictor-corrector.
+// One factorization + two back-solves per outer iteration.
+GeodesicResult SolveGeodesicMehrotra(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    Eigen::VectorXd& W,
+    int max_iterations = 50,
+    double tolerance = 1e-8,
+    bool verbose = false);
+
 }  // namespace conex

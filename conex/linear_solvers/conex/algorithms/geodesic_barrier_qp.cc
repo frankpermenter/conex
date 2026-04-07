@@ -75,23 +75,23 @@ GeodesicResult GeodesicCenter(
   return result;
 }
 
-double GeodesicLineSearch(
+// Factor, two back-solves, 2-column MultiplyA → compute d0, d1.
+// Shared by GeodesicLineSearch and SolveGeodesicMehrotra.
+static void ComputeDecomposition(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    const Eigen::VectorXd& W) {
+    const Eigen::VectorXd& W,
+    Eigen::VectorXd& d0,
+    Eigen::VectorXd& d1) {
   RowSpace b_row = kkt.GetAffineTerm();
   const auto& b = b_row.col();
   const int m = b.size();
 
-  // Factor A^T diag(W^2) A (same Gram for all k).
   RowSpace weights = kkt.MakeRowSpace();
   weights.col() = W.cwiseProduct(W);
   kkt.SetWeights(weights);
   kkt.AssembleAndFactor();
 
-  // Build two single-column RHS, pack into one 2-column SolverRHS.
-  //   col 0: A^T(2W)
-  //   col 1: cost + A^T(W^2 .* b)
   RowSpace v = kkt.MakeRowSpace();
 
   auto rhs0 = kkt.MakeSolverRHS();
@@ -104,7 +104,6 @@ double GeodesicLineSearch(
   v.col() = W.cwiseProduct(W).cwiseProduct(b);
   kkt.AccumulateAtranspose(v, rhs1);
 
-  // Pack, solve, multiply.
   auto y = kkt.MakeSolverRHS(2);
   y.SetColumn(0, rhs0);
   y.SetColumn(1, rhs1);
@@ -113,12 +112,18 @@ double GeodesicLineSearch(
   auto row = kkt.MakeRowSpace(2);
   kkt.MultiplyA(y, row);
 
-  // d0 = 1 - W .* (Ay)_col0,  d1 = W .* (b - (Ay)_col1).
-  Eigen::VectorXd d0 =
-      Eigen::VectorXd::Ones(m) - W.cwiseProduct(row.col(0));
-  Eigen::VectorXd d1 = W.cwiseProduct(b - row.col(1));
+  d0 = Eigen::VectorXd::Ones(m) - W.cwiseProduct(row.col(0));
+  d1 = W.cwiseProduct(b - row.col(1));
+}
 
-  // Largest k > 0 with |d0_i + k * d1_i| <= 1 for all i.
+double GeodesicLineSearch(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const Eigen::VectorXd& W) {
+  Eigen::VectorXd d0, d1;
+  ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
+
+  const int m = d0.size();
   double k_max = std::numeric_limits<double>::max();
   for (int i = 0; i < m; ++i) {
     if (d1(i) > 0) {
@@ -164,6 +169,88 @@ GeodesicResult SolveGeodesicLP(
     result.complementarity = s_dot_x;
 
     if (s_dot_x < tolerance) break;
+  }
+
+  return result;
+}
+
+GeodesicResult SolveGeodesicMehrotra(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    Eigen::VectorXd& W,
+    int max_iterations,
+    double tolerance,
+    bool verbose) {
+  const int m = static_cast<int>(W.size());
+
+  // Initialize: center at k=1, line search for first k, then fully center.
+  GeodesicCenter(kkt, cost_rhs, W, 1.0, 100, 1e-12);
+  double k = GeodesicLineSearch(kkt, cost_rhs, W);
+  GeodesicCenter(kkt, cost_rhs, W, k, 100, 1e-12);
+  double mu = 1.0 / (k * k);
+
+  GeodesicResult result{};
+
+  for (int iter = 0; iter < max_iterations; ++iter) {
+    // 1. Decompose: d(e_weight, k) = e_weight * d0 + k * d1.
+    Eigen::VectorXd d0, d1;
+    ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
+
+    // 2. Predictor (e_weight = 0): d_pred = k_pred * d1.
+    double d1_inf = d1.lpNorm<Eigen::Infinity>();
+    if (d1_inf < 1e-15) break;
+    double k_pred = 1.0 / d1_inf;
+
+    Eigen::VectorXd d_pred = k_pred * d1;
+    double d_pred_inf = d_pred.lpNorm<Eigen::Infinity>();  // = 1.0
+    double alpha_aff = std::min(1.0, 2.0 / (d_pred_inf * d_pred_inf));
+
+    // 3. Predicted complementarity.
+    double mu_pred = 1.0 / (k_pred * k_pred);
+    double d_pred_sq = d_pred.squaredNorm();
+    double mu_aff = mu_pred * (m - alpha_aff * alpha_aff * d_pred_sq) / m;
+
+    // 4. Adaptive centering.
+    double sigma = std::pow(mu_aff / mu, 3);
+    sigma = std::max(sigma, 1e-12);  // safeguard
+
+    // 5. Combined direction: d = d0 + (k_pred / sigma) * d1.
+    //    Cap at the line search bound to ensure |d|_inf stays feasible.
+    double k_ls = std::numeric_limits<double>::max();
+    for (int i = 0; i < m; ++i) {
+      if (d1(i) > 0)
+        k_ls = std::min(k_ls, (1.0 - d0(i)) / d1(i));
+      else if (d1(i) < 0)
+        k_ls = std::min(k_ls, (-1.0 - d0(i)) / d1(i));
+    }
+    double k_eff = std::min(k_pred / sigma, k_ls);
+    Eigen::VectorXd d = d0 + k_eff * d1;
+
+    // 6. Step size and update.
+    double d_inf = d.lpNorm<Eigen::Infinity>();
+    double d_sq = d.squaredNorm();
+    double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+
+    double mu_target = 1.0 / (k_eff * k_eff);
+    double s_dot_x = mu_target * (m - d_sq);
+    mu = s_dot_x / m;  // actual complementarity per constraint
+
+    result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});
+    result.iterations = iter + 1;
+    result.mu = mu;
+    result.d_inf_norm = d_inf;
+    result.d_sq_norm = d_sq;
+    result.complementarity = s_dot_x;
+
+    if (verbose) {
+      printf("  i=%2d  mu=%.2e  d_inf=%.2e  d_sqr=%.2e  "
+             "s_dot_x=%.2e  sigma=%.2e  k_eff=%.2e  alpha=%.4f\n",
+             iter, mu, d_inf, d_sq, s_dot_x, sigma, k_eff, alpha);
+    }
+
+    if (s_dot_x < tolerance && s_dot_x > 0) break;
+
+    W = W.cwiseProduct((alpha * d).array().exp().matrix());
   }
 
   return result;

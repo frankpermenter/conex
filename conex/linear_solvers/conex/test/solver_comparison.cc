@@ -147,6 +147,37 @@ void RunComparison(int m, int n, int seed) {
     }
     printf("\n");
   }
+
+  // ===== Geodesic IPM (Mehrotra) =====
+  {
+    Eigen::SparseMatrix<double> negA = -lp.A;
+    VectorXd neg_b = -lp.b;
+    Problem problem;
+    problem.AddLinearConstraint(negA, neg_b, vars);
+    auto [reduced, expansion] = Preprocess(problem);
+    auto solver = Solver::Build(reduced);
+    auto* kkt = solver.solver();
+
+    auto cost_rhs = kkt->MakeSolverRHS();
+    VectorXd c_r = expansion.Reduce(lp.c);
+    cost_rhs = kkt->MakeBlockVariable(c_r);
+
+    VectorXd W = VectorXd::Ones(m);
+
+    auto result = SolveGeodesicMehrotra(*kkt, cost_rhs, W, 50, 1e-8, true);
+
+    printf("=== Geodesic IPM (Mehrotra) ===\n");
+    printf("  %d iterations\n", result.iterations);
+    printf("  %3s  %12s  %12s  %12s  %12s\n",
+           "out", "mu", "s_dot_x", "d_inf", "d_sqr");
+    printf("  %s\n", std::string(56, '-').c_str());
+    for (size_t i = 0; i < result.iter_stats.size(); ++i) {
+      const auto& s = result.iter_stats[i];
+      printf("  %3d  %12.4e  %12.4e  %12.4e  %12.4e\n",
+             static_cast<int>(i), s.mu, s.complementarity, s.d_inf, s.d_sqr);
+    }
+    printf("\n");
+  }
 }
 
 }  // namespace
