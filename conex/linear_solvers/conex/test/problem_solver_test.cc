@@ -336,10 +336,12 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
     }
 
     k = k_new;
-    result = GeodesicCenter(*kkt, cost_rhs, W, k, 100, 1e-10);
-    printf("k=%.4f: %d iters, ||d||_inf=%.2e, ||W||_inf=%.4f\n",
-           k, result.iterations, result.d_inf_norm,
-           W.lpNorm<Eigen::Infinity>());
+    bool verbose = (step == 0);  // verbose on first outer step
+    result = GeodesicCenter(*kkt, cost_rhs, W, k, 100, 1e-10, verbose);
+    printf("k=%.4f  mu=%.2e: %d iters, d_inf=%.2e, d_sqr=%.2e, "
+           "s_dot_x=%.2e\n",
+           k, result.mu, result.iterations, result.d_inf_norm,
+           result.d_sq_norm, result.complementarity);
     EXPECT_LT(result.d_inf_norm, 1e-8);
   }
 

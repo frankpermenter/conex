@@ -1,6 +1,7 @@
 #include "conex/algorithms/geodesic_barrier_qp.h"
 
 #include <cmath>
+#include <cstdio>
 
 namespace conex {
 
@@ -10,10 +11,12 @@ GeodesicResult GeodesicCenter(
     Eigen::VectorXd& W,
     double k,
     int max_iterations,
-    double tolerance) {
+    double tolerance,
+    bool verbose) {
   RowSpace b_row = kkt.GetAffineTerm();
   const auto& b = b_row.data.col(0);
   const int m = b.size();
+  const double mu = 1.0 / (k * k);
 
   auto y = kkt.MakeSolverRHS();
   auto row = kkt.MakeRowSpace();
@@ -21,6 +24,7 @@ GeodesicResult GeodesicCenter(
   RowSpace v = kkt.MakeRowSpace();
 
   GeodesicResult result{};
+  result.mu = mu;
 
   for (int iter = 0; iter < max_iterations; ++iter) {
     // 1. Set weights W^2 and factor the Gram matrix A^T diag(W^2) A.
@@ -30,11 +34,6 @@ GeodesicResult GeodesicCenter(
     if (!kkt.AssembleAndFactor()) break;
 
     // 2. Build RHS = k * cost + A^T (k * W^2 .* b + 2 * W).
-    //
-    // Derivation (cone_program sign mapping):
-    //   cone_program RHS = k*b_cost + k*A_cone^T diag(W^2) c_aff - 2*A_cone^T W
-    //   with A_cone = -A, c_aff = -b, b_cost = cost:
-    //   = k*cost + k*A^T(W^2.*b) + 2*A^T W
     y = cost_rhs;
     y *= k;
     for (int i = 0; i < m; ++i)
@@ -56,9 +55,18 @@ GeodesicResult GeodesicCenter(
     double alpha = 2.0 / (d_inf * d_inf);
     if (alpha > 1.0) alpha = 1.0;
 
+    double s_dot_x = mu * (m - d_sq);
+
     result.iterations = iter + 1;
     result.d_inf_norm = d_inf;
     result.d_sq_norm = d_sq;
+    result.complementarity = s_dot_x;
+
+    if (verbose) {
+      printf("  i=%2d  mu=%.2e  d_sqr=%.2e  d_inf=%.2e  "
+             "s_dot_x=%.2e  alpha=%.4f\n",
+             iter, mu, d_sq, d_inf, s_dot_x, alpha);
+    }
 
     if (d_inf < tolerance) break;
 

@@ -8,6 +8,8 @@ struct GeodesicResult {
   int iterations;
   double d_inf_norm;   // final ||d||_inf
   double d_sq_norm;    // final ||d||^2
+  double mu;           // barrier parameter 1/k^2
+  double complementarity;  // mu * (rank - ||d||^2)
 };
 
 // Run the geodesic centering iteration with fixed barrier parameter k = 1/sqrt(mu).
@@ -24,7 +26,8 @@ GeodesicResult GeodesicCenter(
     Eigen::VectorXd& W,
     double k,
     int max_iterations,
-    double tolerance);
+    double tolerance,
+    bool verbose = false);
 
 // Find the largest k such that ||d(k)||_inf <= 1, where d(k) = d0 + k * d1.
 // Requires W to be centered (d ≈ 0 at the current k).  Uses one factorization
