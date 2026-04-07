@@ -413,32 +413,42 @@ GeodesicResult SolveGeodesicHybrid(
 
   GeodesicResult result{};
 
+  // Cached A*y result from the last factor+solve.  Only r changes
+  // between SHRINK_R steps, so d can be recomputed from this.
+  Eigen::VectorXd Ay(m);
+  bool need_solve = true;
+
   for (int iter = 0; iter < max_iterations; ++iter) {
-    // Factor and solve with current (W, r, k). 1 factor + 1 solve.
-    RowSpace weights = kkt.MakeRowSpace();
-    weights.col() = W.cwiseProduct(W);
-    kkt.SetWeights(weights);
-    if (!kkt.AssembleAndFactor()) break;
-    total_fac++;
+    if (need_solve) {
+      // Factor and solve with current (W, r, k). 1 factor + 1 solve.
+      RowSpace weights = kkt.MakeRowSpace();
+      weights.col() = W.cwiseProduct(W);
+      kkt.SetWeights(weights);
+      if (!kkt.AssembleAndFactor()) break;
+      total_fac++;
 
-    auto y = kkt.MakeSolverRHS();
-    y = cost_rhs;
-    y *= k;
-    RowSpace v = kkt.MakeRowSpace();
-    v.col() = k * W.cwiseProduct(W).cwiseProduct(b) +
-              2.0 * r.cwiseProduct(W);
-    kkt.AccumulateAtranspose(v, y);
-    kkt.SolveSolverRHS(y);
-    total_sol++;
+      auto y = kkt.MakeSolverRHS();
+      y = cost_rhs;
+      y *= k;
+      RowSpace v = kkt.MakeRowSpace();
+      v.col() = k * W.cwiseProduct(W).cwiseProduct(b) +
+                2.0 * r.cwiseProduct(W);
+      kkt.AccumulateAtranspose(v, y);
+      kkt.SolveSolverRHS(y);
+      total_sol++;
 
-    // d = 1 + (W/r) .* (k*b - A*y).
-    auto row = kkt.MakeRowSpace();
-    kkt.MultiplyA(y, row);
-    Eigen::VectorXd W_over_r = W.cwiseQuotient(r);
+      auto row = kkt.MakeRowSpace();
+      kkt.MultiplyA(y, row);
+      Ay = row.col();
+      need_solve = false;
+    }
+
+    // d = 1 + (W/r) .* (k*b - A*y).  Only r changes between SHRINK steps.
     Eigen::VectorXd d =
-        Eigen::VectorXd::Ones(m) + W_over_r.cwiseProduct(k * b - row.col());
+        Eigen::VectorXd::Ones(m) +
+        W.cwiseQuotient(r).cwiseProduct(k * b - Ay);
 
-    // gap(r, d) = <r.*(1+d), r.*(1-d)> = sum(r_i^2 * (1 - d_i^2)).
+    // gap(r, d) = sum(r_i^2 * (1 - d_i^2)).
     double gap = r.cwiseProduct(r).dot(
         Eigen::VectorXd::Ones(m) - d.cwiseProduct(d));
 
@@ -466,12 +476,11 @@ GeodesicResult SolveGeodesicHybrid(
       auto cr = GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1.0);
       total_fac += cr.total_factorizations;
       total_sol += cr.total_solves;
+      need_solve = true;  // W changed, factorization is stale.
     } else {
-      // Feasible step: shrink r and take geodesic step.
+      // Shrink r only — no W update, no re-solve needed.
       r = 0.5 * r.cwiseProduct(
           Eigen::VectorXd::Ones(m) + d.cwiseAbs());
-      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      W = W.cwiseProduct((alpha * d).array().exp().matrix());
     }
   }
 
