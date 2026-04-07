@@ -348,7 +348,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void SetWeights(const RowSpace& w) override;
   RowSpace GetAffineTerm() override;
   // Gather unscattered separator data into supernode blocks.
-  void GatherSeparators(SolverRHS& rhs) override {
+  void GatherSeparators(SolverRHS& rhs) {
     GatherSeparators(*rhs.supernodes, *rhs.separators);
     rhs.blocks_fully_gathered = true;
   }

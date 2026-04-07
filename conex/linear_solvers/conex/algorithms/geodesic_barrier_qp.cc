@@ -75,9 +75,8 @@ double GeodesicLineSearch(
     const SolverRHS& cost_rhs,
     const Eigen::VectorXd& W) {
   RowSpace b_row = kkt.GetAffineTerm();
-  const Eigen::VectorXd& b = b_row.data.col(0);
+  const auto& b = b_row.data.col(0);
   const int m = b.size();
-  const int n = kkt.number_of_variables();
 
   // Factor A^T diag(W^2) A (same Gram for all k).
   RowSpace weights = kkt.MakeRowSpace();
@@ -86,39 +85,28 @@ double GeodesicLineSearch(
   kkt.SetWeights(weights);
   kkt.AssembleAndFactor();
 
-  // Build two RHS vectors as single-column SolverRHS.
-  //   rhs0 = A^T(2W)
-  //   rhs1 = cost + A^T(W^2 .* b)
+  // Build two single-column RHS, then pack into one 2-column SolverRHS.
+  //   col 0: A^T(2W)
+  //   col 1: cost + A^T(W^2 .* b)
   RowSpace v = kkt.MakeRowSpace();
 
   auto rhs0 = kkt.MakeSolverRHS();
   rhs0.SetZero();
-  for (int i = 0; i < m; ++i)
-    v.data(i) = 2.0 * W(i);
+  for (int i = 0; i < m; ++i) v.data(i) = 2.0 * W(i);
   kkt.AccumulateAtranspose(v, rhs0);
 
   auto rhs1 = kkt.MakeSolverRHS();
   rhs1 = cost_rhs;
-  for (int i = 0; i < m; ++i)
-    v.data(i) = W(i) * W(i) * b(i);
+  for (int i = 0; i < m; ++i) v.data(i) = W(i) * W(i) * b(i);
   kkt.AccumulateAtranspose(v, rhs1);
 
-  // Pack into 2-column SolverRHS via dense gather/scatter.
-  Eigen::MatrixXd dense_rhs(n, 2);
-  // Gather separators into supernode blocks first.
-  kkt.GatherSeparators(rhs0);
-  kkt.GatherSeparators(rhs1);
-  rhs0.supernodes->GatherInto(dense_rhs.col(0));
-  rhs1.supernodes->GatherInto(dense_rhs.col(1));
-
+  // Pack into 2-column SolverRHS and solve.
   auto y = kkt.MakeSolverRHS(2);
-  y.supernodes->ScatterFrom(dense_rhs);
-  y.blocks_fully_gathered = true;
-
-  // Single 2-column solve.
+  y.SetColumn(0, rhs0);
+  y.SetColumn(1, rhs1);
   kkt.SolveSolverRHS(y);
 
-  // Single 2-column MultiplyA.
+  // 2-column MultiplyA.
   auto row = kkt.MakeRowSpace(2);
   kkt.MultiplyA(y, row);
 

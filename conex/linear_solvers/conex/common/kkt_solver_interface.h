@@ -125,10 +125,6 @@ class KKTSolverBase {
   // Dot product with lazy gather: tree solver overrides to fold
   // unscattered separator data before computing the dot product.
   // Default assumes blocks_fully_gathered is always true.
-  // Fold pending separator data into supernode blocks.
-  // No-op for dense/GPU solvers (no separators).  Tree solver overrides.
-  virtual void GatherSeparators(SolverRHS& /*rhs*/) {}
-
   virtual double dot(SolverRHS& a, SolverRHS& b) {
     return a.dot(b);
   }
