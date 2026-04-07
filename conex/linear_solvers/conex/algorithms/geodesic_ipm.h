@@ -92,6 +92,45 @@ double GeodesicLineSearch(
     const SolverRHS& cost_rhs,
     const Eigen::VectorXd& W);
 
+// =====================================================================
+// Generalized geodesic IPM with per-component centering vector r.
+//
+// Parameterization:
+//   s_i = r_i * exp(-v_i),   lambda_i = r_i * exp(v_i)
+//   s_i * lambda_i = r_i^2
+//
+// When r = sqrt(mu) * ones, this reduces to the scalar-mu version above.
+// =====================================================================
+
+// Centering with per-component r (fixed k and r).
+GeodesicResult GeodesicCenterR(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    Eigen::VectorXd& W,
+    const Eigen::VectorXd& r,
+    double k,
+    int max_iterations,
+    double tolerance,
+    bool verbose = false);
+
+// Line search for k with per-component r.
+double GeodesicLineSearchR(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const Eigen::VectorXd& W,
+    const Eigen::VectorXd& r);
+
+// Full solve with per-component r.
+GeodesicResult SolveGeodesicLPR(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    Eigen::VectorXd& W,
+    const Eigen::VectorXd& r,
+    int max_outer_iterations = 30,
+    int max_centering_steps = 1,
+    double tolerance = 1e-8,
+    bool verbose = false);
+
 // Geodesic IPM with Mehrotra predictor-corrector.
 // One factorization + two back-solves per outer iteration.
 GeodesicResult SolveGeodesicMehrotra(

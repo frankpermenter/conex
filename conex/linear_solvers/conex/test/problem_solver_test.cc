@@ -347,6 +347,60 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
   EXPECT_GT((W - VectorXd::Ones(m)).lpNorm<Eigen::Infinity>(), 0.01);
 }
 
+TEST(GeodesicBarrierQP, PerComponentR) {
+  // Verify that GeodesicCenterR with r = ones reduces to GeodesicCenter
+  // with k = 1 (since sqrt(mu) = 1/k = 1 when k = 1).
+  srand(42);
+  const int n = 5, m = 8;
+
+  MatrixXd A_dense = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int i = 0; i < m; ++i)
+    for (int j = 0; j < n; ++j)
+      trips.emplace_back(i, j, A_dense(i, j));
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Eigen::SparseMatrix<double> negA = -A;
+  VectorXd neg_b = -b;
+  Problem problem;
+  problem.AddLinearConstraint(negA, neg_b, vars);
+  auto [reduced, expansion] = Preprocess(problem);
+  auto solver = Solver::Build(reduced);
+  auto* kkt = solver.solver();
+
+  auto cost_rhs = kkt->MakeSolverRHS();
+  VectorXd c_r = expansion.Reduce(c);
+  cost_rhs = kkt->MakeBlockVariable(c_r);
+
+  // Scalar version: center at k=1.
+  VectorXd W1 = VectorXd::Ones(m) + 0.01 * VectorXd::Random(m);
+  VectorXd W2 = W1;  // same initial W
+  auto r1 = GeodesicCenter(*kkt, cost_rhs, W1, 1.0, 100, 1e-10);
+
+  // Per-component version: r = ones (equivalent to sqrt(mu)=1, k=1).
+  VectorXd r = VectorXd::Ones(m);
+  auto r2 = GeodesicCenterR(*kkt, cost_rhs, W2, r, 1.0, 100, 1e-10);
+
+  EXPECT_EQ(r1.iterations, r2.iterations);
+  EXPECT_NEAR((W1 - W2).lpNorm<Eigen::Infinity>(), 0.0, 1e-12);
+
+  // Non-uniform r: should still converge (d -> 0).
+  VectorXd W3 = VectorXd::Ones(m) + 0.01 * VectorXd::Random(m);
+  VectorXd r_nonuniform = VectorXd::Ones(m) + 0.5 * VectorXd::Random(m).cwiseAbs();
+  auto r3 = GeodesicCenterR(*kkt, cost_rhs, W3, r_nonuniform, 1.0, 100, 1e-10);
+  EXPECT_LT(r3.d_inf_norm, 1e-8);
+
+  printf("PerComponentR: scalar=%d iters, r=ones=%d iters, r=nonuniform=%d iters\n",
+         r1.iterations, r2.iterations, r3.iterations);
+}
+
 // =====================================================================
 // ProblemSolver tests
 // =====================================================================
