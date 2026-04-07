@@ -361,8 +361,8 @@ GeodesicResult SolveGeodesicHybrid(
 
   Eigen::VectorXd r = Eigen::VectorXd::Ones(m);
 
-  // Initial centering.
-  GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1e-12);
+  // Initial centering until |d|_inf <= 1.
+  GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1.0);
 
   GeodesicResult result{};
 
@@ -411,8 +411,8 @@ GeodesicResult SolveGeodesicHybrid(
     if (gap >= 0 && gap < tolerance && d_inf <= 1.0) break;
 
     if (gap < 0) {
-      // d too large — center to bring it down.
-      GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1e-12);
+      // d too large — center until |d|_inf <= 1.
+      GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1.0);
     } else {
       // Feasible step: shrink r and take geodesic step.
       r = 0.5 * r.cwiseProduct(
