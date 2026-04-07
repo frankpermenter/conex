@@ -347,6 +347,84 @@ GeodesicResult SolveGeodesicLP(
   return result;
 }
 
+GeodesicResult SolveGeodesicHybrid(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    Eigen::VectorXd& W,
+    int max_iterations,
+    double tolerance,
+    bool verbose) {
+  RowSpace b_row = kkt.GetAffineTerm();
+  const auto& b = b_row.col();
+  const int m = b.size();
+  const double k = 1.0;
+
+  Eigen::VectorXd r = Eigen::VectorXd::Ones(m);
+
+  // Initial centering.
+  GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1e-12);
+
+  GeodesicResult result{};
+
+  for (int iter = 0; iter < max_iterations; ++iter) {
+    // Factor and solve with current (W, r, k).
+    RowSpace weights = kkt.MakeRowSpace();
+    weights.col() = W.cwiseProduct(W);
+    kkt.SetWeights(weights);
+    if (!kkt.AssembleAndFactor()) break;
+
+    auto y = kkt.MakeSolverRHS();
+    y = cost_rhs;
+    y *= k;
+    RowSpace v = kkt.MakeRowSpace();
+    v.col() = k * W.cwiseProduct(W).cwiseProduct(b) +
+              2.0 * r.cwiseProduct(W);
+    kkt.AccumulateAtranspose(v, y);
+    kkt.SolveSolverRHS(y);
+
+    // d = 1 + (W/r) .* (k*b - A*y).
+    auto row = kkt.MakeRowSpace();
+    kkt.MultiplyA(y, row);
+    Eigen::VectorXd W_over_r = W.cwiseQuotient(r);
+    Eigen::VectorXd d =
+        Eigen::VectorXd::Ones(m) + W_over_r.cwiseProduct(k * b - row.col());
+
+    // gap(r, d) = <r.*(1+d), r.*(1-d)> = sum(r_i^2 * (1 - d_i^2)).
+    double gap = r.cwiseProduct(r).dot(
+        Eigen::VectorXd::Ones(m) - d.cwiseProduct(d));
+
+    double d_inf = d.lpNorm<Eigen::Infinity>();
+    double d_sq = d.squaredNorm();
+
+    result.iter_stats.push_back({gap / m, d_inf, d_sq, gap});
+    result.iterations = iter + 1;
+    result.d_inf_norm = d_inf;
+    result.d_sq_norm = d_sq;
+    result.mu = gap / m;
+    result.complementarity = gap;
+
+    if (verbose) {
+      printf("  i=%2d  gap=%.2e  d_inf=%.2e  d_sqr=%.2e  %s\n",
+             iter, gap, d_inf, d_sq, gap < 0 ? "CENTER" : "SHRINK_R");
+    }
+
+    if (gap >= 0 && gap < tolerance) break;
+
+    if (gap < 0) {
+      // d too large — center to bring it down.
+      GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1e-12);
+    } else {
+      // Feasible step: shrink r and take geodesic step.
+      r = 0.5 * r.cwiseProduct(
+          Eigen::VectorXd::Ones(m) + d.cwiseAbs());
+      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+      W = W.cwiseProduct((alpha * d).array().exp().matrix());
+    }
+  }
+
+  return result;
+}
+
 GeodesicResult SolveGeodesicMehrotra(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,

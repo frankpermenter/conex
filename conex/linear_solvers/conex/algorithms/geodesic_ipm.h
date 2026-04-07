@@ -131,6 +131,17 @@ GeodesicResult SolveGeodesicLPR(
     double tolerance = 1e-8,
     bool verbose = false);
 
+// Hybrid geodesic IPM: alternates between centering (when gap < 0)
+// and shrinking per-component centering targets r (when gap >= 0).
+// gap(r, d) = <r.*(1+d), r.*(1-d)> = sum(r_i^2 * (1 - d_i^2)).
+GeodesicResult SolveGeodesicHybrid(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    Eigen::VectorXd& W,
+    int max_iterations = 50,
+    double tolerance = 1e-8,
+    bool verbose = false);
+
 // Geodesic IPM with Mehrotra predictor-corrector.
 // One factorization + two back-solves per outer iteration.
 GeodesicResult SolveGeodesicMehrotra(
