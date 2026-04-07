@@ -127,6 +127,16 @@ target_link_libraries(lqr_benchmark
 )
 target_compile_options(lqr_benchmark PRIVATE -O2)
 
+add_executable(multi_rhs_benchmark
+  conex/test/multi_rhs_benchmark.cc
+)
+target_link_libraries(multi_rhs_benchmark
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+target_compile_options(multi_rhs_benchmark PRIVATE -O2)
+
 add_executable(benchmark
   conex/test/benchmark.cc
 )

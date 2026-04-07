@@ -1035,10 +1035,12 @@ RowSpace T::MakeRowSpace(int cols) {
 }
 
 void T::MultiplyA(const SolverRHS& x, RowSpace& out) {
-  if (x.blocks_fully_gathered) {
+  if (x.blocks_fully_gathered && x.has_separators()) {
+    ScatterSeparators(*x.supernodes, *x.separators);
+  } else if (x.blocks_fully_gathered) {
     ScatterSeparators(*x.supernodes, sep_scratch_);
   }
-  const auto& sep_read = x.blocks_fully_gathered ? sep_scratch_ : *x.separators;
+  const auto& sep_read = x.has_separators() ? *x.separators : sep_scratch_;
   int nc = x.cols();
   for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
     auto result = linear_sub_assemblers_[ci]->gram().MultiplyA(
