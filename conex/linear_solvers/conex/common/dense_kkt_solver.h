@@ -80,13 +80,13 @@ class DenseKKTSolver : public KKTSolverBase {
 
   void SetWeights(const RowSpace& w) override {
     if (!has_constraints_) return;
-    weights_ = w.data.col(0);
+    weights_ = w.col();
     M_ = Q_ + A_.transpose() * weights_.asDiagonal() * A_;
   }
 
   RowSpace GetAffineTerm() override {
-    RowSpace rs;
-    if (has_constraints_) rs.data = b_.reshaped(b_.size(), 1);
+    RowSpace rs = MakeRowSpace();
+    if (has_constraints_) rs.col() = b_;
     return rs;
   }
 

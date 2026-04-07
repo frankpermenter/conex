@@ -322,22 +322,19 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
       y_check = cost_rhs;
       y_check *= k_new;
       RowSpace b_api = kkt->GetAffineTerm();
-      for (int i = 0; i < m; ++i)
-        v_check.data(i) = k_new * W(i) * W(i) * b_api.data(i) + 2.0 * W(i);
+      const auto& b_vec = b_api.col();
+      v_check.col() = k_new * W.cwiseProduct(W).cwiseProduct(b_vec) + 2.0 * W;
       kkt->AccumulateAtranspose(v_check, y_check);
       kkt->SolveSolverRHS(y_check);
       kkt->MultiplyA(y_check, row_check);
-      double d_inf_check = 0;
-      for (int i = 0; i < m; ++i) {
-        double di = 1.0 + W(i) * (k_new * b_api.data(i) - row_check.data(i));
-        d_inf_check = std::max(d_inf_check, std::abs(di));
-      }
+      Eigen::VectorXd d_check =
+          Eigen::VectorXd::Ones(m) + W.cwiseProduct(k_new * b_vec - row_check.col());
+      double d_inf_check = d_check.lpNorm<Eigen::Infinity>();
       EXPECT_NEAR(d_inf_check, 1.0, 1e-10);
     }
 
     k = k_new;
-    bool verbose = (step == 0);  // verbose on first outer step
-    result = GeodesicCenter(*kkt, cost_rhs, W, k, 100, 1e-10, verbose);
+    result = GeodesicCenter(*kkt, cost_rhs, W, k, 100, 1e-10);
     printf("k=%.4f  mu=%.2e: %d iters, d_inf=%.2e, d_sqr=%.2e, "
            "s_dot_x=%.2e\n",
            k, result.mu, result.iterations, result.d_inf_norm,
@@ -453,7 +450,7 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
   // weights_i = 1 + |row_i| — non-uniform, but ordering-consistent.
   RowSpace weights = kkt->MakeRowSpace();
   for (int i = 0; i < weights.total_rows(); ++i)
-    weights.data(i) = 1.0 + std::abs(row.data(i));
+    weights.col()(i) = 1.0 + std::abs(row.col()(i));
   kkt->SetWeights(weights);
   ASSERT_TRUE(kkt->AssembleAndFactor());
   VectorXd x2 = kkt->Solve(rhs);
@@ -466,7 +463,7 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
   // Compute A^T (W * A * x2) via generic interface.
   RowSpace wax2 = kkt->MakeRowSpace();
   for (int i = 0; i < wax2.total_rows(); ++i)
-    wax2.data(i) = weights.data(i) * ax2.data(i);
+    wax2.col()(i) = weights.col()(i) * ax2.col()(i);
   auto atwa_x2 = kkt->MakeSolverRHS();
   atwa_x2.SetZero();
   kkt->AccumulateAtranspose(wax2, atwa_x2);
@@ -2041,13 +2038,13 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   VectorXd Ax_ref(9);
   Ax_ref.head(5) = A1 * x_ref;
   Ax_ref.tail(4) = A2 * x_ref;
-  double err_multiply_a = (row.data.col(0) - Ax_ref).norm() / Ax_ref.norm();
+  double err_multiply_a = (row.col() - Ax_ref).norm() / Ax_ref.norm();
   EXPECT_LT(err_multiply_a, 1e-10);
 
   // --- Test generic interface: AccumulateAtranspose ---
   VectorXd v = VectorXd::Random(9);
   RowSpace v_row = kkt->MakeRowSpace();
-  v_row.data.col(0) = v;
+  v_row.col() = v;
   auto atv_rhs = kkt->MakeSolverRHS();
   atv_rhs.SetZero();
   kkt->AccumulateAtranspose(v_row, atv_rhs);
@@ -2116,8 +2113,8 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
 
   // --- Test generic interface: SetWeights + re-solve ---
   RowSpace weights = kkt->MakeRowSpace();
-  for (int i = 0; i < 5; ++i) weights.data(i) = 2.0;
-  for (int i = 5; i < 9; ++i) weights.data(i) = 3.0;
+  weights.col().head(5).setConstant(2.0);
+  weights.col().tail(4).setConstant(3.0);
   kkt->SetWeights(weights);
   ASSERT_TRUE(kkt->AssembleAndFactor());
 

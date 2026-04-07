@@ -14,7 +14,7 @@ GeodesicResult GeodesicCenter(
     double tolerance,
     bool verbose) {
   RowSpace b_row = kkt.GetAffineTerm();
-  const auto& b = b_row.data.col(0);
+  const auto& b = b_row.col();
   const int m = b.size();
   const double mu = 1.0 / (k * k);
 
@@ -23,37 +23,35 @@ GeodesicResult GeodesicCenter(
   RowSpace weights = kkt.MakeRowSpace();
   RowSpace v = kkt.MakeRowSpace();
 
+  const Eigen::VectorXd W2 = W.cwiseProduct(W);
+
   GeodesicResult result{};
   result.mu = mu;
 
   for (int iter = 0; iter < max_iterations; ++iter) {
-    // 1. Set weights W^2 and factor the Gram matrix A^T diag(W^2) A.
-    for (int i = 0; i < m; ++i)
-      weights.data(i) = W(i) * W(i);
+    // 1. Set weights W^2 and factor.
+    weights.col() = W.cwiseProduct(W);
     kkt.SetWeights(weights);
     if (!kkt.AssembleAndFactor()) break;
 
-    // 2. Build RHS = k * cost + A^T (k * W^2 .* b + 2 * W).
+    // 2. RHS = k * cost + A^T (k * W^2 .* b + 2 * W).
     y = cost_rhs;
     y *= k;
-    for (int i = 0; i < m; ++i)
-      v.data(i) = k * W(i) * W(i) * b(i) + 2.0 * W(i);
+    v.col() = k * W.cwiseProduct(W).cwiseProduct(b) + 2.0 * W;
     kkt.AccumulateAtranspose(v, y);
 
-    // 3. Solve for y.
+    // 3. Solve.
     kkt.SolveSolverRHS(y);
 
-    // 4. Compute direction d = 1 + W .* (k*b - A*y).
+    // 4. Direction d = 1 + W .* (k*b - A*y).
     kkt.MultiplyA(y, row);
-    Eigen::VectorXd d(m);
-    for (int i = 0; i < m; ++i)
-      d(i) = 1.0 + W(i) * (k * b(i) - row.data(i));
+    Eigen::VectorXd d =
+        Eigen::VectorXd::Ones(m) + W.cwiseProduct(k * b - row.col());
 
-    // 5. Step size: alpha = min(1, 2 / ||d||_inf^2).
+    // 5. Step size.
     double d_inf = d.lpNorm<Eigen::Infinity>();
     double d_sq = d.squaredNorm();
-    double alpha = 2.0 / (d_inf * d_inf);
-    if (alpha > 1.0) alpha = 1.0;
+    double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
 
     double s_dot_x = mu * (m - d_sq);
 
@@ -71,8 +69,7 @@ GeodesicResult GeodesicCenter(
     if (d_inf < tolerance) break;
 
     // 6. Geodesic update: W *= exp(alpha * d).
-    for (int i = 0; i < m; ++i)
-      W(i) *= std::exp(alpha * d(i));
+    W = W.cwiseProduct((alpha * d).array().exp().matrix());
   }
 
   return result;
@@ -83,49 +80,45 @@ double GeodesicLineSearch(
     const SolverRHS& cost_rhs,
     const Eigen::VectorXd& W) {
   RowSpace b_row = kkt.GetAffineTerm();
-  const auto& b = b_row.data.col(0);
+  const auto& b = b_row.col();
   const int m = b.size();
 
   // Factor A^T diag(W^2) A (same Gram for all k).
   RowSpace weights = kkt.MakeRowSpace();
-  for (int i = 0; i < m; ++i)
-    weights.data(i) = W(i) * W(i);
+  weights.col() = W.cwiseProduct(W);
   kkt.SetWeights(weights);
   kkt.AssembleAndFactor();
 
-  // Build two single-column RHS, then pack into one 2-column SolverRHS.
+  // Build two single-column RHS, pack into one 2-column SolverRHS.
   //   col 0: A^T(2W)
   //   col 1: cost + A^T(W^2 .* b)
   RowSpace v = kkt.MakeRowSpace();
 
   auto rhs0 = kkt.MakeSolverRHS();
   rhs0.SetZero();
-  for (int i = 0; i < m; ++i) v.data(i) = 2.0 * W(i);
+  v.col() = 2.0 * W;
   kkt.AccumulateAtranspose(v, rhs0);
 
   auto rhs1 = kkt.MakeSolverRHS();
   rhs1 = cost_rhs;
-  for (int i = 0; i < m; ++i) v.data(i) = W(i) * W(i) * b(i);
+  v.col() = W.cwiseProduct(W).cwiseProduct(b);
   kkt.AccumulateAtranspose(v, rhs1);
 
-  // Pack into 2-column SolverRHS and solve.
+  // Pack, solve, multiply.
   auto y = kkt.MakeSolverRHS(2);
   y.SetColumn(0, rhs0);
   y.SetColumn(1, rhs1);
   kkt.SolveSolverRHS(y);
 
-  // 2-column MultiplyA.
   auto row = kkt.MakeRowSpace(2);
   kkt.MultiplyA(y, row);
 
   // d0 = 1 - W .* (Ay)_col0,  d1 = W .* (b - (Ay)_col1).
-  Eigen::VectorXd d0(m), d1(m);
-  for (int i = 0; i < m; ++i) {
-    d0(i) = 1.0 - W(i) * row.data(i, 0);
-    d1(i) = W(i) * (b(i) - row.data(i, 1));
-  }
+  Eigen::VectorXd d0 =
+      Eigen::VectorXd::Ones(m) - W.cwiseProduct(row.col(0));
+  Eigen::VectorXd d1 = W.cwiseProduct(b - row.col(1));
 
-  // Find largest k > 0 with |d0_i + k * d1_i| <= 1 for all i.
+  // Largest k > 0 with |d0_i + k * d1_i| <= 1 for all i.
   double k_max = std::numeric_limits<double>::max();
   for (int i = 0; i < m; ++i) {
     if (d1(i) > 0) {

@@ -23,7 +23,7 @@ BarrierQPResult SolveBarrierQP(
   const int nr = kkt.number_of_variables();
 
   RowSpace b_row = kkt.GetAffineTerm();
-  const auto& b = b_row.data.col(0);
+  const auto& b = b_row.col();
   const int m = b.size();
   result.total_newton_steps = 0;
   result.outer_iterations = 0;
@@ -56,18 +56,16 @@ BarrierQPResult SolveBarrierQP(
 
       // Slacks: s = b - A x.
       kkt.MultiplyA(x, row);
-      row.data = b - row.data;  // #6: row.data now holds s
-      const auto& s = row.data.col(0);
+      row.col() = b - row.col();  // row now holds s
+      const auto& s = row.col();
       if (s.minCoeff() <= 0) break;
 
       // Barrier weights: w_i = 1/(t * s_i^2).
-      for (int i = 0; i < m; ++i)
-        weights.data(i) = 1.0 / (t * s(i) * s(i));
+      weights.col() = (t * s.cwiseProduct(s)).cwiseInverse();
       kkt.SetWeights(weights);
 
       // A^T term: (1/t) * A^T * (1/s).
-      for (int i = 0; i < m; ++i)
-        scaled_inv_s.data(i) = 1.0 / (t * s(i));
+      scaled_inv_s.col() = (t * s).cwiseInverse();
 
       // Compute Q*x once (ungathered), reuse for gradient and objective.
       qx.SetZero();
@@ -94,13 +92,13 @@ BarrierQPResult SolveBarrierQP(
       double alpha = 1.0;
       kkt.MultiplyA(dx, row_trial);
       for (int i = 0; i < m; ++i) {
-        if (row_trial.data(i) > 0)
-          alpha = std::min(alpha, 0.99 * s(i) / row_trial.data(i));
+        if (row_trial.col()(i) > 0)
+          alpha = std::min(alpha, 0.99 * s(i) / row_trial.col()(i));
       }
 
       // Objective at current point (lazy gather on qx).
       double f0 = 0.5 * kkt.dot(x, qx) + x.dot(c_rhs);
-      for (int i = 0; i < m; ++i) f0 -= (1.0 / t) * std::log(s(i));
+      f0 -= (1.0 / t) * s.array().log().sum();
 
       // Backtracking line search.
       const double beta = 0.5;
@@ -109,19 +107,14 @@ BarrierQPResult SolveBarrierQP(
         x_trial = x;
         x_trial.AddScaled(alpha, dx);
 
-        // #4: compute A*x_trial and Q*x_trial (scatter happens once
-        // inside MultiplyA; AccumulateQx sees blocks_fully_gathered=true
-        // from the AddScaled and re-scatters — unavoidable without
-        // caching at the solver level).
         kkt.MultiplyA(x_trial, row_trial);
-        row_trial.data = b - row_trial.data;
-        if (row_trial.data.minCoeff() <= 0) { alpha *= beta; continue; }
+        row_trial.col() = b - row_trial.col();
+        if (row_trial.col().minCoeff() <= 0) { alpha *= beta; continue; }
 
         qx.SetZero();
         kkt.AccumulateQx(x_trial, qx);
         double f_new = 0.5 * kkt.dot(x_trial, qx) + x_trial.dot(c_rhs);
-        for (int i = 0; i < m; ++i)
-          f_new -= (1.0 / t) * std::log(row_trial.data(i));
+        f_new -= (1.0 / t) * row_trial.col().array().log().sum();
 
         if (f_new <= f0 + armijo * alpha * (-lambda_sq)) break;
         alpha *= beta;

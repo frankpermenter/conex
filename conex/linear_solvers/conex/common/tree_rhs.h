@@ -221,6 +221,11 @@ struct RowSpace {
   const Eigen::Block<const Eigen::MatrixXd> segment(int i) const {
     return data.block(offsets[i], 0, sizes[i], data.cols());
   }
+
+  // Column access.
+  auto col(int c = 0) { return data.col(c); }
+  auto col(int c = 0) const { return data.col(c); }
+
   int total_rows() const { return static_cast<int>(data.rows()); }
   int cols() const { return static_cast<int>(data.cols()); }
   int num_constraints() const { return static_cast<int>(sizes.size()); }
