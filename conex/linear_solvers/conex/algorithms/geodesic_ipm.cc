@@ -412,47 +412,61 @@ GeodesicResult SolveGeodesicHybrid(
   int total_sol = init.total_solves;
 
   GeodesicResult result{};
+  int r_updates = 0;
 
-  bool need_factor = true;
+  for (int fac_iter = 0; fac_iter < max_iterations; ++fac_iter) {
+    // Factor with current W.
+    RowSpace weights = kkt.MakeRowSpace();
+    weights.col() = W.cwiseProduct(W);
+    kkt.SetWeights(weights);
+    if (!kkt.AssembleAndFactor()) break;
+    total_fac++;
 
-  for (int iter = 0; iter < max_iterations; ++iter) {
-    if (need_factor) {
-      // Factor with current W. Only needed after CENTER (W changed).
-      RowSpace weights = kkt.MakeRowSpace();
-      weights.col() = W.cwiseProduct(W);
-      kkt.SetWeights(weights);
-      if (!kkt.AssembleAndFactor()) break;
-      total_fac++;
-      need_factor = false;
+    // R-update loop: solve, check gap, shrink r. Repeat until gap < 0
+    // or converged.  Each iteration is one back-solve (reusing factorization).
+    int r_updates_this_fac = 0;
+    double gap = 0, d_inf = 0, d_sq = 0;
+    bool need_center = false;
+
+    for (int r_iter = 0; r_iter < max_iterations; ++r_iter) {
+      auto y = kkt.MakeSolverRHS();
+      y = cost_rhs;
+      y *= k;
+      RowSpace v = kkt.MakeRowSpace();
+      v.col() = k * W.cwiseProduct(W).cwiseProduct(b) +
+                2.0 * r.cwiseProduct(W);
+      kkt.AccumulateAtranspose(v, y);
+      kkt.SolveSolverRHS(y);
+      total_sol++;
+
+      auto row = kkt.MakeRowSpace();
+      kkt.MultiplyA(y, row);
+      Eigen::VectorXd d_vec =
+          Eigen::VectorXd::Ones(m) +
+          W.cwiseQuotient(r).cwiseProduct(k * b - row.col());
+
+      gap = r.cwiseProduct(r).dot(
+          Eigen::VectorXd::Ones(m) - d_vec.cwiseProduct(d_vec));
+      d_inf = d_vec.lpNorm<Eigen::Infinity>();
+      d_sq = d_vec.squaredNorm();
+
+      if (gap >= 0 && gap < tolerance && d_inf <= 1.0) break;
+
+      if (gap < 0) {
+        need_center = true;
+        break;
+      }
+
+      // Shrink r only.
+      r = 0.5 * r.cwiseProduct(
+          Eigen::VectorXd::Ones(m) + d_vec.cwiseAbs());
+      r_updates_this_fac++;
+      r_updates++;
     }
 
-    // Solve with current r (reuses factorization across SHRINK_R steps).
-    auto y = kkt.MakeSolverRHS();
-    y = cost_rhs;
-    y *= k;
-    RowSpace v = kkt.MakeRowSpace();
-    v.col() = k * W.cwiseProduct(W).cwiseProduct(b) +
-              2.0 * r.cwiseProduct(W);
-    kkt.AccumulateAtranspose(v, y);
-    kkt.SolveSolverRHS(y);
-    total_sol++;
-
-    // d = 1 + (W/r) .* (k*b - A*y).
-    auto row = kkt.MakeRowSpace();
-    kkt.MultiplyA(y, row);
-    Eigen::VectorXd d =
-        Eigen::VectorXd::Ones(m) +
-        W.cwiseQuotient(r).cwiseProduct(k * b - row.col());
-
-    // gap(r, d) = sum(r_i^2 * (1 - d_i^2)).
-    double gap = r.cwiseProduct(r).dot(
-        Eigen::VectorXd::Ones(m) - d.cwiseProduct(d));
-
-    double d_inf = d.lpNorm<Eigen::Infinity>();
-    double d_sq = d.squaredNorm();
-
+    // Log stats after this factorization's r-update loop.
     result.iter_stats.push_back({gap / m, d_inf, d_sq, gap});
-    result.iterations = iter + 1;
+    result.iterations = fac_iter + 1;
     result.d_inf_norm = d_inf;
     result.d_sq_norm = d_sq;
     result.mu = gap / m;
@@ -461,22 +475,17 @@ GeodesicResult SolveGeodesicHybrid(
     result.total_solves = total_sol;
 
     if (verbose) {
-      printf("  i=%2d  gap=%.2e  d_inf=%.2e  d_sqr=%.2e  %s\n",
-             iter, gap, d_inf, d_sq, gap < 0 ? "CENTER" : "SHRINK_R");
+      printf("  fac=%2d  gap=%.2e  d_inf=%.2e  r_updates=%d  "
+             "solves=%d\n",
+             fac_iter, gap, d_inf, r_updates_this_fac, total_sol);
     }
 
     if (gap >= 0 && gap < tolerance && d_inf <= 1.0) break;
 
-    if (gap < 0) {
-      // d too large — center until |d|_inf <= 1.
+    if (need_center) {
       auto cr = GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1.0);
       total_fac += cr.total_factorizations;
       total_sol += cr.total_solves;
-      need_factor = true;  // W changed, factorization is stale.
-    } else {
-      // Shrink r only — no W update, no re-solve needed.
-      r = 0.5 * r.cwiseProduct(
-          Eigen::VectorXd::Ones(m) + d.cwiseAbs());
     }
   }
 

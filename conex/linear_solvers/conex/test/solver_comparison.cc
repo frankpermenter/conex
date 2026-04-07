@@ -47,10 +47,10 @@ RandomLP MakeRandomLP(int m, int n, int seed) {
 
 void PrintResult(const char* name, const GeodesicResult& result) {
   printf("=== %s ===\n", name);
-  printf("  %d outer, %d factorizations, %d solves\n",
-         result.iterations, result.total_factorizations, result.total_solves);
+  printf("  %d factorizations, %d solves\n",
+         result.total_factorizations, result.total_solves);
   printf("  %3s  %12s  %12s  %12s  %12s\n",
-         "out", "gap/m", "gap", "d_inf", "d_sqr");
+         "fac", "gap/m", "gap", "d_inf", "d_sqr");
   printf("  %s\n", std::string(56, '-').c_str());
   for (size_t i = 0; i < result.iter_stats.size(); ++i) {
     const auto& s = result.iter_stats[i];
