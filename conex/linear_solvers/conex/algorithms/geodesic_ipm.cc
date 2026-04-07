@@ -461,7 +461,7 @@ GeodesicResult SolveGeodesicHybrid(
       kkt.SetWeights(weights);
       if (!kkt.AssembleAndFactor()) break;
       total_fac++;
-      result.iter_stats.push_back({gap / m, d_inf, d_sq, gap});
+      result.iter_stats.push_back({gap / m, d_inf, d_sq, gap, r_updates_this_fac});
       r_updates_this_fac = 0;
     } else {
       // Shrink r only.
@@ -472,7 +472,7 @@ GeodesicResult SolveGeodesicHybrid(
     }
   }
 
-  result.iter_stats.push_back({gap / m, d_inf, d_sq, gap});
+  result.iter_stats.push_back({gap / m, d_inf, d_sq, gap, r_updates_this_fac});
   result.d_inf_norm = d_inf;
   result.d_sq_norm = d_sq;
   result.mu = gap / m;
