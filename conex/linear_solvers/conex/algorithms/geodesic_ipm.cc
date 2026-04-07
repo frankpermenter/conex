@@ -449,9 +449,12 @@ GeodesicResult SolveGeodesicHybrid(
     d_inf = d_vec.lpNorm<Eigen::Infinity>();
     d_sq = d_vec.squaredNorm();
 
-    if (std::abs(gap) < tolerance && d_inf <= 1.0 + tolerance) break;
+    // r_i - |r_i * d_i| = r_i * (1 - |d_i|).  Feasible when >= 0.
+    double min_slack = (r - r.cwiseProduct(d_vec.cwiseAbs())).minCoeff();
 
-    if (gap < 0) {
+    if (std::abs(gap) < tolerance && min_slack > -tolerance) break;
+
+    if (min_slack < -tolerance) {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       W = W.cwiseProduct((alpha * d_vec).array().exp().matrix());
       weights.col() = W.cwiseProduct(W);
