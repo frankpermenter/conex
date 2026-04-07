@@ -408,7 +408,7 @@ GeodesicResult SolveGeodesicHybrid(
              iter, gap, d_inf, d_sq, gap < 0 ? "CENTER" : "SHRINK_R");
     }
 
-    if (gap >= 0 && gap < tolerance) break;
+    if (gap >= 0 && gap < tolerance && d_inf <= 1.0) break;
 
     if (gap < 0) {
       // d too large — center to bring it down.
