@@ -166,21 +166,16 @@ SparseEqualityConstraintAssembler::get_cliques() const {
 
   // Rebuild from the internal structure by scanning the sparse matrix.
   // Map local column indices to global primal variable indices.
-  const auto& pv = primal_variables();
   const int num_rows = sec_->C().rows();
   std::vector<std::vector<int>> row_supports(num_rows);
   for (int k = 0; k < sec_->C().outerSize(); ++k) {
     for (Eigen::SparseMatrix<double>::InnerIterator it(sec_->C(), k); it;
          ++it) {
-      // Map local column to global primal variable.
-      int global_col = (it.col() < static_cast<int>(pv.size()))
-                            ? pv[it.col()]
-                            : it.col();
-      row_supports[it.row()].push_back(global_col);
+      row_supports[it.row()].push_back(it.col());
     }
   }
-  // Sort each row's support (may be unsorted after global mapping).
-  for (auto& rs : row_supports) std::sort(rs.begin(), rs.end());
+  // Map each row's local support to global.
+  for (auto& rs : row_supports) rs = LocalSupportToGlobal(rs);
 
   // Group rows by support, collect dual vars per group.
   std::vector<int> row_order(num_rows);
@@ -209,44 +204,32 @@ SparseEqualityConstraintAssembler::get_cliques() const {
 std::vector<SupernodalAssemblerBase*>
 SparseEqualityConstraintAssembler::Decompose(
     const std::vector<std::vector<int>>& maximal_cliques) {
-  // Remap maximal cliques from global variable indices back to local
-  // column indices so GetConstraints (which uses local supports) can
-  // match rows to targets correctly.
+  // Remap primal vars to local; keep dual vars as-is (global).
+  // GetConstraints checks both primal support (local) and dual var (global).
+  std::unordered_map<int, int> g2l;
   const auto& pv = primal_variables();
-  std::unordered_map<int, int> global_to_local;
   for (int j = 0; j < static_cast<int>(pv.size()); ++j)
-    global_to_local[pv[j]] = j;
+    g2l[pv[j]] = j;
 
-  // Build local cliques: remap primal vars to local indices,
-  // keep dual vars as-is (they're global and checked by GetConstraints).
   std::vector<std::vector<int>> local_cliques;
   local_cliques.reserve(maximal_cliques.size());
   for (const auto& clique : maximal_cliques) {
-    std::vector<int> local;
+    std::vector<int> lc;
     for (int v : clique) {
-      auto it = global_to_local.find(v);
-      if (it != global_to_local.end()) {
-        local.push_back(it->second);  // primal: remap to local
-      } else {
-        local.push_back(v);  // dual: keep global
-      }
+      auto it = g2l.find(v);
+      lc.push_back(it != g2l.end() ? it->second : v);  // primal→local, dual→keep
     }
-    std::sort(local.begin(), local.end());
-    local_cliques.push_back(std::move(local));
+    std::sort(lc.begin(), lc.end());
+    local_cliques.push_back(std::move(lc));
   }
 
   auto groups = sec_->GetConstraints(local_cliques, row_to_dual_);
 
-  // Remap group primal variables back to global indices.
   std::vector<SupernodalAssemblerBase*> result;
   for (auto& group : groups) {
-    std::vector<int> global_primals;
-    global_primals.reserve(group.primal_variables.size());
-    for (int lc : group.primal_variables) {
-      global_primals.push_back(pv[lc]);
-    }
     owned_assemblers_.emplace_back(
-        group.C, group.d, global_primals, group.dual_variables);
+        group.C, group.d, RemapToGlobal(group.primal_variables),
+        group.dual_variables);
     result.push_back(&owned_assemblers_.back());
   }
   return result;

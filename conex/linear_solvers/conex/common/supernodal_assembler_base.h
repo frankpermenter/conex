@@ -100,6 +100,52 @@ class CliqueProvider {
   void SetPrimalVariables(const std::vector<int>& v) { primal_variables_ = v; }
   void SetDualVariables(const std::vector<int>& v) { dual_variables_ = v; }
 
+  // --- Local ↔ global column index helpers ---
+  // Local column j corresponds to global variable primal_variables_[j].
+  // Used by assemblers whose inner sparse matrices use local column indices.
+
+  // Map global cliques to local column indices for this assembler.
+  // Variables not in primal_variables_ are dropped (e.g., dual vars,
+  // variables belonging to other assemblers).
+  std::vector<std::vector<int>> RemapCliquesToLocal(
+      const std::vector<std::vector<int>>& global_cliques) const {
+    std::unordered_map<int, int> g2l;
+    for (int j = 0; j < static_cast<int>(primal_variables_.size()); ++j)
+      g2l[primal_variables_[j]] = j;
+    std::vector<std::vector<int>> local;
+    local.reserve(global_cliques.size());
+    for (const auto& clique : global_cliques) {
+      std::vector<int> lc;
+      for (int v : clique) {
+        auto it = g2l.find(v);
+        if (it != g2l.end()) lc.push_back(it->second);
+      }
+      std::sort(lc.begin(), lc.end());
+      if (!lc.empty()) local.push_back(std::move(lc));
+    }
+    return local;
+  }
+
+  // Map local column indices to global variable indices.
+  std::vector<int> RemapToGlobal(const std::vector<int>& local_vars) const {
+    std::vector<int> global;
+    global.reserve(local_vars.size());
+    for (int lc : local_vars) global.push_back(primal_variables_[lc]);
+    return global;
+  }
+
+  // Map a single local support to global (for get_cliques).
+  std::vector<int> LocalSupportToGlobal(const std::vector<int>& local) const {
+    std::vector<int> global;
+    global.reserve(local.size());
+    for (int lc : local) {
+      if (lc < static_cast<int>(primal_variables_.size()))
+        global.push_back(primal_variables_[lc]);
+    }
+    std::sort(global.begin(), global.end());
+    return global;
+  }
+
  protected:
   std::vector<int> primal_variables_;
   std::vector<int> dual_variables_;
