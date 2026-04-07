@@ -101,7 +101,7 @@ void RunComparison(int m, int n, int seed) {
   {
     auto [solver, cost_rhs] = BuildSolver(lp, vars);
     VectorXd W = VectorXd::Ones(m);
-    auto result = SolveGeodesicHybrid(*solver.solver(), cost_rhs, W, 50, 1e-8);
+    auto result = SolveGeodesicHybrid(*solver.solver(), cost_rhs, W, 50, 1e-8, true);
     PrintResult("Geodesic IPM (Hybrid)", result);
   }
 }
