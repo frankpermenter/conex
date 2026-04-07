@@ -458,10 +458,7 @@ GeodesicResult SolveGeodesicHybrid(
       kkt.SetWeights(weights);
       if (!kkt.AssembleAndFactor()) break;
       total_fac++;
-      if (verbose) {
-        printf("  %3d  %12.4e  %12.4e  %6d  %6d\n",
-               total_fac, gap, d_inf, r_updates_this_fac, total_sol);
-      }
+      result.iter_stats.push_back({gap / m, d_inf, d_sq, gap});
       r_updates_this_fac = 0;
     } else {
       // Shrink r only.
