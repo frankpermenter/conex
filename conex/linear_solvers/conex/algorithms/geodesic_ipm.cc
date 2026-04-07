@@ -295,7 +295,7 @@ GeodesicResult SolveGeodesicLPR(
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
     double k_new = GeodesicLineSearchR(kkt, cost_rhs, W, r);
     total_fac += 1;
-    total_sol += 1;
+    total_sol += 2;
     if (k_new <= k) break;
     k = k_new;
 
@@ -340,11 +340,11 @@ GeodesicResult SolveGeodesicLP(
   int total_sol = result.total_solves;
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
-    // Decompose: 1 factor + 1 solve (2-column).
+    // Decompose: 1 factor + 2 back-solves (packed as 2-column solve).
     Eigen::VectorXd d0, d1;
     ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
     total_fac += 1;
-    total_sol += 1;
+    total_sol += 2;
 
     // Line search for k.
     double k_new = std::numeric_limits<double>::max();
