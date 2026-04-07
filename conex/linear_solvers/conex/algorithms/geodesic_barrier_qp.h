@@ -1,8 +1,16 @@
 #pragma once
+#include <vector>
 #include <Eigen/Dense>
 #include "conex/common/kkt_solver_interface.h"
 
 namespace conex {
+
+struct GeodesicIterStats {
+  double mu;
+  double d_inf;
+  double d_sqr;
+  double complementarity;  // mu * (rank - d_sqr)
+};
 
 struct GeodesicResult {
   int iterations;
@@ -10,6 +18,7 @@ struct GeodesicResult {
   double d_sq_norm;    // final ||d||^2
   double mu;           // barrier parameter 1/k^2
   double complementarity;  // mu * (rank - ||d||^2)
+  std::vector<GeodesicIterStats> iter_stats;
 };
 
 // Run the geodesic centering iteration with fixed barrier parameter k = 1/sqrt(mu).
@@ -27,6 +36,17 @@ GeodesicResult GeodesicCenter(
     double k,
     int max_iterations,
     double tolerance,
+    bool verbose = false);
+
+// Run the full geodesic IPM: repeated line-search for k then center.
+// Returns per-outer-iteration stats for comparison with barrier method.
+GeodesicResult SolveGeodesicLP(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    Eigen::VectorXd& W,
+    int max_outer_iterations = 30,
+    int max_centering_steps = 1,
+    double tolerance = 1e-8,
     bool verbose = false);
 
 // Find the largest k such that ||d(k)||_inf <= 1, where d(k) = d0 + k * d1.

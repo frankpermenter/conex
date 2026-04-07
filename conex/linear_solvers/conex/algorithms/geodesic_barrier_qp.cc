@@ -137,4 +137,43 @@ double GeodesicLineSearch(
   return k_max;
 }
 
+GeodesicResult SolveGeodesicLP(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    Eigen::VectorXd& W,
+    int max_outer_iterations,
+    int max_centering_steps,
+    double tolerance,
+    bool verbose) {
+  double k = 1.0;
+  const int m = static_cast<int>(W.size());
+
+  // Initial centering at k = 1.
+  auto result = GeodesicCenter(kkt, cost_rhs, W, k, 100, 1e-12);
+  result.iter_stats.push_back({result.mu, result.d_inf_norm,
+                               result.d_sq_norm, result.complementarity});
+
+  for (int outer = 0; outer < max_outer_iterations; ++outer) {
+    double k_new = GeodesicLineSearch(kkt, cost_rhs, W);
+    if (k_new <= k) break;
+    k = k_new;
+
+    auto cr = GeodesicCenter(kkt, cost_rhs, W, k,
+                             max_centering_steps, 1e-12, verbose);
+    double mu = 1.0 / (k * k);
+    double s_dot_x = mu * (m - cr.d_sq_norm);
+
+    result.iter_stats.push_back({mu, cr.d_inf_norm, cr.d_sq_norm, s_dot_x});
+    result.iterations = outer + 1;
+    result.mu = mu;
+    result.d_inf_norm = cr.d_inf_norm;
+    result.d_sq_norm = cr.d_sq_norm;
+    result.complementarity = s_dot_x;
+
+    if (s_dot_x < tolerance) break;
+  }
+
+  return result;
+}
+
 }  // namespace conex

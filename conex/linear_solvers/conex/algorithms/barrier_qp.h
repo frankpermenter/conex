@@ -1,4 +1,5 @@
 #pragma once
+#include <vector>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
@@ -7,6 +8,12 @@ namespace conex {
 class Problem;
 class KKTSolverBase;
 
+struct IterationStats {
+  int newton_steps;      // Newton steps in this outer iteration
+  double duality_gap;    // m / t
+  double mu;             // 1 / t
+};
+
 struct BarrierQPResult {
   Eigen::VectorXd x;
   int outer_iterations;
@@ -14,6 +21,7 @@ struct BarrierQPResult {
   double objective;
   double duality_gap;
   double solve_time_us;
+  std::vector<IterationStats> iter_stats;
 };
 
 struct SolverRHS;

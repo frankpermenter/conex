@@ -49,8 +49,10 @@ BarrierQPResult SolveBarrierQP(
     double gap = static_cast<double>(m) / t;
     if (gap < tolerance) break;
 
+    int newton_this_outer = 0;
     for (int newton = 0; newton < max_newton_steps; ++newton) {
       result.total_newton_steps++;
+      newton_this_outer++;
 
       // Slacks: s = b - A x.
       kkt.MultiplyA(x, row);
@@ -128,6 +130,7 @@ BarrierQPResult SolveBarrierQP(
       x.AddScaled(alpha, dx);
     }
 
+    result.iter_stats.push_back({newton_this_outer, gap, 1.0 / t});
     t *= mu;
   }
 
