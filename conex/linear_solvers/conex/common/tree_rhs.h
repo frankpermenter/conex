@@ -191,19 +191,23 @@ struct SolverRHS {
   }
 };
 
-// Concatenated row-space vector for all linear constraints.
+// Concatenated row-space matrix for all linear constraints.
+// Single-column by default (backward compatible); supports n-column for
+// batched MultiplyA / AccumulateAtranspose / Solve.
 struct RowSpace {
-  Eigen::VectorXd data;
+  Eigen::MatrixXd data;
   std::vector<int> offsets;
   std::vector<int> sizes;
 
-  Eigen::Ref<Eigen::VectorXd> segment(int i) {
-    return data.segment(offsets[i], sizes[i]);
+  // Multi-column block for constraint i (rows x cols).
+  Eigen::Block<Eigen::MatrixXd> segment(int i) {
+    return data.block(offsets[i], 0, sizes[i], data.cols());
   }
-  Eigen::Ref<const Eigen::VectorXd> segment(int i) const {
-    return data.segment(offsets[i], sizes[i]);
+  const Eigen::Block<const Eigen::MatrixXd> segment(int i) const {
+    return data.block(offsets[i], 0, sizes[i], data.cols());
   }
-  int total_rows() const { return static_cast<int>(data.size()); }
+  int total_rows() const { return static_cast<int>(data.rows()); }
+  int cols() const { return static_cast<int>(data.cols()); }
   int num_constraints() const { return static_cast<int>(sizes.size()); }
   void SetZero() { data.setZero(); }
 

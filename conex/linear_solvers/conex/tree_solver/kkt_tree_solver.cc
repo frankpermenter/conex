@@ -1022,7 +1022,7 @@ SolverRHS T::MakeSolverRHS(int cols) {
   return rhs;
 }
 
-RowSpace T::MakeRowSpace() {
+RowSpace T::MakeRowSpace(int cols) {
   RowSpace rs;
   int offset = 0;
   for (auto* lc : linear_sub_assemblers_) {
@@ -1030,8 +1030,7 @@ RowSpace T::MakeRowSpace() {
     rs.sizes.push_back(lc->num_rows());
     offset += lc->num_rows();
   }
-  rs.data.resize(offset);
-  rs.data.setZero();
+  rs.data.setZero(offset, cols);
   return rs;
 }
 
@@ -1044,7 +1043,7 @@ void T::MultiplyA(const SolverRHS& x, RowSpace& out) {
   for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
     auto result = linear_sub_assemblers_[ci]->gram().MultiplyA(
         *x.supernodes, sep_read, nc);
-    out.segment(ci) = result.col(0);
+    out.segment(ci) = result.leftCols(out.cols());
   }
 }
 

@@ -23,7 +23,7 @@ BarrierQPResult SolveBarrierQP(
   const int nr = kkt.number_of_variables();
 
   RowSpace b_row = kkt.GetAffineTerm();
-  const Eigen::VectorXd& b = b_row.data;
+  const auto& b = b_row.data.col(0);
   const int m = b.size();
   result.total_newton_steps = 0;
   result.outer_iterations = 0;
@@ -55,7 +55,7 @@ BarrierQPResult SolveBarrierQP(
       // Slacks: s = b - A x.
       kkt.MultiplyA(x, row);
       row.data = b - row.data;  // #6: row.data now holds s
-      const Eigen::VectorXd& s = row.data;
+      const auto& s = row.data.col(0);
       if (s.minCoeff() <= 0) break;
 
       // Barrier weights: w_i = 1/(t * s_i^2).

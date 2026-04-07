@@ -55,7 +55,7 @@ class GpuTreeSolver : public KKTSolverBase {
   int number_of_variables() const override { return num_vars_; }
 
   // Generic interface stubs (GPU solver uses raw matrix path, not constraints).
-  RowSpace MakeRowSpace() override { return {}; }
+  RowSpace MakeRowSpace(int /*cols*/ = 1) override { return {}; }
   void MultiplyA(const SolverRHS&, RowSpace&) override {}
   void AccumulateAtranspose(const RowSpace&, SolverRHS&) override {}
   void AccumulateQx(const SolverRHS&, SolverRHS&) override {}

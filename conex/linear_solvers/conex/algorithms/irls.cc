@@ -51,7 +51,7 @@ IRLSResult SolveIRLS(
 
     // RHS = A^T W b.
     RowSpace wb = kkt->MakeRowSpace();
-    wb.data = w.data.asDiagonal() * b_internal.data;
+    wb.data.col(0) = w.data.col(0).asDiagonal() * b_internal.data.col(0);
     rhs.SetZero();
     kkt->AccumulateAtranspose(wb, rhs);
 
@@ -61,7 +61,7 @@ IRLSResult SolveIRLS(
 
     // Residual: r = Ax - b.
     kkt->MultiplyA(x, row);
-    Eigen::VectorXd r = row.data - b_internal.data;
+    Eigen::VectorXd r = row.data.col(0) - b_internal.data.col(0);
     double obj = r.lpNorm<1>();
 
     if (std::abs(prev_obj - obj) < tolerance * std::abs(obj) + 1e-15) {
@@ -80,7 +80,7 @@ IRLSResult SolveIRLS(
   x.supernodes->GatherInto(x_final);
   result.x = expansion.Expand(x_final);
   kkt->MultiplyA(x, row);
-  result.l1_objective = (row.data - b_internal.data).lpNorm<1>();
+  result.l1_objective = (row.data.col(0) - b_internal.data.col(0)).lpNorm<1>();
   result.solve_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
   return result;

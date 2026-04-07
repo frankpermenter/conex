@@ -41,23 +41,25 @@ class DenseKKTSolver : public KKTSolverBase {
 
   // --- Generic KKTSolverBase overrides ---
 
-  RowSpace MakeRowSpace() override {
+  RowSpace MakeRowSpace(int cols = 1) override {
     RowSpace rs;
-    if (has_constraints_) rs.data.setZero(A_.rows());
+    if (has_constraints_) rs.data.setZero(A_.rows(), cols);
     return rs;
   }
 
   void MultiplyA(const SolverRHS& x, RowSpace& out) override {
     if (!has_constraints_) return;
-    Eigen::VectorXd xv(n_);
+    int nc = out.cols();
+    Eigen::MatrixXd xv(n_, nc);
     x.supernodes->GatherInto(xv);
     out.data = A_ * xv;
   }
 
   void AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) override {
     if (!has_constraints_) return;
-    Eigen::VectorXd atv = A_.transpose() * v.data;
-    Eigen::MatrixXd cur(n_, 1);
+    Eigen::MatrixXd atv = A_.transpose() * v.data;
+    int nc = atv.cols();
+    Eigen::MatrixXd cur(n_, nc);
     rhs.supernodes->GatherInto(cur);
     cur += atv;
     rhs.supernodes->ScatterFrom(cur);
@@ -78,13 +80,13 @@ class DenseKKTSolver : public KKTSolverBase {
 
   void SetWeights(const RowSpace& w) override {
     if (!has_constraints_) return;
-    weights_ = w.data;
+    weights_ = w.data.col(0);
     M_ = Q_ + A_.transpose() * weights_.asDiagonal() * A_;
   }
 
   RowSpace GetAffineTerm() override {
     RowSpace rs;
-    if (has_constraints_) rs.data = b_;
+    if (has_constraints_) rs.data = b_.reshaped(b_.size(), 1);
     return rs;
   }
 

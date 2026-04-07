@@ -2039,13 +2039,13 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   VectorXd Ax_ref(9);
   Ax_ref.head(5) = A1 * x_ref;
   Ax_ref.tail(4) = A2 * x_ref;
-  double err_multiply_a = (row.data - Ax_ref).norm() / Ax_ref.norm();
+  double err_multiply_a = (row.data.col(0) - Ax_ref).norm() / Ax_ref.norm();
   EXPECT_LT(err_multiply_a, 1e-10);
 
   // --- Test generic interface: AccumulateAtranspose ---
   VectorXd v = VectorXd::Random(9);
   RowSpace v_row = kkt->MakeRowSpace();
-  v_row.data = v;
+  v_row.data.col(0) = v;
   auto atv_rhs = kkt->MakeSolverRHS();
   atv_rhs.SetZero();
   kkt->AccumulateAtranspose(v_row, atv_rhs);
@@ -2057,6 +2057,47 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
   VectorXd atv_ref = A1.transpose() * v.head(5) + A2.transpose() * v.tail(4);
   double err_at = (atv_sol - atv_ref).norm() / atv_ref.norm();
   EXPECT_LT(err_at, 1e-10);
+
+  // --- Test multi-column MultiplyA ---
+  {
+    VectorXd x2 = VectorXd::Random(n);
+    auto x_mc = kkt->MakeSolverRHS(2);
+    // Pack two columns: col0 = x_ref, col1 = x2.
+    auto tmp0 = kkt->MakeSolverRHS();
+    tmp0 = kkt->MakeBlockVariable(x_ref);
+    auto tmp1 = kkt->MakeSolverRHS();
+    tmp1 = kkt->MakeBlockVariable(x2);
+    // Gather into dense, build 2-col, scatter back.
+    Eigen::MatrixXd dense_x(n, 2);
+    tmp0.supernodes->GatherInto(dense_x.col(0));
+    tmp1.supernodes->GatherInto(dense_x.col(1));
+    x_mc.supernodes->ScatterFrom(dense_x);
+    x_mc.blocks_fully_gathered = true;
+
+    auto row_mc = kkt->MakeRowSpace(2);
+    kkt->MultiplyA(x_mc, row_mc);
+
+    // Dense reference.
+    Eigen::MatrixXd A_stacked(9, n);
+    A_stacked.topRows(5) = A1;
+    A_stacked.bottomRows(4) = A2;
+    Eigen::MatrixXd Ax_mc_ref = A_stacked * dense_x;
+    double err_mc_a = (row_mc.data - Ax_mc_ref).norm() / Ax_mc_ref.norm();
+    EXPECT_LT(err_mc_a, 1e-10);
+
+    // --- Test multi-column AccumulateAtranspose ---
+    auto atv_mc = kkt->MakeSolverRHS(2);
+    atv_mc.SetZero();
+    kkt->AccumulateAtranspose(row_mc, atv_mc);
+    solver.tree_solver()->GatherSeparators(atv_mc);
+    Eigen::MatrixXd atv_mc_sol(n, 2);
+    atv_mc.supernodes->GatherInto(atv_mc_sol);
+    Eigen::MatrixXd atv_mc_ref = A_stacked.transpose() * Ax_mc_ref;
+    double err_mc_at = (atv_mc_sol - atv_mc_ref).norm() / atv_mc_ref.norm();
+    EXPECT_LT(err_mc_at, 1e-10);
+
+    printf("  multi-col: A*x=%.2e, A'v=%.2e\n", err_mc_a, err_mc_at);
+  }
 
   // --- Test generic interface: AccumulateQx ---
   auto qx_rhs = kkt->MakeSolverRHS();

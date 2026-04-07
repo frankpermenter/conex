@@ -341,14 +341,14 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
 
   // --- KKTSolverBase overrides ---
   SolverRHS MakeSolverRHS(int cols = 1) override;
-  RowSpace MakeRowSpace() override;
+  RowSpace MakeRowSpace(int cols = 1) override;
   void MultiplyA(const SolverRHS& x, RowSpace& out) override;
   void AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) override;
   void AccumulateQx(const SolverRHS& x, SolverRHS& rhs) override;
   void SetWeights(const RowSpace& w) override;
   RowSpace GetAffineTerm() override;
   // Gather unscattered separator data into supernode blocks.
-  void GatherSeparators(SolverRHS& rhs) {
+  void GatherSeparators(SolverRHS& rhs) override {
     GatherSeparators(*rhs.supernodes, *rhs.separators);
     rhs.blocks_fully_gathered = true;
   }

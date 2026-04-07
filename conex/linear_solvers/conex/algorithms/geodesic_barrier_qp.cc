@@ -12,7 +12,7 @@ GeodesicResult GeodesicCenter(
     int max_iterations,
     double tolerance) {
   RowSpace b_row = kkt.GetAffineTerm();
-  const Eigen::VectorXd& b = b_row.data;
+  const auto& b = b_row.data.col(0);
   const int m = b.size();
 
   auto y = kkt.MakeSolverRHS();
@@ -75,8 +75,9 @@ double GeodesicLineSearch(
     const SolverRHS& cost_rhs,
     const Eigen::VectorXd& W) {
   RowSpace b_row = kkt.GetAffineTerm();
-  const Eigen::VectorXd& b = b_row.data;
+  const Eigen::VectorXd& b = b_row.data.col(0);
   const int m = b.size();
+  const int n = kkt.number_of_variables();
 
   // Factor A^T diag(W^2) A (same Gram for all k).
   RowSpace weights = kkt.MakeRowSpace();
@@ -85,39 +86,50 @@ double GeodesicLineSearch(
   kkt.SetWeights(weights);
   kkt.AssembleAndFactor();
 
+  // Build two RHS vectors as single-column SolverRHS.
+  //   rhs0 = A^T(2W)
+  //   rhs1 = cost + A^T(W^2 .* b)
   RowSpace v = kkt.MakeRowSpace();
-  auto row = kkt.MakeRowSpace();
 
-  // Solve for y0: G * y0 = A^T(2W).
-  auto y0 = kkt.MakeSolverRHS();
-  y0.SetZero();
+  auto rhs0 = kkt.MakeSolverRHS();
+  rhs0.SetZero();
   for (int i = 0; i < m; ++i)
     v.data(i) = 2.0 * W(i);
-  kkt.AccumulateAtranspose(v, y0);
-  kkt.SolveSolverRHS(y0);
+  kkt.AccumulateAtranspose(v, rhs0);
 
-  // Solve for y1: G * y1 = cost + A^T(W^2 .* b).
-  auto y1 = kkt.MakeSolverRHS();
-  y1 = cost_rhs;
+  auto rhs1 = kkt.MakeSolverRHS();
+  rhs1 = cost_rhs;
   for (int i = 0; i < m; ++i)
     v.data(i) = W(i) * W(i) * b(i);
-  kkt.AccumulateAtranspose(v, y1);
-  kkt.SolveSolverRHS(y1);
+  kkt.AccumulateAtranspose(v, rhs1);
 
-  // d0 = 1 - W .* A*y0,  d1 = W .* (b - A*y1).
-  kkt.MultiplyA(y0, row);
-  Eigen::VectorXd d0(m);
-  for (int i = 0; i < m; ++i)
-    d0(i) = 1.0 - W(i) * row.data(i);
+  // Pack into 2-column SolverRHS via dense gather/scatter.
+  Eigen::MatrixXd dense_rhs(n, 2);
+  // Gather separators into supernode blocks first.
+  kkt.GatherSeparators(rhs0);
+  kkt.GatherSeparators(rhs1);
+  rhs0.supernodes->GatherInto(dense_rhs.col(0));
+  rhs1.supernodes->GatherInto(dense_rhs.col(1));
 
-  kkt.MultiplyA(y1, row);
-  Eigen::VectorXd d1(m);
-  for (int i = 0; i < m; ++i)
-    d1(i) = W(i) * (b(i) - row.data(i));
+  auto y = kkt.MakeSolverRHS(2);
+  y.supernodes->ScatterFrom(dense_rhs);
+  y.blocks_fully_gathered = true;
+
+  // Single 2-column solve.
+  kkt.SolveSolverRHS(y);
+
+  // Single 2-column MultiplyA.
+  auto row = kkt.MakeRowSpace(2);
+  kkt.MultiplyA(y, row);
+
+  // d0 = 1 - W .* (Ay)_col0,  d1 = W .* (b - (Ay)_col1).
+  Eigen::VectorXd d0(m), d1(m);
+  for (int i = 0; i < m; ++i) {
+    d0(i) = 1.0 - W(i) * row.data(i, 0);
+    d1(i) = W(i) * (b(i) - row.data(i, 1));
+  }
 
   // Find largest k > 0 with |d0_i + k * d1_i| <= 1 for all i.
-  //   d1_i > 0:  k <= (1 - d0_i) / d1_i
-  //   d1_i < 0:  k <= (-1 - d0_i) / d1_i
   double k_max = std::numeric_limits<double>::max();
   for (int i = 0; i < m; ++i) {
     if (d1(i) > 0) {
