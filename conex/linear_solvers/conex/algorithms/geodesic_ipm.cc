@@ -472,11 +472,6 @@ GeodesicResult SolveGeodesicHybrid(
     }
   }
 
-  if (verbose) {
-    printf("  %3d  %12.4e  %12.4e  %6d  %6d\n",
-           total_fac, gap, d_inf, r_updates_this_fac, total_sol);
-  }
-
   result.iter_stats.push_back({gap / m, d_inf, d_sq, gap});
   result.d_inf_norm = d_inf;
   result.d_sq_norm = d_sq;
