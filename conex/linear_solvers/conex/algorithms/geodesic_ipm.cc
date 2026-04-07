@@ -454,7 +454,7 @@ GeodesicResult SolveGeodesicHybrid(
 
     if (std::abs(gap) < tolerance && min_slack > -tolerance) break;
 
-    if (min_slack < -tolerance) {
+    if (gap < 0) {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       W = W.cwiseProduct((alpha * d_vec).array().exp().matrix());
       weights.col() = W.cwiseProduct(W);
