@@ -1,3 +1,38 @@
+// Geodesic interior-point method for linear programs.
+//
+// Parameterization
+// ----------------
+// The primal slack s and dual variable lambda are parameterized on the
+// central path via a weight vector W = exp(v):
+//
+//   s(mu)      = sqrt(mu) * exp(-v)
+//   lambda(mu) = sqrt(mu) * exp(v)
+//
+// so that s * lambda = mu identically.  The weight W_i = exp(v_i) is the
+// sole state variable; mu = 1/k^2 is the barrier parameter.
+//
+// Newton step
+// -----------
+// A Newton step computes a direction d in v-space.  The linearizations
+//
+//   exp(v - d) ≈ exp(v) (1 - d)      (primal slack update)
+//   exp(v + d) ≈ exp(v) (1 + d)      (dual variable update)
+//
+// lead to the KKT system (A^T diag(W^2) A) y = RHS, from which d is
+// recovered as d = 1 + W .* (k*b - A*y).  The centering term "1"
+// pulls s*lambda toward mu; the A*y term moves toward optimality.
+//
+// The geodesic update W *= exp(alpha * d) preserves positivity and
+// corresponds to a step along the geodesic on the manifold of positive
+// diagonal scalings.
+//
+// Convergence
+// -----------
+// At the central path, d = 0 and complementarity = mu * m.  The step
+// size alpha = min(1, 2/||d||^2_inf) ensures convergence.  The line
+// search for k exploits d(k) = d0 + k * d1 (affine in k) to find the
+// largest k with ||d||_inf <= 1 analytically.
+
 #pragma once
 #include <vector>
 #include <Eigen/Dense>
