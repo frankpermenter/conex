@@ -7,6 +7,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/barrier_qp.h"
+#include "conex/algorithms/geodesic_barrier_qp.h"
 #include "conex/algorithms/irls.h"
 #include "conex/algorithms/lqr_tree_solver.h"
 #include "conex/common/clique_ordering.h"
@@ -241,6 +242,110 @@ TEST(BarrierQP, MultipleConstraints) {
          "%d outer, %d newton\n",
          result.objective, result.x(0), result.x(1), result.duality_gap,
          result.outer_iterations, result.total_newton_steps);
+}
+
+// =====================================================================
+// Geodesic centering tests
+// =====================================================================
+
+TEST(GeodesicBarrierQP, CentralPathConvergence) {
+  // Test: min c^T x  s.t. Ax >= b,  with b = ones(m), c = A^T ones(m).
+  //
+  // Central path at x=0: s = Ax - b = -b, but with the >= convention
+  // s = Ax - b.  At x=0, s = -b = -1 (infeasible).
+  //
+  // Actually, for >= constraint with slack s = Ax - b >= 0, we need
+  // Ax >= b.  At x=0 with b=1 that fails.  So the central path is at
+  // some x_* where s = A x_* - 1 = 1.  But x doesn't matter because
+  // the geodesic iteration only tracks W.
+  //
+  // At W = ones, k = 1 (in the API's stored -A, -b):
+  //   RHS = cost + (-A)^T(-1 + 2) = A^T 1 - A^T 1 = 0  =>  y = 0
+  //   d   = 1 + 1*(-1 - 0) = 0  for every row
+  //
+  // So W = ones is a fixed point for any A.  Perturb and verify d -> 0.
+  srand(42);
+  const int n = 5, m = 8;
+
+  // Arbitrary A (rectangular, need not be square).
+  std::vector<Eigen::Triplet<double>> trips;
+  MatrixXd A_dense = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  for (int i = 0; i < m; ++i)
+    for (int j = 0; j < n; ++j)
+      trips.emplace_back(i, j, A_dense(i, j));
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  // Model Ax >= b via -Ax <= -b.
+  Eigen::SparseMatrix<double> negA = -A;
+  VectorXd neg_b = -b;
+  Problem problem;
+  problem.AddLinearConstraint(negA, neg_b, vars);
+  auto [reduced, expansion] = Preprocess(problem);
+  auto solver = Solver::Build(reduced);
+  auto* kkt = solver.solver();
+
+  auto cost_rhs = kkt->MakeSolverRHS();
+  VectorXd c_r = expansion.Reduce(c);
+  cost_rhs = kkt->MakeBlockVariable(c_r);
+
+  // Initialize W = ones + small perturbation.
+  VectorXd W = VectorXd::Ones(m) + 0.01 * VectorXd::Random(m);
+
+  // Phase 1: center at k = 1.
+  double k = 1.0;
+  auto result = GeodesicCenter(*kkt, cost_rhs, W, k, 100, 1e-10);
+
+  printf("k=%.2f: %d iters, ||d||_inf=%.2e\n",
+         k, result.iterations, result.d_inf_norm);
+  EXPECT_LT(result.d_inf_norm, 1e-8);
+  EXPECT_NEAR((W - VectorXd::Ones(m)).lpNorm<Eigen::Infinity>(), 0.0, 1e-6);
+
+  // Phase 2: line-search for k, then re-center.
+  const int num_updates = 6;
+  for (int step = 0; step < num_updates; ++step) {
+    double k_new = GeodesicLineSearch(*kkt, cost_rhs, W);
+    EXPECT_GE(k_new, k);
+
+    // Verify |d(k_new)|_inf = 1 by evaluating d at k_new before centering.
+    // Reuse the factorization from the line search (weights unchanged).
+    {
+      auto y_check = kkt->MakeSolverRHS();
+      auto row_check = kkt->MakeRowSpace();
+      RowSpace v_check = kkt->MakeRowSpace();
+      y_check = cost_rhs;
+      y_check *= k_new;
+      RowSpace b_api = kkt->GetAffineTerm();
+      for (int i = 0; i < m; ++i)
+        v_check.data(i) = k_new * W(i) * W(i) * b_api.data(i) + 2.0 * W(i);
+      kkt->AccumulateAtranspose(v_check, y_check);
+      kkt->SolveSolverRHS(y_check);
+      kkt->MultiplyA(y_check, row_check);
+      double d_inf_check = 0;
+      for (int i = 0; i < m; ++i) {
+        double di = 1.0 + W(i) * (k_new * b_api.data(i) - row_check.data(i));
+        d_inf_check = std::max(d_inf_check, std::abs(di));
+      }
+      EXPECT_NEAR(d_inf_check, 1.0, 1e-10);
+    }
+
+    k = k_new;
+    result = GeodesicCenter(*kkt, cost_rhs, W, k, 100, 1e-10);
+    printf("k=%.4f: %d iters, ||d||_inf=%.2e, ||W||_inf=%.4f\n",
+           k, result.iterations, result.d_inf_norm,
+           W.lpNorm<Eigen::Infinity>());
+    EXPECT_LT(result.d_inf_norm, 1e-8);
+  }
+
+  // After increasing k, W should have moved away from ones
+  // (tracking the central path as mu shrinks).
+  EXPECT_GT((W - VectorXd::Ones(m)).lpNorm<Eigen::Infinity>(), 0.01);
 }
 
 // =====================================================================
