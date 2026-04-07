@@ -62,9 +62,7 @@ class SparseLinearConstraintAssembler : public CliqueProvider {
       std::unique_ptr<SparseLinearConstraint> slc,
       const std::vector<int>& all_variables);
 
-  std::vector<std::vector<int>> get_cliques() const override {
-    return {slc_->row_supports().begin(), slc_->row_supports().end()};
-  }
+  std::vector<std::vector<int>> get_cliques() const override;
 
   // Access underlying data (e.g. for Preprocess).
   const Eigen::SparseMatrix<double>& sparse_matrix() const { return slc_->A(); }

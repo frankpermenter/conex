@@ -137,17 +137,24 @@ SparseLinearConstraint::GetConstraints(
 std::vector<SparseLinearConstraint::RowGroup>
 SparseLinearConstraintAssembler::DecomposeRaw(
     const std::vector<std::vector<int>>& maximal_cliques) const {
-  const int num_cols = slc_->A().cols();
-  std::vector<std::vector<int>> primal_cliques;
-  primal_cliques.reserve(maximal_cliques.size());
+  // Remap global → local for GetConstraints.
+  const auto& pv = primal_variables();
+  std::unordered_map<int, int> global_to_local;
+  for (int j = 0; j < static_cast<int>(pv.size()); ++j)
+    global_to_local[pv[j]] = j;
+
+  std::vector<std::vector<int>> local_cliques;
+  local_cliques.reserve(maximal_cliques.size());
   for (const auto& clique : maximal_cliques) {
-    std::vector<int> filtered;
+    std::vector<int> local;
     for (int v : clique) {
-      if (v < num_cols) filtered.push_back(v);
+      auto it = global_to_local.find(v);
+      if (it != global_to_local.end()) local.push_back(it->second);
     }
-    if (!filtered.empty()) primal_cliques.push_back(std::move(filtered));
+    std::sort(local.begin(), local.end());
+    if (!local.empty()) local_cliques.push_back(std::move(local));
   }
-  return slc_->GetConstraints(primal_cliques);
+  return slc_->GetConstraints(local_cliques);
 }
 
 SparseLinearConstraintAssembler::SparseLinearConstraintAssembler(
@@ -155,27 +162,45 @@ SparseLinearConstraintAssembler::SparseLinearConstraintAssembler(
     const std::vector<int>& all_variables)
     : CliqueProvider(all_variables), slc_(std::move(slc)) {}
 
+std::vector<std::vector<int>>
+SparseLinearConstraintAssembler::get_cliques() const {
+  // Map local column indices to global primal variable indices.
+  const auto& pv = primal_variables();
+  std::vector<std::vector<int>> cliques;
+  for (const auto& local_support : slc_->row_supports()) {
+    std::vector<int> global;
+    global.reserve(local_support.size());
+    for (int lc : local_support) {
+      if (lc < static_cast<int>(pv.size())) global.push_back(pv[lc]);
+    }
+    std::sort(global.begin(), global.end());
+    cliques.push_back(std::move(global));
+  }
+  return cliques;
+}
+
 std::vector<SupernodalAssemblerBase*>
 SparseLinearConstraintAssembler::Decompose(
     const std::vector<std::vector<int>>& maximal_cliques) {
-  // Filter maximal cliques to only include primal variables (< A.cols()).
-  // MakeTreeSolver may produce cliques containing dual variable indices
-  // from equality constraints, which are beyond the SLC's column range.
-  const int num_cols = slc_->A().cols();
-  std::vector<std::vector<int>> primal_cliques;
-  primal_cliques.reserve(maximal_cliques.size());
+  // Remap global variable indices in maximal_cliques to local column
+  // indices for GetConstraints (which uses local supports internally).
+  const auto& pv = primal_variables();
+  std::unordered_map<int, int> global_to_local;
+  for (int j = 0; j < static_cast<int>(pv.size()); ++j)
+    global_to_local[pv[j]] = j;
+
+  std::vector<std::vector<int>> local_cliques;
+  local_cliques.reserve(maximal_cliques.size());
   for (const auto& clique : maximal_cliques) {
-    std::vector<int> filtered;
+    std::vector<int> local;
     for (int v : clique) {
-      if (v < num_cols) {
-        filtered.push_back(v);
-      }
+      auto it = global_to_local.find(v);
+      if (it != global_to_local.end()) local.push_back(it->second);
     }
-    if (!filtered.empty()) {
-      primal_cliques.push_back(std::move(filtered));
-    }
+    std::sort(local.begin(), local.end());
+    if (!local.empty()) local_cliques.push_back(std::move(local));
   }
-  auto groups = slc_->GetConstraints(primal_cliques);
+  auto groups = slc_->GetConstraints(local_cliques);
 
   // Build row mapping: global row → (constraint index, local row).
   num_global_rows_ = slc_->A().rows();
@@ -184,8 +209,13 @@ SparseLinearConstraintAssembler::Decompose(
   std::vector<SupernodalAssemblerBase*> result;
   int constraint_index = 0;
   for (auto& group : groups) {
+    // Remap group variables from local back to global.
+    std::vector<int> global_vars;
+    global_vars.reserve(group.variables.size());
+    for (int lc : group.variables) global_vars.push_back(pv[lc]);
+
     auto constraint = std::make_unique<LinearConstraint>(group.A, group.b);
-    constraint->SetPrimalVariables(group.variables);
+    constraint->SetPrimalVariables(global_vars);
 
     // Record row mapping.
     for (int local = 0; local < static_cast<int>(group.global_rows.size());

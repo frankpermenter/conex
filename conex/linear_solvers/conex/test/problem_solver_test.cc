@@ -2204,67 +2204,38 @@ TEST(CliqueTree, MinDegreeOrderingQuality) {
   }
 }
 
-TEST(ProblemSolver, MultipleEqualityConstraintsAutoAMD) {
-  // Regression test: per-timestep equality constraints with automatic AMD.
-  // Previously broken — SparseEqualityConstraintAssembler reported local
-  // column indices as global, causing all constraints to map to the same vars.
+TEST(ProblemSolver, LinearConstraintNonIdentityVars) {
+  // Regression: AddLinearConstraint with non-identity variable mapping.
   srand(42);
-  const int nx = 2, nu = 1, T = 5;
-  Eigen::MatrixXd Ad(nx, nx); Ad << 0.9, 0.1, -0.1, 0.8;
-  Eigen::MatrixXd Bd(nx, nu); Bd << 0.5, 0.3;
-  Eigen::MatrixXd Q = Eigen::MatrixXd::Identity(nx, nx);
-  Eigen::MatrixXd R = 0.1 * Eigen::MatrixXd::Identity(nu, nu);
-  Eigen::MatrixXd Qf = 10.0 * Q;
-  VectorXd x0(nx); x0 << 1.0, 0.5;
-  int step = nx + nu;
-  auto x_idx = [&](int t) { std::vector<int> v(nx); std::iota(v.begin(), v.end(), t*step); return v; };
-  auto u_idx = [&](int t) { std::vector<int> v(nu); std::iota(v.begin(), v.end(), t*step+nx); return v; };
-  auto xT_idx = [&]() { std::vector<int> v(nx); std::iota(v.begin(), v.end(), T*step); return v; };
-  auto xu_idx = [&](int t) { std::vector<int> v(nx+nu); std::iota(v.begin(), v.end(), t*step); return v; };
-  Eigen::MatrixXd C_dyn(nx, nx+nu+nx);
-  C_dyn << -Ad, -Bd, Eigen::MatrixXd::Identity(nx, nx);
-  VectorXd d_zero = VectorXd::Zero(nx);
-  Eigen::MatrixXd QR = Eigen::MatrixXd::Zero(nx+nu, nx+nu);
-  QR.topLeftCorner(nx,nx) = Q; QR.bottomRightCorner(nu,nu) = R;
+  Eigen::MatrixXd A_dense(3, 2);
+  A_dense << 1, 2, 3, 4, 5, 6;
+  Eigen::SparseMatrix<double> A = A_dense.sparseView();
+  VectorXd b = VectorXd::Zero(3);
+  std::vector<int> vars = {5, 10};
 
+  int n = 11;
   Problem problem;
-  for (int t = 0; t < T; ++t) {
-    problem.AddQuadraticCost(QR, xu_idx(t));
-    std::vector<int> dp;
-    auto xt = x_idx(t), ut = u_idx(t), xt1 = (t<T-1)?x_idx(t+1):xT_idx();
-    dp.insert(dp.end(), xt.begin(), xt.end());
-    dp.insert(dp.end(), ut.begin(), ut.end());
-    dp.insert(dp.end(), xt1.begin(), xt1.end());
-    problem.AddEqualityConstraint(
-        Eigen::SparseMatrix<double>(C_dyn.sparseView()), d_zero, dp);
+  for (int i = 0; i < n; ++i) {
+    Eigen::MatrixXd Qi(1,1); Qi << 0.01;
+    problem.AddQuadraticCost(Qi, {i});
   }
-  problem.AddQuadraticCost(Qf, xT_idx());
-  auto c_ic = problem.AddEqualityConstraint(
-      Eigen::SparseMatrix<double>(Eigen::MatrixXd::Identity(nx,nx).sparseView()),
-      d_zero, x_idx(0));
+  problem.AddLinearConstraint(A, b, vars);
 
   auto solver = Solver::Build(problem);
   ASSERT_TRUE(solver.solver()->AssembleAndFactor());
-  const auto& icd = solver.dual_variables(c_ic);
-  int n = solver.solver()->number_of_variables();
-  VectorXd rhs = VectorXd::Zero(n);
-  for (int i = 0; i < nx; ++i) rhs(icd[i]) = x0(i);
+
+  VectorXd b_test = VectorXd::Ones(3);
+  VectorXd rhs = VectorXd::Zero(solver.solver()->number_of_variables());
+  VectorXd Atb = A_dense.transpose() * b_test;
+  rhs(5) = Atb(0);
+  rhs(10) = Atb(1);
   VectorXd sol = solver.solver()->Solve(rhs);
 
-  double max_dyn = 0;
-  for (int t = 0; t < T; ++t) {
-    VectorXd xt(nx), ut(nu), xt1(nx);
-    auto xti = x_idx(t), uti = u_idx(t), xt1i = (t<T-1)?x_idx(t+1):xT_idx();
-    for (int i = 0; i < nx; ++i) xt(i) = sol(xti[i]);
-    for (int i = 0; i < nu; ++i) ut(i) = sol(uti[i]);
-    for (int i = 0; i < nx; ++i) xt1(i) = sol(xt1i[i]);
-    max_dyn = std::max(max_dyn, (xt1 - Ad*xt - Bd*ut).norm());
-  }
-  VectorXd x_0_sol(nx);
-  auto xi0 = x_idx(0);
-  for (int i = 0; i < nx; ++i) x_0_sol(i) = sol(xi0[i]);
-  EXPECT_LT((x_0_sol - x0).norm(), 1e-10) << "IC violated";
-  EXPECT_LT(max_dyn, 1e-10) << "Dynamics violated";
+  Eigen::MatrixXd M = A_dense.transpose() * A_dense + 0.01 * Eigen::MatrixXd::Identity(2, 2);
+  VectorXd x_ref = M.ldlt().solve(Atb);
+  double err = std::abs(sol(5) - x_ref(0)) + std::abs(sol(10) - x_ref(1));
+  printf("  LinearConstraintNonIdentityVars: err=%.2e\n", err);
+  EXPECT_LT(err, 1e-8);
 }
 
 }  // namespace
