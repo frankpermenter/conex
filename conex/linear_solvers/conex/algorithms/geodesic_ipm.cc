@@ -1,4 +1,4 @@
-#include "conex/algorithms/geodesic_barrier_qp.h"
+#include "conex/algorithms/geodesic_ipm.h"
 
 #include <cmath>
 #include <cstdio>

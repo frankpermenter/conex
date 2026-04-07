@@ -89,7 +89,7 @@ target_link_libraries(sparse_linear_constraint PUBLIC constraints kkt_solver_fac
 add_library(algorithms
   conex/algorithms/irls.cc
   conex/algorithms/barrier_qp.cc
-  conex/algorithms/geodesic_barrier_qp.cc
+  conex/algorithms/geodesic_ipm.cc
   conex/algorithms/least_squares.cc
   conex/algorithms/equality_constrained_least_squares.cc
   conex/algorithms/finite_horizon.cc

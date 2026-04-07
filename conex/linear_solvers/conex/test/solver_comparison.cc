@@ -13,7 +13,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/barrier_qp.h"
-#include "conex/algorithms/geodesic_barrier_qp.h"
+#include "conex/algorithms/geodesic_ipm.h"
 #include "conex/common/problem.h"
 #include "conex/common/solver.h"
 

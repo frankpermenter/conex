@@ -7,7 +7,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/barrier_qp.h"
-#include "conex/algorithms/geodesic_barrier_qp.h"
+#include "conex/algorithms/geodesic_ipm.h"
 #include "conex/algorithms/irls.h"
 #include "conex/algorithms/lqr_tree_solver.h"
 #include "conex/common/clique_ordering.h"
