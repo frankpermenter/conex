@@ -53,6 +53,8 @@ struct GeodesicResult {
   double d_sq_norm;    // final ||d||^2
   double mu;           // barrier parameter 1/k^2
   double complementarity;  // mu * (rank - ||d||^2)
+  int total_factorizations = 0;
+  int total_solves = 0;
   std::vector<GeodesicIterStats> iter_stats;
 };
 

@@ -56,6 +56,8 @@ GeodesicResult GeodesicCenter(
     double s_dot_x = mu * (m - d_sq);
 
     result.iterations = iter + 1;
+    result.total_factorizations = iter + 1;
+    result.total_solves = iter + 1;
     result.d_inf_norm = d_inf;
     result.d_sq_norm = d_sq;
     result.complementarity = s_dot_x;
@@ -231,6 +233,8 @@ GeodesicResult GeodesicCenterR(
         Eigen::VectorXd::Ones(m) - d.cwiseProduct(d));
 
     result.iterations = iter + 1;
+    result.total_factorizations = iter + 1;
+    result.total_solves = iter + 1;
     result.d_inf_norm = d_inf;
     result.d_sq_norm = d_sq;
     result.mu = s_dot_x / m;
@@ -285,14 +289,20 @@ GeodesicResult SolveGeodesicLPR(
   result.iter_stats.push_back({result_init.mu, result_init.d_inf_norm,
                                result_init.d_sq_norm,
                                result_init.complementarity});
+  int total_fac = result_init.total_factorizations;
+  int total_sol = result_init.total_solves;
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
     double k_new = GeodesicLineSearchR(kkt, cost_rhs, W, r);
+    total_fac += 1;
+    total_sol += 1;
     if (k_new <= k) break;
     k = k_new;
 
     auto cr = GeodesicCenterR(kkt, cost_rhs, W, r, k,
                               max_centering_steps, 1e-12, verbose);
+    total_fac += cr.total_factorizations;
+    total_sol += cr.total_solves;
 
     result.iter_stats.push_back({cr.mu, cr.d_inf_norm,
                                  cr.d_sq_norm, cr.complementarity});
@@ -301,6 +311,8 @@ GeodesicResult SolveGeodesicLPR(
     result.d_inf_norm = cr.d_inf_norm;
     result.d_sq_norm = cr.d_sq_norm;
     result.complementarity = cr.complementarity;
+    result.total_factorizations = total_fac;
+    result.total_solves = total_sol;
 
     if (cr.complementarity < tolerance && cr.complementarity > 0) break;
   }
@@ -323,14 +335,23 @@ GeodesicResult SolveGeodesicLP(
   auto result = GeodesicCenter(kkt, cost_rhs, W, k, 100, 1e-12);
   result.iter_stats.push_back({result.mu, result.d_inf_norm,
                                result.d_sq_norm, result.complementarity});
+  // initial center: N factors + N solves
+  int total_fac = result.total_factorizations;
+  int total_sol = result.total_solves;
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
+    // Line search: 1 factor + 1 solve (2-column).
     double k_new = GeodesicLineSearch(kkt, cost_rhs, W);
+    total_fac += 1;
+    total_sol += 1;
     if (k_new <= k) break;
     k = k_new;
 
     auto cr = GeodesicCenter(kkt, cost_rhs, W, k,
                              max_centering_steps, 1e-12, verbose);
+    total_fac += cr.total_factorizations;
+    total_sol += cr.total_solves;
+
     double mu = 1.0 / (k * k);
     double s_dot_x = mu * (m - cr.d_sq_norm);
 
@@ -340,6 +361,8 @@ GeodesicResult SolveGeodesicLP(
     result.d_inf_norm = cr.d_inf_norm;
     result.d_sq_norm = cr.d_sq_norm;
     result.complementarity = s_dot_x;
+    result.total_factorizations = total_fac;
+    result.total_solves = total_sol;
 
     if (s_dot_x < tolerance) break;
   }
@@ -362,16 +385,19 @@ GeodesicResult SolveGeodesicHybrid(
   Eigen::VectorXd r = Eigen::VectorXd::Ones(m);
 
   // Initial centering until |d|_inf <= 1.
-  GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1.0);
+  auto init = GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1.0);
+  int total_fac = init.total_factorizations;
+  int total_sol = init.total_solves;
 
   GeodesicResult result{};
 
   for (int iter = 0; iter < max_iterations; ++iter) {
-    // Factor and solve with current (W, r, k).
+    // Factor and solve with current (W, r, k). 1 factor + 1 solve.
     RowSpace weights = kkt.MakeRowSpace();
     weights.col() = W.cwiseProduct(W);
     kkt.SetWeights(weights);
     if (!kkt.AssembleAndFactor()) break;
+    total_fac++;
 
     auto y = kkt.MakeSolverRHS();
     y = cost_rhs;
@@ -381,6 +407,7 @@ GeodesicResult SolveGeodesicHybrid(
               2.0 * r.cwiseProduct(W);
     kkt.AccumulateAtranspose(v, y);
     kkt.SolveSolverRHS(y);
+    total_sol++;
 
     // d = 1 + (W/r) .* (k*b - A*y).
     auto row = kkt.MakeRowSpace();
@@ -402,6 +429,8 @@ GeodesicResult SolveGeodesicHybrid(
     result.d_sq_norm = d_sq;
     result.mu = gap / m;
     result.complementarity = gap;
+    result.total_factorizations = total_fac;
+    result.total_solves = total_sol;
 
     if (verbose) {
       printf("  i=%2d  gap=%.2e  d_inf=%.2e  d_sqr=%.2e  %s\n",
@@ -412,7 +441,9 @@ GeodesicResult SolveGeodesicHybrid(
 
     if (gap < 0) {
       // d too large — center until |d|_inf <= 1.
-      GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1.0);
+      auto cr = GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1.0);
+      total_fac += cr.total_factorizations;
+      total_sol += cr.total_solves;
     } else {
       // Feasible step: shrink r and take geodesic step.
       r = 0.5 * r.cwiseProduct(

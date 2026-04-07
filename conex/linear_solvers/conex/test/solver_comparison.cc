@@ -69,8 +69,9 @@ void RunComparison(int m, int n, int seed) {
                                   30, 50, 10.0, 1e-8);
 
     printf("=== Barrier Method ===\n");
-    printf("  %d outer iterations, %d total Newton steps\n",
-           result.outer_iterations, result.total_newton_steps);
+    printf("  %d outer iterations, %d factorizations, %d solves\n",
+           result.outer_iterations, result.total_newton_steps,
+           result.total_newton_steps);
     printf("  %3s  %12s  %12s  %8s\n", "out", "mu", "gap", "newton");
     printf("  %s\n", std::string(40, '-').c_str());
     int cumulative_newton = 0;
@@ -105,7 +106,8 @@ void RunComparison(int m, int n, int seed) {
     auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 1, 1e-8);
 
     printf("=== Geodesic IPM (1 centering step) ===\n");
-    printf("  %d outer iterations\n", result.iterations);
+    printf("  %d outer, %d factorizations, %d solves\n",
+           result.iterations, result.total_factorizations, result.total_solves);
     printf("  %3s  %12s  %12s  %12s  %12s\n",
            "out", "mu", "s_dot_x", "d_inf", "d_sqr");
     printf("  %s\n", std::string(56, '-').c_str());
@@ -136,7 +138,8 @@ void RunComparison(int m, int n, int seed) {
     auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 100, 1e-8);
 
     printf("=== Geodesic IPM (full centering) ===\n");
-    printf("  %d outer iterations\n", result.iterations);
+    printf("  %d outer, %d factorizations, %d solves\n",
+           result.iterations, result.total_factorizations, result.total_solves);
     printf("  %3s  %12s  %12s  %12s  %12s\n",
            "out", "mu", "s_dot_x", "d_inf", "d_sqr");
     printf("  %s\n", std::string(56, '-').c_str());
@@ -167,7 +170,8 @@ void RunComparison(int m, int n, int seed) {
     auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W, 50, 1e-8, true);
 
     printf("=== Geodesic IPM (Hybrid) ===\n");
-    printf("  %d iterations\n", result.iterations);
+    printf("  %d outer, %d factorizations, %d solves\n",
+           result.iterations, result.total_factorizations, result.total_solves);
     printf("  %3s  %12s  %12s  %12s  %12s\n",
            "out", "mu", "gap", "d_inf", "d_sqr");
     printf("  %s\n", std::string(56, '-').c_str());
