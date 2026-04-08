@@ -44,12 +44,15 @@ class Problem {
       const Eigen::VectorXd& b,
       Sense sense,
       const std::vector<int>& vars) {
+    // Internal convention: s = b_stored - A_stored * x >= 0.
+    // GE: user means Ax + b >= 0, store (-A, b) so s = b + Ax.
+    // LE: user means Ax + b <= 0, store (A, -b) so s = -b - Ax.
     if (sense == Sense::GE) {
-      return AddLinearConstraint(A, b, vars);
-    } else {
       Eigen::SparseMatrix<double> negA = -A;
+      return AddLinearConstraint(negA, b, vars);
+    } else {
       Eigen::VectorXd neg_b = -b;
-      return AddLinearConstraint(negA, neg_b, vars);
+      return AddLinearConstraint(A, neg_b, vars);
     }
   }
 

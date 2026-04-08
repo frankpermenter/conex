@@ -24,33 +24,46 @@ Eigen::SparseMatrix<double> toSparse(const MatrixXd& M) {
   return S;
 }
 
-// Note: the geodesic IPM currently expects the old Ax <= b convention
-// internally (GetAffineTerm returns b, slack = b - Ax). Tests use
-// manual sign flips until the algorithm is updated to Ax + b >= 0.
-TEST(SolveLP, Basic) {
+// Ax >= b  →  Sense::GE with (A, -b), meaning Ax + (-b) >= 0.
+TEST(SolveLP, SenseGE) {
   srand(42);
   const int n = 5, m = 10;
   auto A = toSparse(MatrixXd::Random(m, n));
   VectorXd b = VectorXd::Ones(m);
   VectorXd c = A.transpose() * VectorXd::Ones(m);
 
-  // Model Ax >= b: internally Ax + (-b) >= 0, stored via Sense::GE.
-  // But geodesic IPM expects Ax <= b form, so we pass -A, -b directly.
-  Eigen::SparseMatrix<double> negA = -A;
-  VectorXd neg_b = -b;
-
   Problem problem;
-  problem.AddLinearConstraint(negA, neg_b);
+  problem.AddLinearConstraint(A, -b, Sense::GE);  // Ax - 1 >= 0
   problem.SetLinearCost(c);
 
   auto result = SolveLP(problem);
-  printf("SolveLP: gap=%.2e, %d fac, %d sol\n",
+  printf("SolveLP(GE): gap=%.2e, %d fac, %d sol\n",
          result.gap, result.factorizations, result.solves);
   EXPECT_LT(std::abs(result.gap), 1e-7);
 }
 
-// TODO: Add tests using Sense::GE, Sense::LE, and double-sided
-// after updating the geodesic IPM to the Ax + b >= 0 convention.
+// Ax <= b  →  Sense::LE with (A, -b), meaning Ax + (-b) <= 0.
+TEST(SolveLP, SenseLE) {
+  srand(42);
+  const int n = 5, m = 10;
+  auto A = toSparse(MatrixXd::Random(m, n));
+  VectorXd b = VectorXd::Ones(m);
+  // For Ax <= b with slack s = b - Ax, central path cost is -A^T ones.
+  VectorXd c = -(A.transpose() * VectorXd::Ones(m));
+
+  Problem problem;
+  problem.AddLinearConstraint(A, -b, Sense::LE);  // Ax - 1 <= 0
+  problem.SetLinearCost(c);
+
+  auto result = SolveLP(problem);
+  printf("SolveLP(LE): gap=%.2e, %d fac, %d sol\n",
+         result.gap, result.factorizations, result.solves);
+  EXPECT_LT(std::abs(result.gap), 1e-7);
+}
+
+// TODO: Double-sided test needs smarter initialization — the geodesic
+// IPM assumes W=ones is on the central path (all slacks = 1), which
+// doesn't hold for asymmetric bounds.
 
 }  // namespace
 }  // namespace conex
