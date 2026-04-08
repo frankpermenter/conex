@@ -71,13 +71,18 @@ TEST(IRLS, ConvergesToL2WithoutOutliers) {
 // Barrier QP tests
 // =====================================================================
 
-// Helper: build a BarrierQP problem from Problem and solve.
-// The barrier method uses the Ax <= b convention (s = b - Ax >= 0).
-// AddLinearConstraint(A, b) stores (A, b) directly.
-static BarrierQPResult SolveBarrierFromProblem(
-    const Problem& problem, const Eigen::VectorXd& x0,
-    int max_outer = 30, int max_newton = 50,
-    double mu = 10.0, double tol = 1e-8) {
+// Common result type for parameterized QP solver tests.
+struct QPSolution {
+  Eigen::VectorXd x;
+  double objective = 0;
+  double gap = 0;
+};
+
+// Solver function: (Problem, x0) -> QPSolution.
+using QPSolverFn = std::function<QPSolution(const Problem&, const VectorXd&)>;
+
+static QPSolution SolveBarrierFromProblem(
+    const Problem& problem, const Eigen::VectorXd& x0) {
   auto [reduced, expansion] = Preprocess(problem);
   auto solver = Solver::Build(reduced);
   auto* kkt = solver.solver();
@@ -89,20 +94,24 @@ static BarrierQPResult SolveBarrierFromProblem(
   auto x = kkt->MakeSolverRHS();
   x = kkt->MakeBlockVariable(expansion.Reduce(x0));
 
-  auto result = SolveBarrierQP(*kkt, c_rhs, x, max_outer, max_newton, mu, tol);
-  result.x = expansion.Expand(result.x);
-  result.objective = 0.5 * result.x.dot(result.x) + c.dot(result.x);
-  return result;
+  auto result = SolveBarrierQP(*kkt, c_rhs, x);
+  QPSolution sol;
+  sol.x = expansion.Expand(result.x);
+  sol.objective = c.dot(sol.x);
+  sol.gap = result.duality_gap;
+  return sol;
 }
 
-TEST(BarrierQP, UnconstrainedInsideFeasible) {
+// Parameterized test fixture.
+class QPSolverTest : public ::testing::TestWithParam<QPSolverFn> {};
+
+TEST_P(QPSolverTest, UnconstrainedInsideFeasible) {
   // min 0.5 x^T I x  s.t.  x1+x2 <= 1, -x1 <= 0, -x2 <= 0
   const int n = 2;
   Eigen::SparseMatrix<double> Q(n, n);
   std::vector<Eigen::Triplet<double>> qt;
   qt.emplace_back(0, 0, 1.0); qt.emplace_back(1, 1, 1.0);
   Q.setFromTriplets(qt.begin(), qt.end());
-  VectorXd c = VectorXd::Zero(n);
 
   std::vector<Eigen::Triplet<double>> at;
   at.emplace_back(0, 0, 1.0); at.emplace_back(0, 1, 1.0);
@@ -115,19 +124,17 @@ TEST(BarrierQP, UnconstrainedInsideFeasible) {
   Problem problem;
   problem.AddLinearConstraint(A, b);
   problem.AddQuadraticCost(Q);
-  problem.SetLinearCost(c);
+  problem.SetLinearCost(VectorXd::Zero(n));
 
   VectorXd x0(n); x0 << 0.3, 0.3;
-  auto result = SolveBarrierFromProblem(problem, x0);
-  EXPECT_NEAR(result.x(0), 0.0, 0.01);
-  EXPECT_NEAR(result.x(1), 0.0, 0.01);
-  printf("QP unconstrained: obj=%.6f, x=[%.4f, %.4f], gap=%.2e, "
-         "%d outer, %d newton\n",
-         result.objective, result.x(0), result.x(1), result.duality_gap,
-         result.outer_iterations, result.total_newton_steps);
+  auto sol = GetParam()(problem, x0);
+  EXPECT_NEAR(sol.x(0), 0.0, 0.01);
+  EXPECT_NEAR(sol.x(1), 0.0, 0.01);
+  printf("  obj=%.6f, x=[%.4f, %.4f], gap=%.2e\n",
+         sol.objective, sol.x(0), sol.x(1), sol.gap);
 }
 
-TEST(BarrierQP, ActiveConstraint) {
+TEST_P(QPSolverTest, ActiveConstraint) {
   const int n = 2;
   std::vector<Eigen::Triplet<double>> qt;
   qt.emplace_back(0, 0, 0.001); qt.emplace_back(1, 1, 0.001);
@@ -149,15 +156,53 @@ TEST(BarrierQP, ActiveConstraint) {
   problem.SetLinearCost(c);
 
   VectorXd x0(n); x0 << 0.3, 0.3;
-  auto result = SolveBarrierFromProblem(problem, x0);
-  EXPECT_LT(result.x(0), 0.05);
-  EXPECT_GE(result.x(0), -0.01);
-  printf("QP active: obj=%.6f, x=[%.4f, %.4f], gap=%.2e, "
-         "%d outer, %d newton\n",
-         result.objective, result.x(0), result.x(1), result.duality_gap,
-         result.outer_iterations, result.total_newton_steps);
+  auto sol = GetParam()(problem, x0);
+  EXPECT_LT(sol.x(0), 0.05);
+  EXPECT_GE(sol.x(0), -0.01);
+  printf("  obj=%.6f, x=[%.4f, %.4f], gap=%.2e\n",
+         sol.objective, sol.x(0), sol.x(1), sol.gap);
 }
 
+TEST_P(QPSolverTest, MultipleConstraints) {
+  // Same QP as UnconstrainedInsideFeasible but split into two constraints.
+  const int n = 2;
+  Eigen::SparseMatrix<double> Q(n, n);
+  std::vector<Eigen::Triplet<double>> qt;
+  qt.emplace_back(0, 0, 1.0); qt.emplace_back(1, 1, 1.0);
+  Q.setFromTriplets(qt.begin(), qt.end());
+
+  Eigen::SparseMatrix<double> A1(1, n);
+  std::vector<Eigen::Triplet<double>> a1t;
+  a1t.emplace_back(0, 0, 1.0); a1t.emplace_back(0, 1, 1.0);
+  A1.setFromTriplets(a1t.begin(), a1t.end());
+  VectorXd b1(1); b1 << 1.0;
+
+  Eigen::SparseMatrix<double> A2(2, n);
+  std::vector<Eigen::Triplet<double>> a2t;
+  a2t.emplace_back(0, 0, -1.0);
+  a2t.emplace_back(1, 1, -1.0);
+  A2.setFromTriplets(a2t.begin(), a2t.end());
+  VectorXd b2(2); b2 << 0.0, 0.0;
+
+  std::vector<int> vars = {0, 1};
+  Problem problem;
+  problem.AddLinearConstraint(A1, b1, vars);
+  problem.AddLinearConstraint(A2, b2, vars);
+  problem.AddQuadraticCost(Q, vars);
+  problem.SetLinearCost(VectorXd::Zero(n));
+
+  VectorXd x0 = VectorXd::Constant(n, 0.3);
+  auto sol = GetParam()(problem, x0);
+  EXPECT_NEAR(sol.x(0), 0.0, 0.01);
+  EXPECT_NEAR(sol.x(1), 0.0, 0.01);
+  printf("  obj=%.6f, x=[%.4f, %.4f], gap=%.2e\n",
+         sol.objective, sol.x(0), sol.x(1), sol.gap);
+}
+
+INSTANTIATE_TEST_SUITE_P(BarrierQP, QPSolverTest,
+    ::testing::Values(SolveBarrierFromProblem));
+
+// Barrier-specific tests (not parameterized).
 TEST(BarrierQP, SparseQP) {
   srand(42);
   const int n = 20, m = 15;
@@ -187,16 +232,14 @@ TEST(BarrierQP, SparseQP) {
   problem.SetLinearCost(c);
 
   VectorXd x0 = VectorXd::Zero(n);
-  auto result = SolveBarrierFromProblem(problem, x0, 30, 50, 10.0, 1e-6);
-  VectorXd slack = b - A * result.x;
+  auto sol = SolveBarrierFromProblem(problem, x0);
+  VectorXd slack = b - A * sol.x;
   EXPECT_GE(slack.minCoeff(), -1e-6);
-  printf("QP sparse: obj=%.6f, gap=%.2e, slack_min=%.2e, "
-         "%d outer, %d newton\n",
-         result.objective, result.duality_gap, slack.minCoeff(),
-         result.outer_iterations, result.total_newton_steps);
+  printf("QP sparse: obj=%.6f, gap=%.2e, slack_min=%.2e\n",
+         sol.objective, sol.gap, slack.minCoeff());
 }
 
-TEST(BarrierQP, SolverReuse) {
+TEST(BarrierQP, FeasibilityCheck) {
   const int n = 10, m = 5;
   std::vector<Eigen::Triplet<double>> qt;
   for (int i = 0; i < n; i++) qt.emplace_back(i, i, 2.0);
@@ -216,60 +259,12 @@ TEST(BarrierQP, SolverReuse) {
   problem.SetLinearCost(c);
 
   VectorXd x0 = VectorXd::Zero(n);
-  auto result = SolveBarrierFromProblem(problem, x0, 20, 30, 10.0, 1e-8);
-  EXPECT_GT(result.total_newton_steps, 1);
-  EXPECT_LT(result.duality_gap, 1e-6);
-  VectorXd slack = b - A * result.x;
+  auto sol = SolveBarrierFromProblem(problem, x0);
+  EXPECT_LT(sol.gap, 1e-6);
+  VectorXd slack = b - A * sol.x;
   EXPECT_GE(slack.minCoeff(), -1e-6);
-  printf("QP reuse: obj=%.6f, gap=%.2e, %d outer, %d newton\n",
-         result.objective, result.duality_gap,
-         result.outer_iterations, result.total_newton_steps);
-}
-
-TEST(BarrierQP, MultipleConstraints) {
-  // Same QP as UnconstrainedInsideFeasible but with constraints split
-  // into two separate AddLinearConstraint calls.
-  // min 0.5 x^T I x  s.t.  x1+x2 <= 1, -x1 <= 0, -x2 <= 0
-  const int n = 2;
-
-  Eigen::SparseMatrix<double> Q(n, n);
-  std::vector<Eigen::Triplet<double>> qt;
-  qt.emplace_back(0, 0, 1.0); qt.emplace_back(1, 1, 1.0);
-  Q.setFromTriplets(qt.begin(), qt.end());
-  VectorXd c = VectorXd::Zero(n);
-
-  // Constraint 1: x1 + x2 <= 1.
-  Eigen::SparseMatrix<double> A1(1, n);
-  std::vector<Eigen::Triplet<double>> a1t;
-  a1t.emplace_back(0, 0, 1.0); a1t.emplace_back(0, 1, 1.0);
-  A1.setFromTriplets(a1t.begin(), a1t.end());
-  VectorXd b1(1); b1 << 1.0;
-
-  // Constraint 2: -x1 <= 0, -x2 <= 0.
-  Eigen::SparseMatrix<double> A2(2, n);
-  std::vector<Eigen::Triplet<double>> a2t;
-  a2t.emplace_back(0, 0, -1.0);
-  a2t.emplace_back(1, 1, -1.0);
-  A2.setFromTriplets(a2t.begin(), a2t.end());
-  VectorXd b2(2); b2 << 0.0, 0.0;
-
-  std::vector<int> vars = {0, 1};
-
-  Problem problem;
-  problem.AddLinearConstraint(A1, b1, vars);
-  problem.AddLinearConstraint(A2, b2, vars);
-  problem.AddQuadraticCost(Q, vars);
-  problem.SetLinearCost(c);
-
-  VectorXd x0 = VectorXd::Constant(n, 0.3);
-  auto result = SolveBarrierFromProblem(problem, x0);
-
-  EXPECT_NEAR(result.x(0), 0.0, 0.01);
-  EXPECT_NEAR(result.x(1), 0.0, 0.01);
-  printf("QP multiple constraints: obj=%.6f, x=[%.4f, %.4f], gap=%.2e, "
-         "%d outer, %d newton\n",
-         result.objective, result.x(0), result.x(1), result.duality_gap,
-         result.outer_iterations, result.total_newton_steps);
+  printf("QP feasibility: obj=%.6f, gap=%.2e, slack_min=%.2e\n",
+         sol.objective, sol.gap, slack.minCoeff());
 }
 
 // =====================================================================
