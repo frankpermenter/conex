@@ -401,8 +401,19 @@ GeodesicResult SolveGeodesicLP(
       ComputeDirectNewtonStep(kkt, cost_rhs, W, k, d_direct, y_direct);
       RowSpace d_decomp = addScaled(d0, d1, 1.0, k);
       double d_err = std::sqrt(squaredNorm(addScaled(d_direct, d_decomp, 1.0, -1.0)));
-      double y_err = 0;  // y not available from decomposition yet
-      printf("  DEBUG iter=%d k=%.4f: d_err=%.2e\n", outer, k, d_err);
+
+      // Compute slack = A*x - b where x = y/k.
+      // From d: (1/k)*W^{-1}*(1-d) = A*x - b.
+      RowSpace ones = kkt.MakeRowSpace();
+      setOnes(ones);
+      RowSpace one_minus_d = addScaled(ones, d_direct, 1.0, -1.0);
+      RowSpace inv_W = cwiseQuotient(ones, W);
+      RowSpace slack = cwiseProduct(inv_W, one_minus_d);
+      slack *= (1.0 / k);
+      double min_slack = slack.col().minCoeff();
+
+      printf("  DEBUG iter=%d k=%.4f: d_err=%.2e  min_slack=%.4e\n",
+             outer, k, d_err, min_slack);
       if (d_err > 1e-3) {
         throw std::runtime_error("Decomposition d does not match direct d!");
       }

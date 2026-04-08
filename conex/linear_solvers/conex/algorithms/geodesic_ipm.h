@@ -1,5 +1,15 @@
 // Geodesic interior-point method for linear programs.
 //
+// Constraint convention
+// ---------------------
+// The internal convention is Ax >= b.  The KKT solver stores (A, b) such
+// that GetAffineTerm() returns b and MultiplyA computes A*y.  The primal
+// variable x = y/k satisfies the slack relation:
+//
+//   slack = A*x - b = (1/k) * W^{-1} * (1 - d)
+//
+// At convergence (d -> 0), slack = (1/k) * W^{-1} > 0.
+//
 // Parameterization
 // ----------------
 // The primal slack s and dual variable lambda are parameterized on the
@@ -63,7 +73,7 @@ struct GeodesicResult {
 // Run the geodesic centering iteration with fixed barrier parameter k = 1/sqrt(mu).
 // Maintains weight vector W as the sole state variable, updated via W *= exp(alpha * d).
 //
-// cost_rhs: the cost vector c in SolverRHS format (for min c^T x s.t. Ax <= b).
+// cost_rhs: the cost vector c in SolverRHS format (for min c^T x s.t. Ax >= b).
 // W: initial weight vector (m-dimensional, positive). Modified in-place.
 // k: barrier parameter 1/sqrt(mu), held fixed.
 // max_iterations: iteration limit.
