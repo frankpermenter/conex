@@ -38,21 +38,20 @@ class Problem {
     return id;
   }
 
-  // With sense: GE stores as-is, LE negates A and b.
+  // With sense:
+  //   (A, b, LE) means Ax <= b, stored as (A, b) since s = b - Ax >= 0.
+  //   (A, b, GE) means Ax >= b, stored as (-A, -b) since s = -b + Ax >= 0.
   ConstraintId AddLinearConstraint(
       const Eigen::SparseMatrix<double>& A,
       const Eigen::VectorXd& b,
       Sense sense,
       const std::vector<int>& vars) {
-    // Internal convention: s = b_stored - A_stored * x >= 0.
-    // GE: user means Ax + b >= 0, store (-A, b) so s = b + Ax.
-    // LE: user means Ax + b <= 0, store (A, -b) so s = -b - Ax.
-    if (sense == Sense::GE) {
-      Eigen::SparseMatrix<double> negA = -A;
-      return AddLinearConstraint(negA, b, vars);
+    if (sense == Sense::LE) {
+      return AddLinearConstraint(A, b, vars);
     } else {
+      Eigen::SparseMatrix<double> negA = -A;
       Eigen::VectorXd neg_b = -b;
-      return AddLinearConstraint(A, neg_b, vars);
+      return AddLinearConstraint(negA, neg_b, vars);
     }
   }
 
@@ -67,14 +66,13 @@ class Problem {
   }
 
   // Double-sided: b_lb <= Ax <= b_ub.
-  // Stored as two constraints: Ax - b_lb >= 0 and -Ax + b_ub >= 0.
   void AddLinearConstraint(
       const Eigen::SparseMatrix<double>& A,
       const Eigen::VectorXd& b_lb,
       const Eigen::VectorXd& b_ub,
       const std::vector<int>& vars) {
-    AddLinearConstraint(A, -b_lb, Sense::GE, vars);   // Ax - b_lb >= 0
-    AddLinearConstraint(A, b_ub, Sense::LE, vars);     // Ax - b_ub <= 0
+    AddLinearConstraint(A, b_lb, Sense::GE, vars);    // Ax >= b_lb
+    AddLinearConstraint(A, b_ub, Sense::LE, vars);     // Ax <= b_ub
   }
 
   // Double-sided, default vars.

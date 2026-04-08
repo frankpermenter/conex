@@ -24,7 +24,7 @@ Eigen::SparseMatrix<double> toSparse(const MatrixXd& M) {
   return S;
 }
 
-// Ax >= b  →  Sense::GE with (A, -b), meaning Ax + (-b) >= 0.
+// Ax >= b.
 TEST(SolveLP, SenseGE) {
   srand(42);
   const int n = 5, m = 10;
@@ -33,7 +33,7 @@ TEST(SolveLP, SenseGE) {
   VectorXd c = A.transpose() * VectorXd::Ones(m);
 
   Problem problem;
-  problem.AddLinearConstraint(A, -b, Sense::GE);  // Ax - 1 >= 0
+  problem.AddLinearConstraint(A, b, Sense::GE);
   problem.SetLinearCost(c);
 
   auto result = SolveLP(problem);
@@ -42,7 +42,7 @@ TEST(SolveLP, SenseGE) {
   EXPECT_LT(std::abs(result.gap), 1e-7);
 }
 
-// Ax <= b  →  Sense::LE with (A, -b), meaning Ax + (-b) <= 0.
+// Ax <= b.
 TEST(SolveLP, SenseLE) {
   srand(42);
   const int n = 5, m = 10;
@@ -52,7 +52,7 @@ TEST(SolveLP, SenseLE) {
   VectorXd c = -(A.transpose() * VectorXd::Ones(m));
 
   Problem problem;
-  problem.AddLinearConstraint(A, -b, Sense::LE);  // Ax - 1 <= 0
+  problem.AddLinearConstraint(A, b, Sense::LE);
   problem.SetLinearCost(c);
 
   auto result = SolveLP(problem);
