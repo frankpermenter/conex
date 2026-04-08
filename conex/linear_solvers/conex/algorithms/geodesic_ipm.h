@@ -2,13 +2,19 @@
 //
 // Constraint convention
 // ---------------------
-// The internal convention is Ax >= b.  The KKT solver stores (A, b) such
-// that GetAffineTerm() returns b and MultiplyA computes A*y.  The primal
-// variable x = y/k satisfies the slack relation:
+// For stored (A, b), the solver finds x satisfying A*x >= b.
+// The Newton direction satisfies d = 1 + W*(k*b - A*y), and with x = y/k:
 //
-//   slack = A*x - b = (1/k) * W^{-1} * (1 - d)
+//   (1/k) * W^{-1} * (1 - d)  =  A*x - b    (slack for A*x >= b)
 //
-// At convergence (d -> 0), slack = (1/k) * W^{-1} > 0.
+// At convergence (d -> 0), slack = (1/k)*W^{-1} > 0.
+//
+// The Sense API maps user constraints to this internal form:
+//   Sense::GE (Ax >= b): stored as (-A, -b), so (-A)x >= (-b) ⟺ Ax <= b.
+//   Sense::LE (Ax <= b): stored as (A, b) as-is.
+//
+// NOTE: the Sense mapping is currently inverted.  Sense::GE stores (-A,-b)
+// which makes the solver find Ax <= b, not Ax >= b.  This will be fixed.
 //
 // Parameterization
 // ----------------
@@ -67,6 +73,8 @@ struct GeodesicResult {
   double complementarity;  // mu * (rank - ||d||^2)
   int total_factorizations = 0;
   int total_solves = 0;
+  Eigen::VectorXd x;      // primal variable y/k from last Newton solve
+  Eigen::VectorXd slack;   // A*x - b (should be >= 0 at convergence)
   std::vector<GeodesicIterStats> iter_stats;
 };
 

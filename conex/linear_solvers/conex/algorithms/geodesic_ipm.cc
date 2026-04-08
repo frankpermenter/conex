@@ -417,6 +417,13 @@ GeodesicResult SolveGeodesicLP(
       if (d_err > 1e-3) {
         throw std::runtime_error("Decomposition d does not match direct d!");
       }
+
+      // Save x = y/k and slack = (1/k)*W^{-1}*(1-d).
+      int nr = kkt.number_of_variables();
+      result.x = y_direct / k;
+      result.slack.resize(slack.total_rows());
+      for (int i = 0; i < slack.total_rows(); ++i)
+        result.slack(i) = slack.col()(i);
     }
 
     // Take one geodesic step at k using d = d0 + k * d1.
