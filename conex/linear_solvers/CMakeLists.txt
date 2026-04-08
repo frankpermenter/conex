@@ -282,6 +282,39 @@ gtest_discover_tests(low_rank_diagonal_test)
 gtest_discover_tests(sparse_quadratic_term_test)
 
 
+add_executable(geodesic_ipm_test
+  conex/test/geodesic_ipm_test.cc
+)
+target_link_libraries(geodesic_ipm_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(geodesic_ipm_test)
+
+add_executable(alternating_projections_test
+  conex/test/alternating_projections_test.cc
+)
+target_link_libraries(alternating_projections_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(alternating_projections_test)
+
+add_executable(solve_lp_test
+  conex/test/solve_lp_test.cc
+)
+target_link_libraries(solve_lp_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(solve_lp_test)
+
 add_executable(problem_solver_test
   conex/test/problem_solver_test.cc
 )
