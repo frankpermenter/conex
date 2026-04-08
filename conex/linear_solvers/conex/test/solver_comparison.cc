@@ -31,8 +31,15 @@ struct RandomQP {
   int m, n, rank_Q;
 };
 
-// Build a random QP: min c^T x + 0.5 x^T Q x  s.t. stored constraints.
-// rank_Q = 0 gives a pure LP (Q = 0).
+// Build:  min c^T x + 0.5 x^T Q x  s.t.  Ax >= b  (stored as -Ax <= -b).
+//
+//   A: m x n random dense.
+//   b: ones(m).
+//   c: A^T ones(m)  — central path at W=ones, k=1 when Q=0.
+//   Q: R^T R where R is rank_Q x n random.  Q=0 when rank_Q=0.
+//
+// At x=0: slack = -b - (-A)*0 = -b = -ones  (infeasible for stored form).
+// The geodesic IPM starts at W=ones and solves for the stored form.
 RandomQP MakeRandomQP(int m, int n, int rank_Q, int seed) {
   srand(seed);
   MatrixXd A_dense = MatrixXd::Random(m, n);
