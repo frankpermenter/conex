@@ -2,19 +2,16 @@
 //
 // Constraint convention
 // ---------------------
-// For stored (A, b), the solver finds x satisfying A*x >= b.
-// The Newton direction satisfies d = 1 + W*(k*b - A*y), and with x = y/k:
+// For stored (A, b), the solver finds x satisfying A*x <= b.
+// The Newton direction satisfies d = 1 + W*(A*y - k*b), and with x = y/k:
 //
-//   (1/k) * W^{-1} * (1 - d)  =  A*x - b    (slack for A*x >= b)
+//   (1/k) * W^{-1} * (1 - d)  =  b - A*x    (slack for A*x <= b)
 //
 // At convergence (d -> 0), slack = (1/k)*W^{-1} > 0.
 //
 // The Sense API maps user constraints to this internal form:
-//   Sense::GE (Ax >= b): stored as (-A, -b), so (-A)x >= (-b) ⟺ Ax <= b.
 //   Sense::LE (Ax <= b): stored as (A, b) as-is.
-//
-// NOTE: the Sense mapping is currently inverted.  Sense::GE stores (-A,-b)
-// which makes the solver find Ax <= b, not Ax >= b.  This will be fixed.
+//   Sense::GE (Ax >= b): stored as (-A, -b), so (-A)x <= (-b) ⟺ Ax >= b.
 //
 // Parameterization
 // ----------------
@@ -81,7 +78,7 @@ struct GeodesicResult {
 // Run the geodesic centering iteration with fixed barrier parameter k = 1/sqrt(mu).
 // Maintains weight vector W as the sole state variable, updated via W *= exp(alpha * d).
 //
-// cost_rhs: the cost vector c in SolverRHS format (for min c^T x s.t. Ax >= b).
+// cost_rhs: the cost vector c in SolverRHS format (for min c^T x s.t. Ax <= b).
 // W: initial weight vector (m-dimensional, positive). Modified in-place.
 // k: barrier parameter 1/sqrt(mu), held fixed.
 // max_iterations: iteration limit.

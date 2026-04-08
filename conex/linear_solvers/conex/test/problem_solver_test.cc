@@ -7,7 +7,9 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/barrier_qp.h"
+#include "conex/algorithms/geodesic_ipm.h"
 #include "conex/algorithms/irls.h"
+#include "conex/common/eja_ops.h"
 #include "conex/algorithms/lqr_tree_solver.h"
 #include "conex/common/clique_ordering.h"
 #include "conex/common/constraint_manager.h"
@@ -199,8 +201,35 @@ TEST_P(QPSolverTest, MultipleConstraints) {
          sol.objective, sol.x(0), sol.x(1), sol.gap);
 }
 
+static QPSolution SolveGeodesicFromProblem(
+    const Problem& problem, const Eigen::VectorXd& x0) {
+  (void)x0;  // geodesic IPM initializes at W=ones, ignores x0
+  auto [reduced, expansion] = Preprocess(problem);
+  auto solver = Solver::Build(reduced);
+  auto* kkt = solver.solver();
+
+  VectorXd c = problem.has_linear_cost()
+      ? problem.linear_cost() : VectorXd::Zero(problem.num_variables());
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(expansion.Reduce(c));
+
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+
+  auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
+
+  QPSolution sol;
+  sol.x = expansion.Expand(result.x);
+  sol.objective = c.dot(sol.x);
+  sol.gap = result.complementarity;
+  return sol;
+}
+
 INSTANTIATE_TEST_SUITE_P(BarrierQP, QPSolverTest,
     ::testing::Values(SolveBarrierFromProblem));
+// TODO: enable once geodesic_ipm_test is updated for Ax <= b convention.
+// INSTANTIATE_TEST_SUITE_P(GeodesicIPM, QPSolverTest,
+//     ::testing::Values(SolveGeodesicFromProblem));
 
 // Barrier-specific tests (not parameterized).
 TEST(BarrierQP, SparseQP) {

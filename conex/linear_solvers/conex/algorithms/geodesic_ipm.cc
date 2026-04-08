@@ -34,18 +34,19 @@ GeodesicResult GeodesicCenter(
     kkt.SetWeights(weights);
     if (!kkt.AssembleAndFactor()) break;
 
-    // 2. RHS = k * cost + A^T (k * W^2 .* b + 2 * W).
+    // 2. RHS = k * cost + A^T (-k * W^2 .* b + 2 * W).
+    //    (Ax <= b convention: barrier gradient has -A^T(1/s).)
     y = cost_rhs;
     y *= k;
-    v = addScaled(cwiseProduct(weights, b), W, k, 2.0);
+    v = addScaled(cwiseProduct(weights, b), W, -k, 2.0);
     kkt.AccumulateAtranspose(v, y);
 
     // 3. Solve.
     kkt.SolveSolverRHS(y);
 
-    // 4. Direction d = 1 + W .* (k*b - A*y).
+    // 4. Direction d = 1 + W .* (A*y - k*b).
     kkt.MultiplyA(y, row);
-    d = addScaled(b, row, k, -1.0);
+    d = addScaled(row, b, 1.0, -k);
     d = cwiseProduct(W, d);
     setOnes(v);
     d += v;
@@ -97,13 +98,13 @@ static void ComputeDirectNewtonStep(
   auto y = kkt.MakeSolverRHS();
   y = cost_rhs;
   y *= k;
-  RowSpace v = addScaled(cwiseProduct(weights, b), W, k, 2.0);
+  RowSpace v = addScaled(cwiseProduct(weights, b), W, -k, 2.0);
   kkt.AccumulateAtranspose(v, y);
   kkt.SolveSolverRHS(y);
 
   RowSpace row = kkt.MakeRowSpace();
   kkt.MultiplyA(y, row);
-  d_out = addScaled(b, row, k, -1.0);
+  d_out = addScaled(row, b, 1.0, -k);
   d_out = cwiseProduct(W, d_out);
   RowSpace ones = kkt.MakeRowSpace();
   setOnes(ones);
@@ -135,9 +136,11 @@ static void ComputeDecomposition(
   v *= 2.0;
   kkt.AccumulateAtranspose(v, rhs0);
 
+  // rhs1 = cost - A^T(W^2 * b)  (sign flip for Ax <= b convention).
   auto rhs1 = kkt.MakeSolverRHS();
   rhs1 = cost_rhs;
   v = cwiseProduct(weights, b);
+  v *= -1.0;
   kkt.AccumulateAtranspose(v, rhs1);
 
   auto y = kkt.MakeSolverRHS(2);
@@ -148,9 +151,8 @@ static void ComputeDecomposition(
   auto row = kkt.MakeRowSpace(2);
   kkt.MultiplyA(y, row);
 
-  // d0 = 1 - W .* (Ay)_col0.
-  // d1 = W .* (b - (Ay)_col1).
-  // For now, extract columns into single-col RowSpaces.
+  // d0 = 1 + W .* (Ay0).
+  // d1 = W .* (Ay1 - b).
   RowSpace ay0 = kkt.MakeRowSpace();
   RowSpace ay1 = kkt.MakeRowSpace();
   ay0.col() = row.col(0);
@@ -158,9 +160,9 @@ static void ComputeDecomposition(
 
   d0 = kkt.MakeRowSpace();
   setOnes(d0);
-  d0 -= cwiseProduct(W, ay0);
+  d0 += cwiseProduct(W, ay0);
 
-  d1 = cwiseProduct(W, addScaled(b, ay1, 1.0, -1.0));
+  d1 = cwiseProduct(W, addScaled(ay1, b, 1.0, -1.0));
 }
 
 double GeodesicLineSearch(
@@ -203,6 +205,7 @@ static void ComputeDecompositionR(
   auto rhs1 = kkt.MakeSolverRHS();
   rhs1 = cost_rhs;
   v = cwiseProduct(weights, b);
+  v *= -1.0;
   kkt.AccumulateAtranspose(v, rhs1);
 
   auto y = kkt.MakeSolverRHS(2);
@@ -220,9 +223,9 @@ static void ComputeDecompositionR(
 
   d0 = kkt.MakeRowSpace();
   setOnes(d0);
-  d0 -= cwiseProduct(W_over_r, ay0);
+  d0 += cwiseProduct(W_over_r, ay0);
 
-  d1 = cwiseProduct(W_over_r, addScaled(b, ay1, 1.0, -1.0));
+  d1 = cwiseProduct(W_over_r, addScaled(ay1, b, 1.0, -1.0));
 }
 
 GeodesicResult GeodesicCenterR(
@@ -252,18 +255,18 @@ GeodesicResult GeodesicCenterR(
     kkt.SetWeights(weights);
     if (!kkt.AssembleAndFactor()) break;
 
-    // RHS = k * cost + A^T (k * W^2 .* b + 2 * r .* W).
+    // RHS = k * cost + A^T (-k * W^2 .* b + 2 * r .* W).
     y = cost_rhs;
     y *= k;
-    v = addScaled(cwiseProduct(weights, b), cwiseProduct(r, W), k, 2.0);
+    v = addScaled(cwiseProduct(weights, b), cwiseProduct(r, W), -k, 2.0);
     kkt.AccumulateAtranspose(v, y);
 
     kkt.SolveSolverRHS(y);
 
-    // d = 1 + (W./r) .* (k*b - A*y).
+    // d = 1 + (W./r) .* (A*y - k*b).
     kkt.MultiplyA(y, row);
     RowSpace W_over_r = cwiseQuotient(W, r);
-    d = addScaled(b, row, k, -1.0);
+    d = addScaled(row, b, 1.0, -k);
     d = cwiseProduct(W_over_r, d);
     d += ones;
 
@@ -388,13 +391,13 @@ GeodesicResult SolveGeodesicLP(
     // DEBUG: compare decomposed d with direct Newton d at the same k.
     //
     // The Newton direction satisfies:
-    //   d = 1 + W*(k*b - A*y)
+    //   d = 1 + W*(A*y - k*b)
     //
-    // So 1 - d = W*(A*y - k*b), and with x = y/k:
-    //   (1/k) * W^{-1} * (1-d)  =  A*x - b
+    // So 1 - d = W*(k*b - A*y), and with x = y/k:
+    //   (1/k) * W^{-1} * (1-d)  =  b - A*x
     //
-    // This is the slack for A*x >= b.  At convergence d -> 0,
-    // slack = (1/k)*W^{-1} > 0, confirming A*x > b.
+    // This is the slack for A*x <= b.  At convergence d -> 0,
+    // slack = (1/k)*W^{-1} > 0.
     {
       RowSpace d_direct = kkt.MakeRowSpace();
       Eigen::VectorXd y_direct;
@@ -402,8 +405,8 @@ GeodesicResult SolveGeodesicLP(
       RowSpace d_decomp = addScaled(d0, d1, 1.0, k);
       double d_err = std::sqrt(squaredNorm(addScaled(d_direct, d_decomp, 1.0, -1.0)));
 
-      // Compute slack = A*x - b where x = y/k.
-      // From d: (1/k)*W^{-1}*(1-d) = A*x - b.
+      // Compute slack = b - A*x where x = y/k.
+      // From d: (1/k)*W^{-1}*(1-d) = b - A*x.
       RowSpace ones = kkt.MakeRowSpace();
       setOnes(ones);
       RowSpace one_minus_d = addScaled(ones, d_direct, 1.0, -1.0);
