@@ -75,14 +75,15 @@ TEST(IRLS, ConvergesToL2WithoutOutliers) {
 // The barrier method uses the Ax <= b convention (s = b - Ax >= 0).
 // AddLinearConstraint(A, b) stores (A, b) directly.
 static BarrierQPResult SolveBarrierFromProblem(
-    const Problem& problem, const Eigen::VectorXd& c,
-    const Eigen::VectorXd& x0,
+    const Problem& problem, const Eigen::VectorXd& x0,
     int max_outer = 30, int max_newton = 50,
     double mu = 10.0, double tol = 1e-8) {
   auto [reduced, expansion] = Preprocess(problem);
   auto solver = Solver::Build(reduced);
   auto* kkt = solver.solver();
 
+  VectorXd c = problem.has_linear_cost()
+      ? problem.linear_cost() : VectorXd::Zero(problem.num_variables());
   auto c_rhs = kkt->MakeSolverRHS();
   c_rhs = kkt->MakeBlockVariable(expansion.Reduce(c));
   auto x = kkt->MakeSolverRHS();
@@ -90,7 +91,7 @@ static BarrierQPResult SolveBarrierFromProblem(
 
   auto result = SolveBarrierQP(*kkt, c_rhs, x, max_outer, max_newton, mu, tol);
   result.x = expansion.Expand(result.x);
-  result.objective = 0.5 * result.x.dot(result.x) + c.dot(result.x);  // approx
+  result.objective = 0.5 * result.x.dot(result.x) + c.dot(result.x);
   return result;
 }
 
@@ -111,13 +112,13 @@ TEST(BarrierQP, UnconstrainedInsideFeasible) {
   A.setFromTriplets(at.begin(), at.end());
   VectorXd b(3); b << 1.0, 0.0, 0.0;
 
-  // Ax <= b: barrier convention stores (A, b) directly.
   Problem problem;
   problem.AddLinearConstraint(A, b);
   problem.AddQuadraticCost(Q);
+  problem.SetLinearCost(c);
 
   VectorXd x0(n); x0 << 0.3, 0.3;
-  auto result = SolveBarrierFromProblem(problem, c, x0);
+  auto result = SolveBarrierFromProblem(problem, x0);
   EXPECT_NEAR(result.x(0), 0.0, 0.01);
   EXPECT_NEAR(result.x(1), 0.0, 0.01);
   printf("QP unconstrained: obj=%.6f, x=[%.4f, %.4f], gap=%.2e, "
@@ -145,9 +146,10 @@ TEST(BarrierQP, ActiveConstraint) {
   Problem problem;
   problem.AddLinearConstraint(A, b);
   problem.AddQuadraticCost(Q);
+  problem.SetLinearCost(c);
 
   VectorXd x0(n); x0 << 0.3, 0.3;
-  auto result = SolveBarrierFromProblem(problem, c, x0);
+  auto result = SolveBarrierFromProblem(problem, x0);
   EXPECT_LT(result.x(0), 0.05);
   EXPECT_GE(result.x(0), -0.01);
   printf("QP active: obj=%.6f, x=[%.4f, %.4f], gap=%.2e, "
@@ -182,9 +184,10 @@ TEST(BarrierQP, SparseQP) {
   Problem problem;
   problem.AddLinearConstraint(A, b);
   problem.AddQuadraticCost(Q);
+  problem.SetLinearCost(c);
 
   VectorXd x0 = VectorXd::Zero(n);
-  auto result = SolveBarrierFromProblem(problem, c, x0, 30, 50, 10.0, 1e-6);
+  auto result = SolveBarrierFromProblem(problem, x0, 30, 50, 10.0, 1e-6);
   VectorXd slack = b - A * result.x;
   EXPECT_GE(slack.minCoeff(), -1e-6);
   printf("QP sparse: obj=%.6f, gap=%.2e, slack_min=%.2e, "
@@ -210,9 +213,10 @@ TEST(BarrierQP, SolverReuse) {
   Problem problem;
   problem.AddLinearConstraint(A, b);
   problem.AddQuadraticCost(Q);
+  problem.SetLinearCost(c);
 
   VectorXd x0 = VectorXd::Zero(n);
-  auto result = SolveBarrierFromProblem(problem, c, x0, 20, 30, 10.0, 1e-8);
+  auto result = SolveBarrierFromProblem(problem, x0, 20, 30, 10.0, 1e-8);
   EXPECT_GT(result.total_newton_steps, 1);
   EXPECT_LT(result.duality_gap, 1e-6);
   VectorXd slack = b - A * result.x;
@@ -255,21 +259,10 @@ TEST(BarrierQP, MultipleConstraints) {
   problem.AddLinearConstraint(A1, b1, vars);
   problem.AddLinearConstraint(A2, b2, vars);
   problem.AddQuadraticCost(Q, vars);
+  problem.SetLinearCost(c);
 
-  auto [reduced, expansion] = Preprocess(problem);
-  VectorXd c_r = expansion.Reduce(c);
-  VectorXd x0_r = expansion.Reduce(VectorXd::Constant(n, 0.3));
-
-  auto solver = Solver::Build(reduced);
-  auto* kkt = solver.solver();
-
-  auto c_rhs = kkt->MakeSolverRHS();
-  c_rhs = kkt->MakeBlockVariable(c_r);
-  auto x = kkt->MakeSolverRHS();
-  x = kkt->MakeBlockVariable(x0_r);
-
-  auto result = SolveBarrierQP(*kkt, c_rhs, x);
-  result.x = expansion.Expand(result.x);
+  VectorXd x0 = VectorXd::Constant(n, 0.3);
+  auto result = SolveBarrierFromProblem(problem, x0);
 
   EXPECT_NEAR(result.x(0), 0.0, 0.01);
   EXPECT_NEAR(result.x(1), 0.0, 0.01);
