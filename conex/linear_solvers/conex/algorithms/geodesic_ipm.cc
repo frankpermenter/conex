@@ -3,41 +3,41 @@
 #include <cmath>
 #include <cstdio>
 
+#include "conex/common/row_space_ops.h"
+
 namespace conex {
 
 GeodesicResult GeodesicCenter(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    Eigen::VectorXd& W,
+    RowSpace& W,
     double k,
     int max_iterations,
     double tolerance,
     bool verbose) {
-  RowSpace b_row = kkt.GetAffineTerm();
-  const auto& b = b_row.col();
-  const int m = b.size();
+  RowSpace b = kkt.GetAffineTerm();
+  const int m = b.total_rows();
   const double mu = 1.0 / (k * k);
 
   auto y = kkt.MakeSolverRHS();
-  auto row = kkt.MakeRowSpace();
+  RowSpace row = kkt.MakeRowSpace();
   RowSpace weights = kkt.MakeRowSpace();
   RowSpace v = kkt.MakeRowSpace();
-
-  const Eigen::VectorXd W2 = W.cwiseProduct(W);
+  RowSpace d = kkt.MakeRowSpace();
 
   GeodesicResult result{};
   result.mu = mu;
 
   for (int iter = 0; iter < max_iterations; ++iter) {
     // 1. Set weights W^2 and factor.
-    weights.col() = W.cwiseProduct(W);
+    weights = cwiseProduct(W, W);
     kkt.SetWeights(weights);
     if (!kkt.AssembleAndFactor()) break;
 
     // 2. RHS = k * cost + A^T (k * W^2 .* b + 2 * W).
     y = cost_rhs;
     y *= k;
-    v.col() = k * W.cwiseProduct(W).cwiseProduct(b) + 2.0 * W;
+    v = addScaled(cwiseProduct(weights, b), W, k, 2.0);
     kkt.AccumulateAtranspose(v, y);
 
     // 3. Solve.
@@ -45,12 +45,14 @@ GeodesicResult GeodesicCenter(
 
     // 4. Direction d = 1 + W .* (k*b - A*y).
     kkt.MultiplyA(y, row);
-    Eigen::VectorXd d =
-        Eigen::VectorXd::Ones(m) + W.cwiseProduct(k * b - row.col());
+    d = addScaled(b, row, k, -1.0);
+    d = cwiseProduct(W, d);
+    setOnes(v);
+    d += v;
 
     // 5. Step size.
-    double d_inf = d.lpNorm<Eigen::Infinity>();
-    double d_sq = d.squaredNorm();
+    double d_inf = normInf(d);
+    double d_sq = squaredNorm(d);
     double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
 
     double s_dot_x = mu * (m - d_sq);
@@ -71,26 +73,22 @@ GeodesicResult GeodesicCenter(
     if (d_inf < tolerance) break;
 
     // 6. Geodesic update: W *= exp(alpha * d).
-    W = W.cwiseProduct((alpha * d).array().exp().matrix());
+    geodesicUpdate(W, alpha, d);
   }
 
   return result;
 }
 
 // Factor, two back-solves, 2-column MultiplyA → compute d0, d1.
-// Shared by GeodesicLineSearch and SolveGeodesicMehrotra.
 static void ComputeDecomposition(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    const Eigen::VectorXd& W,
-    Eigen::VectorXd& d0,
-    Eigen::VectorXd& d1) {
-  RowSpace b_row = kkt.GetAffineTerm();
-  const auto& b = b_row.col();
-  const int m = b.size();
+    const RowSpace& W,
+    RowSpace& d0,
+    RowSpace& d1) {
+  RowSpace b = kkt.GetAffineTerm();
 
-  RowSpace weights = kkt.MakeRowSpace();
-  weights.col() = W.cwiseProduct(W);
+  RowSpace weights = cwiseProduct(W, W);
   kkt.SetWeights(weights);
   kkt.AssembleAndFactor();
 
@@ -98,12 +96,13 @@ static void ComputeDecomposition(
 
   auto rhs0 = kkt.MakeSolverRHS();
   rhs0.SetZero();
-  v.col() = 2.0 * W;
+  v = W;
+  v *= 2.0;
   kkt.AccumulateAtranspose(v, rhs0);
 
   auto rhs1 = kkt.MakeSolverRHS();
   rhs1 = cost_rhs;
-  v.col() = W.cwiseProduct(W).cwiseProduct(b);
+  v = cwiseProduct(weights, b);
   kkt.AccumulateAtranspose(v, rhs1);
 
   auto y = kkt.MakeSolverRHS(2);
@@ -114,63 +113,71 @@ static void ComputeDecomposition(
   auto row = kkt.MakeRowSpace(2);
   kkt.MultiplyA(y, row);
 
-  d0 = Eigen::VectorXd::Ones(m) - W.cwiseProduct(row.col(0));
-  d1 = W.cwiseProduct(b - row.col(1));
+  // d0 = 1 - W .* (Ay)_col0.
+  // d1 = W .* (b - (Ay)_col1).
+  // For now, extract columns into single-col RowSpaces.
+  RowSpace ay0 = kkt.MakeRowSpace();
+  RowSpace ay1 = kkt.MakeRowSpace();
+  ay0.col() = row.col(0);
+  ay1.col() = row.col(1);
+
+  d0 = kkt.MakeRowSpace();
+  setOnes(d0);
+  d0 -= cwiseProduct(W, ay0);
+
+  d1 = cwiseProduct(W, addScaled(b, ay1, 1.0, -1.0));
 }
 
 double GeodesicLineSearch(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    const Eigen::VectorXd& W) {
-  Eigen::VectorXd d0, d1;
+    const RowSpace& W) {
+  RowSpace d0 = kkt.MakeRowSpace();
+  RowSpace d1 = kkt.MakeRowSpace();
   ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
 
-  const int m = d0.size();
+  // Largest k > 0 with |d0_i + k * d1_i| <= 1 for all i.
+  // TODO: make this a RowSpace operation when dispatch is needed.
+  const int m = d0.total_rows();
   double k_max = std::numeric_limits<double>::max();
   for (int i = 0; i < m; ++i) {
-    if (d1(i) > 0) {
-      k_max = std::min(k_max, (1.0 - d0(i)) / d1(i));
-    } else if (d1(i) < 0) {
-      k_max = std::min(k_max, (-1.0 - d0(i)) / d1(i));
-    }
+    if (d1.data(i) > 0)
+      k_max = std::min(k_max, (1.0 - d0.data(i)) / d1.data(i));
+    else if (d1.data(i) < 0)
+      k_max = std::min(k_max, (-1.0 - d0.data(i)) / d1.data(i));
   }
   return k_max;
 }
 
 // =====================================================================
 // Generalized versions with per-component centering vector r.
-// Changes vs scalar-mu versions:
-//   RHS:  2*W  ->  2*r.*W
-//   d:    W.*(...)  ->  (W./r).*(...)
 // =====================================================================
 
 static void ComputeDecompositionR(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    const Eigen::VectorXd& W,
-    const Eigen::VectorXd& r,
-    Eigen::VectorXd& d0,
-    Eigen::VectorXd& d1) {
-  RowSpace b_row = kkt.GetAffineTerm();
-  const auto& b = b_row.col();
-  const int m = b.size();
+    const RowSpace& W,
+    const RowSpace& r,
+    RowSpace& d0,
+    RowSpace& d1) {
+  RowSpace b = kkt.GetAffineTerm();
 
-  RowSpace weights = kkt.MakeRowSpace();
-  weights.col() = W.cwiseProduct(W);
+  RowSpace weights = cwiseProduct(W, W);
   kkt.SetWeights(weights);
   kkt.AssembleAndFactor();
 
+  RowSpace W_over_r = cwiseQuotient(W, r);
   RowSpace v = kkt.MakeRowSpace();
-  Eigen::VectorXd W_over_r = W.cwiseQuotient(r);
 
   auto rhs0 = kkt.MakeSolverRHS();
   rhs0.SetZero();
-  v.col() = 2.0 * r.cwiseProduct(W);
+  v = cwiseProduct(r, W);
+  v *= 2.0;
   kkt.AccumulateAtranspose(v, rhs0);
 
   auto rhs1 = kkt.MakeSolverRHS();
   rhs1 = cost_rhs;
-  v.col() = W.cwiseProduct(W).cwiseProduct(b);
+  v = cwiseProduct(weights, b);
   kkt.AccumulateAtranspose(v, rhs1);
 
   auto y = kkt.MakeSolverRHS(2);
@@ -181,56 +188,65 @@ static void ComputeDecompositionR(
   auto row = kkt.MakeRowSpace(2);
   kkt.MultiplyA(y, row);
 
-  d0 = Eigen::VectorXd::Ones(m) - W_over_r.cwiseProduct(row.col(0));
-  d1 = W_over_r.cwiseProduct(b - row.col(1));
+  RowSpace ay0 = kkt.MakeRowSpace();
+  RowSpace ay1 = kkt.MakeRowSpace();
+  ay0.col() = row.col(0);
+  ay1.col() = row.col(1);
+
+  d0 = kkt.MakeRowSpace();
+  setOnes(d0);
+  d0 -= cwiseProduct(W_over_r, ay0);
+
+  d1 = cwiseProduct(W_over_r, addScaled(b, ay1, 1.0, -1.0));
 }
 
 GeodesicResult GeodesicCenterR(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    Eigen::VectorXd& W,
-    const Eigen::VectorXd& r,
+    RowSpace& W,
+    const RowSpace& r,
     double k,
     int max_iterations,
     double tolerance,
     bool verbose) {
-  RowSpace b_row = kkt.GetAffineTerm();
-  const auto& b = b_row.col();
-  const int m = b.size();
+  RowSpace b = kkt.GetAffineTerm();
+  const int m = b.total_rows();
 
   auto y = kkt.MakeSolverRHS();
-  auto row = kkt.MakeRowSpace();
+  RowSpace row = kkt.MakeRowSpace();
   RowSpace weights = kkt.MakeRowSpace();
   RowSpace v = kkt.MakeRowSpace();
+  RowSpace d = kkt.MakeRowSpace();
+  RowSpace ones = kkt.MakeRowSpace();
+  setOnes(ones);
 
   GeodesicResult result{};
 
   for (int iter = 0; iter < max_iterations; ++iter) {
-    weights.col() = W.cwiseProduct(W);
+    weights = cwiseProduct(W, W);
     kkt.SetWeights(weights);
     if (!kkt.AssembleAndFactor()) break;
 
     // RHS = k * cost + A^T (k * W^2 .* b + 2 * r .* W).
     y = cost_rhs;
     y *= k;
-    v.col() = k * W.cwiseProduct(W).cwiseProduct(b) + 2.0 * r.cwiseProduct(W);
+    v = addScaled(cwiseProduct(weights, b), cwiseProduct(r, W), k, 2.0);
     kkt.AccumulateAtranspose(v, y);
 
     kkt.SolveSolverRHS(y);
 
     // d = 1 + (W./r) .* (k*b - A*y).
     kkt.MultiplyA(y, row);
-    Eigen::VectorXd W_over_r = W.cwiseQuotient(r);
-    Eigen::VectorXd d =
-        Eigen::VectorXd::Ones(m) + W_over_r.cwiseProduct(k * b - row.col());
+    RowSpace W_over_r = cwiseQuotient(W, r);
+    d = addScaled(b, row, k, -1.0);
+    d = cwiseProduct(W_over_r, d);
+    d += ones;
 
-    double d_inf = d.lpNorm<Eigen::Infinity>();
-    double d_sq = d.squaredNorm();
+    double d_inf = normInf(d);
+    double d_sq = squaredNorm(d);
     double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
 
-    // Complementarity: sum(r_i^2 * (1 - d_i^2)).
-    double s_dot_x = r.cwiseProduct(r).dot(
-        Eigen::VectorXd::Ones(m) - d.cwiseProduct(d));
+    double s_dot_x = gap(r, d);
 
     result.iterations = iter + 1;
     result.total_factorizations = iter + 1;
@@ -247,7 +263,7 @@ GeodesicResult GeodesicCenterR(
 
     if (d_inf < tolerance) break;
 
-    W = W.cwiseProduct((alpha * d).array().exp().matrix());
+    geodesicUpdate(W, alpha, d);
   }
 
   return result;
@@ -256,18 +272,19 @@ GeodesicResult GeodesicCenterR(
 double GeodesicLineSearchR(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    const Eigen::VectorXd& W,
-    const Eigen::VectorXd& r) {
-  Eigen::VectorXd d0, d1;
+    const RowSpace& W,
+    const RowSpace& r) {
+  RowSpace d0 = kkt.MakeRowSpace();
+  RowSpace d1 = kkt.MakeRowSpace();
   ComputeDecompositionR(kkt, cost_rhs, W, r, d0, d1);
 
-  const int m = d0.size();
+  const int m = d0.total_rows();
   double k_max = std::numeric_limits<double>::max();
   for (int i = 0; i < m; ++i) {
-    if (d1(i) > 0)
-      k_max = std::min(k_max, (1.0 - d0(i)) / d1(i));
-    else if (d1(i) < 0)
-      k_max = std::min(k_max, (-1.0 - d0(i)) / d1(i));
+    if (d1.data(i) > 0)
+      k_max = std::min(k_max, (1.0 - d0.data(i)) / d1.data(i));
+    else if (d1.data(i) < 0)
+      k_max = std::min(k_max, (-1.0 - d0.data(i)) / d1.data(i));
   }
   return k_max;
 }
@@ -275,14 +292,14 @@ double GeodesicLineSearchR(
 GeodesicResult SolveGeodesicLPR(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    Eigen::VectorXd& W,
-    const Eigen::VectorXd& r,
+    RowSpace& W,
+    const RowSpace& r,
     int max_outer_iterations,
     int max_centering_steps,
     double tolerance,
     bool verbose) {
   double k = 1.0;
-  const int m = static_cast<int>(W.size());
+  const int m = W.total_rows();
 
   auto result_init = GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1e-12);
   GeodesicResult result{};
@@ -323,46 +340,47 @@ GeodesicResult SolveGeodesicLPR(
 GeodesicResult SolveGeodesicLP(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    Eigen::VectorXd& W,
+    RowSpace& W,
     int max_outer_iterations,
     int max_centering_steps,
     double tolerance,
     bool verbose) {
   double k = 1.0;
-  const int m = static_cast<int>(W.size());
+  const int m = W.total_rows();
 
   // Initial centering at k = 1.
   auto result = GeodesicCenter(kkt, cost_rhs, W, k, 100, 1e-12);
   result.iter_stats.push_back({result.mu, result.d_inf_norm,
                                result.d_sq_norm, result.complementarity});
-  // initial center: N factors + N solves
   int total_fac = result.total_factorizations;
   int total_sol = result.total_solves;
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
-    // Decompose: 1 factor + 2 back-solves (packed as 2-column solve).
-    Eigen::VectorXd d0, d1;
+    // Decompose: 1 factor + 2 back-solves.
+    RowSpace d0 = kkt.MakeRowSpace();
+    RowSpace d1 = kkt.MakeRowSpace();
     ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
     total_fac += 1;
     total_sol += 2;
 
     // Line search for k.
+    const int n = d0.total_rows();
     double k_new = std::numeric_limits<double>::max();
-    for (int i = 0; i < m; ++i) {
-      if (d1(i) > 0)
-        k_new = std::min(k_new, (1.0 - d0(i)) / d1(i));
-      else if (d1(i) < 0)
-        k_new = std::min(k_new, (-1.0 - d0(i)) / d1(i));
+    for (int i = 0; i < n; ++i) {
+      if (d1.data(i) > 0)
+        k_new = std::min(k_new, (1.0 - d0.data(i)) / d1.data(i));
+      else if (d1.data(i) < 0)
+        k_new = std::min(k_new, (-1.0 - d0.data(i)) / d1.data(i));
     }
     if (k_new <= k) break;
     k = k_new;
 
     // Take one geodesic step at k using d = d0 + k * d1.
-    Eigen::VectorXd d = d0 + k * d1;
-    double d_inf = d.lpNorm<Eigen::Infinity>();
-    double d_sq = d.squaredNorm();
+    RowSpace d = addScaled(d0, d1, 1.0, k);
+    double d_inf = normInf(d);
+    double d_sq = squaredNorm(d);
     double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-    W = W.cwiseProduct((alpha * d).array().exp().matrix());
+    geodesicUpdate(W, alpha, d);
 
     // Additional centering steps if requested.
     if (max_centering_steps > 0) {
@@ -395,16 +413,16 @@ GeodesicResult SolveGeodesicLP(
 GeodesicResult SolveGeodesicHybrid(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    Eigen::VectorXd& W,
+    RowSpace& W,
     int max_iterations,
     double tolerance,
     bool verbose) {
-  RowSpace b_row = kkt.GetAffineTerm();
-  const auto& b = b_row.col();
-  const int m = b.size();
+  RowSpace b = kkt.GetAffineTerm();
+  const int m = b.total_rows();
   const double k = 1.0;
 
-  Eigen::VectorXd r = Eigen::VectorXd::Ones(m);
+  RowSpace r = kkt.MakeRowSpace();
+  setOnes(r);
 
   // Initial centering until |d|_inf <= 1.
   auto init = GeodesicCenterR(kkt, cost_rhs, W, r, k, 100, 1.0);
@@ -415,11 +433,11 @@ GeodesicResult SolveGeodesicHybrid(
   int r_updates = 0;
 
   RowSpace weights = kkt.MakeRowSpace();
+  RowSpace ones = kkt.MakeRowSpace();
+  setOnes(ones);
 
-  // R-update loop: solve, check gap, shrink r. Repeat until gap < 0
-  // or converged.  Each iteration is one back-solve (reusing factorization).
   int r_updates_this_fac = 0;
-  double gap = 0, d_inf = 0, d_sq = 0, min_slack = 0;
+  double g = 0, d_inf = 0, d_sq = 0, mslack = 0;
 
   if (verbose) {
     printf("  %3s  %12s  %12s  %6s  %6s\n",
@@ -428,55 +446,56 @@ GeodesicResult SolveGeodesicHybrid(
   }
 
   for (int iter = 0; iter < max_iterations; ++iter) {
+    // Solve with current (W, r).
     auto y = kkt.MakeSolverRHS();
     y = cost_rhs;
     y *= k;
-    RowSpace v = kkt.MakeRowSpace();
-    v.col() = k * W.cwiseProduct(W).cwiseProduct(b) +
-              2.0 * r.cwiseProduct(W);
+    RowSpace v = addScaled(cwiseProduct(cwiseProduct(W, W), b),
+                           cwiseProduct(r, W), k, 2.0);
     kkt.AccumulateAtranspose(v, y);
     kkt.SolveSolverRHS(y);
     total_sol++;
 
-    auto row = kkt.MakeRowSpace();
+    // d = 1 + (W/r) .* (k*b - A*y).
+    RowSpace row = kkt.MakeRowSpace();
     kkt.MultiplyA(y, row);
-    Eigen::VectorXd d_vec =
-        Eigen::VectorXd::Ones(m) +
-        W.cwiseQuotient(r).cwiseProduct(k * b - row.col());
+    RowSpace W_over_r = cwiseQuotient(W, r);
+    RowSpace d = addScaled(b, row, k, -1.0);
+    d = cwiseProduct(W_over_r, d);
+    d += ones;
 
-    gap = r.cwiseProduct(r).dot(
-        Eigen::VectorXd::Ones(m) - d_vec.cwiseProduct(d_vec));
-    d_inf = d_vec.lpNorm<Eigen::Infinity>();
-    d_sq = d_vec.squaredNorm();
+    g = gap(r, d);
+    d_inf = normInf(d);
+    d_sq = squaredNorm(d);
+    mslack = minSlack(r, d);
 
-    // r_i - |r_i * d_i| = r_i * (1 - |d_i|).  Feasible when >= 0.
-    min_slack = (r - r.cwiseProduct(d_vec.cwiseAbs())).minCoeff();
+    if (std::abs(g) < tolerance && mslack > -tolerance) break;
 
-    if (std::abs(gap) < tolerance && min_slack > -tolerance) break;
-
-    if (gap < 0) {
+    if (g < 0) {
+      // Geodesic step on W, then re-factor.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      W = W.cwiseProduct((alpha * d_vec).array().exp().matrix());
-      weights.col() = W.cwiseProduct(W);
+      geodesicUpdate(W, alpha, d);
+      weights = cwiseProduct(W, W);
       kkt.SetWeights(weights);
       if (!kkt.AssembleAndFactor()) break;
       total_fac++;
-      result.iter_stats.push_back({gap / m, d_inf, d_sq, gap, r_updates_this_fac, min_slack});
+      result.iter_stats.push_back({g / m, d_inf, d_sq, g,
+                                   r_updates_this_fac, mslack});
       r_updates_this_fac = 0;
     } else {
       // Shrink r only.
-      r = 0.5 * r.cwiseProduct(
-          Eigen::VectorXd::Ones(m) + d_vec.cwiseAbs());
+      shrinkR(r, d);
       r_updates_this_fac++;
       r_updates++;
     }
   }
 
-  result.iter_stats.push_back({gap / m, d_inf, d_sq, gap, r_updates_this_fac, min_slack});
+  result.iter_stats.push_back({g / m, d_inf, d_sq, g,
+                               r_updates_this_fac, mslack});
   result.d_inf_norm = d_inf;
   result.d_sq_norm = d_sq;
-  result.mu = gap / m;
-  result.complementarity = gap;
+  result.mu = g / m;
+  result.complementarity = g;
   result.total_factorizations = total_fac;
   result.total_solves = total_sol;
 

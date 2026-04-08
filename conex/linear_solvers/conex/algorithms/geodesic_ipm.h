@@ -71,7 +71,7 @@ struct GeodesicResult {
 GeodesicResult GeodesicCenter(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    Eigen::VectorXd& W,
+    RowSpace& W,
     double k,
     int max_iterations,
     double tolerance,
@@ -82,7 +82,7 @@ GeodesicResult GeodesicCenter(
 GeodesicResult SolveGeodesicLP(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    Eigen::VectorXd& W,
+    RowSpace& W,
     int max_outer_iterations = 30,
     int max_centering_steps = 1,
     double tolerance = 1e-8,
@@ -94,7 +94,7 @@ GeodesicResult SolveGeodesicLP(
 double GeodesicLineSearch(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    const Eigen::VectorXd& W);
+    const RowSpace& W);
 
 // =====================================================================
 // Generalized geodesic IPM with per-component centering vector r.
@@ -110,8 +110,8 @@ double GeodesicLineSearch(
 GeodesicResult GeodesicCenterR(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    Eigen::VectorXd& W,
-    const Eigen::VectorXd& r,
+    RowSpace& W,
+    const RowSpace& r,
     double k,
     int max_iterations,
     double tolerance,
@@ -121,15 +121,15 @@ GeodesicResult GeodesicCenterR(
 double GeodesicLineSearchR(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    const Eigen::VectorXd& W,
-    const Eigen::VectorXd& r);
+    const RowSpace& W,
+    const RowSpace& r);
 
 // Full solve with per-component r.
 GeodesicResult SolveGeodesicLPR(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    Eigen::VectorXd& W,
-    const Eigen::VectorXd& r,
+    RowSpace& W,
+    const RowSpace& r,
     int max_outer_iterations = 30,
     int max_centering_steps = 1,
     double tolerance = 1e-8,
@@ -141,7 +141,7 @@ GeodesicResult SolveGeodesicLPR(
 GeodesicResult SolveGeodesicHybrid(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    Eigen::VectorXd& W,
+    RowSpace& W,
     int max_iterations = 50,
     double tolerance = 1e-8,
     bool verbose = false);

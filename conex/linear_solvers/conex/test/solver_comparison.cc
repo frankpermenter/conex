@@ -13,6 +13,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/geodesic_ipm.h"
+#include "conex/common/row_space_ops.h"
 #include "conex/common/problem.h"
 #include "conex/common/solver.h"
 
@@ -105,7 +106,8 @@ void RunComparison(int m, int n, int seed) {
   // ===== Geodesic IPM (0 centering steps) =====
   {
     auto [solver, cost_rhs] = BuildSolver(lp, vars);
-    VectorXd W = VectorXd::Ones(m);
+    RowSpace W = solver.solver()->MakeRowSpace();
+    setOnes(W);
     auto result = SolveGeodesicLP(*solver.solver(), cost_rhs, W, 30, 0, 1e-8);
     PrintResult("Geodesic IPM (0 centering)", result);
   }
@@ -113,7 +115,8 @@ void RunComparison(int m, int n, int seed) {
   // ===== Geodesic IPM (Hybrid) =====
   {
     auto [solver, cost_rhs] = BuildSolver(lp, vars);
-    VectorXd W = VectorXd::Ones(m);
+    RowSpace W = solver.solver()->MakeRowSpace();
+    setOnes(W);
     auto result = SolveGeodesicHybrid(*solver.solver(), cost_rhs, W, 50, 1e-8);
     PrintResult("Geodesic IPM (Hybrid)", result, true);
   }
