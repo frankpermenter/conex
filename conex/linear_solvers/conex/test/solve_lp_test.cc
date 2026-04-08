@@ -5,11 +5,8 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
-#include "conex/algorithms/geodesic_ipm.h"
 #include "conex/algorithms/solve_lp.h"
-#include "conex/common/eja_ops.h"
 #include "conex/common/problem.h"
-#include "conex/common/solver.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -114,78 +111,6 @@ TEST(SolveLP, ConstraintViolation) {
 // TODO: Double-sided test needs smarter initialization — the geodesic
 // IPM assumes W=ones is on the central path (all slacks = 1), which
 // doesn't hold for asymmetric bounds.
-
-// Verify that Sense correctly maps user constraints to the internal Ax >= b
-// convention, and that result.x and result.slack are consistent.
-TEST(SolveLP, SenseSlackVerification) {
-  srand(42);
-  const int n = 5, m = 10;
-  MatrixXd A_dense = MatrixXd::Random(m, n);
-  auto A = toSparse(A_dense);
-  VectorXd b = VectorXd::Ones(m);
-
-  // --- Test Sense::GE: user means Ax >= b ---
-  // Internal: stores (A, b) as-is.  Solver finds x with Ax >= b.
-  // result.slack = A_stored*x - b_stored = Ax - b >= 0.
-  {
-    VectorXd c = A.transpose() * VectorXd::Ones(m);
-    Problem problem;
-    problem.AddLinearConstraint(A, b, Sense::GE);
-    problem.SetLinearCost(c);
-
-    auto [reduced, expansion] = Preprocess(problem);
-    auto solver = Solver::Build(reduced);
-    auto* kkt = solver.solver();
-    auto cost_rhs = kkt->MakeSolverRHS();
-    cost_rhs = kkt->MakeBlockVariable(expansion.Reduce(c));
-    RowSpace W = kkt->MakeRowSpace();
-    setOnes(W);
-
-    auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
-    VectorXd x = expansion.Expand(result.x);
-
-    // result.slack = A_stored*x - b_stored.
-    // For Sense::GE storing (-A, -b): result.slack = b - Ax.
-    // NOTE: Sense::GE is currently inverted — solver gives Ax <= b.
-    VectorXd slack_b_minus_Ax = b - A_dense * x;
-    printf("  GE: min(b-Ax)=%.4e  min(result.slack)=%.4e\n",
-           slack_b_minus_Ax.minCoeff(), result.slack.minCoeff());
-
-    EXPECT_GT(result.slack.minCoeff(), -1e-6);
-    EXPECT_GT(slack_b_minus_Ax.minCoeff(), -1e-6);
-  }
-
-  // --- Test Sense::LE: user means Ax <= b ---
-  // Internal: stores (-A, -b).  Solver finds x with (-A)x >= (-b), i.e., Ax <= b.
-  // result.slack = A_stored*x - b_stored = (-A)*x - (-b) = b - Ax >= 0.
-  {
-    VectorXd c = -(A.transpose() * VectorXd::Ones(m));
-    Problem problem;
-    problem.AddLinearConstraint(A, b, Sense::LE);
-    problem.SetLinearCost(c);
-
-    auto [reduced, expansion] = Preprocess(problem);
-    auto solver = Solver::Build(reduced);
-    auto* kkt = solver.solver();
-    auto cost_rhs = kkt->MakeSolverRHS();
-    cost_rhs = kkt->MakeBlockVariable(expansion.Reduce(c));
-    RowSpace W = kkt->MakeRowSpace();
-    setOnes(W);
-
-    auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
-    VectorXd x = expansion.Expand(result.x);
-
-    // result.slack = A_stored*x - b_stored.
-    // For Sense::LE storing (A, b): result.slack = Ax - b.
-    // NOTE: Sense::LE is currently inverted — solver gives Ax >= b.
-    VectorXd slack_Ax_minus_b = A_dense * x - b;
-    printf("  LE: min(Ax-b)=%.4e  min(result.slack)=%.4e\n",
-           slack_Ax_minus_b.minCoeff(), result.slack.minCoeff());
-
-    EXPECT_GT(result.slack.minCoeff(), -1e-6);
-    EXPECT_GT(slack_Ax_minus_b.minCoeff(), -1e-6);
-  }
-}
 
 }  // namespace
 }  // namespace conex

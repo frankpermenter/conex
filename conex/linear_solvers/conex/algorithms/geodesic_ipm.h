@@ -1,18 +1,5 @@
 // Geodesic interior-point method for linear programs.
 //
-// Constraint convention
-// ---------------------
-// For stored (A, b), the solver finds x satisfying A*x <= b.
-// The Newton direction satisfies d = 1 + W*(A*y - k*b), and with x = y/k:
-//
-//   (1/k) * W^{-1} * (1 - d)  =  b - A*x    (slack for A*x <= b)
-//
-// At convergence (d -> 0), slack = (1/k)*W^{-1} > 0.
-//
-// The Sense API maps user constraints to this internal form:
-//   Sense::LE (Ax <= b): stored as (A, b) as-is.
-//   Sense::GE (Ax >= b): stored as (-A, -b), so (-A)x <= (-b) ⟺ Ax >= b.
-//
 // Parameterization
 // ----------------
 // The primal slack s and dual variable lambda are parameterized on the
@@ -70,8 +57,6 @@ struct GeodesicResult {
   double complementarity;  // mu * (rank - ||d||^2)
   int total_factorizations = 0;
   int total_solves = 0;
-  Eigen::VectorXd x;      // primal variable y/k from last Newton solve
-  Eigen::VectorXd slack;   // A*x - b (should be >= 0 at convergence)
   std::vector<GeodesicIterStats> iter_stats;
 };
 

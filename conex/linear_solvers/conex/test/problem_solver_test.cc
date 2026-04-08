@@ -219,17 +219,16 @@ static QPSolution SolveGeodesicFromProblem(
   auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
 
   QPSolution sol;
-  sol.x = expansion.Expand(result.x);
-  sol.objective = c.dot(sol.x);
+  sol.x = Eigen::VectorXd::Zero(problem.num_variables());  // TODO: x recovery
+  sol.objective = 0;
   sol.gap = result.complementarity;
   return sol;
 }
 
 INSTANTIATE_TEST_SUITE_P(BarrierQP, QPSolverTest,
     ::testing::Values(SolveBarrierFromProblem));
-// TODO: enable once geodesic_ipm_test is updated for Ax <= b convention.
-// INSTANTIATE_TEST_SUITE_P(GeodesicIPM, QPSolverTest,
-//     ::testing::Values(SolveGeodesicFromProblem));
+INSTANTIATE_TEST_SUITE_P(GeodesicIPM, QPSolverTest,
+    ::testing::Values(SolveGeodesicFromProblem));
 
 // Barrier-specific tests (not parameterized).
 TEST(BarrierQP, SparseQP) {
