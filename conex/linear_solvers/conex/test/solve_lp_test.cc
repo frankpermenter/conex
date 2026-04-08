@@ -48,7 +48,6 @@ TEST(SolveLP, SenseLE) {
   const int n = 5, m = 10;
   auto A = toSparse(MatrixXd::Random(m, n));
   VectorXd b = VectorXd::Ones(m);
-  // For Ax <= b with slack s = b - Ax, central path cost is -A^T ones.
   VectorXd c = -(A.transpose() * VectorXd::Ones(m));
 
   Problem problem;
@@ -59,6 +58,54 @@ TEST(SolveLP, SenseLE) {
   printf("SolveLP(LE): gap=%.2e, %d fac, %d sol\n",
          result.gap, result.factorizations, result.solves);
   EXPECT_LT(std::abs(result.gap), 1e-7);
+}
+
+// Verify ComputeConstraintViolation independently.
+TEST(SolveLP, ConstraintViolation) {
+  const int n = 3, m = 2;
+  // A = [1 0 0; 0 1 0], b = [1; 1].
+  // Sense::GE: Ax >= b. Internally stored as (-A, -b), s = -b + Ax.
+  auto A = toSparse(MatrixXd::Identity(m, n).leftCols(n));
+  VectorXd b = VectorXd::Ones(m);
+
+  // Test with Sense::LE: Ax <= b, stored as (A, b), s = b - Ax.
+  {
+    Problem problem;
+    problem.AddLinearConstraint(A, b, Sense::LE);
+
+    // x = (0, 0, 0): Ax = 0, s = b - 0 = 1 >= 0. Feasible.
+    VectorXd x = VectorXd::Zero(n);
+    double viol = ComputeConstraintViolation(problem, x);
+    EXPECT_GE(viol, 0);
+    EXPECT_NEAR(viol, 1.0, 1e-10);
+
+    // x = (2, 0, 0): Ax = (2, 0), s = (1-2, 1-0) = (-1, 1). Violated.
+    x(0) = 2.0;
+    viol = ComputeConstraintViolation(problem, x);
+    EXPECT_LT(viol, 0);
+    EXPECT_NEAR(viol, -1.0, 1e-10);
+  }
+
+  // Test with Sense::GE: Ax >= b, stored as (-A, -b), s = -b - (-A)x = Ax - b.
+  {
+    Problem problem;
+    problem.AddLinearConstraint(A, b, Sense::GE);
+
+    // x = (2, 2, 0): Ax = (2, 2), s = Ax - b = (1, 1). Feasible.
+    VectorXd x = VectorXd::Zero(n);
+    x(0) = 2.0; x(1) = 2.0;
+    double viol = ComputeConstraintViolation(problem, x);
+    EXPECT_GE(viol, 0);
+    EXPECT_NEAR(viol, 1.0, 1e-10);
+
+    // x = (0, 0, 0): Ax = 0, s = -b = -1. Violated.
+    x.setZero();
+    viol = ComputeConstraintViolation(problem, x);
+    EXPECT_LT(viol, 0);
+    EXPECT_NEAR(viol, -1.0, 1e-10);
+  }
+
+  printf("ConstraintViolation: all checks passed\n");
 }
 
 // TODO: Double-sided test needs smarter initialization — the geodesic

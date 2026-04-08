@@ -38,4 +38,23 @@ LPResult SolveLP(const Problem& problem, double tolerance) {
   return out;
 }
 
+double ComputeConstraintViolation(const Problem& problem,
+                                  const Eigen::VectorXd& x) {
+  double min_slack = std::numeric_limits<double>::max();
+  for (const auto& c : problem.constraints()) {
+    std::visit([&](const auto& data) {
+      using T = std::decay_t<decltype(data)>;
+      if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+        // Internal form: s = b - Ax >= 0.
+        const int nv = static_cast<int>(data.vars.size());
+        Eigen::VectorXd xv(nv);
+        for (int i = 0; i < nv; ++i) xv(i) = x(data.vars[i]);
+        Eigen::VectorXd s = data.b - data.A * xv;
+        min_slack = std::min(min_slack, s.minCoeff());
+      }
+    }, c);
+  }
+  return min_slack;
+}
+
 }  // namespace conex

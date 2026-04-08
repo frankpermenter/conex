@@ -1,5 +1,4 @@
-// Solve a linear program:  min c^T x  s.t.  Ax <= b.
-// Builds the solver from Problem internally.
+// Solve a linear program and verify feasibility.
 
 #pragma once
 #include <Eigen/Dense>
@@ -20,5 +19,11 @@ struct LPResult {
 //   - One or more linear constraints (via AddLinearConstraint)
 // Uses the geodesic IPM (0 centering steps).
 LPResult SolveLP(const Problem& problem, double tolerance = 1e-8);
+
+// Compute the maximum constraint violation for x.
+// Returns min_i(b_stored_i - A_stored_i * x) over all linear constraints.
+// Non-negative means feasible.
+double ComputeConstraintViolation(const Problem& problem,
+                                  const Eigen::VectorXd& x);
 
 }  // namespace conex
