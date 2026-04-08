@@ -1,6 +1,7 @@
 #pragma once
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+#include <numeric>
 #include <variant>
 #include <vector>
 
@@ -29,6 +30,15 @@ class Problem {
     constraints_.push_back(
         LinearConstraintData{A, b, vars});
     return id;
+  }
+
+  // Convenience: vars = {0, 1, ..., A.cols()-1}.
+  ConstraintId AddLinearConstraint(
+      const Eigen::SparseMatrix<double>& A,
+      const Eigen::VectorXd& b) {
+    std::vector<int> vars(A.cols());
+    std::iota(vars.begin(), vars.end(), 0);
+    return AddLinearConstraint(A, b, vars);
   }
 
   // Dense A variant.
@@ -69,6 +79,13 @@ class Problem {
         EqualityConstraintData{C, d, primal_vars});
     return id;
   }
+
+  // Set the linear cost: min c^T x.
+  void SetLinearCost(const Eigen::VectorXd& c) { linear_cost_ = c; }
+
+  // Access the linear cost (empty if not set).
+  const Eigen::VectorXd& linear_cost() const { return linear_cost_; }
+  bool has_linear_cost() const { return linear_cost_.size() > 0; }
 
   int num_constraints() const {
     return static_cast<int>(constraints_.size());
@@ -121,6 +138,7 @@ class Problem {
   }
 
  private:
+  Eigen::VectorXd linear_cost_;
   std::vector<ConstraintData> constraints_;
 
   // Dense+sparse Q helper.
