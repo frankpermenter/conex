@@ -113,6 +113,13 @@ class Problem {
     return id;
   }
 
+  // Convenience: vars = {0, 1, ..., Q.cols()-1}.
+  ConstraintId AddQuadraticCost(const Eigen::SparseMatrix<double>& Q) {
+    std::vector<int> vars(Q.cols());
+    std::iota(vars.begin(), vars.end(), 0);
+    return AddQuadraticCost(Q, vars);
+  }
+
   // Dense Q variant.
   ConstraintId AddQuadraticCost(
       const Eigen::MatrixXd& Q,
