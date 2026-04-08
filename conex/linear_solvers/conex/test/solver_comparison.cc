@@ -30,6 +30,9 @@ struct RandomLP {
   int m, n;
 };
 
+// Satisfies A^T ones = c
+//           A x + b >= 0.
+//
 RandomLP MakeRandomLP(int m, int n, int seed) {
   srand(seed);
   MatrixXd A_dense = MatrixXd::Random(m, n);
@@ -85,12 +88,13 @@ SolverSetup BuildSolver(const RandomLP& lp, const std::vector<int>& vars) {
   VectorXd neg_b = -lp.b;
   Problem problem;
   problem.AddLinearConstraint(negA, neg_b, vars);
+  problem.SetLinearCost(lp.c);
   auto [reduced, expansion] = Preprocess(problem);
   auto solver = Solver::Build(reduced);
   auto* kkt = solver.solver();
 
   auto cost_rhs = kkt->MakeSolverRHS();
-  VectorXd c_r = expansion.Reduce(lp.c);
+  VectorXd c_r = expansion.Reduce(problem.linear_cost());
   cost_rhs = kkt->MakeBlockVariable(c_r);
 
   return {std::move(solver), cost_rhs};
