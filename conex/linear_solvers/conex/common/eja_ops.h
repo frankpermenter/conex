@@ -1,26 +1,28 @@
-// Free functions on EuclideanJordanAlgebra::Variable for cone-generic algorithms.
-// Current implementations are element-wise (linear constraints / nonneg orthant).
-// SDP dispatch will be added when PSD constraints are introduced.
+// Free functions on EuclideanJordanAlgebra::Variable.
+// Each function iterates segments and dispatches to the per-segment ConeOps.
 
 #pragma once
+#include "conex/common/cone_ops.h"
 #include "conex/common/tree_rhs.h"
 
 namespace conex {
 namespace EuclideanJordanAlgebra {
 
-using Variable = ::conex::EuclideanJordanAlgebra::Variable;
-
-// Element-wise product: out_i = a_i * b_i.
+// Element-wise product (Jordan product).
 inline Variable cwiseProduct(const Variable& a, const Variable& b) {
   Variable out = a;
-  out.data = a.data.cwiseProduct(b.data);
+  for (int i = 0; i < a.num_constraints(); ++i)
+    a.ops[i]->product(&out.data(a.offsets[i]), &a.data(a.offsets[i]),
+                       &b.data(b.offsets[i]), a.sizes[i]);
   return out;
 }
 
-// Element-wise quotient: out_i = a_i / b_i.
+// Element-wise quotient (Jordan division).
 inline Variable cwiseQuotient(const Variable& a, const Variable& b) {
   Variable out = a;
-  out.data = a.data.cwiseQuotient(b.data);
+  for (int i = 0; i < a.num_constraints(); ++i)
+    a.ops[i]->quotient(&out.data(a.offsets[i]), &a.data(a.offsets[i]),
+                        &b.data(b.offsets[i]), a.sizes[i]);
   return out;
 }
 
@@ -32,39 +34,54 @@ inline Variable addScaled(const Variable& a, const Variable& b,
   return out;
 }
 
-// Geodesic update: W_i *= exp(alpha * d_i).
+// Geodesic update: W *= exp(alpha * d).
 inline void geodesicUpdate(Variable& W, double alpha, const Variable& d) {
-  W.data = W.data.cwiseProduct((alpha * d.data).array().exp().matrix());
+  for (int i = 0; i < W.num_constraints(); ++i)
+    W.ops[i]->geodesicUpdate(&W.data(W.offsets[i]), &W.data(W.offsets[i]),
+                              alpha, &d.data(d.offsets[i]), W.sizes[i]);
 }
 
-// Set all entries to identity element (1 for linear, I for SDP).
+// Set to identity element.
 inline void setOnes(Variable& v) {
-  v.data.setOnes();
+  for (int i = 0; i < v.num_constraints(); ++i)
+    v.ops[i]->setIdentity(&v.data(v.offsets[i]), v.sizes[i]);
 }
 
-// ||a||_inf = max |a_i|.
+// ||a||_inf.
 inline double normInf(const Variable& a) {
-  return a.data.lpNorm<Eigen::Infinity>();
+  double result = 0;
+  for (int i = 0; i < a.num_constraints(); ++i)
+    result = std::max(result,
+                      a.ops[i]->normInf(&a.data(a.offsets[i]), a.sizes[i]));
+  return result;
 }
 
-// ||a||^2 = sum a_i^2.
+// ||a||^2.
 inline double squaredNorm(const Variable& a) {
-  return a.data.squaredNorm();
+  double result = 0;
+  for (int i = 0; i < a.num_constraints(); ++i)
+    result += a.ops[i]->squaredNorm(&a.data(a.offsets[i]), a.sizes[i]);
+  return result;
 }
 
-// <a, b> = sum a_i * b_i.
+// <a, b>.
 inline double dot(const Variable& a, const Variable& b) {
-  return (a.data.cwiseProduct(b.data)).sum();
+  double result = 0;
+  for (int i = 0; i < a.num_constraints(); ++i)
+    result += a.ops[i]->dot(&a.data(a.offsets[i]), &b.data(b.offsets[i]),
+                             a.sizes[i]);
+  return result;
 }
 
 // gap(r, d) = <r.*(1+d), r.*(1-d)> = sum r_i^2 * (1 - d_i^2).
 inline double gap(const Variable& r, const Variable& d) {
-  Eigen::MatrixXd r2 = r.data.cwiseProduct(r.data);
-  Eigen::MatrixXd d2 = d.data.cwiseProduct(d.data);
-  return (r2 - r2.cwiseProduct(d2)).sum();
+  return dot(cwiseProduct(r, r),
+             addScaled(Variable{Eigen::MatrixXd::Ones(r.data.rows(), r.data.cols()),
+                                r.offsets, r.sizes, r.ops},
+                       cwiseProduct(d, d), 1.0, -1.0));
 }
 
-// min_i(r_i - |r_i * d_i|) = min_i r_i * (1 - |d_i|).
+// min_i(r_i - |r_i * d_i|).
 inline double minSlack(const Variable& r, const Variable& d) {
   return (r.data - r.data.cwiseProduct(d.data.cwiseAbs())).minCoeff();
 }
@@ -82,7 +99,7 @@ inline void setFromVector(Variable& v, const Eigen::VectorXd& vec) {
 
 }  // namespace EuclideanJordanAlgebra
 
-// Bring free functions into conex namespace via ADL-friendly using declarations.
+// Bring free functions into conex namespace.
 namespace EJA = EuclideanJordanAlgebra;
 using EuclideanJordanAlgebra::cwiseProduct;
 using EuclideanJordanAlgebra::cwiseQuotient;

@@ -208,12 +208,16 @@ struct SolverRHS {
 
 namespace EuclideanJordanAlgebra {
 
+class ConeOps;  // forward declaration
+
 // Element of a product of Euclidean Jordan algebras.
 // Single-column by default; supports n-column for batched operations.
+// Each segment has an associated ConeOps for dispatching cone operations.
 struct Variable {
   Eigen::MatrixXd data;
   std::vector<int> offsets;
   std::vector<int> sizes;
+  std::vector<const ConeOps*> ops;  // one per segment (non-owning)
 
   // Multi-column block for constraint i (rows x cols).
   Eigen::Block<Eigen::MatrixXd> segment(int i) {

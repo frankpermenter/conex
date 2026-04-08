@@ -1,4 +1,5 @@
 #include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/common/cone_ops.h"
 #include "conex/common/equality_constraint.h"
 #include "conex/common/linear_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
@@ -1028,6 +1029,7 @@ RowSpace T::MakeRowSpace(int cols) {
   for (auto* lc : linear_sub_assemblers_) {
     rs.offsets.push_back(offset);
     rs.sizes.push_back(lc->num_rows());
+    rs.ops.push_back(&EuclideanJordanAlgebra::nonnegOrthantOps());
     offset += lc->num_rows();
   }
   rs.data.setZero(offset, cols);

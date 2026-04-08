@@ -1,4 +1,5 @@
 #pragma once
+#include "conex/common/cone_ops.h"
 #include "conex/common/kkt_solver_interface.h"
 #include <Eigen/Dense>
 
@@ -43,7 +44,12 @@ class DenseKKTSolver : public KKTSolverBase {
 
   RowSpace MakeRowSpace(int cols = 1) override {
     RowSpace rs;
-    if (has_constraints_) rs.data.setZero(A_.rows(), cols);
+    if (has_constraints_) {
+      rs.data.setZero(A_.rows(), cols);
+      rs.offsets.push_back(0);
+      rs.sizes.push_back(A_.rows());
+      rs.ops.push_back(&EuclideanJordanAlgebra::nonnegOrthantOps());
+    }
     return rs;
   }
 
