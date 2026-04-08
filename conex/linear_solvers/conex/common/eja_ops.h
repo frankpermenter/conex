@@ -142,6 +142,12 @@ inline double lineSearchK(const Variable& d0, const Variable& d1) {
   return k_max;
 }
 
+// Project onto the cone.
+inline void project(Variable& out, const Variable& a) {
+  for (int i = 0; i < a.num_constraints(); ++i)
+    a.ops[i]->project(out.segment_ptr(i), a.segment_ptr(i), a.sizes[i]);
+}
+
 // Initialize from a VectorXd (copies data into col 0).
 inline void setFromVector(Variable& v, const Eigen::VectorXd& vec) {
   v.col() = vec;
@@ -164,5 +170,6 @@ using EuclideanJordanAlgebra::minSlack;
 using EuclideanJordanAlgebra::shrinkR;
 using EuclideanJordanAlgebra::setFromVector;
 using EuclideanJordanAlgebra::lineSearchK;
+using EuclideanJordanAlgebra::project;
 
 }  // namespace conex

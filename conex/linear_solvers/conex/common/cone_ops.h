@@ -33,6 +33,9 @@ class ConeOps {
 
   // <a, b> (trace inner product for SDP).
   virtual double dot(const double* a, const double* b, int size) const = 0;
+
+  // Project onto the cone: out = argmin ||out - a||  s.t. out in K.
+  virtual void project(double* out, const double* a, int size) const = 0;
 };
 
 // Nonneg orthant (linear constraints): all operations are element-wise.
@@ -75,6 +78,10 @@ class NonnegOrthantOps : public ConeOps {
     double result = 0;
     for (int i = 0; i < size; ++i) result += a[i] * b[i];
     return result;
+  }
+
+  void project(double* out, const double* a, int size) const override {
+    for (int i = 0; i < size; ++i) out[i] = std::max(a[i], 0.0);
   }
 };
 
