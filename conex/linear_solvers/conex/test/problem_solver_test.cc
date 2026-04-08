@@ -391,6 +391,117 @@ TEST(GeodesicBarrierQP, PerComponentR) {
          r1.iterations, r2.iterations, r3.iterations);
 }
 
+TEST(GeodesicBarrierQP, MultipleConstraints) {
+  // Geodesic IPM on a problem with two separate AddLinearConstraint calls.
+  // min c^T x s.t. A1*x >= b1, A2*x >= b2.
+  // Central path at W=ones when b=ones and c = (A1^T + A2^T) * ones.
+  srand(99);
+  const int n = 6, m1 = 10, m2 = 8;
+
+  MatrixXd A1_dense = MatrixXd::Random(m1, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m1, n);
+  MatrixXd A2_dense = MatrixXd::Random(m2, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m2, n);
+
+  auto toSparse = [](const MatrixXd& M) {
+    std::vector<Eigen::Triplet<double>> trips;
+    for (int i = 0; i < M.rows(); ++i)
+      for (int j = 0; j < M.cols(); ++j)
+        trips.emplace_back(i, j, M(i, j));
+    Eigen::SparseMatrix<double> S(M.rows(), M.cols());
+    S.setFromTriplets(trips.begin(), trips.end());
+    return S;
+  };
+
+  Eigen::SparseMatrix<double> A1 = toSparse(A1_dense);
+  Eigen::SparseMatrix<double> A2 = toSparse(A2_dense);
+  VectorXd b1 = VectorXd::Ones(m1);
+  VectorXd b2 = VectorXd::Ones(m2);
+  // c = A1^T ones + A2^T ones (central path at W=ones for Ax >= b).
+  VectorXd c = A1.transpose() * VectorXd::Ones(m1) +
+               A2.transpose() * VectorXd::Ones(m2);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  // Model Ax >= b via -Ax <= -b.
+  Eigen::SparseMatrix<double> negA1 = -A1;
+  Eigen::SparseMatrix<double> negA2 = -A2;
+  VectorXd neg_b1 = -b1;
+  VectorXd neg_b2 = -b2;
+  Problem problem;
+  problem.AddLinearConstraint(negA1, neg_b1, vars);
+  problem.AddLinearConstraint(negA2, neg_b2, vars);
+  auto [reduced, expansion] = Preprocess(problem);
+  auto solver = Solver::Build(reduced);
+  auto* kkt = solver.solver();
+
+  auto cost_rhs = kkt->MakeSolverRHS();
+  VectorXd c_r = expansion.Reduce(c);
+  cost_rhs = kkt->MakeBlockVariable(c_r);
+
+  const int m = m1 + m2;
+
+  // --- Test 1: GeodesicCenter at k=1, W=ones is fixed point ---
+  {
+    RowSpace W = kkt->MakeRowSpace();
+    setOnes(W);
+    // Small perturbation.
+    setFromVector(W, VectorXd::Ones(m) + 0.01 * VectorXd::Random(m));
+
+    auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 100, 1e-10);
+    EXPECT_LT(result.d_inf_norm, 1e-8);
+
+    // W should return to ones.
+    RowSpace W_ones = kkt->MakeRowSpace();
+    setOnes(W_ones);
+    EXPECT_NEAR(normInf(addScaled(W, W_ones, 1.0, -1.0)), 0.0, 1e-6);
+
+    printf("MultipleConstraints center: %d iters, d_inf=%.2e\n",
+           result.iterations, result.d_inf_norm);
+  }
+
+  // --- Test 2: SolveGeodesicLP (0 centering) ---
+  {
+    RowSpace W = kkt->MakeRowSpace();
+    setOnes(W);
+
+    auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
+    EXPECT_LT(result.complementarity, 1e-7);
+
+    printf("MultipleConstraints geodesic: %d fac, %d sol, gap=%.2e\n",
+           result.total_factorizations, result.total_solves,
+           result.complementarity);
+  }
+
+  // --- Test 3: SolveGeodesicHybrid ---
+  {
+    RowSpace W = kkt->MakeRowSpace();
+    setOnes(W);
+
+    auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W, 50, 1e-8);
+    EXPECT_LT(std::abs(result.complementarity), 1e-7);
+
+    printf("MultipleConstraints hybrid: %d fac, %d sol, gap=%.2e\n",
+           result.total_factorizations, result.total_solves,
+           result.complementarity);
+  }
+
+  // --- Test 4: Verify RowSpace has correct number of segments ---
+  {
+    RowSpace W = kkt->MakeRowSpace();
+    // With 2 constraints decomposed across cliques, num_constraints >= 2.
+    EXPECT_GE(W.num_constraints(), 2);
+    // Total rows = m1 + m2.
+    EXPECT_EQ(W.total_rows(), m);
+    // Every segment has ops.
+    for (int i = 0; i < W.num_constraints(); ++i) {
+      EXPECT_NE(W.ops[i], nullptr);
+    }
+
+    printf("MultipleConstraints segments: %d (from %d + %d rows)\n",
+           W.num_constraints(), m1, m2);
+  }
+}
+
 // =====================================================================
 // ProblemSolver tests
 // =====================================================================
