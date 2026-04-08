@@ -165,6 +165,11 @@ std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
     }, problem.constraint(i));
   }
 
+  // Reduce the linear cost if present.
+  if (problem.has_linear_cost()) {
+    reduced.SetLinearCost(expansion.Reduce(problem.linear_cost()));
+  }
+
   return {reduced, expansion};
 }
 

@@ -94,7 +94,7 @@ SolverSetup BuildSolver(const RandomLP& lp, const std::vector<int>& vars) {
   auto* kkt = solver.solver();
 
   auto cost_rhs = kkt->MakeSolverRHS();
-  VectorXd c_r = expansion.Reduce(problem.linear_cost());
+  VectorXd c_r = reduced.linear_cost();
   cost_rhs = kkt->MakeBlockVariable(c_r);
 
   return {std::move(solver), cost_rhs};

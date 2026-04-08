@@ -13,8 +13,8 @@ LPResult SolveLP(const Problem& problem, double tolerance) {
   auto solver = Solver::Build(reduced);
   auto* kkt = solver.solver();
 
-  // Build cost in SolverRHS format.
-  Eigen::VectorXd c_r = expansion.Reduce(problem.linear_cost());
+  // Cost was reduced by Preprocess.
+  Eigen::VectorXd c_r = reduced.linear_cost();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c_r);
 
