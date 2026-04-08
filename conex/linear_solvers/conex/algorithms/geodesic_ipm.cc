@@ -79,16 +79,48 @@ GeodesicResult GeodesicCenter(
   return result;
 }
 
+// Direct Newton step: factor, single RHS, solve, compute d and y.
+// Matches what GeodesicCenter does per iteration.
+static void ComputeDirectNewtonStep(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const RowSpace& W,
+    double k,
+    RowSpace& d_out,
+    Eigen::VectorXd& y_out) {
+  RowSpace b = kkt.GetAffineTerm();
+
+  RowSpace weights = cwiseProduct(W, W);
+  kkt.SetWeights(weights);
+  kkt.AssembleAndFactor();
+
+  auto y = kkt.MakeSolverRHS();
+  y = cost_rhs;
+  y *= k;
+  RowSpace v = addScaled(cwiseProduct(weights, b), W, k, 2.0);
+  kkt.AccumulateAtranspose(v, y);
+  kkt.SolveSolverRHS(y);
+
+  RowSpace row = kkt.MakeRowSpace();
+  kkt.MultiplyA(y, row);
+  d_out = addScaled(b, row, k, -1.0);
+  d_out = cwiseProduct(W, d_out);
+  RowSpace ones = kkt.MakeRowSpace();
+  setOnes(ones);
+  d_out += ones;
+
+  int nr = kkt.number_of_variables();
+  y_out.resize(nr);
+  y.supernodes->GatherInto(y_out);
+}
+
 // Factor, two back-solves, 2-column MultiplyA → compute d0, d1.
-// Optionally returns y0, y1 (the two solution vectors) for x recovery.
 static void ComputeDecomposition(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
     const RowSpace& W,
     RowSpace& d0,
-    RowSpace& d1,
-    Eigen::VectorXd* y0_out = nullptr,
-    Eigen::VectorXd* y1_out = nullptr) {
+    RowSpace& d1) {
   RowSpace b = kkt.GetAffineTerm();
 
   RowSpace weights = cwiseProduct(W, W);
@@ -113,18 +145,12 @@ static void ComputeDecomposition(
   y.SetColumn(1, rhs1);
   kkt.SolveSolverRHS(y);
 
-  // Optionally extract y0, y1 for x recovery: x = y0 + k * y1.
-  if (y0_out || y1_out) {
-    int nr = kkt.number_of_variables();
-    Eigen::MatrixXd y_dense(nr, 2);
-    y.supernodes->GatherInto(y_dense);
-    if (y0_out) *y0_out = y_dense.col(0);
-    if (y1_out) *y1_out = y_dense.col(1);
-  }
-
   auto row = kkt.MakeRowSpace(2);
   kkt.MultiplyA(y, row);
 
+  // d0 = 1 - W .* (Ay)_col0.
+  // d1 = W .* (b - (Ay)_col1).
+  // For now, extract columns into single-col RowSpaces.
   RowSpace ay0 = kkt.MakeRowSpace();
   RowSpace ay1 = kkt.MakeRowSpace();
   ay0.col() = row.col(0);
@@ -350,8 +376,7 @@ GeodesicResult SolveGeodesicLP(
     // Decompose: 1 factor + 2 back-solves.
     RowSpace d0 = kkt.MakeRowSpace();
     RowSpace d1 = kkt.MakeRowSpace();
-    Eigen::VectorXd y0, y1;
-    ComputeDecomposition(kkt, cost_rhs, W, d0, d1, &y0, &y1);
+    ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
     total_fac += 1;
     total_sol += 2;
 
@@ -359,6 +384,20 @@ GeodesicResult SolveGeodesicLP(
     double k_new = lineSearchK(d0, d1);
     if (k_new <= k) break;
     k = k_new;
+
+    // DEBUG: compare decomposed d with direct Newton d at the same k.
+    {
+      RowSpace d_direct = kkt.MakeRowSpace();
+      Eigen::VectorXd y_direct;
+      ComputeDirectNewtonStep(kkt, cost_rhs, W, k, d_direct, y_direct);
+      RowSpace d_decomp = addScaled(d0, d1, 1.0, k);
+      double d_err = std::sqrt(squaredNorm(addScaled(d_direct, d_decomp, 1.0, -1.0)));
+      double y_err = 0;  // y not available from decomposition yet
+      printf("  DEBUG iter=%d k=%.4f: d_err=%.2e\n", outer, k, d_err);
+      if (d_err > 1e-3) {
+        throw std::runtime_error("Decomposition d does not match direct d!");
+      }
+    }
 
     // Take one geodesic step at k using d = d0 + k * d1.
     RowSpace d = addScaled(d0, d1, 1.0, k);
@@ -388,9 +427,6 @@ GeodesicResult SolveGeodesicLP(
     result.complementarity = s_dot_x;
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
-    // From d = 1 + W*(k*b - Ay) and s = (1/k)*W^{-1}*(1-d):
-    //   W^{-1}(1-d) = Ay - kb, so s = A*(y/k) - b.  Hence x = y/k.
-    result.x = (y0 + k * y1) / k;
 
     if (s_dot_x < tolerance) break;
   }

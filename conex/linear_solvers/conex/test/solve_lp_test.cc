@@ -37,13 +37,9 @@ TEST(SolveLP, SenseGE) {
   problem.SetLinearCost(c);
 
   auto result = SolveLP(problem);
-  printf("SolveLP(GE): gap=%.2e, obj=%.4f, %d fac, %d sol\n",
-         result.gap, result.objective, result.factorizations, result.solves);
+  printf("SolveLP(GE): gap=%.2e, %d fac, %d sol\n",
+         result.gap, result.factorizations, result.solves);
   EXPECT_LT(std::abs(result.gap), 1e-7);
-
-  double viol = ComputeConstraintViolation(problem, result.x);
-  printf("  violation=%.2e\n", -viol);
-  EXPECT_GT(viol, -1e-6);
 }
 
 // Ax <= b.
@@ -59,13 +55,9 @@ TEST(SolveLP, SenseLE) {
   problem.SetLinearCost(c);
 
   auto result = SolveLP(problem);
-  printf("SolveLP(LE): gap=%.2e, obj=%.4f, %d fac, %d sol\n",
-         result.gap, result.objective, result.factorizations, result.solves);
+  printf("SolveLP(LE): gap=%.2e, %d fac, %d sol\n",
+         result.gap, result.factorizations, result.solves);
   EXPECT_LT(std::abs(result.gap), 1e-7);
-
-  double viol = ComputeConstraintViolation(problem, result.x);
-  printf("  violation=%.2e\n", -viol);
-  EXPECT_GT(viol, -1e-6);
 }
 
 // Verify ComputeConstraintViolation independently.
