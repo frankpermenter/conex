@@ -28,12 +28,8 @@ LPResult SolveLP(const Problem& problem, double tolerance) {
   out.gap = result.complementarity;
   out.factorizations = result.total_factorizations;
   out.solves = result.total_solves;
-
-  // Recover x from the final solve: use the last decomposition's y.
-  // For now, solve one more time to get x.
-  // TODO: cache x from the last iteration.
-  out.x = Eigen::VectorXd::Zero(problem.num_variables());
-  out.objective = 0;
+  out.x = expansion.Expand(result.x);
+  out.objective = problem.linear_cost().dot(out.x);
 
   return out;
 }

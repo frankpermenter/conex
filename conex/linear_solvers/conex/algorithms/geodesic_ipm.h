@@ -57,6 +57,7 @@ struct GeodesicResult {
   double complementarity;  // mu * (rank - ||d||^2)
   int total_factorizations = 0;
   int total_solves = 0;
+  Eigen::VectorXd x;  // primal solution from the final Newton solve
   std::vector<GeodesicIterStats> iter_stats;
 };
 

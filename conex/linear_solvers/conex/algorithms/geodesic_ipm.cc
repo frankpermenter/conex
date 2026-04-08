@@ -80,12 +80,15 @@ GeodesicResult GeodesicCenter(
 }
 
 // Factor, two back-solves, 2-column MultiplyA → compute d0, d1.
+// Optionally returns y0, y1 (the two solution vectors) for x recovery.
 static void ComputeDecomposition(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
     const RowSpace& W,
     RowSpace& d0,
-    RowSpace& d1) {
+    RowSpace& d1,
+    Eigen::VectorXd* y0_out = nullptr,
+    Eigen::VectorXd* y1_out = nullptr) {
   RowSpace b = kkt.GetAffineTerm();
 
   RowSpace weights = cwiseProduct(W, W);
@@ -110,12 +113,18 @@ static void ComputeDecomposition(
   y.SetColumn(1, rhs1);
   kkt.SolveSolverRHS(y);
 
+  // Optionally extract y0, y1 for x recovery: x = y0 + k * y1.
+  if (y0_out || y1_out) {
+    int nr = kkt.number_of_variables();
+    Eigen::MatrixXd y_dense(nr, 2);
+    y.supernodes->GatherInto(y_dense);
+    if (y0_out) *y0_out = y_dense.col(0);
+    if (y1_out) *y1_out = y_dense.col(1);
+  }
+
   auto row = kkt.MakeRowSpace(2);
   kkt.MultiplyA(y, row);
 
-  // d0 = 1 - W .* (Ay)_col0.
-  // d1 = W .* (b - (Ay)_col1).
-  // For now, extract columns into single-col RowSpaces.
   RowSpace ay0 = kkt.MakeRowSpace();
   RowSpace ay1 = kkt.MakeRowSpace();
   ay0.col() = row.col(0);
@@ -341,7 +350,8 @@ GeodesicResult SolveGeodesicLP(
     // Decompose: 1 factor + 2 back-solves.
     RowSpace d0 = kkt.MakeRowSpace();
     RowSpace d1 = kkt.MakeRowSpace();
-    ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
+    Eigen::VectorXd y0, y1;
+    ComputeDecomposition(kkt, cost_rhs, W, d0, d1, &y0, &y1);
     total_fac += 1;
     total_sol += 2;
 
@@ -378,6 +388,9 @@ GeodesicResult SolveGeodesicLP(
     result.complementarity = s_dot_x;
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
+    // TODO: proper x recovery. y = y0 + k*y1 is the Newton solve variable,
+    // not the primal x directly. Need to account for scaling and centering.
+    result.x = y0 + k * y1;
 
     if (s_dot_x < tolerance) break;
   }

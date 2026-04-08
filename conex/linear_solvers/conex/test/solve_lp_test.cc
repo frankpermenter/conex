@@ -40,6 +40,8 @@ TEST(SolveLP, SenseGE) {
   printf("SolveLP(GE): gap=%.2e, %d fac, %d sol\n",
          result.gap, result.factorizations, result.solves);
   EXPECT_LT(std::abs(result.gap), 1e-7);
+
+  // TODO: verify feasibility of result.x once x recovery is implemented.
 }
 
 // Ax <= b.
