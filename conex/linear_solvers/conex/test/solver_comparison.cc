@@ -13,7 +13,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/geodesic_ipm.h"
-#include "conex/common/row_space_ops.h"
+#include "conex/common/eja_ops.h"
 #include "conex/common/problem.h"
 #include "conex/common/solver.h"
 

@@ -206,10 +206,11 @@ struct SolverRHS {
   }
 };
 
-// Concatenated row-space matrix for all linear constraints.
-// Single-column by default (backward compatible); supports n-column for
-// batched MultiplyA / AccumulateAtranspose / Solve.
-struct RowSpace {
+namespace EuclideanJordanAlgebra {
+
+// Element of a product of Euclidean Jordan algebras.
+// Single-column by default; supports n-column for batched operations.
+struct Variable {
   Eigen::MatrixXd data;
   std::vector<int> offsets;
   std::vector<int> sizes;
@@ -231,9 +232,14 @@ struct RowSpace {
   int num_constraints() const { return static_cast<int>(sizes.size()); }
   void SetZero() { data.setZero(); }
 
-  RowSpace& operator*=(double alpha) { data *= alpha; return *this; }
-  RowSpace& operator+=(const RowSpace& o) { data += o.data; return *this; }
-  RowSpace& operator-=(const RowSpace& o) { data -= o.data; return *this; }
+  Variable& operator*=(double alpha) { data *= alpha; return *this; }
+  Variable& operator+=(const Variable& o) { data += o.data; return *this; }
+  Variable& operator-=(const Variable& o) { data -= o.data; return *this; }
 };
+
+}  // namespace EuclideanJordanAlgebra
+
+// Alias for use in conex namespace.
+using RowSpace = EuclideanJordanAlgebra::Variable;
 
 }  // namespace conex

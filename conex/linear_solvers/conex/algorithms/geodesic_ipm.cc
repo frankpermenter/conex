@@ -3,7 +3,7 @@
 #include <cmath>
 #include <cstdio>
 
-#include "conex/common/row_space_ops.h"
+#include "conex/common/eja_ops.h"
 
 namespace conex {
 

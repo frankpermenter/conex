@@ -8,7 +8,7 @@
 
 #include "conex/algorithms/barrier_qp.h"
 #include "conex/algorithms/geodesic_ipm.h"
-#include "conex/common/row_space_ops.h"
+#include "conex/common/eja_ops.h"
 #include "conex/algorithms/irls.h"
 #include "conex/algorithms/lqr_tree_solver.h"
 #include "conex/common/clique_ordering.h"
