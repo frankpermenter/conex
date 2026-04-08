@@ -46,6 +46,7 @@ struct GeodesicIterStats {
   double d_sqr;
   double complementarity;  // mu * (rank - d_sqr)
   int r_updates = 0;       // r-updates since last factorization (hybrid)
+  double min_slack = 0;    // min(r_i - |r_i * d_i|)
 };
 
 struct GeodesicResult {

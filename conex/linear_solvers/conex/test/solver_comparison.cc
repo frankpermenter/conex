@@ -51,14 +51,14 @@ void PrintResult(const char* name, const GeodesicResult& result,
   printf("  %d factorizations, %d solves\n",
          result.total_factorizations, result.total_solves);
   if (show_r_updates) {
-    printf("  %3s  %12s  %12s  %12s  %12s  %6s\n",
-           "fac", "gap/m", "gap", "d_inf", "d_sqr", "r_upd");
-    printf("  %s\n", std::string(63, '-').c_str());
+    printf("  %3s  %12s  %12s  %12s  %12s  %6s  %12s\n",
+           "fac", "gap/m", "gap", "d_inf", "d_sqr", "r_upd", "min_slack");
+    printf("  %s\n", std::string(76, '-').c_str());
     for (size_t i = 0; i < result.iter_stats.size(); ++i) {
       const auto& s = result.iter_stats[i];
-      printf("  %3d  %12.4e  %12.4e  %12.4e  %12.4e  %6d\n",
+      printf("  %3d  %12.4e  %12.4e  %12.4e  %12.4e  %6d  %12.4e\n",
              static_cast<int>(i), s.mu, s.complementarity, s.d_inf, s.d_sqr,
-             s.r_updates);
+             s.r_updates, s.min_slack);
     }
   } else {
     printf("  %3s  %12s  %12s  %12s  %12s\n",

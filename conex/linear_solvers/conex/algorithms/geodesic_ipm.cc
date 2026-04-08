@@ -419,7 +419,7 @@ GeodesicResult SolveGeodesicHybrid(
   // R-update loop: solve, check gap, shrink r. Repeat until gap < 0
   // or converged.  Each iteration is one back-solve (reusing factorization).
   int r_updates_this_fac = 0;
-  double gap = 0, d_inf = 0, d_sq = 0;
+  double gap = 0, d_inf = 0, d_sq = 0, min_slack = 0;
 
   if (verbose) {
     printf("  %3s  %12s  %12s  %6s  %6s\n",
@@ -450,7 +450,7 @@ GeodesicResult SolveGeodesicHybrid(
     d_sq = d_vec.squaredNorm();
 
     // r_i - |r_i * d_i| = r_i * (1 - |d_i|).  Feasible when >= 0.
-    double min_slack = (r - r.cwiseProduct(d_vec.cwiseAbs())).minCoeff();
+    min_slack = (r - r.cwiseProduct(d_vec.cwiseAbs())).minCoeff();
 
     if (std::abs(gap) < tolerance && min_slack > -tolerance) break;
 
@@ -461,7 +461,7 @@ GeodesicResult SolveGeodesicHybrid(
       kkt.SetWeights(weights);
       if (!kkt.AssembleAndFactor()) break;
       total_fac++;
-      result.iter_stats.push_back({gap / m, d_inf, d_sq, gap, r_updates_this_fac});
+      result.iter_stats.push_back({gap / m, d_inf, d_sq, gap, r_updates_this_fac, min_slack});
       r_updates_this_fac = 0;
     } else {
       // Shrink r only.
@@ -472,7 +472,7 @@ GeodesicResult SolveGeodesicHybrid(
     }
   }
 
-  result.iter_stats.push_back({gap / m, d_inf, d_sq, gap, r_updates_this_fac});
+  result.iter_stats.push_back({gap / m, d_inf, d_sq, gap, r_updates_this_fac, min_slack});
   result.d_inf_norm = d_inf;
   result.d_sq_norm = d_sq;
   result.mu = gap / m;
