@@ -386,6 +386,15 @@ GeodesicResult SolveGeodesicLP(
     k = k_new;
 
     // DEBUG: compare decomposed d with direct Newton d at the same k.
+    //
+    // The Newton direction satisfies:
+    //   d = 1 + W*(k*b - A*y)
+    //
+    // So 1 - d = W*(A*y - k*b), and with x = y/k:
+    //   (1/k) * W^{-1} * (1-d)  =  A*x - b
+    //
+    // This is the slack for A*x >= b.  At convergence d -> 0,
+    // slack = (1/k)*W^{-1} > 0, confirming A*x > b.
     {
       RowSpace d_direct = kkt.MakeRowSpace();
       Eigen::VectorXd y_direct;
