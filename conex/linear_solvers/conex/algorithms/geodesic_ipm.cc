@@ -388,9 +388,9 @@ GeodesicResult SolveGeodesicLP(
     result.complementarity = s_dot_x;
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
-    // TODO: proper x recovery. y = y0 + k*y1 is the Newton solve variable,
-    // not the primal x directly. Need to account for scaling and centering.
-    result.x = y0 + k * y1;
+    // From d = 1 + W*(k*b - Ay) and s = (1/k)*W^{-1}*(1-d):
+    //   W^{-1}(1-d) = Ay - kb, so s = A*(y/k) - b.  Hence x = y/k.
+    result.x = (y0 + k * y1) / k;
 
     if (s_dot_x < tolerance) break;
   }
