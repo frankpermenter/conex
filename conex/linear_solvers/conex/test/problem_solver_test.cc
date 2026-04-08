@@ -8,6 +8,7 @@
 
 #include "conex/algorithms/barrier_qp.h"
 #include "conex/algorithms/alternating_projections.h"
+#include "conex/common/affine_projection.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/common/eja_ops.h"
 #include "conex/algorithms/irls.h"
@@ -413,41 +414,26 @@ TEST(AlternatingProjections, Feasibility) {
 
   Problem problem;
   problem.AddLinearConstraint(A, b, vars);
-  auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto affine = AffineProjection::Build(problem);
 
   // Start with s that violates the cone (some negative entries).
-  RowSpace s = kkt->MakeRowSpace();
-  setFromVector(s, VectorXd::Random(m));  // some entries negative
+  RowSpace s = affine.MakeVariable();
+  setFromVector(s, VectorXd::Random(m));
 
-  auto result = AlternatingProjections(*kkt, s, 200, 1e-10, false);
+  auto result = AlternatingProjections(affine, s, 200, 1e-10, false);
 
   printf("AlternatingProjections: %d iters, residual=%.2e\n",
          result.iterations, result.residual);
-
-  // s should be feasible: s >= 0 (in the cone) and s = b - Ax (affine).
   EXPECT_LT(result.residual, 1e-8);
 
   // Verify s >= 0.
   for (int i = 0; i < m; ++i)
     EXPECT_GE(s.col()(i), -1e-10);
 
-  // Verify s is in the affine subspace: s = b - Ax for some x.
-  // Compute x = (A^T A)^{-1} A^T (b - s), then check ||b - Ax - s|| ≈ 0.
-  RowSpace b_api = kkt->GetAffineTerm();
-  RowSpace r = addScaled(b_api, s, 1.0, -1.0);
-  auto rhs = kkt->MakeSolverRHS();
-  rhs.SetZero();
-  kkt->AccumulateAtranspose(r, rhs);
-  RowSpace weights = kkt->MakeRowSpace();
-  setOnes(weights);
-  kkt->SetWeights(weights);
-  kkt->AssembleAndFactor();
-  kkt->SolveSolverRHS(rhs);
-  RowSpace Ax = kkt->MakeRowSpace();
-  kkt->MultiplyA(rhs, Ax);
-  RowSpace s_check = addScaled(b_api, Ax, 1.0, -1.0);
-  double affine_err = std::sqrt(squaredNorm(addScaled(s, s_check, 1.0, -1.0)));
+  // Verify s is in the affine subspace by projecting again — should be no-op.
+  RowSpace s_copy = s;
+  affine.Project(s_copy);
+  double affine_err = std::sqrt(squaredNorm(addScaled(s, s_copy, 1.0, -1.0)));
   EXPECT_LT(affine_err, 1e-8);
 
   printf("  cone violation: %.2e, affine error: %.2e\n",
@@ -478,13 +464,12 @@ TEST(AlternatingProjections, MultipleConstraints) {
   Problem problem;
   problem.AddLinearConstraint(A1, VectorXd::Ones(m1), vars);
   problem.AddLinearConstraint(A2, VectorXd::Ones(m2), vars);
-  auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto affine = AffineProjection::Build(problem);
 
-  RowSpace s = kkt->MakeRowSpace();
+  RowSpace s = affine.MakeVariable();
   setFromVector(s, VectorXd::Random(m1 + m2));
 
-  auto result = AlternatingProjections(*kkt, s, 200, 1e-10, false);
+  auto result = AlternatingProjections(affine, s, 200, 1e-10, false);
 
   printf("AlternatingProjections (2 constraints): %d iters, residual=%.2e\n",
          result.iterations, result.residual);

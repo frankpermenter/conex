@@ -87,6 +87,7 @@ target_link_libraries(sparse_linear_constraint PUBLIC constraints kkt_solver_fac
 
 # --- Algorithms (built on top of solver, no downward dependency) ---
 add_library(algorithms
+  conex/common/affine_projection.cc
   conex/algorithms/irls.cc
   conex/algorithms/barrier_qp.cc
   conex/algorithms/geodesic_ipm.cc

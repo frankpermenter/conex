@@ -1,11 +1,11 @@
 // Alternating projections: find a point in the intersection of the
 // affine constraint subspace {b - Ax : x} and the cone K.
 //
-// Uses only KKTSolverBase (for affine projection) and ConeOps (for
+// Uses AffineProjection (for affine projection) and ConeOps (for
 // cone projection via EJA::Variable).
 
 #pragma once
-#include "conex/common/kkt_solver_interface.h"
+#include "conex/common/affine_projection.h"
 
 namespace conex {
 
@@ -17,7 +17,7 @@ struct AlternatingProjectionsResult {
 // Alternate between projecting onto the cone and projecting onto
 // the affine subspace {b - Ax}.  Finds a feasible point (if one exists).
 AlternatingProjectionsResult AlternatingProjections(
-    KKTSolverBase& kkt,
+    const AffineProjection& affine,
     RowSpace& s,
     int max_iterations = 100,
     double tolerance = 1e-8,

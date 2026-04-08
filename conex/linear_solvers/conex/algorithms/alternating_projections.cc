@@ -7,20 +7,12 @@
 namespace conex {
 
 AlternatingProjectionsResult AlternatingProjections(
-    KKTSolverBase& kkt,
+    const AffineProjection& affine,
     RowSpace& s,
     int max_iterations,
     double tolerance,
     bool verbose) {
-  RowSpace b = kkt.GetAffineTerm();
-
-  // Set identity weights so the Gram is A^T A.
-  RowSpace weights = kkt.MakeRowSpace();
-  setOnes(weights);
-  kkt.SetWeights(weights);
-  kkt.AssembleAndFactor();
-
-  RowSpace s_proj = kkt.MakeRowSpace();
+  RowSpace s_proj = affine.MakeVariable();
 
   AlternatingProjectionsResult result{};
 
@@ -45,17 +37,8 @@ AlternatingProjectionsResult AlternatingProjections(
     }
 
     // 3. Project s_proj onto the affine subspace {b - Ax}.
-    //    Solve (A^T A) x = A^T (b - s_proj), then s = b - A x.
-    RowSpace r = addScaled(b, s_proj, 1.0, -1.0);
-
-    auto rhs = kkt.MakeSolverRHS();
-    rhs.SetZero();
-    kkt.AccumulateAtranspose(r, rhs);
-    kkt.SolveSolverRHS(rhs);
-
-    // s = b - A * x.
-    kkt.MultiplyA(rhs, s);
-    s = addScaled(b, s, 1.0, -1.0);
+    s = s_proj;
+    affine.Project(s);
   }
 
   return result;
