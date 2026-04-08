@@ -1,8 +1,8 @@
 // Solver comparison: geodesic IPM variants on random LPs.
 // Reports gap vs iteration count and total factorizations/solves.
 //
-// Usage: ./solver_comparison [m] [n] [seed]
-//   Default m=50, n=20, seed=42.
+// Usage: ./solver_comparison [m] [n] [rank_Q] [seed]
+//   Default m=50, n=20, rank_Q=0 (LP), seed=42.
 
 #include <cstdio>
 #include <cstdlib>
@@ -23,30 +23,44 @@ namespace {
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
-struct RandomLP {
+struct RandomQP {
   Eigen::SparseMatrix<double> A;
+  Eigen::SparseMatrix<double> Q;
   VectorXd b;
   VectorXd c;
-  int m, n;
+  int m, n, rank_Q;
 };
 
-// Satisfies A^T ones = c
-//           A x + b >= 0.
-//
-RandomLP MakeRandomLP(int m, int n, int seed) {
+// Build a random QP: min c^T x + 0.5 x^T Q x  s.t. stored constraints.
+// rank_Q = 0 gives a pure LP (Q = 0).
+RandomQP MakeRandomQP(int m, int n, int rank_Q, int seed) {
   srand(seed);
   MatrixXd A_dense = MatrixXd::Random(m, n);
   VectorXd b = VectorXd::Ones(m);
   VectorXd c = A_dense.transpose() * VectorXd::Ones(m);
 
-  std::vector<Eigen::Triplet<double>> trips;
+  std::vector<Eigen::Triplet<double>> a_trips;
   for (int i = 0; i < m; ++i)
     for (int j = 0; j < n; ++j)
-      trips.emplace_back(i, j, A_dense(i, j));
+      a_trips.emplace_back(i, j, A_dense(i, j));
   Eigen::SparseMatrix<double> A(m, n);
-  A.setFromTriplets(trips.begin(), trips.end());
+  A.setFromTriplets(a_trips.begin(), a_trips.end());
 
-  return {A, b, c, m, n};
+  // Q = R^T R where R is rank_Q x n.
+  Eigen::SparseMatrix<double> Q(n, n);
+  if (rank_Q > 0) {
+    MatrixXd R = MatrixXd::Random(rank_Q, n);
+    MatrixXd Q_dense = R.transpose() * R;
+    std::vector<Eigen::Triplet<double>> q_trips;
+    for (int i = 0; i < n; ++i)
+      for (int j = 0; j < n; ++j)
+        if (std::abs(Q_dense(i, j)) > 1e-14)
+          q_trips.emplace_back(i, j, Q_dense(i, j));
+    Q.resize(n, n);
+    Q.setFromTriplets(q_trips.begin(), q_trips.end());
+  }
+
+  return {A, Q, b, c, m, n, rank_Q};
 }
 
 void PrintResult(const char* name, const GeodesicResult& result,
@@ -83,12 +97,13 @@ struct SolverSetup {
   SolverRHS cost_rhs;
 };
 
-SolverSetup BuildSolver(const RandomLP& lp, const std::vector<int>& vars) {
-  Eigen::SparseMatrix<double> negA = -lp.A;
-  VectorXd neg_b = -lp.b;
+SolverSetup BuildSolver(const RandomQP& qp, const std::vector<int>& vars) {
+  Eigen::SparseMatrix<double> negA = -qp.A;
+  VectorXd neg_b = -qp.b;
   Problem problem;
   problem.AddLinearConstraint(negA, neg_b, vars);
-  problem.SetLinearCost(lp.c);
+  if (qp.rank_Q > 0) problem.AddQuadraticCost(qp.Q, vars);
+  problem.SetLinearCost(qp.c);
   auto [reduced, expansion] = Preprocess(problem);
   auto solver = Solver::Build(reduced);
   auto* kkt = solver.solver();
@@ -100,16 +115,21 @@ SolverSetup BuildSolver(const RandomLP& lp, const std::vector<int>& vars) {
   return {std::move(solver), cost_rhs};
 }
 
-void RunComparison(int m, int n, int seed) {
-  auto lp = MakeRandomLP(m, n, seed);
-  printf("LP: m=%d constraints, n=%d variables (seed=%d)\n\n", m, n, seed);
+void RunComparison(int m, int n, int rank_Q, int seed) {
+  auto qp = MakeRandomQP(m, n, rank_Q, seed);
+  if (rank_Q > 0) {
+    printf("QP: m=%d constraints, n=%d variables, rank(Q)=%d (seed=%d)\n\n",
+           m, n, rank_Q, seed);
+  } else {
+    printf("LP: m=%d constraints, n=%d variables (seed=%d)\n\n", m, n, seed);
+  }
 
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
   // ===== Geodesic IPM (0 centering steps) =====
   {
-    auto [solver, cost_rhs] = BuildSolver(lp, vars);
+    auto [solver, cost_rhs] = BuildSolver(qp, vars);
     RowSpace W = solver.solver()->MakeRowSpace();
     setOnes(W);
     auto result = SolveGeodesicLP(*solver.solver(), cost_rhs, W, 30, 0, 1e-8);
@@ -118,7 +138,7 @@ void RunComparison(int m, int n, int seed) {
 
   // ===== Geodesic IPM (Hybrid) =====
   {
-    auto [solver, cost_rhs] = BuildSolver(lp, vars);
+    auto [solver, cost_rhs] = BuildSolver(qp, vars);
     RowSpace W = solver.solver()->MakeRowSpace();
     setOnes(W);
     auto result = SolveGeodesicHybrid(*solver.solver(), cost_rhs, W, 50, 1e-8);
@@ -130,10 +150,11 @@ void RunComparison(int m, int n, int seed) {
 }  // namespace conex
 
 int main(int argc, char* argv[]) {
-  int m = 50, n = 20, seed = 42;
+  int m = 50, n = 20, rank_Q = 0, seed = 42;
   if (argc > 1) m = std::atoi(argv[1]);
   if (argc > 2) n = std::atoi(argv[2]);
-  if (argc > 3) seed = std::atoi(argv[3]);
-  conex::RunComparison(m, n, seed);
+  if (argc > 3) rank_Q = std::atoi(argv[3]);
+  if (argc > 4) seed = std::atoi(argv[4]);
+  conex::RunComparison(m, n, rank_Q, seed);
   return 0;
 }
