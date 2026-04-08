@@ -1032,7 +1032,7 @@ RowSpace T::MakeRowSpace(int cols) {
     rs.ops.push_back(&EuclideanJordanAlgebra::nonnegOrthantOps());
     offset += lc->num_rows();
   }
-  rs.data.setZero(offset, cols);
+  rs.setZero(offset, cols);
   return rs;
 }
 

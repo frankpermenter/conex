@@ -213,32 +213,44 @@ class ConeOps;  // forward declaration
 // Element of a product of Euclidean Jordan algebras.
 // Single-column by default; supports n-column for batched operations.
 // Each segment has an associated ConeOps for dispatching cone operations.
-struct Variable {
-  Eigen::MatrixXd data;
+class Variable {
+ public:
+  // Segment metadata (public for read access by MakeRowSpace builders).
   std::vector<int> offsets;
   std::vector<int> sizes;
   std::vector<const ConeOps*> ops;  // one per segment (non-owning)
 
+  // Allocate storage.
+  void resize(int rows, int ncols) { data_.resize(rows, ncols); }
+  void setZero(int rows, int ncols) { data_.setZero(rows, ncols); }
+
   // Multi-column block for constraint i (rows x cols).
   Eigen::Block<Eigen::MatrixXd> segment(int i) {
-    return data.block(offsets[i], 0, sizes[i], data.cols());
+    return data_.block(offsets[i], 0, sizes[i], data_.cols());
   }
   const Eigen::Block<const Eigen::MatrixXd> segment(int i) const {
-    return data.block(offsets[i], 0, sizes[i], data.cols());
+    return data_.block(offsets[i], 0, sizes[i], data_.cols());
   }
 
-  // Column access.
-  auto col(int c = 0) { return data.col(c); }
-  auto col(int c = 0) const { return data.col(c); }
+  // Raw pointer to segment data (for ConeOps dispatch).
+  double* segment_ptr(int i) { return &data_(offsets[i], 0); }
+  const double* segment_ptr(int i) const { return &data_(offsets[i], 0); }
 
-  int total_rows() const { return static_cast<int>(data.rows()); }
-  int cols() const { return static_cast<int>(data.cols()); }
+  // Column access (for KKT interface: SetWeights, GetAffineTerm, etc.).
+  auto col(int c = 0) { return data_.col(c); }
+  auto col(int c = 0) const { return data_.col(c); }
+
+  int total_rows() const { return static_cast<int>(data_.rows()); }
+  int cols() const { return static_cast<int>(data_.cols()); }
   int num_constraints() const { return static_cast<int>(sizes.size()); }
-  void SetZero() { data.setZero(); }
+  void SetZero() { data_.setZero(); }
 
-  Variable& operator*=(double alpha) { data *= alpha; return *this; }
-  Variable& operator+=(const Variable& o) { data += o.data; return *this; }
-  Variable& operator-=(const Variable& o) { data -= o.data; return *this; }
+  Variable& operator*=(double alpha) { data_ *= alpha; return *this; }
+  Variable& operator+=(const Variable& o) { data_ += o.data_; return *this; }
+  Variable& operator-=(const Variable& o) { data_ -= o.data_; return *this; }
+
+ private:
+  Eigen::MatrixXd data_;
 };
 
 }  // namespace EuclideanJordanAlgebra

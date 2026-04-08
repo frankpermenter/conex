@@ -136,17 +136,7 @@ double GeodesicLineSearch(
   RowSpace d1 = kkt.MakeRowSpace();
   ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
 
-  // Largest k > 0 with |d0_i + k * d1_i| <= 1 for all i.
-  // TODO: make this a RowSpace operation when dispatch is needed.
-  const int m = d0.total_rows();
-  double k_max = std::numeric_limits<double>::max();
-  for (int i = 0; i < m; ++i) {
-    if (d1.data(i) > 0)
-      k_max = std::min(k_max, (1.0 - d0.data(i)) / d1.data(i));
-    else if (d1.data(i) < 0)
-      k_max = std::min(k_max, (-1.0 - d0.data(i)) / d1.data(i));
-  }
-  return k_max;
+  return lineSearchK(d0, d1);
 }
 
 // =====================================================================
@@ -278,15 +268,7 @@ double GeodesicLineSearchR(
   RowSpace d1 = kkt.MakeRowSpace();
   ComputeDecompositionR(kkt, cost_rhs, W, r, d0, d1);
 
-  const int m = d0.total_rows();
-  double k_max = std::numeric_limits<double>::max();
-  for (int i = 0; i < m; ++i) {
-    if (d1.data(i) > 0)
-      k_max = std::min(k_max, (1.0 - d0.data(i)) / d1.data(i));
-    else if (d1.data(i) < 0)
-      k_max = std::min(k_max, (-1.0 - d0.data(i)) / d1.data(i));
-  }
-  return k_max;
+  return lineSearchK(d0, d1);
 }
 
 GeodesicResult SolveGeodesicLPR(
@@ -364,14 +346,7 @@ GeodesicResult SolveGeodesicLP(
     total_sol += 2;
 
     // Line search for k.
-    const int n = d0.total_rows();
-    double k_new = std::numeric_limits<double>::max();
-    for (int i = 0; i < n; ++i) {
-      if (d1.data(i) > 0)
-        k_new = std::min(k_new, (1.0 - d0.data(i)) / d1.data(i));
-      else if (d1.data(i) < 0)
-        k_new = std::min(k_new, (-1.0 - d0.data(i)) / d1.data(i));
-    }
+    double k_new = lineSearchK(d0, d1);
     if (k_new <= k) break;
     k = k_new;
 

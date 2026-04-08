@@ -2125,7 +2125,7 @@ TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
     A_stacked.topRows(5) = A1;
     A_stacked.bottomRows(4) = A2;
     Eigen::MatrixXd Ax_mc_ref = A_stacked * dense_x;
-    double err_mc_a = (row_mc.data - Ax_mc_ref).norm() / Ax_mc_ref.norm();
+    double err_mc_a = (row_mc.segment(0) - Ax_mc_ref).norm() / Ax_mc_ref.norm();
     EXPECT_LT(err_mc_a, 1e-10);
 
     // --- Test multi-column AccumulateAtranspose ---

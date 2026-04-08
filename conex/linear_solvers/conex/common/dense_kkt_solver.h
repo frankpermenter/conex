@@ -45,7 +45,7 @@ class DenseKKTSolver : public KKTSolverBase {
   RowSpace MakeRowSpace(int cols = 1) override {
     RowSpace rs;
     if (has_constraints_) {
-      rs.data.setZero(A_.rows(), cols);
+      rs.setZero(A_.rows(), cols);
       rs.offsets.push_back(0);
       rs.sizes.push_back(A_.rows());
       rs.ops.push_back(&EuclideanJordanAlgebra::nonnegOrthantOps());
@@ -58,12 +58,12 @@ class DenseKKTSolver : public KKTSolverBase {
     int nc = out.cols();
     Eigen::MatrixXd xv(n_, nc);
     x.supernodes->GatherInto(xv);
-    out.data = A_ * xv;
+    out.segment(0) = A_ * xv;
   }
 
   void AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) override {
     if (!has_constraints_) return;
-    Eigen::MatrixXd atv = A_.transpose() * v.data;
+    Eigen::MatrixXd atv = A_.transpose() * v.segment(0);
     int nc = atv.cols();
     Eigen::MatrixXd cur(n_, nc);
     rhs.supernodes->GatherInto(cur);
