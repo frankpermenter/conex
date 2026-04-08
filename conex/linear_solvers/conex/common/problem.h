@@ -10,18 +10,24 @@ namespace conex {
 // Handle to a constraint registered with a Problem.
 using ConstraintId = int;
 
+// Constraint sense for linear inequalities.
+enum class Sense { GE, LE };
+
 // Problem: a container for optimization data (costs, constraints).
-// No solver details, no tree structure — just data + variable indices.
+//
+// Internally, all linear constraints are stored in canonical form
+// Ax + b >= 0.  The Sense and double-sided overloads handle sign
+// flips automatically.
 //
 //   Problem p;
-//   auto c1 = p.AddLinearConstraint(A, b, vars);
-//   auto c2 = p.AddQuadraticCost(Q, vars);
-//   auto solver = MakeSolver(p, config);
+//   p.AddLinearConstraint(A, b, Sense::GE);        // Ax + b >= 0
+//   p.AddLinearConstraint(A, b, Sense::LE);         // Ax + b <= 0
+//   p.AddLinearConstraint(A, b_lb, b_ub);           // b_lb <= Ax <= b_ub
+//   p.SetLinearCost(c);                             // min c^T x
 //
 class Problem {
  public:
-  // Add a linear constraint: min ||Ax - b||^2 on the given variables.
-  // Returns a handle for SetWeights / ComputeResidual.
+  // Core: add Ax + b >= 0 (canonical form, stored directly).
   ConstraintId AddLinearConstraint(
       const Eigen::SparseMatrix<double>& A,
       const Eigen::VectorXd& b,
@@ -30,6 +36,52 @@ class Problem {
     constraints_.push_back(
         LinearConstraintData{A, b, vars});
     return id;
+  }
+
+  // With sense: GE stores as-is, LE negates A and b.
+  ConstraintId AddLinearConstraint(
+      const Eigen::SparseMatrix<double>& A,
+      const Eigen::VectorXd& b,
+      Sense sense,
+      const std::vector<int>& vars) {
+    if (sense == Sense::GE) {
+      return AddLinearConstraint(A, b, vars);
+    } else {
+      Eigen::SparseMatrix<double> negA = -A;
+      Eigen::VectorXd neg_b = -b;
+      return AddLinearConstraint(negA, neg_b, vars);
+    }
+  }
+
+  // With sense, default vars.
+  ConstraintId AddLinearConstraint(
+      const Eigen::SparseMatrix<double>& A,
+      const Eigen::VectorXd& b,
+      Sense sense) {
+    std::vector<int> vars(A.cols());
+    std::iota(vars.begin(), vars.end(), 0);
+    return AddLinearConstraint(A, b, sense, vars);
+  }
+
+  // Double-sided: b_lb <= Ax <= b_ub.
+  // Stored as two constraints: Ax - b_lb >= 0 and -Ax + b_ub >= 0.
+  void AddLinearConstraint(
+      const Eigen::SparseMatrix<double>& A,
+      const Eigen::VectorXd& b_lb,
+      const Eigen::VectorXd& b_ub,
+      const std::vector<int>& vars) {
+    AddLinearConstraint(A, -b_lb, Sense::GE, vars);   // Ax - b_lb >= 0
+    AddLinearConstraint(A, b_ub, Sense::LE, vars);     // Ax - b_ub <= 0
+  }
+
+  // Double-sided, default vars.
+  void AddLinearConstraint(
+      const Eigen::SparseMatrix<double>& A,
+      const Eigen::VectorXd& b_lb,
+      const Eigen::VectorXd& b_ub) {
+    std::vector<int> vars(A.cols());
+    std::iota(vars.begin(), vars.end(), 0);
+    AddLinearConstraint(A, b_lb, b_ub, vars);
   }
 
   // Convenience: vars = {0, 1, ..., A.cols()-1}.
