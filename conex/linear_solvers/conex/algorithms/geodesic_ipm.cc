@@ -102,7 +102,9 @@ static void ComputeDecomposition(
     const SolverRHS& cost_rhs,
     const RowSpace& W,
     RowSpace& d0,
-    RowSpace& d1) {
+    RowSpace& d1,
+    Eigen::VectorXd* y0_out = nullptr,
+    Eigen::VectorXd* y1_out = nullptr) {
   RowSpace b = kkt.GetAffineTerm();
 
   RowSpace weights = cwiseProduct(W, W);
@@ -127,6 +129,14 @@ static void ComputeDecomposition(
   y.SetColumn(0, rhs0);
   y.SetColumn(1, rhs1);
   kkt.SolveSolverRHS(y);
+
+  if (y0_out || y1_out) {
+    int nr = kkt.number_of_variables();
+    Eigen::MatrixXd y_dense(nr, 2);
+    y.supernodes->GatherInto(y_dense);
+    if (y0_out) *y0_out = y_dense.col(0);
+    if (y1_out) *y1_out = y_dense.col(1);
+  }
 
   auto row = kkt.MakeRowSpace(2);
   kkt.MultiplyA(y, row);
@@ -181,7 +191,8 @@ GeodesicResult SolveGeodesicLP(
     // Decompose: 1 factor + 2 back-solves.
     RowSpace d0 = kkt.MakeRowSpace();
     RowSpace d1 = kkt.MakeRowSpace();
-    ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
+    Eigen::VectorXd y0, y1;
+    ComputeDecomposition(kkt, cost_rhs, W, d0, d1, &y0, &y1);
     total_fac += 1;
     total_sol += 2;
 
@@ -218,6 +229,7 @@ GeodesicResult SolveGeodesicLP(
     result.complementarity = s_dot_x;
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
+    result.x = y0 / k + y1;  // x = y/k = (y0 + k*y1)/k
 
     if (s_dot_x < tolerance) break;
   }

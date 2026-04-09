@@ -219,8 +219,8 @@ static QPSolution SolveGeodesicFromProblem(
   auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
 
   QPSolution sol;
-  sol.x = Eigen::VectorXd::Zero(problem.num_variables());  // TODO: x recovery
-  sol.objective = 0;
+  sol.x = expansion.Expand(result.x);
+  sol.objective = c.dot(sol.x);
   sol.gap = result.complementarity;
   return sol;
 }
