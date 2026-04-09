@@ -78,16 +78,7 @@ inline void updateAutomorphism(Variable& W, Variable& R, double alpha,
                                  alpha, d.segment_ptr(i), W.sizes[i]);
 }
 
-// Solve Lyapunov: R*D + D*R = 2*Delta.
-inline Variable solveLyapunov(const Variable& r, const Variable& d) {
-  Variable out = like(r);
-  for (int i = 0; i < r.num_constraints(); ++i)
-    r.ops[i]->solveLyapunov(out.segment_ptr(i), r.segment_ptr(i),
-                             d.segment_ptr(i), r.sizes[i]);
-  return out;
-}
-
-// Inverse Lyapunov: solve R*D + D*R = 2*Delta for D.
+// Solve Lyapunov R*D + D*R = 2*Delta for D.: solve R*D + D*R = 2*Delta for D.
 inline Variable solveLyapunovForD(const Variable& r, const Variable& delta) {
   Variable out = like(r);
   for (int i = 0; i < r.num_constraints(); ++i)
@@ -205,7 +196,6 @@ using EuclideanJordanAlgebra::quadraticRepresentation;
 using EuclideanJordanAlgebra::addScaled;
 using EuclideanJordanAlgebra::geodesicUpdate;
 using EuclideanJordanAlgebra::updateAutomorphism;
-using EuclideanJordanAlgebra::solveLyapunov;
 using EuclideanJordanAlgebra::absEJA;
 using EuclideanJordanAlgebra::minEigenvalue;
 using EuclideanJordanAlgebra::setOnes;

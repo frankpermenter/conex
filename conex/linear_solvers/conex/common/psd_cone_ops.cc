@@ -101,24 +101,6 @@ void PSDConeOps::quadraticRepresentation(double* out, const double* a,
   Symmetrize(Out);
 }
 
-void PSDConeOps::solveLyapunov(double* out, const double* a, const double* d,
-                               int size) const {
-  int n = MatrixDim(size);
-  Eigen::Map<const Eigen::MatrixXd> R(a, n, n);
-  Eigen::Map<const Eigen::MatrixXd> D(d, n, n);
-  Eigen::Map<Eigen::MatrixXd> Delta(out, n, n);
-  // RD + DR = 2*Delta.  In R's eigenbasis: Delta_ij = (l_i + l_j)/2 * D_ij.
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(R);
-  const auto& V = eig.eigenvectors();
-  const auto& lam = eig.eigenvalues();
-  Eigen::MatrixXd D_eig = V.transpose() * D * V;
-  for (int i = 0; i < n; ++i)
-    for (int j = 0; j < n; ++j)
-      D_eig(i, j) *= 0.5 * (lam(i) + lam(j));
-  Delta = V * D_eig * V.transpose();
-  Symmetrize(Delta);
-}
-
 void PSDConeOps::solveLyapunovForD(double* out, const double* r,
                                    const double* delta, int size) const {
   int n = MatrixDim(size);

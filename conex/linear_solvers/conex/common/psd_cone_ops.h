@@ -20,8 +20,6 @@ class PSDConeOps : public ConeOps {
   void sqrt(double* out, const double* a, int size) const override;
   void quadraticRepresentation(double* out, const double* a,
                                const double* b, int size) const override;
-  void solveLyapunov(double* out, const double* a, const double* d,
-                     int size) const override;
   void solveLyapunovForD(double* out, const double* r, const double* delta,
                          int size) const override;
   void abs(double* out, const double* a, int size) const override;
