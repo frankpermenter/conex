@@ -16,10 +16,6 @@ class ConeOps {
   virtual void product(double* out, const double* a, const double* b,
                        int size) const = 0;
 
-  // Element-wise quotient (Jordan division).
-  virtual void quotient(double* out, const double* a, const double* b,
-                        int size) const = 0;
-
   // Geodesic update: out_i = a_i * exp(alpha * d_i).
   virtual void geodesicUpdate(double* out, const double* a, double alpha,
                               const double* d, int size) const = 0;
@@ -88,11 +84,6 @@ class NonnegOrthantOps : public ConeOps {
   void product(double* out, const double* a, const double* b,
                int size) const override {
     for (int i = 0; i < size; ++i) out[i] = a[i] * b[i];
-  }
-
-  void quotient(double* out, const double* a, const double* b,
-                int size) const override {
-    for (int i = 0; i < size; ++i) out[i] = a[i] / b[i];
   }
 
   void geodesicUpdate(double* out, const double* a, double alpha,

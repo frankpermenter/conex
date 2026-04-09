@@ -28,16 +28,6 @@ void PSDConeOps::product(double* out, const double* a, const double* b,
   Symmetrize(Out);
 }
 
-void PSDConeOps::quotient(double* out, const double* a, const double* b,
-                          int size) const {
-  int n = MatrixDim(size);
-  Eigen::Map<const Eigen::MatrixXd> A(a, n, n);
-  Eigen::Map<const Eigen::MatrixXd> B(b, n, n);
-  Eigen::Map<Eigen::MatrixXd> Out(out, n, n);
-  Out = A * B.inverse();
-  Symmetrize(Out);
-}
-
 void PSDConeOps::geodesicUpdate(double* out, const double* a, double alpha,
                                 const double* d, int size) const {
   int n = MatrixDim(size);

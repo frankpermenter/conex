@@ -11,8 +11,6 @@ class PSDConeOps : public ConeOps {
  public:
   void product(double* out, const double* a, const double* b,
                int size) const override;
-  void quotient(double* out, const double* a, const double* b,
-                int size) const override;
   void geodesicUpdate(double* out, const double* a, double alpha,
                       const double* d, int size) const override;
   void setIdentity(double* out, int size) const override;
