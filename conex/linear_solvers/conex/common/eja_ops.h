@@ -173,20 +173,15 @@ inline void shrinkR(Variable& r, const Variable& delta) {
   }
 }
 
-// Largest k > 0 with |d0_i + k * d1_i| <= 1 for all i.
+// Largest k > 0 with ||d0 + k*d1||_inf <= 1 per segment.
+//   Nonneg: per-element bound.
+//   PSD:    GEV on (D1, I ± D0).
 inline double lineSearchK(const Variable& d0, const Variable& d1) {
   double k_max = std::numeric_limits<double>::max();
-  for (int i = 0; i < d0.num_constraints(); ++i) {
-    int sz = d0.sizes[i];
-    const double* p0 = d0.segment_ptr(i);
-    const double* p1 = d1.segment_ptr(i);
-    for (int j = 0; j < sz; ++j) {
-      if (p1[j] > 0)
-        k_max = std::min(k_max, (1.0 - p0[j]) / p1[j]);
-      else if (p1[j] < 0)
-        k_max = std::min(k_max, (-1.0 - p0[j]) / p1[j]);
-    }
-  }
+  for (int i = 0; i < d0.num_constraints(); ++i)
+    k_max = std::min(k_max,
+        d0.ops[i]->lineSearchK(d0.segment_ptr(i), d1.segment_ptr(i),
+                               d0.sizes[i]));
   return k_max;
 }
 

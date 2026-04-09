@@ -67,6 +67,12 @@ class ConeOps {
   virtual void updateAutomorphism(double* w, double* r, double alpha,
                                   const double* d, int size) const = 0;
 
+  // Line search: largest k > 0 with ||d0 + k*d1||_inf <= 1.
+  //   Nonneg: per-element bound |d0_i + k*d1_i| <= 1.
+  //   PSD:    GEV on (D1, I ± D0) to find when eigenvalues hit ±1.
+  virtual double lineSearchK(const double* d0, const double* d1,
+                             int size) const = 0;
+
   // Project onto the cone: out = argmin ||out - a||  s.t. out in K.
   virtual void project(double* out, const double* a, int size) const = 0;
 };
@@ -141,6 +147,18 @@ class NonnegOrthantOps : public ConeOps {
                           const double* d, int size) const override {
     for (int i = 0; i < size; ++i)
       w[i] *= std::exp(alpha * d[i]);
+  }
+
+  double lineSearchK(const double* d0, const double* d1,
+                     int size) const override {
+    double k_max = std::numeric_limits<double>::max();
+    for (int i = 0; i < size; ++i) {
+      if (d1[i] > 0)
+        k_max = std::min(k_max, (1.0 - d0[i]) / d1[i]);
+      else if (d1[i] < 0)
+        k_max = std::min(k_max, (-1.0 - d0[i]) / d1[i]);
+    }
+    return k_max;
   }
 
   void project(double* out, const double* a, int size) const override {
