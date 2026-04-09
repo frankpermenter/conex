@@ -197,14 +197,6 @@ target_link_libraries(sparse_quadratic_term_test
   GTest::gtest_main
 )
 
-add_executable(dense_kkt_solver_test
-  conex/test/dense_kkt_solver_test.cc
-)
-target_link_libraries(dense_kkt_solver_test
-  algorithms tree_solver
-  GTest::gtest_main
-)
-
 # --- Optional: GPU tree solver (requires CUDA) ---
 # Prefer CUDA 12 if available (needed for cuDSS, fixes nvcc 11.x + GCC 11 issues).
 find_program(CUDA12_NVCC nvcc PATHS /usr/local/cuda-12.2/bin /usr/local/cuda-12/bin NO_DEFAULT_PATH)
@@ -277,7 +269,6 @@ else()
 endif()
 
 include(GoogleTest)
-gtest_discover_tests(dense_kkt_solver_test)
 gtest_discover_tests(sparse_linear_constraint_test)
 gtest_discover_tests(multithreading_test)
 gtest_discover_tests(low_rank_diagonal_test)

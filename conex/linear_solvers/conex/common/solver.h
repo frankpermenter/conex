@@ -5,7 +5,6 @@
 
 #include "conex/common/block_variable.h"
 #include "conex/common/conex.h"
-#include "conex/common/dense_kkt_solver.h"
 #include "conex/common/problem.h"
 #include "conex/common/tree_spec.h"
 #include "conex/algorithms/tree_solver_builder.h"
