@@ -40,13 +40,19 @@ void PSDConeOps::geodesicUpdate(double* out, const double* a, double alpha,
   Eigen::Map<const Eigen::MatrixXd> D(d, n, n);
   Eigen::Map<Eigen::MatrixXd> Out(out, n, n);
 
-  // W_new = W * expm(alpha * D).
-  // Compute via eigendecomposition of alpha*D.
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(alpha * D);
-  Eigen::MatrixXd expD = eig.eigenvectors() *
-      eig.eigenvalues().array().exp().matrix().asDiagonal() *
-      eig.eigenvectors().transpose();
-  Out = A * expD;
+  // Geodesic: A^{1/2} expm(alpha * D) A^{1/2}.
+  // Compute A^{1/2} via eigendecomposition of A.
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigA(A);
+  Eigen::MatrixXd sqrtA = eigA.eigenvectors() *
+      eigA.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
+      eigA.eigenvectors().transpose();
+
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigD(alpha * D);
+  Eigen::MatrixXd expD = eigD.eigenvectors() *
+      eigD.eigenvalues().array().exp().matrix().asDiagonal() *
+      eigD.eigenvectors().transpose();
+
+  Out = sqrtA * expD * sqrtA;
 }
 
 void PSDConeOps::setIdentity(double* out, int size) const {
