@@ -48,21 +48,23 @@ class Solver {
     return s;
   }
 
-  // Build a dense solver (reference / small problems).
-  // Assembles the full KKT matrix from the Problem.
+  // Build a "dense" solver: single-clique tree solver.
+  // All variables land in one supernode — equivalent to dense
+  // factorization but uses the full tree solver infrastructure
+  // (supports PSD cones, SetScaling, etc.).
   static Solver BuildDense(const Problem& problem) {
-    Solver s;
-    s.BuildDenseInternal(problem);
-    return s;
+    TreeSpec tree;
+    int clique = tree.AddClique();  // single root clique
+    for (int i = 0; i < problem.num_constraints(); ++i)
+      tree.Assign(i, clique);
+    return Build(problem, tree);
   }
 
   // Access the underlying solver.
   KKTSolverBase* solver() {
-    if (dense_solver_) return static_cast<KKTSolverBase*>(dense_solver_.get());
     return static_cast<KKTSolverBase*>(tree_solver_.get());
   }
   const KKTSolverBase* solver() const {
-    if (dense_solver_) return static_cast<const KKTSolverBase*>(dense_solver_.get());
     return static_cast<const KKTSolverBase*>(tree_solver_.get());
   }
 
@@ -246,66 +248,6 @@ class Solver {
     RegisterAssemblersWithTreeSolver();
   }
 
-  void BuildDenseInternal(const Problem& problem) {
-    int n = problem.num_variables();
-
-    // Allocate dual variables for equality constraints.
-    int next_dual = n;
-    for (int i = 0; i < problem.num_constraints(); ++i) {
-      if (auto* eq = std::get_if<Problem::EqualityConstraintData>(
-              &problem.constraint(i))) {
-        int p = eq->C.rows();
-        std::vector<int> dual(p);
-        for (int j = 0; j < p; ++j) dual[j] = next_dual++;
-        dual_var_map_[i] = dual;
-      }
-    }
-    int n_total = next_dual;
-
-    auto ds = std::make_unique<DenseKKTSolver>(n_total);
-
-    // Assemble the full KKT matrix.
-    for (int i = 0; i < problem.num_constraints(); ++i) {
-      std::visit([&](const auto& data) {
-        using T = std::decay_t<decltype(data)>;
-        if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
-          Eigen::MatrixXd Ad(data.A);
-          Eigen::MatrixXd AtA = Ad.transpose() * Ad;
-          for (int r = 0; r < static_cast<int>(data.vars.size()); ++r)
-            for (int c = 0; c < static_cast<int>(data.vars.size()); ++c)
-              ds->matrix()(data.vars[r], data.vars[c]) += AtA(r, c);
-        } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
-          Eigen::SparseMatrix<double> A_vec;
-          Eigen::VectorXd b_vec;
-          VectorizePSD(data.A_list, data.B, &A_vec, &b_vec);
-          Eigen::MatrixXd Ad(A_vec);
-          Eigen::MatrixXd AtA = Ad.transpose() * Ad;
-          for (int r = 0; r < static_cast<int>(data.vars.size()); ++r)
-            for (int c = 0; c < static_cast<int>(data.vars.size()); ++c)
-              ds->matrix()(data.vars[r], data.vars[c]) += AtA(r, c);
-        } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
-          Eigen::MatrixXd Qd = data.Q_dense.size() > 0
-              ? data.Q_dense : Eigen::MatrixXd(data.Q_sparse);
-          for (int r = 0; r < static_cast<int>(data.vars.size()); ++r)
-            for (int c = 0; c < static_cast<int>(data.vars.size()); ++c)
-              ds->matrix()(data.vars[r], data.vars[c]) += Qd(r, c);
-        } else if constexpr (std::is_same_v<T,
-                                            Problem::EqualityConstraintData>) {
-          const auto& dual = dual_var_map_.at(i);
-          Eigen::MatrixXd Cd(data.C);
-          // [0, C'; C, 0] block.
-          for (int r = 0; r < Cd.rows(); ++r)
-            for (int c = 0; c < static_cast<int>(data.primal_vars.size()); ++c) {
-              ds->matrix()(dual[r], data.primal_vars[c]) += Cd(r, c);
-              ds->matrix()(data.primal_vars[c], dual[r]) += Cd(r, c);
-            }
-        }
-      }, problem.constraint(i));
-    }
-
-    dense_solver_ = std::move(ds);
-  }
-
   void RegisterAssemblersWithTreeSolver() {
     if (!tree_solver_) return;
     // Register decomposed sub-assemblers (not top-level assemblers).
@@ -335,7 +277,6 @@ class Solver {
   std::unique_ptr<TreeSolverBuilder> builder_;
   std::unique_ptr<ConstraintManager> cm_;
   std::unique_ptr<SymmetricLinearSystemTreeSolver> tree_solver_;
-  std::unique_ptr<DenseKKTSolver> dense_solver_;
   std::vector<SparseLinearConstraintAssembler*> linear_assemblers_;
   std::vector<class SparsePSDConstraintAssembler*> psd_assemblers_;
   std::vector<SparseQuadraticTermAssembler*> quadratic_assemblers_;
