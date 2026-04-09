@@ -24,6 +24,8 @@ class PSDConeOps : public ConeOps {
                                const double* b, int size) const override;
   void solveLyapunov(double* out, const double* a, const double* d,
                      int size) const override;
+  void solveLyapunovForD(double* out, const double* r, const double* delta,
+                         int size) const override;
   void abs(double* out, const double* a, int size) const override;
   double minEigenvalue(const double* a, int size) const override;
   void updateAutomorphism(double* w, double* r, double alpha,

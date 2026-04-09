@@ -129,6 +129,27 @@ void PSDConeOps::solveLyapunov(double* out, const double* a, const double* d,
   Symmetrize(Delta);
 }
 
+void PSDConeOps::solveLyapunovForD(double* out, const double* r,
+                                   const double* delta, int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<const Eigen::MatrixXd> R(r, n, n);
+  Eigen::Map<const Eigen::MatrixXd> Delta(delta, n, n);
+  Eigen::Map<Eigen::MatrixXd> D(out, n, n);
+  // RD + DR = 2*Delta.  In R's eigenbasis: D_ij = 2*Delta_ij / (l_i + l_j).
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(R);
+  const auto& V = eig.eigenvectors();
+  const auto& lam = eig.eigenvalues();
+  Eigen::MatrixXd Delta_eig = V.transpose() * Delta * V;
+  for (int i = 0; i < n; ++i)
+    for (int j = 0; j < n; ++j) {
+      double denom = lam(i) + lam(j);
+      Delta_eig(i, j) = (std::abs(denom) > 1e-14)
+          ? 2.0 * Delta_eig(i, j) / denom : 0.0;
+    }
+  D = V * Delta_eig * V.transpose();
+  Symmetrize(D);
+}
+
 void PSDConeOps::abs(double* out, const double* a, int size) const {
   int n = MatrixDim(size);
   Eigen::Map<const Eigen::MatrixXd> A(a, n, n);

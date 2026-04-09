@@ -299,16 +299,14 @@ GeodesicResult SolveGeodesicHybrid(
     kkt.SolveSolverRHS(y);
     total_sol++;
 
-    // Compute d and Delta.
+    // Compute Delta = R - P(W^{1/2})(b + Ay), then solve for D.
     RowSpace row = kkt.MakeRowSpace();
     kkt.MultiplyA(y, row);
-    RowSpace W_over_r = cwiseQuotient(W, r);
-    RowSpace sqrt_W_over_r = EuclideanJordanAlgebra::sqrt(W_over_r);
-    RowSpace d = addScaled(b, row, -1, -1.0);
-    d = quadraticRepresentation(sqrt_W_over_r, d);
-    d += ones;
-
-    RowSpace delta = solveLyapunov(r, d);
+    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace slack_dir = addScaled(b, row, 1.0, 1.0);  // b + Ay
+    RowSpace delta = addScaled(r,
+        quadraticRepresentation(sqrtW, slack_dir), 1.0, -1.0);
+    RowSpace d = solveLyapunovForD(r, delta);
 
     g = gap(r, delta);
     d_inf = normInf(d);

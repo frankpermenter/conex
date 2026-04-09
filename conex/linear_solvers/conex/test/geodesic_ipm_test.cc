@@ -493,5 +493,120 @@ TEST(GeodesicSDP, NonDiagonalLP) {
   EXPECT_GT(1.0 / std::sqrt(result.mu), 1.2);
 }
 
+// Test the hybrid's W-update loop in isolation.
+// Start centered (W=I, r=ones → d=0, Δ=0), perturb r, then
+// repeatedly take geodesic steps on W (no r-shrinking) and check
+// if Δ → 0.
+TEST(GeodesicSDP, HybridCenteringLoop) {
+  srand(42);
+  const int n = 3, p = 4;
+
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  std::vector<int> vars;
+  for (int k = 0; k < p; ++k) {
+    MatrixXd Ak = MatrixXd::Random(n, n);
+    Ak = 0.5 * (Ak + Ak.transpose());
+    A_list.push_back(toSparse(Ak));
+    vars.push_back(k);
+  }
+  MatrixXd B = MatrixXd::Identity(n, n);
+  VectorXd c(p);
+  for (int j = 0; j < p; ++j) c(j) = A_list[j].toDense().trace();
+
+  Problem problem;
+  problem.AddPSDConstraint(A_list, toSparse(B), vars, false);
+  problem.SetLinearCost(c);
+
+  auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(c);
+
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+  RowSpace b = kkt->GetAffineTerm();
+  RowSpace ones = kkt->MakeRowSpace();
+  setOnes(ones);
+
+  // Perturb r from identity.
+  RowSpace r = kkt->MakeRowSpace();
+  setOnes(r);
+  {
+    int n2 = n * n;
+    MatrixXd pert = 0.1 * MatrixXd::Random(n, n);
+    pert = 0.5 * (pert + pert.transpose());
+    MatrixXd R0 = MatrixXd::Identity(n, n) + pert;
+    for (int i = 0; i < n2; ++i) r.segment_ptr(0)[i] = R0.data()[i];
+  }
+
+  printf("  %3s  %12s  %12s  %12s  %12s\n",
+         "iter", "gap", "d_inf", "delta_inf", "d_sqr");
+  printf("  %s\n", std::string(55, '-').c_str());
+
+  // W-update loop: solve, compute d and Δ, take geodesic step on W.
+  for (int iter = 0; iter < 20; ++iter) {
+    RowSpace weights = cwiseProduct(W, W);
+    kkt->SetWeights(weights);
+    kkt->AssembleAndFactor();
+
+    auto y = kkt->MakeSolverRHS();
+    y = cost_rhs;
+    y *= -1;
+    RowSpace v = addScaled(quadraticRepresentation(W, b),
+                           cwiseProduct(r, W), -1, 2.0);
+    kkt->AccumulateAtranspose(v, y);
+    kkt->SolveSolverRHS(y);
+
+    RowSpace row = kkt->MakeRowSpace();
+    kkt->MultiplyA(y, row);
+    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace slack_dir = addScaled(b, row, 1.0, 1.0);
+    RowSpace delta = addScaled(r,
+        quadraticRepresentation(sqrtW, slack_dir), 1.0, -1.0);
+    RowSpace d = solveLyapunovForD(r, delta);
+    double g = gap(r, delta);
+    double d_inf = normInf(d);
+    double delta_inf = normInf(delta);
+    double d_sq = squaredNorm(d);
+
+    printf("  %3d  %12.4e  %12.4e  %12.4e  %12.4e\n",
+           iter, g, d_inf, delta_inf, d_sq);
+
+    if (d_inf < 1e-10) break;
+
+    double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+    updateAutomorphism(W, r, alpha, d);
+  }
+
+  // After centering, Δ should be near 0.
+  // Recompute d one more time.
+  {
+    RowSpace weights = cwiseProduct(W, W);
+    kkt->SetWeights(weights);
+    kkt->AssembleAndFactor();
+
+    auto y = kkt->MakeSolverRHS();
+    y = cost_rhs;
+    y *= -1;
+    RowSpace v = addScaled(quadraticRepresentation(W, b),
+                           cwiseProduct(r, W), -1, 2.0);
+    kkt->AccumulateAtranspose(v, y);
+    kkt->SolveSolverRHS(y);
+
+    RowSpace row = kkt->MakeRowSpace();
+    kkt->MultiplyA(y, row);
+    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace slack_dir = addScaled(b, row, 1.0, 1.0);
+    RowSpace delta = addScaled(r,
+        quadraticRepresentation(sqrtW, slack_dir), 1.0, -1.0);
+    RowSpace d = solveLyapunovForD(r, delta);
+    double d_inf = normInf(d);
+    double delta_inf = normInf(delta);
+    printf("\nFinal: d_inf=%.2e, delta_inf=%.2e\n", d_inf, delta_inf);
+    EXPECT_LT(d_inf, 1e-6);
+    EXPECT_LT(delta_inf, 1e-6);
+  }
+}
+
 }  // namespace
 }  // namespace conex

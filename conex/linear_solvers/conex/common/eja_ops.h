@@ -96,6 +96,15 @@ inline Variable solveLyapunov(const Variable& r, const Variable& d) {
   return out;
 }
 
+// Inverse Lyapunov: solve R*D + D*R = 2*Delta for D.
+inline Variable solveLyapunovForD(const Variable& r, const Variable& delta) {
+  Variable out = like(r);
+  for (int i = 0; i < r.num_constraints(); ++i)
+    r.ops[i]->solveLyapunovForD(out.segment_ptr(i), r.segment_ptr(i),
+                                 delta.segment_ptr(i), r.sizes[i]);
+  return out;
+}
+
 // EJA absolute value (eigenvalue abs for PSD, elementwise for nonneg).
 inline Variable absEJA(const Variable& a) {
   Variable out = like(a);

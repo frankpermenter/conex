@@ -45,11 +45,16 @@ class ConeOps {
   virtual void quadraticRepresentation(double* out, const double* a,
                                        const double* b, int size) const = 0;
 
-  // Solve Lyapunov: a*d + d*a = 2*out.
-  //   Nonneg: out_i = a_i * d_i.
-  //   PSD:    eigendecompose A, Hadamard in eigenbasis.
+  // Solve Lyapunov R*D + D*R = 2*Delta.
+  //   Forward (R, D → Delta): solveLyapunov.
+  //   Inverse (R, Delta → D): solveLyapunovForD.
+  //   Nonneg forward: delta_i = r_i * d_i.
+  //   Nonneg inverse: d_i = delta_i / r_i.
+  //   PSD: eigendecompose R, Hadamard multiply/divide in eigenbasis.
   virtual void solveLyapunov(double* out, const double* a, const double* d,
                              int size) const = 0;
+  virtual void solveLyapunovForD(double* out, const double* r,
+                                 const double* delta, int size) const = 0;
 
   // Absolute value in the EJA sense.
   //   Nonneg: out_i = |a_i|.
@@ -131,6 +136,11 @@ class NonnegOrthantOps : public ConeOps {
   void solveLyapunov(double* out, const double* a, const double* d,
                      int size) const override {
     for (int i = 0; i < size; ++i) out[i] = a[i] * d[i];
+  }
+
+  void solveLyapunovForD(double* out, const double* r, const double* delta,
+                         int size) const override {
+    for (int i = 0; i < size; ++i) out[i] = delta[i] / r[i];
   }
 
   void abs(double* out, const double* a, int size) const override {
