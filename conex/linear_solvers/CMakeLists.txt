@@ -307,6 +307,15 @@ target_link_libraries(psd_ap_test
   GTest::gtest_main
 )
 gtest_discover_tests(psd_ap_test)
+
+add_executable(soc_gram_test
+  conex/test/soc_gram_test.cc
+)
+target_link_libraries(soc_gram_test
+  constraints
+  GTest::gtest_main
+)
+gtest_discover_tests(soc_gram_test)
 gtest_discover_tests(alternating_projections_test)
 
 add_executable(solve_lp_test
