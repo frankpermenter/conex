@@ -1,6 +1,8 @@
 #pragma once
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <memory>
 #include <vector>
 
@@ -257,6 +259,27 @@ class Variable {
  private:
   Eigen::MatrixXd data_;
 };
+
+// Pretty-print a Variable.  PSD segments (n² rows where n = sqrt(size))
+// are reshaped into n×n matrices.  Nonneg segments print as vectors.
+inline std::ostream& operator<<(std::ostream& os, const Variable& v) {
+  for (int i = 0; i < v.num_constraints(); ++i) {
+    int sz = v.sizes[i];
+    int n = static_cast<int>(std::round(std::sqrt(static_cast<double>(sz))));
+    bool is_square = (n * n == sz && n > 1);
+    os << "segment " << i << " (" << sz << " entries)";
+    if (is_square) {
+      os << " [" << n << "x" << n << " matrix]:\n";
+      Eigen::Map<const Eigen::MatrixXd> M(v.segment_ptr(i), n, n);
+      os << M << "\n";
+    } else {
+      os << ":\n";
+      Eigen::Map<const Eigen::VectorXd> vec(v.segment_ptr(i), sz);
+      os << vec.transpose() << "\n";
+    }
+  }
+  return os;
+}
 
 }  // namespace EuclideanJordanAlgebra
 
