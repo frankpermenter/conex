@@ -8,10 +8,14 @@ AffineProjection AffineProjection::Build(const Problem& problem) {
   AffineProjection ap;
   ap.solver_ = Solver::Build(problem);
 
-  // Factor with identity weights: Gram = A^T A.
+  // Factor with unit scalar weights: Gram = A^T I A = A^T A.
+  // Set all entries to 1.0 directly (not via EJA setOnes, which
+  // produces identity matrices for PSD segments).
   auto* kkt = ap.solver_.solver();
   RowSpace weights = kkt->MakeRowSpace();
-  setOnes(weights);
+  for (int i = 0; i < weights.num_constraints(); ++i)
+    for (int j = 0; j < weights.sizes[i]; ++j)
+      weights.segment_ptr(i)[j] = 1.0;
   kkt->SetWeights(weights);
   kkt->AssembleAndFactor();
 

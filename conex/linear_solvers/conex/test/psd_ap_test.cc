@@ -36,13 +36,12 @@ TEST(PSD_AP, Feasibility) {
   const int n = 3;  // 3x3 matrices
   const int p = 5;  // 5 free variables
 
-  // Random symmetric A_i.
+  // Random A_i (not necessarily symmetric — the PSD constraint
+  // is Σ A_i x_i + B ≽ 0, symmetry of X is enforced by the cone projection).
   std::vector<Eigen::SparseMatrix<double>> A_list;
   std::vector<int> vars;
   for (int k = 0; k < p; ++k) {
-    MatrixXd Ak = MatrixXd::Random(n, n);
-    Ak = 0.5 * (Ak + Ak.transpose());
-    A_list.push_back(toSparse(Ak));
+    A_list.push_back(toSparse(MatrixXd::Random(n, n)));
     vars.push_back(k);
   }
 
@@ -69,9 +68,37 @@ TEST(PSD_AP, Feasibility) {
     double proj_err = std::sqrt(squaredNorm(addScaled(s_test, s_before, 1.0, -1.0)));
     printf("  affine proj of b: err=%.4e\n", proj_err);
   }
-  Eigen::Map<MatrixXd>(s.segment_ptr(0), n, n) = -2.0 * MatrixXd::Identity(n, n);
+  // Check condition of A^T A.
+  {
+    // Reconstruct A_vec from the stored data.
+    const auto& data = std::get<Problem::LinearConstraintData>(problem.constraint(0));
+    MatrixXd A_dense(data.A);
+    MatrixXd AtA = A_dense.transpose() * A_dense;
+    Eigen::JacobiSVD<MatrixXd> svd(AtA);
+    printf("  A^T A singular values: ");
+    for (int i = 0; i < svd.singularValues().size(); ++i)
+      printf("%.2e ", svd.singularValues()(i));
+    printf("\n  cond = %.2e\n",
+           svd.singularValues()(0) / svd.singularValues()(svd.singularValues().size()-1));
+  }
 
-  auto result = AlternatingProjections(affine, s, 20, 1e-8, true);
+  // Start from b + small perturbation (near feasible).
+  {
+    RowSpace b = affine.GetAffineTerm();
+    for (int i = 0; i < s.total_rows(); ++i)
+      s.segment_ptr(0)[i] = b.segment_ptr(0)[i] + 0.5 * ((double)rand() / RAND_MAX - 0.5);
+  }
+
+  // Manual first iteration.
+  {
+    RowSpace s_proj = affine.MakeVariable();
+    project(s_proj, s);
+    printf("  after cone proj: norm=%.4e\n", std::sqrt(squaredNorm(s_proj)));
+    affine.Project(s_proj);
+    printf("  after affine proj: norm=%.4e\n", std::sqrt(squaredNorm(s_proj)));
+  }
+
+  auto result = AlternatingProjections(affine, s, 500, 1e-8);
   printf("PSD AP: %d iters, residual=%.2e\n",
          result.iterations, result.residual);
   EXPECT_LT(result.residual, 1e-6);
