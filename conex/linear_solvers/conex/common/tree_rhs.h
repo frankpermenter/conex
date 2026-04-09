@@ -268,6 +268,28 @@ class Variable {
   Variable& operator+=(const Variable& o) { data_ += o.data_; return *this; }
   Variable& operator-=(const Variable& o) { data_ -= o.data_; return *this; }
 
+  friend Variable operator+(const Variable& a, const Variable& b) {
+    Variable out = a;
+    out += b;
+    return out;
+  }
+
+  friend Variable operator-(const Variable& a, const Variable& b) {
+    Variable out = a;
+    out -= b;
+    return out;
+  }
+
+  friend Variable operator*(double alpha, const Variable& a) {
+    Variable out = a;
+    out *= alpha;
+    return out;
+  }
+
+  friend Variable operator*(const Variable& a, double alpha) {
+    return alpha * a;
+  }
+
   // Jordan product: a * b.
   //   Nonneg: elementwise a_i * b_i.
   //   PSD: (AB + BA) / 2.
