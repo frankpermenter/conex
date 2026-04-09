@@ -1,8 +1,9 @@
 // Solver comparison: geodesic IPM variants on random LPs.
 // Reports gap vs iteration count and total factorizations/solves.
 //
-// Usage: ./solver_comparison [m] [n] [rank_Q] [seed]
-//   Default m=50, n=20, rank_Q=0 (LP), seed=42.
+// Usage: ./solver_comparison [m] [n] [rank_Q] [seed] [sdp_n] [sdp_p]
+//   LP:  m constraints, n variables, rank_Q (0=LP). Default 50 20 0 42.
+//   SDP: sdp_n matrix dim, sdp_p variables. Default 4 6.
 
 #include <cstdio>
 #include <cstdlib>
@@ -150,15 +151,81 @@ void RunComparison(int m, int n, int rank_Q, int seed) {
   }
 }
 
+Eigen::SparseMatrix<double> toSparse(const MatrixXd& M) {
+  std::vector<Eigen::Triplet<double>> t;
+  for (int i = 0; i < M.rows(); ++i)
+    for (int j = 0; j < M.cols(); ++j)
+      if (std::abs(M(i, j)) > 1e-14)
+        t.emplace_back(i, j, M(i, j));
+  Eigen::SparseMatrix<double> S(M.rows(), M.cols());
+  S.setFromTriplets(t.begin(), t.end());
+  return S;
+}
+
+// Build:  min c^T x  s.t.  B + Σ x_j A_j ≽ 0
+//
+//   A_j: n x n random symmetric.
+//   B: identity.
+//   c_j: trace(A_j)   (so W=I at k=1 is centered with x=0).
+//   p: number of free variables.
+void RunSDPComparison(int n, int p, int seed) {
+  srand(seed);
+  printf("SDP: n=%d (matrix dim), p=%d variables (seed=%d)\n\n", n, p, seed);
+
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  std::vector<int> vars;
+  VectorXd c(p);
+  for (int k = 0; k < p; ++k) {
+    MatrixXd Ak = MatrixXd::Random(n, n);
+    Ak = 0.5 * (Ak + Ak.transpose());
+    A_list.push_back(toSparse(Ak));
+    vars.push_back(k);
+    c(k) = Ak.trace();
+  }
+  MatrixXd B = MatrixXd::Identity(n, n);
+
+  Problem problem;
+  problem.AddPSDConstraint(A_list, toSparse(B), vars, /*use_chordal=*/false);
+  problem.SetLinearCost(c);
+
+  auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(c);
+
+  // ===== Geodesic IPM (0 centering steps) =====
+  {
+    RowSpace W = kkt->MakeRowSpace();
+    setOnes(W);
+    auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
+    PrintResult("SDP Geodesic IPM (0 centering)", result);
+  }
+
+  // ===== Geodesic IPM (Hybrid) =====
+  {
+    RowSpace W = kkt->MakeRowSpace();
+    setOnes(W);
+    auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W, 50, 1e-8);
+    PrintResult("SDP Geodesic IPM (Hybrid)", result, true);
+  }
+}
+
 }  // namespace
 }  // namespace conex
 
 int main(int argc, char* argv[]) {
+  // Usage: ./solver_comparison [m] [n] [rank_Q] [seed] [sdp_n] [sdp_p]
   int m = 50, n = 20, rank_Q = 0, seed = 42;
+  int sdp_n = 4, sdp_p = 6;
   if (argc > 1) m = std::atoi(argv[1]);
   if (argc > 2) n = std::atoi(argv[2]);
   if (argc > 3) rank_Q = std::atoi(argv[3]);
   if (argc > 4) seed = std::atoi(argv[4]);
+  if (argc > 5) sdp_n = std::atoi(argv[5]);
+  if (argc > 6) sdp_p = std::atoi(argv[6]);
   conex::RunComparison(m, n, rank_Q, seed);
+
+  printf("\n%s\n\n", std::string(72, '=').c_str());
+  conex::RunSDPComparison(sdp_n, sdp_p, seed);
   return 0;
 }
