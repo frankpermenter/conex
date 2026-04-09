@@ -202,5 +202,88 @@ TEST(GeodesicBarrierQP, MultipleConstraints) {
   }
 }
 
+// =====================================================================
+// PSD (SDP) tests for the geodesic IPM.
+// =====================================================================
+
+Eigen::SparseMatrix<double> toSparse(const MatrixXd& M) {
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int i = 0; i < M.rows(); ++i)
+    for (int j = 0; j < M.cols(); ++j)
+      if (std::abs(M(i, j)) > 1e-14)
+        trips.emplace_back(i, j, M(i, j));
+  Eigen::SparseMatrix<double> S(M.rows(), M.cols());
+  S.setFromTriplets(trips.begin(), trips.end());
+  return S;
+}
+
+// Toy SDP: min c^T x  s.t. B + x1*A1 + x2*A2 ≽ 0
+// with B = I, symmetric A_i chosen so central path at W=I, k=1 is x=0.
+//
+// At x=0 the slack is S = B = I.  For geodesic centering at k=1 with
+// W=I, d=0 requires the RHS to vanish:
+//   RHS_j = -c_j + A^T_j(-P(W)b + 2W)
+// With W=I, P(W)b = b, so RHS_j = -c_j + A^T_j(-b + 2I).
+// For b = vec(I): RHS_j = -c_j + <A_j, 2I - I> = -c_j + <A_j, I> = -c_j + trace(A_j).
+// So c_j = trace(A_j) makes x=0 the central path point.
+TEST(GeodesicSDP, CenterConvergence) {
+  srand(42);
+  const int n = 3;
+  const int p = 2;
+
+  // Symmetric A_i.
+  MatrixXd A1 = MatrixXd::Random(n, n);
+  A1 = 0.5 * (A1 + A1.transpose());
+  MatrixXd A2 = MatrixXd::Random(n, n);
+  A2 = 0.5 * (A2 + A2.transpose());
+  MatrixXd B = MatrixXd::Identity(n, n);
+
+  std::vector<Eigen::SparseMatrix<double>> A_list = {toSparse(A1), toSparse(A2)};
+  std::vector<int> vars = {0, 1};
+
+  // c_j = trace(A_j) so W=I at k=1 is fixed point.
+  VectorXd c(p);
+  c(0) = A1.trace();
+  c(1) = A2.trace();
+
+  Problem problem;
+  problem.AddPSDConstraint(A_list, toSparse(B), vars, /*use_chordal=*/false);
+  problem.SetLinearCost(c);
+
+  auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
+
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(c);
+
+  // Initialize W = I + small perturbation (symmetric).
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+  {
+    int n2 = n * n;
+    MatrixXd pert = 0.05 * MatrixXd::Random(n, n);
+    pert = 0.5 * (pert + pert.transpose());
+    MatrixXd W0 = MatrixXd::Identity(n, n) + pert;
+    for (int i = 0; i < n2; ++i) W.segment_ptr(0)[i] = W0.data()[i];
+  }
+
+  auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 100, 1e-10);
+  printf("SDP Center: %d iters, d_inf=%.2e\n",
+         result.iterations, result.d_inf_norm);
+  EXPECT_LT(result.d_inf_norm, 1e-6);
+
+  // W should return to I.
+  RowSpace W_ones = kkt->MakeRowSpace();
+  setOnes(W_ones);
+  double w_err = normInf(addScaled(W, W_ones, 1.0, -1.0));
+  printf("  ||W - I||_inf = %.2e\n", w_err);
+  EXPECT_LT(w_err, 1e-4);
+}
+
+// TODO: SDP tests for SolveGeodesicLP and SolveGeodesicHybrid require
+// eigenvalue-based lineSearchK (current elementwise search is wrong for
+// PSD — ||d||_inf is max eigenvalue magnitude, not max entry magnitude).
+// Also the hybrid RHS term r ∘ W needs PSD-correct formulation.
+
 }  // namespace
 }  // namespace conex
