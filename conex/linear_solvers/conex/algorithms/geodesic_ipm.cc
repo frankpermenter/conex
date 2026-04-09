@@ -264,16 +264,19 @@ HybridDirection ComputeHybridDirection(
   auto y = kkt.MakeSolverRHS();
   y = cost_rhs;
   y *= -1;
-  RowSpace sqrtW_rhs = EuclideanJordanAlgebra::sqrt(W);
+  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
   RowSpace v = addScaled(quadraticRepresentation(W, b),
-                         quadraticRepresentation(sqrtW_rhs, r), -1, 2.0);
+                         quadraticRepresentation(sqrtW, r), -1, 2.0);
   kkt.AccumulateAtranspose(v, y);
+  std::cout << "RHS before solve:\n" << y << "\n";
   kkt.SolveSolverRHS(y);
+  std::cout << "y after solve:\n" << y << "\n";
 
   RowSpace row = kkt.MakeRowSpace();
   kkt.MultiplyA(y, row);
-  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
   RowSpace slack_dir = addScaled(b, row, 1.0, 1.0);
+  // r-delta = Q(w) slack
+  // r - Q(w)slack = delta
   delta = addScaled(r,
       quadraticRepresentation(sqrtW, slack_dir), 1.0, -1.0);
   d = solveLyapunovForD(r, delta);
@@ -286,6 +289,8 @@ HybridDirection ComputeHybridDirection(
   std::cout << "RES CHECK";
   std::cout << "Computed\n" << residual << "\n";
   std::cout << "Reference\n" << cost_rhs << "\n";
+  std::cout << "W\n" << W  << "\n";
+  std::cout << "r\n" << r  << "\n";
 
 
   return {gap(r, delta), normInf(d), squaredNorm(d), minSlack(r, delta)};
@@ -322,6 +327,7 @@ GeodesicResult SolveGeodesicHybrid(
   setOnes(r);
 
   // Initial centering until |d|_inf <= 1.
+  kkt.SetScaling(W);
   kkt.AssembleAndFactor();
   int total_fac = 0;//init.total_factorizations;
   int total_sol = 0;//init.total_solves;
@@ -354,6 +360,7 @@ GeodesicResult SolveGeodesicHybrid(
 
     if (std::abs(g) < tolerance && mslack > -0.0001) break;
     if (g < 0) {
+      std::cout << "AUTO UPDATE";
       // Centering step: update W and r, then refactor.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       updateAutomorphism(W, r, alpha, d);

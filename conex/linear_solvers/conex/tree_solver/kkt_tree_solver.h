@@ -365,6 +365,10 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   }
 
   void SolveSolverRHS(SolverRHS& rhs) override {
+    if (rhs.blocks_fully_gathered) {
+      ScatterSeparators(*rhs.supernodes, *rhs.separators);
+      rhs.blocks_fully_gathered = false;
+    }
     SolveBlockedInPlace(*rhs.supernodes, *rhs.separators);
   }
 

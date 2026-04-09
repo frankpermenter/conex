@@ -1038,9 +1038,11 @@ RowSpace T::MakeRowSpace(int cols) {
 }
 
 void T::MultiplyA(const SolverRHS& x, RowSpace& out) {
-  if (x.blocks_fully_gathered && x.has_separators()) {
+  // Always scatter from supernodes to separators.  After a solve,
+  // x.separators contain stale solve-internal data, not scattered x.
+  if (x.has_separators()) {
     ScatterSeparators(*x.supernodes, *x.separators);
-  } else if (x.blocks_fully_gathered) {
+  } else {
     ScatterSeparators(*x.supernodes, sep_scratch_);
   }
   const auto& sep_read = x.has_separators() ? *x.separators : sep_scratch_;
