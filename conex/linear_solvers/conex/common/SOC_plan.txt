@@ -1,0 +1,85 @@
+# SOC Constraint Integration Plan
+
+## Gram Matrix Formula
+
+The SOC weighted Gram is:
+
+    G = A^T P(W) A = 2(2(A^T w)(A^T w)^T - det(w) * A^T R A)
+
+where:
+- w = (w0, w1) is the SOC weight in the interior of the cone
+- det(w) = w0^2 - ||w1||^2
+- R = diag(1, -1, ..., -1) is the reflection operator
+- A = [A0; A1] with A0 (1 x p) scalar row, A1 ((n-1) x p) vector rows
+
+Verified in soc_gram_test.cc: definition and formula match to 1e-15.
+
+## Structure
+
+G = -2*det(w)*M + 4*v*v^T
+
+where:
+- M = A^T R A = A0 A0^T - A1^T A1   (precomputed, indefinite)
+- v = A^T w                           (updated each iteration, O(p*n))
+
+This is a rank-1 update of a fixed matrix. Per-iteration cost is O(p*n)
+for computing v, plus O(p^2) for the rank-1 update.
+
+## Clique Structure
+
+Each SOC constraint is one atomic unit — the Gram couples all variables
+via the rank-1 term v*v^T. No per-row decomposition like linear
+constraints.
+
+Clique provider reports one clique: {j : A[:,j] != 0}, the union of
+all nonzero column indices. Same pattern as QuadraticCost.
+
+Multiple SOC constraints -> multiple cliques, merged by the tree builder.
+
+## Assembler Design (SOCLinearConstraint)
+
+Parallel to LinearConstraint + GramEvaluator:
+
+### Precompute (at set_order / construction time):
+- A_perm_: permuted constraint matrix (n x p_local)
+- M_perm_ = A0_perm * A0_perm^T - A1_perm^T * A1_perm  (p x p, indefinite)
+
+### SetScaling(W):
+- Extract w0, w1 from W
+- Compute det_w = w0^2 - ||w1||^2
+- Compute v = A_perm^T * w  (p-vector)
+
+### ContributeBlocks:
+- Write -2*det_w * M_perm_{block} + 4 * v_{block} * v_{block}^T
+  into each registered block destination.
+- The M part goes via stored block pointers (like dsyrk).
+- The v*v^T part is a rank-1 update (like dsyr).
+
+### ContributeAtranspose (for A^T * vec):
+- Same as GramEvaluator: A_perm^T * V.
+
+### MultiplyA (for A * x):
+- Same as GramEvaluator: A_perm * x.
+
+## Matrix Inversion Lemma (optional optimization)
+
+G = -2*det(w)*M + 4*v*v^T can be inverted via Sherman-Morrison:
+
+    G^{-1} = alpha * (M^{-1} - M^{-1}v * c * v^T M^{-1})
+
+where alpha = 1/(-2*det(w)), c = 1/(1/4*(-2*det(w)) + v^T M^{-1} v).
+
+This gives O(p^2) per-iteration solve after one O(p^3) LDLT of M.
+But the tree solver refactors each iteration anyway, so this is only
+useful for a direct dense solver or a warm-start strategy.
+
+## ConeOps
+
+SOCConeOps implemented in soc_cone_ops.h/cc. All operations use the
+spectral decomposition lambda = t +/- ||x|| with eigenvalues as the
+key primitive.
+
+## Files to create:
+- conex/common/soc_linear_constraint.h  (SOCGramEvaluator + SOCLinearConstraint)
+- conex/common/sparse_soc_constraint.h  (SparsSOCConstraintAssembler)
+- Problem::AddSOCConstraint API
