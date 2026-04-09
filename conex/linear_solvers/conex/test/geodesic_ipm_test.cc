@@ -383,9 +383,10 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
   }
 }
 
-// SDP LP: min c^T x  s.t. B + Σ x_i A_i ≽ 0
-// B = I, c_j = trace(A_j) so W=I at k=1 is centered.
-TEST(GeodesicSDP, LP) {
+// Non-diagonal SDP: centering at k=1 with dense symmetric A_i.
+// B = I, c_j = trace(A_j) → W=I at k=1 is centered.
+// Perturb W and verify centering recovers d → 0.
+TEST(GeodesicSDP, NonDiagonalCenter) {
   srand(42);
   const int n = 3;
   const int p = 4;
@@ -399,8 +400,6 @@ TEST(GeodesicSDP, LP) {
     vars.push_back(k);
   }
   MatrixXd B = MatrixXd::Identity(n, n);
-
-  // c_j = trace(A_j) makes W=I the central path point at k=1.
   VectorXd c(p);
   for (int j = 0; j < p; ++j) c(j) = A_list[j].toDense().trace();
 
@@ -410,7 +409,67 @@ TEST(GeodesicSDP, LP) {
 
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(c);
 
+  // Center at k=1 from W=I (should be 1 iter since already centered).
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+  auto r0 = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 50, 1e-10);
+  printf("k=1 (W=I): %d iters, d_inf=%.2e\n", r0.iterations, r0.d_inf_norm);
+  EXPECT_LT(r0.d_inf_norm, 1e-8);
+  EXPECT_LE(r0.iterations, 2);
+
+  // Center at k=1 from perturbed W.
+  {
+    int n2 = n * n;
+    MatrixXd pert = 0.05 * MatrixXd::Random(n, n);
+    pert = 0.5 * (pert + pert.transpose());
+    MatrixXd W0 = MatrixXd::Identity(n, n) + pert;
+    for (int i = 0; i < n2; ++i) W.segment_ptr(0)[i] = W0.data()[i];
+  }
+  auto r1 = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 50, 1e-10);
+  printf("k=1 (perturbed): %d iters, d_inf=%.2e\n",
+         r1.iterations, r1.d_inf_norm);
+  EXPECT_LT(r1.d_inf_norm, 1e-8);
+
+  // One line search + re-center should work.
+  double k = 1.0;
+  double k_new = GeodesicLineSearch(*kkt, cost_rhs, W);
+  printf("line search: k_new=%.4f\n", k_new);
+  EXPECT_GT(k_new, k);
+  k = k_new;
+  auto r2 = GeodesicCenter(*kkt, cost_rhs, W, k, 50, 1e-10);
+  printf("k=%.4f: %d iters, d_inf=%.2e\n", k, r2.iterations, r2.d_inf_norm);
+  EXPECT_LT(r2.d_inf_norm, 1e-8);
+}
+
+// Non-diagonal SDP: SolveGeodesicLP makes progress (k increases,
+// d_inf stays near 1).  Full convergence is limited by the
+// d0/d1 decomposition having large individual terms for PSD.
+TEST(GeodesicSDP, NonDiagonalLP) {
+  srand(42);
+  const int n = 3;
+  const int p = 4;
+
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  std::vector<int> vars;
+  for (int k = 0; k < p; ++k) {
+    MatrixXd Ak = MatrixXd::Random(n, n);
+    Ak = 0.5 * (Ak + Ak.transpose());
+    A_list.push_back(toSparse(Ak));
+    vars.push_back(k);
+  }
+  MatrixXd B = MatrixXd::Identity(n, n);
+  VectorXd c(p);
+  for (int j = 0; j < p; ++j) c(j) = A_list[j].toDense().trace();
+
+  Problem problem;
+  problem.AddPSDConstraint(A_list, toSparse(B), vars, /*use_chordal=*/false);
+  problem.SetLinearCost(c);
+
+  auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
 
@@ -418,11 +477,15 @@ TEST(GeodesicSDP, LP) {
   setOnes(W);
 
   auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-6, true);
-  printf("SDP LP: %d fac, gap=%.2e\n",
-         result.total_factorizations, result.complementarity);
-  // TODO: SolveGeodesicLP stalls on non-diagonal SDP (d0 large due to
-  // cancellation in d0+k*d1 decomposition).  Centering works.
-  // EXPECT_LT(result.complementarity, 1e-4);
+  printf("SDP LP: %d fac, mu=%.2e, d_inf=%.2e\n",
+         result.total_factorizations, result.mu, result.d_inf_norm);
+
+  // Verify d_inf stays near 1 (line search working correctly).
+  for (int i = 0; i < result.iterations; ++i) {
+    EXPECT_LT(result.iter_stats[i].d_inf, 1.5);
+  }
+  // k should increase beyond 1.
+  EXPECT_GT(1.0 / std::sqrt(result.mu), 1.2);
 }
 
 }  // namespace
