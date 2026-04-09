@@ -64,6 +64,7 @@ add_library(constraints
   conex/common/constraint_manager.cc
   conex/common/blas_wrapper.cc
   conex/common/psd_cone_ops.cc
+  conex/common/soc_cone_ops.cc
 )
 target_link_libraries(constraints PUBLIC Eigen3::Eigen clique_ordering)
 if(BLAS_FOUND)
