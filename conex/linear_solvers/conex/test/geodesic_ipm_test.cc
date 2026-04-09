@@ -202,6 +202,61 @@ TEST(GeodesicBarrierQP, MultipleConstraints) {
   }
 }
 
+// Nonneg hybrid centering: perturb r, run HybridCenteringStep loop,
+// verify d → 0.  Exercises NonnegOrthantOps::updateAutomorphism.
+TEST(GeodesicBarrierQP, HybridCenteringLoop) {
+  srand(42);
+  const int n = 5, m = 8;
+
+  MatrixXd A_dense = MatrixXd::Random(m, n).cwiseAbs() +
+                     0.1 * MatrixXd::Ones(m, n);
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A_dense.transpose() * VectorXd::Ones(m);
+
+  auto toSparseLoc = [](const MatrixXd& M) {
+    std::vector<Eigen::Triplet<double>> trips;
+    for (int i = 0; i < M.rows(); ++i)
+      for (int j = 0; j < M.cols(); ++j)
+        trips.emplace_back(i, j, M(i, j));
+    Eigen::SparseMatrix<double> S(M.rows(), M.cols());
+    S.setFromTriplets(trips.begin(), trips.end());
+    return S;
+  };
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  problem.AddLinearConstraint(toSparseLoc(A_dense), b, vars);
+  problem.SetLinearCost(c);
+
+  auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(c);
+
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+
+  // Perturb r from ones.
+  RowSpace r = kkt->MakeRowSpace();
+  setFromVector(r, VectorXd::Ones(m) + 0.1 * VectorXd::Random(m));
+
+  for (int iter = 0; iter < 20; ++iter) {
+    auto info = HybridCenteringStep(*kkt, cost_rhs, W, r);
+    if (info.d_inf < 1e-10) break;
+  }
+
+  // Verify convergence.
+  kkt->SetScaling(W);
+  kkt->AssembleAndFactor();
+  RowSpace d = kkt->MakeRowSpace();
+  RowSpace delta = kkt->MakeRowSpace();
+  auto info = ComputeHybridDirection(*kkt, cost_rhs, W, r, d, delta);
+  printf("Nonneg HybridCentering: d_inf=%.2e\n", info.d_inf);
+  EXPECT_LT(info.d_inf, 1e-6);
+}
+
 // =====================================================================
 // PSD (SDP) tests for the geodesic IPM.
 // =====================================================================
