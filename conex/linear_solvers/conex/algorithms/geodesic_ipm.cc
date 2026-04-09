@@ -288,7 +288,6 @@ GeodesicResult SolveGeodesicHybrid(
     kkt.SolveSolverRHS(y);
     total_sol++;
 
-    // d = 1 - (W/r) .* (k*b - A*y).
     RowSpace row = kkt.MakeRowSpace();
     kkt.MultiplyA(y, row);
     RowSpace W_over_r = cwiseQuotient(W, r);
