@@ -9,6 +9,7 @@
 #include <Eigen/Dense>
 #include "conex/common/block_partition.h"
 #include "conex/common/block_variable.h"
+#include "conex/common/cone_ops.h"
 
 namespace conex {
 
@@ -255,6 +256,21 @@ class Variable {
   Variable& operator*=(double alpha) { data_ *= alpha; return *this; }
   Variable& operator+=(const Variable& o) { data_ += o.data_; return *this; }
   Variable& operator-=(const Variable& o) { data_ -= o.data_; return *this; }
+
+  // Jordan product: a * b.
+  //   Nonneg: elementwise a_i * b_i.
+  //   PSD: (AB + BA) / 2.
+  friend Variable operator*(const Variable& a, const Variable& b) {
+    Variable out;
+    out.offsets = a.offsets;
+    out.sizes = a.sizes;
+    out.ops = a.ops;
+    out.data_.resizeLike(a.data_);
+    for (int i = 0; i < a.num_constraints(); ++i)
+      a.ops[i]->product(out.segment_ptr(i), a.segment_ptr(i),
+                        b.segment_ptr(i), a.sizes[i]);
+    return out;
+  }
 
  private:
   Eigen::MatrixXd data_;
