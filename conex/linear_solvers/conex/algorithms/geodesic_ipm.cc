@@ -74,12 +74,12 @@ static void ComputeDirectNewtonStep(
   kkt.AssembleAndFactor();
 
   // Ax + b >= 0 convention.
-  // RHS = -k*cost + A^T(-k*W^2*b + 2*W).
+  // RHS = -k*cost + A^T(-k*P(W)b + 2*W).
   // d = 1 + W*(-k*b - A*y) = 1 - W*(k*b + A*y).
   auto y = kkt.MakeSolverRHS();
   y = cost_rhs;
   y *= -k;
-  RowSpace v = addScaled(cwiseProduct(weights, b), W, -k, 2.0);
+  RowSpace v = addScaled(quadraticRepresentation(W, b), W, -k, 2.0);
   kkt.AccumulateAtranspose(v, y);
   kkt.SolveSolverRHS(y);
 
@@ -121,7 +121,7 @@ static void ComputeDecomposition(
 
   auto rhs1 = kkt.MakeSolverRHS();
   rhs1 = cost_rhs;
-  v = cwiseProduct(weights, b);
+  v = quadraticRepresentation(W, b);
   kkt.AccumulateAtranspose(v, rhs1);
   rhs1 *= -1;
 
@@ -276,7 +276,7 @@ GeodesicResult SolveGeodesicHybrid(
     auto y = kkt.MakeSolverRHS();
     y = cost_rhs;
     y *= -1;
-    RowSpace v = addScaled(cwiseProduct(cwiseProduct(W, W), b),
+    RowSpace v = addScaled(quadraticRepresentation(W, b),
                            cwiseProduct(r, W), -1, 2.0);
     kkt.AccumulateAtranspose(v, y);
     kkt.SolveSolverRHS(y);

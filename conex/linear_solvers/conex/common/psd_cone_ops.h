@@ -19,6 +19,8 @@ class PSDConeOps : public ConeOps {
   double normInf(const double* a, int size) const override;
   double squaredNorm(const double* a, int size) const override;
   double dot(const double* a, const double* b, int size) const override;
+  void quadraticRepresentation(double* out, const double* a,
+                               const double* b, int size) const override;
   void project(double* out, const double* a, int size) const override;
 };
 

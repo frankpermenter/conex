@@ -82,6 +82,15 @@ double PSDConeOps::dot(const double* a, const double* b, int size) const {
   return (A.cwiseProduct(B)).sum();  // trace(A^T B).
 }
 
+void PSDConeOps::quadraticRepresentation(double* out, const double* a,
+                                         const double* b, int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<const Eigen::MatrixXd> A(a, n, n);
+  Eigen::Map<const Eigen::MatrixXd> B(b, n, n);
+  Eigen::Map<Eigen::MatrixXd> Out(out, n, n);
+  Out.noalias() = A * B * A;
+}
+
 void PSDConeOps::project(double* out, const double* a, int size) const {
   int n = MatrixDim(size);
   Eigen::Map<const Eigen::MatrixXd> A(a, n, n);

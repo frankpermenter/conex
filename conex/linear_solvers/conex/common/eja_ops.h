@@ -36,6 +36,17 @@ inline Variable cwiseQuotient(const Variable& a, const Variable& b) {
   return out;
 }
 
+// Quadratic representation: P(a)b.
+//   Nonneg: out_i = a_i² * b_i.
+//   PSD:    Out = A * B * A.
+inline Variable quadraticRepresentation(const Variable& a, const Variable& b) {
+  Variable out = like(a);
+  for (int i = 0; i < a.num_constraints(); ++i)
+    a.ops[i]->quadraticRepresentation(out.segment_ptr(i), a.segment_ptr(i),
+                                      b.segment_ptr(i), a.sizes[i]);
+  return out;
+}
+
 // out = alpha * a + beta * b.
 inline Variable addScaled(const Variable& a, const Variable& b,
                           double alpha, double beta) {
@@ -159,6 +170,7 @@ inline void setFromVector(Variable& v, const Eigen::VectorXd& vec) {
 namespace EJA = EuclideanJordanAlgebra;
 using EuclideanJordanAlgebra::cwiseProduct;
 using EuclideanJordanAlgebra::cwiseQuotient;
+using EuclideanJordanAlgebra::quadraticRepresentation;
 using EuclideanJordanAlgebra::addScaled;
 using EuclideanJordanAlgebra::geodesicUpdate;
 using EuclideanJordanAlgebra::setOnes;
