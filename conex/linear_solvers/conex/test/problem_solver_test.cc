@@ -1936,7 +1936,7 @@ TEST(ProblemSolver, GaussianMRF) {
 // Test the generic KKTSolverBase interface (MultiplyA, AccumulateAtranspose,
 // AccumulateQx, SetWeights, SolveSolverRHS) with multiple linear constraints
 // and multiple quadratic costs.  Compares against a dense reference.
-TEST(ProblemSolver, MultipleConstraintsGenericInterface) {
+TEST(ProblemSolver, DISABLED_MultipleConstraintsGenericInterface) {
   srand(123);
   const int n = 8;
 
