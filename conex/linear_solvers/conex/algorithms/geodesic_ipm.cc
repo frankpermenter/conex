@@ -86,7 +86,8 @@ static void ComputeDirectNewtonStep(
   RowSpace row = kkt.MakeRowSpace();
   kkt.MultiplyA(y, row);
   d_out = addScaled(b, row, -k, -1.0);
-  d_out = cwiseProduct(W, d_out);
+  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  d_out = quadraticRepresentation(sqrtW, d_out);
   RowSpace ones = kkt.MakeRowSpace();
   setOnes(ones);
   d_out += ones;
@@ -146,11 +147,12 @@ static void ComputeDecomposition(
   ay0.col() = row.col(0);
   ay1.col() = row.col(1);
 
+  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
   d0 = kkt.MakeRowSpace();
   setOnes(d0);
-  d0 -= cwiseProduct(W, ay0);
+  d0 -= quadraticRepresentation(sqrtW, ay0);
 
-  d1 = cwiseProduct(W, addScaled(b, ay1, -1.0, -1.0));
+  d1 = quadraticRepresentation(sqrtW, addScaled(b, ay1, -1.0, -1.0));
 }
 
 double GeodesicLineSearch(
@@ -285,8 +287,9 @@ GeodesicResult SolveGeodesicHybrid(
     RowSpace row = kkt.MakeRowSpace();
     kkt.MultiplyA(y, row);
     RowSpace W_over_r = cwiseQuotient(W, r);
+    RowSpace sqrt_W_over_r = EuclideanJordanAlgebra::sqrt(W_over_r);
     RowSpace d = addScaled(b, row, -1, -1.0);
-    d = cwiseProduct(W_over_r, d);
+    d = quadraticRepresentation(sqrt_W_over_r, d);
     d += ones;
 
     g = gap(r, d);

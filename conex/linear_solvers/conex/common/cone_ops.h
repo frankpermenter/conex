@@ -36,6 +36,9 @@ class ConeOps {
   // <a, b> (trace inner product for SDP).
   virtual double dot(const double* a, const double* b, int size) const = 0;
 
+  // Symmetric square root (elementwise for nonneg, matrix sqrt for PSD).
+  virtual void sqrt(double* out, const double* a, int size) const = 0;
+
   // Quadratic representation: P(a)b = a * b * a.
   //   Nonneg: out_i = a_i² * b_i.
   //   PSD:    Out = A * B * A.
@@ -86,6 +89,10 @@ class NonnegOrthantOps : public ConeOps {
     double result = 0;
     for (int i = 0; i < size; ++i) result += a[i] * b[i];
     return result;
+  }
+
+  void sqrt(double* out, const double* a, int size) const override {
+    for (int i = 0; i < size; ++i) out[i] = std::sqrt(a[i]);
   }
 
   void quadraticRepresentation(double* out, const double* a,

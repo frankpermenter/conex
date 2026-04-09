@@ -82,6 +82,16 @@ double PSDConeOps::dot(const double* a, const double* b, int size) const {
   return (A.cwiseProduct(B)).sum();  // trace(A^T B).
 }
 
+void PSDConeOps::sqrt(double* out, const double* a, int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<const Eigen::MatrixXd> A(a, n, n);
+  Eigen::Map<Eigen::MatrixXd> Out(out, n, n);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(A);
+  Out = eig.eigenvectors() *
+      eig.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
+      eig.eigenvectors().transpose();
+}
+
 void PSDConeOps::quadraticRepresentation(double* out, const double* a,
                                          const double* b, int size) const {
   int n = MatrixDim(size);
