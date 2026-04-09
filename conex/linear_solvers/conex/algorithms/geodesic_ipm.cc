@@ -69,13 +69,12 @@ static void ComputeDirectNewtonStep(
     Eigen::VectorXd& y_out) {
   RowSpace b = kkt.GetAffineTerm();
 
-  RowSpace weights = cwiseProduct(W, W);
-  kkt.SetWeights(weights);
+  kkt.SetScaling(W);
   kkt.AssembleAndFactor();
 
   // Ax + b >= 0 convention.
   // RHS = -k*cost + A^T(-k*P(W)b + 2*W).
-  // d = 1 + W*(-k*b - A*y) = 1 - W*(k*b + A*y).
+  // d = 1 + P(W^{1/2})(-k*b - A*y).
   auto y = kkt.MakeSolverRHS();
   y = cost_rhs;
   y *= -k;
@@ -108,8 +107,7 @@ static void ComputeDecomposition(
     Eigen::VectorXd* y1_out = nullptr) {
   RowSpace b = kkt.GetAffineTerm();
 
-  RowSpace weights = cwiseProduct(W, W);
-  kkt.SetWeights(weights);
+  kkt.SetScaling(W);
   kkt.AssembleAndFactor();
 
   RowSpace v = kkt.MakeRowSpace();
