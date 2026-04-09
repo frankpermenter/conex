@@ -209,6 +209,17 @@ struct SolverRHS {
   }
 };
 
+// Pretty-print a SolverRHS by gathering into a dense vector.
+inline std::ostream& operator<<(std::ostream& os, const SolverRHS& rhs) {
+  if (!rhs.supernodes) { os << "(null SolverRHS)"; return os; }
+  int n = rhs.supernodes->num_variables();
+  int nc = rhs.cols();
+  Eigen::MatrixXd dense(n, nc);
+  rhs.supernodes->GatherInto(dense);
+  os << "SolverRHS (" << n << " x " << nc << "):\n" << dense.transpose();
+  return os;
+}
+
 namespace EuclideanJordanAlgebra {
 
 class ConeOps;  // forward declaration
