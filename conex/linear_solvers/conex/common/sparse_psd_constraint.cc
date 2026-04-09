@@ -84,7 +84,16 @@ SparsePSDConstraintAssembler::SparsePSDConstraintAssembler(
     const Eigen::SparseMatrix<double>& B,
     const std::vector<int>& vars,
     bool use_chordal)
-    : CliqueProvider(vars), A_list_(A_list), B_(B), n_(B.rows()) {
+    : CliqueProvider(vars), B_(B), n_(B.rows()) {
+  // Symmetrize A_i: the PSD constraint Σ A_i x_i + B ≽ 0 only sees
+  // the symmetric part of each A_i (since X is symmetric).
+  A_list_.reserve(A_list.size());
+  for (const auto& Ak : A_list) {
+    Eigen::SparseMatrix<double> sym = (Ak + Eigen::SparseMatrix<double>(Ak.transpose())) * 0.5;
+    A_list_.push_back(sym);
+  }
+  // Also symmetrize B.
+  B_ = (B + Eigen::SparseMatrix<double>(B.transpose())) * 0.5;
   std::vector<std::vector<int>> maximal_cliques;
 
   if (use_chordal) {

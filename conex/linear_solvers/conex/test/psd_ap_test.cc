@@ -36,12 +36,13 @@ TEST(PSD_AP, Feasibility) {
   const int n = 3;  // 3x3 matrices
   const int p = 5;  // 5 free variables
 
-  // Random A_i (not necessarily symmetric — the PSD constraint
-  // is Σ A_i x_i + B ≽ 0, symmetry of X is enforced by the cone projection).
+  // Symmetric A_i for the PSD constraint Σ A_i x_i + B ≽ 0.
   std::vector<Eigen::SparseMatrix<double>> A_list;
   std::vector<int> vars;
   for (int k = 0; k < p; ++k) {
-    A_list.push_back(toSparse(MatrixXd::Random(n, n)));
+    MatrixXd Ak = MatrixXd::Random(n, n);
+    Ak = 0.5 * (Ak + Ak.transpose());
+    A_list.push_back(toSparse(Ak));
     vars.push_back(k);
   }
 
@@ -189,14 +190,18 @@ TEST(PSD_AP, BlockDiagonal) {
   std::vector<int> vars;
 
   for (int k = 0; k < 2; ++k) {
+    MatrixXd Mk = MatrixXd::Random(blk, blk);
+    Mk = 0.5 * (Mk + Mk.transpose());
     MatrixXd M = MatrixXd::Zero(n, n);
-    M.block(0, 0, blk, blk) = MatrixXd::Random(blk, blk);
+    M.block(0, 0, blk, blk) = Mk;
     A_list.push_back(toSparse(M));
     vars.push_back(k);
   }
   for (int k = 0; k < 2; ++k) {
+    MatrixXd Mk = MatrixXd::Random(blk, blk);
+    Mk = 0.5 * (Mk + Mk.transpose());
     MatrixXd M = MatrixXd::Zero(n, n);
-    M.block(blk, blk, blk, blk) = MatrixXd::Random(blk, blk);
+    M.block(blk, blk, blk, blk) = Mk;
     A_list.push_back(toSparse(M));
     vars.push_back(2 + k);
   }
@@ -251,14 +256,18 @@ TEST(PSD_AP, ChordalMatchesNonChordal) {
   std::vector<Eigen::SparseMatrix<double>> A_list;
   std::vector<int> vars;
   for (int k = 0; k < 2; ++k) {
+    MatrixXd Mk = MatrixXd::Random(blk, blk);
+    Mk = 0.5 * (Mk + Mk.transpose());
     MatrixXd M = MatrixXd::Zero(n, n);
-    M.block(0, 0, blk, blk) = MatrixXd::Random(blk, blk);
+    M.block(0, 0, blk, blk) = Mk;
     A_list.push_back(toSparse(M));
     vars.push_back(k);
   }
   for (int k = 0; k < 2; ++k) {
+    MatrixXd Mk = MatrixXd::Random(blk, blk);
+    Mk = 0.5 * (Mk + Mk.transpose());
     MatrixXd M = MatrixXd::Zero(n, n);
-    M.block(blk, blk, blk, blk) = MatrixXd::Random(blk, blk);
+    M.block(blk, blk, blk, blk) = Mk;
     A_list.push_back(toSparse(M));
     vars.push_back(2 + k);
   }
