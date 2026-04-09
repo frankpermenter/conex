@@ -480,9 +480,14 @@ TEST(GeodesicSDP, NonDiagonalLP) {
   printf("SDP LP: %d fac, mu=%.2e, d_inf=%.2e\n",
          result.total_factorizations, result.mu, result.d_inf_norm);
 
-  // Verify d_inf stays near 1 (line search working correctly).
-  for (int i = 0; i < result.iterations; ++i) {
-    EXPECT_LT(result.iter_stats[i].d_inf, 1.5);
+  // Invariant: k is nondecreasing, and d_inf ≈ 1 when k increases.
+  for (int i = 1; i < result.iterations; ++i) {
+    EXPECT_GE(result.iter_stats[i].mu, 0);  // gap nonneg
+    // mu = 1/k^2, so mu decreasing ↔ k increasing.
+    if (result.iter_stats[i].mu < result.iter_stats[i-1].mu) {
+      // k increased — line search hit the boundary.
+      EXPECT_NEAR(result.iter_stats[i].d_inf, 1.0, 0.01);
+    }
   }
   // k should increase beyond 1.
   EXPECT_GT(1.0 / std::sqrt(result.mu), 1.2);

@@ -204,10 +204,12 @@ GeodesicResult SolveGeodesicLP(
     total_fac += 1;
     total_sol += 2;
 
-    // Line search for k.
+    // Line search for k.  Accept only if it increases k (except iter 0).
     double k_new = lineSearchK(d0, d1);
     double k_prev = k;
-    k = k_new;
+    if (outer == 0 || k_new > k) {
+      k = k_new;
+    }
 
     // Take one geodesic step at k using d = d0 + k * d1.
     RowSpace d = addScaled(d0, d1, 1.0, k);
