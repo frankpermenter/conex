@@ -5,9 +5,41 @@
 #include <set>
 #include <stdexcept>
 
+#include "conex/common/psd_cone_ops.h"
 #include "conex/common/structural_rank.h"
 
 namespace conex {
+
+void Problem::AddPSDConstraint(
+    const std::vector<Eigen::SparseMatrix<double>>& A_list,
+    const Eigen::SparseMatrix<double>& B,
+    const std::vector<int>& vars) {
+  const int n = B.rows();
+  const int n2 = n * n;
+  const int p = static_cast<int>(vars.size());
+
+  // Vectorize: A_vec is (n² × p), b_vec is (n²).
+  // A_vec column k = vec(A_list[k]).  b_vec = vec(B).
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int k = 0; k < p; ++k) {
+    const auto& Ak = A_list[k];
+    for (int outer = 0; outer < Ak.outerSize(); ++outer)
+      for (Eigen::SparseMatrix<double>::InnerIterator it(Ak, outer); it; ++it)
+        trips.emplace_back(it.col() * n + it.row(), k, it.value());
+  }
+  Eigen::SparseMatrix<double> A_vec(n2, p);
+  A_vec.setFromTriplets(trips.begin(), trips.end());
+
+  Eigen::VectorXd b_vec(n2);
+  for (int j = 0; j < n; ++j)
+    for (int i = 0; i < n; ++i)
+      b_vec(j * n + i) = B.coeff(i, j);
+
+  int id = static_cast<int>(constraints_.size());
+  constraints_.push_back(
+      LinearConstraintData{A_vec, b_vec, vars,
+                           &EuclideanJordanAlgebra::psdConeOps()});
+}
 
 std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
   const int n = problem.num_variables();
@@ -69,7 +101,7 @@ std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
           int nv = inv[v];
           if (nv >= 0) new_vars.push_back(nv);
         }
-        reduced.AddLinearConstraint(A_new, data.b, new_vars);
+        reduced.AddLinearConstraint(A_new, data.b, new_vars, data.cone_ops);
 
       } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
         std::vector<Eigen::Triplet<double>> t;

@@ -9,6 +9,7 @@
 #include "conex/common/linear_workspace.h"
 
 namespace conex {
+namespace EuclideanJordanAlgebra { class ConeOps; }
 
 class GramEvaluator : public BlockAssembler {
  public:
@@ -155,6 +156,10 @@ class LinearConstraint : public SupernodalAssemblerBase, public ArenaAllocatable
                    const Eigen::MatrixXd& constraint_affine);
 
   int number_of_variables() const override { return constraint_matrix_.cols(); }
+
+  // Cone operations for this constraint's RowSpace segment.
+  // Default (nullptr) means nonneg orthant.
+  const EuclideanJordanAlgebra::ConeOps* cone_ops_ = nullptr;
   BlockAssembler* GetBlockAssembler() override {
     gram_evaluator_.bind(&workspace_, &constraint_matrix_);
     return &gram_evaluator_;

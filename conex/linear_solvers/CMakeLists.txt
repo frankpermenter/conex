@@ -63,6 +63,7 @@ add_library(constraints
   conex/common/equality_constraint.cc
   conex/common/constraint_manager.cc
   conex/common/blas_wrapper.cc
+  conex/common/psd_cone_ops.cc
 )
 target_link_libraries(constraints PUBLIC Eigen3::Eigen clique_ordering)
 if(BLAS_FOUND)
@@ -302,6 +303,17 @@ target_link_libraries(alternating_projections_test
   structural_rank
   GTest::gtest_main
 )
+
+add_executable(psd_ap_test
+  conex/test/psd_ap_test.cc
+)
+target_link_libraries(psd_ap_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(psd_ap_test)
 gtest_discover_tests(alternating_projections_test)
 
 add_executable(solve_lp_test

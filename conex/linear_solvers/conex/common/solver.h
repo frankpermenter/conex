@@ -92,6 +92,7 @@ class Solver {
           auto slc = std::make_unique<SparseLinearConstraint>(data.A, data.b);
           auto asm_ptr = std::make_unique<SparseLinearConstraintAssembler>(
               std::move(slc), data.vars);
+          if (data.cone_ops) asm_ptr->set_cone_ops(data.cone_ops);
           linear_assemblers_[i] = asm_ptr.get();
           cm_->AddCustomAssembler(std::move(asm_ptr));
 

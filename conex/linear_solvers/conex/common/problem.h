@@ -6,6 +6,7 @@
 #include <vector>
 
 namespace conex {
+namespace EuclideanJordanAlgebra { class ConeOps; }
 
 // Handle to a constraint registered with a Problem.
 using ConstraintId = int;
@@ -28,13 +29,15 @@ enum class Sense { GE, LE };
 class Problem {
  public:
   // Core: add Ax + b >= 0 (canonical form, stored directly).
+  // Optional cone_ops overrides the default nonneg orthant.
   ConstraintId AddLinearConstraint(
       const Eigen::SparseMatrix<double>& A,
       const Eigen::VectorXd& b,
-      const std::vector<int>& vars) {
+      const std::vector<int>& vars,
+      const EuclideanJordanAlgebra::ConeOps* cone_ops = nullptr) {
     int id = static_cast<int>(constraints_.size());
     constraints_.push_back(
-        LinearConstraintData{A, b, vars});
+        LinearConstraintData{A, b, vars, cone_ops});
     return id;
   }
 
@@ -103,6 +106,15 @@ class Problem {
     return AddLinearConstraint(As, b, vars);
   }
 
+  // Add PSD constraint: Σ A_i x_i + B ≽ 0.
+  // A_list[i] and B are n×n sparse symmetric matrices.
+  // Vectorized internally: stored as a LinearConstraint with n² rows
+  // and ConeOps = psdConeOps().
+  void AddPSDConstraint(
+      const std::vector<Eigen::SparseMatrix<double>>& A_list,
+      const Eigen::SparseMatrix<double>& B,
+      const std::vector<int>& vars);
+
   // Add a quadratic cost: x'Qx on the given variables.
   ConstraintId AddQuadraticCost(
       const Eigen::SparseMatrix<double>& Q,
@@ -156,6 +168,7 @@ class Problem {
     Eigen::SparseMatrix<double> A;
     Eigen::VectorXd b;
     std::vector<int> vars;
+    const EuclideanJordanAlgebra::ConeOps* cone_ops = nullptr;  // null = nonneg
   };
 
   struct QuadraticCostData {

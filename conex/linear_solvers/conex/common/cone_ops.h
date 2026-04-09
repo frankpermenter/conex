@@ -2,6 +2,8 @@
 // Each cone type (nonneg orthant, PSD, SOCP, ...) implements this.
 
 #pragma once
+#include <algorithm>
+#include <cmath>
 
 namespace conex {
 namespace EuclideanJordanAlgebra {

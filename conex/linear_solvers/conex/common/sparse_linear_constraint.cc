@@ -167,6 +167,7 @@ SparseLinearConstraintAssembler::Decompose(
   int constraint_index = 0;
   for (auto& group : groups) {
     auto constraint = std::make_unique<LinearConstraint>(group.A, group.b);
+    constraint->cone_ops_ = cone_ops_;
     constraint->SetPrimalVariables(RemapToGlobal(group.variables));
 
     // Record row mapping.
