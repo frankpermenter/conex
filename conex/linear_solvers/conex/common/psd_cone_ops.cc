@@ -101,6 +101,73 @@ void PSDConeOps::quadraticRepresentation(double* out, const double* a,
   Out.noalias() = A * B * A;
 }
 
+void PSDConeOps::solveLyapunov(double* out, const double* a, const double* d,
+                               int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<const Eigen::MatrixXd> R(a, n, n);
+  Eigen::Map<const Eigen::MatrixXd> D(d, n, n);
+  Eigen::Map<Eigen::MatrixXd> Delta(out, n, n);
+  // RD + DR = 2*Delta.  In R's eigenbasis: Delta_ij = (l_i + l_j)/2 * D_ij.
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(R);
+  const auto& V = eig.eigenvectors();
+  const auto& lam = eig.eigenvalues();
+  Eigen::MatrixXd D_eig = V.transpose() * D * V;
+  for (int i = 0; i < n; ++i)
+    for (int j = 0; j < n; ++j)
+      D_eig(i, j) *= 0.5 * (lam(i) + lam(j));
+  Delta = V * D_eig * V.transpose();
+}
+
+void PSDConeOps::abs(double* out, const double* a, int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<const Eigen::MatrixXd> A(a, n, n);
+  Eigen::Map<Eigen::MatrixXd> Out(out, n, n);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(A);
+  Out = eig.eigenvectors() *
+      eig.eigenvalues().cwiseAbs().asDiagonal() *
+      eig.eigenvectors().transpose();
+}
+
+double PSDConeOps::minEigenvalue(const double* a, int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<const Eigen::MatrixXd> A(a, n, n);
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(A, Eigen::EigenvaluesOnly);
+  return eig.eigenvalues().minCoeff();
+}
+
+void PSDConeOps::updateAutomorphism(double* w, double* r, double alpha,
+                              const double* d, int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<Eigen::MatrixXd> W(w, n, n);
+  Eigen::Map<Eigen::MatrixXd> R(r, n, n);
+  Eigen::Map<const Eigen::MatrixXd> D(d, n, n);
+
+  // M = W^{1/2} exp(alpha * D / 2).
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigW(W);
+  Eigen::MatrixXd sqrtW = eigW.eigenvectors() *
+      eigW.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
+      eigW.eigenvectors().transpose();
+
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigD(alpha * 0.5 * D);
+  Eigen::MatrixXd expHalfD = eigD.eigenvectors() *
+      eigD.eigenvalues().array().exp().matrix().asDiagonal() *
+      eigD.eigenvectors().transpose();
+
+  Eigen::MatrixXd M = sqrtW * expHalfD;
+
+  // Polar decomposition: M = P * T, P = (M M^T)^{1/2}, T = P^{-1} M.
+  Eigen::MatrixXd MMt = M * M.transpose();
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigP(MMt);
+  Eigen::MatrixXd P = eigP.eigenvectors() *
+      eigP.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
+      eigP.eigenvectors().transpose();
+  Eigen::MatrixXd T = P.inverse() * M;
+
+  // W = P^2, R = T^T R T.
+  W = P * P;
+  R = T.transpose() * R * T;
+}
+
 void PSDConeOps::project(double* out, const double* a, int size) const {
   int n = MatrixDim(size);
   Eigen::Map<const Eigen::MatrixXd> A(a, n, n);

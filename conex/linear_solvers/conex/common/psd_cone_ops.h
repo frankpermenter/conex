@@ -22,6 +22,12 @@ class PSDConeOps : public ConeOps {
   void sqrt(double* out, const double* a, int size) const override;
   void quadraticRepresentation(double* out, const double* a,
                                const double* b, int size) const override;
+  void solveLyapunov(double* out, const double* a, const double* d,
+                     int size) const override;
+  void abs(double* out, const double* a, int size) const override;
+  double minEigenvalue(const double* a, int size) const override;
+  void updateAutomorphism(double* w, double* r, double alpha,
+                          const double* d, int size) const override;
   void project(double* out, const double* a, int size) const override;
 };
 

@@ -71,11 +71,46 @@ inline Variable addScaled(const Variable& a, const Variable& b,
   return out;
 }
 
-// Geodesic update: W *= exp(alpha * d).
+// Geodesic update: W *= exp(alpha * d).  (No R tracking.)
 inline void geodesicUpdate(Variable& W, double alpha, const Variable& d) {
   for (int i = 0; i < W.num_constraints(); ++i)
     W.ops[i]->geodesicUpdate(W.segment_ptr(i), W.segment_ptr(i),
                              alpha, d.segment_ptr(i), W.sizes[i]);
+}
+
+// Update automorphism: T <- T exp(alpha*D/2), polar decompose,
+// update W = P^2 and R = T^T R T.
+inline void updateAutomorphism(Variable& W, Variable& R, double alpha,
+                               const Variable& d) {
+  for (int i = 0; i < W.num_constraints(); ++i)
+    W.ops[i]->updateAutomorphism(W.segment_ptr(i), R.segment_ptr(i),
+                                 alpha, d.segment_ptr(i), W.sizes[i]);
+}
+
+// Solve Lyapunov: R*D + D*R = 2*Delta.
+inline Variable solveLyapunov(const Variable& r, const Variable& d) {
+  Variable out = like(r);
+  for (int i = 0; i < r.num_constraints(); ++i)
+    r.ops[i]->solveLyapunov(out.segment_ptr(i), r.segment_ptr(i),
+                             d.segment_ptr(i), r.sizes[i]);
+  return out;
+}
+
+// EJA absolute value (eigenvalue abs for PSD, elementwise for nonneg).
+inline Variable absEJA(const Variable& a) {
+  Variable out = like(a);
+  for (int i = 0; i < a.num_constraints(); ++i)
+    a.ops[i]->abs(out.segment_ptr(i), a.segment_ptr(i), a.sizes[i]);
+  return out;
+}
+
+// Minimum eigenvalue across all segments.
+inline double minEigenvalue(const Variable& a) {
+  double result = std::numeric_limits<double>::max();
+  for (int i = 0; i < a.num_constraints(); ++i)
+    result = std::min(result,
+                      a.ops[i]->minEigenvalue(a.segment_ptr(i), a.sizes[i]));
+  return result;
 }
 
 // Set to identity element.
@@ -110,37 +145,31 @@ inline double dot(const Variable& a, const Variable& b) {
   return result;
 }
 
-// gap(r, d) = <r.*(1+d), r.*(1-d)> = sum r_i^2 * (1 - d_i^2).
-inline double gap(const Variable& r, const Variable& d) {
-  Variable r2 = cwiseProduct(r, r);
-  Variable d2 = cwiseProduct(d, d);
-  Variable ones = like(r);
-  setOnes(ones);
-  return dot(r2, addScaled(ones, d2, 1.0, -1.0));
+// Gap in terms of (R, Delta): ||R||² - ||Delta||².
+// Equivalent to old gap(r, d) since Delta = R*D for nonneg.
+inline double gap(const Variable& r, const Variable& delta) {
+  return squaredNorm(r) - squaredNorm(delta);
 }
 
-// min_i(r_i - |r_i * d_i|).
-inline double minSlack(const Variable& r, const Variable& d) {
-  // For nonneg orthant: r_i * (1 - |d_i|). Dispatch per segment.
-  double result = std::numeric_limits<double>::max();
-  for (int i = 0; i < r.num_constraints(); ++i) {
-    int sz = r.sizes[i];
-    const double* rp = r.segment_ptr(i);
-    const double* dp = d.segment_ptr(i);
-    for (int j = 0; j < sz; ++j)
-      result = std::min(result, rp[j] - rp[j] * std::abs(dp[j]));
-  }
-  return result;
+// Minimum eigenvalue of (R - |Delta|).
+// Equivalent to old minSlack(r, d) = min(r_i - |r_i*d_i|) for nonneg.
+inline double minSlack(const Variable& r, const Variable& delta) {
+  Variable abs_delta = absEJA(delta);
+  Variable slack = addScaled(r, abs_delta, 1.0, -1.0);
+  return minEigenvalue(slack);
 }
 
-// r_i *= (1 + |d_i|) / 2.
-inline void shrinkR(Variable& r, const Variable& d) {
+// Shrink: R = (R + |Delta|) / 2.
+// Equivalent to old r_i *= (1 + |d_i|) / 2 since |delta_i| = r_i*|d_i|.
+inline void shrinkR(Variable& r, const Variable& delta) {
+  Variable abs_delta = absEJA(delta);
+  Variable sum = addScaled(r, abs_delta, 1.0, 1.0);
+  // Copy back into r.
   for (int i = 0; i < r.num_constraints(); ++i) {
     int sz = r.sizes[i];
+    const double* sp = sum.segment_ptr(i);
     double* rp = r.segment_ptr(i);
-    const double* dp = d.segment_ptr(i);
-    for (int j = 0; j < sz; ++j)
-      rp[j] *= 0.5 * (1.0 + std::abs(dp[j]));
+    for (int j = 0; j < sz; ++j) rp[j] = 0.5 * sp[j];
   }
 }
 
@@ -181,6 +210,10 @@ using EuclideanJordanAlgebra::cwiseQuotient;
 using EuclideanJordanAlgebra::quadraticRepresentation;
 using EuclideanJordanAlgebra::addScaled;
 using EuclideanJordanAlgebra::geodesicUpdate;
+using EuclideanJordanAlgebra::updateAutomorphism;
+using EuclideanJordanAlgebra::solveLyapunov;
+using EuclideanJordanAlgebra::absEJA;
+using EuclideanJordanAlgebra::minEigenvalue;
 using EuclideanJordanAlgebra::setOnes;
 using EuclideanJordanAlgebra::normInf;
 using EuclideanJordanAlgebra::squaredNorm;

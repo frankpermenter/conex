@@ -185,11 +185,11 @@ GeodesicResult SolveGeodesicLP(
   GeodesicResult result{};
   int total_fac = 0;
   int total_sol = 0;
-  std::cout << "HEHEHEH";
+
 
   kkt.AssembleAndFactor();
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
-    std::cout << "HEHEHEH2";
+
     // Decompose: 1 factor + 2 back-solves.
     RowSpace d0 = kkt.MakeRowSpace();
     RowSpace d1 = kkt.MakeRowSpace();
@@ -205,7 +205,6 @@ GeodesicResult SolveGeodesicLP(
     // Take one geodesic step at k using d = d0 + k * d1.
     RowSpace d = addScaled(d0, d1, 1.0, k);
     double d_inf = normInf(d);
-    std::cout << "\nDINF " << d_inf;
     double d_sq = squaredNorm(d);
     double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
     geodesicUpdate(W, alpha, d);
@@ -284,6 +283,7 @@ GeodesicResult SolveGeodesicHybrid(
     kkt.SolveSolverRHS(y);
     total_sol++;
 
+    // Compute d and Delta.
     RowSpace row = kkt.MakeRowSpace();
     kkt.MultiplyA(y, row);
     RowSpace W_over_r = cwiseQuotient(W, r);
@@ -292,17 +292,19 @@ GeodesicResult SolveGeodesicHybrid(
     d = quadraticRepresentation(sqrt_W_over_r, d);
     d += ones;
 
-    g = gap(r, d);
+    RowSpace delta = solveLyapunov(r, d);
+
+    g = gap(r, delta);
     d_inf = normInf(d);
     d_sq = squaredNorm(d);
-    mslack = minSlack(r, d);
+    mslack = minSlack(r, delta);
 
     if (std::abs(g) < tolerance && mslack > -tolerance) break;
 
     if (g < 0) {
-      // Geodesic step on W, then re-factor.
+      // Geodesic step: update W and r via polar decomposition.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      geodesicUpdate(W, alpha, d);
+      updateAutomorphism(W, r, alpha, d);
       weights = cwiseProduct(W, W);
       kkt.SetWeights(weights);
       if (!kkt.AssembleAndFactor()) break;
@@ -311,8 +313,8 @@ GeodesicResult SolveGeodesicHybrid(
                                    r_updates_this_fac, mslack});
       r_updates_this_fac = 0;
     } else {
-      // Shrink r only.
-      shrinkR(r, d);
+      // Shrink r using Delta.
+      shrinkR(r, delta);
       r_updates_this_fac++;
       r_updates++;
     }

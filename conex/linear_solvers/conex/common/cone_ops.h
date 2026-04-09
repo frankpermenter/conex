@@ -45,6 +45,28 @@ class ConeOps {
   virtual void quadraticRepresentation(double* out, const double* a,
                                        const double* b, int size) const = 0;
 
+  // Solve Lyapunov: a*d + d*a = 2*out.
+  //   Nonneg: out_i = a_i * d_i.
+  //   PSD:    eigendecompose A, Hadamard in eigenbasis.
+  virtual void solveLyapunov(double* out, const double* a, const double* d,
+                             int size) const = 0;
+
+  // Absolute value in the EJA sense.
+  //   Nonneg: out_i = |a_i|.
+  //   PSD:    eigendecompose, abs eigenvalues, reconstruct.
+  virtual void abs(double* out, const double* a, int size) const = 0;
+
+  // Minimum eigenvalue (min element for nonneg).
+  virtual double minEigenvalue(const double* a, int size) const = 0;
+
+  // Update automorphism: T <- T exp(alpha*D/2), then polar decompose
+  // to extract W = P^2 and rotate R.
+  //   Nonneg: w_i *= exp(alpha * d_i), r unchanged.
+  //   PSD:    M = W^{1/2} exp(alpha*D/2), polar M=PT,
+  //           W = P^2, R = T^T R T.
+  virtual void updateAutomorphism(double* w, double* r, double alpha,
+                                  const double* d, int size) const = 0;
+
   // Project onto the cone: out = argmin ||out - a||  s.t. out in K.
   virtual void project(double* out, const double* a, int size) const = 0;
 };
@@ -98,6 +120,27 @@ class NonnegOrthantOps : public ConeOps {
   void quadraticRepresentation(double* out, const double* a,
                                const double* b, int size) const override {
     for (int i = 0; i < size; ++i) out[i] = a[i] * a[i] * b[i];
+  }
+
+  void solveLyapunov(double* out, const double* a, const double* d,
+                     int size) const override {
+    for (int i = 0; i < size; ++i) out[i] = a[i] * d[i];
+  }
+
+  void abs(double* out, const double* a, int size) const override {
+    for (int i = 0; i < size; ++i) out[i] = std::abs(a[i]);
+  }
+
+  double minEigenvalue(const double* a, int size) const override {
+    double result = a[0];
+    for (int i = 1; i < size; ++i) result = std::min(result, a[i]);
+    return result;
+  }
+
+  void updateAutomorphism(double* w, double* /*r*/, double alpha,
+                          const double* d, int size) const override {
+    for (int i = 0; i < size; ++i)
+      w[i] *= std::exp(alpha * d[i]);
   }
 
   void project(double* out, const double* a, int size) const override {
