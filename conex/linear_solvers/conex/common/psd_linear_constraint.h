@@ -55,13 +55,21 @@ class PSDLinearConstraint : public LinearConstraint {
 
   const GramEvaluator& gram() const { return psd_gram_; }
 
-  // weights = vec(W_mat) where W_mat is n x n PSD.
-  // Cholesky-factorize W_mat = LL^T and store vec(L).
+  // weights = vec(W²) where W² is n x n PSD (same convention as nonneg:
+  // caller passes the squared weight).  We compute W = sqrt(W²) via
+  // eigendecomposition, then Cholesky-factorize W = LL^T and store vec(L).
+  // Gram = A^T kron(W, W) A  (not kron(W², W²)).
   void SetWeights(const Eigen::VectorXd& weights) override {
     CONEX_DEMAND(weights.size() == constraint_matrix_.rows(),
                  "Weight vector size must match number of constraint rows.");
     int n2 = weights.size();
-    Eigen::Map<const Eigen::MatrixXd> W_mat(weights.data(), psd_n_, psd_n_);
+    Eigen::Map<const Eigen::MatrixXd> W2(weights.data(), psd_n_, psd_n_);
+    // W = symmetric square root of W².
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(W2);
+    Eigen::MatrixXd W_mat = eig.eigenvectors() *
+        eig.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
+        eig.eigenvectors().transpose();
+    // Cholesky of W (not W²).
     Eigen::LLT<Eigen::MatrixXd> llt(W_mat);
     Eigen::MatrixXd L = llt.matrixL();
     workspace_.W = Eigen::Map<Eigen::VectorXd>(L.data(), n2);

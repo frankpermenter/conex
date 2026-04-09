@@ -187,6 +187,12 @@ GeodesicResult SolveGeodesicLP(
   int total_sol = 0;
 
 
+  if (verbose) {
+    printf("  %3s  %12s  %12s  %12s  %12s  %12s\n",
+           "fac", "k", "k_new", "d_inf", "d_sqr", "gap");
+    printf("  %s\n", std::string(72, '-').c_str());
+  }
+
   kkt.AssembleAndFactor();
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
 
@@ -200,6 +206,7 @@ GeodesicResult SolveGeodesicLP(
 
     // Line search for k.
     double k_new = lineSearchK(d0, d1);
+    double k_prev = k;
     k = k_new;
 
     // Take one geodesic step at k using d = d0 + k * d1.
@@ -221,6 +228,13 @@ GeodesicResult SolveGeodesicLP(
 
     double mu = 1.0 / (k * k);
     double s_dot_x = mu * (m - d_sq);
+
+    if (verbose) {
+      double d0_inf = normInf(d0);
+      double d1_inf = normInf(d1);
+      printf("  %3d  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e  d0=%.2e d1=%.2e\n",
+             outer, k_prev, k, d_inf, d_sq, s_dot_x, d0_inf, d1_inf);
+    }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});
     result.iterations = outer + 1;
