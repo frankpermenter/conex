@@ -190,49 +190,69 @@ double PSDConeOps::lineSearchK(const double* d0, const double* d1,
   //
   // Strategy: find a feasible k by sampling, then bisect rightward.
 
-  // Find the feasible interval {k >= 0 : ||d(k)|| <= 1} and return
-  // the upper boundary.  Use the nonneg (elementwise) line search
-  // as a cheap initial estimate, then refine with eigenvalue checks.
-  Eigen::Map<const Eigen::VectorXd> d0_vec(d0, size);
-  Eigen::Map<const Eigen::VectorXd> d1_vec(d1, size);
+  // Find the largest k where ||D0 + k*D1||_inf <= 1.
+  //
+  // GEV: at a feasible k0 (||D0 + k0*D1|| < 1), the boundary is
+  //   D1 v = lambda (I - D0') v  and  D1 v = lambda (I + D0') v
+  // where D0' = D0 + k0*D1, giving dk = min positive 1/lambda.
+  //
+  // The nonneg elementwise bound is an UPPER bound (entries ≤ 1
+  // does not imply eigenvalues ≤ 1).  Scale it down by 1/n to get
+  // a feasible starting point, then refine with GEV.
 
-  // Nonneg bound: largest k with |d0_i + k*d1_i| <= 1 for all i.
+  // Nonneg bound (upper bound for PSD).
   double k_nn = std::numeric_limits<double>::max();
   for (int i = 0; i < size; ++i) {
-    double a = d0_vec(i), b = d1_vec(i);
+    double a = D0(i), b = D1(i);
     if (b > 1e-14)
       k_nn = std::min(k_nn, (1.0 - a) / b);
     else if (b < -1e-14)
       k_nn = std::min(k_nn, (-1.0 - a) / b);
   }
-  if (k_nn <= 0) k_nn = 0;
+  if (k_nn < 0) k_nn = 0;
+  if (k_nn > 1e15) return k_nn;
 
-  // The nonneg bound is a lower bound on the PSD answer (elementwise
-  // feasibility implies eigenvalue feasibility for diagonal matrices,
-  // and is generally conservative).  Start bisection from there.
-  double lo = k_nn;
-  if (eval_norm(lo) > 1.0) {
-    // Nonneg estimate infeasible for eigenvalues — bisect down.
-    double hi = lo;
-    lo = 0;
-    for (int iter = 0; iter < 60; ++iter) {
-      double mid = 0.5 * (lo + hi);
-      if (eval_norm(mid) <= 1.0) lo = mid; else hi = mid;
+  // Scale down to get a feasible k0 where ||D0'|| < 1.
+  // Factor of 1/n is conservative: ||M||_2 <= sqrt(n) * max|M_ij|
+  // and nonneg ensures max|D0'_ij| <= 1, so ||D0'||_2 <= sqrt(n).
+  // Scaling k by 1/sqrt(n) from the centered point isn't quite right
+  // either. Just bisect down from k_nn until feasible.
+  double k0 = k_nn;
+  {
+    auto eval_norm = [&](double k) -> double {
+      Eigen::MatrixXd Dk = D0 + k * D1;
+      Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(Dk,
+          Eigen::EigenvaluesOnly);
+      return eig.eigenvalues().cwiseAbs().maxCoeff();
+    };
+    // Find a feasible k0 by halving from k_nn toward 0.
+    while (eval_norm(k0) > 1.0 - 1e-10 && k0 > 1e-15)
+      k0 *= 0.5;
+    if (eval_norm(k0) > 1.0) return 0;
+  }
+
+  Eigen::MatrixXd D0p = D0 + k0 * D1;
+  Eigen::MatrixXd I = Eigen::MatrixXd::Identity(n, n);
+
+  double dk = std::numeric_limits<double>::max();
+  {
+    Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> gev(D1, I - D0p);
+    const auto& eigs = gev.eigenvalues();
+    for (int i = 0; i < n; ++i) {
+      if (eigs(i) > 1e-14)
+        dk = std::min(dk, 1.0 / eigs(i));
+    }
+  }
+  {
+    Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> gev(D1, I + D0p);
+    const auto& eigs = gev.eigenvalues();
+    for (int i = 0; i < n; ++i) {
+      if (eigs(i) < -1e-14)
+        dk = std::min(dk, -1.0 / eigs(i));
     }
   }
 
-  // Bisect rightward from lo to find the upper boundary.
-  double hi = std::max(lo + 1.0, lo * 2);
-  while (eval_norm(hi) <= 1.0) {
-    lo = hi;
-    hi *= 2;
-    if (hi > 1e15) return hi;
-  }
-  for (int iter = 0; iter < 60; ++iter) {
-    double mid = 0.5 * (lo + hi);
-    if (eval_norm(mid) <= 1.0) lo = mid; else hi = mid;
-  }
-  return lo;
+  return k0 + dk;
 }
 
 void PSDConeOps::project(double* out, const double* a, int size) const {
