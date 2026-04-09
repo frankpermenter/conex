@@ -166,8 +166,7 @@ SparseLinearConstraintAssembler::Decompose(
   std::vector<SupernodalAssemblerBase*> result;
   int constraint_index = 0;
   for (auto& group : groups) {
-    auto constraint = std::make_unique<LinearConstraint>(group.A, group.b);
-    constraint->cone_ops_ = cone_ops_;
+    auto constraint = MakeConstraint(group.A, group.b);
     constraint->SetPrimalVariables(RemapToGlobal(group.variables));
 
     // Record row mapping.
@@ -187,6 +186,12 @@ SparseLinearConstraintAssembler::Decompose(
     constraint_index++;
   }
   return result;
+}
+
+std::unique_ptr<LinearConstraint>
+SparseLinearConstraintAssembler::MakeConstraint(
+    const Eigen::MatrixXd& A, const Eigen::VectorXd& b) {
+  return std::make_unique<LinearConstraint>(A, b);
 }
 
 }  // namespace conex

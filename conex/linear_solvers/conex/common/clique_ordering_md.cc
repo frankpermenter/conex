@@ -588,11 +588,6 @@ CliqueTree MakeCliqueTreeImpl(
     t_remove += std::chrono::duration<double, std::micro>(t4 - t3).count();
   }
 
-  fprintf(stderr, "  MakeCliqueTreeImpl phase1 (n=%d): scan=%.0fus bits=%.0fus "
-          "fillin=%.0fus remove=%.0fus total=%.0fus\n",
-          n, t_scan, t_bits, t_fillin, t_remove,
-          t_scan + t_bits + t_fillin + t_remove);
-
   // Package Phase 1 results for Phase 2.
   EliminationOrdering elim;
   elim.order = std::move(order);

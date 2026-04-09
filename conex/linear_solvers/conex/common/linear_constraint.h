@@ -1,6 +1,8 @@
 #pragma once
 #include <unordered_map>
 
+#include <Eigen/Dense>
+
 #include "conex/common/arena_allocatable.h"
 #include "conex/common/blas_wrapper.h"
 #include "conex/common/block_partition.h"
@@ -31,9 +33,11 @@ class GramEvaluator : public BlockAssembler {
     order_set_ = true;
   }
 
-  // Recompute WA_perm_ = diag(W) * A_perm_.
-  // Called by SetWeights on the LinearConstraint, or by ensure_weights_fresh.
-  void update_weights() {
+  // Recompute WA_perm_ from weights stored in ws_->W.
+  // Default: WA_perm_ = diag(W) * A_perm_.
+  //   Gram = (WA)^T(WA) = A^T diag(W²) A.
+  // Subclasses (e.g. PSD) override for different weight structures.
+  virtual void update_weights() {
     WA_perm_.noalias() = ws_->W.asDiagonal() * A_perm_;
     weights_dirty_ = false;
   }
@@ -134,7 +138,7 @@ class GramEvaluator : public BlockAssembler {
     }
   }
 
- private:
+ protected:
   void ensure_weights_fresh() {
     if (weights_dirty_) update_weights();
   }
@@ -145,6 +149,8 @@ class GramEvaluator : public BlockAssembler {
   Eigen::MatrixXd WA_perm_;
   bool order_set_ = false;
   bool weights_dirty_ = true;
+
+ private:
   int sn_count_ = 0;
   std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
   std::vector<VectorBlockContribution> vector_blocks_;
@@ -168,9 +174,9 @@ class LinearConstraint : public SupernodalAssemblerBase, public ArenaAllocatable
 
   // Set per-row weights and update the Gram evaluator.
   // weights must have size == number of rows (constraint_matrix_.rows()).
-  // The Gram evaluator computes (WA)^T(WA) = A^T W^2 A, so W stores
-  // sqrt(weight).  This method takes the actual weights and applies sqrt.
-  void SetWeights(const Eigen::VectorXd& weights) {
+  // Stores sqrt(weights) so the Gram evaluator computes A^T diag(W²) A.
+  // Subclasses override for different weight structures (e.g. PSD).
+  virtual void SetWeights(const Eigen::VectorXd& weights) {
     CONEX_DEMAND(weights.size() == constraint_matrix_.rows(),
                  "Weight vector size must match number of constraint rows.");
     workspace_.W = weights.array().sqrt().matrix();
@@ -180,7 +186,7 @@ class LinearConstraint : public SupernodalAssemblerBase, public ArenaAllocatable
   int num_rows() const { return constraint_matrix_.rows(); }
 
   // Access the GramEvaluator for vector block operations.
-  const GramEvaluator& gram() const { return gram_evaluator_; }
+  virtual const GramEvaluator& gram() const { return gram_evaluator_; }
 
   // ArenaAllocatable interface.
   size_t RequiredArenaBytes() const override {
@@ -190,7 +196,7 @@ class LinearConstraint : public SupernodalAssemblerBase, public ArenaAllocatable
     Initialize(&workspace_, ptr);
   }
 
- private:
+ protected:
   WorkspaceLinear workspace_;
   GramEvaluator gram_evaluator_;
   Eigen::MatrixXd constraint_matrix_;

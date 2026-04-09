@@ -5,46 +5,14 @@
 #include <set>
 #include <stdexcept>
 
-#include "conex/common/psd_cone_ops.h"
 #include "conex/common/structural_rank.h"
 
 namespace conex {
 
-void Problem::AddPSDConstraint(
-    const std::vector<Eigen::SparseMatrix<double>>& A_list,
-    const Eigen::SparseMatrix<double>& B,
-    const std::vector<int>& vars) {
-  const int n = B.rows();
-  const int n2 = n * n;
-  const int p = static_cast<int>(vars.size());
-
-  // Vectorize: A_vec is (n² × p), b_vec is (n²).
-  // A_vec column k = vec(A_list[k]).  b_vec = vec(B).
-  std::vector<Eigen::Triplet<double>> trips;
-  for (int k = 0; k < p; ++k) {
-    const auto& Ak = A_list[k];
-    for (int outer = 0; outer < Ak.outerSize(); ++outer)
-      for (Eigen::SparseMatrix<double>::InnerIterator it(Ak, outer); it; ++it)
-        trips.emplace_back(it.col() * n + it.row(), k, it.value());
-  }
-  Eigen::SparseMatrix<double> A_vec(n2, p);
-  A_vec.setFromTriplets(trips.begin(), trips.end());
-
-  Eigen::VectorXd b_vec(n2);
-  for (int j = 0; j < n; ++j)
-    for (int i = 0; i < n; ++i)
-      b_vec(j * n + i) = B.coeff(i, j);
-
-  int id = static_cast<int>(constraints_.size());
-  constraints_.push_back(
-      LinearConstraintData{A_vec, b_vec, vars,
-                           &EuclideanJordanAlgebra::psdConeOps()});
-}
-
 std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
   const int n = problem.num_variables();
 
-  // Phase 1: Column reduction for linear constraints.
+  // Phase 1: Column reduction for linear and PSD constraints.
   std::vector<Eigen::Triplet<double>> trips;
   int total_rows = 0;
   for (const auto& c : problem.constraints()) {
@@ -53,6 +21,14 @@ std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
         for (Eigen::SparseMatrix<double>::InnerIterator it(lc->A, k); it; ++it)
           trips.emplace_back(total_rows + it.row(), it.col(), it.value());
       total_rows += lc->A.rows();
+    } else if (auto* pc = std::get_if<Problem::PSDConstraintData>(&c)) {
+      // Mark each variable as live if its A_i has any nonzeros.
+      for (int k = 0; k < static_cast<int>(pc->A_list.size()); ++k) {
+        if (pc->A_list[k].nonZeros() > 0) {
+          trips.emplace_back(total_rows, pc->vars[k], 1.0);
+        }
+      }
+      total_rows += 1;
     }
   }
 
@@ -101,7 +77,19 @@ std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
           int nv = inv[v];
           if (nv >= 0) new_vars.push_back(nv);
         }
-        reduced.AddLinearConstraint(A_new, data.b, new_vars, data.cone_ops);
+        reduced.AddLinearConstraint(A_new, data.b, new_vars);
+
+      } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+        std::vector<Eigen::SparseMatrix<double>> new_A_list;
+        std::vector<int> new_vars;
+        for (int k = 0; k < static_cast<int>(data.A_list.size()); ++k) {
+          int nv = inv[data.vars[k]];
+          if (nv >= 0) {
+            new_A_list.push_back(data.A_list[k]);
+            new_vars.push_back(nv);
+          }
+        }
+        reduced.AddPSDConstraint(new_A_list, data.B, new_vars);
 
       } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
         std::vector<Eigen::Triplet<double>> t;

@@ -8,14 +8,13 @@ AffineProjection AffineProjection::Build(const Problem& problem) {
   AffineProjection ap;
   ap.solver_ = Solver::Build(problem);
 
-  // Factor with unit scalar weights: Gram = A^T I A = A^T A.
-  // Set all entries to 1.0 directly (not via EJA setOnes, which
-  // produces identity matrices for PSD segments).
+  // Factor with identity weights: Gram = A^T I A = A^T A.
+  // setOnes produces the EJA identity for each segment:
+  //   nonneg → all-ones vector (diag(1) weighting)
+  //   PSD    → identity matrix  (kron(I,I) weighting via Cholesky)
   auto* kkt = ap.solver_.solver();
   RowSpace weights = kkt->MakeRowSpace();
-  for (int i = 0; i < weights.num_constraints(); ++i)
-    for (int j = 0; j < weights.sizes[i]; ++j)
-      weights.segment_ptr(i)[j] = 1.0;
+  EuclideanJordanAlgebra::setOnes(weights);
   kkt->SetWeights(weights);
   kkt->AssembleAndFactor();
 

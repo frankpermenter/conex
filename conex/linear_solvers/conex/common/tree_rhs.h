@@ -245,6 +245,11 @@ class Variable {
   int num_constraints() const { return static_cast<int>(sizes.size()); }
   void SetZero() { data_.setZero(); }
 
+  // Set all entries to a scalar value (bypasses ConeOps dispatch).
+  // Useful for setting per-row scalar weights uniformly (e.g., identity
+  // Gram weights where setOnes would produce the EJA identity element).
+  void SetScalarWeights(double val) { data_.setConstant(val); }
+
   Variable& operator*=(double alpha) { data_ *= alpha; return *this; }
   Variable& operator+=(const Variable& o) { data_ += o.data_; return *this; }
   Variable& operator-=(const Variable& o) { data_ -= o.data_; return *this; }

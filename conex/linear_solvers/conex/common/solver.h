@@ -10,6 +10,7 @@
 #include "conex/common/tree_spec.h"
 #include "conex/algorithms/tree_solver_builder.h"
 #include "conex/common/sparse_linear_constraint.h"
+#include "conex/common/sparse_psd_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
 #include "conex/common/sparse_equality_constraint.h"
 #include "conex/common/structural_rank.h"
@@ -81,6 +82,7 @@ class Solver {
     cm_ = std::make_unique<ConstraintManager>(n);
 
     linear_assemblers_.resize(problem.num_constraints(), nullptr);
+    psd_assemblers_.resize(problem.num_constraints(), nullptr);
     quadratic_assemblers_.resize(problem.num_constraints(), nullptr);
     equality_assemblers_.resize(problem.num_constraints(), nullptr);
 
@@ -92,8 +94,13 @@ class Solver {
           auto slc = std::make_unique<SparseLinearConstraint>(data.A, data.b);
           auto asm_ptr = std::make_unique<SparseLinearConstraintAssembler>(
               std::move(slc), data.vars);
-          if (data.cone_ops) asm_ptr->set_cone_ops(data.cone_ops);
           linear_assemblers_[i] = asm_ptr.get();
+          cm_->AddCustomAssembler(std::move(asm_ptr));
+
+        } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+          auto asm_ptr = std::make_unique<SparsePSDConstraintAssembler>(
+              data.A_list, data.B, data.vars, data.use_chordal);
+          psd_assemblers_[i] = asm_ptr.get();
           cm_->AddCustomAssembler(std::move(asm_ptr));
 
         } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
@@ -146,6 +153,12 @@ class Solver {
         if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
           Eigen::MatrixXd Ad(data.A);
           builder_->AddLinearConstraint(cids[clique], Ad, data.b, data.vars);
+        } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+          Eigen::SparseMatrix<double> A_vec;
+          Eigen::VectorXd b_vec;
+          VectorizePSD(data.A_list, data.B, &A_vec, &b_vec);
+          Eigen::MatrixXd Ad(A_vec);
+          builder_->AddLinearConstraint(cids[clique], Ad, b_vec, data.vars);
         } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
           int nv = static_cast<int>(data.vars.size());
           Eigen::MatrixXd Qd(nv, nv);
@@ -197,6 +210,12 @@ class Solver {
         if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
           Eigen::MatrixXd Ad(data.A);
           builder_->AddLinearConstraint(cids[i], Ad, data.b, data.vars);
+        } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+          Eigen::SparseMatrix<double> A_vec;
+          Eigen::VectorXd b_vec;
+          VectorizePSD(data.A_list, data.B, &A_vec, &b_vec);
+          Eigen::MatrixXd Ad(A_vec);
+          builder_->AddLinearConstraint(cids[i], Ad, b_vec, data.vars);
         } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
           int nv = static_cast<int>(data.vars.size());
           Eigen::MatrixXd Qd(nv, nv);
@@ -250,8 +269,16 @@ class Solver {
       std::visit([&](const auto& data) {
         using T = std::decay_t<decltype(data)>;
         if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
-          // A'A on vars.
           Eigen::MatrixXd Ad(data.A);
+          Eigen::MatrixXd AtA = Ad.transpose() * Ad;
+          for (int r = 0; r < static_cast<int>(data.vars.size()); ++r)
+            for (int c = 0; c < static_cast<int>(data.vars.size()); ++c)
+              ds->matrix()(data.vars[r], data.vars[c]) += AtA(r, c);
+        } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+          Eigen::SparseMatrix<double> A_vec;
+          Eigen::VectorXd b_vec;
+          VectorizePSD(data.A_list, data.B, &A_vec, &b_vec);
+          Eigen::MatrixXd Ad(A_vec);
           Eigen::MatrixXd AtA = Ad.transpose() * Ad;
           for (int r = 0; r < static_cast<int>(data.vars.size()); ++r)
             for (int c = 0; c < static_cast<int>(data.vars.size()); ++c)
@@ -288,6 +315,11 @@ class Solver {
       for (const auto& lc : slca->constraints())
         tree_solver_->RegisterLinearSubAssembler(lc.get());
     }
+    for (auto* pasm : psd_assemblers_) {
+      if (!pasm) continue;
+      for (const auto& lc : pasm->constraints())
+        tree_solver_->RegisterLinearSubAssembler(lc.get());
+    }
     for (auto* qasm : quadratic_assemblers_) {
       if (!qasm) continue;
       for (auto& qc : qasm->constraints())
@@ -305,6 +337,7 @@ class Solver {
   std::unique_ptr<SymmetricLinearSystemTreeSolver> tree_solver_;
   std::unique_ptr<DenseKKTSolver> dense_solver_;
   std::vector<SparseLinearConstraintAssembler*> linear_assemblers_;
+  std::vector<class SparsePSDConstraintAssembler*> psd_assemblers_;
   std::vector<SparseQuadraticTermAssembler*> quadratic_assemblers_;
   std::vector<SparseEqualityConstraintAssembler*> equality_assemblers_;
   std::unordered_map<int, std::vector<int>> dual_var_map_;

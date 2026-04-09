@@ -71,8 +71,11 @@ TEST(PSD_AP, Feasibility) {
   // Check condition of A^T A.
   {
     // Reconstruct A_vec from the stored data.
-    const auto& data = std::get<Problem::LinearConstraintData>(problem.constraint(0));
-    MatrixXd A_dense(data.A);
+    const auto& data = std::get<Problem::PSDConstraintData>(problem.constraint(0));
+    Eigen::SparseMatrix<double> A_vec;
+    Eigen::VectorXd b_vec;
+    VectorizePSD(data.A_list, data.B, &A_vec, &b_vec);
+    MatrixXd A_dense(A_vec);
     MatrixXd AtA = A_dense.transpose() * A_dense;
     Eigen::JacobiSVD<MatrixXd> svd(AtA);
     printf("  A^T A singular values: ");
@@ -166,6 +169,145 @@ TEST(PSD_AP, NonnegComparison) {
   double min_eig = eig.eigenvalues().minCoeff();
   printf("  min eigenvalue: %.6e (may be negative)\n", min_eig);
   // Don't assert PSD — just report.
+}
+
+// Block-diagonal PSD constraint: exercises the chordal decomposition
+// in SparsePSDConstraintAssembler.  The aggregate sparsity of A_i and B
+// is block-diagonal (two independent blocks), so the assembler should
+// split it into two smaller PSD sub-constraints.
+//
+// Problem: X = B + Σ x_i A_i ≽ 0 where X is 6×6 with 3×3 block structure.
+TEST(PSD_AP, BlockDiagonal) {
+  srand(99);
+  const int n = 6;      // 6×6 matrix
+  const int blk = 3;    // two 3×3 blocks
+  const int p = 4;      // 4 free variables
+
+  // Build A_i with block-diagonal sparsity: A_0, A_1 touch block (0:2, 0:2),
+  // A_2, A_3 touch block (3:5, 3:5).  No cross-block entries.
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  std::vector<int> vars;
+
+  for (int k = 0; k < 2; ++k) {
+    MatrixXd M = MatrixXd::Zero(n, n);
+    M.block(0, 0, blk, blk) = MatrixXd::Random(blk, blk);
+    A_list.push_back(toSparse(M));
+    vars.push_back(k);
+  }
+  for (int k = 0; k < 2; ++k) {
+    MatrixXd M = MatrixXd::Zero(n, n);
+    M.block(blk, blk, blk, blk) = MatrixXd::Random(blk, blk);
+    A_list.push_back(toSparse(M));
+    vars.push_back(2 + k);
+  }
+
+  // B = I (feasible at x = 0).
+  MatrixXd B = MatrixXd::Identity(n, n);
+
+  Problem problem;
+  problem.AddPSDConstraint(A_list, toSparse(B), vars);
+
+  auto affine = AffineProjection::Build(problem);
+  RowSpace s = affine.MakeVariable();
+
+  // The chordal decomposition should produce two segments (two 3×3 blocks),
+  // so the RowSpace should have two segments of size 9 each.
+  printf("  BlockDiag: num_constraints=%d, total_rows=%d\n",
+         s.num_constraints(), s.total_rows());
+  EXPECT_EQ(s.num_constraints(), 2);
+  EXPECT_EQ(s.total_rows(), 2 * blk * blk);
+
+  // Start from b + perturbation.
+  {
+    RowSpace b = affine.GetAffineTerm();
+    for (int i = 0; i < s.total_rows(); ++i)
+      s.segment_ptr(0)[i] = b.segment_ptr(0)[i] +
+          0.3 * ((double)rand() / RAND_MAX - 0.5);
+  }
+
+  auto result = AlternatingProjections(affine, s, 500, 1e-8);
+  printf("  BlockDiag AP: %d iters, residual=%.2e\n",
+         result.iterations, result.residual);
+  EXPECT_LT(result.residual, 1e-6);
+
+  // Verify each block is PSD.
+  for (int b = 0; b < 2; ++b) {
+    Eigen::Map<MatrixXd> Xb(s.segment_ptr(b), blk, blk);
+    Eigen::SelfAdjointEigenSolver<MatrixXd> eig(0.5 * (Xb + Xb.transpose()));
+    double min_eig = eig.eigenvalues().minCoeff();
+    printf("  block %d min eigenvalue: %.6e\n", b, min_eig);
+    EXPECT_GT(min_eig, -1e-6);
+  }
+}
+
+// Verify that chordal decomposition produces identical iterates to the
+// non-decomposed (single-block) path on a block-diagonal problem.
+TEST(PSD_AP, ChordalMatchesNonChordal) {
+  srand(77);
+  const int n = 6;
+  const int blk = 3;
+  const int p = 4;
+
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  std::vector<int> vars;
+  for (int k = 0; k < 2; ++k) {
+    MatrixXd M = MatrixXd::Zero(n, n);
+    M.block(0, 0, blk, blk) = MatrixXd::Random(blk, blk);
+    A_list.push_back(toSparse(M));
+    vars.push_back(k);
+  }
+  for (int k = 0; k < 2; ++k) {
+    MatrixXd M = MatrixXd::Zero(n, n);
+    M.block(blk, blk, blk, blk) = MatrixXd::Random(blk, blk);
+    A_list.push_back(toSparse(M));
+    vars.push_back(2 + k);
+  }
+  MatrixXd B = MatrixXd::Identity(n, n);
+
+  // --- Chordal (default) ---
+  Problem prob_chordal;
+  prob_chordal.AddPSDConstraint(A_list, toSparse(B), vars, /*use_chordal=*/true);
+  auto affine_c = AffineProjection::Build(prob_chordal);
+  RowSpace s_c = affine_c.MakeVariable();
+  EuclideanJordanAlgebra::setOnes(s_c);
+  s_c *= -1.0;  // -I — block-diagonal, PSD-infeasible, forces iterations
+  auto res_c = AlternatingProjections(affine_c, s_c, 10, 1e-14);
+
+  // --- Non-chordal (single block) ---
+  Problem prob_full;
+  prob_full.AddPSDConstraint(A_list, toSparse(B), vars, /*use_chordal=*/false);
+  auto affine_f = AffineProjection::Build(prob_full);
+  RowSpace s_f = affine_f.MakeVariable();
+  EuclideanJordanAlgebra::setOnes(s_f);
+  s_f *= -1.0;  // -I
+  auto res_f = AlternatingProjections(affine_f, s_f, 10, 1e-14);
+
+  printf("  chordal:     %d iters, residual=%.2e\n", res_c.iterations, res_c.residual);
+  printf("  non-chordal: %d iters, residual=%.2e\n", res_f.iterations, res_f.residual);
+  EXPECT_EQ(res_c.iterations, res_f.iterations);
+
+  // Recover optimization variables x from each path via x = (A^T A)^{-1} A^T (s - b).
+  // x is unambiguous — no ordering issues.
+  auto recover_x = [](const AffineProjection& affine, const RowSpace& s) {
+    auto* kkt = affine.solver()->solver();
+    RowSpace b = kkt->GetAffineTerm();
+    RowSpace r = EuclideanJordanAlgebra::addScaled(s, b, 1.0, -1.0);
+    auto rhs = kkt->MakeSolverRHS();
+    rhs.SetZero();
+    kkt->AccumulateAtranspose(r, rhs);
+    kkt->SolveSolverRHS(rhs);
+    int nv = kkt->number_of_variables();
+    VectorXd x(nv);
+    rhs.supernodes->GatherInto(x);
+    return x;
+  };
+
+  VectorXd x_c = recover_x(affine_c, s_c);
+  VectorXd x_f = recover_x(affine_f, s_f);
+  double x_diff = (x_c - x_f).lpNorm<Eigen::Infinity>();
+  printf("  x diff: %.2e\n", x_diff);
+  EXPECT_EQ(x_c.size(), x_f.size());
+  EXPECT_LT(x_diff, 1e-12);
 }
 
 }  // namespace

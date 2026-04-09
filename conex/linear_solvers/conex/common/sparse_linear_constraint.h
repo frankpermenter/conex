@@ -8,8 +8,6 @@
 
 #include "conex/common/linear_constraint.h"
 
-namespace conex { namespace EuclideanJordanAlgebra { class ConeOps; } }
-
 namespace conex {
 
 // Decomposes a sparse matrix A into dense sub-blocks grouped by column
@@ -84,12 +82,11 @@ class SparseLinearConstraintAssembler : public CliqueProvider {
     return owned_constraints_;
   }
 
-  // Cone operations for the RowSpace segments produced by this constraint.
-  // nullptr means nonneg orthant (default).
-  const EuclideanJordanAlgebra::ConeOps* cone_ops_ = nullptr;
-  void set_cone_ops(const EuclideanJordanAlgebra::ConeOps* ops) {
-    cone_ops_ = ops;
-  }
+ protected:
+  // Factory for creating per-clique constraints.  Subclasses override to
+  // create specialized constraint types (e.g. PSDLinearConstraint).
+  virtual std::unique_ptr<LinearConstraint> MakeConstraint(
+      const Eigen::MatrixXd& A, const Eigen::VectorXd& b);
 
  private:
   std::unique_ptr<SparseLinearConstraint> slc_;

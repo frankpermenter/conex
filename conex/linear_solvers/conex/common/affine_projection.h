@@ -21,6 +21,9 @@ class AffineProjection {
   // Access the affine term b.
   RowSpace GetAffineTerm() const;
 
+  // Access the underlying solver (for recovering x, etc.).
+  Solver* solver() const { return &solver_; }
+
  private:
   AffineProjection() = default;
   mutable Solver solver_;

@@ -29,15 +29,12 @@ enum class Sense { GE, LE };
 class Problem {
  public:
   // Core: add Ax + b >= 0 (canonical form, stored directly).
-  // Optional cone_ops overrides the default nonneg orthant.
   ConstraintId AddLinearConstraint(
       const Eigen::SparseMatrix<double>& A,
       const Eigen::VectorXd& b,
-      const std::vector<int>& vars,
-      const EuclideanJordanAlgebra::ConeOps* cone_ops = nullptr) {
+      const std::vector<int>& vars) {
     int id = static_cast<int>(constraints_.size());
-    constraints_.push_back(
-        LinearConstraintData{A, b, vars, cone_ops});
+    constraints_.push_back(LinearConstraintData{A, b, vars});
     return id;
   }
 
@@ -107,13 +104,17 @@ class Problem {
   }
 
   // Add PSD constraint: Σ A_i x_i + B ≽ 0.
-  // A_list[i] and B are n×n sparse symmetric matrices.
-  // Vectorized internally: stored as a LinearConstraint with n² rows
-  // and ConeOps = psdConeOps().
+  // A_list[i] and B are n×n sparse matrices.
+  // If use_chordal is true (default), the assembler exploits block-diagonal
+  // sparsity via chordal decomposition.  If false, a single n×n PSD
+  // constraint is created (useful for testing or dense matrices).
   void AddPSDConstraint(
       const std::vector<Eigen::SparseMatrix<double>>& A_list,
       const Eigen::SparseMatrix<double>& B,
-      const std::vector<int>& vars);
+      const std::vector<int>& vars,
+      bool use_chordal = true) {
+    constraints_.push_back(PSDConstraintData{A_list, B, vars, use_chordal});
+  }
 
   // Add a quadratic cost: x'Qx on the given variables.
   ConstraintId AddQuadraticCost(
@@ -168,7 +169,13 @@ class Problem {
     Eigen::SparseMatrix<double> A;
     Eigen::VectorXd b;
     std::vector<int> vars;
-    const EuclideanJordanAlgebra::ConeOps* cone_ops = nullptr;  // null = nonneg
+  };
+
+  struct PSDConstraintData {
+    std::vector<Eigen::SparseMatrix<double>> A_list;  // A_i, each n×n
+    Eigen::SparseMatrix<double> B;                     // n×n
+    std::vector<int> vars;
+    bool use_chordal = true;
   };
 
   struct QuadraticCostData {
@@ -184,7 +191,8 @@ class Problem {
   };
 
   using ConstraintData = std::variant<
-      LinearConstraintData, QuadraticCostData, EqualityConstraintData>;
+      LinearConstraintData, PSDConstraintData,
+      QuadraticCostData, EqualityConstraintData>;
 
   const ConstraintData& constraint(ConstraintId id) const {
     return constraints_.at(id);
@@ -199,8 +207,8 @@ class Problem {
     int n = 0;
     for (const auto& c : constraints_) {
       std::visit([&](const auto& data) {
-        if constexpr (std::is_same_v<std::decay_t<decltype(data)>,
-                                     EqualityConstraintData>) {
+        using T = std::decay_t<decltype(data)>;
+        if constexpr (std::is_same_v<T, EqualityConstraintData>) {
           for (int v : data.primal_vars) n = std::max(n, v + 1);
         } else {
           for (int v : data.vars) n = std::max(n, v + 1);
@@ -224,6 +232,30 @@ class Problem {
     return id;
   }
 };
+
+// Vectorize PSD constraint data: returns (n² × p) sparse A and n²-length b.
+inline void VectorizePSD(
+    const std::vector<Eigen::SparseMatrix<double>>& A_list,
+    const Eigen::SparseMatrix<double>& B,
+    Eigen::SparseMatrix<double>* A_vec,
+    Eigen::VectorXd* b_vec) {
+  const int n = B.rows();
+  const int n2 = n * n;
+  const int p = static_cast<int>(A_list.size());
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int k = 0; k < p; ++k) {
+    const auto& Ak = A_list[k];
+    for (int outer = 0; outer < Ak.outerSize(); ++outer)
+      for (Eigen::SparseMatrix<double>::InnerIterator it(Ak, outer); it; ++it)
+        trips.emplace_back(it.col() * n + it.row(), k, it.value());
+  }
+  A_vec->resize(n2, p);
+  A_vec->setFromTriplets(trips.begin(), trips.end());
+  b_vec->resize(n2);
+  for (int j = 0; j < n; ++j)
+    for (int i = 0; i < n; ++i)
+      (*b_vec)(j * n + i) = B.coeff(i, j);
+}
 
 // Maps a reduced solution back to the original variable space.
 struct Expansion {
