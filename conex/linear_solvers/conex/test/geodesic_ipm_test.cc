@@ -44,17 +44,16 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
   Eigen::SparseMatrix<double> A(m, n);
   A.setFromTriplets(trips.begin(), trips.end());
 
+  // Ax + b >= 0 with b = ones.  Central path at W=1, k=1, x=0: d = 1-(0+1) = 0.
+  // Cost: c = A^T ones  (from RHS = -c + A^T(-b+2) = 0 at W=1, b=1).
   VectorXd b = VectorXd::Ones(m);
   VectorXd c = A.transpose() * VectorXd::Ones(m);
 
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  // Model Ax >= b via -Ax <= -b.
-  Eigen::SparseMatrix<double> negA = -A;
-  VectorXd neg_b = -b;
   Problem problem;
-  problem.AddLinearConstraint(negA, neg_b, vars);
+  problem.AddLinearConstraint(A, b, vars);
   auto [reduced, expansion] = Preprocess(problem);
   auto solver = Solver::Build(reduced);
   auto* kkt = solver.solver();
@@ -97,66 +96,6 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
   EXPECT_GT(normInf(addScaled(W, W_ones, 1.0, -1.0)), 0.01);
 }
 
-TEST(GeodesicBarrierQP, PerComponentR) {
-  // Verify that GeodesicCenterR with r = ones reduces to GeodesicCenter
-  // with k = 1 (since sqrt(mu) = 1/k = 1 when k = 1).
-  srand(42);
-  const int n = 5, m = 8;
-
-  MatrixXd A_dense = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
-  std::vector<Eigen::Triplet<double>> trips;
-  for (int i = 0; i < m; ++i)
-    for (int j = 0; j < n; ++j)
-      trips.emplace_back(i, j, A_dense(i, j));
-  Eigen::SparseMatrix<double> A(m, n);
-  A.setFromTriplets(trips.begin(), trips.end());
-
-  VectorXd b = VectorXd::Ones(m);
-  VectorXd c = A.transpose() * VectorXd::Ones(m);
-
-  std::vector<int> vars(n);
-  std::iota(vars.begin(), vars.end(), 0);
-
-  Eigen::SparseMatrix<double> negA = -A;
-  VectorXd neg_b = -b;
-  Problem problem;
-  problem.AddLinearConstraint(negA, neg_b, vars);
-  auto [reduced, expansion] = Preprocess(problem);
-  auto solver = Solver::Build(reduced);
-  auto* kkt = solver.solver();
-
-  auto cost_rhs = kkt->MakeSolverRHS();
-  VectorXd c_r = expansion.Reduce(c);
-  cost_rhs = kkt->MakeBlockVariable(c_r);
-
-  // Scalar version: center at k=1.
-  VectorXd W_init = VectorXd::Ones(m) + 0.01 * VectorXd::Random(m);
-  RowSpace W1 = kkt->MakeRowSpace();
-  setFromVector(W1, W_init);
-  RowSpace W2 = kkt->MakeRowSpace();
-  setFromVector(W2, W_init);  // same initial W
-  auto r1 = GeodesicCenter(*kkt, cost_rhs, W1, 1.0, 100, 1e-10);
-
-  // Per-component version: r = ones (equivalent to sqrt(mu)=1, k=1).
-  RowSpace r = kkt->MakeRowSpace();
-  setOnes(r);
-  auto r2 = GeodesicCenterR(*kkt, cost_rhs, W2, r, 1.0, 100, 1e-10);
-
-  EXPECT_EQ(r1.iterations, r2.iterations);
-  EXPECT_NEAR(normInf(addScaled(W1, W2, 1.0, -1.0)), 0.0, 1e-12);
-
-  // Non-uniform r: should still converge (d -> 0).
-  RowSpace W3 = kkt->MakeRowSpace();
-  setFromVector(W3, VectorXd::Ones(m) + 0.01 * VectorXd::Random(m));
-  RowSpace r_nonuniform = kkt->MakeRowSpace();
-  setFromVector(r_nonuniform,
-                VectorXd::Ones(m) + 0.5 * VectorXd::Random(m).cwiseAbs());
-  auto r3 = GeodesicCenterR(*kkt, cost_rhs, W3, r_nonuniform, 1.0, 100, 1e-10);
-  EXPECT_LT(r3.d_inf_norm, 1e-8);
-
-  printf("PerComponentR: scalar=%d iters, r=ones=%d iters, r=nonuniform=%d iters\n",
-         r1.iterations, r2.iterations, r3.iterations);
-}
 TEST(GeodesicBarrierQP, MultipleConstraints) {
   // Geodesic IPM on a problem with two separate AddLinearConstraint calls.
   // min c^T x s.t. A1*x >= b1, A2*x >= b2.
@@ -181,21 +120,16 @@ TEST(GeodesicBarrierQP, MultipleConstraints) {
   Eigen::SparseMatrix<double> A2 = toSparse(A2_dense);
   VectorXd b1 = VectorXd::Ones(m1);
   VectorXd b2 = VectorXd::Ones(m2);
-  // c = A1^T ones + A2^T ones (central path at W=ones for Ax >= b).
+  // Ax + b >= 0.  Central path cost: c = (A1^T + A2^T) ones.
   VectorXd c = A1.transpose() * VectorXd::Ones(m1) +
                A2.transpose() * VectorXd::Ones(m2);
 
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  // Model Ax >= b via -Ax <= -b.
-  Eigen::SparseMatrix<double> negA1 = -A1;
-  Eigen::SparseMatrix<double> negA2 = -A2;
-  VectorXd neg_b1 = -b1;
-  VectorXd neg_b2 = -b2;
   Problem problem;
-  problem.AddLinearConstraint(negA1, neg_b1, vars);
-  problem.AddLinearConstraint(negA2, neg_b2, vars);
+  problem.AddLinearConstraint(A1, b1, vars);
+  problem.AddLinearConstraint(A2, b2, vars);
   auto [reduced, expansion] = Preprocess(problem);
   auto solver = Solver::Build(reduced);
   auto* kkt = solver.solver();

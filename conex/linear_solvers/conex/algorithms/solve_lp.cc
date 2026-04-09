@@ -45,11 +45,11 @@ double ComputeConstraintViolation(const Problem& problem,
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
       if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
-        // Internal form: s = b - Ax >= 0.
+        // Internal form: Ax + b >= 0.
         const int nv = static_cast<int>(data.vars.size());
         Eigen::VectorXd xv(nv);
         for (int i = 0; i < nv; ++i) xv(i) = x(data.vars[i]);
-        Eigen::VectorXd s = data.b - data.A * xv;
+        Eigen::VectorXd s = data.A * xv + data.b;
         min_slack = std::min(min_slack, s.minCoeff());
       }
     }, c);

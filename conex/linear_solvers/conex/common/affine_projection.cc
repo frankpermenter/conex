@@ -22,16 +22,16 @@ void AffineProjection::Project(RowSpace& s) const {
   auto* kkt = solver_.solver();
   RowSpace b = kkt->GetAffineTerm();
 
-  // Solve (A^T A) x = A^T (b - s).
-  RowSpace r = addScaled(b, s, 1.0, -1.0);
+  // Solve (A^T A) x = A^T (s - b).  Then s = Ax + b.
+  RowSpace r = addScaled(s, b, 1.0, -1.0);
   auto rhs = kkt->MakeSolverRHS();
   rhs.SetZero();
   kkt->AccumulateAtranspose(r, rhs);
   kkt->SolveSolverRHS(rhs);
 
-  // s = b - A * x.
+  // s = A*x + b.
   kkt->MultiplyA(rhs, s);
-  s = addScaled(b, s, 1.0, -1.0);
+  s = addScaled(s, b, 1.0, 1.0);
 }
 
 RowSpace AffineProjection::MakeVariable() const {

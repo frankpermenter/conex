@@ -54,9 +54,9 @@ BarrierQPResult SolveBarrierQP(
       result.total_newton_steps++;
       newton_this_outer++;
 
-      // Slacks: s = b - A x.
+      // Slacks: s = A*x + b  (Ax + b >= 0 convention).
       kkt.MultiplyA(x, row);
-      row.col() = b - row.col();  // row now holds s
+      row.col() = row.col() + b;  // row now holds s
       const auto& s = row.col();
       if (s.minCoeff() <= 0) break;
 
@@ -64,8 +64,8 @@ BarrierQPResult SolveBarrierQP(
       weights.col() = (t * s.cwiseProduct(s)).cwiseInverse();
       kkt.SetWeights(weights);
 
-      // A^T term: (1/t) * A^T * (1/s).
-      scaled_inv_s.col() = (t * s).cwiseInverse();
+      // A^T term: -(1/t) * A^T * (1/s)  (barrier gradient for s = Ax + b).
+      scaled_inv_s.col() = -(t * s).cwiseInverse();
 
       // Compute Q*x once (ungathered), reuse for gradient and objective.
       qx.SetZero();
@@ -88,12 +88,12 @@ BarrierQPResult SolveBarrierQP(
       double lambda_sq = kkt.dot(grad, dx);
       if (-lambda_sq / 2.0 < tolerance * 0.01) break;
 
-      // Max step for feasibility.
+      // Max step for feasibility: s + α*A*dx > 0.
       double alpha = 1.0;
       kkt.MultiplyA(dx, row_trial);
       for (int i = 0; i < m; ++i) {
-        if (row_trial.col()(i) > 0)
-          alpha = std::min(alpha, 0.99 * s(i) / row_trial.col()(i));
+        if (row_trial.col()(i) < 0)
+          alpha = std::min(alpha, -0.99 * s(i) / row_trial.col()(i));
       }
 
       // Objective at current point (lazy gather on qx).
@@ -108,7 +108,7 @@ BarrierQPResult SolveBarrierQP(
         x_trial.AddScaled(alpha, dx);
 
         kkt.MultiplyA(x_trial, row_trial);
-        row_trial.col() = b - row_trial.col();
+        row_trial.col() = row_trial.col() + b;  // s_trial = A*x_trial + b
         if (row_trial.col().minCoeff() <= 0) { alpha *= beta; continue; }
 
         qx.SetZero();

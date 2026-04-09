@@ -29,7 +29,9 @@ TEST(SolveLP, SenseGE) {
   srand(42);
   const int n = 5, m = 10;
   auto A = toSparse(MatrixXd::Random(m, n));
-  VectorXd b = VectorXd::Ones(m);
+  // Sense::GE(A, b=-1) means Ax >= -1. Stores (A, 1): Ax + 1 >= 0.
+  // Central path at W=1: d = 1-(0+1) = 0. Cost = A^T ones.
+  VectorXd b = -VectorXd::Ones(m);
   VectorXd c = A.transpose() * VectorXd::Ones(m);
 
   Problem problem;
@@ -64,11 +66,13 @@ TEST(SolveLP, SenseLE) {
 TEST(SolveLP, ConstraintViolation) {
   const int n = 3, m = 2;
   // A = [1 0 0; 0 1 0], b = [1; 1].
-  // Sense::GE: Ax >= b. Internally stored as (-A, -b), s = -b + Ax.
+  // Internal form: Ax + b >= 0.
+  // Sense::GE(A, b) stores (A, -b): Ax - b >= 0, i.e., Ax >= b.
+  // Sense::LE(A, b) stores (-A, b): -Ax + b >= 0, i.e., Ax <= b.
   auto A = toSparse(MatrixXd::Identity(m, n).leftCols(n));
   VectorXd b = VectorXd::Ones(m);
 
-  // Test with Sense::LE: Ax <= b, stored as (A, b), s = b - Ax.
+  // Test with Sense::LE: Ax <= b → stored (-A, b), violation = -Ax + b.
   {
     Problem problem;
     problem.AddLinearConstraint(A, b, Sense::LE);
@@ -86,7 +90,7 @@ TEST(SolveLP, ConstraintViolation) {
     EXPECT_NEAR(viol, -1.0, 1e-10);
   }
 
-  // Test with Sense::GE: Ax >= b, stored as (-A, -b), s = -b - (-A)x = Ax - b.
+  // Test with Sense::GE: Ax >= b → stored (A, -b), violation = Ax - b.
   {
     Problem problem;
     problem.AddLinearConstraint(A, b, Sense::GE);

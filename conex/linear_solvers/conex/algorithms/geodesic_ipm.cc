@@ -7,6 +7,11 @@
 
 namespace conex {
 
+static void ComputeDirectNewtonStep(
+    KKTSolverBase& kkt, const SolverRHS& cost_rhs,
+    const RowSpace& W, double k,
+    RowSpace& d_out, Eigen::VectorXd& y_out);
+
 GeodesicResult GeodesicCenter(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
@@ -15,42 +20,17 @@ GeodesicResult GeodesicCenter(
     int max_iterations,
     double tolerance,
     bool verbose) {
-  RowSpace b = kkt.GetAffineTerm();
-  const int m = b.total_rows();
+  const int m = W.total_rows();
   const double mu = 1.0 / (k * k);
-
-  auto y = kkt.MakeSolverRHS();
-  RowSpace row = kkt.MakeRowSpace();
-  RowSpace weights = kkt.MakeRowSpace();
-  RowSpace v = kkt.MakeRowSpace();
-  RowSpace d = kkt.MakeRowSpace();
 
   GeodesicResult result{};
   result.mu = mu;
 
   for (int iter = 0; iter < max_iterations; ++iter) {
-    // 1. Set weights W^2 and factor.
-    weights = cwiseProduct(W, W);
-    kkt.SetWeights(weights);
-    if (!kkt.AssembleAndFactor()) break;
+    RowSpace d = kkt.MakeRowSpace();
+    Eigen::VectorXd y_direct;
+    ComputeDirectNewtonStep(kkt, cost_rhs, W, k, d, y_direct);
 
-    // 2. RHS = k * cost + A^T (k * W^2 .* b + 2 * W).
-    y = cost_rhs;
-    y *= k;
-    v = addScaled(cwiseProduct(weights, b), W, k, 2.0);
-    kkt.AccumulateAtranspose(v, y);
-
-    // 3. Solve.
-    kkt.SolveSolverRHS(y);
-
-    // 4. Direction d = 1 + W .* (k*b - A*y).
-    kkt.MultiplyA(y, row);
-    d = addScaled(b, row, k, -1.0);
-    d = cwiseProduct(W, d);
-    setOnes(v);
-    d += v;
-
-    // 5. Step size.
     double d_inf = normInf(d);
     double d_sq = squaredNorm(d);
     double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
@@ -72,7 +52,6 @@ GeodesicResult GeodesicCenter(
 
     if (d_inf < tolerance) break;
 
-    // 6. Geodesic update: W *= exp(alpha * d).
     geodesicUpdate(W, alpha, d);
   }
 
@@ -94,16 +73,19 @@ static void ComputeDirectNewtonStep(
   kkt.SetWeights(weights);
   kkt.AssembleAndFactor();
 
+  // Ax + b >= 0 convention.
+  // RHS = -k*cost + A^T(-k*W^2*b + 2*W).
+  // d = 1 + W*(-k*b - A*y) = 1 - W*(k*b + A*y).
   auto y = kkt.MakeSolverRHS();
   y = cost_rhs;
-  y *= k;
-  RowSpace v = addScaled(cwiseProduct(weights, b), W, k, 2.0);
+  y *= -k;
+  RowSpace v = addScaled(cwiseProduct(weights, b), W, -k, 2.0);
   kkt.AccumulateAtranspose(v, y);
   kkt.SolveSolverRHS(y);
 
   RowSpace row = kkt.MakeRowSpace();
   kkt.MultiplyA(y, row);
-  d_out = addScaled(b, row, k, -1.0);
+  d_out = addScaled(b, row, -k, -1.0);
   d_out = cwiseProduct(W, d_out);
   RowSpace ones = kkt.MakeRowSpace();
   setOnes(ones);

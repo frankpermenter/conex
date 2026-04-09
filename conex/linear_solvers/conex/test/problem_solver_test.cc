@@ -124,7 +124,7 @@ TEST_P(QPSolverTest, UnconstrainedInsideFeasible) {
   VectorXd b(3); b << 1.0, 0.0, 0.0;
 
   Problem problem;
-  problem.AddLinearConstraint(A, b);
+  problem.AddLinearConstraint(A, b, Sense::LE);
   problem.AddQuadraticCost(Q);
   problem.SetLinearCost(VectorXd::Zero(n));
 
@@ -153,7 +153,7 @@ TEST_P(QPSolverTest, ActiveConstraint) {
   VectorXd b(3); b << 1.0, 0.0, 0.0;
 
   Problem problem;
-  problem.AddLinearConstraint(A, b);
+  problem.AddLinearConstraint(A, b, Sense::LE);
   problem.AddQuadraticCost(Q);
   problem.SetLinearCost(c);
 
@@ -188,8 +188,8 @@ TEST_P(QPSolverTest, MultipleConstraints) {
 
   std::vector<int> vars = {0, 1};
   Problem problem;
-  problem.AddLinearConstraint(A1, b1, vars);
-  problem.AddLinearConstraint(A2, b2, vars);
+  problem.AddLinearConstraint(A1, b1, Sense::LE, vars);
+  problem.AddLinearConstraint(A2, b2, Sense::LE, vars);
   problem.AddQuadraticCost(Q, vars);
   problem.SetLinearCost(VectorXd::Zero(n));
 
@@ -255,7 +255,7 @@ TEST(BarrierQP, SparseQP) {
   VectorXd b = VectorXd::Ones(m);
 
   Problem problem;
-  problem.AddLinearConstraint(A, b);
+  problem.AddLinearConstraint(A, b, Sense::LE);
   problem.AddQuadraticCost(Q);
   problem.SetLinearCost(c);
 
@@ -282,7 +282,7 @@ TEST(BarrierQP, FeasibilityCheck) {
   VectorXd b = VectorXd::Ones(m) * 5.0;
 
   Problem problem;
-  problem.AddLinearConstraint(A, b);
+  problem.AddLinearConstraint(A, b, Sense::LE);
   problem.AddQuadraticCost(Q);
   problem.SetLinearCost(c);
 
