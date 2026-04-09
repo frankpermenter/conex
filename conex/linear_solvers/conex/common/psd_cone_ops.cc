@@ -12,6 +12,9 @@ int MatrixDim(int size) {
   int n = static_cast<int>(std::round(std::sqrt(static_cast<double>(size))));
   return n;
 }
+void Symmetrize(Eigen::Ref<Eigen::MatrixXd> M) {
+  M = 0.5 * (M + M.transpose().eval());
+}
 }  // namespace
 
 void PSDConeOps::product(double* out, const double* a, const double* b,
@@ -22,6 +25,7 @@ void PSDConeOps::product(double* out, const double* a, const double* b,
   Eigen::Map<Eigen::MatrixXd> Out(out, n, n);
   // Jordan product: (AB + BA) / 2.
   Out = 0.5 * (A * B + B * A);
+  Symmetrize(Out);
 }
 
 void PSDConeOps::quotient(double* out, const double* a, const double* b,
@@ -31,6 +35,7 @@ void PSDConeOps::quotient(double* out, const double* a, const double* b,
   Eigen::Map<const Eigen::MatrixXd> B(b, n, n);
   Eigen::Map<Eigen::MatrixXd> Out(out, n, n);
   Out = A * B.inverse();
+  Symmetrize(Out);
 }
 
 void PSDConeOps::geodesicUpdate(double* out, const double* a, double alpha,
@@ -53,6 +58,7 @@ void PSDConeOps::geodesicUpdate(double* out, const double* a, double alpha,
       eigD.eigenvectors().transpose();
 
   Out = sqrtA * expD * sqrtA;
+  Symmetrize(Out);
 }
 
 void PSDConeOps::setIdentity(double* out, int size) const {
@@ -64,7 +70,8 @@ void PSDConeOps::setIdentity(double* out, int size) const {
 double PSDConeOps::normInf(const double* a, int size) const {
   int n = MatrixDim(size);
   Eigen::Map<const Eigen::MatrixXd> A(a, n, n);
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(A,
+  Eigen::MatrixXd Sym = 0.5 * (A + A.transpose());
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(Sym,
       Eigen::EigenvaluesOnly);
   return eig.eigenvalues().cwiseAbs().maxCoeff();
 }
@@ -72,7 +79,8 @@ double PSDConeOps::normInf(const double* a, int size) const {
 double PSDConeOps::squaredNorm(const double* a, int size) const {
   int n = MatrixDim(size);
   Eigen::Map<const Eigen::MatrixXd> A(a, n, n);
-  return A.squaredNorm();  // Frobenius squared = trace(A^T A).
+  Eigen::MatrixXd Sym = 0.5 * (A + A.transpose());
+  return Sym.squaredNorm();
 }
 
 double PSDConeOps::dot(const double* a, const double* b, int size) const {
@@ -90,6 +98,7 @@ void PSDConeOps::sqrt(double* out, const double* a, int size) const {
   Out = eig.eigenvectors() *
       eig.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
       eig.eigenvectors().transpose();
+  Symmetrize(Out);
 }
 
 void PSDConeOps::quadraticRepresentation(double* out, const double* a,
@@ -99,6 +108,7 @@ void PSDConeOps::quadraticRepresentation(double* out, const double* a,
   Eigen::Map<const Eigen::MatrixXd> B(b, n, n);
   Eigen::Map<Eigen::MatrixXd> Out(out, n, n);
   Out.noalias() = A * B * A;
+  Symmetrize(Out);
 }
 
 void PSDConeOps::solveLyapunov(double* out, const double* a, const double* d,
@@ -116,6 +126,7 @@ void PSDConeOps::solveLyapunov(double* out, const double* a, const double* d,
     for (int j = 0; j < n; ++j)
       D_eig(i, j) *= 0.5 * (lam(i) + lam(j));
   Delta = V * D_eig * V.transpose();
+  Symmetrize(Delta);
 }
 
 void PSDConeOps::abs(double* out, const double* a, int size) const {
@@ -126,6 +137,7 @@ void PSDConeOps::abs(double* out, const double* a, int size) const {
   Out = eig.eigenvectors() *
       eig.eigenvalues().cwiseAbs().asDiagonal() *
       eig.eigenvectors().transpose();
+  Symmetrize(Out);
 }
 
 double PSDConeOps::minEigenvalue(const double* a, int size) const {
@@ -165,7 +177,9 @@ void PSDConeOps::updateAutomorphism(double* w, double* r, double alpha,
 
   // W = P^2, R = T^T R T.
   W = P * P;
+  Symmetrize(W);
   R = T.transpose() * R * T;
+  Symmetrize(R);
 }
 
 double PSDConeOps::lineSearchK(const double* d0, const double* d1,
@@ -174,12 +188,13 @@ double PSDConeOps::lineSearchK(const double* d0, const double* d1,
   Eigen::Map<const Eigen::MatrixXd> D0(d0, n, n);
   Eigen::Map<const Eigen::MatrixXd> D1(d1, n, n);
 
-  // Find largest k > 0 with ||D0 + k*D1||_inf <= 1, where ||.||_inf
-  // is the max absolute eigenvalue.  Bisect on k.
-  // Use SelfAdjointEigenSolver (reads lower triangle) — same convention
-  // as normInf.  Do NOT symmetrize, as d may have slight asymmetry.
+  // Find largest k > 0 with ||D0 + k*D1||_inf <= 1.
+  // Symmetrize inputs for consistent eigenvalue computation.
+  Eigen::MatrixXd D0s = 0.5 * (D0 + D0.transpose());
+  Eigen::MatrixXd D1s = 0.5 * (D1 + D1.transpose());
+
   auto eval_norm = [&](double k) -> double {
-    Eigen::MatrixXd Dk = D0 + k * D1;
+    Eigen::MatrixXd Dk = D0s + k * D1s;
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(Dk,
         Eigen::EigenvaluesOnly);
     return eig.eigenvalues().cwiseAbs().maxCoeff();
@@ -231,7 +246,7 @@ double PSDConeOps::lineSearchK(const double* d0, const double* d1,
     if (eval_norm(k0) > 1.0) return 0;
   }
 
-  Eigen::MatrixXd D0p = D0 + k0 * D1;
+  Eigen::MatrixXd D0p = D0s + k0 * D1s;
   Eigen::MatrixXd I = Eigen::MatrixXd::Identity(n, n);
 
   double dk = std::numeric_limits<double>::max();
@@ -268,6 +283,7 @@ void PSDConeOps::project(double* out, const double* a, int size) const {
   Eigen::VectorXd lambdas = eig.eigenvalues().cwiseMax(0.0);
   Out = eig.eigenvectors() * lambdas.asDiagonal() *
         eig.eigenvectors().transpose();
+  Symmetrize(Out);
 }
 
 const PSDConeOps& psdConeOps() {
