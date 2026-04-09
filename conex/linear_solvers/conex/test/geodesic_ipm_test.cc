@@ -345,10 +345,42 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
   }
   auto sdp_result = GeodesicCenter(*sdp_kkt, sdp_cost, sdp_W, 1.0, 20, 1e-12, true);
 
-  printf("\nLP:  %d iters, d_inf=%.2e\n", lp_result.iterations, lp_result.d_inf_norm);
-  printf("SDP: %d iters, d_inf=%.2e\n", sdp_result.iterations, sdp_result.d_inf_norm);
+  printf("\nCentering:\n");
+  printf("  LP:  %d iters, d_inf=%.2e\n", lp_result.iterations, lp_result.d_inf_norm);
+  printf("  SDP: %d iters, d_inf=%.2e\n", sdp_result.iterations, sdp_result.d_inf_norm);
   EXPECT_EQ(lp_result.iterations, sdp_result.iterations);
   EXPECT_NEAR(lp_result.d_inf_norm, sdp_result.d_inf_norm, 1e-8);
+
+  // --- Full LP path: decomposition + line search + geodesic step ---
+  // Reset W to ones for both.
+  setOnes(lp_W);
+  {
+    int m2 = m * m;
+    for (int i = 0; i < m2; ++i) sdp_W.segment_ptr(0)[i] = 0;
+    for (int i = 0; i < m; ++i) sdp_W.segment_ptr(0)[i * m + i] = 1.0;
+  }
+
+  const int lp_iters = 12;
+  auto lp_lp = SolveGeodesicLP(*lp_kkt, lp_cost, lp_W, lp_iters, 0, 1e-12, true);
+  auto sdp_lp = SolveGeodesicLP(*sdp_kkt, sdp_cost, sdp_W, lp_iters, 0, 1e-12, true);
+
+  printf("\nLP solve:\n");
+  printf("  %3s  %12s  %12s  %12s  %12s\n", "it", "LP_dinf", "SDP_dinf", "LP_mu", "SDP_mu");
+  printf("  %s\n", std::string(55, '-').c_str());
+  int iters = std::min(lp_lp.iterations, sdp_lp.iterations);
+  for (int i = 0; i < iters; ++i) {
+    printf("  %3d  %12.4e  %12.4e  %12.4e  %12.4e\n", i,
+           lp_lp.iter_stats[i].d_inf, sdp_lp.iter_stats[i].d_inf,
+           lp_lp.iter_stats[i].mu, sdp_lp.iter_stats[i].mu);
+  }
+  EXPECT_EQ(lp_lp.iterations, sdp_lp.iterations);
+  for (int i = 0; i < iters; ++i) {
+    EXPECT_NEAR(lp_lp.iter_stats[i].d_inf,
+                sdp_lp.iter_stats[i].d_inf, 1e-8);
+    EXPECT_NEAR(lp_lp.iter_stats[i].mu,
+                sdp_lp.iter_stats[i].mu,
+                1e-6 * lp_lp.iter_stats[i].mu + 1e-14);
+  }
 }
 
 // SDP LP: min c^T x  s.t. B + Σ x_i A_i ≽ 0

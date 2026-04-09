@@ -186,15 +186,42 @@ double PSDConeOps::lineSearchK(const double* d0, const double* d1,
     return eig.eigenvalues().cwiseAbs().maxCoeff();
   };
 
-  // Find an upper bound where ||d(k)|| > 1.
-  double lo = 0, hi = 1;
+  // The feasible set {k >= 0 : ||d0 + k*d1|| <= 1} is an interval
+  // [k_low, k_high].  We want k_high.
+  //
+  // Strategy: first find any k_feas where ||d|| <= 1 (the minimum-norm
+  // point), then search rightward for the upper boundary.
+
+  // Find the minimum of ||d(k)|| via golden section on [0, k_big].
+  // This gives a k_feas inside the feasible interval.
+  double k_big = 1;
+  while (eval_norm(k_big) < eval_norm(k_big / 2) && k_big < 1e15)
+    k_big *= 2;
+
+  // Golden section search for the minimizer.
+  double a = 0, b = k_big;
+  const double phi = 0.5 * (std::sqrt(5.0) - 1.0);
+  double x1 = b - phi * (b - a), x2 = a + phi * (b - a);
+  double f1 = eval_norm(x1), f2 = eval_norm(x2);
+  for (int iter = 0; iter < 60; ++iter) {
+    if (f1 < f2) {
+      b = x2; x2 = x1; f2 = f1;
+      x1 = b - phi * (b - a); f1 = eval_norm(x1);
+    } else {
+      a = x1; x1 = x2; f1 = f2;
+      x2 = a + phi * (b - a); f2 = eval_norm(x2);
+    }
+  }
+  double k_min = 0.5 * (a + b);
+  if (eval_norm(k_min) > 1.0) return 0;  // no feasible k
+
+  // Bisect rightward from k_min to find k_high.
+  double lo = k_min, hi = std::max(k_min * 2, 1.0);
   while (eval_norm(hi) <= 1.0) {
     lo = hi;
     hi *= 2;
-    if (hi > 1e15) return hi;  // d1 ≈ 0, unbounded
+    if (hi > 1e15) return hi;
   }
-
-  // Bisect to find the boundary.
   for (int iter = 0; iter < 60; ++iter) {
     double mid = 0.5 * (lo + hi);
     if (eval_norm(mid) <= 1.0)
