@@ -136,6 +136,35 @@ GeodesicResult SolveGeodesicLPR(
     double tolerance = 1e-8,
     bool verbose = false);
 
+// Result of a single hybrid direction computation.
+struct HybridDirection {
+  double gap;
+  double d_inf;
+  double d_sq;
+  double min_slack;
+};
+
+// Compute the hybrid Newton direction at (W, r).
+// Assumes the KKT system is already factored with weights W².
+// Returns d, delta (via output params), and derived quantities.
+// Performs one back-solve (no factorization).
+HybridDirection ComputeHybridDirection(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const RowSpace& W,
+    const RowSpace& r,
+    RowSpace& d,
+    RowSpace& delta);
+
+// Single centering step: factor with W², compute direction, take
+// geodesic/automorphism step.  Modifies W and r in place.
+// Returns the direction info (gap, d_inf, etc.).
+HybridDirection HybridCenteringStep(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    RowSpace& W,
+    RowSpace& r);
+
 // Hybrid geodesic IPM: alternates between centering (when gap < 0)
 // and shrinking per-component centering targets r (when gap >= 0).
 // gap(r, d) = <r.*(1+d), r.*(1-d)> = sum(r_i^2 * (1 - d_i^2)).

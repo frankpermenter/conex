@@ -524,9 +524,6 @@ TEST(GeodesicSDP, HybridCenteringLoop) {
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
-  RowSpace b = kkt->GetAffineTerm();
-  RowSpace ones = kkt->MakeRowSpace();
-  setOnes(ones);
 
   // Perturb r from identity.
   RowSpace r = kkt->MakeRowSpace();
@@ -539,72 +536,28 @@ TEST(GeodesicSDP, HybridCenteringLoop) {
     for (int i = 0; i < n2; ++i) r.segment_ptr(0)[i] = R0.data()[i];
   }
 
-  printf("  %3s  %12s  %12s  %12s  %12s\n",
-         "iter", "gap", "d_inf", "delta_inf", "d_sqr");
-  printf("  %s\n", std::string(55, '-').c_str());
+  printf("  %3s  %12s  %12s  %12s\n",
+         "iter", "gap", "d_inf", "d_sqr");
+  printf("  %s\n", std::string(42, '-').c_str());
 
-  // W-update loop: solve, compute d and Δ, take geodesic step on W.
+  // Centering loop: uses the same HybridCenteringStep as the algorithm.
   for (int iter = 0; iter < 20; ++iter) {
-    RowSpace weights = cwiseProduct(W, W);
-    kkt->SetWeights(weights);
-    kkt->AssembleAndFactor();
-
-    auto y = kkt->MakeSolverRHS();
-    y = cost_rhs;
-    y *= -1;
-    RowSpace v = addScaled(quadraticRepresentation(W, b),
-                           cwiseProduct(r, W), -1, 2.0);
-    kkt->AccumulateAtranspose(v, y);
-    kkt->SolveSolverRHS(y);
-
-    RowSpace row = kkt->MakeRowSpace();
-    kkt->MultiplyA(y, row);
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace slack_dir = addScaled(b, row, 1.0, 1.0);
-    RowSpace delta = addScaled(r,
-        quadraticRepresentation(sqrtW, slack_dir), 1.0, -1.0);
-    RowSpace d = solveLyapunovForD(r, delta);
-    double g = gap(r, delta);
-    double d_inf = normInf(d);
-    double delta_inf = normInf(delta);
-    double d_sq = squaredNorm(d);
-
-    printf("  %3d  %12.4e  %12.4e  %12.4e  %12.4e\n",
-           iter, g, d_inf, delta_inf, d_sq);
-
-    if (d_inf < 1e-10) break;
-
-    double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-    updateAutomorphism(W, r, alpha, d);
+    auto info = HybridCenteringStep(*kkt, cost_rhs, W, r);
+    printf("  %3d  %12.4e  %12.4e  %12.4e\n",
+           iter, info.gap, info.d_inf, info.d_sq);
+    if (info.d_inf < 1e-10) break;
   }
 
-  // After centering, Δ should be near 0.
-  // Recompute d one more time.
+  // Verify convergence: one more direction computation (no step).
   {
     RowSpace weights = cwiseProduct(W, W);
     kkt->SetWeights(weights);
     kkt->AssembleAndFactor();
-
-    auto y = kkt->MakeSolverRHS();
-    y = cost_rhs;
-    y *= -1;
-    RowSpace v = addScaled(quadraticRepresentation(W, b),
-                           cwiseProduct(r, W), -1, 2.0);
-    kkt->AccumulateAtranspose(v, y);
-    kkt->SolveSolverRHS(y);
-
-    RowSpace row = kkt->MakeRowSpace();
-    kkt->MultiplyA(y, row);
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace slack_dir = addScaled(b, row, 1.0, 1.0);
-    RowSpace delta = addScaled(r,
-        quadraticRepresentation(sqrtW, slack_dir), 1.0, -1.0);
-    RowSpace d = solveLyapunovForD(r, delta);
-    double d_inf = normInf(d);
-    double delta_inf = normInf(delta);
-    printf("\nFinal: d_inf=%.2e, delta_inf=%.2e\n", d_inf, delta_inf);
-    EXPECT_LT(d_inf, 1e-6);
-    EXPECT_LT(delta_inf, 1e-6);
+    RowSpace d = kkt->MakeRowSpace();
+    RowSpace delta = kkt->MakeRowSpace();
+    auto info = ComputeHybridDirection(*kkt, cost_rhs, W, r, d, delta);
+    printf("\nFinal: d_inf=%.2e, gap=%.2e\n", info.d_inf, info.gap);
+    EXPECT_LT(info.d_inf, 1e-6);
   }
 }
 

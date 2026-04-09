@@ -254,6 +254,52 @@ GeodesicResult SolveGeodesicLP(
   return result;
 }
 
+HybridDirection ComputeHybridDirection(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const RowSpace& W,
+    const RowSpace& r,
+    RowSpace& d,
+    RowSpace& delta) {
+  RowSpace b = kkt.GetAffineTerm();
+
+  auto y = kkt.MakeSolverRHS();
+  y = cost_rhs;
+  y *= -1;
+  RowSpace v = addScaled(quadraticRepresentation(W, b),
+                         cwiseProduct(r, W), -1, 2.0);
+  kkt.AccumulateAtranspose(v, y);
+  kkt.SolveSolverRHS(y);
+
+  RowSpace row = kkt.MakeRowSpace();
+  kkt.MultiplyA(y, row);
+  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  RowSpace slack_dir = addScaled(b, row, 1.0, 1.0);
+  delta = addScaled(r,
+      quadraticRepresentation(sqrtW, slack_dir), 1.0, -1.0);
+  d = solveLyapunovForD(r, delta);
+
+  return {gap(r, delta), normInf(d), squaredNorm(d), minSlack(r, delta)};
+}
+
+HybridDirection HybridCenteringStep(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    RowSpace& W,
+    RowSpace& r) {
+  RowSpace weights = cwiseProduct(W, W);
+  kkt.SetWeights(weights);
+  kkt.AssembleAndFactor();
+
+  RowSpace d = kkt.MakeRowSpace();
+  RowSpace delta = kkt.MakeRowSpace();
+  auto info = ComputeHybridDirection(kkt, cost_rhs, W, r, d, delta);
+
+  double alpha = std::min(1.0, 2.0 / (info.d_inf * info.d_inf));
+  updateAutomorphism(W, r, alpha, d);
+  return info;
+}
+
 GeodesicResult SolveGeodesicHybrid(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
@@ -289,34 +335,20 @@ GeodesicResult SolveGeodesicHybrid(
   }
 
   for (int iter = 0; iter < max_iterations; ++iter) {
-    // Solve with current (W, r).
-    auto y = kkt.MakeSolverRHS();
-    y = cost_rhs;
-    y *= -1;
-    RowSpace v = addScaled(quadraticRepresentation(W, b),
-                           cwiseProduct(r, W), -1, 2.0);
-    kkt.AccumulateAtranspose(v, y);
-    kkt.SolveSolverRHS(y);
+    RowSpace d = kkt.MakeRowSpace();
+    RowSpace delta = kkt.MakeRowSpace();
+    auto info = ComputeHybridDirection(kkt, cost_rhs, W, r, d, delta);
     total_sol++;
 
-    // Compute Delta = R - P(W^{1/2})(b + Ay), then solve for D.
-    RowSpace row = kkt.MakeRowSpace();
-    kkt.MultiplyA(y, row);
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace slack_dir = addScaled(b, row, 1.0, 1.0);  // b + Ay
-    RowSpace delta = addScaled(r,
-        quadraticRepresentation(sqrtW, slack_dir), 1.0, -1.0);
-    RowSpace d = solveLyapunovForD(r, delta);
-
-    g = gap(r, delta);
-    d_inf = normInf(d);
-    d_sq = squaredNorm(d);
-    mslack = minSlack(r, delta);
+    g = info.gap;
+    d_inf = info.d_inf;
+    d_sq = info.d_sq;
+    mslack = info.min_slack;
 
     if (std::abs(g) < tolerance && mslack > -tolerance) break;
 
     if (g < 0) {
-      // Geodesic step: update W and r via polar decomposition.
+      // Centering step: update W and r, then refactor.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       updateAutomorphism(W, r, alpha, d);
       weights = cwiseProduct(W, W);
