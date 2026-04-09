@@ -90,6 +90,13 @@ class DenseKKTSolver : public KKTSolverBase {
     M_ = Q_ + A_.transpose() * weights_.asDiagonal() * A_;
   }
 
+  void SetScaling(const RowSpace& w) override {
+    if (!has_constraints_) return;
+    // w is the scaling; Gram uses w².
+    weights_ = w.col().array().square().matrix();
+    M_ = Q_ + A_.transpose() * weights_.asDiagonal() * A_;
+  }
+
   RowSpace GetAffineTerm() override {
     RowSpace rs = MakeRowSpace();
     if (has_constraints_) rs.col() = b_;

@@ -183,6 +183,16 @@ class LinearConstraint : public SupernodalAssemblerBase, public ArenaAllocatable
     gram_evaluator_.update_weights();
   }
 
+  // Set scaling W directly (no sqrt).  Gram = A^T diag(W²) A.
+  // For nonneg: pass W, stored directly.
+  // Subclasses override for different structures (e.g. PSD).
+  virtual void SetScaling(const Eigen::VectorXd& scaling) {
+    CONEX_DEMAND(scaling.size() == constraint_matrix_.rows(),
+                 "Scaling vector size must match number of constraint rows.");
+    workspace_.W = scaling;
+    gram_evaluator_.update_weights();
+  }
+
   int num_rows() const { return constraint_matrix_.rows(); }
 
   // Access the GramEvaluator for vector block operations.

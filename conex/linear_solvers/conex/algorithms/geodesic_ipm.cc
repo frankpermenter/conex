@@ -287,8 +287,7 @@ HybridDirection HybridCenteringStep(
     const SolverRHS& cost_rhs,
     RowSpace& W,
     RowSpace& r) {
-  RowSpace weights = cwiseProduct(W, W);
-  kkt.SetWeights(weights);
+  kkt.SetScaling(W);
   kkt.AssembleAndFactor();
 
   RowSpace d = kkt.MakeRowSpace();
@@ -321,7 +320,6 @@ GeodesicResult SolveGeodesicHybrid(
   GeodesicResult result{};
   int r_updates = 0;
 
-  RowSpace weights = kkt.MakeRowSpace();
   RowSpace ones = kkt.MakeRowSpace();
   setOnes(ones);
 
@@ -351,8 +349,7 @@ GeodesicResult SolveGeodesicHybrid(
       // Centering step: update W and r, then refactor.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       updateAutomorphism(W, r, alpha, d);
-      weights = cwiseProduct(W, W);
-      kkt.SetWeights(weights);
+      kkt.SetScaling(W);
       if (!kkt.AssembleAndFactor()) break;
       total_fac++;
       result.iter_stats.push_back({g / m, d_inf, d_sq, g,

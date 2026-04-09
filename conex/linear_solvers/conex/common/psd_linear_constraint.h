@@ -76,6 +76,19 @@ class PSDLinearConstraint : public LinearConstraint {
     psd_gram_.update_weights();
   }
 
+  // Set scaling W directly (no sqrt).  Gram = A^T kron(W, W) A.
+  // For PSD: pass vec(W), Cholesky-factorize W = LL^T, store vec(L).
+  void SetScaling(const Eigen::VectorXd& scaling) override {
+    CONEX_DEMAND(scaling.size() == constraint_matrix_.rows(),
+                 "Scaling vector size must match number of constraint rows.");
+    int n2 = scaling.size();
+    Eigen::Map<const Eigen::MatrixXd> W_mat(scaling.data(), psd_n_, psd_n_);
+    Eigen::LLT<Eigen::MatrixXd> llt(W_mat);
+    Eigen::MatrixXd L = llt.matrixL();
+    workspace_.W = Eigen::Map<Eigen::VectorXd>(L.data(), n2);
+    psd_gram_.update_weights();
+  }
+
  private:
   PSDGramEvaluator psd_gram_;
   int psd_n_ = 0;

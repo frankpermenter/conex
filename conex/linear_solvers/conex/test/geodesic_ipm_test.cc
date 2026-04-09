@@ -550,8 +550,7 @@ TEST(GeodesicSDP, HybridCenteringLoop) {
 
   // Verify convergence: one more direction computation (no step).
   {
-    RowSpace weights = cwiseProduct(W, W);
-    kkt->SetWeights(weights);
+    kkt->SetScaling(W);
     kkt->AssembleAndFactor();
     RowSpace d = kkt->MakeRowSpace();
     RowSpace delta = kkt->MakeRowSpace();

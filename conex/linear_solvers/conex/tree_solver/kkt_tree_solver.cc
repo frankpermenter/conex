@@ -1098,4 +1098,10 @@ void T::SetWeights(const RowSpace& w) {
   }
 }
 
+void T::SetScaling(const RowSpace& w) {
+  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
+    linear_sub_assemblers_[ci]->SetScaling(w.segment(ci));
+  }
+}
+
 }  // namespace conex

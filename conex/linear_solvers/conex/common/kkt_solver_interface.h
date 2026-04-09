@@ -118,6 +118,10 @@ class KKTSolverBase {
   virtual void AccumulateQx(const SolverRHS& x, SolverRHS& rhs) = 0;
   virtual void SetWeights(const RowSpace& w) = 0;
 
+  // Set scaling W directly: Gram = A^T W² A (nonneg) or A^T kron(W,W) A (PSD).
+  // Unlike SetWeights (which takes W² and applies sqrt), this takes W.
+  virtual void SetScaling(const RowSpace& w) = 0;
+
   // Get the affine terms (b vectors) for all linear constraints,
   // concatenated in RowSpace order.
   virtual RowSpace GetAffineTerm() = 0;
