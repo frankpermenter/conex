@@ -217,6 +217,53 @@ void RunSDPComparison(int n, int p, int seed) {
   }
 }
 
+// Build:  min c^T x  s.t. Ax + b in SOC
+//
+//   A: (1+vec_dim) x p random.
+//   b: (1, 0, ..., 0) = SOC identity.
+//   c: A_0 + perturbation (nontrivial LP centered near W=I).
+void RunSOCPComparison(int vec_dim, int p, int seed) {
+  srand(seed);
+  int n_soc = 1 + vec_dim;
+  printf("SOCP: dim=%d (1+%d), p=%d variables (seed=%d)\n\n",
+         n_soc, vec_dim, p, seed);
+
+  MatrixXd A_dense = MatrixXd::Random(n_soc, p);
+  VectorXd b = VectorXd::Zero(n_soc);
+  b(0) = 1.0;
+
+  // Cost: A_0 so that W=I at k=1 is centered with x=0.
+  VectorXd c = A_dense.row(0).transpose();
+
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  problem.AddSOCConstraint(toSparse(A_dense), b, vars);
+  problem.SetLinearCost(c);
+
+  auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(c);
+
+  // ===== Geodesic IPM (0 centering steps) =====
+  {
+    RowSpace W = kkt->MakeRowSpace();
+    setOnes(W);
+    auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
+    PrintResult("SOCP Geodesic IPM (0 centering)", result);
+  }
+
+  // ===== Geodesic IPM (Hybrid) =====
+  {
+    RowSpace W = kkt->MakeRowSpace();
+    setOnes(W);
+    auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W, 50, 1e-8);
+    PrintResult("SOCP Geodesic IPM (Hybrid)", result, true);
+  }
+}
+
 }  // namespace
 }  // namespace conex
 
@@ -234,5 +281,8 @@ int main(int argc, char* argv[]) {
 
   printf("\n%s\n\n", std::string(72, '=').c_str());
   conex::RunSDPComparison(sdp_n, sdp_p, seed);
+
+  printf("\n%s\n\n", std::string(72, '=').c_str());
+  conex::RunSOCPComparison(5, 4, seed);
   return 0;
 }
