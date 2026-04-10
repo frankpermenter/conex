@@ -36,36 +36,58 @@ void RunCentering(Problem& problem, const std::string& name, int max_iters) {
   printf("  Build: %.0f ms\n",
          std::chrono::duration<double, std::milli>(t1 - t0).count());
 
-  auto* kkt = solver.solver();
+  // Rebuild problem with b = identity to place I on the central path.
+  {
+    Problem centered;
+    for (int i = 0; i < problem.num_constraints(); ++i) {
+      std::visit([&](const auto& data) {
+        using T = std::decay_t<decltype(data)>;
+        if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+          Eigen::VectorXd b_id = Eigen::VectorXd::Ones(data.A.rows());
+          centered.AddLinearConstraint(data.A, b_id, data.vars);
+        } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+          int n = data.B.rows();
+          Eigen::SparseMatrix<double> I_n =
+              Eigen::MatrixXd::Identity(n, n).sparseView();
+          centered.AddPSDConstraint(data.A_list, I_n, data.vars, data.use_chordal);
+        } else if constexpr (std::is_same_v<T, Problem::SOCConstraintData>) {
+          Eigen::VectorXd b_soc = Eigen::VectorXd::Zero(data.A.rows());
+          b_soc(0) = 1.0;
+          centered.AddSOCConstraint(data.A, b_soc, data.vars);
+        }
+      }, problem.constraint(i));
+    }
+    solver = Solver::Build(centered);
+  }
 
+  auto* kkt = solver.solver();
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 
-  // Replace cost with A^T(-b + 2I) so that W=I is on the central path at k=1.
-  // At W=I, k=1: RHS = -c + A^T(-P(I)b + 2I) = -c + A^T(-b + 2I).
-  // So c = A^T(-b + 2I) makes RHS = 0, giving d = 0.
+  // Set cost = A^T I so that (W=I, k=1) → d=0.
+  // At W=I, k=1, b=I: v = -P(I)I + 2I = -I + 2I = I.
+  // RHS = -c + A^T I = 0 when c = A^T I. And d = I - (I + Ay) = -Ay = 0.
   kkt->SetScaling(W);
   kkt->AssembleAndFactor();
-  RowSpace b_term = kkt->GetAffineTerm();
-  RowSpace ones = kkt->MakeRowSpace();
-  setOnes(ones);
-  RowSpace v_central = addScaled(b_term, ones, -1.0, 2.0);  // -b + 2I
+  RowSpace identity = kkt->MakeRowSpace();
+  setOnes(identity);
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs.SetZero();
-  kkt->AccumulateAtranspose(v_central, cost_rhs);
+  kkt->AccumulateAtranspose(identity, cost_rhs);
 
-  // Sanity: at W=I, k=1, d should be 0.
+  // Sanity: d at W=I, k=1 should be exactly 0.
   {
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace b = kkt->GetAffineTerm();
     auto y = kkt->MakeSolverRHS();
     y = cost_rhs;
     y *= -1;
-    RowSpace v = addScaled(quadraticRepresentation(W, b_term), W, -1, 2.0);
+    RowSpace v = addScaled(quadraticRepresentation(W, b), W, -1, 2.0);
     kkt->AccumulateAtranspose(v, y);
     kkt->SolveSolverRHS(y);
     RowSpace row = kkt->MakeRowSpace();
     kkt->MultiplyA(y, row);
-    RowSpace d_check = addScaled(b_term, row, -1, -1.0);
+    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace d_check = addScaled(b, row, -1, -1.0);
     d_check = quadraticRepresentation(sqrtW, d_check);
     RowSpace ones = kkt->MakeRowSpace();
     setOnes(ones);
