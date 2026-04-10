@@ -81,6 +81,8 @@ target_link_libraries(kkt_solver_factory PUBLIC tree_solver clique_ordering cons
 # --- Sparse linear constraint ---
 add_library(sparse_linear_constraint
   conex/common/mps_reader.cc
+  conex/common/sdpa_reader.cc
+  conex/common/cbf_reader.cc
   conex/common/sparse_linear_constraint.cc
   conex/common/sparse_psd_constraint.cc
   conex/common/sparse_quadratic_term.cc
