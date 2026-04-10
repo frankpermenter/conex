@@ -349,6 +349,16 @@ target_link_libraries(benchmark_solver
   structural_rank
 )
 target_compile_options(benchmark_solver PRIVATE -O2)
+
+add_executable(benchmark_center
+  conex/test/benchmark_center.cc
+)
+target_link_libraries(benchmark_center
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+target_compile_options(benchmark_center PRIVATE -O2)
 gtest_discover_tests(alternating_projections_test)
 
 add_executable(solve_lp_test
