@@ -4,6 +4,7 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace conex {
 namespace EuclideanJordanAlgebra {
@@ -71,6 +72,24 @@ class ConeOps {
 
   // Project onto the cone: out = argmin ||out - a||  s.t. out in K.
   virtual void project(double* out, const double* a, int size) const = 0;
+
+  // Geodesic update from raw slack (sqrt-free).
+  //   W_new = W^{1/2} exp(α·(I + P(W^{1/2})(S))) W^{1/2}
+  //         = exp(α·(I + W·S)) · W   (for PSD: avoids eigendecomposition of W)
+  //
+  // Default: falls back to computing d = I + P(W^{1/2})(S), then geodesicUpdate.
+  // PSD override: computes exp(α(I + WS))·W via Padé without W^{1/2}.
+  virtual void geodesicUpdateFromSlack(double* W_out, const double* W,
+                                       double alpha, const double* slack,
+                                       int size) const {
+    // Default: d = I + P(sqrt(W))(S), then standard geodesicUpdate.
+    std::vector<double> sqW(size), d(size), ones(size);
+    sqrt(sqW.data(), W, size);
+    quadraticRepresentation(d.data(), sqW.data(), slack, size);
+    setIdentity(ones.data(), size);
+    for (int i = 0; i < size; ++i) d[i] += ones[i];
+    geodesicUpdate(W_out, W, alpha, d.data(), size);
+  }
 };
 
 // Nonneg orthant (linear constraints): all operations are element-wise.
@@ -154,6 +173,14 @@ class NonnegOrthantOps : public ConeOps {
 
   void project(double* out, const double* a, int size) const override {
     for (int i = 0; i < size; ++i) out[i] = std::max(a[i], 0.0);
+  }
+
+  // Nonneg: d_i = 1 + w_i * s_i, so w_new = w * exp(α(1 + w*s)).
+  void geodesicUpdateFromSlack(double* W_out, const double* W,
+                               double alpha, const double* slack,
+                               int size) const override {
+    for (int i = 0; i < size; ++i)
+      W_out[i] = W[i] * std::exp(alpha * (1.0 + W[i] * slack[i]));
   }
 };
 

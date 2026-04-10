@@ -46,7 +46,8 @@ OptimalityReport CheckOptimality(
 static void ComputeDirectNewtonStep(
     KKTSolverBase& kkt, const SolverRHS& cost_rhs,
     const RowSpace& W, double k,
-    RowSpace& d_out, Eigen::VectorXd& y_out);
+    RowSpace& d_out, Eigen::VectorXd& y_out,
+    RowSpace* slack_out = nullptr);
 
 GeodesicResult GeodesicCenter(
     KKTSolverBase& kkt,
@@ -64,8 +65,9 @@ GeodesicResult GeodesicCenter(
 
   for (int iter = 0; iter < max_iterations; ++iter) {
     RowSpace d = kkt.MakeRowSpace();
+    RowSpace slack = kkt.MakeRowSpace();
     Eigen::VectorXd y_direct;
-    ComputeDirectNewtonStep(kkt, cost_rhs, W, k, d, y_direct);
+    ComputeDirectNewtonStep(kkt, cost_rhs, W, k, d, y_direct, &slack);
 
     double d_inf = normInf(d);
     double d_sq = squaredNorm(d);
@@ -88,7 +90,7 @@ GeodesicResult GeodesicCenter(
 
     if (d_inf < tolerance) break;
 
-    geodesicUpdate(W, alpha, d);
+    geodesicUpdateFromSlack(W, alpha, slack);
   }
 
   return result;
@@ -102,7 +104,8 @@ static void ComputeDirectNewtonStep(
     const RowSpace& W,
     double k,
     RowSpace& d_out,
-    Eigen::VectorXd& y_out) {
+    Eigen::VectorXd& y_out,
+    RowSpace* slack_out) {
   RowSpace b = kkt.GetAffineTerm();
 
   kkt.SetScaling(W);
@@ -120,9 +123,11 @@ static void ComputeDirectNewtonStep(
 
   RowSpace row = kkt.MakeRowSpace();
   kkt.MultiplyA(y, row);
-  d_out = addScaled(b, row, -k, -1.0);
-  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-  d_out = quadraticRepresentation(sqrtW, d_out);
+  // Raw slack: S = -k*b - A*y.
+  RowSpace slack = addScaled(b, row, -k, -1.0);
+  if (slack_out) *slack_out = slack;
+
+  d_out = quadraticRepresentation(EuclideanJordanAlgebra::sqrt(W), slack);
   RowSpace ones = kkt.MakeRowSpace();
   setOnes(ones);
   d_out += ones;

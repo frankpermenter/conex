@@ -69,6 +69,15 @@ inline void geodesicUpdate(Variable& W, double alpha, const Variable& d) {
                              alpha, d.segment_ptr(i), W.sizes[i]);
 }
 
+// Sqrt-free geodesic update from raw slack S = -(k*b + A*y).
+// PSD: W_new = exp(α(I + WS))·W (no eigendecomposition of W).
+inline void geodesicUpdateFromSlack(Variable& W, double alpha,
+                                    const Variable& slack) {
+  for (int i = 0; i < W.num_constraints(); ++i)
+    W.ops[i]->geodesicUpdateFromSlack(W.segment_ptr(i), W.segment_ptr(i),
+                                      alpha, slack.segment_ptr(i), W.sizes[i]);
+}
+
 // Update automorphism: T <- T exp(alpha*D/2), polar decompose,
 // update W = P^2 and R = T^T R T.
 inline void updateAutomorphism(Variable& W, Variable& R, double alpha,
@@ -195,6 +204,7 @@ using EuclideanJordanAlgebra::cwiseProduct;
 using EuclideanJordanAlgebra::quadraticRepresentation;
 using EuclideanJordanAlgebra::addScaled;
 using EuclideanJordanAlgebra::geodesicUpdate;
+using EuclideanJordanAlgebra::geodesicUpdateFromSlack;
 using EuclideanJordanAlgebra::updateAutomorphism;
 using EuclideanJordanAlgebra::absEJA;
 using EuclideanJordanAlgebra::minEigenvalue;

@@ -28,6 +28,47 @@ void PSDConeOps::product(double* out, const double* a, const double* b,
   Symmetrize(Out);
 }
 
+// Padé [6/6] (order 13) approximation of expm(M) with scaling and squaring.
+// Based on Higham (2005). Accurate to double precision for ||A|| ≤ 5.4.
+Eigen::MatrixXd ExpmPade(const Eigen::MatrixXd& M) {
+  const int n = M.rows();
+  // Pade coefficients for p=q=6 (order 13).
+  static const double b[] = {
+    64764752532480000.0, 32382376266240000.0, 7771770303897600.0,
+    1187353796428800.0,  129060195264000.0,   10559470521600.0,
+    670442572800.0,      33522128640.0,       1323241920.0,
+    40840800.0,          960960.0,            16380.0,
+    182.0,               1.0
+  };
+
+  // Scaling: find s such that ||M/2^s||_1 ≤ 5.4.
+  double norm1 = M.colwise().template lpNorm<1>().maxCoeff();
+  int s = 0;
+  const double theta13 = 5.4;
+  if (norm1 > theta13) {
+    s = static_cast<int>(std::ceil(std::log2(norm1 / theta13)));
+  }
+  double scale = std::ldexp(1.0, -s);
+  Eigen::MatrixXd A = scale * M;
+
+  Eigen::MatrixXd I = Eigen::MatrixXd::Identity(n, n);
+  Eigen::MatrixXd A2 = A * A;
+  Eigen::MatrixXd A4 = A2 * A2;
+  Eigen::MatrixXd A6 = A2 * A4;
+
+  Eigen::MatrixXd U = A * (A6 * (b[13] * A6 + b[11] * A4 + b[9] * A2) +
+                            b[7] * A6 + b[5] * A4 + b[3] * A2 + b[1] * I);
+  Eigen::MatrixXd V = A6 * (b[12] * A6 + b[10] * A4 + b[8] * A2) +
+                       b[6] * A6 + b[4] * A4 + b[2] * A2 + b[0] * I;
+
+  Eigen::MatrixXd result = (V - U).partialPivLu().solve(V + U);
+
+  for (int i = 0; i < s; ++i) {
+    result = result * result;
+  }
+  return result;
+}
+
 void PSDConeOps::geodesicUpdate(double* out, const double* a, double alpha,
                                 const double* d, int size) const {
   int n = MatrixDim(size);
@@ -36,16 +77,14 @@ void PSDConeOps::geodesicUpdate(double* out, const double* a, double alpha,
   Eigen::Map<Eigen::MatrixXd> Out(out, n, n);
 
   // Geodesic: A^{1/2} expm(alpha * D) A^{1/2}.
-  // Compute A^{1/2} via eigendecomposition of A.
+  // Compute A^{1/2} via eigendecomposition.
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigA(A);
   Eigen::MatrixXd sqrtA = eigA.eigenvectors() *
       eigA.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
       eigA.eigenvectors().transpose();
 
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigD(alpha * D);
-  Eigen::MatrixXd expD = eigD.eigenvectors() *
-      eigD.eigenvalues().array().exp().matrix().asDiagonal() *
-      eigD.eigenvectors().transpose();
+  // Padé [3/3] with scaling-and-squaring for expm(alpha * D).
+  Eigen::MatrixXd expD = ExpmPade(alpha * D);
 
   Out = sqrtA * expD * sqrtA;
   Symmetrize(Out);
@@ -276,6 +315,30 @@ void PSDConeOps::project(double* out, const double* a, int size) const {
   Eigen::VectorXd lambdas = eig.eigenvalues().cwiseMax(0.0);
   Out = eig.eigenvectors() * lambdas.asDiagonal() *
         eig.eigenvectors().transpose();
+  Symmetrize(Out);
+}
+
+// Sqrt-free geodesic update for PSD cone.
+// W_new = W^{1/2} exp(α D) W^{1/2} where D = I + W^{1/2} S W^{1/2}.
+// Rewrite: W_new = exp(α(I + WS)) · W  (avoids eigendecomposition of W).
+// Proof: W^{1/2} exp(W^{1/2} M W^{1/2}) W^{1/2} = exp(WM)·W for any M.
+void PSDConeOps::geodesicUpdateFromSlack(double* W_out, const double* W,
+                                          double alpha, const double* slack,
+                                          int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<const Eigen::MatrixXd> Wm(W, n, n);
+  Eigen::Map<const Eigen::MatrixXd> S(slack, n, n);
+  Eigen::Map<Eigen::MatrixXd> Out(W_out, n, n);
+
+  // WS = W · S.
+  Eigen::MatrixXd WS = Wm * S;
+
+  // Argument to expm: α(I + WS).
+  WS.diagonal().array() += 1.0;
+  WS *= alpha;
+
+  // W_new = expm(α(I + WS)) · W.
+  Out = ExpmPade(WS) * Wm;
   Symmetrize(Out);
 }
 

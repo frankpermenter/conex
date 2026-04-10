@@ -29,6 +29,11 @@ class PSDConeOps : public ConeOps {
   double lineSearchK(const double* d0, const double* d1,
                      int size) const override;
   void project(double* out, const double* a, int size) const override;
+
+  // Sqrt-free geodesic: W_new = exp(α(I + WS)) · W via Padé.
+  void geodesicUpdateFromSlack(double* W_out, const double* W,
+                               double alpha, const double* slack,
+                               int size) const override;
 };
 
 const PSDConeOps& psdConeOps();
