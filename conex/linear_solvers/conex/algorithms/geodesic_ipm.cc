@@ -385,11 +385,25 @@ GeodesicResult SolveGeodesicHybrid(
   RowSpace r = kkt.MakeRowSpace();
   setOnes(r);
 
-  // Initial centering until |d|_inf <= 1.
+  // Initial scaling: decompose at W to find the minimum-norm k,
+  // then set r = sqrt(mu) * identity = (1/k) * identity.
   kkt.SetScaling(W);
   kkt.AssembleAndFactor();
-  int total_fac = 0;//init.total_factorizations;
-  int total_sol = 0;//init.total_solves;
+  {
+    RowSpace d0 = kkt.MakeRowSpace();
+    RowSpace d1 = kkt.MakeRowSpace();
+    ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
+    double d0d1 = dot(d0, d1);
+    double d1sq = squaredNorm(d1);
+    if (d1sq > 1e-30) {
+      double k_init = std::max(1e-6, -d0d1 / d1sq);
+      double sqrt_mu = 1.0 / k_init;
+      r *= sqrt_mu;
+    }
+  }
+
+  int total_fac = 0;
+  int total_sol = 0;
 
   GeodesicResult result{};
   int r_updates = 0;
