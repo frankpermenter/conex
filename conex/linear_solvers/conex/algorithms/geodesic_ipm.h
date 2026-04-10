@@ -154,16 +154,13 @@ struct HybridDirection {
   double min_slack;
 };
 
-// Check optimality conditions given (x, W, r, delta).
-// Computes s = Ax + b, λ = P(W^{1/2})(r + Δ), checks KKT residuals.
+// Check optimality conditions given primal x (as SolverRHS) and dual λ (as RowSpace).
+// Computes s = Ax + b, dual residual A^T λ - Qx - c, complementarity <s, λ>.
 OptimalityReport CheckOptimality(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    const Eigen::VectorXd& x,
-    const RowSpace& W,
-    const RowSpace& r,
-    const RowSpace& delta,
-    double mu);
+    const SolverRHS& x_rhs,
+    const RowSpace& lambda);
 
 // Compute the hybrid Newton direction at (W, r).
 // Assumes the KKT system is already factored with weights W².

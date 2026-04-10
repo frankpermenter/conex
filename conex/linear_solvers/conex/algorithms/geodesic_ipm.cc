@@ -10,26 +10,15 @@ namespace conex {
 OptimalityReport CheckOptimality(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
-    const Eigen::VectorXd& x,
-    const RowSpace& W,
-    const RowSpace& r,
-    const RowSpace& delta,
-    double mu) {
+    const SolverRHS& x_rhs,
+    const RowSpace& lambda) {
   OptimalityReport report;
-  report.mu = mu;
   int n = kkt.number_of_variables();
 
-  // Lambda = P(W^{1/2})(r + delta).
-  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-  RowSpace lambda = quadraticRepresentation(sqrtW, r + delta);
-
   // s = Ax + b.
-  auto x_rhs = kkt.MakeSolverRHS();
-  x_rhs = kkt.MakeBlockVariable(x);
   RowSpace s = kkt.MakeRowSpace();
   kkt.MultiplyA(x_rhs, s);
-  RowSpace b = kkt.GetAffineTerm();
-  s += b;
+  s += kkt.GetAffineTerm();
 
   // Cone membership.
   report.min_slack = minEigenvalue(s);
@@ -47,11 +36,6 @@ OptimalityReport CheckOptimality(
   Eigen::VectorXd dual_res(n);
   dual_rhs.supernodes->GatherInto(dual_res);
   report.dual_residual = dual_res.norm();
-
-  // Primal residual: check s from parameterization matches Ax+b.
-  // s_param = P(W^{-1/2})(r - delta).
-  // For now, s = Ax+b is exact by construction, so just report 0.
-  report.primal_residual = 0;
 
   // Complementarity: <s, λ>.
   report.complementarity = dot(s, lambda);
@@ -301,6 +285,37 @@ GeodesicResult SolveGeodesicLP(
     if (s_dot_x < tolerance) break;
   }
 
+  // Optimality check.
+  // For the LP path: lambda = (1/k) * P(W^{1/2})(e + d) where d is from
+  // the last decomposition.  But after the geodesic step, W changed and d
+  // is stale.  Recompute at the current W.
+  if (result.x.size() > 0) {
+    double k_final = 1.0 / std::sqrt(result.mu);
+    RowSpace d_final = kkt.MakeRowSpace();
+    Eigen::VectorXd y_final;
+    ComputeDirectNewtonStep(kkt, cost_rhs, W, k_final, d_final, y_final);
+
+    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace ones = kkt.MakeRowSpace();
+    setOnes(ones);
+    RowSpace lambda = quadraticRepresentation(sqrtW, ones + d_final);
+    lambda *= (1.0 / k_final);
+
+    auto x_rhs = kkt.MakeSolverRHS();
+    x_rhs = kkt.MakeBlockVariable(result.x);
+    result.optimality = CheckOptimality(kkt, cost_rhs, x_rhs, lambda);
+    result.optimality.mu = result.mu;
+
+    if (verbose) {
+      printf("  Optimality: dual_res=%.2e, compl=%.2e, "
+             "min_s=%.2e, min_lam=%.2e\n",
+             result.optimality.dual_residual,
+             result.optimality.complementarity,
+             result.optimality.min_slack,
+             result.optimality.min_dual);
+    }
+  }
+
   return result;
 }
 
@@ -446,8 +461,14 @@ GeodesicResult SolveGeodesicHybrid(
   }
 
   // Optimality check.
-  result.optimality = CheckOptimality(
-      kkt, cost_rhs, result.x, W, r, last_delta, result.mu);
+  {
+    auto x_rhs = kkt.MakeSolverRHS();
+    x_rhs = kkt.MakeBlockVariable(result.x);
+    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace lambda = quadraticRepresentation(sqrtW, r + last_delta);
+    result.optimality = CheckOptimality(kkt, cost_rhs, x_rhs, lambda);
+    result.optimality.mu = result.mu;
+  }
 
   if (verbose) {
     printf("  Optimality: dual_res=%.2e, compl=%.2e, "
