@@ -66,8 +66,10 @@ class SOCGramEvaluator : public GramEvaluator {
   }
 
   // Precompute M_perm = A0*A0^T - A1^T*A1 after permutation.
+  // Also set the trace inner product scale (2 for SOC).
   void set_order(const std::vector<int>& perm) override {
     GramEvaluator::set_order(perm);
+    set_atranspose_scale(2.0);
     if (!m_computed_) {
       const int n = A_perm_.rows();
       const int p = A_perm_.cols();

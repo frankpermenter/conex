@@ -61,14 +61,19 @@ class GramEvaluator : public BlockAssembler {
   }
 
 
+  // Set scale factor for the trace inner product (1 for nonneg/PSD, 2 for SOC).
+  void set_atranspose_scale(double s) { atranspose_scale_ = s; }
+
   // Accumulate A_perm_^T * V into supernode blocks and separator scratch.
   // V is (m x batch).  Writes directly to parent destinations.
+  // Scaled by atranspose_scale_ (2 for SOC trace inner product).
   template <typename SepAccessor>
   void ContributeAtranspose(
       const Eigen::Ref<const Eigen::MatrixXd>& V,
       BlockPartition& supernodes, SepAccessor& sep, int nc) const {
     for (const auto& vbc : vector_blocks_) {
-      auto atv = A_perm_.middleCols(vbc.q_start, vbc.length).transpose() * V;
+      auto atv = atranspose_scale_ *
+          A_perm_.middleCols(vbc.q_start, vbc.length).transpose() * V;
       if (vbc.dest_is_sn) {
         auto blk = supernodes.block(vbc.dest_block);
         CONEX_DEMAND(vbc.dest_offset + vbc.length <= blk.rows(),
@@ -151,6 +156,7 @@ class GramEvaluator : public BlockAssembler {
   bool weights_dirty_ = true;
 
   std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
+  double atranspose_scale_ = 1.0;
 
  private:
   int sn_count_ = 0;
