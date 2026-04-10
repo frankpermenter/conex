@@ -327,6 +327,15 @@ target_link_libraries(soc_decomp_test
   Eigen3::Eigen
 )
 gtest_discover_tests(soc_decomp_test)
+
+add_executable(soc_cone_ops_test
+  conex/test/soc_cone_ops_test.cc
+)
+target_link_libraries(soc_cone_ops_test
+  constraints
+  GTest::gtest_main
+)
+gtest_discover_tests(soc_cone_ops_test)
 gtest_discover_tests(alternating_projections_test)
 
 add_executable(solve_lp_test
