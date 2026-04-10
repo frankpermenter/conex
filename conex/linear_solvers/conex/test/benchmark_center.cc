@@ -181,15 +181,17 @@ void RunCentering(Problem& problem, const std::string& name, int max_iters) {
   printf("    ||d(k_min)||_inf = %.4e, ||d(k_min)||^2 = %.4e\n\n",
          d_inf_at_kmin, d_sq_at_kmin);
 
-  // Run centering at k_min.
-  printf("  Centering at k=%.4e (mu=%.4e):\n", k_min, mu_min);
+  // Center at mu=0.5 (k = sqrt(2)) starting from W=I (which is centered at k=1).
+  double k_target = std::sqrt(2.0);  // mu = 1/k^2 = 0.5
+  printf("  Centering at k=%.4f (mu=0.5) from W=I (centered at k=1):\n",
+         k_target);
   printf("  %3s  %12s  %12s  %12s  %8s\n",
          "it", "d_inf", "d_sq", "s_dot_x", "alpha");
   printf("  %s\n", std::string(52, '-').c_str());
 
-  setOnes(W);  // Reset W to identity.
+  setOnes(W);  // Reset W to identity (centered at k=1).
   auto t2 = std::chrono::high_resolution_clock::now();
-  auto result = GeodesicCenter(*kkt, cost_rhs, W, k_min,
+  auto result = GeodesicCenter(*kkt, cost_rhs, W, k_target,
                                 max_iters, 1e-10, true);
   auto t3 = std::chrono::high_resolution_clock::now();
 
