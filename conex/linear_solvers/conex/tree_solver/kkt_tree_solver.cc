@@ -1029,8 +1029,8 @@ RowSpace T::MakeRowSpace(int cols) {
   for (auto* lc : linear_sub_assemblers_) {
     rs.offsets.push_back(offset);
     rs.sizes.push_back(lc->num_rows());
-    rs.ops.push_back(lc->cone_ops_
-        ? lc->cone_ops_ : &EuclideanJordanAlgebra::nonnegOrthantOps());
+    auto* ops = lc->cone_ops();
+    rs.ops.push_back(ops ? ops : &EuclideanJordanAlgebra::nonnegOrthantOps());
     offset += lc->num_rows();
   }
   rs.setZero(offset, cols);

@@ -55,7 +55,7 @@ class TreeSolverBuilder {
 
   // Add a PSD constraint (sparse A_k, sparse B) to a clique.
   void AddPSDConstraint(int clique,
-                        std::unique_ptr<LinearConstraint> constraint,
+                        std::unique_ptr<ConeConstraint> constraint,
                         const std::vector<int>& vars);
 
   // Add an indefinite equality constraint block to a clique.
@@ -120,7 +120,7 @@ class TreeSolverBuilder {
 
   // Owned polymorphic constraints (PSDConstraint etc.) that can't go in
   // std::list<LinearConstraint> without slicing.
-  std::vector<std::unique_ptr<LinearConstraint>> owned_constraints_;
+  std::vector<std::unique_ptr<ConeConstraint>> owned_constraints_;
 
   // Arena memory for LinearConstraint workspaces (allocated in Build).
   std::vector<double> workspace_arena_;

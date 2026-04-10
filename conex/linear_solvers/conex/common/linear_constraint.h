@@ -3,16 +3,12 @@
 
 #include <Eigen/Dense>
 
-#include "conex/common/arena_allocatable.h"
 #include "conex/common/blas_wrapper.h"
-#include "conex/common/block_partition.h"
+#include "conex/common/cone_constraint.h"
 #include "conex/common/error_checking_macros.h"
-#include "conex/common/supernodal_assembler_base.h"
 #include "conex/common/linear_workspace.h"
-#include "conex/common/tree_rhs.h"
 
 namespace conex {
-namespace EuclideanJordanAlgebra { class ConeOps; }
 
 class GramEvaluator : public BlockAssembler {
  public:
@@ -166,61 +162,56 @@ class GramEvaluator : public BlockAssembler {
   int sn_count_ = 0;
 };
 
-class LinearConstraint : public SupernodalAssemblerBase, public ArenaAllocatable {
+class LinearConstraint : public ConeConstraint {
  public:
   LinearConstraint(const Eigen::MatrixXd& constraint_matrix,
                    const Eigen::MatrixXd& constraint_affine);
 
   int number_of_variables() const override { return constraint_matrix_.cols(); }
 
-  // Cone operations for this constraint's RowSpace segment.
-  // Default (nullptr) means nonneg orthant.
-  const EuclideanJordanAlgebra::ConeOps* cone_ops_ = nullptr;
   BlockAssembler* GetBlockAssembler() override {
     gram_evaluator_.bind(&workspace_, &constraint_matrix_);
     return &gram_evaluator_;
   }
-  Eigen::MatrixXd affine_term() const { return constraint_affine_; }
 
-  // Set per-row weights and update the Gram evaluator.
-  // weights must have size == number of rows (constraint_matrix_.rows()).
-  // Stores sqrt(weights) so the Gram evaluator computes A^T diag(W²) A.
-  // Subclasses override for different weight structures (e.g. PSD).
-  virtual void SetWeights(const Eigen::VectorXd& weights) {
+  Eigen::MatrixXd affine_term() const override { return constraint_affine_; }
+  int num_rows() const override { return constraint_matrix_.rows(); }
+  const EuclideanJordanAlgebra::ConeOps* cone_ops() const override {
+    return cone_ops_;
+  }
+
+  void SetWeights(const Eigen::VectorXd& weights) override {
     CONEX_DEMAND(weights.size() == constraint_matrix_.rows(),
                  "Weight vector size must match number of constraint rows.");
     workspace_.W = weights.array().sqrt().matrix();
     gram_evaluator_.update_weights();
   }
 
-  // Set scaling W directly (no sqrt).  Gram = A^T diag(W²) A.
-  // For nonneg: pass W, stored directly.
-  // Subclasses override for different structures (e.g. PSD).
-  virtual void SetScaling(const Eigen::VectorXd& scaling) {
+  void SetScaling(const Eigen::VectorXd& scaling) override {
     CONEX_DEMAND(scaling.size() == constraint_matrix_.rows(),
                  "Scaling vector size must match number of constraint rows.");
     workspace_.W = scaling;
     gram_evaluator_.update_weights();
   }
 
-  int num_rows() const { return constraint_matrix_.rows(); }
-
-  // Access the GramEvaluator for vector block operations.
-  virtual const GramEvaluator& gram() const { return gram_evaluator_; }
-
-  // A * x: compute the constraint-space product from supernode/separator data.
-  virtual Eigen::MatrixXd MultiplyA(
+  Eigen::MatrixXd MultiplyA(
       const BlockPartition& supernodes, const SeparatorScratch& sep,
-      int nc) const {
+      int nc) const override {
     return gram().MultiplyA(supernodes, sep, nc);
   }
 
-  // A^T * v: accumulate into supernode/separator blocks.
-  virtual void ContributeAtranspose(
+  void ContributeAtranspose(
       const Eigen::Ref<const Eigen::MatrixXd>& V,
-      BlockPartition& supernodes, SeparatorScratch& sep, int nc) const {
+      BlockPartition& supernodes, SeparatorScratch& sep,
+      int nc) const override {
     gram().ContributeAtranspose(V, supernodes, sep, nc);
   }
+
+  // Access the GramEvaluator (used by default MultiplyA/ContributeAtranspose).
+  virtual const GramEvaluator& gram() const { return gram_evaluator_; }
+
+  // Public cone_ops pointer — set by constraint assemblers.
+  const EuclideanJordanAlgebra::ConeOps* cone_ops_ = nullptr;
 
   // ArenaAllocatable interface.
   size_t RequiredArenaBytes() const override {

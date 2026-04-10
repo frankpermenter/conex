@@ -18,8 +18,9 @@
 #include <cblas.h>
 
 #include "conex/common/block_partition.h"
+#include "conex/common/cone_constraint.h"
 #include "conex/common/error_checking_macros.h"
-#include "conex/common/linear_constraint.h"
+#include "conex/common/linear_workspace.h"
 #include "conex/common/psd_cone_ops.h"
 
 namespace conex {
@@ -180,23 +181,19 @@ class PSDBlockAssembler : public GramEvaluator {
   }
 };
 
-// PSD constraint that inherits from LinearConstraint for tree solver
-// compatibility, but stores sparse A_k and overrides all dense operations.
-class PSDConstraint : public LinearConstraint {
+// PSD constraint: stores sparse A_k, owns its own workspace.
+// Inherits from ConeConstraint — no LinearConstraint baggage.
+class PSDConstraint : public ConeConstraint {
  public:
   PSDConstraint(int n,
                 const std::vector<Eigen::SparseMatrix<double>>& A_list,
                 const Eigen::SparseMatrix<double>& B)
-      : LinearConstraint(Eigen::MatrixXd(n * n, 0),
-                         Eigen::VectorXd::Zero(n * n)),
-        psd_n_(n), A_list_(A_list) {
-    cone_ops_ = &EuclideanJordanAlgebra::psdConeOps();
-
-    // Vectorize B into affine term (stored in base class constraint_affine_).
-    constraint_affine_.resize(n * n, 1);
+      : psd_n_(n), A_list_(A_list), workspace_(n * n, 0) {
+    // Vectorize B into affine term.
+    b_vec_.resize(n * n);
     for (int j = 0; j < n; ++j)
       for (int i = 0; i < n; ++i)
-        constraint_affine_(j * n + i, 0) = B.coeff(i, j);
+        b_vec_(j * n + i) = B.coeff(i, j);
 
     psd_assembler_.set_psd_dim(n);
     psd_assembler_.bind_matrices(&A_list_, static_cast<int>(A_list_.size()));
@@ -207,15 +204,17 @@ class PSDConstraint : public LinearConstraint {
   }
 
   BlockAssembler* GetBlockAssembler() override {
-    psd_assembler_.bind(&workspace_, &constraint_matrix_);
+    // bind ws_ so update_weights can read workspace_.W.
+    psd_assembler_.bind(&workspace_, nullptr);
     return &psd_assembler_;
   }
 
-  const GramEvaluator& gram() const override { return psd_assembler_; }
+  Eigen::MatrixXd affine_term() const override { return b_vec_; }
+  int num_rows() const override { return psd_n_ * psd_n_; }
+  const EuclideanJordanAlgebra::ConeOps* cone_ops() const override {
+    return &EuclideanJordanAlgebra::psdConeOps();
+  }
 
-  int num_rows() const { return psd_n_ * psd_n_; }
-
-  // Virtual overrides — sparse, no A_perm_.
   Eigen::MatrixXd MultiplyA(
       const BlockPartition& supernodes, const SeparatorScratch& sep,
       int nc) const override {
@@ -230,15 +229,11 @@ class PSDConstraint : public LinearConstraint {
   }
 
   void SetScaling(const Eigen::VectorXd& scaling) override {
-    CONEX_DEMAND(scaling.size() == psd_n_ * psd_n_,
-                 "Scaling size must match n².");
     workspace_.W = scaling;
     psd_assembler_.update_weights();
   }
 
   void SetWeights(const Eigen::VectorXd& weights) override {
-    CONEX_DEMAND(weights.size() == psd_n_ * psd_n_,
-                 "Weights size must match n².");
     Eigen::Map<const Eigen::MatrixXd> W2(weights.data(), psd_n_, psd_n_);
     Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(W2);
     Eigen::MatrixXd W_mat = eig.eigenvectors() *
@@ -248,6 +243,7 @@ class PSDConstraint : public LinearConstraint {
     psd_assembler_.update_weights();
   }
 
+  // Arena: only W (n² doubles).
   size_t RequiredArenaBytes() const override {
     return get_size_aligned(psd_n_ * psd_n_) * sizeof(double);
   }
@@ -264,6 +260,8 @@ class PSDConstraint : public LinearConstraint {
  private:
   int psd_n_;
   std::vector<Eigen::SparseMatrix<double>> A_list_;
+  Eigen::VectorXd b_vec_;
+  WorkspaceLinear workspace_;
   PSDBlockAssembler psd_assembler_;
 };
 

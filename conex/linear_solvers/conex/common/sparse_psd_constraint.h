@@ -39,7 +39,7 @@ class SparsePSDConstraintAssembler : public CliqueProvider {
       const std::vector<std::vector<int>>& maximal_cliques) override;
 
   // Access decomposed constraints (available after Decompose()).
-  const std::vector<std::unique_ptr<LinearConstraint>>& constraints() const {
+  const std::vector<std::unique_ptr<ConeConstraint>>& constraints() const {
     return owned_constraints_;
   }
 
@@ -57,7 +57,7 @@ class SparsePSDConstraintAssembler : public CliqueProvider {
   std::vector<MatrixClique> matrix_cliques_;
 
   // Owned storage for decomposed constraints.
-  std::vector<std::unique_ptr<LinearConstraint>> owned_constraints_;
+  std::vector<std::unique_ptr<ConeConstraint>> owned_constraints_;
   std::list<Eigen::VectorXd> owned_workspace_memory_;
 };
 

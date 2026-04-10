@@ -58,7 +58,7 @@ void TreeSolverBuilder::AddLinearConstraint(
 }
 
 void TreeSolverBuilder::AddPSDConstraint(
-    int clique, std::unique_ptr<LinearConstraint> constraint,
+    int clique, std::unique_ptr<ConeConstraint> constraint,
     const std::vector<int>& vars) {
   CONEX_DEMAND(clique >= 0 && clique < static_cast<int>(cliques_.size()),
                "Invalid clique id.");
