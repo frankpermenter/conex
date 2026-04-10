@@ -316,6 +316,15 @@ target_link_libraries(soc_gram_test
   GTest::gtest_main
 )
 gtest_discover_tests(soc_gram_test)
+
+add_executable(soc_decomp_test
+  conex/test/soc_decomp_test.cc
+)
+target_link_libraries(soc_decomp_test
+  GTest::gtest_main
+  Eigen3::Eigen
+)
+gtest_discover_tests(soc_decomp_test)
 gtest_discover_tests(alternating_projections_test)
 
 add_executable(solve_lp_test
