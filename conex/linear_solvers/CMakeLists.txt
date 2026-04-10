@@ -80,6 +80,7 @@ target_link_libraries(kkt_solver_factory PUBLIC tree_solver clique_ordering cons
 
 # --- Sparse linear constraint ---
 add_library(sparse_linear_constraint
+  conex/common/rescale.cc
   conex/common/mps_reader.cc
   conex/common/sdpa_reader.cc
   conex/common/cbf_reader.cc
@@ -382,3 +383,12 @@ target_link_libraries(problem_solver_test
   GTest::gtest_main
 )
 gtest_discover_tests(problem_solver_test)
+
+add_executable(rescale_test
+  conex/test/rescale_test.cc
+)
+target_link_libraries(rescale_test
+  sparse_linear_constraint
+  GTest::gtest_main
+)
+gtest_discover_tests(rescale_test)

@@ -314,6 +314,12 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   // Number of subsystems (blocks in the partition).
   int num_subsystems() const { return static_cast<int>(subsystems_.size()); }
 
+  // Clique size = supernode rows + separator rows for subsystem k.
+  int clique_size(int k) const {
+    return static_cast<int>(subsystems_[k]->supernodes().size() +
+                            subsystems_[k]->separators().size());
+  }
+
   // Access the elimination permutation.
   const Eigen::VectorXi& perm() const { return cached_perm_; }
   const Eigen::VectorXi& perm_inv() const { return cached_perm_inv_; }

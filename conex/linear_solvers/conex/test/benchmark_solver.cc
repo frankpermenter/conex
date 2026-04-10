@@ -20,6 +20,7 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/mps_reader.h"
 #include "conex/common/problem.h"
+#include "conex/common/rescale.h"
 #include "conex/common/sdpa_reader.h"
 #include "conex/common/solver.h"
 
@@ -200,31 +201,66 @@ int main(int argc, char* argv[]) {
     std::string filename = arg1;
     std::string ext = filename.substr(filename.find_last_of('.') + 1);
 
+    // Parse optional rescaling flag from remaining args.
+    bool do_rescale = false;
+    conex::ColumnScaling strategy = conex::ColumnScaling::Ruiz;
+    for (int a = 2; a < argc; ++a) {
+      std::string arg = argv[a];
+      if (arg == "--rescale" || arg == "--ruiz") {
+        do_rescale = true; strategy = conex::ColumnScaling::Ruiz;
+      } else if (arg == "--l2") {
+        do_rescale = true; strategy = conex::ColumnScaling::L2Norm;
+      } else if (arg == "--maxabs") {
+        do_rescale = true; strategy = conex::ColumnScaling::MaxAbsValue;
+      }
+    }
+
     try {
+      conex::Problem problem;
+      std::string name;
       if (ext == "mps") {
-        auto [problem, info] = conex::ReadMPS(filename);
-        char name[256];
-        snprintf(name, sizeof(name), "MPS: %s (%d vars, %d LE, %d GE, %d EQ)",
+        auto [p, info] = conex::ReadMPS(filename);
+        problem = std::move(p);
+        char buf[256];
+        snprintf(buf, sizeof(buf), "MPS: %s (%d vars, %d LE, %d GE, %d EQ)",
                  info.name.c_str(), info.num_variables,
                  info.num_le_rows, info.num_ge_rows, info.num_eq_rows);
-        conex::RunBenchmark(problem, name);
+        name = buf;
       } else if (ext == "dat-s" || ext == "dat" ||
                  filename.find(".dat-s") != std::string::npos) {
-        auto [problem, info] = conex::ReadSDPA(filename);
-        char name[256];
-        snprintf(name, sizeof(name), "SDPA: %d constraints, %d blocks, dim=%d",
+        auto [p, info] = conex::ReadSDPA(filename);
+        problem = std::move(p);
+        char buf[256];
+        snprintf(buf, sizeof(buf), "SDPA: %d constraints, %d blocks, dim=%d",
                  info.num_constraints, info.num_blocks, info.total_matrix_dim);
-        conex::RunBenchmark(problem, name);
+        name = buf;
       } else if (ext == "cbf") {
-        auto [problem, info] = conex::ReadCBF(filename);
-        char name[256];
-        snprintf(name, sizeof(name), "CBF: %d vars, %d cons",
+        auto [p, info] = conex::ReadCBF(filename);
+        problem = std::move(p);
+        char buf[256];
+        snprintf(buf, sizeof(buf), "CBF: %d vars, %d cons",
                  info.num_variables, info.num_constraints);
-        conex::RunBenchmark(problem, name);
+        name = buf;
       } else {
         printf("Unknown file extension: %s\n", ext.c_str());
         return 1;
       }
+
+      if (do_rescale) {
+        const char* sname[] = {"MaxAbsValue", "L2Norm", "Ruiz"};
+        printf("Column scaling: %s\n", sname[static_cast<int>(strategy)]);
+        auto [rescaled, rinfo] = conex::RescaleProblem(problem, strategy);
+        if (rinfo.was_rescaled) {
+          printf("Rescaled (col_scale range: [%.2e, %.2e])\n",
+                 rinfo.col_scale.minCoeff(), rinfo.col_scale.maxCoeff());
+          problem = std::move(rescaled);
+          name += " [rescaled]";
+        } else {
+          printf("Rescaling had no effect.\n");
+        }
+      }
+
+      conex::RunBenchmark(problem, name);
     } catch (const std::exception& e) {
       printf("Error: %s\n", e.what());
       return 1;

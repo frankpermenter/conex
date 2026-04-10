@@ -18,6 +18,7 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/mps_reader.h"
 #include "conex/common/problem.h"
+#include "conex/common/rescale.h"
 #include "conex/common/sdpa_reader.h"
 #include "conex/common/solver.h"
 
@@ -49,7 +50,10 @@ void RunCentering(Problem& problem, const std::string& name, int max_iters) {
           int n = data.B.rows();
           Eigen::SparseMatrix<double> I_n =
               Eigen::MatrixXd::Identity(n, n).sparseView();
-          centered.AddPSDConstraint(data.A_list, I_n, data.vars, data.use_chordal);
+          // Disable chordal: identity B is dense and changes the
+          // aggregate sparsity, which can break clique tree construction.
+          centered.AddPSDConstraint(data.A_list, I_n, data.vars,
+                                    /*use_chordal=*/false);
         } else if constexpr (std::is_same_v<T, Problem::SOCConstraintData>) {
           Eigen::VectorXd b_soc = Eigen::VectorXd::Zero(data.A.rows());
           b_soc(0) = 1.0;
@@ -58,6 +62,16 @@ void RunCentering(Problem& problem, const std::string& name, int max_iters) {
       }, problem.constraint(i));
     }
     solver = Solver::Build(centered);
+  }
+
+  // Print KKT tree stats.
+  {
+    auto* ts = solver.tree_solver();
+    int nc = ts->num_subsystems();
+    int max_cs = 0;
+    for (int k = 0; k < nc; ++k)
+      max_cs = std::max(max_cs, ts->clique_size(k));
+    printf("  KKT tree: %d cliques, max clique size %d\n", nc, max_cs);
   }
 
   auto* kkt = solver.solver();
@@ -207,38 +221,78 @@ void RunCentering(Problem& problem, const std::string& name, int max_iters) {
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
-    printf("Usage: %s <file.dat-s|file.mps|file.cbf> [max_iters]\n", argv[0]);
+    printf("Usage: %s <file> [max_iters] [--rescale|--ruiz|--l2|--maxabs]\n",
+           argv[0]);
     return 1;
   }
 
   std::string filename = argv[1];
   int max_iters = argc > 2 ? std::atoi(argv[2]) : 30;
+
+  // Parse rescaling flag from remaining args.
+  conex::ColumnScaling strategy = conex::ColumnScaling::Ruiz;
+  bool do_rescale = false;
+  for (int a = 3; a < argc; ++a) {
+    std::string arg = argv[a];
+    if (arg == "--rescale" || arg == "--ruiz") {
+      do_rescale = true;
+      strategy = conex::ColumnScaling::Ruiz;
+    } else if (arg == "--l2") {
+      do_rescale = true;
+      strategy = conex::ColumnScaling::L2Norm;
+    } else if (arg == "--maxabs") {
+      do_rescale = true;
+      strategy = conex::ColumnScaling::MaxAbsValue;
+    }
+  }
+
   std::string ext = filename.substr(filename.find_last_of('.') + 1);
 
   try {
+    conex::Problem problem;
+    std::string name;
     if (ext == "mps") {
-      auto [problem, info] = conex::ReadMPS(filename);
-      char name[256];
-      snprintf(name, sizeof(name), "MPS: %s (%d vars)",
+      auto [p, info] = conex::ReadMPS(filename);
+      problem = std::move(p);
+      char buf[256];
+      snprintf(buf, sizeof(buf), "MPS: %s (%d vars)",
                info.name.c_str(), info.num_variables);
-      conex::RunCentering(problem, name, max_iters);
+      name = buf;
     } else if (ext == "dat-s" || ext == "dat" ||
                filename.find(".dat-s") != std::string::npos) {
-      auto [problem, info] = conex::ReadSDPA(filename);
-      char name[256];
-      snprintf(name, sizeof(name), "SDPA: %d vars, %d blocks, dim=%d",
+      auto [p, info] = conex::ReadSDPA(filename);
+      problem = std::move(p);
+      char buf[256];
+      snprintf(buf, sizeof(buf), "SDPA: %d vars, %d blocks, dim=%d",
                info.num_constraints, info.num_blocks, info.total_matrix_dim);
-      conex::RunCentering(problem, name, max_iters);
+      name = buf;
     } else if (ext == "cbf") {
-      auto [problem, info] = conex::ReadCBF(filename);
-      char name[256];
-      snprintf(name, sizeof(name), "CBF: %d vars, %d cons",
+      auto [p, info] = conex::ReadCBF(filename);
+      problem = std::move(p);
+      char buf[256];
+      snprintf(buf, sizeof(buf), "CBF: %d vars, %d cons",
                info.num_variables, info.num_constraints);
-      conex::RunCentering(problem, name, max_iters);
+      name = buf;
     } else {
       printf("Unknown extension: %s\n", ext.c_str());
       return 1;
     }
+
+    if (do_rescale) {
+      const char* sname[] = {"MaxAbsValue", "L2Norm", "Ruiz"};
+      printf("Column scaling: %s\n", sname[static_cast<int>(strategy)]);
+      auto [rescaled, rinfo] = conex::RescaleProblem(problem, strategy);
+      if (rinfo.was_rescaled) {
+        printf("Rescaled problem (col_scale range: [%.2e, %.2e])\n",
+               rinfo.col_scale.minCoeff(), rinfo.col_scale.maxCoeff());
+        problem = std::move(rescaled);
+        name += " [rescaled]";
+      } else {
+        printf("Rescaling had no effect.\n");
+      }
+    }
+
+    conex::RunCentering(problem, name, max_iters);
   } catch (const std::exception& e) {
     printf("Error: %s\n", e.what());
     return 1;

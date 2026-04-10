@@ -33,12 +33,13 @@ struct SeparatorScratch {
       int sr = static_cast<int>(s->separators().size());
       sep_rows.push_back(sr);
       offsets.push_back(off);
-      off += sr;
+      off += sr * cols;  // Each block occupies sr * cols doubles.
     }
-    total_rows = off;
+    total_rows = 0;
+    for (int sr : sep_rows) total_rows += sr;
     reserved_cols = cols;
     constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
-    size_t bytes = static_cast<size_t>(total_rows) * cols * sizeof(double);
+    size_t bytes = static_cast<size_t>(off) * sizeof(double);
     bytes = ((bytes + kAlign - 1) / kAlign) * kAlign;
     if (bytes > 0) {
       void* raw = nullptr;
@@ -54,9 +55,12 @@ struct SeparatorScratch {
 
   void SetZero() const {
     if (arena) {
-      std::memset(arena.get(), 0,
-                  static_cast<size_t>(total_rows) * reserved_cols *
-                      sizeof(double));
+      // Total doubles = last offset + last block's size * cols.
+      size_t total_doubles = 0;
+      if (!sep_rows.empty()) {
+        total_doubles = offsets.back() + sep_rows.back() * reserved_cols;
+      }
+      std::memset(arena.get(), 0, total_doubles * sizeof(double));
     }
   }
 

@@ -23,8 +23,8 @@ struct SolverConfiguration {
   int num_threads = 1;
 
   // Number of RHS columns to pre-allocate solve workspace for.
-  // Set to the expected column count to avoid reallocation on first Solve().
-  int rhs_cols = 1;
+  // Default is 2 (needed by SolveGeodesicLP's 2-column decomposition).
+  int rhs_cols = 2;
 
   // Use quotient AMD: run weighted min-degree on the constraint graph
   // (one node per constraint, edge weight = shared variables) instead of
