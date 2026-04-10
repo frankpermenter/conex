@@ -93,20 +93,18 @@ void RunBenchmark(const Problem& problem, const std::string& name) {
          problem.num_variables(), problem.num_constraints());
 
   auto t0 = std::chrono::high_resolution_clock::now();
-  auto [reduced, expansion] = Preprocess(problem);
-  auto solver = Solver::Build(reduced);
+  auto solver = Solver::Build(problem);
   auto t1 = std::chrono::high_resolution_clock::now();
   double build_ms =
       std::chrono::duration<double, std::milli>(t1 - t0).count();
-  printf("  Build: %.1f ms (reduced to %d vars)\n",
-         build_ms, reduced.num_variables());
+  printf("  Build: %.1f ms\n", build_ms);
 
   auto* kkt = solver.solver();
 
   // Prepare cost RHS.
   auto cost_rhs = kkt->MakeSolverRHS();
-  if (reduced.has_linear_cost()) {
-    cost_rhs = kkt->MakeBlockVariable(reduced.linear_cost());
+  if (problem.has_linear_cost()) {
+    cost_rhs = kkt->MakeBlockVariable(problem.linear_cost());
   } else {
     cost_rhs.SetZero();
   }
