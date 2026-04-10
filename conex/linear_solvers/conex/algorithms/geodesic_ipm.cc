@@ -209,10 +209,8 @@ GeodesicResult SolveGeodesicLP(
     int max_centering_steps,
     double tolerance,
     bool verbose) {
-  double k = 1.0;
+  double k = 0.0;
   const int m = W.total_rows();
-
-  // Initial centering at k = 1.
   //auto result = GeodesicCenter(kkt, cost_rhs, W, k, 100, 1e-12);
   //result.iter_stats.push_back({result.mu, result.d_inf_norm,
   //                             result.d_sq_norm, result.complementarity});
@@ -238,11 +236,21 @@ GeodesicResult SolveGeodesicLP(
     total_fac += 1;
     total_sol += 2;
 
-    // Line search for k.  Accept only if it increases k (except iter 0).
+    // Line search for k.
     double k_new = lineSearchK(d0, d1);
     double k_prev = k;
-    if (outer == 0 || k_new > k) {
+
+    // On first iteration or when line search fails (k_new <= k),
+    // use the minimum-norm k: k* = -<d0,d1> / ||d1||^2.
+    if (k_new > k) {
       k = k_new;
+    } else if (outer == 0 || k_new == 0) {
+      double d0d1 = dot(d0, d1);
+      double d1sq = squaredNorm(d1);
+      if (d1sq > 1e-30) {
+        double k_min_norm = std::max(0.0, -d0d1 / d1sq);
+        if (k_min_norm > k) k = k_min_norm;
+      }
     }
 
     // Take one geodesic step at k using d = d0 + k * d1.
