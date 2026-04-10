@@ -9,6 +9,7 @@
 #include "conex/common/error_checking_macros.h"
 #include "conex/common/supernodal_assembler_base.h"
 #include "conex/common/linear_workspace.h"
+#include "conex/common/tree_rhs.h"
 
 namespace conex {
 namespace EuclideanJordanAlgebra { class ConeOps; }
@@ -204,6 +205,20 @@ class LinearConstraint : public SupernodalAssemblerBase, public ArenaAllocatable
 
   // Access the GramEvaluator for vector block operations.
   virtual const GramEvaluator& gram() const { return gram_evaluator_; }
+
+  // A * x: compute the constraint-space product from supernode/separator data.
+  virtual Eigen::MatrixXd MultiplyA(
+      const BlockPartition& supernodes, const SeparatorScratch& sep,
+      int nc) const {
+    return gram().MultiplyA(supernodes, sep, nc);
+  }
+
+  // A^T * v: accumulate into supernode/separator blocks.
+  virtual void ContributeAtranspose(
+      const Eigen::Ref<const Eigen::MatrixXd>& V,
+      BlockPartition& supernodes, SeparatorScratch& sep, int nc) const {
+    gram().ContributeAtranspose(V, supernodes, sep, nc);
+  }
 
   // ArenaAllocatable interface.
   size_t RequiredArenaBytes() const override {

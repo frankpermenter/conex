@@ -1048,7 +1048,7 @@ void T::MultiplyA(const SolverRHS& x, RowSpace& out) {
   const auto& sep_read = x.has_separators() ? *x.separators : sep_scratch_;
   int nc = x.cols();
   for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
-    auto result = linear_sub_assemblers_[ci]->gram().MultiplyA(
+    auto result = linear_sub_assemblers_[ci]->MultiplyA(
         *x.supernodes, sep_read, nc);
     out.segment(ci) = result.leftCols(out.cols());
   }
@@ -1057,7 +1057,7 @@ void T::MultiplyA(const SolverRHS& x, RowSpace& out) {
 void T::AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) {
   int nc = rhs.cols();
   for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
-    linear_sub_assemblers_[ci]->gram().ContributeAtranspose(
+    linear_sub_assemblers_[ci]->ContributeAtranspose(
         v.segment(ci), *rhs.supernodes, *rhs.separators, nc);
   }
 }
