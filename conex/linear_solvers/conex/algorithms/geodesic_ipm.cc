@@ -111,9 +111,6 @@ static void ComputeDirectNewtonStep(
   kkt.SetScaling(W);
   kkt.AssembleAndFactor();
 
-  // Ax + b >= 0 convention.
-  // RHS = -k*cost + A^T(-k*P(W)b + 2*W).
-  // d = 1 + P(W^{1/2})(-k*b - A*y).
   auto y = kkt.MakeSolverRHS();
   y = cost_rhs;
   y *= -k;
@@ -123,7 +120,6 @@ static void ComputeDirectNewtonStep(
 
   RowSpace row = kkt.MakeRowSpace();
   kkt.MultiplyA(y, row);
-  // Raw slack: S = -k*b - A*y.
   RowSpace slack = addScaled(b, row, -k, -1.0);
   if (slack_out) *slack_out = slack;
 

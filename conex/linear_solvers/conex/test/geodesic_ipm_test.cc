@@ -770,5 +770,140 @@ TEST(GeodesicSOC, Hybrid) {
   EXPECT_LT(std::abs(result.complementarity), 1e-4);
 }
 
+// Two PSD constraints on interleaved variables: vars {1,3,5} and {2,4,6}.
+// Tests that the permutation logic in PSDBlockAssembler correctly maps
+// between global variable indices and internal column ordering.
+TEST(GeodesicSDP, InterleavedVariablesRandom) {
+  srand(123);
+  const int n = 2;
+  const int p = 3;
+
+  auto make_sym = [&](int dim) -> MatrixXd {
+    MatrixXd M = MatrixXd::Random(dim, dim);
+    return MatrixXd(0.5 * (M + M.transpose()));
+  };
+
+  std::vector<Eigen::SparseMatrix<double>> A_list1, A_list2;
+  for (int k = 0; k < p; ++k) {
+    A_list1.push_back(toSparse(make_sym(n)));
+    A_list2.push_back(toSparse(make_sym(n)));
+  }
+  Eigen::SparseMatrix<double> I2 = toSparse(MatrixXd::Identity(n, n));
+
+  std::vector<int> vars1 = {1, 3, 5};
+  std::vector<int> vars2 = {2, 4, 6};
+
+  VectorXd c = VectorXd::Zero(7);
+  for (int k = 0; k < p; ++k) {
+    c(vars1[k]) = MatrixXd(A_list1[k]).trace();
+    c(vars2[k]) = MatrixXd(A_list2[k]).trace();
+  }
+
+  Problem problem;
+  problem.AddPSDConstraint(A_list1, I2, vars1, /*use_chordal=*/false);
+  problem.AddPSDConstraint(A_list2, I2, vars2, /*use_chordal=*/false);
+  problem.SetLinearCost(c);
+
+  auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
+
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(c);
+
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+
+  // At W=I, k=1 with cost = A^T(I), d should be ~0.
+  auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 10, 1e-10, true);
+  printf("Interleaved PSD: %d iters, d_inf=%.2e\n",
+         result.iterations, result.d_inf_norm);
+  EXPECT_LT(result.d_inf_norm, 1e-8);
+
+  // W should stay at I.
+  RowSpace W_ones = kkt->MakeRowSpace();
+  setOnes(W_ones);
+  double w_err = normInf(addScaled(W, W_ones, 1.0, -1.0));
+  printf("  ||W - I||_inf = %.2e\n", w_err);
+  EXPECT_LT(w_err, 1e-6);
+
+  // Now perturb and center at k=sqrt(2) (mu=0.5).
+  setOnes(W);
+  {
+    int n2 = n * n;
+    MatrixXd pert = MatrixXd::Zero(n, n);
+    pert(0, 1) = pert(1, 0) = 0.03;
+    MatrixXd W0 = MatrixXd::Identity(n, n) + pert;
+    // Write to both PSD segments.
+    for (int seg = 0; seg < W.num_constraints(); ++seg) {
+      if (W.sizes[seg] == n2) {
+        for (int i = 0; i < n2; ++i) W.segment_ptr(seg)[i] = W0.data()[i];
+      }
+    }
+  }
+
+  auto result2 = GeodesicCenter(*kkt, cost_rhs, W, std::sqrt(2.0),
+                                 20, 1e-10, true);
+  printf("Interleaved center mu=0.5: %d iters, d_inf=%.2e\n",
+         result2.iterations, result2.d_inf_norm);
+  EXPECT_LT(result2.d_inf_norm, 1e-6);
+  EXPECT_LE(result2.iterations, 10);
+}
+
+// Same as above but with chordal decomposition enabled.
+TEST(GeodesicSDP, InterleavedVariablesChordal) {
+  srand(456);
+  const int n = 3;
+  const int p = 3;
+
+  auto make_sym = [&](int dim) -> MatrixXd {
+    MatrixXd M = MatrixXd::Random(dim, dim);
+    return MatrixXd(0.5 * (M + M.transpose()));
+  };
+
+  std::vector<Eigen::SparseMatrix<double>> A_list1, A_list2;
+  for (int k = 0; k < p; ++k) {
+    A_list1.push_back(toSparse(make_sym(n)));
+    A_list2.push_back(toSparse(make_sym(n)));
+  }
+  Eigen::SparseMatrix<double> In = toSparse(MatrixXd::Identity(n, n));
+
+  std::vector<int> vars1 = {1, 3, 5};
+  std::vector<int> vars2 = {2, 4, 6};
+
+  VectorXd c = VectorXd::Zero(7);
+  for (int k = 0; k < p; ++k) {
+    c(vars1[k]) = MatrixXd(A_list1[k]).trace();
+    c(vars2[k]) = MatrixXd(A_list2[k]).trace();
+  }
+
+  Problem problem;
+  problem.AddPSDConstraint(A_list1, In, vars1, /*use_chordal=*/true);
+  problem.AddPSDConstraint(A_list2, In, vars2, /*use_chordal=*/true);
+  problem.SetLinearCost(c);
+
+  auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
+
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(c);
+
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+
+  auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 10, 1e-10);
+  printf("Interleaved chordal: %d iters, d_inf=%.2e\n",
+         result.iterations, result.d_inf_norm);
+  EXPECT_LT(result.d_inf_norm, 1e-8);
+
+  // Perturb and center at mu=0.5.
+  setOnes(W);
+  auto result2 = GeodesicCenter(*kkt, cost_rhs, W, std::sqrt(2.0),
+                                 20, 1e-10);
+  printf("Interleaved chordal center mu=0.5: %d iters, d_inf=%.2e\n",
+         result2.iterations, result2.d_inf_norm);
+  EXPECT_LT(result2.d_inf_norm, 1e-6);
+  EXPECT_LE(result2.iterations, 10);
+}
+
 }  // namespace
 }  // namespace conex
