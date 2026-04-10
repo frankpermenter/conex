@@ -85,6 +85,7 @@ add_library(sparse_linear_constraint
   conex/common/sdpa_reader.cc
   conex/common/cbf_reader.cc
   conex/common/sparse_linear_constraint.cc
+  conex/common/psd_constraint.cc
   conex/common/sparse_psd_constraint.cc
   conex/common/sparse_quadratic_term.cc
   conex/common/sparse_equality_constraint.cc
