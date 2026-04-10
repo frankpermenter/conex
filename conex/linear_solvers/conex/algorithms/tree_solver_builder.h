@@ -53,6 +53,11 @@ class TreeSolverBuilder {
                            const Eigen::VectorXd& b,
                            const std::vector<int>& vars);
 
+  // Add a PSD constraint (sparse A_k, sparse B) to a clique.
+  void AddPSDConstraint(int clique,
+                        std::unique_ptr<LinearConstraint> constraint,
+                        const std::vector<int>& vars);
+
   // Add an indefinite equality constraint block to a clique.
   // Assembles [0, C'; C, 0] on (primal_vars, dual_vars).
   void AddEquality(int clique, const Eigen::MatrixXd& C,
@@ -112,6 +117,10 @@ class TreeSolverBuilder {
   std::list<QuadraticCost> cost_assemblers_;
   std::list<LinearConstraint> linear_assemblers_;
   std::list<EqualityConstraint> eq_assemblers_;
+
+  // Owned polymorphic constraints (PSDConstraint etc.) that can't go in
+  // std::list<LinearConstraint> without slicing.
+  std::vector<std::unique_ptr<LinearConstraint>> owned_constraints_;
 
   // Arena memory for LinearConstraint workspaces (allocated in Build).
   std::vector<double> workspace_arena_;

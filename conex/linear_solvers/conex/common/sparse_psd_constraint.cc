@@ -6,6 +6,7 @@
 #include <unordered_map>
 
 #include "conex/common/clique_ordering.h"
+#include "conex/common/psd_constraint.h"
 #include "conex/common/psd_cone_ops.h"
 
 namespace conex {
@@ -52,6 +53,29 @@ bool HasNonzeroInSubblock(const Eigen::SparseMatrix<double>& A,
 }
 
 // Extract the principal submatrix A[S,S] as a dense matrix.
+Eigen::SparseMatrix<double> ExtractPrincipalSubmatrixSparse(
+    const Eigen::SparseMatrix<double>& A,
+    const std::vector<int>& indices) {
+  const int m = static_cast<int>(indices.size());
+  std::unordered_map<int, int> idx_map;
+  for (int i = 0; i < m; ++i) idx_map[indices[i]] = i;
+
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int k = 0; k < A.outerSize(); ++k) {
+    auto jt = idx_map.find(k);
+    if (jt == idx_map.end()) continue;
+    int lj = jt->second;
+    for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it) {
+      auto it2 = idx_map.find(it.row());
+      if (it2 != idx_map.end())
+        trips.emplace_back(it2->second, lj, it.value());
+    }
+  }
+  Eigen::SparseMatrix<double> sub(m, m);
+  sub.setFromTriplets(trips.begin(), trips.end());
+  return sub;
+}
+
 Eigen::MatrixXd ExtractPrincipalSubmatrix(
     const Eigen::SparseMatrix<double>& A,
     const std::vector<int>& indices) {
@@ -176,26 +200,16 @@ SparsePSDConstraintAssembler::Decompose(
     const int m2 = m * m;
     const int p = static_cast<int>(mc.var_indices.size());
 
-    // Build vectorized constraint matrix (m² × p) and affine term (m²).
-    Eigen::MatrixXd A_dense(m2, p);
+    // Extract sparse principal submatrices.
+    std::vector<Eigen::SparseMatrix<double>> A_sub(p);
     for (int k = 0; k < p; ++k) {
-      Eigen::MatrixXd sub = ExtractPrincipalSubmatrix(
+      A_sub[k] = ExtractPrincipalSubmatrixSparse(
           A_list_[mc.var_indices[k]], mc.indices);
-      A_dense.col(k) = Vectorize(sub);
     }
-    Eigen::MatrixXd B_sub = ExtractPrincipalSubmatrix(B_, mc.indices);
-    Eigen::VectorXd b_vec = Vectorize(B_sub);
+    Eigen::SparseMatrix<double> B_sub =
+        ExtractPrincipalSubmatrixSparse(B_, mc.indices);
 
-    // Remap optimization variables to global indices.
-    // The PSDLinearConstraint's primal variables are mc.opt_vars,
-    // but we need to report the full tree-clique variables so the
-    // tree solver can place this constraint correctly.
-    // Use the tree clique's variables as the constraint's variable list,
-    // with columns of A_dense corresponding to the active subset.
-    //
-    // Simpler: report mc.opt_vars as the constraint variables.
-    auto constraint = std::make_unique<PSDLinearConstraint>(A_dense, b_vec);
-    constraint->cone_ops_ = &EuclideanJordanAlgebra::psdConeOps();
+    auto constraint = std::make_unique<PSDConstraint>(m, A_sub, B_sub);
     constraint->SetPrimalVariables(mc.opt_vars);
 
     // Allocate workspace.

@@ -9,6 +9,7 @@
 #include "conex/common/tree_spec.h"
 #include "conex/algorithms/tree_solver_builder.h"
 #include "conex/common/sparse_linear_constraint.h"
+#include "conex/common/psd_constraint.h"
 #include "conex/common/sparse_psd_constraint.h"
 #include "conex/common/sparse_soc_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
@@ -165,11 +166,9 @@ class Solver {
           Eigen::MatrixXd Ad(data.A);
           builder_->AddLinearConstraint(cids[clique], Ad, data.b, data.vars);
         } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
-          Eigen::SparseMatrix<double> A_vec;
-          Eigen::VectorXd b_vec;
-          VectorizePSD(data.A_list, data.B, &A_vec, &b_vec);
-          Eigen::MatrixXd Ad(A_vec);
-          builder_->AddLinearConstraint(cids[clique], Ad, b_vec, data.vars);
+          int n = data.B.rows();
+          auto psd = std::make_unique<PSDConstraint>(n, data.A_list, data.B);
+          builder_->AddPSDConstraint(cids[clique], std::move(psd), data.vars);
         } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
           int nv = static_cast<int>(data.vars.size());
           Eigen::MatrixXd Qd(nv, nv);
@@ -222,11 +221,9 @@ class Solver {
           Eigen::MatrixXd Ad(data.A);
           builder_->AddLinearConstraint(cids[i], Ad, data.b, data.vars);
         } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
-          Eigen::SparseMatrix<double> A_vec;
-          Eigen::VectorXd b_vec;
-          VectorizePSD(data.A_list, data.B, &A_vec, &b_vec);
-          Eigen::MatrixXd Ad(A_vec);
-          builder_->AddLinearConstraint(cids[i], Ad, b_vec, data.vars);
+          int n = data.B.rows();
+          auto psd = std::make_unique<PSDConstraint>(n, data.A_list, data.B);
+          builder_->AddPSDConstraint(cids[i], std::move(psd), data.vars);
         } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
           int nv = static_cast<int>(data.vars.size());
           Eigen::MatrixXd Qd(nv, nv);

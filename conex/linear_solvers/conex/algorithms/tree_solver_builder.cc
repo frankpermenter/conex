@@ -57,6 +57,18 @@ void TreeSolverBuilder::AddLinearConstraint(
       {&linear_assemblers_.back(), clique, ContributionType::kPositiveDefinite});
 }
 
+void TreeSolverBuilder::AddPSDConstraint(
+    int clique, std::unique_ptr<LinearConstraint> constraint,
+    const std::vector<int>& vars) {
+  CONEX_DEMAND(clique >= 0 && clique < static_cast<int>(cliques_.size()),
+               "Invalid clique id.");
+  cliques_[clique].all_vars.insert(vars.begin(), vars.end());
+  constraint->SetPrimalVariables(vars);
+  pending_.push_back(
+      {constraint.get(), clique, ContributionType::kPositiveDefinite});
+  owned_constraints_.push_back(std::move(constraint));
+}
+
 void TreeSolverBuilder::AddEquality(int clique, const Eigen::MatrixXd& C,
                                     const Eigen::VectorXd& d,
                                     const std::vector<int>& primal_vars,
@@ -386,12 +398,19 @@ TreeSolverBuilder::Result TreeSolverBuilder::Build() {
     size_t total = 0;
     for (auto& lc : linear_assemblers_)
       total += lc.RequiredArenaBytes();
+    for (auto& lc : owned_constraints_)
+      total += lc->RequiredArenaBytes();
     if (total > 0) {
       workspace_arena_.resize(total / sizeof(double) + 1);
       double* cursor = workspace_arena_.data();
       for (auto& lc : linear_assemblers_) {
         size_t bytes = lc.RequiredArenaBytes();
         lc.BindArenaMemory(cursor, bytes);
+        cursor += bytes / sizeof(double);
+      }
+      for (auto& lc : owned_constraints_) {
+        size_t bytes = lc->RequiredArenaBytes();
+        lc->BindArenaMemory(cursor, bytes);
         cursor += bytes / sizeof(double);
       }
     }
