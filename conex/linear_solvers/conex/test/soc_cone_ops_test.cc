@@ -228,6 +228,127 @@ TEST_F(SOCConeOpsTest, GeodesicPreservesCone) {
   EXPECT_GT(min_eig, -1e-10);
 }
 
+// geodesicUpdate(w, 0) = w (zero direction is identity).
+TEST_F(SOCConeOpsTest, GeodesicZeroDirection) {
+  VectorXd w = RandomInterior();
+  VectorXd zero = VectorXd::Zero(n);
+  VectorXd out(n);
+  ops.geodesicUpdate(out.data(), w.data(), 1.0, zero.data(), n);
+  double err = MaxDiff(out, w);
+  printf("geodesicUpdate(w, 0) vs w: %.2e\n", err);
+  EXPECT_LT(err, 1e-13);
+}
+
+// geodesicUpdate(w, alpha, d) at alpha=0 returns w.
+TEST_F(SOCConeOpsTest, GeodesicZeroAlpha) {
+  VectorXd w = RandomInterior();
+  VectorXd d(n);
+  d(0) = 0.5; d.tail(n-1) = 0.3 * VectorXd::Random(n-1);
+  VectorXd out(n);
+  ops.geodesicUpdate(out.data(), w.data(), 0.0, d.data(), n);
+  double err = MaxDiff(out, w);
+  printf("geodesicUpdate(w, alpha=0, d) vs w: %.2e\n", err);
+  EXPECT_LT(err, 1e-13);
+}
+
+// Inverse: geodesicUpdate(w, d) then geodesicUpdate(result, -d) returns w.
+// i.e., P(w^{1/2}) exp(d) P(w^{1/2}) then P(result^{1/2}) exp(-d) P(result^{1/2})
+// Actually this isn't an inverse. The true inverse is:
+// If w' = geodesicUpdate(w, d), then geodesicUpdate(w', -d') should give w
+// for some d'. Instead test: geodesicUpdate(e, d) * geodesicUpdate(e, -d) = e*e = e.
+TEST_F(SOCConeOpsTest, GeodesicForwardBackward) {
+  VectorXd e = Identity();
+  VectorXd d(n);
+  d(0) = 0.3; d.tail(n-1) = 0.2 * VectorXd::Random(n-1);
+  VectorXd fwd(n), bwd(n), product(n);
+  ops.geodesicUpdate(fwd.data(), e.data(), 1.0, d.data(), n);
+  ops.geodesicUpdate(bwd.data(), e.data(), -1.0, d.data(), n);
+  // fwd = exp(d), bwd = exp(-d). Product should be e.
+  ops.product(product.data(), fwd.data(), bwd.data(), n);
+  double err = MaxDiff(product, e);
+  printf("exp(d) * exp(-d) vs e: %.2e\n", err);
+  EXPECT_LT(err, 1e-13);
+}
+
+// P(w)e * P(w^{-1})e = e (quadratic rep of inverses).
+// P(w)e = w*w, P(w^{-1})e = w^{-1}*w^{-1}. Product = e.
+TEST_F(SOCConeOpsTest, QuadRepInverseProduct) {
+  VectorXd w = RandomInterior();
+  double t = w(0);
+  double det = t * t - w.tail(n-1).squaredNorm();
+  VectorXd winv(n);
+  winv(0) = t / det;
+  winv.tail(n-1) = -w.tail(n-1) / det;
+
+  VectorXd e = Identity();
+  VectorXd Pwe(n), Pinve(n), product(n);
+  ops.quadraticRepresentation(Pwe.data(), w.data(), e.data(), n);
+  ops.quadraticRepresentation(Pinve.data(), winv.data(), e.data(), n);
+  ops.product(product.data(), Pwe.data(), Pinve.data(), n);
+  double err = MaxDiff(product, e);
+  printf("P(w)e * P(w^-1)e vs e: %.2e\n", err);
+  EXPECT_LT(err, 1e-12);
+}
+
+// Verify geodesicUpdate formula: geodesicUpdate(w, 1, d) = P(w^{1/2}) exp(d).
+// Check by computing both sides independently.
+TEST_F(SOCConeOpsTest, GeodesicFormulaCheck) {
+  VectorXd w = RandomInterior();
+  VectorXd d(n);
+  d(0) = 0.2; d.tail(n-1) = 0.1 * VectorXd::Random(n-1);
+
+  // LHS: geodesicUpdate(w, 1, d).
+  VectorXd lhs(n);
+  ops.geodesicUpdate(lhs.data(), w.data(), 1.0, d.data(), n);
+
+  // RHS: P(sqrt(w)) exp(d).
+  VectorXd sqrtw(n), expd(n), rhs(n);
+  ops.sqrt(sqrtw.data(), w.data(), n);
+  VectorXd e = Identity();
+  // exp(d) = geodesicUpdate(e, 1, d) since P(e^{1/2}) = P(e) = identity.
+  ops.geodesicUpdate(expd.data(), e.data(), 1.0, d.data(), n);
+  ops.quadraticRepresentation(rhs.data(), sqrtw.data(), expd.data(), n);
+
+  double err = MaxDiff(lhs, rhs);
+  printf("geodesicUpdate(w,d) vs P(sqrt(w))exp(d): %.2e\n", err);
+  EXPECT_LT(err, 1e-12);
+}
+
+// Verify exp(d) is in the cone interior for small d.
+TEST_F(SOCConeOpsTest, ExpInterior) {
+  VectorXd e = Identity();
+  VectorXd d(n);
+  d(0) = 0.5; d.tail(n-1) = 0.3 * VectorXd::Random(n-1);
+  VectorXd expd(n);
+  ops.geodesicUpdate(expd.data(), e.data(), 1.0, d.data(), n);
+  double min_eig = ops.minEigenvalue(expd.data(), n);
+  printf("exp(d) min_eig: %.6f (should be > 0)\n", min_eig);
+  EXPECT_GT(min_eig, 0);
+}
+
+// Verify P(w)y for non-identity w against the formula 2ww'y - det(w)Ry.
+TEST_F(SOCConeOpsTest, QuadRepFormulaCheck) {
+  VectorXd w = RandomInterior();
+  VectorXd y = RandomInterior(77);
+
+  // ConeOps result.
+  VectorXd Pwy(n);
+  ops.quadraticRepresentation(Pwy.data(), w.data(), y.data(), n);
+
+  // Manual formula: P(w)y = 2(w∘y)∘w - w²∘y.
+  // Or equivalently: 2<w,y>w - det(w)*Ry where R=diag(1,-1,...,-1).
+  double w0 = w(0), y0 = y(0);
+  double w_dot_y = ops.dot(w.data(), y.data(), n) / 2.0;  // trace ip / 2
+  double det_w = w0*w0 - w.tail(n-1).squaredNorm();
+  VectorXd Ry = y;
+  Ry.tail(n-1) *= -1;
+  VectorXd manual = 2.0 * w_dot_y * w - det_w * Ry;
+
+  double err = MaxDiff(Pwy, manual);
+  printf("P(w)y (ConeOps vs formula): %.2e\n", err);
+  EXPECT_LT(err, 1e-13);
+}
+
 }  // namespace
 }  // namespace EuclideanJordanAlgebra
 }  // namespace conex

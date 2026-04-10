@@ -282,7 +282,7 @@ GeodesicResult SolveGeodesicLP(
     result.total_solves = total_sol;
     result.x = y0 / k + y1;  // x = y/k = (y0 + k*y1)/k
 
-    if (s_dot_x < tolerance) break;
+    if (s_dot_x < tolerance && d_inf < 1.01) break;
   }
 
   // Optimality check.
