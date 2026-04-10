@@ -37,15 +37,42 @@ void RunCentering(Problem& problem, const std::string& name, int max_iters) {
          std::chrono::duration<double, std::milli>(t1 - t0).count());
 
   auto* kkt = solver.solver();
-  auto cost_rhs = kkt->MakeSolverRHS();
-  if (problem.has_linear_cost()) {
-    cost_rhs = kkt->MakeBlockVariable(problem.linear_cost());
-  } else {
-    cost_rhs.SetZero();
-  }
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
+
+  // Replace cost with A^T(-b + 2I) so that W=I is on the central path at k=1.
+  // At W=I, k=1: RHS = -c + A^T(-P(I)b + 2I) = -c + A^T(-b + 2I).
+  // So c = A^T(-b + 2I) makes RHS = 0, giving d = 0.
+  kkt->SetScaling(W);
+  kkt->AssembleAndFactor();
+  RowSpace b_term = kkt->GetAffineTerm();
+  RowSpace ones = kkt->MakeRowSpace();
+  setOnes(ones);
+  RowSpace v_central = addScaled(b_term, ones, -1.0, 2.0);  // -b + 2I
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs.SetZero();
+  kkt->AccumulateAtranspose(v_central, cost_rhs);
+
+  // Sanity: at W=I, k=1, d should be 0.
+  {
+    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+    auto y = kkt->MakeSolverRHS();
+    y = cost_rhs;
+    y *= -1;
+    RowSpace v = addScaled(quadraticRepresentation(W, b_term), W, -1, 2.0);
+    kkt->AccumulateAtranspose(v, y);
+    kkt->SolveSolverRHS(y);
+    RowSpace row = kkt->MakeRowSpace();
+    kkt->MultiplyA(y, row);
+    RowSpace d_check = addScaled(b_term, row, -1, -1.0);
+    d_check = quadraticRepresentation(sqrtW, d_check);
+    RowSpace ones = kkt->MakeRowSpace();
+    setOnes(ones);
+    d_check += ones;
+    printf("  Sanity: d_inf at W=I, k=1 = %.2e (should be ~0)\n",
+           normInf(d_check));
+  }
 
   // Compute min-norm k from decomposition.
   kkt->SetScaling(W);
