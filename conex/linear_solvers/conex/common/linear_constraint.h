@@ -150,9 +150,10 @@ class GramEvaluator : public BlockAssembler {
   bool order_set_ = false;
   bool weights_dirty_ = true;
 
+  std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
+
  private:
   int sn_count_ = 0;
-  std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
   std::vector<VectorBlockContribution> vector_blocks_;
 };
 

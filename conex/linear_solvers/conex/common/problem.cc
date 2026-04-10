@@ -16,11 +16,17 @@ std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
   std::vector<Eigen::Triplet<double>> trips;
   int total_rows = 0;
   for (const auto& c : problem.constraints()) {
-    if (auto* lc = std::get_if<Problem::LinearConstraintData>(&c)) {
-      for (int k = 0; k < lc->A.outerSize(); ++k)
-        for (Eigen::SparseMatrix<double>::InnerIterator it(lc->A, k); it; ++it)
+    // Linear and SOC have the same A matrix structure.
+    const Eigen::SparseMatrix<double>* A_ptr = nullptr;
+    if (auto* lc = std::get_if<Problem::LinearConstraintData>(&c))
+      A_ptr = &lc->A;
+    else if (auto* sc = std::get_if<Problem::SOCConstraintData>(&c))
+      A_ptr = &sc->A;
+    if (A_ptr) {
+      for (int k = 0; k < A_ptr->outerSize(); ++k)
+        for (Eigen::SparseMatrix<double>::InnerIterator it(*A_ptr, k); it; ++it)
           trips.emplace_back(total_rows + it.row(), it.col(), it.value());
-      total_rows += lc->A.rows();
+      total_rows += A_ptr->rows();
     } else if (auto* pc = std::get_if<Problem::PSDConstraintData>(&c)) {
       // Mark each variable as live if its A_i has any nonzeros.
       for (int k = 0; k < static_cast<int>(pc->A_list.size()); ++k) {
@@ -62,7 +68,8 @@ std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
 
-      if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+      if constexpr (std::is_same_v<T, Problem::LinearConstraintData> ||
+                     std::is_same_v<T, Problem::SOCConstraintData>) {
         std::vector<Eigen::Triplet<double>> t;
         for (int k = 0; k < data.A.outerSize(); ++k)
           for (Eigen::SparseMatrix<double>::InnerIterator it(data.A, k);
@@ -77,7 +84,10 @@ std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
           int nv = inv[v];
           if (nv >= 0) new_vars.push_back(nv);
         }
-        reduced.AddLinearConstraint(A_new, data.b, new_vars);
+        if constexpr (std::is_same_v<T, Problem::SOCConstraintData>)
+          reduced.AddSOCConstraint(A_new, data.b, new_vars);
+        else
+          reduced.AddLinearConstraint(A_new, data.b, new_vars);
 
       } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
         std::vector<Eigen::SparseMatrix<double>> new_A_list;

@@ -312,7 +312,9 @@ add_executable(soc_gram_test
   conex/test/soc_gram_test.cc
 )
 target_link_libraries(soc_gram_test
-  constraints
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
   GTest::gtest_main
 )
 gtest_discover_tests(soc_gram_test)

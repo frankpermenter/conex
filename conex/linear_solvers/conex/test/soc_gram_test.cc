@@ -1,7 +1,11 @@
 #include <gtest/gtest.h>
 #include <cstdio>
+#include <numeric>
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
 #include "conex/common/soc_cone_ops.h"
+#include "conex/common/problem.h"
+#include "conex/common/solver.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -118,6 +122,58 @@ TEST(SOCGram, DefinitionMatchesFormula) {
   double err2 = (G2_def - G2_form).lpNorm<Eigen::Infinity>();
   printf("sparse max diff: %.2e\n", err2);
   EXPECT_LT(err2, 1e-10);
+}
+
+// Test the full SOC constraint pipeline: Problem → Solver → Gram.
+// Verify the Gram from the tree solver matches the direct formula.
+TEST(SOCGram, SolverGramMatchesFormula) {
+  srand(77);
+  const int vec_dim = 4;
+  const int n = 1 + vec_dim;  // SOC dimension
+  const int p = 3;            // variables
+
+  MatrixXd A_dense = MatrixXd::Random(n, p);
+  VectorXd b = VectorXd::Random(n);
+  b(0) = std::abs(b(0)) + b.tail(vec_dim).norm() + 1.0;  // feasible at x=0
+
+  // Random weight in SOC interior.
+  VectorXd w(n);
+  w.tail(vec_dim) = 0.3 * VectorXd::Random(vec_dim);
+  w(0) = w.tail(vec_dim).norm() + 1.5;
+
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  // Build via solver.
+  conex::Problem problem;
+  Eigen::SparseMatrix<double> A_sparse = A_dense.sparseView();
+  problem.AddSOCConstraint(A_sparse, b, vars);
+  auto solver = conex::Solver::Build(problem);
+  auto* kkt = solver.solver();
+
+  // Set scaling to w.
+  conex::RowSpace W = kkt->MakeRowSpace();
+  ASSERT_EQ(W.total_rows(), n);
+  for (int i = 0; i < n; ++i) W.segment_ptr(0)[i] = w(i);
+  kkt->SetScaling(W);
+  kkt->AssembleAndFactor();
+
+  // Extract Gram by solving with unit vectors.
+  MatrixXd G_solver(p, p);
+  for (int j = 0; j < p; ++j) {
+    VectorXd ej = VectorXd::Zero(p);
+    ej(j) = 1.0;
+    G_solver.col(j) = kkt->Solve(ej);
+  }
+  // G_solver is Gram^{-1}.  Invert to get Gram.
+  MatrixXd Gram_solver = G_solver.inverse();
+
+  // Direct formula.
+  MatrixXd Gram_formula = GramFromFormula(A_dense, w);
+
+  double err = (Gram_solver - Gram_formula).lpNorm<Eigen::Infinity>();
+  printf("Solver vs formula max diff: %.2e\n", err);
+  EXPECT_LT(err, 1e-8);
 }
 
 }  // namespace

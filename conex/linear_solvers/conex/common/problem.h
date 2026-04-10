@@ -116,6 +116,18 @@ class Problem {
     constraints_.push_back(PSDConstraintData{A_list, B, vars, use_chordal});
   }
 
+  // Add SOC constraint: ||A₁x + b₁|| ≤ A₀x + b₀.
+  // A is (1+m)×p where row 0 is A₀ and rows 1..m are A₁.
+  // b is (1+m) where b(0) is b₀ and b(1..m) is b₁.
+  ConstraintId AddSOCConstraint(
+      const Eigen::SparseMatrix<double>& A,
+      const Eigen::VectorXd& b,
+      const std::vector<int>& vars) {
+    int id = static_cast<int>(constraints_.size());
+    constraints_.push_back(SOCConstraintData{A, b, vars});
+    return id;
+  }
+
   // Add a quadratic cost: x'Qx on the given variables.
   ConstraintId AddQuadraticCost(
       const Eigen::SparseMatrix<double>& Q,
@@ -184,6 +196,12 @@ class Problem {
     std::vector<int> vars;
   };
 
+  struct SOCConstraintData {
+    Eigen::SparseMatrix<double> A;  // (1+m) × p: [A₀; A₁]
+    Eigen::VectorXd b;              // (1+m): [b₀; b₁]
+    std::vector<int> vars;
+  };
+
   struct EqualityConstraintData {
     Eigen::SparseMatrix<double> C;
     Eigen::VectorXd d;
@@ -191,7 +209,7 @@ class Problem {
   };
 
   using ConstraintData = std::variant<
-      LinearConstraintData, PSDConstraintData,
+      LinearConstraintData, PSDConstraintData, SOCConstraintData,
       QuadraticCostData, EqualityConstraintData>;
 
   const ConstraintData& constraint(ConstraintId id) const {
