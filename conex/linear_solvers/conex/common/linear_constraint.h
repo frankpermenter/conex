@@ -159,9 +159,11 @@ class GramEvaluator : public BlockAssembler {
   std::unordered_map<int, std::vector<BlockContribution>> registered_blocks_;
   double atranspose_scale_ = 1.0;
 
+ protected:
+  std::vector<VectorBlockContribution> vector_blocks_;
+
  private:
   int sn_count_ = 0;
-  std::vector<VectorBlockContribution> vector_blocks_;
 };
 
 class LinearConstraint : public SupernodalAssemblerBase, public ArenaAllocatable {

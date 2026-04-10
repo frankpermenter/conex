@@ -1,10 +1,9 @@
 // PSD constraint: Σ A_i x_i + B ≽ 0.
 //
-// Stores A_k in sparse form. Implements the tree solver interface
-// without vectorizing into a dense n²×p matrix.
+// Stores A_k as sparse matrices. No dense n²×p vectorization.
 //
 // Gram assembly: one-at-a-time WAW with sparse inner products.
-// MultiplyA / ContributeAtranspose: sparse mat-vec via nonzero entries.
+// MultiplyA / ContributeAtranspose: sparse mat-vec via SparseMatrix iterators.
 // Memory: O(n² + Σ nnz_k) vs O(n²·p) for the dense vectorized approach.
 
 #pragma once
@@ -28,12 +27,14 @@ namespace conex {
 struct PSDEntry { int i, j; double value; };
 
 // BlockAssembler for PSD constraints with sparse A_k.
+// Owns the permuted sparse data and the WAW Gram assembly.
 class PSDBlockAssembler : public GramEvaluator {
  public:
   void set_psd_dim(int n) { psd_n_ = n; }
-  void bind_sparse(const std::vector<std::vector<PSDEntry>>* entries,
-                    int num_vars) {
-    sparse_entries_ = entries;
+
+  void bind_matrices(const std::vector<Eigen::SparseMatrix<double>>* A_list,
+                     int num_vars) {
+    A_list_ = A_list;
     num_vars_ = num_vars;
   }
 
@@ -42,24 +43,24 @@ class PSDBlockAssembler : public GramEvaluator {
 
   void set_order(const std::vector<int>& perm) override {
     if (order_set_) return;
-    const int n = psd_n_;
-    const int n2 = n * n;
     const int m = static_cast<int>(perm.size());
-    // Build permuted sparse entries (for ContributeBlocks).
+
+    // Reindex: permuted sparse matrices and extracted entries.
+    A_list_perm_.resize(m);
     entries_perm_.resize(m);
     for (int k = 0; k < m; ++k) {
-      entries_perm_[k] = (*sparse_entries_)[perm[k]];
+      A_list_perm_[k] = (*A_list_)[perm[k]];
+      auto& entries = entries_perm_[k];
+      entries.clear();
+      for (int outer = 0; outer < A_list_perm_[k].outerSize(); ++outer)
+        for (Eigen::SparseMatrix<double>::InnerIterator it(A_list_perm_[k], outer);
+             it; ++it)
+          entries.push_back({static_cast<int>(it.row()),
+                             static_cast<int>(it.col()), it.value()});
     }
-    // Populate dense A_perm_ for base-class MultiplyA / ContributeAtranspose
-    // (template methods that can't be overridden virtually).
-    A_perm_.resize(n2, m);
-    A_perm_.setZero();
-    for (int k = 0; k < m; ++k) {
-      for (const auto& e : entries_perm_[k]) {
-        A_perm_(e.j * n + e.i, k) = e.value;
-      }
-    }
-    // No WA_perm_ needed — Gram is assembled via sparse ContributeBlocks.
+
+    // No dense A_perm_ or WA_perm_.
+    A_perm_.resize(0, 0);
     WA_perm_.resize(0, 0);
     order_set_ = true;
     weights_dirty_ = true;
@@ -105,16 +106,17 @@ class PSDBlockAssembler : public GramEvaluator {
     }
   }
 
-  // Sparse A * x: result = Σ_k x_k · vec(A_k).
-  template <typename SepAccessor>
-  Eigen::MatrixXd MultiplyA(
-      const BlockPartition& supernodes, const SepAccessor& sep, int nc) const {
+  // Sparse A * x: result(j*n+i) += Σ_k x_k · A_k(i,j).
+  Eigen::MatrixXd SparseMultiplyA(
+      const BlockPartition& supernodes, const SeparatorScratch& sep,
+      int nc) const {
     const int n = psd_n_;
     const int n2 = n * n;
     Eigen::MatrixXd result = Eigen::MatrixXd::Zero(n2, nc);
     for (const auto& vbc : vector_blocks_) {
-      auto blk = vbc.dest_is_sn ? supernodes.block(vbc.dest_block)
-                                : sep.block(vbc.dest_block, nc);
+      auto blk = vbc.dest_is_sn
+          ? supernodes.block(vbc.dest_block)
+          : sep.block(vbc.dest_block, nc);
       for (int j = 0; j < vbc.length; ++j) {
         int k = vbc.q_start + j;
         for (int col = 0; col < nc; ++col) {
@@ -128,15 +130,15 @@ class PSDBlockAssembler : public GramEvaluator {
     return result;
   }
 
-  // Sparse A^T * v: trace(A_k · mat(v)) for each k.
-  template <typename SepAccessor>
-  void ContributeAtranspose(
+  // Sparse A^T * v: for each k, trace(A_k · mat(v)).
+  void SparseContributeAtranspose(
       const Eigen::Ref<const Eigen::MatrixXd>& V,
-      BlockPartition& supernodes, SepAccessor& sep, int nc) const {
+      BlockPartition& supernodes, SeparatorScratch& sep, int nc) const {
     const int n = psd_n_;
     for (const auto& vbc : vector_blocks_) {
-      auto blk = vbc.dest_is_sn ? supernodes.block(vbc.dest_block)
-                                : sep.block(vbc.dest_block, nc);
+      auto blk = vbc.dest_is_sn
+          ? supernodes.block(vbc.dest_block)
+          : sep.block(vbc.dest_block, nc);
       for (int j = 0; j < vbc.length; ++j) {
         int k = vbc.q_start + j;
         for (int col = 0; col < nc; ++col) {
@@ -149,10 +151,15 @@ class PSDBlockAssembler : public GramEvaluator {
     }
   }
 
+  const std::vector<Eigen::SparseMatrix<double>>& A_list_perm() const {
+    return A_list_perm_;
+  }
+
  private:
   int psd_n_ = 0;
   int num_vars_ = 0;
-  const std::vector<std::vector<PSDEntry>>* sparse_entries_ = nullptr;
+  const std::vector<Eigen::SparseMatrix<double>>* A_list_ = nullptr;
+  std::vector<Eigen::SparseMatrix<double>> A_list_perm_;
   std::vector<std::vector<PSDEntry>> entries_perm_;
   Eigen::MatrixXd W_cache_;
   std::vector<double> waw_buf_;
@@ -174,7 +181,7 @@ class PSDBlockAssembler : public GramEvaluator {
 };
 
 // PSD constraint that inherits from LinearConstraint for tree solver
-// compatibility, but bypasses all dense storage.
+// compatibility, but stores sparse A_k and overrides all dense operations.
 class PSDConstraint : public LinearConstraint {
  public:
   PSDConstraint(int n,
@@ -182,20 +189,8 @@ class PSDConstraint : public LinearConstraint {
                 const Eigen::SparseMatrix<double>& B)
       : LinearConstraint(Eigen::MatrixXd(n * n, 0),
                          Eigen::VectorXd::Zero(n * n)),
-        psd_n_(n) {
+        psd_n_(n), A_list_(A_list) {
     cone_ops_ = &EuclideanJordanAlgebra::psdConeOps();
-
-    // Extract sparse entries.
-    const int p = static_cast<int>(A_list.size());
-    sparse_entries_.resize(p);
-    for (int k = 0; k < p; ++k) {
-      for (int outer = 0; outer < A_list[k].outerSize(); ++outer)
-        for (Eigen::SparseMatrix<double>::InnerIterator it(A_list[k], outer);
-             it; ++it)
-          sparse_entries_[k].push_back(
-              {static_cast<int>(it.row()), static_cast<int>(it.col()),
-               it.value()});
-    }
 
     // Vectorize B into affine term (stored in base class constraint_affine_).
     constraint_affine_.resize(n * n, 1);
@@ -204,11 +199,11 @@ class PSDConstraint : public LinearConstraint {
         constraint_affine_(j * n + i, 0) = B.coeff(i, j);
 
     psd_assembler_.set_psd_dim(n);
-    psd_assembler_.bind_sparse(&sparse_entries_, p);
+    psd_assembler_.bind_matrices(&A_list_, static_cast<int>(A_list_.size()));
   }
 
   int number_of_variables() const override {
-    return static_cast<int>(sparse_entries_.size());
+    return static_cast<int>(A_list_.size());
   }
 
   BlockAssembler* GetBlockAssembler() override {
@@ -219,6 +214,20 @@ class PSDConstraint : public LinearConstraint {
   const GramEvaluator& gram() const override { return psd_assembler_; }
 
   int num_rows() const { return psd_n_ * psd_n_; }
+
+  // Virtual overrides — sparse, no A_perm_.
+  Eigen::MatrixXd MultiplyA(
+      const BlockPartition& supernodes, const SeparatorScratch& sep,
+      int nc) const override {
+    return psd_assembler_.SparseMultiplyA(supernodes, sep, nc);
+  }
+
+  void ContributeAtranspose(
+      const Eigen::Ref<const Eigen::MatrixXd>& V,
+      BlockPartition& supernodes, SeparatorScratch& sep,
+      int nc) const override {
+    psd_assembler_.SparseContributeAtranspose(V, supernodes, sep, nc);
+  }
 
   void SetScaling(const Eigen::VectorXd& scaling) override {
     CONEX_DEMAND(scaling.size() == psd_n_ * psd_n_,
@@ -239,7 +248,6 @@ class PSDConstraint : public LinearConstraint {
     psd_assembler_.update_weights();
   }
 
-  // Arena: only W (n²) — no dense WA or weighted_constraints.
   size_t RequiredArenaBytes() const override {
     return get_size_aligned(psd_n_ * psd_n_) * sizeof(double);
   }
@@ -247,17 +255,15 @@ class PSDConstraint : public LinearConstraint {
   void BindArenaMemory(double* ptr, size_t /*bytes*/) override {
     using Map = Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>;
     int n2 = psd_n_ * psd_n_;
-    // Only allocate W in the arena. Redirect workspace_.W to it.
     new (&workspace_.W) Map(ptr, n2, 1);
-    workspace_.W.setConstant(1.0);  // Identity diagonal for init.
-    // Set n_ and num_vars_ so SizeOf doesn't break on stale values.
-    workspace_.n_ = psd_n_ * psd_n_;
+    workspace_.W.setConstant(1.0);
+    workspace_.n_ = n2;
     workspace_.num_vars_ = 0;
   }
 
  private:
   int psd_n_;
-  std::vector<std::vector<PSDEntry>> sparse_entries_;
+  std::vector<Eigen::SparseMatrix<double>> A_list_;
   PSDBlockAssembler psd_assembler_;
 };
 
