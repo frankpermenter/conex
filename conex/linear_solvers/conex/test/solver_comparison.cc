@@ -95,6 +95,13 @@ void PrintResult(const char* name, const GeodesicResult& result,
              static_cast<int>(i), s.mu, s.complementarity, s.d_inf, s.d_sqr);
     }
   }
+  const auto& opt = result.optimality;
+  if (opt.dual_residual > 0 || opt.complementarity > 0) {
+    printf("  Optimality: dual_res=%.2e, compl=%.2e, "
+           "min_s=%.2e, min_lam=%.2e\n",
+           opt.dual_residual, opt.complementarity,
+           opt.min_slack, opt.min_dual);
+  }
   printf("\n");
 }
 

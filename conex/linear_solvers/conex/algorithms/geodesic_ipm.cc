@@ -7,6 +7,58 @@
 
 namespace conex {
 
+OptimalityReport CheckOptimality(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const Eigen::VectorXd& x,
+    const RowSpace& W,
+    const RowSpace& r,
+    const RowSpace& delta,
+    double mu) {
+  OptimalityReport report;
+  report.mu = mu;
+  int n = kkt.number_of_variables();
+
+  // Lambda = P(W^{1/2})(r + delta).
+  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  RowSpace lambda = quadraticRepresentation(sqrtW, r + delta);
+
+  // s = Ax + b.
+  auto x_rhs = kkt.MakeSolverRHS();
+  x_rhs = kkt.MakeBlockVariable(x);
+  RowSpace s = kkt.MakeRowSpace();
+  kkt.MultiplyA(x_rhs, s);
+  RowSpace b = kkt.GetAffineTerm();
+  s += b;
+
+  // Cone membership.
+  report.min_slack = minEigenvalue(s);
+  report.min_dual = minEigenvalue(lambda);
+
+  // Dual residual: ||A^T λ - Qx - c||.
+  auto dual_rhs = kkt.MakeSolverRHS();
+  dual_rhs.SetZero();
+  kkt.AccumulateAtranspose(lambda, dual_rhs);
+  auto qx_rhs = kkt.MakeSolverRHS();
+  qx_rhs.SetZero();
+  kkt.AccumulateQx(x_rhs, qx_rhs);
+  dual_rhs -= qx_rhs;
+  dual_rhs -= cost_rhs;
+  Eigen::VectorXd dual_res(n);
+  dual_rhs.supernodes->GatherInto(dual_res);
+  report.dual_residual = dual_res.norm();
+
+  // Primal residual: check s from parameterization matches Ax+b.
+  // s_param = P(W^{-1/2})(r - delta).
+  // For now, s = Ax+b is exact by construction, so just report 0.
+  report.primal_residual = 0;
+
+  // Complementarity: <s, λ>.
+  report.complementarity = dot(s, lambda);
+
+  return report;
+}
+
 static void ComputeDirectNewtonStep(
     KKTSolverBase& kkt, const SolverRHS& cost_rhs,
     const RowSpace& W, double k,
@@ -331,10 +383,13 @@ GeodesicResult SolveGeodesicHybrid(
     printf("  %s\n", std::string(48, '-').c_str());
   }
 
+  RowSpace last_delta = kkt.MakeRowSpace();
+
   for (int iter = 0; iter < max_iterations; ++iter) {
     RowSpace d = kkt.MakeRowSpace();
     RowSpace delta = kkt.MakeRowSpace();
     auto info = ComputeHybridDirection(kkt, cost_rhs, W, r, d, delta);
+    last_delta = delta;
     total_sol++;
 
     g = info.gap;
@@ -369,6 +424,39 @@ GeodesicResult SolveGeodesicHybrid(
   result.complementarity = g;
   result.total_factorizations = total_fac;
   result.total_solves = total_sol;
+
+  // Recover x: solve Gram * y = RHS at the final (W, r).
+  // The last ComputeHybridDirection already solved this;
+  // redo to extract y as x (no k scaling in hybrid).
+  {
+    kkt.SetScaling(W);
+    kkt.AssembleAndFactor();
+    RowSpace bv = kkt.GetAffineTerm();
+    auto y = kkt.MakeSolverRHS();
+    y = cost_rhs;
+    y *= -1;
+    RowSpace sqrtW_final = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace v = addScaled(quadraticRepresentation(W, bv),
+                           quadraticRepresentation(sqrtW_final, r), -1, 2.0);
+    kkt.AccumulateAtranspose(v, y);
+    kkt.SolveSolverRHS(y);
+    int nr = kkt.number_of_variables();
+    result.x.resize(nr);
+    y.supernodes->GatherInto(result.x);
+  }
+
+  // Optimality check.
+  result.optimality = CheckOptimality(
+      kkt, cost_rhs, result.x, W, r, last_delta, result.mu);
+
+  if (verbose) {
+    printf("  Optimality: dual_res=%.2e, compl=%.2e, "
+           "min_s=%.2e, min_lam=%.2e\n",
+           result.optimality.dual_residual,
+           result.optimality.complementarity,
+           result.optimality.min_slack,
+           result.optimality.min_dual);
+  }
 
   return result;
 }

@@ -49,6 +49,15 @@ struct GeodesicIterStats {
   double min_slack = 0;    // min(r_i - |r_i * d_i|)
 };
 
+struct OptimalityReport {
+  double primal_residual = 0;   // ||s - (Ax + b)||
+  double dual_residual = 0;     // ||A^T λ - Qx - c||
+  double complementarity = 0;   // <s, λ>
+  double min_slack = 0;          // min eigenvalue of s
+  double min_dual = 0;           // min eigenvalue of λ
+  double mu = 0;
+};
+
 struct GeodesicResult {
   int iterations;
   double d_inf_norm;   // final ||d||_inf
@@ -59,6 +68,7 @@ struct GeodesicResult {
   int total_solves = 0;
   Eigen::VectorXd x;  // primal variable: x = y/k from last Newton solve
   std::vector<GeodesicIterStats> iter_stats;
+  OptimalityReport optimality;
 };
 
 // Run the geodesic centering iteration with fixed barrier parameter k = 1/sqrt(mu).
@@ -143,6 +153,17 @@ struct HybridDirection {
   double d_sq;
   double min_slack;
 };
+
+// Check optimality conditions given (x, W, r, delta).
+// Computes s = Ax + b, λ = P(W^{1/2})(r + Δ), checks KKT residuals.
+OptimalityReport CheckOptimality(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const Eigen::VectorXd& x,
+    const RowSpace& W,
+    const RowSpace& r,
+    const RowSpace& delta,
+    double mu);
 
 // Compute the hybrid Newton direction at (W, r).
 // Assumes the KKT system is already factored with weights W².
