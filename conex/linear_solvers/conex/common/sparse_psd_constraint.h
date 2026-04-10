@@ -15,7 +15,6 @@
 #include <Eigen/Sparse>
 
 #include "conex/common/linear_constraint.h"
-#include "conex/common/psd_linear_constraint.h"
 #include "conex/common/supernodal_assembler_base.h"
 
 namespace conex {
