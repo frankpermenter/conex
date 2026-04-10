@@ -615,5 +615,160 @@ TEST(GeodesicSDP, HybridCenteringLoop) {
   }
 }
 
+// =====================================================================
+// SOC tests for the geodesic IPM.
+// =====================================================================
+
+// Helper: build a SOC problem with identity on the central path.
+// Constraint: A x + b in SOC, where b = (1, 0, ..., 0) = identity.
+// Cost c_j = A_{0,j} (scalar row) so W=identity at k=1 is centered.
+struct SOCTestProblem {
+  Problem problem;
+  VectorXd c;
+  int n_soc;  // 1 + vec_dim
+  int p;      // variables
+};
+
+// Note: p must be <= vec_dim + 1 (SOC dimension) to avoid a
+// pre-existing crash in the tree solver with underdetermined dense constraints.
+SOCTestProblem MakeSOCTestProblem(int vec_dim, int p, int seed) {
+  srand(seed);
+  int n_soc = 1 + vec_dim;
+  MatrixXd A_dense = MatrixXd::Random(n_soc, p);
+
+  // b = identity SOC element (1, 0, ..., 0).
+  VectorXd b = VectorXd::Zero(n_soc);
+  b(0) = 1.0;
+
+  // c_j = A_{0,j} (central path at W=I, k=1).
+  // Tests that need a nontrivial LP should add their own perturbation.
+  VectorXd c = A_dense.row(0).transpose();
+
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int i = 0; i < n_soc; ++i)
+    for (int j = 0; j < p; ++j)
+      if (std::abs(A_dense(i, j)) > 1e-14)
+        trips.emplace_back(i, j, A_dense(i, j));
+  Eigen::SparseMatrix<double> A(n_soc, p);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  problem.AddSOCConstraint(A, b, vars);
+  problem.SetLinearCost(c);
+
+  return {std::move(problem), c, n_soc, p};
+}
+
+// Centering at k=1: W=identity is the fixed point.
+TEST(GeodesicSOC, CenterConvergence) {
+  auto tp = MakeSOCTestProblem(4, 5, 42);
+  auto solver = Solver::Build(tp.problem);
+  auto* kkt = solver.solver();
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(tp.c);
+
+  // Perturb W from identity.
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+  {
+    VectorXd w0(tp.n_soc);
+    w0(0) = 1.2;
+    w0.tail(tp.n_soc - 1) = 0.1 * VectorXd::Random(tp.n_soc - 1);
+    setFromVector(W, w0);
+  }
+
+  auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 50, 1e-10, true);
+  printf("SOC Center: %d iters, d_inf=%.2e\n",
+         result.iterations, result.d_inf_norm);
+  EXPECT_LT(result.d_inf_norm, 1e-8);
+}
+
+// Full LP path: centering + line search.
+// Uses perturbed cost so the LP is nontrivial.
+TEST(GeodesicSOC, LP) {
+  auto tp = MakeSOCTestProblem(4, 5, 42);
+  // Perturb cost from the central-path value to create a nontrivial LP.
+  srand(77);
+  VectorXd c_lp = tp.c + 0.5 * VectorXd::Random(tp.p);
+  tp.problem.SetLinearCost(c_lp);
+  auto solver = Solver::Build(tp.problem);
+  auto* kkt = solver.solver();
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(c_lp);
+
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+
+  auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 20, 0, 1e-6, true);
+  printf("SOC LP: %d fac, mu=%.2e, d_inf=%.2e\n",
+         result.total_factorizations, result.mu, result.d_inf_norm);
+
+  // k should increase and d_inf ≈ 1 when k changes.
+  for (int i = 1; i < result.iterations; ++i) {
+    if (result.iter_stats[i].mu < result.iter_stats[i-1].mu)
+      EXPECT_NEAR(result.iter_stats[i].d_inf, 1.0, 0.01);
+  }
+  EXPECT_GT(1.0 / std::sqrt(result.mu), 1.5);
+}
+
+// Hybrid centering: perturb r, verify d → 0.
+TEST(GeodesicSOC, HybridCenteringLoop) {
+  auto tp = MakeSOCTestProblem(4, 5, 42);
+  auto solver = Solver::Build(tp.problem);
+  auto* kkt = solver.solver();
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(tp.c);
+
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+
+  // Perturb r from identity.
+  RowSpace r = kkt->MakeRowSpace();
+  setOnes(r);
+  {
+    VectorXd r0(tp.n_soc);
+    r0(0) = 0.8;
+    r0.tail(tp.n_soc - 1) = 0.1 * VectorXd::Random(tp.n_soc - 1);
+    setFromVector(r, r0);
+  }
+
+  printf("  %3s  %12s  %12s\n", "iter", "gap", "d_inf");
+  printf("  %s\n", std::string(30, '-').c_str());
+  for (int iter = 0; iter < 20; ++iter) {
+    auto info = HybridCenteringStep(*kkt, cost_rhs, W, r);
+    printf("  %3d  %12.4e  %12.4e\n", iter, info.gap, info.d_inf);
+    if (info.d_inf < 1e-10) break;
+  }
+
+  kkt->SetScaling(W);
+  kkt->AssembleAndFactor();
+  RowSpace d = kkt->MakeRowSpace();
+  RowSpace delta = kkt->MakeRowSpace();
+  auto info = ComputeHybridDirection(*kkt, cost_rhs, W, r, d, delta);
+  printf("Final: d_inf=%.2e\n", info.d_inf);
+  EXPECT_LT(info.d_inf, 1e-6);
+}
+
+// Full hybrid solve.
+TEST(GeodesicSOC, Hybrid) {
+  auto tp = MakeSOCTestProblem(4, 5, 42);
+  auto solver = Solver::Build(tp.problem);
+  auto* kkt = solver.solver();
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(tp.c);
+
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+
+  auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W, 50, 1e-8);
+  printf("SOC Hybrid: %d fac, %d sol, gap=%.2e\n",
+         result.total_factorizations, result.total_solves,
+         result.complementarity);
+  EXPECT_LT(std::abs(result.complementarity), 1e-4);
+}
+
 }  // namespace
 }  // namespace conex
