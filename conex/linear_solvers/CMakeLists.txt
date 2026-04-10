@@ -339,6 +339,16 @@ target_link_libraries(soc_cone_ops_test
   GTest::gtest_main
 )
 gtest_discover_tests(soc_cone_ops_test)
+
+add_executable(benchmark_solver
+  conex/test/benchmark_solver.cc
+)
+target_link_libraries(benchmark_solver
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+target_compile_options(benchmark_solver PRIVATE -O2)
 gtest_discover_tests(alternating_projections_test)
 
 add_executable(solve_lp_test
