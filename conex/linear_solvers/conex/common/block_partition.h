@@ -58,24 +58,13 @@ class DenseBlockPartition : public BlockPartition {
   int num_variables() const override { return n_; }
   int cols() const override { return data_.cols(); }
 
-  void Resize(int cols) override {
-    if (data_.rows() != n_ || data_.cols() != cols) {
-      data_.resize(n_, cols);
-    }
-  }
+  void Resize(int cols) override;
 
   void SetZero() override { data_.setZero(); }
 
-  void ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> x) override {
-    if (data_.rows() != x.rows() || data_.cols() != x.cols()) {
-      data_.resize(x.rows(), x.cols());
-    }
-    data_ = x;
-  }
+  void ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> x) override;
 
-  void GatherInto(Eigen::Ref<Eigen::MatrixXd> x) const override {
-    x = data_;
-  }
+  void GatherInto(Eigen::Ref<Eigen::MatrixXd> x) const override;
 
   Eigen::Ref<Eigen::MatrixXd> block(int /*k*/) override { return data_; }
   Eigen::Ref<const Eigen::MatrixXd> block(int /*k*/) const override {
@@ -113,31 +102,13 @@ class StandaloneBlockPartition : public BlockPartition {
   int num_variables() const override { return perm_.size(); }
   int cols() const override { return data_.cols(); }
 
-  void Resize(int cols) override {
-    if (data_.rows() != total_rows_ || data_.cols() != cols) {
-      data_.resize(total_rows_, cols);
-    }
-  }
+  void Resize(int cols) override;
 
   void SetZero() override { data_.setZero(); }
 
-  void ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> x) override {
-    const int n = static_cast<int>(perm_.size());
-    if (data_.rows() != total_rows_ || data_.cols() != x.cols())
-      data_.resize(total_rows_, x.cols());
-    for (int i = 0; i < n; ++i) {
-      int ep = perm_(i);
-      data_.row(ep) = x.row(i);
-    }
-  }
+  void ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> x) override;
 
-  void GatherInto(Eigen::Ref<Eigen::MatrixXd> x) const override {
-    const int n = static_cast<int>(perm_.size());
-    for (int i = 0; i < n; ++i) {
-      int ep = perm_(i);
-      x.row(i) = data_.row(ep);
-    }
-  }
+  void GatherInto(Eigen::Ref<Eigen::MatrixXd> x) const override;
 
   Eigen::Ref<Eigen::MatrixXd> block(int k) override {
     return data_.middleRows(block_offsets_[k], block_sizes_[k]);

@@ -59,12 +59,15 @@ target_link_libraries(structural_rank PUBLIC Eigen3::Eigen)
 
 # --- Constraint infrastructure ---
 add_library(constraints
+  conex/common/block_partition.cc
+  conex/common/kkt_solver_interface.cc
   conex/common/linear_constraint.cc
   conex/common/equality_constraint.cc
   conex/common/constraint_manager.cc
   conex/common/blas_wrapper.cc
   conex/common/psd_cone_ops.cc
   conex/common/soc_cone_ops.cc
+  conex/common/soc_linear_constraint.cc
 )
 target_link_libraries(constraints PUBLIC Eigen3::Eigen clique_ordering)
 if(BLAS_FOUND)
