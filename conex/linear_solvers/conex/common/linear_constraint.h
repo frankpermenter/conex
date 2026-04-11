@@ -3,10 +3,12 @@
 
 #include <Eigen/Dense>
 
+#include "conex/common/block_partition.h"
 #include "conex/common/blas_wrapper.h"
 #include "conex/common/cone_constraint.h"
 #include "conex/common/error_checking_macros.h"
 #include "conex/common/linear_workspace.h"
+#include "conex/common/tree_rhs.h"
 
 namespace conex {
 

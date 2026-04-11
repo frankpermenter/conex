@@ -1,10 +1,31 @@
 #include "conex/common/psd_constraint.h"
 
+#include <cstring>
+
+#include <cblas.h>
 #include <Eigen/Eigenvalues>
+
+#include "conex/common/psd_cone_ops.h"
 
 namespace conex {
 
 // --- PSDBlockAssembler ---
+
+void PSDBlockAssembler::ComputeWAW(int k, int n, const double* W_data,
+                                    double* buf) {
+  std::memset(buf, 0, n * n * sizeof(double));
+  for (const auto& e : entries_perm_[k])
+    cblas_dger(CblasColMajor, n, n, e.value,
+               W_data + e.i * n, 1, W_data + e.j, n, buf, n);
+}
+
+double PSDBlockAssembler::SparseIP(int l, const double* waw) const {
+  double sum = 0;
+  const int n = psd_n_;
+  for (const auto& e : entries_perm_[l])
+    sum += e.value * waw[e.j * n + e.i];
+  return sum;
+}
 
 void PSDBlockAssembler::set_order(const std::vector<int>& perm) {
   if (order_set_) return;
@@ -125,6 +146,15 @@ PSDConstraint::PSDConstraint(
 
   psd_assembler_.set_psd_dim(n);
   psd_assembler_.bind_matrices(&A_list_, static_cast<int>(A_list_.size()));
+}
+
+const EuclideanJordanAlgebra::ConeOps* PSDConstraint::cone_ops() const {
+  return &EuclideanJordanAlgebra::psdConeOps();
+}
+
+void PSDConstraint::SetScaling(const Eigen::VectorXd& scaling) {
+  workspace_.W = scaling;
+  psd_assembler_.update_weights();
 }
 
 void PSDConstraint::SetWeights(const Eigen::VectorXd& weights) {

@@ -7,18 +7,14 @@
 // Memory: O(n² + Σ nnz_k) vs O(n²·p) for the dense vectorized approach.
 
 #pragma once
-#include <cstring>
 #include <vector>
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
-#include <cblas.h>
-
 #include "conex/common/cone_constraint.h"
 #include "conex/common/linear_constraint.h"
 #include "conex/common/linear_workspace.h"
-#include "conex/common/psd_cone_ops.h"
 
 namespace conex {
 
@@ -59,22 +55,8 @@ class PSDBlockAssembler : public GramEvaluator {
   Eigen::MatrixXd W_cache_;
   std::vector<double> waw_buf_;
 
-  // WAW_k = Σ a_{ij} · W(:,i) · W(j,:) via BLAS dger.
-  void ComputeWAW(int k, int n, const double* W_data, double* buf) {
-    std::memset(buf, 0, n * n * sizeof(double));
-    for (const auto& e : entries_perm_[k])
-      cblas_dger(CblasColMajor, n, n, e.value,
-                 W_data + e.i * n, 1, W_data + e.j, n, buf, n);
-  }
-
-  // G(k,l) = Σ_{(r,c)∈A_l} a_rc · WAW_k(r,c).
-  double SparseIP(int l, const double* waw) const {
-    double sum = 0;
-    const int n = psd_n_;
-    for (const auto& e : entries_perm_[l])
-      sum += e.value * waw[e.j * n + e.i];
-    return sum;
-  }
+  void ComputeWAW(int k, int n, const double* W_data, double* buf);
+  double SparseIP(int l, const double* waw) const;
 };
 
 // PSD constraint: stores sparse A_k, owns its own workspace.
@@ -96,9 +78,7 @@ class PSDConstraint : public ConeConstraint {
 
   Eigen::MatrixXd affine_term() const override { return b_vec_; }
   int num_rows() const override { return psd_n_ * psd_n_; }
-  const EuclideanJordanAlgebra::ConeOps* cone_ops() const override {
-    return &EuclideanJordanAlgebra::psdConeOps();
-  }
+  const EuclideanJordanAlgebra::ConeOps* cone_ops() const override;
 
   Eigen::MatrixXd MultiplyA(
       const BlockPartition& supernodes, const SeparatorScratch& sep,
@@ -113,11 +93,7 @@ class PSDConstraint : public ConeConstraint {
     psd_assembler_.SparseContributeAtranspose(V, supernodes, sep, nc);
   }
 
-  void SetScaling(const Eigen::VectorXd& scaling) override {
-    workspace_.W = scaling;
-    psd_assembler_.update_weights();
-  }
-
+  void SetScaling(const Eigen::VectorXd& scaling) override;
   void SetWeights(const Eigen::VectorXd& weights) override;
 
   size_t RequiredArenaBytes() const override;

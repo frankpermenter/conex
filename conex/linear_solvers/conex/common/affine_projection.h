@@ -2,6 +2,7 @@
 // Constructed from a Problem; hides the KKT solver.
 
 #pragma once
+#include "conex/common/kkt_solver_interface.h"
 #include "conex/common/problem.h"
 #include "conex/common/solver.h"
 #include "conex/common/tree_rhs.h"

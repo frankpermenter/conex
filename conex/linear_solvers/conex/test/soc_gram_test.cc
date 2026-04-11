@@ -4,6 +4,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 #include "conex/common/soc_cone_ops.h"
+#include "conex/common/kkt_solver_interface.h"
 #include "conex/common/problem.h"
 #include "conex/common/solver.h"
 

@@ -15,8 +15,10 @@
 #include <string>
 #include <vector>
 
+#include "conex/common/kkt_solver_interface.h"
 #include "conex/common/problem.h"
 #include "conex/common/solver.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 

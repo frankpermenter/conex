@@ -3,6 +3,8 @@
 #include <chrono>
 #include <numeric>
 
+#include "conex/common/kkt_solver_interface.h"
+
 #include "conex/common/problem.h"
 #include "conex/common/solver.h"
 
