@@ -225,89 +225,6 @@ void RunCenteringRaw(Problem& problem, const std::string& name, int max_iters) {
   printf("  Variables: %d, Constraints: %d\n",
          problem.num_variables(), problem.num_constraints());
 
-  // Regularize: add eps*I to each B and eps*trace(A_i) to cost.
-  // eps = 10% of the nominal norm (per constraint).
-  double eps = 0;
-  {
-    // First build unregularized to measure d0 norm.
-    {
-      auto solver0 = Solver::Build(problem);
-      auto* kkt0 = solver0.solver();
-      RowSpace W0 = kkt0->MakeRowSpace();
-      setOnes(W0);
-      kkt0->SetScaling(W0);
-      kkt0->AssembleAndFactor();
-      // d at k=0 (zero cost): measures how far W=I is from the analytic center.
-      auto y0 = kkt0->MakeSolverRHS();
-      y0.SetZero();
-      RowSpace v0 = W0; v0 *= 2.0;
-      kkt0->AccumulateAtranspose(v0, y0);
-      kkt0->SolveSolverRHS(y0);
-      RowSpace row0 = kkt0->MakeRowSpace();
-      kkt0->MultiplyA(y0, row0);
-      RowSpace b0 = kkt0->GetAffineTerm();
-      RowSpace sqrtW0 = EuclideanJordanAlgebra::sqrt(W0);
-      RowSpace d0 = quadraticRepresentation(sqrtW0, addScaled(b0, row0, 0, -1.0));
-      RowSpace ones0 = kkt0->MakeRowSpace(); setOnes(ones0);
-      d0 += ones0;
-      double d0_inf = normInf(d0);
-      // eps = 10% * d0_inf: shift B by enough to bring d_inf near 1.
-      eps = 0.1 * std::max(d0_inf, 1.0);
-      printf("  d0_inf=%.2e, eps=%.2e\n", d0_inf, eps);
-    }
-
-    Problem regularized;
-    for (int i = 0; i < problem.num_constraints(); ++i) {
-      std::visit([&](const auto& data) {
-        using T = std::decay_t<decltype(data)>;
-        if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
-          int n = data.B.rows();
-          Eigen::SparseMatrix<double> B_reg = data.B +
-              eps * Eigen::MatrixXd::Identity(n, n).sparseView();
-          regularized.AddPSDConstraint(data.A_list, B_reg, data.vars,
-                                       data.use_chordal);
-        } else if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
-          Eigen::VectorXd b_reg = data.b.array() + eps;
-          regularized.AddLinearConstraint(data.A, b_reg, data.vars);
-        } else if constexpr (std::is_same_v<T, Problem::SOCConstraintData>) {
-          Eigen::VectorXd b_reg = data.b;
-          b_reg(0) += eps;
-          regularized.AddSOCConstraint(data.A, b_reg, data.vars);
-        }
-      }, problem.constraint(i));
-    }
-    // cost_reg = cost + eps * A^T(I).
-    // A^T(I)_j = trace(A_j · I) = trace(A_j) for PSD, sum of A_j column for nonneg.
-    int nv = problem.num_variables();
-    VectorXd cost_reg = VectorXd::Zero(nv);
-    if (problem.has_linear_cost())
-      cost_reg = problem.linear_cost();
-    for (int i = 0; i < problem.num_constraints(); ++i) {
-      std::visit([&](const auto& data) {
-        using T = std::decay_t<decltype(data)>;
-        if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
-          for (int k = 0; k < static_cast<int>(data.A_list.size()); ++k) {
-            // trace(A_k) = sum of diagonal
-            double tr = 0;
-            for (int outer = 0; outer < data.A_list[k].outerSize(); ++outer)
-              for (Eigen::SparseMatrix<double>::InnerIterator it(
-                       data.A_list[k], outer); it; ++it)
-                if (it.row() == it.col()) tr += it.value();
-            cost_reg(data.vars[k]) += eps * tr;
-          }
-        } else if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
-          for (int k = 0; k < data.A.outerSize(); ++k)
-            for (Eigen::SparseMatrix<double>::InnerIterator it(data.A, k);
-                 it; ++it)
-              cost_reg(data.vars[it.col()]) += eps * it.value();
-        }
-      }, problem.constraint(i));
-    }
-    regularized.SetLinearCost(cost_reg);
-    problem = std::move(regularized);
-    printf("  Regularized with eps=%.2e\n", eps);
-  }
-
   auto solver = Solver::Build(problem);
 
   {
@@ -320,8 +237,68 @@ void RunCenteringRaw(Problem& problem, const std::string& name, int max_iters) {
   }
 
   auto* kkt = solver.solver();
+
+  // Initialize W = α · I per segment, where α matches the scale of
+  // the A matrices. Compute A^T(I) to get per-variable scale from A,
+  // then set W per segment from the average A^T(I) contribution.
   RowSpace W = kkt->MakeRowSpace();
-  setOnes(W);
+  RowSpace W_init = kkt->MakeRowSpace();
+  {
+    setOnes(W);
+    kkt->SetScaling(W);
+    kkt->AssembleAndFactor();
+
+    // Compute A^T(I): the j-th entry is trace(A_j · I) for PSD
+    // or sum of column j for nonneg.
+    RowSpace identity = kkt->MakeRowSpace();
+    setOnes(identity);
+    auto at_identity = kkt->MakeSolverRHS();
+    at_identity.SetZero();
+    kkt->AccumulateAtranspose(identity, at_identity);
+
+    // Solve (A^T W² A) y = A^T(I) to get the "natural scale" y.
+    // Then W_init per segment = |A y + b| (the predicted slack).
+    kkt->SolveSolverRHS(at_identity);
+    RowSpace Ay = kkt->MakeRowSpace();
+    kkt->MultiplyA(at_identity, Ay);
+    RowSpace b = kkt->GetAffineTerm();
+
+    // slack_est = b + A*y (predicted slack at y from centering at W=I).
+    for (int seg = 0; seg < W.num_constraints(); ++seg) {
+      int sz = W.sizes[seg];
+      int n = static_cast<int>(std::round(std::sqrt(static_cast<double>(sz))));
+      bool is_psd = (n * n == sz && n > 1);
+      const double* ay = Ay.segment_ptr(seg);
+      const double* bp = b.segment_ptr(seg);
+
+      if (is_psd) {
+        // Predicted slack matrix: S = mat(b + Ay).
+        // Use α = ||S||_F / n as the scale, or eigenvalue-based.
+        Eigen::Map<const Eigen::MatrixXd> S(ay, n, n);
+        Eigen::Map<const Eigen::MatrixXd> B(bp, n, n);
+        Eigen::MatrixXd slack = B + S;
+        // Symmetrize.
+        slack = 0.5 * (slack + slack.transpose());
+        // Project to PSD: use absolute eigenvalues.
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(slack);
+        double avg_eig = eig.eigenvalues().cwiseAbs().mean();
+        double alpha = std::max(avg_eig, 1e-6);
+        Eigen::Map<Eigen::MatrixXd> Wseg(W.segment_ptr(seg), n, n);
+        Wseg = alpha * Eigen::MatrixXd::Identity(n, n);
+        printf("  seg %d: PSD %dx%d, avg|eig(slack)|=%.2e\n", seg, n, n, avg_eig);
+      } else {
+        // Nonneg: W_i = |b_i + (Ay)_i|.
+        double* wp = W.segment_ptr(seg);
+        for (int j = 0; j < sz; ++j)
+          wp[j] = std::max(std::abs(bp[j] + ay[j]), 1e-6);
+        double wmin = *std::min_element(wp, wp + sz);
+        double wmax = *std::max_element(wp, wp + sz);
+        printf("  seg %d: nonneg %d rows, w range [%.2e, %.2e]\n",
+               seg, sz, wmin, wmax);
+      }
+    }
+    W_init = W;
+  }
 
   // Use the problem's actual linear cost.
   auto cost_rhs = kkt->MakeSolverRHS();
@@ -408,12 +385,12 @@ void RunCenteringRaw(Problem& problem, const std::string& name, int max_iters) {
   printf("    ||d(k_min)||_inf = %.4e\n", normInf(d_at_kmin));
 
   // Center at k_min.
-  printf("\n  Centering at k=%.4e (mu=%.4e) from W=I:\n", k_min, mu_min);
+  printf("\n  Centering at k=%.4e (mu=%.4e) from W=b:\n", k_min, mu_min);
   printf("  %3s  %12s  %12s  %12s  %8s\n",
          "it", "d_inf", "d_sq", "s_dot_x", "alpha");
   printf("  %s\n", std::string(52, '-').c_str());
 
-  setOnes(W);
+  W = W_init;
   auto t0 = std::chrono::high_resolution_clock::now();
   auto result = GeodesicCenter(*kkt, cost_rhs, W, k_min,
                                 max_iters, 1e-10, true);

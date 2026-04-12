@@ -21,30 +21,17 @@ std::string Trim(const std::string& s) {
   return s.substr(start, end - start + 1);
 }
 
-// Skip comment lines (starting with " or *).
 bool IsComment(const std::string& line) {
   if (line.empty()) return true;
   char c = line[0];
   return c == '"' || c == '*' || c == '#';
 }
 
-// Read next non-comment line.
 bool NextLine(std::ifstream& file, std::string& line) {
   while (std::getline(file, line)) {
     if (!IsComment(line) && !Trim(line).empty()) return true;
   }
   return false;
-}
-
-Eigen::SparseMatrix<double> ToSparse(const Eigen::MatrixXd& M) {
-  std::vector<Eigen::Triplet<double>> trips;
-  for (int i = 0; i < M.rows(); ++i)
-    for (int j = 0; j < M.cols(); ++j)
-      if (std::abs(M(i, j)) > 1e-15)
-        trips.emplace_back(i, j, M(i, j));
-  Eigen::SparseMatrix<double> S(M.rows(), M.cols());
-  S.setFromTriplets(trips.begin(), trips.end());
-  return S;
 }
 
 }  // namespace
@@ -69,7 +56,6 @@ std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename) {
   // Line 3: block sizes.
   NextLine(file, line);
   {
-    // Handle comma, brace, or space-separated formats.
     for (char& c : line) {
       if (c == ',' || c == '{' || c == '}' || c == '(' || c == ')')
         c = ' ';
@@ -81,16 +67,13 @@ std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename) {
   if (static_cast<int>(info.block_sizes.size()) != info.num_blocks)
     throw std::runtime_error("Block size count mismatch");
 
-  // Compute block offsets and total dimension.
-  // Negative block size means diagonal block.
+  // Compute block metadata.
   std::vector<int> abs_sizes(info.num_blocks);
   std::vector<bool> is_diag(info.num_blocks);
-  std::vector<int> offsets(info.num_blocks);
   int total_dim = 0;
   for (int k = 0; k < info.num_blocks; ++k) {
     is_diag[k] = info.block_sizes[k] < 0;
     abs_sizes[k] = std::abs(info.block_sizes[k]);
-    offsets[k] = total_dim;
     total_dim += abs_sizes[k];
   }
   info.total_matrix_dim = total_dim;
@@ -109,24 +92,12 @@ std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename) {
     }
   }
 
-  // Remaining lines: (constraint_idx, block_idx, row, col, value).
-  // constraint_idx = 0 → objective C.
-  // constraint_idx = 1..m → constraint A_i.
-  // Matrices are symmetric: only upper triangle given.
-
-  // Store dense matrices per block per constraint.
-  // C_blocks[k] = dense matrix for block k of C.
-  // A_blocks[i][k] = dense matrix for block k of constraint i.
-  std::vector<Eigen::MatrixXd> C_blocks(info.num_blocks);
-  std::vector<std::vector<Eigen::MatrixXd>> A_blocks(m);
-  for (int k = 0; k < info.num_blocks; ++k) {
-    int n = abs_sizes[k];
-    C_blocks[k] = Eigen::MatrixXd::Zero(n, n);
-    for (int i = 0; i < m; ++i) {
-      A_blocks[i].resize(info.num_blocks);
-      A_blocks[i][k] = Eigen::MatrixXd::Zero(n, n);
-    }
-  }
+  // Read entries directly into sparse triplet lists.
+  // C_trips[k] = triplets for block k of objective C.
+  // A_trips[i][k] = triplets for block k of constraint A_i.
+  std::vector<std::vector<Eigen::Triplet<double>>> C_trips(info.num_blocks);
+  std::vector<std::vector<std::vector<Eigen::Triplet<double>>>> A_trips(m);
+  for (int i = 0; i < m; ++i) A_trips[i].resize(info.num_blocks);
 
   while (NextLine(file, line)) {
     for (char& c : line) {
@@ -137,8 +108,7 @@ std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename) {
     double val;
     if (!(iss >> ci >> bi >> ri >> ci2 >> val)) continue;
 
-    // SDPA uses 1-based indexing.
-    bi -= 1;
+    bi -= 1;  // 1-based → 0-based
     ri -= 1;
     ci2 -= 1;
 
@@ -147,41 +117,42 @@ std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename) {
     if (ci2 < 0 || ci2 >= abs_sizes[bi]) continue;
 
     if (ci == 0) {
-      // Objective C.
-      C_blocks[bi](ri, ci2) = val;
-      if (ri != ci2) C_blocks[bi](ci2, ri) = val;
+      C_trips[bi].emplace_back(ri, ci2, val);
+      if (ri != ci2) C_trips[bi].emplace_back(ci2, ri, val);
     } else if (ci >= 1 && ci <= m) {
-      // Constraint A_{ci-1}.
-      A_blocks[ci - 1][bi](ri, ci2) = val;
-      if (ri != ci2) A_blocks[ci - 1][bi](ci2, ri) = val;
+      A_trips[ci - 1][bi].emplace_back(ri, ci2, val);
+      if (ri != ci2) A_trips[ci - 1][bi].emplace_back(ci2, ri, val);
     }
   }
 
   // Build Problem.
   // Standard dual form: max b^T y s.t. C - Σ y_i A_i ≽ 0.
-  // → AddPSDConstraint(A_list = [-A_1, ..., -A_m], B = C, vars).
-  // Cost: min -b^T y (since we minimize).
+  // → A_list[i] = -A_i, B = C. Cost: min -b^T y.
   Problem problem;
   std::vector<int> vars(m);
   std::iota(vars.begin(), vars.end(), 0);
 
-  // One PSD constraint per block.
   for (int k = 0; k < info.num_blocks; ++k) {
     int n = abs_sizes[k];
     if (n == 0) continue;
 
+    // Build C for this block.
+    Eigen::SparseMatrix<double> C_block(n, n);
+    C_block.setFromTriplets(C_trips[k].begin(), C_trips[k].end());
+
     if (is_diag[k]) {
-      // Diagonal block: treat as nonneg linear constraint.
-      // C_diag - Σ y_i A_i_diag >= 0.
-      // → A_row_j x + b_j >= 0 where A_row_j = [-A_1(j,j), ..., -A_m(j,j)]
-      //   and b_j = C(j,j).
+      // Diagonal block → nonneg constraint.
       std::vector<Eigen::Triplet<double>> trips;
       Eigen::VectorXd bv(n);
       for (int j = 0; j < n; ++j) {
-        bv(j) = C_blocks[k](j, j);
+        bv(j) = C_block.coeff(j, j);
         for (int i = 0; i < m; ++i) {
-          double val = A_blocks[i][k](j, j);
-          if (val != 0) trips.emplace_back(j, i, -val);
+          // A_trips[i][k] has the sparse entries for A_i in this block.
+          for (const auto& t : A_trips[i][k]) {
+            if (t.row() == j && t.col() == j) {
+              trips.emplace_back(j, i, -t.value());
+            }
+          }
         }
       }
       Eigen::SparseMatrix<double> A(n, m);
@@ -191,15 +162,20 @@ std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename) {
       // PSD block.
       std::vector<Eigen::SparseMatrix<double>> A_list;
       for (int i = 0; i < m; ++i) {
-        A_list.push_back(ToSparse(-A_blocks[i][k]));
+        // Negate: A_list[i] = -A_i.
+        std::vector<Eigen::Triplet<double>> neg_trips;
+        neg_trips.reserve(A_trips[i][k].size());
+        for (const auto& t : A_trips[i][k])
+          neg_trips.emplace_back(t.row(), t.col(), -t.value());
+        Eigen::SparseMatrix<double> Ai(n, n);
+        Ai.setFromTriplets(neg_trips.begin(), neg_trips.end());
+        A_list.push_back(std::move(Ai));
       }
-      problem.AddPSDConstraint(A_list, ToSparse(C_blocks[k]), vars);
+      problem.AddPSDConstraint(A_list, C_block, vars);
     }
   }
 
-  // Cost: min -b^T y.
   problem.SetLinearCost(-b);
-
   return {std::move(problem), info};
 }
 
