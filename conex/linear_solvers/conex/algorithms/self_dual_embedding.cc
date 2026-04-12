@@ -7,38 +7,27 @@
 
 namespace conex {
 
-// Convention mapping:
+// Conventions (following the embedding equations directly):
+//   c = kkt.GetAffineTerm()    (affine term in Ax + c >= 0)
+//   b = cost vector            (min b^T y)
+//   A = our constraint matrices (kkt.MultiplyA, AccumulateAtranspose)
 //
-// Old conex:  max b_old^T y   s.t.  A_old y <= c_old
-//   Slack: s = c_old - A_old y >= 0
+// Embedding variables:
+//   s = sqrtmu * P(W^{-1/2})(e - d)
+//   x = sqrtmu * P(W^{1/2})(e + d)
+//   tau = sqrtmu * wt * (1 + dt)
+//   kappa = sqrtmu / wt * (1 - dt)
 //
-// Our framework:  min cost^T x  s.t.  A x + affineTerm >= 0
-//   Slack: s = A x + affineTerm >= 0
+// Embedding equations (from the old conex, adapted to our A,b,c):
+//   Eq1: s = tau*c - A*y - mu*(c - e)
+//   Eq2: A^T * x = tau*b + mu*(A^T*e - b)
+//   Eq4: b^T*y - <c, x> = kappa
 //
-// Mapping:
-//   A_old = -A_ours         (sign flip: Ay <= c  →  -Ax + c >= 0  →  Ax + c >= 0 with A=-A_old)
-//   c_old = affineTerm      (our GetAffineTerm())
-//   b_old = -cost           (max b^T y = min (-b)^T y)
-//   y_old = x_ours
+// Dividing Eq1 by sqrtmu:
+//   P(W^{-1/2})(e - d) = wt*(1+dt)*c - (1/sqrtmu)*A*y - sqrtmu*(c - e)
 //
-// So: A_old^T v = -A_ours^T v  (AccumulateAtranspose gives A_ours^T, need to negate)
-//     b_old = -cost_vec
-//
-// The embedding equations (old convention):
-//   τ c_old - A_old y = s + μ(c_old - e)
-//   A_old^T x = τ b_old + μ(A_old^T e - b_old)
-//   <x, s> + κτ = μ(rank + 1)
-//   b_old^T y - <c_old, x> = κ
-//
-// The RHS from BuildRHS (old code):
-//   f(1:n) = wt*(b_old + A_old^T Q(W) c_old) + sqrtmu*(A_old^T Q(W) e - A_old^T Q(W) c_old + A_old^T e - b_old) - 2 A_old^T W
-//   f(n+1) = 1/wt + 2<W, c_old> - wt*<c_old, Q(W) c_old> - sqrtmu*(<c_old, Q(W) e> - <c_old, Q(W) c_old>) - sqrtmu*(<c_old, e> + 1)
-//
-// In our primitives (using A_old^T v = -AccAtrans(v) and b_old = -cost):
-//   A_old^T Q(W) c = -AccAtrans(Q(W)(affineTerm))
-//   A_old^T Q(W) e = -AccAtrans(Q(W)(e))
-//   A_old^T e = -AccAtrans(e)
-//   A_old^T W = -AccAtrans(W)
+// The (n+1) system solves for (y, dt) given sqrtmu, then d is recovered
+// from Eq1.
 
 HSDResult SolveHSD(
     KKTSolverBase& kkt,
@@ -51,14 +40,12 @@ HSDResult SolveHSD(
   const int n = kkt.number_of_variables();
   const int rank = m;
 
-  RowSpace c_old = kkt.GetAffineTerm();  // c_old = affineTerm
+  RowSpace c = kkt.GetAffineTerm();
   RowSpace e = kkt.MakeRowSpace();
   setOnes(e);
 
-  // b_old = -cost_vec.
-  Eigen::VectorXd cost_vec(n);
-  cost_rhs.supernodes->GatherInto(cost_vec);
-  Eigen::VectorXd b_old_vec = -cost_vec;
+  Eigen::VectorXd b_vec(n);
+  cost_rhs.supernodes->GatherInto(b_vec);
 
   double wt = 1.0;
   HSDResult result;
@@ -68,88 +55,90 @@ HSDResult SolveHSD(
     kkt.AssembleAndFactor();
 
     // Cone quantities.
-    RowSpace QWc = quadraticRepresentation(W, c_old);  // Q(W)(c_old)
-    RowSpace QWe = quadraticRepresentation(W, e);       // Q(W)(e) = W²
+    RowSpace QWc = quadraticRepresentation(W, c);
+    RowSpace QWe = quadraticRepresentation(W, e);
 
-    // A_old^T quantities = -A_ours^T quantities.
-    // AoldT_QWc = A_old^T Q(W) c_old = -AccAtrans(QWc)
-    auto AoldT_QWc = kkt.MakeSolverRHS(); AoldT_QWc.SetZero();
-    kkt.AccumulateAtranspose(QWc, AoldT_QWc);
-    AoldT_QWc *= -1;  // negate for A_old^T
+    // A^T quantities (using our A directly, no sign flip).
+    auto AT_QWc = kkt.MakeSolverRHS(); AT_QWc.SetZero();
+    kkt.AccumulateAtranspose(QWc, AT_QWc);
 
-    auto AoldT_QWe = kkt.MakeSolverRHS(); AoldT_QWe.SetZero();
-    kkt.AccumulateAtranspose(QWe, AoldT_QWe);
-    AoldT_QWe *= -1;
+    auto AT_QWe = kkt.MakeSolverRHS(); AT_QWe.SetZero();
+    kkt.AccumulateAtranspose(QWe, AT_QWe);
 
-    auto AoldT_e = kkt.MakeSolverRHS(); AoldT_e.SetZero();
-    kkt.AccumulateAtranspose(e, AoldT_e);
-    AoldT_e *= -1;
+    auto AT_e = kkt.MakeSolverRHS(); AT_e.SetZero();
+    kkt.AccumulateAtranspose(e, AT_e);
 
-    auto AoldT_W = kkt.MakeSolverRHS(); AoldT_W.SetZero();
-    kkt.AccumulateAtranspose(W, AoldT_W);
-    AoldT_W *= -1;
+    auto AT_W = kkt.MakeSolverRHS(); AT_W.SetZero();
+    kkt.AccumulateAtranspose(W, AT_W);
 
-    // b_old as SolverRHS.
-    auto b_old_rhs = kkt.MakeSolverRHS();
-    b_old_rhs = kkt.MakeBlockVariable(b_old_vec);
+    auto b_rhs = kkt.MakeSolverRHS();
+    b_rhs = kkt.MakeBlockVariable(b_vec);
 
-    // Scalar inner products (these don't involve A, no sign issues).
-    double wc = dot(W, c_old);
-    double cQWc = dot(c_old, QWc);
-    double cQWe = dot(c_old, QWe);
-    double ce = dot(c_old, e);
+    double wc = dot(W, c);
+    double cQWc = dot(c, QWc);
+    double cQWe = dot(c, QWe);
+    double ce = dot(c, e);
 
-    // === Build f(sqrtmu) = f0 + sqrtmu * f1 ===
-    // f0(1:n) = wt*(b_old + AoldT_QWc) - 2*AoldT_W
+    // === RHS as f(sqrtmu) = f0 + sqrtmu * f1 ===
+    // From the old code BuildRHS, translated with our sign conventions.
+    // The old code uses: A_old^T = our -A^T, b_old = our -b.
+    // So old "AQc" = A_old^T Q(W) c = -AT_QWc.
+    // And old "b" = -b_vec.
+    //
+    // Old f(1:n) = wt*(b_old + A_old^T Q(W) c) + sqrtmu*(A_old^T Q(W) e - A_old^T Q(W) c + A_old^T e - b_old) - 2*A_old^T W
+    // = wt*(-b_rhs - AT_QWc) + sqrtmu*(-AT_QWe + AT_QWc - AT_e + b_rhs) - 2*(-AT_W)
+    // = -wt*b_rhs - wt*AT_QWc - sqrtmu*AT_QWe + sqrtmu*AT_QWc - sqrtmu*AT_e + sqrtmu*b_rhs + 2*AT_W
+    //
+    // f0 = -wt*b_rhs - wt*AT_QWc + 2*AT_W
+    // f1 = -AT_QWe + AT_QWc - AT_e + b_rhs
+
     auto f0 = kkt.MakeSolverRHS(); f0.SetZero();
-    { auto tmp = b_old_rhs; tmp *= wt; f0 += tmp; }
-    { auto tmp = AoldT_QWc; tmp *= wt; f0 += tmp; }
-    { auto tmp = AoldT_W; tmp *= -2; f0 += tmp; }
+    { auto tmp = b_rhs; tmp *= -wt; f0 += tmp; }
+    { auto tmp = AT_QWc; tmp *= -wt; f0 += tmp; }
+    { auto tmp = AT_W; tmp *= 2; f0 += tmp; }
 
-    // f1(1:n) = AoldT_QWe - AoldT_QWc + AoldT_e - b_old
     auto f1 = kkt.MakeSolverRHS(); f1.SetZero();
-    f1 += AoldT_QWe;
-    { auto tmp = AoldT_QWc; tmp *= -1; f1 += tmp; }
-    f1 += AoldT_e;
-    { auto tmp = b_old_rhs; tmp *= -1; f1 += tmp; }
+    { auto tmp = AT_QWe; tmp *= -1; f1 += tmp; }
+    f1 += AT_QWc;
+    { auto tmp = AT_e; tmp *= -1; f1 += tmp; }
+    f1 += b_rhs;
 
-    // f0(n+1) = 1/wt + 2*wc - wt*cQWc
+    // Old f(n+1):
+    // = 1/wt + 2*<W,c> - wt*<c,Q(W)c> - sqrtmu*(<c,Q(W)e> - <c,Q(W)c>) - sqrtmu*(<c,e> + 1)
+    // (no sign issues here — these are inner products in cone space)
     double f0_scalar = 1.0 / wt + 2.0 * wc - wt * cQWc;
-    // f1(n+1) = -(cQWe - cQWc) - (ce + 1)
     double f1_scalar = -(cQWe - cQWc) - (ce + 1.0);
 
-    // === Schur complement for the extended (n+1)x(n+1) system ===
-    // S12 = -wt*(AoldT_QWc + b_old)
+    // === Schur complement ===
+    // Old S12 = -wt*(A_old^T Q(W) c + b_old) = -wt*(-AT_QWc - b_rhs) = wt*(AT_QWc + b_rhs)
     auto S12 = kkt.MakeSolverRHS(); S12.SetZero();
-    S12 += AoldT_QWc;
-    S12 += b_old_rhs;
-    S12 *= -wt;
+    S12 += AT_QWc;
+    S12 += b_rhs;
+    S12 *= wt;
 
-    // G^{-1} S12.
     auto Ginv_S12 = kkt.MakeSolverRHS();
     Ginv_S12 = S12;
     kkt.SolveSolverRHS(Ginv_S12);
 
-    // S22 = wt*cQWc + 1/wt.
+    // Old S22 = wt*<c,Q(W)c> + 1/wt  (no sign issue)
     double S22 = wt * cQWc + 1.0 / wt;
 
-    // S21 = (b_old - AoldT_QWc)^T  (as dot product in variable space).
-    Eigen::VectorXd AoldT_QWc_vec(n), Ginv_S12_vec(n);
-    AoldT_QWc.supernodes->GatherInto(AoldT_QWc_vec);
+    // Old S21 = (b_old - A_old^T Q(W) c)^T = (-b_rhs - (-AT_QWc))^T = (AT_QWc - b_rhs)^T
+    Eigen::VectorXd AT_QWc_vec(n), Ginv_S12_vec(n);
+    AT_QWc.supernodes->GatherInto(AT_QWc_vec);
     Ginv_S12.supernodes->GatherInto(Ginv_S12_vec);
-    Eigen::VectorXd S21_vec = b_old_vec - AoldT_QWc_vec;
+    Eigen::VectorXd S21_vec = AT_QWc_vec - b_vec;
 
-    double S21_Ginv_S12 = S21_vec.dot(Ginv_S12_vec);
-    double schur = S22 - S21_Ginv_S12;
+    double schur = S22 - S21_vec.dot(Ginv_S12_vec);
     if (std::abs(schur) < 1e-30) schur = 1e-30;
 
-    // === Solve at sqrtmu=0 and sqrtmu=1, decompose d(sqrtmu) ===
-    auto solve_embedding = [&](double sqrtmu,
+    // === Solve at sqrtmu=0 and sqrtmu=1 ===
+    auto solve_embedding = [&](double sqrtmu_val,
                                Eigen::VectorXd& y_out, double& dt_out) {
       auto f = kkt.MakeSolverRHS();
       f = f0;
-      { auto tmp = f1; tmp *= sqrtmu; f += tmp; }
-      double f_scalar = f0_scalar + sqrtmu * f1_scalar;
+      { auto tmp = f1; tmp *= sqrtmu_val; f += tmp; }
+      double f_scalar = f0_scalar + sqrtmu_val * f1_scalar;
 
       auto Ginv_f = kkt.MakeSolverRHS();
       Ginv_f = f;
@@ -167,17 +156,19 @@ HSDResult SolveHSD(
       y_rhs.supernodes->GatherInto(y_out);
     };
 
-    // Compute d from (y, dt, sqrtmu) using old-convention slack.
-    // In old convention: slack = c_old - A_old * y - c_weight * c_old - w_weight * e
-    // With c_weight = wt*(1+dt) - sqrtmu, w_weight = sqrtmu:
-    //   Newton direction: d = e + P(W^{1/2})(c_old - A_old*y - c_weight*c_old - w_weight*e)
-    // But the Newton system gives: the slack for the geodesic step is
-    //   slack = -c_weight * c_old - w_weight * e + A_old * y
-    //         = -c_weight * c_old - w_weight * e + (-A_ours * y)
-    // Wait — in old convention, the slack involves A_old y, and in our framework
-    // A_old y = -A_ours y. So:
-    //   slack_old = A_old * y - c_weight * c_old - w_weight * e
-    //   In our primitives: A_old * y = -MultiplyA(y).
+    // Compute d from (y, dt, sqrtmu) via Eq1 (divided by sqrtmu):
+    //   P(W^{-1/2})(e-d) = wt*(1+dt)*c - (A*y)/sqrtmu - sqrtmu*(c-e)
+    // So: e-d = P(W^{1/2})( wt*(1+dt)*c - (A*y)/sqrtmu - sqrtmu*(c-e) )
+    //     d = e - P(W^{1/2})( ... )
+    //
+    // But for the geodesic update we need slack, not d.
+    // Actually the Newton step gives d = e + P(W^{1/2})(slack) where
+    // slack is defined by the centering equation.
+    //
+    // From the old code: c_weight = wt*(1+dt) - sqrtmu, w_weight = sqrtmu.
+    // slack_old = A_old*y - c_weight*c - w_weight*e
+    //   A_old*y = -A*y (in our primitives).
+    // So slack_old = -A*y - c_weight*c - w_weight*e.
     // And d = e + P(W^{1/2})(slack_old).
     auto compute_d = [&](const Eigen::VectorXd& y_sol, double dt,
                          double sqrtmu_val, RowSpace& d_out,
@@ -185,14 +176,14 @@ HSDResult SolveHSD(
       double c_weight = wt * (1.0 + dt) - sqrtmu_val;
       double w_weight = sqrtmu_val;
 
-      // A_old * y = -A_ours * y = -MultiplyA(y_rhs).
-      RowSpace Ay_old = kkt.MakeRowSpace();
+      RowSpace Ay = kkt.MakeRowSpace();
       { auto yr = kkt.MakeSolverRHS(); yr = kkt.MakeBlockVariable(y_sol);
-        kkt.MultiplyA(yr, Ay_old); }
-      Ay_old *= -1;  // A_old * y
+        kkt.MultiplyA(yr, Ay); }
 
-      slack_out = Ay_old;
-      { RowSpace tmp = c_old; tmp *= -c_weight; slack_out += tmp; }
+      // slack_old = A_old*y - c_weight*c - w_weight*e = -Ay - c_weight*c - w_weight*e
+      slack_out = Ay;
+      slack_out *= -1;
+      { RowSpace tmp = c; tmp *= -c_weight; slack_out += tmp; }
       { RowSpace tmp = e; tmp *= -w_weight; slack_out += tmp; }
 
       RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
@@ -205,17 +196,15 @@ HSDResult SolveHSD(
     solve_embedding(0.0, y0, dt0);
     solve_embedding(1.0, y1, dt1);
 
-    RowSpace d0_rs = kkt.MakeRowSpace(), d1_rs = kkt.MakeRowSpace();
+    RowSpace d0 = kkt.MakeRowSpace(), d1 = kkt.MakeRowSpace();
     RowSpace slack0 = kkt.MakeRowSpace(), slack1 = kkt.MakeRowSpace();
-    compute_d(y0, dt0, 0.0, d0_rs, slack0);
-    compute_d(y1, dt1, 1.0, d1_rs, slack1);
+    compute_d(y0, dt0, 0.0, d0, slack0);
+    compute_d(y1, dt1, 1.0, d1, slack1);
 
-    // Line search: d(sqrtmu) = d_1 + t*(d_0 - d_1) where t = 1 - sqrtmu.
-    // Find largest t with ||d||_inf <= 1 using lineSearchK.
-    RowSpace d_rev = d0_rs - d1_rs;
-    double t_max = lineSearchK(d1_rs, d_rev);
+    // Line search: d(sqrtmu) = d1 + t*(d0-d1), t = 1-sqrtmu.
+    RowSpace d_rev = d0 - d1;
+    double t_max = lineSearchK(d1, d_rev);
 
-    // d_tau bound: |dt1 + t*(dt0-dt1)| <= 1.
     double dt_rev = dt0 - dt1;
     double t_tau = 0.0;
     if (std::abs(dt_rev) > 1e-15) {
@@ -241,7 +230,6 @@ HSDResult SolveHSD(
     compute_d(y_sol, d_tau, sqrtmu, d_final, slack_final);
     double dinf = std::max(normInf(d_final), std::abs(d_tau));
 
-    // Take step.
     double alpha = std::min(1.0, 2.0 / (dinf * dinf));
     if (dinf < 1e-14) alpha = 1.0;
 
@@ -255,50 +243,73 @@ HSDResult SolveHSD(
     result.d_inf = dinf;
     result.y = y_sol;
 
-    // === Verify embedding equations ===
+    // === Verify Eq1, Eq2, Eq4 ===
     if (verbose) {
       double mu_val = sqrtmu * sqrtmu;
-      RowSpace sqrtW_v = EuclideanJordanAlgebra::sqrt(W);
-      RowSpace e_plus_d = e + d_final;
-      RowSpace x_v = quadraticRepresentation(sqrtW_v, e_plus_d);
+      RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+      RowSpace ones = kkt.MakeRowSpace(); setOnes(ones);
+
+      RowSpace e_plus_d = ones + d_final;
+      RowSpace x_v = quadraticRepresentation(sqrtW, e_plus_d);
       x_v *= sqrtmu;
 
-      // Eq2: A_old^T x = τ*b_old + μ*(A_old^T e - b_old)
-      // A_old^T x = -AccAtrans(x)
-      auto AoldT_x = kkt.MakeSolverRHS(); AoldT_x.SetZero();
-      kkt.AccumulateAtranspose(x_v, AoldT_x);
-      AoldT_x *= -1;
-      // RHS: τ*b_old + μ*(AoldT_e - b_old) = (τ-μ)*b_old + μ*AoldT_e
+      RowSpace e_minus_d = ones - d_final;
+      RowSpace s_v = EuclideanJordanAlgebra::like(W);
+      // s = sqrtmu * P(W^{-1/2})(e-d). Hard to compute W^{-1/2}.
+      // Instead verify Eq1 as: s = tau*c - A*y - mu*(c-e).
+      RowSpace Ay_v = kkt.MakeRowSpace();
+      { auto yr = kkt.MakeSolverRHS(); yr = kkt.MakeBlockVariable(y_sol);
+        kkt.MultiplyA(yr, Ay_v); }
+
+      // Eq1: s_predicted = tau*c - A*y - mu*(c-e).
+      //      s_from_d = sqrtmu * P(W^{-1/2})(e-d).
+      // Instead check: P(W^{1/2})(e-d) should equal
+      //   (1/sqrtmu) * (tau*c - A*y - mu*(c-e))
+      //   = wt*(1+dt)*c - (A*y)/sqrtmu - sqrtmu*(c-e)
+      // LHS: P(W^{1/2})(e-d)
+      RowSpace lhs1 = quadraticRepresentation(sqrtW, e_minus_d);
+      // RHS (if sqrtmu > 0):
+      double eq1_err = 0;
+      if (sqrtmu > 1e-15) {
+        RowSpace rhs1 = c;
+        rhs1 *= wt * (1.0 + d_tau);
+        { RowSpace tmp = Ay_v; tmp *= -1.0 / sqrtmu; rhs1 += tmp; }
+        { RowSpace tmp = c; tmp *= -sqrtmu; rhs1 += tmp; }
+        { RowSpace tmp = ones; tmp *= sqrtmu; rhs1 += tmp; }
+        RowSpace res1 = lhs1 - rhs1;
+        eq1_err = normInf(res1);
+      }
+
+      // Eq2: A^T * x = tau*b + mu*(A^T*e - b)
+      auto atx = kkt.MakeSolverRHS(); atx.SetZero();
+      kkt.AccumulateAtranspose(x_v, atx);
       auto rhs2 = kkt.MakeSolverRHS(); rhs2.SetZero();
-      { auto tmp = b_old_rhs; tmp *= (tau - mu_val); rhs2 += tmp; }
-      { auto tmp = AoldT_e; tmp *= mu_val; rhs2 += tmp; }
-      rhs2 *= -1; rhs2 += AoldT_x;
-      Eigen::VectorXd res2(n);
-      rhs2.supernodes->GatherInto(res2);
-      double eq2_err = res2.norm();
+      { auto tmp = b_rhs; tmp *= (tau - mu_val); rhs2 += tmp; }
+      { auto tmp = AT_e; tmp *= mu_val; rhs2 += tmp; }
+      auto res2 = kkt.MakeSolverRHS();
+      res2 = atx;
+      { auto tmp = rhs2; tmp *= -1; res2 += tmp; }
+      Eigen::VectorXd res2_vec(n);
+      res2.supernodes->GatherInto(res2_vec);
+      double eq2_err = res2_vec.norm();
 
-      // Eq3: <x,s> + κτ = μ*(rank+1), where <x,s> = μ*(rank - ||d||²)
-      double d_sq = squaredNorm(d_final);
-      double xs = mu_val * (rank - d_sq);
-      double eq3_err = std::abs(xs + kappa * tau - mu_val * (rank + 1));
-
-      // Eq4: b_old^T y - <c_old, x> = κ
-      double bty = b_old_vec.dot(y_sol);
-      double cx = dot(c_old, x_v);
+      // Eq4: b^T*y - <c, x> = kappa
+      double bty = b_vec.dot(y_sol);
+      double cx = dot(c, x_v);
       double eq4_err = std::abs(bty - cx - kappa);
 
       printf("  %3d  mu=%.2e  tau=%.4e  kap=%.4e  dinf=%.2e  "
              "d_tau=%.2e  alpha=%.4f  sqrtmu=%.2e  "
-             "eq2=%.1e eq3=%.1e eq4=%.1e\n",
+             "eq1=%.1e eq2=%.1e eq4=%.1e\n",
              iter, mu_val, tau, kappa, dinf,
-             d_tau, alpha, sqrtmu, eq2_err, eq3_err, eq4_err);
+             d_tau, alpha, sqrtmu, eq1_err, eq2_err, eq4_err);
     }
 
     // Check termination.
     if (tau > 0 && kappa > 0) {
       if (tau / kappa > 1e6) {
         result.solved = true;
-        result.primal_obj = b_old_vec.dot(y_sol) / tau;
+        result.primal_obj = b_vec.dot(y_sol) / tau;
         return result;
       }
       if (kappa / tau > 1e6) {
@@ -307,10 +318,7 @@ HSDResult SolveHSD(
       }
     }
 
-    // Geodesic update for W.
     geodesicUpdateFromSlack(W, alpha, slack_final);
-
-    // Update wt.
     wt *= std::exp(alpha * d_tau);
   }
 
