@@ -234,11 +234,85 @@ HSDResult SolveHSD(
     result.d_inf = dinf;
     result.y = y_sol * tau;
 
+    // === Verify embedding equations ===
+    // Construct primal/dual variables from (W, d, d_tau):
+    //   x = sqrtmu * P(W^{1/2})(e + d)
+    //   s = sqrtmu * P(W^{-1/2})(e - d)
+    //   λ = s (dual cone variable)
+    //   τ = sqrtmu * wt * (1 + d_tau)
+    //   κ = sqrtmu * (1/wt) * (1 - d_tau)
+    //
+    // Embedding equations:
+    //   (1) τ*c - A*y = s + μ*(c - e)
+    //   (2) A^T*x = τ*b + μ*(A^T*e - b)   [b = cost vector]
+    //   (3) <x, s> + κ*τ = μ*(rank + 1)
+    //   (4) b^T*y - <c, x> = κ
     if (verbose) {
+      double mu_val = sqrtmu * sqrtmu;
+      RowSpace sqrtW_v = EuclideanJordanAlgebra::sqrt(W);
+      RowSpace ones_v = kkt.MakeRowSpace();
+      setOnes(ones_v);
+
+      // d from slack_best.
+      RowSpace d_v = quadraticRepresentation(sqrtW_v, slack_best);
+      d_v += ones_v;
+
+      // x = sqrtmu * P(W^{1/2})(e + d)
+      RowSpace e_plus_d = ones_v + d_v;
+      RowSpace x_v = quadraticRepresentation(sqrtW_v, e_plus_d);
+      x_v *= sqrtmu;
+
+      // s = sqrtmu * P(W^{-1/2})(e - d)
+      // P(W^{-1/2})(v) = P(W^{-1})(P(W^{1/2})(v))... complex.
+      // Instead: s = τ*c - A*y - μ*(c - e)  (from eq 1, if it held).
+      // Check eq 1 directly: residual = τ*c - A*y - s - μ*(c - e).
+      // But we don't have s independently. Use the Newton equation:
+      //   The Newton direction satisfies the linearized system.
+      //   Check: d was constructed as d = e + P(W^{1/2})(slack)
+      //   where slack = Ay - c_weight*c - w_weight*e.
+      //   c_weight = wt*(1+d_tau) - sqrtmu, w_weight = sqrtmu.
+      //
+      // Equation (2): A^T * x = τ*b + μ*(A^T e - b)
+      // A^T x:
+      auto atx = kkt.MakeSolverRHS();
+      atx.SetZero();
+      kkt.AccumulateAtranspose(x_v, atx);
+      // RHS: τ*b + μ*(A^T e - b) = (τ-μ)*b + μ*A^T e
+      auto rhs2 = kkt.MakeSolverRHS();
+      rhs2 = cost_rhs;
+      rhs2 *= (tau - mu_val);
+      {
+        auto tmp = kkt.MakeSolverRHS();
+        tmp.SetZero();
+        kkt.AccumulateAtranspose(ones_v, tmp);
+        tmp *= mu_val;
+        rhs2 += tmp;
+      }
+      // Residual = A^T x - RHS.
+      rhs2 *= -1;
+      rhs2 += atx;
+      Eigen::VectorXd res2(n);
+      rhs2.supernodes->GatherInto(res2);
+      double eq2_err = res2.norm();
+
+      // Equation (4): b^T y - <c, x> = κ
+      double bty = b_vec.dot(y_sol);
+      double cx = dot(c, x_v);
+      double eq4_err = std::abs(bty - cx - kappa);
+
+      // Equation (3): <x, s> + κτ = μ*(rank+1)
+      // We need <x,s>. Since x = sqrtmu*P(W^{1/2})(e+d) and
+      // s should equal sqrtmu*P(W^{-1/2})(e-d), we have
+      // <x,s> = mu * <e+d, e-d> = mu * (rank - ||d||^2).
+      double d_sq = squaredNorm(d_v);
+      double xs = mu_val * (rank - d_sq);
+      double eq3_err = std::abs(xs + kappa * tau - mu_val * (rank + 1));
+
       printf("  %3d  mu=%.2e  tau=%.4e  kap=%.4e  dinf=%.2e  "
-             "d_tau=%.2e  alpha=%.4f  sqrtmu=%.2e\n",
-             iter, sqrtmu * sqrtmu, tau, kappa, dinf,
-             d_tau, alpha, sqrtmu);
+             "d_tau=%.2e  alpha=%.4f  sqrtmu=%.2e  "
+             "eq2=%.1e eq3=%.1e eq4=%.1e\n",
+             iter, mu_val, tau, kappa, dinf,
+             d_tau, alpha, sqrtmu, eq2_err, eq3_err, eq4_err);
     }
 
     // Check termination (only when tau, kappa are meaningful).
