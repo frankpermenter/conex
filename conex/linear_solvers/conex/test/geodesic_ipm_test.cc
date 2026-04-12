@@ -905,5 +905,127 @@ TEST(GeodesicSDP, InterleavedVariablesChordal) {
   EXPECT_LE(result2.iterations, 10);
 }
 
+// Mixed PSD + nonneg constraints sharing variables.
+// Mimics the structure of buck3/trto3/vibra3 (PSD blocks + diagonal block).
+TEST(GeodesicSDP, MixedPSDNonneg) {
+  const int n_psd = 2;  // 2×2 PSD block
+  const int n_vars = 3;
+  const int m_nn = 2;   // 2 nonneg constraints
+
+  // PSD block: A_k on vars {0,1,2}, B = I.
+  MatrixXd E00 = MatrixXd::Zero(n_psd, n_psd); E00(0, 0) = 1;
+  MatrixXd E01 = MatrixXd::Zero(n_psd, n_psd); E01(0, 1) = E01(1, 0) = 1;
+  MatrixXd E11 = MatrixXd::Zero(n_psd, n_psd); E11(1, 1) = 1;
+  std::vector<Eigen::SparseMatrix<double>> A_psd = {
+      toSparse(E00), toSparse(E01), toSparse(E11)};
+  Eigen::SparseMatrix<double> I2 = toSparse(MatrixXd::Identity(n_psd, n_psd));
+
+  // Nonneg block: 2 constraints on vars {0,1,2}, b = ones.
+  MatrixXd A_nn_dense(m_nn, n_vars);
+  A_nn_dense << 0.5, 0.3, 0.2,
+                0.1, 0.4, 0.5;
+  Eigen::SparseMatrix<double> A_nn = toSparse(A_nn_dense);
+  VectorXd b_nn = VectorXd::Ones(m_nn);
+
+  // Cost = A_psd^T(I) + A_nn^T(ones) so that (W=I, k=1) is on the central path.
+  // A_psd^T(I)_j = trace(A_j · I) = trace(A_j).
+  // A_nn^T(ones)_j = sum of column j of A_nn.
+  VectorXd c = VectorXd::Zero(n_vars);
+  for (int k = 0; k < n_vars; ++k)
+    c(k) = MatrixXd(A_psd[k]).trace();
+  c += A_nn.transpose() * VectorXd::Ones(m_nn);
+
+  std::vector<int> vars(n_vars);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  problem.AddPSDConstraint(A_psd, I2, vars, /*use_chordal=*/false);
+  problem.AddLinearConstraint(A_nn, b_nn, vars);
+  problem.SetLinearCost(c);
+
+  auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
+
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(c);
+
+  // At W=I, k=1: d should be ~0.
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+  printf("Mixed PSD+nonneg: W segments=%d, total_rows=%d\n",
+         W.num_constraints(), W.total_rows());
+  for (int i = 0; i < W.num_constraints(); ++i)
+    printf("  seg %d: size=%d\n", i, W.sizes[i]);
+
+  auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 10, 1e-10, true);
+  printf("Center at k=1: %d iters, d_inf=%.2e\n",
+         result.iterations, result.d_inf_norm);
+  EXPECT_LT(result.d_inf_norm, 1e-8);
+
+  // Center at mu=0.5.
+  setOnes(W);
+  auto result2 = GeodesicCenter(*kkt, cost_rhs, W, std::sqrt(2.0),
+                                 20, 1e-10, true);
+  printf("Center at mu=0.5: %d iters, d_inf=%.2e\n",
+         result2.iterations, result2.d_inf_norm);
+  EXPECT_LT(result2.d_inf_norm, 1e-6);
+  EXPECT_LE(result2.iterations, 10);
+}
+
+// Same as above but with PSD on a subset of variables.
+TEST(GeodesicSDP, MixedPSDNonnegDisjoint) {
+  const int n_psd = 2;
+
+  // PSD on vars {0,1}, nonneg on vars {2,3}.
+  MatrixXd E00 = MatrixXd::Zero(n_psd, n_psd); E00(0, 0) = 1;
+  MatrixXd E11 = MatrixXd::Zero(n_psd, n_psd); E11(1, 1) = 1;
+  std::vector<Eigen::SparseMatrix<double>> A_psd = {
+      toSparse(E00), toSparse(E11)};
+  Eigen::SparseMatrix<double> I2 = toSparse(MatrixXd::Identity(n_psd, n_psd));
+
+  // Nonneg: 3 constraints on vars {2,3}.
+  MatrixXd A_nn_dense(3, 2);
+  A_nn_dense << 1.0, 0.5,
+                0.5, 1.0,
+                0.3, 0.7;
+  Eigen::SparseMatrix<double> A_nn = toSparse(A_nn_dense);
+  VectorXd b_nn = VectorXd::Ones(3);
+
+  // Cost = A^T(I) for each constraint type.
+  VectorXd c = VectorXd::Zero(4);
+  c(0) = MatrixXd(A_psd[0]).trace();  // trace(E00) = 1
+  c(1) = MatrixXd(A_psd[1]).trace();  // trace(E11) = 1
+  c.tail(2) = A_nn.transpose() * VectorXd::Ones(3);
+
+  Problem problem;
+  std::vector<int> psd_vars = {0, 1};
+  std::vector<int> nn_vars = {2, 3};
+  problem.AddPSDConstraint(A_psd, I2, psd_vars, /*use_chordal=*/false);
+  problem.AddLinearConstraint(A_nn, b_nn, nn_vars);
+  problem.SetLinearCost(c);
+
+  auto solver = Solver::Build(problem);
+  auto* kkt = solver.solver();
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(c);
+
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+
+  auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 10, 1e-10, true);
+  printf("Mixed disjoint center k=1: %d iters, d_inf=%.2e\n",
+         result.iterations, result.d_inf_norm);
+  EXPECT_LT(result.d_inf_norm, 1e-8);
+
+  // Center at mu=0.5.
+  setOnes(W);
+  auto result2 = GeodesicCenter(*kkt, cost_rhs, W, std::sqrt(2.0),
+                                 20, 1e-10, true);
+  printf("Mixed disjoint center mu=0.5: %d iters, d_inf=%.2e\n",
+         result2.iterations, result2.d_inf_norm);
+  EXPECT_LT(result2.d_inf_norm, 1e-6);
+  EXPECT_LE(result2.iterations, 10);
+}
+
 }  // namespace
 }  // namespace conex

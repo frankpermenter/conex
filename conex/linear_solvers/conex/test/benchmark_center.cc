@@ -218,11 +218,220 @@ void RunCentering(Problem& problem, const std::string& name, int max_iters) {
              std::max(result.iterations, 1));
 }
 
+// Run centering on the original problem data (no b→I, no cost→A^T I).
+// Starts from W=I and centers at k=1.
+void RunCenteringRaw(Problem& problem, const std::string& name, int max_iters) {
+  printf("=== %s [raw] ===\n", name.c_str());
+  printf("  Variables: %d, Constraints: %d\n",
+         problem.num_variables(), problem.num_constraints());
+
+  // Regularize: add eps*I to each B and eps*trace(A_i) to cost.
+  // eps = 10% of the nominal norm (per constraint).
+  double eps = 0;
+  {
+    // First build unregularized to measure d0 norm.
+    {
+      auto solver0 = Solver::Build(problem);
+      auto* kkt0 = solver0.solver();
+      RowSpace W0 = kkt0->MakeRowSpace();
+      setOnes(W0);
+      kkt0->SetScaling(W0);
+      kkt0->AssembleAndFactor();
+      // d at k=0 (zero cost): measures how far W=I is from the analytic center.
+      auto y0 = kkt0->MakeSolverRHS();
+      y0.SetZero();
+      RowSpace v0 = W0; v0 *= 2.0;
+      kkt0->AccumulateAtranspose(v0, y0);
+      kkt0->SolveSolverRHS(y0);
+      RowSpace row0 = kkt0->MakeRowSpace();
+      kkt0->MultiplyA(y0, row0);
+      RowSpace b0 = kkt0->GetAffineTerm();
+      RowSpace sqrtW0 = EuclideanJordanAlgebra::sqrt(W0);
+      RowSpace d0 = quadraticRepresentation(sqrtW0, addScaled(b0, row0, 0, -1.0));
+      RowSpace ones0 = kkt0->MakeRowSpace(); setOnes(ones0);
+      d0 += ones0;
+      double d0_inf = normInf(d0);
+      // eps = 10% * d0_inf: shift B by enough to bring d_inf near 1.
+      eps = 0.1 * std::max(d0_inf, 1.0);
+      printf("  d0_inf=%.2e, eps=%.2e\n", d0_inf, eps);
+    }
+
+    Problem regularized;
+    for (int i = 0; i < problem.num_constraints(); ++i) {
+      std::visit([&](const auto& data) {
+        using T = std::decay_t<decltype(data)>;
+        if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+          int n = data.B.rows();
+          Eigen::SparseMatrix<double> B_reg = data.B +
+              eps * Eigen::MatrixXd::Identity(n, n).sparseView();
+          regularized.AddPSDConstraint(data.A_list, B_reg, data.vars,
+                                       data.use_chordal);
+        } else if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+          Eigen::VectorXd b_reg = data.b.array() + eps;
+          regularized.AddLinearConstraint(data.A, b_reg, data.vars);
+        } else if constexpr (std::is_same_v<T, Problem::SOCConstraintData>) {
+          Eigen::VectorXd b_reg = data.b;
+          b_reg(0) += eps;
+          regularized.AddSOCConstraint(data.A, b_reg, data.vars);
+        }
+      }, problem.constraint(i));
+    }
+    // cost_reg = cost + eps * A^T(I).
+    // A^T(I)_j = trace(A_j · I) = trace(A_j) for PSD, sum of A_j column for nonneg.
+    int nv = problem.num_variables();
+    VectorXd cost_reg = VectorXd::Zero(nv);
+    if (problem.has_linear_cost())
+      cost_reg = problem.linear_cost();
+    for (int i = 0; i < problem.num_constraints(); ++i) {
+      std::visit([&](const auto& data) {
+        using T = std::decay_t<decltype(data)>;
+        if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+          for (int k = 0; k < static_cast<int>(data.A_list.size()); ++k) {
+            // trace(A_k) = sum of diagonal
+            double tr = 0;
+            for (int outer = 0; outer < data.A_list[k].outerSize(); ++outer)
+              for (Eigen::SparseMatrix<double>::InnerIterator it(
+                       data.A_list[k], outer); it; ++it)
+                if (it.row() == it.col()) tr += it.value();
+            cost_reg(data.vars[k]) += eps * tr;
+          }
+        } else if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+          for (int k = 0; k < data.A.outerSize(); ++k)
+            for (Eigen::SparseMatrix<double>::InnerIterator it(data.A, k);
+                 it; ++it)
+              cost_reg(data.vars[it.col()]) += eps * it.value();
+        }
+      }, problem.constraint(i));
+    }
+    regularized.SetLinearCost(cost_reg);
+    problem = std::move(regularized);
+    printf("  Regularized with eps=%.2e\n", eps);
+  }
+
+  auto solver = Solver::Build(problem);
+
+  {
+    auto* ts = solver.tree_solver();
+    int nc = ts->num_subsystems();
+    int max_cs = 0;
+    for (int k = 0; k < nc; ++k)
+      max_cs = std::max(max_cs, ts->clique_size(k));
+    printf("  KKT tree: %d cliques, max clique size %d\n", nc, max_cs);
+  }
+
+  auto* kkt = solver.solver();
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+
+  // Use the problem's actual linear cost.
+  auto cost_rhs = kkt->MakeSolverRHS();
+  if (problem.has_linear_cost()) {
+    cost_rhs = kkt->MakeBlockVariable(problem.linear_cost());
+  } else {
+    cost_rhs.SetZero();
+  }
+
+  // Compute d at W=I, k=1 to see how far we are from the central path.
+  kkt->SetScaling(W);
+  kkt->AssembleAndFactor();
+  {
+    RowSpace b = kkt->GetAffineTerm();
+    auto y = kkt->MakeSolverRHS();
+    y = cost_rhs;
+    y *= -1;
+    RowSpace v = addScaled(quadraticRepresentation(W, b), W, -1, 2.0);
+    kkt->AccumulateAtranspose(v, y);
+    kkt->SolveSolverRHS(y);
+    RowSpace row = kkt->MakeRowSpace();
+    kkt->MultiplyA(y, row);
+    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace d_check = addScaled(b, row, -1, -1.0);
+    d_check = quadraticRepresentation(sqrtW, d_check);
+    RowSpace ones = kkt->MakeRowSpace();
+    setOnes(ones);
+    d_check += ones;
+    double d_inf = normInf(d_check);
+    double d_sq = squaredNorm(d_check);
+    int m = W.total_rows();
+    printf("  At W=I, k=1: d_inf=%.2e, d_sq=%.2e, s·x=%.2e\n",
+           d_inf, d_sq, (m - d_sq));
+  }
+
+  // Decompose d(k) = d0 + k*d1 at W=I to find min-norm k.
+  RowSpace d0 = kkt->MakeRowSpace();
+  RowSpace d1 = kkt->MakeRowSpace();
+  {
+    RowSpace b = kkt->GetAffineTerm();
+    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+
+    // d at k=0: zero-cost direction.
+    auto y0 = kkt->MakeSolverRHS();
+    y0.SetZero();
+    RowSpace v0 = W; v0 *= 2.0;
+    kkt->AccumulateAtranspose(v0, y0);
+    kkt->SolveSolverRHS(y0);
+    RowSpace row0 = kkt->MakeRowSpace();
+    kkt->MultiplyA(y0, row0);
+    d0 = addScaled(b, row0, 0, -1.0);
+    d0 = quadraticRepresentation(sqrtW, d0);
+    RowSpace ones = kkt->MakeRowSpace(); setOnes(ones);
+    d0 += ones;
+
+    // d at k=1: full-cost direction.
+    kkt->SetScaling(W); kkt->AssembleAndFactor();
+    auto y1 = kkt->MakeSolverRHS();
+    y1 = cost_rhs; y1 *= -1;
+    RowSpace v1 = addScaled(quadraticRepresentation(W, b), W, -1, 2.0);
+    kkt->AccumulateAtranspose(v1, y1);
+    kkt->SolveSolverRHS(y1);
+    RowSpace row1 = kkt->MakeRowSpace();
+    kkt->MultiplyA(y1, row1);
+    RowSpace d_at_1 = addScaled(b, row1, -1, -1.0);
+    d_at_1 = quadraticRepresentation(sqrtW, d_at_1);
+    d_at_1 += ones;
+
+    d1 = d_at_1 - d0;
+  }
+
+  double d0d1 = dot(d0, d1);
+  double d1sq = squaredNorm(d1);
+  double d0sq = squaredNorm(d0);
+  double k_min = (d1sq > 1e-30) ? std::max(1e-6, -d0d1 / d1sq) : 1.0;
+  double mu_min = 1.0 / (k_min * k_min);
+
+  RowSpace d_at_kmin = addScaled(d0, d1, 1.0, k_min);
+  printf("\n  Min-norm decomposition:\n");
+  printf("    ||d0||_inf = %.4e, ||d0||^2 = %.4e\n", normInf(d0), d0sq);
+  printf("    ||d1||_inf = %.4e, ||d1||^2 = %.4e\n", normInf(d1), d1sq);
+  printf("    <d0,d1> = %.4e\n", d0d1);
+  printf("    k_min = %.4e, mu = %.4e\n", k_min, mu_min);
+  printf("    ||d(k_min)||_inf = %.4e\n", normInf(d_at_kmin));
+
+  // Center at k_min.
+  printf("\n  Centering at k=%.4e (mu=%.4e) from W=I:\n", k_min, mu_min);
+  printf("  %3s  %12s  %12s  %12s  %8s\n",
+         "it", "d_inf", "d_sq", "s_dot_x", "alpha");
+  printf("  %s\n", std::string(52, '-').c_str());
+
+  setOnes(W);
+  auto t0 = std::chrono::high_resolution_clock::now();
+  auto result = GeodesicCenter(*kkt, cost_rhs, W, k_min,
+                                max_iters, 1e-10, true);
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  printf("\n  Center: %d iters, d_inf=%.2e, %.0f ms\n",
+         result.iterations, result.d_inf_norm,
+         std::chrono::duration<double, std::milli>(t1 - t0).count());
+  printf("  (%.0f ms/iter)\n",
+         std::chrono::duration<double, std::milli>(t1 - t0).count() /
+             std::max(1, result.iterations));
+}
+
 }  // namespace conex
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
-    printf("Usage: %s <file> [max_iters] [--rescale|--ruiz|--l2|--maxabs]\n",
+    printf("Usage: %s <file> [max_iters] [--raw] [--ruiz|--l2|--maxabs]\n",
            argv[0]);
     return 1;
   }
@@ -230,9 +439,10 @@ int main(int argc, char* argv[]) {
   std::string filename = argv[1];
   int max_iters = argc > 2 ? std::atoi(argv[2]) : 30;
 
-  // Parse rescaling flag from remaining args.
+  // Parse flags from remaining args.
   conex::ColumnScaling strategy = conex::ColumnScaling::Ruiz;
   bool do_rescale = false;
+  bool raw_mode = false;
   for (int a = 3; a < argc; ++a) {
     std::string arg = argv[a];
     if (arg == "--rescale" || arg == "--ruiz") {
@@ -244,6 +454,8 @@ int main(int argc, char* argv[]) {
     } else if (arg == "--maxabs") {
       do_rescale = true;
       strategy = conex::ColumnScaling::MaxAbsValue;
+    } else if (arg == "--raw") {
+      raw_mode = true;
     }
   }
 
@@ -293,7 +505,11 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    conex::RunCentering(problem, name, max_iters);
+    if (raw_mode) {
+      conex::RunCenteringRaw(problem, name, max_iters);
+    } else {
+      conex::RunCentering(problem, name, max_iters);
+    }
   } catch (const std::exception& e) {
     printf("Error: %s\n", e.what());
     return 1;
