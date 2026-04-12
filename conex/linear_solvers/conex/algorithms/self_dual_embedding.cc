@@ -76,20 +76,26 @@ HSDResult SolveHSD(
     //   rhs_n1 = AT_QWe
     //   S12_coeff = wt*(AT_QWc - b)   [coefficient of dt, independent of sqrtmu]
 
+    // f_n = wt*(AT_QWc - b) + sqrtmu*(AT_QWc - AT_QWe - AT_e + b) + 2 AT_W
+    // Split: f_n0 + sqrtmu * f_n1
     auto rhs_n0 = kkt.MakeSolverRHS(); rhs_n0.SetZero();
-    { auto tmp = b_rhs; tmp *= wt; rhs_n0 += tmp; }
-    { auto tmp = AT_QWc; tmp *= -wt; rhs_n0 += tmp; }
-    { auto tmp = AT_W; tmp *= -2; rhs_n0 += tmp; }
+    { auto tmp = AT_QWc; tmp *= wt; rhs_n0 += tmp; }
+    { auto tmp = b_rhs; tmp *= -wt; rhs_n0 += tmp; }
+    { auto tmp = AT_W; tmp *= 2; rhs_n0 += tmp; }
 
     auto rhs_n1 = kkt.MakeSolverRHS(); rhs_n1.SetZero();
-    rhs_n1 += AT_QWe;
+    rhs_n1 += AT_QWc;
+    { auto tmp = AT_QWe; tmp *= -1; rhs_n1 += tmp; }
+    { auto tmp = AT_e; tmp *= -1; rhs_n1 += tmp; }
+    rhs_n1 += b_rhs;
 
-    auto S12_coeff = kkt.MakeSolverRHS(); S12_coeff.SetZero();
-    { auto tmp = AT_QWc; S12_coeff += tmp; }
-    { auto tmp = b_rhs; tmp *= -1; S12_coeff += tmp; }
-    S12_coeff *= wt;
+    // S12 = wt*(AT_QWc + b)  [matching old code: -wt*(AQc_old + b_old)]
+    auto S12 = kkt.MakeSolverRHS(); S12.SetZero();
+    S12 += AT_QWc;
+    S12 += b_rhs;
+    S12 *= wt;
 
-    auto Ginv_S12 = kkt.MakeSolverRHS(); Ginv_S12 = S12_coeff;
+    auto Ginv_S12 = kkt.MakeSolverRHS(); Ginv_S12 = S12;
     kkt.SolveSolverRHS(Ginv_S12);
 
     // Eq4 scalar (in terms of ytilde):
@@ -145,11 +151,20 @@ HSDResult SolveHSD(
 
     Eigen::VectorXd AT_QWc_vec(n);
     AT_QWc.supernodes->GatherInto(AT_QWc_vec);
-    Eigen::VectorXd S21_vec = b_vec - AT_QWc_vec;
+    // S21 = (AT_QWc - b)^T  [matching old code: (b_old - AQc_old)^T]
+    Eigen::VectorXd S21_vec = AT_QWc_vec - b_vec;
 
     double S22 = wt * cQWc + 1.0 / wt;
-    double rhs_s0 = 2 * wc + wt * cQWc - 1.0 / wt;
-    double rhs_s1 = -cQWe - (ce + 1.0);  // coefficient of sqrtmu
+    // Eq4/sqrtmu: (b-AT_QWc)^T yt - (wt cQWc + 1/wt) dt
+    //   = -1/wt - 2wc + wt cQWc + sqrtmu(cQWe + ce + 1)
+    // At W=I, wt=1, sq=1: -1 - 16 + 8 + 8 + 9 = 8 ... still wrong.
+    // Let me just match the old code:
+    //   f_scalar = 1/wt + 2wc - wt cQWc - sqrtmu(cQWe - cQWc) - sqrtmu(ce+1)
+    // The old code solves [G, S12; S21, S22] [y; dt] = [f_n; f_scalar].
+    // My system has RHS on the OTHER side: I moved S12*dt and S22*dt to LHS.
+    // So my "rhs_s" = the old code's f_scalar directly:
+    double rhs_s0 = 1.0 / wt + 2 * wc - wt * cQWc;
+    double rhs_s1 = -(cQWe - cQWc) - (ce + 1.0);
 
     // Diagnostic: at sqrtmu=1, the RHS should be zero if (W,wt) is the center.
     if (verbose && iter == 0) {
@@ -179,14 +194,27 @@ HSDResult SolveHSD(
     double schur_denom = -S22 - S21_Ginv_S12;  // -(S22 + S21 G^{-1} S12)
     if (std::abs(schur_denom) < 1e-30) schur_denom = -1e-30;
 
-    // Solve at a given sqrtmu for (ytilde, dt).
+    // Solve the 2x2 block system:
+    //   [G    S12] [yt]   [f_n(sq)    ]
+    //   [S21  S22] [dt] = [f_scalar(sq)]
+    // via Schur complement: dt = (f_s - S21 G^{-1} f_n)/(S22 - S21 G^{-1} S12)
+    //                       yt = G^{-1}(f_n - S12 dt)
     auto solve_yt = [&](double sq, Eigen::VectorXd& yt_out, double& dt_out) {
-      // RHS for n-eq at dt=0: G yt = rhs_n0 + sq * rhs_n1
-      auto rhs = kkt.MakeSolverRHS();
-      rhs = rhs_n0;
-      { auto tmp = rhs_n1; tmp *= sq; rhs += tmp; }
+      auto f_n = kkt.MakeSolverRHS();
+      f_n = rhs_n0;
+      { auto tmp = rhs_n1; tmp *= sq; f_n += tmp; }
+      double f_s = rhs_s0 + sq * rhs_s1;
 
-      auto Ginv_rhs = kkt.MakeSolverRHS(); Ginv_rhs = rhs;
+      auto Ginv_fn = kkt.MakeSolverRHS(); Ginv_fn = f_n;
+      kkt.SolveSolverRHS(Ginv_fn);
+      Eigen::VectorXd Ginv_fn_vec(n);
+      Ginv_fn.supernodes->GatherInto(Ginv_fn_vec);
+
+      double S21_Ginv_fn = S21_vec.dot(Ginv_fn_vec);
+      dt_out = (f_s - S21_Ginv_fn) / (S22 - S21_Ginv_S12);
+
+      yt_out = Ginv_fn_vec - dt_out * Ginv_S12_vec;
+    };
       kkt.SolveSolverRHS(Ginv_rhs);
       Eigen::VectorXd Ginv_rhs_vec(n);
       Ginv_rhs.supernodes->GatherInto(Ginv_rhs_vec);
