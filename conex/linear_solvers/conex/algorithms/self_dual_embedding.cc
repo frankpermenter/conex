@@ -149,7 +149,29 @@ HSDResult SolveHSD(
 
     double S22 = wt * cQWc + 1.0 / wt;
     double rhs_s0 = 2 * wc + wt * cQWc - 1.0 / wt;
-    double rhs_s1 = -cQWe;  // coefficient of sqrtmu
+    double rhs_s1 = -cQWe - (ce + 1.0);  // coefficient of sqrtmu
+
+    // Diagnostic: at sqrtmu=1, the RHS should be zero if (W,wt) is the center.
+    if (verbose && iter == 0) {
+      // n-eq RHS at sqrtmu=1, dt=0: rhs_n0 + rhs_n1
+      auto rhs_full = kkt.MakeSolverRHS();
+      rhs_full = rhs_n0;
+      rhs_full += rhs_n1;
+      Eigen::VectorXd rhs_vec(n);
+      rhs_full.supernodes->GatherInto(rhs_vec);
+      printf("  Init check: ||rhs_n(sq=1)||=%.2e, rhs_s(sq=1)=%.2e\n",
+             rhs_vec.norm(), rhs_s0 + rhs_s1);
+      printf("  wc=%.4e, cQWc=%.4e, cQWe=%.4e, ce=%.4e\n",
+             wc, cQWc, cQWe, ce);
+      printf("  S22=%.4e, rhs_s0=%.4e, rhs_s1=%.4e\n", S22, rhs_s0, rhs_s1);
+
+      // Also check: b should equal A^T e for the test to center at W=I.
+      auto AT_e_vec_check = kkt.MakeSolverRHS(); AT_e_vec_check.SetZero();
+      kkt.AccumulateAtranspose(e, AT_e_vec_check);
+      Eigen::VectorXd ate_vec(n);
+      AT_e_vec_check.supernodes->GatherInto(ate_vec);
+      printf("  ||b - A^T e||=%.2e\n", (b_vec - ate_vec).norm());
+    }
 
     Eigen::VectorXd Ginv_S12_vec(n);
     Ginv_S12.supernodes->GatherInto(Ginv_S12_vec);
@@ -202,6 +224,18 @@ HSDResult SolveHSD(
       d_out = quadraticRepresentation(sqrtW, slack_out);
       d_out += e;
     };
+
+    // Check: at sqrtmu=1, the solution should give d=0 if (W,wt) is center.
+    if (verbose && iter == 0) {
+      Eigen::VectorXd yt_chk; double dt_chk;
+      solve_yt(1.0, yt_chk, dt_chk);
+      RowSpace d_chk = kkt.MakeRowSpace(), s_chk = kkt.MakeRowSpace();
+      compute_d_slack(yt_chk, dt_chk, 1.0, d_chk, s_chk);
+      printf("  solve(sq=1): dt=%.4e, ||yt||=%.4e, ||d||=%.4e\n",
+             dt_chk, yt_chk.norm(), normInf(d_chk));
+      printf("  slack should be -e: ||slack+e||=%.4e\n",
+             normInf(addScaled(s_chk, e, 1.0, 1.0)));
+    }
 
     // Solve at sqrtmu=0 and sqrtmu=1.
     Eigen::VectorXd yt0, yt1;
