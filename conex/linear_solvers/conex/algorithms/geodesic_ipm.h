@@ -71,6 +71,18 @@ struct GeodesicResult {
   OptimalityReport optimality;
 };
 
+// Verify the Newton direction satisfies its defining equations:
+//   Primal: P(W^{-1/2})(I - d) = k*(Ay + b)   (slack condition)
+//   Dual:   A^T P(W^{1/2})(I + d) / k = c      (cost condition)
+// Returns (primal_residual, dual_residual) norms.
+std::pair<double, double> VerifyNewtonEquations(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const RowSpace& W,
+    const RowSpace& d,
+    const Eigen::VectorXd& y,
+    double k);
+
 // Run the geodesic centering iteration with fixed barrier parameter k = 1/sqrt(mu).
 // Maintains weight vector W as the sole state variable, updated via W *= exp(alpha * d).
 //

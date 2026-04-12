@@ -7,6 +7,56 @@
 
 namespace conex {
 
+std::pair<double, double> VerifyNewtonEquations(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const RowSpace& W,
+    const RowSpace& d,
+    const Eigen::VectorXd& y,
+    double k) {
+  const int n = kkt.number_of_variables();
+  RowSpace b = kkt.GetAffineTerm();
+
+  // --- Primal check: P(W^{-1/2})(I - d) should equal k*(Ay + b) ---
+  // LHS: P(W^{-1/2})(I - d).
+  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  RowSpace ones = kkt.MakeRowSpace();
+  setOnes(ones);
+  RowSpace I_minus_d = ones - d;
+  // W^{-1/2} = P(W^{-1/4})... actually for the check we use:
+  // d = I + P(W^{1/2})(S) where S = -k*b - A*y.
+  // So I - d = -P(W^{1/2})(S) and P(W^{-1/2})(I - d) = -S = k*b + A*y.
+  // Instead of computing W^{-1/2}, verify the equivalent:
+  //   S_computed = P(W^{-1/2})(d - I) should equal -k*b - A*y.
+  // Or simpler: verify d - I = P(W^{1/2})(-k*b - A*y).
+  auto y_rhs = kkt.MakeSolverRHS();
+  y_rhs = kkt.MakeBlockVariable(y);
+  RowSpace Ay = kkt.MakeRowSpace();
+  kkt.MultiplyA(y_rhs, Ay);
+  RowSpace slack = addScaled(b, Ay, -k, -1.0);  // -k*b - Ay
+  RowSpace d_expected = quadraticRepresentation(sqrtW, slack);
+  d_expected += ones;  // I + P(W^{1/2})(S)
+
+  RowSpace primal_err = d - d_expected;
+  double primal_res = normInf(primal_err);
+
+  // --- Dual check: A^T lambda = k*c where lambda = P(W^{1/2})(I + d) / k ---
+  RowSpace I_plus_d = ones + d;
+  RowSpace lambda = quadraticRepresentation(sqrtW, I_plus_d);
+  lambda *= (1.0 / k);
+
+  auto at_lambda = kkt.MakeSolverRHS();
+  at_lambda.SetZero();
+  kkt.AccumulateAtranspose(lambda, at_lambda);
+  // Should equal c (the cost_rhs).
+  at_lambda -= cost_rhs;
+  Eigen::VectorXd dual_err(n);
+  at_lambda.supernodes->GatherInto(dual_err);
+  double dual_res = dual_err.norm();
+
+  return {primal_res, dual_res};
+}
+
 OptimalityReport CheckOptimality(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
@@ -83,9 +133,11 @@ GeodesicResult GeodesicCenter(
     result.complementarity = s_dot_x;
 
     if (verbose) {
+      auto [p_res, d_res] = VerifyNewtonEquations(
+          kkt, cost_rhs, W, d, y_direct, k);
       printf("  i=%2d  mu=%.2e  d_sqr=%.2e  d_inf=%.2e  "
-             "s_dot_x=%.2e  alpha=%.4f\n",
-             iter, mu, d_sq, d_inf, s_dot_x, alpha);
+             "s_dot_x=%.2e  alpha=%.4f  newton_err=(%.1e, %.1e)\n",
+             iter, mu, d_sq, d_inf, s_dot_x, alpha, p_res, d_res);
     }
 
     if (d_inf < tolerance) break;
