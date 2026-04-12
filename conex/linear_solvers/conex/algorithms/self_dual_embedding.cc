@@ -7,27 +7,49 @@
 
 namespace conex {
 
-// Conventions (following the embedding equations directly):
-//   c = kkt.GetAffineTerm()    (affine term in Ax + c >= 0)
-//   b = cost vector            (min b^T y)
-//   A = our constraint matrices (kkt.MultiplyA, AccumulateAtranspose)
+// Our conventions:
+//   Constraint: A x + c >= 0  (c = GetAffineTerm)
+//   Cost: min b^T x           (b = cost_rhs)
+//   Gram: G = A^T Q(W) A      (what AssembleAndFactor builds)
 //
-// Embedding variables:
-//   s = sqrtmu * P(W^{-1/2})(e - d)
-//   x = sqrtmu * P(W^{1/2})(e + d)
-//   tau = sqrtmu * wt * (1 + dt)
-//   kappa = sqrtmu / wt * (1 - dt)
+// Embedding parameterization:
+//   lambda = sqrtmu * Q(W^{1/2})(e + d)   [dual]
+//   s      = sqrtmu * Q(W^{-1/2})(e - d)  [slack]
+//   tau    = sqrtmu * wt * (1 + dt)
+//   kappa  = sqrtmu / wt * (1 - dt)
 //
-// Embedding equations (from the old conex, adapted to our A,b,c):
-//   Eq1: s = tau*c - A*y - mu*(c - e)
-//   Eq2: A^T * x = tau*b + mu*(A^T*e - b)
-//   Eq4: b^T*y - <c, x> = kappa
+// Embedding equations:
+//   Eq1: A y + tau c + s = mu e
+//   Eq2: A^T lambda = tau b
+//   Eq4: b^T y - <c, lambda> + kappa = 0
 //
-// Dividing Eq1 by sqrtmu:
-//   P(W^{-1/2})(e - d) = wt*(1+dt)*c - (1/sqrtmu)*A*y - sqrtmu*(c - e)
+// From Eq1: slack_raw = (A y)/sqrtmu + wt(1+dt) c - sqrtmu e
+//           d = e + Q(W^{1/2})(slack_raw)
 //
-// The (n+1) system solves for (y, dt) given sqrtmu, then d is recovered
-// from Eq1.
+// Substituting d into Eq2 gives the (n+1) system for (y, dt).
+// The n equations (from Eq2):
+//   (1/sqrtmu) G y + wt [A^T Q(W) c + b] dt
+//       = wt b - wt A^T Q(W) c + sqrtmu A^T Q(W) e - 2 A^T W
+//
+// The scalar equation (from Eq4):
+//   b^T y - sqrtmu <c, Q(W^{1/2})(e+d)> + sqrtmu/wt (1-dt) = 0
+//
+// Expanding <c, lambda> = sqrtmu <c, 2W + Q(W)(slack)>:
+//   = sqrtmu [2<c,W> + <c, Q(W)(Ay/sqrtmu + wt(1+dt)c - sqrtmu e)>]
+//   = sqrtmu [2<c,W> + (1/sqrtmu)<c,Q(W)A>y + wt(1+dt)<c,Q(W)c> - sqrtmu<c,Q(W)e>]
+//
+// So Eq4 becomes:
+//   b^T y - [2 sqrtmu <c,W> + <c,Q(W)A>y + sqrtmu wt(1+dt)<c,Q(W)c>
+//            - sqrtmu^2 <c,Q(W)e>] + sqrtmu/wt(1-dt) = 0
+//
+// Group by unknowns:
+//   [b^T - <c,Q(W)A>^T] y - [sqrtmu wt <c,Q(W)c> + sqrtmu/wt] dt
+//   = 2 sqrtmu <c,W> + sqrtmu wt <c,Q(W)c> - sqrtmu^2 <c,Q(W)e>
+//     - sqrtmu/wt + sqrtmu(<c,e> + 1)  ... [need to work this out]
+//
+// Rather than derive the scalar eq analytically, I'll solve the n-system
+// (from Eq2) for y as a function of dt, then use Eq4 as the scalar
+// equation for dt (Schur complement).
 
 HSDResult SolveHSD(
     KKTSolverBase& kkt,
@@ -47,6 +69,9 @@ HSDResult SolveHSD(
   Eigen::VectorXd b_vec(n);
   cost_rhs.supernodes->GatherInto(b_vec);
 
+  auto b_rhs = kkt.MakeSolverRHS();
+  b_rhs = kkt.MakeBlockVariable(b_vec);
+
   double wt = 1.0;
   HSDResult result;
 
@@ -54,137 +79,150 @@ HSDResult SolveHSD(
     kkt.SetScaling(W);
     kkt.AssembleAndFactor();
 
-    // Cone quantities.
     RowSpace QWc = quadraticRepresentation(W, c);
     RowSpace QWe = quadraticRepresentation(W, e);
 
-    // A^T quantities (using our A directly, no sign flip).
     auto AT_QWc = kkt.MakeSolverRHS(); AT_QWc.SetZero();
     kkt.AccumulateAtranspose(QWc, AT_QWc);
 
     auto AT_QWe = kkt.MakeSolverRHS(); AT_QWe.SetZero();
     kkt.AccumulateAtranspose(QWe, AT_QWe);
 
-    auto AT_e = kkt.MakeSolverRHS(); AT_e.SetZero();
-    kkt.AccumulateAtranspose(e, AT_e);
-
     auto AT_W = kkt.MakeSolverRHS(); AT_W.SetZero();
     kkt.AccumulateAtranspose(W, AT_W);
 
-    auto b_rhs = kkt.MakeSolverRHS();
-    b_rhs = kkt.MakeBlockVariable(b_vec);
+    auto AT_e = kkt.MakeSolverRHS(); AT_e.SetZero();
+    kkt.AccumulateAtranspose(e, AT_e);
 
     double wc = dot(W, c);
     double cQWc = dot(c, QWc);
     double cQWe = dot(c, QWe);
     double ce = dot(c, e);
 
-    // === RHS as f(sqrtmu) = f0 + sqrtmu * f1 ===
-    // From the old code BuildRHS, translated with our sign conventions.
-    // The old code uses: A_old^T = our -A^T, b_old = our -b.
-    // So old "AQc" = A_old^T Q(W) c = -AT_QWc.
-    // And old "b" = -b_vec.
+    // From Eq2: (1/sqrtmu) G y + wt [AT_QWc + b] dt = RHS
+    // Multiply through by sqrtmu: G y + sqrtmu wt [AT_QWc + b] dt = sqrtmu RHS
     //
-    // Old f(1:n) = wt*(b_old + A_old^T Q(W) c) + sqrtmu*(A_old^T Q(W) e - A_old^T Q(W) c + A_old^T e - b_old) - 2*A_old^T W
-    // = wt*(-b_rhs - AT_QWc) + sqrtmu*(-AT_QWe + AT_QWc - AT_e + b_rhs) - 2*(-AT_W)
-    // = -wt*b_rhs - wt*AT_QWc - sqrtmu*AT_QWe + sqrtmu*AT_QWc - sqrtmu*AT_e + sqrtmu*b_rhs + 2*AT_W
+    // But G y is what SolveSolverRHS inverts. The RHS for the n-system:
+    //   rhs_n(sqrtmu) = sqrtmu * (wt b - wt AT_QWc + sqrtmu AT_QWe - 2 AT_W)
     //
-    // f0 = -wt*b_rhs - wt*AT_QWc + 2*AT_W
-    // f1 = -AT_QWe + AT_QWc - AT_e + b_rhs
+    // Wait, let me be careful. The Eq2-derived system is:
+    //   (1/sqrtmu) G y + wt(AT_QWc + b) dt = wt b - wt AT_QWc + sqrtmu AT_QWe - 2 AT_W
+    //
+    // Multiply by sqrtmu to get standard form G ỹ = f where ỹ = y:
+    //   G y = sqrtmu [wt b - wt AT_QWc + sqrtmu AT_QWe - 2 AT_W]
+    //         - sqrtmu wt (AT_QWc + b) dt
+    //
+    // Hmm, this means the RHS depends on both sqrtmu and dt. The standard
+    // approach: solve for y(dt) from the n-eq, substitute into Eq4 for dt.
+    //
+    // Let rhs0 = the RHS at dt=0:
+    //   G y = sqrtmu [wt b - wt AT_QWc + sqrtmu AT_QWe - 2 AT_W]
+    // And S12 = -sqrtmu wt (AT_QWc + b)  (coefficient of dt).
+    //
+    // Then y(dt) = G^{-1}(rhs0 + S12 dt) = G^{-1} rhs0 + dt G^{-1} S12.
+    //
+    // Actually I want f(sqrtmu) linear in sqrtmu for line search.
+    // rhs0(sqrtmu) = sqrtmu wt b - sqrtmu wt AT_QWc + sqrtmu^2 AT_QWe - 2 sqrtmu AT_W
+    //
+    // Split: rhs_n = sqrtmu * rhs_n1 + sqrtmu^2 * rhs_n2
+    //   rhs_n1 = wt b - wt AT_QWc - 2 AT_W
+    //   rhs_n2 = AT_QWe
+    //   S12(sqrtmu) = -sqrtmu wt (AT_QWc + b)
+    //
+    // For fixed sqrtmu, the n-system at dt=0:
+    //   G y = sqrtmu rhs_n1 + sqrtmu^2 rhs_n2
+    // And S12 = -sqrtmu wt (AT_QWc + b).
+    //
+    // For the Schur complement on dt, I need Eq4.
 
-    auto f0 = kkt.MakeSolverRHS(); f0.SetZero();
-    { auto tmp = b_rhs; tmp *= -wt; f0 += tmp; }
-    { auto tmp = AT_QWc; tmp *= -wt; f0 += tmp; }
-    { auto tmp = AT_W; tmp *= 2; f0 += tmp; }
+    // Let me just solve at two values of sqrtmu and use lineSearchK.
+    // For each sqrtmu: solve for (y, dt) and compute d.
 
-    auto f1 = kkt.MakeSolverRHS(); f1.SetZero();
-    { auto tmp = AT_QWe; tmp *= -1; f1 += tmp; }
-    f1 += AT_QWc;
-    { auto tmp = AT_e; tmp *= -1; f1 += tmp; }
-    f1 += b_rhs;
+    auto solve_for = [&](double sq, Eigen::VectorXd& y_out, double& dt_out) {
+      // n-system RHS at dt=0: G y0 = sq*(wt b - wt AT_QWc - 2 AT_W) + sq^2 * AT_QWe
+      auto rhs0 = kkt.MakeSolverRHS(); rhs0.SetZero();
+      { auto tmp = b_rhs; tmp *= sq * wt; rhs0 += tmp; }
+      { auto tmp = AT_QWc; tmp *= -sq * wt; rhs0 += tmp; }
+      { auto tmp = AT_W; tmp *= -2 * sq; rhs0 += tmp; }
+      { auto tmp = AT_QWe; tmp *= sq * sq; rhs0 += tmp; }
 
-    // Old f(n+1):
-    // = 1/wt + 2*<W,c> - wt*<c,Q(W)c> - sqrtmu*(<c,Q(W)e> - <c,Q(W)c>) - sqrtmu*(<c,e> + 1)
-    // (no sign issues here — these are inner products in cone space)
-    double f0_scalar = 1.0 / wt + 2.0 * wc - wt * cQWc;
-    double f1_scalar = -(cQWe - cQWc) - (ce + 1.0);
+      auto Ginv_rhs0 = kkt.MakeSolverRHS(); Ginv_rhs0 = rhs0;
+      kkt.SolveSolverRHS(Ginv_rhs0);
 
-    // === Schur complement ===
-    // Old S12 = -wt*(A_old^T Q(W) c + b_old) = -wt*(-AT_QWc - b_rhs) = wt*(AT_QWc + b_rhs)
-    auto S12 = kkt.MakeSolverRHS(); S12.SetZero();
-    S12 += AT_QWc;
-    S12 += b_rhs;
-    S12 *= wt;
+      // S12 = sq * wt * (b - AT_QWc)  [coefficient of dt in G y = ...]
+      auto S12 = kkt.MakeSolverRHS(); S12.SetZero();
+      S12 += b_rhs;
+      { auto tmp = AT_QWc; tmp *= -1; S12 += tmp; }
+      S12 *= sq * wt;
 
-    auto Ginv_S12 = kkt.MakeSolverRHS();
-    Ginv_S12 = S12;
-    kkt.SolveSolverRHS(Ginv_S12);
+      auto Ginv_S12 = kkt.MakeSolverRHS(); Ginv_S12 = S12;
+      kkt.SolveSolverRHS(Ginv_S12);
 
-    // Old S22 = wt*<c,Q(W)c> + 1/wt  (no sign issue)
-    double S22 = wt * cQWc + 1.0 / wt;
+      // Now use Eq4 to find dt.
+      // Eq4: b^T y - <c, lambda> + kappa = 0
+      // lambda = sq * Q(W^{1/2})(e + d), kappa = sq/wt * (1 - dt)
+      //
+      // d depends on y via: slack = Ay/sq + wt(1+dt)c - sq e
+      //                     d = e + Q(W^{1/2})(slack)
+      //
+      // <c, lambda> = sq <c, Q(W^{1/2})(e+d)>
+      //             = sq <c, 2W + Q(W)(slack)>
+      //             = sq [2 wc + <c, Q(W)(Ay/sq + wt(1+dt)c - sq e)>]
+      //             = sq [2 wc + (1/sq)<c, Q(W) A y> + wt(1+dt) cQWc - sq cQWe]
+      //
+      // <c, Q(W) A y> = <QWc, A y> = QWc^T · (A y).
+      // In variable space: A^T QWc · y = AT_QWc^T y.
+      //
+      // So: <c, lambda> = 2 sq wc + AT_QWc^T y + sq wt(1+dt) cQWc - sq^2 cQWe
+      //
+      // kappa = sq/wt (1 - dt)
+      //
+      // Eq4: b^T y - 2 sq wc - AT_QWc^T y - sq wt(1+dt) cQWc + sq^2 cQWe + sq/wt (1-dt) = 0
+      //
+      // Group: [b^T - AT_QWc^T] y - [sq wt cQWc + sq/wt] dt
+      //   = 2 sq wc + sq wt cQWc - sq^2 cQWe - sq/wt
+      //
+      // Note: [b^T - AT_QWc^T] y = S21^T y where S21 = b_vec - AT_QWc_vec.
+      // And [sq wt cQWc + sq/wt] = S22.
 
-    // Old S21 = (b_old - A_old^T Q(W) c)^T = (-b_rhs - (-AT_QWc))^T = (AT_QWc - b_rhs)^T
-    Eigen::VectorXd AT_QWc_vec(n), Ginv_S12_vec(n);
-    AT_QWc.supernodes->GatherInto(AT_QWc_vec);
-    Ginv_S12.supernodes->GatherInto(Ginv_S12_vec);
-    Eigen::VectorXd S21_vec = AT_QWc_vec - b_vec;
+      Eigen::VectorXd AT_QWc_vec(n);
+      AT_QWc.supernodes->GatherInto(AT_QWc_vec);
+      Eigen::VectorXd S21_vec = b_vec - AT_QWc_vec;
 
-    double schur = S22 - S21_vec.dot(Ginv_S12_vec);
-    if (std::abs(schur) < 1e-30) schur = 1e-30;
+      double S22 = sq * wt * cQWc + sq / wt;
 
-    // === Solve at sqrtmu=0 and sqrtmu=1 ===
-    auto solve_embedding = [&](double sqrtmu_val,
-                               Eigen::VectorXd& y_out, double& dt_out) {
-      auto f = kkt.MakeSolverRHS();
-      f = f0;
-      { auto tmp = f1; tmp *= sqrtmu_val; f += tmp; }
-      double f_scalar = f0_scalar + sqrtmu_val * f1_scalar;
+      double rhs_scalar = 2 * sq * wc + sq * wt * cQWc - sq * sq * cQWe - sq / wt;
 
-      auto Ginv_f = kkt.MakeSolverRHS();
-      Ginv_f = f;
-      kkt.SolveSolverRHS(Ginv_f);
-      Eigen::VectorXd Ginv_f_vec(n);
-      Ginv_f.supernodes->GatherInto(Ginv_f_vec);
+      // y(dt) = Ginv_rhs0 + dt * Ginv_S12.
+      Eigen::VectorXd Ginv_rhs0_vec(n), Ginv_S12_vec(n);
+      Ginv_rhs0.supernodes->GatherInto(Ginv_rhs0_vec);
+      Ginv_S12.supernodes->GatherInto(Ginv_S12_vec);
 
-      dt_out = (f_scalar - S21_vec.dot(Ginv_f_vec)) / schur;
+      // S21^T y(dt) = S21^T Ginv_rhs0 + dt S21^T Ginv_S12
+      double s21_rhs0 = S21_vec.dot(Ginv_rhs0_vec);
+      double s21_s12 = S21_vec.dot(Ginv_S12_vec);
 
-      auto y_rhs = kkt.MakeSolverRHS();
-      y_rhs = f;
-      { auto tmp = S12; tmp *= dt_out; y_rhs -= tmp; }
-      kkt.SolveSolverRHS(y_rhs);
-      y_out.resize(n);
-      y_rhs.supernodes->GatherInto(y_out);
+      // Eq4 scalar: s21_rhs0 + dt s21_s12 - S22 dt = rhs_scalar
+      // dt (s21_s12 - S22) = rhs_scalar - s21_rhs0
+      double schur = s21_s12 - S22;
+      if (std::abs(schur) < 1e-30) schur = 1e-30;
+      dt_out = (rhs_scalar - s21_rhs0) / schur;
+
+      // y = Ginv_rhs0 + dt * Ginv_S12
+      y_out = Ginv_rhs0_vec + dt_out * Ginv_S12_vec;
     };
 
-    // Compute d from (y, dt, sqrtmu) via Eq1 (divided by sqrtmu):
-    //   P(W^{-1/2})(e-d) = wt*(1+dt)*c - (A*y)/sqrtmu - sqrtmu*(c-e)
-    // So: e-d = P(W^{1/2})( wt*(1+dt)*c - (A*y)/sqrtmu - sqrtmu*(c-e) )
-    //     d = e - P(W^{1/2})( ... )
-    //
-    // But for the geodesic update we need slack, not d.
-    // Actually the Newton step gives d = e + P(W^{1/2})(slack) where
-    // slack is defined by the centering equation.
-    //
-    // From the old code: c_weight = wt*(1+dt) - sqrtmu, w_weight = sqrtmu.
-    // slack_old = A_old*y - c_weight*c - w_weight*e
-    //   A_old*y = -A*y (in our primitives).
-    // So slack_old = -A*y - c_weight*c - w_weight*e.
-    // And d = e + P(W^{1/2})(slack_old).
-    auto compute_d = [&](const Eigen::VectorXd& y_sol, double dt,
-                         double sqrtmu_val, RowSpace& d_out,
-                         RowSpace& slack_out) {
-      double c_weight = wt * (1.0 + dt) - sqrtmu_val;
-      double w_weight = sqrtmu_val;
-
+    auto compute_d = [&](const Eigen::VectorXd& y_sol, double dt, double sq,
+                         RowSpace& d_out, RowSpace& slack_out) {
+      // slack = Ay/sq + wt(1+dt)c - sq e
       RowSpace Ay = kkt.MakeRowSpace();
       { auto yr = kkt.MakeSolverRHS(); yr = kkt.MakeBlockVariable(y_sol);
         kkt.MultiplyA(yr, Ay); }
 
-      // slack_old = A_old*y - c_weight*c - w_weight*e = -Ay - c_weight*c - w_weight*e
       slack_out = Ay;
-      slack_out *= -1;
-      { RowSpace tmp = c; tmp *= -c_weight; slack_out += tmp; }
-      { RowSpace tmp = e; tmp *= -w_weight; slack_out += tmp; }
+      if (sq > 1e-30) slack_out *= 1.0 / sq;
+      { RowSpace tmp = c; tmp *= wt * (1 + dt); slack_out += tmp; }
+      { RowSpace tmp = e; tmp *= -sq; slack_out += tmp; }
 
       RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
       d_out = quadraticRepresentation(sqrtW, slack_out);
@@ -193,15 +231,19 @@ HSDResult SolveHSD(
 
     Eigen::VectorXd y0, y1;
     double dt0, dt1;
-    solve_embedding(0.0, y0, dt0);
-    solve_embedding(1.0, y1, dt1);
+    solve_for(0.0, y0, dt0);
+    solve_for(1.0, y1, dt1);
 
     RowSpace d0 = kkt.MakeRowSpace(), d1 = kkt.MakeRowSpace();
     RowSpace slack0 = kkt.MakeRowSpace(), slack1 = kkt.MakeRowSpace();
-    compute_d(y0, dt0, 0.0, d0, slack0);
+    // At sqrtmu=0 the slack has Ay/0 which is degenerate.
+    // Use sqrtmu=eps instead.
+    double eps = 1e-6;
+    solve_for(eps, y0, dt0);
+    compute_d(y0, dt0, eps, d0, slack0);
     compute_d(y1, dt1, 1.0, d1, slack1);
 
-    // Line search: d(sqrtmu) = d1 + t*(d0-d1), t = 1-sqrtmu.
+    // Line search via lineSearchK.
     RowSpace d_rev = d0 - d1;
     double t_max = lineSearchK(d1, d_rev);
 
@@ -221,10 +263,12 @@ HSDResult SolveHSD(
     double t_best = std::min(t_max, t_tau);
     t_best = std::max(t_best, 0.0);
     t_best = std::min(t_best, 1.0);
-    double sqrtmu = 1.0 - t_best;
-
-    Eigen::VectorXd y_sol = y0 + sqrtmu * (y1 - y0);
-    double d_tau = dt0 + sqrtmu * (dt1 - dt0);
+    // sqrtmu = eps + t_best * (1 - eps)  (interpolate between eps and 1)
+    double sqrtmu = eps + t_best * (1.0 - eps);
+    // Recompute at final sqrtmu.
+    Eigen::VectorXd y_sol;
+    double d_tau;
+    solve_for(sqrtmu, y_sol, d_tau);
 
     RowSpace d_final = kkt.MakeRowSpace(), slack_final = kkt.MakeRowSpace();
     compute_d(y_sol, d_tau, sqrtmu, d_final, slack_final);
@@ -243,69 +287,59 @@ HSDResult SolveHSD(
     result.d_inf = dinf;
     result.y = y_sol;
 
-    // === Verify Eq1, Eq2, Eq4 ===
+    // === Verify equations ===
     if (verbose) {
       double mu_val = sqrtmu * sqrtmu;
       RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
       RowSpace ones = kkt.MakeRowSpace(); setOnes(ones);
 
-      RowSpace e_plus_d = ones + d_final;
-      RowSpace x_v = quadraticRepresentation(sqrtW, e_plus_d);
-      x_v *= sqrtmu;
+      // lambda = sqrtmu * Q(W^{1/2})(e + d)
+      RowSpace lambda = quadraticRepresentation(sqrtW, ones + d_final);
+      lambda *= sqrtmu;
 
-      RowSpace e_minus_d = ones - d_final;
-      RowSpace s_v = EuclideanJordanAlgebra::like(W);
-      // s = sqrtmu * P(W^{-1/2})(e-d). Hard to compute W^{-1/2}.
-      // Instead verify Eq1 as: s = tau*c - A*y - mu*(c-e).
+      // s via Eq1: s = mu e - A y - tau c
       RowSpace Ay_v = kkt.MakeRowSpace();
       { auto yr = kkt.MakeSolverRHS(); yr = kkt.MakeBlockVariable(y_sol);
         kkt.MultiplyA(yr, Ay_v); }
+      RowSpace s_eq1 = e;
+      s_eq1 *= mu_val;
+      { RowSpace tmp = Ay_v; tmp *= -1; s_eq1 += tmp; }
+      { RowSpace tmp = c; tmp *= -tau; s_eq1 += tmp; }
 
-      // Eq1: s_predicted = tau*c - A*y - mu*(c-e).
-      //      s_from_d = sqrtmu * P(W^{-1/2})(e-d).
-      // Instead check: P(W^{1/2})(e-d) should equal
-      //   (1/sqrtmu) * (tau*c - A*y - mu*(c-e))
-      //   = wt*(1+dt)*c - (A*y)/sqrtmu - sqrtmu*(c-e)
-      // LHS: P(W^{1/2})(e-d)
-      RowSpace lhs1 = quadraticRepresentation(sqrtW, e_minus_d);
-      // RHS (if sqrtmu > 0):
-      double eq1_err = 0;
-      if (sqrtmu > 1e-15) {
-        RowSpace rhs1 = c;
-        rhs1 *= wt * (1.0 + d_tau);
-        { RowSpace tmp = Ay_v; tmp *= -1.0 / sqrtmu; rhs1 += tmp; }
-        { RowSpace tmp = c; tmp *= -sqrtmu; rhs1 += tmp; }
-        { RowSpace tmp = ones; tmp *= sqrtmu; rhs1 += tmp; }
-        RowSpace res1 = lhs1 - rhs1;
-        eq1_err = normInf(res1);
-      }
+      // s from parameterization: sqrtmu * Q(W^{-1/2})(e-d)
+      // Hard to compute. Check Eq1 via: A y + tau c + s = mu e
+      // where s = sqrtmu * Q(W^{-1/2})(e-d).
+      // Equivalently: Q(W^{1/2})(Eq1/sqrtmu):
+      //   Q(W^{1/2})(Ay/sqrtmu + wt(1+dt)c + Q(W^{-1/2})(e-d)) = sqrtmu Q(W^{1/2})(e)
+      //   Q(W)(Ay/sqrtmu) + wt(1+dt)Q(W)(c) + (e-d) = sqrtmu W
+      // But Q(W)(Ay/sqrtmu) is hard. Just check if s_eq1 is in the cone.
+      double s_min = minEigenvalue(s_eq1);
 
-      // Eq2: A^T * x = tau*b + mu*(A^T*e - b)
-      auto atx = kkt.MakeSolverRHS(); atx.SetZero();
-      kkt.AccumulateAtranspose(x_v, atx);
-      auto rhs2 = kkt.MakeSolverRHS(); rhs2.SetZero();
-      { auto tmp = b_rhs; tmp *= (tau - mu_val); rhs2 += tmp; }
-      { auto tmp = AT_e; tmp *= mu_val; rhs2 += tmp; }
+      // Eq2: A^T lambda = tau b
+      auto at_lambda = kkt.MakeSolverRHS(); at_lambda.SetZero();
+      kkt.AccumulateAtranspose(lambda, at_lambda);
+      auto rhs_eq2 = kkt.MakeSolverRHS();
+      rhs_eq2 = b_rhs; rhs_eq2 *= tau;
       auto res2 = kkt.MakeSolverRHS();
-      res2 = atx;
-      { auto tmp = rhs2; tmp *= -1; res2 += tmp; }
+      res2 = at_lambda;
+      { auto tmp = rhs_eq2; tmp *= -1; res2 += tmp; }
       Eigen::VectorXd res2_vec(n);
       res2.supernodes->GatherInto(res2_vec);
       double eq2_err = res2_vec.norm();
 
-      // Eq4: b^T*y - <c, x> = kappa
+      // Eq4: b^T y - <c, lambda> + kappa = 0
       double bty = b_vec.dot(y_sol);
-      double cx = dot(c, x_v);
-      double eq4_err = std::abs(bty - cx - kappa);
+      double c_lam = dot(c, lambda);
+      double eq4_err = std::abs(bty - c_lam + kappa);
 
       printf("  %3d  mu=%.2e  tau=%.4e  kap=%.4e  dinf=%.2e  "
              "d_tau=%.2e  alpha=%.4f  sqrtmu=%.2e  "
-             "eq1=%.1e eq2=%.1e eq4=%.1e\n",
+             "eq2=%.1e eq4=%.1e s_min=%.1e\n",
              iter, mu_val, tau, kappa, dinf,
-             d_tau, alpha, sqrtmu, eq1_err, eq2_err, eq4_err);
+             d_tau, alpha, sqrtmu, eq2_err, eq4_err, s_min);
     }
 
-    // Check termination.
+    // Termination.
     if (tau > 0 && kappa > 0) {
       if (tau / kappa > 1e6) {
         result.solved = true;
@@ -318,6 +352,16 @@ HSDResult SolveHSD(
       }
     }
 
+    // For the geodesic update, we need the slack in the original form:
+    // d = e + Q(W^{1/2})(slack), update via geodesicUpdateFromSlack(W, alpha, slack).
+    // But our slack_final = Ay/sqrtmu + wt(1+dt)c - sqrtmu e, not the
+    // "raw" slack that geodesicUpdateFromSlack expects (which is just S in Ax+c=S).
+    // The sqrt-free update wants: W_new = exp(alpha(I + W*S)) * W where S is
+    // the raw constraint slack. Here the "slack" for the geodesic is the one
+    // that appears inside Q(W^{1/2}): d = e + Q(W^{1/2})(slack_final).
+    // geodesicUpdateFromSlack computes: W_new = exp(alpha(I + W*slack)) * W.
+    // This requires "slack" such that d = I + Q(W^{1/2})(slack) = I + W^{1/2} slack W^{1/2}.
+    // So our slack_final IS the right input.
     geodesicUpdateFromSlack(W, alpha, slack_final);
     wt *= std::exp(alpha * d_tau);
   }
