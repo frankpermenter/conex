@@ -157,61 +157,68 @@ HSDResult SolveHSD(
       return std::max(di, std::abs(d_tau));
     };
 
-    // Solve at sqrtmu=0 (pure optimality, no centering).
+    // Solve at sqrtmu=0 and sqrtmu=1.
     Eigen::VectorXd y0, y1;
     double dt0, dt1;
     solve_for_sqrtmu(0.0, y0, dt0);
-    RowSpace slack0 = kkt.MakeRowSpace();
-    double dinf0 = compute_dinf(y0, dt0, 0.0, slack0);
-
-    // Solve at sqrtmu=1 (pure centering).
     solve_for_sqrtmu(1.0, y1, dt1);
+
+    // Compute d0 = d(sqrtmu=0) and d1 = d(sqrtmu=1) as RowSpaces.
+    RowSpace slack0 = kkt.MakeRowSpace();
     RowSpace slack1 = kkt.MakeRowSpace();
-    double dinf1 = compute_dinf(y1, dt1, 1.0, slack1);
+    (void)compute_dinf(y0, dt0, 0.0, slack0);
+    (void)compute_dinf(y1, dt1, 1.0, slack1);
 
-    // Binary search for largest sqrtmu with dinf <= dinf_bound.
-    // d(sqrtmu) is affine, so dinf(sqrtmu) is convex — bisection works.
-    double lo = 0, hi = 1;
-    double sqrtmu_best = 0;
-    Eigen::VectorXd y_best = y0;
-    double dt_best = dt0;
-    RowSpace slack_best = slack0;
-    double dinf_best = dinf0;
+    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace d_0 = quadraticRepresentation(sqrtW, slack0);
+    d_0 += e;
+    RowSpace d_1 = quadraticRepresentation(sqrtW, slack1);
+    d_1 += e;
 
-    if (dinf0 <= dinf_bound) {
-      // sqrtmu=0 is feasible. Try to stay there (most progress).
-      sqrtmu_best = 0;
-      dinf_best = dinf0;
-    }
-    if (dinf1 <= dinf_bound) {
-      // Both feasible — use sqrtmu=0 for max progress.
-      sqrtmu_best = 0;
-    } else if (dinf0 > dinf_bound) {
-      // Neither feasible — use sqrtmu=1 (most centering).
-      sqrtmu_best = 1;
-      y_best = y1; dt_best = dt1; slack_best = slack1; dinf_best = dinf1;
-    } else {
-      // dinf0 <= bound < dinf1: bisect.
-      for (int bs = 0; bs < 20; ++bs) {
-        double mid = 0.5 * (lo + hi);
-        Eigen::VectorXd ym; double dtm;
-        solve_for_sqrtmu(mid, ym, dtm);
-        RowSpace sm = kkt.MakeRowSpace();
-        double dm = compute_dinf(ym, dtm, mid, sm);
-        if (dm <= dinf_bound) {
-          lo = mid;
-          sqrtmu_best = mid;
-          y_best = ym; dt_best = dtm; slack_best = sm; dinf_best = dm;
-        } else {
-          hi = mid;
-        }
+    // d(sqrtmu) = d_1 + (1-sqrtmu) * (d_0 - d_1).
+    // Reparametrize: let t = 1 - sqrtmu. Then d(t) = d_1 + t*(d_0 - d_1).
+    // lineSearchK finds largest t with ||d_1 + t*(d_0-d_1)||_inf <= 1.
+    // Then sqrtmu = 1 - t (smallest sqrtmu with dinf <= 1).
+    RowSpace d_rev = d_0 - d_1;
+    double t_max = lineSearchK(d_1, d_rev);
+
+    // Also bound t by d_tau: |dt1 + t*(dt0-dt1)| <= 1.
+    double dt_rev = dt0 - dt1;
+    double t_tau = 0.0;  // default: no progress on tau
+    if (std::abs(dt_rev) > 1e-15) {
+      double k_lo = (-1.0 - dt1) / dt_rev;
+      double k_hi = (1.0 - dt1) / dt_rev;
+      if (k_lo > k_hi) std::swap(k_lo, k_hi);
+      // Intersect [k_lo, k_hi] with [0, 1].
+      double lo = std::max(k_lo, 0.0);
+      double hi = std::min(k_hi, 1.0);
+      if (lo <= hi) {
+        t_tau = hi;  // largest feasible t
+      } else {
+        t_tau = 0.0;  // no feasible t in [0,1]
       }
+    } else {
+      // dt_rev ≈ 0: d_tau is constant. Check if |dt1| <= 1.
+      t_tau = (std::abs(dt1) <= 1.0) ? 1.0 : 0.0;
     }
 
-    double sqrtmu = sqrtmu_best;
-    double d_tau = dt_best;
-    Eigen::VectorXd y_sol = y_best;
-    double dinf = dinf_best;
+    double t_best = std::min(t_max, t_tau);
+    t_best = std::max(t_best, 0.0);
+    t_best = std::min(t_best, 1.0);
+    double sqrtmu = 1.0 - t_best;
+    if (verbose) {
+      printf("    LS: t_max=%.4f t_tau=%.4f t_best=%.4f sqrtmu=%.4f "
+             "dt0=%.4f dt1=%.4f\n",
+             t_max, t_tau, t_best, sqrtmu, dt0, dt1);
+    }
+
+    // Interpolate y, d_tau, slack at the chosen sqrtmu.
+    Eigen::VectorXd y_sol = y0 + sqrtmu * (y1 - y0);
+    double d_tau = dt0 + sqrtmu * (dt1 - dt0);
+
+    // Recompute slack at the chosen sqrtmu.
+    RowSpace slack_best = kkt.MakeRowSpace();
+    double dinf = compute_dinf(y_sol, d_tau, sqrtmu, slack_best);
 
     // Take step.
     double alpha = std::min(1.0, 2.0 / (dinf * dinf));
@@ -234,20 +241,17 @@ HSDResult SolveHSD(
              d_tau, alpha, sqrtmu);
     }
 
-    // Check termination.
-    if (tau > 1e6 * kappa) {
-      result.solved = true;
-      result.primal_obj = b_vec.dot(y_sol) / tau;
-      return result;
-    }
-    if (kappa > 1e6 * tau) {
-      result.solved = false;
-      return result;
-    }
-    if (sqrtmu * sqrtmu < tol) {
-      result.solved = true;
-      result.primal_obj = b_vec.dot(y_sol) / tau;
-      return result;
+    // Check termination (only when tau, kappa are meaningful).
+    if (tau > 0 && kappa > 0) {
+      if (tau / kappa > 1e6) {
+        result.solved = true;
+        result.primal_obj = b_vec.dot(y_sol) / tau;
+        return result;
+      }
+      if (kappa / tau > 1e6) {
+        result.solved = false;
+        return result;
+      }
     }
 
     // Geodesic update for W.
