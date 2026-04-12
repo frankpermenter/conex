@@ -7,24 +7,6 @@
 
 namespace conex {
 
-// Conventions:
-//   c = GetAffineTerm(), b = cost vector, A = our constraint matrices.
-//   G = A^T Q(W) A  (Gram, what AssembleAndFactor builds).
-//
-// Embedding: lambda = sqrtmu*Q(W^{1/2})(e+d), s = sqrtmu*Q(W^{-1/2})(e-d),
-//            tau = sqrtmu*wt*(1+dt), kappa = sqrtmu/wt*(1-dt).
-//
-// Eq1: Ay + tau c + s = mu e
-// Eq2: A^T lambda = tau b
-// Eq4: b^T y - <c, lambda> + kappa = 0
-//
-// Define ytilde = y / sqrtmu. Then the (n+1) system for (ytilde, dt)
-// is AFFINE in sqrtmu:
-//   G ytilde + wt(AT_QWc - b) dt = wt(b - AT_QWc) - 2 AT_W + sqrtmu AT_QWe
-//   Scalar eq from Eq4 (also affine in sqrtmu after substitution).
-//
-// So d(sqrtmu) = d0 + sqrtmu * d1 where d0, d1 come from solving at sqrtmu=0,1.
-
 HSDResult SolveHSD(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
@@ -34,16 +16,15 @@ HSDResult SolveHSD(
     bool verbose) {
   const int m = W.total_rows();
   const int n = kkt.number_of_variables();
-  const int rank = m;
 
   RowSpace c = kkt.GetAffineTerm();
   RowSpace e = kkt.MakeRowSpace();
   setOnes(e);
 
-  Eigen::VectorXd b_vec(n);
-  cost_rhs.supernodes->GatherInto(b_vec);
-  auto b_rhs = kkt.MakeSolverRHS();
-  b_rhs = kkt.MakeBlockVariable(b_vec);
+  // Old convention: b_old = -cost, A_old^T v = -AccAtrans(v).
+  Eigen::VectorXd cost_vec(n);
+  cost_rhs.supernodes->GatherInto(cost_vec);
+  Eigen::VectorXd b_old = -cost_vec;
 
   double wt = 1.0;
   HSDResult result;
@@ -55,318 +36,182 @@ HSDResult SolveHSD(
     RowSpace QWc = quadraticRepresentation(W, c);
     RowSpace QWe = quadraticRepresentation(W, e);
 
-    auto AT_QWc = kkt.MakeSolverRHS(); AT_QWc.SetZero();
-    kkt.AccumulateAtranspose(QWc, AT_QWc);
+    // A_old^T quantities = -our A^T.
+    auto AQc = kkt.MakeSolverRHS(); AQc.SetZero();
+    kkt.AccumulateAtranspose(QWc, AQc); AQc *= -1;
 
-    auto AT_QWe = kkt.MakeSolverRHS(); AT_QWe.SetZero();
-    kkt.AccumulateAtranspose(QWe, AT_QWe);
+    auto AQe = kkt.MakeSolverRHS(); AQe.SetZero();
+    kkt.AccumulateAtranspose(QWe, AQe); AQe *= -1;
 
-    auto AT_W = kkt.MakeSolverRHS(); AT_W.SetZero();
-    kkt.AccumulateAtranspose(W, AT_W);
+    auto Ae = kkt.MakeSolverRHS(); Ae.SetZero();
+    kkt.AccumulateAtranspose(e, Ae); Ae *= -1;
+
+    auto AW = kkt.MakeSolverRHS(); AW.SetZero();
+    kkt.AccumulateAtranspose(W, AW); AW *= -1;
+
+    auto b_rhs = kkt.MakeSolverRHS();
+    b_rhs = kkt.MakeBlockVariable(b_old);
 
     double wc = dot(W, c);
-    double cQWc = dot(c, QWc);
-    double cQWe = dot(c, QWe);
+    double cQc = dot(c, QWc);
+    double cQe = dot(c, QWe);
     double ce = dot(c, e);
 
-    // System for (ytilde, dt):
-    //   G ytilde + S12_coeff * dt = rhs_n0 + sqrtmu * rhs_n1
-    // where:
-    //   rhs_n0 = wt*(b - AT_QWc) - 2*AT_W
-    //   rhs_n1 = AT_QWe
-    //   S12_coeff = wt*(AT_QWc - b)   [coefficient of dt, independent of sqrtmu]
+    // f_n(sq) = f_n0 + sq*f_n1 (from old BuildRHS).
+    auto f_n0 = kkt.MakeSolverRHS(); f_n0.SetZero();
+    { auto t = b_rhs; t *= wt; f_n0 += t; }
+    { auto t = AQc; t *= wt; f_n0 += t; }
+    { auto t = AW; t *= -2; f_n0 += t; }
 
-    // f_n = wt*(AT_QWc - b) + sqrtmu*(AT_QWc - AT_QWe - AT_e + b) + 2 AT_W
-    // Split: f_n0 + sqrtmu * f_n1
-    auto rhs_n0 = kkt.MakeSolverRHS(); rhs_n0.SetZero();
-    { auto tmp = AT_QWc; tmp *= wt; rhs_n0 += tmp; }
-    { auto tmp = b_rhs; tmp *= -wt; rhs_n0 += tmp; }
-    { auto tmp = AT_W; tmp *= 2; rhs_n0 += tmp; }
+    auto f_n1 = kkt.MakeSolverRHS(); f_n1.SetZero();
+    f_n1 += AQe;
+    { auto t = AQc; t *= -1; f_n1 += t; }
+    f_n1 += Ae;
+    { auto t = b_rhs; t *= -1; f_n1 += t; }
 
-    auto rhs_n1 = kkt.MakeSolverRHS(); rhs_n1.SetZero();
-    rhs_n1 += AT_QWc;
-    { auto tmp = AT_QWe; tmp *= -1; rhs_n1 += tmp; }
-    { auto tmp = AT_e; tmp *= -1; rhs_n1 += tmp; }
-    rhs_n1 += b_rhs;
+    double f_s0 = 1.0 / wt + 2 * wc - wt * cQc;
+    double f_s1 = -(cQe - cQc) - (ce + 1.0);
 
-    // S12 = wt*(AT_QWc + b)  [matching old code: -wt*(AQc_old + b_old)]
+    // Schur complement pieces.
     auto S12 = kkt.MakeSolverRHS(); S12.SetZero();
-    S12 += AT_QWc;
-    S12 += b_rhs;
-    S12 *= wt;
+    S12 += AQc; S12 += b_rhs; S12 *= -wt;
 
     auto Ginv_S12 = kkt.MakeSolverRHS(); Ginv_S12 = S12;
     kkt.SolveSolverRHS(Ginv_S12);
-
-    // Eq4 scalar (in terms of ytilde):
-    //   (b^T - AT_QWc^T) ytilde - (wt cQWc + 1/wt) dt
-    //     = 2 wc + wt cQWc - sqrtmu cQWe - 1/wt + sqrtmu(ce + 1)  ???
-    // Let me re-derive. Eq4: b^T y - <c, lambda> + kappa = 0.
-    // y = sqrtmu * ytilde.
-    // <c, lambda> = sqrtmu [2 wc + AT_QWc^T ytilde + wt(1+dt) cQWc - sqrtmu cQWe]
-    // kappa = sqrtmu/wt (1-dt)
-    //
-    // Eq4 / sqrtmu:
-    //   b^T ytilde - 2 wc - AT_QWc^T ytilde - wt(1+dt) cQWc + sqrtmu cQWe + (1/wt)(1-dt) = 0
-    //
-    // Group unknowns (ytilde, dt):
-    //   (b - AT_QWc)^T ytilde - (wt cQWc + 1/wt) dt = 2 wc + wt cQWc - sqrtmu cQWe - 1/wt
-    //
-    // This is: S21^T ytilde - S22 dt = rhs_s0 + sqrtmu * rhs_s1
-    //   S21 = b_vec - AT_QWc_vec
-    //   S22 = wt cQWc + 1/wt
-    //   rhs_s0 = 2 wc + wt cQWc - 1/wt
-    //   rhs_s1 = -cQWe + (ce + 1)  ... wait, where does (ce+1) come from?
-    //
-    // Let me redo:
-    //   b^T yt - 2wc - AT_QWc^T yt - wt cQWc - wt dt cQWc + sq cQWe + 1/wt - dt/wt = 0
-    //   (b - AT_QWc)^T yt - (wt cQWc + 1/wt) dt = 2wc + wt cQWc - sq cQWe - 1/wt
-    //   Hmm, no (ce+1) term. Let me recheck <c, lambda>.
-    //
-    // lambda = sqrtmu Q(W^{1/2})(e + d), d = e + Q(W^{1/2})(slack),
-    // slack = A ytilde + wt(1+dt)c - sqrtmu e.
-    // e + d = 2e + Q(W^{1/2})(slack).
-    // Q(W^{1/2})(e+d) = Q(W^{1/2})(2e) + Q(W^{1/2})(Q(W^{1/2})(slack))
-    //                  = 2W + Q(W)(slack)
-    // <c, lambda> = sqrtmu <c, 2W + Q(W)(A yt + wt(1+dt)c - sq e)>
-    //             = sqrtmu [2wc + <c, Q(W)A> yt + wt(1+dt) cQWc - sq cQWe]
-    //             = sqrtmu [2wc + AT_QWc^T yt + wt cQWc + wt dt cQWc - sq cQWe]
-    //
-    // kappa = sqrtmu/wt (1-dt)
-    //
-    // Eq4/sqrtmu: b^T yt - 2wc - AT_QWc^T yt - wt cQWc - wt dt cQWc + sq cQWe - 1/wt + dt/wt = 0
-    //
-    // Hmm, kappa = sq/wt(1-dt), so kappa/sqrtmu = 1/wt - dt/wt. Sign of dt term:
-    //   + 1/wt(1-dt) = 1/wt - dt/wt
-    //
-    // So: (b-AT_QWc)^T yt - (wt cQWc + 1/wt) dt = 2wc + wt cQWc + sq cQWe ... no:
-    //   ... = 2wc + wt cQWc - sq cQWe - 1/wt
-    //
-    // Wait, I have a sign error on cQWe. From <c,lambda>:
-    //   sq [... - sq cQWe]
-    // Divided by sq: ... - sq cQWe. And Eq4/sq:
-    //   b^T yt - [2wc + AT_QWc^T yt + wt cQWc + wt dt cQWc - sq cQWe] + 1/wt - dt/wt = 0
-    //   (b-AT_QWc)^T yt + (- wt cQWc - 1/wt) dt = 2wc + wt cQWc - 1/wt - sq cQWe
-    //   (b-AT_QWc)^T yt - (wt cQWc + 1/wt) dt = 2wc + wt cQWc - 1/wt - sq cQWe
-
-    Eigen::VectorXd AT_QWc_vec(n);
-    AT_QWc.supernodes->GatherInto(AT_QWc_vec);
-    // S21 = (AT_QWc - b)^T  [matching old code: (b_old - AQc_old)^T]
-    Eigen::VectorXd S21_vec = AT_QWc_vec - b_vec;
-
-    double S22 = wt * cQWc + 1.0 / wt;
-    // Eq4/sqrtmu: (b-AT_QWc)^T yt - (wt cQWc + 1/wt) dt
-    //   = -1/wt - 2wc + wt cQWc + sqrtmu(cQWe + ce + 1)
-    // At W=I, wt=1, sq=1: -1 - 16 + 8 + 8 + 9 = 8 ... still wrong.
-    // Let me just match the old code:
-    //   f_scalar = 1/wt + 2wc - wt cQWc - sqrtmu(cQWe - cQWc) - sqrtmu(ce+1)
-    // The old code solves [G, S12; S21, S22] [y; dt] = [f_n; f_scalar].
-    // My system has RHS on the OTHER side: I moved S12*dt and S22*dt to LHS.
-    // So my "rhs_s" = the old code's f_scalar directly:
-    double rhs_s0 = 1.0 / wt + 2 * wc - wt * cQWc;
-    double rhs_s1 = -(cQWe - cQWc) - (ce + 1.0);
-
-    // Diagnostic: at sqrtmu=1, the RHS should be zero if (W,wt) is the center.
-    if (verbose && iter == 0) {
-      // n-eq RHS at sqrtmu=1, dt=0: rhs_n0 + rhs_n1
-      auto rhs_full = kkt.MakeSolverRHS();
-      rhs_full = rhs_n0;
-      rhs_full += rhs_n1;
-      Eigen::VectorXd rhs_vec(n);
-      rhs_full.supernodes->GatherInto(rhs_vec);
-      printf("  Init check: ||rhs_n(sq=1)||=%.2e, rhs_s(sq=1)=%.2e\n",
-             rhs_vec.norm(), rhs_s0 + rhs_s1);
-      printf("  wc=%.4e, cQWc=%.4e, cQWe=%.4e, ce=%.4e\n",
-             wc, cQWc, cQWe, ce);
-      printf("  S22=%.4e, rhs_s0=%.4e, rhs_s1=%.4e\n", S22, rhs_s0, rhs_s1);
-
-      // Also check: b should equal A^T e for the test to center at W=I.
-      auto AT_e_vec_check = kkt.MakeSolverRHS(); AT_e_vec_check.SetZero();
-      kkt.AccumulateAtranspose(e, AT_e_vec_check);
-      Eigen::VectorXd ate_vec(n);
-      AT_e_vec_check.supernodes->GatherInto(ate_vec);
-      printf("  ||b - A^T e||=%.2e\n", (b_vec - ate_vec).norm());
-    }
-
     Eigen::VectorXd Ginv_S12_vec(n);
     Ginv_S12.supernodes->GatherInto(Ginv_S12_vec);
+
+    Eigen::VectorXd AQc_vec(n);
+    AQc.supernodes->GatherInto(AQc_vec);
+    Eigen::VectorXd S21_vec = b_old - AQc_vec;
+
+    double S22 = wt * cQc + 1.0 / wt;
     double S21_Ginv_S12 = S21_vec.dot(Ginv_S12_vec);
-    double schur_denom = -S22 - S21_Ginv_S12;  // -(S22 + S21 G^{-1} S12)
-    if (std::abs(schur_denom) < 1e-30) schur_denom = -1e-30;
 
-    // Solve the 2x2 block system:
-    //   [G    S12] [yt]   [f_n(sq)    ]
-    //   [S21  S22] [dt] = [f_scalar(sq)]
-    // via Schur complement: dt = (f_s - S21 G^{-1} f_n)/(S22 - S21 G^{-1} S12)
-    //                       yt = G^{-1}(f_n - S12 dt)
-    auto solve_yt = [&](double sq, Eigen::VectorXd& yt_out, double& dt_out) {
-      auto f_n = kkt.MakeSolverRHS();
-      f_n = rhs_n0;
-      { auto tmp = rhs_n1; tmp *= sq; f_n += tmp; }
-      double f_s = rhs_s0 + sq * rhs_s1;
+    if (verbose && iter == 0) {
+      auto ff = kkt.MakeSolverRHS(); ff = f_n0; ff += f_n1;
+      Eigen::VectorXd fv(n); ff.supernodes->GatherInto(fv);
+      printf("  Init: ||f_n(1)||=%.2e, f_s(1)=%.2e\n", fv.norm(), f_s0+f_s1);
+    }
 
-      auto Ginv_fn = kkt.MakeSolverRHS(); Ginv_fn = f_n;
+    // Solve [G S12; S21 S22] [y; dt] = [f_n(sq); f_s(sq)].
+    // y and dt are LINEAR in sq (RHS is linear, system matrix constant).
+    auto solve = [&](double sq, Eigen::VectorXd& y_out, double& dt_out) {
+      auto fn = kkt.MakeSolverRHS(); fn = f_n0;
+      { auto t = f_n1; t *= sq; fn += t; }
+      double fs = f_s0 + sq * f_s1;
+
+      auto Ginv_fn = kkt.MakeSolverRHS(); Ginv_fn = fn;
       kkt.SolveSolverRHS(Ginv_fn);
-      Eigen::VectorXd Ginv_fn_vec(n);
-      Ginv_fn.supernodes->GatherInto(Ginv_fn_vec);
+      Eigen::VectorXd gv(n);
+      Ginv_fn.supernodes->GatherInto(gv);
 
-      double S21_Ginv_fn = S21_vec.dot(Ginv_fn_vec);
-      dt_out = (f_s - S21_Ginv_fn) / (S22 - S21_Ginv_S12);
-
-      yt_out = Ginv_fn_vec - dt_out * Ginv_S12_vec;
-    };
-      kkt.SolveSolverRHS(Ginv_rhs);
-      Eigen::VectorXd Ginv_rhs_vec(n);
-      Ginv_rhs.supernodes->GatherInto(Ginv_rhs_vec);
-
-      double S21_Ginv_rhs = S21_vec.dot(Ginv_rhs_vec);
-      double scalar_rhs = rhs_s0 + sq * rhs_s1;
-
-      // Schur complement: (S21 G^{-1} S12 + S22) dt = S21 G^{-1} rhs - scalar_rhs
-      // Wait: from the system:
-      //   G yt + S12 dt = rhs_n
-      //   S21^T yt - S22 dt = scalar_rhs
-      // From first: yt = G^{-1}(rhs_n - S12 dt)
-      // Sub into second: S21^T G^{-1}(rhs_n - S12 dt) - S22 dt = scalar_rhs
-      //   S21^T G^{-1} rhs_n - (S21^T G^{-1} S12 + S22) dt = scalar_rhs
-      //   dt = (S21^T G^{-1} rhs_n - scalar_rhs) / (S21^T G^{-1} S12 + S22)
-      dt_out = (S21_Ginv_rhs - scalar_rhs) / (S21_Ginv_S12 + S22);
-
-      yt_out = Ginv_rhs_vec - dt_out * Ginv_S12_vec;
+      dt_out = (fs - S21_vec.dot(gv)) / (S22 - S21_Ginv_S12);
+      y_out = gv - dt_out * Ginv_S12_vec;
     };
 
-    // Compute d from (ytilde, dt, sqrtmu).
-    // slack = A ytilde + wt(1+dt)c - sqrtmu e
-    // d = e + Q(W^{1/2})(slack)
-    auto compute_d_slack = [&](const Eigen::VectorXd& yt, double dt, double sq,
-                               RowSpace& d_out, RowSpace& slack_out) {
-      RowSpace Ayt = kkt.MakeRowSpace();
-      { auto yr = kkt.MakeSolverRHS(); yr = kkt.MakeBlockVariable(yt);
-        kkt.MultiplyA(yr, Ayt); }
+    // d from (y, dt, sq). All terms linear in sq since y, dt are linear.
+    // minus_s = c_weight*c + A_old*y - sq*e = c_weight*c - A*y - sq*e
+    // d = e + Q(W^{1/2})(minus_s)
+    auto compute_d = [&](const Eigen::VectorXd& y, double dt, double sq,
+                         RowSpace& d_out, RowSpace& slack_out) {
+      double cw = wt * (1 + dt) - sq;
 
-      slack_out = Ayt;
-      { RowSpace tmp = c; tmp *= wt * (1 + dt); slack_out += tmp; }
-      { RowSpace tmp = e; tmp *= -sq; slack_out += tmp; }
+      RowSpace Ay = kkt.MakeRowSpace();
+      { auto yr = kkt.MakeSolverRHS(); yr = kkt.MakeBlockVariable(y);
+        kkt.MultiplyA(yr, Ay); }
+
+      slack_out = c; slack_out *= cw;
+      { RowSpace t = Ay; t *= -1; slack_out += t; }
+      { RowSpace t = e; t *= -sq; slack_out += t; }
 
       RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
       d_out = quadraticRepresentation(sqrtW, slack_out);
       d_out += e;
     };
 
-    // Check: at sqrtmu=1, the solution should give d=0 if (W,wt) is center.
+    Eigen::VectorXd y0, y1; double dt0, dt1;
+    solve(0.0, y0, dt0);
+    solve(1.0, y1, dt1);
+
+    RowSpace d0 = kkt.MakeRowSpace(), d1 = kkt.MakeRowSpace();
+    RowSpace s0 = kkt.MakeRowSpace(), s1 = kkt.MakeRowSpace();
+    compute_d(y0, dt0, 0.0, d0, s0);
+    compute_d(y1, dt1, 1.0, d1, s1);
+
     if (verbose && iter == 0) {
-      Eigen::VectorXd yt_chk; double dt_chk;
-      solve_yt(1.0, yt_chk, dt_chk);
-      RowSpace d_chk = kkt.MakeRowSpace(), s_chk = kkt.MakeRowSpace();
-      compute_d_slack(yt_chk, dt_chk, 1.0, d_chk, s_chk);
-      printf("  solve(sq=1): dt=%.4e, ||yt||=%.4e, ||d||=%.4e\n",
-             dt_chk, yt_chk.norm(), normInf(d_chk));
-      printf("  slack should be -e: ||slack+e||=%.4e\n",
-             normInf(addScaled(s_chk, e, 1.0, 1.0)));
+      printf("  d(0): inf=%.2e dt=%.4e | d(1): inf=%.2e dt=%.4e\n",
+             normInf(d0), dt0, normInf(d1), dt1);
+      Eigen::VectorXd yh; double dth;
+      solve(0.5, yh, dth);
+      RowSpace dh = kkt.MakeRowSpace(), sh = kkt.MakeRowSpace();
+      compute_d(yh, dth, 0.5, dh, sh);
+      RowSpace di = addScaled(d0, d1 - d0, 1.0, 0.5);
+      printf("  Decomp: ||d(.5)-interp||=%.2e |dt(.5)-interp|=%.2e\n",
+             normInf(dh - di), std::abs(dth - (dt0 + 0.5*(dt1-dt0))));
     }
 
-    // Solve at sqrtmu=0 and sqrtmu=1.
-    Eigen::VectorXd yt0, yt1;
-    double dt0, dt1;
-    solve_yt(0.0, yt0, dt0);
-    solve_yt(1.0, yt1, dt1);
-
-    RowSpace d_at0 = kkt.MakeRowSpace(), d_at1 = kkt.MakeRowSpace();
-    RowSpace slack_at0 = kkt.MakeRowSpace(), slack_at1 = kkt.MakeRowSpace();
-    compute_d_slack(yt0, dt0, 0.0, d_at0, slack_at0);
-    compute_d_slack(yt1, dt1, 1.0, d_at1, slack_at1);
-
-    // Verify decomposition: d(sq) should equal d_at0 + sq*(d_at1 - d_at0).
-    // Test at sq=0.5:
-    if (verbose && iter == 0) {
-      Eigen::VectorXd yt_half; double dt_half;
-      solve_yt(0.5, yt_half, dt_half);
-      RowSpace d_half_direct = kkt.MakeRowSpace(), s_half = kkt.MakeRowSpace();
-      compute_d_slack(yt_half, dt_half, 0.5, d_half_direct, s_half);
-
-      RowSpace d_half_interp = addScaled(d_at0, d_at1 - d_at0, 1.0, 0.5);
-      double interp_err = normInf(d_half_direct - d_half_interp);
-
-      double dt_half_interp = dt0 + 0.5 * (dt1 - dt0);
-      double dt_interp_err = std::abs(dt_half - dt_half_interp);
-
-      printf("  Decomposition check at sq=0.5: ||d_direct - d_interp||_inf = %.2e, "
-             "|dt_direct - dt_interp| = %.2e\n",
-             interp_err, dt_interp_err);
-    }
-
-    // Line search: d(sq) = d_at0 + sq * (d_at1 - d_at0).
-    // dt(sq) = dt0 + sq * (dt1 - dt0).
-    // Find smallest sq with ||(d, dt)||_inf <= 1.
-    // Reparameterize: t = 1 - sq, d(t) = d_at1 + t*(d_at0 - d_at1).
-    // lineSearchK finds largest t with ||d_at1 + t*(d_at0-d_at1)||_inf <= 1.
-    RowSpace d_diff = d_at0 - d_at1;
-    double t_cone = lineSearchK(d_at1, d_diff);
+    // Line search: d(sq) = d1 + t*(d0-d1) where t=1-sq.
+    RowSpace d_rev = d0 - d1;
+    double t_cone = lineSearchK(d1, d_rev);
 
     double dt_diff = dt0 - dt1;
     double t_tau = 0.0;
     if (std::abs(dt_diff) > 1e-15) {
-      double k_lo = (-1.0 - dt1) / dt_diff;
-      double k_hi = (1.0 - dt1) / dt_diff;
-      if (k_lo > k_hi) std::swap(k_lo, k_hi);
-      double lo = std::max(k_lo, 0.0);
-      double hi = std::min(k_hi, 1.0);
+      double klo = (-1.0 - dt1) / dt_diff;
+      double khi = (1.0 - dt1) / dt_diff;
+      if (klo > khi) std::swap(klo, khi);
+      double lo = std::max(klo, 0.0), hi = std::min(khi, 1.0);
       t_tau = (lo <= hi) ? hi : 0.0;
     } else {
       t_tau = (std::abs(dt1) <= 1.0) ? 1.0 : 0.0;
     }
 
-    double t_best = std::min(t_cone, t_tau);
-    t_best = std::max(t_best, 0.0);
-    t_best = std::min(t_best, 1.0);
-    double sqrtmu = 1.0 - t_best;
+    double t = std::min({t_cone, t_tau, 1.0});
+    t = std::max(t, 0.0);
+    double sqrtmu = 1.0 - t;
 
-    // Interpolate.
-    Eigen::VectorXd yt_final = yt0 + sqrtmu * (yt1 - yt0);
-    double d_tau = dt0 + sqrtmu * (dt1 - dt0);
-    Eigen::VectorXd y_sol = sqrtmu * yt_final;
+    Eigen::VectorXd yf; double dtf;
+    solve(sqrtmu, yf, dtf);
+    RowSpace df = kkt.MakeRowSpace(), sf = kkt.MakeRowSpace();
+    compute_d(yf, dtf, sqrtmu, df, sf);
 
-    RowSpace d_final = kkt.MakeRowSpace(), slack_final = kkt.MakeRowSpace();
-    compute_d_slack(yt_final, d_tau, sqrtmu, d_final, slack_final);
-    double dinf = std::max(normInf(d_final), std::abs(d_tau));
-
+    double dinf = std::max(normInf(df), std::abs(dtf));
     double alpha = std::min(1.0, 2.0 / (dinf * dinf));
     if (dinf < 1e-14) alpha = 1.0;
 
-    double tau = sqrtmu * wt * (1.0 + d_tau);
-    double kappa = sqrtmu / wt * (1.0 - d_tau);
+    double tau = sqrtmu * wt * (1.0 + dtf);
+    double kappa = sqrtmu / wt * (1.0 - dtf);
 
     result.iterations = iter + 1;
     result.mu = sqrtmu * sqrtmu;
     result.tau = tau;
     result.kappa = kappa;
     result.d_inf = dinf;
-    result.y = y_sol;
+    result.y = yf;
 
     if (verbose) {
       printf("  %3d  mu=%.2e  tau=%.4e  kap=%.4e  dinf=%.2e  "
-             "d_tau=%.2e  alpha=%.4f  sqrtmu=%.2e  "
-             "d0_inf=%.2e  d1_inf=%.2e  dt0=%.2e  dt1=%.2e\n",
-             iter, sqrtmu * sqrtmu, tau, kappa, dinf,
-             d_tau, alpha, sqrtmu,
-             normInf(d_at0), normInf(d_at1), dt0, dt1);
+             "dt=%.2e  a=%.4f  sq=%.2e\n",
+             iter, sqrtmu*sqrtmu, tau, kappa, dinf, dtf, alpha, sqrtmu);
     }
 
-    // Termination.
     if (tau > 0 && kappa > 0) {
       if (tau / kappa > 1e6) {
         result.solved = true;
-        result.primal_obj = b_vec.dot(y_sol) / tau;
+        result.primal_obj = b_old.dot(yf) / tau;
         return result;
       }
-      if (kappa / tau > 1e6) {
-        result.solved = false;
-        return result;
-      }
+      if (kappa / tau > 1e6) { result.solved = false; return result; }
     }
 
-    geodesicUpdateFromSlack(W, alpha, slack_final);
-    wt *= std::exp(alpha * d_tau);
+    // minus_s is the negative slack. geodesicUpdateFromSlack expects
+    // the raw slack S. The old code does WS = W*minus_s and then
+    // GeodesicUpdate adds e_weight to get d = e + WS.
+    // geodesicUpdateFromSlack(W, α, S) does W_new = exp(α(e + W*S))*W.
+    // So S = minus_s is correct (minus_s IS the "S" in WS = W*S).
+    geodesicUpdateFromSlack(W, alpha, sf);
+    wt *= std::exp(alpha * dtf);
   }
 
   return result;
