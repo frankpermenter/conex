@@ -252,7 +252,8 @@ TEST(GeodesicBarrierQP, HybridCenteringLoop) {
   kkt->AssembleAndFactor();
   RowSpace d = kkt->MakeRowSpace();
   RowSpace delta = kkt->MakeRowSpace();
-  auto info = ComputeHybridDirection(*kkt, cost_rhs, W, r, d, delta);
+  const RowSpace b_aff = kkt->GetAffineTerm();
+  auto info = ComputeHybridDirection(*kkt, cost_rhs, b_aff, W, r, d, delta);
   printf("Nonneg HybridCentering: d_inf=%.2e\n", info.d_inf);
   EXPECT_LT(info.d_inf, 1e-6);
 }
@@ -609,7 +610,8 @@ TEST(GeodesicSDP, HybridCenteringLoop) {
     kkt->AssembleAndFactor();
     RowSpace d = kkt->MakeRowSpace();
     RowSpace delta = kkt->MakeRowSpace();
-    auto info = ComputeHybridDirection(*kkt, cost_rhs, W, r, d, delta);
+    const RowSpace b_aff = kkt->GetAffineTerm();
+    auto info = ComputeHybridDirection(*kkt, cost_rhs, b_aff, W, r, d, delta);
     printf("\nFinal: d_inf=%.2e, gap=%.2e\n", info.d_inf, info.gap);
     EXPECT_LT(info.d_inf, 1e-6);
   }
@@ -747,7 +749,8 @@ TEST(GeodesicSOC, HybridCenteringLoop) {
   kkt->AssembleAndFactor();
   RowSpace d = kkt->MakeRowSpace();
   RowSpace delta = kkt->MakeRowSpace();
-  auto info = ComputeHybridDirection(*kkt, cost_rhs, W, r, d, delta);
+  const RowSpace b_aff = kkt->GetAffineTerm();
+  auto info = ComputeHybridDirection(*kkt, cost_rhs, b_aff, W, r, d, delta);
   printf("Final: d_inf=%.2e\n", info.d_inf);
   EXPECT_LT(info.d_inf, 1e-6);
 }

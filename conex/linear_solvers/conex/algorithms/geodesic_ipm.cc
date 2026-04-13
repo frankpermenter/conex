@@ -10,12 +10,12 @@ namespace conex {
 std::pair<double, double> VerifyNewtonEquations(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
+    const RowSpace& b,
     const RowSpace& W,
     const RowSpace& d,
     const Eigen::VectorXd& y,
     double k) {
   const int n = kkt.number_of_variables();
-  RowSpace b = kkt.GetAffineTerm();
 
   // --- Primal check: P(W^{-1/2})(I - d) should equal k*(Ay + b) ---
   // LHS: P(W^{-1/2})(I - d).
@@ -95,6 +95,7 @@ OptimalityReport CheckOptimality(
 
 static void ComputeDirectNewtonStep(
     KKTSolverBase& kkt, const SolverRHS& cost_rhs,
+    const RowSpace& b,
     const RowSpace& W, double k,
     RowSpace& d_out, Eigen::VectorXd& y_out,
     RowSpace* slack_out = nullptr);
@@ -109,6 +110,7 @@ GeodesicResult GeodesicCenter(
     bool verbose) {
   const int m = W.total_rows();
   const double mu = 1.0 / (k * k);
+  const RowSpace b = kkt.GetAffineTerm();
 
   GeodesicResult result{};
   result.mu = mu;
@@ -117,7 +119,7 @@ GeodesicResult GeodesicCenter(
     RowSpace d = kkt.MakeRowSpace();
     RowSpace slack = kkt.MakeRowSpace();
     Eigen::VectorXd y_direct;
-    ComputeDirectNewtonStep(kkt, cost_rhs, W, k, d, y_direct, &slack);
+    ComputeDirectNewtonStep(kkt, cost_rhs, b, W, k, d, y_direct, &slack);
 
     double d_inf = normInf(d);
     double d_sq = squaredNorm(d);
@@ -134,7 +136,7 @@ GeodesicResult GeodesicCenter(
 
     if (verbose) {
       auto [p_res, d_res] = VerifyNewtonEquations(
-          kkt, cost_rhs, W, d, y_direct, k);
+          kkt, cost_rhs, b, W, d, y_direct, k);
       printf("  i=%2d  mu=%.2e  d_sqr=%.2e  d_inf=%.2e  "
              "s_dot_x=%.2e  alpha=%.4f  newton_err=(%.1e, %.1e)\n",
              iter, mu, d_sq, d_inf, s_dot_x, alpha, p_res, d_res);
@@ -153,13 +155,12 @@ GeodesicResult GeodesicCenter(
 static void ComputeDirectNewtonStep(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
+    const RowSpace& b,
     const RowSpace& W,
     double k,
     RowSpace& d_out,
     Eigen::VectorXd& y_out,
     RowSpace* slack_out) {
-  RowSpace b = kkt.GetAffineTerm();
-
   kkt.SetScaling(W);
   kkt.AssembleAndFactor();
 
@@ -189,13 +190,12 @@ static void ComputeDirectNewtonStep(
 static void ComputeDecomposition(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
+    const RowSpace& b,
     const RowSpace& W,
     RowSpace& d0,
     RowSpace& d1,
     Eigen::VectorXd* y0_out = nullptr,
     Eigen::VectorXd* y1_out = nullptr) {
-  RowSpace b = kkt.GetAffineTerm();
-
   kkt.SetScaling(W);
   kkt.AssembleAndFactor();
 
@@ -246,9 +246,10 @@ double GeodesicLineSearch(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
     const RowSpace& W) {
+  const RowSpace b = kkt.GetAffineTerm();
   RowSpace d0 = kkt.MakeRowSpace();
   RowSpace d1 = kkt.MakeRowSpace();
-  ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
+  ComputeDecomposition(kkt, cost_rhs, b, W, d0, d1);
 
   return lineSearchK(d0, d1);
 }
@@ -264,6 +265,17 @@ GeodesicResult SolveGeodesicLP(
     bool verbose) {
   double k = 0.0;
   const int m = W.total_rows();
+  constexpr double theta = 0.0;
+  RowSpace ones_b = kkt.MakeRowSpace();
+  setOnes(ones_b);
+  const RowSpace b = addScaled(ones_b, kkt.GetAffineTerm(), theta, 1.0 - theta);
+
+  // cost_rhs_blend = theta * A^T * I + (1 - theta) * cost_rhs.
+  auto cost_rhs_blend = kkt.MakeSolverRHS();
+  cost_rhs_blend.SetZero();
+  kkt.AccumulateAtranspose(ones_b, cost_rhs_blend);
+  cost_rhs_blend *= theta;
+  cost_rhs_blend.AddScaled(1.0 - theta, cost_rhs);
   //auto result = GeodesicCenter(kkt, cost_rhs, W, k, 100, 1e-12);
   //result.iter_stats.push_back({result.mu, result.d_inf_norm,
   //                             result.d_sq_norm, result.complementarity});
@@ -285,7 +297,7 @@ GeodesicResult SolveGeodesicLP(
     RowSpace d0 = kkt.MakeRowSpace();
     RowSpace d1 = kkt.MakeRowSpace();
     Eigen::VectorXd y0, y1;
-    ComputeDecomposition(kkt, cost_rhs, W, d0, d1, &y0, &y1);
+    ComputeDecomposition(kkt, cost_rhs_blend, b, W, d0, d1, &y0, &y1);
     total_fac += 1;
     total_sol += 2;
 
@@ -354,7 +366,7 @@ GeodesicResult SolveGeodesicLP(
     double k_final = 1.0 / std::sqrt(result.mu);
     RowSpace d_final = kkt.MakeRowSpace();
     Eigen::VectorXd y_final;
-    ComputeDirectNewtonStep(kkt, cost_rhs, W, k_final, d_final, y_final);
+    ComputeDirectNewtonStep(kkt, cost_rhs_blend, b, W, k_final, d_final, y_final);
 
     RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
     RowSpace ones = kkt.MakeRowSpace();
@@ -364,7 +376,7 @@ GeodesicResult SolveGeodesicLP(
 
     auto x_rhs = kkt.MakeSolverRHS();
     x_rhs = kkt.MakeBlockVariable(result.x);
-    result.optimality = CheckOptimality(kkt, cost_rhs, x_rhs, lambda);
+    result.optimality = CheckOptimality(kkt, cost_rhs_blend, x_rhs, lambda);
     result.optimality.mu = result.mu;
 
     if (verbose) {
@@ -383,12 +395,11 @@ GeodesicResult SolveGeodesicLP(
 HybridDirection ComputeHybridDirection(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
+    const RowSpace& b,
     const RowSpace& W,
     const RowSpace& r,
     RowSpace& d,
     RowSpace& delta) {
-  RowSpace b = kkt.GetAffineTerm();
-
   auto y = kkt.MakeSolverRHS();
   y = cost_rhs;
   y *= -1;
@@ -413,12 +424,13 @@ HybridDirection HybridCenteringStep(
     const SolverRHS& cost_rhs,
     RowSpace& W,
     RowSpace& r) {
+  const RowSpace b = kkt.GetAffineTerm();
   kkt.SetScaling(W);
   kkt.AssembleAndFactor();
 
   RowSpace d = kkt.MakeRowSpace();
   RowSpace delta = kkt.MakeRowSpace();
-  auto info = ComputeHybridDirection(kkt, cost_rhs, W, r, d, delta);
+  auto info = ComputeHybridDirection(kkt, cost_rhs, b, W, r, d, delta);
 
   double alpha = std::min(1.0, 2.0 / (info.d_inf * info.d_inf));
   updateAutomorphism(W, r, alpha, d);
@@ -445,7 +457,7 @@ GeodesicResult SolveGeodesicHybrid(
   {
     RowSpace d0 = kkt.MakeRowSpace();
     RowSpace d1 = kkt.MakeRowSpace();
-    ComputeDecomposition(kkt, cost_rhs, W, d0, d1);
+    ComputeDecomposition(kkt, cost_rhs, b, W, d0, d1);
     double d0d1 = dot(d0, d1);
     double d1sq = squaredNorm(d1);
     if (d1sq > 1e-30) {
@@ -478,7 +490,7 @@ GeodesicResult SolveGeodesicHybrid(
   for (int iter = 0; iter < max_iterations; ++iter) {
     RowSpace d = kkt.MakeRowSpace();
     RowSpace delta = kkt.MakeRowSpace();
-    auto info = ComputeHybridDirection(kkt, cost_rhs, W, r, d, delta);
+    auto info = ComputeHybridDirection(kkt, cost_rhs, b, W, r, d, delta);
     last_delta = delta;
     total_sol++;
 

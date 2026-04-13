@@ -78,6 +78,7 @@ struct GeodesicResult {
 std::pair<double, double> VerifyNewtonEquations(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
+    const RowSpace& b,
     const RowSpace& W,
     const RowSpace& d,
     const Eigen::VectorXd& y,
@@ -181,6 +182,7 @@ OptimalityReport CheckOptimality(
 HybridDirection ComputeHybridDirection(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
+    const RowSpace& b,
     const RowSpace& W,
     const RowSpace& r,
     RowSpace& d,
