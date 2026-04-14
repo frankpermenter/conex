@@ -116,8 +116,8 @@ double MinNormK(const NewtonDecomposition& decomp, double tau, double theta);
 // Six inner products that determine ||d||^2 as a function of (k, tau, theta).
 struct DecompInnerProducts {
   double a;  // ||d0||^2
-  double b;  // <d0, d1_0>
-  double c;  // <d0, d1_theta>
+  double f;  // <d0, d1_0>
+  double g;  // <d0, d1_theta>
   double p;  // ||d1_0||^2
   double q;  // <d1_0, d1_theta>
   double r;  // ||d1_theta||^2

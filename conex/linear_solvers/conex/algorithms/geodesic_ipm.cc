@@ -357,9 +357,9 @@ DecompInnerProducts ComputeInnerProducts(const NewtonDecomposition& decomp) {
 // ||d||^2 as a function of k, with tau = tau*(k) and theta = 1/k^2.
 static double ReducedDSq(const DecompInnerProducts& ip, double k) {
   double k2 = k * k;
-  double num = k * ip.b + ip.q;
+  double num = k * ip.f + ip.q;
   // a + 2c/k + r/k^2 - (kb + q)^2 / (k^2 p)
-  return ip.a + 2.0 * ip.c / k + ip.r / k2 - (num * num) / (k2 * ip.p);
+  return ip.a + 2.0 * ip.g / k + ip.r / k2 - (num * num) / (k2 * ip.p);
 }
 
 KTauResult SelectKTau(const DecompInnerProducts& ip) {
@@ -380,7 +380,7 @@ KTauResult SelectKTau(const DecompInnerProducts& ip) {
   }
 
   double k = 0.5 * (k_lo + k_hi);
-  double tau = -(k * ip.b + ip.q) / (k * k * ip.p);
+  double tau = -(k * ip.f + ip.q) / (k * k * ip.p);
   double theta = 1.0 / (k * k);
   double d_sq = ReducedDSq(ip, k);
 
@@ -419,12 +419,12 @@ double SelectTauWeighted(
   // --- ||d||^2 as quadratic in tau ---
   // d = (d0 + k*theta*d1_theta) + k*tau*d1_0 = f + k*tau*d1_0
   // ||d||^2 = ||f||^2 + 2*k*tau*<f, d1_0> + k^2*tau^2*||d1_0||^2
-  // where <f, d1_0> = <d0, d1_0> + k*theta*<d1_theta, d1_0> = ip.b + k*theta*ip.q
-  // and ||f||^2 = ip.a + 2*k*theta*ip.c + k^2*theta^2*ip.r
-  double f_dot_d1 = ip.b + k * theta * ip.q;
-  double f_sq = ip.a + 2.0 * k * theta * ip.c + k * k * theta * theta * ip.r;
-  double d_a = f_sq;            // constant term
-  double d_b = k * f_dot_d1;   // linear coeff (half)
+  // where <h, d1_0> = <d0, d1_0> + k*theta*<d1_theta, d1_0> = ip.f + k*theta*ip.q
+  // and ||h||^2 = ip.a + 2*k*theta*ip.g + k^2*theta^2*ip.r
+  double h_dot_d1 = ip.f + k * theta * ip.q;
+  double h_sq = ip.a + 2.0 * k * theta * ip.g + k * k * theta * theta * ip.r;
+  double d_a = h_sq;            // constant term
+  double d_b = k * h_dot_d1;   // linear coeff (half)
   double d_p = k * k * ip.p;   // quadratic coeff
   // ||d||^2 = d_a + 2*d_b*tau + d_p*tau^2
 
