@@ -515,11 +515,11 @@ GeodesicResult SolveGeodesicThetaContinuation(
   double k = 0, tau = 0, theta = 1.0;
 
   if (verbose) {
-    printf("  %3s  %8s  %8s  %12s  %12s  %12s  %12s"
+    printf("  %3s  %8s  %8s  %12s  %12s  %12s  %12s  %12s"
            "  %12s  %12s  %12s\n",
-           "out", "tau", "theta", "k", "d_inf", "d_sqr",
+           "out", "theta", "tau", "kappa", "k", "d_inf", "d_sqr",
            "gap", "bTl+cTx", "mu/tau", "eq_err");
-    printf("  %s\n", std::string(120, '-').c_str());
+    printf("  %s\n", std::string(132, '-').c_str());
   }
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
@@ -529,7 +529,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     total_sol += 3;
 
     // Decrease theta = mu, center at each level.
-    theta *= 0.9;
+    theta *= 0.1;
     k = 1.0 / std::sqrt(theta);
     constexpr double w_penalty = 1e6;
 
@@ -597,9 +597,10 @@ GeodesicResult SolveGeodesicThetaContinuation(
       eq_err_final = std::abs(duality + mu_over_tau
                               - theta * (bT_ones + 1.0));
 
-      printf("  %3d  %8.4f  %8.6f  %12.4e  %12.4e  %12.4e  %12.4e"
+      double kappa = mu_over_tau;
+      printf("  %3d  %8.6f  %8.4f  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
              "  %12.4e  %12.4e  %12.2e  %3d\n",
-             outer, tau, theta, k, d_inf, d_sq, gap,
+             outer, theta, tau, kappa, k, d_inf, d_sq, gap,
              duality, mu_over_tau, eq_err_final, centering_iters);
     }
 
