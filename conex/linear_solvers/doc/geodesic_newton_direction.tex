@@ -153,8 +153,8 @@ All norms and inner products of $d$ can be expressed in terms of
 six scalars computed once from the decomposition:
 \begin{alignat*}{3}
   &a = \|d_0\|^2, &\qquad
-  &b = \langle d_0,\, d_1^{(0)}\rangle, &\qquad
-  &c = \langle d_0,\, d_1^{(\theta)}\rangle, \\
+  &f = \langle d_0,\, d_1^{(0)}\rangle, &\qquad
+  &g = \langle d_0,\, d_1^{(\theta)}\rangle, \\
   &p = \|d_1^{(0)}\|^2, &\qquad
   &q = \langle d_1^{(0)},\, d_1^{(\theta)}\rangle, &\qquad
   &r = \|d_1^{(\theta)}\|^2.
@@ -164,12 +164,12 @@ six scalars computed once from the decomposition:
 
 The squared norm
 \[
-  \|d\|^2 = a + 2k\tau b + \frac{2c}{k}
+  \|d\|^2 = a + 2k\tau f + \frac{2g}{k}
             + k^2\tau^2 p + 2\tau q + \frac{r}{k^2}
 \]
 is quadratic in~$\tau$.  Setting $\partial\|d\|^2/\partial\tau = 0$:
 \[
-  \boxed{\tau^*(k) = -\frac{k\,b + q}{k^2\,p}.}
+  \boxed{\tau^*(k) = -\frac{k\,f + q}{k^2\,p}.}
 \]
 
 \subsection{Reduced objective in $k$ alone}
@@ -177,8 +177,8 @@ is quadratic in~$\tau$.  Setting $\partial\|d\|^2/\partial\tau = 0$:
 Substituting $\tau^*(k)$ back:
 \[
   \|d\|^2\bigl(k,\,\tau^*(k)\bigr)
-  = a + \frac{2c}{k} + \frac{r}{k^2}
-    - \frac{(k\,b + q)^2}{k^2\,p}.
+  = a + \frac{2g}{k} + \frac{r}{k^2}
+    - \frac{(k\,f + q)^2}{k^2\,p}.
 \]
 This is a rational function of~$k$ involving only the six precomputed
 scalars.  It is minimized by a one-dimensional search over $k > 0$.
@@ -213,9 +213,9 @@ Multiplying through by~$\tau$ gives the \emph{violation quadratic}:
 \]
 
 The $\|d\|^2$ terms, grouping the $\tau$-independent part as
-$f = d_0 + k\theta\,d_1^{(\theta)}$, give
+$h = d_0 + k\theta\,d_1^{(\theta)}$, give
 \[
-  \|d\|^2 = \|f\|^2 + 2k\,\langle f, d_1^{(0)}\rangle\,\tau
+  \|d\|^2 = \|h\|^2 + 2k\,\langle h, d_1^{(0)}\rangle\,\tau
             + k^2 p\,\tau^2.
 \]
 
@@ -249,7 +249,7 @@ identity exactly and eliminates the tuning parameter~$w$.
 \begin{enumerate}
   \item Compute the decomposition $(d_0,\, d_1^{(0)},\, d_1^{(\theta)})$:
         one factorization and three back-solves.
-  \item Compute the six inner products $a, b, c, p, q, r$.
+  \item Compute the six inner products $a, f, g, p, q, r$.
   \item Compute the duality coefficients $\sigma_1, \gamma_1$
         (once per factorization) and $\sigma_0, \gamma_0$
         (depend on $k$ via $\theta$).
