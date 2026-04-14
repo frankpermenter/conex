@@ -111,38 +111,59 @@ void RunBenchmark(const Problem& problem, const std::string& name) {
   }
 
   // --- Geodesic LP ---
+  //{
+  //  RowSpace W = kkt->MakeRowSpace();
+  //  setOnes(W);
+  //  auto t2 = std::chrono::high_resolution_clock::now();
+  //  auto result = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 50, 0, 1e-8, true);
+  //  auto t3 = std::chrono::high_resolution_clock::now();
+  //  double solve_ms =
+  //      std::chrono::duration<double, std::milli>(t3 - t2).count();
+  //  printf("  GeodesicLP: %d fac, %d sol, mu=%.2e, %.1f ms\n",
+  //         result.total_factorizations, result.total_solves,
+  //         result.mu, solve_ms);
+  //  if (result.optimality.dual_residual > 0) {
+  //    printf("    Opt: dual_res=%.2e, compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
+  //           result.optimality.dual_residual,
+  //           result.optimality.complementarity,
+  //           result.optimality.min_slack,
+  //           result.optimality.min_dual);
+  //  }
+  //}
+
+  //// --- Hybrid ---
+  //{
+  //  RowSpace W = kkt->MakeRowSpace();
+  //  setOnes(W);
+  //  auto t2 = std::chrono::high_resolution_clock::now();
+  //  auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W, 100, 1e-8);
+  //  auto t3 = std::chrono::high_resolution_clock::now();
+  //  double solve_ms =
+  //      std::chrono::duration<double, std::milli>(t3 - t2).count();
+  //  printf("  Hybrid: %d fac, %d sol, gap=%.2e, %.1f ms\n",
+  //         result.total_factorizations, result.total_solves,
+  //         result.complementarity, solve_ms);
+  //  if (result.optimality.dual_residual > 0) {
+  //    printf("    Opt: dual_res=%.2e, compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
+  //           result.optimality.dual_residual,
+  //           result.optimality.complementarity,
+  //           result.optimality.min_slack,
+  //           result.optimality.min_dual);
+  //  }
+  //}
+
+  // --- Theta continuation ---
   {
     RowSpace W = kkt->MakeRowSpace();
     setOnes(W);
     auto t2 = std::chrono::high_resolution_clock::now();
-    auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 50, 0, 1e-8);
+    auto result = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 500, 10, 1e-8, true);
     auto t3 = std::chrono::high_resolution_clock::now();
     double solve_ms =
         std::chrono::duration<double, std::milli>(t3 - t2).count();
-    printf("  GeodesicLP: %d fac, %d sol, mu=%.2e, %.1f ms\n",
+    printf("  ThetaCont: %d fac, %d sol, mu=%.2e, %.1f ms\n",
            result.total_factorizations, result.total_solves,
            result.mu, solve_ms);
-    if (result.optimality.dual_residual > 0) {
-      printf("    Opt: dual_res=%.2e, compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
-             result.optimality.dual_residual,
-             result.optimality.complementarity,
-             result.optimality.min_slack,
-             result.optimality.min_dual);
-    }
-  }
-
-  // --- Hybrid ---
-  {
-    RowSpace W = kkt->MakeRowSpace();
-    setOnes(W);
-    auto t2 = std::chrono::high_resolution_clock::now();
-    auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W, 100, 1e-8);
-    auto t3 = std::chrono::high_resolution_clock::now();
-    double solve_ms =
-        std::chrono::duration<double, std::milli>(t3 - t2).count();
-    printf("  Hybrid: %d fac, %d sol, gap=%.2e, %.1f ms\n",
-           result.total_factorizations, result.total_solves,
-           result.complementarity, solve_ms);
     if (result.optimality.dual_residual > 0) {
       printf("    Opt: dual_res=%.2e, compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
              result.optimality.dual_residual,

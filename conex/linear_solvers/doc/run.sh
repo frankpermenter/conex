@@ -1,0 +1,1 @@
+latexmk geodesic_newton_direction.tex

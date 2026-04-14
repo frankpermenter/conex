@@ -82,7 +82,100 @@ std::pair<double, double> VerifyNewtonEquations(
     const RowSpace& W,
     const RowSpace& d,
     const Eigen::VectorXd& y,
-    double k);
+    double k,
+    double theta = 0.0);
+
+// Decomposition of the Newton direction into components that are
+// independent of k and theta:
+//   d(k, theta) = d0 + k * (d1_0 + theta * d1_theta)
+//   y(k, theta) = y0 + k * (y1_0 + theta * y1_theta)
+struct NewtonDecomposition {
+  RowSpace d0;
+  RowSpace d1_0;       // standard optimality direction
+  RowSpace d1_theta;   // theta correction direction
+  Eigen::VectorXd y0, y1_0, y1_theta;
+};
+
+// Factor the Gram system and compute the three-term decomposition.
+// Requires 1 factorization and 3 back-solves.
+NewtonDecomposition ComputeFullDecomposition(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const RowSpace& b,
+    const RowSpace& W);
+
+// Evaluate d(k, tau, theta) = d0 + k * (tau * d1_0 + theta * d1_theta).
+// tau weights the original problem data, theta weights the identity centering.
+RowSpace EvaluateDirection(const NewtonDecomposition& decomp,
+                           double k, double tau, double theta);
+
+// Find the k that minimizes ||d(k, tau, theta)||^2 at fixed (tau, theta):
+//   k* = -<d0, tau*d1_0 + theta*d1_theta> / ||tau*d1_0 + theta*d1_theta||^2
+double MinNormK(const NewtonDecomposition& decomp, double tau, double theta);
+
+// Six inner products that determine ||d||^2 as a function of (k, tau, theta).
+struct DecompInnerProducts {
+  double a;  // ||d0||^2
+  double b;  // <d0, d1_0>
+  double c;  // <d0, d1_theta>
+  double p;  // ||d1_0||^2
+  double q;  // <d1_0, d1_theta>
+  double r;  // ||d1_theta||^2
+};
+
+DecompInnerProducts ComputeInnerProducts(const NewtonDecomposition& decomp);
+
+// Joint (k, tau) selection with theta = 1/k^2.
+// Returns (k, tau) that minimize ||d||^2 using only the six inner products.
+struct KTauResult {
+  double k;
+  double tau;
+  double theta;   // = 1/k^2
+  double d_sq;    // ||d||^2 at the optimum
+};
+
+KTauResult SelectKTau(const DecompInnerProducts& ip);
+
+// Coefficients for the duality equation violation (quadratic in tau when
+// multiplied by tau): beta*tau^2 + (alpha - R)*tau + mu = 0.
+// sigma1, gamma1 are k-independent; sigma0, gamma0, R depend on k via theta.
+struct DualityCoeffs {
+  double sigma1;  // <b0, P(W^{1/2})(d1_0)>
+  double gamma1;  // c^T y1_0
+};
+
+DualityCoeffs ComputeDualityCoeffs(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const RowSpace& b,
+    const RowSpace& W,
+    const NewtonDecomposition& decomp);
+
+// Select tau that minimizes ||d||^2 + w * (violation*tau)^2 for fixed (k, theta).
+// violation*tau = beta*tau^2 + (alpha-R)*tau + mu is quadratic in tau.
+double SelectTauWeighted(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const RowSpace& b,
+    const RowSpace& W,
+    const NewtonDecomposition& decomp,
+    const DecompInnerProducts& ip,
+    const DualityCoeffs& dc,
+    double bT_ones,
+    double k, double theta, double w);
+
+// θ-continuation geodesic IPM: start at θ=1 (trivially centered feasibility
+// problem) and decrease θ toward 0 (original problem).  At each θ, center
+// with MinNormK, then shrink θ by an amount determined by ||d1_theta||.
+// Uses ComputeFullDecomposition (3 back-solves per factorization).
+GeodesicResult SolveGeodesicThetaContinuation(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    RowSpace& W,
+    int max_outer_iterations = 50,
+    int max_centering_steps = 10,
+    double tolerance = 1e-8,
+    bool verbose = false);
 
 // Run the geodesic centering iteration with fixed barrier parameter k = 1/sqrt(mu).
 // Maintains weight vector W as the sole state variable, updated via W *= exp(alpha * d).

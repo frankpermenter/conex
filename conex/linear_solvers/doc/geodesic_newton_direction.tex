@@ -1,0 +1,251 @@
+\documentclass{article}
+\usepackage{amsmath, amssymb}
+\newcommand{\PW}{P(W^{1/2})}
+
+\title{Geodesic Newton Direction with Blended RHS}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setup}
+
+Let $b_0$ denote the original affine term, $c$ the original cost, $e$ the
+identity element, $A$ the constraint operator, and $P(X)$ the quadratic
+representation $P(X)v = X v X$.  The Gram matrix is
+\[
+  G = A^T P(W) A.
+\]
+
+\section{Three-term decomposition}
+
+The Newton step at the current scaling $W$ is decomposed into three
+components that are independent of any blending parameters.
+
+\subsection{Gram solves}
+
+\[
+  G\,y_0 = A^T(2W),
+\]
+\[
+  G\,y_1^{(0)} = -\bigl(c + A^T P(W)\,b_0\bigr),
+\]
+\[
+  G\,y_1^{(\theta)} = c + A^T P(W)\,b_0 - A^T\bigl(e + P(W)\,e\bigr).
+\]
+
+\subsection{Direction components}
+
+\[
+  d_0 = e - \PW(A\,y_0),
+\]
+\[
+  d_1^{(0)} = \PW(-b_0 - A\,y_1^{(0)}),
+\]
+\[
+  d_1^{(\theta)} = \PW(b_0 - e - A\,y_1^{(\theta)}).
+\]
+
+All six quantities ($y_0, y_1^{(0)}, y_1^{(\theta)}, d_0, d_1^{(0)},
+d_1^{(\theta)}$) depend only on $W$, the original data $(b_0, c)$, and
+the constraint operator $A$.  They are computed with one factorization
+and three back-solves.
+
+\section{Parameterized direction}
+
+Given independent parameters $\tau$ (original-problem weight) and
+$\theta$ (identity-centering weight), the Newton direction is
+\[
+  \boxed{d(k,\tau,\theta) = d_0 + k\bigl(\tau\,d_1^{(0)}
+    + \theta\,d_1^{(\theta)}\bigr),}
+\]
+which is affine in $k$, $\tau$, and $\theta$.
+
+The corresponding dual variable is
+\[
+  y(k,\tau,\theta) = y_0 + k\bigl(\tau\,y_1^{(0)}
+    + \theta\,y_1^{(\theta)}\bigr).
+\]
+
+\subsection{Special cases}
+
+\begin{itemize}
+  \item $\tau = 1,\;\theta = 0$: original problem,
+        $d = d_0 + k\,d_1^{(0)}$.
+  \item $\tau = 0,\;\theta = 1$: feasibility/centering problem with
+        $b = e$, $c = A^T e$, \; $d = d_0 + k\,d_1^{(\theta)}$.
+  \item $\tau = 1-\theta$: single-parameter blend
+        $b_\theta = \theta\,e + (1-\theta)\,b_0$, \;
+        $c_\theta = \theta\,A^T e + (1-\theta)\,c$.
+\end{itemize}
+
+\section{Minimum-norm $k$ at fixed $(\tau,\theta)$}
+
+Define $\tilde{d}_1 = \tau\,d_1^{(0)} + \theta\,d_1^{(\theta)}$.
+The squared norm of the direction is
+\[
+  \|d(k)\|^2 = \|d_0\|^2 + 2k\,\langle d_0,\,\tilde{d}_1\rangle
+               + k^2\,\|\tilde{d}_1\|^2,
+\]
+which is minimized at
+\[
+  \boxed{k^*(\tau,\theta)
+    = -\frac{\langle d_0,\, \tau\,d_1^{(0)}
+             + \theta\,d_1^{(\theta)}\rangle}
+            {\|\tau\,d_1^{(0)}
+             + \theta\,d_1^{(\theta)}\|^2}.}
+\]
+
+\section{Slack, primal variable, and multiplier}
+
+The Newton direction $d$ lives in $v$-space, where $W = \exp(v)$.
+The linearized primal slack and dual multiplier are recovered from $d$
+as follows.
+
+\subsection{Slack}
+
+The primal slack (cone element) is
+\[
+  \boxed{s = \frac{1}{k}\,P(W^{-1/2})(e - d).}
+\]
+
+\subsection{Dual multiplier}
+
+The dual multiplier is
+\[
+  \boxed{\lambda = \frac{1}{k}\,P(W^{1/2})(e + d)
+    = \frac{1}{k}\,W\circ(e + d).}
+\]
+
+At the central path ($d = 0$), $s = \lambda = W/k$ and
+$s \circ \lambda = W^2/k^2 = \mu\,W^2$, where $\mu = 1/k^2$.
+
+\subsection{Primal variable}
+
+The optimization variable is
+\[
+  \boxed{x = \frac{y}{k}
+    = \frac{1}{k}\,y_0 + \tau\,y_1^{(0)} + \theta\,y_1^{(\theta)}.}
+\]
+
+\subsection{Complementarity}
+
+The complementarity gap is
+\[
+  \langle s, \lambda \rangle
+  = \frac{1}{k^2}\,\langle P(W^{1/2})(e-d),\, P(W^{1/2})(e+d)\rangle
+  = \mu\,\bigl(m - \|d\|^2\bigr),
+\]
+where $m$ is the rank (dimension of the cone) and
+$\mu = 1/k^2$.  At the central path ($d=0$), the gap is $\mu\,m$.
+
+\section{Duality residual}
+
+The Newton direction satisfies the identity
+\[
+  \boxed{b_0^T \lambda + c^T x + \frac{\mu}{\tau}
+    = \theta\,\bigl(\langle b_0, e\rangle + 1\bigr),}
+\]
+where $\lambda$, $x$, $\mu = 1/k^2$ are as defined above.
+This can be verified by substituting the expressions for $\lambda$
+and $x$ in terms of the decomposition.
+
+At the central path ($d = 0$, $\tau = 1$, $\theta = 0$), the left-hand
+side reduces to $b_0^T \lambda + c^T x + \mu$, and the right-hand
+side vanishes, recovering the standard complementarity relation.
+
+At the trivially centered point ($\theta = 1$, $\tau = 1$, $k = 1$,
+$W = e$, $d = 0$): $\lambda = e$, $x = 0$, $\mu = 1$, and
+\[
+  b_0^T e + 0 + 1 = \langle b_0, e\rangle + 1,
+\]
+which is satisfied identically.
+
+The \emph{duality residual} is the absolute error in this equation:
+\[
+  r_{\mathrm{dual}} = \bigl|b_0^T \lambda + c^T x + \tfrac{\mu}{\tau}
+    - \theta\,(\langle b_0,e\rangle + 1)\bigr|.
+\]
+
+\section{Joint $(k,\tau)$ selection with $\theta = \mu = 1/k^2$}
+
+Setting $\theta = \mu = 1/k^2$ ties the centering weight to the barrier
+parameter.  The direction becomes
+\[
+  d = d_0 + k\tau\,d_1^{(0)} + \frac{1}{k}\,d_1^{(\theta)},
+\]
+which depends on two free parameters $(k, \tau)$.
+
+\subsection{Inner-product basis}
+
+All norms and inner products of $d$ can be expressed in terms of
+six scalars computed once from the decomposition:
+\begin{alignat*}{3}
+  &a = \|d_0\|^2, &\qquad
+  &b = \langle d_0,\, d_1^{(0)}\rangle, &\qquad
+  &c = \langle d_0,\, d_1^{(\theta)}\rangle, \\
+  &p = \|d_1^{(0)}\|^2, &\qquad
+  &q = \langle d_1^{(0)},\, d_1^{(\theta)}\rangle, &\qquad
+  &r = \|d_1^{(\theta)}\|^2.
+\end{alignat*}
+
+\subsection{Optimal $\tau$ at fixed $k$}
+
+The squared norm
+\[
+  \|d\|^2 = a + 2k\tau b + \frac{2c}{k}
+            + k^2\tau^2 p + 2\tau q + \frac{r}{k^2}
+\]
+is quadratic in~$\tau$.  Setting $\partial\|d\|^2/\partial\tau = 0$:
+\[
+  \boxed{\tau^*(k) = -\frac{k\,b + q}{k^2\,p}.}
+\]
+
+\subsection{Reduced objective in $k$ alone}
+
+Substituting $\tau^*(k)$ back:
+\[
+  \|d\|^2\bigl(k,\,\tau^*(k)\bigr)
+  = a + \frac{2c}{k} + \frac{r}{k^2}
+    - \frac{(k\,b + q)^2}{k^2\,p}.
+\]
+This is a rational function of~$k$ involving only the six precomputed
+scalars.  It is minimized by a one-dimensional search over $k > 0$.
+
+\subsection{Algorithm (per factorization)}
+
+\begin{enumerate}
+  \item Compute the decomposition $(d_0,\, d_1^{(0)},\, d_1^{(\theta)})$:
+        one factorization and three back-solves.
+  \item Compute the six inner products $a, b, c, p, q, r$.
+  \item Line-search over $k > 0$ to minimize $\|d\|^2(k, \tau^*(k))$.
+  \item Set $\tau = \tau^*(k)$, $\theta = 1/k^2$, $\mu = 1/k^2$.
+  \item Evaluate $d = d_0 + k\tau\,d_1^{(0)} + (1/k)\,d_1^{(\theta)}$.
+  \item Take the geodesic step $W \leftarrow W \cdot \exp(\alpha\,d)$
+        with $\alpha = \min(1,\; 2/\|d\|_\infty^2)$.
+\end{enumerate}
+
+No additional Gram solves are required beyond the initial decomposition.
+The entire parameter selection is determined by inner products of the
+precomputed direction components.
+
+\section{Derivation of the decomposition}
+
+Starting from the single-parameter blend
+$b_\theta = \theta\,e + (1-\theta)\,b_0$,
+$c_\theta = \theta\,A^T e + (1-\theta)\,c$,
+the combined RHS for $y_1$ is
+\begin{align*}
+  G\,y_1
+  &= -\bigl(c_\theta + A^T P(W)\,b_\theta\bigr) \\
+  &= -\bigl(c + A^T P(W)\,b_0\bigr)
+     + \theta\,\bigl(c + A^T P(W)\,b_0 - A^T e - A^T P(W)\,e\bigr),
+\end{align*}
+giving $y_1 = y_1^{(0)} + \theta\,y_1^{(\theta)}$.
+Expanding $d_1 = \PW(-b_\theta - A\,y_1)$ yields
+$d_1 = d_1^{(0)} + \theta\,d_1^{(\theta)}$, which corresponds to
+$\tau = 1 - \theta$.  Decoupling $\tau$ and $\theta$ generalizes this
+to the full two-parameter family.
+
+\end{document}

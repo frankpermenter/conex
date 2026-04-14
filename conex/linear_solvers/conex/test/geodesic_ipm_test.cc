@@ -96,6 +96,91 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
   EXPECT_GT(normInf(addScaled(W, W_ones, 1.0, -1.0)), 0.01);
 }
 
+TEST(GeodesicBarrierQP, FullDecomposition) {
+  // Verify ComputeFullDecomposition + EvaluateDirection against
+  // VerifyNewtonEquations for several (k, theta) pairs.
+  srand(77);
+  const int n = 5, m = 8;
+
+  MatrixXd A_dense = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int i = 0; i < m; ++i)
+    for (int j = 0; j < n; ++j)
+      trips.emplace_back(i, j, A_dense(i, j));
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Problem problem;
+  problem.AddLinearConstraint(A, b, vars);
+  auto [reduced, expansion] = Preprocess(problem);
+  auto solver = Solver::Build(reduced);
+  auto* kkt = solver.solver();
+
+  auto cost_rhs = kkt->MakeSolverRHS();
+  VectorXd c_r = expansion.Reduce(c);
+  cost_rhs = kkt->MakeBlockVariable(c_r);
+
+  // Perturb W away from identity.
+  RowSpace W = kkt->MakeRowSpace();
+  setFromVector(W, VectorXd::Ones(m) + 0.3 * VectorXd::Random(m));
+
+  const RowSpace b_rs = kkt->GetAffineTerm();
+
+  auto decomp = ComputeFullDecomposition(*kkt, cost_rhs, b_rs, W);
+
+  // Test several (k, theta) pairs.
+  double test_ks[] = {0.5, 1.0, 2.0, 5.0};
+  double test_thetas[] = {0.0, 0.1, 0.5, 1.0};
+
+  double test_taus[] = {0.0, 0.5, 1.0};
+  for (double k : test_ks) {
+    for (double tau : test_taus) {
+      for (double theta : test_thetas) {
+        RowSpace d = EvaluateDirection(decomp, k, tau, theta);
+
+        // Reconstruct y = y0 + k * (tau * y1_0 + theta * y1_theta).
+        Eigen::VectorXd y = decomp.y0 + k * (tau * decomp.y1_0 + theta * decomp.y1_theta);
+
+        // VerifyNewtonEquations uses a single blend parameter theta
+        // (b = theta*e + (1-theta)*b_0), which only matches the decoupled
+        // (tau, theta) when tau=1, theta=0 (original problem, no blend).
+        if (tau == 1.0 && theta == 0.0) {
+          auto [p_res, d_res] = VerifyNewtonEquations(
+              *kkt, cost_rhs, b_rs, W, d, y, k, 0.0);
+          printf("  k=%.1f tau=%.1f theta=%.1f: primal=%.2e  dual=%.2e\n",
+                 k, tau, theta, p_res, d_res);
+          EXPECT_LT(p_res, 1e-10);
+          EXPECT_LT(d_res, 1e-10);
+        }
+      }
+    }
+  }
+
+  // Verify MinNormK: at k*, ||d||^2 should be minimal.
+  for (double theta : test_thetas) {
+    double tau = 1.0;
+    double k_star = MinNormK(decomp, tau, theta);
+    RowSpace d_star = EvaluateDirection(decomp, k_star, tau, theta);
+    double dsq_star = squaredNorm(d_star);
+
+    // Perturbing k in either direction should increase ||d||^2.
+    double eps = 1e-6;
+    double dsq_plus = squaredNorm(EvaluateDirection(decomp, k_star + eps, tau, theta));
+    double dsq_minus = squaredNorm(EvaluateDirection(decomp, k_star - eps, tau, theta));
+
+    printf("  theta=%.1f: k*=%.4f  ||d||^2=%.4e  (d+)=%.4e  (d-)=%.4e\n",
+           theta, k_star, dsq_star, dsq_plus, dsq_minus);
+    EXPECT_LE(dsq_star, dsq_plus + 1e-12);
+    EXPECT_LE(dsq_star, dsq_minus + 1e-12);
+  }
+}
+
 TEST(GeodesicBarrierQP, MultipleConstraints) {
   // Geodesic IPM on a problem with two separate AddLinearConstraint calls.
   // min c^T x s.t. A1*x >= b1, A2*x >= b2.
