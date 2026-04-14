@@ -493,6 +493,75 @@ double SelectTauWeighted(
   return 0.5 * (tau_lo + tau_hi);
 }
 
+// Given a decomposition and candidate theta, solve the hard-constraint
+// violation quadratic V(tau)=0, evaluate d, return (tau, d_inf).
+// Returns tau = -1 if no positive root exists.
+static std::pair<double, double> EvalThetaCandidate(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const RowSpace& b,
+    const RowSpace& W,
+    const NewtonDecomposition& decomp,
+    double bT_ones,
+    double theta_cand) {
+  if (theta_cand <= 0) return {-1, 1e30};
+  double k = 1.0 / std::sqrt(theta_cand);
+  double mu = theta_cand;
+
+  // Compute violation quadratic coefficients: beta*tau^2 + (alpha-R)*tau + mu = 0
+  auto dc = ComputeDualityCoeffs(kkt, cost_rhs, b, W, decomp);
+  double beta = dc.sigma1 + dc.gamma1;
+
+  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  RowSpace ones_v = kkt.MakeRowSpace();
+  setOnes(ones_v);
+  RowSpace e_plus_d0 = ones_v + decomp.d0;
+  RowSpace arg = addScaled(e_plus_d0, decomp.d1_theta, 1.0, k * theta_cand);
+  double sigma0 = dot(b, quadraticRepresentation(sqrtW, arg)) / k;
+
+  auto y0_rhs = kkt.MakeSolverRHS();
+  y0_rhs = kkt.MakeBlockVariable(decomp.y0);
+  double cT_y0 = cost_rhs.dot(y0_rhs);
+  auto yt_rhs = kkt.MakeSolverRHS();
+  yt_rhs = kkt.MakeBlockVariable(decomp.y1_theta);
+  double cT_yt = cost_rhs.dot(yt_rhs);
+  double gamma0 = cT_y0 / k + theta_cand * cT_yt;
+
+  double alpha = sigma0 + gamma0;
+  double R = theta_cand * (bT_ones + 1.0);
+
+  // Solve quadratic: beta*tau^2 + (alpha - R)*tau + mu = 0
+  double B = alpha - R;
+  double disc = B * B - 4.0 * beta * mu;
+  if (disc < 0) return {-1, 1e30};
+
+  double sqrt_disc = std::sqrt(disc);
+  double tau1 = (-B + sqrt_disc) / (2.0 * beta);
+  double tau2 = (-B - sqrt_disc) / (2.0 * beta);
+
+  // Pick the positive root with smaller ||d||^2.
+  auto eval_dsq = [&](double tau) -> double {
+    if (tau <= 0) return 1e30;
+    RowSpace d = EvaluateDirection(decomp, k, tau, theta_cand);
+    return squaredNorm(d);
+  };
+
+  double dsq1 = eval_dsq(tau1);
+  double dsq2 = eval_dsq(tau2);
+
+  double tau, dsq;
+  if (tau1 > 0 && (tau2 <= 0 || dsq1 <= dsq2)) {
+    tau = tau1; dsq = dsq1;
+  } else if (tau2 > 0) {
+    tau = tau2; dsq = dsq2;
+  } else {
+    return {-1, 1e30};
+  }
+
+  RowSpace d = EvaluateDirection(decomp, k, tau, theta_cand);
+  return {tau, normInf(d)};
+}
+
 GeodesicResult SolveGeodesicThetaContinuation(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
@@ -528,21 +597,53 @@ GeodesicResult SolveGeodesicThetaContinuation(
     total_fac++;
     total_sol += 3;
 
-    // Decrease theta = mu, center at each level.
-    theta *= 0.1;
+    // Binary search for the smallest theta with ||d||_inf <= beta,
+    // using the hard-constraint (V(tau)=0) tau selection.
+    constexpr double beta_target = 1.0;
+    double theta_prev = theta;
+    {
+      double theta_lo = tolerance;  // smallest we'd try
+      double theta_hi = theta;      // current (centered) theta
+      for (int bisect = 0; bisect < 30; ++bisect) {
+        double theta_mid = std::sqrt(theta_lo * theta_hi);  // geometric mean
+        auto [tau_try, d_inf_try] = EvalThetaCandidate(
+            kkt, cost_rhs, b, W, decomp, bT_ones, theta_mid);
+        if (tau_try > 0 && d_inf_try <= beta_target) {
+          theta_hi = theta_mid;  // can go lower
+        } else {
+          theta_lo = theta_mid;  // too aggressive
+        }
+      }
+      theta = theta_hi;
+    }
     k = 1.0 / std::sqrt(theta);
-    constexpr double w_penalty = 1e6;
+    // Evaluate tau at the chosen theta via hard constraint.
+    auto [tau_sel, d_inf_sel] = EvalThetaCandidate(
+        kkt, cost_rhs, b, W, decomp, bT_ones, theta);
+    tau = tau_sel;
+
+    // Take geodesic step.
+    RowSpace d_step = EvaluateDirection(decomp, k, tau, theta);
+    double d_inf_step = normInf(d_step);
+    if (d_inf_step > 1e-14) {
+      double alpha = std::min(1.0, 2.0 / (d_inf_step * d_inf_step));
+      geodesicUpdate(W, alpha, d_step);
+    }
 
     // Inner centering loop at fixed (k, theta).
-    int centering_iters = 0;
+    int centering_iters = 1;  // count the step above
     double d_inf = 0, d_sq = 0, mu = 0, gap = 0;
     double eq_err_final = 0;
 
     for (int inner = 0; inner < max_centering_steps; ++inner) {
-      auto ip = ComputeInnerProducts(decomp);
-      auto dc = ComputeDualityCoeffs(kkt, cost_rhs, b, W, decomp);
-      tau = SelectTauWeighted(kkt, cost_rhs, b, W, decomp, ip, dc,
-                              bT_ones, k, theta, w_penalty);
+      decomp = ComputeFullDecomposition(kkt, cost_rhs, b, W);
+      total_fac++;
+      total_sol += 3;
+
+      auto [tau_inner, d_inf_inner] = EvalThetaCandidate(
+          kkt, cost_rhs, b, W, decomp, bT_ones, theta);
+      if (tau_inner <= 0) break;
+      tau = tau_inner;
 
       RowSpace d = EvaluateDirection(decomp, k, tau, theta);
       d_inf = normInf(d);
@@ -571,9 +672,6 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       geodesicUpdate(W, alpha, d);
-      decomp = ComputeFullDecomposition(kkt, cost_rhs, b, W);
-      total_fac++;
-      total_sol += 3;
     }
 
     if (verbose) {
@@ -613,7 +711,42 @@ GeodesicResult SolveGeodesicThetaContinuation(
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
 
-    if (theta < tolerance) break;
+    if (theta <= tolerance) {
+      // Final centering: keep iterating until d_inf <= 1.001.
+      // Re-evaluate d_inf at current (k, tau, theta) first.
+      {
+        RowSpace d_check = EvaluateDirection(decomp, k, tau, theta);
+        d_inf = normInf(d_check);
+      }
+      for (int final_iter = 0; final_iter < 50; ++final_iter) {
+        if (d_inf <= 1.001) break;
+        decomp = ComputeFullDecomposition(kkt, cost_rhs, b, W);
+        total_fac++;
+        total_sol += 3;
+        auto [tau_f, d_inf_f] = EvalThetaCandidate(
+            kkt, cost_rhs, b, W, decomp, bT_ones, theta);
+        if (tau_f <= 0) break;
+        tau = tau_f;
+        RowSpace d_f = EvaluateDirection(decomp, k, tau, theta);
+        d_inf = normInf(d_f);
+        d_sq = squaredNorm(d_f);
+        mu = 1.0 / (k * k);
+        gap = mu * (m - d_sq);
+        if (verbose) {
+          printf("  fin  %8.6f  %8.4f  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e\n",
+                 theta, tau, mu / tau, k, d_inf, d_sq, gap);
+        }
+        double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+        geodesicUpdate(W, alpha, d_f);
+      }
+      result.d_inf_norm = d_inf;
+      result.d_sq_norm = d_sq;
+      result.complementarity = gap;
+      result.total_factorizations = total_fac;
+      result.total_solves = total_sol;
+      break;
+    }
+    if (theta >= theta_prev * (1.0 - 1e-4)) break;  // theta stalled
   }
 
   // Recover primal x.

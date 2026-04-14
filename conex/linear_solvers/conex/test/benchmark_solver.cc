@@ -157,7 +157,7 @@ void RunBenchmark(const Problem& problem, const std::string& name) {
     RowSpace W = kkt->MakeRowSpace();
     setOnes(W);
     auto t2 = std::chrono::high_resolution_clock::now();
-    auto result = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 500, 10, 1e-8, true);
+    auto result = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 500, 1, 0.001, true);
     auto t3 = std::chrono::high_resolution_clock::now();
     double solve_ms =
         std::chrono::duration<double, std::milli>(t3 - t2).count();
