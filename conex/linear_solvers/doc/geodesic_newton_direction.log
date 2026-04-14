@@ -1,4 +1,4 @@
-This is LuaHBTeX, Version 1.14.0 (TeX Live 2022/dev/Debian)  (format=lualatex 2026.1.30)  14 APR 2026 09:49
+This is LuaHBTeX, Version 1.14.0 (TeX Live 2022/dev/Debian)  (format=lualatex 2026.1.30)  14 APR 2026 14:12
  restricted system commands enabled.
 **geodesic_newton_direction.tex
 (./geodesic_newton_direction.tex
@@ -179,14 +179,14 @@ File: umsb.fd 2013/01/14 v3.01 AMS symbols B
 (./geodesic_newton_direction.aux))
 
 Here is how much of LuaTeX's memory you used:
- 1757 strings out of 477805
+ 1761 strings out of 477805
  100000,383344 words of node,token memory allocated
  697 words of node memory still in use:
    7 hlist, 2 vlist, 2 rule, 2 glue, 4 kern, 1 glyph, 57 attribute, 52 glue_spec
 , 57 attribute_list, 1 write nodes
-   avail lists: 2:393,3:146,4:7,5:288,6:35,7:3181,8:50,9:528,10:6,11:157
- 22449 multiletter control sequences out of 65536+600000
- 63 fonts using 4118719 bytes
+   avail lists: 2:338,3:154,4:7,5:410,6:30,7:3810,8:40,9:532,10:6,11:175
+ 22453 multiletter control sequences out of 65536+600000
+ 65 fonts using 4382159 bytes
  54i,12n,59p,212b,212s stack positions out of 5000i,500n,10000p,200000b,80000s
 </usr/share/texmf/fonts/opentype/public/lm/lmroman10-italic.otf></usr/share/texm
 f/fonts/opentype/public/lm/lmroman10-regular.otf></usr/share/texmf/fonts/opentyp
@@ -200,7 +200,7 @@ exmf-dist/fonts/type1/public/amsfonts/cm/cmr12.pfb></usr/share/texlive/texmf-dis
 t/fonts/type1/public/amsfonts/cm/cmr7.pfb></usr/share/texlive/texmf-dist/fonts/t
 ype1/public/amsfonts/cm/cmsy10.pfb></usr/share/texlive/texmf-dist/fonts/type1/pu
 blic/amsfonts/cm/cmsy7.pfb>
-Output written on geodesic_newton_direction.pdf (5 pages, 115850 bytes).
+Output written on geodesic_newton_direction.pdf (5 pages, 125559 bytes).
 
 PDF statistics: 84 PDF objects out of 1000 (max. 8388607)
  55 compressed objects within 1 object stream

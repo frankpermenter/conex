@@ -531,7 +531,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     // Decrease theta = mu, center at each level.
     theta *= 0.9;
     k = 1.0 / std::sqrt(theta);
-    constexpr double w_penalty = 1.0;
+    constexpr double w_penalty = 1e6;
 
     // Inner centering loop at fixed (k, theta).
     int centering_iters = 0;
@@ -551,7 +551,23 @@ GeodesicResult SolveGeodesicThetaContinuation(
       gap = mu * (m - d_sq);
       centering_iters++;
 
-      if (d_inf < 1e-2) break;
+      // Compute equation error.
+      RowSpace sqrtW_inner = EuclideanJordanAlgebra::sqrt(W);
+      RowSpace ones_inner = kkt.MakeRowSpace();
+      setOnes(ones_inner);
+      RowSpace lam_inner = quadraticRepresentation(sqrtW_inner, ones_inner + d);
+      lam_inner *= (1.0 / k);
+      double bTl_inner = dot(b, lam_inner);
+      Eigen::VectorXd x_inner = decomp.y0 / k + tau * decomp.y1_0
+                               + theta * decomp.y1_theta;
+      auto x_rhs_inner = kkt.MakeSolverRHS();
+      x_rhs_inner = kkt.MakeBlockVariable(x_inner);
+      double cTx_inner = cost_rhs.dot(x_rhs_inner);
+      double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
+      eq_err_final = std::abs(bTl_inner + cTx_inner + mu_over_tau
+                              - theta * (bT_ones + 1.0));
+
+      if (d_inf < 1e-2 && eq_err_final < 1e-2) break;
 
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       geodesicUpdate(W, alpha, d);

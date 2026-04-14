@@ -1,6 +1,6 @@
 \documentclass{article}
 \usepackage{amsmath, amssymb}
-\newcommand{\PW}{P(W^{1/2})}
+\newcommand{\PW}{P(w^{1/2})}
 
 \title{Geodesic Newton Direction with Blended RHS}
 \author{}
@@ -9,14 +9,34 @@
 \begin{document}
 \maketitle
 
-\section{Setup}
+\section{Problem and notation}
 
-Let $b_0$ denote the original affine term, $c$ the original cost, $e$ the
-identity element, $A$ the constraint operator, and $P(X)$ the quadratic
-representation $P(X)v = X v X$.  The Gram matrix is
+We solve the conic program
 \[
-  G = A^T P(W) A.
+  \min_{x}\; c^T x \quad \text{s.t.}\quad Ax + b \succeq 0,
 \]
+where $A$ is the constraint operator, $b$ the affine term, $c$ the
+cost, and $\succeq 0$ denotes membership in a symmetric cone with
+identity element~$e$ and quadratic representation $P(X)v$.
+
+
+\subsection{Perturbed system ($\theta$-centering)}
+
+We consider a $\tau$-scaled and $\theta$-perturbed
+central path conditions:
+\begin{align}
+  A^T \lambda &= \tau\,c + \theta\,(A^T e-c), \label{eq:dual-theta} \\
+  s &= Ax + \tau b + \theta(e-b)  , \label{eq:primal-theta} 
+\end{align}
+
+\subsection{Geodesic parameterization}
+We use the Geodesic Newton direction $d$ defined via
+\[
+  s = \frac{1}{k}\,P(w^{-1/2})(e - d), \qquad
+  \lambda = \frac{1}{k}\,P(w^{1/2})(e + d),
+\]
+where $k = 1/\sqrt{\mu}$ and $d$ is the Newton direction in $v$-space.
+The Gram matrix is $G = A^T P(w) A$.
 
 \section{Three-term decomposition}
 
@@ -26,13 +46,13 @@ components that are independent of any blending parameters.
 \subsection{Gram solves}
 
 \[
-  G\,y_0 = A^T(2W),
+  G\,y_0 = A^T(2w),
 \]
 \[
-  G\,y_1^{(0)} = -\bigl(c + A^T P(W)\,b_0\bigr),
+  G\,y_1^{(0)} = -\bigl(c + A^T P(w)\,b\bigr),
 \]
 \[
-  G\,y_1^{(\theta)} = c + A^T P(W)\,b_0 - A^T\bigl(e + P(W)\,e\bigr).
+  G\,y_1^{(\theta)} = c + A^T P(w)\,b - A^T\bigl(e + P(w)\,e\bigr).
 \]
 
 \subsection{Direction components}
@@ -41,14 +61,14 @@ components that are independent of any blending parameters.
   d_0 = e - \PW(A\,y_0),
 \]
 \[
-  d_1^{(0)} = \PW(-b_0 - A\,y_1^{(0)}),
+  d_1^{(0)} = -\PW(b + A\,y_1^{(0)}),
 \]
 \[
-  d_1^{(\theta)} = \PW(b_0 - e - A\,y_1^{(\theta)}).
+  d_1^{(\theta)} = \PW(b - e - A\,y_1^{(\theta)}).
 \]
 
 All six quantities ($y_0, y_1^{(0)}, y_1^{(\theta)}, d_0, d_1^{(0)},
-d_1^{(\theta)}$) depend only on $W$, the original data $(b_0, c)$, and
+d_1^{(\theta)}$) depend only on $W$, the original data $(b, c)$, and
 the constraint operator $A$.  They are computed with one factorization
 and three back-solves.
 
@@ -62,7 +82,7 @@ $\theta$ (identity-centering weight), the Newton direction is
 \]
 which is affine in $k$, $\tau$, and $\theta$.
 
-The corresponding dual variable is
+The corresponding variable is
 \[
   y(k,\tau,\theta) = y_0 + k\bigl(\tau\,y_1^{(0)}
     + \theta\,y_1^{(\theta)}\bigr).
@@ -76,7 +96,7 @@ The corresponding dual variable is
   \item $\tau = 0,\;\theta = 1$: feasibility/centering problem with
         $b = e$, $c = A^T e$, \; $d = d_0 + k\,d_1^{(\theta)}$.
   \item $\tau = 1-\theta$: single-parameter blend
-        $b_\theta = \theta\,e + (1-\theta)\,b_0$, \;
+        $b_\theta = \theta\,e + (1-\theta)\,b$, \;
         $c_\theta = \theta\,A^T e + (1-\theta)\,c$.
 \end{itemize}
 
@@ -97,75 +117,25 @@ which is minimized at
              + \theta\,d_1^{(\theta)}\|^2}.}
 \]
 
-\section{Slack, primal variable, and multiplier}
-
-The Newton direction $d$ lives in $v$-space, where $W = \exp(v)$.
-The linearized primal slack and dual multiplier are recovered from $d$
-as follows.
-
-\subsection{Slack}
-
-The primal slack (cone element) is
-\[
-  \boxed{s = \frac{1}{k}\,P(W^{-1/2})(e - d).}
-\]
-
-\subsection{Dual multiplier}
-
-The dual multiplier is
-\[
-  \boxed{\lambda = \frac{1}{k}\,P(W^{1/2})(e + d)
-    = \frac{1}{k}\,W\circ(e + d).}
-\]
-
-At the central path ($d = 0$), $s = \lambda = W/k$ and
-$s \circ \lambda = W^2/k^2 = \mu\,W^2$, where $\mu = 1/k^2$.
-
-\subsection{Primal variable}
-
-The optimization variable is
-\[
-  \boxed{x = \frac{y}{k}
-    = \frac{1}{k}\,y_0 + \tau\,y_1^{(0)} + \theta\,y_1^{(\theta)}.}
-\]
-
-\subsection{Complementarity}
-
-The complementarity gap is
-\[
-  \langle s, \lambda \rangle
-  = \frac{1}{k^2}\,\langle P(W^{1/2})(e-d),\, P(W^{1/2})(e+d)\rangle
-  = \mu\,\bigl(m - \|d\|^2\bigr),
-\]
-where $m$ is the rank (dimension of the cone) and
-$\mu = 1/k^2$.  At the central path ($d=0$), the gap is $\mu\,m$.
 
 \section{Duality residual}
 
-The Newton direction satisfies the identity
+We seek $(\tau, \theta)$ pairs that satisfy
 \[
-  \boxed{b_0^T \lambda + c^T x + \frac{\mu}{\tau}
-    = \theta\,\bigl(\langle b_0, e\rangle + 1\bigr),}
+  \boxed{b^T \lambda + c^T x + \frac{\mu}{\tau}
+    = \theta\,\bigl(\langle b, e\rangle + 1\bigr),}
 \]
-where $\lambda$, $x$, $\mu = 1/k^2$ are as defined above.
-This can be verified by substituting the expressions for $\lambda$
-and $x$ in terms of the decomposition.
-
-At the central path ($d = 0$, $\tau = 1$, $\theta = 0$), the left-hand
-side reduces to $b_0^T \lambda + c^T x + \mu$, and the right-hand
-side vanishes, recovering the standard complementarity relation.
-
 At the trivially centered point ($\theta = 1$, $\tau = 1$, $k = 1$,
 $W = e$, $d = 0$): $\lambda = e$, $x = 0$, $\mu = 1$, and
 \[
-  b_0^T e + 0 + 1 = \langle b_0, e\rangle + 1,
+  b^T e + 0 + 1 = \langle b, e\rangle + 1,
 \]
 which is satisfied identically.
 
 The \emph{duality residual} is the absolute error in this equation:
 \[
-  r_{\mathrm{dual}} = \bigl|b_0^T \lambda + c^T x + \tfrac{\mu}{\tau}
-    - \theta\,(\langle b_0,e\rangle + 1)\bigr|.
+  r_{\mathrm{dual}} = \bigl|b^T \lambda + c^T x + \tfrac{\mu}{\tau}
+    - \theta\,(\langle b,e\rangle + 1)\bigr|.
 \]
 
 \section{Joint $(k,\tau)$ selection with $\theta = \mu = 1/k^2$}
@@ -213,39 +183,87 @@ Substituting $\tau^*(k)$ back:
 This is a rational function of~$k$ involving only the six precomputed
 scalars.  It is minimized by a one-dimensional search over $k > 0$.
 
-\subsection{Algorithm (per factorization)}
+\subsection{Weighted $\tau$ selection with duality constraint}
+
+The min-norm $\tau^*(k)$ above ignores the duality residual.  To
+enforce the identity from Section~6, we select $\tau$ to minimize a
+weighted objective that penalizes both $\|d\|^2$ and the squared
+violation.
+
+For fixed $(k,\theta)$, expand the duality identity.  Since $\lambda$
+and $x$ are both affine in~$\tau$, the left-hand side of the identity
+is expressed in terms of parameters $(\alpha, \tau, R)$
+as
+\[
+  \underbrace{(\sigma_0 + \gamma_0)}_{\alpha}
+  + \underbrace{(\sigma_1 + \gamma_1)}_\beta \,\tau
+  + \frac{\mu}{\tau}
+  = \underbrace{\theta\,(\langle b,e\rangle + 1)}_{R},
+\]
+where
+\begin{align*}
+  \sigma_0 &= \tfrac{1}{k}\,\langle b,\, \PW(e + d_0 + k\theta\,d_1^{(\theta)})\rangle,
+  &\quad \sigma_1 &= \langle b,\, \PW(d_1^{(0)})\rangle, \\
+  \gamma_0 &= c^T y_0 / k + \theta\,c^T y_1^{(\theta)},
+  &\quad \gamma_1 &= c^T y_1^{(0)}.
+\end{align*}
+Multiplying through by~$\tau$ gives the \emph{violation quadratic}:
+\[
+  V(\tau) = \beta\,\tau^2 + (\alpha - R)\,\tau + \mu.
+\]
+
+The $\|d\|^2$ terms, grouping the $\tau$-independent part as
+$f = d_0 + k\theta\,d_1^{(\theta)}$, give
+\[
+  \|d\|^2 = \|f\|^2 + 2k\,\langle f, d_1^{(0)}\rangle\,\tau
+            + k^2 p\,\tau^2.
+\]
+
+The weighted objective is
+\[
+  \boxed{J(\tau) = \|d\|^2 + w\,V(\tau)^2,}
+\]
+where $w > 0$ is a penalty weight.  For $w \to \infty$ this enforces
+$V(\tau) = 0$ exactly (the duality identity); for $w = 0$ it recovers
+the pure min-norm selection.
+
+The derivative $J'(\tau)$ is cubic in~$\tau$, so the minimizer can be
+found by golden-section search over $\tau > 0$.
+
+\subsection{Hard constraint ($w \to \infty$)}
+
+In the limit $w \to \infty$, $\tau$ is determined by the roots of the
+violation quadratic $V(\tau) = 0$:
+\[
+  \boxed{\tau = \frac{(R - \alpha) \pm \sqrt{(R-\alpha)^2 - 4\beta\mu}}
+                     {2\beta}.}
+\]
+When both roots are positive, choose the one with smaller~$\|d\|^2$.
+When only one root is positive, use it.  This enforces the duality
+identity exactly and eliminates the tuning parameter~$w$.
+
+
+
+\subsection{Algorithm (per outer iteration)}
 
 \begin{enumerate}
   \item Compute the decomposition $(d_0,\, d_1^{(0)},\, d_1^{(\theta)})$:
         one factorization and three back-solves.
   \item Compute the six inner products $a, b, c, p, q, r$.
-  \item Line-search over $k > 0$ to minimize $\|d\|^2(k, \tau^*(k))$.
-  \item Set $\tau = \tau^*(k)$, $\theta = 1/k^2$, $\mu = 1/k^2$.
+  \item Compute the duality coefficients $\sigma_1, \gamma_1$
+        (once per factorization) and $\sigma_0, \gamma_0$
+        (depend on $k$ via $\theta$).
+  \item For the current $k$ (with $\theta = 1/k^2$), minimize
+        $J(\tau)$ over $\tau > 0$.
   \item Evaluate $d = d_0 + k\tau\,d_1^{(0)} + (1/k)\,d_1^{(\theta)}$.
   \item Take the geodesic step $W \leftarrow W \cdot \exp(\alpha\,d)$
         with $\alpha = \min(1,\; 2/\|d\|_\infty^2)$.
 \end{enumerate}
 
-No additional Gram solves are required beyond the initial decomposition.
-The entire parameter selection is determined by inner products of the
-precomputed direction components.
+Centering terminates when both $\|d\|_\infty$ and the duality residual
+$|V(\tau)/\tau|$ fall below a threshold.  The outer loop decreases
+$\theta = \mu = 1/k^2$ (e.g.\ $\theta \leftarrow 0.9\,\theta$) and
+re-centers at each level until $\theta < \varepsilon$.
 
-\section{Derivation of the decomposition}
-
-Starting from the single-parameter blend
-$b_\theta = \theta\,e + (1-\theta)\,b_0$,
-$c_\theta = \theta\,A^T e + (1-\theta)\,c$,
-the combined RHS for $y_1$ is
-\begin{align*}
-  G\,y_1
-  &= -\bigl(c_\theta + A^T P(W)\,b_\theta\bigr) \\
-  &= -\bigl(c + A^T P(W)\,b_0\bigr)
-     + \theta\,\bigl(c + A^T P(W)\,b_0 - A^T e - A^T P(W)\,e\bigr),
-\end{align*}
-giving $y_1 = y_1^{(0)} + \theta\,y_1^{(\theta)}$.
-Expanding $d_1 = \PW(-b_\theta - A\,y_1)$ yields
-$d_1 = d_1^{(0)} + \theta\,d_1^{(\theta)}$, which corresponds to
-$\tau = 1 - \theta$.  Decoupling $\tau$ and $\theta$ generalizes this
-to the full two-parameter family.
 
 \end{document}
