@@ -5,6 +5,8 @@
 #include <variant>
 #include <vector>
 
+#include "conex/common/error_checking_macros.h"
+
 namespace conex {
 namespace EuclideanJordanAlgebra { class ConeOps; }
 
@@ -33,6 +35,10 @@ class Problem {
       const Eigen::SparseMatrix<double>& A,
       const Eigen::VectorXd& b,
       const std::vector<int>& vars) {
+    CONEX_DEMAND(static_cast<size_t>(A.cols()) == vars.size(),
+                 "AddLinearConstraint: A.cols() must equal vars.size().");
+    CONEX_DEMAND(A.rows() == b.size(),
+                 "AddLinearConstraint: A.rows() must equal b.size().");
     int id = static_cast<int>(constraints_.size());
     constraints_.push_back(LinearConstraintData{A, b, vars});
     return id;
@@ -113,6 +119,8 @@ class Problem {
       const Eigen::SparseMatrix<double>& B,
       const std::vector<int>& vars,
       bool use_chordal = true) {
+    CONEX_DEMAND(A_list.size() == vars.size(),
+                 "AddPSDConstraint: A_list.size() must equal vars.size().");
     constraints_.push_back(PSDConstraintData{A_list, B, vars, use_chordal});
   }
 
@@ -123,6 +131,10 @@ class Problem {
       const Eigen::SparseMatrix<double>& A,
       const Eigen::VectorXd& b,
       const std::vector<int>& vars) {
+    CONEX_DEMAND(static_cast<size_t>(A.cols()) == vars.size(),
+                 "AddSOCConstraint: A.cols() must equal vars.size().");
+    CONEX_DEMAND(A.rows() == b.size(),
+                 "AddSOCConstraint: A.rows() must equal b.size().");
     int id = static_cast<int>(constraints_.size());
     constraints_.push_back(SOCConstraintData{A, b, vars});
     return id;
