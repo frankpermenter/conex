@@ -318,6 +318,17 @@ target_link_libraries(psd_ap_test
 )
 gtest_discover_tests(psd_ap_test)
 
+add_executable(psd_multi_clique_gram_test
+  conex/test/psd_multi_clique_gram_test.cc
+)
+target_link_libraries(psd_multi_clique_gram_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(psd_multi_clique_gram_test)
+
 add_executable(soc_gram_test
   conex/test/soc_gram_test.cc
 )
@@ -366,6 +377,26 @@ target_link_libraries(benchmark_center
   structural_rank
 )
 target_compile_options(benchmark_center PRIVATE -O2)
+
+add_executable(gram_solve_test
+  conex/test/gram_solve_test.cc
+)
+target_link_libraries(gram_solve_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+target_compile_options(gram_solve_test PRIVATE -O2)
+
+add_executable(synthetic_gram_test
+  conex/test/synthetic_gram_test.cc
+)
+target_link_libraries(synthetic_gram_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+target_compile_options(synthetic_gram_test PRIVATE -O2)
 gtest_discover_tests(alternating_projections_test)
 
 add_executable(solve_lp_test
