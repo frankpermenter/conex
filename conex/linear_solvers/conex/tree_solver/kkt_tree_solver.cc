@@ -259,7 +259,7 @@ void T::SolveBlockedInPlace(BlockPartition& supernodes,
     for (const auto& cop : info.children) {
       auto child_sep = scratch.block(cop.child_block_index, nc);
       for (const auto& off : cop.sn_offsets) {
-        sn.middleRows(off.first, off.size) -=
+        sn.middleRows(off.first, off.size) +=
             child_sep.middleRows(off.second, off.size);
       }
       for (const auto& off : cop.sep_offsets) {
@@ -359,7 +359,7 @@ void T::SolveBlockedInPlace() const {
     for (const auto& cop : info.children) {
       auto child_sep = solve_matrix_.separator(cop.child_block_index);
       for (const auto& off : cop.sn_offsets) {
-        sn.middleRows(off.first, off.size) -=
+        sn.middleRows(off.first, off.size) +=
             child_sep.middleRows(off.second, off.size);
       }
       for (const auto& off : cop.sep_offsets) {

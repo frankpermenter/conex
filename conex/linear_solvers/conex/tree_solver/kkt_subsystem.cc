@@ -376,7 +376,12 @@ void T::ForwardSolveBlocked(Eigen::Ref<Eigen::MatrixXd> sn,
         ws1().topLeftCorner(sn.rows(), cols);
     temp = sn;
     DoApplyInverseOfRightFactorOfSupernodeSubmatrix(temp);
-    sep.noalias() += separator_rows() * temp;
+    // Subtract Schur cross-term so child.sep ends up holding
+    // (sep_initial - sep_r * M_sn^{-1} * b_sn) — i.e., adapter contributions
+    // for separator vars, MINUS the elimination cross-term.  The parent
+    // then ADDS this into its sn (or sep), so adapter contributions
+    // accumulate up the tree with the correct sign.
+    sep.noalias() -= separator_rows() * temp;
   }
 }
 

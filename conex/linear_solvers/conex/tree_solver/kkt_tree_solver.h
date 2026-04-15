@@ -372,16 +372,16 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   }
 
   void SolveSolverRHS(SolverRHS& rhs) override {
-    // The blocked solve assumes sep starts at zero (it accumulates
-    // cross-terms via the forward-pass `sep += sep_r * temp` formula and
-    // propagates them to ancestors).  If the caller put adapter
-    // contributions or scattered sn data into sep, fold them into the
-    // supernodes (Gather) so the full RHS lives in sn alone, then zero sep.
-    if (!rhs.blocks_fully_gathered) {
-      GatherSeparators(*rhs.supernodes, *rhs.separators);
-      rhs.blocks_fully_gathered = true;
+    // The forward pass accumulates adapter contributions in sep upward
+    // into parent sn/sep with the correct sign — see SolveBlockedInPlace.
+    // If the caller has the RHS in "fully gathered" form (full b in sn,
+    // sep stale), zero sep so the forward pass starts from a clean slate.
+    // Otherwise (lazy form, sep contains adapter contributions), use sep
+    // contents as-is.
+    if (rhs.blocks_fully_gathered) {
+      rhs.separators->SetZero();
+      rhs.blocks_fully_gathered = false;
     }
-    rhs.separators->SetZero();
     SolveBlockedInPlace(*rhs.supernodes, *rhs.separators);
   }
 
