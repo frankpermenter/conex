@@ -55,14 +55,16 @@ int main() {
          sol(0), sol(1), cost.dot(sol.head(2)));
 
   // Now solve with geodesic IPM.
-  // Cost at primal, +d at dual (scaled by k*tau in the IPM's parameterization).
+  // Cost at primal, -d at dual. The IPM negates cost_rhs into rhs1
+  // (giving +d), and rhs2 inherits -d (from negating rhs1). At θ=1:
+  // k*(τ*d - d) = 0 → equality off. At θ=0: k*τ*d → equality on.
   Eigen::VectorXd cost_full = Eigen::VectorXd::Zero(nv);
   cost_full.head(cost.size()) = cost;
   for (const auto* ec : ts->equality_sub_assemblers()) {
     const auto& dv = ec->dual_variables();
     const auto& dd = ec->affine_term();
     for (int i = 0; i < (int)dv.size(); ++i)
-      cost_full(dv[i]) = dd(i);
+      cost_full(dv[i]) = -dd(i);
   }
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(cost_full);
