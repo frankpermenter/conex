@@ -29,13 +29,33 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
           trips.emplace_back(total_rows + it.row(), it.col(), it.value());
       total_rows += A_ptr->rows();
     } else if (auto* pc = std::get_if<Problem::PSDConstraintData>(&c)) {
-      // Mark each variable as live if its A_i has any nonzeros.
+      // Add one row per unique nonzero entry position across all A_i.
+      // This reflects the true structural rank: each entry (r,c) of the
+      // n×n PSD constraint is an independent scalar constraint.
+      std::set<std::pair<int,int>> entry_positions;
       for (int k = 0; k < static_cast<int>(pc->A_list.size()); ++k) {
-        if (pc->A_list[k].nonZeros() > 0) {
-          trips.emplace_back(total_rows, pc->vars[k], 1.0);
-        }
+        const auto& Ak = pc->A_list[k];
+        for (int col = 0; col < Ak.outerSize(); ++col)
+          for (Eigen::SparseMatrix<double>::InnerIterator it(Ak, col); it; ++it) {
+            int r = static_cast<int>(it.row());
+            int ci = static_cast<int>(it.col());
+            entry_positions.insert({std::min(r, ci), std::max(r, ci)});
+          }
       }
-      total_rows += 1;
+      std::map<std::pair<int,int>, int> entry_to_row;
+      for (const auto& pos : entry_positions)
+        entry_to_row[pos] = total_rows++;
+
+      for (int k = 0; k < static_cast<int>(pc->A_list.size()); ++k) {
+        const auto& Ak = pc->A_list[k];
+        for (int col = 0; col < Ak.outerSize(); ++col)
+          for (Eigen::SparseMatrix<double>::InnerIterator it(Ak, col); it; ++it) {
+            int r2 = static_cast<int>(it.row());
+            int c2 = static_cast<int>(it.col());
+            auto pos = std::make_pair(std::min(r2, c2), std::max(r2, c2));
+            trips.emplace_back(entry_to_row[pos], pc->vars[k], 1.0);
+          }
+      }
     }
   }
 

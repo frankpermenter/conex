@@ -297,28 +297,9 @@ PreprocessResult PreprocessProblem(const Problem& problem) {
   }
 
   // Step 2: Remove structurally rank-deficient columns.
-  // Only apply if the problem has linear constraints — rank reduction
-  // doesn't understand PSD constraints and will incorrectly drop
-  // variables that only participate in PSD blocks.
-  bool has_linear = false;
-  for (const auto& ci : after_chordal.constraints()) {
-    if (std::holds_alternative<Problem::LinearConstraintData>(ci)) {
-      has_linear = true;
-      break;
-    }
-  }
-  if (has_linear) {
-    auto [reduced, rank_exp] = RemoveStructuralRankDeficiency(after_chordal);
-    result.problem = std::move(reduced);
-    result.rank_expansion = rank_exp;
-  } else {
-    result.problem = std::move(after_chordal);
-    int n_after = result.problem.num_variables();
-    result.rank_expansion.original_n = n_after;
-    result.rank_expansion.col_map.resize(n_after);
-    std::iota(result.rank_expansion.col_map.begin(),
-              result.rank_expansion.col_map.end(), 0);
-  }
+  auto [reduced, rank_exp] = RemoveStructuralRankDeficiency(after_chordal);
+  result.problem = std::move(reduced);
+  result.rank_expansion = rank_exp;
 
   return result;
 }
