@@ -329,6 +329,17 @@ target_link_libraries(psd_multi_clique_gram_test
 )
 gtest_discover_tests(psd_multi_clique_gram_test)
 
+add_executable(hybrid_transition_test
+  conex/test/hybrid_transition_test.cc
+)
+target_link_libraries(hybrid_transition_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(hybrid_transition_test)
+
 add_executable(soc_gram_test
   conex/test/soc_gram_test.cc
 )
@@ -440,3 +451,14 @@ target_link_libraries(self_dual_embedding_test
   GTest::gtest_main
 )
 gtest_discover_tests(self_dual_embedding_test)
+
+add_executable(linesearch_bug_test
+  conex/test/linesearch_bug_test.cc
+)
+target_link_libraries(linesearch_bug_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(linesearch_bug_test)

@@ -264,14 +264,10 @@ double PSDConeOps::lineSearchK(const double* d0, const double* d1,
   // and nonneg ensures max|D0'_ij| <= 1, so ||D0'||_2 <= sqrt(n).
   // Scaling k by 1/sqrt(n) from the centered point isn't quite right
   // either. Just bisect down from k_nn until feasible.
+  // Use symmetrized D0s, D1s throughout (D0, D1 may have slight asymmetry
+  // from numerical operations; SelfAdjointEigenSolver requires exact symmetry).
   double k0 = k_nn;
   {
-    auto eval_norm = [&](double k) -> double {
-      Eigen::MatrixXd Dk = D0 + k * D1;
-      Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(Dk,
-          Eigen::EigenvaluesOnly);
-      return eig.eigenvalues().cwiseAbs().maxCoeff();
-    };
     // Find a feasible k0 by halving from k_nn toward 0.
     while (eval_norm(k0) > 1.0 - 1e-10 && k0 > 1e-15)
       k0 *= 0.5;
@@ -283,7 +279,7 @@ double PSDConeOps::lineSearchK(const double* d0, const double* d1,
 
   double dk = std::numeric_limits<double>::max();
   {
-    Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> gev(D1, I - D0p);
+    Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> gev(D1s, I - D0p);
     const auto& eigs = gev.eigenvalues();
     for (int i = 0; i < n; ++i) {
       if (eigs(i) > 1e-14)
@@ -291,7 +287,7 @@ double PSDConeOps::lineSearchK(const double* d0, const double* d1,
     }
   }
   {
-    Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> gev(D1, I + D0p);
+    Eigen::GeneralizedSelfAdjointEigenSolver<Eigen::MatrixXd> gev(D1s, I + D0p);
     const auto& eigs = gev.eigenvalues();
     for (int i = 0; i < n; ++i) {
       if (eigs(i) < -1e-14)
@@ -299,7 +295,22 @@ double PSDConeOps::lineSearchK(const double* d0, const double* d1,
     }
   }
 
-  return k0 + dk;
+  double k_result = k0 + dk;
+  // Verify: check that ||D0s + k_result * D1s|| <= 1.
+  double norm_check = eval_norm(k_result);
+  if (norm_check > 1.0 + 1e-6) {
+    fprintf(stderr, "PSD lineSearchK BUG: k=%.6e but norm=%.6e (n=%d, "
+                    "k_nn=%.4e, k0=%.4e, dk=%.4e)\n",
+            k_result, norm_check, n, k_nn, k0, dk);
+    // Fall back to bisection.
+    double lo = k0, hi = k_result;
+    for (int b = 0; b < 60; ++b) {
+      double mid = 0.5 * (lo + hi);
+      if (eval_norm(mid) <= 1.0) lo = mid; else hi = mid;
+    }
+    k_result = lo;
+  }
+  return k_result;
 }
 
 void PSDConeOps::project(double* out, const double* a, int size) const {

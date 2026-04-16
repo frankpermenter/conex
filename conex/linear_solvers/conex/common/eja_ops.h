@@ -176,13 +176,33 @@ inline void shrinkR(Variable& r, const Variable& delta) {
 // Largest k > 0 with ||d0 + k*d1||_inf <= 1 per segment.
 //   Nonneg: per-element bound.
 //   PSD:    GEV on (D1, I ± D0).
+// Note: each block's feasible set is an interval [k_low, k_high].
+// Taking min(k_high_i) can land below another block's k_low when
+// ||d0_block|| > 1.  Verify and bisect if needed.
 inline double lineSearchK(const Variable& d0, const Variable& d1) {
   double k_max = std::numeric_limits<double>::max();
   for (int i = 0; i < d0.num_constraints(); ++i)
     k_max = std::min(k_max,
         d0.ops[i]->lineSearchK(d0.segment_ptr(i), d1.segment_ptr(i),
                                d0.sizes[i]));
-  return k_max;
+  if (k_max <= 0 || k_max >= 1e15) return k_max;
+
+  // Verify: check that all blocks satisfy the bound at k_max.
+  double actual_norm = normInf(addScaled(d0, d1, 1.0, k_max));
+  if (actual_norm <= 1.0 + 1e-10) return k_max;
+
+  // Bisect: some block's k_low > k_max.  Find the largest feasible k.
+  double lo = 0, hi = k_max;
+  // Check if k=0 is feasible (||d0||_inf <= 1).
+  if (normInf(d0) > 1.0) return 0;
+  for (int b = 0; b < 60; ++b) {
+    double mid = 0.5 * (lo + hi);
+    if (normInf(addScaled(d0, d1, 1.0, mid)) <= 1.0)
+      lo = mid;
+    else
+      hi = mid;
+  }
+  return lo;
 }
 
 // Largest k > 0 with ||d0 + k*d1||_inf <= bound.  Equivalent to scaling

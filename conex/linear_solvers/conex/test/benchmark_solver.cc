@@ -192,12 +192,17 @@ void RunBenchmark(const Problem& problem, const std::string& name) {
   // to the hybrid algorithm with W from phase 1 and r = sqrt(mu) * I.
   printf("\n  [Phase1+Hybrid: theta->0 then hybrid]\n");
   run_solver("Ph1Hybrid", [](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-    // Phase 1 only: run PhaseOne until theta=0, then hand off.
-    auto p1 = SolveGeodesicPhaseOne(k, c, W, 500, 1, 1e-8, true);
-    // W is now the last iterate from phase 1.  Hand off to hybrid.
-    printf("  -- switching to hybrid (mu=%.2e, %d fac from phase 1) --\n",
-           p1.mu, p1.total_factorizations);
-    auto result = SolveGeodesicHybrid(k, c, W, 500, 1e-8, true);
+    // Phase 1 only: run until theta=0, then stop and hand off to hybrid.
+    auto p1 = SolveGeodesicPhaseOne(k, c, W, 500, 1, 1e-8, true,
+                                     /*phase1_only=*/true);
+    // W is now the last iterate from phase 1.  Hand off to hybrid
+    // with the same k (= 1/sqrt(mu)) so r = sqrt(mu) * I matches.
+    double k_from_p1 = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
+    double tau_from_p1 = p1.tau;
+    printf("  -- switching to hybrid (mu=%.2e, k=%.2e, tau=%.4f, %d fac) --\n",
+           p1.mu, k_from_p1, tau_from_p1, p1.total_factorizations);
+    auto result = SolveGeodesicHybrid(k, c, W, 500, 1e-8, true,
+                                       k_from_p1, tau_from_p1);
     // Combine counts: phase 1 + hybrid.
     result.total_factorizations += p1.total_factorizations;
     result.total_solves += p1.total_solves;

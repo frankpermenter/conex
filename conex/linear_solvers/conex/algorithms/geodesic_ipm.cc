@@ -806,7 +806,8 @@ GeodesicResult SolveGeodesicPhaseOne(
     int max_outer_iterations,
     int /*max_centering_steps*/,
     double tolerance,
-    bool verbose) {
+    bool verbose,
+    bool phase1_only) {
   const RowSpace b = kkt.GetAffineTerm();
   const int m = W.total_rows();
 
@@ -849,6 +850,38 @@ GeodesicResult SolveGeodesicPhaseOne(
         theta_zero = true;
         k = k_zero;
         phase = 2;
+        if (phase1_only) {
+          result.mu = 1.0 / (k * k);
+          result.tau = tau;
+          result.iterations = outer + 1;
+          result.total_factorizations = total_fac;
+          result.total_solves = total_sol;
+          if (verbose) {
+            RowSpace d_p1 = EvaluateDirection(decomp, k, tau, 0.0);
+            double dinf_p1 = normInf(d_p1);
+
+            RowSpace b_sc = kkt.GetAffineTerm(); b_sc *= tau;
+            auto c_sc = kkt.MakeSolverRHS(); c_sc = cost_rhs; c_sc *= tau;
+            RowSpace r_chk = kkt.MakeRowSpace();
+            setOnes(r_chk); r_chk *= (1.0 / k);
+            RowSpace d_hyb = kkt.MakeRowSpace();
+            RowSpace delta_hyb = kkt.MakeRowSpace();
+            ComputeHybridDirection(kkt, c_sc, b_sc, W, r_chk,
+                                    d_hyb, delta_hyb);
+            double dinf_hyb = normInf(d_hyb);
+
+            printf("  PHASE1 DONE: theta=0 at iter %d"
+                   " (k=%.2e, tau=%.4f)\n"
+                   "    d_inf phase1=%.6e  hybrid=%.6e  diff=%.2e\n",
+                   outer, k, tau, dinf_p1, dinf_hyb,
+                   std::abs(dinf_p1 - dinf_hyb));
+            fprintf(stderr, "XCHECK cost_rhs sn[0]:");
+            for (int j = 0; j < std::min(4, (int)cost_rhs.supernodes->block(0).rows()); ++j)
+              fprintf(stderr, " %.6e", cost_rhs.supernodes->block(0)(j, 0));
+            fprintf(stderr, "\n");
+          }
+          break;
+        }
       } else {
         // Binary search for smallest theta admitting V(τ)=0 with d_inf<=1,
         // with k tied to theta as k = 1/sqrt(theta).  Arithmetic mean
@@ -923,15 +956,16 @@ GeodesicResult SolveGeodesicPhaseOne(
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
     result.iterations = outer + 1;
     result.mu = mu;
+    result.tau = tau;
     result.d_inf_norm = d_inf;
     result.d_sq_norm = d_sq;
     result.complementarity = gap;
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
 
-    // Termination: mu below tolerance with d_inf small.  Same criterion
-    // as ThetaContinuation so iteration counts are directly comparable.
-    if (mu < tolerance && d_inf <= 1.001) {
+    // Termination: mu below tolerance with d_inf small.
+    // When phase1_only, keep going until theta=0 is reached.
+    if (!phase1_only && mu < tolerance && d_inf <= 1.001) {
       if (verbose) printf("  TERMINATED: mu = %.2e < tolerance, d_inf = %.2e\n",
                           mu, d_inf);
       break;
@@ -1155,27 +1189,42 @@ GeodesicResult SolveGeodesicHybrid(
     RowSpace& W,
     int max_iterations,
     double tolerance,
-    bool verbose) {
+    bool verbose,
+    double initial_k,
+    double tau) {
   RowSpace b = kkt.GetAffineTerm();
   const int m = b.total_rows();
+
+  // Scale problem data by tau: b_scaled = tau*b, c_scaled = tau*c.
+  // This puts the hybrid on the same central path as the HSD model
+  // at the given tau.
+  auto cost_scaled = kkt.MakeSolverRHS(); cost_scaled = cost_rhs;
+  if (tau != 1.0) {
+    b *= tau;
+    cost_scaled *= tau;
+  }
 
   RowSpace r = kkt.MakeRowSpace();
   setOnes(r);
 
-  // Initial scaling: decompose at W to find the minimum-norm k,
-  // then set r = sqrt(mu) * identity = (1/k) * identity.
-  kkt.SetScaling(W);
-  kkt.AssembleAndFactor();
-  {
+  // Initial scaling: use caller-supplied k if positive, otherwise
+  // decompose at W to find the minimum-norm k.
+  if (initial_k <= 0) {
+    kkt.SetScaling(W);
+    kkt.AssembleAndFactor();
+  }
+  // When initial_k > 0, reuse the existing factorization from the caller.
+  if (initial_k > 0) {
+    r *= (1.0 / initial_k);
+  } else {
     RowSpace d0 = kkt.MakeRowSpace();
     RowSpace d1 = kkt.MakeRowSpace();
-    ComputeDecomposition(kkt, cost_rhs, b, W, d0, d1);
+    ComputeDecomposition(kkt, cost_scaled, b, W, d0, d1);
     double d0d1 = dot(d0, d1);
     double d1sq = squaredNorm(d1);
     if (d1sq > 1e-30) {
       double k_init = std::max(1e-6, -d0d1 / d1sq);
-      double sqrt_mu = 1.0 / k_init;
-      r *= sqrt_mu;
+      r *= (1.0 / k_init);
     }
   }
 
@@ -1191,21 +1240,36 @@ GeodesicResult SolveGeodesicHybrid(
   int r_updates_this_fac = 0;
   double g = 0, d_inf = 0, d_sq = 0, mslack = 0;
 
+  // Unscaled b for bTl computation (b was scaled by tau above).
+  RowSpace b_unscaled = kkt.GetAffineTerm();
+
   if (verbose) {
-    printf("  %3s  %12s  %12s  %6s  %6s\n",
-           "fac", "gap", "d_inf", "r_upd", "solves");
-    printf("  %s\n", std::string(48, '-').c_str());
+    printf("  %3s  %12s  %10s %10s  %12s  %12s  %12s  %6s  %6s\n",
+           "it", "gap", "d_pre", "d_post", "|r|^2/m", "bTl", "cTx",
+           "r_upd", "step");
+    printf("  %s\n", std::string(100, '-').c_str());
   }
 
   RowSpace last_delta = kkt.MakeRowSpace();
 
+  if (verbose && initial_k > 0) {
+    fprintf(stderr, "HYBRID cost_rhs sn[0]:");
+    for (int j = 0; j < std::min(4, (int)cost_rhs.supernodes->block(0).rows()); ++j)
+      fprintf(stderr, " %.6e", cost_rhs.supernodes->block(0)(j, 0));
+    fprintf(stderr, "\nHYBRID cost_scaled sn[0]:");
+    for (int j = 0; j < std::min(4, (int)cost_scaled.supernodes->block(0).rows()); ++j)
+      fprintf(stderr, " %.6e", cost_scaled.supernodes->block(0)(j, 0));
+    fprintf(stderr, "\n");
+  }
+
   for (int iter = 0; iter < max_iterations; ++iter) {
     RowSpace d = kkt.MakeRowSpace();
     RowSpace delta = kkt.MakeRowSpace();
-    auto info = ComputeHybridDirection(kkt, cost_rhs, b, W, r, d, delta);
+    auto info = ComputeHybridDirection(kkt, cost_scaled, b, W, r, d, delta);
     last_delta = delta;
     total_sol++;
 
+    double d_inf_pre = info.d_inf;
     g = info.gap;
     d_inf = info.d_inf;
     d_sq = info.d_sq;
@@ -1235,13 +1299,34 @@ GeodesicResult SolveGeodesicHybrid(
     {
       RowSpace d2 = kkt.MakeRowSpace();
       RowSpace delta2 = kkt.MakeRowSpace();
-      auto info2 = ComputeHybridDirection(kkt, cost_rhs, b, W, r, d2, delta2);
+      auto info2 = ComputeHybridDirection(kkt, cost_scaled, b, W, r, d2, delta2);
       total_sol++;
       g = info2.gap;
       d_inf = info2.d_inf;
       d_sq = info2.d_sq;
       mslack = info2.min_slack;
       last_delta = delta2;
+    }
+    if (verbose) {
+      double mu_r = squaredNorm(r) / m;
+      // Compute physical bTl and cTx (divided by tau).
+      // lambda_lifted = P(W^{1/2})(r + delta2).
+      RowSpace sqrtW_v = EuclideanJordanAlgebra::sqrt(W);
+      RowSpace lam_v = quadraticRepresentation(sqrtW_v, r + last_delta);
+      double bTl_phys = dot(b_unscaled, lam_v) / tau;
+      // cTx: re-solve and dot with a fresh copy of cost_scaled.
+      auto y_v = kkt.MakeSolverRHS();
+      y_v = cost_scaled;
+      y_v *= -1;
+      RowSpace v_v = addScaled(quadraticRepresentation(W, b),
+                               quadraticRepresentation(sqrtW_v, r), -1, 2.0);
+      kkt.AccumulateAtranspose(v_v, y_v);
+      kkt.SolveSolverRHS(y_v);
+      auto c_fresh = kkt.MakeSolverRHS(); c_fresh = cost_scaled;
+      double cTx_phys = kkt.dot(c_fresh, y_v) / (tau * tau);
+      printf("  %3d  %12.4e  %10.4e %10.4e  %12.4e  %12.4e  %12.4e  %6d  %s\n",
+             iter, g, d_inf_pre, d_inf, mu_r, bTl_phys, cTx_phys,
+             r_updates_this_fac, (info.gap < 0) ? "center" : "shrink");
     }
     if (std::abs(g) < tolerance && d_inf <= 1.001) break;
   }
@@ -1261,26 +1346,28 @@ GeodesicResult SolveGeodesicHybrid(
   {
     kkt.SetScaling(W);
     kkt.AssembleAndFactor();
-    RowSpace bv = kkt.GetAffineTerm();
     auto y = kkt.MakeSolverRHS();
-    y = cost_rhs;
+    y = cost_scaled;
     y *= -1;
     RowSpace sqrtW_final = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace v = addScaled(quadraticRepresentation(W, bv),
+    RowSpace v = addScaled(quadraticRepresentation(W, b),
                            quadraticRepresentation(sqrtW_final, r), -1, 2.0);
     kkt.AccumulateAtranspose(v, y);
     kkt.SolveSolverRHS(y);
     int nr = kkt.number_of_variables();
     result.x.resize(nr);
     y.supernodes->GatherInto(result.x);
+    // De-homogenize: x_phys = x_scaled / tau.
+    if (tau != 1.0 && tau > 0) result.x /= tau;
   }
 
-  // Optimality check.
+  // Optimality check against the UNSCALED problem (original cost_rhs).
   {
     auto x_rhs = kkt.MakeSolverRHS();
     x_rhs = kkt.MakeBlockVariable(result.x);
     RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
     RowSpace lambda = quadraticRepresentation(sqrtW, r + last_delta);
+    if (tau != 1.0 && tau > 0) lambda *= (1.0 / tau);
     result.optimality = CheckOptimality(kkt, cost_rhs, x_rhs, lambda);
     result.optimality.mu = result.mu;
   }

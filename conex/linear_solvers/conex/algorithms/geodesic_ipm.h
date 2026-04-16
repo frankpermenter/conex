@@ -63,6 +63,7 @@ struct GeodesicResult {
   double d_inf_norm;   // final ||d||_inf
   double d_sq_norm;    // final ||d||^2
   double mu;           // barrier parameter 1/k^2
+  double tau = 1.0;    // homogenization parameter at termination
   double complementarity;  // mu * (rank - ||d||^2)
   int total_factorizations = 0;
   int total_solves = 0;
@@ -198,7 +199,8 @@ GeodesicResult SolveGeodesicPhaseOne(
     int max_outer_iterations = 50,
     int max_centering_steps = 10,
     double tolerance = 1e-8,
-    bool verbose = false);
+    bool verbose = false,
+    bool phase1_only = false);
 
 // Run the geodesic centering iteration with fixed barrier parameter k = 1/sqrt(mu).
 // Maintains weight vector W as the sole state variable, updated via W *= exp(alpha * d).
@@ -322,6 +324,8 @@ GeodesicResult SolveGeodesicHybrid(
     RowSpace& W,
     int max_iterations = 50,
     double tolerance = 1e-8,
-    bool verbose = false);
+    bool verbose = false,
+    double initial_k = -1,
+    double tau = 1.0);
 
 }  // namespace conex
