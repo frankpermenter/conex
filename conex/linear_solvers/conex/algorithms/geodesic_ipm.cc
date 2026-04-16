@@ -681,48 +681,13 @@ GeodesicResult SolveGeodesicThetaContinuation(
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
 
-    if (theta <= tolerance) {
-      // Final centering: keep iterating until d_inf <= 1.001.
-      // Re-evaluate d_inf at current (k, tau, theta) first.
-      {
-        RowSpace d_check = EvaluateDirection(decomp, k, tau, theta);
-        d_inf = normInf(d_check);
-      }
-      for (int final_iter = 0; final_iter < 50; ++final_iter) {
-        if (d_inf <= 1.001) break;
-        decomp = ComputeFullDecomposition(kkt, cost_rhs, b, W);
-        total_fac++;
-        total_sol += 3;
-        auto [tau_f, d_inf_f] = EvalThetaCandidate(
-            kkt, cost_rhs, b, W, decomp, bT_ones, theta);
-        if (tau_f <= 0) break;
-        tau = tau_f;
-        RowSpace d_f = EvaluateDirection(decomp, k, tau, theta);
-        d_inf = normInf(d_f);
-        d_sq = squaredNorm(d_f);
-        mu = 1.0 / (k * k);
-        gap = mu * (m - d_sq);
-        if (verbose) {
-          printf("  fin  %8.6f  %8.4f  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e\n",
-                 theta, tau, mu / tau, k, d_inf, d_sq, gap);
-        }
-        double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-        geodesicUpdate(W, alpha, d_f);
-      }
-      result.d_inf_norm = d_inf;
-      result.d_sq_norm = d_sq;
-      result.complementarity = gap;
-      result.total_factorizations = total_fac;
-      result.total_solves = total_sol;
-      if (verbose) printf("  TERMINATED: theta <= tolerance (mu = %.2e)\n", mu);
+    // Termination: mu below tolerance with d_inf small.  Same criterion
+    // for both algorithms so iteration counts are directly comparable.
+    if (mu < tolerance && d_inf <= 1.001) {
+      if (verbose) printf("  TERMINATED: mu = %.2e < tolerance, d_inf = %.2e\n",
+                          mu, d_inf);
       break;
     }
-    //if (theta >= theta_prev * (1.0 - 1e-4)) {
-    //  if (verbose) printf("  TERMINATED: theta stalled at %.2e "
-    //                      "(could not decrease below %.2e)\n",
-    //                      theta, theta_prev);
-    //  break;
-    //}
     if (outer + 1 == max_outer_iterations) {
       if (verbose) printf("  TERMINATED: reached max_outer_iterations = %d\n",
                           max_outer_iterations);
@@ -736,13 +701,15 @@ GeodesicResult SolveGeodesicThetaContinuation(
         decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
     result.x = x_lifted / tau;
 
-    // Optimality check against original problem (tau=1, theta=0).
-    RowSpace d_final = EvaluateDirection(decomp, k, 1.0, 0.0);
+    // Compute lambda at the CURRENT (k, tau, theta) — consistent with x.
+    // lambda_lifted = (1/k) P(W^{1/2})(e + d(k,tau,theta));
+    // lambda_phys   = lambda_lifted / tau.
+    RowSpace d_cur = EvaluateDirection(decomp, k, tau, theta);
     RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
     RowSpace ones = kkt.MakeRowSpace();
     setOnes(ones);
-    RowSpace lambda = quadraticRepresentation(sqrtW, ones + d_final);
-    lambda *= (1.0 / k);
+    RowSpace lambda = quadraticRepresentation(sqrtW, ones + d_cur);
+    lambda *= (1.0 / (k * tau));
 
     auto x_rhs = kkt.MakeSolverRHS();
     x_rhs = kkt.MakeBlockVariable(result.x);
@@ -962,9 +929,11 @@ GeodesicResult SolveGeodesicPhaseOne(
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
 
-    // Termination: when in phase 2, mu has dropped below tolerance.
-    if (theta_zero && mu < tolerance && d_inf <= 1.001) {
-      if (verbose) printf("  TERMINATED: mu <= tolerance (mu = %.2e)\n", mu);
+    // Termination: mu below tolerance with d_inf small.  Same criterion
+    // as ThetaContinuation so iteration counts are directly comparable.
+    if (mu < tolerance && d_inf <= 1.001) {
+      if (verbose) printf("  TERMINATED: mu = %.2e < tolerance, d_inf = %.2e\n",
+                          mu, d_inf);
       break;
     }
     // Phase 2 divergence guard.
