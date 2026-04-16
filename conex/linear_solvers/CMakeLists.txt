@@ -490,3 +490,10 @@ target_link_libraries(equality_nontrivial_test
   clique_ordering kkt_solver_factory tree_solver
   structural_rank
 )
+
+add_executable(canary conex/test/canary.cc)
+target_link_libraries(canary
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)

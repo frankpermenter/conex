@@ -1086,6 +1086,21 @@ void T::AccumulateCtranspose(const SolverRHS& x, SolverRHS& rhs) {
   }
 }
 
+SolverRHS T::EqualityAffineTermRHS() {
+  auto rhs = MakeSolverRHS();
+  if (equality_sub_assemblers_.empty()) return rhs;
+  int nv = number_of_variables();
+  Eigen::VectorXd d_vec = Eigen::VectorXd::Zero(nv);
+  for (const auto* ec : equality_sub_assemblers_) {
+    const auto& dv = ec->dual_variables();
+    const auto& d = ec->affine_term();
+    for (int i = 0; i < static_cast<int>(dv.size()); ++i)
+      d_vec(dv[i]) = d(i);
+  }
+  rhs = MakeBlockVariable(d_vec);
+  return rhs;
+}
+
 RowSpace T::GetAffineTerm() {
   RowSpace rs = MakeRowSpace();
   for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {

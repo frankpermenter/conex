@@ -399,6 +399,11 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     return equality_sub_assemblers_;
   }
 
+  // Return the equality RHS d as a SolverRHS with d at the dual variable
+  // positions and zeros elsewhere.  Returns a zero SolverRHS if there are
+  // no equality constraints.
+  SolverRHS EqualityAffineTermRHS();
+
   // Accumulate saddle-point product [0 C'; C 0] * [x; lambda] into rhs.
   // Reads from x_rhs (which contains both primal and dual in the block
   // structure) and accumulates into rhs.

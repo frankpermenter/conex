@@ -142,28 +142,18 @@ KTauResult SelectKTau(const DecompInnerProducts& ip);
 // sigma1, gamma1 are k-independent; sigma0, gamma0, R depend on k via theta.
 struct DualityCoeffs {
   double sigma1;  // <b0, P(W^{1/2})(d1_0)>
-  double gamma1;  // c^T y1_0
+  double gamma1;  // duality_cost^T y1_0
 };
 
+// Compute the tau-independent duality coefficients (sigma1, gamma1).
+// duality_cost must be the corrected cost vector from MakeDualityCost()
+// (with +d at equality dual positions, not -d).
 DualityCoeffs ComputeDualityCoeffs(
     KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    const SolverRHS& duality_cost,
     const RowSpace& b,
     const RowSpace& W,
     const NewtonDecomposition& decomp);
-
-// Select tau that minimizes ||d||^2 + w * (violation*tau)^2 for fixed (k, theta).
-// violation*tau = beta*tau^2 + (alpha-R)*tau + mu is quadratic in tau.
-double SelectTauWeighted(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
-    const RowSpace& b,
-    const RowSpace& W,
-    const NewtonDecomposition& decomp,
-    const DecompInnerProducts& ip,
-    const DualityCoeffs& dc,
-    double bT_ones,
-    double k, double theta, double w);
 
 // θ-continuation geodesic IPM: start at θ=1 (trivially centered feasibility
 // problem) and decrease θ toward 0 (original problem).  At each θ, center
@@ -247,35 +237,6 @@ double GeodesicLineSearch(
 //
 // When r = sqrt(mu) * ones, this reduces to the scalar-mu version above.
 // =====================================================================
-
-// Centering with per-component r (fixed k and r).
-GeodesicResult GeodesicCenterR(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
-    RowSpace& W,
-    const RowSpace& r,
-    double k,
-    int max_iterations,
-    double tolerance,
-    bool verbose = false);
-
-// Line search for k with per-component r.
-double GeodesicLineSearchR(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
-    const RowSpace& W,
-    const RowSpace& r);
-
-// Full solve with per-component r.
-GeodesicResult SolveGeodesicLPR(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
-    RowSpace& W,
-    const RowSpace& r,
-    int max_outer_iterations = 30,
-    int max_centering_steps = 1,
-    double tolerance = 1e-8,
-    bool verbose = false);
 
 // Result of a single hybrid direction computation.
 struct HybridDirection {

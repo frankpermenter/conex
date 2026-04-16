@@ -12,22 +12,12 @@
 #include "conex/common/equality_constraint.h"
 using namespace conex;
 
-// Helper: build cost_rhs with -d at equality dual positions.
 static SolverRHS BuildCostRHS(KKTSolverBase& kkt,
-                               const Eigen::VectorXd& cost,
-                               SymmetricLinearSystemTreeSolver* ts) {
+                               const Eigen::VectorXd& cost) {
   int nv = kkt.number_of_variables();
   Eigen::VectorXd cost_full = Eigen::VectorXd::Zero(nv);
   int n = std::min((int)cost.size(), nv);
   cost_full.head(n) = cost.head(n);
-  if (ts) {
-    for (const auto* ec : ts->equality_sub_assemblers()) {
-      const auto& dv = ec->dual_variables();
-      const auto& d = ec->affine_term();
-      for (int i = 0; i < (int)dv.size(); ++i)
-        cost_full(dv[i]) = -d(i);
-    }
-  }
   auto rhs = kkt.MakeSolverRHS();
   rhs = kkt.MakeBlockVariable(cost_full);
   return rhs;
@@ -48,9 +38,7 @@ static RunResult RunIPM(Problem& prob, const Eigen::VectorXd& cost,
                          int n_primal, bool verbose = true) {
   auto solver = Solver::Build(prob);
   auto* kkt = solver.solver();
-  auto* ts = solver.tree_solver();
-
-  auto cost_rhs = BuildCostRHS(*kkt, cost, ts);
+  auto cost_rhs = BuildCostRHS(*kkt, cost);
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 

@@ -14,20 +14,11 @@
 using namespace conex;
 
 static SolverRHS BuildCostRHS(KKTSolverBase& kkt,
-                               const Eigen::VectorXd& cost,
-                               SymmetricLinearSystemTreeSolver* ts) {
+                               const Eigen::VectorXd& cost) {
   int nv = kkt.number_of_variables();
   Eigen::VectorXd cost_full = Eigen::VectorXd::Zero(nv);
   int nc = std::min((int)cost.size(), nv);
   cost_full.head(nc) = cost.head(nc);
-  if (ts) {
-    for (const auto* ec : ts->equality_sub_assemblers()) {
-      const auto& dv = ec->dual_variables();
-      const auto& d = ec->affine_term();
-      for (int i = 0; i < (int)dv.size(); ++i)
-        cost_full(dv[i]) = -d(i);
-    }
-  }
   auto rhs = kkt.MakeSolverRHS();
   rhs = kkt.MakeBlockVariable(cost_full);
   return rhs;
@@ -76,10 +67,8 @@ bool TestStandardFormLP() {
   // Solve.
   auto solver = Solver::Build(prob);
   auto* kkt = solver.solver();
-  auto* ts = solver.tree_solver();
-
   printf("  n_total = %d\n", kkt->number_of_variables());
-  auto cost_rhs = BuildCostRHS(*kkt, cost, ts);
+  auto cost_rhs = BuildCostRHS(*kkt, cost);
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
   kkt->SetScaling(W); kkt->AssembleAndFactor();
@@ -214,10 +203,8 @@ bool TestMaxcutSDP() {
 
   auto solver = Solver::Build(prob);
   auto* kkt = solver.solver();
-  auto* ts = solver.tree_solver();
-
   printf("  n_total = %d\n", kkt->number_of_variables());
-  auto cost_rhs = BuildCostRHS(*kkt, cost, ts);
+  auto cost_rhs = BuildCostRHS(*kkt, cost);
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
   kkt->SetScaling(W); kkt->AssembleAndFactor();
