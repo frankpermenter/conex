@@ -462,3 +462,12 @@ target_link_libraries(linesearch_bug_test
   GTest::gtest_main
 )
 gtest_discover_tests(linesearch_bug_test)
+
+add_executable(chordal_maxcut_test
+  conex/test/chordal_maxcut_test.cc
+)
+target_link_libraries(chordal_maxcut_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)

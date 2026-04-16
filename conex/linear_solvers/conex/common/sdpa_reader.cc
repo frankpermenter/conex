@@ -168,8 +168,8 @@ std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename) {
         Ai.setFromTriplets(A_trips[i][k].begin(), A_trips[i][k].end());
         A_list.push_back(std::move(Ai));
       }
-      problem.AddPSDConstraint(A_list, B_block, vars,
-                               /*use_chordal=*/false);
+      bool chordal = getenv("CONEX_CHORDAL") != nullptr;
+      problem.AddPSDConstraint(A_list, B_block, vars, chordal);
     }
   }
 

@@ -584,7 +584,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
   double k = 0, tau = 0, theta = 1.0;
 
   if (verbose) {
-    printf("  %3s  %8s  %8s  %12s  %12s  %12s  %12s  %12s"
+    printf("  %3s  %8s  %10s  %12s  %12s  %12s  %12s  %12s"
            "  %12s  %12s  %12s  %12s\n",
            "out", "theta", "tau", "kappa", "k", "d_inf", "d_sqr",
            "gap", "bTl", "cTx", "mu/tau", "eq_err");
@@ -666,7 +666,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
       // x_phys = x_lifted / tau, lambda_phys = lambda_lifted / tau.
       double bTl_phys = (tau > 1e-30) ? bT_lambda / tau : 0.0;
       double cTx_phys = (tau > 1e-30) ? cT_x / tau : 0.0;
-      printf("  %3d  %8.6f  %8.4f  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
+      printf("  %3d  %8.6f  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
              "  %12.4e  %12.4e  %12.4e  %12.2e  %3d\n",
              outer, theta, tau, kappa, k, d_inf, d_sq, gap,
              bTl_phys, cTx_phys, mu_over_tau, eq_err_final, centering_iters);
@@ -822,7 +822,7 @@ GeodesicResult SolveGeodesicPhaseOne(
   double k = 1.0, tau = 1.0, theta = 1.0;
 
   if (verbose) {
-    printf("  %3s  %12s  %8s  %12s  %12s  %12s  %12s  %12s"
+    printf("  %3s  %12s  %10s  %12s  %12s  %12s  %12s  %12s"
            "  %12s  %12s  %12s  %4s\n",
            "out", "theta", "tau", "kappa", "mu", "d_inf", "d_sqr",
            "gap", "bTl", "cTx", "eq_err", "ph");
@@ -871,7 +871,7 @@ GeodesicResult SolveGeodesicPhaseOne(
             double dinf_hyb = normInf(d_hyb);
 
             printf("  PHASE1 DONE: theta=0 at iter %d"
-                   " (k=%.2e, tau=%.4f)\n"
+                   " (k=%.2e, tau=%.2e)\n"
                    "    d_inf phase1=%.6e  hybrid=%.6e  diff=%.2e\n",
                    outer, k, tau, dinf_p1, dinf_hyb,
                    std::abs(dinf_p1 - dinf_hyb));
@@ -947,7 +947,7 @@ GeodesicResult SolveGeodesicPhaseOne(
     if (verbose) {
       double bTl_phys = (tau > 1e-30) ? bT_lambda / tau : 0.0;
       double cTx_phys = (tau > 1e-30) ? cT_x / tau : 0.0;
-      printf("  %3d  %12.4e  %8.4f  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
+      printf("  %3d  %12.4e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
              "  %12.4e  %12.4e  %12.2e  %4d\n",
              outer, theta, tau, mu_over_tau, mu, d_inf, d_sq, gap,
              bTl_phys, cTx_phys, eq_err, phase);

@@ -199,7 +199,7 @@ void RunBenchmark(const Problem& problem, const std::string& name) {
     // with the same k (= 1/sqrt(mu)) so r = sqrt(mu) * I matches.
     double k_from_p1 = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
     double tau_from_p1 = p1.tau;
-    printf("  -- switching to hybrid (mu=%.2e, k=%.2e, tau=%.4f, %d fac) --\n",
+    printf("  -- switching to hybrid (mu=%.2e, k=%.2e, tau=%.2e, %d fac) --\n",
            p1.mu, k_from_p1, tau_from_p1, p1.total_factorizations);
     auto result = SolveGeodesicHybrid(k, c, W, 500, 1e-8, true,
                                        k_from_p1, tau_from_p1);
