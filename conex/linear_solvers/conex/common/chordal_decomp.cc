@@ -281,4 +281,35 @@ std::pair<Problem, ChordalExpansion> DecomposeChordalPSD(
   return {std::move(result), expansion};
 }
 
+PreprocessResult PreprocessProblem(const Problem& problem) {
+  PreprocessResult result;
+
+  // Step 1: Chordal decomposition (if any PSD constraint requests it).
+  Problem after_chordal;
+  if (HasChordalPSD(problem)) {
+    auto [decomposed, chordal_exp] = DecomposeChordalPSD(problem);
+    after_chordal = std::move(decomposed);
+    result.chordal_expansion = chordal_exp;
+  } else {
+    after_chordal = problem;
+    result.chordal_expansion = {problem.num_variables(),
+                                 problem.num_variables()};
+  }
+
+  // Step 2: Remove structurally rank-deficient columns.
+  // TODO: rank reduction can drop splitting variables that lack
+  // positive-definite diagonal contributions.  Disable for now.
+  // auto [reduced, rank_exp] = RemoveStructuralRankDeficiency(after_chordal);
+  // result.problem = std::move(reduced);
+  // result.rank_expansion = rank_exp;
+  result.problem = std::move(after_chordal);
+  int n_after = result.problem.num_variables();
+  result.rank_expansion.original_n = n_after;
+  result.rank_expansion.col_map.resize(n_after);
+  std::iota(result.rank_expansion.col_map.begin(),
+            result.rank_expansion.col_map.end(), 0);
+
+  return result;
+}
+
 }  // namespace conex

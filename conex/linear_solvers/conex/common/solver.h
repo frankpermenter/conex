@@ -3,7 +3,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "conex/common/chordal_decomp.h"
 #include "conex/common/conex.h"
 #include "conex/common/problem.h"
 #include "conex/common/tree_spec.h"
@@ -39,12 +38,6 @@ class Solver {
 
   const std::vector<int>& dual_variables(ConstraintId id) const;
 
-  // If chordal decomposition was applied, returns the expansion for
-  // mapping solutions back.  Otherwise nullptr.
-  const ChordalExpansion* chordal_expansion() const {
-    return chordal_expansion_.get();
-  }
-
   // Prevent implicit copy (unique_ptr members).
   Solver();
   ~Solver();
@@ -70,7 +63,6 @@ class Solver {
   std::vector<SparseQuadraticTermAssembler*> quadratic_assemblers_;
   std::vector<SparseEqualityConstraintAssembler*> equality_assemblers_;
   std::unordered_map<int, std::vector<int>> dual_var_map_;
-  std::unique_ptr<ChordalExpansion> chordal_expansion_;
 };
 
 }  // namespace conex

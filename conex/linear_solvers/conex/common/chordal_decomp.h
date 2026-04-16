@@ -47,4 +47,24 @@ std::pair<Problem, ChordalExpansion> DecomposeChordalPSD(
 // Check if any PSD constraint in the problem requests chordal decomp.
 bool HasChordalPSD(const Problem& problem);
 
+// Combined preprocessor: chordal decomposition then rank reduction.
+// Chains DecomposeChordalPSD (if needed) with RemoveStructuralRankDeficiency.
+// Returns the fully preprocessed Problem plus a combined expansion that
+// undoes both transforms: Extract splits → Expand restores dropped cols.
+struct PreprocessResult {
+  Problem problem;
+  Expansion rank_expansion;
+  ChordalExpansion chordal_expansion;
+
+  // Map a solution of the preprocessed problem back to the original space.
+  Eigen::VectorXd Expand(const Eigen::VectorXd& x_preprocessed) const {
+    // Step 1: Expand rank-reduced → rank-full (with split vars still present).
+    Eigen::VectorXd x_full = rank_expansion.Expand(x_preprocessed);
+    // Step 2: Extract original variables (drop split vars).
+    return chordal_expansion.Extract(x_full);
+  }
+};
+
+PreprocessResult PreprocessProblem(const Problem& problem);
+
 }  // namespace conex

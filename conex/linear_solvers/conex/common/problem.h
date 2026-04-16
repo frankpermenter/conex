@@ -312,8 +312,14 @@ struct Expansion {
   }
 };
 
-// Preprocess: drop structurally rank-deficient columns from linear
-// constraints.  Returns (reduced_problem, expansion).
-std::pair<Problem, Expansion> Preprocess(const Problem& problem);
+// Drop structurally rank-deficient columns from linear constraints.
+// Returns (reduced_problem, expansion).
+std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
+    const Problem& problem);
+
+// Legacy alias.
+inline std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
+  return RemoveStructuralRankDeficiency(problem);
+}
 
 }  // namespace conex

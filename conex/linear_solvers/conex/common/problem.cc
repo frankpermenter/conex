@@ -9,7 +9,8 @@
 
 namespace conex {
 
-std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
+std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
+    const Problem& problem) {
   const int n = problem.num_variables();
 
   // Phase 1: Column reduction for linear and PSD constraints.

@@ -1,6 +1,5 @@
 #include "conex/common/solver.h"
 
-#include "conex/common/chordal_decomp.h"
 #include "conex/algorithms/tree_solver_builder.h"
 #include "conex/common/psd_constraint.h"
 #include "conex/common/sparse_linear_constraint.h"
@@ -21,19 +20,6 @@ Solver& Solver::operator=(Solver&&) noexcept = default;
 
 Solver Solver::Build(const Problem& problem,
                      const SolverConfiguration& config) {
-  // If any PSD constraint requests chordal decomposition, decompose
-  // first into smaller blocks with splitting variables.
-  if (HasChordalPSD(problem)) {
-    auto [decomposed, expansion] = DecomposeChordalPSD(problem);
-    Solver s;
-    if (config.use_quotient_amd) {
-      s.BuildQuotientAMD(decomposed, config);
-    } else {
-      s.BuildInternal(decomposed, config);
-    }
-    s.chordal_expansion_ = std::make_unique<ChordalExpansion>(expansion);
-    return s;
-  }
   Solver s;
   if (config.use_quotient_amd) {
     s.BuildQuotientAMD(problem, config);
