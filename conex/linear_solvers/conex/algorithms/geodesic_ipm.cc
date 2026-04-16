@@ -1211,7 +1211,6 @@ GeodesicResult SolveGeodesicHybrid(
     d_sq = info.d_sq;
     mslack = info.min_slack;
 
-    if (std::abs(g) < tolerance && mslack > -0.0001) break;
     if (g < 0) {
       // Centering step: update W and r, then refactor.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
@@ -1223,18 +1222,35 @@ GeodesicResult SolveGeodesicHybrid(
                                    r_updates_this_fac, mslack});
       r_updates_this_fac = 0;
     } else {
-      // Shrink r using Delta.
+      // Shrink r using Delta, then refactor so the next direction
+      // computation reflects the current (W, r) state accurately.
       shrinkR(r, delta);
+      kkt.SetScaling(W);
+      if (!kkt.AssembleAndFactor()) break;
+      total_fac++;
       r_updates_this_fac++;
       r_updates++;
     }
+    // Recompute direction at updated (W, r) with fresh factorization.
+    {
+      RowSpace d2 = kkt.MakeRowSpace();
+      RowSpace delta2 = kkt.MakeRowSpace();
+      auto info2 = ComputeHybridDirection(kkt, cost_rhs, b, W, r, d2, delta2);
+      total_sol++;
+      g = info2.gap;
+      d_inf = info2.d_inf;
+      d_sq = info2.d_sq;
+      mslack = info2.min_slack;
+      last_delta = delta2;
+    }
+    if (std::abs(g) < tolerance && d_inf <= 1.001) break;
   }
 
   result.iter_stats.push_back({g / m, d_inf, d_sq, g,
                                r_updates_this_fac, mslack});
   result.d_inf_norm = d_inf;
   result.d_sq_norm = d_sq;
-  result.mu = g / m;
+  result.mu = squaredNorm(r) / m;
   result.complementarity = g;
   result.total_factorizations = total_fac;
   result.total_solves = total_sol;
