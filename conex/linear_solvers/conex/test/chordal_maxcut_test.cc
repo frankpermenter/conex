@@ -1,6 +1,4 @@
-// Test DecomposeChordalPSD on banded max-cut SDPs.
 #include <cstdio>
-#include <cmath>
 #include <numeric>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -8,117 +6,67 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/problem.h"
 #include "conex/common/solver.h"
-#include "conex/common/chordal_decomp.h"
 #include "conex/algorithms/geodesic_ipm.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/common/equality_constraint.h"
 using namespace conex;
 
-double SolveDirect(Problem& p) {
-  auto cost = p.linear_cost();
-  SolverConfiguration cfg;
-  auto solver = Solver::Build(p, cfg);
-  auto* kkt = solver.solver();
-  auto c = kkt->MakeSolverRHS();
-  c = kkt->MakeBlockVariable(cost);
-  RowSpace W = kkt->MakeRowSpace();
-  setOnes(W);
-  auto r = SolveGeodesicThetaContinuation(*kkt, c, W, 500, 1, 1e-8, false);
-  return r.x.size() > 0 ? cost.dot(r.x) : 0;
-}
-
-double SolveWithPreprocess(Problem& p) {
-  auto pp = PreprocessProblem(p);
-  auto cost = pp.problem.linear_cost();
-  SolverConfiguration cfg;
-  auto solver = Solver::Build(pp.problem, cfg);
-  auto* kkt = solver.solver();
-  int nv = kkt->number_of_variables();
-  Eigen::VectorXd c_padded = Eigen::VectorXd::Zero(nv);
-  c_padded.head(cost.size()) = cost;
-  auto c = kkt->MakeSolverRHS();
-  c = kkt->MakeBlockVariable(c_padded);
-  RowSpace W = kkt->MakeRowSpace();
-  setOnes(W);
-  auto r = SolveGeodesicThetaContinuation(*kkt, c, W, 500, 1, 1e-8, false);
-  if (r.x.size() == 0) return 0;
-  Eigen::VectorXd x_orig = pp.Expand(r.x);
-  return p.linear_cost().dot(x_orig);
-}
-
-Eigen::MatrixXd BandedLaplacian(int n, int bw) {
-  std::srand(42);
-  Eigen::MatrixXd C = Eigen::MatrixXd::Zero(n, n);
-  for (int i = 0; i < n; ++i)
-    for (int j = i+1; j < std::min(n, i+bw+1); ++j) {
-      double w = 0.5 + (double)std::rand() / RAND_MAX;
-      C(i,j) = -0.25*w; C(j,i) = -0.25*w;
-      C(i,i) += 0.25*w; C(j,j) += 0.25*w;
-    }
-  return C;
-}
-
-Problem BuildSingle(int n, const Eigen::MatrixXd& C) {
-  Problem p;
-  std::vector<int> vars(n); std::iota(vars.begin(), vars.end(), 0);
-  std::vector<Eigen::SparseMatrix<double>> A;
-  for (int i = 0; i < n; ++i) {
-    Eigen::SparseMatrix<double> Ei(n,n); Ei.insert(i,i)=1; Ei.makeCompressed();
-    A.push_back(std::move(Ei));
-  }
-  p.AddPSDConstraint(A, (-C).sparseView(1e-15), vars, false);
-  p.SetLinearCost(Eigen::VectorXd::Ones(n));
-  return p;
-}
-
 int main() {
-  printf("%-5s %2s | %12s | %12s | %10s\n",
-         "n", "bw", "single", "split", "diff");
-  printf("%s\n", std::string(55, '-').c_str());
+  Problem p;
+  Eigen::SparseMatrix<double> A(2, 2);
+  A.insert(0, 0) = 1; A.insert(1, 1) = 1; A.makeCompressed();
+  std::vector<int> vars = {0, 1};
+  Eigen::VectorXd b0 = Eigen::VectorXd::Zero(2);
+  p.AddLinearConstraint(A, b0, vars);
+  Eigen::SparseMatrix<double> C(1, 2);
+  C.insert(0, 0) = 1; C.insert(0, 1) = 1; C.makeCompressed();
+  Eigen::VectorXd d(1); d(0) = 1.0;
+  p.AddEqualityConstraint(C, d, vars);
+  Eigen::VectorXd cost(2); cost << 1, 1;
+  p.SetLinearCost(cost);
 
-  auto BuildChordal = [](int n, const Eigen::MatrixXd& C) {
-    Problem p;
-    std::vector<int> vars(n); std::iota(vars.begin(), vars.end(), 0);
-    std::vector<Eigen::SparseMatrix<double>> A;
-    for (int i = 0; i < n; ++i) {
-      Eigen::SparseMatrix<double> Ei(n,n); Ei.insert(i,i)=1; Ei.makeCompressed();
-      A.push_back(std::move(Ei));
-    }
-    p.AddPSDConstraint(A, (-C).sparseView(1e-15), vars, /*use_chordal=*/true);
-    p.SetLinearCost(Eigen::VectorXd::Ones(n));
-    return p;
-  };
+  auto solver = Solver::Build(p);
+  auto* kkt = solver.solver();
+  auto* ts = solver.tree_solver();
 
-  // Banded graphs.
-  printf("\n--- Banded graphs ---\n");
-  for (auto [n, bw] : std::vector<std::pair<int,int>>{
-        {3,1},{5,1},{5,2},{10,1},{10,2},{20,3}}) {
-    auto C = BandedLaplacian(n, bw);
-    auto p1 = BuildSingle(n, C);
-    auto p2 = BuildChordal(n, C);  // use_chordal=true → Build auto-decomposes
-    double v1 = SolveDirect(p1);
-    double v2 = SolveWithPreprocess(p2);
-    printf("band n=%2d bw=%d | %12.6f | %12.6f | %10.2e %s\n",
-           n, bw, v1, v2, std::abs(v1-v2),
-           std::abs(v1-v2) < 1e-3 ? "OK" : "MISMATCH");
-    fflush(stdout);
+  printf("n_total = %d\n", kkt->number_of_variables());
+  printf("n_eq_assemblers = %zu\n", ts->equality_sub_assemblers().size());
+  for (const auto* ec : ts->equality_sub_assemblers()) {
+    printf("  dual_vars:");
+    for (int dv : ec->dual_variables()) printf(" %d", dv);
+    printf("  d:");
+    for (int i = 0; i < ec->affine_term().size(); ++i)
+      printf(" %.2f", ec->affine_term()(i));
+    printf("\n");
   }
 
-  // Star graphs.
-  printf("\n--- Star graphs ---\n");
-  for (int n : {4, 6, 10, 20}) {
-    std::srand(42);
-    Eigen::MatrixXd C = Eigen::MatrixXd::Zero(n, n);
-    for (int j = 1; j < n; ++j) {
-      double w = 0.5 + (double)std::rand() / RAND_MAX;
-      C(0, j) = -0.25 * w; C(j, 0) = -0.25 * w;
-      C(0, 0) += 0.25 * w; C(j, j) += 0.25 * w;
-    }
-    auto p1 = BuildSingle(n, C);
-    auto p2 = BuildChordal(n, C);
-    double v1 = SolveDirect(p1);
-    double v2 = SolveWithPreprocess(p2);
-    printf("star n=%2d      | %12.6f | %12.6f | %10.2e %s\n",
-           n, v1, v2, std::abs(v1-v2),
-           std::abs(v1-v2) < 1e-3 ? "OK" : "MISMATCH");
-    fflush(stdout);
+  // Solve with dense interface first (known to work).
+  kkt->AssembleAndFactor();
+  int nv = kkt->number_of_variables();
+  Eigen::VectorXd rhs = Eigen::VectorXd::Zero(nv);
+  rhs.head(2) = cost;
+  for (const auto* ec : ts->equality_sub_assemblers()) {
+    const auto& dv = ec->dual_variables();
+    const auto& dd = ec->affine_term();
+    for (int i = 0; i < (int)dv.size(); ++i) rhs(dv[i]) = dd(i);
+  }
+  Eigen::VectorXd sol = kkt->Solve(rhs);
+  printf("Dense solve: x = [%.6f, %.6f], cost = %.6f\n",
+         sol(0), sol(1), cost.dot(sol.head(2)));
+
+  // Now solve with geodesic IPM.
+  // Pad cost to full KKT dimension (includes equality dual vars).
+  Eigen::VectorXd cost_full = Eigen::VectorXd::Zero(nv);
+  cost_full.head(cost.size()) = cost;
+  auto cost_rhs = kkt->MakeSolverRHS();
+  cost_rhs = kkt->MakeBlockVariable(cost_full);
+  RowSpace W = kkt->MakeRowSpace();
+  setOnes(W);
+  auto r = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 500, 1, 1e-8, false);
+  printf("IPM: x.size=%d, mu=%.2e, iters=%d\n",
+         (int)r.x.size(), r.mu, r.iterations);
+  if (r.x.size() >= 2) {
+    printf("IPM solve: x=[%.6f, %.6f], cost=%.6f\n",
+           r.x(0), r.x(1), cost.dot(r.x.head(2)));
   }
 }

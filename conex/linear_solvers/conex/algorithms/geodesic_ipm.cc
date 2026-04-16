@@ -3,6 +3,9 @@
 #include <cmath>
 #include <cstdio>
 
+#include "conex/common/equality_constraint.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
+
 #include "conex/common/eja_ops.h"
 
 namespace conex {
@@ -253,6 +256,31 @@ static void ComputeDecomposition(
   d1 = quadraticRepresentation(sqrtW, addScaled(b, ay1, -1.0, -1.0));
 }
 
+// Set the equality constraint RHS (d) at dual variable positions in a
+// SolverRHS.  This ensures Cy₀ = d so that the parameterized solution
+// x(k,τ,θ) = y₀ + k·(τ·y₁₀ + θ·y₁θ) satisfies Cx = d for all (k,τ,θ).
+static void SetEqualityRHS(KKTSolverBase& kkt, SolverRHS& rhs) {
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+  if (!ts) return;
+  const auto& eq_assemblers = ts->equality_sub_assemblers();
+  if (eq_assemblers.empty()) return;
+  // Build a dense vector with d at dual positions, scatter into rhs.
+  int nv = kkt.number_of_variables();
+  Eigen::VectorXd d_vec = Eigen::VectorXd::Zero(nv);
+  for (const auto* ec : eq_assemblers) {
+    const auto& dv = ec->dual_variables();
+    const auto& d = ec->affine_term();
+    for (int i = 0; i < static_cast<int>(dv.size()); ++i)
+      d_vec(dv[i]) = d(i);
+  }
+  // Scatter into the supernode partition (additive).
+  auto d_rhs = kkt.MakeSolverRHS();
+  d_rhs = kkt.MakeBlockVariable(d_vec);
+  rhs += d_rhs;
+  fprintf(stderr, "SetEqualityRHS: set %d dual entries (|d|=%.4e)\n",
+          (int)d_vec.size(), d_vec.norm());
+}
+
 NewtonDecomposition ComputeFullDecomposition(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
@@ -265,12 +293,15 @@ NewtonDecomposition ComputeFullDecomposition(
   setOnes(ones);
   RowSpace v = kkt.MakeRowSpace();
 
-  // rhs0: A^T(2W)  →  y0
+  // rhs0: A^T(2W) + equality_d  →  y0
+  // The equality RHS goes ONLY into rhs0 (centering direction),
+  // so that Cy₀ = d and Cy₁₀ = Cy₁θ = 0.
   auto rhs0 = kkt.MakeSolverRHS();
   rhs0.SetZero();
   v = W;
   v *= 2.0;
   kkt.AccumulateAtranspose(v, rhs0);
+  SetEqualityRHS(kkt, rhs0);
 
   // rhs1: -(c + A^T P(W) b_0)  →  y1_0
   auto rhs1 = kkt.MakeSolverRHS();
