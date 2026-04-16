@@ -185,6 +185,28 @@ inline double lineSearchK(const Variable& d0, const Variable& d1) {
   return k_max;
 }
 
+// Largest k > 0 with ||d0 + k*d1||_inf <= bound.  Equivalent to scaling
+// d0 and d1 by 1/bound and using the unit-bound version.
+inline double lineSearchK(const Variable& d0, const Variable& d1,
+                          double bound) {
+  if (bound <= 0) return 0.0;
+  double inv = 1.0 / bound;
+  Variable d0_s = like(d0);
+  Variable d1_s = like(d1);
+  for (int i = 0; i < d0.num_constraints(); ++i) {
+    int sz = d0.sizes[i];
+    const double* p0 = d0.segment_ptr(i);
+    const double* p1 = d1.segment_ptr(i);
+    double* q0 = d0_s.segment_ptr(i);
+    double* q1 = d1_s.segment_ptr(i);
+    for (int j = 0; j < sz; ++j) {
+      q0[j] = p0[j] * inv;
+      q1[j] = p1[j] * inv;
+    }
+  }
+  return lineSearchK(d0_s, d1_s);
+}
+
 // Project onto the cone.
 inline void project(Variable& out, const Variable& a) {
   for (int i = 0; i < a.num_constraints(); ++i)

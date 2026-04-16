@@ -152,17 +152,16 @@ void RunBenchmark(const Problem& problem, const std::string& name) {
   //  }
   //}
 
-  // --- Theta continuation ---
-  {
+  auto run_solver = [&](const char* name, auto solve_fn) {
     RowSpace W = kkt->MakeRowSpace();
     setOnes(W);
     auto t2 = std::chrono::high_resolution_clock::now();
-    auto result = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 500, 1, 1e-8, true);
+    auto result = solve_fn(*kkt, cost_rhs, W);
     auto t3 = std::chrono::high_resolution_clock::now();
     double solve_ms =
         std::chrono::duration<double, std::milli>(t3 - t2).count();
-    printf("  ThetaCont: %d fac, %d sol, mu=%.2e, %.1f ms\n",
-           result.total_factorizations, result.total_solves,
+    printf("  %s: %d fac, %d sol, mu=%.2e, %.1f ms\n",
+           name, result.total_factorizations, result.total_solves,
            result.mu, solve_ms);
     if (problem.has_linear_cost() && result.x.size() > 0) {
       double primal_cost = problem.linear_cost().dot(result.x);
@@ -175,7 +174,19 @@ void RunBenchmark(const Problem& problem, const std::string& name) {
              result.optimality.min_slack,
              result.optimality.min_dual);
     }
-  }
+  };
+
+  // --- Pure HSD (theta continuation) ---
+  printf("\n  [ThetaContinuation: pure HSD]\n");
+  run_solver("ThetaCont", [](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+    return SolveGeodesicThetaContinuation(k, c, W, 500, 1, 1e-8, true);
+  });
+
+  // --- Phase one: aggressive theta=0 / increase k ---
+  printf("\n  [PhaseOne: aggressive theta->0]\n");
+  run_solver("PhaseOne", [](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+    return SolveGeodesicPhaseOne(k, c, W, 500, 1, 1e-8, true);
+  });
 
   printf("\n");
 }

@@ -177,6 +177,29 @@ GeodesicResult SolveGeodesicThetaContinuation(
     double tolerance = 1e-8,
     bool verbose = false);
 
+// Aggressive θ→0 / increase-k method (a.k.a. "phase one" then "phase two").
+//
+// Phase 1: at each outer iteration, *eagerly* try θ=0.  Use lineSearchK to
+// find a positive k with ||d0 + k·τ·d1_0||_inf ≤ 1.1.  If one exists,
+// commit θ←0 and the new k.  Otherwise binary-search for the smallest θ>0
+// admitting a hard-constraint (V(τ)=0) τ with d_inf ≤ 1, with k tied to
+// θ via k = 1/√θ (so μ = θ).
+//
+// Phase 2 (θ=0): τ frozen, find the largest k with ||d||_inf ≤ 1 by
+// lineSearchK on (d0, τ·d1_0).  μ = 1/k² then decreases independently
+// of any θ schedule.
+//
+// Goal: trade off θ-continuation centering work for an aggressive μ
+// reduction once feasibility is established.
+GeodesicResult SolveGeodesicPhaseOne(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    RowSpace& W,
+    int max_outer_iterations = 50,
+    int max_centering_steps = 10,
+    double tolerance = 1e-8,
+    bool verbose = false);
+
 // Run the geodesic centering iteration with fixed barrier parameter k = 1/sqrt(mu).
 // Maintains weight vector W as the sole state variable, updated via W *= exp(alpha * d).
 //

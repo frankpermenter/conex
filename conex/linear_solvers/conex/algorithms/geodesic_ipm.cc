@@ -771,6 +771,225 @@ double GeodesicLineSearch(
   return lineSearchK(d0, d1);
 }
 
+// Solve V(τ) = 0 for τ at fixed (theta, k); returns (tau, d_inf).
+// Same algebra as EvalThetaCandidate but with k passed in independently
+// of theta (so we can hold k = 1/sqrt(theta_mid) during a binary search).
+static std::pair<double, double> EvalKCandidate(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const RowSpace& b,
+    const RowSpace& W,
+    const NewtonDecomposition& decomp,
+    double bT_ones,
+    double theta_val,
+    double k_cand) {
+  if (k_cand <= 0) return {-1, 1e30};
+  double mu = 1.0 / (k_cand * k_cand);
+
+  auto dc = ComputeDualityCoeffs(kkt, cost_rhs, b, W, decomp);
+  double beta_coeff = dc.sigma1 + dc.gamma1;
+
+  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  RowSpace ones_v = kkt.MakeRowSpace();
+  setOnes(ones_v);
+  RowSpace e_plus_d0 = ones_v + decomp.d0;
+  RowSpace arg = addScaled(e_plus_d0, decomp.d1_theta, 1.0, k_cand * theta_val);
+  double sigma0 = dot(b, quadraticRepresentation(sqrtW, arg)) / k_cand;
+
+  auto y0_rhs = kkt.MakeSolverRHS();
+  y0_rhs = kkt.MakeBlockVariable(decomp.y0);
+  double cT_y0 = cost_rhs.dot(y0_rhs);
+  auto yt_rhs = kkt.MakeSolverRHS();
+  yt_rhs = kkt.MakeBlockVariable(decomp.y1_theta);
+  double cT_yt = cost_rhs.dot(yt_rhs);
+  double gamma0 = cT_y0 / k_cand + theta_val * cT_yt;
+
+  double alpha_coeff = sigma0 + gamma0;
+  double R = theta_val * (bT_ones + 1.0);
+
+  double B = alpha_coeff - R;
+  double disc = B * B - 4.0 * beta_coeff * mu;
+  if (disc < 0) return {-1, 1e30};
+
+  double sqrt_disc = std::sqrt(disc);
+  double tau1 = (-B + sqrt_disc) / (2.0 * beta_coeff);
+  double tau2 = (-B - sqrt_disc) / (2.0 * beta_coeff);
+
+  auto eval_dinf = [&](double tau) -> std::pair<double, double> {
+    if (tau <= 0) return {-1, 1e30};
+    RowSpace d = EvaluateDirection(decomp, k_cand, tau, theta_val);
+    return {tau, normInf(d)};
+  };
+
+  auto [t1, dinf1] = eval_dinf(tau1);
+  auto [t2, dinf2] = eval_dinf(tau2);
+
+  if (t1 > 0 && (t2 <= 0 || dinf1 <= dinf2)) return {t1, dinf1};
+  if (t2 > 0) return {t2, dinf2};
+  return {-1, 1e30};
+}
+
+GeodesicResult SolveGeodesicPhaseOne(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    RowSpace& W,
+    int max_outer_iterations,
+    int /*max_centering_steps*/,
+    double tolerance,
+    bool verbose) {
+  const RowSpace b = kkt.GetAffineTerm();
+  const int m = W.total_rows();
+
+  RowSpace ones_bTe = kkt.MakeRowSpace();
+  setOnes(ones_bTe);
+  const double bT_ones = dot(b, ones_bTe);
+
+  GeodesicResult result{};
+  int total_fac = 0;
+  int total_sol = 0;
+
+  double k = 1.0, tau = 1.0, theta = 1.0;
+
+  if (verbose) {
+    printf("  %3s  %12s  %8s  %12s  %12s  %12s  %12s  %12s"
+           "  %12s  %12s  %12s  %4s\n",
+           "out", "theta", "tau", "kappa", "mu", "d_inf", "d_sqr",
+           "gap", "bTl", "cTx", "eq_err", "ph");
+    printf("  %s\n", std::string(146, '-').c_str());
+  }
+
+  bool theta_zero = false;
+
+  for (int outer = 0; outer < max_outer_iterations; ++outer) {
+    auto decomp = ComputeFullDecomposition(kkt, cost_rhs, b, W);
+    total_fac++;
+    total_sol += 3;
+
+    int phase = theta_zero ? 2 : 1;
+
+    if (!theta_zero) {
+      // Phase 1: try theta=0 first via lineSearchK with bound 1.1.
+      // d at theta=0 is d0 + k * tau * d1_0; we hold tau at its current
+      // value (last selected by V(tau)=0).  If a positive k exists,
+      // commit to phase 2.
+      RowSpace tau_d1_0 = decomp.d1_0; tau_d1_0 *= tau;
+      double k_zero = lineSearchK(decomp.d0, tau_d1_0, 1.1);
+      if (k_zero > 0) {
+        theta = 0.0;
+        theta_zero = true;
+        k = k_zero;
+        phase = 2;
+      } else {
+        // Binary search for smallest theta admitting V(τ)=0 with d_inf<=1,
+        // with k tied to theta as k = 1/sqrt(theta).  Arithmetic mean
+        // (matches phase_one_debug branch).
+        double theta_lo = 0.0;
+        double theta_hi = theta;
+        for (int bisect = 0; bisect < 30; ++bisect) {
+          double theta_mid = 0.5 * (theta_lo + theta_hi);
+          double k_mid = 1.0 / std::sqrt(theta_mid);
+          auto [tau_try, d_inf_try] = EvalKCandidate(
+              kkt, cost_rhs, b, W, decomp, bT_ones, theta_mid, k_mid);
+          if (tau_try > 0 && d_inf_try <= 1.0) {
+            theta_hi = theta_mid;
+          } else {
+            theta_lo = theta_mid;
+          }
+        }
+        theta = theta_hi;
+        k = 1.0 / std::sqrt(theta);
+        auto [tau_sel, d_inf_sel] = EvalKCandidate(
+            kkt, cost_rhs, b, W, decomp, bT_ones, theta, k);
+        if (tau_sel <= 0) {
+          if (verbose) printf("  TERMINATED: phase 1 V(τ)=0 has no positive root\n");
+          break;
+        }
+        tau = tau_sel;
+      }
+    } else {
+      // Phase 2 (theta=0): tau frozen, find largest k with d_inf <= 1.
+      RowSpace tau_d1_0 = decomp.d1_0; tau_d1_0 *= tau;
+      double k_new = lineSearchK(decomp.d0, tau_d1_0);
+      if (k_new > 0) k = k_new;
+    }
+
+    // Evaluate quantities at the consistent (W, decomp, tau, k, theta)
+    // BEFORE the geodesic step, so reported values are coherent.
+    RowSpace d_step = EvaluateDirection(decomp, k, tau, theta);
+    double d_inf = normInf(d_step);
+    double d_sq = squaredNorm(d_step);
+    double mu = 1.0 / (k * k);
+    double gap = mu * (m - d_sq);
+
+    RowSpace sqrtW_step = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace ones_step = kkt.MakeRowSpace();
+    setOnes(ones_step);
+    RowSpace lam_step = quadraticRepresentation(sqrtW_step, ones_step + d_step);
+    lam_step *= (1.0 / k);
+    double bT_lambda = dot(b, lam_step);
+    Eigen::VectorXd x_step = decomp.y0 / k + tau * decomp.y1_0
+                             + theta * decomp.y1_theta;
+    auto x_rhs_step = kkt.MakeSolverRHS();
+    x_rhs_step = kkt.MakeBlockVariable(x_step);
+    double cT_x = cost_rhs.dot(x_rhs_step);
+    double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
+    double eq_err = std::abs(bT_lambda + cT_x + mu_over_tau
+                             - theta * (bT_ones + 1.0));
+
+    if (d_inf > 1e-14) {
+      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+      geodesicUpdate(W, alpha, d_step);
+    }
+
+    if (verbose) {
+      double bTl_phys = (tau > 1e-30) ? bT_lambda / tau : 0.0;
+      double cTx_phys = (tau > 1e-30) ? cT_x / tau : 0.0;
+      printf("  %3d  %12.4e  %8.4f  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
+             "  %12.4e  %12.4e  %12.2e  %4d\n",
+             outer, theta, tau, mu_over_tau, mu, d_inf, d_sq, gap,
+             bTl_phys, cTx_phys, eq_err, phase);
+    }
+
+    result.iter_stats.push_back({mu, d_inf, d_sq, gap});
+    result.iterations = outer + 1;
+    result.mu = mu;
+    result.d_inf_norm = d_inf;
+    result.d_sq_norm = d_sq;
+    result.complementarity = gap;
+    result.total_factorizations = total_fac;
+    result.total_solves = total_sol;
+
+    // Termination: when in phase 2, mu has dropped below tolerance.
+    if (theta_zero && mu < tolerance && d_inf <= 1.001) {
+      if (verbose) printf("  TERMINATED: mu <= tolerance (mu = %.2e)\n", mu);
+      break;
+    }
+    // Phase 2 divergence guard.
+    if (theta_zero && d_inf > 10.0) {
+      if (verbose) printf("  TERMINATED: phase 2 diverging (d_inf = %.2e)\n",
+                          d_inf);
+      break;
+    }
+  }
+
+  // Recover primal x and run optimality check at (tau=1, theta=0).
+  if (k > 0) {
+    auto decomp = ComputeFullDecomposition(kkt, cost_rhs, b, W);
+    result.x = decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
+    RowSpace d_final = EvaluateDirection(decomp, k, 1.0, 0.0);
+    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace ones = kkt.MakeRowSpace();
+    setOnes(ones);
+    RowSpace lambda = quadraticRepresentation(sqrtW, ones + d_final);
+    lambda *= (1.0 / k);
+    auto x_rhs = kkt.MakeSolverRHS();
+    x_rhs = kkt.MakeBlockVariable(result.x);
+    result.optimality = CheckOptimality(kkt, cost_rhs, x_rhs, lambda);
+    result.optimality.mu = result.mu;
+  }
+  return result;
+}
+
 
 GeodesicResult SolveGeodesicLP(
     KKTSolverBase& kkt,
