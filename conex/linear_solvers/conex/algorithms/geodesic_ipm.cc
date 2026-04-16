@@ -585,10 +585,10 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
   if (verbose) {
     printf("  %3s  %8s  %8s  %12s  %12s  %12s  %12s  %12s"
-           "  %12s  %12s  %12s\n",
+           "  %12s  %12s  %12s  %12s\n",
            "out", "theta", "tau", "kappa", "k", "d_inf", "d_sqr",
-           "gap", "bTl+cTx", "mu/tau", "eq_err");
-    printf("  %s\n", std::string(132, '-').c_str());
+           "gap", "bTl", "cTx", "mu/tau", "eq_err");
+    printf("  %s\n", std::string(146, '-').c_str());
   }
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
@@ -617,89 +617,58 @@ GeodesicResult SolveGeodesicThetaContinuation(
       theta = theta_hi;
     }
     k = 1.0 / std::sqrt(theta);
-    // Evaluate tau at the chosen theta via hard constraint.
+    // Evaluate tau at the chosen theta via hard constraint (V(tau)=0).
     auto [tau_sel, d_inf_sel] = EvalThetaCandidate(
         kkt, cost_rhs, b, W, decomp, bT_ones, theta);
+    if (tau_sel <= 0) {
+      // No positive root — abort this outer iteration.
+      result.iterations = outer + 1;
+      break;
+    }
     tau = tau_sel;
 
-    // Take geodesic step.
+    // Evaluate the direction and reported quantities at the consistent
+    // (W, decomp, tau) BEFORE the geodesic step, so V(tau)=0 holds
+    // exactly and reported eq_err ≈ machine precision.
     RowSpace d_step = EvaluateDirection(decomp, k, tau, theta);
-    double d_inf_step = normInf(d_step);
-    if (d_inf_step > 1e-14) {
-      double alpha = std::min(1.0, 2.0 / (d_inf_step * d_inf_step));
+    double d_inf = normInf(d_step);
+    double d_sq = squaredNorm(d_step);
+    double mu = 1.0 / (k * k);
+    double gap = mu * (m - d_sq);
+
+    RowSpace sqrtW_step = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace ones_step = kkt.MakeRowSpace();
+    setOnes(ones_step);
+    RowSpace lam_step = quadraticRepresentation(sqrtW_step, ones_step + d_step);
+    lam_step *= (1.0 / k);
+    double bT_lambda = dot(b, lam_step);
+    Eigen::VectorXd x_step = decomp.y0 / k + tau * decomp.y1_0
+                             + theta * decomp.y1_theta;
+    auto x_rhs_step = kkt.MakeSolverRHS();
+    x_rhs_step = kkt.MakeBlockVariable(x_step);
+    double cT_x = cost_rhs.dot(x_rhs_step);
+    double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
+    double eq_err_final = std::abs(bT_lambda + cT_x + mu_over_tau
+                                    - theta * (bT_ones + 1.0));
+
+    // Take exactly one geodesic step per theta update — no inner
+    // centering loop.
+    if (d_inf > 1e-14) {
+      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       geodesicUpdate(W, alpha, d_step);
     }
-
-    // Inner centering loop at fixed (k, theta).
-    int centering_iters = 1;  // count the step above
-    double d_inf = 0, d_sq = 0, mu = 0, gap = 0;
-    double eq_err_final = 0;
-
-    for (int inner = 0; inner < max_centering_steps; ++inner) {
-      decomp = ComputeFullDecomposition(kkt, cost_rhs, b, W);
-      total_fac++;
-      total_sol += 3;
-
-      auto [tau_inner, d_inf_inner] = EvalThetaCandidate(
-          kkt, cost_rhs, b, W, decomp, bT_ones, theta);
-      if (tau_inner <= 0) break;
-      tau = tau_inner;
-
-      RowSpace d = EvaluateDirection(decomp, k, tau, theta);
-      d_inf = normInf(d);
-      d_sq = squaredNorm(d);
-      mu = 1.0 / (k * k);
-      gap = mu * (m - d_sq);
-      centering_iters++;
-
-      // Compute equation error.
-      RowSpace sqrtW_inner = EuclideanJordanAlgebra::sqrt(W);
-      RowSpace ones_inner = kkt.MakeRowSpace();
-      setOnes(ones_inner);
-      RowSpace lam_inner = quadraticRepresentation(sqrtW_inner, ones_inner + d);
-      lam_inner *= (1.0 / k);
-      double bTl_inner = dot(b, lam_inner);
-      Eigen::VectorXd x_inner = decomp.y0 / k + tau * decomp.y1_0
-                               + theta * decomp.y1_theta;
-      auto x_rhs_inner = kkt.MakeSolverRHS();
-      x_rhs_inner = kkt.MakeBlockVariable(x_inner);
-      double cTx_inner = cost_rhs.dot(x_rhs_inner);
-      double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
-      eq_err_final = std::abs(bTl_inner + cTx_inner + mu_over_tau
-                              - theta * (bT_ones + 1.0));
-
-      if (d_inf < 1e-2 && eq_err_final < 1e-2) break;
-
-      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      geodesicUpdate(W, alpha, d);
-    }
+    int centering_iters = 0;
 
     if (verbose) {
-      // Compute equation error at the centered point.
-      RowSpace d_cur = EvaluateDirection(decomp, k, tau, theta);
-      RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-      RowSpace ones_v = kkt.MakeRowSpace();
-      setOnes(ones_v);
-      RowSpace lambda = quadraticRepresentation(sqrtW, ones_v + d_cur);
-      lambda *= (1.0 / k);
-      double bT_lambda = dot(b, lambda);
-
-      Eigen::VectorXd x_vec = decomp.y0 / k + tau * decomp.y1_0
-                             + theta * decomp.y1_theta;
-      auto x_rhs = kkt.MakeSolverRHS();
-      x_rhs = kkt.MakeBlockVariable(x_vec);
-      double cT_x = cost_rhs.dot(x_rhs);
-
-      double duality = bT_lambda + cT_x;
-      double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
-      eq_err_final = std::abs(duality + mu_over_tau
-                              - theta * (bT_ones + 1.0));
-
       double kappa = mu_over_tau;
+      // Report the de-homogenized (physical) primal/dual values:
+      // x_phys = x_lifted / tau, lambda_phys = lambda_lifted / tau.
+      double bTl_phys = (tau > 1e-30) ? bT_lambda / tau : 0.0;
+      double cTx_phys = (tau > 1e-30) ? cT_x / tau : 0.0;
       printf("  %3d  %8.6f  %8.4f  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
-             "  %12.4e  %12.4e  %12.2e  %3d\n",
+             "  %12.4e  %12.4e  %12.4e  %12.2e  %3d\n",
              outer, theta, tau, kappa, k, d_inf, d_sq, gap,
-             duality, mu_over_tau, eq_err_final, centering_iters);
+             bTl_phys, cTx_phys, mu_over_tau, eq_err_final, centering_iters);
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
@@ -744,9 +713,19 @@ GeodesicResult SolveGeodesicThetaContinuation(
       result.complementarity = gap;
       result.total_factorizations = total_fac;
       result.total_solves = total_sol;
+      if (verbose) printf("  TERMINATED: theta <= tolerance (mu = %.2e)\n", mu);
       break;
     }
-    if (theta >= theta_prev * (1.0 - 1e-4)) break;  // theta stalled
+    //if (theta >= theta_prev * (1.0 - 1e-4)) {
+    //  if (verbose) printf("  TERMINATED: theta stalled at %.2e "
+    //                      "(could not decrease below %.2e)\n",
+    //                      theta, theta_prev);
+    //  break;
+    //}
+    if (outer + 1 == max_outer_iterations) {
+      if (verbose) printf("  TERMINATED: reached max_outer_iterations = %d\n",
+                          max_outer_iterations);
+    }
   }
 
   // Recover primal x.
@@ -856,7 +835,6 @@ GeodesicResult SolveGeodesicLP(
         if (k_min_norm > k) k = k_min_norm;
       }
     }
-    k = .5;
 
     // Take one geodesic step at k using d = d0 + k * d1.
     RowSpace d = addScaled(d0, d1, 1.0, k);

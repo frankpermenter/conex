@@ -126,8 +126,9 @@ std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename) {
   }
 
   // Build Problem.
-  // Standard dual form: max b^T y s.t. C - Σ y_i A_i ≽ 0.
-  // → A_list[i] = -A_i, B = C. Cost: min -b^T y.
+  // SDPA standard primal: min c^T x s.t. X = Σ x_i F_i - F_0 ≽ 0
+  //   (file's `b` vector is SDPA's c; F_0, F_i come from triplets).
+  // Conex form Σ A_i x_i + B ≽ 0  ⇒  A_i = F_i, B = -F_0, cost = c.
   Problem problem;
   std::vector<int> vars(m);
   std::iota(vars.begin(), vars.end(), 0);
@@ -136,21 +137,22 @@ std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename) {
     int n = abs_sizes[k];
     if (n == 0) continue;
 
-    // Build C for this block.
-    Eigen::SparseMatrix<double> C_block(n, n);
-    C_block.setFromTriplets(C_trips[k].begin(), C_trips[k].end());
+    // Build F_0 for this block, then negate to get B = -F_0.
+    Eigen::SparseMatrix<double> F0_block(n, n);
+    F0_block.setFromTriplets(C_trips[k].begin(), C_trips[k].end());
+    Eigen::SparseMatrix<double> B_block = -F0_block;
 
     if (is_diag[k]) {
-      // Diagonal block → nonneg constraint.
+      // Diagonal block → nonneg constraint Ax + b ≥ 0 with
+      // A column i = diag(F_i), b = -diag(F_0).
       std::vector<Eigen::Triplet<double>> trips;
       Eigen::VectorXd bv(n);
       for (int j = 0; j < n; ++j) {
-        bv(j) = C_block.coeff(j, j);
+        bv(j) = -F0_block.coeff(j, j);
         for (int i = 0; i < m; ++i) {
-          // A_trips[i][k] has the sparse entries for A_i in this block.
           for (const auto& t : A_trips[i][k]) {
             if (t.row() == j && t.col() == j) {
-              trips.emplace_back(j, i, -t.value());
+              trips.emplace_back(j, i, t.value());
             }
           }
         }
@@ -159,23 +161,19 @@ std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename) {
       A.setFromTriplets(trips.begin(), trips.end());
       problem.AddLinearConstraint(A, bv, vars);
     } else {
-      // PSD block.
+      // PSD block: A_list[i] = F_i (no negation), B = -F_0.
       std::vector<Eigen::SparseMatrix<double>> A_list;
       for (int i = 0; i < m; ++i) {
-        // Negate: A_list[i] = -A_i.
-        std::vector<Eigen::Triplet<double>> neg_trips;
-        neg_trips.reserve(A_trips[i][k].size());
-        for (const auto& t : A_trips[i][k])
-          neg_trips.emplace_back(t.row(), t.col(), -t.value());
         Eigen::SparseMatrix<double> Ai(n, n);
-        Ai.setFromTriplets(neg_trips.begin(), neg_trips.end());
+        Ai.setFromTriplets(A_trips[i][k].begin(), A_trips[i][k].end());
         A_list.push_back(std::move(Ai));
       }
-      problem.AddPSDConstraint(A_list, C_block, vars);
+      problem.AddPSDConstraint(A_list, B_block, vars,
+                               /*use_chordal=*/false);
     }
   }
 
-  problem.SetLinearCost(-b);
+  problem.SetLinearCost(b);
   return {std::move(problem), info};
 }
 

@@ -157,13 +157,17 @@ void RunBenchmark(const Problem& problem, const std::string& name) {
     RowSpace W = kkt->MakeRowSpace();
     setOnes(W);
     auto t2 = std::chrono::high_resolution_clock::now();
-    auto result = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 500, 1, 0.001, true);
+    auto result = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 500, 1, 1e-8, true);
     auto t3 = std::chrono::high_resolution_clock::now();
     double solve_ms =
         std::chrono::duration<double, std::milli>(t3 - t2).count();
     printf("  ThetaCont: %d fac, %d sol, mu=%.2e, %.1f ms\n",
            result.total_factorizations, result.total_solves,
            result.mu, solve_ms);
+    if (problem.has_linear_cost() && result.x.size() > 0) {
+      double primal_cost = problem.linear_cost().dot(result.x);
+      printf("    primal cost cTx = %.6e\n", primal_cost);
+    }
     if (result.optimality.dual_residual > 0) {
       printf("    Opt: dual_res=%.2e, compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
              result.optimality.dual_residual,
