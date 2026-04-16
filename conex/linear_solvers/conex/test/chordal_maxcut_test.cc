@@ -58,13 +58,26 @@ int main() {
          "n", "bw", "single", "split", "diff");
   printf("%s\n", std::string(55, '-').c_str());
 
+  auto BuildChordal = [](int n, const Eigen::MatrixXd& C) {
+    Problem p;
+    std::vector<int> vars(n); std::iota(vars.begin(), vars.end(), 0);
+    std::vector<Eigen::SparseMatrix<double>> A;
+    for (int i = 0; i < n; ++i) {
+      Eigen::SparseMatrix<double> Ei(n,n); Ei.insert(i,i)=1; Ei.makeCompressed();
+      A.push_back(std::move(Ei));
+    }
+    p.AddPSDConstraint(A, (-C).sparseView(1e-15), vars, /*use_chordal=*/true);
+    p.SetLinearCost(Eigen::VectorXd::Ones(n));
+    return p;
+  };
+
   // Banded graphs.
   printf("\n--- Banded graphs ---\n");
   for (auto [n, bw] : std::vector<std::pair<int,int>>{
         {3,1},{5,1},{5,2},{10,1},{10,2},{20,3}}) {
     auto C = BandedLaplacian(n, bw);
     auto p1 = BuildSingle(n, C);
-    auto p2 = DecomposeChordalPSD(p1);
+    auto p2 = BuildChordal(n, C);  // use_chordal=true → Build auto-decomposes
     double v1 = Solve(p1);
     double v2 = Solve(p2);
     printf("band n=%2d bw=%d | %12.6f | %12.6f | %10.2e %s\n",
@@ -73,8 +86,7 @@ int main() {
     fflush(stdout);
   }
 
-  // Star graphs: center node 0 connected to all others.
-  // Cliques: {0,1}, {0,2}, ..., {0,n-1}. All share node 0.
+  // Star graphs.
   printf("\n--- Star graphs ---\n");
   for (int n : {4, 6, 10, 20}) {
     std::srand(42);
@@ -85,7 +97,7 @@ int main() {
       C(0, 0) += 0.25 * w; C(j, j) += 0.25 * w;
     }
     auto p1 = BuildSingle(n, C);
-    auto p2 = DecomposeChordalPSD(p1);
+    auto p2 = BuildChordal(n, C);
     double v1 = Solve(p1);
     double v2 = Solve(p2);
     printf("star n=%2d      | %12.6f | %12.6f | %10.2e %s\n",

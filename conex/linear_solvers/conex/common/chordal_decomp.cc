@@ -77,12 +77,29 @@ SpMat SpSymEntry(int n, int i, int j, double v) {
 
 }  // namespace
 
-Problem DecomposeChordalPSD(const Problem& problem) {
+bool HasChordalPSD(const Problem& problem) {
+  for (const auto& c : problem.constraints()) {
+    if (auto* psd = std::get_if<Problem::PSDConstraintData>(&c)) {
+      if (psd->use_chordal) return true;
+    }
+  }
+  return false;
+}
+
+std::pair<Problem, ChordalExpansion> DecomposeChordalPSD(
+    const Problem& problem) {
+  int original_n = problem.num_variables();
   Problem result;
   int next_var = problem.num_variables();
 
   for (const auto& c : problem.constraints()) {
     if (auto* psd = std::get_if<Problem::PSDConstraintData>(&c)) {
+      if (!psd->use_chordal) {
+        // Pass through unchanged.
+        result.AddPSDConstraint(psd->A_list, psd->B, psd->vars, false);
+        continue;
+      }
+
       const int n = psd->B.rows();
       const auto& A_list = psd->A_list;
       const auto& vars = psd->vars;
@@ -258,7 +275,10 @@ Problem DecomposeChordalPSD(const Problem& problem) {
     result.SetLinearCost(cost);
   }
 
-  return result;
+  ChordalExpansion expansion;
+  expansion.original_n = original_n;
+  expansion.expanded_n = next_var;
+  return {std::move(result), expansion};
 }
 
 }  // namespace conex
