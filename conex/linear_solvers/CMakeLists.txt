@@ -472,3 +472,21 @@ target_link_libraries(chordal_maxcut_test
   clique_ordering kkt_solver_factory tree_solver
   structural_rank
 )
+
+add_executable(equality_ab_test
+  conex/test/equality_ab_test.cc
+)
+target_link_libraries(equality_ab_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+
+add_executable(equality_nontrivial_test
+  conex/test/equality_nontrivial_test.cc
+)
+target_link_libraries(equality_nontrivial_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)

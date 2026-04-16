@@ -505,6 +505,23 @@ CliqueTree MakeCliqueTreeImpl(
     while (min_bucket < static_cast<int>(bucket_head.size()) &&
            bucket_head[min_bucket] < 0)
       min_bucket++;
+
+    // If the bucket queue is empty, all remaining vertices are delayed
+    // with no eliminated neighbor (isolated delayed component).  Force-
+    // insert them so elimination can proceed.
+    if (min_bucket >= static_cast<int>(bucket_head.size())) {
+      for (int v = 0; v < n; v++) {
+        if (deg[v] >= 0 && is_delayed[v]) {
+          bucket_insert(v, deg[v]);
+          if (deg[v] < min_bucket) min_bucket = deg[v];
+        }
+      }
+      // Re-scan after insertion.
+      while (min_bucket < static_cast<int>(bucket_head.size()) &&
+             bucket_head[min_bucket] < 0)
+        min_bucket++;
+    }
+
     int best = bucket_head[min_bucket];
     bucket_remove(best, min_bucket);
     auto t1 = Clock::now();

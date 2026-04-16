@@ -277,8 +277,34 @@ static void SetEqualityRHS(KKTSolverBase& kkt, SolverRHS& rhs) {
   auto d_rhs = kkt.MakeSolverRHS();
   d_rhs = kkt.MakeBlockVariable(d_vec);
   rhs += d_rhs;
-  fprintf(stderr, "SetEqualityRHS: set %d dual entries (|d|=%.4e)\n",
-          (int)d_vec.size(), d_vec.norm());
+}
+
+// Build the "duality cost" vector: same as cost_rhs but with +d at equality
+// dual positions instead of -d.  The V(tau)=0 duality identity is
+//   b^T lambda + c^T x + d^T nu + mu/tau = theta * R
+// but cost_rhs has -d at dual positions, so cost_rhs.dot(y) gives c^T x - d^T nu.
+// The duality cost corrects this: duality_cost = cost_rhs + 2*d_rhs.
+static SolverRHS MakeDualityCost(KKTSolverBase& kkt,
+                                  const SolverRHS& cost_rhs) {
+  auto duality_cost = kkt.MakeSolverRHS();
+  duality_cost = cost_rhs;
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+  if (!ts) return duality_cost;
+  const auto& eq_assemblers = ts->equality_sub_assemblers();
+  if (eq_assemblers.empty()) return duality_cost;
+  // Add 2*d at dual positions (flips -d to +d).
+  int nv = kkt.number_of_variables();
+  Eigen::VectorXd correction = Eigen::VectorXd::Zero(nv);
+  for (const auto* ec : eq_assemblers) {
+    const auto& dv = ec->dual_variables();
+    const auto& d = ec->affine_term();
+    for (int i = 0; i < static_cast<int>(dv.size()); ++i)
+      correction(dv[i]) = 2.0 * d(i);
+  }
+  auto corr_rhs = kkt.MakeSolverRHS();
+  corr_rhs = kkt.MakeBlockVariable(correction);
+  duality_cost += corr_rhs;
+  return duality_cost;
 }
 
 NewtonDecomposition ComputeFullDecomposition(
@@ -417,7 +443,7 @@ KTauResult SelectKTau(const DecompInnerProducts& ip) {
 
 DualityCoeffs ComputeDualityCoeffs(
     KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    const SolverRHS& duality_cost,
     const RowSpace& b,
     const RowSpace& W,
     const NewtonDecomposition& decomp) {
@@ -426,17 +452,17 @@ DualityCoeffs ComputeDualityCoeffs(
   RowSpace Pw_d1_0 = quadraticRepresentation(sqrtW, decomp.d1_0);
   double sigma1 = dot(b, Pw_d1_0);
 
-  // gamma1 = c^T y1_0
+  // gamma1 = duality_cost^T y1_0  (uses +d at dual positions, not -d)
   auto y1_rhs = kkt.MakeSolverRHS();
   y1_rhs = kkt.MakeBlockVariable(decomp.y1_0);
-  double gamma1 = cost_rhs.dot(y1_rhs);
+  double gamma1 = duality_cost.dot(y1_rhs);
 
   return {sigma1, gamma1};
 }
 
 double SelectTauWeighted(
     KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    const SolverRHS& duality_cost,
     const RowSpace& b,
     const RowSpace& W,
     const NewtonDecomposition& decomp,
@@ -470,13 +496,13 @@ double SelectTauWeighted(
   RowSpace Pw_arg = quadraticRepresentation(sqrtW, arg);
   double sigma0 = dot(b, Pw_arg) / k;
 
-  // gamma0(k) = c^T y0 / k + theta * c^T y1_theta
+  // gamma0(k) = duality_cost^T y0 / k + theta * duality_cost^T y1_theta
   auto y0_rhs = kkt.MakeSolverRHS();
   y0_rhs = kkt.MakeBlockVariable(decomp.y0);
-  double cT_y0 = cost_rhs.dot(y0_rhs);
+  double cT_y0 = duality_cost.dot(y0_rhs);
   auto yt_rhs = kkt.MakeSolverRHS();
   yt_rhs = kkt.MakeBlockVariable(decomp.y1_theta);
-  double cT_yt = cost_rhs.dot(yt_rhs);
+  double cT_yt = duality_cost.dot(yt_rhs);
   double gamma0 = cT_y0 / k + theta * cT_yt;
 
   double alpha = sigma0 + gamma0;
@@ -526,7 +552,7 @@ double SelectTauWeighted(
 // Returns tau = -1 if no positive root exists.
 static std::pair<double, double> EvalThetaCandidate(
     KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    const SolverRHS& duality_cost,
     const RowSpace& b,
     const RowSpace& W,
     const NewtonDecomposition& decomp,
@@ -537,7 +563,7 @@ static std::pair<double, double> EvalThetaCandidate(
   double mu = theta_cand;
 
   // Compute violation quadratic coefficients: beta*tau^2 + (alpha-R)*tau + mu = 0
-  auto dc = ComputeDualityCoeffs(kkt, cost_rhs, b, W, decomp);
+  auto dc = ComputeDualityCoeffs(kkt, duality_cost, b, W, decomp);
   double beta = dc.sigma1 + dc.gamma1;
 
   RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
@@ -549,10 +575,10 @@ static std::pair<double, double> EvalThetaCandidate(
 
   auto y0_rhs = kkt.MakeSolverRHS();
   y0_rhs = kkt.MakeBlockVariable(decomp.y0);
-  double cT_y0 = cost_rhs.dot(y0_rhs);
+  double cT_y0 = duality_cost.dot(y0_rhs);
   auto yt_rhs = kkt.MakeSolverRHS();
   yt_rhs = kkt.MakeBlockVariable(decomp.y1_theta);
-  double cT_yt = cost_rhs.dot(yt_rhs);
+  double cT_yt = duality_cost.dot(yt_rhs);
   double gamma0 = cT_y0 / k + theta_cand * cT_yt;
 
   double alpha = sigma0 + gamma0;
@@ -605,6 +631,9 @@ GeodesicResult SolveGeodesicThetaContinuation(
   setOnes(ones_bTe);
   const double bT_ones = dot(b, ones_bTe);
 
+  // Duality cost: cost_rhs with +d at equality dual positions (instead of -d).
+  auto duality_cost = MakeDualityCost(kkt, cost_rhs);
+
   GeodesicResult result{};
   int total_fac = 0;
   int total_sol = 0;
@@ -636,7 +665,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
         // Use arithmetic mean since theta_lo can be 0 (geometric mean→0).
         double theta_mid = 0.5 * (theta_lo + theta_hi);
         auto [tau_try, d_inf_try] = EvalThetaCandidate(
-            kkt, cost_rhs, b, W, decomp, bT_ones, theta_mid);
+            kkt, duality_cost, b, W, decomp, bT_ones, theta_mid);
         if (tau_try > 0 && d_inf_try <= beta_target) {
           theta_hi = theta_mid;  // can go lower
         } else {
@@ -648,7 +677,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     k = 1.0 / std::sqrt(theta);
     // Evaluate tau at the chosen theta via hard constraint (V(tau)=0).
     auto [tau_sel, d_inf_sel] = EvalThetaCandidate(
-        kkt, cost_rhs, b, W, decomp, bT_ones, theta);
+        kkt, duality_cost, b, W, decomp, bT_ones, theta);
     if (tau_sel <= 0) {
       // No positive root — abort this outer iteration.
       result.iterations = outer + 1;
@@ -675,7 +704,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
                              + theta * decomp.y1_theta;
     auto x_rhs_step = kkt.MakeSolverRHS();
     x_rhs_step = kkt.MakeBlockVariable(x_step);
-    double cT_x = cost_rhs.dot(x_rhs_step);
+    double cT_x = duality_cost.dot(x_rhs_step);
     double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
     double eq_err_final = std::abs(bT_lambda + cT_x + mu_over_tau
                                     - theta * (bT_ones + 1.0));
@@ -774,7 +803,7 @@ double GeodesicLineSearch(
 // of theta (so we can hold k = 1/sqrt(theta_mid) during a binary search).
 static std::pair<double, double> EvalKCandidate(
     KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    const SolverRHS& duality_cost,
     const RowSpace& b,
     const RowSpace& W,
     const NewtonDecomposition& decomp,
@@ -784,7 +813,7 @@ static std::pair<double, double> EvalKCandidate(
   if (k_cand <= 0) return {-1, 1e30};
   double mu = 1.0 / (k_cand * k_cand);
 
-  auto dc = ComputeDualityCoeffs(kkt, cost_rhs, b, W, decomp);
+  auto dc = ComputeDualityCoeffs(kkt, duality_cost, b, W, decomp);
   double beta_coeff = dc.sigma1 + dc.gamma1;
 
   RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
@@ -796,10 +825,10 @@ static std::pair<double, double> EvalKCandidate(
 
   auto y0_rhs = kkt.MakeSolverRHS();
   y0_rhs = kkt.MakeBlockVariable(decomp.y0);
-  double cT_y0 = cost_rhs.dot(y0_rhs);
+  double cT_y0 = duality_cost.dot(y0_rhs);
   auto yt_rhs = kkt.MakeSolverRHS();
   yt_rhs = kkt.MakeBlockVariable(decomp.y1_theta);
-  double cT_yt = cost_rhs.dot(yt_rhs);
+  double cT_yt = duality_cost.dot(yt_rhs);
   double gamma0 = cT_y0 / k_cand + theta_val * cT_yt;
 
   double alpha_coeff = sigma0 + gamma0;
@@ -842,6 +871,8 @@ GeodesicResult SolveGeodesicPhaseOne(
   RowSpace ones_bTe = kkt.MakeRowSpace();
   setOnes(ones_bTe);
   const double bT_ones = dot(b, ones_bTe);
+
+  auto duality_cost = MakeDualityCost(kkt, cost_rhs);
 
   GeodesicResult result{};
   int total_fac = 0;
@@ -920,7 +951,7 @@ GeodesicResult SolveGeodesicPhaseOne(
           double theta_mid = 0.5 * (theta_lo + theta_hi);
           double k_mid = 1.0 / std::sqrt(theta_mid);
           auto [tau_try, d_inf_try] = EvalKCandidate(
-              kkt, cost_rhs, b, W, decomp, bT_ones, theta_mid, k_mid);
+              kkt, duality_cost, b, W, decomp, bT_ones, theta_mid, k_mid);
           if (tau_try > 0 && d_inf_try <= 1.0) {
             theta_hi = theta_mid;
           } else {
@@ -930,7 +961,7 @@ GeodesicResult SolveGeodesicPhaseOne(
         theta = theta_hi;
         k = 1.0 / std::sqrt(theta);
         auto [tau_sel, d_inf_sel] = EvalKCandidate(
-            kkt, cost_rhs, b, W, decomp, bT_ones, theta, k);
+            kkt, duality_cost, b, W, decomp, bT_ones, theta, k);
         if (tau_sel <= 0) {
           if (verbose) printf("  TERMINATED: phase 1 V(τ)=0 has no positive root\n");
           break;
@@ -962,7 +993,7 @@ GeodesicResult SolveGeodesicPhaseOne(
                              + theta * decomp.y1_theta;
     auto x_rhs_step = kkt.MakeSolverRHS();
     x_rhs_step = kkt.MakeBlockVariable(x_step);
-    double cT_x = cost_rhs.dot(x_rhs_step);
+    double cT_x = duality_cost.dot(x_rhs_step);
     double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
     double eq_err = std::abs(bT_lambda + cT_x + mu_over_tau
                              - theta * (bT_ones + 1.0));
