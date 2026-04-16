@@ -55,14 +55,24 @@ int main() {
          sol(0), sol(1), cost.dot(sol.head(2)));
 
   // Now solve with geodesic IPM.
-  // Pad cost to full KKT dimension (includes equality dual vars).
+  // Cost at primal, +d at dual (scaled by k*tau in the IPM's parameterization).
   Eigen::VectorXd cost_full = Eigen::VectorXd::Zero(nv);
   cost_full.head(cost.size()) = cost;
+  for (const auto* ec : ts->equality_sub_assemblers()) {
+    const auto& dv = ec->dual_variables();
+    const auto& dd = ec->affine_term();
+    for (int i = 0; i < (int)dv.size(); ++i)
+      cost_full(dv[i]) = dd(i);
+  }
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(cost_full);
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
-  auto r = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 500, 1, 1e-8, false);
+  // Manual first decomp to check.
+  kkt->SetScaling(W);
+  printf("Factor: %s\n", kkt->AssembleAndFactor() ? "ok" : "FAIL");
+  printf("n_vars=%d\n", kkt->number_of_variables());
+  auto r = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 500, 1, 1e-8, true);
   printf("IPM: x.size=%d, mu=%.2e, iters=%d\n",
          (int)r.x.size(), r.mu, r.iterations);
   if (r.x.size() >= 2) {

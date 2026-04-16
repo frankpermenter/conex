@@ -293,15 +293,12 @@ NewtonDecomposition ComputeFullDecomposition(
   setOnes(ones);
   RowSpace v = kkt.MakeRowSpace();
 
-  // rhs0: A^T(2W) + equality_d  →  y0
-  // The equality RHS goes ONLY into rhs0 (centering direction),
-  // so that Cy₀ = d and Cy₁₀ = Cy₁θ = 0.
+  // rhs0: A^T(2W)  →  y0  (no equality RHS here — it goes in cost_rhs)
   auto rhs0 = kkt.MakeSolverRHS();
   rhs0.SetZero();
   v = W;
   v *= 2.0;
   kkt.AccumulateAtranspose(v, rhs0);
-  SetEqualityRHS(kkt, rhs0);
 
   // rhs1: -(c + A^T P(W) b_0)  →  y1_0
   auto rhs1 = kkt.MakeSolverRHS();
