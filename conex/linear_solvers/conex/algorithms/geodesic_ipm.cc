@@ -602,10 +602,11 @@ GeodesicResult SolveGeodesicThetaContinuation(
     constexpr double beta_target = 1.0;
     double theta_prev = theta;
     {
-      double theta_lo = tolerance;  // smallest we'd try
-      double theta_hi = theta;      // current (centered) theta
+      double theta_lo = 0.0;     // allow theta to reach 0
+      double theta_hi = theta;   // current (centered) theta
       for (int bisect = 0; bisect < 30; ++bisect) {
-        double theta_mid = std::sqrt(theta_lo * theta_hi);  // geometric mean
+        // Use arithmetic mean since theta_lo can be 0 (geometric mean→0).
+        double theta_mid = 0.5 * (theta_lo + theta_hi);
         auto [tau_try, d_inf_try] = EvalThetaCandidate(
             kkt, cost_rhs, b, W, decomp, bT_ones, theta_mid);
         if (tau_try > 0 && d_inf_try <= beta_target) {
@@ -728,10 +729,12 @@ GeodesicResult SolveGeodesicThetaContinuation(
     }
   }
 
-  // Recover primal x.
-  if (k > 0) {
+  // Recover primal x.  De-homogenize: x_phys = x_lifted / tau.
+  if (k > 0 && tau > 0) {
     auto decomp = ComputeFullDecomposition(kkt, cost_rhs, b, W);
-    result.x = decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
+    Eigen::VectorXd x_lifted =
+        decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
+    result.x = x_lifted / tau;
 
     // Optimality check against original problem (tau=1, theta=0).
     RowSpace d_final = EvaluateDirection(decomp, k, 1.0, 0.0);
@@ -972,10 +975,12 @@ GeodesicResult SolveGeodesicPhaseOne(
     }
   }
 
-  // Recover primal x and run optimality check at (tau=1, theta=0).
-  if (k > 0) {
+  // Recover primal x.  De-homogenize: x_phys = x_lifted / tau.
+  if (k > 0 && tau > 0) {
     auto decomp = ComputeFullDecomposition(kkt, cost_rhs, b, W);
-    result.x = decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
+    Eigen::VectorXd x_lifted =
+        decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
+    result.x = x_lifted / tau;
     RowSpace d_final = EvaluateDirection(decomp, k, 1.0, 0.0);
     RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
     RowSpace ones = kkt.MakeRowSpace();
