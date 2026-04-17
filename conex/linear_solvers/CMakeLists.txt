@@ -526,3 +526,12 @@ target_link_libraries(benchmark_qp
   clique_ordering kkt_solver_factory tree_solver
   structural_rank
 )
+add_executable(check_ct conex/test/check_ct.cc)
+target_link_libraries(check_ct algorithms constraints sparse_linear_constraint clique_ordering kkt_solver_factory tree_solver structural_rank)
+
+add_executable(qp_equality_test conex/test/qp_equality_test.cc)
+target_link_libraries(qp_equality_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)

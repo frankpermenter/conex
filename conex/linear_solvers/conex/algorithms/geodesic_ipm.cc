@@ -551,7 +551,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     printf("  %3s  %8s  %10s  %12s  %12s  %12s  %12s  %12s"
            "  %12s  %12s  %12s  %12s\n",
            "out", "theta", "tau", "kappa", "k", "d_inf", "d_sqr",
-           "gap", "bTl+dTv", "cTx", "mu/tau", "eq_err");
+           "gap", "dual", "primal", "mu/tau", "eq_err");
     printf("  %s\n", std::string(149, '-').c_str());
   }
 
@@ -634,13 +634,18 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
     if (verbose) {
       double kappa = mu_over_tau;
-      // De-homogenize: x_phys = x_lifted / tau, lambda_phys = lambda_lifted / tau.
-      double dual_phys = (tau > 1e-30) ? (bT_lambda + dT_nu) / tau : 0.0;
-      double cTx_phys = (tau > 1e-30) ? cT_x / tau : 0.0;
+      // De-homogenize: x_phys = x/τ.
+      // Primal obj = c'x_phys + (1/2)x_phys'Qx_phys
+      // Dual obj   = -(b'λ_phys + d'ν_phys + (1/2)x_phys'Qx_phys)
+      double half_xQx_phys = (tau > 1e-30)
+          ? 0.5 * qx_rhs.dot(x_rhs_step) / (tau * tau) : 0.0;
+      double primal_phys = (tau > 1e-30) ? cT_x / tau + half_xQx_phys : 0.0;
+      double dual_phys = (tau > 1e-30)
+          ? -((bT_lambda + dT_nu) / tau + half_xQx_phys) : 0.0;
       printf("  %3d  %8.6f  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
              "  %12.4e  %12.4e  %12.4e  %12.2e  %3d\n",
              outer, theta, tau, kappa, k, d_inf, d_sq, gap,
-             dual_phys, cTx_phys, mu_over_tau, eq_err_final, centering_iters);
+             dual_phys, primal_phys, mu_over_tau, eq_err_final, centering_iters);
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
@@ -811,7 +816,7 @@ GeodesicResult SolveGeodesicPhaseOne(
     printf("  %3s  %12s  %10s  %12s  %12s  %12s  %12s  %12s"
            "  %12s  %12s  %12s  %4s\n",
            "out", "theta", "tau", "kappa", "mu", "d_inf", "d_sqr",
-           "gap", "bTl+dTv", "cTx", "eq_err", "ph");
+           "gap", "dual", "primal", "eq_err", "ph");
     printf("  %s\n", std::string(149, '-').c_str());
   }
 
@@ -932,12 +937,15 @@ GeodesicResult SolveGeodesicPhaseOne(
     }
 
     if (verbose) {
-      double dual_phys = (tau > 1e-30) ? (bT_lambda + dT_nu) / tau : 0.0;
-      double cTx_phys = (tau > 1e-30) ? cT_x / tau : 0.0;
+      double half_xQx_phys = (tau > 1e-30)
+          ? 0.5 * qx_rhs.dot(x_rhs_step) / (tau * tau) : 0.0;
+      double primal_phys = (tau > 1e-30) ? cT_x / tau + half_xQx_phys : 0.0;
+      double dual_phys = (tau > 1e-30)
+          ? -((bT_lambda + dT_nu) / tau + half_xQx_phys) : 0.0;
       printf("  %3d  %12.4e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
              "  %12.4e  %12.4e  %12.2e  %4d\n",
              outer, theta, tau, mu_over_tau, mu, d_inf, d_sq, gap,
-             dual_phys, cTx_phys, eq_err, phase);
+             dual_phys, primal_phys, eq_err, phase);
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});

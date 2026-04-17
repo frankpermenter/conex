@@ -1060,6 +1060,9 @@ void T::AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) {
     linear_sub_assemblers_[ci]->ContributeAtranspose(
         v.segment(ci), *rhs.supernodes, *rhs.separators, nc);
   }
+  // ContributeAtranspose writes to separators, so the RHS is no longer
+  // in "fully gathered" form (supernodes only).
+  rhs.blocks_fully_gathered = false;
 }
 
 void T::AccumulateQx(const SolverRHS& x, SolverRHS& rhs) {
@@ -1072,6 +1075,7 @@ void T::AccumulateQx(const SolverRHS& x, SolverRHS& rhs) {
     eval->MultiplyQx(*x.supernodes, sep_read,
                       *rhs.supernodes, *rhs.separators, nc);
   }
+  rhs.blocks_fully_gathered = false;
 }
 
 void T::AccumulateCtranspose(const SolverRHS& x, SolverRHS& rhs) {
@@ -1084,6 +1088,7 @@ void T::AccumulateCtranspose(const SolverRHS& x, SolverRHS& rhs) {
     ec->MultiplySaddlePoint(*x.supernodes, sep_read,
                             *rhs.supernodes, *rhs.separators, nc);
   }
+  rhs.blocks_fully_gathered = false;
 }
 
 SolverRHS T::EqualityAffineTermRHS() {
