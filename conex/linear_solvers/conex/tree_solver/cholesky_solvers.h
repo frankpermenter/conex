@@ -310,8 +310,14 @@ class DynamicSubsystem : public KKTSubsystem {
 
   bool DoEliminateSupernodeColumns() override {
     if (use_lu()) {
-      lu_.compute(supernode_submatrix());
-      return true;  // PartialPivLU always succeeds for square matrices.
+      auto sn = supernode_submatrix();
+      if (sn.rows() == 0) return true;
+      // Supernode submatrix is stored lower-triangular (symmetric).
+      // LU needs the full matrix.
+      MatrixXd sn_full(sn);
+      sn_full.triangularView<Eigen::StrictlyUpper>() = sn.transpose();
+      lu_.compute(sn_full);
+      return true;
     }
     if (use_rldlt()) {
       rldlt_.compute(supernode_submatrix());
@@ -325,7 +331,7 @@ class DynamicSubsystem : public KKTSubsystem {
     if (separator_rows().rows() == 0 || separator_rows().cols() == 0) return;
     const int sep = separator_rows().rows();
     if (use_lu()) {
-      temp_.noalias() = lu_.solve(separator_rows().transpose());
+      temp_ = lu_.solve(separator_rows().transpose());
       for (int j = 0; j < sep; j++) {
         separator_schur_complement().col(j).tail(sep - j).noalias() -=
             separator_rows().bottomRows(sep - j) * temp_.col(j);
