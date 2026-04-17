@@ -20,10 +20,20 @@ bool TestInstance(const char* name, const char* path) {
   printf("  vars=%d, eq=%d, quad=%d\n", n, info.num_equality_rows,
          info.num_quadratic_entries);
 
-  // Extract Q (merged with I) and C, d from the full problem.
-  // Build a single merged Q = Q_original + I.
+  // Extract Q (merged with A'A from inequalities) and C, d from the full problem.
+  // Build Q = Q_original + A_ineq' * A_ineq, which matches the Gram matrix
+  // G = A'W²A at W=I.  This is more realistic than adding I.
   std::vector<Eigen::Triplet<double>> q_trips;
-  for (int i = 0; i < n; ++i) q_trips.emplace_back(i, i, 1.0);  // I
+  // Collect inequality constraint matrices and compute A'A.
+  for (const auto& c : prob_full.constraints()) {
+    if (auto* lc = std::get_if<Problem::LinearConstraintData>(&c)) {
+      Eigen::SparseMatrix<double> AtA = (lc->A.transpose() * lc->A).pruned();
+      for (int k = 0; k < AtA.outerSize(); ++k)
+        for (Eigen::SparseMatrix<double>::InnerIterator it(AtA, k); it; ++it)
+          q_trips.emplace_back(lc->vars[it.row()], lc->vars[it.col()],
+                               it.value());
+    }
+  }
   for (const auto& c : prob_full.constraints()) {
     if (auto* qc = std::get_if<Problem::QuadraticCostData>(&c)) {
       for (int k = 0; k < qc->Q_sparse.outerSize(); ++k)
@@ -70,7 +80,6 @@ bool TestInstance(const char* name, const char* path) {
 
   // Build solver with automatic tree (AMD ordering).
   SolverConfiguration config;
-  // default config
   auto solver = Solver::Build(qp, config);
   auto* kkt = solver.solver();
   auto* ts = solver.tree_solver();

@@ -459,8 +459,11 @@ CliqueTree MakeCliqueTreeImpl(
   std::vector<uint64_t> clique_mask(words);
   std::vector<int> nbrs;
 
-  // Track whether each vertex has at least one eliminated neighbor.
-  std::vector<char> has_eliminated_neighbor(n, 0);
+  // Greedy matching: each non-delayed elimination claims at most one
+  // delayed neighbor.  Claimed duals enter at their current degree
+  // (immediately after their primal).  Unclaimed duals only enter
+  // when claimed or via fallback at high degree.
+  std::vector<char> assigned(n, 0);
 
   // Optimization 2: Bucket queue for O(1) min-degree extraction.
   // buckets[d] = doubly-linked list of vertices with degree d.
@@ -506,14 +509,21 @@ CliqueTree MakeCliqueTreeImpl(
            bucket_head[min_bucket] < 0)
       min_bucket++;
 
-    // If the bucket queue is empty, all remaining vertices are delayed
-    // with no eliminated neighbor (isolated delayed component).  Force-
-    // insert them so elimination can proceed.
+    // If the bucket queue is empty, insert remaining delayed vertices
+    // at high degree so they're eliminated after any primals that
+    // re-enter the queue.
     if (min_bucket >= static_cast<int>(bucket_head.size())) {
+      int high_deg = static_cast<int>(bucket_head.size()) - 1;
       for (int v = 0; v < n; v++) {
-        if (deg[v] >= 0 && is_delayed[v]) {
-          bucket_insert(v, deg[v]);
-          if (deg[v] < min_bucket) min_bucket = deg[v];
+        if (deg[v] >= 0 && is_delayed[v] && !assigned[v]) {
+          assigned[v] = 1;
+          // Grow bucket_head if needed.
+          if (high_deg >= static_cast<int>(bucket_head.size()))
+            bucket_head.resize(high_deg + 1, -1);
+          bucket_insert(v, high_deg);
+          fprintf(stderr, "FALLBACK: dual %d (deg=%d, high=%d, step=%d)\n",
+                  unique_vars[v], deg[v], high_deg, step);
+          if (high_deg < min_bucket) min_bucket = high_deg;
         }
       }
       // Re-scan after insertion.
@@ -532,15 +542,16 @@ CliqueTree MakeCliqueTreeImpl(
     BitsToVec(rb, words, n, &nbrs);
     auto t2 = Clock::now();
 
-    // Mark living neighbors as having an eliminated neighbor.
-    // Insert newly-eligible delayed vertices into the bucket queue.
-    if (has_delayed) {
+    // Greedy matching: only non-delayed (primal) eliminations claim
+    // a delayed neighbor.
+    if (has_delayed && !is_delayed[best]) {
       for (int u : nbrs) {
-        if (!has_eliminated_neighbor[u] && is_delayed[u]) {
-          has_eliminated_neighbor[u] = 1;
+        if (is_delayed[u] && !assigned[u]) {
+          assigned[u] = 1;
           bucket_insert(u, deg[u]);
-        } else {
-          has_eliminated_neighbor[u] = 1;
+          fprintf(stderr, "CLAIM: primal %d -> dual %d (deg=%d, step=%d)\n",
+                  unique_vars[best], unique_vars[u], deg[u], step);
+          break;
         }
       }
     }
@@ -574,7 +585,11 @@ CliqueTree MakeCliqueTreeImpl(
         }
       }
       // Update bucket queue if degree changed.
-      if (deg[u] != old_deg) {
+      // Skip delayed vertices not yet in the queue — they'll enter
+      // via the greedy claim.  (bucket_remove on a vertex not in the
+      // queue is undefined behavior.)
+      if (deg[u] != old_deg &&
+          !(has_delayed && is_delayed[u] && !assigned[u])) {
         bucket_remove(u, old_deg);
         // Grow bucket_head if needed.
         if (deg[u] >= static_cast<int>(bucket_head.size()))
@@ -591,9 +606,12 @@ CliqueTree MakeCliqueTreeImpl(
       int old_deg = deg[u];
       row(u)[best_word] &= ~best_bit;
       deg[u]--;
-      bucket_remove(u, old_deg);
-      bucket_insert(u, deg[u]);
-      if (deg[u] < min_bucket) min_bucket = deg[u];
+      // Only update the bucket for vertices already in the queue.
+      if (!(has_delayed && is_delayed[u] && !assigned[u])) {
+        bucket_remove(u, old_deg);
+        bucket_insert(u, deg[u]);
+        if (deg[u] < min_bucket) min_bucket = deg[u];
+      }
     }
     std::memset(rb, 0, words * sizeof(uint64_t));
     deg[best] = -1;
@@ -603,6 +621,24 @@ CliqueTree MakeCliqueTreeImpl(
     t_bits += std::chrono::duration<double, std::micro>(t2 - t1).count();
     t_fillin += std::chrono::duration<double, std::micro>(t3 - t2).count();
     t_remove += std::chrono::duration<double, std::micro>(t4 - t3).count();
+  }
+
+  // DEBUG: check if var 143 is delayed.
+  if (has_delayed) {
+    for (int v = 0; v < n; ++v) {
+      if (unique_vars[v] == 143)
+        fprintf(stderr, "VAR143: compact=%d, is_delayed=%d, assigned=%d\n",
+                v, (int)is_delayed[v], (int)assigned[v]);
+    }
+  }
+  // DEBUG: print AMD elimination order.
+  if (has_delayed) {
+    fprintf(stderr, "AMD_ORDER(%d vars, %d delayed):", n,
+            (int)delayed_variables.size());
+    for (int i = 0; i < n; ++i)
+      fprintf(stderr, " %d%s", unique_vars[order[i]],
+              is_delayed[order[i]] ? "*" : "");
+    fprintf(stderr, "\n");
   }
 
   // Package Phase 1 results for Phase 2.
@@ -813,6 +849,21 @@ CliqueTree MakeCliqueTreeFromEliminationOrdering(
         }
       }
     }
+  }
+
+  // DEBUG: print post-order variable sequence.
+  {
+    fprintf(stderr, "POST_ORDER(%d nodes):", (int)ct.supernodes.size());
+    for (int pi = 0; pi < (int)ct.post_order_position_to_clique.size(); ++pi) {
+      int ci = ct.post_order_position_to_clique[pi];
+      fprintf(stderr, " [");
+      for (int v : ct.supernodes[ci])
+        fprintf(stderr, "%d%s,", unique_vars[static_cast<size_t>(v)],
+                v >= (int)unique_vars.size() ? "?" :
+                (unique_vars[v] >= 100 ? "*" : ""));  // hack: dual vars >= 100
+      fprintf(stderr, "]");
+    }
+    fprintf(stderr, "\n");
   }
 
   if (maximal_cliques_out) *maximal_cliques_out = cliques;
