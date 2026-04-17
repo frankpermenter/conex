@@ -20,6 +20,7 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/mps_reader.h"
 #include "conex/common/problem.h"
+#include "conex/common/qps_reader.h"
 #include "conex/common/rescale.h"
 #include "conex/common/sdpa_reader.h"
 #include "conex/common/solver.h"
@@ -297,6 +298,15 @@ int main(int argc, char* argv[]) {
         char buf[256];
         snprintf(buf, sizeof(buf), "CBF: %d vars, %d cons",
                  info.num_variables, info.num_constraints);
+        name = buf;
+      } else if (ext == "qps" || ext == "QPS") {
+        auto [p, info] = conex::ReadQPS(filename);
+        problem = std::move(p);
+        char buf[256];
+        snprintf(buf, sizeof(buf), "QPS: %s (%d vars, %d eq, %d ineq, %d quad)",
+                 info.name.c_str(), info.num_variables,
+                 info.num_equality_rows, info.num_inequality_rows,
+                 info.num_quadratic_entries);
         name = buf;
       } else {
         printf("Unknown file extension: %s\n", ext.c_str());

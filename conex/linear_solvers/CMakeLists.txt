@@ -86,6 +86,7 @@ add_library(sparse_linear_constraint
   conex/common/rescale.cc
   conex/common/mps_reader.cc
   conex/common/sdpa_reader.cc
+  conex/common/qps_reader.cc
   conex/common/cbf_reader.cc
   conex/common/sparse_linear_constraint.cc
   conex/common/psd_constraint.cc
@@ -493,6 +494,20 @@ target_link_libraries(equality_nontrivial_test
 
 add_executable(canary conex/test/canary.cc)
 target_link_libraries(canary
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+
+add_executable(qps_reader_test conex/test/qps_reader_test.cc)
+target_link_libraries(qps_reader_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+
+add_executable(benchmark_qp conex/test/benchmark_qp.cc)
+target_link_libraries(benchmark_qp
   algorithms constraints sparse_linear_constraint
   clique_ordering kkt_solver_factory tree_solver
   structural_rank

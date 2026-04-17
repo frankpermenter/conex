@@ -1197,6 +1197,13 @@ GeodesicResult SolveGeodesicHybrid(
     d_sq = info.d_sq;
     mslack = info.min_slack;
 
+    // Divergence guard: abort before taking a step with corrupt data.
+    if (d_inf > 10 || !std::isfinite(d_inf) || !std::isfinite(g)) {
+      if (verbose) printf("  TERMINATED: hybrid diverging (d_inf=%.2e, g=%.2e)\n",
+                          d_inf, g);
+      break;
+    }
+
     if (g < 0) {
       // Centering step: update W and r, then refactor.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));

@@ -34,7 +34,11 @@ void StandaloneBlockPartition::ScatterFrom(
   const int n = static_cast<int>(perm_.size());
   if (data_.rows() != total_rows_ || data_.cols() != x.cols())
     data_.resize(total_rows_, x.cols());
-  for (int i = 0; i < n; ++i) {
+  data_.setZero();
+  // x may have fewer rows than perm_.size() (e.g., primal cost without
+  // dual variables).  Only scatter the rows that x provides.
+  const int x_rows = static_cast<int>(x.rows());
+  for (int i = 0; i < n && i < x_rows; ++i) {
     int ep = perm_(i);
     data_.row(ep) = x.row(i);
   }
