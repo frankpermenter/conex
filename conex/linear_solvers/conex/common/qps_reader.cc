@@ -156,7 +156,7 @@ std::pair<Problem, QPSInfo> ReadQPS(const std::string& filename) {
       auto add_rhs = [&](const std::string& rname, const std::string& val) {
         if (rname.empty() || val.empty()) return;
         double v = std::stod(val);
-        if (rname == obj_row) { obj_constant += v; return; }
+        if (rname == obj_row) { obj_constant -= v; return; }
         auto it = row_index.find(rname);
         if (it != row_index.end()) rhs_vals[it->second] = v;
       };

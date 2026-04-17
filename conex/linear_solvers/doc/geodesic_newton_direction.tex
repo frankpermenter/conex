@@ -118,24 +118,65 @@ which is minimized at
 \]
 
 
-\section{Duality residual}
+\section{Duality identity}
 
-We seek $(\tau, \theta)$ pairs that satisfy
+\subsection{General form}
+
+For the QP with equality constraints
 \[
-  \boxed{b^T \lambda + c^T x + \frac{\mu}{\tau}
-    = \theta\,\bigl(\langle b, e\rangle + 1\bigr),}
+  \min_x\; c^T x + \tfrac{1}{2} x^T Q x
+  \quad \text{s.t.}\quad Ax + b \succeq 0,\quad Cx = d,
+\]
+the KKT stationarity condition is $c + Qx = A^T\lambda + C^T\nu$.
+Multiplying by~$x$:
+\[
+  c^T x + x^T Q x = \lambda^T(Ax) + \nu^T(Cx)
+  = \langle s - b,\,\lambda\rangle + d^T\nu
+  = \langle s,\lambda\rangle - b^T\lambda + d^T\nu.
+\]
+In the HSD embedding with lifted variables ($x_{\mathrm{phys}} = x/\tau$),
+Combined with $\kappa = \mu/\tau$ and the central-path target
+$\langle s,\lambda\rangle + \kappa = \theta\,R$, the identity becomes
+\[
+  \boxed{b^T \lambda + c^T x + d^T \nu
+    + \frac{x^T Q x}{\tau} + \frac{\mu}{\tau}
+    = \theta\,\bigl(\langle b, e\rangle + 1\bigr).}
 \]
 At the trivially centered point ($\theta = 1$, $\tau = 1$, $k = 1$,
 $W = e$, $d = 0$): $\lambda = e$, $x = 0$, $\mu = 1$, and
 \[
-  b^T e + 0 + 1 = \langle b, e\rangle + 1,
+  b^T e + 0 + 0 + 0 + 1 = \langle b, e\rangle + 1. \qquad\checkmark
 \]
-which is satisfied identically.
 
-The \emph{duality residual} is the absolute error in this equation:
+\subsection{Decomposition of the quadratic term}
+
+The primal variable $x(k, \tau, \theta) = y_0/k + \tau\,y_1^{(0)}
++ \theta\,y_1^{(\theta)}$ separates into a $\tau$-free part and a
+$\tau$-linear part.  Define
 \[
-  r_{\mathrm{dual}} = \bigl|b^T \lambda + c^T x + \tfrac{\mu}{\tau}
-    - \theta\,(\langle b,e\rangle + 1)\bigr|.
+  f = f(k, \theta) = y_0/k + \theta\,y_1^{(\theta)},
+  \qquad x = f + \tau\,y_1^{(0)}.
+\]
+Then
+\[
+  x^T Q x = f^T Q f + 2\tau\,f^T Q\,y_1^{(0)}
+            + \tau^2\,(y_1^{(0)})^T Q\,y_1^{(0)},
+\]
+and the $1/\tau$ scaling gives three terms at distinct powers of~$\tau$:
+\[
+  \frac{x^T Q x}{\tau}
+  = \underbrace{\frac{f^T Q f}{\tau}}_{\tau^{-1}}
+  + \underbrace{2\,f^T Q\,y_1^{(0)}}_{\tau^0}
+  + \underbrace{\tau\,(y_1^{(0)})^T Q\,y_1^{(0)}}_{\tau^1}.
+\]
+
+\subsection{Duality residual}
+
+The absolute error in the identity is
+\[
+  r_{\mathrm{dual}} = \Bigl|b^T \lambda + c^T x + d^T\nu
+    + \frac{x^T Q x}{\tau} + \frac{\mu}{\tau}
+    - \theta\,(\langle b,e\rangle + 1)\Bigr|.
 \]
 
 \section{Joint $(k,\tau)$ selection with $\theta = \mu = 1/k^2$}
@@ -190,14 +231,14 @@ enforce the identity from Section~6, we select $\tau$ to minimize a
 weighted objective that penalizes both $\|d\|^2$ and the squared
 violation.
 
-For fixed $(k,\theta)$, expand the duality identity.  Since $\lambda$
-and $x$ are both affine in~$\tau$, the left-hand side of the identity
-is expressed in terms of parameters $(\alpha, \tau, R)$
-as
+For fixed $(k,\theta)$, expand the duality identity.  The cone and
+linear-cost contributions are affine in~$\tau$; the quadratic cost adds
+a $\tau^{-1}$, $\tau^0$, and $\tau^1$ term (Section~6.2):
 \[
-  \underbrace{(\sigma_0 + \gamma_0)}_{\alpha}
-  + \underbrace{(\sigma_1 + \gamma_1)}_\beta \,\tau
-  + \frac{\mu}{\tau}
+  \underbrace{(\sigma_0 + \gamma_0 + 2\,f^T Q y_1^{(0)})}_{\alpha}
+  + \underbrace{\bigl(\sigma_1 + \gamma_1
+    + (y_1^{(0)})^T Q\,y_1^{(0)}\bigr)}_\beta \,\tau
+  + \frac{\mu + f^T Q f}{\tau}
   = \underbrace{\theta\,(\langle b,e\rangle + 1)}_{R},
 \]
 where
@@ -205,12 +246,23 @@ where
   \sigma_0 &= \tfrac{1}{k}\,\langle b,\, \PW(e + d_0 + k\theta\,d_1^{(\theta)})\rangle,
   &\quad \sigma_1 &= \langle b,\, \PW(d_1^{(0)})\rangle, \\
   \gamma_0 &= c^T y_0 / k + \theta\,c^T y_1^{(\theta)},
-  &\quad \gamma_1 &= c^T y_1^{(0)}.
+  &\quad \gamma_1 &= c^T y_1^{(0)},
 \end{align*}
+and $f = y_0/k + \theta\,y_1^{(\theta)}$ is the $\tau$-free part of~$x$.
 Multiplying through by~$\tau$ gives the \emph{violation quadratic}:
 \[
-  V(\tau) = \beta\,\tau^2 + (\alpha - R)\,\tau + \mu.
+  V(\tau) = \beta\,\tau^2 + (\alpha - R)\,\tau + \mu_{\mathrm{eff}},
 \]
+with
+\begin{align*}
+  \beta &= \sigma_1 + \gamma_1 + (y_1^{(0)})^T Q\,y_1^{(0)}, \\
+  \alpha &= \sigma_0 + \gamma_0 + 2\,f^T Q\,y_1^{(0)}, \\
+  \mu_{\mathrm{eff}} &= \mu + f^T Q f.
+\end{align*}
+When $Q = 0$ these reduce to the LP case.  The three Q inner products
+$(y_1^{(0)})^T Q\,y_1^{(0)}$, $f^T Q\,y_1^{(0)}$, $f^T Q f$ are
+computed via \texttt{AccumulateQx}; only the first is
+$\tau$-independent.
 
 The $\|d\|^2$ terms, grouping the $\tau$-independent part as
 $h = d_0 + k\theta\,d_1^{(\theta)}$, give
@@ -235,7 +287,7 @@ found by golden-section search over $\tau > 0$.
 In the limit $w \to \infty$, $\tau$ is determined by the roots of the
 violation quadratic $V(\tau) = 0$:
 \[
-  \boxed{\tau = \frac{(R - \alpha) \pm \sqrt{(R-\alpha)^2 - 4\beta\mu}}
+  \boxed{\tau = \frac{(R - \alpha) \pm \sqrt{(R-\alpha)^2 - 4\beta\,\mu_{\mathrm{eff}}}}
                      {2\beta}.}
 \]
 When both roots are positive, choose the one with smaller~$\|d\|^2$.

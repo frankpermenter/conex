@@ -506,6 +506,20 @@ target_link_libraries(qps_reader_test
   structural_rank
 )
 
+add_executable(sign_check conex/test/sign_check.cc)
+target_link_libraries(sign_check
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+
+add_executable(eq_err_test conex/test/eq_err_test.cc)
+target_link_libraries(eq_err_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+
 add_executable(benchmark_qp conex/test/benchmark_qp.cc)
 target_link_libraries(benchmark_qp
   algorithms constraints sparse_linear_constraint

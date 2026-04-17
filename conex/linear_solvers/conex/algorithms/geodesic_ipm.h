@@ -137,15 +137,30 @@ struct KTauResult {
 
 KTauResult SelectKTau(const DecompInnerProducts& ip);
 
+// Duality identity and tau selection
+// -----------------------------------
+// The HSD duality identity in lifted variables is:
+//
+//   b'λ + c'x + d'ν + (1/τ) x'Qx + μ/τ = θ·R           (*)
+//
+// See doc/geodesic_newton_direction.tex §6 for the derivation.
+//
+// Substituting x = f + τ·y₁₀ (f = y₀/k + θ·y₁θ) and multiplying
+// by τ gives V(τ)·τ = β·τ² + (α − R)·τ + μ_eff = 0, with
+//
+//   β     = σ₁ + γ₁ + y₁₀'Qy₁₀           (tau-independent)
+//   α     = σ₀ + γ₀ + 2·f'Qy₁₀            (depends on k, θ)
+//   μ_eff = μ + f'Qf                       (depends on k, θ)
+
 // Coefficients for the duality equation violation (quadratic in tau when
-// multiplied by tau): beta*tau^2 + (alpha - R)*tau + mu = 0.
-// sigma1, gamma1 are k-independent; sigma0, gamma0, R depend on k via theta.
+// multiplied by tau): beta*tau^2 + (alpha - R)*tau + mu_eff = 0.
 struct DualityCoeffs {
   double sigma1;  // <b0, P(W^{1/2})(d1_0)>
   double gamma1;  // duality_cost^T y1_0
+  double q11;     // y1_0' Q y1_0  (quadratic cost; enters beta as q11/2)
 };
 
-// Compute the tau-independent duality coefficients (sigma1, gamma1).
+// Compute the tau-independent duality coefficients (sigma1, gamma1, q11).
 // duality_cost must be the corrected cost vector from MakeDualityCost()
 // (with +d at equality dual positions, not -d).
 DualityCoeffs ComputeDualityCoeffs(
