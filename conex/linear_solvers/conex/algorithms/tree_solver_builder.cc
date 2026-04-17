@@ -444,6 +444,7 @@ TreeSolverBuilder::Result TreeSolverBuilder::Build() {
 
   Result result;
   result.solver = std::move(solver);
+  result.clique_tree = tree;
   result.num_variables = num_variables;
   result.num_cliques = final_num_cliques;
   result.max_clique_size = max_cs;

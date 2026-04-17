@@ -535,3 +535,10 @@ target_link_libraries(qp_equality_test
   clique_ordering kkt_solver_factory tree_solver
   structural_rank
 )
+
+add_executable(kkt_residual_test conex/test/kkt_residual_test.cc)
+target_link_libraries(kkt_residual_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)

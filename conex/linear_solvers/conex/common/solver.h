@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "conex/common/clique_tree.h"
 #include "conex/common/conex.h"
 #include "conex/common/problem.h"
 #include "conex/common/tree_spec.h"
@@ -46,7 +47,8 @@ class Solver {
 
  private:
   void BuildInternal(const Problem& problem,
-                     const SolverConfiguration& config);
+                     const SolverConfiguration& config,
+                     const CliqueTree* tree_override = nullptr);
   void BuildFromTree(const Problem& problem,
                      const TreeSpec& tree,
                      const SolverConfiguration& config);

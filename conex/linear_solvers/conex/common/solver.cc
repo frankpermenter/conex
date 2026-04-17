@@ -8,6 +8,7 @@
 #include "conex/common/sparse_quadratic_term.h"
 #include "conex/common/sparse_equality_constraint.h"
 #include "conex/common/structural_rank.h"
+#include "conex/tree_solver/assembler_adapter.h"
 #include "conex/tree_solver/kkt_solver_factory.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
 
@@ -66,7 +67,8 @@ const std::vector<int>& Solver::dual_variables(ConstraintId id) const {
 }
 
 void Solver::BuildInternal(const Problem& problem,
-                           const SolverConfiguration& config) {
+                           const SolverConfiguration& config,
+                           const CliqueTree* tree_override) {
   const int n = problem.num_variables();
   cm_ = std::make_unique<ConstraintManager>(n);
 
@@ -120,28 +122,62 @@ void Solver::BuildInternal(const Problem& problem,
     }, problem.constraint(i));
   }
 
-  tree_solver_ = MakeTreeSolver(cm_.get(), config);
+  if (tree_override) {
+    // Use the provided clique tree instead of computing one.
+    auto assemblers = cm_->clique_assemblers();
+    int num_primal = problem.num_variables();
+    auto ts = std::make_unique<SymmetricLinearSystemTreeSolver>();
+    std::vector<SupernodalAssemblerBase*> decomposed;
+    std::vector<std::vector<int>> maximal_cliques(tree_override->supernodes.size());
+    for (int i = 0; i < (int)tree_override->supernodes.size(); ++i) {
+      maximal_cliques[i] = tree_override->supernodes[i];
+      maximal_cliques[i].insert(maximal_cliques[i].end(),
+                                tree_override->separators[i].begin(),
+                                tree_override->separators[i].end());
+      std::sort(maximal_cliques[i].begin(), maximal_cliques[i].end());
+    }
+    for (auto* assembler : assemblers) {
+      auto subs = assembler->Decompose(maximal_cliques);
+      for (auto* sub : subs) {
+        auto adapter = std::make_unique<AssemblerAdapter>(sub);
+        bool is_pd = true;
+        for (int v : sub->variables())
+          if (v >= num_primal) { is_pd = false; break; }
+        adapter->set_contribution_type(
+            is_pd ? ContributionType::kPositiveDefinite
+                  : ContributionType::kIndefinite);
+        ts->push_back(std::move(adapter));
+      }
+    }
+    ts->SetUseGenericFactorization(config.tree.use_generic_factorization);
+    ts->SetUseLUForIndefinite(config.tree.use_lu_for_indefinite);
+    ts->FinalizeStructure(*tree_override, config.rhs_cols);
+    ts->SetFactorizationMode(config.tree.left_looking);
+    ts->EnableAutoUpdateAtAssemble(true);
+    ts->SetNumThreads(config.num_threads);
+    tree_solver_ = std::move(ts);
+  } else {
+    tree_solver_ = MakeTreeSolver(cm_.get(), config);
+  }
   RegisterAssemblersWithTreeSolver();
 }
 
 void Solver::BuildFromTree(const Problem& problem,
                            const TreeSpec& tree,
                            const SolverConfiguration& config) {
-  builder_ = std::make_unique<TreeSolverBuilder>();
+  // Use the TreeSolverBuilder to convert TreeSpec → CliqueTree,
+  // then forward to BuildInternal which creates proper assemblers.
+  auto builder = std::make_unique<TreeSolverBuilder>();
 
   std::vector<int> cids(tree.num_cliques());
   for (int k = 0; k < tree.num_cliques(); ++k) {
     if (tree.parent(k) < 0)
-      cids[k] = builder_->AddClique();
+      cids[k] = builder->AddClique();
     else
-      cids[k] = builder_->AddClique(cids[tree.parent(k)]);
+      cids[k] = builder->AddClique(cids[tree.parent(k)]);
   }
 
-  linear_assemblers_.resize(problem.num_constraints(), nullptr);
-  quadratic_assemblers_.resize(problem.num_constraints(), nullptr);
-
   int next_dual = problem.num_variables();
-
   for (int i = 0; i < problem.num_constraints(); ++i) {
     int clique = tree.clique_of(i);
     std::visit([&](const auto& data) {
@@ -149,11 +185,11 @@ void Solver::BuildFromTree(const Problem& problem,
       if constexpr (std::is_same_v<T, Problem::LinearConstraintData> ||
                      std::is_same_v<T, Problem::SOCConstraintData>) {
         Eigen::MatrixXd Ad(data.A);
-        builder_->AddLinearConstraint(cids[clique], Ad, data.b, data.vars);
+        builder->AddLinearConstraint(cids[clique], Ad, data.b, data.vars);
       } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
         int n = data.B.rows();
         auto psd = std::make_unique<PSDConstraint>(n, data.A_list, data.B);
-        builder_->AddPSDConstraint(cids[clique], std::move(psd), data.vars);
+        builder->AddPSDConstraint(cids[clique], std::move(psd), data.vars);
       } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
         int nv = static_cast<int>(data.vars.size());
         Eigen::MatrixXd Qd(nv, nv);
@@ -165,75 +201,34 @@ void Solver::BuildFromTree(const Problem& problem,
             for (int c = 0; c < nv; ++c)
               Qd(r, c) = Qfull(data.vars[r], data.vars[c]);
         }
-        builder_->AddCost(cids[clique], Qd, data.vars);
+        builder->AddCost(cids[clique], Qd, data.vars);
       } else if constexpr (std::is_same_v<T,
                                           Problem::EqualityConstraintData>) {
         int p = data.C.rows();
         std::vector<int> dual(p);
         for (int j = 0; j < p; ++j) dual[j] = next_dual++;
-        dual_var_map_[i] = dual;
         Eigen::MatrixXd Cd(data.C);
-        builder_->AddEquality(cids[clique], Cd, data.d,
+        builder->AddEquality(cids[clique], Cd, data.d,
                               data.primal_vars, dual);
       }
     }, problem.constraint(i));
   }
 
-  auto result = builder_->Build();
-  tree_solver_ = std::move(result.solver);
-  RegisterAssemblersWithTreeSolver();
+  // Build to get the CliqueTree, then discard the solver.
+  auto result = builder->Build();
+  // Forward to BuildInternal with the computed tree.
+  BuildInternal(problem, config, &result.clique_tree);
 }
 
 void Solver::BuildQuotientAMD(const Problem& problem,
                               const SolverConfiguration& config) {
-  builder_ = std::make_unique<TreeSolverBuilder>();
-  linear_assemblers_.resize(problem.num_constraints(), nullptr);
-  quadratic_assemblers_.resize(problem.num_constraints(), nullptr);
-
-  int next_dual = problem.num_variables();
-
-  std::vector<int> cids(problem.num_constraints());
-  for (int i = 0; i < problem.num_constraints(); ++i)
-    cids[i] = builder_->AddClique();
-
+  // One clique per constraint, let BuildFromTree handle the rest.
+  TreeSpec tree;
   for (int i = 0; i < problem.num_constraints(); ++i) {
-    std::visit([&](const auto& data) {
-      using T = std::decay_t<decltype(data)>;
-      if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
-        Eigen::MatrixXd Ad(data.A);
-        builder_->AddLinearConstraint(cids[i], Ad, data.b, data.vars);
-      } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
-        int n = data.B.rows();
-        auto psd = std::make_unique<PSDConstraint>(n, data.A_list, data.B);
-        builder_->AddPSDConstraint(cids[i], std::move(psd), data.vars);
-      } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
-        int nv = static_cast<int>(data.vars.size());
-        Eigen::MatrixXd Qd(nv, nv);
-        if (data.Q_dense.size() > 0) {
-          Qd = data.Q_dense;
-        } else {
-          Eigen::MatrixXd Qfull(data.Q_sparse);
-          for (int r = 0; r < nv; ++r)
-            for (int c = 0; c < nv; ++c)
-              Qd(r, c) = Qfull(data.vars[r], data.vars[c]);
-        }
-        builder_->AddCost(cids[i], Qd, data.vars);
-      } else if constexpr (std::is_same_v<T,
-                                          Problem::EqualityConstraintData>) {
-        int p = data.C.rows();
-        std::vector<int> dual(p);
-        for (int j = 0; j < p; ++j) dual[j] = next_dual++;
-        dual_var_map_[i] = dual;
-        Eigen::MatrixXd Cd(data.C);
-        builder_->AddEquality(cids[i], Cd, data.d,
-                              data.primal_vars, dual);
-      }
-    }, problem.constraint(i));
+    tree.AddClique();
+    tree.Assign(i, i);
   }
-
-  auto result = builder_->Build();
-  tree_solver_ = std::move(result.solver);
-  RegisterAssemblersWithTreeSolver();
+  BuildFromTree(problem, tree, config);
 }
 
 void Solver::RegisterAssemblersWithTreeSolver() {

@@ -67,6 +67,7 @@ class TreeSolverBuilder {
 
   struct Result {
     std::unique_ptr<SymmetricLinearSystemTreeSolver> solver;
+    CliqueTree clique_tree;
     int num_variables;
     int num_cliques;
     int max_clique_size;  // max(|sn| + |sep|) over all cliques
