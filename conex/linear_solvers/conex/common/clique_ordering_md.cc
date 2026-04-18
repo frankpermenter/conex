@@ -449,8 +449,9 @@ CliqueTree MakeCliqueTreeImpl(
   for (int v = 0; v < n; v++) deg[v] = Popcount(row(v), words);
 
   // Capture original non-delayed neighbors for each delayed variable
-  // (before elimination modifies adjacency).  Used in Phase 2 to detect
-  // structural dependency within supernodes.
+  // (before elimination modifies adjacency).  Fill-in can make two duals
+  // look different even when their original coupling is identical, so the
+  // structural dependency check must use the original adjacency.
   std::vector<std::vector<int>> original_primal_adj(static_cast<size_t>(n));
   if (has_delayed) {
     std::vector<int> tmp;
@@ -461,7 +462,6 @@ CliqueTree MakeCliqueTreeImpl(
       for (int u : tmp) {
         if (!is_delayed[u]) pa.push_back(u);
       }
-      // Already sorted since BitsToVec produces sorted output.
     }
   }
 
@@ -476,11 +476,14 @@ CliqueTree MakeCliqueTreeImpl(
   std::vector<uint64_t> clique_mask(words);
   std::vector<int> nbrs;
 
-  // Greedy matching: each non-delayed elimination claims at most one
-  // delayed neighbor.  Claimed duals enter at their current degree
-  // (immediately after their primal).  Unclaimed duals only enter
-  // when claimed or via fallback at high degree.
+  // Greedy matching: each non-delayed elimination attempts to insert
+  // one delayed neighbor.  A dual can only enter the queue if it can
+  // "claim" an unclaimed primal from its original neighbors — this
+  // prevents two duals from sharing the same sole primal coupling
+  // within a supernode (structural rank deficiency).
   std::vector<char> assigned(n, 0);
+  std::vector<char> primal_claimed(n, 0);  // primal_claimed[p]=1 if some dual claimed p
+  std::vector<int> recent_chain_duals;     // recently eliminated duals
 
   // Optimization 2: Bucket queue for O(1) min-degree extraction.
   // buckets[d] = doubly-linked list of vertices with degree d.
@@ -526,19 +529,26 @@ CliqueTree MakeCliqueTreeImpl(
            bucket_head[min_bucket] < 0)
       min_bucket++;
 
-    // If the bucket queue is empty, insert remaining delayed vertices
-    // at high degree so they're eliminated after any primals that
-    // re-enter the queue.
+    // If the bucket queue is empty, insert remaining delayed vertices.
+    // Each tries to claim an unclaimed primal; those that can't still
+    // enter at distinct high degrees (they must be eliminated).
     if (min_bucket >= static_cast<int>(bucket_head.size())) {
-      int high_deg = static_cast<int>(bucket_head.size()) - 1;
+      int high_deg = static_cast<int>(bucket_head.size());
       for (int v = 0; v < n; v++) {
         if (deg[v] >= 0 && is_delayed[v] && !assigned[v]) {
+          // Try to claim an eliminated primal for this fallback dual.
+          const auto& v_adj = original_primal_adj[static_cast<size_t>(v)];
+          for (int p : v_adj) {
+            if (!primal_claimed[p] && deg[p] < 0) {
+              primal_claimed[p] = 1; break;
+            }
+          }
           assigned[v] = 1;
-          // Grow bucket_head if needed.
           if (high_deg >= static_cast<int>(bucket_head.size()))
             bucket_head.resize(high_deg + 1, -1);
           bucket_insert(v, high_deg);
           if (high_deg < min_bucket) min_bucket = high_deg;
+          high_deg++;
         }
       }
       // Re-scan after insertion.
@@ -549,6 +559,11 @@ CliqueTree MakeCliqueTreeImpl(
 
     int best = bucket_head[min_bucket];
     bucket_remove(best, min_bucket);
+
+    // Structural dependency check at elimination time: if best is
+    // delayed, compare its original primal fingerprint against all
+    // recently eliminated duals.  If dependent, defer best to a very
+    // high degree and pick the next vertex instead.
     auto t1 = Clock::now();
 
     order.push_back(best);
@@ -557,47 +572,72 @@ CliqueTree MakeCliqueTreeImpl(
     BitsToVec(rb, words, n, &nbrs);
     auto t2 = Clock::now();
 
-    // Greedy matching: only non-delayed (primal) eliminations claim
-    // a delayed neighbor, subject to structural independence.
+    // Reversed claim: when a primal is eliminated, each unassigned
+    // dual neighbor may enter the queue only if it can "claim" an
+    // unclaimed primal from its original neighbors.  This ensures
+    // each dual in a supernode couples to at least one unique primal,
+    // preventing structural rank deficiency.
     if (has_delayed && !is_delayed[best]) {
-      // Collect alive primal neighbors (approximates supernode primals).
+      // Collect alive primal neighbors (sorted; approximates supernode primals).
       std::vector<int> alive_primals;
       for (int v : nbrs) {
         if (!is_delayed[v]) alive_primals.push_back(v);
       }
       std::sort(alive_primals.begin(), alive_primals.end());
 
-      // Collect already-assigned duals in neighborhood and their local
-      // primal fingerprints (original primal adj ∩ alive_primals).
-      std::vector<std::vector<int>> assigned_fingerprints;
-      for (int d : nbrs) {
-        if (!is_delayed[d] || !assigned[d] || deg[d] < 0) continue;
-        const auto& dadj = original_primal_adj[static_cast<size_t>(d)];
+      // Fingerprint: original primal adj ∩ alive primals.
+      auto fingerprint = [&](int d) {
+        const auto& adj = original_primal_adj[static_cast<size_t>(d)];
         std::vector<int> fp;
-        std::set_intersection(dadj.begin(), dadj.end(),
+        std::set_intersection(adj.begin(), adj.end(),
                               alive_primals.begin(), alive_primals.end(),
                               std::back_inserter(fp));
-        assigned_fingerprints.push_back(std::move(fp));
+        return fp;
+      };
+
+      // Collect fingerprints of assigned duals in neighborhood.
+      std::vector<std::vector<int>> existing_fps;
+      for (int d : nbrs) {
+        if (!is_delayed[d] || !assigned[d]) continue;
+        existing_fps.push_back(fingerprint(d));
       }
 
       for (int u : nbrs) {
         if (!is_delayed[u] || assigned[u]) continue;
-        // Compute u's local primal fingerprint.
-        const auto& uadj = original_primal_adj[static_cast<size_t>(u)];
-        std::vector<int> u_fp;
-        std::set_intersection(uadj.begin(), uadj.end(),
-                              alive_primals.begin(), alive_primals.end(),
-                              std::back_inserter(u_fp));
-        // Check structural dependency against assigned duals.
+
+        // Gate 1: dual must claim an unclaimed primal.
+        // Dual must claim an eliminated, unclaimed primal from its
+        // original neighbors.  Only eliminated primals are in the
+        // forming supernode chain, so claiming one guarantees the
+        // dual has a unique primal coupling within the supernode.
+        const auto& u_adj = original_primal_adj[static_cast<size_t>(u)];
+        int claimed_p = -1;
+        for (int p : u_adj) {
+          if (!primal_claimed[p] && (deg[p] < 0 || p == best)) {
+            claimed_p = p;
+            break;
+          }
+        }
+        if (claimed_p < 0) continue;
+
+        // Gate 2: fingerprint must differ from all assigned duals.
+        auto u_fp = fingerprint(u);
         bool dep = false;
-        for (const auto& afp : assigned_fingerprints) {
-          if (u_fp == afp) { dep = true; break; }
+        for (const auto& efp : existing_fps) {
+          if (u_fp == efp) { dep = true; break; }
         }
         if (dep) continue;
+
+        primal_claimed[claimed_p] = 1;
         assigned[u] = 1;
         bucket_insert(u, deg[u]);
         break;
       }
+    }
+
+    // Track recently eliminated duals for cross-step fingerprint checks.
+    if (has_delayed && is_delayed[best]) {
+      recent_chain_duals.push_back(best);
     }
 
     // Build later[best] = living neighbors.

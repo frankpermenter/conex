@@ -310,13 +310,20 @@ class DynamicSubsystem : public KKTSubsystem {
 
   bool DoEliminateSupernodeColumns() override {
     if (use_lu()) {
-      auto sn = supernode_submatrix();
-      if (sn.rows() == 0) return true;
+      const int nr = supernode_submatrix().rows();
+      if (nr == 0) return true;
       // Supernode submatrix is stored lower-triangular (symmetric).
-      // LU needs the full matrix.
-      MatrixXd sn_full(sn);
-      sn_full.triangularView<Eigen::StrictlyUpper>() = sn.transpose();
+      // LU needs the full symmetric matrix, copied to owned storage.
+      MatrixXd sn_full(nr, nr);
+      sn_full.triangularView<Eigen::Lower>() = supernode_submatrix();
+      sn_full.triangularView<Eigen::StrictlyUpper>() =
+          sn_full.transpose();
       lu_.compute(sn_full);
+      // Check for singular or NaN blocks.
+      double det = std::abs(lu_.determinant());
+      if (!(det > 0)) {  // catches 0, NaN, -0
+        return false;
+      }
       return true;
     }
     if (use_rldlt()) {

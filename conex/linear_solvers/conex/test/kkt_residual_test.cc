@@ -13,7 +13,8 @@
 #include "conex/tree_solver/kkt_tree_solver.h"
 using namespace conex;
 
-bool TestInstance(const char* name, const char* path) {
+bool TestInstance(const char* name, const char* path,
+                  const SolverConfiguration& config = SolverConfiguration{}) {
   printf("=== %s ===\n", name);
   auto [prob_full, info] = ReadQPS(path);
   int n = info.num_variables;
@@ -79,7 +80,6 @@ bool TestInstance(const char* name, const char* path) {
          qp.num_constraints(), qp.num_variables());
 
   // Build solver with automatic tree (AMD ordering).
-  SolverConfiguration config;
   auto solver = Solver::Build(qp, config);
   auto* kkt = solver.solver();
   auto* ts = solver.tree_solver();
@@ -91,6 +91,17 @@ bool TestInstance(const char* name, const char* path) {
   printf("  nv=%d, ts=%s, eq_assemblers=%d\n", nv,
          ts ? "yes" : "NULL",
          ts ? (int)ts->equality_sub_assemblers().size() : -1);
+  // Print dual variable range.
+  for (int i = 0; i < qp.num_constraints(); ++i) {
+    if (auto* ec = std::get_if<Problem::EqualityConstraintData>(
+            &qp.constraint(i))) {
+      const auto& dv = solver.dual_variables(i);
+      if (!dv.empty())
+        printf("  dual_vars[%d]: %d..%d (count=%d)\n",
+               i, dv.front(), dv.back(), (int)dv.size());
+      (void)ec;
+    }
+  }
   Eigen::VectorXd rhs = Eigen::VectorXd::Zero(nv);
   if (qp.has_linear_cost())
     rhs.head(n) = -qp.linear_cost();
@@ -150,13 +161,18 @@ bool TestInstance(const char* name, const char* path) {
   return pass;
 }
 
-int main() {
+int main(int argc, char** argv) {
+  SolverConfiguration config;
+  if (argc > 1 && std::string(argv[1]) == "--lu") {
+    config.tree.use_lu_for_indefinite = true;
+    printf("Using LU for indefinite blocks\n\n");
+  }
   const char* dir = "/agent-workspace/problem_libraries/maros_meszaros/QPS_Files/";
   bool all_pass = true;
   char path[512];
   for (const char* name : {"CVXQP1_S", "CVXQP2_S", "CVXQP3_S", "GOULDQP3"}) {
     snprintf(path, sizeof(path), "%s%s.QPS", dir, name);
-    all_pass &= TestInstance(name, path);
+    all_pass &= TestInstance(name, path, config);
   }
   printf("%s\n", all_pass ? "ALL PASSED" : "SOME FAILED");
   return all_pass ? 0 : 1;
