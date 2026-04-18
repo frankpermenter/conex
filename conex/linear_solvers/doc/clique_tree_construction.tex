@@ -1,0 +1,236 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage[margin=1in]{geometry}
+
+\title{Clique Tree Construction via AMD Elimination\\
+  {\large Implementation notes for \texttt{clique\_ordering\_md.cc}}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+The function \texttt{MakeCliqueTreeMinDegreeFromRowSupports} builds a
+supernodal clique tree from a set of row supports (the sparsity pattern of
+the constraint matrices) and, optionally, the sparsity of a quadratic cost
+matrix~$Q$.  The algorithm proceeds in two phases:
+\begin{enumerate}
+  \item \textbf{Phase~1} (AMD): compute an elimination ordering that
+    minimises fill-in, producing for each vertex~$v$ its \emph{later
+    set}~$\ell(v)$ (the living neighbours at the moment $v$ is eliminated).
+  \item \textbf{Phase~2} (clique tree construction): detect supernodes,
+    build the tree, merge small supernodes, reorder, and compute a
+    post-order traversal.
+\end{enumerate}
+
+Phase~2 is exposed independently as
+\texttt{MakeCliqueTreeFromEliminationOrdering} so that callers can supply
+their own ordering.
+
+\section{Phase 1: Bitset Approximate Minimum Degree}
+
+\subsection{Graph representation}
+
+Variables are compacted into $\{0,\ldots,n{-}1\}$.  The adjacency graph is
+stored as a dense bitset: each row is a packed array of $\lceil n/64\rceil$
+64-bit words, so edge queries and clique-fill operations reduce to bitwise
+OR/AND on whole words.
+
+The initial edges come from two sources:
+\begin{itemize}
+  \item \textbf{Row supports.}  Each row support $\{v_1,\ldots,v_k\}$
+    induces a clique: every pair $(v_i,v_j)$ gets an edge.
+  \item \textbf{$Q$ sparsity.}  If a sparse symmetric matrix~$Q$ is
+    provided, its nonzero pattern adds individual pairwise edges.
+\end{itemize}
+
+\subsection{Bucket-queue min-degree}
+
+A bucket queue (doubly-linked lists indexed by degree) gives $O(1)$
+extraction of the minimum-degree vertex~$v^*$ at each step.  The
+elimination step for $v^*$ is:
+
+\begin{enumerate}
+  \item Record $\ell(v^*) \gets \mathrm{Adj}(v^*)$ (the living
+    neighbours).
+  \item \textbf{Fill-in:} make $\ell(v^*)$ a clique by ORing
+    each neighbour's row with the \emph{clique mask} (the OR of all
+    neighbour bits).  Only nonzero words of the mask are iterated.
+  \item \textbf{Removal:} clear $v^*$'s row and remove it from every
+    neighbour's adjacency.  Update degrees and bucket positions.
+\end{enumerate}
+
+\subsection{Delayed variables}\label{sec:delayed}
+
+In KKT systems the matrix has saddle-point structure
+\[
+  K = \begin{pmatrix} H & C^\top \\ C & 0 \end{pmatrix},
+\]
+where $H\succ 0$ on its support.  The dual (equality-constraint) variables
+contribute zero to the diagonal; eliminating them first would create a
+$0/0$ pivot.  These variables are passed as the
+\texttt{delayed\_variables} parameter.
+
+\paragraph{Unified queue with gate check.}
+All variables --- primal and delayed --- enter the bucket queue at
+initialisation and compete by minimum degree.  Delayed variables are
+treated identically to primals except for a \emph{gate check} applied
+when they reach the front of the queue.
+
+When the minimum-degree vertex~$v^*$ is popped:
+\begin{itemize}
+  \item If $v^*$ is primal, it is eliminated immediately (standard AMD).
+  \item If $v^*$ is delayed, it must first \emph{claim} an unclaimed,
+    already-eliminated primal from its original (pre-fill-in) neighbours.
+    Each primal can be claimed by at most one dual.  If a claimable primal
+    is available, $v^*$ is eliminated.  If not, $v^*$ is \emph{skipped}:
+    it remains in the queue at its current degree and the next vertex is
+    tried.
+\end{itemize}
+
+Skipped duals are retried on the next step.  As more primals are
+eliminated, more claims become available, so skipped duals eventually
+pass.  If no vertex in the queue passes (all remaining vertices are
+gated duals with no claimable primal), the first skipped dual is accepted
+unconditionally as a fallback.
+
+\subsection{Structural independence guarantee}\label{sec:struct-indep}
+
+Two delayed variables are \emph{structurally dependent} in a supernodal
+block if, restricted to the primals within that supernode, their rows of
+the constraint matrix~$C$ have identical sparsity patterns.  The local
+block is then rank-deficient regardless of the numerical values.
+
+\paragraph{Why the gate prevents this.}
+The primal-claim gate ensures that within any supernode, each dual
+variable couples to at least one primal that no other dual in the tree
+has claimed.  Because the gate requires the claimed primal to be
+already eliminated (\texttt{deg[p] < 0}), and the min-degree ordering
+naturally places the claimed primal nearby in the elimination order,
+the claimed primal will typically be in the same supernode.
+
+For well-posed problems (number of duals~$\le$~number of primals),
+every dual can find a unique primal to claim.  Two duals in the same
+supernode therefore couple to at least two distinct primals, making
+their rows linearly independent.
+
+\paragraph{Original primal adjacency.}
+Before the elimination loop begins, for each delayed variable~$v$ we
+record $\mathrm{OrigPrimalAdj}(v)$: the sorted list of~$v$'s non-delayed
+neighbours in the original (unfilled) graph.  The gate check searches
+this list for an unclaimed eliminated primal.  The original adjacency is
+used because it reflects the true $C$-matrix coupling; fill-in edges
+do not contribute matrix entries.
+
+\section{Phase 2: Clique tree from an elimination ordering}
+
+Phase~2 is implemented in \texttt{MakeCliqueTreeFromEliminationOrdering}.
+Its input is an \texttt{EliminationOrdering} containing:
+\begin{itemize}
+  \item \texttt{order}: the elimination sequence in compact variable
+    indices,
+  \item $\ell(v)$ (\texttt{later}): the living neighbours of $v$ when
+    it was eliminated,
+  \item \texttt{parent\_col}$[v]$: the first element of $\ell(v)$ in
+    elimination order,
+  \item \texttt{unique\_vars}: the compact $\to$ original variable
+    mapping.
+\end{itemize}
+
+\subsection{Later-set sorting and parent computation}
+
+For each vertex in elimination order, $\ell(v)$ is sorted by elimination
+position.  The first element becomes $\mathrm{parent\_col}(v)$: the
+variable eliminated immediately after~$v$ among its neighbours.  This
+defines the \emph{elimination tree}.
+
+\subsection{Supernode detection}
+
+A \emph{supernode} is a maximal chain
+$v_1, v_2, \ldots, v_s$ of consecutively eliminated vertices such that for
+each consecutive pair $(v_i, v_{i+1})$:
+\begin{enumerate}
+  \item $v_{i+1} = \mathrm{parent\_col}(v_i)$ (the parent in the
+    elimination tree),
+  \item $v_{i+1}$ is eliminated immediately after~$v_i$
+    ($\mathrm{pos}(v_{i+1}) = \mathrm{pos}(v_i) + 1$),
+  \item $\ell(v_i) = \{v_{i+1}\} \cup \ell(v_{i+1})$ (identical fill
+    pattern shifted by one).
+\end{enumerate}
+
+Condition~3 means that eliminating $v_i$ creates no new fill beyond the
+edge to $v_{i+1}$; the two columns can be combined into one dense
+block.  The algorithm scans the elimination order and greedily extends
+each chain until one of the three conditions fails.
+
+\subsection{Clique and tree construction}
+
+For each supernode~$S_i = \{v_1,\ldots,v_s\}$, the \emph{maximal clique}
+is
+\[
+  C_i = S_i \cup \ell(v_1),
+\]
+that is, the supernode columns plus all of their shared later neighbours.
+Variables are mapped back to the original numbering via
+\texttt{unique\_vars}.
+
+The \emph{tree parent} of supernode~$S_i$ is the supernode containing
+$\mathrm{parent\_col}(v_s)$, the parent of the last column in the chain.
+
+The \emph{separator} of $S_i$ is $C_i \cap C_{\mathrm{parent}(i)}$: the
+variables shared with the parent's clique.  The supernode is
+$C_i \setminus \text{separator}$: the variables owned exclusively by this
+node.
+
+\subsection{Supernode merging}
+
+Small supernodes (size $\le$ \texttt{max\_merge\_supernode\_size}) are
+merged into their parents.  Merging absorbs the child's supernode variables
+into the parent's supernode.  Children of the merged node are reparented to
+the grandparent.  This is iterated until no more merges are possible, then
+the tree is compacted to remove empty nodes.
+
+Merging reduces the number of tree nodes (and thus the number of
+factorisation steps), at the cost of potentially enlarging the dense blocks.
+
+\subsection{Supernode reordering}
+
+Within each clique the supernode variables are reordered using one of:
+\begin{itemize}
+  \item \texttt{SUPERNODE\_REORDER\_BFS\_GREEDY}: BFS-based greedy
+    ordering that tries to place variables contiguously.
+  \item \texttt{SUPERNODE\_REORDER\_PQ\_TREE}: PQ-tree based consecutive
+    arrangement.
+  \item \texttt{SUPERNODE\_REORDER\_NONE}: keep the ordering from the
+    elimination phase.
+\end{itemize}
+
+\subsection{Post-order traversal}
+
+Finally, a post-order traversal of the tree is computed via iterative DFS.
+The result is stored in
+\texttt{ct.post\_order\_position\_to\_clique}, which gives the node index
+for each position in the traversal.  The supernodal Cholesky factorisation
+processes nodes in this order so that children are factored before their
+parents.
+
+\section{Output}
+
+The returned \texttt{CliqueTree} contains:
+\begin{itemize}
+  \item \texttt{supernodes}$[i]$: variables owned by node~$i$ (in
+    original numbering),
+  \item \texttt{separators}$[i]$: variables shared with the parent,
+  \item \texttt{node\_to\_parent}$[i]$: parent node index ($-1$ for
+    roots),
+  \item \texttt{post\_order\_position\_to\_clique}: post-order traversal.
+\end{itemize}
+
+The optional output \texttt{maximal\_cliques\_out} contains
+$\texttt{supernodes}[i] \cup \texttt{separators}[i]$ for each node,
+corresponding to the maximal cliques of the filled graph.  Constraint
+decomposition (\texttt{Decompose}) uses these to assign each constraint
+row to the smallest containing clique.
+
+\end{document}
