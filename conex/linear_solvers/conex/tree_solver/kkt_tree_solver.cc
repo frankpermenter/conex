@@ -636,6 +636,7 @@ std::vector<int> T::ClassifyCliques(
       (*needs_indefinite)[match] = true;
     }
   }
+
   return adapter_to_clique;
 }
 

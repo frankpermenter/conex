@@ -448,6 +448,23 @@ CliqueTree MakeCliqueTreeImpl(
   std::vector<int> deg(n);
   for (int v = 0; v < n; v++) deg[v] = Popcount(row(v), words);
 
+  // Capture original non-delayed neighbors for each delayed variable
+  // (before elimination modifies adjacency).  Used in Phase 2 to detect
+  // structural dependency within supernodes.
+  std::vector<std::vector<int>> original_primal_adj(static_cast<size_t>(n));
+  if (has_delayed) {
+    std::vector<int> tmp;
+    for (int v = 0; v < n; ++v) {
+      if (!is_delayed[v]) continue;
+      BitsToVec(row(v), words, n, &tmp);
+      auto& pa = original_primal_adj[static_cast<size_t>(v)];
+      for (int u : tmp) {
+        if (!is_delayed[u]) pa.push_back(u);
+      }
+      // Already sorted since BitsToVec produces sorted output.
+    }
+  }
+
   std::vector<int> order;
   order.reserve(n);
 
@@ -521,8 +538,6 @@ CliqueTree MakeCliqueTreeImpl(
           if (high_deg >= static_cast<int>(bucket_head.size()))
             bucket_head.resize(high_deg + 1, -1);
           bucket_insert(v, high_deg);
-          fprintf(stderr, "FALLBACK: dual %d (deg=%d, high=%d, step=%d)\n",
-                  unique_vars[v], deg[v], high_deg, step);
           if (high_deg < min_bucket) min_bucket = high_deg;
         }
       }
@@ -543,16 +558,45 @@ CliqueTree MakeCliqueTreeImpl(
     auto t2 = Clock::now();
 
     // Greedy matching: only non-delayed (primal) eliminations claim
-    // a delayed neighbor.
+    // a delayed neighbor, subject to structural independence.
     if (has_delayed && !is_delayed[best]) {
+      // Collect alive primal neighbors (approximates supernode primals).
+      std::vector<int> alive_primals;
+      for (int v : nbrs) {
+        if (!is_delayed[v]) alive_primals.push_back(v);
+      }
+      std::sort(alive_primals.begin(), alive_primals.end());
+
+      // Collect already-assigned duals in neighborhood and their local
+      // primal fingerprints (original primal adj ∩ alive_primals).
+      std::vector<std::vector<int>> assigned_fingerprints;
+      for (int d : nbrs) {
+        if (!is_delayed[d] || !assigned[d] || deg[d] < 0) continue;
+        const auto& dadj = original_primal_adj[static_cast<size_t>(d)];
+        std::vector<int> fp;
+        std::set_intersection(dadj.begin(), dadj.end(),
+                              alive_primals.begin(), alive_primals.end(),
+                              std::back_inserter(fp));
+        assigned_fingerprints.push_back(std::move(fp));
+      }
+
       for (int u : nbrs) {
-        if (is_delayed[u] && !assigned[u]) {
-          assigned[u] = 1;
-          bucket_insert(u, deg[u]);
-          fprintf(stderr, "CLAIM: primal %d -> dual %d (deg=%d, step=%d)\n",
-                  unique_vars[best], unique_vars[u], deg[u], step);
-          break;
+        if (!is_delayed[u] || assigned[u]) continue;
+        // Compute u's local primal fingerprint.
+        const auto& uadj = original_primal_adj[static_cast<size_t>(u)];
+        std::vector<int> u_fp;
+        std::set_intersection(uadj.begin(), uadj.end(),
+                              alive_primals.begin(), alive_primals.end(),
+                              std::back_inserter(u_fp));
+        // Check structural dependency against assigned duals.
+        bool dep = false;
+        for (const auto& afp : assigned_fingerprints) {
+          if (u_fp == afp) { dep = true; break; }
         }
+        if (dep) continue;
+        assigned[u] = 1;
+        bucket_insert(u, deg[u]);
+        break;
       }
     }
 
@@ -621,24 +665,6 @@ CliqueTree MakeCliqueTreeImpl(
     t_bits += std::chrono::duration<double, std::micro>(t2 - t1).count();
     t_fillin += std::chrono::duration<double, std::micro>(t3 - t2).count();
     t_remove += std::chrono::duration<double, std::micro>(t4 - t3).count();
-  }
-
-  // DEBUG: check if var 143 is delayed.
-  if (has_delayed) {
-    for (int v = 0; v < n; ++v) {
-      if (unique_vars[v] == 143)
-        fprintf(stderr, "VAR143: compact=%d, is_delayed=%d, assigned=%d\n",
-                v, (int)is_delayed[v], (int)assigned[v]);
-    }
-  }
-  // DEBUG: print AMD elimination order.
-  if (has_delayed) {
-    fprintf(stderr, "AMD_ORDER(%d vars, %d delayed):", n,
-            (int)delayed_variables.size());
-    for (int i = 0; i < n; ++i)
-      fprintf(stderr, " %d%s", unique_vars[order[i]],
-              is_delayed[order[i]] ? "*" : "");
-    fprintf(stderr, "\n");
   }
 
   // Package Phase 1 results for Phase 2.
@@ -849,21 +875,6 @@ CliqueTree MakeCliqueTreeFromEliminationOrdering(
         }
       }
     }
-  }
-
-  // DEBUG: print post-order variable sequence.
-  {
-    fprintf(stderr, "POST_ORDER(%d nodes):", (int)ct.supernodes.size());
-    for (int pi = 0; pi < (int)ct.post_order_position_to_clique.size(); ++pi) {
-      int ci = ct.post_order_position_to_clique[pi];
-      fprintf(stderr, " [");
-      for (int v : ct.supernodes[ci])
-        fprintf(stderr, "%d%s,", unique_vars[static_cast<size_t>(v)],
-                v >= (int)unique_vars.size() ? "?" :
-                (unique_vars[v] >= 100 ? "*" : ""));  // hack: dual vars >= 100
-      fprintf(stderr, "]");
-    }
-    fprintf(stderr, "\n");
   }
 
   if (maximal_cliques_out) *maximal_cliques_out = cliques;
