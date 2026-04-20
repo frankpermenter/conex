@@ -298,7 +298,7 @@ TEST(PSD_AP, ChordalMatchesNonChordal) {
   // Recover optimization variables x from each path via x = (A^T A)^{-1} A^T (s - b).
   // x is unambiguous — no ordering issues.
   auto recover_x = [](const AffineProjection& affine, const RowSpace& s) {
-    auto* kkt = affine.solver()->solver();
+    auto* kkt = affine.solver()->kkt();
     RowSpace b = kkt->GetAffineTerm();
     RowSpace r = EuclideanJordanAlgebra::addScaled(s, b, 1.0, -1.0);
     auto rhs = kkt->MakeSolverRHS();

@@ -26,7 +26,7 @@ SparseLeastSquaresResult SparseLeastSquares(
   problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(A.rows()), vars);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto t1 = clock::now();
 
@@ -74,7 +74,7 @@ SparseQuadraticTermLeastSquaresResult SparseQuadraticTermLeastSquares(
   problem.AddQuadraticCost(Q, vars);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto t1 = clock::now();
 

@@ -56,7 +56,7 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
   problem.AddLinearConstraint(A, b, vars);
   problem.SetLinearCost(c);
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto cost_rhs = solver.MakeCostRHS();
 
@@ -118,7 +118,7 @@ TEST(GeodesicBarrierQP, FullDecomposition) {
   problem.AddLinearConstraint(A, b, vars);
   problem.SetLinearCost(c);
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto cost_rhs = solver.MakeCostRHS();
 
@@ -213,7 +213,7 @@ TEST(GeodesicBarrierQP, MultipleConstraints) {
   problem.AddLinearConstraint(A2, b2, vars);
   problem.SetLinearCost(c);
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto cost_rhs = solver.MakeCostRHS();
 
@@ -310,7 +310,7 @@ TEST(GeodesicBarrierQP, HybridCenteringLoop) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
 
@@ -386,7 +386,7 @@ TEST(GeodesicSDP, CenterConvergence) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
@@ -446,7 +446,7 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
 
   lp_problem.SetLinearCost(c);
   auto lp_solver = Solver::Build(lp_problem);
-  auto* lp_kkt = lp_solver.solver();
+  auto* lp_kkt = lp_solver.kkt();
   auto lp_cost = lp_solver.MakeCostRHS();
   RowSpace lp_W = lp_kkt->MakeRowSpace();
   setFromVector(lp_W, VectorXd::Ones(m) + pert);
@@ -469,7 +469,7 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
   sdp_problem.SetLinearCost(c);
 
   auto sdp_solver = Solver::Build(sdp_problem);
-  auto* sdp_kkt = sdp_solver.solver();
+  auto* sdp_kkt = sdp_solver.kkt();
   auto sdp_cost = sdp_solver.MakeCostRHS();
   RowSpace sdp_W = sdp_kkt->MakeRowSpace();
   // Set W = diag(ones + pert) as an m×m matrix.
@@ -543,7 +543,7 @@ TEST(GeodesicSDP, NonDiagonalCenter) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
 
@@ -604,7 +604,7 @@ TEST(GeodesicSDP, NonDiagonalLP) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
 
@@ -653,7 +653,7 @@ TEST(GeodesicSDP, HybridCenteringLoop) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
 
@@ -747,7 +747,7 @@ SOCTestProblem MakeSOCTestProblem(int vec_dim, int p, int seed) {
 TEST(GeodesicSOC, CenterConvergence) {
   auto tp = MakeSOCTestProblem(4, 5, 42);
   auto solver = Solver::Build(tp.problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(tp.c);
 
@@ -776,7 +776,7 @@ TEST(GeodesicSOC, LP) {
   VectorXd c_lp = tp.c + 0.5 * VectorXd::Random(tp.p);
   tp.problem.SetLinearCost(c_lp);
   auto solver = Solver::Build(tp.problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c_lp);
 
@@ -799,7 +799,7 @@ TEST(GeodesicSOC, LP) {
 TEST(GeodesicSOC, HybridCenteringLoop) {
   auto tp = MakeSOCTestProblem(4, 5, 42);
   auto solver = Solver::Build(tp.problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(tp.c);
 
@@ -838,7 +838,7 @@ TEST(GeodesicSOC, HybridCenteringLoop) {
 TEST(GeodesicSOC, Hybrid) {
   auto tp = MakeSOCTestProblem(4, 5, 42);
   auto solver = Solver::Build(tp.problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(tp.c);
 
@@ -887,7 +887,7 @@ TEST(GeodesicSDP, InterleavedVariablesRandom) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto cost_rhs = solver.MakeCostRHS();
 
@@ -963,7 +963,7 @@ TEST(GeodesicSDP, InterleavedVariablesChordal) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto cost_rhs = solver.MakeCostRHS();
 
@@ -1024,7 +1024,7 @@ TEST(GeodesicSDP, MixedPSDNonneg) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
@@ -1085,7 +1085,7 @@ TEST(GeodesicSDP, MixedPSDNonnegDisjoint) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
 

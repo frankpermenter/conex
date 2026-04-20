@@ -176,7 +176,7 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   auto t1 = Clock::now();
   double build_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   int nv = kkt->number_of_variables();
   printf("  KKT vars=%d, build=%.1f ms\n", nv, build_ms);
   if (solver.was_reduced()) {
@@ -261,7 +261,7 @@ ProfileResult ProfileFactorization(const Model& problem,
 
   auto t0 = Clock::now();
   auto solver = Solver::Build(problem, cfg);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto t1 = Clock::now();
   res.build_us = us(t0, t1);
   res.num_vars = kkt->number_of_variables();

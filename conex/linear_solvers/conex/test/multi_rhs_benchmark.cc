@@ -102,7 +102,7 @@ Solver BuildLQR(int nx, int nu, int T) {
   problem.AddEqualityConstraint(C_eq, d_eq, all_vars);
 
   auto solver = Solver::Build(problem);
-  solver.solver()->AssembleAndFactor();
+  solver.kkt()->AssembleAndFactor();
   return solver;
 }
 
@@ -191,7 +191,7 @@ int main(int argc, char* argv[]) {
   printf("  vars=%d\n\n", T * (nx + nu) + nx);
 
   auto solver = conex::BuildLQR(nx, nu, T);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   int repeats = 50;
   for (int n_rhs : {2, 4, 8, 16}) {

@@ -21,7 +21,7 @@ TEST(LineSearchBug, EvaluatedNormExceedsBound) {
       "/agent-workspace/problem_libraries/SDPLIB/data/truss8.dat-s");
   SolverConfiguration cfg;
   auto solver = Solver::Build(problem, cfg);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto cost_rhs = kkt->MakeSolverRHS();
   if (problem.has_linear_cost())

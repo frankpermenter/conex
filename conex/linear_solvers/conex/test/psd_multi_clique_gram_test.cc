@@ -68,7 +68,7 @@ Model MakeCyclicRingPSD(int m) {
 double GramRoundTripError(const Model& p, int seed,
                           const SolverConfiguration& cfg) {
   auto solver = Solver::Build(p, cfg);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   const int nvars = kkt->number_of_variables();
 
   auto W = kkt->MakeRowSpace();
@@ -251,7 +251,7 @@ TEST(PSDMultiCliqueGram, DenseRoundTripMulti) {
   SolverConfiguration cfg;
   cfg.tree.max_merge_supernode_size = 0;
   auto solver = Solver::Build(p, cfg);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   // Get the Gram BEFORE factor by calling Assemble (not AssembleAndFactor).
   kkt->Assemble();
@@ -276,7 +276,7 @@ TEST(PSDMultiCliqueGram, CompareAssembledVsPrimitives) {
   SolverConfiguration cfg;
   cfg.tree.max_merge_supernode_size = 0;
   auto solver = Solver::Build(p, cfg);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   const int n = kkt->number_of_variables();
 
   auto W = kkt->MakeRowSpace();

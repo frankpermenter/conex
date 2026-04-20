@@ -42,7 +42,7 @@ void RunCase(const std::string& name,
   conex::SolverConfiguration cfg;
   cfg.tree.max_merge_supernode_size = merge_size;
   auto solver = conex::Solver::Build(problem, cfg);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   const int nvars = kkt->number_of_variables();
   printf("  variables: %d\n", nvars);
 

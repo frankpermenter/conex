@@ -41,7 +41,7 @@ int main(int argc, char** argv) {
   conex::SolverConfiguration cfg;
   cfg.tree.max_merge_supernode_size = 100000;  // force single clique
   auto solver = conex::Solver::Build(problem, cfg);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   const int nvars = kkt->number_of_variables();
 
   // Set scaling W = e (identity) and factor.

@@ -113,6 +113,7 @@ add_library(algorithms
   conex/algorithms/lqr_tree_solver.cc
   conex/algorithms/tree_solver_builder.cc
   conex/algorithms/self_dual_embedding.cc
+  conex/common/kkt_system.cc
   conex/common/solver.cc
 )
 target_link_libraries(algorithms PUBLIC sparse_linear_constraint)

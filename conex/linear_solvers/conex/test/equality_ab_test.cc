@@ -37,7 +37,7 @@ struct RunResult {
 static RunResult RunIPM(Model& prob, const Eigen::VectorXd& cost,
                          int n_primal, bool verbose = true) {
   auto solver = Solver::Build(prob);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = BuildCostRHS(*kkt, cost);
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);

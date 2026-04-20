@@ -12,7 +12,7 @@ AffineProjection AffineProjection::Build(const Model& problem) {
   // setOnes produces the EJA identity for each segment:
   //   nonneg → all-ones vector (diag(1) weighting)
   //   PSD    → identity matrix  (kron(I,I) weighting via Cholesky)
-  auto* kkt = ap.solver_.solver();
+  auto* kkt = ap.solver_.kkt();
   RowSpace weights = kkt->MakeRowSpace();
   EuclideanJordanAlgebra::setOnes(weights);
   kkt->SetWeights(weights);
@@ -22,7 +22,7 @@ AffineProjection AffineProjection::Build(const Model& problem) {
 }
 
 void AffineProjection::Project(RowSpace& s) const {
-  auto* kkt = solver_.solver();
+  auto* kkt = solver_.kkt();
   RowSpace b = kkt->GetAffineTerm();
 
   // Solve (A^T A) x = A^T (s - b).  Then s = Ax + b.
@@ -38,11 +38,11 @@ void AffineProjection::Project(RowSpace& s) const {
 }
 
 RowSpace AffineProjection::MakeVariable() const {
-  return solver_.solver()->MakeRowSpace();
+  return solver_.kkt()->MakeRowSpace();
 }
 
 RowSpace AffineProjection::GetAffineTerm() const {
-  return solver_.solver()->GetAffineTerm();
+  return solver_.kkt()->GetAffineTerm();
 }
 
 }  // namespace conex

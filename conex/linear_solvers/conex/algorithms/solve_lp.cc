@@ -10,7 +10,7 @@ namespace conex {
 
 LPResult SolveLP(const Model& problem, double tolerance) {
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto cost_rhs = solver.MakeCostRHS();
 

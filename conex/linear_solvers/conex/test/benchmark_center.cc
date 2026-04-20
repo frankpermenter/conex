@@ -75,7 +75,7 @@ void RunCentering(Model& problem, const std::string& name, int max_iters) {
     printf("  KKT tree: %d cliques, max clique size %d\n", nc, max_cs);
   }
 
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 
@@ -236,7 +236,7 @@ void RunCenteringRaw(Model& problem, const std::string& name, int max_iters) {
     printf("  KKT tree: %d cliques, max clique size %d\n", nc, max_cs);
   }
 
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   // Initialize W = α · I per segment, where α matches the scale of
   // the A matrices. Compute A^T(I) to get per-variable scale from A,

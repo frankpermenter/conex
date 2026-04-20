@@ -29,7 +29,7 @@ IRLSResult SolveIRLS(
   problem.AddLinearConstraint(A, b, vars);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   kkt->AssembleAndFactor();
 
   auto x = kkt->MakeSolverRHS();

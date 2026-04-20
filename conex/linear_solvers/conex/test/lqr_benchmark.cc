@@ -112,7 +112,7 @@ void RunLQR(int nx, int nu, int T) {
 
   // Build solver (exercises Decompose on the big sparse matrices).
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto t2 = Clock::now();
 
   // AssembleAndFactor.

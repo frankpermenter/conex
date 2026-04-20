@@ -37,7 +37,7 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
   auto c_eq = problem.AddEqualityConstraint(C, d, vars);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto t1 = clock::now();
 
   bool ok = kkt->AssembleAndFactor();
@@ -107,7 +107,7 @@ QPEqualityResult SolveQPEquality(const Model& problem) {
     qp.SetLinearCost(problem.linear_cost());
 
   auto solver = Solver::Build(qp);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   bool ok = kkt->AssembleAndFactor();
   if (!ok) return {{}, 0, false};

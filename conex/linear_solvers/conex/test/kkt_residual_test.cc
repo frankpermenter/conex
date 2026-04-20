@@ -81,7 +81,7 @@ bool TestInstance(const char* name, const char* path,
 
   // Build solver with automatic tree (AMD ordering).
   auto solver = Solver::Build(qp, config);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto* ts = solver.tree_solver();
   bool ok = kkt->AssembleAndFactor();
   printf("  Factor: %s\n", ok ? "ok" : "FAIL");

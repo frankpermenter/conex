@@ -117,7 +117,7 @@ SolverSetup BuildSolver(const RandomQP& qp, const std::vector<int>& vars) {
   if (qp.rank_Q > 0) problem.AddQuadraticCost(qp.Q, vars);
   problem.SetLinearCost(qp.c);
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto cost_rhs = solver.MakeCostRHS();
 
@@ -139,18 +139,18 @@ void RunComparison(int m, int n, int rank_Q, int seed) {
   // ===== Geodesic IPM (0 centering steps) =====
   {
     auto [solver, cost_rhs] = BuildSolver(qp, vars);
-    RowSpace W = solver.solver()->MakeRowSpace();
+    RowSpace W = solver.kkt()->MakeRowSpace();
     setOnes(W);
-    auto result = SolveGeodesicLP(*solver.solver(), cost_rhs, W, 30, 0, 1e-8);
+    auto result = SolveGeodesicLP(*solver.kkt(), cost_rhs, W, 30, 0, 1e-8);
     PrintResult("Geodesic IPM (0 centering)", result);
   }
 
   // ===== Geodesic IPM (Hybrid) =====
   {
     auto [solver, cost_rhs] = BuildSolver(qp, vars);
-    RowSpace W = solver.solver()->MakeRowSpace();
+    RowSpace W = solver.kkt()->MakeRowSpace();
     setOnes(W);
-    auto result = SolveGeodesicHybrid(*solver.solver(), cost_rhs, W, 50, 1e-8);
+    auto result = SolveGeodesicHybrid(*solver.kkt(), cost_rhs, W, 50, 1e-8);
     PrintResult("Geodesic IPM (Hybrid)", result, true);
   }
 }
@@ -193,7 +193,7 @@ void RunSDPComparison(int n, int p, int seed) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
 
@@ -240,7 +240,7 @@ void RunSOCPComparison(int vec_dim, int p, int seed) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
 

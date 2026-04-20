@@ -52,7 +52,7 @@ ProfileResult ProfileMatrix(const Model& problem,
   // Build solver (preprocessing is internal).
   auto t0 = Clock::now();
   auto solver = Solver::Build(problem, cfg);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto t1 = Clock::now();
   res.build_us = us(t0, t1);
   res.num_cliques = solver.tree_solver()

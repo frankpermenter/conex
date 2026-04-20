@@ -112,7 +112,7 @@ int main() {
   // === LP4: GeodesicCenter + GeodesicLineSearch + SolveGeodesicLP ===
   {
     auto solver = MakeLP4();
-    auto* kkt = solver.solver();
+    auto* kkt = solver.kkt();
     Eigen::VectorXd c(4); c << 1, 2, 3, 4;
     auto cost_rhs = kkt->MakeSolverRHS();
     cost_rhs = kkt->MakeBlockVariable(c);
@@ -135,7 +135,7 @@ int main() {
   // === LP4: ThetaContinuation ===
   {
     auto solver = MakeLP4();
-    auto* kkt = solver.solver();
+    auto* kkt = solver.kkt();
     Eigen::VectorXd c(4); c << 1, 2, 3, 4;
     auto cost_rhs = kkt->MakeSolverRHS();
     cost_rhs = kkt->MakeBlockVariable(c);
@@ -148,7 +148,7 @@ int main() {
   // === LP4: PhaseOne ===
   {
     auto solver = MakeLP4();
-    auto* kkt = solver.solver();
+    auto* kkt = solver.kkt();
     Eigen::VectorXd c(4); c << 1, 2, 3, 4;
     auto cost_rhs = kkt->MakeSolverRHS();
     cost_rhs = kkt->MakeBlockVariable(c);
@@ -161,7 +161,7 @@ int main() {
   // === LP4: Hybrid ===
   {
     auto solver = MakeLP4();
-    auto* kkt = solver.solver();
+    auto* kkt = solver.kkt();
     Eigen::VectorXd c(4); c << 1, 2, 3, 4;
     auto cost_rhs = kkt->MakeSolverRHS();
     cost_rhs = kkt->MakeBlockVariable(c);
@@ -174,7 +174,7 @@ int main() {
   // === SDP3: SolveGeodesicLP ===
   {
     auto solver = MakeSDP3();
-    auto* kkt = solver.solver();
+    auto* kkt = solver.kkt();
     Eigen::VectorXd c(6); c << 1, 0.5, 0.3, 2, 0.1, 3;
     auto cost_rhs = kkt->MakeSolverRHS();
     cost_rhs = kkt->MakeBlockVariable(c);
@@ -186,7 +186,7 @@ int main() {
   // === SDP3: ThetaContinuation ===
   {
     auto solver = MakeSDP3();
-    auto* kkt = solver.solver();
+    auto* kkt = solver.kkt();
     Eigen::VectorXd c(6); c << 1, 0.5, 0.3, 2, 0.1, 3;
     auto cost_rhs = kkt->MakeSolverRHS();
     cost_rhs = kkt->MakeBlockVariable(c);
@@ -199,7 +199,7 @@ int main() {
   // === LP with equalities: ThetaContinuation ===
   {
     auto solver = MakeLPEq();
-    auto* kkt = solver.solver();
+    auto* kkt = solver.kkt();
     Eigen::VectorXd c(4); c << 1, 2, 1, 2;
     auto cost_rhs = BuildCostRHS(*kkt, c);
     RowSpace W = kkt->MakeRowSpace(); setOnes(W);

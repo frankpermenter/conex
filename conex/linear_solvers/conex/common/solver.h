@@ -1,46 +1,48 @@
 #pragma once
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
-#include "conex/common/clique_tree.h"
 #include "conex/common/conex.h"
-#include "conex/common/kkt_solver_interface.h"
+#include "conex/common/kkt_system.h"
 #include "conex/common/model.h"
-#include "conex/common/tree_spec.h"
 
 namespace conex {
 
-class ConstraintManager;
-class SparseLinearConstraintAssembler;
-class SparsePSDConstraintAssembler;
-class SparseSOCConstraintAssembler;
-class SparseQuadraticTermAssembler;
-class SparseEqualityConstraintAssembler;
-class SymmetricLinearSystemTreeSolver;
-class TreeSolverBuilder;
-
+// Solver: preprocesses a Model and builds a KKT system.
+//
+// Build() removes structurally rank-deficient columns, then constructs
+// the KKT system from the reduced model.  Use ExpandSolution() and
+// ReduceVector() to convert between original and reduced spaces.
+//
+// For direct KKT access without preprocessing (e.g., unit tests),
+// use KKTSystem::Build() instead.
 class Solver {
  public:
-  // Build preprocesses the problem (removes structurally rank-deficient
-  // columns) before constructing the tree solver.  Use ExpandSolution()
-  // and ReduceVector() to convert between original and reduced spaces.
-  static Solver Build(const Model& problem,
+  static Solver Build(const Model& model,
                       const SolverConfiguration& config = {});
 
-  static Solver Build(const Model& problem,
+  static Solver Build(const Model& model,
                       const TreeSpec& tree,
                       const SolverConfiguration& config = {});
 
-  static Solver BuildDense(const Model& problem);
+  static Solver BuildDense(const Model& model);
 
-  KKTSolverBase* solver();
-  const KKTSolverBase* solver() const;
+  // Access the underlying KKT system.
+  KKTSystem& system() { return system_; }
+  const KKTSystem& system() const { return system_; }
 
-  SymmetricLinearSystemTreeSolver* tree_solver();
-  const SymmetricLinearSystemTreeSolver* tree_solver() const;
-
-  const std::vector<int>& dual_variables(ConstraintId id) const;
+  // Convenience: forward to system.
+  KKTSolverBase* kkt() { return system_.kkt(); }
+  const KKTSolverBase* kkt() const { return system_.kkt(); }
+  SymmetricLinearSystemTreeSolver* tree_solver() {
+    return system_.tree_solver();
+  }
+  const SymmetricLinearSystemTreeSolver* tree_solver() const {
+    return system_.tree_solver();
+  }
+  const std::vector<int>& dual_variables(ConstraintId id) const {
+    return system_.dual_variables(id);
+  }
 
   // Preprocessing: map between original and reduced variable spaces.
   bool was_reduced() const { return expansion_.was_reduced(); }
@@ -55,33 +57,13 @@ class Solver {
   // Returns a zero RHS if no linear cost was set.
   SolverRHS MakeCostRHS();
 
-  // Prevent implicit copy (unique_ptr members).
   Solver();
   ~Solver();
   Solver(Solver&&) noexcept;
   Solver& operator=(Solver&&) noexcept;
 
  private:
-  void BuildInternal(const Model& problem,
-                     const SolverConfiguration& config,
-                     const CliqueTree* tree_override = nullptr);
-  void BuildFromTree(const Model& problem,
-                     const TreeSpec& tree,
-                     const SolverConfiguration& config);
-  void BuildQuotientAMD(const Model& problem,
-                        const SolverConfiguration& config);
-  void RegisterAssemblersWithTreeSolver();
-  const Eigen::VectorXd& linear_cost() const;
-
-  std::unique_ptr<TreeSolverBuilder> builder_;
-  std::unique_ptr<ConstraintManager> cm_;
-  std::unique_ptr<SymmetricLinearSystemTreeSolver> tree_solver_;
-  std::vector<SparseLinearConstraintAssembler*> linear_assemblers_;
-  std::vector<SparsePSDConstraintAssembler*> psd_assemblers_;
-  std::vector<SparseSOCConstraintAssembler*> soc_assemblers_;
-  std::vector<SparseQuadraticTermAssembler*> quadratic_assemblers_;
-  std::vector<SparseEqualityConstraintAssembler*> equality_assemblers_;
-  std::unordered_map<int, std::vector<int>> dual_var_map_;
+  KKTSystem system_;
   Expansion expansion_;
   Eigen::VectorXd reduced_linear_cost_;
 };

@@ -165,7 +165,7 @@ BarrierQPResult SolveBarrierQP(
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto c_rhs = solver.MakeCostRHS();
   auto x = kkt->MakeSolverRHS();

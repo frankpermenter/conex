@@ -66,7 +66,7 @@ bool TestStandardFormLP() {
 
   // Solve.
   auto solver = Solver::Build(prob);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   printf("  n_total = %d\n", kkt->number_of_variables());
   auto cost_rhs = BuildCostRHS(*kkt, cost);
   RowSpace W = kkt->MakeRowSpace();
@@ -106,7 +106,7 @@ bool TestStandardFormLP() {
     reduced.SetLinearCost(rc);
 
     auto s2 = Solver::Build(reduced);
-    auto* k2 = s2.solver();
+    auto* k2 = s2.kkt();
     auto cr2 = k2->MakeSolverRHS();
     cr2 = k2->MakeBlockVariable(rc);
     RowSpace W2 = k2->MakeRowSpace();
@@ -202,7 +202,7 @@ bool TestMaxcutSDP() {
   prob.SetLinearCost(cost);
 
   auto solver = Solver::Build(prob);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   printf("  n_total = %d\n", kkt->number_of_variables());
   auto cost_rhs = BuildCostRHS(*kkt, cost);
   RowSpace W = kkt->MakeRowSpace();

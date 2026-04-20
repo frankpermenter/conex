@@ -34,7 +34,7 @@ TEST(HybridTransition, TrivialCentering) {
 
   SolverConfiguration cfg;
   auto solver = Solver::Build(problem, cfg);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   // Prepare cost RHS.
   auto cost_rhs = kkt->MakeSolverRHS();

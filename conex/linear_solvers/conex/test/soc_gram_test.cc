@@ -150,7 +150,7 @@ TEST(SOCGram, SolverGramMatchesFormula) {
   Eigen::SparseMatrix<double> A_sparse = A_dense.sparseView();
   problem.AddSOCConstraint(A_sparse, b, vars);
   auto solver = conex::Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   // Set scaling to w.
   conex::RowSpace W = kkt->MakeRowSpace();

@@ -86,7 +86,7 @@ LQRFromSparseMatricesResult SolveLQRFromSparseMatrices(
   auto c_eq = problem.AddEqualityConstraint(C_eq, d_eq, vars);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
 
   auto t1 = clock::now();
 

@@ -39,7 +39,7 @@ TEST(HSD, SmallLP) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
   RowSpace W = kkt->MakeRowSpace();
@@ -71,7 +71,7 @@ TEST(HSD, SmallSDP) {
   problem.SetLinearCost(c);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
   RowSpace W = kkt->MakeRowSpace();
@@ -88,7 +88,7 @@ TEST(HSD, Buck3) {
   auto [problem, info] = ReadSDPA(
       "../benchmark_data/buck3.dat-s");
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   if (problem.has_linear_cost())
     cost_rhs = kkt->MakeBlockVariable(problem.linear_cost());

@@ -98,7 +98,7 @@ void RunBenchmark(const Model& problem, const QPSInfo& info,
   auto t1 = Clock::now();
   double build_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   int nv = kkt->number_of_variables();
   printf("  KKT vars=%d, build=%.1f ms\n", nv, build_ms);
 

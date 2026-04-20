@@ -26,7 +26,7 @@ int main() {
   p.SetLinearCost(cost);
 
   auto solver = Solver::Build(p);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto* ts = solver.tree_solver();
 
   printf("n_total = %d\n", kkt->number_of_variables());

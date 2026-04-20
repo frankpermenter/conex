@@ -35,7 +35,7 @@ int main() {
   p.SetLinearCost(c);
 
   auto solver = Solver::Build(p);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
   RowSpace W = kkt->MakeRowSpace();

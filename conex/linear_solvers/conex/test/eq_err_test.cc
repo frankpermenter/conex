@@ -29,7 +29,7 @@ struct TestResult {
 static TestResult RunTest(const char* name, Model& prob,
                            const Eigen::VectorXd& cost) {
   auto solver = Solver::Build(prob);
-  auto* kkt = solver.solver();
+  auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   if (prob.has_linear_cost())
     cost_rhs = kkt->MakeBlockVariable(prob.linear_cost());
