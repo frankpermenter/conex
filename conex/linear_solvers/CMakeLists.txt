@@ -85,6 +85,7 @@ target_link_libraries(kkt_solver_factory PUBLIC tree_solver clique_ordering cons
 add_library(sparse_linear_constraint
   conex/common/rescale.cc
   conex/common/mps_reader.cc
+  conex/common/mtx_reader.cc
   conex/common/sdpa_reader.cc
   conex/common/qps_reader.cc
   conex/common/cbf_reader.cc
@@ -526,9 +527,6 @@ target_link_libraries(benchmark_qp
   clique_ordering kkt_solver_factory tree_solver
   structural_rank
 )
-add_executable(check_ct conex/test/check_ct.cc)
-target_link_libraries(check_ct algorithms constraints sparse_linear_constraint clique_ordering kkt_solver_factory tree_solver structural_rank)
-
 add_executable(qp_equality_test conex/test/qp_equality_test.cc)
 target_link_libraries(qp_equality_test
   algorithms constraints sparse_linear_constraint

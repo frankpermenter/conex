@@ -9,7 +9,7 @@ user-invocable: true
 Run the cleanup report script and display the results.
 
 ```bash
-cd /agent-workspace/conex/linear_solvers && bash cleanup_report.sh
+cd /agent-workspace/conex/conex/linear_solvers && bash cleanup_report.sh
 ```
 
 Display the output as-is — it is already formatted as a markdown report.

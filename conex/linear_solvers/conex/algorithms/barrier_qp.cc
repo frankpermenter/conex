@@ -155,7 +155,6 @@ BarrierQPResult SolveBarrierQP(
     double mu,
     double tolerance) {
   const int n = Q.cols();
-  const int m = A.rows();
 
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
@@ -163,14 +162,13 @@ BarrierQPResult SolveBarrierQP(
   Problem problem;
   problem.AddLinearConstraint(A, b, vars);
   problem.AddQuadraticCost(Q, vars);
+  problem.SetLinearCost(c);
 
-  auto [reduced, expansion] = Preprocess(problem);
-
-  Eigen::VectorXd c_r = expansion.Reduce(c);
-  Eigen::VectorXd x0_r = expansion.Reduce(x0);
-
-  auto solver = Solver::Build(reduced);
+  auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
+
+  Eigen::VectorXd c_r = solver.linear_cost();
+  Eigen::VectorXd x0_r = solver.ReduceVector(x0);
 
   auto c_rhs = kkt->MakeSolverRHS();
   c_rhs = kkt->MakeBlockVariable(c_r);
@@ -182,7 +180,7 @@ BarrierQPResult SolveBarrierQP(
                                 mu, tolerance);
 
   // Expand back to original space.
-  result.x = expansion.Expand(result.x);
+  result.x = solver.ExpandSolution(result.x);
   result.objective = 0.5 * result.x.dot(Q * result.x) + c.dot(result.x);
   return result;
 }

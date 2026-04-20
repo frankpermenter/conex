@@ -116,13 +116,11 @@ SolverSetup BuildSolver(const RandomQP& qp, const std::vector<int>& vars) {
   problem.AddLinearConstraint(qp.A, qp.b, vars);
   if (qp.rank_Q > 0) problem.AddQuadraticCost(qp.Q, vars);
   problem.SetLinearCost(qp.c);
-  auto [reduced, expansion] = Preprocess(problem);
-  auto solver = Solver::Build(reduced);
+  auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
   auto cost_rhs = kkt->MakeSolverRHS();
-  VectorXd c_r = reduced.linear_cost();
-  cost_rhs = kkt->MakeBlockVariable(c_r);
+  cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
 
   return {std::move(solver), cost_rhs};
 }

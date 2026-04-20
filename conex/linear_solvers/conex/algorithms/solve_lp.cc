@@ -9,14 +9,15 @@
 namespace conex {
 
 LPResult SolveLP(const Problem& problem, double tolerance) {
-  auto [reduced, expansion] = Preprocess(problem);
-  auto solver = Solver::Build(reduced);
+  auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  // Cost was reduced by Preprocess.
-  Eigen::VectorXd c_r = reduced.linear_cost();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c_r);
+  if (solver.linear_cost().size() > 0) {
+    cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
+  } else {
+    cost_rhs.SetZero();
+  }
 
   // Initialize W = ones.
   RowSpace W = kkt->MakeRowSpace();
@@ -28,7 +29,7 @@ LPResult SolveLP(const Problem& problem, double tolerance) {
   out.gap = result.complementarity;
   out.factorizations = result.total_factorizations;
   out.solves = result.total_solves;
-  out.x = expansion.Expand(result.x);
+  out.x = solver.ExpandSolution(result.x);
   Eigen::VectorXd c = problem.has_linear_cost()
       ? problem.linear_cost() : Eigen::VectorXd::Zero(problem.num_variables());
   out.objective = c.dot(out.x);

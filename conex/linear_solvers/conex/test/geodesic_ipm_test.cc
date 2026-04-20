@@ -54,13 +54,12 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
 
   Problem problem;
   problem.AddLinearConstraint(A, b, vars);
-  auto [reduced, expansion] = Preprocess(problem);
-  auto solver = Solver::Build(reduced);
+  problem.SetLinearCost(c);
+  auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
   auto cost_rhs = kkt->MakeSolverRHS();
-  VectorXd c_r = expansion.Reduce(c);
-  cost_rhs = kkt->MakeBlockVariable(c_r);
+  cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
 
   // Initialize W = ones + small perturbation.
   RowSpace W = kkt->MakeRowSpace();
@@ -118,13 +117,12 @@ TEST(GeodesicBarrierQP, FullDecomposition) {
 
   Problem problem;
   problem.AddLinearConstraint(A, b, vars);
-  auto [reduced, expansion] = Preprocess(problem);
-  auto solver = Solver::Build(reduced);
+  problem.SetLinearCost(c);
+  auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
   auto cost_rhs = kkt->MakeSolverRHS();
-  VectorXd c_r = expansion.Reduce(c);
-  cost_rhs = kkt->MakeBlockVariable(c_r);
+  cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
 
   // Perturb W away from identity.
   RowSpace W = kkt->MakeRowSpace();
@@ -215,13 +213,12 @@ TEST(GeodesicBarrierQP, MultipleConstraints) {
   Problem problem;
   problem.AddLinearConstraint(A1, b1, vars);
   problem.AddLinearConstraint(A2, b2, vars);
-  auto [reduced, expansion] = Preprocess(problem);
-  auto solver = Solver::Build(reduced);
+  problem.SetLinearCost(c);
+  auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
   auto cost_rhs = kkt->MakeSolverRHS();
-  VectorXd c_r = expansion.Reduce(c);
-  cost_rhs = kkt->MakeBlockVariable(c_r);
+  cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
 
   const int m = m1 + m2;
 
@@ -450,10 +447,11 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
     lp_problem.AddLinearConstraint(A, b, vars);
   }
 
+  lp_problem.SetLinearCost(c);
   auto lp_solver = Solver::Build(lp_problem);
   auto* lp_kkt = lp_solver.solver();
   auto lp_cost = lp_kkt->MakeSolverRHS();
-  lp_cost = lp_kkt->MakeBlockVariable(c);
+  lp_cost = lp_kkt->MakeBlockVariable(lp_solver.linear_cost());
   RowSpace lp_W = lp_kkt->MakeRowSpace();
   setFromVector(lp_W, VectorXd::Ones(m) + pert);
   auto lp_result = GeodesicCenter(*lp_kkt, lp_cost, lp_W, 1.0, 20, 1e-12, true);
@@ -472,11 +470,12 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
     sdp_problem.AddPSDConstraint(A_list, toSparse(B), vars,
                                   /*use_chordal=*/false);
   }
+  sdp_problem.SetLinearCost(c);
 
   auto sdp_solver = Solver::Build(sdp_problem);
   auto* sdp_kkt = sdp_solver.solver();
   auto sdp_cost = sdp_kkt->MakeSolverRHS();
-  sdp_cost = sdp_kkt->MakeBlockVariable(c);
+  sdp_cost = sdp_kkt->MakeBlockVariable(sdp_solver.linear_cost());
   RowSpace sdp_W = sdp_kkt->MakeRowSpace();
   // Set W = diag(ones + pert) as an m×m matrix.
   {
@@ -896,7 +895,7 @@ TEST(GeodesicSDP, InterleavedVariablesRandom) {
   auto* kkt = solver.solver();
 
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
@@ -973,7 +972,7 @@ TEST(GeodesicSDP, InterleavedVariablesChordal) {
   auto* kkt = solver.solver();
 
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);

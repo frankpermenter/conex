@@ -28,9 +28,7 @@ IRLSResult SolveIRLS(
   Problem problem;
   problem.AddLinearConstraint(A, b, vars);
 
-  auto [reduced, expansion] = Preprocess(problem);
-
-  auto solver = Solver::Build(reduced);
+  auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
   kkt->AssembleAndFactor();
 
@@ -77,9 +75,10 @@ IRLSResult SolveIRLS(
   }
 
   auto t1 = clock::now();
-  Eigen::VectorXd x_final(reduced.num_variables());
+  int n_reduced = kkt->number_of_variables();
+  Eigen::VectorXd x_final(n_reduced);
   x.supernodes->GatherInto(x_final);
-  result.x = expansion.Expand(x_final);
+  result.x = solver.ExpandSolution(x_final);
   kkt->MultiplyA(x, row);
   result.l1_objective = (row.col() - b_internal.col()).lpNorm<1>();
   result.solve_time_us =

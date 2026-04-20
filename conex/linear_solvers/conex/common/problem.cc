@@ -19,15 +19,35 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
   for (const auto& c : problem.constraints()) {
     // Linear and SOC have the same A matrix structure.
     const Eigen::SparseMatrix<double>* A_ptr = nullptr;
-    if (auto* lc = std::get_if<Problem::LinearConstraintData>(&c))
+    const std::vector<int>* vars_ptr = nullptr;
+    if (auto* lc = std::get_if<Problem::LinearConstraintData>(&c)) {
       A_ptr = &lc->A;
-    else if (auto* sc = std::get_if<Problem::SOCConstraintData>(&c))
+      vars_ptr = &lc->vars;
+    } else if (auto* sc = std::get_if<Problem::SOCConstraintData>(&c)) {
       A_ptr = &sc->A;
+      vars_ptr = &sc->vars;
+    }
     if (A_ptr) {
       for (int k = 0; k < A_ptr->outerSize(); ++k)
         for (Eigen::SparseMatrix<double>::InnerIterator it(*A_ptr, k); it; ++it)
-          trips.emplace_back(total_rows + it.row(), it.col(), it.value());
+          trips.emplace_back(total_rows + it.row(),
+                             (*vars_ptr)[it.col()], it.value());
       total_rows += A_ptr->rows();
+    } else if (auto* qc = std::get_if<Problem::QuadraticCostData>(&c)) {
+      // Quadratic cost variables are structurally present (they contribute
+      // to the Gram matrix diagonal).  Add one row per variable to prevent
+      // them from being dropped as structurally rank-deficient.
+      for (int v : qc->vars) {
+        trips.emplace_back(total_rows, v, 1.0);
+        total_rows++;
+      }
+    } else if (auto* ec = std::get_if<Problem::EqualityConstraintData>(&c)) {
+      // Equality constraint primal variables are structurally present.
+      for (int k = 0; k < ec->C.outerSize(); ++k)
+        for (Eigen::SparseMatrix<double>::InnerIterator it(ec->C, k); it; ++it)
+          trips.emplace_back(total_rows + it.row(),
+                             ec->primal_vars[it.col()], it.value());
+      total_rows += ec->C.rows();
     } else if (auto* pc = std::get_if<Problem::PSDConstraintData>(&c)) {
       // Add one row per unique nonzero entry position across all A_i.
       // This reflects the true structural rank: each entry (r,c) of the
@@ -91,20 +111,27 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
 
       if constexpr (std::is_same_v<T, Problem::LinearConstraintData> ||
                      std::is_same_v<T, Problem::SOCConstraintData>) {
+        // Build new_vars and a local column map: original local col ->
+        // new local col.  Dropped vars are skipped entirely.
+        std::vector<int> new_vars;
+        std::vector<int> local_col_map(data.A.cols(), -1);
+        for (int j = 0; j < static_cast<int>(data.vars.size()); ++j) {
+          int nv = inv[data.vars[j]];
+          if (nv >= 0) {
+            local_col_map[j] = static_cast<int>(new_vars.size());
+            new_vars.push_back(nv);
+          }
+        }
         std::vector<Eigen::Triplet<double>> t;
         for (int k = 0; k < data.A.outerSize(); ++k)
           for (Eigen::SparseMatrix<double>::InnerIterator it(data.A, k);
                it; ++it) {
-            int nc = inv[it.col()];
+            int nc = local_col_map[it.col()];
             if (nc >= 0) t.emplace_back(it.row(), nc, it.value());
           }
-        Eigen::SparseMatrix<double> A_new(data.A.rows(), n_reduced);
+        int new_ncols = static_cast<int>(new_vars.size());
+        Eigen::SparseMatrix<double> A_new(data.A.rows(), new_ncols);
         A_new.setFromTriplets(t.begin(), t.end());
-        std::vector<int> new_vars;
-        for (int v : data.vars) {
-          int nv = inv[v];
-          if (nv >= 0) new_vars.push_back(nv);
-        }
         if constexpr (std::is_same_v<T, Problem::SOCConstraintData>)
           reduced.AddSOCConstraint(A_new, data.b, new_vars);
         else
@@ -120,36 +147,53 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
             new_vars.push_back(nv);
           }
         }
-        reduced.AddPSDConstraint(new_A_list, data.B, new_vars);
+        reduced.AddPSDConstraint(new_A_list, data.B, new_vars,
+                                 data.use_chordal);
 
       } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
+        std::vector<int> new_vars;
+        std::vector<int> local_col_map(data.Q_sparse.cols(), -1);
+        for (int j = 0; j < static_cast<int>(data.vars.size()); ++j) {
+          int nv = inv[data.vars[j]];
+          if (nv >= 0) {
+            local_col_map[j] = static_cast<int>(new_vars.size());
+            new_vars.push_back(nv);
+          }
+        }
+        int new_nv = static_cast<int>(new_vars.size());
         std::vector<Eigen::Triplet<double>> t;
         for (int k = 0; k < data.Q_sparse.outerSize(); ++k)
           for (Eigen::SparseMatrix<double>::InnerIterator it(data.Q_sparse, k);
                it; ++it) {
-            int nr = inv[it.row()], nc = inv[it.col()];
+            int nr = local_col_map[it.row()];
+            int nc = local_col_map[it.col()];
             if (nr >= 0 && nc >= 0) t.emplace_back(nr, nc, it.value());
           }
-        Eigen::SparseMatrix<double> Q_new(n_reduced, n_reduced);
+        Eigen::SparseMatrix<double> Q_new(new_nv, new_nv);
         Q_new.setFromTriplets(t.begin(), t.end());
-        std::vector<int> new_vars;
-        for (int v : data.vars) {
-          int nv = inv[v];
-          if (nv >= 0) new_vars.push_back(nv);
-        }
         reduced.AddQuadraticCost(Q_new, new_vars);
 
       } else if constexpr (std::is_same_v<T,
                                           Problem::EqualityConstraintData>) {
-        // Remap columns.
+        // Remap columns using local col map (primal_vars may be a subset).
+        std::vector<int> new_primal;
+        std::vector<int> local_col_map(data.C.cols(), -1);
+        for (int j = 0; j < static_cast<int>(data.primal_vars.size()); ++j) {
+          int nv = inv[data.primal_vars[j]];
+          if (nv >= 0) {
+            local_col_map[j] = static_cast<int>(new_primal.size());
+            new_primal.push_back(nv);
+          }
+        }
+        int new_ncols = static_cast<int>(new_primal.size());
         std::vector<Eigen::Triplet<double>> t;
         for (int k = 0; k < data.C.outerSize(); ++k)
           for (Eigen::SparseMatrix<double>::InnerIterator it(data.C, k);
                it; ++it) {
-            int nc = inv[it.col()];
+            int nc = local_col_map[it.col()];
             if (nc >= 0) t.emplace_back(it.row(), nc, it.value());
           }
-        Eigen::SparseMatrix<double> C_remapped(data.C.rows(), n_reduced);
+        Eigen::SparseMatrix<double> C_remapped(data.C.rows(), new_ncols);
         C_remapped.setFromTriplets(t.begin(), t.end());
 
         // Drop structurally dependent rows.
@@ -162,23 +206,15 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
 
         if (p_reduced < p_orig) {
           // Check consistency of dropped rows.
-          // Solve C_reduced * x = d_reduced for the independent rows,
-          // then verify dropped rows are consistent.
           Eigen::VectorXd d_reduced(p_reduced);
           for (int r = 0; r < p_reduced; ++r)
             d_reduced(r) = data.d(row_map[r]);
 
-          // Build the set of dropped row indices.
           std::set<int> kept(row_map.begin(), row_map.end());
           Eigen::MatrixXd C_dense(C_remapped);
 
-          // For each dropped row, check if it's a linear combination of
-          // kept rows with consistent RHS.
-          // Simple check: solve the kept system for x, then verify
-          // dropped rows.  Use dense QR for robustness.
           if (p_reduced > 0 && C_reduced.cols() > 0) {
             Eigen::MatrixXd Cr_dense(C_reduced);
-            // Use least-squares to find x satisfying kept rows.
             Eigen::VectorXd x_check =
                 Cr_dense.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV)
                     .solve(d_reduced);
@@ -196,20 +232,8 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
             }
           }
 
-          // Use reduced C and d.
-          std::vector<int> new_primal;
-          for (int v : data.primal_vars) {
-            int nv = inv[v];
-            if (nv >= 0) new_primal.push_back(nv);
-          }
           reduced.AddEqualityConstraint(C_reduced, d_reduced, new_primal);
         } else {
-          // No rows dropped.
-          std::vector<int> new_primal;
-          for (int v : data.primal_vars) {
-            int nv = inv[v];
-            if (nv >= 0) new_primal.push_back(nv);
-          }
           reduced.AddEqualityConstraint(C_remapped, data.d, new_primal);
         }
       }

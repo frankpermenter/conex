@@ -21,11 +21,14 @@ Solver& Solver::operator=(Solver&&) noexcept = default;
 
 Solver Solver::Build(const Problem& problem,
                      const SolverConfiguration& config) {
+  auto [reduced, expansion] = RemoveStructuralRankDeficiency(problem);
   Solver s;
+  s.expansion_ = std::move(expansion);
+  s.reduced_linear_cost_ = reduced.linear_cost();
   if (config.use_quotient_amd) {
-    s.BuildQuotientAMD(problem, config);
+    s.BuildQuotientAMD(reduced, config);
   } else {
-    s.BuildInternal(problem, config);
+    s.BuildInternal(reduced, config);
   }
   return s;
 }
@@ -33,12 +36,18 @@ Solver Solver::Build(const Problem& problem,
 Solver Solver::Build(const Problem& problem,
                      const TreeSpec& tree,
                      const SolverConfiguration& config) {
+  // TreeSpec references original constraint IDs — skip preprocessing.
   Solver s;
+  s.expansion_.original_n = problem.num_variables();
+  s.expansion_.col_map.resize(problem.num_variables());
+  std::iota(s.expansion_.col_map.begin(), s.expansion_.col_map.end(), 0);
+  s.reduced_linear_cost_ = problem.linear_cost();
   s.BuildFromTree(problem, tree, config);
   return s;
 }
 
 Solver Solver::BuildDense(const Problem& problem) {
+  // Dense path uses TreeSpec internally — skip preprocessing.
   TreeSpec tree;
   int clique = tree.AddClique();
   for (int i = 0; i < problem.num_constraints(); ++i)
@@ -64,6 +73,10 @@ const SymmetricLinearSystemTreeSolver* Solver::tree_solver() const {
 
 const std::vector<int>& Solver::dual_variables(ConstraintId id) const {
   return dual_var_map_.at(id);
+}
+
+const Eigen::VectorXd& Solver::linear_cost() const {
+  return reduced_linear_cost_;
 }
 
 void Solver::BuildInternal(const Problem& problem,

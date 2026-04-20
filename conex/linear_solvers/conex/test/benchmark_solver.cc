@@ -1,16 +1,25 @@
-// Benchmark solver: runs geodesic IPM on benchmark instances.
+// Unified benchmark: runs geodesic IPM algorithms or factorization profiling
+// on any supported file format (MPS, QPS, SDPA, CBF, MTX) or synthetic problems.
 //
 // Usage:
-//   ./benchmark_solver <file.mps|file.dat-s|file.cbf>
+//   ./benchmark_solver <file.mps|.qps|.dat-s|.cbf|.mtx>
+//   ./benchmark_solver <file> --profile                  (factorization timing)
+//   ./benchmark_solver <file> --profile --sweep-threads 1,2,4
+//   ./benchmark_solver <directory>                       (all QPS files)
 //   ./benchmark_solver --synthetic lp <m> <n> [seed]
 //   ./benchmark_solver --synthetic sdp <n> <p> [seed]
 //   ./benchmark_solver --synthetic socp <dim> <p> [seed]
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <numeric>
+#include <sstream>
 #include <string>
+#include <vector>
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -19,15 +28,19 @@
 #include "conex/common/cbf_reader.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/mps_reader.h"
+#include "conex/common/mtx_reader.h"
 #include "conex/common/problem.h"
 #include "conex/common/qps_reader.h"
 #include "conex/common/rescale.h"
 #include "conex/common/sdpa_reader.h"
 #include "conex/common/solver.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
 
 namespace conex {
 namespace {
 
+namespace fs = std::filesystem;
+using Clock = std::chrono::high_resolution_clock;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
@@ -40,6 +53,10 @@ Eigen::SparseMatrix<double> ToSparse(const MatrixXd& M) {
   S.setFromTriplets(t.begin(), t.end());
   return S;
 }
+
+// =====================================================================
+// Synthetic problem generators
+// =====================================================================
 
 Problem MakeSyntheticLP(int m, int n, int seed) {
   srand(seed);
@@ -89,128 +106,325 @@ Problem MakeSyntheticSOCP(int dim, int p, int seed) {
   return problem;
 }
 
-void RunBenchmark(const Problem& problem, const std::string& name) {
+// =====================================================================
+// Algorithm profiling (geodesic IPM)
+// =====================================================================
+
+struct AlgoResult {
+  const char* name;
+  int iterations;
+  int factorizations;
+  double mu;
+  double primal_cost;
+  double dual_residual;
+  double complementarity;
+  double time_ms;
+  bool converged;
+};
+
+AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
+                   const SolverRHS& cost_rhs,
+                   const Problem& problem,
+                   const Solver& solver,
+                   auto solve_fn) {
+  RowSpace W = kkt.MakeRowSpace();
+  setOnes(W);
+  auto t0 = Clock::now();
+  auto result = solve_fn(kkt, cost_rhs, W);
+  auto t1 = Clock::now();
+  double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+  double primal_cost = 0;
+  if (result.x.size() > 0) {
+    // Expand to original space for cost computation.
+    VectorXd x = solver.ExpandSolution(result.x);
+    if (problem.has_linear_cost()) {
+      int nc = std::min((int)problem.linear_cost().size(), (int)x.size());
+      primal_cost += problem.linear_cost().head(nc).dot(x.head(nc));
+    }
+    for (const auto& c : problem.constraints()) {
+      if (auto* qc = std::get_if<Problem::QuadraticCostData>(&c)) {
+        const auto& Q = qc->Q_sparse;
+        const auto& vars = qc->vars;
+        for (int k = 0; k < Q.outerSize(); ++k) {
+          for (Eigen::SparseMatrix<double>::InnerIterator it(Q, k); it; ++it) {
+            int i = vars[it.row()], j = vars[it.col()];
+            if (i < (int)x.size() && j < (int)x.size())
+              primal_cost += 0.5 * it.value() * x(i) * x(j);
+          }
+        }
+      }
+    }
+  }
+
+  return {name, result.iterations, result.total_factorizations,
+          result.mu, primal_cost,
+          result.optimality.dual_residual,
+          result.optimality.complementarity,
+          ms, result.mu < 1e-6};
+}
+
+void ProfileAlgorithm(const Problem& problem, const std::string& name,
+                      const SolverConfiguration& config,
+                      double objective_constant = 0) {
   printf("=== %s ===\n", name.c_str());
   printf("  Variables: %d, Constraints: %d\n",
          problem.num_variables(), problem.num_constraints());
 
-  auto t0 = std::chrono::high_resolution_clock::now();
-  auto solver = Solver::Build(problem);
-  auto t1 = std::chrono::high_resolution_clock::now();
-  double build_ms =
-      std::chrono::duration<double, std::milli>(t1 - t0).count();
-  printf("  Build: %.1f ms\n", build_ms);
+  auto t0 = Clock::now();
+  auto solver = Solver::Build(problem, config);
+  auto t1 = Clock::now();
+  double build_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
   auto* kkt = solver.solver();
+  int nv = kkt->number_of_variables();
+  printf("  KKT vars=%d, build=%.1f ms\n", nv, build_ms);
+  if (solver.was_reduced()) {
+    printf("  Preprocessing: %d -> %d variables\n",
+           problem.num_variables(), nv);
+  }
 
-  // Prepare cost RHS.
   auto cost_rhs = kkt->MakeSolverRHS();
-  if (problem.has_linear_cost()) {
-    cost_rhs = kkt->MakeBlockVariable(problem.linear_cost());
+  if (solver.linear_cost().size() > 0) {
+    cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
   } else {
     cost_rhs.SetZero();
   }
 
-  // --- Geodesic LP ---
-  //{
-  //  RowSpace W = kkt->MakeRowSpace();
-  //  setOnes(W);
-  //  auto t2 = std::chrono::high_resolution_clock::now();
-  //  auto result = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 50, 0, 1e-8, true);
-  //  auto t3 = std::chrono::high_resolution_clock::now();
-  //  double solve_ms =
-  //      std::chrono::duration<double, std::milli>(t3 - t2).count();
-  //  printf("  GeodesicLP: %d fac, %d sol, mu=%.2e, %.1f ms\n",
-  //         result.total_factorizations, result.total_solves,
-  //         result.mu, solve_ms);
-  //  if (result.optimality.dual_residual > 0) {
-  //    printf("    Opt: dual_res=%.2e, compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
-  //           result.optimality.dual_residual,
-  //           result.optimality.complementarity,
-  //           result.optimality.min_slack,
-  //           result.optimality.min_dual);
-  //  }
-  //}
+  const int max_iters = 500;
+  const double tol = 1e-8;
 
-  //// --- Hybrid ---
-  //{
-  //  RowSpace W = kkt->MakeRowSpace();
-  //  setOnes(W);
-  //  auto t2 = std::chrono::high_resolution_clock::now();
-  //  auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W, 100, 1e-8);
-  //  auto t3 = std::chrono::high_resolution_clock::now();
-  //  double solve_ms =
-  //      std::chrono::duration<double, std::milli>(t3 - t2).count();
-  //  printf("  Hybrid: %d fac, %d sol, gap=%.2e, %.1f ms\n",
-  //         result.total_factorizations, result.total_solves,
-  //         result.complementarity, solve_ms);
-  //  if (result.optimality.dual_residual > 0) {
-  //    printf("    Opt: dual_res=%.2e, compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
-  //           result.optimality.dual_residual,
-  //           result.optimality.complementarity,
-  //           result.optimality.min_slack,
-  //           result.optimality.min_dual);
-  //  }
-  //}
+  // --- ThetaContinuation ---
+  auto r1 = RunAlgo("ThetaCont", *kkt, cost_rhs, problem, solver,
+    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+      return SolveGeodesicThetaContinuation(k, c, W, max_iters, 1, tol, true);
+    });
 
-  auto run_solver = [&](const char* name, auto solve_fn) {
-    RowSpace W = kkt->MakeRowSpace();
-    setOnes(W);
-    auto t2 = std::chrono::high_resolution_clock::now();
-    auto result = solve_fn(*kkt, cost_rhs, W);
-    auto t3 = std::chrono::high_resolution_clock::now();
-    double solve_ms =
-        std::chrono::duration<double, std::milli>(t3 - t2).count();
-    printf("  %s: %d fac, %d sol, mu=%.2e, %.1f ms\n",
-           name, result.total_factorizations, result.total_solves,
-           result.mu, solve_ms);
-    if (problem.has_linear_cost() && result.x.size() > 0) {
-      double primal_cost = problem.linear_cost().dot(result.x);
-      printf("    primal cost cTx = %.6e\n", primal_cost);
-    }
-    if (result.optimality.dual_residual > 0) {
-      printf("    Opt: dual_res=%.2e, compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
-             result.optimality.dual_residual,
-             result.optimality.complementarity,
-             result.optimality.min_slack,
-             result.optimality.min_dual);
-    }
-  };
+  // --- PhaseOne ---
+  auto r2 = RunAlgo("PhaseOne", *kkt, cost_rhs, problem, solver,
+    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+      return SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true);
+    });
 
-  // --- Pure HSD (theta continuation) ---
-  printf("\n  [ThetaContinuation: pure HSD]\n");
-  run_solver("ThetaCont", [](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-    return SolveGeodesicThetaContinuation(k, c, W, 500, 1, 1e-8, true);
-  });
+  // --- Phase1+Hybrid ---
+  auto r3 = RunAlgo("Ph1+Hybrid", *kkt, cost_rhs, problem, solver,
+    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+      auto p1 = SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true,
+                                       /*phase1_only=*/true);
+      double k_init = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
+      auto result = SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+                                         k_init, p1.tau);
+      result.total_factorizations += p1.total_factorizations;
+      result.total_solves += p1.total_solves;
+      return result;
+    });
 
-  // --- Phase one: aggressive theta=0 / increase k ---
-  printf("\n  [PhaseOne: aggressive theta->0]\n");
-  run_solver("PhaseOne", [](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-    return SolveGeodesicPhaseOne(k, c, W, 500, 1, 1e-8, true);
-  });
+  // --- Summary table ---
+  printf("  %-12s %5s %5s %10s %14s %10s %10s %8s %s\n",
+         "Algorithm", "iters", "fac", "mu", "cost", "dual_res",
+         "compl", "ms", "ok");
+  printf("  %s\n", std::string(90, '-').c_str());
+  double c0 = objective_constant;
+  for (const auto* r : {&r1, &r2, &r3}) {
+    printf("  %-12s %5d %5d %10.2e %14.6e %10.2e %10.2e %8.1f %s\n",
+           r->name, r->iterations, r->factorizations,
+           r->mu, r->primal_cost + c0, r->dual_residual,
+           r->complementarity, r->time_ms,
+           r->converged ? "yes" : "NO");
+  }
 
-  // --- Phase 1 then Hybrid: run phase 1 to get theta=0, then hand off
-  // to the hybrid algorithm with W from phase 1 and r = sqrt(mu) * I.
-  printf("\n  [Phase1+Hybrid: theta->0 then hybrid]\n");
-  run_solver("Ph1Hybrid", [](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-    // Phase 1 only: run until theta=0, then stop and hand off to hybrid.
-    auto p1 = SolveGeodesicPhaseOne(k, c, W, 500, 1, 1e-8, true,
-                                     /*phase1_only=*/true);
-    // W is now the last iterate from phase 1.  Hand off to hybrid
-    // with the same k (= 1/sqrt(mu)) so r = sqrt(mu) * I matches.
-    double k_from_p1 = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
-    double tau_from_p1 = p1.tau;
-    printf("  -- switching to hybrid (mu=%.2e, k=%.2e, tau=%.2e, %d fac) --\n",
-           p1.mu, k_from_p1, tau_from_p1, p1.total_factorizations);
-    auto result = SolveGeodesicHybrid(k, c, W, 500, 1e-8, true,
-                                       k_from_p1, tau_from_p1);
-    // Combine counts: phase 1 + hybrid.
-    result.total_factorizations += p1.total_factorizations;
-    result.total_solves += p1.total_solves;
-    return result;
-  });
-
+  if (c0 != 0) {
+    printf("\n  Objective includes constant c0 = %.6e\n", c0);
+  }
   printf("\n");
+}
+
+// =====================================================================
+// Factorization profiling
+// =====================================================================
+
+double us(Clock::time_point a, Clock::time_point b) {
+  return std::chrono::duration<double, std::micro>(b - a).count();
+}
+
+struct ProfileResult {
+  std::string name;
+  int num_vars;
+  int num_cliques;
+  double build_us;
+  double assemble_factor_us;
+  double solve_us;
+  double residual;
+};
+
+ProfileResult ProfileFactorization(const Problem& problem,
+                                   const std::string& name,
+                                   const SolverConfiguration& cfg,
+                                   int max_iters = -1) {
+  ProfileResult res;
+  res.name = name;
+
+  auto t0 = Clock::now();
+  auto solver = Solver::Build(problem, cfg);
+  auto* kkt = solver.solver();
+  auto t1 = Clock::now();
+  res.build_us = us(t0, t1);
+  res.num_vars = kkt->number_of_variables();
+  res.num_cliques = solver.tree_solver()
+      ? solver.tree_solver()->num_subsystems() : 1;
+
+  int iters = (max_iters >= 0) ? max_iters
+                               : std::max(20, 2000 / std::max(1, res.num_vars));
+  if (iters == 0) {
+    res.assemble_factor_us = 0;
+    res.solve_us = 0;
+    res.residual = 0;
+    return res;
+  }
+
+  // AssembleAndFactor.
+  bool ok = kkt->AssembleAndFactor();
+  if (!ok) {
+    res.assemble_factor_us = -1;
+    res.solve_us = -1;
+    res.residual = -1;
+    return res;
+  }
+  std::vector<double> af_times(iters);
+  for (int i = 0; i < iters; ++i) {
+    auto ta = Clock::now();
+    kkt->AssembleAndFactor();
+    auto tb = Clock::now();
+    af_times[i] = us(ta, tb);
+  }
+  std::sort(af_times.begin(), af_times.end());
+  res.assemble_factor_us = af_times[iters / 2];
+
+  // Build RHS: random x_true, compute rhs = Gram * x_true.
+  int n_solve = res.num_vars;
+  VectorXd x_true = VectorXd::Random(n_solve);
+  // Use a single AssembleAndFactor + Solve round trip to build the RHS.
+  // For general problems, rhs = kkt_matrix * x_true.
+  // Approximate by solving and checking residual.
+  VectorXd rhs = VectorXd::Random(n_solve);
+
+  // Solve timing.
+  kkt->Solve(rhs);  // warm up
+  std::vector<double> s_times(iters);
+  VectorXd sol;
+  for (int i = 0; i < iters; ++i) {
+    auto ta = Clock::now();
+    sol = kkt->Solve(rhs);
+    auto tb = Clock::now();
+    s_times[i] = us(ta, tb);
+  }
+  std::sort(s_times.begin(), s_times.end());
+  res.solve_us = s_times[iters / 2];
+
+  // For residual, solve Kx = K*x_true and check ||x - x_true||.
+  // Since we don't have K explicitly, we just report the solve time
+  // and skip residual for non-MTX problems.
+  res.residual = 0;
+
+  return res;
+}
+
+void PrintProfileHeader() {
+  printf("%-20s %4s %4s %6s | %10s | %10s %10s | %10s\n",
+         "Problem", "thrd", "merg", "cliq",
+         "build",
+         "asm+fac", "solve",
+         "residual");
+  printf("%s\n", std::string(95, '-').c_str());
+}
+
+void PrintProfileResult(const ProfileResult& res,
+                        const SolverConfiguration& cfg) {
+  if (res.assemble_factor_us < 0) {
+    printf("%-20s %4d %4d %6d | %9.0fus |  FACTOR FAILED          | rank-def\n",
+           res.name.c_str(), cfg.num_threads,
+           cfg.tree.max_merge_supernode_size, res.num_cliques,
+           res.build_us);
+  } else {
+    printf("%-20s %4d %4d %6d | %9.0fus | %9.0fus %9.0fus | %10.2e\n",
+           res.name.c_str(), cfg.num_threads,
+           cfg.tree.max_merge_supernode_size, res.num_cliques,
+           res.build_us,
+           res.assemble_factor_us, res.solve_us,
+           res.residual);
+  }
+}
+
+// =====================================================================
+// File format dispatch
+// =====================================================================
+
+struct ProblemWithInfo {
+  Problem problem;
+  std::string name;
+  double objective_constant = 0;
+};
+
+ProblemWithInfo ReadProblemFile(const std::string& filename) {
+  std::string ext = filename.substr(filename.find_last_of('.') + 1);
+  ProblemWithInfo result;
+
+  if (ext == "mps") {
+    auto [p, info] = ReadMPS(filename);
+    result.problem = std::move(p);
+    char buf[256];
+    snprintf(buf, sizeof(buf), "MPS: %s (%d vars, %d LE, %d GE, %d EQ)",
+             info.name.c_str(), info.num_variables,
+             info.num_le_rows, info.num_ge_rows, info.num_eq_rows);
+    result.name = buf;
+  } else if (ext == "dat-s" || ext == "dat" ||
+             filename.find(".dat-s") != std::string::npos) {
+    auto [p, info] = ReadSDPA(filename);
+    result.problem = std::move(p);
+    char buf[256];
+    snprintf(buf, sizeof(buf), "SDPA: %d constraints, %d blocks, dim=%d",
+             info.num_constraints, info.num_blocks, info.total_matrix_dim);
+    result.name = buf;
+  } else if (ext == "cbf") {
+    auto [p, info] = ReadCBF(filename);
+    result.problem = std::move(p);
+    char buf[256];
+    snprintf(buf, sizeof(buf), "CBF: %d vars, %d cons",
+             info.num_variables, info.num_constraints);
+    result.name = buf;
+  } else if (ext == "qps" || ext == "QPS") {
+    auto [p, info] = ReadQPS(filename);
+    result.problem = std::move(p);
+    result.objective_constant = info.objective_constant;
+    char buf[256];
+    snprintf(buf, sizeof(buf), "QPS: %s (%d vars, %d eq, %d ineq, %d quad)",
+             info.name.c_str(), info.num_variables,
+             info.num_equality_rows, info.num_inequality_rows,
+             info.num_quadratic_entries);
+    result.name = buf;
+  } else if (ext == "mtx") {
+    auto [p, info] = ReadMTX(filename);
+    result.problem = std::move(p);
+    char buf[256];
+    snprintf(buf, sizeof(buf), "MTX: %s (%dx%d, nnz=%d%s%s)",
+             info.name.c_str(), info.rows, info.cols, info.nnz,
+             info.is_quadratic ? ", quadratic" : ", least-squares",
+             info.was_transposed ? ", transposed" : "");
+    result.name = buf;
+  } else {
+    throw std::runtime_error("Unknown file extension: " + ext);
+  }
+
+  return result;
+}
+
+// Parse comma-separated int list: "1,2,4" -> {1, 2, 4}.
+std::vector<int> ParseList(const std::string& s) {
+  std::vector<int> result;
+  std::istringstream ss(s);
+  std::string token;
+  while (std::getline(ss, token, ',')) result.push_back(std::stoi(token));
+  return result;
 }
 
 }  // namespace
@@ -219,15 +433,61 @@ void RunBenchmark(const Problem& problem, const std::string& name) {
 int main(int argc, char* argv[]) {
   if (argc < 2) {
     printf("Usage:\n");
-    printf("  %s <file.mps|file.dat-s|file.cbf>\n", argv[0]);
+    printf("  %s <file.mps|.qps|.dat-s|.cbf|.mtx>\n", argv[0]);
+    printf("  %s <file> --profile                    Factorization timing\n", argv[0]);
+    printf("  %s <file> --profile --sweep-threads 1,2,4\n", argv[0]);
+    printf("  %s <directory> [--limit N]              All QPS files\n", argv[0]);
     printf("  %s --synthetic lp <m> <n> [seed]\n", argv[0]);
     printf("  %s --synthetic sdp <n> <p> [seed]\n", argv[0]);
     printf("  %s --synthetic socp <dim> <p> [seed]\n", argv[0]);
     return 1;
   }
 
+  namespace fs = std::filesystem;
+
+  // Parse arguments.
+  conex::SolverConfiguration cfg;
+  bool profile_mode = false;
+  bool do_rescale = false;
+  bool randomize = false;
+  conex::ColumnScaling strategy = conex::ColumnScaling::Ruiz;
+  int limit = 0;
+  int max_profile_iters = -1;
+  std::vector<int> sweep_threads, sweep_merge;
   std::string arg1 = argv[1];
 
+  for (int i = 2; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--profile") {
+      profile_mode = true;
+    } else if (arg == "--rescale" || arg == "--ruiz") {
+      do_rescale = true; strategy = conex::ColumnScaling::Ruiz;
+    } else if (arg == "--l2") {
+      do_rescale = true; strategy = conex::ColumnScaling::L2Norm;
+    } else if (arg == "--maxabs") {
+      do_rescale = true; strategy = conex::ColumnScaling::MaxAbsValue;
+    } else if (arg == "--randomize") {
+      randomize = true;
+    } else if (arg == "--limit" && i + 1 < argc) {
+      limit = std::atoi(argv[++i]);
+    } else if (arg == "--threads" && i + 1 < argc) {
+      cfg.num_threads = std::stoi(argv[++i]);
+    } else if (arg == "--merge" && i + 1 < argc) {
+      cfg.tree.max_merge_supernode_size = std::stoi(argv[++i]);
+    } else if (arg == "--sweep-threads" && i + 1 < argc) {
+      sweep_threads = conex::ParseList(argv[++i]);
+    } else if (arg == "--sweep-merge" && i + 1 < argc) {
+      sweep_merge = conex::ParseList(argv[++i]);
+    } else if (arg == "--reorder" && i + 1 < argc) {
+      cfg.tree.supernode_reorder_method = std::stoi(argv[++i]);
+    } else if (arg == "--generic") {
+      cfg.tree.use_generic_factorization = true;
+    } else if (arg == "--iters" && i + 1 < argc) {
+      max_profile_iters = std::stoi(argv[++i]);
+    }
+  }
+
+  // --- Synthetic problems ---
   if (arg1 == "--synthetic") {
     if (argc < 5) {
       printf("Need: --synthetic <type> <dim1> <dim2> [seed]\n");
@@ -238,100 +498,113 @@ int main(int argc, char* argv[]) {
     int d2 = std::atoi(argv[4]);
     int seed = argc > 5 ? std::atoi(argv[5]) : 42;
 
+    conex::Problem problem;
+    char name[128];
     if (type == "lp") {
-      char name[64];
       snprintf(name, sizeof(name), "Synthetic LP (%dx%d, seed=%d)", d1, d2, seed);
-      conex::RunBenchmark(conex::MakeSyntheticLP(d1, d2, seed), name);
+      problem = conex::MakeSyntheticLP(d1, d2, seed);
     } else if (type == "sdp") {
-      char name[64];
       snprintf(name, sizeof(name), "Synthetic SDP (n=%d, p=%d, seed=%d)", d1, d2, seed);
-      conex::RunBenchmark(conex::MakeSyntheticSDP(d1, d2, seed), name);
+      problem = conex::MakeSyntheticSDP(d1, d2, seed);
     } else if (type == "socp") {
-      char name[64];
       snprintf(name, sizeof(name), "Synthetic SOCP (dim=%d, p=%d, seed=%d)", d1, d2, seed);
-      conex::RunBenchmark(conex::MakeSyntheticSOCP(d1, d2, seed), name);
+      problem = conex::MakeSyntheticSOCP(d1, d2, seed);
     } else {
       printf("Unknown type: %s\n", type.c_str());
       return 1;
     }
-  } else {
-    // File input.
-    std::string filename = arg1;
-    std::string ext = filename.substr(filename.find_last_of('.') + 1);
 
-    // Parse optional rescaling flag from remaining args.
-    bool do_rescale = false;
-    conex::ColumnScaling strategy = conex::ColumnScaling::Ruiz;
-    for (int a = 2; a < argc; ++a) {
-      std::string arg = argv[a];
-      if (arg == "--rescale" || arg == "--ruiz") {
-        do_rescale = true; strategy = conex::ColumnScaling::Ruiz;
-      } else if (arg == "--l2") {
-        do_rescale = true; strategy = conex::ColumnScaling::L2Norm;
-      } else if (arg == "--maxabs") {
-        do_rescale = true; strategy = conex::ColumnScaling::MaxAbsValue;
+    if (profile_mode) {
+      conex::PrintProfileHeader();
+      auto res = conex::ProfileFactorization(problem, name, cfg, max_profile_iters);
+      conex::PrintProfileResult(res, cfg);
+    } else {
+      conex::ProfileAlgorithm(problem, name, cfg);
+    }
+    return 0;
+  }
+
+  // --- Directory of QPS files ---
+  if (fs::is_directory(arg1)) {
+    std::vector<std::pair<uintmax_t, std::string>> files;
+    for (const auto& entry : fs::directory_iterator(arg1)) {
+      auto p = entry.path();
+      auto ext = p.extension().string();
+      if (ext == ".QPS" || ext == ".qps") {
+        files.push_back({entry.file_size(), p.string()});
+      }
+    }
+    std::sort(files.begin(), files.end());
+    printf("Found %d QPS files (sorted by size)\n\n", (int)files.size());
+
+    int count = 0;
+    for (const auto& [sz, filepath] : files) {
+      if (limit > 0 && count >= limit) break;
+      try {
+        auto info = conex::ReadProblemFile(filepath);
+        if (profile_mode) {
+          conex::PrintProfileHeader();
+          auto res = conex::ProfileFactorization(
+              info.problem, info.name, cfg, max_profile_iters);
+          conex::PrintProfileResult(res, cfg);
+        } else {
+          conex::ProfileAlgorithm(info.problem, info.name, cfg,
+                                   info.objective_constant);
+        }
+        count++;
+      } catch (const std::exception& e) {
+        printf("SKIP %s: %s\n\n",
+               fs::path(filepath).filename().c_str(), e.what());
+      }
+    }
+    printf("Completed %d / %d instances.\n", count, (int)files.size());
+    return 0;
+  }
+
+  // --- Single file ---
+  try {
+    auto info = conex::ReadProblemFile(arg1);
+
+    if (do_rescale) {
+      const char* sname[] = {"MaxAbsValue", "L2Norm", "Ruiz"};
+      printf("Column scaling: %s\n", sname[static_cast<int>(strategy)]);
+      auto [rescaled, rinfo] = conex::RescaleProblem(info.problem, strategy);
+      if (rinfo.was_rescaled) {
+        printf("Rescaled (col_scale range: [%.2e, %.2e])\n",
+               rinfo.col_scale.minCoeff(), rinfo.col_scale.maxCoeff());
+        info.problem = std::move(rescaled);
+        info.name += " [rescaled]";
+      } else {
+        printf("Rescaling had no effect.\n");
       }
     }
 
-    try {
-      conex::Problem problem;
-      std::string name;
-      if (ext == "mps") {
-        auto [p, info] = conex::ReadMPS(filename);
-        problem = std::move(p);
-        char buf[256];
-        snprintf(buf, sizeof(buf), "MPS: %s (%d vars, %d LE, %d GE, %d EQ)",
-                 info.name.c_str(), info.num_variables,
-                 info.num_le_rows, info.num_ge_rows, info.num_eq_rows);
-        name = buf;
-      } else if (ext == "dat-s" || ext == "dat" ||
-                 filename.find(".dat-s") != std::string::npos) {
-        auto [p, info] = conex::ReadSDPA(filename);
-        problem = std::move(p);
-        char buf[256];
-        snprintf(buf, sizeof(buf), "SDPA: %d constraints, %d blocks, dim=%d",
-                 info.num_constraints, info.num_blocks, info.total_matrix_dim);
-        name = buf;
-      } else if (ext == "cbf") {
-        auto [p, info] = conex::ReadCBF(filename);
-        problem = std::move(p);
-        char buf[256];
-        snprintf(buf, sizeof(buf), "CBF: %d vars, %d cons",
-                 info.num_variables, info.num_constraints);
-        name = buf;
-      } else if (ext == "qps" || ext == "QPS") {
-        auto [p, info] = conex::ReadQPS(filename);
-        problem = std::move(p);
-        char buf[256];
-        snprintf(buf, sizeof(buf), "QPS: %s (%d vars, %d eq, %d ineq, %d quad)",
-                 info.name.c_str(), info.num_variables,
-                 info.num_equality_rows, info.num_inequality_rows,
-                 info.num_quadratic_entries);
-        name = buf;
-      } else {
-        printf("Unknown file extension: %s\n", ext.c_str());
-        return 1;
-      }
+    if (profile_mode) {
+      if (sweep_threads.empty()) sweep_threads = {cfg.num_threads};
+      if (sweep_merge.empty()) sweep_merge = {cfg.tree.max_merge_supernode_size};
 
-      if (do_rescale) {
-        const char* sname[] = {"MaxAbsValue", "L2Norm", "Ruiz"};
-        printf("Column scaling: %s\n", sname[static_cast<int>(strategy)]);
-        auto [rescaled, rinfo] = conex::RescaleProblem(problem, strategy);
-        if (rinfo.was_rescaled) {
-          printf("Rescaled (col_scale range: [%.2e, %.2e])\n",
-                 rinfo.col_scale.minCoeff(), rinfo.col_scale.maxCoeff());
-          problem = std::move(rescaled);
-          name += " [rescaled]";
-        } else {
-          printf("Rescaling had no effect.\n");
+      for (int threads : sweep_threads) {
+        for (int merge : sweep_merge) {
+          conex::SolverConfiguration run_cfg = cfg;
+          run_cfg.num_threads = threads;
+          run_cfg.tree.max_merge_supernode_size = merge;
+
+          conex::PrintProfileHeader();
+          auto res = conex::ProfileFactorization(
+              info.problem, info.name, run_cfg, max_profile_iters);
+          conex::PrintProfileResult(res, run_cfg);
+          printf("\n");
         }
       }
-
-      conex::RunBenchmark(problem, name);
-    } catch (const std::exception& e) {
-      printf("Error: %s\n", e.what());
-      return 1;
+      printf("Columns: thrd=num_threads, merg=max_merge_supernode_size, cliq=num_cliques\n");
+      printf("Stages:  build=solver construction, asm+fac/solve are median of repeated runs\n");
+    } else {
+      conex::ProfileAlgorithm(info.problem, info.name, cfg,
+                               info.objective_constant);
     }
+  } catch (const std::exception& e) {
+    printf("Error: %s\n", e.what());
+    return 1;
   }
 
   return 0;

@@ -85,20 +85,23 @@ using QPSolverFn = std::function<QPSolution(const Problem&, const VectorXd&)>;
 
 static QPSolution SolveBarrierFromProblem(
     const Problem& problem, const Eigen::VectorXd& x0) {
-  auto [reduced, expansion] = Preprocess(problem);
-  auto solver = Solver::Build(reduced);
+  auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  VectorXd c = problem.has_linear_cost()
-      ? problem.linear_cost() : VectorXd::Zero(problem.num_variables());
   auto c_rhs = kkt->MakeSolverRHS();
-  c_rhs = kkt->MakeBlockVariable(expansion.Reduce(c));
+  if (solver.linear_cost().size() > 0) {
+    c_rhs = kkt->MakeBlockVariable(solver.linear_cost());
+  } else {
+    c_rhs.SetZero();
+  }
   auto x = kkt->MakeSolverRHS();
-  x = kkt->MakeBlockVariable(expansion.Reduce(x0));
+  x = kkt->MakeBlockVariable(solver.ReduceVector(x0));
 
   auto result = SolveBarrierQP(*kkt, c_rhs, x);
   QPSolution sol;
-  sol.x = expansion.Expand(result.x);
+  sol.x = solver.ExpandSolution(result.x);
+  VectorXd c = problem.has_linear_cost()
+      ? problem.linear_cost() : VectorXd::Zero(problem.num_variables());
   sol.objective = c.dot(sol.x);
   sol.gap = result.duality_gap;
   return sol;
@@ -204,14 +207,15 @@ TEST_P(QPSolverTest, MultipleConstraints) {
 static QPSolution SolveGeodesicFromProblem(
     const Problem& problem, const Eigen::VectorXd& x0) {
   (void)x0;  // geodesic IPM initializes at W=ones, ignores x0
-  auto [reduced, expansion] = Preprocess(problem);
-  auto solver = Solver::Build(reduced);
+  auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  VectorXd c = problem.has_linear_cost()
-      ? problem.linear_cost() : VectorXd::Zero(problem.num_variables());
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(expansion.Reduce(c));
+  if (solver.linear_cost().size() > 0) {
+    cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
+  } else {
+    cost_rhs.SetZero();
+  }
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
@@ -219,7 +223,9 @@ static QPSolution SolveGeodesicFromProblem(
   auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
 
   QPSolution sol;
-  sol.x = expansion.Expand(result.x);
+  sol.x = solver.ExpandSolution(result.x);
+  VectorXd c = problem.has_linear_cost()
+      ? problem.linear_cost() : VectorXd::Zero(problem.num_variables());
   sol.objective = c.dot(sol.x);
   sol.gap = result.complementarity;
   return sol;
@@ -493,7 +499,10 @@ TEST(ProblemSolver, CustomTree) {
 
   auto solver_auto = Solver::Build(problem);
   ASSERT_TRUE(solver_auto.solver()->AssembleAndFactor());
-  VectorXd x_auto = solver_auto.solver()->Solve(rhs);
+  // Auto solver preprocesses; reduce RHS and expand solution to compare.
+  VectorXd rhs_r = solver_auto.ReduceVector(rhs);
+  VectorXd x_auto_r = solver_auto.solver()->Solve(rhs_r);
+  VectorXd x_auto = solver_auto.ExpandSolution(x_auto_r);
 
   double err = (x_custom - x_auto).norm() / x_auto.norm();
   EXPECT_LT(err, 1e-10);
@@ -894,7 +903,9 @@ TEST(ProblemSolver, RankDeficientEqualities) {
   problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
   problem.AddEqualityConstraint(C, d, vars);
 
+  // Call Preprocess explicitly so we can inspect the reduced equality.
   auto [reduced, expansion] = Preprocess(problem);
+  // Solver::Build will preprocess again (idempotent on already-reduced input).
   auto solver = Solver::Build(reduced);
   ASSERT_TRUE(solver.solver()->AssembleAndFactor());
 

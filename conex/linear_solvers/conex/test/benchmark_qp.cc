@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -41,6 +42,7 @@ struct AlgoResult {
 AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
                    const SolverRHS& cost_rhs,
                    const Problem& problem,
+                   const Solver& solver,
                    auto solve_fn) {
   RowSpace W = kkt.MakeRowSpace();
   setOnes(W);
@@ -51,7 +53,7 @@ AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
 
   double primal_cost = 0;
   if (result.x.size() > 0) {
-    const auto& x = result.x;
+    Eigen::VectorXd x = solver.ExpandSolution(result.x);
     // c'x
     if (problem.has_linear_cost()) {
       int nc = std::min((int)problem.linear_cost().size(), (int)x.size());
@@ -83,9 +85,10 @@ AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
 void RunBenchmark(const Problem& problem, const QPSInfo& info,
                   const std::string& filename) {
   printf("=== %s ===\n", filename.c_str());
-  printf("  vars=%d, eq=%d, ineq=%d, quad=%d",
+  printf("  vars=%d, eq=%d, ineq=%d, quad=%d, bounds=%d, constraints=%d",
          info.num_variables, info.num_equality_rows,
-         info.num_inequality_rows, info.num_quadratic_entries);
+         info.num_inequality_rows, info.num_quadratic_entries,
+         info.num_bounded_vars, problem.num_constraints());
   if (info.objective_constant != 0)
     printf(", c0=%.6e", info.objective_constant);
   printf("\n");
@@ -99,10 +102,9 @@ void RunBenchmark(const Problem& problem, const QPSInfo& info,
   int nv = kkt->number_of_variables();
   printf("  KKT vars=%d, build=%.1f ms\n", nv, build_ms);
 
-  // cost_rhs = [c; 0] — the IPM injects equality d internally.
   auto cost_rhs = kkt->MakeSolverRHS();
-  if (problem.has_linear_cost()) {
-    cost_rhs = kkt->MakeBlockVariable(problem.linear_cost());
+  if (solver.linear_cost().size() > 0) {
+    cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
   } else {
     cost_rhs.SetZero();
   }
@@ -111,19 +113,19 @@ void RunBenchmark(const Problem& problem, const QPSInfo& info,
   const double tol = 1e-8;
 
   // --- ThetaContinuation ---
-  auto r1 = RunAlgo("ThetaCont", *kkt, cost_rhs, problem,
+  auto r1 = RunAlgo("ThetaCont", *kkt, cost_rhs, problem, solver,
     [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
       return SolveGeodesicThetaContinuation(k, c, W, max_iters, 1, tol, true);
     });
 
   // --- PhaseOne ---
-  auto r2 = RunAlgo("PhaseOne", *kkt, cost_rhs, problem,
+  auto r2 = RunAlgo("PhaseOne", *kkt, cost_rhs, problem, solver,
     [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
       return SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true);
     });
 
   // --- Phase1+Hybrid ---
-  auto r3 = RunAlgo("Ph1+Hybrid", *kkt, cost_rhs, problem,
+  auto r3 = RunAlgo("Ph1+Hybrid", *kkt, cost_rhs, problem, solver,
     [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
       auto p1 = SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true,
                                        /*phase1_only=*/true);

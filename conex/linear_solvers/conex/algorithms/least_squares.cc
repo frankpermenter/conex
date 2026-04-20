@@ -25,9 +25,7 @@ SparseLeastSquaresResult SparseLeastSquares(
   Problem problem;
   problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(A.rows()), vars);
 
-  auto [reduced, expansion] = Preprocess(problem);
-
-  auto solver = Solver::Build(reduced);
+  auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
   auto t1 = clock::now();
@@ -37,12 +35,12 @@ SparseLeastSquaresResult SparseLeastSquares(
 
   auto t2 = clock::now();
 
-  Eigen::VectorXd rhs_reduced = expansion.Reduce(rhs);
+  Eigen::VectorXd rhs_reduced = solver.ReduceVector(rhs);
   Eigen::VectorXd x_reduced = kkt->Solve(rhs_reduced);
 
   auto t3 = clock::now();
 
-  result.x = expansion.Expand(x_reduced);
+  result.x = solver.ExpandSolution(x_reduced);
   result.construction_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
   result.assemble_and_factor_time_us =
@@ -85,11 +83,12 @@ SparseQuadraticTermLeastSquaresResult SparseQuadraticTermLeastSquares(
 
   auto t2 = clock::now();
 
-  Eigen::VectorXd x = kkt->Solve(rhs);
+  Eigen::VectorXd rhs_reduced = solver.ReduceVector(rhs);
+  Eigen::VectorXd x = kkt->Solve(rhs_reduced);
 
   auto t3 = clock::now();
 
-  result.x = x;
+  result.x = solver.ExpandSolution(x);
   result.construction_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
   result.factor_time_us =
