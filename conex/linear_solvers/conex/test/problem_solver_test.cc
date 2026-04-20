@@ -2524,5 +2524,81 @@ TEST(SolverSolve, MultipleConstraints) {
   EXPECT_LT(dual_res.norm(), 1e-2);
 }
 
+TEST(SolverSolve, EqualityConstraints) {
+  // min c'x  s.t.  Ax + b >= 0,  C1*x = d1,  C2*x = d2
+  //
+  // Uses ThetaContinuation which handles equality RHS via
+  // ComputeFullDecomposition + EqualityAffineTermRHS.
+  srand(99);
+  const int n = 6, m = 10;
+
+  MatrixXd Ad = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  Eigen::SparseMatrix<double> A = Ad.sparseView();
+  VectorXd b = VectorXd::Ones(m);
+
+  // Two equality constraints: x0 + x1 = 0.5,  x2 + x3 = 0.5.
+  Eigen::SparseMatrix<double> C1(1, n), C2(1, n);
+  {
+    std::vector<Eigen::Triplet<double>> t;
+    t.emplace_back(0, 0, 1.0); t.emplace_back(0, 1, 1.0);
+    C1.setFromTriplets(t.begin(), t.end());
+  }
+  {
+    std::vector<Eigen::Triplet<double>> t;
+    t.emplace_back(0, 2, 1.0); t.emplace_back(0, 3, 1.0);
+    C2.setFromTriplets(t.begin(), t.end());
+  }
+  VectorXd d1(1), d2(1);
+  d1 << 0.5;
+  d2 << 0.5;
+
+  VectorXd c = Ad.transpose() * VectorXd::Ones(m);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(A, b, vars);
+  model.AddEqualityConstraint(C1, d1, vars);
+  model.AddEqualityConstraint(C2, d2, vars);
+  model.SetLinearCost(c);
+
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(conex::ThetaContinuation());
+
+  printf("  mu = %.2e\n", result.mu);
+
+  // --- Structural checks ---
+  ASSERT_EQ(result.duals.lambda.size(), 1u);  // one inequality constraint
+  ASSERT_EQ(result.duals.slack.size(), 1u);
+  ASSERT_EQ(result.duals.nu.size(), 2u);       // two equality constraints
+  EXPECT_EQ(result.duals.nu[0].size(), 1);
+  EXPECT_EQ(result.duals.nu[1].size(), 1);
+
+  // --- Primal feasibility ---
+  printf("  min_slack = %.2e\n", result.duals.slack[0].minCoeff());
+  EXPECT_GE(result.duals.slack[0].minCoeff(), -1e-3);
+
+  // Equality: x0+x1 ≈ 0.5, x2+x3 ≈ 0.5.
+  double eq1_err = std::abs(result.x(0) + result.x(1) - 0.5);
+  double eq2_err = std::abs(result.x(2) + result.x(3) - 0.5);
+  printf("  equality errors: %.2e, %.2e\n", eq1_err, eq2_err);
+  EXPECT_LT(eq1_err, 1e-2);
+  EXPECT_LT(eq2_err, 1e-2);
+
+  // --- Complementarity ---
+  double cs = result.duals.lambda[0].dot(result.duals.slack[0]);
+  printf("  complementarity = %.2e\n", cs);
+  EXPECT_LT(cs, 1e-2);
+
+  // --- Stationarity: c = A' lambda + C1' nu1 + C2' nu2 ---
+  VectorXd At_lam = Ad.transpose() * result.duals.lambda[0];
+  VectorXd Ct_nu = Eigen::MatrixXd(C1).transpose() * result.duals.nu[0] +
+                   Eigen::MatrixXd(C2).transpose() * result.duals.nu[1];
+  VectorXd stat_res = c - At_lam - Ct_nu;
+  printf("  stationarity_residual = %.2e\n", stat_res.norm());
+  EXPECT_LT(stat_res.norm(), 1e-2);
+}
+
 }  // namespace
 }  // namespace conex

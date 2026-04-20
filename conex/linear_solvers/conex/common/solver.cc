@@ -113,12 +113,13 @@ ConstraintDuals Solver::ExtractDuals(const Eigen::VectorXd& x_reduced,
 
       } else if constexpr (std::is_same_v<T, Model::EqualityConstraintData>) {
         // Equality duals come from the KKT system's dual variables.
+        // The KKT system stores them with opposite sign from the standard
+        // convention (c = A'λ + C'ν), so we negate.
         const auto& dual_vars = system_.dual_variables(i);
         Eigen::VectorXd nu(dual_vars.size());
-        // Extract from x_reduced (equality duals are in the primal block).
         for (int j = 0; j < (int)dual_vars.size(); ++j) {
           int dv = dual_vars[j];
-          nu(j) = (dv < x_reduced.size()) ? x_reduced(dv) : 0;
+          nu(j) = (dv < x_reduced.size()) ? -x_reduced(dv) : 0;
         }
         duals.nu.push_back(nu);
 
