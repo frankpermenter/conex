@@ -6,9 +6,14 @@ namespace conex {
 
 // Per-constraint dual information in Model (original) space.
 //
-// For linear/SOC constraint i (Ax + b >= 0):
+// For linear constraint i (Ax + b >= 0):
 //   slack[i]  = A_i * x[vars_i] + b_i   (should be >= 0)
 //   lambda[i] = dual multiplier          (should be >= 0)
+//   complementarity: lambda[i].dot(slack[i]) ≈ 0
+//
+// For SOC constraint i (||A₁x + b₁|| ≤ A₀x + b₀):
+//   slack[i]  = A_i * x + b_i            (should be in SOC: s₀ >= ||s₁||)
+//   lambda[i] = dual multiplier          (should be in SOC: λ₀ >= ||λ₁||)
 //   complementarity: lambda[i].dot(slack[i]) ≈ 0
 //
 // For PSD constraint j (Σ A_k x_k + B ≽ 0):

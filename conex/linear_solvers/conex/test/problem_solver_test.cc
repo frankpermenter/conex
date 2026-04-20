@@ -2680,5 +2680,251 @@ TEST(SolverSolve, PSDConstraint) {
   EXPECT_LT(stat_res.norm(), 1e-2);
 }
 
+TEST(SolverSolve, SOCConstraint) {
+  // min c'x  s.t.  ||A₁x + b₁|| ≤ A₀x + b₀
+  // SOC dual feasibility: λ₀ >= ||λ₁||.
+  srand(42);
+  const int vec_dim = 3;
+  const int n_soc = 1 + vec_dim;
+  const int p = 3;
+
+  MatrixXd A_dense = MatrixXd::Random(n_soc, p);
+  // Ensure A₀ row is positive so the SOC has interior.
+  A_dense.row(0) = A_dense.row(0).cwiseAbs() + 0.5 * VectorXd::Ones(p).transpose();
+
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int i = 0; i < n_soc; ++i)
+    for (int j = 0; j < p; ++j)
+      if (std::abs(A_dense(i, j)) > 1e-14)
+        trips.emplace_back(i, j, A_dense(i, j));
+  Eigen::SparseMatrix<double> A(n_soc, p);
+  A.setFromTriplets(trips.begin(), trips.end());
+
+  VectorXd b = VectorXd::Zero(n_soc);
+  b(0) = 1.0;
+
+  // Cost: c = A₀ so W=I at k=1 is centered.
+  VectorXd c = A_dense.row(0).transpose();
+
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddSOCConstraint(A, b, vars);
+  model.SetLinearCost(c);
+
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(conex::ThetaContinuation());
+
+  printf("  mu = %.2e\n", result.mu);
+
+  ASSERT_EQ(result.duals.lambda.size(), 1u);
+  ASSERT_EQ(result.duals.slack.size(), 1u);
+
+  const auto& lam = result.duals.lambda[0];
+  const auto& s = result.duals.slack[0];
+  ASSERT_EQ(lam.size(), n_soc);
+  ASSERT_EQ(s.size(), n_soc);
+
+  // SOC membership: s₀ >= ||s₁||.
+  double s0 = s(0);
+  double s1_norm = s.tail(vec_dim).norm();
+  printf("  s0 = %.4e, ||s1|| = %.4e\n", s0, s1_norm);
+  EXPECT_GE(s0 + 1e-3, s1_norm);
+
+  // Dual SOC membership: λ₀ >= ||λ₁||.
+  double l0 = lam(0);
+  double l1_norm = lam.tail(vec_dim).norm();
+  printf("  lam0 = %.4e, ||lam1|| = %.4e\n", l0, l1_norm);
+  EXPECT_GE(l0 + 1e-3, l1_norm);
+
+  // Complementarity: λ · s ≈ 0.
+  double cs = lam.dot(s);
+  printf("  complementarity = %.2e\n", cs);
+  EXPECT_LT(std::abs(cs), 1e-2);
+
+  // Stationarity: c = A' λ.
+  VectorXd stat_res = c - A_dense.transpose() * lam;
+  printf("  stationarity_residual = %.2e\n", stat_res.norm());
+  EXPECT_LT(stat_res.norm(), 1e-2);
+}
+
+TEST(SolverSolve, AllConstraintTypes) {
+  // min c'x + (1/2)x'Qx
+  //   s.t. A_lp * x + b_lp >= 0          (linear)
+  //        ||A₁_soc x|| ≤ A₀_soc x + 1   (SOC)
+  //        Σ A_k x_k + I ≽ 0              (PSD)
+  //        C x = d                         (equality)
+  //
+  // Stationarity: c + Qx = A_lp' λ_lp + A_soc' λ_soc
+  //                         + Σ tr(A_k ·) Λ_psd + C' ν
+  srand(88);
+
+  // Variable layout: 0..3 for LP/SOC/equality, 4..6 for PSD.
+  const int n = 7;
+
+  // --- Linear constraint: 3 rows on vars 0..3 ---
+  const int m_lp = 3;
+  MatrixXd A_lp_d = MatrixXd::Random(m_lp, 4).cwiseAbs() + 0.1 * MatrixXd::Ones(m_lp, 4);
+  Eigen::SparseMatrix<double> A_lp = A_lp_d.sparseView();
+  VectorXd b_lp = VectorXd::Ones(m_lp);
+  std::vector<int> lp_vars = {0, 1, 2, 3};
+
+  // --- SOC constraint: dim 3 on vars 0..2 ---
+  const int soc_dim = 3;
+  MatrixXd A_soc_d = MatrixXd::Random(soc_dim, 3);
+  A_soc_d.row(0) = A_soc_d.row(0).cwiseAbs() + 0.5 * VectorXd::Ones(3).transpose();
+  Eigen::SparseMatrix<double> A_soc = A_soc_d.sparseView();
+  VectorXd b_soc = VectorXd::Zero(soc_dim);
+  b_soc(0) = 1.0;
+  std::vector<int> soc_vars = {0, 1, 2};
+
+  // --- PSD constraint: 2×2, 3 variables on vars 4..6 ---
+  // Use diagonal-like A_k for well-conditioned constraint.
+  const int n_psd = 2;
+  const int p_psd = 3;
+  std::vector<Eigen::SparseMatrix<double>> psd_A;
+  {
+    MatrixXd A0 = MatrixXd::Zero(n_psd, n_psd); A0(0, 0) = 1.0;
+    MatrixXd A1 = MatrixXd::Zero(n_psd, n_psd); A1(1, 1) = 1.0;
+    MatrixXd A2 = MatrixXd::Zero(n_psd, n_psd); A2(0, 1) = A2(1, 0) = 0.5;
+    psd_A.push_back(A0.sparseView());
+    psd_A.push_back(A1.sparseView());
+    psd_A.push_back(A2.sparseView());
+  }
+  Eigen::SparseMatrix<double> psd_B =
+      Eigen::MatrixXd::Identity(n_psd, n_psd).sparseView();
+  std::vector<int> psd_vars = {4, 5, 6};
+
+  // --- Equality: x0 + x1 = 0.5 ---
+  Eigen::SparseMatrix<double> C(1, n);
+  {
+    std::vector<Eigen::Triplet<double>> ct;
+    ct.emplace_back(0, 0, 1.0); ct.emplace_back(0, 1, 1.0);
+    C.setFromTriplets(ct.begin(), ct.end());
+  }
+  VectorXd d(1);
+  d << 0.5;
+  std::vector<int> eq_vars(n);
+  std::iota(eq_vars.begin(), eq_vars.end(), 0);
+
+  // --- Quadratic cost on all vars ---
+  Eigen::SparseMatrix<double> Q(n, n);
+  {
+    std::vector<Eigen::Triplet<double>> qt;
+    for (int i = 0; i < n; ++i) qt.emplace_back(i, i, 0.1);
+    Q.setFromTriplets(qt.begin(), qt.end());
+  }
+  std::vector<int> all_vars(n);
+  std::iota(all_vars.begin(), all_vars.end(), 0);
+
+  // Cost vector.
+  VectorXd c = VectorXd::Zero(n);
+  // LP contribution: A_lp^T 1.
+  for (int j = 0; j < 4; ++j)
+    for (int i = 0; i < m_lp; ++i)
+      c(lp_vars[j]) += A_lp_d(i, j);
+  // SOC contribution: A_soc row 0.
+  for (int j = 0; j < 3; ++j)
+    c(soc_vars[j]) += A_soc_d(0, j);
+  // PSD contribution: tr(A_k).
+  for (int k = 0; k < p_psd; ++k)
+    c(psd_vars[k]) += Eigen::MatrixXd(psd_A[k]).trace();
+
+  Model model;
+  model.AddLinearConstraint(A_lp, b_lp, lp_vars);       // cone 0
+  model.AddSOCConstraint(A_soc, b_soc, soc_vars);        // cone 1
+  model.AddPSDConstraint(psd_A, psd_B, psd_vars, false); // psd 0
+  model.AddQuadraticCost(Q, all_vars);
+  model.AddEqualityConstraint(C, d, eq_vars);             // eq 0
+  model.SetLinearCost(c);
+
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(conex::ThetaContinuation());
+
+  printf("  mu = %.2e\n", result.mu);
+
+  // --- Structural checks ---
+  ASSERT_EQ(result.duals.lambda.size(), 2u);      // LP + SOC
+  ASSERT_EQ(result.duals.slack.size(), 2u);
+  ASSERT_EQ(result.duals.psd_lambda.size(), 1u);
+  ASSERT_EQ(result.duals.psd_slack.size(), 1u);
+  ASSERT_EQ(result.duals.nu.size(), 1u);
+
+  EXPECT_EQ(result.duals.lambda[0].size(), m_lp);
+  EXPECT_EQ(result.duals.lambda[1].size(), soc_dim);
+  EXPECT_EQ(result.duals.psd_lambda[0].rows(), n_psd);
+  EXPECT_EQ(result.duals.nu[0].size(), 1);
+
+  // --- LP primal/dual feasibility ---
+  printf("  LP slack min = %.2e, lambda min = %.2e\n",
+         result.duals.slack[0].minCoeff(), result.duals.lambda[0].minCoeff());
+  EXPECT_GE(result.duals.slack[0].minCoeff(), -1e-3);
+  EXPECT_GE(result.duals.lambda[0].minCoeff(), -1e-3);
+
+  // --- SOC membership ---
+  const auto& s_soc = result.duals.slack[1];
+  const auto& l_soc = result.duals.lambda[1];
+  printf("  SOC slack: s0=%.2e, ||s1||=%.2e\n",
+         s_soc(0), s_soc.tail(soc_dim - 1).norm());
+  EXPECT_GE(s_soc(0) + 1e-3, s_soc.tail(soc_dim - 1).norm());
+  EXPECT_GE(l_soc(0) + 1e-3, l_soc.tail(soc_dim - 1).norm());
+
+  // --- PSD feasibility ---
+  const auto& S_psd = result.duals.psd_slack[0];
+  const auto& L_psd = result.duals.psd_lambda[0];
+  Eigen::SelfAdjointEigenSolver<MatrixXd> eig_s(S_psd);
+  Eigen::SelfAdjointEigenSolver<MatrixXd> eig_l(L_psd);
+  printf("  PSD: min_eig(S)=%.2e, min_eig(L)=%.2e\n",
+         eig_s.eigenvalues().minCoeff(), eig_l.eigenvalues().minCoeff());
+  EXPECT_GE(eig_s.eigenvalues().minCoeff(), -1e-3);
+  EXPECT_GE(eig_l.eigenvalues().minCoeff(), -1e-3);
+
+  // --- Equality ---
+  double eq_err = std::abs(result.x(0) + result.x(1) - 0.5);
+  printf("  equality error = %.2e\n", eq_err);
+  EXPECT_LT(eq_err, 1e-2);
+
+  // --- Complementarity (all cones) ---
+  double cs_lp = result.duals.lambda[0].dot(result.duals.slack[0]);
+  double cs_soc = l_soc.dot(s_soc);
+  double cs_psd = (S_psd * L_psd).trace();
+  printf("  complementarity: LP=%.2e, SOC=%.2e, PSD=%.2e\n",
+         cs_lp, cs_soc, cs_psd);
+  EXPECT_LT(std::abs(cs_lp) + std::abs(cs_soc) + std::abs(cs_psd), 1e-1);
+
+  // --- Stationarity: c + Qx = A_lp' λ_lp + A_soc' λ_soc
+  //                             + [tr(A_k · Λ_psd)]_k + C' ν ---
+  VectorXd grad = c + Q * result.x;
+
+  // LP contribution.
+  VectorXd rhs = VectorXd::Zero(n);
+  for (int j = 0; j < 4; ++j)
+    for (int i = 0; i < m_lp; ++i)
+      rhs(lp_vars[j]) += A_lp_d(i, j) * result.duals.lambda[0](i);
+
+  // SOC contribution.
+  VectorXd At_soc = A_soc_d.transpose() * l_soc;
+  for (int j = 0; j < 3; ++j)
+    rhs(soc_vars[j]) += At_soc(j);
+
+  // PSD contribution: c_k += tr(A_k · Λ).
+  for (int k = 0; k < p_psd; ++k) {
+    double trAL = 0;
+    const auto& Ak = psd_A[k];
+    for (int col = 0; col < Ak.outerSize(); ++col)
+      for (Eigen::SparseMatrix<double>::InnerIterator it(Ak, col); it; ++it)
+        trAL += it.value() * L_psd(it.row(), it.col());
+    rhs(psd_vars[k]) += trAL;
+  }
+
+  // Equality contribution.
+  rhs += Eigen::MatrixXd(C).transpose() * result.duals.nu[0];
+
+  VectorXd stat_res = grad - rhs;
+  printf("  stationarity_residual = %.2e\n", stat_res.norm());
+  EXPECT_LT(stat_res.norm(), 1e-1);
+}
+
 }  // namespace
 }  // namespace conex

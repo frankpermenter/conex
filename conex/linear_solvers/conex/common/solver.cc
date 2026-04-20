@@ -82,47 +82,73 @@ ConstraintDuals Solver::ExtractDuals(const Eigen::VectorXd& x_reduced,
   slack_rs += k->GetAffineTerm();
   const auto& slack_vec = slack_rs.col();
 
-  // Lambda is a flat vector with segments for each cone constraint
-  // (linear, PSD, SOC) in Model order, skipping quadratic costs and
-  // equality constraints.
+  // The RowSpace segments follow registration order in
+  // KKTSystem::RegisterAssemblersWithTreeSolver:
+  //   1. Linear constraints
+  //   2. PSD constraints
+  //   3. SOC constraints
+  // We compute per-constraint offsets, then populate duals in Model order.
   const auto& lam_vec = lambda.col();
-  int lam_offset = 0;
-  int slack_offset = 0;
+  const int nc = reduced_model_.num_constraints();
 
-  for (int i = 0; i < reduced_model_.num_constraints(); ++i) {
+  // Compute RowSpace offset for each constraint, following registration order.
+  std::vector<int> rs_offset(nc, -1);
+  int offset = 0;
+  // Pass 1: Linear.
+  for (int i = 0; i < nc; ++i) {
+    if (auto* lc = std::get_if<Model::LinearConstraintData>(
+            &reduced_model_.constraint(i))) {
+      rs_offset[i] = offset;
+      offset += lc->A.rows();
+    }
+  }
+  // Pass 2: PSD.
+  for (int i = 0; i < nc; ++i) {
+    if (auto* pc = std::get_if<Model::PSDConstraintData>(
+            &reduced_model_.constraint(i))) {
+      rs_offset[i] = offset;
+      offset += pc->B.rows() * pc->B.rows();
+    }
+  }
+  // Pass 3: SOC.
+  for (int i = 0; i < nc; ++i) {
+    if (auto* sc = std::get_if<Model::SOCConstraintData>(
+            &reduced_model_.constraint(i))) {
+      rs_offset[i] = offset;
+      offset += sc->A.rows();
+    }
+  }
+
+  // Now iterate in Model order and extract using computed offsets.
+  for (int i = 0; i < nc; ++i) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
+      int o = rs_offset[i];
 
       if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
         int m = data.A.rows();
-        duals.slack.push_back(slack_vec.segment(slack_offset, m));
-        duals.lambda.push_back(lam_vec.segment(lam_offset, m));
-        slack_offset += m;
-        lam_offset += m;
+        duals.slack.push_back(slack_vec.segment(o, m));
+        duals.lambda.push_back(lam_vec.segment(o, m));
 
       } else if constexpr (std::is_same_v<T, Model::SOCConstraintData>) {
         int m = data.A.rows();
-        duals.slack.push_back(slack_vec.segment(slack_offset, m));
-        duals.lambda.push_back(lam_vec.segment(lam_offset, m));
-        slack_offset += m;
-        lam_offset += m;
+        duals.slack.push_back(slack_vec.segment(o, m));
+        // SOC quadratic representation P(W) = 2W² introduces a factor of 2.
+        duals.lambda.push_back(2.0 * lam_vec.segment(o, m));
 
       } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
         int n = data.B.rows();
-        int seg_size = n * n;
+        int seg = n * n;
         Eigen::Map<const Eigen::MatrixXd> lam_map(
-            lam_vec.data() + lam_offset, n, n);
+            lam_vec.data() + o, n, n);
         duals.psd_lambda.push_back(Eigen::MatrixXd(lam_map));
         Eigen::Map<const Eigen::MatrixXd> slack_map(
-            slack_vec.data() + slack_offset, n, n);
+            slack_vec.data() + o, n, n);
         duals.psd_slack.push_back(Eigen::MatrixXd(slack_map));
-        slack_offset += seg_size;
-        lam_offset += seg_size;
 
       } else if constexpr (std::is_same_v<T, Model::EqualityConstraintData>) {
-        // Equality duals come from the KKT system's dual variables.
-        // The KKT system stores them with opposite sign from the standard
-        // convention (c = A'λ + C'ν), so we negate.
+        // The KKT system stores equality duals with opposite sign
+        // from the standard convention (c = A'λ + C'ν), so we negate.
         const auto& dual_vars = system_.dual_variables(i);
         Eigen::VectorXd nu(dual_vars.size());
         for (int j = 0; j < (int)dual_vars.size(); ++j) {
