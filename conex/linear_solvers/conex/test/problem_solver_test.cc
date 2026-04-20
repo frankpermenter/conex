@@ -9,6 +9,7 @@
 #include "conex/algorithms/barrier_qp.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/algorithms/irls.h"
+#include "conex/algorithms/solve_strategies.h"
 #include "conex/common/eja_ops.h"
 #include "conex/algorithms/lqr_tree_solver.h"
 #include "conex/common/clique_ordering.h"
@@ -2330,6 +2331,123 @@ TEST(ProblemSolver, LinearConstraintNonIdentityVars) {
   double err = std::abs(sol(5) - x_ref(0)) + std::abs(sol(10) - x_ref(1));
   printf("  LinearConstraintNonIdentityVars: err=%.2e\n", err);
   EXPECT_LT(err, 1e-8);
+}
+
+// =====================================================================
+// Solver::Solve with dual extraction
+// =====================================================================
+
+TEST(SolverSolve, LPDualFeasibility) {
+  // min c'x  s.t. Ax + b >= 0
+  // KKT: c = A' lambda, lambda >= 0, s >= 0, lambda . s = 0.
+  srand(42);
+  const int n = 5, m = 8;
+  MatrixXd A_dense = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int i = 0; i < m; ++i)
+    for (int j = 0; j < n; ++j)
+      trips.emplace_back(i, j, A_dense(i, j));
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(A, b, vars);
+  model.SetLinearCost(c);
+
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(conex::PhaseOneHybrid());
+
+  printf("  mu = %.2e, converged = %d\n", result.mu, result.converged);
+  ASSERT_EQ(result.duals.lambda.size(), 1u);
+  ASSERT_EQ(result.duals.slack.size(), 1u);
+
+  const auto& lam = result.duals.lambda[0];
+  const auto& s = result.duals.slack[0];
+  ASSERT_EQ(lam.size(), m);
+  ASSERT_EQ(s.size(), m);
+
+  // Primal feasibility: s >= 0.
+  printf("  min_slack = %.2e\n", s.minCoeff());
+  EXPECT_GE(s.minCoeff(), -1e-3);
+
+  // Dual non-negativity: lambda >= 0.
+  printf("  min_lambda = %.2e\n", lam.minCoeff());
+  EXPECT_GE(lam.minCoeff(), -1e-3);
+
+  // Complementarity: lambda . s ≈ 0.
+  double cs = lam.dot(s);
+  printf("  complementarity = %.2e\n", cs);
+  EXPECT_LT(cs, 1e-2);
+
+  // Dual feasibility: A' lambda ≈ c.
+  VectorXd dual_res = A_dense.transpose() * lam - c;
+  printf("  dual_residual = %.2e\n", dual_res.norm());
+  EXPECT_LT(dual_res.norm(), 1e-2);
+}
+
+TEST(SolverSolve, QPDualFeasibility) {
+  // min (1/2)x'Qx + c'x  s.t. Ax + b >= 0
+  // KKT: Qx + c = A' lambda.
+  srand(42);
+  const int n = 5, m = 8;
+  MatrixXd A_dense = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int i = 0; i < m; ++i)
+    for (int j = 0; j < n; ++j)
+      trips.emplace_back(i, j, A_dense(i, j));
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+  VectorXd b = VectorXd::Ones(m);
+
+  // Diagonal Q for positive definiteness.
+  Eigen::SparseMatrix<double> Q(n, n);
+  std::vector<Eigen::Triplet<double>> qt;
+  for (int i = 0; i < n; ++i) qt.emplace_back(i, i, 1.0);
+  Q.setFromTriplets(qt.begin(), qt.end());
+
+  VectorXd c_cost = VectorXd::Random(n);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(A, b, vars);
+  model.AddQuadraticCost(Q, vars);
+  model.SetLinearCost(c_cost);
+
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(conex::PhaseOneHybrid());
+
+  printf("  mu = %.2e\n", result.mu);
+  ASSERT_EQ(result.duals.lambda.size(), 1u);
+  ASSERT_EQ(result.duals.slack.size(), 1u);
+
+  const auto& lam = result.duals.lambda[0];
+  const auto& s = result.duals.slack[0];
+
+  // Primal feasibility.
+  printf("  min_slack = %.2e\n", s.minCoeff());
+  EXPECT_GE(s.minCoeff(), -1e-3);
+
+  // Dual non-negativity.
+  printf("  min_lambda = %.2e\n", lam.minCoeff());
+  EXPECT_GE(lam.minCoeff(), -1e-3);
+
+  // Complementarity.
+  double cs = lam.dot(s);
+  printf("  complementarity = %.2e\n", cs);
+  EXPECT_LT(cs, 1e-2);
+
+  // Stationarity: Qx + c = A' lambda.
+  VectorXd grad = Q * result.x + c_cost;
+  VectorXd dual_res = grad - A_dense.transpose() * lam;
+  printf("  stationarity_residual = %.2e\n", dual_res.norm());
+  EXPECT_LT(dual_res.norm(), 1e-2);
 }
 
 }  // namespace

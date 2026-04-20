@@ -9,7 +9,9 @@ namespace conex {
 
 LPResult SolveLP(const Model& model, double tolerance) {
   auto solver = Solver::Build(model);
-  auto result = solver.Solve(GeodesicLP{.tolerance = tolerance});
+  GeodesicLP algo;
+  algo.tolerance = tolerance;
+  auto result = solver.Solve(algo);
 
   LPResult out;
   out.x = result.x;
