@@ -39,11 +39,13 @@ struct PhaseOne {
 };
 
 // Strategy: PhaseOne to θ=0, then hybrid r-update.
+// The switching policy controls when to center (W-update) vs shrink (r-update).
 struct PhaseOneHybrid {
   double tolerance = 1e-8;
   int max_iterations = 500;
   int max_centering_steps = 1;
   bool verbose = false;
+  HybridSwitchPolicy policy = DefaultHybridPolicy;
 
   GeodesicResult Run(KKTSolverBase& kkt,
                      const SolverRHS& cost_rhs) const {
@@ -55,7 +57,7 @@ struct PhaseOneHybrid {
     double k_init = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
     auto result = SolveGeodesicHybrid(
         kkt, cost_rhs, W, max_iterations, tolerance, verbose,
-        k_init, p1.tau);
+        k_init, p1.tau, policy);
     result.total_factorizations += p1.total_factorizations;
     result.total_solves += p1.total_solves;
     return result;

@@ -34,6 +34,7 @@
 // largest k with ||d||_inf <= 1 analytically.
 
 #pragma once
+#include <functional>
 #include <vector>
 #include <Eigen/Dense>
 #include "conex/common/kkt_solver_interface.h"
@@ -292,6 +293,16 @@ HybridDirection HybridCenteringStep(
     RowSpace& W,
     RowSpace& r);
 
+// Switching policy for the hybrid algorithm.
+// Returns true to center (W-update), false to shrink (r-update).
+// Arguments: gap, d_inf, number of r-updates since last centering.
+using HybridSwitchPolicy = std::function<bool(double, double, int)>;
+
+// Default policy: center if gap < 0.
+inline bool DefaultHybridPolicy(double gap, double, int) {
+  return gap < 0;
+}
+
 // Hybrid geodesic IPM: alternates between centering (when gap < 0)
 // and shrinking per-component centering targets r (when gap >= 0).
 // gap(r, d) = <r.*(1+d), r.*(1-d)> = sum(r_i^2 * (1 - d_i^2)).
@@ -303,6 +314,7 @@ GeodesicResult SolveGeodesicHybrid(
     double tolerance = 1e-8,
     bool verbose = false,
     double initial_k = -1,
-    double tau = 1.0);
+    double tau = 1.0,
+    HybridSwitchPolicy policy = DefaultHybridPolicy);
 
 }  // namespace conex

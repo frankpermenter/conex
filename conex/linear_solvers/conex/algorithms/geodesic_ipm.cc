@@ -1175,7 +1175,8 @@ GeodesicResult SolveGeodesicHybrid(
     double tolerance,
     bool verbose,
     double initial_k,
-    double tau) {
+    double tau,
+    HybridSwitchPolicy policy) {
   RowSpace b = kkt.GetAffineTerm();
   const int m = b.total_rows();
 
@@ -1256,7 +1257,7 @@ GeodesicResult SolveGeodesicHybrid(
       break;
     }
 
-    if (g < 0) {
+    if (policy(g, d_inf, r_updates_this_fac)) {
       // Centering step: update W and r, then refactor.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       updateAutomorphism(W, r, alpha, d);
