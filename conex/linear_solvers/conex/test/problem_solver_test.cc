@@ -2333,10 +2333,10 @@ TEST(ProblemSolver, LinearConstraintNonIdentityVars) {
   EXPECT_LT(err, 1e-8);
 }
 
-// =====================================================================
-// Solver::Solve with dual extraction
-// =====================================================================
+}  // namespace
+}  // namespace conex
 
+#if 0  // SolverSolve tests moved to solver_solve_test.cc.
 TEST(SolverSolve, LPDualFeasibility) {
   // min c'x  s.t. Ax + b >= 0
   // KKT: c = A' lambda, lambda >= 0, s >= 0, lambda . s = 0.
@@ -2867,7 +2867,10 @@ TEST(SolverSolve, AllConstraintTypes) {
   model.SetLinearCost(c);
 
   auto solver = Solver::Build(model);
-  auto result = solver.Solve(conex::ThetaContinuation());
+  conex::ThetaContinuation algo;
+  algo.verbose = false;
+  auto result = solver.Solve(algo);
+  //auto result = solver.Solve(conex::ThetaContinuation());
 
   printf("  mu = %.2e\n", result.mu);
 
@@ -2979,6 +2982,4 @@ TEST(SolverSolve, AllConstraintTypes) {
   printf("  stationarity_residual = %.2e\n", stat_res.norm());
   EXPECT_LT(stat_res.norm(), 1e-1);
 }
-
-}  // namespace
-}  // namespace conex
+#endif

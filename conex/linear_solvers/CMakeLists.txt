@@ -436,6 +436,17 @@ target_link_libraries(problem_solver_test
 )
 gtest_discover_tests(problem_solver_test)
 
+add_executable(solver_solve_test
+  conex/test/solver_solve_test.cc
+)
+target_link_libraries(solver_solve_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(solver_solve_test)
+
 add_executable(rescale_test
   conex/test/rescale_test.cc
 )
