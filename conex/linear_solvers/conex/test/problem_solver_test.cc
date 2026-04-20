@@ -2450,5 +2450,79 @@ TEST(SolverSolve, QPDualFeasibility) {
   EXPECT_LT(dual_res.norm(), 1e-2);
 }
 
+TEST(SolverSolve, MultipleConstraints) {
+  // min c'x  s.t.  A1*x + b1 >= 0,  A2*x + b2 >= 0
+  //
+  // Verify per-constraint duals are correctly indexed and sized
+  // when the Model has multiple inequality constraints.
+  srand(77);
+  const int n = 6;
+
+  // Two inequality constraints with different row counts.
+  const int m1 = 4, m2 = 3;
+  MatrixXd A1d = MatrixXd::Random(m1, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m1, n);
+  MatrixXd A2d = MatrixXd::Random(m2, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m2, n);
+  Eigen::SparseMatrix<double> A1 = A1d.sparseView();
+  Eigen::SparseMatrix<double> A2 = A2d.sparseView();
+  VectorXd b1 = VectorXd::Ones(m1);
+  VectorXd b2 = VectorXd::Ones(m2);
+
+  // Cost: A1^T 1 + A2^T 1 (central path at W=1 is near optimal).
+  VectorXd c = A1d.transpose() * VectorXd::Ones(m1) +
+               A2d.transpose() * VectorXd::Ones(m2);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(A1, b1, vars);
+  model.AddLinearConstraint(A2, b2, vars);
+  model.SetLinearCost(c);
+
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(conex::PhaseOneHybrid());
+
+  printf("  mu = %.2e\n", result.mu);
+
+  // --- Structural checks ---
+  ASSERT_EQ(result.duals.lambda.size(), 2u);
+  ASSERT_EQ(result.duals.slack.size(), 2u);
+
+  // Sizes match constraint row counts.
+  EXPECT_EQ(result.duals.lambda[0].size(), m1);
+  EXPECT_EQ(result.duals.lambda[1].size(), m2);
+  EXPECT_EQ(result.duals.slack[0].size(), m1);
+  EXPECT_EQ(result.duals.slack[1].size(), m2);
+
+  // --- Primal feasibility: per-constraint slacks >= 0 ---
+  printf("  slack[0] min = %.2e, slack[1] min = %.2e\n",
+         result.duals.slack[0].minCoeff(), result.duals.slack[1].minCoeff());
+  EXPECT_GE(result.duals.slack[0].minCoeff(), -1e-3);
+  EXPECT_GE(result.duals.slack[1].minCoeff(), -1e-3);
+
+  // Verify slacks match A*x + b directly.
+  VectorXd s1_check = A1d * result.x + b1;
+  VectorXd s2_check = A2d * result.x + b2;
+  EXPECT_LT((result.duals.slack[0] - s1_check).norm(), 1e-6);
+  EXPECT_LT((result.duals.slack[1] - s2_check).norm(), 1e-6);
+
+  // --- Dual non-negativity ---
+  EXPECT_GE(result.duals.lambda[0].minCoeff(), -1e-3);
+  EXPECT_GE(result.duals.lambda[1].minCoeff(), -1e-3);
+
+  // --- Per-constraint complementarity ---
+  double cs0 = result.duals.lambda[0].dot(result.duals.slack[0]);
+  double cs1 = result.duals.lambda[1].dot(result.duals.slack[1]);
+  printf("  complementarity: %.2e, %.2e\n", cs0, cs1);
+  EXPECT_LT(cs0, 1e-2);
+  EXPECT_LT(cs1, 1e-2);
+
+  // --- Stationarity: c = A1' lambda[0] + A2' lambda[1] ---
+  VectorXd dual_res = c - A1d.transpose() * result.duals.lambda[0]
+                         - A2d.transpose() * result.duals.lambda[1];
+  printf("  stationarity_residual = %.2e\n", dual_res.norm());
+  EXPECT_LT(dual_res.norm(), 1e-2);
+}
+
 }  // namespace
 }  // namespace conex
