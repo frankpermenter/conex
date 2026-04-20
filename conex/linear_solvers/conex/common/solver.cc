@@ -35,7 +35,6 @@ Solver Solver::Build(const Model& model,
 }
 
 Solver Solver::BuildDense(const Model& model) {
-  // Dense path uses TreeSpec internally — skip preprocessing.
   TreeSpec tree;
   int clique = tree.AddClique();
   for (int i = 0; i < model.num_constraints(); ++i)
@@ -52,6 +51,24 @@ SolverRHS Solver::MakeCostRHS() {
     rhs.SetZero();
   }
   return rhs;
+}
+
+double Solver::ComputeObjective(const SolverRHS& cost_rhs,
+                                const Eigen::VectorXd& x_reduced) {
+  auto* k = kkt();
+  auto x_rhs = k->MakeSolverRHS();
+  x_rhs = k->MakeBlockVariable(x_reduced);
+
+  // (1/2) x'Qx
+  auto qx = k->MakeSolverRHS();
+  qx.SetZero();
+  k->AccumulateQx(x_rhs, qx);
+  double obj = 0.5 * k->dot(x_rhs, qx);
+
+  // + c'x
+  obj += x_rhs.dot(cost_rhs);
+
+  return obj;
 }
 
 }  // namespace conex

@@ -1,41 +1,29 @@
 #include "conex/algorithms/solve_lp.h"
 
-#include <numeric>
+#include <limits>
 
-#include "conex/algorithms/geodesic_ipm.h"
-#include "conex/common/eja_ops.h"
+#include "conex/algorithms/solve_strategies.h"
 #include "conex/common/solver.h"
 
 namespace conex {
 
-LPResult SolveLP(const Model& problem, double tolerance) {
-  auto solver = Solver::Build(problem);
-  auto* kkt = solver.kkt();
-
-  auto cost_rhs = solver.MakeCostRHS();
-
-  // Initialize W = ones.
-  RowSpace W = kkt->MakeRowSpace();
-  setOnes(W);
-
-  auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, tolerance);
+LPResult SolveLP(const Model& model, double tolerance) {
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(GeodesicLP{.tolerance = tolerance});
 
   LPResult out;
+  out.x = result.x;
+  out.objective = result.objective;
   out.gap = result.complementarity;
-  out.factorizations = result.total_factorizations;
-  out.solves = result.total_solves;
-  out.x = solver.ExpandSolution(result.x);
-  Eigen::VectorXd c = problem.has_linear_cost()
-      ? problem.linear_cost() : Eigen::VectorXd::Zero(problem.num_variables());
-  out.objective = c.dot(out.x);
-
+  out.factorizations = result.factorizations;
+  out.solves = result.iterations;  // approximate
   return out;
 }
 
-double ComputeConstraintViolation(const Model& problem,
+double ComputeConstraintViolation(const Model& model,
                                   const Eigen::VectorXd& x) {
   double min_slack = std::numeric_limits<double>::max();
-  for (const auto& c : problem.constraints()) {
+  for (const auto& c : model.constraints()) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
       if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
