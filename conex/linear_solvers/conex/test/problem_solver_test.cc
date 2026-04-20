@@ -88,12 +88,7 @@ static QPSolution SolveBarrierFromProblem(
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  auto c_rhs = kkt->MakeSolverRHS();
-  if (solver.linear_cost().size() > 0) {
-    c_rhs = kkt->MakeBlockVariable(solver.linear_cost());
-  } else {
-    c_rhs.SetZero();
-  }
+  auto c_rhs = solver.MakeCostRHS();
   auto x = kkt->MakeSolverRHS();
   x = kkt->MakeBlockVariable(solver.ReduceVector(x0));
 
@@ -210,12 +205,7 @@ static QPSolution SolveGeodesicFromProblem(
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  auto cost_rhs = kkt->MakeSolverRHS();
-  if (solver.linear_cost().size() > 0) {
-    cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
-  } else {
-    cost_rhs.SetZero();
-  }
+  auto cost_rhs = solver.MakeCostRHS();
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);

@@ -5,13 +5,13 @@
 
 #include "conex/common/clique_tree.h"
 #include "conex/common/conex.h"
+#include "conex/common/kkt_solver_interface.h"
 #include "conex/common/problem.h"
 #include "conex/common/tree_spec.h"
 
 namespace conex {
 
 class ConstraintManager;
-class KKTSolverBase;
 class SparseLinearConstraintAssembler;
 class SparsePSDConstraintAssembler;
 class SparseSOCConstraintAssembler;
@@ -54,6 +54,10 @@ class Solver {
 
   // The linear cost in the reduced variable space (empty if no cost set).
   const Eigen::VectorXd& linear_cost() const;
+
+  // Build the cost RHS in solver format (reduced space).
+  // Returns a zero RHS if no linear cost was set.
+  SolverRHS MakeCostRHS();
 
   // Prevent implicit copy (unique_ptr members).
   Solver();

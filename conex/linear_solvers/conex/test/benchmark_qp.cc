@@ -102,12 +102,7 @@ void RunBenchmark(const Problem& problem, const QPSInfo& info,
   int nv = kkt->number_of_variables();
   printf("  KKT vars=%d, build=%.1f ms\n", nv, build_ms);
 
-  auto cost_rhs = kkt->MakeSolverRHS();
-  if (solver.linear_cost().size() > 0) {
-    cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
-  } else {
-    cost_rhs.SetZero();
-  }
+  auto cost_rhs = solver.MakeCostRHS();
 
   const int max_iters = 500;
   const double tol = 1e-8;

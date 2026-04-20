@@ -79,6 +79,17 @@ const Eigen::VectorXd& Solver::linear_cost() const {
   return reduced_linear_cost_;
 }
 
+SolverRHS Solver::MakeCostRHS() {
+  auto* kkt = solver();
+  auto rhs = kkt->MakeSolverRHS();
+  if (reduced_linear_cost_.size() > 0) {
+    rhs = kkt->MakeBlockVariable(reduced_linear_cost_);
+  } else {
+    rhs.SetZero();
+  }
+  return rhs;
+}
+
 void Solver::BuildInternal(const Problem& problem,
                            const SolverConfiguration& config,
                            const CliqueTree* tree_override) {

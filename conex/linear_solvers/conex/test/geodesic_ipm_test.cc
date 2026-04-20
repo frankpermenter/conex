@@ -58,8 +58,7 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
+  auto cost_rhs = solver.MakeCostRHS();
 
   // Initialize W = ones + small perturbation.
   RowSpace W = kkt->MakeRowSpace();
@@ -121,8 +120,7 @@ TEST(GeodesicBarrierQP, FullDecomposition) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
+  auto cost_rhs = solver.MakeCostRHS();
 
   // Perturb W away from identity.
   RowSpace W = kkt->MakeRowSpace();
@@ -217,8 +215,7 @@ TEST(GeodesicBarrierQP, MultipleConstraints) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
+  auto cost_rhs = solver.MakeCostRHS();
 
   const int m = m1 + m2;
 
@@ -894,8 +891,7 @@ TEST(GeodesicSDP, InterleavedVariablesRandom) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
+  auto cost_rhs = solver.MakeCostRHS();
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
@@ -971,8 +967,7 @@ TEST(GeodesicSDP, InterleavedVariablesChordal) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
+  auto cost_rhs = solver.MakeCostRHS();
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);

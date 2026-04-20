@@ -12,12 +12,7 @@ LPResult SolveLP(const Problem& problem, double tolerance) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  auto cost_rhs = kkt->MakeSolverRHS();
-  if (solver.linear_cost().size() > 0) {
-    cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
-  } else {
-    cost_rhs.SetZero();
-  }
+  auto cost_rhs = solver.MakeCostRHS();
 
   // Initialize W = ones.
   RowSpace W = kkt->MakeRowSpace();

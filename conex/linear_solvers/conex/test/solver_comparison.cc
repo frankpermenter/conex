@@ -119,8 +119,7 @@ SolverSetup BuildSolver(const RandomQP& qp, const std::vector<int>& vars) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
+  auto cost_rhs = solver.MakeCostRHS();
 
   return {std::move(solver), cost_rhs};
 }

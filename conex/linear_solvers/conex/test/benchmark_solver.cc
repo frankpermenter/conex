@@ -184,12 +184,7 @@ void ProfileAlgorithm(const Problem& problem, const std::string& name,
            problem.num_variables(), nv);
   }
 
-  auto cost_rhs = kkt->MakeSolverRHS();
-  if (solver.linear_cost().size() > 0) {
-    cost_rhs = kkt->MakeBlockVariable(solver.linear_cost());
-  } else {
-    cost_rhs.SetZero();
-  }
+  auto cost_rhs = solver.MakeCostRHS();
 
   const int max_iters = 500;
   const double tol = 1e-8;
