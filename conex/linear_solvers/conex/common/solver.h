@@ -103,7 +103,8 @@ SolveResult Solver::Solve(const Algorithm& algo) {
   result.complementarity = raw.optimality.complementarity;
   result.iterations = raw.iterations;
   result.factorizations = raw.total_factorizations;
-  result.converged = raw.mu < 1e-6;
+  result.converged = raw.optimality.complementarity < 1e-4 &&
+                     raw.optimality.dual_residual < 1e-4;
   if (raw.lambda.total_rows() > 0) {
     result.duals = ExtractDuals(raw.x, raw.lambda);
   }

@@ -52,21 +52,21 @@ TEST(SolverSolve, LPDualFeasibility) {
 
   // Primal feasibility: s >= 0.
   printf("  min_slack = %.2e\n", s.minCoeff());
-  EXPECT_GE(s.minCoeff(), -1e-3);
+  EXPECT_GE(s.minCoeff(), -1e-5);
 
   // Dual non-negativity: lambda >= 0.
   printf("  min_lambda = %.2e\n", lam.minCoeff());
-  EXPECT_GE(lam.minCoeff(), -1e-3);
+  EXPECT_GE(lam.minCoeff(), -1e-5);
 
   // Complementarity: lambda . s ≈ 0.
   double cs = lam.dot(s);
   printf("  complementarity = %.2e\n", cs);
-  EXPECT_LT(cs, 1e-2);
+  EXPECT_LT(cs, 1e-5);
 
   // Dual feasibility: A' lambda ≈ c.
   VectorXd dual_res = A_dense.transpose() * lam - c;
   printf("  dual_residual = %.2e\n", dual_res.norm());
-  EXPECT_LT(dual_res.norm(), 1e-2);
+  EXPECT_LT(dual_res.norm(), 1e-5);
 }
 
 TEST(SolverSolve, QPDualFeasibility) {
@@ -100,7 +100,7 @@ TEST(SolverSolve, QPDualFeasibility) {
   model.SetLinearCost(c_cost);
 
   auto solver = Solver::Build(model);
-  auto result = solver.Solve(conex::PhaseOneHybrid());
+  auto result = solver.Solve(conex::ThetaContinuation());
 
   printf("  mu = %.2e\n", result.mu);
   ASSERT_EQ(result.duals.lambda.size(), 1u);
@@ -111,22 +111,22 @@ TEST(SolverSolve, QPDualFeasibility) {
 
   // Primal feasibility.
   printf("  min_slack = %.2e\n", s.minCoeff());
-  EXPECT_GE(s.minCoeff(), -1e-3);
+  EXPECT_GE(s.minCoeff(), -1e-5);
 
   // Dual non-negativity.
   printf("  min_lambda = %.2e\n", lam.minCoeff());
-  EXPECT_GE(lam.minCoeff(), -1e-3);
+  EXPECT_GE(lam.minCoeff(), -1e-5);
 
   // Complementarity.
   double cs = lam.dot(s);
   printf("  complementarity = %.2e\n", cs);
-  EXPECT_LT(cs, 1e-2);
+  EXPECT_LT(cs, 1e-5);
 
   // Stationarity: Qx + c = A' lambda.
   VectorXd grad = Q * result.x + c_cost;
   VectorXd dual_res = grad - A_dense.transpose() * lam;
   printf("  stationarity_residual = %.2e\n", dual_res.norm());
-  EXPECT_LT(dual_res.norm(), 1e-2);
+  EXPECT_LT(dual_res.norm(), 1e-5);
 }
 
 TEST(SolverSolve, MultipleConstraints) {
@@ -176,8 +176,8 @@ TEST(SolverSolve, MultipleConstraints) {
   // --- Primal feasibility: per-constraint slacks >= 0 ---
   printf("  slack[0] min = %.2e, slack[1] min = %.2e\n",
          result.duals.slack[0].minCoeff(), result.duals.slack[1].minCoeff());
-  EXPECT_GE(result.duals.slack[0].minCoeff(), -1e-3);
-  EXPECT_GE(result.duals.slack[1].minCoeff(), -1e-3);
+  EXPECT_GE(result.duals.slack[0].minCoeff(), -1e-5);
+  EXPECT_GE(result.duals.slack[1].minCoeff(), -1e-5);
 
   // Verify slacks match A*x + b directly.
   VectorXd s1_check = A1d * result.x + b1;
@@ -186,21 +186,21 @@ TEST(SolverSolve, MultipleConstraints) {
   EXPECT_LT((result.duals.slack[1] - s2_check).norm(), 1e-6);
 
   // --- Dual non-negativity ---
-  EXPECT_GE(result.duals.lambda[0].minCoeff(), -1e-3);
-  EXPECT_GE(result.duals.lambda[1].minCoeff(), -1e-3);
+  EXPECT_GE(result.duals.lambda[0].minCoeff(), -1e-5);
+  EXPECT_GE(result.duals.lambda[1].minCoeff(), -1e-5);
 
   // --- Per-constraint complementarity ---
   double cs0 = result.duals.lambda[0].dot(result.duals.slack[0]);
   double cs1 = result.duals.lambda[1].dot(result.duals.slack[1]);
   printf("  complementarity: %.2e, %.2e\n", cs0, cs1);
-  EXPECT_LT(cs0, 1e-2);
-  EXPECT_LT(cs1, 1e-2);
+  EXPECT_LT(cs0, 1e-5);
+  EXPECT_LT(cs1, 1e-5);
 
   // --- Stationarity: c = A1' lambda[0] + A2' lambda[1] ---
   VectorXd dual_res = c - A1d.transpose() * result.duals.lambda[0]
                          - A2d.transpose() * result.duals.lambda[1];
   printf("  stationarity_residual = %.2e\n", dual_res.norm());
-  EXPECT_LT(dual_res.norm(), 1e-2);
+  EXPECT_LT(dual_res.norm(), 1e-5);
 }
 
 TEST(SolverSolve, EqualityConstraints) {
@@ -256,19 +256,19 @@ TEST(SolverSolve, EqualityConstraints) {
 
   // --- Primal feasibility ---
   printf("  min_slack = %.2e\n", result.duals.slack[0].minCoeff());
-  EXPECT_GE(result.duals.slack[0].minCoeff(), -1e-3);
+  EXPECT_GE(result.duals.slack[0].minCoeff(), -1e-5);
 
   // Equality: x0+x1 ≈ 0.5, x2+x3 ≈ 0.5.
   double eq1_err = std::abs(result.x(0) + result.x(1) - 0.5);
   double eq2_err = std::abs(result.x(2) + result.x(3) - 0.5);
   printf("  equality errors: %.2e, %.2e\n", eq1_err, eq2_err);
-  EXPECT_LT(eq1_err, 1e-2);
-  EXPECT_LT(eq2_err, 1e-2);
+  EXPECT_LT(eq1_err, 1e-5);
+  EXPECT_LT(eq2_err, 1e-5);
 
   // --- Complementarity ---
   double cs = result.duals.lambda[0].dot(result.duals.slack[0]);
   printf("  complementarity = %.2e\n", cs);
-  EXPECT_LT(cs, 1e-2);
+  EXPECT_LT(cs, 1e-5);
 
   // --- Stationarity: c = A' lambda + C1' nu1 + C2' nu2 ---
   VectorXd At_lam = Ad.transpose() * result.duals.lambda[0];
@@ -276,7 +276,7 @@ TEST(SolverSolve, EqualityConstraints) {
                    Eigen::MatrixXd(C2).transpose() * result.duals.nu[1];
   VectorXd stat_res = c - At_lam - Ct_nu;
   printf("  stationarity_residual = %.2e\n", stat_res.norm());
-  EXPECT_LT(stat_res.norm(), 1e-2);
+  EXPECT_LT(stat_res.norm(), 1e-5);
 }
 
 TEST(SolverSolve, PSDConstraint) {
@@ -331,18 +331,18 @@ TEST(SolverSolve, PSDConstraint) {
   Eigen::SelfAdjointEigenSolver<MatrixXd> eig_s(S);
   double min_eig_s = eig_s.eigenvalues().minCoeff();
   printf("  min_eig(S) = %.2e\n", min_eig_s);
-  EXPECT_GE(min_eig_s, -1e-3);
+  EXPECT_GE(min_eig_s, -1e-5);
 
   // --- Dual feasibility: Λ ≽ 0 ---
   Eigen::SelfAdjointEigenSolver<MatrixXd> eig_l(Lambda);
   double min_eig_l = eig_l.eigenvalues().minCoeff();
   printf("  min_eig(Lambda) = %.2e\n", min_eig_l);
-  EXPECT_GE(min_eig_l, -1e-3);
+  EXPECT_GE(min_eig_l, -1e-5);
 
   // --- Complementarity: tr(S · Λ) ≈ 0 ---
   double cs = (S * Lambda).trace();
   printf("  tr(S*Lambda) = %.2e\n", cs);
-  EXPECT_LT(std::abs(cs), 1e-2);
+  EXPECT_LT(std::abs(cs), 1e-5);
 
   // --- Stationarity: c_k = tr(A_k · Λ) ---
   VectorXd stat_res(p);
@@ -356,7 +356,7 @@ TEST(SolverSolve, PSDConstraint) {
     stat_res(k) = c(k) - trAL;
   }
   printf("  stationarity_residual = %.2e\n", stat_res.norm());
-  EXPECT_LT(stat_res.norm(), 1e-2);
+  EXPECT_LT(stat_res.norm(), 1e-5);
 }
 
 TEST(SolverSolve, SOCConstraint) {
@@ -409,23 +409,23 @@ TEST(SolverSolve, SOCConstraint) {
   double s0 = s(0);
   double s1_norm = s.tail(vec_dim).norm();
   printf("  s0 = %.4e, ||s1|| = %.4e\n", s0, s1_norm);
-  EXPECT_GE(s0 + 1e-3, s1_norm);
+  EXPECT_GE(s0 + 1e-5, s1_norm);
 
   // Dual SOC membership: λ₀ >= ||λ₁||.
   double l0 = lam(0);
   double l1_norm = lam.tail(vec_dim).norm();
   printf("  lam0 = %.4e, ||lam1|| = %.4e\n", l0, l1_norm);
-  EXPECT_GE(l0 + 1e-3, l1_norm);
+  EXPECT_GE(l0 + 1e-5, l1_norm);
 
   // Complementarity: λ · s ≈ 0.
   double cs = lam.dot(s);
   printf("  complementarity = %.2e\n", cs);
-  EXPECT_LT(std::abs(cs), 1e-2);
+  EXPECT_LT(std::abs(cs), 1e-5);
 
   // Stationarity: c = A' λ.
   VectorXd stat_res = c - A_dense.transpose() * lam;
   printf("  stationarity_residual = %.2e\n", stat_res.norm());
-  EXPECT_LT(stat_res.norm(), 1e-2);
+  EXPECT_LT(stat_res.norm(), 1e-5);
 }
 
 TEST(SolverSolve, AllConstraintTypes) {
@@ -576,8 +576,8 @@ TEST(SolverSolve, AllConstraintTypes) {
            result.duals.slack[idx].minCoeff(),
            result.duals.lambda[idx].minCoeff());
     if (!is_soc) {
-      EXPECT_GE(result.duals.slack[idx].minCoeff(), -1e-3);
-      EXPECT_GE(result.duals.lambda[idx].minCoeff(), -1e-3);
+      EXPECT_GE(result.duals.slack[idx].minCoeff(), -1e-5);
+      EXPECT_GE(result.duals.lambda[idx].minCoeff(), -1e-5);
     }
   }
 
@@ -585,8 +585,8 @@ TEST(SolverSolve, AllConstraintTypes) {
   for (int idx : {1, 3}) {
     const auto& s = result.duals.slack[idx];
     const auto& l = result.duals.lambda[idx];
-    EXPECT_GE(s(0) + 1e-3, s.tail(s.size() - 1).norm());
-    EXPECT_GE(l(0) + 1e-3, l.tail(l.size() - 1).norm());
+    EXPECT_GE(s(0) + 1e-5, s.tail(s.size() - 1).norm());
+    EXPECT_GE(l(0) + 1e-5, l.tail(l.size() - 1).norm());
   }
 
   // --- PSD feasibility ---
@@ -595,16 +595,16 @@ TEST(SolverSolve, AllConstraintTypes) {
     Eigen::SelfAdjointEigenSolver<MatrixXd> eig_l(result.duals.psd_lambda[p]);
     printf("  PSD[%d]: min_eig(S)=%.2e, min_eig(L)=%.2e\n", p,
            eig_s.eigenvalues().minCoeff(), eig_l.eigenvalues().minCoeff());
-    EXPECT_GE(eig_s.eigenvalues().minCoeff(), -1e-3);
-    EXPECT_GE(eig_l.eigenvalues().minCoeff(), -1e-3);
+    EXPECT_GE(eig_s.eigenvalues().minCoeff(), -1e-5);
+    EXPECT_GE(eig_l.eigenvalues().minCoeff(), -1e-5);
   }
 
   // --- Equality ---
   double eq1_err = std::abs(result.x(0) + result.x(1) - 0.5);
   double eq2_err = std::abs(result.x(8) + result.x(9) - 0.3);
   printf("  equality errors: %.2e, %.2e\n", eq1_err, eq2_err);
-  EXPECT_LT(eq1_err, 1e-2);
-  EXPECT_LT(eq2_err, 1e-2);
+  EXPECT_LT(eq1_err, 1e-5);
+  EXPECT_LT(eq2_err, 1e-5);
 
   // --- Per-constraint complementarity ---
   double total_cs = 0;
@@ -613,7 +613,7 @@ TEST(SolverSolve, AllConstraintTypes) {
   for (int p = 0; p < 2; ++p)
     total_cs += std::abs((result.duals.psd_slack[p] * result.duals.psd_lambda[p]).trace());
   printf("  total complementarity = %.2e\n", total_cs);
-  EXPECT_LT(total_cs, 1e-1);
+  EXPECT_LT(total_cs, 1e-4);
 
   // --- Stationarity: c + Qx = Σ A_i' λ_i + Σ tr(A_k · Λ_j) + Σ C_k' ν_k ---
   VectorXd grad = c + Q * result.x;
@@ -656,7 +656,7 @@ TEST(SolverSolve, AllConstraintTypes) {
 
   VectorXd stat_res = grad - rhs;
   printf("  stationarity_residual = %.2e\n", stat_res.norm());
-  EXPECT_LT(stat_res.norm(), 1e-1);
+  EXPECT_LT(stat_res.norm(), 1e-5);
 }
 
 }  // namespace
