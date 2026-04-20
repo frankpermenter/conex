@@ -1,4 +1,4 @@
-// MPS file reader: converts standard LP benchmark format to Problem.
+// MPS file reader: converts standard LP benchmark format to Model.
 //
 // Supports fixed-format MPS:
 //   ROWS, COLUMNS, RHS, RANGES (ignored), BOUNDS, ENDATA
@@ -12,7 +12,7 @@
 #pragma once
 #include <string>
 #include <Eigen/Sparse>
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 namespace conex {
 
@@ -26,13 +26,13 @@ struct MPSInfo {
   bool has_bounds = false;
 };
 
-// Read an MPS file and return a Problem + metadata.
+// Read an MPS file and return a Model + metadata.
 // Converts to our convention:
 //   LE rows (Ax <= b): stored as -Ax + b >= 0
 //   GE rows (Ax >= b): stored as  Ax - b >= 0
 //   EQ rows (Ax = b):  AddEqualityConstraint
 //   Objective (N row): SetLinearCost
 //   Bounds: converted to additional inequality constraints
-std::pair<Problem, MPSInfo> ReadMPS(const std::string& filename);
+std::pair<Model, MPSInfo> ReadMPS(const std::string& filename);
 
 }  // namespace conex

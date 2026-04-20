@@ -77,23 +77,23 @@ SpMat SpSymEntry(int n, int i, int j, double v) {
 
 }  // namespace
 
-bool HasChordalPSD(const Problem& problem) {
+bool HasChordalPSD(const Model& problem) {
   for (const auto& c : problem.constraints()) {
-    if (auto* psd = std::get_if<Problem::PSDConstraintData>(&c)) {
+    if (auto* psd = std::get_if<Model::PSDConstraintData>(&c)) {
       if (psd->use_chordal) return true;
     }
   }
   return false;
 }
 
-std::pair<Problem, ChordalExpansion> DecomposeChordalPSD(
-    const Problem& problem) {
+std::pair<Model, ChordalExpansion> DecomposeChordalPSD(
+    const Model& problem) {
   int original_n = problem.num_variables();
-  Problem result;
+  Model result;
   int next_var = problem.num_variables();
 
   for (const auto& c : problem.constraints()) {
-    if (auto* psd = std::get_if<Problem::PSDConstraintData>(&c)) {
+    if (auto* psd = std::get_if<Model::PSDConstraintData>(&c)) {
       if (!psd->use_chordal) {
         // Pass through unchanged.
         result.AddPSDConstraint(psd->A_list, psd->B, psd->vars, false);
@@ -257,13 +257,13 @@ std::pair<Problem, ChordalExpansion> DecomposeChordalPSD(
             clique_A, B_clique.sparseView(1e-15), clique_vars, false);
       }
 
-    } else if (auto* lin = std::get_if<Problem::LinearConstraintData>(&c)) {
+    } else if (auto* lin = std::get_if<Model::LinearConstraintData>(&c)) {
       result.AddLinearConstraint(lin->A, lin->b, lin->vars);
-    } else if (auto* quad = std::get_if<Problem::QuadraticCostData>(&c)) {
+    } else if (auto* quad = std::get_if<Model::QuadraticCostData>(&c)) {
       result.AddQuadraticCost(quad->Q_sparse, quad->vars);
-    } else if (auto* soc = std::get_if<Problem::SOCConstraintData>(&c)) {
+    } else if (auto* soc = std::get_if<Model::SOCConstraintData>(&c)) {
       result.AddSOCConstraint(soc->A, soc->b, soc->vars);
-    } else if (auto* eq = std::get_if<Problem::EqualityConstraintData>(&c)) {
+    } else if (auto* eq = std::get_if<Model::EqualityConstraintData>(&c)) {
       result.AddEqualityConstraint(eq->C, eq->d, eq->primal_vars);
     }
   }
@@ -281,11 +281,11 @@ std::pair<Problem, ChordalExpansion> DecomposeChordalPSD(
   return {std::move(result), expansion};
 }
 
-PreprocessResult PreprocessProblem(const Problem& problem) {
+PreprocessResult PreprocessProblem(const Model& problem) {
   PreprocessResult result;
 
   // Step 1: Chordal decomposition (if any PSD constraint requests it).
-  Problem after_chordal;
+  Model after_chordal;
   if (HasChordalPSD(problem)) {
     auto [decomposed, chordal_exp] = DecomposeChordalPSD(problem);
     after_chordal = std::move(decomposed);

@@ -8,7 +8,7 @@
 #include "conex/algorithms/alternating_projections.h"
 #include "conex/common/affine_projection.h"
 #include "conex/common/eja_ops.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -35,7 +35,7 @@ TEST(AlternatingProjections, Feasibility) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, b, vars);
   auto affine = AffineProjection::Build(problem);
 
@@ -84,7 +84,7 @@ TEST(AlternatingProjections, MultipleConstraints) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A1, VectorXd::Ones(m1), vars);
   problem.AddLinearConstraint(A2, VectorXd::Ones(m2), vars);
   auto affine = AffineProjection::Build(problem);
@@ -129,7 +129,7 @@ TEST(AlternatingProjections, SOC) {
   std::vector<int> vars(p);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddSOCConstraint(toSparse(A_dense), b, vars);
   auto affine = AffineProjection::Build(problem);
 
@@ -177,7 +177,7 @@ TEST(AlternatingProjections, MixedNonnegSOC) {
   std::vector<int> vars(p);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   // Nonneg: Ax + b >= 0, b = ones.
   problem.AddLinearConstraint(
       toSparse(MatrixXd::Random(m_nn, p)), VectorXd::Ones(m_nn), vars);

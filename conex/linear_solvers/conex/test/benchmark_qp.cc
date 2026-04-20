@@ -16,7 +16,7 @@
 
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/common/eja_ops.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/qps_reader.h"
 #include "conex/common/solver.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
@@ -41,7 +41,7 @@ struct AlgoResult {
 
 AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
                    const SolverRHS& cost_rhs,
-                   const Problem& problem,
+                   const Model& problem,
                    const Solver& solver,
                    auto solve_fn) {
   RowSpace W = kkt.MakeRowSpace();
@@ -61,7 +61,7 @@ AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
     }
     // (1/2) x'Qx
     for (const auto& c : problem.constraints()) {
-      if (auto* qc = std::get_if<Problem::QuadraticCostData>(&c)) {
+      if (auto* qc = std::get_if<Model::QuadraticCostData>(&c)) {
         const auto& Q = qc->Q_sparse;
         const auto& vars = qc->vars;
         for (int k = 0; k < Q.outerSize(); ++k) {
@@ -82,7 +82,7 @@ AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
           ms, result.mu < 1e-6};
 }
 
-void RunBenchmark(const Problem& problem, const QPSInfo& info,
+void RunBenchmark(const Model& problem, const QPSInfo& info,
                   const std::string& filename) {
   printf("=== %s ===\n", filename.c_str());
   printf("  vars=%d, eq=%d, ineq=%d, quad=%d, bounds=%d, constraints=%d",

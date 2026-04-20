@@ -13,7 +13,7 @@
 #include "conex/algorithms/lqr_tree_solver.h"
 #include "conex/common/clique_ordering.h"
 #include "conex/common/constraint_manager.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/common/sparse_linear_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
@@ -80,11 +80,11 @@ struct QPSolution {
   double gap = 0;
 };
 
-// Solver function: (Problem, x0) -> QPSolution.
-using QPSolverFn = std::function<QPSolution(const Problem&, const VectorXd&)>;
+// Solver function: (Model, x0) -> QPSolution.
+using QPSolverFn = std::function<QPSolution(const Model&, const VectorXd&)>;
 
 static QPSolution SolveBarrierFromProblem(
-    const Problem& problem, const Eigen::VectorXd& x0) {
+    const Model& problem, const Eigen::VectorXd& x0) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
@@ -121,7 +121,7 @@ TEST_P(QPSolverTest, UnconstrainedInsideFeasible) {
   A.setFromTriplets(at.begin(), at.end());
   VectorXd b(3); b << 1.0, 0.0, 0.0;
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, b, Sense::LE);
   problem.AddQuadraticCost(Q);
   problem.SetLinearCost(VectorXd::Zero(n));
@@ -150,7 +150,7 @@ TEST_P(QPSolverTest, ActiveConstraint) {
   A.setFromTriplets(at.begin(), at.end());
   VectorXd b(3); b << 1.0, 0.0, 0.0;
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, b, Sense::LE);
   problem.AddQuadraticCost(Q);
   problem.SetLinearCost(c);
@@ -185,7 +185,7 @@ TEST_P(QPSolverTest, MultipleConstraints) {
   VectorXd b2(2); b2 << 0.0, 0.0;
 
   std::vector<int> vars = {0, 1};
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A1, b1, Sense::LE, vars);
   problem.AddLinearConstraint(A2, b2, Sense::LE, vars);
   problem.AddQuadraticCost(Q, vars);
@@ -200,7 +200,7 @@ TEST_P(QPSolverTest, MultipleConstraints) {
 }
 
 static QPSolution SolveGeodesicFromProblem(
-    const Problem& problem, const Eigen::VectorXd& x0) {
+    const Model& problem, const Eigen::VectorXd& x0) {
   (void)x0;  // geodesic IPM initializes at W=ones, ignores x0
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
@@ -250,7 +250,7 @@ TEST(BarrierQP, SparseQP) {
   A.setFromTriplets(at.begin(), at.end());
   VectorXd b = VectorXd::Ones(m);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, b, Sense::LE);
   problem.AddQuadraticCost(Q);
   problem.SetLinearCost(c);
@@ -277,7 +277,7 @@ TEST(BarrierQP, FeasibilityCheck) {
   A.setFromTriplets(at.begin(), at.end());
   VectorXd b = VectorXd::Ones(m) * 5.0;
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, b, Sense::LE);
   problem.AddQuadraticCost(Q);
   problem.SetLinearCost(c);
@@ -310,7 +310,7 @@ TEST(ProblemSolver, LeastSquares) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   auto c1 = problem.AddLinearConstraint(A, b, vars);
 
   auto solver = Solver::Build(problem);
@@ -341,7 +341,7 @@ TEST(ProblemSolver, QuadraticCostPlusLinear) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, b, vars);
   problem.AddQuadraticCost(Q, vars);
 
@@ -370,7 +370,7 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, b, vars);
 
   auto solver = Solver::Build(problem);
@@ -436,7 +436,7 @@ TEST(ProblemSolver, Preprocess) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
 
   auto [reduced, expansion] = Preprocess(problem);
@@ -468,7 +468,7 @@ TEST(ProblemSolver, CustomTree) {
   std::vector<int> vars1 = {2, 3};
   std::vector<int> vars_all = {0, 1, 2, 3};
 
-  Problem problem;
+  Model problem;
   auto c0 = problem.AddQuadraticCost(Q, vars0);
   auto c1 = problem.AddQuadraticCost(Q, vars1);
   auto c2 = problem.AddLinearConstraint(
@@ -542,7 +542,7 @@ TEST(ProblemSolver, LQR) {
   QR.topLeftCorner(nx, nx) = Q;
   QR.bottomRightCorner(nu, nu) = R;
 
-  Problem problem;
+  Model problem;
   std::vector<ConstraintId> cost_ids, dyn_ids;
 
   for (int t = 0; t < T; ++t) {
@@ -629,7 +629,7 @@ TEST(ProblemSolver, EqualityConstrainedLS) {
   std::vector<int> primal_vars(n);
   std::iota(primal_vars.begin(), primal_vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(
       Eigen::SparseMatrix<double>(A.sparseView()),
       VectorXd::Zero(m), primal_vars);
@@ -690,7 +690,7 @@ TEST(ProblemSolver, DenseSolverPD) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
   problem.AddQuadraticCost(Q, vars);
 
@@ -720,7 +720,7 @@ TEST(ProblemSolver, DenseSolverIndefinite) {
   std::vector<int> primal_vars(n);
   std::iota(primal_vars.begin(), primal_vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(
       Eigen::SparseMatrix<double>(A.sparseView()),
       VectorXd::Zero(m), primal_vars);
@@ -780,7 +780,7 @@ TEST(ProblemSolver, EqualityConstraintVectorOps) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(
       Eigen::SparseMatrix<double>(A.sparseView()),
       b, vars);
@@ -889,7 +889,7 @@ TEST(ProblemSolver, RankDeficientEqualities) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
   problem.AddEqualityConstraint(C, d, vars);
 
@@ -910,7 +910,7 @@ TEST(ProblemSolver, RankDeficientEqualities) {
   const auto& duals = solver.dual_variables(1);
   // d was reduced by Preprocess (dropped rows).
   // The reduced equality constraint has fewer rows.
-  auto* eq = std::get_if<Problem::EqualityConstraintData>(
+  auto* eq = std::get_if<Model::EqualityConstraintData>(
       &reduced.constraint(1));
   ASSERT_TRUE(eq != nullptr);
   for (int i = 0; i < static_cast<int>(duals.size()); ++i)
@@ -946,7 +946,7 @@ TEST(ProblemSolver, InconsistentEqualities) {
   VectorXd d(3);
   d << 3.0, 6.0, 10.0;  // inconsistent: should be 9.0
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, VectorXd::Zero(10), vars);
   problem.AddEqualityConstraint(C, d, vars);
 
@@ -972,7 +972,7 @@ TEST(ProblemSolver, ConsistentEqualities) {
   VectorXd d(3);
   d << 3.0, 6.0, 9.0;  // consistent
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, VectorXd::Zero(10), vars);
   problem.AddEqualityConstraint(C, d, vars);
 
@@ -1002,7 +1002,7 @@ TEST(ProblemSolver, BlockDiagonalPattern) {
   VectorXd rhs = Eigen::MatrixXd(A).transpose() *
                   (Eigen::MatrixXd(A) * x_true);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
   auto solver = Solver::Build(problem);
   ASSERT_TRUE(solver.solver()->AssembleAndFactor());
@@ -1036,7 +1036,7 @@ TEST(ProblemSolver, BandedPattern) {
   VectorXd rhs = Eigen::MatrixXd(A).transpose() *
                   (Eigen::MatrixXd(A) * x_true);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
   auto solver = Solver::Build(problem);
   ASSERT_TRUE(solver.solver()->AssembleAndFactor());
@@ -1057,7 +1057,7 @@ TEST(ProblemSolver, QuotientAMD) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
   problem.AddQuadraticCost(Q, vars);
 
@@ -1092,7 +1092,7 @@ TEST(ProblemSolver, QuotientAMDChain) {
   const int n = 30, bw = 3, rows_per = 5;
   const int num_groups = n - bw + 1;
 
-  Problem problem;
+  Model problem;
   for (int g = 0; g < num_groups; ++g) {
     MatrixXd A_block = MatrixXd::Random(rows_per, bw);
     std::vector<int> block_vars(bw);
@@ -1143,7 +1143,7 @@ TEST(ProblemSolver, MultiThreaded) {
 
   VectorXd x_ref;
   for (int threads : {1, 2, 4}) {
-    Problem problem;
+    Model problem;
     problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
 
     SolverConfiguration cfg;
@@ -1192,7 +1192,7 @@ TEST(ProblemSolver, PQTreeReorder) {
   VectorXd x_ref;
   const char* names[] = {"BFS_GREEDY", "PQ_TREE", "NONE", "BFS_GREEDY_LARGEST"};
   for (int method = 0; method <= 3; ++method) {
-    Problem problem;
+    Model problem;
     problem.AddLinearConstraint(A, VectorXd::Zero(m), vars);
 
     SolverConfiguration cfg;
@@ -1230,7 +1230,7 @@ TEST(ProblemSolver, AggressiveCliqueMerging) {
 
   // Solve with aggressive merging.
   for (int merge_size : {0, 5, 10, 20}) {
-    Problem problem;
+    Model problem;
     problem.AddLinearConstraint(A, VectorXd::Zero(nr), vars);
     SolverConfiguration cfg;
     cfg.tree.max_merge_supernode_size = merge_size;
@@ -1262,7 +1262,7 @@ TEST(ProblemSolver, LeftLookingVsRightLooking) {
   VectorXd rhs = MatrixXd(A).transpose() * (MatrixXd(A) * x_true);
 
   for (bool left_looking : {true, false}) {
-    Problem problem;
+    Model problem;
     problem.AddLinearConstraint(A, VectorXd::Zero(nr), vars);
     SolverConfiguration cfg;
     cfg.tree.left_looking = left_looking;
@@ -1294,7 +1294,7 @@ TEST(ProblemSolver, GenericFactorization) {
   VectorXd rhs = MatrixXd(A).transpose() * (MatrixXd(A) * x_true);
 
   for (bool generic : {false, true}) {
-    Problem problem;
+    Model problem;
     problem.AddLinearConstraint(A, VectorXd::Zero(nr), vars);
     SolverConfiguration cfg;
     cfg.tree.use_generic_factorization = generic;
@@ -1315,7 +1315,7 @@ TEST(ProblemSolver, MultiColumnSolve) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(
       Eigen::SparseMatrix<double>(A.sparseView()), VectorXd::Zero(m), vars);
   SolverConfiguration cfg;
@@ -1354,7 +1354,7 @@ TEST(ProblemSolver, RepeatedAssembleAndFactor) {
   VectorXd x_true = VectorXd::Random(n);
   VectorXd rhs = MatrixXd(A).transpose() * (MatrixXd(A) * x_true);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, VectorXd::Zero(nr), vars);
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
@@ -1389,7 +1389,7 @@ TEST(ProblemSolver, LUForIndefinite) {
 
   // PD system: use_lu_for_indefinite shouldn't affect PD cliques.
   for (bool lu : {false, true}) {
-    Problem problem;
+    Model problem;
     problem.AddLinearConstraint(A, VectorXd::Zero(nr), vars);
     SolverConfiguration cfg;
     cfg.tree.use_generic_factorization = true;
@@ -1481,7 +1481,7 @@ TEST(ProblemSolver, StochasticCustomVsAutomatic) {
     int n_primal = N * step;
 
     // --- Custom tree path ---
-    Problem prob_c;
+    Model prob_c;
     TreeSpec tree_spec;
     std::vector<int> cliques(N);
     cliques[0] = tree_spec.AddClique();
@@ -1578,7 +1578,7 @@ TEST(ProblemSolver, StochasticCustomVsAutomatic) {
     std::vector<int> all_vars(n_primal);
     std::iota(all_vars.begin(), all_vars.end(), 0);
 
-    Problem prob_a;
+    Model prob_a;
     prob_a.AddQuadraticCost(Q_cost, all_vars);
     auto ceq_a = prob_a.AddEqualityConstraint(C_eq, d_eq, all_vars);
 
@@ -1642,9 +1642,9 @@ TEST(ProblemSolver, LQRCustomVsAutomatic) {
       return v;
     };
 
-    // Build Problem (shared by both paths).
+    // Build Model (shared by both paths).
     auto build_problem = [&]() {
-      Problem problem;
+      Model problem;
       std::vector<ConstraintId> cost_ids, dyn_ids;
 
       // Sparse cost Q_cost.
@@ -1706,7 +1706,7 @@ TEST(ProblemSolver, LQRCustomVsAutomatic) {
     // But we have ONE big Q and ONE big C, not per-timestep.
     // For custom tree, we need per-timestep constraints.
     // Build a separate problem with per-timestep blocks.
-    Problem prob_custom;
+    Model prob_custom;
     TreeSpec tree;
     std::vector<int> cliques(T + 1);
     cliques[T] = tree.AddClique();
@@ -1845,7 +1845,7 @@ TEST(ProblemSolver, GaussianMRF) {
     return MatrixXd(MatrixXd::Identity(2 * d, 2 * d) + RtR);
   };
 
-  printf("\n  Gaussian MRF (d=%d): Problem + Solver + TreeSpec\n", d);
+  printf("\n  Gaussian MRF (d=%d): Model + Solver + TreeSpec\n", d);
   printf("%-6s %-6s %6s %7s  %8s %8s %8s  %10s\n",
          "B", "D", "nodes", "n_vars", "build", "factor", "solve", "residual");
   printf("------  ------ ------ -------  -------- -------- --------"
@@ -1858,7 +1858,7 @@ TEST(ProblemSolver, GaussianMRF) {
 
     auto t0 = clock::now();
 
-    Problem problem;
+    Model problem;
     TreeSpec tree;
 
     std::vector<int> cliques(N);
@@ -1956,7 +1956,7 @@ TEST(ProblemSolver, DISABLED_MultipleConstraintsGenericInterface) {
   std::iota(vars.begin(), vars.end(), 0);
 
   // Build problem with multiple constraints/costs.
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(Eigen::SparseMatrix<double>(A1.sparseView()),
                                b1, vars);
   problem.AddLinearConstraint(Eigen::SparseMatrix<double>(A2.sparseView()),
@@ -2308,7 +2308,7 @@ TEST(ProblemSolver, LinearConstraintNonIdentityVars) {
   std::vector<int> vars = {5, 10};
 
   int n = 11;
-  Problem problem;
+  Model problem;
   for (int i = 0; i < n; ++i) {
     Eigen::MatrixXd Qi(1,1); Qi << 0.01;
     problem.AddQuadraticCost(Qi, {i});

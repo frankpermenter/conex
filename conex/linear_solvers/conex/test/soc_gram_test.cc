@@ -5,7 +5,7 @@
 #include <Eigen/Sparse>
 #include "conex/common/soc_cone_ops.h"
 #include "conex/common/kkt_solver_interface.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 
 using Eigen::MatrixXd;
@@ -125,7 +125,7 @@ TEST(SOCGram, DefinitionMatchesFormula) {
   EXPECT_LT(err2, 1e-10);
 }
 
-// Test the full SOC constraint pipeline: Problem → Solver → Gram.
+// Test the full SOC constraint pipeline: Model → Solver → Gram.
 // Verify the Gram from the tree solver matches the direct formula.
 TEST(SOCGram, SolverGramMatchesFormula) {
   srand(77);
@@ -146,7 +146,7 @@ TEST(SOCGram, SolverGramMatchesFormula) {
   std::iota(vars.begin(), vars.end(), 0);
 
   // Build via solver.
-  conex::Problem problem;
+  conex::Model problem;
   Eigen::SparseMatrix<double> A_sparse = A_dense.sparseView();
   problem.AddSOCConstraint(A_sparse, b, vars);
   auto solver = conex::Solver::Build(problem);

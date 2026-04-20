@@ -15,7 +15,7 @@
 
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/common/eja_ops.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 
 namespace conex {
@@ -112,7 +112,7 @@ struct SolverSetup {
 };
 
 SolverSetup BuildSolver(const RandomQP& qp, const std::vector<int>& vars) {
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(qp.A, qp.b, vars);
   if (qp.rank_Q > 0) problem.AddQuadraticCost(qp.Q, vars);
   problem.SetLinearCost(qp.c);
@@ -188,7 +188,7 @@ void RunSDPComparison(int n, int p, int seed) {
   }
   MatrixXd B = MatrixXd::Identity(n, n);
 
-  Problem problem;
+  Model problem;
   problem.AddPSDConstraint(A_list, toSparse(B), vars, /*use_chordal=*/false);
   problem.SetLinearCost(c);
 
@@ -235,7 +235,7 @@ void RunSOCPComparison(int vec_dim, int p, int seed) {
   std::vector<int> vars(p);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddSOCConstraint(toSparse(A_dense), b, vars);
   problem.SetLinearCost(c);
 

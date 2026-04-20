@@ -1,4 +1,4 @@
-// CBF (Conic Benchmark Format) reader: converts conic problems to Problem.
+// CBF (Conic Benchmark Format) reader: converts conic problems to Model.
 //
 // Supports LP, SOCP, and SDP constraints from cblib.zib.de.
 //
@@ -19,7 +19,7 @@
 
 #pragma once
 #include <string>
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 namespace conex {
 
@@ -31,6 +31,6 @@ struct CBFInfo {
   int num_psd_cons = 0;
 };
 
-std::pair<Problem, CBFInfo> ReadCBF(const std::string& filename);
+std::pair<Model, CBFInfo> ReadCBF(const std::string& filename);
 
 }  // namespace conex

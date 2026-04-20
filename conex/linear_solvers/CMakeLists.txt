@@ -94,7 +94,7 @@ add_library(sparse_linear_constraint
   conex/common/sparse_psd_constraint.cc
   conex/common/sparse_quadratic_term.cc
   conex/common/sparse_equality_constraint.cc
-  conex/common/problem.cc
+  conex/common/model.cc
   conex/common/chordal_decomp.cc
 )
 target_link_libraries(sparse_linear_constraint PUBLIC constraints kkt_solver_factory structural_rank)

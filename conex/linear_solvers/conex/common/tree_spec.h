@@ -1,7 +1,7 @@
 #pragma once
 #include <vector>
 
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 namespace conex {
 

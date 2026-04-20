@@ -41,7 +41,7 @@ MPSFields ParseFields(const std::string& line) {
 
 }  // namespace
 
-std::pair<Problem, MPSInfo> ReadMPS(const std::string& filename) {
+std::pair<Model, MPSInfo> ReadMPS(const std::string& filename) {
   std::ifstream file(filename);
   if (!file.is_open()) {
     throw std::runtime_error("Cannot open MPS file: " + filename);
@@ -206,8 +206,8 @@ std::pair<Problem, MPSInfo> ReadMPS(const std::string& filename) {
     }
   }
 
-  // Build the Problem.
-  Problem problem;
+  // Build the Model.
+  Model problem;
   std::vector<int> all_vars(n_vars);
   std::iota(all_vars.begin(), all_vars.end(), 0);
 

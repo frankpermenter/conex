@@ -9,7 +9,7 @@
 
 namespace conex {
 
-std::pair<Problem, MTXInfo> ReadMTX(const std::string& path,
+std::pair<Model, MTXInfo> ReadMTX(const std::string& path,
                                     bool randomize) {
   std::ifstream f(path);
   if (!f.is_open()) {
@@ -81,7 +81,7 @@ std::pair<Problem, MTXInfo> ReadMTX(const std::string& path,
   std::vector<int> vars(num_vars);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   if (info.is_quadratic) {
     // Square matrix: treat as Q in min 0.5 x^T Q x.
     // Symmetrize: Q = A + A^T to ensure SPD-like structure.

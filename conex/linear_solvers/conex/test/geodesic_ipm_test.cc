@@ -7,7 +7,7 @@
 
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/common/eja_ops.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 
 using Eigen::MatrixXd;
@@ -52,7 +52,7 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, b, vars);
   problem.SetLinearCost(c);
   auto solver = Solver::Build(problem);
@@ -114,7 +114,7 @@ TEST(GeodesicBarrierQP, FullDecomposition) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, b, vars);
   problem.SetLinearCost(c);
   auto solver = Solver::Build(problem);
@@ -208,7 +208,7 @@ TEST(GeodesicBarrierQP, MultipleConstraints) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A1, b1, vars);
   problem.AddLinearConstraint(A2, b2, vars);
   problem.SetLinearCost(c);
@@ -305,7 +305,7 @@ TEST(GeodesicBarrierQP, HybridCenteringLoop) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(toSparseLoc(A_dense), b, vars);
   problem.SetLinearCost(c);
 
@@ -381,7 +381,7 @@ TEST(GeodesicSDP, CenterConvergence) {
   c(0) = A1.trace();
   c(1) = A2.trace();
 
-  Problem problem;
+  Model problem;
   problem.AddPSDConstraint(A_list, toSparse(B), vars, /*use_chordal=*/false);
   problem.SetLinearCost(c);
 
@@ -433,7 +433,7 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
   VectorXd pert = 0.1 * VectorXd::Random(m);
 
   // --- LP path ---
-  Problem lp_problem;
+  Model lp_problem;
   {
     std::vector<Eigen::Triplet<double>> trips;
     for (int i = 0; i < m; ++i)
@@ -453,7 +453,7 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
   auto lp_result = GeodesicCenter(*lp_kkt, lp_cost, lp_W, 1.0, 20, 1e-12, true);
 
   // --- SDP path (diagonal matrices, no chordal) ---
-  Problem sdp_problem;
+  Model sdp_problem;
   {
     std::vector<Eigen::SparseMatrix<double>> A_list;
     for (int j = 0; j < n; ++j) {
@@ -538,7 +538,7 @@ TEST(GeodesicSDP, NonDiagonalCenter) {
   VectorXd c(p);
   for (int j = 0; j < p; ++j) c(j) = A_list[j].toDense().trace();
 
-  Problem problem;
+  Model problem;
   problem.AddPSDConstraint(A_list, toSparse(B), vars, /*use_chordal=*/false);
   problem.SetLinearCost(c);
 
@@ -599,7 +599,7 @@ TEST(GeodesicSDP, NonDiagonalLP) {
   VectorXd c(p);
   for (int j = 0; j < p; ++j) c(j) = A_list[j].toDense().trace();
 
-  Problem problem;
+  Model problem;
   problem.AddPSDConstraint(A_list, toSparse(B), vars, /*use_chordal=*/false);
   problem.SetLinearCost(c);
 
@@ -648,7 +648,7 @@ TEST(GeodesicSDP, HybridCenteringLoop) {
   VectorXd c(p);
   for (int j = 0; j < p; ++j) c(j) = A_list[j].toDense().trace();
 
-  Problem problem;
+  Model problem;
   problem.AddPSDConstraint(A_list, toSparse(B), vars, false);
   problem.SetLinearCost(c);
 
@@ -704,7 +704,7 @@ TEST(GeodesicSDP, HybridCenteringLoop) {
 // Constraint: A x + b in SOC, where b = (1, 0, ..., 0) = identity.
 // Cost c_j = A_{0,j} (scalar row) so W=identity at k=1 is centered.
 struct SOCTestProblem {
-  Problem problem;
+  Model problem;
   VectorXd c;
   int n_soc;  // 1 + vec_dim
   int p;      // variables
@@ -736,7 +736,7 @@ SOCTestProblem MakeSOCTestProblem(int vec_dim, int p, int seed) {
   std::vector<int> vars(p);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddSOCConstraint(A, b, vars);
   problem.SetLinearCost(c);
 
@@ -881,7 +881,7 @@ TEST(GeodesicSDP, InterleavedVariablesRandom) {
     c(vars2[k]) = MatrixXd(A_list2[k]).trace();
   }
 
-  Problem problem;
+  Model problem;
   problem.AddPSDConstraint(A_list1, I2, vars1, /*use_chordal=*/false);
   problem.AddPSDConstraint(A_list2, I2, vars2, /*use_chordal=*/false);
   problem.SetLinearCost(c);
@@ -957,7 +957,7 @@ TEST(GeodesicSDP, InterleavedVariablesChordal) {
     c(vars2[k]) = MatrixXd(A_list2[k]).trace();
   }
 
-  Problem problem;
+  Model problem;
   problem.AddPSDConstraint(A_list1, In, vars1, /*use_chordal=*/true);
   problem.AddPSDConstraint(A_list2, In, vars2, /*use_chordal=*/true);
   problem.SetLinearCost(c);
@@ -1018,7 +1018,7 @@ TEST(GeodesicSDP, MixedPSDNonneg) {
   std::vector<int> vars(n_vars);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddPSDConstraint(A_psd, I2, vars, /*use_chordal=*/false);
   problem.AddLinearConstraint(A_nn, b_nn, vars);
   problem.SetLinearCost(c);
@@ -1077,7 +1077,7 @@ TEST(GeodesicSDP, MixedPSDNonnegDisjoint) {
   c(1) = MatrixXd(A_psd[1]).trace();  // trace(E11) = 1
   c.tail(2) = A_nn.transpose() * VectorXd::Ones(3);
 
-  Problem problem;
+  Model problem;
   std::vector<int> psd_vars = {0, 1};
   std::vector<int> nn_vars = {2, 3};
   problem.AddPSDConstraint(A_psd, I2, psd_vars, /*use_chordal=*/false);

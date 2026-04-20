@@ -154,16 +154,16 @@ void AccumulatePSDColumnNorms(
 
 // Compute per-column norms across all constraints.
 // mode: 0 = l∞, 1 = l2 (returns squared norms, caller takes sqrt).
-Eigen::VectorXd ComputeColumnNorms(const Problem& problem, int n, int mode) {
+Eigen::VectorXd ComputeColumnNorms(const Model& problem, int n, int mode) {
   Eigen::VectorXd col_norms = Eigen::VectorXd::Zero(n);
   for (int i = 0; i < problem.num_constraints(); ++i) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
-      if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
         AccumulateColumnNorms(data.A, data.vars, col_norms, mode);
-      } else if constexpr (std::is_same_v<T, Problem::SOCConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::SOCConstraintData>) {
         AccumulateColumnNorms(data.A, data.vars, col_norms, mode);
-      } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
         AccumulatePSDColumnNorms(data.A_list, data.vars, col_norms, mode);
       }
     }, problem.constraint(i));
@@ -179,12 +179,12 @@ Eigen::VectorXd ComputeColumnNorms(const Problem& problem, int n, int mode) {
 // For PSD constraints, returns a single-element vector with the max over all
 // A_list matrices (PSD rows aren't individually scalable without breaking
 // the cone structure).
-std::vector<Eigen::VectorXd> ComputeRowNorms(const Problem& problem) {
+std::vector<Eigen::VectorXd> ComputeRowNorms(const Model& problem) {
   std::vector<Eigen::VectorXd> row_norms;
   for (int i = 0; i < problem.num_constraints(); ++i) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
-      if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
         int m = data.A.rows();
         Eigen::VectorXd rn = Eigen::VectorXd::Zero(m);
         for (int k = 0; k < data.A.outerSize(); ++k)
@@ -192,7 +192,7 @@ std::vector<Eigen::VectorXd> ComputeRowNorms(const Problem& problem) {
                it; ++it)
             rn(it.row()) = std::max(rn(it.row()), std::abs(it.value()));
         row_norms.push_back(std::move(rn));
-      } else if constexpr (std::is_same_v<T, Problem::SOCConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::SOCConstraintData>) {
         int m = data.A.rows();
         Eigen::VectorXd rn = Eigen::VectorXd::Zero(m);
         for (int k = 0; k < data.A.outerSize(); ++k)
@@ -211,21 +211,21 @@ std::vector<Eigen::VectorXd> ComputeRowNorms(const Problem& problem) {
 
 // Apply column scaling D to a problem: A_new[:,j] = A[:,j] * D[vars[j]].
 // Also scales cost and quadratic terms appropriately.
-Problem ApplyColumnScaling(const Problem& problem,
+Model ApplyColumnScaling(const Model& problem,
                            const Eigen::VectorXd& D) {
-  Problem scaled;
+  Model scaled;
   for (int i = 0; i < problem.num_constraints(); ++i) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
 
-      if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
         Eigen::SparseMatrix<double> A = data.A;
         for (int k = 0; k < A.outerSize(); ++k)
           for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it)
             it.valueRef() *= D(data.vars[it.col()]);
         scaled.AddLinearConstraint(A, data.b, data.vars);
 
-      } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
         auto A_list = data.A_list;
         for (int k = 0; k < static_cast<int>(A_list.size()); ++k) {
           if (k < static_cast<int>(data.vars.size()))
@@ -233,14 +233,14 @@ Problem ApplyColumnScaling(const Problem& problem,
         }
         scaled.AddPSDConstraint(A_list, data.B, data.vars, data.use_chordal);
 
-      } else if constexpr (std::is_same_v<T, Problem::SOCConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::SOCConstraintData>) {
         Eigen::SparseMatrix<double> A = data.A;
         for (int k = 0; k < A.outerSize(); ++k)
           for (Eigen::SparseMatrix<double>::InnerIterator it(A, k); it; ++it)
             it.valueRef() *= D(data.vars[it.col()]);
         scaled.AddSOCConstraint(A, data.b, data.vars);
 
-      } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
+      } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
         Eigen::SparseMatrix<double> Q = data.Q_sparse;
         for (int k = 0; k < Q.outerSize(); ++k)
           for (Eigen::SparseMatrix<double>::InnerIterator it(Q, k); it; ++it) {
@@ -251,7 +251,7 @@ Problem ApplyColumnScaling(const Problem& problem,
           }
         scaled.AddQuadraticCost(Q, data.vars);
 
-      } else if constexpr (std::is_same_v<T, Problem::EqualityConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::EqualityConstraintData>) {
         Eigen::SparseMatrix<double> C = data.C;
         for (int k = 0; k < C.outerSize(); ++k)
           for (Eigen::SparseMatrix<double>::InnerIterator it(C, k); it; ++it)
@@ -271,14 +271,14 @@ Problem ApplyColumnScaling(const Problem& problem,
 // Apply per-row scaling E_i to constraint i:
 //   Nonneg/SOC: A(row,:) *= E_i(row), b(row) *= E_i(row).
 // PSD constraints are not row-scaled (cone structure).
-Problem ApplyRowScaling(const Problem& problem,
+Model ApplyRowScaling(const Model& problem,
                         const std::vector<Eigen::VectorXd>& E) {
-  Problem scaled;
+  Model scaled;
   for (int i = 0; i < problem.num_constraints(); ++i) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
 
-      if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
         if (E[i].size() > 0) {
           Eigen::SparseMatrix<double> A = data.A;
           Eigen::VectorXd b = data.b;
@@ -291,7 +291,7 @@ Problem ApplyRowScaling(const Problem& problem,
           scaled.AddLinearConstraint(data.A, data.b, data.vars);
         }
 
-      } else if constexpr (std::is_same_v<T, Problem::SOCConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::SOCConstraintData>) {
         if (E[i].size() > 0) {
           Eigen::SparseMatrix<double> A = data.A;
           Eigen::VectorXd b = data.b;
@@ -304,12 +304,12 @@ Problem ApplyRowScaling(const Problem& problem,
           scaled.AddSOCConstraint(data.A, data.b, data.vars);
         }
 
-      } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
         scaled.AddPSDConstraint(data.A_list, data.B, data.vars,
                                 data.use_chordal);
-      } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
+      } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
         scaled.AddQuadraticCost(data.Q_sparse, data.vars);
-      } else if constexpr (std::is_same_v<T, Problem::EqualityConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::EqualityConstraintData>) {
         scaled.AddEqualityConstraint(data.C, data.d, data.primal_vars);
       }
     }, problem.constraint(i));
@@ -335,18 +335,18 @@ Problem ApplyRowScaling(const Problem& problem,
 // This is acceptable: the scaling improves Gram conditioning, which
 // matters more than having b=1 exactly.
 struct RuizResult {
-  Problem problem;
+  Model problem;
   Eigen::VectorXd col_scale;  // cumulative column scale
   std::vector<Eigen::VectorXd> row_scale;  // cumulative row scales
 };
 
-RuizResult RuizEquilibrate(const Problem& problem, int n,
+RuizResult RuizEquilibrate(const Model& problem, int n,
                            int max_iters = 10, double tol = 0.1) {
   Eigen::VectorXd cumul_D = Eigen::VectorXd::Ones(n);
   int nc = problem.num_constraints();
   std::vector<Eigen::VectorXd> cumul_E(nc);
 
-  Problem current = problem;  // copy — will be overwritten each iteration
+  Model current = problem;  // copy — will be overwritten each iteration
   if (current.has_linear_cost()) {
     // Preserve cost through iterations (applied at the end).
   }
@@ -432,21 +432,21 @@ RuizResult RuizEquilibrate(const Problem& problem, int n,
 
 }  // namespace
 
-std::pair<Problem, RescaleInfo> RescaleProblem(const Problem& problem,
+std::pair<Model, RescaleInfo> RescaleProblem(const Model& problem,
                                                ColumnScaling strategy) {
   int n = problem.num_variables();
   RescaleInfo info;
   info.original_n = n;
   info.col_scale = Eigen::VectorXd::Ones(n);
 
-  Problem rescaled;
+  Model rescaled;
 
   // Phase 1: Row scaling — transform b → identity for each constraint.
   for (int i = 0; i < problem.num_constraints(); ++i) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
 
-      if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
         Eigen::SparseMatrix<double> A = data.A;
         Eigen::VectorXd b = data.b;
         if (RescaleNonneg(A, b)) {
@@ -456,7 +456,7 @@ std::pair<Problem, RescaleInfo> RescaleProblem(const Problem& problem,
           rescaled.AddLinearConstraint(data.A, data.b, data.vars);
         }
 
-      } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
         auto A_list = data.A_list;
         auto B = data.B;
         if (RescalePSD(A_list, B)) {
@@ -467,7 +467,7 @@ std::pair<Problem, RescaleInfo> RescaleProblem(const Problem& problem,
                                      data.use_chordal);
         }
 
-      } else if constexpr (std::is_same_v<T, Problem::SOCConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::SOCConstraintData>) {
         Eigen::SparseMatrix<double> A = data.A;
         Eigen::VectorXd b = data.b;
         if (RescaleSOC(A, b)) {
@@ -477,10 +477,10 @@ std::pair<Problem, RescaleInfo> RescaleProblem(const Problem& problem,
           rescaled.AddSOCConstraint(data.A, data.b, data.vars);
         }
 
-      } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
+      } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
         rescaled.AddQuadraticCost(data.Q_sparse, data.vars);
 
-      } else if constexpr (std::is_same_v<T, Problem::EqualityConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::EqualityConstraintData>) {
         rescaled.AddEqualityConstraint(data.C, data.d, data.primal_vars);
       }
     }, problem.constraint(i));
@@ -534,7 +534,7 @@ std::pair<Problem, RescaleInfo> RescaleProblem(const Problem& problem,
   }
 
   if (need_col_scale) {
-    Problem col_scaled = ApplyColumnScaling(rescaled, D);
+    Model col_scaled = ApplyColumnScaling(rescaled, D);
     info.was_rescaled = true;
     return {std::move(col_scaled), info};
   }

@@ -1,4 +1,4 @@
-// Problem rescaling: transform so that b → identity element.
+// Model rescaling: transform so that b → identity element.
 // This places W=I near the central path for the geodesic IPM.
 //
 // Row scaling (per constraint):
@@ -16,7 +16,7 @@
 
 #pragma once
 #include <Eigen/Dense>
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 namespace conex {
 
@@ -42,8 +42,8 @@ struct RescaleInfo {
 
 // Rescale a problem so b ≈ identity element for each constraint.
 // Modifies the cost accordingly.
-std::pair<Problem, RescaleInfo> RescaleProblem(
-    const Problem& problem,
+std::pair<Model, RescaleInfo> RescaleProblem(
+    const Model& problem,
     ColumnScaling strategy = ColumnScaling::Ruiz);
 
 }  // namespace conex

@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "conex/common/kkt_solver_interface.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
 #include <Eigen/Dense>
@@ -97,7 +97,7 @@ Solver BuildLQR(int nx, int nu, int T) {
   std::vector<int> all_vars(n_primal);
   std::iota(all_vars.begin(), all_vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddQuadraticCost(Q_cost, all_vars);
   problem.AddEqualityConstraint(C_eq, d_eq, all_vars);
 

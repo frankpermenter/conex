@@ -6,7 +6,7 @@
 #include "conex/common/clique_tree.h"
 #include "conex/common/conex.h"
 #include "conex/common/kkt_solver_interface.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/tree_spec.h"
 
 namespace conex {
@@ -25,14 +25,14 @@ class Solver {
   // Build preprocesses the problem (removes structurally rank-deficient
   // columns) before constructing the tree solver.  Use ExpandSolution()
   // and ReduceVector() to convert between original and reduced spaces.
-  static Solver Build(const Problem& problem,
+  static Solver Build(const Model& problem,
                       const SolverConfiguration& config = {});
 
-  static Solver Build(const Problem& problem,
+  static Solver Build(const Model& problem,
                       const TreeSpec& tree,
                       const SolverConfiguration& config = {});
 
-  static Solver BuildDense(const Problem& problem);
+  static Solver BuildDense(const Model& problem);
 
   KKTSolverBase* solver();
   const KKTSolverBase* solver() const;
@@ -62,13 +62,13 @@ class Solver {
   Solver& operator=(Solver&&) noexcept;
 
  private:
-  void BuildInternal(const Problem& problem,
+  void BuildInternal(const Model& problem,
                      const SolverConfiguration& config,
                      const CliqueTree* tree_override = nullptr);
-  void BuildFromTree(const Problem& problem,
+  void BuildFromTree(const Model& problem,
                      const TreeSpec& tree,
                      const SolverConfiguration& config);
-  void BuildQuotientAMD(const Problem& problem,
+  void BuildQuotientAMD(const Model& problem,
                         const SolverConfiguration& config);
   void RegisterAssemblersWithTreeSolver();
   const Eigen::VectorXd& linear_cost() const;

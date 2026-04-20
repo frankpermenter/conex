@@ -6,7 +6,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/solve_lp.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -34,7 +34,7 @@ TEST(SolveLP, SenseGE) {
   VectorXd b = -VectorXd::Ones(m);
   VectorXd c = A.transpose() * VectorXd::Ones(m);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, b, Sense::GE);
   problem.SetLinearCost(c);
 
@@ -52,7 +52,7 @@ TEST(SolveLP, SenseLE) {
   VectorXd b = VectorXd::Ones(m);
   VectorXd c = -(A.transpose() * VectorXd::Ones(m));
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, b, Sense::LE);
   problem.SetLinearCost(c);
 
@@ -74,7 +74,7 @@ TEST(SolveLP, ConstraintViolation) {
 
   // Test with Sense::LE: Ax <= b → stored (-A, b), violation = -Ax + b.
   {
-    Problem problem;
+    Model problem;
     problem.AddLinearConstraint(A, b, Sense::LE);
 
     // x = (0, 0, 0): Ax = 0, s = b - 0 = 1 >= 0. Feasible.
@@ -92,7 +92,7 @@ TEST(SolveLP, ConstraintViolation) {
 
   // Test with Sense::GE: Ax >= b → stored (A, -b), violation = Ax - b.
   {
-    Problem problem;
+    Model problem;
     problem.AddLinearConstraint(A, b, Sense::GE);
 
     // x = (2, 2, 0): Ax = (2, 2), s = Ax - b = (1, 1). Feasible.

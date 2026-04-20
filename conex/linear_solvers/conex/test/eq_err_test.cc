@@ -11,7 +11,7 @@
 #include <Eigen/Sparse>
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
@@ -26,7 +26,7 @@ struct TestResult {
   bool converged;
 };
 
-static TestResult RunTest(const char* name, Problem& prob,
+static TestResult RunTest(const char* name, Model& prob,
                            const Eigen::VectorXd& cost) {
   auto solver = Solver::Build(prob);
   auto* kkt = solver.solver();
@@ -51,7 +51,7 @@ static TestResult RunTest(const char* name, Problem& prob,
     obj_val = cost.head(nc).dot(r.x.head(nc));
     // Add quadratic cost if present.
     for (const auto& c : prob.constraints()) {
-      if (auto* qc = std::get_if<Problem::QuadraticCostData>(&c)) {
+      if (auto* qc = std::get_if<Model::QuadraticCostData>(&c)) {
         const auto& Q = qc->Q_sparse;
         const auto& vars = qc->vars;
         for (int k = 0; k < Q.outerSize(); ++k)
@@ -74,7 +74,7 @@ int main() {
   // === 1. LP: min [1,2,3]'x  s.t.  x >= 0 ===
   printf("\n========== 1. LP ==========\n");
   {
-    Problem p;
+    Model p;
     Eigen::SparseMatrix<double> A(3, 3); A.setIdentity();
     Eigen::VectorXd b = Eigen::VectorXd::Zero(3);
     std::vector<int> v = {0, 1, 2};
@@ -90,7 +90,7 @@ int main() {
   // === 2. LP+eq: min [1,2,1,2]'x  s.t.  x >= 0, x0+x1=1, x2+x3=2 ===
   printf("\n========== 2. LP+eq ==========\n");
   {
-    Problem p;
+    Model p;
     Eigen::SparseMatrix<double> A(4, 4); A.setIdentity();
     Eigen::VectorXd b = Eigen::VectorXd::Zero(4);
     std::vector<int> v = {0, 1, 2, 3};
@@ -120,7 +120,7 @@ int main() {
   // Q = [[4, 1], [1, 4]]
   printf("\n========== 3. QP ==========\n");
   {
-    Problem p;
+    Model p;
     // x >= 0
     Eigen::SparseMatrix<double> A(2, 2); A.setIdentity();
     Eigen::VectorXd b = Eigen::VectorXd::Zero(2);
@@ -149,7 +149,7 @@ int main() {
   // Q = [[4,1,0],[1,4,0],[0,0,2]]
   printf("\n========== 4. QP+eq ==========\n");
   {
-    Problem p;
+    Model p;
     // x >= 0
     Eigen::SparseMatrix<double> A(3, 3); A.setIdentity();
     Eigen::VectorXd b = Eigen::VectorXd::Zero(3);

@@ -15,7 +15,7 @@
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/kkt_solver_interface.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/sdpa_reader.h"
 #include "conex/common/solver.h"
 

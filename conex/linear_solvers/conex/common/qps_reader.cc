@@ -63,7 +63,7 @@ enum RowType { ROW_N, ROW_E, ROW_L, ROW_G };
 
 }  // namespace
 
-std::pair<Problem, QPSInfo> ReadQPS(const std::string& filename) {
+std::pair<Model, QPSInfo> ReadQPS(const std::string& filename) {
   std::ifstream file(filename);
   if (!file.is_open())
     throw std::runtime_error("Cannot open QPS file: " + filename);
@@ -219,8 +219,8 @@ std::pair<Problem, QPSInfo> ReadQPS(const std::string& filename) {
   const int n = static_cast<int>(col_names.size());
   const int m = static_cast<int>(row_types.size());
 
-  // --- Pass 2: Build Problem ---
-  Problem prob;
+  // --- Pass 2: Build Model ---
+  Model prob;
   QPSInfo info;
   info.num_variables = n;
   info.objective_constant = obj_constant;

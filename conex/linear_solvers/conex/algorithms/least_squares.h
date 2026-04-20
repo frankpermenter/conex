@@ -1,4 +1,4 @@
-// Deprecated: Use Problem + Solver API instead.
+// Deprecated: Use Model + Solver API instead.
 // This file is kept for backward compatibility with profile_mtx
 // and equality_constrained_least_squares.cc which still call
 // SparseLeastSquares internally.

@@ -13,13 +13,13 @@
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/kkt_solver_interface.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 
 using Eigen::SparseMatrix;
 using Eigen::Triplet;
 
-void AddQ(conex::Problem& p, int m) {
+void AddQ(conex::Model& p, int m) {
   SparseMatrix<double> Q(m, m);
   Q.setIdentity();
   p.AddQuadraticCost(Q);
@@ -36,7 +36,7 @@ SparseMatrix<double> SymEntry(int n, int i, int j, double val) {
 }
 
 void RunCase(const std::string& name,
-             const conex::Problem& problem,
+             const conex::Model& problem,
              int merge_size = 5) {
   printf("=== %s (merge=%d) ===\n", name.c_str(), merge_size);
   conex::SolverConfiguration cfg;
@@ -130,7 +130,7 @@ int main() {
   //   C2 on {0,1,2,3,4,5,6,7,8}          (matches clique 1 maximal)
   // Each constraint has many rows so A^T A is invertible.
   {
-    conex::Problem p;
+    conex::Model p;
     int m = 15;
     std::vector<int> c1_vars = {9,10,11,12,13,14, 0,1,7,8};
     std::vector<int> c2_vars = {0,1,2,3,4,5,6,7,8};
@@ -171,7 +171,7 @@ int main() {
 
   // Test m=15 cyclic with different merge sizes.
   for (int ms : {0, 1, 2, 3, 4, 5, 10, 100}) {
-    conex::Problem p;
+    conex::Model p;
     int m = 15;
     int bsize = 2;
     std::vector<int> vars(m);
@@ -196,7 +196,7 @@ int main() {
 
   // --- Case 1: 3 blocks of size 2, 4 constraints, each constraint touches 2 blocks ---
   {
-    conex::Problem p;
+    conex::Model p;
     std::vector<int> vars = {0, 1, 2, 3};
     int m = 4;
     int bsize = 2;
@@ -238,7 +238,7 @@ int main() {
 
   // --- Case 2: many blocks of size 2, each with 1-2 sparse constraints ---
   {
-    conex::Problem p;
+    conex::Model p;
     int num_blocks = 50;
     int m = num_blocks + 10;  // 60 constraints
     int bsize = 2;
@@ -275,7 +275,7 @@ int main() {
         std::vector<int> vars(m);
         for (int i = 0; i < m; ++i) vars[i] = i;
 
-        conex::Problem p;
+        conex::Model p;
         for (int b = 0; b < num_blocks; ++b) {
           std::vector<SparseMatrix<double>> A_list;
           int c1 = b % m;
@@ -300,7 +300,7 @@ int main() {
   // (unused scan kept for backward compat)
   for (int nb : std::vector<int>{}) {
     for (int seed = 0; seed < 0; ++seed) {
-      conex::Problem p;
+      conex::Model p;
       int num_blocks = nb;
       int m = 40;
       int bsize = 2;

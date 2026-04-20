@@ -5,7 +5,7 @@
 #include <Eigen/Sparse>
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
@@ -34,7 +34,7 @@ struct RunResult {
 };
 
 // Run the geodesic theta-continuation IPM on a problem, return results.
-static RunResult RunIPM(Problem& prob, const Eigen::VectorXd& cost,
+static RunResult RunIPM(Model& prob, const Eigen::VectorXd& cost,
                          int n_primal, bool verbose = true) {
   auto solver = Solver::Build(prob);
   auto* kkt = solver.solver();
@@ -68,7 +68,7 @@ int main() {
   printf("=== Case A: No equalities ===\n");
   RunResult resA;
   {
-    Problem p;
+    Model p;
     Eigen::SparseMatrix<double> A(2, 2);
     A.insert(0, 0) = 1; A.insert(1, 1) = 1; A.makeCompressed();
     Eigen::VectorXd b = Eigen::VectorXd::Zero(2);
@@ -96,7 +96,7 @@ int main() {
   printf("\n=== Case B: Phantom equality z = 4 (no cone on z) ===\n");
   RunResult resB;
   {
-    Problem p;
+    Model p;
     Eigen::SparseMatrix<double> A(2, 2);
     A.insert(0, 0) = 1; A.insert(1, 1) = 1; A.makeCompressed();
     Eigen::VectorXd b = Eigen::VectorXd::Zero(2);
@@ -169,7 +169,7 @@ int main() {
   // ======== Case C: Binding equality x1 + x2 = 1 ========
   printf("\n=== Case C: Binding equality x1 + x2 = 1 ===\n");
   {
-    Problem p;
+    Model p;
     Eigen::SparseMatrix<double> A(2, 2);
     A.insert(0, 0) = 1; A.insert(1, 1) = 1; A.makeCompressed();
     Eigen::VectorXd b = Eigen::VectorXd::Zero(2);

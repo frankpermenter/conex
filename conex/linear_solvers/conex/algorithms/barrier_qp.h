@@ -5,7 +5,7 @@
 
 namespace conex {
 
-class Problem;
+class Model;
 class KKTSolverBase;
 
 struct IterationStats {
@@ -39,7 +39,7 @@ BarrierQPResult SolveBarrierQP(
     double mu = 10.0,
     double tolerance = 1e-8);
 
-// Convenience: builds Problem + Solver from raw matrices.
+// Convenience: builds Model + Solver from raw matrices.
 BarrierQPResult SolveBarrierQP(
     const Eigen::SparseMatrix<double>& Q,
     const Eigen::VectorXd& c,

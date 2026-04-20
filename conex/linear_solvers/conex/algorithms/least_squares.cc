@@ -5,7 +5,7 @@
 
 #include "conex/common/kkt_solver_interface.h"
 
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 
 namespace conex {
@@ -22,7 +22,7 @@ SparseLeastSquaresResult SparseLeastSquares(
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(A.rows()), vars);
 
   auto solver = Solver::Build(problem);
@@ -69,7 +69,7 @@ SparseQuadraticTermLeastSquaresResult SparseQuadraticTermLeastSquares(
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(A.rows()), vars);
   problem.AddQuadraticCost(Q, vars);
 

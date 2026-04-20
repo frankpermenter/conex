@@ -59,7 +59,7 @@ Eigen::SparseMatrix<double> ToSparse(const Eigen::MatrixXd& M) {
 
 }  // namespace
 
-std::pair<Problem, CBFInfo> ReadCBF(const std::string& filename) {
+std::pair<Model, CBFInfo> ReadCBF(const std::string& filename) {
   std::ifstream file(filename);
   if (!file.is_open())
     throw std::runtime_error("Cannot open CBF file: " + filename);
@@ -202,8 +202,8 @@ std::pair<Problem, CBFInfo> ReadCBF(const std::string& filename) {
   info.num_variables = num_vars;
   info.num_constraints = num_cons;
 
-  // Build Problem.
-  Problem problem;
+  // Build Model.
+  Model problem;
   std::vector<int> all_vars(num_vars);
   std::iota(all_vars.begin(), all_vars.end(), 0);
 

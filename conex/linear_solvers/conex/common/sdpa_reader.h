@@ -1,4 +1,4 @@
-// SDPA-sparse format reader: converts SDP benchmarks to Problem.
+// SDPA-sparse format reader: converts SDP benchmarks to Model.
 //
 // Format: min <C, X> s.t. <A_i, X> = b_i, X ≽ 0.
 //
@@ -17,7 +17,7 @@
 
 #pragma once
 #include <string>
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 namespace conex {
 
@@ -28,6 +28,6 @@ struct SDPAInfo {
   int total_matrix_dim = 0;
 };
 
-std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename);
+std::pair<Model, SDPAInfo> ReadSDPA(const std::string& filename);
 
 }  // namespace conex

@@ -19,7 +19,7 @@ Solver::~Solver() = default;
 Solver::Solver(Solver&&) noexcept = default;
 Solver& Solver::operator=(Solver&&) noexcept = default;
 
-Solver Solver::Build(const Problem& problem,
+Solver Solver::Build(const Model& problem,
                      const SolverConfiguration& config) {
   auto [reduced, expansion] = RemoveStructuralRankDeficiency(problem);
   Solver s;
@@ -33,7 +33,7 @@ Solver Solver::Build(const Problem& problem,
   return s;
 }
 
-Solver Solver::Build(const Problem& problem,
+Solver Solver::Build(const Model& problem,
                      const TreeSpec& tree,
                      const SolverConfiguration& config) {
   // TreeSpec references original constraint IDs — skip preprocessing.
@@ -46,7 +46,7 @@ Solver Solver::Build(const Problem& problem,
   return s;
 }
 
-Solver Solver::BuildDense(const Problem& problem) {
+Solver Solver::BuildDense(const Model& problem) {
   // Dense path uses TreeSpec internally — skip preprocessing.
   TreeSpec tree;
   int clique = tree.AddClique();
@@ -90,7 +90,7 @@ SolverRHS Solver::MakeCostRHS() {
   return rhs;
 }
 
-void Solver::BuildInternal(const Problem& problem,
+void Solver::BuildInternal(const Model& problem,
                            const SolverConfiguration& config,
                            const CliqueTree* tree_override) {
   const int n = problem.num_variables();
@@ -106,34 +106,34 @@ void Solver::BuildInternal(const Problem& problem,
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
 
-      if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
         auto slc = std::make_unique<SparseLinearConstraint>(data.A, data.b);
         auto asm_ptr = std::make_unique<SparseLinearConstraintAssembler>(
             std::move(slc), data.vars);
         linear_assemblers_[i] = asm_ptr.get();
         cm_->AddCustomAssembler(std::move(asm_ptr));
 
-      } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
         auto asm_ptr = std::make_unique<SparsePSDConstraintAssembler>(
             data.A_list, data.B, data.vars, data.use_chordal);
         psd_assemblers_[i] = asm_ptr.get();
         cm_->AddCustomAssembler(std::move(asm_ptr));
 
-      } else if constexpr (std::is_same_v<T, Problem::SOCConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::SOCConstraintData>) {
         auto slc = std::make_unique<SparseLinearConstraint>(data.A, data.b);
         auto asm_ptr = std::make_unique<SparseSOCConstraintAssembler>(
             std::move(slc), data.vars);
         soc_assemblers_[i] = asm_ptr.get();
         cm_->AddCustomAssembler(std::move(asm_ptr));
 
-      } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
+      } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
         auto asm_ptr = std::make_unique<SparseQuadraticTermAssembler>(
             data.Q_sparse, data.vars);
         quadratic_assemblers_[i] = asm_ptr.get();
         cm_->AddCustomAssembler(std::move(asm_ptr));
 
       } else if constexpr (std::is_same_v<T,
-                                          Problem::EqualityConstraintData>) {
+                                          Model::EqualityConstraintData>) {
         auto sec = std::make_unique<SparseEqualityConstraint>(
             data.C, data.d);
         auto dual = cm_->AllocateDualVariables(data.C.rows());
@@ -186,7 +186,7 @@ void Solver::BuildInternal(const Problem& problem,
   RegisterAssemblersWithTreeSolver();
 }
 
-void Solver::BuildFromTree(const Problem& problem,
+void Solver::BuildFromTree(const Model& problem,
                            const TreeSpec& tree,
                            const SolverConfiguration& config) {
   // Use the TreeSolverBuilder to convert TreeSpec → CliqueTree,
@@ -206,15 +206,15 @@ void Solver::BuildFromTree(const Problem& problem,
     int clique = tree.clique_of(i);
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
-      if constexpr (std::is_same_v<T, Problem::LinearConstraintData> ||
-                     std::is_same_v<T, Problem::SOCConstraintData>) {
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData> ||
+                     std::is_same_v<T, Model::SOCConstraintData>) {
         Eigen::MatrixXd Ad(data.A);
         builder->AddLinearConstraint(cids[clique], Ad, data.b, data.vars);
-      } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
         int n = data.B.rows();
         auto psd = std::make_unique<PSDConstraint>(n, data.A_list, data.B);
         builder->AddPSDConstraint(cids[clique], std::move(psd), data.vars);
-      } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
+      } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
         int nv = static_cast<int>(data.vars.size());
         Eigen::MatrixXd Qd(nv, nv);
         if (data.Q_dense.size() > 0) {
@@ -227,7 +227,7 @@ void Solver::BuildFromTree(const Problem& problem,
         }
         builder->AddCost(cids[clique], Qd, data.vars);
       } else if constexpr (std::is_same_v<T,
-                                          Problem::EqualityConstraintData>) {
+                                          Model::EqualityConstraintData>) {
         int p = data.C.rows();
         std::vector<int> dual(p);
         for (int j = 0; j < p; ++j) dual[j] = next_dual++;
@@ -244,7 +244,7 @@ void Solver::BuildFromTree(const Problem& problem,
   BuildInternal(problem, config, &result.clique_tree);
 }
 
-void Solver::BuildQuotientAMD(const Problem& problem,
+void Solver::BuildQuotientAMD(const Model& problem,
                               const SolverConfiguration& config) {
   // One clique per constraint, let BuildFromTree handle the rest.
   TreeSpec tree;

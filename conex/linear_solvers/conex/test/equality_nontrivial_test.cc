@@ -6,7 +6,7 @@
 #include <Eigen/Sparse>
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
@@ -52,8 +52,8 @@ bool TestStandardFormLP() {
   Eigen::VectorXd cost(n);
   for (int i = 0; i < n; ++i) cost(i) = unif(rng);
 
-  // Build Problem.
-  Problem prob;
+  // Build Model.
+  Model prob;
   Eigen::SparseMatrix<double> I_sp(n, n); I_sp.setIdentity();
   Eigen::VectorXd zeros = Eigen::VectorXd::Zero(n);
   std::vector<int> vars(n);
@@ -97,7 +97,7 @@ bool TestStandardFormLP() {
   printf("  null dim = %d\n", nz);
 
   if (nz == n - p) {
-    Problem reduced;
+    Model reduced;
     Eigen::SparseMatrix<double> N_sp = N.sparseView();
     std::vector<int> zvars(nz);
     std::iota(zvars.begin(), zvars.end(), 0);
@@ -178,7 +178,7 @@ bool TestMaxcutSDP() {
   }
   Eigen::SparseMatrix<double> B(n, n);
 
-  Problem prob;
+  Model prob;
   prob.AddPSDConstraint(A_list, B, psd_vars, false);
 
   // Equality: X_ii = 1.

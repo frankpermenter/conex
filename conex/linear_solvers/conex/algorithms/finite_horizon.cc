@@ -5,7 +5,7 @@
 
 #include "conex/common/kkt_solver_interface.h"
 
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 
 namespace conex {
@@ -77,11 +77,11 @@ LQRFromSparseMatricesResult SolveLQRFromSparseMatrices(
   Eigen::VectorXd d_eq = Eigen::VectorXd::Zero(n_eq);
   d_eq.tail(nx) = x0;
 
-  // Build Problem.
+  // Build Model.
   std::vector<int> vars(n_vars);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddQuadraticCost(Q_cost, vars);
   auto c_eq = problem.AddEqualityConstraint(C_eq, d_eq, vars);
 

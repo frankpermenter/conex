@@ -36,7 +36,7 @@ bool NextLine(std::ifstream& file, std::string& line) {
 
 }  // namespace
 
-std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename) {
+std::pair<Model, SDPAInfo> ReadSDPA(const std::string& filename) {
   std::ifstream file(filename);
   if (!file.is_open())
     throw std::runtime_error("Cannot open SDPA file: " + filename);
@@ -125,11 +125,11 @@ std::pair<Problem, SDPAInfo> ReadSDPA(const std::string& filename) {
     }
   }
 
-  // Build Problem.
+  // Build Model.
   // SDPA standard primal: min c^T x s.t. X = Σ x_i F_i - F_0 ≽ 0
   //   (file's `b` vector is SDPA's c; F_0, F_i come from triplets).
   // Conex form Σ A_i x_i + B ≽ 0  ⇒  A_i = F_i, B = -F_0, cost = c.
-  Problem problem;
+  Model problem;
   std::vector<int> vars(m);
   std::iota(vars.begin(), vars.end(), 0);
 

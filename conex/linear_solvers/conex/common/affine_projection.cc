@@ -4,7 +4,7 @@
 
 namespace conex {
 
-AffineProjection AffineProjection::Build(const Problem& problem) {
+AffineProjection AffineProjection::Build(const Model& problem) {
   AffineProjection ap;
   ap.solver_ = Solver::Build(problem);
 

@@ -10,25 +10,25 @@
 namespace conex {
 namespace EuclideanJordanAlgebra { class ConeOps; }
 
-// Handle to a constraint registered with a Problem.
+// Handle to a constraint registered with a Model.
 using ConstraintId = int;
 
 // Constraint sense for linear inequalities.
 enum class Sense { GE, LE };
 
-// Problem: a container for optimization data (costs, constraints).
+// Model: a container for optimization data (costs, constraints).
 //
 // Internally, all linear constraints are stored in canonical form
 // Ax + b >= 0.  The Sense and double-sided overloads handle sign
 // flips automatically.
 //
-//   Problem p;
+//   Model p;
 //   p.AddLinearConstraint(A, b, Sense::GE);        // Ax + b >= 0
 //   p.AddLinearConstraint(A, b, Sense::LE);         // Ax + b <= 0
 //   p.AddLinearConstraint(A, b_lb, b_ub);           // b_lb <= Ax <= b_ub
 //   p.SetLinearCost(c);                             // min c^T x
 //
-class Problem {
+class Model {
  public:
   // Core: add Ax + b >= 0 (canonical form, stored directly).
   ConstraintId AddLinearConstraint(
@@ -314,11 +314,11 @@ struct Expansion {
 
 // Drop structurally rank-deficient columns from linear constraints.
 // Returns (reduced_problem, expansion).
-std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
-    const Problem& problem);
+std::pair<Model, Expansion> RemoveStructuralRankDeficiency(
+    const Model& problem);
 
 // Legacy alias.
-inline std::pair<Problem, Expansion> Preprocess(const Problem& problem) {
+inline std::pair<Model, Expansion> Preprocess(const Model& problem) {
   return RemoveStructuralRankDeficiency(problem);
 }
 

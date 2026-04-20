@@ -1,4 +1,4 @@
-// QPS/MPS format reader: converts QP benchmarks to Problem.
+// QPS/MPS format reader: converts QP benchmarks to Model.
 //
 // Standard QPS format:
 //   min  c'x + (1/2) x'Qx
@@ -11,7 +11,7 @@
 // Bound types: LO, UP, FX (fixed), FR (free), MI (minus infinity),
 //              BV (binary), PL (plus infinity).
 //
-// Mapping to Problem:
+// Mapping to Model:
 //   E rows  → AddEqualityConstraint(C, d, vars)
 //   L rows  → AddLinearConstraint(A, b, vars) with  b - Ax >= 0
 //   G rows  → AddLinearConstraint(A, b, vars) with  Ax - b >= 0
@@ -22,7 +22,7 @@
 #pragma once
 #include <string>
 #include <vector>
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 namespace conex {
 
@@ -36,6 +36,6 @@ struct QPSInfo {
   double objective_constant = 0;  // c_0 from RHS entry for the N row
 };
 
-std::pair<Problem, QPSInfo> ReadQPS(const std::string& filename);
+std::pair<Model, QPSInfo> ReadQPS(const std::string& filename);
 
 }  // namespace conex

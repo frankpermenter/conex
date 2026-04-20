@@ -20,12 +20,12 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
 
   auto t0 = clock::now();
 
-  // Build Problem: Q = A'A (quadratic cost), equality Cx = d.
+  // Build Model: Q = A'A (quadratic cost), equality Cx = d.
   // Need a dummy cone constraint so the tree solver has a PD block.
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   // Quadratic cost: (1/2)x'(A'A)x.  The solver stores Q and the
   // objective is (1/2)x'Qx.  We pass Q = A'A.
   Eigen::SparseMatrix<double> Q = (A.transpose() * A).pruned();
@@ -51,7 +51,7 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
 
   // Set equality RHS at dual positions.
   const auto& duals = solver.dual_variables(c_eq);
-  auto* eq = std::get_if<Problem::EqualityConstraintData>(
+  auto* eq = std::get_if<Model::EqualityConstraintData>(
       &problem.constraint(c_eq));
   if (eq) {
     for (int i = 0; i < static_cast<int>(duals.size()); ++i)
@@ -72,21 +72,21 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
   return result;
 }
 
-QPEqualityResult SolveQPEquality(const Problem& problem) {
-  // Extract Q, c, C, d from the Problem.
+QPEqualityResult SolveQPEquality(const Model& problem) {
+  // Extract Q, c, C, d from the Model.
   const int n = problem.num_variables();
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  // Rebuild a Problem with only the QP + equality data (no cone constraints).
+  // Rebuild a Model with only the QP + equality data (no cone constraints).
   // The tree solver needs at least one PD contribution to build,
   // so we add a zero-weight quadratic cost if none exists.
-  Problem qp;
+  Model qp;
 
   // Copy quadratic costs.
   bool has_Q = false;
   for (const auto& c : problem.constraints()) {
-    if (auto* qc = std::get_if<Problem::QuadraticCostData>(&c)) {
+    if (auto* qc = std::get_if<Model::QuadraticCostData>(&c)) {
       qp.AddQuadraticCost(qc->Q_sparse, qc->vars);
       has_Q = true;
     }
@@ -95,7 +95,7 @@ QPEqualityResult SolveQPEquality(const Problem& problem) {
   // Copy equality constraints.
   std::vector<ConstraintId> eq_ids;
   for (int i = 0; i < problem.num_constraints(); ++i) {
-    if (auto* ec = std::get_if<Problem::EqualityConstraintData>(
+    if (auto* ec = std::get_if<Model::EqualityConstraintData>(
             &problem.constraint(i))) {
       eq_ids.push_back(
           qp.AddEqualityConstraint(ec->C, ec->d, ec->primal_vars));
@@ -123,7 +123,7 @@ QPEqualityResult SolveQPEquality(const Problem& problem) {
   // Set equality RHS at dual positions.
   for (auto eid : eq_ids) {
     const auto& duals = solver.dual_variables(eid);
-    auto* ec = std::get_if<Problem::EqualityConstraintData>(
+    auto* ec = std::get_if<Model::EqualityConstraintData>(
         &qp.constraint(eid));
     if (ec) {
       for (int i = 0; i < static_cast<int>(duals.size()); ++i)
@@ -141,7 +141,7 @@ QPEqualityResult SolveQPEquality(const Problem& problem) {
     obj += qp.linear_cost().head(nc).dot(x.head(nc));
   }
   for (const auto& c : qp.constraints()) {
-    if (auto* qc = std::get_if<Problem::QuadraticCostData>(&c)) {
+    if (auto* qc = std::get_if<Model::QuadraticCostData>(&c)) {
       for (int k = 0; k < qc->Q_sparse.outerSize(); ++k)
         for (Eigen::SparseMatrix<double>::InnerIterator it(qc->Q_sparse, k);
              it; ++it) {

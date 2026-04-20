@@ -9,7 +9,7 @@
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/kkt_solver_interface.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/algorithms/geodesic_ipm.h"
 
@@ -26,7 +26,7 @@ TEST(HybridTransition, TrivialCentering) {
   Eigen::VectorXd b = Eigen::VectorXd::Ones(m);
   Eigen::VectorXd c = A_dense.transpose() * Eigen::VectorXd::Ones(m);
 
-  Problem problem;
+  Model problem;
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
   problem.AddLinearConstraint(A, b, vars);

@@ -1,12 +1,12 @@
 // Test: read CVXQP1_S, CVXQP2_S, CVXQP3_S, GOULDQP3.
 // Discard bounds, merge Q + I into one matrix, one equality constraint.
-// Build Problem, solve KKT directly, demand zero residual.
+// Build Model, solve KKT directly, demand zero residual.
 #include <cstdio>
 #include <cmath>
 #include <numeric>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/common/qps_reader.h"
 #include "conex/common/equality_constraint.h"
@@ -27,7 +27,7 @@ bool TestInstance(const char* name, const char* path,
   std::vector<Eigen::Triplet<double>> q_trips;
   // Collect inequality constraint matrices and compute A'A.
   for (const auto& c : prob_full.constraints()) {
-    if (auto* lc = std::get_if<Problem::LinearConstraintData>(&c)) {
+    if (auto* lc = std::get_if<Model::LinearConstraintData>(&c)) {
       Eigen::SparseMatrix<double> AtA = (lc->A.transpose() * lc->A).pruned();
       for (int k = 0; k < AtA.outerSize(); ++k)
         for (Eigen::SparseMatrix<double>::InnerIterator it(AtA, k); it; ++it)
@@ -36,7 +36,7 @@ bool TestInstance(const char* name, const char* path,
     }
   }
   for (const auto& c : prob_full.constraints()) {
-    if (auto* qc = std::get_if<Problem::QuadraticCostData>(&c)) {
+    if (auto* qc = std::get_if<Model::QuadraticCostData>(&c)) {
       for (int k = 0; k < qc->Q_sparse.outerSize(); ++k)
         for (Eigen::SparseMatrix<double>::InnerIterator it(qc->Q_sparse, k);
              it; ++it)
@@ -52,7 +52,7 @@ bool TestInstance(const char* name, const char* path,
   std::vector<double> d_vals;
   int eq_row = 0;
   for (const auto& c : prob_full.constraints()) {
-    if (auto* ec = std::get_if<Problem::EqualityConstraintData>(&c)) {
+    if (auto* ec = std::get_if<Model::EqualityConstraintData>(&c)) {
       for (int k = 0; k < ec->C.outerSize(); ++k)
         for (Eigen::SparseMatrix<double>::InnerIterator it(ec->C, k); it; ++it)
           c_trips.emplace_back(eq_row + it.row(), ec->primal_vars[it.col()],
@@ -67,8 +67,8 @@ bool TestInstance(const char* name, const char* path,
   C.setFromTriplets(c_trips.begin(), c_trips.end());
   Eigen::VectorXd d = Eigen::Map<Eigen::VectorXd>(d_vals.data(), p);
 
-  // Build Problem with exactly one Q and one equality.
-  Problem qp;
+  // Build Model with exactly one Q and one equality.
+  Model qp;
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
   qp.AddQuadraticCost(Q, vars);
@@ -76,7 +76,7 @@ bool TestInstance(const char* name, const char* path,
   if (prob_full.has_linear_cost())
     qp.SetLinearCost(prob_full.linear_cost());
 
-  printf("  Problem: %d constraints, %d vars\n",
+  printf("  Model: %d constraints, %d vars\n",
          qp.num_constraints(), qp.num_variables());
 
   // Build solver with automatic tree (AMD ordering).
@@ -93,7 +93,7 @@ bool TestInstance(const char* name, const char* path,
          ts ? (int)ts->equality_sub_assemblers().size() : -1);
   // Print dual variable range.
   for (int i = 0; i < qp.num_constraints(); ++i) {
-    if (auto* ec = std::get_if<Problem::EqualityConstraintData>(
+    if (auto* ec = std::get_if<Model::EqualityConstraintData>(
             &qp.constraint(i))) {
       const auto& dv = solver.dual_variables(i);
       if (!dv.empty())
@@ -107,7 +107,7 @@ bool TestInstance(const char* name, const char* path,
     rhs.head(n) = -qp.linear_cost();
   // Set equality d at dual positions using Solver's dual_var_map.
   for (int i = 0; i < qp.num_constraints(); ++i) {
-    if (auto* ec = std::get_if<Problem::EqualityConstraintData>(
+    if (auto* ec = std::get_if<Model::EqualityConstraintData>(
             &qp.constraint(i))) {
       const auto& dv = solver.dual_variables(i);
       for (int j = 0; j < (int)dv.size(); ++j)
@@ -121,7 +121,7 @@ bool TestInstance(const char* name, const char* path,
   Eigen::MatrixXd K = Eigen::MatrixXd::Zero(nv, nv);
   K.topLeftCorner(n, n) = Eigen::MatrixXd(Q);
   for (int ci = 0; ci < qp.num_constraints(); ++ci) {
-    if (auto* ec = std::get_if<Problem::EqualityConstraintData>(
+    if (auto* ec = std::get_if<Model::EqualityConstraintData>(
             &qp.constraint(ci))) {
       const auto& dv = solver.dual_variables(ci);
       for (int k2 = 0; k2 < ec->C.outerSize(); ++k2)

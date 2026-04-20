@@ -4,7 +4,7 @@
 #include <Eigen/Sparse>
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
@@ -13,7 +13,7 @@ using namespace conex;
 int main() {
   // QP+eq: min [1,-2,0]'x + (1/2)x'Qx  s.t.  x >= 0, x0+x1+x2 = 2
   // Q = [[4,1,0],[1,4,0],[0,0,2]]
-  Problem p;
+  Model p;
   Eigen::SparseMatrix<double> A(3, 3); A.setIdentity();
   Eigen::VectorXd b = Eigen::VectorXd::Zero(3);
   std::vector<int> v = {0, 1, 2};

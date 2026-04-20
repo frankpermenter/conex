@@ -5,13 +5,13 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 #include "conex/algorithms/equality_constrained_least_squares.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/qps_reader.h"
 using namespace conex;
 
 bool TestToy() {
   printf("=== Toy: min x1^2 + x2^2  s.t. x1 + x2 = 1 ===\n");
-  Problem p;
+  Model p;
   Eigen::SparseMatrix<double> Q(2, 2);
   Q.insert(0, 0) = 2; Q.insert(1, 1) = 2; Q.makeCompressed();
   std::vector<int> v = {0, 1};
@@ -33,7 +33,7 @@ bool TestToy() {
 
 bool TestToy2() {
   printf("=== Toy2: min [1,-2,0]'x + (1/2)x'Qx  s.t. x1+x2+x3=2 ===\n");
-  Problem p;
+  Model p;
   Eigen::SparseMatrix<double> Q(3, 3);
   Q.insert(0, 0) = 4; Q.insert(0, 1) = 1; Q.insert(1, 0) = 1;
   Q.insert(1, 1) = 4; Q.insert(2, 2) = 2;
@@ -62,12 +62,12 @@ bool TestLOTSCHD() {
       "/agent-workspace/problem_libraries/maros_meszaros/QPS_Files/LOTSCHD.QPS");
 
   // Extract only Q and equality constraints — ignore the x>=0 bounds.
-  Problem qp;
+  Model qp;
   for (int i = 0; i < prob_full.num_constraints(); ++i) {
     const auto& con = prob_full.constraint(i);
-    if (auto* qc = std::get_if<Problem::QuadraticCostData>(&con))
+    if (auto* qc = std::get_if<Model::QuadraticCostData>(&con))
       qp.AddQuadraticCost(qc->Q_sparse, qc->vars);
-    else if (auto* ec = std::get_if<Problem::EqualityConstraintData>(&con))
+    else if (auto* ec = std::get_if<Model::EqualityConstraintData>(&con))
       qp.AddEqualityConstraint(ec->C, ec->d, ec->primal_vars);
   }
   if (prob_full.has_linear_cost())
@@ -99,7 +99,7 @@ bool TestLOTSCHD() {
   // Check Cx = d.
   double max_eq_err = 0;
   for (int i = 0; i < qp.num_constraints(); ++i) {
-    if (auto* ec = std::get_if<Problem::EqualityConstraintData>(
+    if (auto* ec = std::get_if<Model::EqualityConstraintData>(
             &qp.constraint(i))) {
       Eigen::VectorXd x_sub(ec->primal_vars.size());
       for (int j = 0; j < (int)ec->primal_vars.size(); ++j)

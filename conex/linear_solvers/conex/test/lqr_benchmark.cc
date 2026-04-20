@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "conex/common/kkt_solver_interface.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
 #include <Eigen/Dense>
@@ -105,7 +105,7 @@ void RunLQR(int nx, int nu, int T) {
 
   // Build problem from single sparse Q and C.
   auto t0 = Clock::now();
-  Problem problem;
+  Model problem;
   problem.AddQuadraticCost(Q_cost, all_vars);
   auto c_eq = problem.AddEqualityConstraint(C_eq, d_eq, all_vars);
   auto t1 = Clock::now();

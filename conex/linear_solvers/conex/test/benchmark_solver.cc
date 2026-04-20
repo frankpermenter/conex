@@ -29,7 +29,7 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/mps_reader.h"
 #include "conex/common/mtx_reader.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/qps_reader.h"
 #include "conex/common/rescale.h"
 #include "conex/common/sdpa_reader.h"
@@ -58,7 +58,7 @@ Eigen::SparseMatrix<double> ToSparse(const MatrixXd& M) {
 // Synthetic problem generators
 // =====================================================================
 
-Problem MakeSyntheticLP(int m, int n, int seed) {
+Model MakeSyntheticLP(int m, int n, int seed) {
   srand(seed);
   MatrixXd A_dense = MatrixXd::Random(m, n);
   VectorXd b = VectorXd::Ones(m);
@@ -66,13 +66,13 @@ Problem MakeSyntheticLP(int m, int n, int seed) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(ToSparse(A_dense), b, vars);
   problem.SetLinearCost(c);
   return problem;
 }
 
-Problem MakeSyntheticSDP(int n, int p, int seed) {
+Model MakeSyntheticSDP(int n, int p, int seed) {
   srand(seed);
   std::vector<Eigen::SparseMatrix<double>> A_list;
   std::vector<int> vars(p);
@@ -84,14 +84,14 @@ Problem MakeSyntheticSDP(int n, int p, int seed) {
     vars[k] = k;
     c(k) = Ak.trace();
   }
-  Problem problem;
+  Model problem;
   problem.AddPSDConstraint(A_list, ToSparse(MatrixXd::Identity(n, n)), vars,
                             false);
   problem.SetLinearCost(c);
   return problem;
 }
 
-Problem MakeSyntheticSOCP(int dim, int p, int seed) {
+Model MakeSyntheticSOCP(int dim, int p, int seed) {
   srand(seed);
   MatrixXd A_dense = MatrixXd::Random(dim, p);
   VectorXd b = VectorXd::Zero(dim);
@@ -100,7 +100,7 @@ Problem MakeSyntheticSOCP(int dim, int p, int seed) {
   std::vector<int> vars(p);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddSOCConstraint(ToSparse(A_dense), b, vars);
   problem.SetLinearCost(c);
   return problem;
@@ -124,7 +124,7 @@ struct AlgoResult {
 
 AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
                    const SolverRHS& cost_rhs,
-                   const Problem& problem,
+                   const Model& problem,
                    const Solver& solver,
                    auto solve_fn) {
   RowSpace W = kkt.MakeRowSpace();
@@ -143,7 +143,7 @@ AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
       primal_cost += problem.linear_cost().head(nc).dot(x.head(nc));
     }
     for (const auto& c : problem.constraints()) {
-      if (auto* qc = std::get_if<Problem::QuadraticCostData>(&c)) {
+      if (auto* qc = std::get_if<Model::QuadraticCostData>(&c)) {
         const auto& Q = qc->Q_sparse;
         const auto& vars = qc->vars;
         for (int k = 0; k < Q.outerSize(); ++k) {
@@ -164,7 +164,7 @@ AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
           ms, result.mu < 1e-6};
 }
 
-void ProfileAlgorithm(const Problem& problem, const std::string& name,
+void ProfileAlgorithm(const Model& problem, const std::string& name,
                       const SolverConfiguration& config,
                       double objective_constant = 0) {
   printf("=== %s ===\n", name.c_str());
@@ -252,7 +252,7 @@ struct ProfileResult {
   double residual;
 };
 
-ProfileResult ProfileFactorization(const Problem& problem,
+ProfileResult ProfileFactorization(const Model& problem,
                                    const std::string& name,
                                    const SolverConfiguration& cfg,
                                    int max_iters = -1) {
@@ -326,7 +326,7 @@ ProfileResult ProfileFactorization(const Problem& problem,
 
 void PrintProfileHeader() {
   printf("%-20s %4s %4s %6s | %10s | %10s %10s | %10s\n",
-         "Problem", "thrd", "merg", "cliq",
+         "Model", "thrd", "merg", "cliq",
          "build",
          "asm+fac", "solve",
          "residual");
@@ -355,7 +355,7 @@ void PrintProfileResult(const ProfileResult& res,
 // =====================================================================
 
 struct ProblemWithInfo {
-  Problem problem;
+  Model problem;
   std::string name;
   double objective_constant = 0;
 };
@@ -493,7 +493,7 @@ int main(int argc, char* argv[]) {
     int d2 = std::atoi(argv[4]);
     int seed = argc > 5 ? std::atoi(argv[5]) : 42;
 
-    conex::Problem problem;
+    conex::Model problem;
     char name[128];
     if (type == "lp") {
       snprintf(name, sizeof(name), "Synthetic LP (%dx%d, seed=%d)", d1, d2, seed);

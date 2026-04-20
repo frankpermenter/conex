@@ -8,7 +8,7 @@
 #include "conex/algorithms/self_dual_embedding.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/kkt_solver_interface.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/sdpa_reader.h"
 #include "conex/common/solver.h"
 
@@ -34,7 +34,7 @@ TEST(HSD, SmallLP) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(toSparse(A_dense), b, vars);
   problem.SetLinearCost(c);
 
@@ -66,7 +66,7 @@ TEST(HSD, SmallSDP) {
   c(0) = A1.trace();
   c(1) = A2.trace();
 
-  Problem problem;
+  Model problem;
   problem.AddPSDConstraint(A_list, toSparse(B), vars, false);
   problem.SetLinearCost(c);
 

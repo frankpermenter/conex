@@ -17,7 +17,7 @@
 #include "conex/common/cbf_reader.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/mps_reader.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/rescale.h"
 #include "conex/common/sdpa_reader.h"
 #include "conex/common/solver.h"
@@ -27,7 +27,7 @@ namespace conex {
 
 using Eigen::VectorXd;
 
-void RunCentering(Problem& problem, const std::string& name, int max_iters) {
+void RunCentering(Model& problem, const std::string& name, int max_iters) {
   printf("=== %s ===\n", name.c_str());
   printf("  Variables: %d, Constraints: %d\n",
          problem.num_variables(), problem.num_constraints());
@@ -40,14 +40,14 @@ void RunCentering(Problem& problem, const std::string& name, int max_iters) {
 
   // Rebuild problem with b = identity to place I on the central path.
   {
-    Problem centered;
+    Model centered;
     for (int i = 0; i < problem.num_constraints(); ++i) {
       std::visit([&](const auto& data) {
         using T = std::decay_t<decltype(data)>;
-        if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+        if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
           Eigen::VectorXd b_id = Eigen::VectorXd::Ones(data.A.rows());
           centered.AddLinearConstraint(data.A, b_id, data.vars);
-        } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+        } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
           int n = data.B.rows();
           Eigen::SparseMatrix<double> I_n =
               Eigen::MatrixXd::Identity(n, n).sparseView();
@@ -55,7 +55,7 @@ void RunCentering(Problem& problem, const std::string& name, int max_iters) {
           // aggregate sparsity, which can break clique tree construction.
           centered.AddPSDConstraint(data.A_list, I_n, data.vars,
                                     /*use_chordal=*/false);
-        } else if constexpr (std::is_same_v<T, Problem::SOCConstraintData>) {
+        } else if constexpr (std::is_same_v<T, Model::SOCConstraintData>) {
           Eigen::VectorXd b_soc = Eigen::VectorXd::Zero(data.A.rows());
           b_soc(0) = 1.0;
           centered.AddSOCConstraint(data.A, b_soc, data.vars);
@@ -220,7 +220,7 @@ void RunCentering(Problem& problem, const std::string& name, int max_iters) {
 
 // Run centering on the original problem data (no b→I, no cost→A^T I).
 // Starts from W=I and centers at k=1.
-void RunCenteringRaw(Problem& problem, const std::string& name, int max_iters) {
+void RunCenteringRaw(Model& problem, const std::string& name, int max_iters) {
   printf("=== %s [raw] ===\n", name.c_str());
   printf("  Variables: %d, Constraints: %d\n",
          problem.num_variables(), problem.num_constraints());
@@ -439,7 +439,7 @@ int main(int argc, char* argv[]) {
   std::string ext = filename.substr(filename.find_last_of('.') + 1);
 
   try {
-    conex::Problem problem;
+    conex::Model problem;
     std::string name;
     if (ext == "mps") {
       auto [p, info] = conex::ReadMPS(filename);

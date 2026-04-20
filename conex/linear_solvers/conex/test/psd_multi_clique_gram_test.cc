@@ -18,7 +18,7 @@
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/kkt_solver_interface.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
 
@@ -41,8 +41,8 @@ SparseMatrix<double> SymEntry(int n, int i, int j, double val) {
 // Build a problem with m variables and m PSD blocks of size 2, where
 // block b is touched by constraints c1 = b%m (off-diagonal entry) and
 // c2 = (b+1)%m (diagonal entry). Adds Q = I as a regularizer.
-Problem MakeCyclicRingPSD(int m) {
-  Problem p;
+Model MakeCyclicRingPSD(int m) {
+  Model p;
   std::vector<int> vars(m);
   for (int i = 0; i < m; ++i) vars[i] = i;
   int bsize = 2;
@@ -65,7 +65,7 @@ Problem MakeCyclicRingPSD(int m) {
 
 // Round-trip test: sample random x, compute b = (A^T A + I) x via the
 // KKT solver's primitives, solve G y = b, verify y ≈ x.
-double GramRoundTripError(const Problem& p, int seed,
+double GramRoundTripError(const Model& p, int seed,
                           const SolverConfiguration& cfg) {
   auto solver = Solver::Build(p, cfg);
   auto* kkt = solver.solver();
@@ -95,14 +95,14 @@ double GramRoundTripError(const Problem& p, int seed,
   return (y - x).cwiseAbs().maxCoeff();
 }
 
-Problem MakeCyclicRingLinearMulti() {
+Model MakeCyclicRingLinearMulti() {
   std::vector<int> var1{0,3,4};
   std::vector<int> var2{0,2,3};
   std::vector<int> var3{0,1,2};
   Eigen::SparseMatrix<double> A1 = Eigen::MatrixXd::Random(7, var1.size()).sparseView();
   Eigen::SparseMatrix<double> A2 = Eigen::MatrixXd::Random(7, var2.size()).sparseView();
   Eigen::SparseMatrix<double> A3 = Eigen::MatrixXd::Random(7, var3.size()).sparseView();
-  Problem p;
+  Model p;
   p.AddLinearConstraint(A1, Eigen::VectorXd::Ones(A1.rows()), var1);
   p.AddLinearConstraint(A2, Eigen::VectorXd::Ones(A2.rows()), var2);
   p.AddLinearConstraint(A3, Eigen::VectorXd::Ones(A3.rows()), var3);
@@ -117,7 +117,7 @@ Problem MakeCyclicRingLinearMulti() {
 // AddLinearConstraint call with one big sparse matrix.  Each sub-block
 // (A1, A2, A3) is placed into the appropriate columns of the big A.
 // This avoids the multi-constraint multi-clique assembly path entirely.
-Problem MakeCyclicRingLinearSingle() {
+Model MakeCyclicRingLinearSingle() {
   std::vector<int> var1{0,3,4};
   std::vector<int> var2{0,2,3};
   std::vector<int> var3{0,1,2};
@@ -141,7 +141,7 @@ Problem MakeCyclicRingLinearSingle() {
   Abig.setFromTriplets(trips.begin(), trips.end());
 
   std::vector<int> all_vars{0, 1, 2, 3, 4};
-  Problem p;
+  Model p;
   p.AddLinearConstraint(Abig, Eigen::VectorXd::Ones(Abig.rows()), all_vars);
   return p;
 }
@@ -157,7 +157,7 @@ std::vector<Eigen::SparseMatrix<double>> RandomLMI(int n, int m) {
   return a1;
 }
 
-Problem MakeCyclicRingPSDExplicit() {
+Model MakeCyclicRingPSDExplicit() {
   std::vector<int> var1{0,8,9,10,11,12,13,14};
   std::vector<int> var2{0,2,3,4,5,6,7,8};
   std::vector<int> var3{0,1,2};
@@ -166,7 +166,7 @@ Problem MakeCyclicRingPSDExplicit() {
   auto A1 = RandomLMI(n, var1.size()); 
   auto A2 = RandomLMI(n, var2.size()); 
   auto A3 = RandomLMI(n, var3.size()); 
-  Problem p;
+  Model p;
   p.AddPSDConstraint(A1, Eigen::MatrixXd::Identity(n,n).sparseView(), var1);
   p.AddPSDConstraint(A2, Eigen::MatrixXd::Identity(n,n).sparseView(), var2);
   p.AddPSDConstraint(A3, Eigen::MatrixXd::Identity(n,n).sparseView(), var3);
@@ -180,7 +180,7 @@ Problem MakeCyclicRingPSDExplicit() {
 // to the bigger Gram matrix. A is a 4x2 dense block, vars selects {1, 3}
 // out of 5 total variables. Round-trip through (Q + A^T A) should give x.
 TEST(LinearVarsRemap, RoundTrip) {
-  Problem p;
+  Model p;
   std::vector<int> vars = {1, 3};
   Eigen::MatrixXd A_dense(4, 2);
   A_dense << 1, 2,  3, 4,  5, 6,  7, 8;
@@ -199,8 +199,8 @@ TEST(LinearVarsRemap, RoundTrip) {
 // The problem has a 2-clique tree under default merge size.
 // Without the bug, the round-trip error should be ~1e-15.
 TEST(PSDMultiCliqueGram, CyclicRing15RoundTrip) {
-  Problem p = MakeCyclicRingPSD(5);
-  //Problem p = MakeCyclicRingPSDExplicit();
+  Model p = MakeCyclicRingPSD(5);
+  //Model p = MakeCyclicRingPSDExplicit();
   SolverConfiguration cfg;  // default merge=5 → 2 cliques
   cfg.tree.max_merge_supernode_size = 0;
   double err = GramRoundTripError(p, 42, cfg);
@@ -208,7 +208,7 @@ TEST(PSDMultiCliqueGram, CyclicRing15RoundTrip) {
 }
 
 TEST(PSDMultiCliqueGram, CyclicRingLinearSingle) {
-  Problem p = MakeCyclicRingLinearSingle();
+  Model p = MakeCyclicRingLinearSingle();
   SolverConfiguration cfg;
   cfg.tree.max_merge_supernode_size = 0;
   double err = GramRoundTripError(p, 42, cfg);
@@ -216,7 +216,7 @@ TEST(PSDMultiCliqueGram, CyclicRingLinearSingle) {
 }
 
 TEST(PSDMultiCliqueGram, CyclicRingLinearMulti) {
-  Problem p = MakeCyclicRingLinearMulti();
+  Model p = MakeCyclicRingLinearMulti();
   SolverConfiguration cfg;
   cfg.tree.max_merge_supernode_size = 0;
   double err = GramRoundTripError(p, 42, cfg);
@@ -242,12 +242,12 @@ TEST(PSDMultiCliqueGram, DenseRoundTripMulti) {
         G_true(all_vars[k][i], all_vars[k][j]) += ATA(i, j);
   }
 
-  // NOTE: the Problem regenerates Random independently — we can't control it
+  // NOTE: the Model regenerates Random independently — we can't control it
   // exactly without refactoring. So just compare the assembled K (post-factor
   // is wrong; pre-factor would be ideal). Skip strict G_true check and
   // just verify Solve(G_assembled * x) = x. This still tells us if the
   // factor inverts what KKTMatrix returns.
-  Problem p = MakeCyclicRingLinearMulti();
+  Model p = MakeCyclicRingLinearMulti();
   SolverConfiguration cfg;
   cfg.tree.max_merge_supernode_size = 0;
   auto solver = Solver::Build(p, cfg);
@@ -272,7 +272,7 @@ TEST(PSDMultiCliqueGram, DenseRoundTripMulti) {
 
 // Diagnostic: compare assembled Gram (DoKKTMatrix) vs primitive-computed Gram.
 TEST(PSDMultiCliqueGram, CompareAssembledVsPrimitives) {
-  Problem p = MakeCyclicRingLinearMulti();
+  Model p = MakeCyclicRingLinearMulti();
   SolverConfiguration cfg;
   cfg.tree.max_merge_supernode_size = 0;
   auto solver = Solver::Build(p, cfg);
@@ -326,7 +326,7 @@ TEST(PSDMultiCliqueGram, CompareAssembledVsPrimitives) {
 
 // Sanity: the single-clique path (forced by large merge) is correct.
 TEST(PSDMultiCliqueGram, CyclicRing15SingleClique) {
-  Problem p = MakeCyclicRingPSD(15);
+  Model p = MakeCyclicRingPSD(15);
   SolverConfiguration cfg;
   cfg.tree.max_merge_supernode_size = 100000;  // force single clique
   double err = GramRoundTripError(p, 42, cfg);
@@ -335,7 +335,7 @@ TEST(PSDMultiCliqueGram, CyclicRing15SingleClique) {
 
 // Sanity: smaller m=14 doesn't trigger the bug under default merge.
 TEST(PSDMultiCliqueGram, CyclicRing14RoundTrip) {
-  Problem p = MakeCyclicRingPSD(14);
+  Model p = MakeCyclicRingPSD(14);
   SolverConfiguration cfg;
   double err = GramRoundTripError(p, 42, cfg);
   EXPECT_LT(err, 1e-10) << "m=14 error: " << err;

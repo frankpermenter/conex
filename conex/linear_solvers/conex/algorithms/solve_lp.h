@@ -2,7 +2,7 @@
 
 #pragma once
 #include <Eigen/Dense>
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 namespace conex {
 
@@ -14,16 +14,16 @@ struct LPResult {
   int solves;
 };
 
-// Solve the LP defined by problem.  Problem must have:
+// Solve the LP defined by problem.  Model must have:
 //   - A linear cost (via SetLinearCost)
 //   - One or more linear constraints (via AddLinearConstraint)
 // Uses the geodesic IPM (0 centering steps).
-LPResult SolveLP(const Problem& problem, double tolerance = 1e-8);
+LPResult SolveLP(const Model& problem, double tolerance = 1e-8);
 
 // Compute the maximum constraint violation for x.
 // Returns min_i(b_stored_i - A_stored_i * x) over all linear constraints.
 // Non-negative means feasible.
-double ComputeConstraintViolation(const Problem& problem,
+double ComputeConstraintViolation(const Model& problem,
                                   const Eigen::VectorXd& x);
 
 }  // namespace conex

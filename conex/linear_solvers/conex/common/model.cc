@@ -1,4 +1,4 @@
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 #include <cmath>
 #include <numeric>
@@ -9,8 +9,8 @@
 
 namespace conex {
 
-std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
-    const Problem& problem) {
+std::pair<Model, Expansion> RemoveStructuralRankDeficiency(
+    const Model& problem) {
   const int n = problem.num_variables();
 
   // Phase 1: Column reduction for linear and PSD constraints.
@@ -20,10 +20,10 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
     // Linear and SOC have the same A matrix structure.
     const Eigen::SparseMatrix<double>* A_ptr = nullptr;
     const std::vector<int>* vars_ptr = nullptr;
-    if (auto* lc = std::get_if<Problem::LinearConstraintData>(&c)) {
+    if (auto* lc = std::get_if<Model::LinearConstraintData>(&c)) {
       A_ptr = &lc->A;
       vars_ptr = &lc->vars;
-    } else if (auto* sc = std::get_if<Problem::SOCConstraintData>(&c)) {
+    } else if (auto* sc = std::get_if<Model::SOCConstraintData>(&c)) {
       A_ptr = &sc->A;
       vars_ptr = &sc->vars;
     }
@@ -33,7 +33,7 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
           trips.emplace_back(total_rows + it.row(),
                              (*vars_ptr)[it.col()], it.value());
       total_rows += A_ptr->rows();
-    } else if (auto* qc = std::get_if<Problem::QuadraticCostData>(&c)) {
+    } else if (auto* qc = std::get_if<Model::QuadraticCostData>(&c)) {
       // Quadratic cost variables are structurally present (they contribute
       // to the Gram matrix diagonal).  Add one row per variable to prevent
       // them from being dropped as structurally rank-deficient.
@@ -41,14 +41,14 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
         trips.emplace_back(total_rows, v, 1.0);
         total_rows++;
       }
-    } else if (auto* ec = std::get_if<Problem::EqualityConstraintData>(&c)) {
+    } else if (auto* ec = std::get_if<Model::EqualityConstraintData>(&c)) {
       // Equality constraint primal variables are structurally present.
       for (int k = 0; k < ec->C.outerSize(); ++k)
         for (Eigen::SparseMatrix<double>::InnerIterator it(ec->C, k); it; ++it)
           trips.emplace_back(total_rows + it.row(),
                              ec->primal_vars[it.col()], it.value());
       total_rows += ec->C.rows();
-    } else if (auto* pc = std::get_if<Problem::PSDConstraintData>(&c)) {
+    } else if (auto* pc = std::get_if<Model::PSDConstraintData>(&c)) {
       // Add one row per unique nonzero entry position across all A_i.
       // This reflects the true structural rank: each entry (r,c) of the
       // n×n PSD constraint is an independent scalar constraint.
@@ -104,13 +104,13 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
   // Phase 2: Row reduction for equality constraints.
   // For each equality constraint, drop structurally dependent rows.
   // Check consistency of dropped rows.
-  Problem reduced;
+  Model reduced;
   for (int i = 0; i < problem.num_constraints(); ++i) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
 
-      if constexpr (std::is_same_v<T, Problem::LinearConstraintData> ||
-                     std::is_same_v<T, Problem::SOCConstraintData>) {
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData> ||
+                     std::is_same_v<T, Model::SOCConstraintData>) {
         // Build new_vars and a local column map: original local col ->
         // new local col.  Dropped vars are skipped entirely.
         std::vector<int> new_vars;
@@ -132,12 +132,12 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
         int new_ncols = static_cast<int>(new_vars.size());
         Eigen::SparseMatrix<double> A_new(data.A.rows(), new_ncols);
         A_new.setFromTriplets(t.begin(), t.end());
-        if constexpr (std::is_same_v<T, Problem::SOCConstraintData>)
+        if constexpr (std::is_same_v<T, Model::SOCConstraintData>)
           reduced.AddSOCConstraint(A_new, data.b, new_vars);
         else
           reduced.AddLinearConstraint(A_new, data.b, new_vars);
 
-      } else if constexpr (std::is_same_v<T, Problem::PSDConstraintData>) {
+      } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
         std::vector<Eigen::SparseMatrix<double>> new_A_list;
         std::vector<int> new_vars;
         for (int k = 0; k < static_cast<int>(data.A_list.size()); ++k) {
@@ -150,7 +150,7 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
         reduced.AddPSDConstraint(new_A_list, data.B, new_vars,
                                  data.use_chordal);
 
-      } else if constexpr (std::is_same_v<T, Problem::QuadraticCostData>) {
+      } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
         std::vector<int> new_vars;
         std::vector<int> local_col_map(data.Q_sparse.cols(), -1);
         for (int j = 0; j < static_cast<int>(data.vars.size()); ++j) {
@@ -174,7 +174,7 @@ std::pair<Problem, Expansion> RemoveStructuralRankDeficiency(
         reduced.AddQuadraticCost(Q_new, new_vars);
 
       } else if constexpr (std::is_same_v<T,
-                                          Problem::EqualityConstraintData>) {
+                                          Model::EqualityConstraintData>) {
         // Remap columns using local col map (primal_vars may be a subset).
         std::vector<int> new_primal;
         std::vector<int> local_col_map(data.C.cols(), -1);

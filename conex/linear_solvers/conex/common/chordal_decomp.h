@@ -1,6 +1,6 @@
 #pragma once
 #include <Eigen/Dense>
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 namespace conex {
 
@@ -19,7 +19,7 @@ struct ChordalExpansion {
   bool was_decomposed() const { return expanded_n > original_n; }
 };
 
-// Decompose a Problem's PSD constraints using chordal sparsity with
+// Decompose a Model's PSD constraints using chordal sparsity with
 // separator splitting variables.
 //
 // For each PSD constraint with use_chordal=true:
@@ -30,7 +30,7 @@ struct ChordalExpansion {
 //      - Child clique gets: original A,B at N rows + splitting vars at S×S.
 //      - Parent clique gets: -splitting vars at S×S positions.
 //      - B constants assigned to leaf of each entry's subtree.
-//   4. The resulting Problem has more variables but only small PSD blocks.
+//   4. The resulting Model has more variables but only small PSD blocks.
 //
 // The decomposition is EXACT (same optimal value) by the positive
 // definite completion theorem + separator splitting.
@@ -41,18 +41,18 @@ struct ChordalExpansion {
 //
 // Returns (decomposed_problem, expansion) where expansion.Extract()
 // maps solutions back to the original variable space.
-std::pair<Problem, ChordalExpansion> DecomposeChordalPSD(
-    const Problem& problem);
+std::pair<Model, ChordalExpansion> DecomposeChordalPSD(
+    const Model& problem);
 
 // Check if any PSD constraint in the problem requests chordal decomp.
-bool HasChordalPSD(const Problem& problem);
+bool HasChordalPSD(const Model& problem);
 
 // Combined preprocessor: chordal decomposition then rank reduction.
 // Chains DecomposeChordalPSD (if needed) with RemoveStructuralRankDeficiency.
-// Returns the fully preprocessed Problem plus a combined expansion that
+// Returns the fully preprocessed Model plus a combined expansion that
 // undoes both transforms: Extract splits → Expand restores dropped cols.
 struct PreprocessResult {
-  Problem problem;
+  Model problem;
   Expansion rank_expansion;
   ChordalExpansion chordal_expansion;
 
@@ -65,6 +65,6 @@ struct PreprocessResult {
   }
 };
 
-PreprocessResult PreprocessProblem(const Problem& problem);
+PreprocessResult PreprocessProblem(const Model& problem);
 
 }  // namespace conex

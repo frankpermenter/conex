@@ -10,7 +10,7 @@
 #include "conex/common/affine_projection.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/psd_cone_ops.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -30,7 +30,7 @@ Eigen::SparseMatrix<double> toSparse(const MatrixXd& M) {
 }
 
 // Find X ≽ 0 in an affine subspace using alternating projections.
-// Problem: X = B + x1*A1 + x2*A2 ≽ 0.
+// Model: X = B + x1*A1 + x2*A2 ≽ 0.
 TEST(PSD_AP, Feasibility) {
   srand(42);
   const int n = 3;  // 3x3 matrices
@@ -49,7 +49,7 @@ TEST(PSD_AP, Feasibility) {
   // B = I (feasible at x=0).
   MatrixXd B = MatrixXd::Identity(n, n);
 
-  Problem problem;
+  Model problem;
   problem.AddPSDConstraint(A_list, toSparse(B), vars);
 
   auto affine = AffineProjection::Build(problem);
@@ -72,7 +72,7 @@ TEST(PSD_AP, Feasibility) {
   // Check condition of A^T A.
   {
     // Reconstruct A_vec from the stored data.
-    const auto& data = std::get<Problem::PSDConstraintData>(problem.constraint(0));
+    const auto& data = std::get<Model::PSDConstraintData>(problem.constraint(0));
     Eigen::SparseMatrix<double> A_vec;
     Eigen::VectorXd b_vec;
     VectorizePSD(data.A_list, data.B, &A_vec, &b_vec);
@@ -148,7 +148,7 @@ TEST(PSD_AP, NonnegComparison) {
       b_vec(j * n + i) = B(i, j);
 
   std::vector<int> vars = {0, 1};
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A_vec, b_vec, vars);  // nonneg orthant
 
   auto affine = AffineProjection::Build(problem);
@@ -177,7 +177,7 @@ TEST(PSD_AP, NonnegComparison) {
 // is block-diagonal (two independent blocks), so the assembler should
 // split it into two smaller PSD sub-constraints.
 //
-// Problem: X = B + Σ x_i A_i ≽ 0 where X is 6×6 with 3×3 block structure.
+// Model: X = B + Σ x_i A_i ≽ 0 where X is 6×6 with 3×3 block structure.
 TEST(PSD_AP, BlockDiagonal) {
   srand(99);
   const int n = 6;      // 6×6 matrix
@@ -209,7 +209,7 @@ TEST(PSD_AP, BlockDiagonal) {
   // B = I (feasible at x = 0).
   MatrixXd B = MatrixXd::Identity(n, n);
 
-  Problem problem;
+  Model problem;
   problem.AddPSDConstraint(A_list, toSparse(B), vars);
 
   auto affine = AffineProjection::Build(problem);
@@ -274,7 +274,7 @@ TEST(PSD_AP, ChordalMatchesNonChordal) {
   MatrixXd B = MatrixXd::Identity(n, n);
 
   // --- Chordal (default) ---
-  Problem prob_chordal;
+  Model prob_chordal;
   prob_chordal.AddPSDConstraint(A_list, toSparse(B), vars, /*use_chordal=*/true);
   auto affine_c = AffineProjection::Build(prob_chordal);
   RowSpace s_c = affine_c.MakeVariable();
@@ -283,7 +283,7 @@ TEST(PSD_AP, ChordalMatchesNonChordal) {
   auto res_c = AlternatingProjections(affine_c, s_c, 10, 1e-14);
 
   // --- Non-chordal (single block) ---
-  Problem prob_full;
+  Model prob_full;
   prob_full.AddPSDConstraint(A_list, toSparse(B), vars, /*use_chordal=*/false);
   auto affine_f = AffineProjection::Build(prob_full);
   RowSpace s_f = affine_f.MakeVariable();

@@ -9,7 +9,7 @@
 #include <vector>
 
 #include "conex/common/mtx_reader.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
 
@@ -39,7 +39,7 @@ struct ProfileResult {
   double residual;
 };
 
-ProfileResult ProfileMatrix(const Problem& problem,
+ProfileResult ProfileMatrix(const Model& problem,
                             const MTXInfo& info,
                             const SolverConfiguration& cfg,
                             int max_iters = -1) {
@@ -210,7 +210,7 @@ int main(int argc, char* argv[]) {
 
   // Load problems via the unified reader.
   struct MatrixEntry {
-    Problem problem;
+    Model problem;
     MTXInfo info;
   };
   std::vector<MatrixEntry> matrices;

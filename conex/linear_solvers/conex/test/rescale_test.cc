@@ -1,4 +1,4 @@
-// Tests for Problem rescaling (row + column scaling).
+// Tests for Model rescaling (row + column scaling).
 
 #include <gtest/gtest.h>
 
@@ -8,7 +8,7 @@
 #include <numeric>
 #include <vector>
 
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/rescale.h"
 
 namespace conex {
@@ -19,12 +19,12 @@ Eigen::SparseMatrix<double> MakeSparse(const Eigen::MatrixXd& M) {
 }
 
 // Compute max abs column norm across linear/SOC constraints.
-double MaxColumnNorm(const Problem& problem, int n) {
+double MaxColumnNorm(const Model& problem, int n) {
   Eigen::VectorXd col_max = Eigen::VectorXd::Zero(n);
   for (int i = 0; i < problem.num_constraints(); ++i) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
-      if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
         for (int k = 0; k < data.A.outerSize(); ++k)
           for (Eigen::SparseMatrix<double>::InnerIterator it(data.A, k);
                it; ++it)
@@ -37,12 +37,12 @@ double MaxColumnNorm(const Problem& problem, int n) {
 }
 
 // Compute ratio of max/min nonzero column norms.
-double ColumnNormRatio(const Problem& problem, int n) {
+double ColumnNormRatio(const Model& problem, int n) {
   Eigen::VectorXd col_max = Eigen::VectorXd::Zero(n);
   for (int i = 0; i < problem.num_constraints(); ++i) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
-      if constexpr (std::is_same_v<T, Problem::LinearConstraintData>) {
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
         for (int k = 0; k < data.A.outerSize(); ++k)
           for (Eigen::SparseMatrix<double>::InnerIterator it(data.A, k);
                it; ++it)
@@ -62,7 +62,7 @@ double ColumnNormRatio(const Problem& problem, int n) {
 }
 
 // Build a poorly-scaled LP: column norms vary by 1e6.
-Problem MakePoorlyScaledLP(int m, int n) {
+Model MakePoorlyScaledLP(int m, int n) {
   Eigen::MatrixXd A_dense = Eigen::MatrixXd::Random(m, n);
   // Scale columns: col j by 10^(3j/(n-1) - 3) so range is [1e-3, 1e3].
   for (int j = 0; j < n; ++j) {
@@ -71,7 +71,7 @@ Problem MakePoorlyScaledLP(int m, int n) {
   }
   Eigen::VectorXd b = Eigen::VectorXd::Ones(m) * 5.0;
 
-  Problem p;
+  Model p;
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
   p.AddLinearConstraint(MakeSparse(A_dense), b, vars);
@@ -83,7 +83,7 @@ Problem MakePoorlyScaledLP(int m, int n) {
 
 TEST(Rescale, MaxAbsValueReducesColumnRatio) {
   int m = 20, n = 10;
-  Problem p = MakePoorlyScaledLP(m, n);
+  Model p = MakePoorlyScaledLP(m, n);
   double ratio_before = ColumnNormRatio(p, n);
   EXPECT_GT(ratio_before, 100);  // Poorly scaled.
 
@@ -97,7 +97,7 @@ TEST(Rescale, MaxAbsValueReducesColumnRatio) {
 
 TEST(Rescale, L2NormReducesColumnRatio) {
   int m = 20, n = 10;
-  Problem p = MakePoorlyScaledLP(m, n);
+  Model p = MakePoorlyScaledLP(m, n);
   double ratio_before = ColumnNormRatio(p, n);
 
   auto [rescaled, info] = RescaleProblem(p, ColumnScaling::L2Norm);
@@ -109,7 +109,7 @@ TEST(Rescale, L2NormReducesColumnRatio) {
 
 TEST(Rescale, RuizReducesColumnRatio) {
   int m = 20, n = 10;
-  Problem p = MakePoorlyScaledLP(m, n);
+  Model p = MakePoorlyScaledLP(m, n);
   double ratio_before = ColumnNormRatio(p, n);
 
   auto [rescaled, info] = RescaleProblem(p, ColumnScaling::Ruiz);
@@ -122,7 +122,7 @@ TEST(Rescale, RuizReducesColumnRatio) {
 TEST(Rescale, RuizBetterThanMaxAbs) {
   // Ruiz iterates, so should achieve tighter balance than one-shot.
   int m = 30, n = 15;
-  Problem p = MakePoorlyScaledLP(m, n);
+  Model p = MakePoorlyScaledLP(m, n);
 
   auto [r_max, info_max] = RescaleProblem(p, ColumnScaling::MaxAbsValue);
   auto [r_ruiz, info_ruiz] = RescaleProblem(p, ColumnScaling::Ruiz);
@@ -137,7 +137,7 @@ TEST(Rescale, RuizBetterThanMaxAbs) {
 
 TEST(Rescale, UnscaleRecoversSolution) {
   int m = 10, n = 5;
-  Problem p = MakePoorlyScaledLP(m, n);
+  Model p = MakePoorlyScaledLP(m, n);
   Eigen::VectorXd x_original = Eigen::VectorXd::Random(n);
 
   for (auto strategy : {ColumnScaling::MaxAbsValue,
@@ -160,7 +160,7 @@ TEST(Rescale, NonnegRowScalingSetsOnes) {
   Eigen::VectorXd b(m);
   b << 2.0, 0.5, 10.0, 0.1, 3.0;
 
-  Problem p;
+  Model p;
   p.AddLinearConstraint(MakeSparse(A), b);
 
   auto [rescaled, info] = RescaleProblem(p, ColumnScaling::MaxAbsValue);
@@ -173,7 +173,7 @@ TEST(Rescale, NonnegRowScalingSetsOnes) {
 
 TEST(Rescale, DefaultIsRuiz) {
   int m = 20, n = 10;
-  Problem p = MakePoorlyScaledLP(m, n);
+  Model p = MakePoorlyScaledLP(m, n);
 
   // Default (no strategy arg) should be Ruiz.
   auto [r_default, info_default] = RescaleProblem(p);
@@ -198,14 +198,14 @@ TEST(Rescale, PSDRowScaling) {
       (Eigen::MatrixXd(2, 2) << 4, 1, 1, 2).finished());
 
   std::vector<int> vars = {0, 1};
-  Problem prob;
+  Model prob;
   prob.AddPSDConstraint(A_list, B, vars);
 
   auto [rescaled, info] = RescaleProblem(prob, ColumnScaling::MaxAbsValue);
   EXPECT_TRUE(info.was_rescaled);
 
   // After rescaling, B should be identity.
-  const auto& rdata = std::get<Problem::PSDConstraintData>(
+  const auto& rdata = std::get<Model::PSDConstraintData>(
       rescaled.constraint(0));
   Eigen::MatrixXd B_dense(rdata.B);
   Eigen::MatrixXd I2 = Eigen::MatrixXd::Identity(2, 2);
@@ -220,7 +220,7 @@ TEST(Rescale, NoScalingNeeded) {
   for (int j = 0; j < n; ++j) A.col(j).normalize();
   Eigen::VectorXd b = Eigen::VectorXd::Ones(m);
 
-  Problem p;
+  Model p;
   p.AddLinearConstraint(MakeSparse(A), b);
 
   auto [rescaled, info] = RescaleProblem(p, ColumnScaling::MaxAbsValue);

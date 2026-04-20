@@ -1,7 +1,7 @@
 #pragma once
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 
 namespace conex {
 
@@ -20,7 +20,7 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
     const Eigen::SparseMatrix<double>& C,
     const Eigen::VectorXd& d);
 
-// Solve a Problem with only quadratic cost, linear cost, and equality
+// Solve a Model with only quadratic cost, linear cost, and equality
 // constraints (no cone/inequality constraints).
 //
 //   min c'x + (1/2)x'Qx   s.t.  Cx = d
@@ -36,6 +36,6 @@ struct QPEqualityResult {
   bool success;
 };
 
-QPEqualityResult SolveQPEquality(const Problem& problem);
+QPEqualityResult SolveQPEquality(const Model& problem);
 
 }  // namespace conex

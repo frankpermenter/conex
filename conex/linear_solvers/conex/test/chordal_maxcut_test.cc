@@ -4,7 +4,7 @@
 #include <Eigen/Sparse>
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
@@ -12,7 +12,7 @@
 using namespace conex;
 
 int main() {
-  Problem p;
+  Model p;
   Eigen::SparseMatrix<double> A(2, 2);
   A.insert(0, 0) = 1; A.insert(1, 1) = 1; A.makeCompressed();
   std::vector<int> vars = {0, 1};

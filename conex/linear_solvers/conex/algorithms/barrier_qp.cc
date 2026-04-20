@@ -5,7 +5,7 @@
 #include <numeric>
 
 #include "conex/common/kkt_solver_interface.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 
 namespace conex {
@@ -143,7 +143,7 @@ BarrierQPResult SolveBarrierQP(
   return result;
 }
 
-// Convenience wrapper: builds Problem + Solver from raw matrices.
+// Convenience wrapper: builds Model + Solver from raw matrices.
 BarrierQPResult SolveBarrierQP(
     const Eigen::SparseMatrix<double>& Q,
     const Eigen::VectorXd& c,
@@ -159,7 +159,7 @@ BarrierQPResult SolveBarrierQP(
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  Problem problem;
+  Model problem;
   problem.AddLinearConstraint(A, b, vars);
   problem.AddQuadraticCost(Q, vars);
   problem.SetLinearCost(c);

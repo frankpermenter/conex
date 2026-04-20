@@ -6,7 +6,7 @@
 #include <Eigen/Sparse>
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
-#include "conex/common/problem.h"
+#include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
@@ -15,7 +15,7 @@ using namespace conex;
 
 // Fixed 4-variable LP: min [1,2,3,4]'x  s.t.  x >= 0, with b=0.
 static Solver MakeLP4() {
-  Problem p;
+  Model p;
   Eigen::SparseMatrix<double> A(4, 4); A.setIdentity();
   Eigen::VectorXd b = Eigen::VectorXd::Zero(4);
   std::vector<int> v = {0, 1, 2, 3};
@@ -48,7 +48,7 @@ static Solver MakeSDP3() {
   for (int i = 0; i < n; ++i) B.insert(i, i) = -1.0;
   B.makeCompressed();
 
-  Problem p;
+  Model p;
   p.AddPSDConstraint(A_list, B, vars, false);
   Eigen::VectorXd c(vi);
   c << 1, 0.5, 0.3, 2, 0.1, 3;  // cost on upper triangle
@@ -58,7 +58,7 @@ static Solver MakeSDP3() {
 
 // LP with equality: min [1,2,1,2]'x s.t. x>=0, x0+x1=1, x2+x3=2
 static Solver MakeLPEq() {
-  Problem p;
+  Model p;
   const int n = 4;
   Eigen::SparseMatrix<double> A(n, n); A.setIdentity();
   Eigen::VectorXd b = Eigen::VectorXd::Zero(n);
