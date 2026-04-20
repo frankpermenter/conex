@@ -167,13 +167,9 @@ BarrierQPResult SolveBarrierQP(
   auto solver = Solver::Build(problem);
   auto* kkt = solver.solver();
 
-  Eigen::VectorXd c_r = solver.linear_cost();
-  Eigen::VectorXd x0_r = solver.ReduceVector(x0);
-
-  auto c_rhs = kkt->MakeSolverRHS();
-  c_rhs = kkt->MakeBlockVariable(c_r);
+  auto c_rhs = solver.MakeCostRHS();
   auto x = kkt->MakeSolverRHS();
-  x = kkt->MakeBlockVariable(x0_r);
+  x = kkt->MakeBlockVariable(solver.ReduceVector(x0));
 
   auto result = SolveBarrierQP(*kkt, c_rhs, x,
                                 max_outer_iterations, max_newton_steps,

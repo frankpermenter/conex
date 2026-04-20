@@ -50,10 +50,6 @@ class Solver {
   Eigen::VectorXd ReduceVector(const Eigen::VectorXd& v) const {
     return expansion_.Reduce(v);
   }
-  const Expansion& expansion() const { return expansion_; }
-
-  // The linear cost in the reduced variable space (empty if no cost set).
-  const Eigen::VectorXd& linear_cost() const;
 
   // Build the cost RHS in solver format (reduced space).
   // Returns a zero RHS if no linear cost was set.
@@ -75,6 +71,7 @@ class Solver {
   void BuildQuotientAMD(const Problem& problem,
                         const SolverConfiguration& config);
   void RegisterAssemblersWithTreeSolver();
+  const Eigen::VectorXd& linear_cost() const;
 
   std::unique_ptr<TreeSolverBuilder> builder_;
   std::unique_ptr<ConstraintManager> cm_;

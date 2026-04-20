@@ -447,8 +447,7 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
   lp_problem.SetLinearCost(c);
   auto lp_solver = Solver::Build(lp_problem);
   auto* lp_kkt = lp_solver.solver();
-  auto lp_cost = lp_kkt->MakeSolverRHS();
-  lp_cost = lp_kkt->MakeBlockVariable(lp_solver.linear_cost());
+  auto lp_cost = lp_solver.MakeCostRHS();
   RowSpace lp_W = lp_kkt->MakeRowSpace();
   setFromVector(lp_W, VectorXd::Ones(m) + pert);
   auto lp_result = GeodesicCenter(*lp_kkt, lp_cost, lp_W, 1.0, 20, 1e-12, true);
@@ -471,8 +470,7 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
 
   auto sdp_solver = Solver::Build(sdp_problem);
   auto* sdp_kkt = sdp_solver.solver();
-  auto sdp_cost = sdp_kkt->MakeSolverRHS();
-  sdp_cost = sdp_kkt->MakeBlockVariable(sdp_solver.linear_cost());
+  auto sdp_cost = sdp_solver.MakeCostRHS();
   RowSpace sdp_W = sdp_kkt->MakeRowSpace();
   // Set W = diag(ones + pert) as an m×m matrix.
   {
