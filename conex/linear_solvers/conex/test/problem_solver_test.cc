@@ -2600,5 +2600,85 @@ TEST(SolverSolve, EqualityConstraints) {
   EXPECT_LT(stat_res.norm(), 1e-2);
 }
 
+TEST(SolverSolve, PSDConstraint) {
+  // min c'x  s.t.  Σ A_k x_k + B ≽ 0
+  // KKT: c_k = tr(A_k · Λ),  S ≽ 0,  Λ ≽ 0,  tr(S·Λ) = 0.
+  srand(42);
+  const int n_mat = 3;  // 3×3 PSD matrices
+  const int p = 4;      // 4 optimization variables
+
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  std::vector<int> vars(p);
+  VectorXd c(p);
+  for (int k = 0; k < p; ++k) {
+    MatrixXd Ak = MatrixXd::Random(n_mat, n_mat);
+    Ak = 0.5 * (Ak + Ak.transpose());
+    std::vector<Eigen::Triplet<double>> trips;
+    for (int i = 0; i < n_mat; ++i)
+      for (int j = 0; j < n_mat; ++j)
+        if (std::abs(Ak(i, j)) > 1e-14)
+          trips.emplace_back(i, j, Ak(i, j));
+    Eigen::SparseMatrix<double> As(n_mat, n_mat);
+    As.setFromTriplets(trips.begin(), trips.end());
+    A_list.push_back(As);
+    vars[k] = k;
+    // c_k = tr(A_k) so W=I at k=1 is centered.
+    c(k) = Ak.trace();
+  }
+  Eigen::SparseMatrix<double> B =
+      Eigen::MatrixXd::Identity(n_mat, n_mat).sparseView();
+
+  Model model;
+  model.AddPSDConstraint(A_list, B, vars, /*use_chordal=*/false);
+  model.SetLinearCost(c);
+
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(conex::ThetaContinuation());
+
+  printf("  mu = %.2e\n", result.mu);
+
+  // --- Structural checks ---
+  ASSERT_EQ(result.duals.psd_lambda.size(), 1u);
+  ASSERT_EQ(result.duals.psd_slack.size(), 1u);
+  EXPECT_EQ(result.duals.psd_lambda[0].rows(), n_mat);
+  EXPECT_EQ(result.duals.psd_lambda[0].cols(), n_mat);
+  EXPECT_EQ(result.duals.psd_slack[0].rows(), n_mat);
+  EXPECT_EQ(result.duals.psd_slack[0].cols(), n_mat);
+
+  const auto& Lambda = result.duals.psd_lambda[0];
+  const auto& S = result.duals.psd_slack[0];
+
+  // --- Primal feasibility: S ≽ 0 (check min eigenvalue) ---
+  Eigen::SelfAdjointEigenSolver<MatrixXd> eig_s(S);
+  double min_eig_s = eig_s.eigenvalues().minCoeff();
+  printf("  min_eig(S) = %.2e\n", min_eig_s);
+  EXPECT_GE(min_eig_s, -1e-3);
+
+  // --- Dual feasibility: Λ ≽ 0 ---
+  Eigen::SelfAdjointEigenSolver<MatrixXd> eig_l(Lambda);
+  double min_eig_l = eig_l.eigenvalues().minCoeff();
+  printf("  min_eig(Lambda) = %.2e\n", min_eig_l);
+  EXPECT_GE(min_eig_l, -1e-3);
+
+  // --- Complementarity: tr(S · Λ) ≈ 0 ---
+  double cs = (S * Lambda).trace();
+  printf("  tr(S*Lambda) = %.2e\n", cs);
+  EXPECT_LT(std::abs(cs), 1e-2);
+
+  // --- Stationarity: c_k = tr(A_k · Λ) ---
+  VectorXd stat_res(p);
+  for (int k = 0; k < p; ++k) {
+    // tr(A_k · Λ) using sparse A_k, no dense promotion.
+    double trAL = 0;
+    const auto& Ak = A_list[k];
+    for (int col = 0; col < Ak.outerSize(); ++col)
+      for (Eigen::SparseMatrix<double>::InnerIterator it(Ak, col); it; ++it)
+        trAL += it.value() * Lambda(it.row(), it.col());
+    stat_res(k) = c(k) - trAL;
+  }
+  printf("  stationarity_residual = %.2e\n", stat_res.norm());
+  EXPECT_LT(stat_res.norm(), 1e-2);
+}
+
 }  // namespace
 }  // namespace conex

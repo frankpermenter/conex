@@ -5,17 +5,26 @@
 namespace conex {
 
 // Per-constraint dual information in Model (original) space.
-// For linear constraint i (Ax + b >= 0):
+//
+// For linear/SOC constraint i (Ax + b >= 0):
 //   slack[i]  = A_i * x[vars_i] + b_i   (should be >= 0)
 //   lambda[i] = dual multiplier          (should be >= 0)
-//   complementarity: lambda[i].dot(slack[i]) should be ≈ 0
+//   complementarity: lambda[i].dot(slack[i]) ≈ 0
 //
-// For equality constraint j (Cx = d):
-//   nu[j] = equality dual multiplier (unconstrained sign)
+// For PSD constraint j (Σ A_k x_k + B ≽ 0):
+//   psd_slack[j]  = Σ A_k x_k + B       (should be ≽ 0)
+//   psd_lambda[j] = dual matrix          (should be ≽ 0)
+//   complementarity: tr(psd_slack[j] · psd_lambda[j]) ≈ 0
+//   stationarity contribution: c_k = tr(A_k · psd_lambda[j])
+//
+// For equality constraint k (Cx = d):
+//   nu[k] = equality dual multiplier (unconstrained sign)
 struct ConstraintDuals {
-  std::vector<Eigen::VectorXd> lambda;  // one per cone constraint
-  std::vector<Eigen::VectorXd> slack;   // one per cone constraint
-  std::vector<Eigen::VectorXd> nu;      // one per equality constraint
+  std::vector<Eigen::VectorXd> lambda;       // per linear/SOC constraint
+  std::vector<Eigen::VectorXd> slack;         // per linear/SOC constraint
+  std::vector<Eigen::MatrixXd> psd_lambda;   // per PSD constraint
+  std::vector<Eigen::MatrixXd> psd_slack;    // per PSD constraint
+  std::vector<Eigen::VectorXd> nu;            // per equality constraint
 };
 
 struct SolveResult {

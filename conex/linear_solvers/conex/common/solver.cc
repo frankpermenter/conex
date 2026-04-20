@@ -72,13 +72,22 @@ double Solver::ComputeObjective(const SolverRHS& cost_rhs,
 ConstraintDuals Solver::ExtractDuals(const Eigen::VectorXd& x_reduced,
                                      const RowSpace& lambda) {
   ConstraintDuals duals;
-  const Eigen::VectorXd x_full = ExpandSolution(x_reduced);
+
+  // Compute slacks via KKT: s = Ax + b (uses symmetrized A for PSD).
+  auto* k = kkt();
+  auto x_rhs = k->MakeSolverRHS();
+  x_rhs = k->MakeBlockVariable(x_reduced);
+  RowSpace slack_rs = k->MakeRowSpace();
+  k->MultiplyA(x_rhs, slack_rs);
+  slack_rs += k->GetAffineTerm();
+  const auto& slack_vec = slack_rs.col();
 
   // Lambda is a flat vector with segments for each cone constraint
   // (linear, PSD, SOC) in Model order, skipping quadratic costs and
   // equality constraints.
   const auto& lam_vec = lambda.col();
   int lam_offset = 0;
+  int slack_offset = 0;
 
   for (int i = 0; i < reduced_model_.num_constraints(); ++i) {
     std::visit([&](const auto& data) {
@@ -86,29 +95,28 @@ ConstraintDuals Solver::ExtractDuals(const Eigen::VectorXd& x_reduced,
 
       if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
         int m = data.A.rows();
-        // Slack in original space: s = A * x[vars] + b.
-        Eigen::VectorXd xv(data.vars.size());
-        for (int j = 0; j < (int)data.vars.size(); ++j)
-          xv(j) = x_full(expansion_.col_map[data.vars[j]]);
-        duals.slack.push_back(data.A * xv + data.b);
+        duals.slack.push_back(slack_vec.segment(slack_offset, m));
         duals.lambda.push_back(lam_vec.segment(lam_offset, m));
+        slack_offset += m;
         lam_offset += m;
 
       } else if constexpr (std::is_same_v<T, Model::SOCConstraintData>) {
         int m = data.A.rows();
-        Eigen::VectorXd xv(data.vars.size());
-        for (int j = 0; j < (int)data.vars.size(); ++j)
-          xv(j) = x_full(expansion_.col_map[data.vars[j]]);
-        duals.slack.push_back(data.A * xv + data.b);
+        duals.slack.push_back(slack_vec.segment(slack_offset, m));
         duals.lambda.push_back(lam_vec.segment(lam_offset, m));
+        slack_offset += m;
         lam_offset += m;
 
       } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
-        // PSD: lambda segment is the vectorized dual matrix.
         int n = data.B.rows();
         int seg_size = n * n;
-        duals.slack.push_back(Eigen::VectorXd());  // PSD slack is a matrix
-        duals.lambda.push_back(lam_vec.segment(lam_offset, seg_size));
+        Eigen::Map<const Eigen::MatrixXd> lam_map(
+            lam_vec.data() + lam_offset, n, n);
+        duals.psd_lambda.push_back(Eigen::MatrixXd(lam_map));
+        Eigen::Map<const Eigen::MatrixXd> slack_map(
+            slack_vec.data() + slack_offset, n, n);
+        duals.psd_slack.push_back(Eigen::MatrixXd(slack_map));
+        slack_offset += seg_size;
         lam_offset += seg_size;
 
       } else if constexpr (std::is_same_v<T, Model::EqualityConstraintData>) {
