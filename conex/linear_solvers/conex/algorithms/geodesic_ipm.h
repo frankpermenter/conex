@@ -68,6 +68,7 @@ struct GeodesicResult {
   int total_factorizations = 0;
   int total_solves = 0;
   Eigen::VectorXd x;  // primal variable: x = y/k from last Newton solve
+  RowSpace lambda;     // dual variable (cone multipliers), reduced space
   std::vector<GeodesicIterStats> iter_stats;
   OptimalityReport optimality;
 };

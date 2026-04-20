@@ -691,6 +691,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     x_rhs = kkt.MakeBlockVariable(result.x);
     result.optimality = CheckOptimality(kkt, duality_cost, x_rhs, lambda);
     result.optimality.mu = result.mu;
+    result.lambda = lambda;
 
     if (verbose) {
       printf("  Optimality: dual_res=%.2e, compl=%.2e, "
@@ -989,6 +990,7 @@ GeodesicResult SolveGeodesicPhaseOne(
     x_rhs = kkt.MakeBlockVariable(result.x);
     result.optimality = CheckOptimality(kkt, duality_cost, x_rhs, lambda);
     result.optimality.mu = result.mu;
+    result.lambda = lambda;
   }
   return result;
 }
@@ -1105,6 +1107,7 @@ GeodesicResult SolveGeodesicLP(
     x_rhs = kkt.MakeBlockVariable(result.x);
     result.optimality = CheckOptimality(kkt, cost_rhs_blend, x_rhs, lambda);
     result.optimality.mu = result.mu;
+    result.lambda = lambda;
 
     if (verbose) {
       printf("  Optimality: dual_res=%.2e, compl=%.2e, "
@@ -1348,6 +1351,7 @@ GeodesicResult SolveGeodesicHybrid(
     if (tau != 1.0 && tau > 0) lambda *= (1.0 / tau);
     result.optimality = CheckOptimality(kkt, cost_rhs, x_rhs, lambda);
     result.optimality.mu = result.mu;
+    result.lambda = lambda;
   }
 
   if (verbose) {

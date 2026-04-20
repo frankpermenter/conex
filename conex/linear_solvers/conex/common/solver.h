@@ -76,7 +76,12 @@ class Solver {
   double ComputeObjective(const SolverRHS& cost_rhs,
                           const Eigen::VectorXd& x_reduced);
 
+  // Extract per-constraint dual variables from RowSpace lambda.
+  ConstraintDuals ExtractDuals(const Eigen::VectorXd& x_reduced,
+                               const RowSpace& lambda);
+
   KKTSystem system_;
+  Model reduced_model_;
   Expansion expansion_;
   Eigen::VectorXd reduced_linear_cost_;
 };
@@ -99,6 +104,9 @@ SolveResult Solver::Solve(const Algorithm& algo) {
   result.iterations = raw.iterations;
   result.factorizations = raw.total_factorizations;
   result.converged = raw.mu < 1e-6;
+  if (raw.lambda.total_rows() > 0) {
+    result.duals = ExtractDuals(raw.x, raw.lambda);
+  }
   return result;
 }
 
