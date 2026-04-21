@@ -1,0 +1,109 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb,amsthm}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\ip}[2]{\langle #1, #2 \rangle}
+\newcommand{\half}{\tfrac{1}{2}}
+
+\title{Geodesic Newton Direction for the Extended Embedding}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setup}
+
+Consider the extended embedding of a conic program with cone $\mathcal{C} = \R^n_+$:
+\begin{align}
+  \min \quad & \alpha \theta \notag \\
+  \text{s.t.} \quad & Ax - b\tau = r_p \theta \label{eq:primal} \\
+  & -A^* y - s + c\tau = r_d \theta \label{eq:dual} \\
+  & \ip{b}{y} - \ip{c}{x} - \kappa = r_g \theta \label{eq:gap} \\
+  & \ip{r_p}{y} + \ip{r_d}{x} + r_g \tau = -\alpha \label{eq:norm} \\
+  & x \in \R^n_+, \; s \in \R^n_+, \; \tau \geq 0, \; \kappa \geq 0 \notag
+\end{align}
+where $A \in \R^{m \times n}$, $b \in \R^m$, $c \in \R^n$, and $y \in \R^m$, $\theta \in \R$ are free variables. The parameters $r_p, r_d, r_g, \alpha$ are residuals at a fixed strictly feasible point $(\hat{x}, \hat{s}, \hat{y}, \hat{\tau}, \hat{\kappa})$.
+
+\section{Cone variable}
+
+The cone variables are $(x, s, \tau, \kappa) \in \R^n_+ \times \R^n_+ \times \R_+ \times \R_+$. This is a product of $2n + 2$ nonneg scalar cones. On the central path at barrier parameter $\mu$, the cone variable satisfies
+\[
+  w = \sqrt{\mu} \, e
+\]
+where $e = (e_n, e_n, 1, 1)$ is the identity element of the product cone and
+\[
+  w = (w_x, w_s, w_\tau, w_\kappa) = (\sqrt{x \circ \lambda_x}, \sqrt{s \circ \lambda_s}, \sqrt{\tau \lambda_\tau}, \sqrt{\kappa \lambda_\kappa}).
+\]
+Here $\circ$ denotes the Jordan product (componentwise multiplication for the nonneg cone) and $\lambda_x, \lambda_s, \lambda_\tau, \lambda_\kappa$ are the corresponding dual variables.
+
+\section{Geodesic Newton direction}
+
+Let $W = \text{diag}(w)$ be the scaling matrix (diagonal for the nonneg cone). The geodesic Newton direction $d$ at scaling $W$ and barrier parameter $k = 1/\sqrt{\mu}$ satisfies
+\[
+  d = e + P(W^{1/2}) S
+\]
+where $P(W^{1/2}) = W$ for the nonneg cone (the quadratic representation is diagonal multiplication), and $S$ is the ``slack direction'' determined by the Newton system.
+
+\subsection{Defining linear system}
+
+Let $\mathcal{A}$ denote the linear map from the free variables $(y, \theta)$ and cone variables $(x, s, \tau, \kappa)$ to the constraint residuals. Write the KKT system as
+\[
+  \underbrace{\begin{pmatrix} G & C^T \\ C & 0 \end{pmatrix}}_{\text{KKT matrix}}
+  \begin{pmatrix} z_p \\ \nu \end{pmatrix}
+  =
+  \begin{pmatrix} \text{rhs}_p \\ d_{\text{eq}} \end{pmatrix}
+\]
+where:
+\begin{itemize}
+  \item $G = \mathcal{A}_{\text{cone}}^T W^2 \mathcal{A}_{\text{cone}}$ is the Gram matrix (from the cone constraints),
+  \item $C$ collects the equality constraints \eqref{eq:primal}--\eqref{eq:norm},
+  \item $z_p$ contains the primal variables and $\nu$ the equality duals,
+  \item $d_{\text{eq}}$ is the equality RHS (from \eqref{eq:norm}: $d_{\text{eq}} = -\alpha$ for the normalization row; zero for the others).
+\end{itemize}
+
+The cone constraints contribute to the Gram matrix via
+\[
+  \mathcal{A}_{\text{cone}} = \begin{pmatrix} I_n & & & \\ & I_n & & \\ & & 1 & \\ & & & 1 \end{pmatrix}
+\]
+(identity maps, since the cone constraints are $x \geq 0$, $s \geq 0$, $\tau \geq 0$, $\kappa \geq 0$). Thus $G = W^2$ restricted to the cone variable positions.
+
+\subsection{Right-hand side}
+
+The RHS of the Newton system at $(W, k)$ is
+\[
+  \text{rhs} = -k \, c_{\text{cost}} + A_{\text{cone}}^T(-k \, b_{\text{cone}} + 2W) + d_{\text{eq}}
+\]
+where:
+\begin{itemize}
+  \item $c_{\text{cost}} = (\underbrace{0, \ldots, 0}_{n}, \underbrace{0, \ldots, 0}_{m}, \underbrace{0, \ldots, 0}_{n}, 0, 0, \alpha)$ is the cost vector (only the $\theta$ component is nonzero),
+  \item $b_{\text{cone}} = 0$ (the cone constraints have zero affine term since they are $x \geq 0$, etc.),
+  \item $d_{\text{eq}}$ injects the equality RHS at the dual variable positions.
+\end{itemize}
+
+After solving, the Newton direction is
+\begin{align}
+  d_i &= 1 + W_i \cdot S_i \quad \text{for each cone component } i, \\
+  S &= -k \, b_{\text{cone}} - \mathcal{A}_{\text{cone}} \, z_p = -\mathcal{A}_{\text{cone}} \, z_p,
+\end{align}
+and the primal--dual variables are recovered as
+\begin{align}
+  s_i &= \frac{1 - d_i}{k \, W_i}, \\
+  \lambda_i &= \frac{(1 + d_i) \, W_i}{k^{-1}} = k \, W_i \, (1 + d_i).
+\end{align}
+
+\subsection{Complementarity}
+
+The duality gap at $(W, d, k)$ is
+\[
+  \mu \cdot \bigl( R - \|d\|^2 \bigr) = \frac{1}{k^2} \bigl( (2n+2) - \|d\|^2 \bigr)
+\]
+where $R = 2n + 2$ is the rank of the product cone. At convergence, $\|d\|^2 \to R$ and $\mu \to 0$.
+
+\section{Structure of the embedding}
+
+For the extended embedding, the $2n + 2$ cone variables are $(x_1, \ldots, x_n, s_1, \ldots, s_n, \tau, \kappa)$ and the free variables are $(y_1, \ldots, y_m, \theta)$. The equality constraints \eqref{eq:primal}--\eqref{eq:norm} couple all variables. The KKT system has dimension $(2n + m + 3) + (m + n + 2) = 3n + 2m + 5$, consisting of $2n + m + 3$ primal variables and $m + n + 2$ equality duals.
+
+The key property: the fixed point $(\hat{x}, \hat{s}, \hat{y}, \hat{\tau}, \hat{\kappa}, \theta = 1)$ is strictly feasible, so the initial $W = I$ corresponds to all cone slacks equal to 1 (strictly positive). The geodesic iteration preserves cone feasibility ($d_\infty \leq 1$ ensures slacks remain nonneg), and $k$ increases monotonically, driving $\mu = 1/k^2 \to 0$ and $\theta \to 0$.
+
+\end{document}
