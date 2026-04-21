@@ -1019,7 +1019,7 @@ GeodesicResult SolveGeodesicLP(
     bool verbose) {
   double k = 0.0;
   const int m = W.total_rows();
-  constexpr double theta = 1.0;
+  constexpr double theta = 0.0;
   RowSpace ones_b = kkt.MakeRowSpace();
   setOnes(ones_b);
 
