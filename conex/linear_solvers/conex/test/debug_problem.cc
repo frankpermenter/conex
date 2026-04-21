@@ -110,13 +110,14 @@ bool TestCentralPath(const ProblemParts& parts) {
 }
 
 // =====================================================================
-// Test 2: Primal feasibility (c=0, Q=0, original b)
+// Test 2: Primal strict feasibility (c=0, Q=0, original A,b)
 // =====================================================================
 bool TestPrimalFeasibility(const ProblemParts& parts, const Model& original) {
-  printf("Test 2: Primal feasibility (c=A'e, Q=0, original A,b)\n");
+  printf("Test 2: Primal strict feasibility (c=0, Q=0, original A,b)\n");
 
+  // Copy original constraints, skip quadratic cost. Leave c unset (=0).
+  // ThetaContinuation finds the analytic center of the feasible set.
   Model model;
-  // Use original A and b from the QPS file.
   for (int i = 0; i < original.num_constraints(); ++i) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
@@ -126,24 +127,9 @@ bool TestPrimalFeasibility(const ProblemParts& parts, const Model& original) {
         model.AddEqualityConstraint(data.C, data.d, data.primal_vars);
       else if constexpr (std::is_same_v<T, Model::SOCConstraintData>)
         model.AddSOCConstraint(data.A, data.b, data.vars);
-      // Skip QuadraticCostData — testing with Q=0.
+      // Skip QuadraticCostData.
     }, original.constraint(i));
   }
-  // No quadratic cost.
-  for (auto& ec : parts.equalities)
-    model.AddEqualityConstraint(ec.C, ec.d, ec.vars);
-  for (auto& sc : parts.socs)
-    model.AddSOCConstraint(sc.A, sc.b, sc.vars);
-
-  // c = A'e for centering.
-  int n = parts.num_variables;
-  VectorXd c = VectorXd::Zero(n);
-  for (auto& lc : parts.linears) {
-    VectorXd at_ones = Eigen::MatrixXd(lc.A).transpose() * VectorXd::Ones(lc.m);
-    for (int j = 0; j < (int)lc.vars.size(); ++j)
-      c(lc.vars[j]) += at_ones(j);
-  }
-  model.SetLinearCost(c);
 
   auto solver = Solver::Build(model);
   auto result = solver.Solve(ThetaContinuation());
