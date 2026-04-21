@@ -128,7 +128,7 @@ TuningResult RunPolicy(const TestLP& lp, HybridSwitchPolicy policy,
                        double eps) {
   auto solver = Solver::Build(lp.model);
 
-  PhaseOneHybrid algo;
+  HybridOnly algo;
   algo.tolerance = eps;
   algo.policy = policy;
   auto result = solver.Solve(algo);

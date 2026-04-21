@@ -64,6 +64,24 @@ struct PhaseOneHybrid {
   }
 };
 
+// Strategy: Hybrid only (no PhaseOne warmup). Uses the hybrid's own
+// initial k line search. Starts from W=I.
+struct HybridOnly {
+  double tolerance = 1e-8;
+  int max_iterations = 500;
+  bool verbose = false;
+  HybridSwitchPolicy policy = DefaultHybridPolicy;
+
+  GeodesicResult Run(KKTSolverBase& kkt,
+                     const SolverRHS& cost_rhs) const {
+    RowSpace W = kkt.MakeRowSpace();
+    setOnes(W);
+    return SolveGeodesicHybrid(
+        kkt, cost_rhs, W, max_iterations, tolerance, verbose,
+        /*initial_k=*/-1, /*tau=*/1.0, policy);
+  }
+};
+
 // Strategy: geodesic LP (line-search for k, then center).
 struct GeodesicLP {
   double tolerance = 1e-8;
