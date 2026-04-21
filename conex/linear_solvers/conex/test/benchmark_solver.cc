@@ -26,6 +26,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/geodesic_ipm.h"
+#include "conex/algorithms/geodesic_hybrid_r.h"
 #include "conex/common/cbf_reader.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/mps_reader.h"
@@ -215,6 +216,12 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
       return result;
     });
 
+  // --- Unified HybridR (theta-continuation + r-updates) ---
+  auto r4a = RunAlgo("HybridR", *kkt, cost_rhs, problem, solver,
+    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+      return SolveGeodesicHybridR(k, c, W, max_iters, tol, true);
+    });
+
   // --- Cold-started Hybrid (no PhaseOne) ---
   auto r4 = RunAlgo("ColdHybrid", *kkt, cost_rhs, problem, solver,
     [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
@@ -261,7 +268,7 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
          "compl", "ms", "ok");
   printf("  %s\n", std::string(90, '-').c_str());
   double c0 = objective_constant;
-  for (const auto* r : {&r1, &r2, &r3, &r4, &r5, &r6, &r7, &r8}) {
+  for (const auto* r : {&r1, &r2, &r3, &r4a, &r4, &r5, &r6, &r7, &r8}) {
     printf("  %-12s %5d %5d %10.2e %14.6e %10.2e %10.2e %8.1f %s\n",
            r->name, r->iterations, r->factorizations,
            r->mu, r->primal_cost + c0, r->dual_residual,
