@@ -194,4 +194,17 @@ SparseLinearConstraintAssembler::MakeConstraint(
   return std::make_unique<LinearConstraint>(A, b);
 }
 
+Eigen::VectorXd SparseLinearConstraintAssembler::GatherRows(
+    const RowSpace& rs, int segment_offset) const {
+  Eigen::VectorXd out(num_global_rows_);
+  out.setZero();
+  for (int global = 0; global < num_global_rows_; ++global) {
+    const auto& m = row_map_[global];
+    if (m.constraint_index < 0) continue;
+    int seg = segment_offset + m.constraint_index;
+    out(global) = rs.segment_ptr(seg)[m.local_row];
+  }
+  return out;
+}
+
 }  // namespace conex

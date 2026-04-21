@@ -4,6 +4,15 @@
 
 namespace conex {
 
+// Optimality summary computed via KKT system operations.
+// Always correct regardless of tree decomposition.
+struct OptimalitySummary {
+  double dual_residual = 0;      // ||A'λ - Qx - c||
+  double complementarity = 0;    // <s, λ>
+  double min_slack = 0;          // min eigenvalue of s (primal feasibility)
+  double min_dual = 0;           // min eigenvalue of λ (dual feasibility)
+};
+
 // Per-constraint dual information in Model (original) space.
 //
 // For linear constraint i (Ax + b >= 0):
@@ -30,18 +39,20 @@ struct ConstraintDuals {
   std::vector<Eigen::MatrixXd> psd_lambda;   // per PSD constraint
   std::vector<Eigen::MatrixXd> psd_slack;    // per PSD constraint
   std::vector<Eigen::VectorXd> nu;            // per equality constraint
+
+  // Stationarity gradient: c + Qx - A'λ - C'ν (should be ≈ 0).
+  Eigen::VectorXd stationarity_gradient;
 };
 
 struct SolveResult {
   Eigen::VectorXd x;          // primal solution in Model (original) space
   double objective = 0;        // c'x + (1/2)x'Qx
   double mu = 0;               // barrier parameter at termination
-  double dual_residual = 0;
-  double complementarity = 0;
   int iterations = 0;
   int factorizations = 0;
   bool converged = false;
 
+  OptimalitySummary optimality;
   ConstraintDuals duals;
 };
 

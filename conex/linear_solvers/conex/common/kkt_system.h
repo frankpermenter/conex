@@ -46,6 +46,18 @@ class KKTSystem {
 
   const std::vector<int>& dual_variables(ConstraintId id) const;
 
+  // Gather a RowSpace value back to a dense vector in the original
+  // row order of Model constraint `id`.  Only valid for linear/SOC
+  // constraints (cone constraints with vector-valued duals).
+  Eigen::VectorXd GatherConstraintRows(
+      ConstraintId id, const RowSpace& rs) const;
+
+  // Segment offset in the RowSpace for each Model constraint.
+  // Set during RegisterAssemblersWithTreeSolver.
+  int rowspace_segment_offset(ConstraintId id) const {
+    return rs_segment_offset_.at(id);
+  }
+
   KKTSystem();
   ~KKTSystem();
   KKTSystem(KKTSystem&&) noexcept;
@@ -71,6 +83,7 @@ class KKTSystem {
   std::vector<SparseQuadraticTermAssembler*> quadratic_assemblers_;
   std::vector<SparseEqualityConstraintAssembler*> equality_assemblers_;
   std::unordered_map<int, std::vector<int>> dual_var_map_;
+  std::unordered_map<int, int> rs_segment_offset_;
 };
 
 }  // namespace conex

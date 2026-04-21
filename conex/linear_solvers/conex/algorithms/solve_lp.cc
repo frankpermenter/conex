@@ -16,7 +16,7 @@ LPResult SolveLP(const Model& model, double tolerance) {
   LPResult out;
   out.x = result.x;
   out.objective = result.objective;
-  out.gap = result.complementarity;
+  out.gap = result.optimality.complementarity;
   out.factorizations = result.factorizations;
   out.solves = result.iterations;  // approximate
   return out;

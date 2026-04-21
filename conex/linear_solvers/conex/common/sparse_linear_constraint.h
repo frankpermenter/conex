@@ -82,6 +82,15 @@ class SparseLinearConstraintAssembler : public CliqueProvider {
     return owned_constraints_;
   }
 
+  // Gather a RowSpace back to a dense vector in original constraint row order.
+  // segments[i] is the RowSpace segment for the i-th sub-constraint.
+  // segments_offset is the index of the first sub-constraint's segment
+  // in the RowSpace.
+  Eigen::VectorXd GatherRows(const RowSpace& rs, int segment_offset) const;
+
+  // Number of rows in the original (pre-decomposition) constraint.
+  int num_global_rows() const { return num_global_rows_; }
+
  protected:
   // Factory for creating per-clique constraints.  Subclasses override to
   // create specialized constraint types (e.g. PSDLinearConstraint).

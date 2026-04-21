@@ -225,20 +225,37 @@ void KKTSystem::BuildQuotientAMD(const Model& model,
 
 void KKTSystem::RegisterAssemblersWithTreeSolver() {
   if (!tree_solver_) return;
-  for (auto* slca : linear_assemblers_) {
+  int seg = 0;
+  // Registration order determines RowSpace segment layout.
+  // Pass 1: Linear.
+  for (int i = 0; i < (int)linear_assemblers_.size(); ++i) {
+    auto* slca = linear_assemblers_[i];
     if (!slca) continue;
-    for (const auto& lc : slca->constraints())
+    rs_segment_offset_[i] = seg;
+    for (const auto& lc : slca->constraints()) {
       tree_solver_->RegisterLinearSubAssembler(lc.get());
+      seg++;
+    }
   }
-  for (auto* pasm : psd_assemblers_) {
+  // Pass 2: PSD.
+  for (int i = 0; i < (int)psd_assemblers_.size(); ++i) {
+    auto* pasm = psd_assemblers_[i];
     if (!pasm) continue;
-    for (const auto& lc : pasm->constraints())
+    rs_segment_offset_[i] = seg;
+    for (const auto& lc : pasm->constraints()) {
       tree_solver_->RegisterLinearSubAssembler(lc.get());
+      seg++;
+    }
   }
-  for (auto* sasm : soc_assemblers_) {
+  // Pass 3: SOC.
+  for (int i = 0; i < (int)soc_assemblers_.size(); ++i) {
+    auto* sasm = soc_assemblers_[i];
     if (!sasm) continue;
-    for (const auto& lc : sasm->constraints())
+    rs_segment_offset_[i] = seg;
+    for (const auto& lc : sasm->constraints()) {
       tree_solver_->RegisterLinearSubAssembler(lc.get());
+      seg++;
+    }
   }
   for (auto* qasm : quadratic_assemblers_) {
     if (!qasm) continue;
@@ -250,6 +267,27 @@ void KKTSystem::RegisterAssemblersWithTreeSolver() {
     for (auto& ec : easm->constraints())
       tree_solver_->RegisterEqualitySubAssembler(&ec);
   }
+}
+
+Eigen::VectorXd KKTSystem::GatherConstraintRows(
+    ConstraintId id, const RowSpace& rs) const {
+  int offset = rs_segment_offset_.at(id);
+  // Linear and SOC assemblers both inherit GatherRows from
+  // SparseLinearConstraintAssembler.
+  if (linear_assemblers_[id]) {
+    return linear_assemblers_[id]->GatherRows(rs, offset);
+  }
+  if (soc_assemblers_[id]) {
+    return soc_assemblers_[id]->GatherRows(rs, offset);
+  }
+  // PSD: return flat vectorized form.
+  if (psd_assemblers_[id]) {
+    // PSD sub-constraints aren't decomposed the same way.
+    // For now, the RowSpace segment is contiguous for PSD.
+    int n2 = rs.sizes[offset];
+    return rs.col().segment(rs.offsets[offset], n2);
+  }
+  return {};
 }
 
 }  // namespace conex

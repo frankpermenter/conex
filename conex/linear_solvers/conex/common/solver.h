@@ -72,13 +72,14 @@ class Solver {
   Solver& operator=(Solver&&) noexcept;
 
  private:
-  // Compute c'x + (1/2)x'Qx in reduced space using KKT operations.
   double ComputeObjective(const SolverRHS& cost_rhs,
                           const Eigen::VectorXd& x_reduced);
-
-  // Extract per-constraint dual variables from RowSpace lambda.
+  OptimalitySummary ComputeOptimality(const SolverRHS& cost_rhs,
+                                      const Eigen::VectorXd& x_reduced,
+                                      const RowSpace& lambda);
   ConstraintDuals ExtractDuals(const Eigen::VectorXd& x_reduced,
-                               const RowSpace& lambda);
+                               const RowSpace& lambda,
+                               const SolverRHS& cost_rhs);
 
   KKTSystem system_;
   Model reduced_model_;
@@ -99,15 +100,14 @@ SolveResult Solver::Solve(const Algorithm& algo) {
   result.x = ExpandSolution(raw.x);
   result.objective = ComputeObjective(cost_rhs, raw.x);
   result.mu = raw.mu;
-  result.dual_residual = raw.optimality.dual_residual;
-  result.complementarity = raw.optimality.complementarity;
   result.iterations = raw.iterations;
   result.factorizations = raw.total_factorizations;
-  result.converged = raw.optimality.complementarity < 1e-4 &&
-                     raw.optimality.dual_residual < 1e-4;
   if (raw.lambda.total_rows() > 0) {
-    result.duals = ExtractDuals(raw.x, raw.lambda);
+    result.optimality = ComputeOptimality(cost_rhs, raw.x, raw.lambda);
+    result.duals = ExtractDuals(raw.x, raw.lambda, cost_rhs);
   }
+  result.converged = result.optimality.complementarity < 1e-4 &&
+                     result.optimality.dual_residual < 1e-4;
   return result;
 }
 
