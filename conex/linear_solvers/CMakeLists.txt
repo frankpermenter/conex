@@ -105,6 +105,7 @@ add_library(algorithms
   conex/algorithms/irls.cc
   conex/algorithms/barrier_qp.cc
   conex/algorithms/geodesic_ipm.cc
+  conex/algorithms/geodesic_hybrid_r.cc
   conex/algorithms/alternating_projections.cc
   conex/algorithms/solve_lp.cc
   conex/algorithms/least_squares.cc
@@ -300,6 +301,17 @@ target_link_libraries(geodesic_ipm_test
   GTest::gtest_main
 )
 gtest_discover_tests(geodesic_ipm_test)
+
+add_executable(geodesic_hybrid_r_test
+  conex/test/geodesic_hybrid_r_test.cc
+)
+target_link_libraries(geodesic_hybrid_r_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(geodesic_hybrid_r_test)
 
 add_executable(alternating_projections_test
   conex/test/alternating_projections_test.cc
