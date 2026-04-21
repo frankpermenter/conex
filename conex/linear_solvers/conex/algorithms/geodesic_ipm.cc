@@ -1257,7 +1257,8 @@ GeodesicResult SolveGeodesicHybrid(
       break;
     }
 
-    if (policy(g, d_inf, r_updates_this_fac)) {
+    bool do_center = policy(g, d_inf, r_updates_this_fac);
+    if (do_center) {
       // Centering step: update W and r, then refactor.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       updateAutomorphism(W, r, alpha, d);
@@ -1268,8 +1269,8 @@ GeodesicResult SolveGeodesicHybrid(
                                    r_updates_this_fac, mslack});
       r_updates_this_fac = 0;
     } else {
-      // Shrink r using Delta, then refactor so the next direction
-      // computation reflects the current (W, r) state accurately.
+      // Update r using delta (shrinks when gap > 0, may grow when gap < 0).
+      // Refactor so the next direction reflects the current (W, r) state.
       shrinkR(r, delta);
       kkt.SetScaling(W);
       if (!kkt.AssembleAndFactor()) break;
@@ -1308,7 +1309,7 @@ GeodesicResult SolveGeodesicHybrid(
       double cTx_phys = kkt.dot(c_fresh, y_v) / (tau * tau);
       printf("  %3d  %12.4e  %10.4e %10.4e  %12.4e  %12.4e  %12.4e  %6d  %s\n",
              iter, g, d_inf_pre, d_inf, mu_r, bTl_phys, cTx_phys,
-             r_updates_this_fac, (info.gap < 0) ? "center" : "shrink");
+             r_updates_this_fac, do_center ? "center" : "shrink");
     }
     if (std::abs(g) < tolerance && d_inf <= 1.001) break;
   }
