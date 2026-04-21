@@ -1310,6 +1310,7 @@ GeodesicResult SolveGeodesicHybrid(
       RowSpace lam_v = quadraticRepresentation(sqrtW_v, r + last_delta);
       double bTl_phys = dot(b_unscaled, lam_v) / tau;
       // cTx + dTnu: re-solve and dot with duality_cost (includes d_eq).
+      // Also extract dTnu to add to bTl.
       auto y_v = kkt.MakeSolverRHS();
       y_v = cost_scaled;
       y_v *= -1;
@@ -1324,6 +1325,11 @@ GeodesicResult SolveGeodesicHybrid(
         y_v += d_rhs;
       }
       kkt.SolveSolverRHS(y_v);
+      // d'ν from the equality dual positions in y_v.
+      if (ts && !ts->equality_sub_assemblers().empty()) {
+        auto d_rhs2 = ts->EqualityAffineTermRHS();
+        bTl_phys += kkt.dot(d_rhs2, y_v) / tau;
+      }
       auto dc_scaled = kkt.MakeSolverRHS(); dc_scaled = duality_cost;
       dc_scaled *= tau;
       double cTx_phys = kkt.dot(dc_scaled, y_v) / (tau * tau);
