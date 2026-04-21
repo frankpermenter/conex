@@ -34,6 +34,26 @@ int main(int argc, char* argv[]) {
 
   SolverConfiguration cfg;
   cfg.row_scale = true;
+
+  // Replace cost with c = A'e (feasible dual at W=I) to test the
+  // hybrid's convergence on real constraint structure.
+  {
+    auto tmp_solver = Solver::Build(model, cfg);
+    auto* kkt = tmp_solver.kkt();
+    RowSpace ones = kkt->MakeRowSpace();
+    setOnes(ones);
+    auto at_ones = kkt->MakeSolverRHS();
+    at_ones.SetZero();
+    kkt->AccumulateAtranspose(ones, at_ones);
+    int nv = kkt->number_of_variables();
+    Eigen::VectorXd c_new(nv);
+    at_ones.supernodes->GatherInto(c_new);
+    // Map back to Model space and set as cost.
+    Eigen::VectorXd c_orig = tmp_solver.ExpandSolution(c_new);
+    model.SetLinearCost(c_orig);
+    printf("(cost replaced with A'e for hybrid cold-start test)\n");
+  }
+
   auto solver = Solver::Build(model, cfg);
   printf("KKT vars=%d (reduced=%s)\n\n",
          solver.kkt()->number_of_variables(),
