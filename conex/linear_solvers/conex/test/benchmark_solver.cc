@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <memory>
 #include <numeric>
 #include <sstream>
 #include <string>
@@ -220,13 +221,47 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
       return SolveGeodesicHybrid(k, c, W, max_iters, tol, true);
     });
 
+  // --- Cold Hybrid with initial centering strategies ---
+  // Force N centerings first, then switch to default (gap < 0).
+  auto make_warmup_policy = [](int warmup_centers) -> HybridSwitchPolicy {
+    auto count = std::make_shared<int>(0);
+    return [warmup_centers, count](double gap, double, int) {
+      if (*count < warmup_centers) { (*count)++; return true; }
+      return gap < 0;
+    };
+  };
+
+  auto r5 = RunAlgo("Cold+3ctr", *kkt, cost_rhs, problem, solver,
+    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+      return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+                                  -1, 1.0, make_warmup_policy(3));
+    });
+
+  auto r6 = RunAlgo("Cold+5ctr", *kkt, cost_rhs, problem, solver,
+    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+      return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+                                  -1, 1.0, make_warmup_policy(5));
+    });
+
+  auto r7 = RunAlgo("Cold+10ctr", *kkt, cost_rhs, problem, solver,
+    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+      return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+                                  -1, 1.0, make_warmup_policy(10));
+    });
+
+  auto r8 = RunAlgo("Cold+20ctr", *kkt, cost_rhs, problem, solver,
+    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+      return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+                                  -1, 1.0, make_warmup_policy(20));
+    });
+
   // --- Summary table ---
   printf("  %-12s %5s %5s %10s %14s %10s %10s %8s %s\n",
          "Algorithm", "iters", "fac", "mu", "cost", "dual_res",
          "compl", "ms", "ok");
   printf("  %s\n", std::string(90, '-').c_str());
   double c0 = objective_constant;
-  for (const auto* r : {&r1, &r2, &r3, &r4}) {
+  for (const auto* r : {&r1, &r2, &r3, &r4, &r5, &r6, &r7, &r8}) {
     printf("  %-12s %5d %5d %10.2e %14.6e %10.2e %10.2e %8.1f %s\n",
            r->name, r->iterations, r->factorizations,
            r->mu, r->primal_cost + c0, r->dual_residual,
