@@ -112,12 +112,23 @@ bool TestCentralPath(const ProblemParts& parts) {
 // =====================================================================
 // Test 2: Primal feasibility (c=0, Q=0, original b)
 // =====================================================================
-bool TestPrimalFeasibility(const ProblemParts& parts) {
-  printf("Test 2: Primal feasibility (c=0, Q=0, original b)\n");
+bool TestPrimalFeasibility(const ProblemParts& parts, const Model& original) {
+  printf("Test 2: Primal feasibility (c=A'e, Q=0, original A,b)\n");
 
   Model model;
-  for (auto& lc : parts.linears)
-    model.AddLinearConstraint(lc.A, VectorXd::Ones(lc.m), lc.vars);
+  // Use original A and b from the QPS file.
+  for (int i = 0; i < original.num_constraints(); ++i) {
+    std::visit([&](const auto& data) {
+      using T = std::decay_t<decltype(data)>;
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData>)
+        model.AddLinearConstraint(data.A, data.b, data.vars);
+      else if constexpr (std::is_same_v<T, Model::EqualityConstraintData>)
+        model.AddEqualityConstraint(data.C, data.d, data.primal_vars);
+      else if constexpr (std::is_same_v<T, Model::SOCConstraintData>)
+        model.AddSOCConstraint(data.A, data.b, data.vars);
+      // Skip QuadraticCostData — testing with Q=0.
+    }, original.constraint(i));
+  }
   // No quadratic cost.
   for (auto& ec : parts.equalities)
     model.AddEqualityConstraint(ec.C, ec.d, ec.vars);
@@ -156,22 +167,23 @@ bool TestPrimalFeasibility(const ProblemParts& parts) {
 // =====================================================================
 // Test 3: Dual feasibility (b=0, Q=0, original c)
 // =====================================================================
-bool TestDualFeasibility(const ProblemParts& parts, const VectorXd& original_c) {
-  printf("Test 3: Dual feasibility (b=0, Q=0, original c)\n");
+bool TestDualFeasibility(const ProblemParts& parts, const Model& original) {
+  printf("Test 3: Dual feasibility (b=e, Q=0, original A, original c)\n");
 
   Model model;
-  for (auto& lc : parts.linears) {
-    VectorXd b_zero = VectorXd::Zero(lc.m);
-    // Use b = e (not zero) to have an interior point.
+  // Use original A but b=e (guarantees primal interior at x=0).
+  for (auto& lc : parts.linears)
     model.AddLinearConstraint(lc.A, VectorXd::Ones(lc.m), lc.vars);
-  }
   // No quadratic cost.
   for (auto& ec : parts.equalities)
     model.AddEqualityConstraint(ec.C, ec.d, ec.vars);
   for (auto& sc : parts.socs)
     model.AddSOCConstraint(sc.A, sc.b, sc.vars);
 
-  model.SetLinearCost(original_c);
+  VectorXd c = original.has_linear_cost()
+      ? original.linear_cost()
+      : VectorXd::Zero(original.num_variables());
+  model.SetLinearCost(c);
 
   auto solver = Solver::Build(model);
   auto result = solver.Solve(ThetaContinuation());
@@ -216,18 +228,13 @@ int main(int argc, char* argv[]) {
          (int)parts.equalities.size(), (int)parts.socs.size());
   fflush(stdout);
 
-  // Save original cost.
-  Eigen::VectorXd original_c = model.has_linear_cost()
-      ? model.linear_cost()
-      : Eigen::VectorXd::Zero(model.num_variables());
-
   int pass = 0, total = 3;
   printf("---\n");
   if (conex::TestCentralPath(parts)) pass++;
   printf("---\n");
-  if (conex::TestPrimalFeasibility(parts)) pass++;
+  if (conex::TestPrimalFeasibility(parts, model)) pass++;
   printf("---\n");
-  if (conex::TestDualFeasibility(parts, original_c)) pass++;
+  if (conex::TestDualFeasibility(parts, model)) pass++;
   printf("---\n\n");
 
   printf("Summary: %d/%d passed\n", pass, total);
