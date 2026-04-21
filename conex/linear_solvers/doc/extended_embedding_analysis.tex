@@ -4,6 +4,7 @@
 \newcommand{\R}{\mathbb{R}}
 \newcommand{\ip}[2]{\langle #1, #2 \rangle}
 \newcommand{\half}{\tfrac{1}{2}}
+\newcommand{\diag}{\operatorname{diag}}
 
 \title{Geodesic Newton Direction for the Extended Embedding}
 \author{}
@@ -18,92 +19,148 @@ Consider the extended embedding of a conic program with cone $\mathcal{C} = \R^n
 \begin{align}
   \min \quad & \alpha \theta \notag \\
   \text{s.t.} \quad & Ax - b\tau = r_p \theta \label{eq:primal} \\
-  & -A^* y - s + c\tau = r_d \theta \label{eq:dual} \\
+  & -A^T y - s + c\tau = r_d \theta \label{eq:dual} \\
   & \ip{b}{y} - \ip{c}{x} - \kappa = r_g \theta \label{eq:gap} \\
   & \ip{r_p}{y} + \ip{r_d}{x} + r_g \tau = -\alpha \label{eq:norm} \\
   & x \in \R^n_+, \; s \in \R^n_+, \; \tau \geq 0, \; \kappa \geq 0 \notag
 \end{align}
 where $A \in \R^{m \times n}$, $b \in \R^m$, $c \in \R^n$, and $y \in \R^m$, $\theta \in \R$ are free variables. The parameters $r_p, r_d, r_g, \alpha$ are residuals at a fixed strictly feasible point $(\hat{x}, \hat{s}, \hat{y}, \hat{\tau}, \hat{\kappa})$.
 
-\section{Cone variable}
+\section{Cone variable and scaling}
 
-The cone variables are $(x, s, \tau, \kappa) \in \R^n_+ \times \R^n_+ \times \R_+ \times \R_+$. This is a product of $2n + 2$ nonneg scalar cones. On the central path at barrier parameter $\mu$, the cone variable satisfies
-\[
-  w = \sqrt{\mu} \, e
-\]
-where $e = (e_n, e_n, 1, 1)$ is the identity element of the product cone and
-\[
-  w = (w_x, w_s, w_\tau, w_\kappa) = (\sqrt{x \circ \lambda_x}, \sqrt{s \circ \lambda_s}, \sqrt{\tau \lambda_\tau}, \sqrt{\kappa \lambda_\kappa}).
-\]
-Here $\circ$ denotes the Jordan product (componentwise multiplication for the nonneg cone) and $\lambda_x, \lambda_s, \lambda_\tau, \lambda_\kappa$ are the corresponding dual variables.
+The cone variables are $(x, s, \tau, \kappa) \in \R^n_+ \times \R^n_+ \times \R_+ \times \R_+$. This is a product of $2n + 2$ nonneg scalar cones with rank $R = 2n + 2$.
 
-\section{Geodesic Newton direction}
+Let $W = \diag(w_x, w_s, w_\tau, w_\kappa)$ be the scaling matrix, where $w_x \in \R^n_{++}$, $w_s \in \R^n_{++}$, $w_\tau > 0$, $w_\kappa > 0$. For the nonneg cone, the quadratic representation is $P(W^{1/2}) = \diag(W)$ (componentwise multiplication).
 
-Let $W = \text{diag}(w)$ be the scaling matrix (diagonal for the nonneg cone). The geodesic Newton direction $d$ at scaling $W$ and barrier parameter $k = 1/\sqrt{\mu}$ satisfies
-\[
-  d = e + P(W^{1/2}) S
-\]
-where $P(W^{1/2}) = W$ for the nonneg cone (the quadratic representation is diagonal multiplication), and $S$ is the ``slack direction'' determined by the Newton system.
+\section{Partitioned Newton direction}
+
+Partition the direction as $d = (d_x, d_s, d_\tau, d_\kappa)$ with $d_x, d_s \in \R^n$ and $d_\tau, d_\kappa \in \R$.
 
 \subsection{Defining linear system}
 
-Let $\mathcal{A}$ denote the linear map from the free variables $(y, \theta)$ and cone variables $(x, s, \tau, \kappa)$ to the constraint residuals. Write the KKT system as
+The primal variables of the KKT system are
 \[
-  \underbrace{\begin{pmatrix} G & C^T \\ C & 0 \end{pmatrix}}_{\text{KKT matrix}}
-  \begin{pmatrix} z_p \\ \nu \end{pmatrix}
+  z = (x, y, s, \tau, \kappa, \theta) \in \R^{2n + m + 3}.
+\]
+The cone constraints $x \geq 0$, $s \geq 0$, $\tau \geq 0$, $\kappa \geq 0$ contribute the Gram matrix
+\[
+  G = \diag(\underbrace{w_x^2}_{n}, \underbrace{0}_{m}, \underbrace{w_s^2}_{n}, w_\tau^2, w_\kappa^2, 0).
+\]
+Note: $G$ has zeros at the free variable positions ($y$ and $\theta$).
+
+The four equality constraints \eqref{eq:primal}--\eqref{eq:norm} form
+\[
+  C = \begin{pmatrix}
+    A & 0 & 0 & -b & 0 & -r_p \\
+    0 & -A^T & -I_n & c & 0 & -r_d \\
+    -c^T & b^T & 0 & 0 & -1 & -r_g \\
+    r_d^T & r_p^T & 0 & r_g & 0 & 0
+  \end{pmatrix}
+  \in \R^{(m+n+2) \times (2n+m+3)}.
+\]
+The KKT system is
+\begin{equation} \label{eq:kkt}
+  \begin{pmatrix} G & C^T \\ C & 0 \end{pmatrix}
+  \begin{pmatrix} z \\ \nu \end{pmatrix}
   =
   \begin{pmatrix} \text{rhs}_p \\ d_{\text{eq}} \end{pmatrix}
-\]
-where:
-\begin{itemize}
-  \item $G = \mathcal{A}_{\text{cone}}^T W^2 \mathcal{A}_{\text{cone}}$ is the Gram matrix (from the cone constraints),
-  \item $C$ collects the equality constraints \eqref{eq:primal}--\eqref{eq:norm},
-  \item $z_p$ contains the primal variables and $\nu$ the equality duals,
-  \item $d_{\text{eq}}$ is the equality RHS (from \eqref{eq:norm}: $d_{\text{eq}} = -\alpha$ for the normalization row; zero for the others).
-\end{itemize}
-
-The cone constraints contribute to the Gram matrix via
+\end{equation}
+where $\nu = (\nu_p, \nu_d, \nu_g, \nu_n) \in \R^{m+n+2}$ are the equality duals and
 \[
-  \mathcal{A}_{\text{cone}} = \begin{pmatrix} I_n & & & \\ & I_n & & \\ & & 1 & \\ & & & 1 \end{pmatrix}
+  d_{\text{eq}} = (0, 0, 0, -\alpha)^T.
 \]
-(identity maps, since the cone constraints are $x \geq 0$, $s \geq 0$, $\tau \geq 0$, $\kappa \geq 0$). Thus $G = W^2$ restricted to the cone variable positions.
 
 \subsection{Right-hand side}
 
-The RHS of the Newton system at $(W, k)$ is
+Since $b_{\text{cone}} = 0$ (all cone constraints have zero affine term), the RHS at barrier parameter $k$ simplifies to
 \[
-  \text{rhs} = -k \, c_{\text{cost}} + A_{\text{cone}}^T(-k \, b_{\text{cone}} + 2W) + d_{\text{eq}}
+  (\text{rhs}_p)_i = \begin{cases}
+    -k \cdot (\alpha) + 2w_i & \text{if } i = \theta \text{ (cost component)}, \\
+    2w_i & \text{if } i \text{ is a cone variable}, \\
+    0 & \text{if } i \text{ is a free variable } (y).
+  \end{cases}
 \]
-where:
+More precisely, at the cone variable positions:
+\begin{align}
+  (\text{rhs}_p)_x &= 2 w_x, \\
+  (\text{rhs}_p)_y &= 0, \\
+  (\text{rhs}_p)_s &= 2 w_s, \\
+  (\text{rhs}_p)_\tau &= 2 w_\tau, \\
+  (\text{rhs}_p)_\kappa &= 2 w_\kappa, \\
+  (\text{rhs}_p)_\theta &= -k \alpha.
+\end{align}
+
+\subsection{Direction from the KKT solution}
+
+Let $z = (x^*, y^*, s^*, \tau^*, \kappa^*, \theta^*)$ be the KKT solution. The cone ``slack'' is
+\[
+  S_i = -z_i \quad \text{(since } b_{\text{cone}} = 0 \text{ and } \mathcal{A}_{\text{cone}} = I\text{)}.
+\]
+The direction components are
+\begin{align}
+  d_{x,i} &= 1 - w_{x,i} \cdot x^*_i, \label{eq:dx} \\
+  d_{s,i} &= 1 - w_{s,i} \cdot s^*_i, \label{eq:ds} \\
+  d_\tau &= 1 - w_\tau \cdot \tau^*, \\
+  d_\kappa &= 1 - w_\kappa \cdot \kappa^*.
+\end{align}
+
+\section{Analysis: is $d_x = -d_s$?}
+
+\subsection{At the fixed point}
+
+At the fixed point $(\hat{x}, \hat{s}, \hat{y}, \hat{\tau}, \hat{\kappa}, \theta = 1)$ with $W = I$ and $k = 1$:
 \begin{itemize}
-  \item $c_{\text{cost}} = (\underbrace{0, \ldots, 0}_{n}, \underbrace{0, \ldots, 0}_{m}, \underbrace{0, \ldots, 0}_{n}, 0, 0, \alpha)$ is the cost vector (only the $\theta$ component is nonzero),
-  \item $b_{\text{cone}} = 0$ (the cone constraints have zero affine term since they are $x \geq 0$, etc.),
-  \item $d_{\text{eq}}$ injects the equality RHS at the dual variable positions.
+  \item $\hat{x} = \hat{s} = e_n$, so $d_{x,i} = 1 - 1 \cdot \hat{x}_i^* = 1 - \hat{x}_i^*$ and $d_{s,i} = 1 - \hat{s}_i^*$.
+  \item By the symmetry of the embedding, the cost $\alpha \theta$ and the constraint structure couple $x$ and $s$ through the dual equality \eqref{eq:dual}: $-A^T y - s + c\tau = r_d \theta$.
 \end{itemize}
 
-After solving, the Newton direction is
-\begin{align}
-  d_i &= 1 + W_i \cdot S_i \quad \text{for each cone component } i, \\
-  S &= -k \, b_{\text{cone}} - \mathcal{A}_{\text{cone}} \, z_p = -\mathcal{A}_{\text{cone}} \, z_p,
-\end{align}
-and the primal--dual variables are recovered as
-\begin{align}
-  s_i &= \frac{1 - d_i}{k \, W_i}, \\
-  \lambda_i &= \frac{(1 + d_i) \, W_i}{k^{-1}} = k \, W_i \, (1 + d_i).
-\end{align}
+\subsection{General case}
 
-\subsection{Complementarity}
-
-The duality gap at $(W, d, k)$ is
+From \eqref{eq:dx}--\eqref{eq:ds}:
 \[
-  \mu \cdot \bigl( R - \|d\|^2 \bigr) = \frac{1}{k^2} \bigl( (2n+2) - \|d\|^2 \bigr)
+  d_{x,i} + d_{s,i} = 2 - w_{x,i} x^*_i - w_{s,i} s^*_i.
 \]
-where $R = 2n + 2$ is the rank of the product cone. At convergence, $\|d\|^2 \to R$ and $\mu \to 0$.
+For $d_x = -d_s$ we would need $d_{x,i} + d_{s,i} = 0$, i.e.,
+\[
+  w_{x,i} x^*_i + w_{s,i} s^*_i = 2 \quad \forall i.
+\]
 
-\section{Structure of the embedding}
+This holds at the analytic center (where $w_{x,i} x^*_i = w_{s,i} s^*_i = 1$ by centrality). However, it does \textbf{not} hold in general. The KKT solution $(x^*, s^*)$ depends on the equality constraints, and there is no structural reason for $w_x \circ x^* + w_s \circ s^*$ to equal $2e$.
 
-For the extended embedding, the $2n + 2$ cone variables are $(x_1, \ldots, x_n, s_1, \ldots, s_n, \tau, \kappa)$ and the free variables are $(y_1, \ldots, y_m, \theta)$. The equality constraints \eqref{eq:primal}--\eqref{eq:norm} couple all variables. The KKT system has dimension $(2n + m + 3) + (m + n + 2) = 3n + 2m + 5$, consisting of $2n + m + 3$ primal variables and $m + n + 2$ equality duals.
+\subsection{When $W = I$}
 
-The key property: the fixed point $(\hat{x}, \hat{s}, \hat{y}, \hat{\tau}, \hat{\kappa}, \theta = 1)$ is strictly feasible, so the initial $W = I$ corresponds to all cone slacks equal to 1 (strictly positive). The geodesic iteration preserves cone feasibility ($d_\infty \leq 1$ ensures slacks remain nonneg), and $k$ increases monotonically, driving $\mu = 1/k^2 \to 0$ and $\theta \to 0$.
+At $W = I$ (initial scaling), the condition becomes $x^*_i + s^*_i = 2$. From the RHS:
+\[
+  (\text{rhs}_p)_x = 2e, \quad (\text{rhs}_p)_s = 2e.
+\]
+The Gram contributions are $G_x = I$, $G_s = I$. The KKT system gives
+\[
+  x^* + C_x^T \nu = 2e, \qquad s^* + C_s^T \nu = 2e
+\]
+where $C_x^T$ and $C_s^T$ are the columns of $C^T$ corresponding to $x$ and $s$. From the equality constraints:
+\begin{itemize}
+  \item $C_x$ has rows: $A$ (primal), $0$ (dual), $-c^T$ (gap), $r_d^T$ (norm).
+  \item $C_s$ has rows: $0$ (primal), $-I$ (dual), $0$ (gap), $0$ (norm).
+\end{itemize}
+So $C_s^T \nu = -\nu_d$ and $C_x^T \nu = A^T \nu_p - c \nu_g + r_d \nu_n$.
+
+Therefore:
+\begin{align}
+  x^* &= 2e - A^T \nu_p + c \nu_g - r_d \nu_n, \\
+  s^* &= 2e + \nu_d.
+\end{align}
+And:
+\[
+  x^*_i + s^*_i = 4 - (A^T \nu_p)_i + c_i \nu_g - (r_d)_i \nu_n + (\nu_d)_i.
+\]
+This equals $2$ only if
+\[
+  (A^T \nu_p)_i - c_i \nu_g + (r_d)_i \nu_n - (\nu_d)_i = 2 \quad \forall i,
+\]
+which is \textbf{not} generically true. Therefore $d_x \neq -d_s$ in general.
+
+\subsection{Conclusion}
+
+$d_x = -d_s$ does not hold. The $x$ and $s$ directions are coupled through the equality constraints but are not negatives of each other. The rank of the product cone is $R = 2n + 2$, and all $2n + 2$ direction components are independently determined by the KKT system. Reducing the effective dimension requires exploiting the equality structure to eliminate variables from the KKT system, not a simple sign relationship.
 
 \end{document}
