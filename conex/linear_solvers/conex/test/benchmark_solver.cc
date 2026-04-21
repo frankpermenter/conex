@@ -214,13 +214,19 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
       return result;
     });
 
+  // --- Cold-started Hybrid (no PhaseOne) ---
+  auto r4 = RunAlgo("ColdHybrid", *kkt, cost_rhs, problem, solver,
+    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+      return SolveGeodesicHybrid(k, c, W, max_iters, tol, true);
+    });
+
   // --- Summary table ---
   printf("  %-12s %5s %5s %10s %14s %10s %10s %8s %s\n",
          "Algorithm", "iters", "fac", "mu", "cost", "dual_res",
          "compl", "ms", "ok");
   printf("  %s\n", std::string(90, '-').c_str());
   double c0 = objective_constant;
-  for (const auto* r : {&r1, &r2, &r3}) {
+  for (const auto* r : {&r1, &r2, &r3, &r4}) {
     printf("  %-12s %5d %5d %10.2e %14.6e %10.2e %10.2e %8.1f %s\n",
            r->name, r->iterations, r->factorizations,
            r->mu, r->primal_cost + c0, r->dual_residual,
