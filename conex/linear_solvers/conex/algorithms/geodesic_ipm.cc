@@ -1100,15 +1100,14 @@ GeodesicResult SolveGeodesicLP(
     if (s_dot_x < tolerance && d_inf < 1.01) break;
   }
 
-  // Optimality check.
-  // For the LP path: lambda = (1/k) * P(W^{1/2})(e + d) where d is from
-  // the last decomposition.  But after the geodesic step, W changed and d
-  // is stale.  Recompute at the current W.
+  // Recompute at the final W (the geodesic step updated W after the
+  // last decomposition).
   if (result.x.size() > 0) {
     double k_final = 1.0 / std::sqrt(result.mu);
     RowSpace d_final = kkt.MakeRowSpace();
     Eigen::VectorXd y_final;
     ComputeDirectNewtonStep(kkt, cost_rhs_blend, b, W, k_final, d_final, y_final);
+    result.x = y_final / k_final;
 
     RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
     RowSpace ones = kkt.MakeRowSpace();
