@@ -1332,8 +1332,7 @@ GeodesicResult SolveGeodesicHybrid(
   result.total_solves = total_sol;
 
   // Recover x: solve Gram * y = RHS at the final (W, r).
-  // The last ComputeHybridDirection already solved this;
-  // redo to extract y as x (no k scaling in hybrid).
+  // Recover x by re-solving the Newton system (same as ComputeHybridDirection).
   {
     kkt.SetScaling(W);
     kkt.AssembleAndFactor();
@@ -1344,6 +1343,13 @@ GeodesicResult SolveGeodesicHybrid(
     RowSpace v = addScaled(quadraticRepresentation(W, b),
                            quadraticRepresentation(sqrtW_final, r), -1, 2.0);
     kkt.AccumulateAtranspose(v, y);
+    // Inject equality RHS (must match ComputeHybridDirection).
+    auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+    if (ts && !ts->equality_sub_assemblers().empty()) {
+      auto d_rhs = ts->EqualityAffineTermRHS();
+      if (tau != 1.0) d_rhs *= tau;
+      y += d_rhs;
+    }
     kkt.SolveSolverRHS(y);
     int nr = kkt.number_of_variables();
     result.x.resize(nr);
