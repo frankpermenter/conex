@@ -1270,15 +1270,14 @@ GeodesicResult SolveGeodesicHybrid(
       r_updates_this_fac = 0;
     } else {
       // Update r using delta (shrinks when gap > 0, may grow when gap < 0).
-      // Refactor so the next direction reflects the current (W, r) state.
+      // W is unchanged so the Gram matrix A'W²A is the same — no
+      // refactorization needed, only a back-solve with the new RHS.
       shrinkR(r, delta);
-      kkt.SetScaling(W);
-      if (!kkt.AssembleAndFactor()) break;
-      total_fac++;
       r_updates_this_fac++;
       r_updates++;
     }
-    // Recompute direction at updated (W, r) with fresh factorization.
+    // Recompute direction at current (W, r).  After a W-update this uses
+    // the fresh factorization; after an r-update it reuses the existing one.
     {
       RowSpace d2 = kkt.MakeRowSpace();
       RowSpace delta2 = kkt.MakeRowSpace();
