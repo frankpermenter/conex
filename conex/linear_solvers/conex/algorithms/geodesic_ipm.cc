@@ -1237,6 +1237,10 @@ GeodesicResult SolveGeodesicHybrid(
   // Unscaled b for bTl computation (b was scaled by tau above).
   RowSpace b_unscaled = kkt.GetAffineTerm();
 
+  // Duality cost: cost_rhs + d_eq at dual positions.
+  // duality_cost.dot(y) = c'x + d'nu (full objective with equality terms).
+  auto duality_cost = MakeDualityCost(kkt, cost_rhs);
+
   if (verbose) {
     printf("  %3s  %12s  %10s %10s  %12s  %12s  %12s  %6s  %6s\n",
            "it", "gap", "d_pre", "d_post", "|r|^2/m", "bTl", "cTx",
@@ -1305,16 +1309,24 @@ GeodesicResult SolveGeodesicHybrid(
       RowSpace sqrtW_v = EuclideanJordanAlgebra::sqrt(W);
       RowSpace lam_v = quadraticRepresentation(sqrtW_v, r + last_delta);
       double bTl_phys = dot(b_unscaled, lam_v) / tau;
-      // cTx: re-solve and dot with a fresh copy of cost_scaled.
+      // cTx + dTnu: re-solve and dot with duality_cost (includes d_eq).
       auto y_v = kkt.MakeSolverRHS();
       y_v = cost_scaled;
       y_v *= -1;
       RowSpace v_v = addScaled(quadraticRepresentation(W, b),
                                quadraticRepresentation(sqrtW_v, r), -1, 2.0);
       kkt.AccumulateAtranspose(v_v, y_v);
+      // Inject d_eq into the solve RHS (must match ComputeHybridDirection).
+      auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+      if (ts && !ts->equality_sub_assemblers().empty()) {
+        auto d_rhs = ts->EqualityAffineTermRHS();
+        if (tau != 1.0) d_rhs *= tau;
+        y_v += d_rhs;
+      }
       kkt.SolveSolverRHS(y_v);
-      auto c_fresh = kkt.MakeSolverRHS(); c_fresh = cost_scaled;
-      double cTx_phys = kkt.dot(c_fresh, y_v) / (tau * tau);
+      auto dc_scaled = kkt.MakeSolverRHS(); dc_scaled = duality_cost;
+      dc_scaled *= tau;
+      double cTx_phys = kkt.dot(dc_scaled, y_v) / (tau * tau);
       printf("  %3d  %12.4e  %10.4e %10.4e  %12.4e  %12.4e  %12.4e  %6d  %s\n",
              iter, g, d_inf_pre, d_inf, mu_r, bTl_phys, cTx_phys,
              r_updates_this_fac, do_center ? "center" : "shrink");
