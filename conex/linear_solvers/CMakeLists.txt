@@ -519,6 +519,14 @@ target_link_libraries(qps_reader_test
   structural_rank
 )
 
+add_executable(tune_qps conex/test/tune_qps.cc)
+target_link_libraries(tune_qps
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+target_compile_options(tune_qps PRIVATE -O2)
+
 add_executable(tune_hybrid conex/test/tune_hybrid.cc)
 target_link_libraries(tune_hybrid
   algorithms constraints sparse_linear_constraint

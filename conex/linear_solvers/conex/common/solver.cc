@@ -17,8 +17,15 @@ Solver Solver::Build(const Model& model,
   auto [reduced, expansion] = RemoveStructuralRankDeficiency(model);
   Solver s;
   s.expansion_ = std::move(expansion);
-  s.reduced_linear_cost_ = reduced.linear_cost();
-  s.reduced_model_ = std::move(reduced);
+  if (config.row_scale) {
+    auto [scaled, row_scaling] = RowScaleModel(reduced);
+    s.row_scaling_ = std::move(row_scaling);
+    s.reduced_linear_cost_ = scaled.linear_cost();
+    s.reduced_model_ = std::move(scaled);
+  } else {
+    s.reduced_linear_cost_ = reduced.linear_cost();
+    s.reduced_model_ = std::move(reduced);
+  }
   s.system_ = KKTSystem::Build(s.reduced_model_, config);
   return s;
 }
@@ -125,13 +132,30 @@ ConstraintDuals Solver::ExtractDuals(
       using T = std::decay_t<decltype(data)>;
 
       if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
-        duals.slack.push_back(system_.GatherConstraintRows(i, slack_rs));
-        duals.lambda.push_back(system_.GatherConstraintRows(i, lambda));
+        auto s_scaled = system_.GatherConstraintRows(i, slack_rs);
+        auto l_scaled = system_.GatherConstraintRows(i, lambda);
+        // Unscale: s_orig = s_scaled * scale, lambda_orig = l_scaled / scale.
+        const auto& sc = row_scaling_.row_scale[i];
+        if (sc.size() > 0) {
+          duals.slack.push_back(s_scaled.cwiseProduct(sc));
+          duals.lambda.push_back(l_scaled.cwiseQuotient(sc));
+        } else {
+          duals.slack.push_back(s_scaled);
+          duals.lambda.push_back(l_scaled);
+        }
 
       } else if constexpr (std::is_same_v<T, Model::SOCConstraintData>) {
-        duals.slack.push_back(system_.GatherConstraintRows(i, slack_rs));
-        // SOC quadratic representation P(W) = 2W² introduces a factor of 2.
-        duals.lambda.push_back(2.0 * system_.GatherConstraintRows(i, lambda));
+        auto s_scaled = system_.GatherConstraintRows(i, slack_rs);
+        auto l_scaled = system_.GatherConstraintRows(i, lambda);
+        const auto& sc = row_scaling_.row_scale[i];
+        if (sc.size() > 0) {
+          duals.slack.push_back(s_scaled.cwiseProduct(sc));
+          // SOC quadratic representation P(W) = 2W² introduces a factor of 2.
+          duals.lambda.push_back(2.0 * l_scaled.cwiseQuotient(sc));
+        } else {
+          duals.slack.push_back(s_scaled);
+          duals.lambda.push_back(2.0 * l_scaled);
+        }
 
       } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
         int n = data.B.rows();

@@ -84,6 +84,7 @@ class Solver {
   KKTSystem system_;
   Model reduced_model_;
   Expansion expansion_;
+  RowScaling row_scaling_;
   Eigen::VectorXd reduced_linear_cost_;
 };
 

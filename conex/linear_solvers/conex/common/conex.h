@@ -32,6 +32,10 @@ struct SolverConfiguration {
   // with known block structure.
   bool use_quotient_amd = false;
 
+  // Row-scale linear constraints so that b_i ≈ 1.  Improves conditioning
+  // for problems with large b values (e.g., bound constraints with big bounds).
+  bool row_scale = false;
+
   TreeSolverOptions tree;
 };
 

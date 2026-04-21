@@ -322,4 +322,17 @@ inline std::pair<Model, Expansion> Preprocess(const Model& problem) {
   return RemoveStructuralRankDeficiency(problem);
 }
 
+// Per-constraint row scale factors applied by RowScaleModel.
+struct RowScaling {
+  // row_scale[constraint_id] holds per-row scale factors for that constraint.
+  // The original row i was divided by row_scale[id](i).
+  // To recover original duals: lambda_original_i = lambda_scaled_i / scale_i.
+  std::vector<Eigen::VectorXd> row_scale;
+};
+
+// Scale each row of each linear/SOC constraint so that b_i ≈ 1.
+// For row i: scale = max(|b_i|, ||A_i||) (falls back to row norm when b≈0).
+// Returns (scaled_model, scaling).
+std::pair<Model, RowScaling> RowScaleModel(const Model& model);
+
 }  // namespace conex

@@ -248,4 +248,74 @@ std::pair<Model, Expansion> RemoveStructuralRankDeficiency(
   return {reduced, expansion};
 }
 
+std::pair<Model, RowScaling> RowScaleModel(const Model& model) {
+  Model scaled;
+  RowScaling scaling;
+  scaling.row_scale.resize(model.num_constraints());
+
+  for (int i = 0; i < model.num_constraints(); ++i) {
+    std::visit([&](const auto& data) {
+      using T = std::decay_t<decltype(data)>;
+
+      if constexpr (std::is_same_v<T, Model::SOCConstraintData>) {
+        // SOC constraints cannot be row-scaled independently —
+        // per-row scaling destroys cone structure (||λ₁|| ≤ λ₀).
+        scaled.AddSOCConstraint(data.A, data.b, data.vars);
+
+      } else if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
+        int m = data.A.rows();
+        Eigen::VectorXd scale(m);
+        for (int r = 0; r < m; ++r) {
+          // Scale by max(|b_i|, ||A_i||_inf) to avoid division by zero.
+          double row_norm = 0;
+          for (Eigen::SparseMatrix<double>::InnerIterator it(data.A, 0);
+               it; ++it) {
+            // This iterates column 0 only; need all columns.
+          }
+          // Compute row norm via column iteration.
+          row_norm = 0;
+          for (int k = 0; k < data.A.outerSize(); ++k)
+            for (Eigen::SparseMatrix<double>::InnerIterator it(data.A, k);
+                 it; ++it)
+              if (it.row() == r)
+                row_norm = std::max(row_norm, std::abs(it.value()));
+          double bi = std::abs(data.b(r));
+          scale(r) = std::max(bi, row_norm);
+          if (scale(r) < 1e-15) scale(r) = 1.0;  // degenerate row
+        }
+        scaling.row_scale[i] = scale;
+
+        // Build scaled A and b.
+        Eigen::VectorXd inv_scale = scale.cwiseInverse();
+        // Scale rows: A_scaled(r,:) = A(r,:) / scale(r).
+        std::vector<Eigen::Triplet<double>> trips;
+        for (int k = 0; k < data.A.outerSize(); ++k)
+          for (Eigen::SparseMatrix<double>::InnerIterator it(data.A, k);
+               it; ++it)
+            trips.emplace_back(it.row(), it.col(),
+                               it.value() * inv_scale(it.row()));
+        Eigen::SparseMatrix<double> A_scaled(m, data.A.cols());
+        A_scaled.setFromTriplets(trips.begin(), trips.end());
+        Eigen::VectorXd b_scaled = data.b.cwiseProduct(inv_scale);
+
+        scaled.AddLinearConstraint(A_scaled, b_scaled, data.vars);
+
+      } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
+        scaled.AddQuadraticCost(data.Q_sparse, data.vars);
+      } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
+        scaled.AddPSDConstraint(data.A_list, data.B, data.vars,
+                                 data.use_chordal);
+      } else if constexpr (std::is_same_v<T, Model::EqualityConstraintData>) {
+        scaled.AddEqualityConstraint(data.C, data.d, data.primal_vars);
+      }
+    }, model.constraint(i));
+  }
+
+  if (model.has_linear_cost()) {
+    scaled.SetLinearCost(model.linear_cost());
+  }
+
+  return {scaled, scaling};
+}
+
 }  // namespace conex
