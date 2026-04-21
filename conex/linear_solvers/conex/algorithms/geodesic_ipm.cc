@@ -183,6 +183,13 @@ static void ComputeDirectNewtonStep(
   y *= -k;
   RowSpace v = addScaled(quadraticRepresentation(W, b), W, -k, 2.0);
   kkt.AccumulateAtranspose(v, y);
+  // Inject equality RHS: +k*d at dual positions.
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+  if (ts && !ts->equality_sub_assemblers().empty()) {
+    auto d_rhs = ts->EqualityAffineTermRHS();
+    d_rhs *= k;
+    y += d_rhs;
+  }
   kkt.SolveSolverRHS(y);
 
   RowSpace row = kkt.MakeRowSpace();
@@ -226,6 +233,12 @@ static void ComputeDecomposition(
   v = quadraticRepresentation(W, b);
   kkt.AccumulateAtranspose(v, rhs1);
   rhs1 *= -1;
+  // Inject equality RHS: +d at dual positions.
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+  if (ts && !ts->equality_sub_assemblers().empty()) {
+    auto d_rhs = ts->EqualityAffineTermRHS();
+    rhs1 += d_rhs;
+  }
 
   auto y = kkt.MakeSolverRHS(2);
   y.SetColumn(0, rhs0);
