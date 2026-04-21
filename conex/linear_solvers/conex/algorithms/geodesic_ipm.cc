@@ -859,7 +859,7 @@ GeodesicResult SolveGeodesicPhaseOne(
             RowSpace d_hyb = kkt.MakeRowSpace();
             RowSpace delta_hyb = kkt.MakeRowSpace();
             ComputeHybridDirection(kkt, c_sc, b_sc, W, r_chk,
-                                    d_hyb, delta_hyb);
+                                    d_hyb, delta_hyb, tau);
             double dinf_hyb = normInf(d_hyb);
 
             printf("  PHASE1 DONE: theta=0 at iter %d"
@@ -1129,7 +1129,8 @@ HybridDirection ComputeHybridDirection(
     const RowSpace& W,
     const RowSpace& r,
     RowSpace& d,
-    RowSpace& delta) {
+    RowSpace& delta,
+    double tau_scale) {
   auto y = kkt.MakeSolverRHS();
   y = cost_rhs;
   y *= -1;
@@ -1137,6 +1138,14 @@ HybridDirection ComputeHybridDirection(
   RowSpace v = addScaled(quadraticRepresentation(W, b),
                          quadraticRepresentation(sqrtW, r), -1, 2.0);
   kkt.AccumulateAtranspose(v, y);
+  // Inject equality RHS: +d_eq at dual positions, scaled by tau to match
+  // the tau-scaled cost_rhs and b passed by SolveGeodesicHybrid.
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+  if (ts && !ts->equality_sub_assemblers().empty()) {
+    auto d_rhs = ts->EqualityAffineTermRHS();
+    if (tau_scale != 1.0) d_rhs *= tau_scale;
+    y += d_rhs;
+  }
   kkt.SolveSolverRHS(y);
 
   RowSpace row = kkt.MakeRowSpace();
@@ -1240,7 +1249,7 @@ GeodesicResult SolveGeodesicHybrid(
   for (int iter = 0; iter < max_iterations; ++iter) {
     RowSpace d = kkt.MakeRowSpace();
     RowSpace delta = kkt.MakeRowSpace();
-    auto info = ComputeHybridDirection(kkt, cost_scaled, b, W, r, d, delta);
+    auto info = ComputeHybridDirection(kkt, cost_scaled, b, W, r, d, delta, tau);
     last_delta = delta;
     total_sol++;
 
@@ -1281,7 +1290,7 @@ GeodesicResult SolveGeodesicHybrid(
     {
       RowSpace d2 = kkt.MakeRowSpace();
       RowSpace delta2 = kkt.MakeRowSpace();
-      auto info2 = ComputeHybridDirection(kkt, cost_scaled, b, W, r, d2, delta2);
+      auto info2 = ComputeHybridDirection(kkt, cost_scaled, b, W, r, d2, delta2, tau);
       total_sol++;
       g = info2.gap;
       d_inf = info2.d_inf;

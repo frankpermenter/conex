@@ -282,7 +282,8 @@ HybridDirection ComputeHybridDirection(
     const RowSpace& W,
     const RowSpace& r,
     RowSpace& d,
-    RowSpace& delta);
+    RowSpace& delta,
+    double tau_scale = 1.0);
 
 // Single centering step: factor with W², compute direction, take
 // geodesic/automorphism step.  Modifies W and r in place.
