@@ -154,17 +154,18 @@ bool TestPrimalFeasibility(const ProblemParts& parts, const Model& original) {
 // Test 3: Dual strict feasibility (Q=0, original A, b, c)
 // =====================================================================
 bool TestDualFeasibility(const ProblemParts& parts, const Model& original) {
-  printf("Test 3: Dual strict feasibility (Q=0, original A,b,c, d=0)\n");
+  printf("Test 3: Dual strict feasibility (original A,b,c,Q, d=0)\n");
 
-  // Copy original constraints, skip Q. Use original c.
-  // Set equality RHS d=0 (dual feasibility is about A'λ = c,
-  // independent of d).
+  // Copy all original constraints and Q. Set equality RHS d=0
+  // (dual feasibility A'λ + Qx = c is independent of d).
   Model model;
   for (int i = 0; i < original.num_constraints(); ++i) {
     std::visit([&](const auto& data) {
       using T = std::decay_t<decltype(data)>;
       if constexpr (std::is_same_v<T, Model::LinearConstraintData>)
         model.AddLinearConstraint(data.A, data.b, data.vars);
+      else if constexpr (std::is_same_v<T, Model::QuadraticCostData>)
+        model.AddQuadraticCost(data.Q_sparse, data.vars);
       else if constexpr (std::is_same_v<T, Model::EqualityConstraintData>)
         model.AddEqualityConstraint(data.C,
             VectorXd::Zero(data.d.size()), data.primal_vars);
