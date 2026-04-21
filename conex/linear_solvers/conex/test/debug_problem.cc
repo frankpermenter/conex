@@ -151,20 +151,26 @@ bool TestPrimalFeasibility(const ProblemParts& parts, const Model& original) {
 }
 
 // =====================================================================
-// Test 3: Dual feasibility (b=0, Q=0, original c)
+// Test 3: Dual strict feasibility (Q=0, original A, b, c)
 // =====================================================================
 bool TestDualFeasibility(const ProblemParts& parts, const Model& original) {
-  printf("Test 3: Dual feasibility (b=e, Q=0, original A, original c)\n");
+  printf("Test 3: Dual strict feasibility (Q=0, original A,b,c)\n");
 
+  // Copy original constraints, skip Q. Use original c.
+  // ThetaContinuation solves the LP: if lambda > 0 at optimum,
+  // the dual is strictly feasible.
   Model model;
-  // Use original A but b=e (guarantees primal interior at x=0).
-  for (auto& lc : parts.linears)
-    model.AddLinearConstraint(lc.A, VectorXd::Ones(lc.m), lc.vars);
-  // No quadratic cost.
-  for (auto& ec : parts.equalities)
-    model.AddEqualityConstraint(ec.C, ec.d, ec.vars);
-  for (auto& sc : parts.socs)
-    model.AddSOCConstraint(sc.A, sc.b, sc.vars);
+  for (int i = 0; i < original.num_constraints(); ++i) {
+    std::visit([&](const auto& data) {
+      using T = std::decay_t<decltype(data)>;
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData>)
+        model.AddLinearConstraint(data.A, data.b, data.vars);
+      else if constexpr (std::is_same_v<T, Model::EqualityConstraintData>)
+        model.AddEqualityConstraint(data.C, data.d, data.primal_vars);
+      else if constexpr (std::is_same_v<T, Model::SOCConstraintData>)
+        model.AddSOCConstraint(data.A, data.b, data.vars);
+    }, original.constraint(i));
+  }
 
   VectorXd c = original.has_linear_cost()
       ? original.linear_cost()
