@@ -122,7 +122,7 @@ TEST(ExtendedEmbedding, SolveAndRecover) {
     VectorXd x_opt = result.x.segment(info.x_start(), n) / tau;
     VectorXd y_opt = result.x.segment(info.y_start(), m) / tau;
     double primal_obj = c.dot(x_opt);
-    double dual_obj = -b.dot(y_opt);
+    double dual_obj = b.dot(y_opt);
 
     printf("  primal obj = %.6e\n", primal_obj);
     printf("  dual obj   = %.6e\n", dual_obj);
