@@ -115,9 +115,13 @@ HybridSwitchPolicy MakeAlternateEveryK(int k) {
 
 struct TuningResult {
   int factorizations = 0;
-  int solves = 0;
-  bool converged = false;
-  KKTResiduals residuals;
+  // Algorithm-internal convergence: |gap| < eps and d_inf <= 1.
+  double gap = 0;
+  double d_inf = 0;
+  double mu = 0;
+  bool converged = false;       // internal: |gap| < eps && d_inf <= 1
+  // Model-space KKT residuals (for reference).
+  KKTResiduals model_residuals;
 };
 
 TuningResult RunPolicy(const TestLP& lp, HybridSwitchPolicy policy,
@@ -129,15 +133,18 @@ TuningResult RunPolicy(const TestLP& lp, HybridSwitchPolicy policy,
   algo.policy = policy;
   auto result = solver.Solve(algo);
 
-  // Check KKT residuals against the Model.
-  auto res = ComputeLinearKKTResiduals(
-      lp.model, result.x, result.duals.lambda);
-
   TuningResult out;
   out.factorizations = result.factorizations;
-  out.solves = result.iterations;  // approximate
-  out.residuals = res;
-  out.converged = res.MaxResidual() < eps;
+  out.gap = result.gap;
+  out.d_inf = result.d_inf;
+  out.mu = result.mu;
+  out.converged = std::abs(result.gap) < eps && result.d_inf <= 1.001;
+
+  // Model-space residuals for reference.
+  if (!result.duals.lambda.empty()) {
+    out.model_residuals = ComputeLinearKKTResiduals(
+        lp.model, result.x, result.duals.lambda);
+  }
   return out;
 }
 
@@ -146,17 +153,16 @@ TuningResult RunPolicy(const TestLP& lp, HybridSwitchPolicy policy,
 // =====================================================================
 
 void PrintHeader() {
-  printf("%-22s | %4s %5s | %10s %10s %10s %10s | %s\n",
-         "Policy", "fac", "sol",
-         "compl", "station", "min_s", "min_lam", "conv");
-  printf("%s\n", std::string(95, '-').c_str());
+  printf("%-22s | %4s | %10s %8s %10s | %10s %10s | %s\n",
+         "Policy", "fac", "gap", "d_inf", "mu",
+         "kkt_compl", "kkt_stat", "conv");
+  printf("%s\n", std::string(100, '-').c_str());
 }
 
 void PrintResult(const char* name, const TuningResult& r) {
-  printf("%-22s | %4d %5d | %10.2e %10.2e %10.2e %10.2e | %s\n",
-         name, r.factorizations, r.solves,
-         r.residuals.complementarity, r.residuals.stationarity,
-         r.residuals.primal_infeasibility, r.residuals.dual_infeasibility,
+  printf("%-22s | %4d | %10.2e %8.4f %10.2e | %10.2e %10.2e | %s\n",
+         name, r.factorizations, r.gap, r.d_inf, r.mu,
+         r.model_residuals.complementarity, r.model_residuals.stationarity,
          r.converged ? "yes" : "NO");
 }
 

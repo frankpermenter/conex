@@ -100,6 +100,8 @@ SolveResult Solver::Solve(const Algorithm& algo) {
   result.x = ExpandSolution(raw.x);
   result.objective = ComputeObjective(cost_rhs, raw.x);
   result.mu = raw.mu;
+  result.gap = raw.complementarity;
+  result.d_inf = raw.d_inf_norm;
   result.iterations = raw.iterations;
   result.factorizations = raw.total_factorizations;
   if (raw.lambda.total_rows() > 0) {

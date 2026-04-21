@@ -48,6 +48,8 @@ struct SolveResult {
   Eigen::VectorXd x;          // primal solution in Model (original) space
   double objective = 0;        // c'x + (1/2)x'Qx
   double mu = 0;               // barrier parameter at termination
+  double gap = 0;              // algorithm's internal gap: |r|²-|r·d|²
+  double d_inf = 0;            // ||d||_inf (feasible when <= 1)
   int iterations = 0;
   int factorizations = 0;
   bool converged = false;
