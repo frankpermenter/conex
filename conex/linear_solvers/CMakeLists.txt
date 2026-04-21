@@ -94,6 +94,7 @@ add_library(sparse_linear_constraint
   conex/common/sparse_psd_constraint.cc
   conex/common/sparse_quadratic_term.cc
   conex/common/sparse_equality_constraint.cc
+  conex/common/extended_embedding.cc
   conex/common/model.cc
   conex/common/chordal_decomp.cc
 )
@@ -312,6 +313,17 @@ target_link_libraries(geodesic_hybrid_r_test
   GTest::gtest_main
 )
 gtest_discover_tests(geodesic_hybrid_r_test)
+
+add_executable(extended_embedding_test
+  conex/test/extended_embedding_test.cc
+)
+target_link_libraries(extended_embedding_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(extended_embedding_test)
 
 add_executable(alternating_projections_test
   conex/test/alternating_projections_test.cc
