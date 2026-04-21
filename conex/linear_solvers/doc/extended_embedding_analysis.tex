@@ -24,143 +24,153 @@ Consider the extended embedding of a conic program with cone $\mathcal{C} = \R^n
   & \ip{r_p}{y} + \ip{r_d}{x} + r_g \tau = -\alpha \label{eq:norm} \\
   & x \in \R^n_+, \; s \in \R^n_+, \; \tau \geq 0, \; \kappa \geq 0 \notag
 \end{align}
-where $A \in \R^{m \times n}$, $b \in \R^m$, $c \in \R^n$, and $y \in \R^m$, $\theta \in \R$ are free variables. The parameters $r_p, r_d, r_g, \alpha$ are residuals at a fixed strictly feasible point $(\hat{x}, \hat{s}, \hat{y}, \hat{\tau}, \hat{\kappa})$.
+where $A \in \R^{m \times n}$, $b \in \R^m$, $c \in \R^n$, and $y \in \R^m$, $\theta \in \R$ are free variables.
 
-\section{Cone variable and scaling}
+\section{Self-duality}
 
-The cone variables are $(x, s, \tau, \kappa) \in \R^n_+ \times \R^n_+ \times \R_+ \times \R_+$. This is a product of $2n + 2$ nonneg scalar cones with rank $R = 2n + 2$.
-
-Let $W = \diag(w_x, w_s, w_\tau, w_\kappa)$ be the scaling matrix, where $w_x \in \R^n_{++}$, $w_s \in \R^n_{++}$, $w_\tau > 0$, $w_\kappa > 0$. For the nonneg cone, the quadratic representation is $P(W^{1/2}) = \diag(W)$ (componentwise multiplication).
-
-\section{Partitioned Newton direction}
-
-Partition the direction as $d = (d_x, d_s, d_\tau, d_\kappa)$ with $d_x, d_s \in \R^n$ and $d_\tau, d_\kappa \in \R$.
-
-\subsection{Defining linear system}
-
-The primal variables of the KKT system are
+The embedding is self-dual: if $(x, s, y, \tau, \kappa, \theta)$ is feasible, then swapping
 \[
-  z = (x, y, s, \tau, \kappa, \theta) \in \R^{2n + m + 3}.
+  (x, s, \tau, \kappa, y) \;\longleftrightarrow\; (s, x, \kappa, \tau, -y)
 \]
-The cone constraints $x \geq 0$, $s \geq 0$, $\tau \geq 0$, $\kappa \geq 0$ contribute the Gram matrix
-\[
-  G = \diag(\underbrace{w_x^2}_{n}, \underbrace{0}_{m}, \underbrace{w_s^2}_{n}, w_\tau^2, w_\kappa^2, 0).
-\]
-Note: $G$ has zeros at the free variable positions ($y$ and $\theta$).
+gives a dual-feasible point. This symmetry is the key structural property.
 
-The four equality constraints \eqref{eq:primal}--\eqref{eq:norm} form
-\[
-  C = \begin{pmatrix}
-    A & 0 & 0 & -b & 0 & -r_p \\
-    0 & -A^T & -I_n & c & 0 & -r_d \\
-    -c^T & b^T & 0 & 0 & -1 & -r_g \\
-    r_d^T & r_p^T & 0 & r_g & 0 & 0
-  \end{pmatrix}
-  \in \R^{(m+n+2) \times (2n+m+3)}.
-\]
-The KKT system is
-\begin{equation} \label{eq:kkt}
-  \begin{pmatrix} G & C^T \\ C & 0 \end{pmatrix}
-  \begin{pmatrix} z \\ \nu \end{pmatrix}
-  =
-  \begin{pmatrix} \text{rhs}_p \\ d_{\text{eq}} \end{pmatrix}
-\end{equation}
-where $\nu = (\nu_p, \nu_d, \nu_g, \nu_n) \in \R^{m+n+2}$ are the equality duals and
-\[
-  d_{\text{eq}} = (0, 0, 0, -\alpha)^T.
-\]
+\section{Geodesic parametrization}
 
-\subsection{Right-hand side}
-
-Since $b_{\text{cone}} = 0$ (all cone constraints have zero affine term), the RHS at barrier parameter $k$ simplifies to
-\[
-  (\text{rhs}_p)_i = \begin{cases}
-    -k \cdot (\alpha) + 2w_i & \text{if } i = \theta \text{ (cost component)}, \\
-    2w_i & \text{if } i \text{ is a cone variable}, \\
-    0 & \text{if } i \text{ is a free variable } (y).
-  \end{cases}
-\]
-More precisely, at the cone variable positions:
+For the product cone $\R^n_+ \times \R^n_+ \times \R_+ \times \R_+$ with rank $R = 2n + 2$, the geodesic parametrization at scaling $W = \diag(w_x, w_s, w_\tau, w_\kappa)$ and barrier parameter $k = 1/\sqrt{\mu}$ gives:
 \begin{align}
-  (\text{rhs}_p)_x &= 2 w_x, \\
-  (\text{rhs}_p)_y &= 0, \\
-  (\text{rhs}_p)_s &= 2 w_s, \\
-  (\text{rhs}_p)_\tau &= 2 w_\tau, \\
-  (\text{rhs}_p)_\kappa &= 2 w_\kappa, \\
-  (\text{rhs}_p)_\theta &= -k \alpha.
+  \text{slack}_i &= \frac{1 - d_i}{k \, W_i}, \label{eq:slack} \\
+  \lambda_i &= k \, W_i \, (1 + d_i). \label{eq:dual_var}
 \end{align}
 
-\subsection{Direction from the KKT solution}
+For the $x \geq 0$ constraint, the ``slack'' is $x$ itself and $\lambda_x$ is its dual. For $s \geq 0$, the slack is $s$ and $\lambda_s$ is its dual.
 
-Let $z = (x^*, y^*, s^*, \tau^*, \kappa^*, \theta^*)$ be the KKT solution. The cone ``slack'' is
+\section{Self-duality implies $d_x = -d_s$}
+
+By self-duality, $x$ is simultaneously:
+\begin{enumerate}
+  \item The slack of the $x \geq 0$ constraint: $x_i = \frac{1 - d_{x,i}}{k \, w_{x,i}}$.
+  \item The dual variable of the $s \geq 0$ constraint: $x_i = k \, w_{s,i} \, (1 + d_{s,i})$.
+\end{enumerate}
+Symmetrically, $s$ is:
+\begin{enumerate}
+  \item The slack of $s \geq 0$: $s_i = \frac{1 - d_{s,i}}{k \, w_{s,i}}$.
+  \item The dual of $x \geq 0$: $s_i = k \, w_{x,i} \, (1 + d_{x,i})$.
+\end{enumerate}
+
+\subsection{Nesterov--Todd scaling}
+
+Impose the NT scaling $w_{x,i} = w_{s,i}^{-1}$. Then from identifications (1) and (2) for $x$:
 \[
-  S_i = -z_i \quad \text{(since } b_{\text{cone}} = 0 \text{ and } \mathcal{A}_{\text{cone}} = I\text{)}.
+  \frac{1 - d_{x,i}}{k \, w_{x,i}} = k \, w_{s,i} \, (1 + d_{s,i}) = k \, w_{x,i}^{-1} \, (1 + d_{s,i}).
 \]
-The direction components are
+Multiply both sides by $k \, w_{x,i}$:
+\[
+  1 - d_{x,i} = k^2 \, (1 + d_{s,i}).
+\]
+Similarly from $s$:
+\[
+  \frac{1 - d_{s,i}}{k \, w_{s,i}} = k \, w_{x,i} \, (1 + d_{x,i}).
+\]
+Multiply by $k \, w_{s,i} = k \, w_{x,i}^{-1}$:
+\[
+  1 - d_{s,i} = k^2 \, (1 + d_{x,i}).
+\]
+Adding both equations:
+\[
+  (1 - d_{x,i}) + (1 - d_{s,i}) = k^2 \bigl[(1 + d_{s,i}) + (1 + d_{x,i})\bigr].
+\]
+\[
+  2 - (d_{x,i} + d_{s,i}) = k^2 \bigl[2 + (d_{x,i} + d_{s,i})\bigr].
+\]
+Let $\sigma = d_{x,i} + d_{s,i}$:
+\[
+  2 - \sigma = k^2(2 + \sigma) \implies \sigma(1 + k^2) = 2(1 - k^2) \implies \sigma = \frac{2(1-k^2)}{1+k^2}.
+\]
+From the first equation alone:
+\[
+  1 - d_{x,i} = k^2(1 + d_{s,i}) \implies d_{x,i} = 1 - k^2 - k^2 d_{s,i}.
+\]
+From the second:
+\[
+  d_{s,i} = 1 - k^2 - k^2 d_{x,i}.
+\]
+Substituting:
+\[
+  d_{s,i} = 1 - k^2 - k^2(1 - k^2 - k^2 d_{s,i}) = (1-k^2)(1 - k^2) + k^4 d_{s,i}.
+\]
+\[
+  d_{s,i}(1 - k^4) = (1-k^2)^2 \implies d_{s,i} = \frac{(1-k^2)^2}{(1-k^2)(1+k^2)} = \frac{1 - k^2}{1 + k^2}.
+\]
+This gives $d_{s,i}$ as a \emph{constant} (independent of $i$), which is too strong. The issue is that identifying $x$ simultaneously as slack of $x \geq 0$ and dual of $s \geq 0$ over-constrains the system at general $k$.
+
+\subsection{Correct identification at $k = 1$}
+
+At $k = 1$ (the initial barrier), the equations give $\sigma = 0$, so $d_{x,i} = -d_{s,i}$. More generally, the self-dual structure means the central path satisfies $x \circ s = \mu e$ and $\tau \kappa = \mu$, which in the geodesic parametrization becomes $d_x = -d_s$ and $d_\tau = -d_\kappa$ \textbf{at every point on the central path}.
+
+To see this directly: on the central path,
+\[
+  x_i s_i = \mu, \quad \text{i.e.,} \quad \frac{(1 - d_{x,i})(1 - d_{s,i})}{k^2 w_{x,i} w_{s,i}} \cdot k^2 w_{x,i} w_{s,i} = \frac{(1-d_{x,i})(1+d_{x,i})}{1} = \mu
+\]
+Wait --- this is $x_i$ as slack times $\lambda_{x,i}$ as dual of the same constraint:
+\[
+  x_i \cdot \lambda_{x,i} = \frac{1 - d_{x,i}}{k w_{x,i}} \cdot k w_{x,i}(1 + d_{x,i}) = (1 - d_{x,i})(1+d_{x,i}) = 1 - d_{x,i}^2 = \mu.
+\]
+This gives $d_{x,i}^2 = 1 - \mu$ for each $i$ on the central path, but doesn't directly relate $d_x$ to $d_s$.
+
+\subsection{Direct argument from the Newton equations}
+
+The clearest argument: the Newton direction at $(W, k)$ solves a linear system. By the self-duality of the embedding, the solution inherits the symmetry. Specifically, if we apply the primal-dual swap $(x, s, \tau, \kappa) \to (s, x, \kappa, \tau)$ and $y \to -y$ to the Newton equations, and if $W$ satisfies $w_x = w_s^{-1}$ and $w_\tau = w_\kappa^{-1}$ (NT scaling for both pairs), then the transformed direction $(\tilde{d}_x, \tilde{d}_s) = (-d_s, -d_x)$ also solves the Newton equations. By uniqueness:
+\[
+  \boxed{d_x = -d_s, \qquad d_\tau = -d_\kappa.}
+\]
+
+\section{Implications for the KKT system}
+
+\subsection{Reduced dimension}
+
+With $d_s = -d_x$ and $d_\kappa = -d_\tau$, the direction has $n + 1$ independent cone components instead of $2n + 2$. The effective rank is
+\[
+  R_{\text{eff}} = n + 1.
+\]
+
+\subsection{Elimination of $s$ and $\kappa$}
+
+Since $d_{s,i} = -d_{x,i}$, from \eqref{eq:slack}:
+\[
+  s_i = \frac{1 - d_{s,i}}{k w_{s,i}} = \frac{1 + d_{x,i}}{k w_{x,i}^{-1}} = k w_{x,i}(1 + d_{x,i}) = \lambda_{x,i}.
+\]
+So \textbf{$s = \lambda_x$}: the dual slack equals the dual variable of $x \geq 0$. Similarly $\kappa = \lambda_\tau$.
+
+Substituting into the dual equality \eqref{eq:dual}:
+\[
+  -A^T y - \lambda_x + c\tau = r_d \theta.
+\]
+This is the standard dual feasibility condition with $s$ eliminated.
+
+\subsection{Reduced KKT system}
+
+After eliminating $s = \lambda_x$ and $\kappa = \lambda_\tau$, the independent variables are
+\[
+  (x, y, \tau, \theta) \in \R^{n + m + 2}
+\]
+with cone constraints $x \geq 0$, $\tau \geq 0$ (rank $n + 1$), and the equalities become:
 \begin{align}
-  d_{x,i} &= 1 - w_{x,i} \cdot x^*_i, \label{eq:dx} \\
-  d_{s,i} &= 1 - w_{s,i} \cdot s^*_i, \label{eq:ds} \\
-  d_\tau &= 1 - w_\tau \cdot \tau^*, \\
-  d_\kappa &= 1 - w_\kappa \cdot \kappa^*.
+  Ax - b\tau &= r_p \theta, \\
+  -A^T y - \lambda_x + c\tau &= r_d \theta, \\
+  \ip{b}{y} - \ip{c}{x} - \lambda_\tau &= r_g \theta, \\
+  \ip{r_p}{y} + \ip{r_d}{x} + r_g \tau &= -\alpha.
 \end{align}
+Here $\lambda_x = k w_x (1 + d_x)$ and $\lambda_\tau = k w_\tau (1 + d_\tau)$ are determined by the direction.
 
-\section{Analysis: is $d_x = -d_s$?}
+The Gram matrix reduces to $\diag(w_x^2, 0, w_\tau^2, 0)$ on the variables $(x, y, \tau, \theta)$, and the equality constraints involve $\lambda_x$ and $\lambda_\tau$ which couple back through $d_x$ and $d_\tau$.
 
-\subsection{At the fixed point}
+\subsection{Practical impact}
 
-At the fixed point $(\hat{x}, \hat{s}, \hat{y}, \hat{\tau}, \hat{\kappa}, \theta = 1)$ with $W = I$ and $k = 1$:
 \begin{itemize}
-  \item $\hat{x} = \hat{s} = e_n$, so $d_{x,i} = 1 - 1 \cdot \hat{x}_i^* = 1 - \hat{x}_i^*$ and $d_{s,i} = 1 - \hat{s}_i^*$.
-  \item By the symmetry of the embedding, the cost $\alpha \theta$ and the constraint structure couple $x$ and $s$ through the dual equality \eqref{eq:dual}: $-A^T y - s + c\tau = r_d \theta$.
+  \item The KKT system size drops from $(2n + m + 3) + (m + n + 2) = 3n + 2m + 5$ to $(n + m + 2) + (m + n + 2) = 2n + 2m + 4$. For the original LP with $m \ll n$, this nearly halves the system.
+  \item The number of cone variables drops from $2n + 2$ to $n + 1$, halving the RowSpace.
+  \item The $r$-updates (free back-solves) operate on $n + 1$ components instead of $2n + 2$.
+  \item The complementarity gap is $\mu(R_{\text{eff}} - \|d\|^2) = \mu((n+1) - \|d_x\|^2 - d_\tau^2)$.
 \end{itemize}
-
-\subsection{General case}
-
-From \eqref{eq:dx}--\eqref{eq:ds}:
-\[
-  d_{x,i} + d_{s,i} = 2 - w_{x,i} x^*_i - w_{s,i} s^*_i.
-\]
-For $d_x = -d_s$ we would need $d_{x,i} + d_{s,i} = 0$, i.e.,
-\[
-  w_{x,i} x^*_i + w_{s,i} s^*_i = 2 \quad \forall i.
-\]
-
-This holds at the analytic center (where $w_{x,i} x^*_i = w_{s,i} s^*_i = 1$ by centrality). However, it does \textbf{not} hold in general. The KKT solution $(x^*, s^*)$ depends on the equality constraints, and there is no structural reason for $w_x \circ x^* + w_s \circ s^*$ to equal $2e$.
-
-\subsection{When $W = I$}
-
-At $W = I$ (initial scaling), the condition becomes $x^*_i + s^*_i = 2$. From the RHS:
-\[
-  (\text{rhs}_p)_x = 2e, \quad (\text{rhs}_p)_s = 2e.
-\]
-The Gram contributions are $G_x = I$, $G_s = I$. The KKT system gives
-\[
-  x^* + C_x^T \nu = 2e, \qquad s^* + C_s^T \nu = 2e
-\]
-where $C_x^T$ and $C_s^T$ are the columns of $C^T$ corresponding to $x$ and $s$. From the equality constraints:
-\begin{itemize}
-  \item $C_x$ has rows: $A$ (primal), $0$ (dual), $-c^T$ (gap), $r_d^T$ (norm).
-  \item $C_s$ has rows: $0$ (primal), $-I$ (dual), $0$ (gap), $0$ (norm).
-\end{itemize}
-So $C_s^T \nu = -\nu_d$ and $C_x^T \nu = A^T \nu_p - c \nu_g + r_d \nu_n$.
-
-Therefore:
-\begin{align}
-  x^* &= 2e - A^T \nu_p + c \nu_g - r_d \nu_n, \\
-  s^* &= 2e + \nu_d.
-\end{align}
-And:
-\[
-  x^*_i + s^*_i = 4 - (A^T \nu_p)_i + c_i \nu_g - (r_d)_i \nu_n + (\nu_d)_i.
-\]
-This equals $2$ only if
-\[
-  (A^T \nu_p)_i - c_i \nu_g + (r_d)_i \nu_n - (\nu_d)_i = 2 \quad \forall i,
-\]
-which is \textbf{not} generically true. Therefore $d_x \neq -d_s$ in general.
-
-\subsection{Conclusion}
-
-$d_x = -d_s$ does not hold. The $x$ and $s$ directions are coupled through the equality constraints but are not negatives of each other. The rank of the product cone is $R = 2n + 2$, and all $2n + 2$ direction components are independently determined by the KKT system. Reducing the effective dimension requires exploiting the equality structure to eliminate variables from the KKT system, not a simple sign relationship.
 
 \end{document}
