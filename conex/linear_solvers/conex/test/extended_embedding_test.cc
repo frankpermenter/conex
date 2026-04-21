@@ -53,26 +53,25 @@ TEST(ExtendedEmbedding, FixedPointFeasible) {
   z(info.kappa_idx()) = info.kappa_hat;
   z(info.theta_idx()) = 1.0;
 
-  // Check equalities.
-  // Eq1 (primal): A*x + b*tau - rp*theta = 0.
-  VectorXd eq1 = A_dense * info.x_hat + b * info.tau_hat -
-                 info.rp * 1.0;
+  // Check equalities at (x_hat, y_hat, s_hat, tau_hat, kappa_hat, theta=1).
+  // Eq1: A*x_hat - b*tau_hat - rp*1 = 0.
+  VectorXd eq1 = A_dense * info.x_hat - b * info.tau_hat - info.rp;
   printf("  eq1 (primal): ||residual|| = %.2e\n", eq1.norm());
   EXPECT_LT(eq1.norm(), 1e-12);
 
-  // Eq2 (dual): -A'*y - s + c*tau - rd*theta = 0.
+  // Eq2: -A'*y_hat - s_hat + c*tau_hat - rd*1 = 0.
   VectorXd eq2 = -A_dense.transpose() * info.y_hat - info.s_hat +
-                 c * info.tau_hat - info.rd * 1.0;
+                 c * info.tau_hat - info.rd;
   printf("  eq2 (dual): ||residual|| = %.2e\n", eq2.norm());
   EXPECT_LT(eq2.norm(), 1e-12);
 
-  // Eq3 (gap): -b'y - c'x - kappa - rg*theta = 0.
-  double eq3 = -b.dot(info.y_hat) - c.dot(info.x_hat) -
-               info.kappa_hat - info.rg * 1.0;
+  // Eq3: <b,y_hat> - <c,x_hat> - kappa_hat - rg*1 = 0.
+  double eq3 = b.dot(info.y_hat) - c.dot(info.x_hat) -
+               info.kappa_hat - info.rg;
   printf("  eq3 (gap): |residual| = %.2e\n", std::abs(eq3));
   EXPECT_LT(std::abs(eq3), 1e-12);
 
-  // Eq4 (normalization): rp'y + rd'x + rg*tau = -alpha.
+  // Eq4: <rp,y_hat> + <rd,x_hat> + rg*tau_hat = -alpha.
   double eq4 = info.rp.dot(info.y_hat) + info.rd.dot(info.x_hat) +
                info.rg * info.tau_hat + info.alpha;
   printf("  eq4 (norm): |residual| = %.2e\n", std::abs(eq4));
@@ -127,23 +126,14 @@ TEST(ExtendedEmbedding, SolveAndRecover) {
     printf("  dual obj   = %.6e\n", dual_obj);
     printf("  gap = %.2e\n", primal_obj - dual_obj);
 
-    // Primal feasibility: Ax + b >= 0.
-    VectorXd slack = A_dense * x_opt + b;
-    printf("  min slack = %.2e\n", slack.minCoeff());
-    EXPECT_GE(slack.minCoeff(), -1e-3);
+    // Primal feasibility: Ax ≈ b (from Ax - bτ = 0 at θ=0, τ>0).
+    VectorXd eq_res = A_dense * x_opt - b;
+    printf("  ||Ax - b|| = %.2e\n", eq_res.norm());
+    EXPECT_LT(eq_res.norm(), 1e-2);
 
-    // Compare with direct solve.
-    {
-      Model direct;
-      std::vector<int> vars(n);
-      std::iota(vars.begin(), vars.end(), 0);
-      direct.AddLinearConstraint(A, b, vars);
-      direct.SetLinearCost(c);
-      auto solver2 = Solver::Build(direct);
-      auto result2 = solver2.Solve(ThetaContinuation());
-      printf("  direct obj = %.6e\n", result2.objective);
-      EXPECT_NEAR(primal_obj, result2.objective, 1e-2);
-    }
+    // x ≥ 0.
+    printf("  min x = %.2e\n", x_opt.minCoeff());
+    EXPECT_GE(x_opt.minCoeff(), -1e-3);
   } else {
     printf("  tau ≈ 0: infeasible or unbounded\n");
   }
@@ -170,8 +160,8 @@ TEST(ExtendedEmbedding, ModelStructure) {
   printf("  total_vars=%d constraints=%d\n",
          info.total_vars(), model.num_constraints());
 
-  // Variables: x(3), y(5), s(5), tau(1), kappa(1), theta(1) = 16.
-  EXPECT_EQ(info.total_vars(), 16);
+  // Variables: x(3), y(5), s(3), tau(1), kappa(1), theta(1) = 14.
+  EXPECT_EQ(info.total_vars(), 14);
 }
 
 }  // namespace

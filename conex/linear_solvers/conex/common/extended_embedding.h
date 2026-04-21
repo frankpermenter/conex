@@ -37,19 +37,19 @@ struct EmbeddingInfo {
   int m;           // original constraints (rows of A)
 
   // Variable layout in the embedding Model:
-  //   [0, n)       : x  (primal)
-  //   [n, n+m)     : y  (dual)
-  //   [n+m, n+m+m) : s  (slack, for s >= 0)
-  //   n+2m         : tau
-  //   n+2m+1       : kappa
-  //   n+2m+2       : theta
+  //   [0, n)       : x  (primal, x ∈ R^n_+)
+  //   [n, n+m)     : y  (dual, y ∈ R^m, free)
+  //   [n+m, 2n+m)  : s  (dual slack, s ∈ R^n_+)
+  //   2n+m         : τ  (≥ 0)
+  //   2n+m+1       : κ  (≥ 0)
+  //   2n+m+2       : θ  (free)
   int x_start() const { return 0; }
   int y_start() const { return n; }
   int s_start() const { return n + m; }
-  int tau_idx() const { return n + 2 * m; }
-  int kappa_idx() const { return n + 2 * m + 1; }
-  int theta_idx() const { return n + 2 * m + 2; }
-  int total_vars() const { return n + 2 * m + 3; }
+  int tau_idx() const { return 2 * n + m; }
+  int kappa_idx() const { return 2 * n + m + 1; }
+  int theta_idx() const { return 2 * n + m + 2; }
+  int total_vars() const { return 2 * n + m + 3; }
 
   // Fixed point.
   Eigen::VectorXd x_hat;
