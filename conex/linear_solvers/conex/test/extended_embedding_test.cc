@@ -88,13 +88,15 @@ TEST(ExtendedEmbedding, FixedPointFeasible) {
 // =====================================================================
 
 TEST(ExtendedEmbedding, SolveAndRecover) {
-  srand(42);
-  const int n = 4, m = 8;
-  MatrixXd A_dense = MatrixXd::Random(m, n).cwiseAbs() +
-                     0.1 * MatrixXd::Ones(m, n);
-  auto A = ToSparse(A_dense);
-  VectorXd b = VectorXd::Ones(m);
-  VectorXd c = A.transpose() * VectorXd::Ones(m);
+  // Toy LP in standard form:  min c'x  s.t. Ax = b, x >= 0.
+  //   c = (1, 2),  A = [1, 1],  b = [2].
+  // Solution: x = (2, 0), obj = 2.
+  const int n = 2, m = 1;
+  Eigen::SparseMatrix<double> A(m, n);
+  A.insert(0, 0) = 1.0;
+  A.insert(0, 1) = 1.0;
+  VectorXd b(m); b << 2.0;
+  VectorXd c(n); c << 1.0, 2.0;
 
   auto [emb_model, info] = BuildExtendedEmbedding(A, b, c);
 
@@ -127,7 +129,7 @@ TEST(ExtendedEmbedding, SolveAndRecover) {
     printf("  gap = %.2e\n", primal_obj - dual_obj);
 
     // Primal feasibility: Ax ≈ b (from Ax - bτ = 0 at θ=0, τ>0).
-    VectorXd eq_res = A_dense * x_opt - b;
+    VectorXd eq_res = Eigen::MatrixXd(A) * x_opt - b;
     printf("  ||Ax - b|| = %.2e\n", eq_res.norm());
     EXPECT_LT(eq_res.norm(), 1e-2);
 
