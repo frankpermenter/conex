@@ -7,6 +7,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/solve_strategies.h"
+#include "conex/common/extended_embedding.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
 
@@ -657,6 +658,119 @@ TEST(SolverSolve, AllConstraintTypes) {
   VectorXd stat_res = grad - rhs;
   printf("  stationarity_residual = %.2e\n", stat_res.norm());
   EXPECT_LT(stat_res.norm(), 1e-5);
+}
+
+// =====================================================================
+// GeodesicLP with equality constraints.
+// =====================================================================
+
+TEST(SolverSolve, GeodesicLP_LP) {
+  // min c'x  s.t. Ax + b >= 0  (no equalities — baseline).
+  srand(42);
+  const int n = 5, m = 8;
+  MatrixXd A_dense = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int i = 0; i < m; ++i)
+    for (int j = 0; j < n; ++j)
+      trips.emplace_back(i, j, A_dense(i, j));
+  Eigen::SparseMatrix<double> A(m, n);
+  A.setFromTriplets(trips.begin(), trips.end());
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(A, b, vars);
+  model.SetLinearCost(c);
+
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(conex::GeodesicLP());
+
+  printf("  GeodesicLP (no eq): mu=%.2e obj=%.6e\n",
+         result.mu, result.objective);
+  EXPECT_LT(result.mu, 1e-6);
+}
+
+TEST(SolverSolve, GeodesicLP_WithEquality) {
+  // min c'x  s.t.  Ax + b >= 0,  C1*x = d1,  C2*x = d2.
+  // GeodesicLP must inject d_eq to satisfy equalities.
+  srand(99);
+  const int n = 6, m = 10;
+
+  MatrixXd Ad = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  Eigen::SparseMatrix<double> A = Ad.sparseView();
+  VectorXd b = VectorXd::Ones(m);
+
+  // Two equality constraints.
+  Eigen::SparseMatrix<double> C1(1, n), C2(1, n);
+  {
+    std::vector<Eigen::Triplet<double>> t;
+    t.emplace_back(0, 0, 1.0); t.emplace_back(0, 1, 1.0);
+    C1.setFromTriplets(t.begin(), t.end());
+  }
+  {
+    std::vector<Eigen::Triplet<double>> t;
+    t.emplace_back(0, 2, 1.0); t.emplace_back(0, 3, 1.0);
+    C2.setFromTriplets(t.begin(), t.end());
+  }
+  VectorXd d1(1), d2(1);
+  d1 << 0.5;
+  d2 << 0.5;
+
+  VectorXd c = Ad.transpose() * VectorXd::Ones(m);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(A, b, vars);
+  model.AddEqualityConstraint(C1, d1, vars);
+  model.AddEqualityConstraint(C2, d2, vars);
+  model.SetLinearCost(c);
+
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(conex::GeodesicLP());
+
+  printf("  GeodesicLP (with eq): mu=%.2e obj=%.6e\n",
+         result.mu, result.objective);
+
+  // Equality: x0+x1 ≈ 0.5, x2+x3 ≈ 0.5.
+  double eq1_err = std::abs(result.x(0) + result.x(1) - 0.5);
+  double eq2_err = std::abs(result.x(2) + result.x(3) - 0.5);
+  printf("  equality errors: %.2e, %.2e\n", eq1_err, eq2_err);
+  EXPECT_LT(eq1_err, 1e-5);
+  EXPECT_LT(eq2_err, 1e-5);
+}
+
+TEST(SolverSolve, GeodesicLP_Embedding) {
+  // Solve the extended embedding with GeodesicLP.
+  // min alpha*theta s.t. embedding equalities, x,s,tau,kappa >= 0.
+  const int n = 2, m = 1;
+  Eigen::SparseMatrix<double> A(m, n);
+  A.insert(0, 0) = 1.0; A.insert(0, 1) = 1.0;
+  VectorXd b(m); b << 2.0;
+  VectorXd c(n); c << 1.0, 2.0;
+
+  auto [emb_model, info] = conex::BuildExtendedEmbedding(A, b, c);
+
+  auto solver = Solver::Build(emb_model);
+  auto result = solver.Solve(conex::GeodesicLP{1e-8, 30, 0, false});
+
+  double theta = result.x(info.theta_idx());
+  double tau = result.x(info.tau_idx());
+  printf("  GeodesicLP (embedding): theta=%.2e tau=%.4f obj=%.6e\n",
+         theta, tau, result.objective);
+
+  EXPECT_LT(std::abs(theta), 1e-3);
+  if (tau > 1e-6) {
+    VectorXd x_opt = result.x.segment(info.x_start(), n) / tau;
+    double obj = c.dot(x_opt);
+    printf("  x/tau = (%.4f, %.4f)  obj=%.4f (expected 2.0)\n",
+           x_opt(0), x_opt(1), obj);
+    EXPECT_NEAR(obj, 2.0, 0.1);
+  }
 }
 
 }  // namespace
