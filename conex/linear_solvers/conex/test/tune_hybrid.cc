@@ -42,14 +42,20 @@ struct TestLP {
   int n, m;
 };
 
-TestLP MakeCenteredLP(int n, int m, int seed) {
+TestLP MakeCenteredLP(int n, int m, int seed, double noise = 0) {
   srand(seed);
   TestLP lp;
   lp.n = n;
   lp.m = m;
   lp.A_dense = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
-  lp.b = VectorXd::Ones(m);
-  lp.c = lp.A_dense.transpose() * VectorXd::Ones(m);
+
+  // Central path at W = diag(e + perturbation).
+  VectorXd w = VectorXd::Ones(m);
+  if (noise > 0) {
+    w += noise * VectorXd::Random(m).cwiseAbs();
+  }
+  lp.b = w;
+  lp.c = lp.A_dense.transpose() * w;
 
   std::vector<Eigen::Triplet<double>> trips;
   for (int i = 0; i < m; ++i)
@@ -172,6 +178,7 @@ void PrintResult(const char* name, const TuningResult& r) {
 int main(int argc, char* argv[]) {
   int n = 20, m = 40, num_seeds = 10;
   double eps = 1e-6;
+  double noise = 0;
 
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
@@ -179,14 +186,16 @@ int main(int argc, char* argv[]) {
     else if (arg == "--n" && i + 1 < argc) n = std::atoi(argv[++i]);
     else if (arg == "--m" && i + 1 < argc) m = std::atoi(argv[++i]);
     else if (arg == "--seeds" && i + 1 < argc) num_seeds = std::atoi(argv[++i]);
+    else if (arg == "--noise" && i + 1 < argc) noise = std::atof(argv[++i]);
     else {
-      printf("Usage: %s [--eps 1e-6] [--n 20] [--m 40] [--seeds 10]\n", argv[0]);
+      printf("Usage: %s [--eps 1e-6] [--n 20] [--m 40] [--seeds 10] [--noise 0.5]\n", argv[0]);
       return 1;
     }
   }
 
   printf("Hybrid switching policy tuning\n");
-  printf("Problem: LP with n=%d vars, m=%d constraints, eps=%.0e\n\n", n, m, eps);
+  printf("Problem: LP with n=%d vars, m=%d constraints, eps=%.0e, noise=%.1f\n\n",
+         n, m, eps, noise);
 
   struct PolicyDef {
     const char* name;
@@ -214,7 +223,7 @@ int main(int argc, char* argv[]) {
   std::map<std::string, Aggregate> agg;
 
   for (int seed = 1; seed <= num_seeds; ++seed) {
-    auto lp = conex::MakeCenteredLP(n, m, seed);
+    auto lp = conex::MakeCenteredLP(n, m, seed, noise);
     printf("=== seed=%d ===\n", seed);
     conex::PrintHeader();
     for (int p = 0; p < num_policies; ++p) {
