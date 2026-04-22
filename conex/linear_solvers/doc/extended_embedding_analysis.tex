@@ -1,5 +1,6 @@
 \documentclass{article}
 \usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathtools}
 
 \newcommand{\R}{\mathbb{R}}
 \newcommand{\ip}[2]{\langle #1, #2 \rangle}
@@ -147,30 +148,250 @@ Substituting into the dual equality \eqref{eq:dual}:
 \]
 This is the standard dual feasibility condition with $s$ eliminated.
 
-\subsection{Reduced KKT system}
+\subsection{Elimination of $d$}
 
-After eliminating $s = \lambda_x$ and $\kappa = \lambda_\tau$, the independent variables are
+The direction $d_x$ is not an independent variable --- it is determined by the primal variables through \eqref{eq:dx}:
+\[
+  d_{x,i} = 1 - w_{x,i} \cdot x_i.
+\]
+Substituting into the expressions for the dual:
+\[
+  \lambda_{x,i} = k \, w_{x,i}(1 + d_{x,i}) = k \, w_{x,i}(2 - w_{x,i} x_i) = 2k \, w_{x,i} - k \, w_{x,i}^2 \, x_i.
+\]
+Since $s_i = \lambda_{x,i}$:
+\begin{equation} \label{eq:s_from_x}
+  s_i = 2k \, w_{x,i} - k \, w_{x,i}^2 \, x_i.
+\end{equation}
+Similarly:
+\begin{equation} \label{eq:kappa_from_tau}
+  \kappa = 2k \, w_\tau - k \, w_\tau^2 \, \tau.
+\end{equation}
+
+\subsection{Reduced system in $(x, y, \tau, \theta)$}
+
+Substituting \eqref{eq:s_from_x} and \eqref{eq:kappa_from_tau} into the equality constraints \eqref{eq:primal}--\eqref{eq:norm}, we eliminate $s$, $\kappa$, and $d$ entirely. The independent variables are
 \[
   (x, y, \tau, \theta) \in \R^{n + m + 2}
 \]
-with cone constraints $x \geq 0$, $\tau \geq 0$ (rank $n + 1$), and the equalities become:
+with cone constraints $x \geq 0$, $\tau \geq 0$ (rank $n + 1$).
+
+\paragraph{Equality \eqref{eq:primal}} (unchanged):
+\begin{equation}
+  Ax - b\tau = r_p \theta. \tag{E1}
+\end{equation}
+
+\paragraph{Equality \eqref{eq:dual}} with $s$ from \eqref{eq:s_from_x}:
+\[
+  -A^T y - (2k w_x - k W_x^2 x) + c\tau = r_d \theta
+\]
+\begin{equation}
+  k W_x^2 x - A^T y + c\tau = r_d \theta + 2k w_x. \tag{E2}
+\end{equation}
+
+\paragraph{Equality \eqref{eq:gap}} with $\kappa$ from \eqref{eq:kappa_from_tau}:
+\[
+  \ip{b}{y} - \ip{c}{x} - (2k w_\tau - k w_\tau^2 \tau) = r_g \theta
+\]
+\begin{equation}
+  -\ip{c}{x} + \ip{b}{y} + k w_\tau^2 \tau = r_g \theta + 2k w_\tau. \tag{E3}
+\end{equation}
+
+\paragraph{Equality \eqref{eq:norm}} (unchanged --- involves only $x, y, \tau$):
+\begin{equation}
+  \ip{r_d}{x} + \ip{r_p}{y} + r_g \tau = -\alpha. \tag{E4}
+\end{equation}
+
+\subsection{KKT system}
+
+Note that (E2) already contains the term $k W_x^2 x$, which is $k$ times the $x$-block of the Gram matrix applied to $x$. Similarly (E3) contains $k w_\tau^2 \tau$. This means the equality constraints absorb the Gram contributions at barrier parameter $k$.
+
+The constraint Jacobian $J$ (rows = constraints, columns = variables $(x, y, \tau, \theta)$) is:
+\[
+  J = \begin{pmatrix}
+    A & 0 & -b & -r_p \\
+    kW_x^2 & -A^T & c & r_d \\
+    -c^T & b^T & kw_\tau^2 & -r_g \\
+    r_d^T & r_p^T & r_g & 0
+  \end{pmatrix}.
+\]
+The Gram matrix from the cone constraints $x \geq 0$, $\tau \geq 0$ is
+\[
+  G = \diag(W_x^2,\; 0_m,\; w_\tau^2,\; 0).
+\]
+The full KKT system $\begin{psmallmatrix} G & J^T \\ J & 0 \end{psmallmatrix} \begin{psmallmatrix} z \\ \nu \end{psmallmatrix} = \begin{psmallmatrix} g \\ h \end{psmallmatrix}$ is:
+\begin{equation} \label{eq:reduced_kkt}
+  \begin{pmatrix}
+    W_x^2 & & & & A^T & k W_x^2 & -c & r_d \\
+    & 0 & & & 0 & -A & b & r_p \\
+    & & w_\tau^2 & & -b^T & c^T & k w_\tau^2 & r_g \\
+    & & & 0 & -r_p^T & r_d^T & -r_g & 0 \\
+    A & 0 & -b & -r_p & & & & \\
+    kW_x^2 & -A^T & c & r_d & & & & \\
+    -c^T & b^T & kw_\tau^2 & -r_g & & & & \\
+    r_d^T & r_p^T & r_g & 0 & & & &
+  \end{pmatrix}
+  \begin{pmatrix} x \\ y \\ \tau \\ \theta \\ \nu_p \\ \nu_d \\ \nu_g \\ \nu_n \end{pmatrix}
+  =
+  \begin{pmatrix}
+    2w_x \\ 0 \\ 2w_\tau \\ -k\alpha \\
+    0 \\ 2kw_x \\ 2kw_\tau \\ -\alpha
+  \end{pmatrix}
+\end{equation}
+where $W_x = \diag(w_x)$, $\nu = (\nu_p, \nu_d, \nu_g, \nu_n)$ are the duals of constraints (E1)--(E4), and the RHS incorporates the $2kw_x$ and $2kw_\tau$ terms from the substitution of $s$ and $\kappa$.
+
+Note: the top-right block is $J^T$ and the bottom-left is $J$, as required by KKT symmetry.
+
+\section{Elimination of $x$}
+
+The cone variable $x$ has invertible Gram block $W_x^2$. From the stationarity condition (row~1 of \eqref{eq:reduced_kkt}):
+\begin{equation} \label{eq:x_stationarity}
+  W_x^2 x + A^T \nu_p + k W_x^2 \nu_d - c \nu_g + r_d \nu_n = 2 w_x.
+\end{equation}
+Solving for $x$ with $D = W_x^{-2}$:
+\begin{equation} \label{eq:x_elim}
+  x = 2 W_x^{-1} - D A^T \nu_p - k \nu_d + D c \, \nu_g - D r_d \, \nu_n.
+\end{equation}
+
+\subsection{Substitution into constraints}
+
+Substitute \eqref{eq:x_elim} into each constraint row.
+
+\paragraph{(E1): $Ax - b\tau - r_p \theta = 0$.}
 \begin{align}
-  Ax - b\tau &= r_p \theta, \\
-  -A^T y - \lambda_x + c\tau &= r_d \theta, \\
-  \ip{b}{y} - \ip{c}{x} - \lambda_\tau &= r_g \theta, \\
-  \ip{r_p}{y} + \ip{r_d}{x} + r_g \tau &= -\alpha.
+  &A\bigl(2W_x^{-1} - DA^T \nu_p - k\nu_d + Dc\,\nu_g - Dr_d\,\nu_n\bigr) - b\tau - r_p\theta = 0 \notag\\
+  &\Rightarrow\quad -ADA^T\,\nu_p - kA\,\nu_d + ADc\,\nu_g - ADr_d\,\nu_n - b\tau - r_p\theta = -2AW_x^{-1}. \label{eq:e1_elim}
 \end{align}
-Here $\lambda_x = k w_x (1 + d_x)$ and $\lambda_\tau = k w_\tau (1 + d_\tau)$ are determined by the direction.
 
-The Gram matrix reduces to $\diag(w_x^2, 0, w_\tau^2, 0)$ on the variables $(x, y, \tau, \theta)$, and the equality constraints involve $\lambda_x$ and $\lambda_\tau$ which couple back through $d_x$ and $d_\tau$.
+\paragraph{(E2): $kW_x^2 x - A^Ty + c\tau + r_d\theta = 2kw_x$.}
+Since $kW_x^2 \cdot D = kI$ and $kW_x^2 \cdot W_x^{-1} = kw_x$:
+\begin{align}
+  &2kw_x - kA^T\nu_p - k^2W_x^2\nu_d + kc\,\nu_g - kr_d\,\nu_n - A^Ty + c\tau + r_d\theta = 2kw_x \notag\\
+  &\Rightarrow\quad -kA^T\nu_p - k^2W_x^2\nu_d + kc\,\nu_g - kr_d\,\nu_n - A^Ty + c\tau + r_d\theta = 0. \label{eq:e2_elim}
+\end{align}
+The constant terms cancel.
 
-\subsection{Practical impact}
+\paragraph{(E3): $-c^Tx + b^Ty + kw_\tau^2\tau - r_g\theta = 2kw_\tau$.}
+\begin{align}
+  &-c^T\bigl(2W_x^{-1} - DA^T\nu_p - k\nu_d + Dc\,\nu_g - Dr_d\,\nu_n\bigr) + b^Ty + kw_\tau^2\tau - r_g\theta = 2kw_\tau \notag\\
+  &\Rightarrow\quad c^TDA^T\nu_p + kc^T\nu_d - c^TDc\,\nu_g + c^TDr_d\,\nu_n + b^Ty + kw_\tau^2\tau - r_g\theta = 2kw_\tau + 2c^TW_x^{-1}. \label{eq:e3_elim}
+\end{align}
 
+\paragraph{(E4): $r_d^Tx + r_p^Ty + r_g\tau = -\alpha$.}
+\begin{align}
+  &\Rightarrow\quad -r_d^TDA^T\nu_p - kr_d^T\nu_d + r_d^TDc\,\nu_g - r_d^TDr_d\,\nu_n + r_p^Ty + r_g\tau = -\alpha - 2r_d^TW_x^{-1}. \label{eq:e4_elim}
+\end{align}
+
+\subsection{Reduced system}
+
+The remaining stationarity conditions (rows 2--4 of \eqref{eq:reduced_kkt}) do not involve $x$:
+\begin{align}
+  \text{row 2 (y):} \quad & -A\,\nu_d + b\,\nu_g + r_p\,\nu_n = 0, \label{eq:y_stat}\\
+  \text{row 3 ($\tau$):} \quad & w_\tau^2\tau - b^T\nu_p + c^T\nu_d + kw_\tau^2\nu_g + r_g\nu_n = 2w_\tau, \label{eq:tau_stat}\\
+  \text{row 4 ($\theta$):} \quad & -r_p^T\nu_p + r_d^T\nu_d - r_g\nu_g = -k\alpha. \label{eq:theta_stat}
+\end{align}
+
+Equations \eqref{eq:e1_elim}--\eqref{eq:e4_elim} and \eqref{eq:y_stat}--\eqref{eq:theta_stat} form a system in $(y, \tau, \theta, \nu_p, \nu_d, \nu_g, \nu_n)$ of size $2m + n + 3$.
+
+Define the \emph{Schur complement matrix} $S = ADA^T = AW_x^{-2}A^T \in \R^{m \times m}$ (symmetric positive semidefinite). The constraint block after elimination is:
+\begin{equation} \label{eq:elim_system}
+\begin{pmatrix}
+  0 & 0 & 0 & 0 & -A & b & r_p \\
+  0 & w_\tau^2 & 0 & -b^T & c^T & kw_\tau^2 & r_g \\
+  0 & 0 & 0 & -r_p^T & r_d^T & -r_g & 0 \\
+  0 & -b & -r_p & -S & -kA & ADc & -ADr_d \\
+  -A^T & c & r_d & -kA^T & -k^2W_x^2 & kc & -kr_d \\
+  b^T & kw_\tau^2 & -r_g & c^TDA^T & kc^T & -c^TDc & c^TDr_d \\
+  r_p^T & r_g & 0 & -r_d^TDA^T & -kr_d^T & r_d^TDc & -r_d^TDr_d
+\end{pmatrix}
+\begin{pmatrix} y \\ \tau \\ \theta \\ \nu_p \\ \nu_d \\ \nu_g \\ \nu_n \end{pmatrix}
+=
+\begin{pmatrix} 0 \\ 2w_\tau \\ -k\alpha \\ -2AW_x^{-1} \\ 0 \\ 2kw_\tau + 2c^TW_x^{-1} \\ -\alpha - 2r_d^TW_x^{-1} \end{pmatrix}.
+\end{equation}
+
+\paragraph{Key observation.} The expensive block is $S = AW_x^{-2}A^T$ ($m \times m$), which is exactly the normal-equations matrix from standard LP interior-point methods. When $m \ll n$, this is a significant reduction: we have eliminated $n$ variables ($x$) at the cost of a dense $m \times m$ Schur complement.
+
+\subsection{Dimensions}
+
+\begin{center}
+\begin{tabular}{lccc}
+  & Full embedding & Reduced (NT) & $x$-eliminated \\
+  \hline
+  Primal variables & $2n + m + 3$ & $n + m + 2$ & $m + 2$ \\
+  Equality duals & $m + n + 2$ & $m + n + 2$ & $m + n + 2$ \\
+  Total system size & $3n + 2m + 5$ & $2n + 2m + 4$ & $2m + n + 3$ \\
+  Cone rank (RowSpace) & $2n + 2$ & $n + 1$ & $1$ ($\tau$ only) \\
+  Dense block & --- & --- & $S = AW_x^{-2}A^T$ ($m \times m$) \\
+\end{tabular}
+\end{center}
+
+For the original LP with $m$ constraints and $n$ variables, the $x$-eliminated system has size $2m + n + 3$, which is smaller than the NT-reduced system ($2n + 2m + 4$) whenever $n > 1$. The dominant cost is forming and factoring the Schur complement $S \in \R^{m \times m}$.
+
+\subsection{Recovery}
+
+Given the solution $(y^*, \tau^*, \theta^*, \nu^*)$ of \eqref{eq:elim_system}, recover $x$ from \eqref{eq:x_elim}:
+\[
+  x^* = 2W_x^{-1} - DA^T\nu_p^* - k\nu_d^* + Dc\,\nu_g^* - Dr_d\,\nu_n^*.
+\]
+Then from $(x^*, y^*, \tau^*, \theta^*)$, recover:
+\begin{align}
+  d_{x,i} &= 1 - w_{x,i} x^*_i, \\
+  d_\tau &= 1 - w_\tau \tau^*, \\
+  s^*_i &= 2k w_{x,i} - k w_{x,i}^2 x^*_i = k w_{x,i}(2 - w_{x,i} x^*_i) = k w_{x,i}(1 + d_{x,i}), \\
+  \kappa^* &= k w_\tau(1 + d_\tau), \\
+  d_{s,i} &= -d_{x,i}, \quad d_\kappa = -d_\tau.
+\end{align}
+The complementarity gap is
+\[
+  \mu \bigl((n+1) - \|d_x\|^2 - d_\tau^2\bigr) = \frac{1}{k^2}\bigl((n+1) - \|d_x\|^2 - d_\tau^2\bigr).
+\]
+
+\section{Structure of the $\theta$ update}
+
+\subsection{$\theta$ as duality gap residual}
+
+From the gap constraint (E3) before eliminating $s$ and $\kappa$:
+\begin{equation} \label{eq:theta_gap}
+  \theta = \frac{\ip{b}{y} - \ip{c}{x} - \kappa}{r_g}.
+\end{equation}
+So $\theta$ measures the \emph{residual duality gap}: the quantity $\ip{b}{y} - \ip{c}{x} - \kappa$ is exactly $r_g \theta$. At the fixed point ($\theta = 1$), this recovers the definition of $r_g$. At optimality ($\theta = 0$), we get $\ip{b}{y} = \ip{c}{x} + \kappa$, and if $\tau > 0$ with $\kappa \to 0$, this yields strong duality for the original LP.
+
+Similarly, the primal and dual residuals are proportional to $\theta$:
+\begin{align}
+  Ax - b\tau &= r_p \theta \quad \text{(primal residual)}, \\
+  -A^Ty - s + c\tau &= r_d \theta \quad \text{(dual residual)}.
+\end{align}
+All three residuals vanish simultaneously as $\theta \to 0$.
+
+\subsection{$\theta$-free equations}
+
+In the $x$-eliminated system \eqref{eq:elim_system}, $\theta$ appears in rows 4--6 (the eliminated E1--E3) but \textbf{not} in:
 \begin{itemize}
-  \item The KKT system size drops from $(2n + m + 3) + (m + n + 2) = 3n + 2m + 5$ to $(n + m + 2) + (m + n + 2) = 2n + 2m + 4$. For the original LP with $m \ll n$, this nearly halves the system.
-  \item The number of cone variables drops from $2n + 2$ to $n + 1$, halving the RowSpace.
-  \item The $r$-updates (free back-solves) operate on $n + 1$ components instead of $2n + 2$.
-  \item The complementarity gap is $\mu(R_{\text{eff}} - \|d\|^2) = \mu((n+1) - \|d_x\|^2 - d_\tau^2)$.
+  \item Row 1: $y$-stationarity \eqref{eq:y_stat},
+  \item Row 2: $\tau$-stationarity \eqref{eq:tau_stat},
+  \item Row 3: $\theta$-stationarity \eqref{eq:theta_stat},
+  \item Row 7: the normalization constraint (E4) \eqref{eq:e4_elim}.
 \end{itemize}
+These four equations constrain $(y, \tau, \nu)$ independently of $\theta$. Once $(y, \tau, \nu)$ are determined, $\theta$ is recovered from any of E1--E3; the scalar E3 is most convenient:
+\begin{equation} \label{eq:theta_recover}
+  \theta = \frac{1}{r_g}\Bigl(c^TDA^T\nu_p + kc^T\nu_d - c^TDc\,\nu_g + c^TDr_d\,\nu_n + b^Ty + kw_\tau^2\tau - 2kw_\tau - 2c^TW_x^{-1}\Bigr).
+\end{equation}
+
+\subsection{Predictor step from a centered point}
+
+At a centered point ($d_x = 0$, $d_\tau = 0$), the Newton step produces a direction $(\delta d_x, \delta d_\tau, \delta \theta)$. The geodesic parametrization requires $|d_{x,i} + \delta d_{x,i}| < 1$ and $|d_\tau + \delta d_\tau| < 1$, so from centering: $|\delta d_{x,i}| < 1$, $|\delta d_\tau| < 1$.
+
+The cone rank is $R = n + 1$ (from $x \in \R^n_+$ and $\tau \geq 0$). By the standard self-dual IPM analysis, the predictor direction satisfies
+\[
+  \|\delta d\|^2 = \sum_i (\delta d_{x,i})^2 + (\delta d_\tau)^2 \;\propto\; (\delta \theta / \theta)^2 \cdot R.
+\]
+A safe step (keeping $\|d\|_\infty < 1$) yields
+\[
+  |\delta \theta| \leq \frac{\theta}{\sqrt{R}} = \frac{\theta}{\sqrt{n+1}},
+\]
+giving the update
+\begin{equation} \label{eq:theta_update}
+  \boxed{\theta_{\mathrm{new}} \approx \theta \left(1 - \frac{1}{\sqrt{n+1}}\right).}
+\end{equation}
+This is the standard $O(\sqrt{n} \log(1/\varepsilon))$ convergence rate for self-dual embeddings, with the effective cone rank $n + 1$ (not the original $2n + 2$) thanks to the NT reduction $d_x = -d_s$.
 
 \end{document}

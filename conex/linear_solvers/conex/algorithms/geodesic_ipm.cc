@@ -88,19 +88,6 @@ OptimalityReport CheckOptimality(
   report.min_slack = minEigenvalue(s);
   report.min_dual = minEigenvalue(lambda);
 
-  // Dual residual: ||A^T λ - Qx - c||.
-  auto dual_rhs = kkt.MakeSolverRHS();
-  dual_rhs.SetZero();
-  kkt.AccumulateAtranspose(lambda, dual_rhs);
-  auto qx_rhs = kkt.MakeSolverRHS();
-  qx_rhs.SetZero();
-  kkt.AccumulateQx(x_rhs, qx_rhs);
-  dual_rhs -= qx_rhs;
-  dual_rhs -= cost_rhs;
-  Eigen::VectorXd dual_res(n);
-  dual_rhs.supernodes->GatherInto(dual_res);
-  report.dual_residual = dual_res.norm();
-
   // Complementarity: <s, λ>.
   report.complementarity = dot(s, lambda);
 
@@ -707,9 +694,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
     result.lambda = lambda;
 
     if (verbose) {
-      printf("  Optimality: dual_res=%.2e, compl=%.2e, "
+      printf("  Optimality: compl=%.2e, "
              "min_s=%.2e, min_lam=%.2e\n",
-             result.optimality.dual_residual,
              result.optimality.complementarity,
              result.optimality.min_slack,
              result.optimality.min_dual);
@@ -1122,9 +1108,8 @@ GeodesicResult SolveGeodesicLP(
     result.lambda = lambda;
 
     if (verbose) {
-      printf("  Optimality: dual_res=%.2e, compl=%.2e, "
+      printf("  Optimality: compl=%.2e, "
              "min_s=%.2e, min_lam=%.2e\n",
-             result.optimality.dual_residual,
              result.optimality.complementarity,
              result.optimality.min_slack,
              result.optimality.min_dual);
@@ -1388,7 +1373,7 @@ GeodesicResult SolveGeodesicHybrid(
     if (tau != 1.0 && tau > 0) result.x /= tau;
   }
 
-  // Optimality check against the UNSCALED problem (original cost_rhs).
+  // Optimality check against the UNSCALED problem (including equality duals).
   {
     auto x_rhs = kkt.MakeSolverRHS();
     x_rhs = kkt.MakeBlockVariable(result.x);
@@ -1401,9 +1386,8 @@ GeodesicResult SolveGeodesicHybrid(
   }
 
   if (verbose) {
-    printf("  Optimality: dual_res=%.2e, compl=%.2e, "
+    printf("  Optimality: compl=%.2e, "
            "min_s=%.2e, min_lam=%.2e\n",
-           result.optimality.dual_residual,
            result.optimality.complementarity,
            result.optimality.min_slack,
            result.optimality.min_dual);

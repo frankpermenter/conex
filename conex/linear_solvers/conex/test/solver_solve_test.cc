@@ -773,5 +773,68 @@ TEST(SolverSolve, GeodesicLP_Embedding) {
   }
 }
 
+// Test that Solver::Solve correctly reports stationarity for problems
+// with equality constraints.  The stationarity gradient should be
+//   c + Qx - A'λ - C'ν ≈ 0
+// where ν are the equality duals.
+TEST(SolverSolve, StationarityWithEquality) {
+  // min c'x  s.t.  Ax + b >= 0,  Cx = d.
+  // Choose (A, b, c) so that W=I, k=1 is on the central path.
+  srand(77);
+  const int n = 6, m = 10;
+
+  MatrixXd Ad = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  Eigen::SparseMatrix<double> A = Ad.sparseView();
+  VectorXd b = VectorXd::Ones(m);
+  // c = A'e so that (x=0, lambda=e) is roughly on the central path.
+  VectorXd c = Ad.transpose() * VectorXd::Ones(m);
+
+  // Equality: x0 + x1 = 0.5.
+  Eigen::SparseMatrix<double> C(1, n);
+  {
+    std::vector<Eigen::Triplet<double>> t;
+    t.emplace_back(0, 0, 1.0);
+    t.emplace_back(0, 1, 1.0);
+    C.setFromTriplets(t.begin(), t.end());
+  }
+  VectorXd d(1);
+  d << 0.5;
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(A, b, vars);
+  model.AddEqualityConstraint(C, d, vars);
+  model.SetLinearCost(c);
+
+  // Test with each algorithm.
+  auto test_algo = [&](const char* name, auto algo) {
+    auto solver = Solver::Build(model);
+    auto result = solver.Solve(algo);
+
+    printf("  %s: mu=%.2e obj=%.6e\n", name, result.mu, result.objective);
+
+    // Equality feasibility: Cx = d.
+    double eq_err = std::abs(result.x(0) + result.x(1) - 0.5);
+    printf("    eq_err=%.2e\n", eq_err);
+    EXPECT_LT(eq_err, 1e-3) << name << ": equality violated";
+
+    // Stationarity: c + Qx - A'λ - C'ν ≈ 0.
+    // Only check over Model variables (not internal duals).
+    double stat_norm = result.duals.stationarity_gradient.norm();
+    printf("    stationarity=%.2e\n", stat_norm);
+    EXPECT_LT(stat_norm, 1e-1) << name << ": stationarity residual too large";
+
+    // Check equality duals were extracted.
+    ASSERT_EQ(result.duals.nu.size(), 1u) << name;
+    printf("    nu[0]=%.4e\n", result.duals.nu[0](0));
+  };
+
+  test_algo("ThetaContinuation", ThetaContinuation{1e-8, 500, 1, false});
+  test_algo("HybridOnly", HybridOnly{1e-8, 500, false});
+  test_algo("GeodesicLP", GeodesicLP{1e-8, 30, 0, false});
+}
+
 }  // namespace
 }  // namespace conex

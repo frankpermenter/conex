@@ -1,9 +1,9 @@
 #pragma once
 // Extended embedding (Ye et al.) for linear constraints.
 //
-// Given the primal-dual pair:
-//   P(C): min c'x  s.t. Ax - b >= 0,  x in C
-//   D(C): max b'y  s.t. c - A'y in C*
+// Given the primal-dual pair (standard form LP):
+//   P: min c'x  s.t. Ax = b, x >= 0
+//   D: max b'y  s.t. s = c - A'y, s >= 0
 //
 // The extended embedding is:
 //   minimize   alpha * theta

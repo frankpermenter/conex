@@ -110,7 +110,7 @@ SolveResult Solver::Solve(const Algorithm& algo) {
     result.duals = ExtractDuals(raw.x, raw.lambda, cost_rhs);
   }
   result.converged = result.optimality.complementarity < 1e-4 &&
-                     result.optimality.dual_residual < 1e-4;
+                     result.duals.stationarity_gradient.norm() < 1e-4;
   return result;
 }
 

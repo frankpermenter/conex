@@ -567,6 +567,14 @@ target_link_libraries(tune_hybrid
 )
 target_compile_options(tune_hybrid PRIVATE -O2)
 
+add_executable(eval_embedding conex/test/eval_embedding.cc)
+target_link_libraries(eval_embedding
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+target_compile_options(eval_embedding PRIVATE -O2)
+
 add_executable(sign_check conex/test/sign_check.cc)
 target_link_libraries(sign_check
   algorithms constraints sparse_linear_constraint

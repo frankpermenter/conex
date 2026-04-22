@@ -173,7 +173,7 @@ ConstraintDuals Solver::ExtractDuals(
     }, reduced_model_.constraint(i));
   }
 
-  // Stationarity gradient: c + Qx - A'λ.
+  // Stationarity gradient: c + Qx - A'λ - C'ν.
   // Computed via KKT operations (handles decomposition correctly).
   auto grad = k->MakeSolverRHS();
   grad = cost_rhs;
@@ -185,8 +185,30 @@ ConstraintDuals Solver::ExtractDuals(
   at_lambda.SetZero();
   k->AccumulateAtranspose(lambda, at_lambda);
   grad -= at_lambda;
-  // Note: equality C'ν contribution is already in A'λ since equality
-  // constraints are part of the KKT system.
+  // Subtract C'ν from the stationarity gradient.
+  // We already extracted ν above; now compute C'ν directly and subtract.
+  {
+    Eigen::VectorXd Ctnu = Eigen::VectorXd::Zero(k->number_of_variables());
+    int eq_idx = 0;
+    for (int i = 0; i < nc; ++i) {
+      std::visit([&](const auto& data) {
+        using T2 = std::decay_t<decltype(data)>;
+        if constexpr (std::is_same_v<T2, Model::EqualityConstraintData>) {
+          const auto& nu_i = duals.nu[eq_idx];
+          // C' * nu in Model variable space.
+          Eigen::VectorXd Ct_nu_i = Eigen::MatrixXd(data.C).transpose() * nu_i;
+          for (int j = 0; j < (int)data.primal_vars.size(); ++j) {
+            Ctnu(data.primal_vars[j]) += Ct_nu_i(j);
+          }
+          eq_idx++;
+        }
+      }, reduced_model_.constraint(i));
+    }
+    // Pack into SolverRHS and subtract.
+    auto ctnu_rhs = k->MakeSolverRHS();
+    ctnu_rhs = k->MakeBlockVariable(Ctnu);
+    grad -= ctnu_rhs;
+  }
   int n = k->number_of_variables();
   duals.stationarity_gradient.resize(n);
   grad.supernodes->GatherInto(duals.stationarity_gradient);
