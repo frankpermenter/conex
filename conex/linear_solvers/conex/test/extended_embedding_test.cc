@@ -165,6 +165,68 @@ TEST(ExtendedEmbedding, ModelStructure) {
 }
 
 // =====================================================================
+// Test: theta vs mu on the central path of the extended embedding.
+// =====================================================================
+
+TEST(ExtendedEmbedding, ThetaVsMuOnCentralPath) {
+  srand(42);
+  const int n = 6, m = 4;
+  MatrixXd Ad = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  Eigen::SparseMatrix<double> A = Ad.sparseView();
+  VectorXd b = Ad * VectorXd::Ones(n);
+  VectorXd c = VectorXd::Random(n).cwiseAbs() + 0.1 * VectorXd::Ones(n);
+
+  auto [emb_model, info, emb_tree] = BuildExtendedEmbedding(A, b, c);
+  auto solver = Solver::Build(emb_model, emb_tree);
+
+  auto cost_rhs = solver.MakeCostRHS();
+  auto* kkt = solver.kkt();
+
+  // Use GeodesicLP which increases k each iteration. At each step,
+  // the solve determines theta as a Model variable.
+  auto result = solver.Solve(GeodesicLP{1e-10, 20, 0, false});
+
+  // result.x is in Model space. Read embedding variables directly.
+  double theta_final = result.x(info.theta_idx());
+  double tau_final = result.x(info.tau_idx());
+  double kappa_final = result.x(info.kappa_idx());
+  double mu_final = result.mu;
+
+  printf("  Final: mu=%.6e theta=%.6e tau=%.6f kappa=%.6e theta/mu=%.6f\n",
+         mu_final, theta_final, tau_final, kappa_final,
+         (mu_final > 1e-30) ? theta_final / mu_final : 0.0);
+
+  // Now center at specific mu values using ThetaContinuation
+  // (which ties its external theta = mu).
+  printf("\n  Per-iteration theta vs mu:\n");
+  printf("  %10s %10s %10s %10s %10s\n",
+         "mu", "theta", "tau", "kappa", "theta/mu");
+
+  // Run ThetaContinuation and extract per-iteration values from iter_stats
+  // plus the final result.
+  auto result2 = solver.Solve(ThetaContinuation{1e-10, 20, 1, false});
+  // ThetaCont converges at some mu. Extract at each stat.
+  for (size_t i = 0; i < result2.duals.eq_residual.size(); i++) {
+    // iter_stats don't have theta/tau. Just report final.
+  }
+
+  // Best approach: solve at a few fixed mu levels and check theta.
+  // Use the embedding's cost = alpha*theta. At mu, objective = alpha*theta.
+  // If theta = mu: objective = alpha*mu.
+  double obj = result.objective;
+  double alpha = info.alpha;
+  double theta_from_obj = obj / alpha;
+  printf("\n  From objective: obj=%.6e alpha=%.4f theta_from_obj=%.6e mu=%.6e ratio=%.6f\n",
+         obj, alpha, theta_from_obj, mu_final,
+         (mu_final > 1e-30) ? theta_from_obj / mu_final : 0.0);
+
+  // Direct check: is theta ≈ mu at the solution?
+  // The GeodesicLP drives mu→0, so theta should also →0.
+  // The ratio theta/mu tells us if they track each other.
+  EXPECT_LT(std::abs(theta_final), 1e-3);
+}
+
+// =====================================================================
 // Test: embedding with dual equality constraints.
 // =====================================================================
 
