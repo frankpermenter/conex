@@ -164,5 +164,169 @@ TEST(ExtendedEmbedding, ModelStructure) {
   EXPECT_EQ(info.total_vars(), 16);
 }
 
+// =====================================================================
+// Test: embedding with dual equality constraints.
+// =====================================================================
+
+TEST(ExtendedEmbedding, DualEquality) {
+  // LP with dual equality:
+  //   P: min c'x + d'w  s.t.  Ax + C'w = b,  x >= 0  (w free)
+  //   D: max b'y         s.t.  A'y + s = c,  Cy = d,  s >= 0
+  //
+  // P: min c'x + d'w  s.t.  Ax + C'w = b,  x >= 0  (w free)
+  // D: max b'y        s.t.  A'y + s = c,  Cy = d,  s >= 0
+  //
+  // A = [1 1 0; 0 1 1] (2x3), b = [2; 2], c = [1; 1; 1]
+  // C = [1 0] (1x2), d = [0.5]  → y0 = 0.5
+  //
+  // Dual: A'y + s = c, y0 = 0.5.
+  //   s0 = 1 - y0 = 0.5
+  //   s1 = 1 - y0 - y1 = 0.5 - y1
+  //   s2 = 1 - y1
+  //   Need s >= 0: y1 <= 0.5.
+  //   Dual obj = b'y = 2y0 + 2y1 = 1 + 2y1. Max at y1 = 0.5 → obj = 2.
+  //
+  // Primal: Ax + C'w = b → x0+x1+w0 = 2, x1+x2 = 2.
+  //   min x0+x1+x2 + 0.5*w0. With w0 = 2-x0-x1:
+  //   = x0+x1+x2 + 0.5(2-x0-x1) = 0.5x0+0.5x1+x2+1.
+  //   Subject to x1+x2=2, x>=0. Min at x0=0, x1=0, x2=2: obj=0+0+2+1=3.
+  //   Or x0=0, x1=2, x2=0: obj=0+1+0+1=2. So obj=2.
+
+  const int n = 3, m = 2, p = 1;
+  Eigen::SparseMatrix<double> A(m, n);
+  A.insert(0, 0) = 1.0; A.insert(0, 1) = 1.0;
+  A.insert(1, 1) = 1.0; A.insert(1, 2) = 1.0;
+  VectorXd b(m); b << 2.0, 2.0;
+  VectorXd c(n); c << 1.0, 1.0, 1.0;
+
+  Eigen::SparseMatrix<double> C(p, m);
+  C.insert(0, 0) = 1.0;
+  VectorXd d(p); d << 0.5;
+
+  // Check fixed point feasibility.
+  auto [emb_model, info, emb_tree] = BuildExtendedEmbedding(A, b, c, C, d);
+  ASSERT_EQ(info.p, p);
+  ASSERT_EQ(info.total_vars(), 2 * n + m + p + 3);  // 2*3+2+1+3 = 12
+  printf("  n=%d m=%d p=%d total_vars=%d\n", n, m, p, info.total_vars());
+
+  // Check residuals at fixed point.
+  printf("  rp = [%.4f, %.4f]\n", info.rp(0), info.rp(1));
+  printf("  rd = [%.4f, %.4f]\n", info.rd(0), info.rd(1));
+  printf("  re = [%.4f]\n", info.re(0));
+  printf("  rg = %.4f  alpha = %.4f\n", info.rg, info.alpha);
+
+  // Solve with LU for best accuracy.
+  // Use AMD, default factorization.
+  auto solver = Solver::Build(emb_model);
+  auto result = solver.Solve(GeodesicLP{1e-10, 30, 0, false});
+
+  double theta = result.x(info.theta_idx());
+  double tau = result.x(info.tau_idx());
+  double kappa = result.x(info.kappa_idx());
+  printf("  theta=%.2e tau=%.4f kappa=%.2e\n", theta, tau, kappa);
+  EXPECT_LT(std::abs(theta), 1e-4);
+
+  if (tau > 1e-6) {
+    VectorXd x_opt = result.x.segment(info.x_start(), n) / tau;
+    VectorXd y_opt = result.x.segment(info.y_start(), m) / tau;
+    VectorXd w_opt = result.x.segment(info.w_start(), p) / tau;
+    VectorXd s_opt = result.x.segment(info.s_start(), n) / tau;
+    double primal_obj = c.dot(x_opt) + d.dot(w_opt);
+    double dual_obj = b.dot(y_opt);
+
+    printf("  x/tau = (%.4f, %.4f)\n", x_opt(0), x_opt(1));
+    printf("  y/tau = (%.4f, %.4f)\n", y_opt(0), y_opt(1));
+    printf("  w/tau = (%.4f)\n", w_opt(0));
+    printf("  s/tau = (%.4f, %.4f)\n", s_opt(0), s_opt(1));
+    printf("  primal_obj=%.6f  dual_obj=%.6f\n", primal_obj, dual_obj);
+
+    // Primal feasibility: Ax + C'w = b.
+    VectorXd pf = Eigen::MatrixXd(A) * x_opt +
+                  Eigen::MatrixXd(C).transpose() * w_opt - b;
+    printf("  ||Ax + C'w - b|| = %.2e\n", pf.norm());
+    EXPECT_LT(pf.norm(), 1e-4);
+
+    // Dual feasibility: A'y + s = c.
+    VectorXd df = Eigen::MatrixXd(A).transpose() * y_opt + s_opt - c;
+    printf("  ||A'y + s - c|| = %.2e\n", df.norm());
+    EXPECT_LT(df.norm(), 1e-4);
+
+    // Dual equality: Cy = d.
+    VectorXd de = Eigen::MatrixXd(C) * y_opt - d;
+    printf("  ||Cy - d|| = %.2e\n", de.norm());
+    EXPECT_LT(de.norm(), 1e-4);
+
+    // Optimal value.
+    EXPECT_NEAR(primal_obj, 2.0, 0.1);
+    EXPECT_NEAR(dual_obj, 2.0, 0.1);
+  }
+}
+
+// Test: larger random instance with dual equalities.
+TEST(ExtendedEmbedding, DualEqualityRandom) {
+  srand(99);
+  const int n = 8, m = 4, p = 2;
+
+  MatrixXd Ad = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  Eigen::SparseMatrix<double> A = Ad.sparseView();
+  VectorXd x0 = VectorXd::Random(n).cwiseAbs() + 0.1 * VectorXd::Ones(n);
+  VectorXd b = Ad * x0;
+  VectorXd c = VectorXd::Random(n).cwiseAbs() + 0.1 * VectorXd::Ones(n);
+
+  // Dual equality: C is p×m.
+  MatrixXd Cd = MatrixXd::Random(p, m).cwiseAbs() + 0.1 * MatrixXd::Ones(p, m);
+  Eigen::SparseMatrix<double> C = Cd.sparseView();
+  VectorXd d = VectorXd::Random(p).cwiseAbs() + 0.1 * VectorXd::Ones(p);
+
+  ASSERT_LE(m + p, n) << "Need m+p <= n for the embedding";
+
+  auto [emb_model, info, emb_tree] = BuildExtendedEmbedding(A, b, c, C, d);
+  printf("  n=%d m=%d p=%d total_vars=%d\n", n, m, p, info.total_vars());
+
+  SolverConfiguration cfg;
+  cfg.tree.use_lu_for_indefinite = true;
+  auto solver = Solver::Build(emb_model);
+  auto result = solver.Solve(HybridOnly{1e-10, 500, false});
+
+  double theta = result.x(info.theta_idx());
+  double tau = result.x(info.tau_idx());
+  printf("  theta=%.2e tau=%.4f\n", theta, tau);
+  EXPECT_LT(std::abs(theta), 1e-4);
+  EXPECT_GT(tau, 1e-6);
+
+  if (tau > 1e-6) {
+    VectorXd x_opt = result.x.segment(info.x_start(), n) / tau;
+    VectorXd y_opt = result.x.segment(info.y_start(), m) / tau;
+    VectorXd w_opt = result.x.segment(info.w_start(), p) / tau;
+    VectorXd s_opt = result.x.segment(info.s_start(), n) / tau;
+
+    double primal_obj = c.dot(x_opt) + d.dot(w_opt);
+    double dual_obj = b.dot(y_opt);
+    printf("  primal_obj=%.6f  dual_obj=%.6f  gap=%.2e\n",
+           primal_obj, dual_obj, primal_obj - dual_obj);
+
+    // Primal: Ax + C'w = b.
+    VectorXd pf = Eigen::MatrixXd(A) * x_opt +
+                  Eigen::MatrixXd(C).transpose() * w_opt - b;
+    printf("  ||Ax+C'w-b||=%.2e\n", pf.norm());
+    EXPECT_LT(pf.norm(), 1e-2);
+
+    // Dual: A'y + s = c.
+    VectorXd df = Eigen::MatrixXd(A).transpose() * y_opt + s_opt - c;
+    printf("  ||A'y+s-c||=%.2e\n", df.norm());
+    EXPECT_LT(df.norm(), 1e-2);
+
+    // Dual equality: Cy = d.
+    VectorXd de = Eigen::MatrixXd(C) * y_opt - d;
+    printf("  ||Cy-d||=%.2e\n", de.norm());
+    EXPECT_LT(de.norm(), 1e-2);
+
+    // x, s >= 0.
+    printf("  min(x)=%.2e  min(s)=%.2e\n", x_opt.minCoeff(), s_opt.minCoeff());
+    EXPECT_GE(x_opt.minCoeff(), -1e-3);
+    EXPECT_GE(s_opt.minCoeff(), -1e-3);
+  }
+}
+
 }  // namespace
 }  // namespace conex

@@ -318,14 +318,10 @@ class DynamicSubsystem : public KKTSubsystem {
       sn_full.triangularView<Eigen::Lower>() = supernode_submatrix();
       sn_full.triangularView<Eigen::StrictlyUpper>() =
           sn_full.transpose();
-      MatrixXd sn_save = sn_full;
       lu_.compute(sn_full);
       // Check for singular or NaN blocks.
       double det = std::abs(lu_.determinant());
       if (!(det > 0)) {  // catches 0, NaN, -0
-        fprintf(stderr, "LU singular: det=%.2e, size=%dx%d\n", det, nr, nr);
-        Eigen::IOFormat fmt(6, 0, "  ", "\n", "  ", "");
-        std::cerr << sn_save.format(fmt) << std::endl;
         return false;
       }
       return true;
