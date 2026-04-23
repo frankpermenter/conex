@@ -1,1 +1,1 @@
-latexmk geodesic_newton_direction.tex
+latexmk extended_embedding_analysis.tex

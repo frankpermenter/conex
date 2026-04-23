@@ -1,0 +1,37 @@
+#include "conex/exponential_map_pade.h"
+
+#include "conex/debug_macros.h"
+#include "gtest/gtest.h"
+#include <Eigen/Dense>
+#include <unsupported/Eigen/MatrixFunctions>
+
+namespace conex {
+
+using Eigen::Map;
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
+
+GTEST_TEST(ExponentialMapPadeApproximation, CompareWithEigen) {
+  int n = 4;
+  MatrixXd A(n, n);
+  // clang-format off
+  A << 3, 1, 0, 1,
+       1, 3, 1, 0,
+       0, 1, 4, 1,
+       1, 0, 1, 5;
+  // clang-format on
+  A = A / A.trace();
+
+  MatrixXd reference = A.exp();
+  MatrixXd calculated(n, n);
+
+  Map<MatrixXd, Eigen::Aligned> map(calculated.data(), n, n);
+  ExponentialMapPadeApproximation(A, &map);
+  for (int i = 0; i < n; i++) {
+    for (int j = 0; j < n; j++) {
+      EXPECT_NEAR(reference(i, j), calculated(i, j), 1e-7);
+    }
+  }
+}
+
+}  // namespace conex

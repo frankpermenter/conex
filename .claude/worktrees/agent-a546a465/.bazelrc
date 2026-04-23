@@ -1,0 +1,48 @@
+build --action_env=LIBRARY_PATH
+build --action_env=LD_LIBRARY_PATH
+build --cxxopt='-std=c++17'
+build --copt="-O2"
+build --copt="-fPIC"
+#build --copt="-DEIGEN_NO_DEBUG"
+#build --copt="-DNDEBUG"
+
+build:asan --copt="-O0"
+build:asan --copt="-fsanitize=address"
+build:asan --linkopt="-fsanitize=address"
+
+build:benchmark --copt="-pg"
+build:benchmark --linkopt="-pg"
+build:benchmark --strip="never"
+build:benchmark --copt="-fno-omit-frame-pointer"
+build:benchmark --copt="-DEIGEN_NO_DEBUG"
+build:benchmark --copt="-DNDEBUG"
+build:benchmark --copt="-march=native"
+build:benchmark --copt="-DEIGEN_RUNTIME_NO_MALLOC"
+
+build:debug --copt="-g"
+build:debug --copt="-O0"
+build:debug -c dbg
+build:debug --javacopt="-g"
+build:debug --strip="never"
+build:debug --copt="-DCONEX_REPORT_REGULARIZATION_FAILURE"
+build:debug --copt="-DCONEX_DEBUG_MESSAGES"
+build:debug --copt="-DEIGEN_RUNTIME_NO_MALLOC"
+
+build:blas --copt="-DEIGEN_USE_BLAS"
+build:blas --linkopt="-lblas"
+
+build:lapacke --copt="-DEIGEN_USE_LAPACKE"
+build:lapacke --linkopt="-llapacke"
+
+# Assume that mkl.h is in CPLUS_INCLUDE_PATH
+build:mkl --copt="-DEIGEN_USE_MKL_ALL"
+
+# Assume MKL libs are in both LIBRARY_PATH and LD_LIBRARY_PATH
+build:mkl --linkopt="-lmkl_core"
+build:mkl --linkopt="-lmkl_gnu_thread"
+build:mkl --linkopt="-lmkl_intel_lp64"
+
+build:mkl --linkopt="-lpthread"
+build:mkl --linkopt="-lm"
+build:mkl --linkopt="-ldl"
+build:mkl --linkopt="-fopenmp"

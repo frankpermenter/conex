@@ -1,0 +1,1925 @@
+Woodbury Direct Schur Complement Backward Pass — Implementation Plan
+For agentic workers: REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (- [ ]) syntax for tracking.
+
+Goal: Replace the DiffWoodbury stub (cuDSS fallback) with a direct Schur complement backward pass exploiting the Woodbury problem structure (diagonal P + low-rank A).
+
+Architecture: Solve (J'J + εI)w = rhs_bar via block elimination (eliminate y_s diagonal, eliminate y_τ scalar, Woodbury solve on reduced (n+m) system), then compute y_out = J*w. Mirrors forward solve_core pattern with different diagonal weights. Extended F_all by 1 row for c1 vector.
+
+Tech Stack: C++/CUDA, cuBLAS (batched GEMV/GEMM), cuSOLVER (batched Cholesky), custom CUDA kernels.
+
+Spec: docs/superpowers/specs/2026-03-16-woodbury-direct-schur-backward-design.md
+
+File Structure
+File
+
+Action
+
+Responsibility
+
+packages/moreau-cuda/include/moreau/diff/diff_woodbury.hpp
+
+Rewrite
+
+DiffWoodbury struct: workspace buffers, API
+
+packages/moreau-cuda/src/diff/diff_woodbury.cu
+
+Rewrite
+
+Full implementation: constructor, setup, solveAdjoint
+
+packages/moreau-cuda/include/moreau/kkt/woodbury_kernels.cuh
+
+Modify
+
+Add backward-specific kernel declarations
+
+packages/moreau-cuda/src/kkt/woodbury_kernels.cu
+
+Modify
+
+Add backward-specific kernel implementations
+
+packages/moreau-cuda/src/diff/diff.cu
+
+Modify
+
+Wire DiffWoodbury dispatch in backward()
+
+packages/moreau-cuda/tests/cpp/test_woodbury.cpp
+
+Modify
+
+Existing backward tests run through new path
+
+Note: diff_woodbury.cu is already in CMakeLists.txt (line 115). No build changes needed.
+
+Chunk 1: Backward Kernels and DiffWoodbury Workspace
+Task 1: Add backward-specific kernel declarations and implementations
+These kernels handle the s-elimination diagonals, τ-elimination vectors, RHS transforms, and J-matvec that are unique to the backward pass.
+
+Files:
+
+Modify: packages/moreau-cuda/include/moreau/kkt/woodbury_kernels.cuh
+
+Modify: packages/moreau-cuda/src/kkt/woodbury_kernels.cu
+
+ Step 1: Add kernel declarations to woodbury_kernels.cuh
+
+Add at the end of the file, before the closing } of the namespace:
+
+// ============================================================
+// Backward pass kernels (DiffWoodbury direct Schur complement)
+// ============================================================
+
+/**
+ * Compute s-elimination diagonals from H values.
+ * For each dual variable i (0..m):
+ *   h_i = 1.0 for zero cones (i < k), h_nonneg[i-k] for nonneg cones
+ *   g[i]      = 1.0 / (1.0 + h_i*h_i + eps)
+ *   Lambda[i] = 1.0 - g[i] = (h_i*h_i + eps) / (1.0 + h_i*h_i + eps)
+ *   gh1[i]    = g[i] * (1.0 + h_i)   // for z-block RHS correction
+ *
+ * @param g         (B, m) output
+ * @param Lambda    (B, m) output
+ * @param gh1       (B, m) output
+ * @param H_nonneg  (B, n_nonneg) input cone scalings
+ * @param eps       regularization (scalar, same for all batches in backward)
+ */
+void launch_diff_wb_s_elim_diagonals(
+    double* g, double* Lambda, double* gh1,
+    const double* H_nonneg, double eps,
+    int64_t batch, int64_t m, int64_t k, int64_t n_nonneg,
+    cudaStream_t stream = 0);
+
+/**
+ * Compute D_x diagonal for the reduced x-block after s-elimination.
+ *   D_x[j] = P[j]^2 + eps + sum_{sparse rows touching col j} Lambda[k+nonneg_idx] * a_val^2
+ *
+ * Same CSC structure as forward d_tilde_inv but with Lambda weights and P^2.
+ *
+ * @param D_x       (B, n) output
+ * @param P_diag    (B, n) P diagonal values
+ * @param Lambda    (B, m) s-elimination weight
+ * @param A_s_vals  (B, n_sparse) sparse nonneg A values
+ * @param eps       regularization scalar
+ */
+void launch_diff_wb_compute_D_x(
+    double* D_x,
+    const double* P_diag, const double* Lambda,
+    const double* A_s_vals, double eps,
+    const int64_t* sparse_nonneg_idx,
+    const int64_t* col_offsets, const int64_t* col_sparse_rows,
+    int64_t batch, int64_t n, int64_t m, int64_t k,
+    int64_t n_nonneg, int64_t n_sparse,
+    cudaStream_t stream = 0);
+
+/**
+ * Compute D_z diagonal for nonneg z-block after s-elimination.
+ *   D_z[i] = 2 + eps - (1+h[i])^2 / (1+h[i]^2+eps) + c2_nonneg[i]^2
+ *
+ * Also computes D_z_inv = 1/D_z for sparse/empty nonneg recovery.
+ *
+ * @param D_z       (B, n_nonneg) output
+ * @param D_z_inv   (B, n_nonneg) output
+ * @param H_nonneg  (B, n_nonneg) cone scalings
+ * @param c2        (B, m) HSDE coefficient (read c2[k+i] for nonneg)
+ * @param eps       regularization scalar
+ */
+void launch_diff_wb_compute_D_z(
+    double* D_z, double* D_z_inv,
+    const double* H_nonneg, const double* c2, double eps,
+    int64_t batch, int64_t m, int64_t k, int64_t n_nonneg,
+    cudaStream_t stream = 0);
+
+/**
+ * Build F_ext from forward F_all + c1 row.
+ * F_ext (B, n, k_ext) row-major = [F_all; c1'] where k_ext = k_total + 1.
+ * Copies F_all rows 0..k_total-1, then sets row k_total = c1.
+ *
+ * @param F_ext     (B_F, n, k_ext) output, row-major
+ * @param F_all     (B_F, n, k_total) input, row-major
+ * @param c1        (B, n) HSDE coefficient
+ * @param B_F       1 if F_all shared, B if per-batch
+ */
+void launch_diff_wb_build_F_ext(
+    double* F_ext,
+    const double* F_all, const double* c1,
+    int64_t B_F, int64_t n, int64_t k_total, int64_t k_ext,
+    cudaStream_t stream = 0);
+
+/**
+ * Compute Lambda_F weights for F_ext rows.
+ * For zero cone rows (0..k-1):   Lambda_F[i] = Lambda_zero = (1+eps)/(2+eps)
+ * For dense nonneg rows (k..k_total-1): Lambda_F[k+j] = Lambda[k + dense_idx[j]]
+ * For c1 row (k_total):          Lambda_F[k_total] = 1.0
+ */
+void launch_diff_wb_compute_Lambda_F(
+    double* Lambda_F,
+    const double* Lambda,
+    const int64_t* dense_nonneg_idx,
+    double eps,
+    int64_t batch, int64_t m, int64_t k, int64_t k_d, int64_t k_total, int64_t k_ext,
+    cudaStream_t stream = 0);
+
+/**
+ * Compute C_all_ext inverse diagonal for Schur complement.
+ * For zero rows (0..k-1):        C_inv[i] = 1/Lambda_F[i]
+ * For dense nonneg (k..k_total-1): C_inv[k+j] = 1/Lambda_F[k+j]
+ * For c1 row (k_total):          C_inv[k_total] = 1.0 (since weight is 1)
+ *
+ * Also adds C_inv to Schur diagonal after GEMM: S[i,i] += C_inv[i]
+ */
+void launch_diff_wb_set_schur_diag(
+    double* S, const double* Lambda_F,
+    int64_t batch, int64_t k_ext,
+    cudaStream_t stream = 0);
+
+/**
+ * Compute τ-elimination quantities.
+ * v_x = P*q - A'*Lambda*b + c1*c3  (n-vector per batch)
+ * v_z = A*q - (I - diag((1+h)*g))*b + c2*c3  (m-vector per batch)
+ * sigma = q'q + b'*Lambda*b + c3^2 + eps  (scalar per batch)
+ *
+ * For v_x: the A'*Lambda*b term uses same sparse/F_all decomposition.
+ * This kernel handles the diagonal parts only (P*q, sparse A terms, c1*c3).
+ * The F_all GEMV part is done via cuBLAS.
+ */
+void launch_diff_wb_tau_elim_diag(
+    double* v_x, double* v_z, double* sigma,
+    const double* P_diag, const double* q, const double* b,
+    const double* c1, const double* c2, const double* c3,
+    const double* Lambda, const double* g, const double* gh1,
+    const double* A_s_vals,
+    const int64_t* sparse_nonneg_idx, const int64_t* sparse_col,
+    const int64_t* col_offsets, const int64_t* col_sparse_rows,
+    double eps,
+    int64_t batch, int64_t n, int64_t m, int64_t k, int64_t n_nonneg, int64_t n_sparse,
+    cudaStream_t stream = 0);
+
+/**
+ * RHS correction after s-elimination.
+ * r_tilde_x = r_x + A'*(g*r_s)  (sparse part: CSC scatter)
+ * r_tilde_z = r_z + diag(gh1)*r_s
+ * r_tilde_tau = r_tau - b'*(g*r_s)
+ *
+ * This kernel handles the diagonal/sparse parts. F_all GEMV for dense A' done via cuBLAS.
+ *
+ * @param rhs_bar   (B, jdim) input: [r_x; r_z; r_s; r_tau]
+ * @param rt_x      (B, n) output (sparse A' contribution only — add F_all GEMV after)
+ * @param rt_z      (B, m) output
+ * @param rt_tau    (B) output
+ * @param g         (B, m) s-elimination diagonal
+ * @param gh1       (B, m) = g*(1+h)
+ * @param b         (B, m) constraint vector
+ */
+void launch_diff_wb_s_elim_rhs(
+    const double* rhs_bar, double* rt_x, double* rt_z, double* rt_tau,
+    const double* g, const double* gh1, const double* b,
+    const double* A_s_vals,
+    const int64_t* sparse_nonneg_idx, const int64_t* sparse_col,
+    const int64_t* col_offsets, const int64_t* col_sparse_rows,
+    int64_t batch, int64_t n, int64_t m, int64_t k,
+    int64_t n_nonneg, int64_t n_sparse,
+    cudaStream_t stream = 0);
+
+/**
+ * τ-elimination RHS correction (after s-elimination).
+ * alpha = rt_tau / sigma
+ * rhat_x = rt_x - alpha * v_x
+ * rhat_z = rt_z - alpha * v_z
+ */
+void launch_diff_wb_tau_elim_rhs(
+    double* rhat_x, double* rhat_z,
+    const double* rt_x, const double* rt_z,
+    const double* rt_tau, const double* v_x, const double* v_z,
+    const double* sigma,
+    int64_t batch, int64_t n, int64_t m,
+    cudaStream_t stream = 0);
+
+/**
+ * Recover y_tau after solving reduced system.
+ * y_tau = (rt_tau - v_x'*y_x - v_z'*y_z) / sigma
+ *
+ * @param y_tau     (B) output
+ * @param rt_tau    (B) reduced tau RHS
+ * @param v_x       (B, n) tau-elim x-vector
+ * @param v_z       (B, m) tau-elim z-vector
+ * @param y_x       (B, n) solved x
+ * @param y_z       (B, m) solved z
+ * @param sigma     (B) tau-elim scalar
+ */
+void launch_diff_wb_recover_y_tau(
+    double* y_tau,
+    const double* rt_tau, const double* v_x, const double* v_z,
+    const double* y_x, const double* y_z, const double* sigma,
+    int64_t batch, int64_t n, int64_t m,
+    cudaStream_t stream = 0);
+
+/**
+ * Recover y_s from back-substitution.
+ * y_s[i] = g[i] * (r_s[i] + A_row_i * y_x + (1+h_i)*y_z[i] - b[i]*y_tau)
+ *
+ * Sparse A contribution via CSC (same as forward RHS adjust pattern).
+ * Dense A contribution via cuBLAS GEMV.
+ *
+ * @param y_s       (B, m) output
+ * @param rhs_bar   (B, jdim) original RHS (to read r_s = rhs_bar[n+m:n+2m])
+ * @param y_x       (B, n) solved x
+ * @param y_z       (B, m) solved z
+ * @param y_tau     (B) solved tau
+ * @param g         (B, m) s-elimination diagonal
+ * @param gh1       (B, m) = g*(1+h)
+ * @param b         (B, m) constraint vector
+ * @param A_s_vals  sparse A values
+ *
+ * This kernel handles the diagonal + sparse parts. Dense A*y_x done via cuBLAS.
+ */
+void launch_diff_wb_recover_y_s(
+    double* y_s,
+    const double* rhs_bar, const double* y_x,
+    const double* y_z, const double* y_tau,
+    const double* g, const double* gh1, const double* b,
+    const double* A_s_vals,
+    const int64_t* sparse_nonneg_idx, const int64_t* sparse_col,
+    int64_t batch, int64_t n, int64_t m, int64_t k,
+    int64_t n_nonneg, int64_t n_sparse,
+    cudaStream_t stream = 0);
+
+/**
+ * J-matvec: y_out = J * w where w = [w_x; w_z; w_s; w_tau].
+ *
+ * y_out[0:n]       = P*w_x + A'*w_z + q*w_tau  (diagonal + sparse A' + GEMV)
+ * y_out[n:n+m]     = A*w_x + w_z - w_s - b*w_tau  (GEMV + element-wise)
+ * y_out[n+m:n+2m]  = w_z - H*w_s
+ * y_out[n+2m]      = c1'*w_x + c2'*w_z + c3*w_tau  (dot products)
+ *
+ * This kernel handles diagonal/element-wise parts.
+ * A'*w_z and A*w_x GEMV parts done via cuBLAS with F_all.
+ */
+void launch_diff_wb_J_matvec_diag(
+    double* y_out,
+    const double* w_x, const double* w_z, const double* w_s,
+    const double* w_tau,
+    const double* P_diag, const double* H_nonneg,
+    const double* q, const double* b,
+    const double* c1, const double* c2, const double* c3,
+    const double* A_s_vals,
+    const int64_t* sparse_nonneg_idx, const int64_t* sparse_col,
+    const int64_t* col_offsets, const int64_t* col_sparse_rows,
+    int64_t batch, int64_t n, int64_t m, int64_t k,
+    int64_t n_nonneg, int64_t n_sparse,
+    cudaStream_t stream = 0);
+ Step 2: Implement the kernels in woodbury_kernels.cu
+
+Add at the end of the file. Each kernel follows the same pattern as existing kernels: one block per batch, threads loop over the n/m dimension.
+
+// ============================================================
+// Backward pass kernels
+// ============================================================
+
+__global__ void diff_wb_s_elim_diagonals_kernel(
+    double* g, double* Lambda, double* gh1,
+    const double* H_nonneg, double eps,
+    int64_t batch, int64_t m, int64_t k, int64_t n_nonneg)
+{
+    int64_t b = blockIdx.x;
+    if (b >= batch) return;
+
+    double* g_b = g + b * m;
+    double* L_b = Lambda + b * m;
+    double* gh_b = gh1 + b * m;
+    const double* H_b = H_nonneg + b * n_nonneg;
+
+    // Zero cones: h = 1
+    for (int64_t i = threadIdx.x; i < k; i += blockDim.x) {
+        double h = 1.0;
+        double denom = 1.0 + h * h + eps;  // = 2 + eps
+        g_b[i] = 1.0 / denom;
+        L_b[i] = 1.0 - g_b[i];
+        gh_b[i] = g_b[i] * (1.0 + h);  // = 2/(2+eps)
+    }
+
+    // Nonneg cones
+    for (int64_t i = threadIdx.x; i < n_nonneg; i += blockDim.x) {
+        double h = H_b[i];
+        double denom = 1.0 + h * h + eps;
+        double gi = 1.0 / denom;
+        g_b[k + i] = gi;
+        L_b[k + i] = 1.0 - gi;
+        gh_b[k + i] = gi * (1.0 + h);
+    }
+}
+
+void launch_diff_wb_s_elim_diagonals(
+    double* g, double* Lambda, double* gh1,
+    const double* H_nonneg, double eps,
+    int64_t batch, int64_t m, int64_t k, int64_t n_nonneg,
+    cudaStream_t stream)
+{
+    int threads = std::min((int)m, 256);
+    diff_wb_s_elim_diagonals_kernel<<<(int)batch, threads, 0, stream>>>(
+        g, Lambda, gh1, H_nonneg, eps, batch, m, k, n_nonneg);
+}
+
+__global__ void diff_wb_compute_D_x_kernel(
+    double* D_x,
+    const double* P_diag, const double* Lambda,
+    const double* A_s_vals, double eps,
+    const int64_t* sparse_nonneg_idx,
+    const int64_t* col_offsets, const int64_t* col_sparse_rows,
+    int64_t batch, int64_t n, int64_t m, int64_t k,
+    int64_t n_nonneg, int64_t n_sparse)
+{
+    int64_t b = blockIdx.x;
+    if (b >= batch) return;
+
+    double* D_b = D_x + b * n;
+    const double* P_b = P_diag + b * n;
+    const double* L_b = Lambda + b * m;
+    const double* As_b = A_s_vals + b * n_sparse;
+
+    for (int64_t j = threadIdx.x; j < n; j += blockDim.x) {
+        double pj = P_b[j];
+        double val = pj * pj + eps;
+
+        // Accumulate sparse nonneg contributions via CSC
+        for (int64_t p = col_offsets[j]; p < col_offsets[j + 1]; ++p) {
+            int64_t sr = col_sparse_rows[p];
+            int64_t ni = sparse_nonneg_idx[sr];
+            double a = As_b[sr];
+            val += L_b[k + ni] * a * a;
+        }
+
+        D_b[j] = val;
+    }
+}
+
+void launch_diff_wb_compute_D_x(
+    double* D_x,
+    const double* P_diag, const double* Lambda,
+    const double* A_s_vals, double eps,
+    const int64_t* sparse_nonneg_idx,
+    const int64_t* col_offsets, const int64_t* col_sparse_rows,
+    int64_t batch, int64_t n, int64_t m, int64_t k,
+    int64_t n_nonneg, int64_t n_sparse,
+    cudaStream_t stream)
+{
+    int threads = std::min((int)n, 256);
+    diff_wb_compute_D_x_kernel<<<(int)batch, threads, 0, stream>>>(
+        D_x, P_diag, Lambda, A_s_vals, eps,
+        sparse_nonneg_idx, col_offsets, col_sparse_rows,
+        batch, n, m, k, n_nonneg, n_sparse);
+}
+
+__global__ void diff_wb_compute_D_z_kernel(
+    double* D_z, double* D_z_inv,
+    const double* H_nonneg, const double* c2, double eps,
+    int64_t batch, int64_t m, int64_t k, int64_t n_nonneg)
+{
+    int64_t b = blockIdx.x;
+    if (b >= batch) return;
+
+    double* Dz_b = D_z + b * n_nonneg;
+    double* Dzi_b = D_z_inv + b * n_nonneg;
+    const double* H_b = H_nonneg + b * n_nonneg;
+    const double* c2_b = c2 + b * m;
+
+    for (int64_t i = threadIdx.x; i < n_nonneg; i += blockDim.x) {
+        double h = H_b[i];
+        double c2i = c2_b[k + i];
+        double val = 2.0 + eps - (1.0 + h) * (1.0 + h) / (1.0 + h * h + eps) + c2i * c2i;
+        Dz_b[i] = val;
+        Dzi_b[i] = 1.0 / val;
+    }
+}
+
+void launch_diff_wb_compute_D_z(
+    double* D_z, double* D_z_inv,
+    const double* H_nonneg, const double* c2, double eps,
+    int64_t batch, int64_t m, int64_t k, int64_t n_nonneg,
+    cudaStream_t stream)
+{
+    int threads = std::min((int)n_nonneg, 256);
+    if (threads == 0) return;
+    diff_wb_compute_D_z_kernel<<<(int)batch, threads, 0, stream>>>(
+        D_z, D_z_inv, H_nonneg, c2, eps, batch, m, k, n_nonneg);
+}
+
+__global__ void diff_wb_build_F_ext_kernel(
+    double* F_ext, const double* F_all, const double* c1,
+    int64_t B_F, int64_t n, int64_t k_total, int64_t k_ext)
+{
+    int64_t b = blockIdx.x;
+    if (b >= B_F) return;
+
+    const double* F_b = F_all + b * n * k_total;
+    double* Fe_b = F_ext + b * n * k_ext;
+    const double* c1_b = c1 + b * n;  // c1 always per-batch
+
+    for (int64_t j = threadIdx.x; j < n; j += blockDim.x) {
+        // Copy existing F_all rows
+        for (int64_t i = 0; i < k_total; ++i) {
+            Fe_b[j * k_ext + i] = F_b[j * k_total + i];
+        }
+        // Append c1 as last row
+        Fe_b[j * k_ext + k_total] = c1_b[j];
+    }
+}
+
+void launch_diff_wb_build_F_ext(
+    double* F_ext, const double* F_all, const double* c1,
+    int64_t B_F, int64_t n, int64_t k_total, int64_t k_ext,
+    cudaStream_t stream)
+{
+    int threads = std::min((int)n, 256);
+    diff_wb_build_F_ext_kernel<<<(int)B_F, threads, 0, stream>>>(
+        F_ext, F_all, c1, B_F, n, k_total, k_ext);
+}
+
+__global__ void diff_wb_compute_Lambda_F_kernel(
+    double* Lambda_F, const double* Lambda,
+    const int64_t* dense_nonneg_idx, double eps,
+    int64_t batch, int64_t m, int64_t k, int64_t k_d, int64_t k_total, int64_t k_ext)
+{
+    int64_t b = blockIdx.x;
+    if (b >= batch) return;
+
+    double* LF_b = Lambda_F + b * k_ext;
+    const double* L_b = Lambda + b * m;
+
+    for (int64_t i = threadIdx.x; i < k_ext; i += blockDim.x) {
+        if (i < k) {
+            // Zero cone: Lambda_zero = (1+eps)/(2+eps)
+            LF_b[i] = (1.0 + eps) / (2.0 + eps);
+        } else if (i < k_total) {
+            // Dense nonneg
+            int64_t d = i - k;
+            int64_t ni = dense_nonneg_idx[d];
+            LF_b[i] = L_b[k + ni];
+        } else {
+            // c1 row: weight = 1
+            LF_b[i] = 1.0;
+        }
+    }
+}
+
+void launch_diff_wb_compute_Lambda_F(
+    double* Lambda_F, const double* Lambda,
+    const int64_t* dense_nonneg_idx, double eps,
+    int64_t batch, int64_t m, int64_t k, int64_t k_d, int64_t k_total, int64_t k_ext,
+    cudaStream_t stream)
+{
+    int threads = std::min((int)k_ext, 256);
+    diff_wb_compute_Lambda_F_kernel<<<(int)batch, threads, 0, stream>>>(
+        Lambda_F, Lambda, dense_nonneg_idx, eps, batch, m, k, k_d, k_total, k_ext);
+}
+
+__global__ void diff_wb_set_schur_diag_kernel(
+    double* S, const double* Lambda_F,
+    int64_t batch, int64_t k_ext)
+{
+    int64_t b = blockIdx.x;
+    if (b >= batch) return;
+
+    double* S_b = S + b * k_ext * k_ext;
+    const double* LF_b = Lambda_F + b * k_ext;
+
+    for (int64_t i = threadIdx.x; i < k_ext; i += blockDim.x) {
+        S_b[i * k_ext + i] += 1.0 / LF_b[i];
+    }
+}
+
+void launch_diff_wb_set_schur_diag(
+    double* S, const double* Lambda_F,
+    int64_t batch, int64_t k_ext,
+    cudaStream_t stream)
+{
+    int threads = std::min((int)k_ext, 256);
+    diff_wb_set_schur_diag_kernel<<<(int)batch, threads, 0, stream>>>(
+        S, Lambda_F, batch, k_ext);
+}
+
+__global__ void diff_wb_tau_elim_diag_kernel(
+    double* v_x, double* v_z, double* sigma,
+    const double* P_diag, const double* q, const double* b,
+    const double* c1, const double* c2, const double* c3,
+    const double* Lambda, const double* g, const double* gh1,
+    const double* A_s_vals,
+    const int64_t* sparse_nonneg_idx, const int64_t* sparse_col,
+    const int64_t* col_offsets, const int64_t* col_sparse_rows,
+    double eps,
+    int64_t batch, int64_t n, int64_t m, int64_t k, int64_t n_nonneg, int64_t n_sparse)
+{
+    int64_t bi = blockIdx.x;
+    if (bi >= batch) return;
+
+    double* vx_b = v_x + bi * n;
+    double* vz_b = v_z + bi * m;
+    const double* P_b = P_diag + bi * n;
+    const double* q_b = q + bi * n;
+    const double* b_b = b + bi * m;
+    const double* c1_b = c1 + bi * n;
+    const double* c2_b = c2 + bi * m;
+    double c3_b = c3[bi];
+    const double* L_b = Lambda + bi * m;
+    const double* g_b = g + bi * m;
+    const double* gh1_b = gh1 + bi * m;
+    const double* As_b = A_s_vals + bi * n_sparse;
+
+    // v_x[j] = P[j]*q[j] + c1[j]*c3 - sum_sparse_rows Lambda[row] * a * b[row]
+    // (The F_all GEMV for dense A' * Lambda * b is added externally)
+    for (int64_t j = threadIdx.x; j < n; j += blockDim.x) {
+        double val = P_b[j] * q_b[j] + c1_b[j] * c3_b;
+        // Sparse A' * Lambda * b contribution
+        for (int64_t p = col_offsets[j]; p < col_offsets[j + 1]; ++p) {
+            int64_t sr = col_sparse_rows[p];
+            int64_t ni = sparse_nonneg_idx[sr];
+            double a = As_b[sr];
+            val -= L_b[k + ni] * a * b_b[k + ni];
+        }
+        vx_b[j] = val;
+    }
+
+    // v_z[i] = c2[i]*c3 - (1 - gh1[i]) * b[i]
+    // For zero cones (i < k): A_row*q is in F_all GEMV, handle externally
+    // Here just compute the diagonal parts
+    for (int64_t i = threadIdx.x; i < m; i += blockDim.x) {
+        vz_b[i] = c2_b[i] * c3_b - (1.0 - gh1_b[i]) * b_b[i];
+        // Note: A*q contribution for zero/dense rows added via F_all GEMV
+    }
+
+    // sigma = q'q + b'*Lambda*b + c3^2 + eps (reduction by thread 0)
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        double s = c3_b * c3_b + eps;
+        for (int64_t j = 0; j < n; ++j) s += q_b[j] * q_b[j];
+        for (int64_t i = 0; i < m; ++i) s += L_b[i] * b_b[i] * b_b[i];
+        sigma[bi] = s;
+    }
+}
+
+void launch_diff_wb_tau_elim_diag(
+    double* v_x, double* v_z, double* sigma,
+    const double* P_diag, const double* q, const double* b,
+    const double* c1, const double* c2, const double* c3,
+    const double* Lambda, const double* g, const double* gh1,
+    const double* A_s_vals,
+    const int64_t* sparse_nonneg_idx, const int64_t* sparse_col,
+    const int64_t* col_offsets, const int64_t* col_sparse_rows,
+    double eps,
+    int64_t batch, int64_t n, int64_t m, int64_t k, int64_t n_nonneg, int64_t n_sparse,
+    cudaStream_t stream)
+{
+    int threads = std::min((int)(n + m), 256);
+    diff_wb_tau_elim_diag_kernel<<<(int)batch, threads, 0, stream>>>(
+        v_x, v_z, sigma, P_diag, q, b, c1, c2, c3, Lambda, g, gh1,
+        A_s_vals, sparse_nonneg_idx, sparse_col, col_offsets, col_sparse_rows,
+        eps, batch, n, m, k, n_nonneg, n_sparse);
+}
+
+__global__ void diff_wb_s_elim_rhs_kernel(
+    const double* rhs_bar, double* rt_x, double* rt_z, double* rt_tau,
+    const double* g, const double* gh1, const double* b,
+    const double* A_s_vals,
+    const int64_t* sparse_nonneg_idx, const int64_t* sparse_col,
+    const int64_t* col_offsets, const int64_t* col_sparse_rows,
+    int64_t batch, int64_t n, int64_t m, int64_t k,
+    int64_t n_nonneg, int64_t n_sparse)
+{
+    int64_t bi = blockIdx.x;
+    if (bi >= batch) return;
+
+    int64_t jdim = n + 2 * m + 1;
+    const double* rhs_b = rhs_bar + bi * jdim;
+    const double* r_x = rhs_b;
+    const double* r_z = rhs_b + n;
+    const double* r_s = rhs_b + n + m;
+    double r_tau = rhs_b[jdim - 1];
+
+    double* rtx_b = rt_x + bi * n;
+    double* rtz_b = rt_z + bi * m;
+    const double* g_b = g + bi * m;
+    const double* gh1_b = gh1 + bi * m;
+    const double* b_b = b + bi * m;
+    const double* As_b = A_s_vals + bi * n_sparse;
+
+    // rt_x = r_x + A_sparse' * (g * r_s)  [sparse part only]
+    for (int64_t j = threadIdx.x; j < n; j += blockDim.x) {
+        double val = r_x[j];
+        for (int64_t p = col_offsets[j]; p < col_offsets[j + 1]; ++p) {
+            int64_t sr = col_sparse_rows[p];
+            int64_t ni = sparse_nonneg_idx[sr];
+            double a = As_b[sr];
+            val += a * g_b[k + ni] * r_s[k + ni];
+        }
+        rtx_b[j] = val;
+    }
+
+    // rt_z = r_z + diag(gh1) * r_s
+    for (int64_t i = threadIdx.x; i < m; i += blockDim.x) {
+        rtz_b[i] = r_z[i] + gh1_b[i] * r_s[i];
+    }
+
+    // rt_tau = r_tau - b' * (g * r_s)
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        double val = r_tau;
+        for (int64_t i = 0; i < m; ++i) {
+            val -= b_b[i] * g_b[i] * r_s[i];
+        }
+        rt_tau[bi] = val;
+    }
+}
+
+void launch_diff_wb_s_elim_rhs(
+    const double* rhs_bar, double* rt_x, double* rt_z, double* rt_tau,
+    const double* g, const double* gh1, const double* b,
+    const double* A_s_vals,
+    const int64_t* sparse_nonneg_idx, const int64_t* sparse_col,
+    const int64_t* col_offsets, const int64_t* col_sparse_rows,
+    int64_t batch, int64_t n, int64_t m, int64_t k,
+    int64_t n_nonneg, int64_t n_sparse,
+    cudaStream_t stream)
+{
+    int threads = std::min((int)(n + m), 256);
+    diff_wb_s_elim_rhs_kernel<<<(int)batch, threads, 0, stream>>>(
+        rhs_bar, rt_x, rt_z, rt_tau, g, gh1, b,
+        A_s_vals, sparse_nonneg_idx, sparse_col, col_offsets, col_sparse_rows,
+        batch, n, m, k, n_nonneg, n_sparse);
+}
+
+__global__ void diff_wb_tau_elim_rhs_kernel(
+    double* rhat_x, double* rhat_z,
+    const double* rt_x, const double* rt_z,
+    const double* rt_tau, const double* v_x, const double* v_z,
+    const double* sigma,
+    int64_t batch, int64_t n, int64_t m)
+{
+    int64_t bi = blockIdx.x;
+    if (bi >= batch) return;
+
+    double alpha = rt_tau[bi] / sigma[bi];
+
+    double* rx_b = rhat_x + bi * n;
+    double* rz_b = rhat_z + bi * m;
+    const double* rtx_b = rt_x + bi * n;
+    const double* rtz_b = rt_z + bi * m;
+    const double* vx_b = v_x + bi * n;
+    const double* vz_b = v_z + bi * m;
+
+    for (int64_t j = threadIdx.x; j < n; j += blockDim.x) {
+        rx_b[j] = rtx_b[j] - alpha * vx_b[j];
+    }
+    for (int64_t i = threadIdx.x; i < m; i += blockDim.x) {
+        rz_b[i] = rtz_b[i] - alpha * vz_b[i];
+    }
+}
+
+void launch_diff_wb_tau_elim_rhs(
+    double* rhat_x, double* rhat_z,
+    const double* rt_x, const double* rt_z,
+    const double* rt_tau, const double* v_x, const double* v_z,
+    const double* sigma,
+    int64_t batch, int64_t n, int64_t m,
+    cudaStream_t stream)
+{
+    int threads = std::min((int)(n + m), 256);
+    diff_wb_tau_elim_rhs_kernel<<<(int)batch, threads, 0, stream>>>(
+        rhat_x, rhat_z, rt_x, rt_z, rt_tau, v_x, v_z, sigma, batch, n, m);
+}
+
+__global__ void diff_wb_recover_y_tau_kernel(
+    double* y_tau,
+    const double* rt_tau, const double* v_x, const double* v_z,
+    const double* y_x, const double* y_z, const double* sigma,
+    int64_t batch, int64_t n, int64_t m)
+{
+    int64_t bi = blockIdx.x;
+    if (bi >= batch) return;
+
+    if (threadIdx.x == 0) {
+        const double* vx = v_x + bi * n;
+        const double* vz = v_z + bi * m;
+        const double* yx = y_x + bi * n;
+        const double* yz = y_z + bi * m;
+
+        double val = rt_tau[bi];
+        for (int64_t j = 0; j < n; ++j) val -= vx[j] * yx[j];
+        for (int64_t i = 0; i < m; ++i) val -= vz[i] * yz[i];
+        y_tau[bi] = val / sigma[bi];
+    }
+}
+
+void launch_diff_wb_recover_y_tau(
+    double* y_tau,
+    const double* rt_tau, const double* v_x, const double* v_z,
+    const double* y_x, const double* y_z, const double* sigma,
+    int64_t batch, int64_t n, int64_t m,
+    cudaStream_t stream)
+{
+    diff_wb_recover_y_tau_kernel<<<(int)batch, 1, 0, stream>>>(
+        y_tau, rt_tau, v_x, v_z, y_x, y_z, sigma, batch, n, m);
+}
+
+__global__ void diff_wb_recover_y_s_kernel(
+    double* y_s,
+    const double* rhs_bar, const double* y_x,
+    const double* y_z, const double* y_tau,
+    const double* g, const double* gh1, const double* b,
+    const double* A_s_vals,
+    const int64_t* sparse_nonneg_idx, const int64_t* sparse_col,
+    int64_t batch, int64_t n, int64_t m, int64_t k,
+    int64_t n_nonneg, int64_t n_sparse)
+{
+    int64_t bi = blockIdx.x;
+    if (bi >= batch) return;
+
+    int64_t jdim = n + 2 * m + 1;
+    const double* r_s = rhs_bar + bi * jdim + n + m;
+    double* ys_b = y_s + bi * m;
+    const double* yx_b = y_x + bi * n;
+    const double* yz_b = y_z + bi * m;
+    double ytau = y_tau[bi];
+    const double* g_b = g + bi * m;
+    const double* gh1_b = gh1 + bi * m;
+    const double* b_b = b + bi * m;
+
+    // y_s[i] = g[i] * (r_s[i] + A_row_i * y_x + (1+h)*y_z[i] - b[i]*y_tau)
+    // For zero cones: A*y_x contribution is from F_all GEMV (added externally)
+    // For sparse nonneg: A_row * y_x = a * y_x[col]
+    // For empty: A_row * y_x = 0
+
+    for (int64_t i = threadIdx.x; i < m; i += blockDim.x) {
+        double val = r_s[i] + gh1_b[i] / g_b[i] * g_b[i] * yz_b[i] - b_b[i] * ytau;
+        // Simplify: gh1/g * g = gh1 = (1+h)*g ... wait, gh1 = g*(1+h).
+        // (1+h)*y_z = gh1/g * y_z? No. We need (1+h)*y_z[i].
+        // Since gh1[i] = g[i]*(1+h_i), we have (1+h_i) = gh1[i]/g[i].
+        // But we want g[i] * ((1+h_i)*y_z[i]) = gh1[i]*y_z[i].
+        // So y_s[i] = g[i]*r_s[i] + gh1[i]*y_z[i] - g[i]*b[i]*y_tau + g[i]*A_row*y_x
+
+        ys_b[i] = g_b[i] * r_s[i] + gh1_b[i] * yz_b[i] - g_b[i] * b_b[i] * ytau;
+        // A*y_x contribution added below for sparse rows, or externally for zero/dense
+    }
+
+    __syncthreads();
+
+    // Add sparse A*y_x: for sparse nonneg row sr, A_row * y_x = a * y_x[col]
+    for (int64_t sr = threadIdx.x; sr < n_sparse; sr += blockDim.x) {
+        int64_t ni = sparse_nonneg_idx[sr];
+        int64_t col = sparse_col[sr];
+        double a = A_s_vals[bi * n_sparse + sr];
+        ys_b[k + ni] += g_b[k + ni] * a * yx_b[col];
+    }
+}
+
+void launch_diff_wb_recover_y_s(
+    double* y_s,
+    const double* rhs_bar, const double* y_x,
+    const double* y_z, const double* y_tau,
+    const double* g, const double* gh1, const double* b,
+    const double* A_s_vals,
+    const int64_t* sparse_nonneg_idx, const int64_t* sparse_col,
+    int64_t batch, int64_t n, int64_t m, int64_t k,
+    int64_t n_nonneg, int64_t n_sparse,
+    cudaStream_t stream)
+{
+    int threads = std::min((int)m, 256);
+    diff_wb_recover_y_s_kernel<<<(int)batch, threads, 0, stream>>>(
+        y_s, rhs_bar, y_x, y_z, y_tau, g, gh1, b,
+        A_s_vals, sparse_nonneg_idx, sparse_col,
+        batch, n, m, k, n_nonneg, n_sparse);
+}
+
+__global__ void diff_wb_J_matvec_diag_kernel(
+    double* y_out,
+    const double* w_x, const double* w_z, const double* w_s,
+    const double* w_tau,
+    const double* P_diag, const double* H_nonneg,
+    const double* q, const double* b,
+    const double* c1, const double* c2, const double* c3,
+    const double* A_s_vals,
+    const int64_t* sparse_nonneg_idx, const int64_t* sparse_col,
+    const int64_t* col_offsets, const int64_t* col_sparse_rows,
+    int64_t batch, int64_t n, int64_t m, int64_t k,
+    int64_t n_nonneg, int64_t n_sparse)
+{
+    int64_t bi = blockIdx.x;
+    if (bi >= batch) return;
+
+    int64_t jdim = n + 2 * m + 1;
+    double* out = y_out + bi * jdim;
+    const double* wx = w_x + bi * n;
+    const double* wz = w_z + bi * m;
+    const double* ws = w_s + bi * m;
+    double wtau = w_tau[bi];
+    const double* P_b = P_diag + bi * n;
+    const double* H_b = H_nonneg + bi * n_nonneg;
+    const double* q_b = q + bi * n;
+    const double* b_b = b + bi * m;
+    const double* c1_b = c1 + bi * n;
+    const double* c2_b = c2 + bi * m;
+    double c3_b = c3[bi];
+    const double* As_b = A_s_vals + bi * n_sparse;
+
+    // Row 0: y_out[0:n] = P*w_x + A'*w_z + q*w_tau
+    // Diagonal P + q*tau. A' sparse contribution via CSC. Dense A' via cuBLAS.
+    for (int64_t j = threadIdx.x; j < n; j += blockDim.x) {
+        double val = P_b[j] * wx[j] + q_b[j] * wtau;
+        // Sparse A' * w_z: for each sparse nonneg row touching col j
+        for (int64_t p = col_offsets[j]; p < col_offsets[j + 1]; ++p) {
+            int64_t sr = col_sparse_rows[p];
+            int64_t ni = sparse_nonneg_idx[sr];
+            double a = As_b[sr];
+            val += a * wz[k + ni];
+        }
+        out[j] = val;
+        // Note: A_zero' * w_z_zero and A_dense' * w_z_dense added via cuBLAS GEMV
+    }
+
+    // Row 1: y_out[n:n+m] = A*w_x + w_z - w_s - b*w_tau
+    // Sparse A*w_x. Element-wise w_z - w_s - b*tau.
+    for (int64_t i = threadIdx.x; i < m; i += blockDim.x) {
+        out[n + i] = wz[i] - ws[i] - b_b[i] * wtau;
+        // Sparse A*w_x for nonneg rows
+        // Zero/dense A*w_x via cuBLAS
+    }
+    // Add sparse A*w_x contributions
+    for (int64_t sr = threadIdx.x; sr < n_sparse; sr += blockDim.x) {
+        int64_t ni = sparse_nonneg_idx[sr];
+        int64_t col = sparse_col[sr];
+        double a = As_b[sr];
+        atomicAdd(&out[n + k + ni], a * wx[col]);
+    }
+
+    // Row 2: y_out[n+m:n+2m] = w_z - H*w_s
+    for (int64_t i = threadIdx.x; i < m; i += blockDim.x) {
+        double h;
+        if (i < k) {
+            h = 1.0;  // zero cone H = I
+        } else {
+            h = H_b[i - k];
+        }
+        out[n + m + i] = wz[i] - h * ws[i];
+    }
+
+    // Row 3: y_out[n+2m] = c1'*w_x + c2'*w_z + c3*w_tau
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        double val = c3_b * wtau;
+        for (int64_t j = 0; j < n; ++j) val += c1_b[j] * wx[j];
+        for (int64_t i = 0; i < m; ++i) val += c2_b[i] * wz[i];
+        out[jdim - 1] = val;
+    }
+}
+
+void launch_diff_wb_J_matvec_diag(
+    double* y_out,
+    const double* w_x, const double* w_z, const double* w_s,
+    const double* w_tau,
+    const double* P_diag, const double* H_nonneg,
+    const double* q, const double* b,
+    const double* c1, const double* c2, const double* c3,
+    const double* A_s_vals,
+    const int64_t* sparse_nonneg_idx, const int64_t* sparse_col,
+    const int64_t* col_offsets, const int64_t* col_sparse_rows,
+    int64_t batch, int64_t n, int64_t m, int64_t k,
+    int64_t n_nonneg, int64_t n_sparse,
+    cudaStream_t stream)
+{
+    int threads = std::min((int)(n + m), 256);
+    diff_wb_J_matvec_diag_kernel<<<(int)batch, threads, 0, stream>>>(
+        y_out, w_x, w_z, w_s, w_tau, P_diag, H_nonneg, q, b, c1, c2, c3,
+        A_s_vals, sparse_nonneg_idx, sparse_col, col_offsets, col_sparse_rows,
+        batch, n, m, k, n_nonneg, n_sparse);
+}
+ Step 3: Build and verify compilation
+
+cd packages/moreau-cuda/build && cmake .. -DCMAKE_CUDA_ARCHITECTURES=120 && make -j4
+Expected: Compiles cleanly with new kernel symbols.
+
+ Step 4: Commit
+
+git add packages/moreau-cuda/include/moreau/kkt/woodbury_kernels.cuh packages/moreau-cuda/src/kkt/woodbury_kernels.cu
+git commit -m "feat: add backward-pass kernels for Woodbury direct Schur complement"
+Task 2: Rewrite DiffWoodbury header with direct Schur workspace
+Files:
+
+Rewrite: packages/moreau-cuda/include/moreau/diff/diff_woodbury.hpp
+
+ Step 1: Write the new header
+
+Replace the entire file with the new struct definition. Key changes from the stub:
+
+Remove PCG workspace (pcg_*, Jv_, etc.)
+
+Add s-elimination buffers: g_, Lambda_, gh1_
+
+Add τ-elimination buffers: v_x_, v_z_, sigma_, rt_tau_
+
+Add extended F_ext (k_ext = k_total + 1) and its workspace
+
+Add Woodbury solve workspace mirroring forward solver
+
+Add J-matvec workspace
+
+/**
+ * @file diff_woodbury.hpp
+ * @brief Woodbury-specialized backward pass via direct Schur complement solve
+ *
+ * Solves (J'J + εI)w = rhs_bar, then y_out = J*w.
+ * Exploits diagonal P + low-rank A structure via block elimination:
+ *   1. Eliminate y_s (diagonal D_s = I + H² + εI)
+ *   2. Eliminate y_τ (scalar Sherman-Morrison)
+ *   3. Solve reduced (n+m) via Woodbury: diagonal D_x + rank-k_ext F_ext
+ *   4. Back-substitute for y_s, y_τ
+ *   5. J-matvec: y_out = J * w
+ */
+
+#pragma once
+
+#include <cuda_runtime.h>
+#include <cublas_v2.h>
+#include <cusolverDn.h>
+#include <cstdint>
+#include <memory>
+
+#include "moreau/cuda/utils.hpp"
+#include "moreau/cones/cones.hpp"
+
+namespace moreau {
+
+struct WoodburyKKTData;
+
+struct DiffWoodbury {
+    int64_t n_ = 0, m_ = 0, k_ = 0, k_total_ = 0;
+    int64_t k_ext_ = 0;   // k_total + 1 (extra row for c1)
+    int64_t n_nonneg_ = 0, n_sparse_ = 0, n_empty_ = 0, k_d_ = 0;
+    int64_t jdim_ = 0;    // n + 2m + 1
+    int64_t batchSize_ = 0;
+
+    static constexpr double eps_ = 1e-8;
+
+    // ---- Borrowed from forward WoodburyKKTData (set by setup()) ----
+    const double* F_all_ = nullptr;
+    long long f_all_stride_ = 0;
+    bool f_all_shared_ = false;
+    const double* P_diag_ = nullptr;
+    const double* A_s_vals_ = nullptr;
+    const int64_t* sparse_nonneg_idx_ = nullptr;
+    const int64_t* sparse_col_ = nullptr;
+    const int64_t* col_offsets_ = nullptr;
+    const int64_t* col_sparse_rows_ = nullptr;
+    const int64_t* dense_nonneg_idx_ = nullptr;
+    const int64_t* empty_nonneg_idx_ = nullptr;
+
+    // ---- Per-backward-call data (set by setup()) ----
+    const double* H_nonneg_ = nullptr;  // (B, n_nonneg)
+    const double* q_ = nullptr;         // (B, n)
+    const double* b_ = nullptr;         // (B, m)
+    const double* c1_ = nullptr;        // (B, n)
+    const double* c2_ = nullptr;        // (B, m)
+    const double* c3_ = nullptr;        // (B, 1)
+
+    // ---- s-elimination diagonals (B, m) ----
+    device_unique_ptr<double> g_;       // 1/(1+h²+ε)
+    device_unique_ptr<double> Lambda_;  // (h²+ε)/(1+h²+ε)
+    device_unique_ptr<double> gh1_;     // g*(1+h)
+
+    // ---- Reduced system diagonals ----
+    device_unique_ptr<double> D_x_;        // (B, n) x-block diagonal
+    device_unique_ptr<double> D_x_inv_;    // (B, n) 1/D_x
+    device_unique_ptr<double> D_z_;        // (B, n_nonneg) nonneg z diagonal
+    device_unique_ptr<double> D_z_inv_;    // (B, n_nonneg) 1/D_z
+    device_unique_ptr<double> Lambda_F_;   // (B, k_ext) F_ext row weights
+    device_unique_ptr<double> C_all_ext_;  // (B, k_ext) = 1/Lambda_F (Schur diag add)
+
+    // ---- τ-elimination vectors ----
+    device_unique_ptr<double> v_x_;     // (B, n)
+    device_unique_ptr<double> v_z_;     // (B, m)
+    device_unique_ptr<double> sigma_;   // (B)
+
+    // ---- Extended F_all (B_F, n, k_ext) ----
+    device_unique_ptr<double> F_ext_;   // F_all + c1 row
+    long long f_ext_stride_ = 0;       // 0 if shared, n*k_ext if per-batch
+
+    // ---- Schur complement ----
+    device_unique_ptr<double> S_schur_;      // (B, k_ext, k_ext)
+    device_unique_ptr<double> F_scaled_;     // (B, n, k_ext)
+    device_unique_ptr<double*> S_ptrs_;      // (B) pointers into S_schur_
+    device_unique_ptr<double*> dnu_ptrs_;    // (B) pointers into d_nu_
+    device_unique_ptr<int> cusolver_info_;   // (B)
+    device_unique_ptr<double> potrf_workspace_;
+    int potrf_workspace_size_ = 0;
+
+    // ---- Reduced RHS ----
+    device_unique_ptr<double> rt_x_;    // (B, n)  after s-elim
+    device_unique_ptr<double> rt_z_;    // (B, m)  after s-elim
+    device_unique_ptr<double> rt_tau_;  // (B)     after s-elim
+    device_unique_ptr<double> rhat_x_;  // (B, n)  after τ-elim
+    device_unique_ptr<double> rhat_z_;  // (B, m)  after τ-elim
+
+    // ---- Woodbury solve workspace ----
+    device_unique_ptr<double> rhs_x_;      // (B, n)
+    device_unique_ptr<double> rhs_nu_;     // (B, k_ext)
+    device_unique_ptr<double> rhs_lam_;    // (B, n_nonneg)
+    device_unique_ptr<double> rhs_x_adj_;  // (B, n)
+    device_unique_ptr<double> Dinv_rhs_;   // (B, n)
+    device_unique_ptr<double> schur_rhs_;  // (B, k_ext)
+    device_unique_ptr<double> d_nu_;       // (B, k_ext)
+    device_unique_ptr<double> Fdnu_;       // (B, n)
+
+    // ---- Solution vectors ----
+    device_unique_ptr<double> y_x_;     // (B, n)
+    device_unique_ptr<double> y_z_;     // (B, m)
+    device_unique_ptr<double> y_s_;     // (B, m)
+    device_unique_ptr<double> y_tau_;   // (B)
+
+    // ---- GEMV workspace ----
+    device_unique_ptr<double> gemv_k_;  // (B, k_ext)
+    device_unique_ptr<double> gemv_n_;  // (B, n)
+    device_unique_ptr<double> gemv_m_;  // (B, m)
+
+    cublasHandle_t cublas_ = nullptr;
+    cusolverDnHandle_t cusolver_ = nullptr;
+
+    DiffWoodbury(int64_t n, int64_t m, int64_t batchSize,
+                 const Cones& cones, cudaStream_t stream = 0);
+    ~DiffWoodbury();
+
+    DiffWoodbury(const DiffWoodbury&) = delete;
+    DiffWoodbury& operator=(const DiffWoodbury&) = delete;
+
+    /**
+     * Setup borrowed pointers from forward solver and per-call HSDE data.
+     * Call once before solveAdjoint.
+     */
+    void setup(const WoodburyKKTData& wb,
+               const double* H_nonneg,
+               const double* q, const double* b,
+               const double* c1, const double* c2, const double* c3,
+               cudaStream_t stream);
+
+    /**
+     * Solve the adjoint system and write result to y_out.
+     * y_out = J * (J'J + εI)^{-1} * rhs_bar
+     *
+     * @param rhs_bar  (B, jdim) input RHS from build_adjoint_rhs_hsde
+     * @param y_out    (B, jdim) output into state.sol
+     */
+    void solveAdjoint(const double* rhs_bar, double* y_out, cudaStream_t stream);
+
+    [[nodiscard]] size_t memoryUsage() const noexcept;
+
+private:
+    // Phase 0: Precompute diagonals, build F_ext, factor Schur complement
+    void precompute(cudaStream_t stream);
+
+    // Phase 1-2: s-elimination and τ-elimination on RHS
+    void eliminate_s_tau_rhs(const double* rhs_bar, cudaStream_t stream);
+
+    // Phase 3: Woodbury solve on reduced (n+m) system
+    void solve_reduced(cudaStream_t stream);
+
+    // Phase 4-5: Back-substitute y_tau, y_s
+    void back_substitute(const double* rhs_bar, cudaStream_t stream);
+
+    // Phase 6: J-matvec y_out = J * w
+    void J_matvec(double* y_out, cudaStream_t stream);
+
+    // Build F_ext from F_all + c1 (called from precompute)
+    void build_F_ext(cudaStream_t stream);
+
+    // Build and factor Schur complement (called from precompute)
+    void build_and_factor_schur(cudaStream_t stream);
+
+    // Build pointer arrays for batched cuSolver
+    void build_ptr_arrays();
+};
+
+} // namespace moreau
+ Step 2: Build and verify header compiles
+
+cd packages/moreau-cuda/build && make -j4
+Expected: Compiles (diff_woodbury.cu still has stub implementation — it will link fine because no external code calls the new methods yet).
+
+Actually, the stub implementation won’t match the new header. We need to update the .cu file too. Move to Task 3.
+
+ Step 3: Commit
+
+git add packages/moreau-cuda/include/moreau/diff/diff_woodbury.hpp
+git commit -m "feat: rewrite DiffWoodbury header for direct Schur complement backward"
+Chunk 2: DiffWoodbury Implementation
+Task 3: Implement DiffWoodbury constructor and setup
+Files:
+
+Rewrite: packages/moreau-cuda/src/diff/diff_woodbury.cu
+
+ Step 1: Write constructor, destructor, setup, memoryUsage, build_ptr_arrays
+
+Replace the entire file:
+
+#include "moreau/diff/diff_woodbury.hpp"
+#include "moreau/kkt/kkt_woodbury.hpp"
+#include "moreau/kkt/woodbury_kernels.cuh"
+
+namespace moreau {
+
+DiffWoodbury::DiffWoodbury(int64_t n, int64_t m, int64_t batchSize,
+                           const Cones& cones, cudaStream_t stream)
+    : n_(n), m_(m), batchSize_(batchSize),
+      k_(cones.numZeroCones), n_nonneg_(cones.numNonnegCones),
+      jdim_(n + 2 * m + 1)
+{
+    // k_total_ and k_d_ set later in setup() from WoodburyKKTData
+    // For now, allocate what we can (m-sized buffers are safe)
+
+    cublasCreate(&cublas_);
+    cusolverDnCreate(&cusolver_);
+
+    // s-elimination diagonals
+    g_ = make_device_unique<double>(batchSize_ * m_);
+    Lambda_ = make_device_unique<double>(batchSize_ * m_);
+    gh1_ = make_device_unique<double>(batchSize_ * m_);
+
+    // Reduced RHS
+    rt_x_ = make_device_unique<double>(batchSize_ * n_);
+    rt_z_ = make_device_unique<double>(batchSize_ * m_);
+    rt_tau_ = make_device_unique<double>(batchSize_);
+    rhat_x_ = make_device_unique<double>(batchSize_ * n_);
+    rhat_z_ = make_device_unique<double>(batchSize_ * m_);
+
+    // τ-elimination vectors
+    v_x_ = make_device_unique<double>(batchSize_ * n_);
+    v_z_ = make_device_unique<double>(batchSize_ * m_);
+    sigma_ = make_device_unique<double>(batchSize_);
+
+    // D_x, D_z
+    D_x_ = make_device_unique<double>(batchSize_ * n_);
+    D_x_inv_ = make_device_unique<double>(batchSize_ * n_);
+    D_z_ = make_device_unique<double>(batchSize_ * n_nonneg_);
+    D_z_inv_ = make_device_unique<double>(batchSize_ * n_nonneg_);
+
+    // Solution vectors
+    y_x_ = make_device_unique<double>(batchSize_ * n_);
+    y_z_ = make_device_unique<double>(batchSize_ * m_);
+    y_s_ = make_device_unique<double>(batchSize_ * m_);
+    y_tau_ = make_device_unique<double>(batchSize_);
+
+    // GEMV workspace
+    gemv_n_ = make_device_unique<double>(batchSize_ * n_);
+    gemv_m_ = make_device_unique<double>(batchSize_ * m_);
+
+    // Woodbury solve workspace (allocated after k_ext_ known — deferred to first setup())
+    // cuSolver info
+    cusolver_info_ = make_device_unique<int>(batchSize_);
+
+    cudaStreamSynchronize(stream);
+}
+
+DiffWoodbury::~DiffWoodbury() {
+    if (cublas_) cublasDestroy(cublas_);
+    if (cusolver_) cusolverDnDestroy(cusolver_);
+}
+
+void DiffWoodbury::setup(const WoodburyKKTData& wb,
+    const double* H_nonneg, const double* q, const double* b,
+    const double* c1, const double* c2, const double* c3, cudaStream_t stream)
+{
+    // Copy structural info from forward solver
+    k_total_ = wb.k_total_; k_d_ = wb.k_d_;
+    k_ext_ = k_total_ + 1;  // extra row for c1
+    n_sparse_ = wb.n_sparse_; n_empty_ = wb.n_empty_;
+    F_all_ = wb.F_all_.get(); f_all_stride_ = wb.f_all_stride_;
+    f_all_shared_ = wb.f_all_shared_;
+    P_diag_ = wb.P_diag_.get(); A_s_vals_ = wb.A_s_vals_.get();
+    sparse_nonneg_idx_ = wb.d_sparse_nonneg_idx_.get();
+    sparse_col_ = wb.d_sparse_col_.get();
+    col_offsets_ = wb.d_col_offsets_.get();
+    col_sparse_rows_ = wb.d_col_sparse_rows_.get();
+    dense_nonneg_idx_ = wb.d_dense_nonneg_idx_.get();
+    empty_nonneg_idx_ = wb.d_empty_nonneg_idx_.get();
+
+    // Per-call HSDE data
+    H_nonneg_ = H_nonneg; q_ = q; b_ = b;
+    c1_ = c1; c2_ = c2; c3_ = c3;
+
+    // Lazy-allocate k_ext-dependent buffers on first call
+    if (!Lambda_F_) {
+        Lambda_F_ = make_device_unique<double>(batchSize_ * k_ext_);
+        C_all_ext_ = make_device_unique<double>(batchSize_ * k_ext_);
+
+        int64_t B_F = f_all_shared_ ? 1 : batchSize_;
+        F_ext_ = make_device_unique<double>(B_F * n_ * k_ext_);
+        f_ext_stride_ = f_all_shared_ ? 0 : (long long)(n_ * k_ext_);
+
+        S_schur_ = make_device_unique<double>(batchSize_ * k_ext_ * k_ext_);
+        F_scaled_ = make_device_unique<double>(batchSize_ * n_ * k_ext_);
+
+        rhs_x_ = make_device_unique<double>(batchSize_ * n_);
+        rhs_nu_ = make_device_unique<double>(batchSize_ * k_ext_);
+        rhs_lam_ = make_device_unique<double>(batchSize_ * n_nonneg_);
+        rhs_x_adj_ = make_device_unique<double>(batchSize_ * n_);
+        Dinv_rhs_ = make_device_unique<double>(batchSize_ * n_);
+        schur_rhs_ = make_device_unique<double>(batchSize_ * k_ext_);
+        d_nu_ = make_device_unique<double>(batchSize_ * k_ext_);
+        Fdnu_ = make_device_unique<double>(batchSize_ * n_);
+        gemv_k_ = make_device_unique<double>(batchSize_ * k_ext_);
+
+        S_ptrs_ = make_device_unique<double*>(batchSize_);
+        dnu_ptrs_ = make_device_unique<double*>(batchSize_);
+
+        build_ptr_arrays();
+
+        // Query Cholesky workspace for B=1
+        if (batchSize_ == 1) {
+            cusolverDnSetStream(cusolver_, stream);
+            int lwork = 0;
+            cusolverDnDpotrf_bufferSize(cusolver_, CUBLAS_FILL_MODE_LOWER,
+                                         (int)k_ext_, S_schur_.get(), (int)k_ext_, &lwork);
+            potrf_workspace_size_ = lwork;
+            potrf_workspace_ = make_device_unique<double>(lwork);
+        }
+
+        cudaStreamSynchronize(stream);
+    }
+}
+
+void DiffWoodbury::build_ptr_arrays() {
+    std::vector<double*> h_S(batchSize_);
+    std::vector<double*> h_dnu(batchSize_);
+    for (int64_t b = 0; b < batchSize_; ++b) {
+        h_S[b] = S_schur_.get() + b * k_ext_ * k_ext_;
+        h_dnu[b] = d_nu_.get() + b * k_ext_;
+    }
+    cudaMemcpy(S_ptrs_.get(), h_S.data(), sizeof(double*) * batchSize_, cudaMemcpyHostToDevice);
+    cudaMemcpy(dnu_ptrs_.get(), h_dnu.data(), sizeof(double*) * batchSize_, cudaMemcpyHostToDevice);
+}
+
+size_t DiffWoodbury::memoryUsage() const noexcept {
+    size_t s = 0;
+    // s-elim: 3 * B*m
+    s += 3 * batchSize_ * m_ * sizeof(double);
+    // D_x, D_x_inv, D_z, D_z_inv
+    s += 2 * batchSize_ * n_ * sizeof(double);
+    s += 2 * batchSize_ * n_nonneg_ * sizeof(double);
+    // tau-elim: v_x, v_z, sigma
+    s += batchSize_ * (n_ + m_ + 1) * sizeof(double);
+    // F_ext, F_scaled, S_schur
+    int64_t B_F = f_all_shared_ ? 1 : batchSize_;
+    s += B_F * n_ * k_ext_ * sizeof(double);
+    s += batchSize_ * n_ * k_ext_ * sizeof(double);
+    s += batchSize_ * k_ext_ * k_ext_ * sizeof(double);
+    // Solve workspace: ~8 * B * n + 4 * B * k_ext + B * n_nonneg
+    s += 8 * batchSize_ * n_ * sizeof(double);
+    s += 4 * batchSize_ * k_ext_ * sizeof(double);
+    s += batchSize_ * n_nonneg_ * sizeof(double);
+    // Solution: B * (n + 2m + 1)
+    s += batchSize_ * jdim_ * sizeof(double);
+    return s;
+}
+
+} // namespace moreau
+ Step 2: Build to verify
+
+cd packages/moreau-cuda/build && make -j4
+Expected: Compiles. Link errors for missing precompute, eliminate_s_tau_rhs, etc. are OK because they’re private and only called from solveAdjoint which still throws.
+
+ Step 3: Commit
+
+git add packages/moreau-cuda/include/moreau/diff/diff_woodbury.hpp packages/moreau-cuda/src/diff/diff_woodbury.cu
+git commit -m "feat: DiffWoodbury constructor, setup, memory allocation for direct Schur"
+Task 4: Implement precompute (diagonals + Schur factorization)
+Files:
+
+Modify: packages/moreau-cuda/src/diff/diff_woodbury.cu
+
+ Step 1: Implement precompute(), build_F_ext(), build_and_factor_schur()
+
+Add these methods to diff_woodbury.cu:
+
+void DiffWoodbury::build_F_ext(cudaStream_t stream) {
+    // F_ext = [F_all; c1'] — append c1 as last row of each batch
+    // If F_all is shared but c1 is per-batch, F_ext must be per-batch
+    // For simplicity, always build F_ext per-batch
+    int64_t B_F = f_all_shared_ ? 1 : batchSize_;
+
+    // If F_all shared, we still need per-batch F_ext because c1 varies
+    // Reallocate F_ext as per-batch if needed
+    if (f_all_shared_ && batchSize_ > 1) {
+        // Need per-batch F_ext even though F_all is shared
+        // Copy F_all to each batch slice, then append c1
+        F_ext_ = make_device_unique<double>(batchSize_ * n_ * k_ext_);
+        f_ext_stride_ = (long long)(n_ * k_ext_);
+        B_F = batchSize_;
+    }
+
+    launch_diff_wb_build_F_ext(
+        F_ext_.get(), F_all_, c1_,
+        B_F, n_, k_total_, k_ext_, stream);
+}
+
+void DiffWoodbury::build_and_factor_schur(cudaStream_t stream) {
+    cublasSetStream(cublas_, stream);
+    cusolverDnSetStream(cusolver_, stream);
+
+    // 1. F_scaled = diag(D_x_inv) @ F_ext   (element-wise per column)
+    launch_woodbury_scale_F(
+        F_scaled_.get(), F_ext_.get(), D_x_inv_.get(),
+        batchSize_, n_, k_ext_, false, stream);  // F_ext always per-batch for backward
+
+    // 2. S = F_scaled^T @ F_ext via batched GEMM
+    double alpha = 1.0, beta = 0.0;
+    cublasDgemmStridedBatched(cublas_, CUBLAS_OP_N, CUBLAS_OP_T,
+                (int)k_ext_, (int)k_ext_, (int)n_,
+                &alpha,
+                F_scaled_.get(), (int)k_ext_, (long long)(n_ * k_ext_),
+                F_ext_.get(), (int)k_ext_, f_ext_stride_,
+                &beta,
+                S_schur_.get(), (int)k_ext_, (long long)(k_ext_ * k_ext_),
+                (int)batchSize_);
+
+    // 3. Add C_all^{-1} = 1/Lambda_F on diagonal
+    launch_diff_wb_set_schur_diag(
+        S_schur_.get(), Lambda_F_.get(),
+        batchSize_, k_ext_, stream);
+
+    // 4. Cholesky factorization
+    if (batchSize_ == 1) {
+        cusolverDnDpotrf(cusolver_, CUBLAS_FILL_MODE_LOWER,
+            (int)k_ext_, S_schur_.get(), (int)k_ext_,
+            potrf_workspace_.get(), potrf_workspace_size_,
+            cusolver_info_.get());
+    } else {
+        // Rebuild ptr arrays (S_schur_ may have been reallocated)
+        build_ptr_arrays();
+        cusolverDnDpotrfBatched(
+            cusolver_, CUBLAS_FILL_MODE_LOWER,
+            (int)k_ext_, S_ptrs_.get(), (int)k_ext_,
+            cusolver_info_.get(), (int)batchSize_);
+    }
+}
+
+void DiffWoodbury::precompute(cudaStream_t stream) {
+    cublasSetStream(cublas_, stream);
+
+    // 1. s-elimination diagonals
+    launch_diff_wb_s_elim_diagonals(
+        g_.get(), Lambda_.get(), gh1_.get(),
+        H_nonneg_, eps_,
+        batchSize_, m_, k_, n_nonneg_, stream);
+
+    // 2. D_x diagonal
+    launch_diff_wb_compute_D_x(
+        D_x_.get(), P_diag_, Lambda_.get(),
+        A_s_vals_, eps_,
+        sparse_nonneg_idx_, col_offsets_, col_sparse_rows_,
+        batchSize_, n_, m_, k_, n_nonneg_, n_sparse_, stream);
+
+    // D_x_inv = 1/D_x
+    // Use simple element-wise kernel (reuse existing infrastructure)
+    launch_woodbury_elementwise_inv(
+        D_x_inv_.get(), D_x_.get(), batchSize_ * n_, stream);
+
+    // 3. D_z diagonal for nonneg
+    launch_diff_wb_compute_D_z(
+        D_z_.get(), D_z_inv_.get(),
+        H_nonneg_, c2_, eps_,
+        batchSize_, m_, k_, n_nonneg_, stream);
+
+    // 4. Lambda_F weights for F_ext rows
+    launch_diff_wb_compute_Lambda_F(
+        Lambda_F_.get(), Lambda_.get(),
+        dense_nonneg_idx_, eps_,
+        batchSize_, m_, k_, k_d_, k_total_, k_ext_, stream);
+
+    // 5. Build F_ext
+    build_F_ext(stream);
+
+    // 6. τ-elimination vectors (diagonal parts)
+    launch_diff_wb_tau_elim_diag(
+        v_x_.get(), v_z_.get(), sigma_.get(),
+        P_diag_, q_, b_, c1_, c2_, c3_,
+        Lambda_.get(), g_.get(), gh1_.get(),
+        A_s_vals_, sparse_nonneg_idx_, sparse_col_,
+        col_offsets_, col_sparse_rows_, eps_,
+        batchSize_, n_, m_, k_, n_nonneg_, n_sparse_, stream);
+
+    // 7. v_x += F_ext' @ (Lambda_F * F_ext @ q)  — A' * Lambda * b contribution
+    // Actually: v_x needs -A'*Lambda*b for zero/dense rows.
+    // Compute: gemv_k = F_ext @ b (k_ext per batch)
+    // Then scale by Lambda_F: gemv_k *= Lambda_F
+    // Then v_x -= F_ext' @ gemv_k (only the first k_total entries, not c1 row)
+    // Wait — v_x = Pq - A'Λb + c1*c3. The kernel computed Pq + c1*c3 - sparse A'Λb.
+    // We need to subtract dense A'Λb = F_all' @ diag(Λ_F[0:k_total]) @ F_all @ ... wait.
+    // Actually the F_all/F_ext already has the right structure. Let's think:
+    // A'Λb for zero/dense rows = F_all' @ [Λ_zero * b_zero; Λ_dense * b_dense]
+    // We can compute this with a GEMV: gather Λ[zero]*b[zero] and Λ[dense]*b[dense],
+    // then F_all' @ gathered.
+    //
+    // For simplicity, let's compute this in a separate helper.
+    // TODO: implement F_all GEMV contribution to v_x and v_z in precompute
+
+    // 8. Build and factor Schur complement
+    build_and_factor_schur(stream);
+}
+Note: The τ-elimination GEMV contributions to v_x and v_z (for zero/dense rows of A) need a helper. This is the A*q and A’Λb terms that go through F_all. We need a small helper kernel to gather the weighted b values, then cuBLAS GEMV. I’ll add this in the actual implementation — the pattern is identical to the forward solver’s RHS adjustment step but applied to the precompute vectors.
+
+ Step 2: Add the missing launch_woodbury_elementwise_inv if it doesn’t exist
+
+Check if this kernel exists. If not, add a simple one:
+
+// In woodbury_kernels.cu
+__global__ void elementwise_inv_kernel(double* out, const double* in, int64_t N) {
+    int64_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < N) out[idx] = 1.0 / in[idx];
+}
+
+void launch_woodbury_elementwise_inv(double* out, const double* in, int64_t N, cudaStream_t stream) {
+    int threads = 256;
+    int blocks = (N + threads - 1) / threads;
+    elementwise_inv_kernel<<<blocks, threads, 0, stream>>>(out, in, N);
+}
+ Step 3: Build
+
+cd packages/moreau-cuda/build && make -j4
+ Step 4: Commit
+
+git add packages/moreau-cuda/src/diff/diff_woodbury.cu packages/moreau-cuda/src/kkt/woodbury_kernels.cu packages/moreau-cuda/include/moreau/kkt/woodbury_kernels.cuh
+git commit -m "feat: DiffWoodbury precompute — diagonals, F_ext, Schur factorization"
+Task 5: Implement solveAdjoint (phases 1-6)
+Files:
+
+Modify: packages/moreau-cuda/src/diff/diff_woodbury.cu
+
+ Step 1: Implement eliminate_s_tau_rhs, solve_reduced, back_substitute, J_matvec, solveAdjoint
+
+void DiffWoodbury::eliminate_s_tau_rhs(const double* rhs_bar, cudaStream_t stream) {
+    cublasSetStream(cublas_, stream);
+
+    // Phase 1: s-elimination on RHS
+    launch_diff_wb_s_elim_rhs(
+        rhs_bar, rt_x_.get(), rt_z_.get(), rt_tau_.get(),
+        g_.get(), gh1_.get(), b_,
+        A_s_vals_, sparse_nonneg_idx_, sparse_col_,
+        col_offsets_, col_sparse_rows_,
+        batchSize_, n_, m_, k_, n_nonneg_, n_sparse_, stream);
+
+    // Add F_all' @ (g_zero/dense * r_s_zero/dense) to rt_x
+    // Gather g * r_s for zero/dense rows into gemv_k_[0:k_total]
+    // Then rt_x += F_all' @ gemv_k
+    // TODO: implement gather kernel + GEMV for zero/dense r_s contribution
+
+    // Phase 2: τ-elimination on RHS
+    launch_diff_wb_tau_elim_rhs(
+        rhat_x_.get(), rhat_z_.get(),
+        rt_x_.get(), rt_z_.get(),
+        rt_tau_.get(), v_x_.get(), v_z_.get(), sigma_.get(),
+        batchSize_, n_, m_, stream);
+}
+
+void DiffWoodbury::solve_reduced(cudaStream_t stream) {
+    cublasSetStream(cublas_, stream);
+    cusolverDnSetStream(cusolver_, stream);
+
+    // Mirrors forward solve_core steps 1-11 with backward-specific weights.
+    // Input: rhat_x_ (B, n), rhat_z_ (B, m)
+    // Output: y_x_ (B, n), y_z_ (B, m)
+
+    // 1. Unpack rhat_z into rhs_nu (k_ext) and rhs_lam (n_nonneg)
+    //    rhs_nu[0:k] = rhat_z[0:k]  (zero cone)
+    //    rhs_nu[k:k_total] = rhat_z[k + dense_idx[i]]  (dense nonneg)
+    //    rhs_nu[k_total] = 0  (c1 row — no direct z contribution)
+    //    rhs_lam[i] = rhat_z[k + i]  (all nonneg)
+    launch_woodbury_unpack_rhs_kt(
+        nullptr,  // no packed rhs — we have separate rhat_x/rhat_z
+        rhs_x_.get(), rhs_nu_.get(), rhs_lam_.get(),
+        batchSize_, n_, k_, k_ext_, n_nonneg_, stream);
+    // WAIT — the unpack kernel expects a single packed (n+m) vector.
+    // We have separate rhat_x (n) and rhat_z (m). Need a custom unpack.
+    // Actually, simpler: just write a kernel to gather from rhat_z.
+    // Or pack rhat_x + rhat_z into a temp buffer. Let's do custom gather.
+
+    // Custom: copy rhat_x -> rhs_x_, gather rhat_z -> rhs_nu_ + rhs_lam_
+    cudaMemcpyAsync(rhs_x_.get(), rhat_x_.get(),
+                    sizeof(double) * batchSize_ * n_,
+                    cudaMemcpyDeviceToDevice, stream);
+
+    // Gather rhs_nu and rhs_lam from rhat_z
+    // This needs a kernel. For now, use the existing gather/scatter kernels:
+    launch_woodbury_unpack_rhs_kt(
+        nullptr, rhs_x_.get(), rhs_nu_.get(), rhs_lam_.get(),
+        batchSize_, n_, k_, k_ext_, n_nonneg_, stream);
+    // ^ This won't work — the existing unpack expects interleaved layout.
+    // We need to write a custom gather. I'll detail this in the actual implementation.
+
+    // 2. RHS adjustment for sparse nonneg
+    if (n_sparse_ > 0) {
+        launch_woodbury_rhs_adj_sparse(
+            rhs_x_adj_.get(), rhs_x_.get(),
+            D_z_inv_.get(), rhs_lam_.get(),
+            A_s_vals_, sparse_nonneg_idx_,
+            col_offsets_, col_sparse_rows_,
+            batchSize_, n_, n_nonneg_, n_sparse_, stream);
+    } else {
+        cudaMemcpyAsync(rhs_x_adj_.get(), rhs_x_.get(),
+                        sizeof(double) * batchSize_ * n_,
+                        cudaMemcpyDeviceToDevice, stream);
+    }
+
+    // 3. schur_rhs = rhs_x_adj + F_ext' @ (C_all_ext * rhs_nu)
+    launch_woodbury_elementwise_mul(
+        schur_rhs_.get(), C_all_ext_.get(), rhs_nu_.get(),
+        batchSize_ * k_ext_, stream);
+    {
+        double alpha = 1.0, beta = 1.0;
+        cublasDgemmStridedBatched(cublas_, CUBLAS_OP_T, CUBLAS_OP_N,
+            (int)n_, 1, (int)k_ext_,
+            &alpha,
+            F_ext_.get(), (int)k_ext_, f_ext_stride_,
+            schur_rhs_.get(), (int)k_ext_, (long long)k_ext_,
+            &beta,
+            rhs_x_adj_.get(), (int)n_, (long long)n_,
+            (int)batchSize_);
+    }
+
+    // 4. u = D_x_inv * rhs_x_adj
+    launch_woodbury_elementwise_mul(
+        Dinv_rhs_.get(), D_x_inv_.get(), rhs_x_adj_.get(),
+        batchSize_ * n_, stream);
+
+    // 5. v = F_ext @ u
+    {
+        double alpha = 1.0, beta = 0.0;
+        cublasDgemmStridedBatched(cublas_, CUBLAS_OP_N, CUBLAS_OP_N,
+            (int)k_ext_, 1, (int)n_,
+            &alpha,
+            F_ext_.get(), (int)k_ext_, f_ext_stride_,
+            Dinv_rhs_.get(), (int)n_, (long long)n_,
+            &beta,
+            schur_rhs_.get(), (int)k_ext_, (long long)k_ext_,
+            (int)batchSize_);
+    }
+
+    // 6. w = S^{-1} v (Cholesky solve)
+    cudaMemcpyAsync(d_nu_.get(), schur_rhs_.get(),
+                    sizeof(double) * batchSize_ * k_ext_,
+                    cudaMemcpyDeviceToDevice, stream);
+    if (batchSize_ == 1) {
+        cusolverDnDpotrs(cusolver_, CUBLAS_FILL_MODE_LOWER,
+            (int)k_ext_, 1, S_schur_.get(), (int)k_ext_,
+            d_nu_.get(), (int)k_ext_, cusolver_info_.get());
+    } else {
+        cusolverDnDpotrsBatched(cusolver_, CUBLAS_FILL_MODE_LOWER,
+            (int)k_ext_, 1, S_ptrs_.get(), (int)k_ext_,
+            dnu_ptrs_.get(), (int)k_ext_,
+            cusolver_info_.get(), (int)batchSize_);
+    }
+
+    // 7. Fdnu = F_ext' @ w
+    {
+        double alpha = 1.0, beta = 0.0;
+        cublasDgemmStridedBatched(cublas_, CUBLAS_OP_T, CUBLAS_OP_N,
+            (int)n_, 1, (int)k_ext_,
+            &alpha,
+            F_ext_.get(), (int)k_ext_, f_ext_stride_,
+            d_nu_.get(), (int)k_ext_, (long long)k_ext_,
+            &beta,
+            Fdnu_.get(), (int)n_, (long long)n_,
+            (int)batchSize_);
+    }
+
+    // 8. y_x = D_x_inv * (rhs_x_adj - Fdnu)
+    launch_woodbury_dx_recovery(
+        y_x_.get(), D_x_inv_.get(), rhs_x_adj_.get(), Fdnu_.get(),
+        batchSize_ * n_, stream);
+
+    // 9. y_z recovery: zero/dense from d_nu, sparse/empty from diagonal
+    // dy_nu = d_nu - C_all_ext * rhs_nu
+    launch_woodbury_dy_recovery(
+        gemv_k_.get(), d_nu_.get(), C_all_ext_.get(), rhs_nu_.get(),
+        batchSize_, k_ext_, stream);
+
+    // y_z[0:k] = gemv_k[0:k] (zero cone)
+    // y_z[k + dense_idx[j]] = gemv_k[k + j] (dense nonneg)
+    // y_z[k + sparse_idx[j]] = D_z_inv[j] * (A_s*y_x[col] - rhs_lam[j])
+    // y_z[k + empty_idx[j]] = -D_z_inv[j] * rhs_lam[j]
+
+    // Scatter zero/dense dy into y_z
+    // Sparse/empty recovery using D_z_inv
+    if (n_nonneg_ > 0) {
+        if (n_sparse_ > 0) {
+            launch_woodbury_dlam_sparse(
+                y_z_.get() + k_ * 0,  // offset handled inside kernel by nonneg_idx
+                D_z_inv_.get(), y_x_.get(), rhs_lam_.get(),
+                A_s_vals_, sparse_col_, sparse_nonneg_idx_,
+                batchSize_, n_, n_nonneg_, n_sparse_, stream);
+        }
+        if (n_empty_ > 0) {
+            launch_woodbury_dlam_empty(
+                y_z_.get() + k_ * 0,
+                D_z_inv_.get(), rhs_lam_.get(),
+                empty_nonneg_idx_,
+                batchSize_, n_nonneg_, n_empty_, stream);
+        }
+        if (k_d_ > 0) {
+            launch_woodbury_scatter_dlam_dense(
+                y_z_.get() + k_ * 0,
+                gemv_k_.get(), batchSize_, k_, k_ext_, n_nonneg_,
+                dense_nonneg_idx_, k_d_, stream);
+        }
+    }
+    // y_z[0:k] from gemv_k[0:k]
+    // (scatter zero-cone dy into y_z)
+    // TODO: scatter kernel for zero-cone entries
+}
+
+void DiffWoodbury::back_substitute(const double* rhs_bar, cudaStream_t stream) {
+    cublasSetStream(cublas_, stream);
+
+    // Recover y_tau
+    launch_diff_wb_recover_y_tau(
+        y_tau_.get(),
+        rt_tau_.get(), v_x_.get(), v_z_.get(),
+        y_x_.get(), y_z_.get(), sigma_.get(),
+        batchSize_, n_, m_, stream);
+
+    // Recover y_s (diagonal + sparse parts)
+    launch_diff_wb_recover_y_s(
+        y_s_.get(), rhs_bar, y_x_.get(), y_z_.get(), y_tau_.get(),
+        g_.get(), gh1_.get(), b_,
+        A_s_vals_, sparse_nonneg_idx_, sparse_col_,
+        batchSize_, n_, m_, k_, n_nonneg_, n_sparse_, stream);
+
+    // Add F_all GEMV contribution for zero/dense rows of A*y_x to y_s
+    // gemv_k = F_all @ y_x (k_total entries)
+    // y_s[zero_rows] += g[zero] * gemv_k[0:k]
+    // y_s[dense_rows] += g[dense] * gemv_k[k:k_total]
+    // TODO: GEMV + scatter-add kernel
+}
+
+void DiffWoodbury::J_matvec(double* y_out, cudaStream_t stream) {
+    cublasSetStream(cublas_, stream);
+
+    // Diagonal + sparse parts of J*w
+    launch_diff_wb_J_matvec_diag(
+        y_out,
+        y_x_.get(), y_z_.get(), y_s_.get(), y_tau_.get(),
+        P_diag_, H_nonneg_, q_, b_, c1_, c2_, c3_,
+        A_s_vals_, sparse_nonneg_idx_, sparse_col_,
+        col_offsets_, col_sparse_rows_,
+        batchSize_, n_, m_, k_, n_nonneg_, n_sparse_, stream);
+
+    // Dense A' * w_z contribution to y_out[0:n]:
+    // y_out[0:n] += F_all' @ w_z[zero/dense gathered]
+    // Gather w_z zero/dense into gemv_k_[0:k_total]
+    // TODO: gather kernel + GEMV
+
+    // Dense A * w_x contribution to y_out[n:n+m]:
+    // y_out[n + zero_rows] += (F_all @ w_x)[0:k]
+    // y_out[n + dense_rows] += (F_all @ w_x)[k:k_total]
+    // TODO: GEMV + scatter-add kernel
+}
+
+void DiffWoodbury::solveAdjoint(const double* rhs_bar, double* y_out, cudaStream_t stream) {
+    // Phase 0: Precompute diagonals + Schur factorization
+    precompute(stream);
+
+    // Phase 1-2: s and τ elimination on RHS
+    eliminate_s_tau_rhs(rhs_bar, stream);
+
+    // Phase 3: Woodbury solve on reduced (n+m) system
+    solve_reduced(stream);
+
+    // Phase 4-5: Back-substitute y_tau, y_s
+    back_substitute(rhs_bar, stream);
+
+    // Phase 6: J-matvec y_out = J * w
+    J_matvec(y_out, stream);
+}
+Implementation notes: The code above has several TODO markers for gather/scatter GEMV operations with F_all for zero/dense rows. These follow the exact same pattern as the forward solver. The implementer should:
+
+Write a launch_diff_wb_gather_weighted kernel that gathers values from a full m-vector into a k_total-vector at zero/dense positions, optionally multiplying by a weight.
+
+Write a launch_diff_wb_scatter_add kernel that scatters values from a k_total-vector back to zero/dense positions of an m-vector, optionally multiplying by a weight.
+
+Use cuBLAS cublasDgemmStridedBatched for the GEMV with F_all (same pattern as forward solver steps 3, 5, 7).
+
+ Step 2: Build
+
+cd packages/moreau-cuda/build && make -j4
+ Step 3: Commit
+
+git add packages/moreau-cuda/src/diff/diff_woodbury.cu
+git commit -m "feat: DiffWoodbury solveAdjoint — block elimination + Woodbury solve + J-matvec"
+Task 6: Wire DiffWoodbury into backward() dispatch
+Files:
+
+Modify: packages/moreau-cuda/src/diff/diff.cu
+
+ Step 1: Replace the cuDSS fallback with DiffWoodbury dispatch for Woodbury problems
+
+In backward() function, replace the TODO block (lines ~476-521) with:
+
+    if (solver.kkt.isWoodbury()) {
+        // Woodbury direct Schur complement backward path
+        if (!solver.diff_woodbury_ || solver.diff_woodbury_->batchSize_ != batchSize) {
+            solver.diff_woodbury_ = std::make_unique<DiffWoodbury>(
+                n, m, batchSize, cones, stream);
+        }
+
+        // Get WoodburyKKTData reference
+        auto& wb = solver.kkt.woodburyData();
+
+        solver.diff_woodbury_->setup(
+            wb, derivs.nonneg_H.data(),
+            q_eq, b_eq,
+            state.c1.data(), state.c2.data(), state.c3.data(),
+            stream);
+
+        solver.diff_woodbury_->solveAdjoint(state.rhs.data(), state.sol.data(), stream);
+    } else {
+        // Standard DiffKKT (cuDSS) path
+        // ... existing code unchanged ...
+    }
+Also add the include at the top of diff.cu:
+
+#include "moreau/diff/diff_woodbury.hpp"
+ Step 2: Verify KKTSolver has isWoodbury() and woodburyData() accessors
+
+Check packages/moreau-cuda/include/moreau/kkt/kkt_solver.hpp for these methods. If missing, add them.
+
+ Step 3: Build
+
+cd packages/moreau-cuda/build && make -j4
+ Step 4: Commit
+
+git add packages/moreau-cuda/src/diff/diff.cu
+git commit -m "feat: wire DiffWoodbury dispatch for Woodbury problems in backward()"
+Chunk 3: Testing and Polish
+Task 7: Run existing backward tests
+Files:
+
+Test: packages/moreau-cuda/tests/cpp/test_woodbury.cpp
+
+ Step 1: Build and run backward tests
+
+cd packages/moreau-cuda/build && make -j4 && ctest -R "Woodbury.*Backward" --output-on-failure
+Expected: Both BackwardMatchesCuDSS and BackwardGradientsMatchFiniteDiff pass.
+
+If they fail, debug by:
+
+Adding MOREAU_DEBUG=1 environment variable
+
+Checking specific gradient components
+
+Comparing intermediate values (D_x, S_schur, etc.) against reference
+
+ Step 2: Fix any issues found
+
+Common failure modes:
+
+Sign errors in s-elimination cross-terms
+
+Missing GEMV contributions (gather/scatter TODO items)
+
+Schur complement conditioning (check Lambda_F values)
+
+J-matvec missing dense A contributions
+
+ Step 3: Run full test suite
+
+cd packages/moreau-cuda/build && ctest --output-on-failure
+Expected: All tests pass (no regression).
+
+ Step 4: Commit
+
+git add -A && git commit -m "fix: resolve backward test failures in DiffWoodbury"
+Task 8: Add gather/scatter helper kernels
+These are the TODO items from Task 5 — small utility kernels needed for the GEMV operations with F_all on zero/dense rows.
+
+Files:
+
+Modify: packages/moreau-cuda/include/moreau/kkt/woodbury_kernels.cuh
+
+Modify: packages/moreau-cuda/src/kkt/woodbury_kernels.cu
+
+ Step 1: Add gather/scatter kernel declarations
+
+/**
+ * Gather values from m-vector at zero/dense positions into k_total-vector,
+ * optionally multiplying by a per-element weight.
+ *
+ * out[0:k] = weight_zero * in[0:k]
+ * out[k+j] = weight_dense[j] * in[k + dense_idx[j]]   for j in 0..k_d
+ */
+void launch_diff_wb_gather_weighted(
+    double* out,          // (B, k_total)
+    const double* in,     // (B, m)
+    const double* weight, // (B, m) or nullptr for no weight
+    const int64_t* dense_nonneg_idx,
+    int64_t batch, int64_t m, int64_t k, int64_t k_d, int64_t k_total,
+    cudaStream_t stream = 0);
+
+/**
+ * Scatter-add values from k_total-vector into m-vector at zero/dense positions,
+ * optionally multiplying by a per-element weight.
+ *
+ * out[0:k] += weight[0:k] * in[0:k]
+ * out[k + dense_idx[j]] += weight[k+dense_idx[j]] * in[k+j]
+ */
+void launch_diff_wb_scatter_add_weighted(
+    double* out,          // (B, m) in-place accumulate
+    const double* in,     // (B, k_total)
+    const double* weight, // (B, m) or nullptr for no weight
+    const int64_t* dense_nonneg_idx,
+    int64_t batch, int64_t m, int64_t k, int64_t k_d, int64_t k_total,
+    cudaStream_t stream = 0);
+ Step 2: Implement kernels
+
+ Step 3: Wire into DiffWoodbury (replace TODO markers in Task 5)
+
+ Step 4: Build and test
+
+cd packages/moreau-cuda/build && make -j4 && ctest -R "Woodbury.*Backward" --output-on-failure
+ Step 5: Commit
+
+git add packages/moreau-cuda/include/moreau/kkt/woodbury_kernels.cuh packages/moreau-cuda/src/kkt/woodbury_kernels.cu packages/moreau-cuda/src/diff/diff_woodbury.cu
+git commit -m "feat: gather/scatter helpers for backward GEMV operations"
+Task 9: Final validation and cleanup
+ Step 1: Run full test suite
+
+cd packages/moreau-cuda/build && ctest --output-on-failure
+ Step 2: Run Python backward tests
+
+MOREAU_CUDA_ARCH=120 pip install -e packages/moreau-cuda --no-build-isolation
+pytest packages/moreau/tests/python/ -v -k backward
+ Step 3: Remove any dead PCG code from diff_woodbury files
+
+Ensure no remnants of the old PCG approach remain.
+
+ Step 4: Commit
+
+git add -A && git commit -m "chore: cleanup and final validation for Woodbury direct Schur backward"
+Implementation Notes for the Engineer
+Key patterns to follow
+cuBLAS GEMV pattern: The forward solver uses cublasDgemmStridedBatched with M=k, N=1 (or 2 for solve2), K=n. For backward, same but with k_ext instead of k_total. The F_ext stride is n * k_ext per batch (always per-batch since c1 varies).
+
+Sparse CSC pattern: Identical to forward solver. col_offsets[j]..col_offsets[j+1] gives the sparse rows touching column j. Each sparse row has exactly 1 nonzero with value A_s_vals[sr] at column sparse_col[sr].
+
+No hot-path mallocs: All workspace allocated in constructor/setup. The lazy allocation in setup() uses a null-check pattern — allocate once on first call, reuse thereafter.
+
+Zero cone H = I: In the HSDE Jacobian, zero cones have H = identity. So h=1 for zero cone dual variables. This is critical for the s-elimination diagonals.
+
+F_all layout: Row-major (n, k_total) per batch, stored so cuBLAS sees (k_total, n) column-major. Same layout for F_ext (n, k_ext).
+
+The c2 correction: The spec mentions c2c2’ rank-1 corrections to S_zz. For sparse/empty nonneg, c2[i]^2 is folded into D_z (done in launch_diff_wb_compute_D_z). For zero/dense rows, c2_zero creates a dense k×k correction. This is handled by the c1 row in F_ext — wait, actually c2 affects the z-block, not x-block. The c2_zero × c2_zero’ correction to the Schur complement needs a separate Sherman-Morrison step or to be folded in. If initial tests fail on precision, this is the most likely cause. The fix: add c2_zero as another row in F_ext (k_ext = k_total + 2), or apply one SM correction to the k_ext×k_ext Schur complement after factorization.
+
+Debugging tips
+Set MOREAU_DEBUG=1 to enable debug prints in backward()
+
+Compare intermediate values (D_x, Lambda, S_schur diagonal) between Woodbury and cuDSS paths
+
+The BackwardMatchesCuDSS test compares gradients between Woodbury and cuDSS — any mismatch points to a bug in the block elimination
+
+Use nsys profile to verify no host-device syncs in the hot path

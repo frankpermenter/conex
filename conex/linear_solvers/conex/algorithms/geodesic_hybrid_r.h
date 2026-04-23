@@ -46,7 +46,8 @@ HybridRDirection ComputeHybridRDirection(
     const RowSpace& r,
     double theta,
     RowSpace& d,
-    RowSpace& delta);
+    RowSpace& delta,
+    Eigen::VectorXd* y_out = nullptr);
 
 // Verify the Newton direction satisfies its defining equations:
 //   Primal: delta = r - P(W^{1/2})(b_theta + A*y)

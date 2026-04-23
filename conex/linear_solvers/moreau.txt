@@ -1,0 +1,436 @@
+Woodbury Direct Schur Complement Backward Pass
+Summary
+Replace the stub DiffWoodbury backward pass (currently falls back to cuDSS) with a direct Schur complement solve that exploits the same diagonal-P + low-rank-A structure as the forward Woodbury KKT solver. Strip all PCG code. Expected 10-14x backward speedup over cuDSS for portfolio-type problems.
+
+Problem Statement
+The HSDE backward pass needs to produce a vector y_out of size jdim = n + 2m + 1 that goes into state.sol. The downstream extract_gradients_hsde reads y_out[0:n], y_out[n:n+m], y_out[jdim-1] to compute dq, db.
+
+Currently, Woodbury forward problems fall through to cuDSS for the backward pass, negating much of the forward speedup.
+
+What cuDSS (DiffKKT) does
+Solves the 2*jdim × 2*jdim augmented system:
+
+K = [I    J ]     [y  ]   [0       ]
+    [J'  -εI]     [lam] = [rhs_bar ]
+RHS is [0; rhs_bar]. Extract first half of solution (y).
+
+Row 1: y + J lam = 0 → y = -J lam
+
+Row 2: J'y - ε lam = rhs_bar → J'(-J lam) - ε lam = rhs_bar → lam = -(J'J + εI)^{-1} rhs_bar
+
+Therefore: y = -J lam = J (J'J + εI)^{-1} rhs_bar
+
+So state.sol = y = J * (J'J + εI)^{-1} * rhs_bar. The output involves both a normal-equations solve AND a J-matvec.
+
+What we’ll do instead
+Solve (J'J + εI) * w = rhs_bar via block elimination (Woodbury structure)
+
+Compute y_out = J * w (J-matvec)
+
+Output y_out (size jdim) into state.sol
+
+HSDE Jacobian Structure
+J = [P      A'     0     q  ]   (n rows)      — y_x
+    [A      I     -I    -b  ]   (m rows)      — y_z
+    [0      I     -H     0  ]   (m rows)      — y_s
+    [c1'    c2'    0     c3 ]   (1 row)       — y_τ
+For Woodbury problems: P diagonal, H diagonal (zero cones: H=I, nonneg: H=diag(h)), A = [A_zero; A_sparse; A_dense].
+
+J’J + εI Block Structure
+Partition y = [y_x(n); y_z(m); y_s(m); y_τ(1)].
+
+J columns: J_x = [P; A; 0; c1], J_z = [A'; I; I; c2], J_s = [0; -I; -H; 0], J_τ = [q; -b; 0; c3].
+
+x
+
+z
+
+s
+
+τ
+
+x
+
+P²+A’A+c1c1’+εI
+
+PA’+A’+c1c2’
+
+-A’
+
+Pq-A’b+c1c3
+
+z
+
+AP+A+c2c1’
+
+AA’+2I+c2c2’+εI
+
+-(I+H)
+
+Aq-b+c2c3
+
+s
+
+-A
+
+-(I+H)
+
+I+H²+εI
+
+b
+
+τ
+
+q’P-b’A+c3c1’
+
+q’A’-b’+c3c2’
+
+b’
+
+q’q+b’b+c3²+ε
+
+Algorithm
+Step 1: Eliminate y_s (diagonal pivot)
+The (s,s) block D_s = I + H² + εI is diagonal. Define g = D_s^{-1}.
+
+Cross-terms: M_{xs} = -A', M_{zs} = -(I+H), M_{τs} = b'.
+
+After Schur complement, define Λ = I - g = diag((h²+ε)/(1+h²+ε)):
+
+Block
+
+Formula
+
+S_xx
+
+P² + A'ΛA + c1c1' + εI
+
+S_zz
+
+AA' + D_z + c2c2' where D_z = diag(2+ε - (1+h)²/(1+h²+ε))
+
+S_xz
+
+PA' + A'G + c1c2' where G = diag((h²-h+ε)/(1+h²+ε))
+
+S_xτ
+
+Pq - A'Λb + c1c3 (n-vector)
+
+S_zτ
+
+Aq - diag(1-(1+h)g)b + c2c3 (m-vector)
+
+S_ττ
+
+q'q + b'Λb + c3² + ε (scalar)
+
+RHS corrections:
+
+r̃_x = r_x + A'g r_s
+
+r̃_z = r_z + diag((1+h)g) r_s
+
+r̃_τ = r_τ - b'g r_s
+
+Back-substitution: y_s = g(r_s + A y_x + (I+H) y_z - b y_τ)
+
+Step 2: Eliminate y_τ (scalar pivot S_ττ)
+Define v_x = S_xτ, v_z = S_zτ, σ = S_ττ. Apply Sherman-Morrison: solve the (n+m) system without τ correction, then adjust.
+
+RHS: α = r̃_τ/σ, r̂_x = r̃_x - α v_x, r̂_z = r̃_z - α v_z
+
+Back-substitution: y_τ = (r̃_τ - v_x'y_x - v_z'y_z) / σ
+
+Step 3: Handling c1c1’ and c2c2’ rank-1 terms
+After τ elimination, the (n+m) system still contains rank-1 terms c1c1' in S_xx and c2c2' in S_zz. These come from the 4th row of J (not the τ column), so τ elimination does NOT remove them.
+
+Approach: Fold into the extended F_all matrix.
+
+Build F_ext of size (k_ext × n) where k_ext = k_total + 1:
+
+F_ext = [A_zero    ]   (k rows)
+        [A_dense   ]   (k_d rows)
+        [c1'       ]   (1 row)
+The c1c1’ term in S_xx becomes F_ext[k_total,:] Λ_c1 F_ext[k_total,:]' where Λ_c1 = 1 (the c1c1’ weight is 1, handled as the C_all_inv entry for this row).
+
+For c2c2’ in S_zz: partition c2 = [c2_zero(k); c2_nonneg(n_nonneg)].
+
+c2_zero contributes c2_zero * c2_zero' to the (k×k) zero-zero block of S_zz. This adds a rank-1 correction to the Schur complement’s C_all_inv block. Handle by folding c2_zero into a second extra F_ext row, or applying one Sherman-Morrison step on the k_ext×k_ext Schur complement.
+
+c2_nonneg for sparse/empty rows: adds c2[i]² to D_z[i] (diagonal — cheap).
+
+c2_nonneg for dense rows: adds to the dense-dense block of Schur complement — fold similarly.
+
+Simplified approach: Since c2 corrections to the Schur complement are small rank updates on a k_ext×k_ext matrix (which is already small), apply Sherman-Morrison on the Schur complement level. Cost: O(k_ext²) per SM step — negligible.
+
+Total extra rows in F_ext: +1 (for c1). c2 corrections handled at Schur complement level.
+
+Step 4: Solve the reduced (n+m) system (Woodbury structure)
+After s and τ elimination, the system has the same form as the forward KKT but with different diagonals. Mirror the forward solve_core 11-step algorithm:
+
+Diagonals (different from forward):
+
+D_x[j] = P[j]² + ε + Σ_sparse Λ[row] * a_val² (vs forward: P[j] + ε + Σ h² a²)
+
+D_z_sparse[i] = 2+ε - (1+h)²/(1+h²+ε) + c2[i]² (vs forward: h² + ε)
+
+C_all_inv: zero rows = 1/Λ_zero, dense nonneg = 1/Λ[dense_idx], c1 row = 1 (vs forward: zero = ε, nonneg = h²+ε)
+
+F_ext = forward’s F_all with one extra c1 row appended. Shares the same cuBLAS GEMV pattern.
+
+Solve steps (same as forward):
+
+Unpack [r̂_x; r̂_z] into rhs_x(n), rhs_nu(k_ext), rhs_lam(n_nonneg)
+
+RHS adjustment for sparse nonneg
+
+Schur RHS via F_ext’ @ (C_all * rhs_nu) + rhs_adj
+
+D_x^{-1} scale
+
+Reduce: F_ext @ u
+
+Apply c2 SM correction to Schur complement (1 step, O(k_ext²))
+
+Cholesky solve: k_ext × k_ext
+
+Back-substitute: y_x = D_x^{-1}(rhs_adj - F_ext’ w)
+
+Recover y_{z,zero/dense} from w
+
+Recover y_{z,sparse/empty} from diagonal
+
+Pack
+
+Step 5: Recover y_τ and y_s
+Back-substitute as described in Steps 1-2.
+
+Step 6: J-matvec and pack output
+After the normal-equations solve produces w = [w_x; w_z; w_s; w_τ], compute y_out = J * w:
+
+y_out[0:n]       = P w_x + A' w_z + 0 w_s + q w_τ        = P w_x + A' w_z + q w_τ
+y_out[n:n+m]     = A w_x + w_z - w_s - b w_τ
+y_out[n+m:n+2m]  = w_z - H w_s
+y_out[n+2m]      = c1'w_x + c2'w_z + c3 w_τ
+For Woodbury problems:
+
+P w_x: diagonal multiply O(n)
+
+A' w_z: F_all’ @ w_z_zero_dense + sparse scatter, same GEMV pattern as forward
+
+A w_x: F_all @ w_x + sparse gather, same GEMV pattern as forward
+
+H w_s: diagonal multiply O(m)
+
+Dot products for τ entry: O(n+m)
+
+Cost: ~2 GEMVs (F_all and F_all’) + O(n+m) element-wise ops. Modest addition to the total.
+
+Write y_out (B, jdim) into state.sol. This is what extract_gradients_hsde reads.
+
+Cross-terms S_xz handling
+The (x,z) cross-coupling S_xz = PA' + A'G + c1c2' is concerning — it couples x and z in a non-trivial way. In the forward solver, the x-z coupling is handled through the F_all structure because the KKT system naturally decomposes as [D_x, F'; F, -C^{-1}].
+
+For the backward system, the S_xz block is:
+
+PA': since P is diagonal, this is diag(p) @ A'. For sparse nonneg rows, p[col] * a_val — scalar per row. For zero/dense rows, it adds diag(p) @ F_all' which is low-rank.
+
+A'G: A' @ diag(G) — same structure as A’ with different weights.
+
+c1c2': rank-1.
+
+The key insight: the full (n+m) system after s-elimination has form:
+
+[S_xx   S_xz] [y_x]   [r̂_x]
+[S_zx   S_zz] [y_z] = [r̂_z]
+We can further eliminate y_z (nonneg part) using D_z diagonal, leaving the zero/dense z coupled with x through F_all — exactly the forward structure.
+
+Specifically: For sparse nonneg z_i, the S_zz diagonal entry dominates and the S_zx coupling is a[col]*p[col] + a[col]*G[i] + c2[i]*c1[col]. Since sparse rows have at most 1 nonzero, this adds a correction to rhs_x[col] when eliminating z_i — same as the forward solver’s “RHS adjustment” step.
+
+For zero/dense z rows, the coupling goes through F_all and ends up in the Schur complement — again mirroring forward.
+
+Conclusion: The algorithm described in Step 4 is correct. The cross-terms are handled by the standard Woodbury decomposition as long as we correctly compute the diagonal weights.
+
+Implementation Plan
+Files to modify
+include/moreau/diff/diff_woodbury.hpp — Rewrite struct: remove PCG workspace, add direct solve workspace
+
+src/diff/diff_woodbury.cu — Full implementation (~600 lines)
+
+src/diff/diff.cu — Wire up DiffWoodbury dispatch for Woodbury problems
+
+src/kkt/woodbury_kernels.cu + .cuh — New kernels for backward-specific ops (s-elim diagonals, τ-elim, RHS transforms, cross-term weights)
+
+tests/cpp/test_woodbury.cpp — Existing tests should pass through new path
+
+CMakeLists.txt — Ensure diff_woodbury.cu is in build
+
+Memory allocation (all in constructor, zero hot-path mallocs)
+Buffer
+
+Shape
+
+Purpose
+
+g_
+
+(B, m)
+
+1/(1+h²+ε)
+
+Lambda_
+
+(B, m)
+
+(h²+ε)/(1+h²+ε)
+
+D_x_
+
+(B, n)
+
+Reduced x-diagonal
+
+D_z_
+
+(B, n_nonneg)
+
+Reduced z-diagonal
+
+Lambda_F_
+
+(B, k_ext)
+
+F_ext row weights
+
+C_all_ext_
+
+(B, k_ext)
+
+Extended C_all inverse
+
+v_x_
+
+(B, n)
+
+τ-elim x-vector
+
+v_z_
+
+(B, m)
+
+τ-elim z-vector
+
+sigma_
+
+(B)
+
+τ-elim scalar
+
+S_schur_
+
+(B, k_ext, k_ext)
+
+Schur complement
+
+F_ext_
+
+(B, n, k_ext)
+
+Extended F_all + c1 row
+
+F_scaled_
+
+(B, n, k_ext)
+
+GEMM workspace
+
+y_x/z/s/tau_
+
+(B, n/m/m/1)
+
+Solution vectors
+
+rhs_x/z/tau_
+
+(B, n/m/1)
+
+Reduced RHS
+
+Dinv_rhs_
+
+(B, n)
+
+D^{-1} workspace
+
+schur_rhs_
+
+(B, k_ext)
+
+Schur RHS
+
+d_nu_
+
+(B, k_ext)
+
+Schur solution
+
+Fdnu_
+
+(B, n)
+
+F_ext @ d_nu
+
+Jw_
+
+(B, jdim)
+
+J-matvec output
+
+gemv_k_
+
+(B, k_ext)
+
+GEMV workspace
+
+cuSolver workspace
+
+Batched Cholesky
+
+Key differences from forward solve
+Different diagonals: D_x uses Λ = (h²+ε)/(1+h²+ε) not h²
+
+Extended F_ext: F_all + 1 extra row for c1
+
+τ elimination: Sherman-Morrison rank-1 correction (not in forward)
+
+s back-substitution: Extra O(m) phase
+
+c2 correction: SM on Schur complement (O(k²))
+
+Cross-term weights G for S_xz coupling
+
+J-matvec output: Final y_out = J*w step (2 extra GEMVs + element-wise ops)
+
+Iterative refinement
+One step of refinement on the normal equations: y += solve(rhs_bar - (J'J+εI)y). This requires a J’J matvec (two passes through J). The forward solver’s solve_impl does analogous KKT refinement. Cost: 2 extra GEMV passes — worthwhile for precision.
+
+Testing
+BackwardMatchesCuDSS — match cuDSS to ~1e-10
+
+BackwardGradientsMatchFiniteDiff — match FD to ~1e-5
+
+Batched backward (B > 1) — already covered
+
+Dense nonneg rows (k_d > 0) — add test if missing
+
+Performance: measure backward time with Woodbury vs cuDSS
+
+Performance
+~6 GEMVs with F_ext (k_ext × n): 4 for Woodbury solve + 2 for J-matvec, plus k_ext² Cholesky + O(n+m) scalar ops
+
+vs cuDSS: O(jdim³) factorization on (2*jdim)² augmented matrix
+
+Expected 10-14x backward speedup, matching forward improvement
+
+Memory: O(B * k_ext * n) vs O(B * jdim²) — order of magnitude reduction

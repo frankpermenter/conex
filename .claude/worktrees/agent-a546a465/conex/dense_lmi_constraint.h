@@ -1,0 +1,51 @@
+#pragma once
+#include "newton_step.h"
+#include "psd_constraint.h"
+
+namespace conex {
+
+class MatrixLMIConstraint : public PsdConstraint {
+ public:
+  MatrixLMIConstraint(int n,
+                      const std::vector<DenseMatrix>& constraint_matrices,
+                      const DenseMatrix& constraint_affine);
+
+  Eigen::MatrixXd constraint_matrices_vect_;
+  const std::vector<DenseMatrix> constraint_matrices() const {
+    return constraint_matrices_;
+  }
+  const DenseMatrix affine_term() const { return constraint_affine_; }
+  const std::vector<DenseMatrix> constraint_matrices_;
+  const DenseMatrix constraint_affine_;
+
+ protected:
+  void ComputeAW(int i, const Ref& W, Ref* AW, Ref* WAW);
+  void ComputeWCW(const Ref& W, Ref* CW, Ref* WCW);
+  double EvalDualConstraint(int j, const Ref& W);
+  double EvalDualObjective(const Ref& W);
+};
+
+class DenseLMIConstraint final : public MatrixLMIConstraint {
+ public:
+  DenseLMIConstraint(int n, const std::vector<DenseMatrix>& constraint_matrices,
+                     const DenseMatrix& constraint_affine)
+      : MatrixLMIConstraint(n, constraint_matrices, constraint_affine) {}
+
+  DenseLMIConstraint(const std::vector<DenseMatrix>& constraint_matrices,
+                     const DenseMatrix& constraint_affine)
+      : MatrixLMIConstraint(constraint_affine.rows(), constraint_matrices,
+                            constraint_affine) {}
+
+  void accept(Visitor* v) const override { v->visit(*this); }
+
+ private:
+  void do_schur_complement(bool initialize,
+                           SchurComplementSystem* sys) override {
+    ConstructSchurComplementSystemImpl(initialize, sys);
+  }
+
+  void ComputeNegativeSlack(double k, const Ref& y, Ref* s) override;
+  void ConstructSchurComplementSystemImpl(bool initialize,
+                                          SchurComplementSystem* sys);
+};
+}  // namespace conex

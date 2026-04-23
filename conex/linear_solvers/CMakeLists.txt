@@ -627,3 +627,5 @@ target_link_libraries(kkt_residual_test
 
 add_executable(delayed_ordering_test conex/test/delayed_ordering_test.cc)
 target_link_libraries(delayed_ordering_test clique_ordering)
+add_executable(analyze_tree conex/test/analyze_tree.cc)
+target_link_libraries(analyze_tree algorithms constraints sparse_linear_constraint clique_ordering kkt_solver_factory tree_solver structural_rank)

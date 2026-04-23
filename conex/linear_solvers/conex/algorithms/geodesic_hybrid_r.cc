@@ -42,7 +42,8 @@ HybridRDirection ComputeHybridRDirection(
     const RowSpace& r,
     double theta,
     RowSpace& d,
-    RowSpace& delta) {
+    RowSpace& delta,
+    Eigen::VectorXd* y_out) {
   RowSpace b_theta = BlendAffine(kkt, b, theta);
   RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
 
@@ -63,6 +64,13 @@ HybridRDirection ComputeHybridRDirection(
     y += d_rhs;
   }
   kkt.SolveSolverRHS(y);
+
+  // Optionally return the solve vector.
+  if (y_out) {
+    int nv = kkt.number_of_variables();
+    y_out->resize(nv);
+    y.supernodes->GatherInto(*y_out);
+  }
 
   // delta = r - P(W^{1/2})(b_theta + A*y)
   RowSpace row = kkt.MakeRowSpace();
@@ -173,11 +181,12 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     cost_tau = cost_rhs;
     cost_tau *= tau;
 
-    // Compute direction at (W, r, theta, tau).
+    // Compute direction at (W, r, theta, tau), with solve vector y.
     RowSpace d = kkt.MakeRowSpace();
     RowSpace delta = kkt.MakeRowSpace();
+    Eigen::VectorXd y_vec;
     auto info = ComputeHybridRDirection(kkt, cost_tau, b_tau, W, r, theta,
-                                         d, delta);
+                                         d, delta, &y_vec);
     last_delta = delta;
     total_sol++;
     double d_inf_pre = info.d_inf;
@@ -190,65 +199,103 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       break;
     }
 
-    // Update tau via duality identity: b'λ + c'x + μ/τ = θ·R.
-    // λ = P(W^{1/2})(r + delta), x from the solve vector.
+    // Update tau via duality identity.
+    //
+    // At the tau-scaled problem, the duality identity is:
+    //   b'λ + (c + d_eq)'x + x'Qx/τ + μ/τ = θ·R·τ
+    // where λ = P(W^{1/2})(r+δ), x = y (solve vector), μ = gap.
+    // All quantities are at the tau-scaled level.
+    //
+    // Rearranging for τ (multiply by τ, collect):
+    //   b'λ·τ + (c+d_eq)'x·τ + x'Qx + μ = θ·R·τ²
+    //   θ·R·τ² - (b'λ + (c+d_eq)'x)·τ - (x'Qx + μ) = 0
+    //
+    // But b'λ and c'x are ALREADY at the tau-scaled level (the direction
+    // was computed with tau*b, tau*c). So they implicitly include tau.
+    // The UNSCALED quantities are: b'λ_unscaled = b'λ (λ doesn't depend on tau
+    // scaling — it comes from r and delta which are tau-independent).
+    // And c'x_unscaled: the solve vector y satisfies (A'W²A)y = RHS(tau),
+    // and x = y. The cost contribution c'x = cost_rhs'·y, but the solve
+    // used cost_tau = tau*cost_rhs. So the contribution is already tau-scaled.
+    //
+    // Cleaner: evaluate everything in UNSCALED terms.
+    // λ = P(W^{1/2})(r + δ) — independent of tau (r and δ are tau-independent? NO)
+    //
+    // Actually δ DOES depend on tau because the direction was computed with
+    // tau-scaled data. So λ = P(W^{1/2})(r+δ(tau)) depends on tau.
+    //
+    // Simplest correct approach: compute the duality identity at the CURRENT
+    // tau, then solve for the NEW tau.
+    //
+    // At current tau:
+    //   b'λ + dc'x + xQx/τ + μ/τ = θ·R
+    // where dc = duality_cost (includes equality dual correction).
+    //
+    // This gives τ_new from: τ_new satisfies the identity at the NEXT iterate.
+    // But we don't know the next iterate. Use the current iterate's values.
+    //
+    // From: b'λ + dc'x + μ/τ = θ·R  (LP case, Q=0, dividing scaled eqn by τ)
+    //   τ = μ / (θ·R - b'λ/τ - dc'x/τ)
+    //
+    // The b'λ and dc'x are at the TAU-scaled problem. To get the unscaled:
+    //   b'λ_unscaled = b'λ  (λ doesn't change with tau-scaling of data)
+    //                   ... actually it does, because δ changes.
+    //
+    // Let me just compute everything directly.
     {
       RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
       RowSpace lam = quadraticRepresentation(sqrtW,
           addScaled(r, delta, 1.0, 1.0));
-      // b'λ (using unscaled b).
+
+      // b'λ using UNSCALED b.
       double bT_lam = dot(b, lam);
-      // c'x: recover x from the solve. The solve gave y for the scaled
-      // problem (tau*c, tau*b). The primal is x = y (from SolverRHS).
-      // For duality: use duality_cost (unscaled) dotted with y/tau.
-      // Actually, the solve vector y satisfies the scaled KKT.
-      // The physical x = y, and the cost contribution is duality_cost'*y.
-      // But the solve was at tau*cost, so y corresponds to the tau-scaled problem.
-      // We need x for the UNSCALED problem: x_unscaled = y.
-      // c'x = cost_rhs'*y (but y is in SolverRHS format from the solve).
-      // We don't have y directly — ComputeHybridRDirection doesn't return it.
-      // Use the duality identity differently: at the current tau,
-      //   tau*(b'λ_phys + c'x_phys) + μ = θ·R·τ
-      // where λ_phys = λ/τ, x_phys = x/τ. But λ and x are at the scaled problem.
-      // Simpler: the complementarity is gap = |r|²-|δ|², and
-      //   gap + τ·κ = (m+1)·μ where μ = gap/(m)...
+
+      // c'x using duality_cost (UNSCALED) dotted with y.
+      auto y_rhs = kkt.MakeSolverRHS();
+      y_rhs = kkt.MakeBlockVariable(y_vec);
+      double dc_x = cost_rhs.dot(y_rhs);
+
+      // x'Qx contribution.
+      auto qx_rhs = kkt.MakeSolverRHS();
+      qx_rhs.SetZero();
+      kkt.AccumulateQx(y_rhs, qx_rhs);
+      double xQx = qx_rhs.dot(y_rhs);
+
+      double mu = g;  // gap = |r|² - |δ|² = total complementarity
+
+      // Duality identity (at the tau-scaled problem, divided by τ):
+      //   b'λ/τ + dc'x/τ + xQx/τ² + μ/τ = θ·R
       //
-      // For now, use the simple relationship:
-      //   tau_new = (b'λ + μ_eff) / (θ·R - c_eff)
-      // where we approximate from the current iterate.
-
-      // Actually, the simplest correct approach: the duality identity at
-      // the tau-scaled problem gives V(tau) = 0 where V is the violation
-      // quadratic. We need:
-      //   sigma = b'·P(W^{1/2})(r + delta) / tau  (dual objective contribution)
-      //   gamma = duality_cost'·x / tau             (primal objective contribution)
-      // Then: sigma + gamma + mu/tau = theta*R
-      // => tau = (sigma_lifted + gamma_lifted + mu) / (theta*R)
-      // where sigma_lifted = sigma*tau, gamma_lifted = gamma*tau.
-
-      double sigma_lifted = bT_lam;  // b' * P(W^{1/2})(r+delta) — already at tau-scale
-
-      // For gamma: we need duality_cost' * y where y is the solve vector.
-      // ComputeHybridRDirection doesn't expose y. Recompute it cheaply:
-      // delta = r - P(W^{1/2})(b_tau_theta + A*y), so
-      // P(W^{1/2})(b_tau_theta + A*y) = r - delta
-      // b_tau_theta + A*y = P(W^{-1/2})(r - delta)
-      // A*y = P(W^{-1/2})(r - delta) - b_tau_theta
-      // But we need y itself, not A*y. Without y, we can't compute c'x.
-
-      // Alternative: compute c'x from the slack/dual relationship.
-      // KKT stationarity: tau*c + A'*P(W)(tau*b_theta) = A'*lambda + ...
-      // This is messy. Skip the full duality identity for now.
-      // Use a simpler tau update based on the gap.
-
-      double mu_r = squaredNorm(r) / m;
-      // From the duality identity (approximate):
-      //   tau ≈ mu_r / (theta * R - bT_lam/tau_old - ...)
-      // This requires too many unknowns. Use the current tau and just
-      // verify it's reasonable.
+      // But b, dc, Q are UNSCALED while the direction used tau-scaled data.
+      // The solve vector y satisfies: (A'W²A + Q)y = -τc - A'P(W)(τb_θ) + 2A'P(W^½)r
+      // So y (and hence δ, λ) depend on τ. The duality identity at the
+      // current iterate gives:
+      //   bT_lam + dc_x + xQx/τ + μ/τ = θ·R·τ
       //
-      // For the initial implementation, keep tau=1 (no update).
-      // TODO: implement proper tau update from duality identity.
+      // Note: bT_lam and dc_x are computed from the solve at the current τ,
+      // so they implicitly depend on τ. But for the identity, we just
+      // evaluate it and solve for the τ that makes it hold.
+      //
+      // Rearranging: θ·R·τ² - (bT_lam + dc_x)·τ - (xQx + μ) = 0
+      double a_coeff = theta * R;
+      double b_coeff = -(bT_lam + dc_x);
+      double c_coeff = -(xQx + mu);
+
+      if (std::abs(a_coeff) > 1e-30) {
+        double discr = b_coeff * b_coeff - 4 * a_coeff * c_coeff;
+        if (discr >= 0) {
+          double sq = std::sqrt(discr);
+          double t1 = (-b_coeff + sq) / (2 * a_coeff);
+          double t2 = (-b_coeff - sq) / (2 * a_coeff);
+          // Pick positive root closest to current tau.
+          double tau_new = tau;
+          if (t1 > 0 && t2 > 0)
+            tau_new = (std::abs(t1 - tau) < std::abs(t2 - tau)) ? t1 : t2;
+          else if (t1 > 0) tau_new = t1;
+          else if (t2 > 0) tau_new = t2;
+          tau = tau_new;
+        }
+      }
     }
 
     bool do_center = (g < 0);
