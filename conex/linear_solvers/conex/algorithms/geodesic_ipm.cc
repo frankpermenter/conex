@@ -566,7 +566,19 @@ GeodesicResult SolveGeodesicHSD(
   // (G_tau, G_theta) are inner products with the decomposition vectors.
 
   const double R = bT_ones + 1.0;
-  const double alpha = m + 1.0;  // rank of the cone + 1
+  const double alpha_norm = static_cast<double>(m) + 1.0;
+
+  // rp = e - b (RowSpace): slack residual at the fixed point.
+  RowSpace rp = kkt.MakeRowSpace();
+  rp = ones;
+  rp -= b;
+  // rd = A'e - c (SolverRHS): dual residual at the fixed point.
+  auto rd_rhs = kkt.MakeSolverRHS();
+  rd_rhs.SetZero();
+  kkt.AccumulateAtranspose(ones, rd_rhs);
+  rd_rhs -= cost_rhs;
+  // rg = -(b'e + 1).
+  const double rg = -(bT_ones + 1.0);
 
   GeodesicResult result{};
   int total_fac = 0;
@@ -586,70 +598,111 @@ GeodesicResult SolveGeodesicHSD(
     total_fac++;
     total_sol += 3;
 
-    // Compute lambda and x components:
-    //   lambda(k,tau,theta) = lambda_0(k) + tau*lambda_tau + theta*lambda_theta
-    //   x(k,tau,theta) = x_0(k) + tau*x_tau + theta*x_theta
-    // where lambda_0 = k*P(W^{1/2})(e+d0), lambda_tau = k^2*P(W^{1/2})*d1_0, etc.
-    // x_0 = y0/k, x_tau = y1_0, x_theta = y1_theta.
+    // Precompute inner products (independent of k) for normalization
+    // and gap equations.
+    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+    RowSpace pwd1_0 = quadraticRepresentation(sqrtW, decomp.d1_0);
+    RowSpace pwd1_t = quadraticRepresentation(sqrtW, decomp.d1_theta);
+    RowSpace pwed0 = quadraticRepresentation(sqrtW, ones + decomp.d0);
 
-    // Normalization coefficients (independent of k):
-    // N_tau = rp'*lambda_tau + rd'*x_tau + rg
-    // N_theta = rp'*lambda_theta + rd'*x_theta
-    // But we don't have rp, rd, rg explicitly.  We compute them from
-    // the fixed-point conditions.
-    //
-    // At the fixed point (theta=1, tau=1, k=1, W=I, d=0):
-    //   lambda_hat = e, x_hat = 0
-    //   rp'*e + rd'*0 + rg*1 = -alpha  =>  rp'e + rg = -(m+1)
-    //   b'*e + c'*0 + mu + mu = 1*(b'e+1)  (gap at theta=1)
-    //
-    // Instead of computing rp, rd, rg explicitly, we use the fact that
-    // the normalization equation is EQUIVALENT to:
-    //   <slack_hat, lambda> + <lambda_hat, slack> - 2<slack_hat, lambda_hat>
-    //   + tau*kappa_hat + kappa*tau_hat - 2*tau_hat*kappa_hat
-    //   = theta * (2*alpha) - 2*alpha
-    // This is a well-known reformulation.  For simplicity, we compute
-    // the normalization coefficients directly.
+    // Normalization inner products (N coefficients depend on k):
+    //   N_tau(k) = k^2*<rp,P(W^{1/2})*d1_0> + rd'*y1_0 + rg
+    //   N_theta(k) = k^2*<rp,P(W^{1/2})*d1_t> + rd'*y1_t
+    //   RHS_norm(k) = -alpha - k*<rp,P(W^{1/2})(e+d0)> - rd'*(y0/k)
+    double rp_pwd10 = dot(rp, pwd1_0);
+    double rp_pwd1t = dot(rp, pwd1_t);
+    double rp_pwed0 = dot(rp, pwed0);
 
-    // Direct computation of normalization and gap coefficients.
-    // We need N_tau, N_theta, G_tau, G_theta as functions of the
-    // decomposition.  These are inner products that can be computed
-    // from the decomposition vectors and the data (b, c, Q).
+    auto y10_rhs = kkt.MakeSolverRHS();
+    y10_rhs = kkt.MakeBlockVariable(decomp.y1_0);
+    auto y1t_rhs = kkt.MakeSolverRHS();
+    y1t_rhs = kkt.MakeBlockVariable(decomp.y1_theta);
+    auto y0_rhs = kkt.MakeSolverRHS();
+    y0_rhs = kkt.MakeBlockVariable(decomp.y0);
 
-    // For a given k, try to find (tau, theta):
-    // 1. Compute lambda_0 = k*P(W^{1/2})(e + d0), x_0 = y0/k
-    // 2. Compute N_tau, N_theta, G_tau, G_theta inner products
-    // 3. theta(tau) = a0 + a1*tau from normalization
-    // 4. Substitute into gap => quadratic in tau
-    // 5. Solve quadratic, recover theta
+    double rd_y10 = rd_rhs.dot(y10_rhs);
+    double rd_y1t = rd_rhs.dot(y1t_rhs);
+    double rd_y0 = rd_rhs.dot(y0_rhs);
 
-    // Binary search for the smallest theta with ||d||_inf <= 1,
-    // using EvalThetaCandidate (gap equation) to find tau.
-    // Same as ThetaContinuation but in a single loop (no outer schedule).
-    double theta_lo = 0.0, theta_hi = (iter == 0) ? 1.0 : 1.0 / (k * k);
-    if (theta_hi < tolerance) theta_hi = tolerance;
-    double best_tau = 0, best_theta = theta_hi;
+    // Gap inner products:
+    //   G_tau(k) = k^2*<b,P(W^{1/2})*d1_0> + dc'*y1_0
+    //   G_theta(k) = k^2*<b,P(W^{1/2})*d1_t> + dc'*y1_t
+    //   G_0(k) = k*<b,P(W^{1/2})(e+d0)> + dc'*(y0/k)
+    double b_pwd10 = dot(b, pwd1_0);
+    double b_pwd1t = dot(b, pwd1_t);
+    double b_pwed0 = dot(b, pwed0);
+    double dc_y10 = duality_cost.dot(y10_rhs);
+    double dc_y1t = duality_cost.dot(y1t_rhs);
+    double dc_y0 = duality_cost.dot(y0_rhs);
 
-    for (int bisect = 0; bisect < 30; ++bisect) {
-      double theta_mid = 0.5 * (theta_lo + theta_hi);
-      auto [tau_try, d_inf_try] = EvalThetaCandidate(
-          kkt, duality_cost, b, W, decomp, bT_ones, theta_mid);
-      if (tau_try > 0 && d_inf_try <= 1.0) {
-        theta_hi = theta_mid;
-        best_tau = tau_try;
-      } else {
-        theta_lo = theta_mid;
+    // Line search: find the largest k with feasible (tau, theta).
+    // Start from the minimum-norm k at (tau=1, theta=0).
+    double k_init = MinNormK(decomp, 1.0, 0.0);
+    if (k_init <= 0) k_init = 1.0;
+    if (k > k_init) k_init = k;  // don't go backwards
+
+    // Try increasing k values.
+    double k_max = lineSearchK(decomp.d0,
+        addScaled(decomp.d1_0, decomp.d1_theta, 1.0, 1.0));
+    if (k_max <= k_init) k_max = 2.0 * k_init;
+
+    double best_k = k_init, best_tau = 1.0, best_theta = 1.0;
+    double best_dinf = 1e30;
+
+    for (double k_cand : {k_init, k_max, 0.5 * (k_init + k_max),
+                          0.75 * k_max, 0.9 * k_max, 1.5 * k_init,
+                          2.0 * k_init, 3.0 * k_init}) {
+      if (k_cand <= 0) continue;
+      double mu_cand = 1.0 / (k_cand * k_cand);
+
+      // Evaluate normalization coefficients at this k.
+      double N_tau = k_cand * k_cand * rp_pwd10 + rd_y10 + rg;
+      double N_theta = k_cand * k_cand * rp_pwd1t + rd_y1t;
+      double rhs_norm = -alpha_norm - k_cand * rp_pwed0 - rd_y0 / k_cand;
+
+      if (std::abs(N_theta) < 1e-30) continue;  // degenerate
+
+      double a0 = rhs_norm / N_theta;
+      double a1 = -N_tau / N_theta;
+
+      // Evaluate gap coefficients at this k.
+      double G_tau = k_cand * k_cand * b_pwd10 + dc_y10;
+      double G_theta = k_cand * k_cand * b_pwd1t + dc_y1t;
+      double G_0 = k_cand * b_pwed0 + dc_y0 / k_cand;
+
+      // Quadratic: beta*tau^2 + gamma*tau + mu = 0.
+      double beta = G_tau + (G_theta - R) * a1;
+      double gamma = (G_theta - R) * a0 + G_0;
+      double discr = gamma * gamma - 4.0 * beta * mu_cand;
+      if (verbose) {
+        printf("    k=%.4e N=[%.4e,%.4e] a=[%.4e,%.4e] beta=%.4e gamma=%.4e discr=%.4e\n",
+               k_cand, N_tau, N_theta, a0, a1, beta, gamma, discr);
+      }
+      if (discr < 0) continue;
+
+      double sq = std::sqrt(discr);
+      for (double tau_cand : {(-gamma + sq) / (2.0 * beta),
+                               (-gamma - sq) / (2.0 * beta)}) {
+        double theta_cand = a0 + a1 * tau_cand;
+        if (verbose) {
+          printf("      tau=%.4e theta=%.4e", tau_cand, theta_cand);
+        }
+        if (tau_cand <= 0) { if (verbose) printf(" SKIP:tau<=0\n"); continue; }
+        if (theta_cand < 0) { if (verbose) printf(" SKIP:theta<0\n"); continue; }
+
+        RowSpace d_cand = EvaluateDirection(decomp, k_cand, tau_cand, theta_cand);
+        double dinf_cand = normInf(d_cand);
+        if (verbose) printf(" dinf=%.4e%s\n", dinf_cand, dinf_cand <= 1.0 ? " OK" : " SKIP:dinf");
+        if (dinf_cand <= 1.0 && dinf_cand < best_dinf) {
+          best_k = k_cand;
+          best_tau = tau_cand;
+          best_theta = theta_cand;
+          best_dinf = dinf_cand;
+        }
       }
     }
-    best_theta = theta_hi;
-    // Final evaluation at best theta.
-    {
-      auto [tau_final, d_inf_final] = EvalThetaCandidate(
-          kkt, duality_cost, b, W, decomp, bT_ones, best_theta);
-      if (tau_final > 0) best_tau = tau_final;
-    }
 
-    k = 1.0 / std::sqrt(best_theta);
+    k = best_k;
     double tau = best_tau;
     double theta = best_theta;
     double mu = 1.0 / (k * k);
