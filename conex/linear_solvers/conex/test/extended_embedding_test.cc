@@ -31,14 +31,14 @@ Eigen::SparseMatrix<double> ToSparse(const MatrixXd& M) {
 
 TEST(ExtendedEmbedding, FixedPointFeasible) {
   srand(42);
-  const int n = 3, m = 5;
+  const int n = 5, m = 3;
   MatrixXd A_dense = MatrixXd::Random(m, n).cwiseAbs() +
                      0.1 * MatrixXd::Ones(m, n);
   auto A = ToSparse(A_dense);
   VectorXd b = VectorXd::Ones(m);
   VectorXd c = A.transpose() * VectorXd::Ones(m);
 
-  auto [model, info] = BuildExtendedEmbedding(A, b, c);
+  auto [model, info, emb_tree] = BuildExtendedEmbedding(A, b, c);
 
   printf("  n=%d m=%d total_vars=%d\n", n, m, info.total_vars());
   printf("  alpha=%.4f rg=%.4f\n", info.alpha, info.rg);
@@ -98,7 +98,7 @@ TEST(ExtendedEmbedding, SolveAndRecover) {
   VectorXd b(m); b << 2.0;
   VectorXd c(n); c << 1.0, 2.0;
 
-  auto [emb_model, info] = BuildExtendedEmbedding(A, b, c);
+  auto [emb_model, info, emb_tree] = BuildExtendedEmbedding(A, b, c);
 
   // Solve the embedding.
   auto solver = Solver::Build(emb_model);
@@ -146,24 +146,22 @@ TEST(ExtendedEmbedding, SolveAndRecover) {
 // =====================================================================
 
 TEST(ExtendedEmbedding, ModelStructure) {
-  const int n = 3, m = 5;
-  MatrixXd A_dense = MatrixXd::Identity(m, n).block(0, 0, m, n);
-  // Pad with random rows.
-  A_dense.row(3) = VectorXd::Ones(n).transpose();
-  A_dense.row(4) = VectorXd::Ones(n).transpose() * 2;
+  const int n = 5, m = 3;
+  MatrixXd A_dense = MatrixXd::Random(m, n).cwiseAbs() +
+                     0.1 * MatrixXd::Ones(m, n);
   auto A = ToSparse(A_dense);
   VectorXd b = VectorXd::Ones(m);
   VectorXd c = VectorXd::Ones(n);
 
-  auto [model, info] = BuildExtendedEmbedding(A, b, c);
+  auto [model, info, emb_tree] = BuildExtendedEmbedding(A, b, c);
 
   // Check structure: 4 equality constraints + 2 linear constraints.
   EXPECT_EQ(model.num_variables(), info.total_vars());
   printf("  total_vars=%d constraints=%d\n",
          info.total_vars(), model.num_constraints());
 
-  // Variables: x(3), y(5), s(3), tau(1), kappa(1), theta(1) = 14.
-  EXPECT_EQ(info.total_vars(), 14);
+  // Variables: x(5), y(3), s(5), tau(1), kappa(1), theta(1) = 16.
+  EXPECT_EQ(info.total_vars(), 16);
 }
 
 }  // namespace

@@ -38,6 +38,10 @@ class KKTSystem {
 
   static KKTSystem BuildDense(const Model& model);
 
+  static KKTSystem Build(const Model& model,
+                         const CliqueTree& tree,
+                         const SolverConfiguration& config = {});
+
   KKTSolverBase* kkt();
   const KKTSolverBase* kkt() const;
 

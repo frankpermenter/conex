@@ -325,6 +325,29 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   const Eigen::VectorXi& perm() const { return cached_perm_; }
   const Eigen::VectorXi& perm_inv() const { return cached_perm_inv_; }
 
+  // Extract the CliqueTree (variable IDs in original numbering).
+  CliqueTree GetCliqueTree() const {
+    CliqueTree ct;
+    int ns = num_subsystems();
+    ct.supernodes.resize(ns);
+    ct.separators.resize(ns);
+    ct.node_to_parent.resize(ns, -1);
+    ct.post_order_position_to_clique.resize(ns);
+    // Map subsystem pointer → index for parent lookup.
+    std::map<const void*, int> ptr_to_idx;
+    for (int k = 0; k < ns; ++k)
+      ptr_to_idx[subsystems_[k]] = k;
+    for (int k = 0; k < ns; ++k) {
+      ct.supernodes[k] = subsystems_[k]->supernodes();
+      ct.separators[k] = subsystems_[k]->separators();
+      auto* p = subsystems_[k]->parent();
+      auto it = ptr_to_idx.find(p);
+      ct.node_to_parent[k] = (it != ptr_to_idx.end()) ? it->second : -1;
+      ct.post_order_position_to_clique[k] = k;
+    }
+    return ct;
+  }
+
   // Pre-inject a subsystem for a specific clique index.  Must be called
   // before FinalizeStructure.  CreateSubsystems will use injected subsystems instead
   // of creating default ones.

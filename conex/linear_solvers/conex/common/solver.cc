@@ -43,6 +43,19 @@ Solver Solver::Build(const Model& model,
   return s;
 }
 
+Solver Solver::Build(const Model& model,
+                     const CliqueTree& tree,
+                     const SolverConfiguration& config) {
+  Solver s;
+  s.expansion_.original_n = model.num_variables();
+  s.expansion_.col_map.resize(model.num_variables());
+  std::iota(s.expansion_.col_map.begin(), s.expansion_.col_map.end(), 0);
+  s.reduced_linear_cost_ = model.linear_cost();
+  s.reduced_model_ = model;
+  s.system_ = KKTSystem::Build(s.reduced_model_, tree, config);
+  return s;
+}
+
 Solver Solver::BuildDense(const Model& model) {
   TreeSpec tree;
   int clique = tree.AddClique();
@@ -169,6 +182,12 @@ ConstraintDuals Solver::ExtractDuals(
           nu(j) = (dv < x_reduced.size()) ? -x_reduced(dv) : 0;
         }
         duals.nu.push_back(nu);
+        // Equality residual: Cx - d.
+        Eigen::VectorXd xv(data.primal_vars.size());
+        for (int j = 0; j < (int)data.primal_vars.size(); ++j)
+          xv(j) = x_reduced(data.primal_vars[j]);
+        duals.eq_residual.push_back(
+            Eigen::MatrixXd(data.C) * xv - data.d);
       }
     }, reduced_model_.constraint(i));
   }

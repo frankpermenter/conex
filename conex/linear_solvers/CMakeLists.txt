@@ -575,6 +575,22 @@ target_link_libraries(eval_embedding
 )
 target_compile_options(eval_embedding PRIVATE -O2)
 
+add_executable(compare_embedding conex/test/compare_embedding.cc)
+target_link_libraries(compare_embedding
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+target_compile_options(compare_embedding PRIVATE -O2)
+
+add_executable(tree_structure_test conex/test/tree_structure_test.cc)
+target_link_libraries(tree_structure_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+
 add_executable(sign_check conex/test/sign_check.cc)
 target_link_libraries(sign_check
   algorithms constraints sparse_linear_constraint

@@ -31,6 +31,10 @@ class Solver {
 
   static Solver BuildDense(const Model& model);
 
+  static Solver Build(const Model& model,
+                      const CliqueTree& tree,
+                      const SolverConfiguration& config = {});
+
   // Run an algorithm and return the result in Model (original) space.
   // The Algorithm type must implement:
   //   GeodesicResult Run(KKTSolverBase& kkt, const SolverRHS& cost_rhs);

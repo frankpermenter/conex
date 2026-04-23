@@ -39,6 +39,7 @@ struct ConstraintDuals {
   std::vector<Eigen::MatrixXd> psd_lambda;   // per PSD constraint
   std::vector<Eigen::MatrixXd> psd_slack;    // per PSD constraint
   std::vector<Eigen::VectorXd> nu;            // per equality constraint
+  std::vector<Eigen::VectorXd> eq_residual;   // per equality: Cx - d
 
   // Stationarity gradient: c + Qx - A'λ - C'ν (should be ≈ 0).
   Eigen::VectorXd stationarity_gradient;

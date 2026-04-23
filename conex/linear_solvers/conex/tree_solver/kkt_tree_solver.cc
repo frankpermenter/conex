@@ -1101,7 +1101,7 @@ SolverRHS T::EqualityAffineTermRHS() {
     const auto& dv = ec->dual_variables();
     const auto& d = ec->affine_term();
     for (int i = 0; i < static_cast<int>(dv.size()); ++i)
-      d_vec(dv[i]) = d(i);
+      d_vec(dv[i]) += d(i);
   }
   rhs = MakeBlockVariable(d_vec);
   return rhs;

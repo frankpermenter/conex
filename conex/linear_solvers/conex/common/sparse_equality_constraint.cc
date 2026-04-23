@@ -57,85 +57,99 @@ std::vector<SparseEqualityConstraint::RowGroup>
 SparseEqualityConstraint::GetConstraints(
     const std::vector<std::vector<int>>& target_supports,
     const std::vector<int>& row_to_dual) const {
-  // Assign each ROW (not support group) to the smallest target containing
-  // both its primal support AND its dual variable.  Rows with the same
-  // support may end up in different targets if their duals differ.
-  std::vector<std::vector<int>> rows_per_target(target_supports.size());
+  // Assign each nonzero C(row,col) to the smallest target clique containing
+  // both primal_var[col] and dual_var[row].  A single row may be split
+  // across multiple cliques (e.g., a dense equality on a star tree).
+  // The RHS d(row) is assigned to the smallest target containing the dual.
+
+  const int num_cols = C_.cols();
+  const int num_rows = C_.rows();
+  const int num_targets = static_cast<int>(target_supports.size());
 
   // Precompute sets for fast membership testing.
-  std::vector<std::set<int>> target_sets(target_supports.size());
-  for (size_t ti = 0; ti < target_supports.size(); ++ti) {
+  std::vector<std::set<int>> target_sets(num_targets);
+  for (int ti = 0; ti < num_targets; ++ti) {
     target_sets[ti].insert(target_supports[ti].begin(),
                            target_supports[ti].end());
   }
 
-  for (const auto& sg : support_groups_) {
-    const auto& support = sg.support;
-    for (int row : sg.rows) {
-      int dual_var = row_to_dual[row];
+  // For each nonzero C(row, col), find the smallest target containing
+  // both the column and the row's dual.
+  struct Entry { int row, col; double value; };
+  std::vector<std::vector<Entry>> entries_per_target(num_targets);
+
+  for (int k = 0; k < C_.outerSize(); ++k) {
+    for (Eigen::SparseMatrix<double>::InnerIterator it(C_, k); it; ++it) {
+      int row = it.row(), col = it.col();
+      int dual = row_to_dual[row];
       int best = -1;
       size_t best_size = std::numeric_limits<size_t>::max();
-      for (size_t ti = 0; ti < target_supports.size(); ++ti) {
+      for (int ti = 0; ti < num_targets; ++ti) {
         if (target_supports[ti].size() >= best_size) continue;
-        if (!target_sets[ti].count(dual_var)) continue;
-        if (!IsSubset(support, target_supports[ti])) continue;
-        best = static_cast<int>(ti);
+        if (!target_sets[ti].count(dual)) continue;
+        if (!target_sets[ti].count(col)) continue;
+        best = ti;
         best_size = target_supports[ti].size();
       }
       CONEX_DEMAND(best >= 0,
-                   "No target contains both primal support and dual var.");
-      rows_per_target[best].push_back(row);
+                   "No target contains both primal column and dual var.");
+      entries_per_target[best].push_back({row, col, it.value()});
     }
   }
 
-  // Build dense sub-blocks with dual variables.
-  // Target supports may contain both primal and dual variable indices;
-  // only primal indices (< C.cols()) are used as columns of the dense block.
-  const int num_cols = C_.cols();
-  std::vector<RowGroup> result;
-  for (size_t ti = 0; ti < target_supports.size(); ++ti) {
-    if (rows_per_target[ti].empty()) continue;
-    const auto& full_vars = target_supports[ti];
-    const auto& rows = rows_per_target[ti];
-
-    // Split into primal columns.
-    std::vector<int> primal_vars;
-    for (int v : full_vars) {
-      if (v < num_cols) primal_vars.push_back(v);
+  // RHS d(row) goes to the smallest target containing the dual.
+  std::vector<int> rhs_target(num_rows, -1);
+  for (int row = 0; row < num_rows; ++row) {
+    int dual = row_to_dual[row];
+    int best = -1;
+    size_t best_size = std::numeric_limits<size_t>::max();
+    for (int ti = 0; ti < num_targets; ++ti) {
+      if (target_supports[ti].size() >= best_size) continue;
+      if (!target_sets[ti].count(dual)) continue;
+      best = ti;
+      best_size = target_supports[ti].size();
     }
+    rhs_target[row] = best;
+  }
 
+  // Build RowGroups from the per-target entries.
+  std::vector<RowGroup> result;
+  for (int ti = 0; ti < num_targets; ++ti) {
+    if (entries_per_target[ti].empty()) continue;
+
+    // Collect unique rows and columns for this target.
+    std::set<int> row_set, col_set;
+    for (const auto& e : entries_per_target[ti]) {
+      row_set.insert(e.row);
+      col_set.insert(e.col);
+    }
+    std::vector<int> rows(row_set.begin(), row_set.end());
+    std::vector<int> cols(col_set.begin(), col_set.end());
     int nrows = static_cast<int>(rows.size());
-    int ncols = static_cast<int>(primal_vars.size());
+    int ncols = static_cast<int>(cols.size());
+
+    // Build local index maps.
+    std::vector<int> row_map(num_rows, -1);
+    for (int i = 0; i < nrows; ++i) row_map[rows[i]] = i;
+    std::vector<int> col_map(num_cols, -1);
+    for (int j = 0; j < ncols; ++j) col_map[cols[j]] = j;
+
     RowGroup group;
-    group.primal_variables = primal_vars;
+    group.primal_variables = cols;
     group.global_rows = rows;
     group.C.setZero(nrows, ncols);
-    group.d.resize(nrows);
+    group.d.setZero(nrows);
     group.dual_variables.resize(nrows);
 
-    // Map global row/col → local index for O(1) lookup.
-    std::vector<int> row_map(C_.rows(), -1);
     for (int i = 0; i < nrows; ++i) {
-      row_map[rows[i]] = i;
-      group.d(i) = d_(rows[i]);
       group.dual_variables[i] = row_to_dual[rows[i]];
-    }
-    std::vector<int> col_map(C_.cols(), -1);
-    for (int j = 0; j < ncols; ++j) col_map[primal_vars[j]] = j;
-
-    // Iterate sparse nonzeros: O(nnz) instead of O(nrows * ncols * log).
-    for (int k = 0; k < C_.outerSize(); ++k) {
-      int lj = col_map[k];
-      if (lj < 0) continue;
-      for (Eigen::SparseMatrix<double>::InnerIterator it(C_, k); it; ++it) {
-        int li = row_map[it.row()];
-        if (li >= 0) group.C(li, lj) = it.value();
+      if (rhs_target[rows[i]] == ti) {
+        group.d(i) = d_(rows[i]);
       }
     }
-
-    // Clear maps for next target.
-    for (int r : rows) row_map[r] = -1;
-    for (int v : primal_vars) col_map[v] = -1;
+    for (const auto& e : entries_per_target[ti]) {
+      group.C(row_map[e.row], col_map[e.col]) = e.value;
+    }
 
     result.push_back(std::move(group));
   }
@@ -152,52 +166,23 @@ SparseEqualityConstraintAssembler::SparseEqualityConstraintAssembler(
 
 std::vector<std::vector<int>>
 SparseEqualityConstraintAssembler::get_cliques() const {
-  // Each support group contributes a clique: {support ∪ dual vars of group}.
+  // The saddle-point matrix [0 C'; C 0] creates edges (x_j, ν_i) for each
+  // nonzero C_{ij}, but NO edges between primal variables.  The maximal
+  // cliques are size-2: {x_j, ν_i}.  Reporting these individually lets the
+  // tree builder exploit the star structure (dual at root, primals as leaves).
   std::vector<std::vector<int>> cliques;
-  int dual_offset = 0;
-  for (const auto& support : sec_->row_supports()) {
-    // Count rows in this support group.
-    // (support_groups_ are indexed identically to unique_supports_)
-    // We need the number of rows per group. Since we don't expose
-    // support_groups_ directly, reconstruct from row_supports().
-    // Actually, we can't easily get group size from unique_supports_.
-    // Instead, iterate row_to_dual_ to find dual vars per support.
-  }
-
-  // Rebuild from the internal structure by scanning the sparse matrix.
-  // Map local column indices to global primal variable indices.
-  const int num_rows = sec_->C().rows();
-  std::vector<std::vector<int>> row_supports(num_rows);
-  for (int k = 0; k < sec_->C().outerSize(); ++k) {
-    for (Eigen::SparseMatrix<double>::InnerIterator it(sec_->C(), k); it;
-         ++it) {
-      row_supports[it.row()].push_back(it.col());
+  const auto& C = sec_->C();
+  const auto& pv = primal_variables();
+  for (int k = 0; k < C.outerSize(); ++k) {
+    for (Eigen::SparseMatrix<double>::InnerIterator it(C, k); it; ++it) {
+      int col = it.col();
+      if (col >= static_cast<int>(pv.size())) continue;
+      int global_primal = pv[col];
+      int dual = row_to_dual_[it.row()];
+      cliques.push_back({std::min(global_primal, dual),
+                          std::max(global_primal, dual)});
     }
   }
-  // Map each row's local support to global.
-  for (auto& rs : row_supports) rs = LocalSupportToGlobal(rs);
-
-  // Group rows by support, collect dual vars per group.
-  std::vector<int> row_order(num_rows);
-  std::iota(row_order.begin(), row_order.end(), 0);
-  std::sort(row_order.begin(), row_order.end(), [&](int a, int b) {
-    return row_supports[a] < row_supports[b];
-  });
-
-  for (int row : row_order) {
-    if (row_supports[row].empty()) continue;
-    if (cliques.empty() || !std::equal(
-            row_supports[row].begin(), row_supports[row].end(),
-            cliques.back().begin(),
-            cliques.back().begin() +
-                static_cast<int>(row_supports[row].size()))) {
-      // New support group: start with the primal support (global indices).
-      cliques.push_back(row_supports[row]);
-    }
-    // Append this row's dual variable.
-    cliques.back().push_back(row_to_dual_[row]);
-  }
-
   return cliques;
 }
 

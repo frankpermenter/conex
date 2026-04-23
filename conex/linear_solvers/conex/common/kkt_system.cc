@@ -45,6 +45,14 @@ KKTSystem KKTSystem::BuildDense(const Model& model) {
   return Build(model, tree);
 }
 
+KKTSystem KKTSystem::Build(const Model& model,
+                           const CliqueTree& tree,
+                           const SolverConfiguration& config) {
+  KKTSystem s;
+  s.BuildInternal(model, config, &tree);
+  return s;
+}
+
 KKTSolverBase* KKTSystem::kkt() {
   return static_cast<KKTSolverBase*>(tree_solver_.get());
 }

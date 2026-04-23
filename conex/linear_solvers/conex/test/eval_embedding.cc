@@ -18,8 +18,10 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/solve_strategies.h"
+#include "conex/common/conex.h"
 #include "conex/common/extended_embedding.h"
 #include "conex/common/solver.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
 
 namespace conex {
 namespace {
@@ -225,18 +227,30 @@ struct EvalResult {
   double d_inf;
   bool converged;
   LPSolution sol;
+  // Embedding-level residuals from Solver::Solve.
+  double emb_stationarity;   // ||c + Qx - A'λ - C'ν|| (embedding KKT)
+  double emb_complementarity; // <s, λ> (embedding cones)
+  double emb_eq_error;        // max ||Cx - d|| across equality constraints
+  double emb_min_slack;
+  double emb_min_dual;
 };
 
 template <typename Algorithm>
 EvalResult RunAlgorithm(const char* name,
                         const Model& emb_model,
+                        const CliqueTree& emb_tree,
                         const EmbeddingInfo& info,
                         const RandomLP& lp,
                         const Algorithm& algo,
-                        bool use_dense = false) {
+                        bool use_dense = false,
+                        bool use_lu = false) {
   printf("\n--- %s ---\n", name);
-  auto solver = use_dense ? Solver::BuildDense(emb_model)
-                          : Solver::Build(emb_model);
+  Solver solver = [&]() {
+    if (use_dense) return Solver::BuildDense(emb_model);
+    SolverConfiguration cfg;
+    if (use_lu) cfg.tree.use_lu_for_indefinite = true;
+    return Solver::Build(emb_model, emb_tree, cfg);
+  }();
   auto result = solver.Solve(algo);
 
   EvalResult out;
@@ -247,6 +261,13 @@ EvalResult RunAlgorithm(const char* name,
   out.d_inf = result.d_inf;
   out.converged = result.converged;
   out.sol = ExtractLPSolution(result, info, lp.A, lp.b, lp.c);
+  out.emb_stationarity = result.duals.stationarity_gradient.norm();
+  out.emb_complementarity = result.optimality.complementarity;
+  out.emb_eq_error = 0;
+  for (const auto& r : result.duals.eq_residual)
+    out.emb_eq_error = std::max(out.emb_eq_error, r.norm());
+  out.emb_min_slack = result.optimality.min_slack;
+  out.emb_min_dual = result.optimality.min_dual;
   return out;
 }
 
@@ -261,20 +282,21 @@ const char* StatusStr(LPSolution::Status s) {
 }
 
 void PrintEvalHeader() {
-  printf("%-26s | %4s | %8s %8s %8s | %5s %10s %10s %10s %10s %10s %10s %10s %10s\n",
+  printf("%-26s | %4s | %8s %8s %8s | %5s %10s %10s %10s %10s\n",
          "Algorithm", "fac", "theta", "tau", "kappa",
-         "stat", "p_obj", "d_obj", "p_infeas", "p_pred", "d_infeas", "d_pred", "compl", "gap");
-  printf("%s\n", std::string(175, '-').c_str());
+         "stat", "p_obj", "d_obj", "p_infeas", "d_infeas");
+  printf("%s\n", std::string(120, '-').c_str());
 }
 
 void PrintEvalResult(const EvalResult& r) {
   auto& s = r.sol;
   if (s.status == LPSolution::OPTIMAL) {
-    printf("%-26s | %4d | %8.2e %8.2e %8.2e | %5s %10.4f %10.4f %10.2e %10.2e %10.2e %10.2e %10.2e %10.2e\n",
+    printf("%-26s | %4d | %8.2e %8.2e %8.2e | %5s %10.4f %10.4f %10.2e %10.2e\n",
            r.name, r.factorizations, s.theta, s.tau, s.kappa,
            StatusStr(s.status), s.primal_obj, s.dual_obj,
-           s.primal_infeas, s.primal_predicted, s.dual_infeas, s.dual_predicted,
-           s.complementarity, s.duality_gap);
+           s.primal_infeas, s.dual_infeas);
+    printf("%-26s   Algorithm Residuals: stationarity=%8.2e  complementarity=%8.2e  eq_error=%8.2e\n",
+           "", r.emb_stationarity, r.emb_complementarity, r.emb_eq_error);
   } else if (s.status == LPSolution::PRIMAL_INFEASIBLE ||
              s.status == LPSolution::DUAL_INFEASIBLE) {
     printf("%-26s | %4d | %8.2e %8.2e %8.2e | %5s ray_res=%8.2e ray_obj=%8.2e ray_cone=%8.2e\n",
@@ -291,10 +313,13 @@ void PrintEvalResult(const EvalResult& r) {
 }  // namespace conex
 
 int main(int argc, char* argv[]) {
-  int n = 10, m = 20, num_seeds = 5;
+  int n = 10, m = 10, num_seeds = 5;
   double eps = 1e-6;
   bool verbose = false;
   bool use_dense = false;
+  bool use_lu = false;
+  bool print_tree = false;
+  std::string algo_filter;  // empty = run all
 
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
@@ -302,16 +327,20 @@ int main(int argc, char* argv[]) {
     else if (arg == "--n" && i + 1 < argc) n = std::atoi(argv[++i]);
     else if (arg == "--m" && i + 1 < argc) m = std::atoi(argv[++i]);
     else if (arg == "--seeds" && i + 1 < argc) num_seeds = std::atoi(argv[++i]);
+    else if (arg == "--algo" && i + 1 < argc) algo_filter = argv[++i];
     else if (arg == "--verbose") verbose = true;
     else if (arg == "--dense") use_dense = true;
+    else if (arg == "--lu") use_lu = true;
+    else if (arg == "--tree") print_tree = true;
     else {
-      printf("Usage: %s [--n 10] [--m 20] [--seeds 5] [--eps 1e-6] [--verbose] [--dense]\n",
+      printf("Usage: %s [--n 10] [--m 20] [--seeds 5] [--eps 1e-6] [--algo name] [--verbose] [--dense] [--lu]\n",
              argv[0]);
       return 1;
     }
   }
 
-  printf("Extended Embedding Evaluation%s\n", use_dense ? " (DENSE KKT)" : "");
+  const char* solver_label = use_dense ? " (DENSE KKT)" : (use_lu ? " (LU)" : "");
+  printf("Extended Embedding Evaluation%s\n", solver_label);
   printf("LP: n=%d vars, m=%d constraints, eps=%.0e, seeds=%d\n\n", n, m, eps, num_seeds);
 
   // Aggregate statistics.
@@ -329,10 +358,49 @@ int main(int argc, char* argv[]) {
 
   for (int seed = 1; seed <= num_seeds; ++seed) {
     auto lp = conex::MakeRandomLP(n, m, seed);
-    auto [emb_model, info] = conex::BuildExtendedEmbedding(lp.A, lp.b, lp.c);
+    auto [emb_model, info, emb_tree] = conex::BuildExtendedEmbedding(lp.A, lp.b, lp.c);
 
     printf("=== seed=%d  (n=%d, m=%d, emb_vars=%d, alpha=%.4f) ===\n",
            seed, n, m, info.total_vars(), info.alpha);
+
+    if (print_tree && seed == 1) {
+      // AMD tree.
+      auto tmp = conex::Solver::Build(emb_model);
+      auto* ts = dynamic_cast<conex::SymmetricLinearSystemTreeSolver*>(tmp.kkt());
+      if (ts) {
+        auto amd_tree = ts->GetCliqueTree();
+        const auto& pinv = ts->perm_inv();
+        int ns = (int)amd_tree.supernodes.size();
+        printf("  AMD tree: %d cliques, %d vars\n", ns, ts->number_of_variables());
+        for (int k = 0; k < ns; ++k) {
+          printf("    clique %d: sn={", k);
+          for (int v : amd_tree.supernodes[k]) printf("%d,", pinv(v));
+          printf("} sep={");
+          for (int v : amd_tree.separators[k]) printf("%d,", pinv(v));
+          printf("} parent=%d\n", amd_tree.node_to_parent[k]);
+        }
+        // Print variable legend.
+        printf("  vars: x=[%d,%d) y=[%d,%d) s=[%d,%d) tau=%d kappa=%d theta=%d\n",
+               info.x_start(), info.x_start()+n,
+               info.y_start(), info.y_start()+m,
+               info.s_start(), info.s_start()+n,
+               info.tau_idx(), info.kappa_idx(), info.theta_idx());
+        int N = info.total_vars();
+        printf("  duals: nu1=[%d,%d) nu2=[%d,%d) nu3=%d nu4=%d\n",
+               N, N+m, N+m, N+m+n, N+m+n, N+m+n+1);
+      }
+      // Custom tree.
+      printf("  Custom tree: %d cliques, RIP=%s\n",
+             (int)emb_tree.supernodes.size(),
+             emb_tree.CheckRunningIntersectionProperty() ? "ok" : "FAIL");
+      for (int k = 0; k < (int)emb_tree.supernodes.size(); k++) {
+        printf("    clique %d: sn=%d sep=%d parent=%d\n",
+               k, (int)emb_tree.supernodes[k].size(),
+               (int)emb_tree.separators[k].size(),
+               emb_tree.node_to_parent[k]);
+      }
+    }
+
     conex::PrintEvalHeader();
 
     auto record = [&](const conex::EvalResult& r) {
@@ -350,32 +418,38 @@ int main(int argc, char* argv[]) {
       a.count++;
     };
 
+    auto should_run = [&](const char* name) {
+      return algo_filter.empty() ||
+             std::string(name).find(algo_filter) != std::string::npos;
+    };
+
     // 1. ThetaContinuation.
-    {
+    if (should_run("ThetaContinuation")) {
       conex::ThetaContinuation algo;
       algo.tolerance = eps;
       algo.verbose = verbose;
-      record(conex::RunAlgorithm("ThetaContinuation", emb_model, info, lp, algo, use_dense));
+      record(conex::RunAlgorithm("ThetaContinuation", emb_model, emb_tree, info, lp, algo, use_dense, use_lu));
     }
 
     // 2. HybridOnly with different switching policies.
     auto run_hybrid = [&](const char* name, conex::HybridSwitchPolicy policy) {
+      if (!should_run(name)) return;
       conex::HybridOnly algo;
       algo.tolerance = eps;
       algo.verbose = verbose;
       algo.policy = policy;
-      record(conex::RunAlgorithm(name, emb_model, info, lp, algo, use_dense));
+      record(conex::RunAlgorithm(name, emb_model, emb_tree, info, lp, algo, use_dense, use_lu));
     };
 
     run_hybrid("Hybrid(default)",       conex::DefaultHybridPolicy);
     run_hybrid("Hybrid(DR only)",       conex::MakeAlwaysShrink());
 
-    // 4. GeodesicLP.
-    {
+    // 3. GeodesicLP.
+    if (should_run("GeodesicLP")) {
       conex::GeodesicLP algo;
       algo.tolerance = eps;
       algo.verbose = verbose;
-      record(conex::RunAlgorithm("GeodesicLP", emb_model, info, lp, algo, use_dense));
+      record(conex::RunAlgorithm("GeodesicLP", emb_model, emb_tree, info, lp, algo, use_dense, use_lu));
     }
 
     printf("\n");

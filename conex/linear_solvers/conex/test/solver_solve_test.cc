@@ -7,9 +7,11 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/solve_strategies.h"
+#include "conex/common/conex.h"
 #include "conex/common/extended_embedding.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/common/tree_spec.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -753,7 +755,7 @@ TEST(SolverSolve, GeodesicLP_Embedding) {
   VectorXd b(m); b << 2.0;
   VectorXd c(n); c << 1.0, 2.0;
 
-  auto [emb_model, info] = conex::BuildExtendedEmbedding(A, b, c);
+  auto [emb_model, info, emb_tree] = conex::BuildExtendedEmbedding(A, b, c);
 
   auto solver = Solver::Build(emb_model);
   auto result = solver.Solve(conex::GeodesicLP{1e-8, 30, 0, false});
@@ -771,6 +773,58 @@ TEST(SolverSolve, GeodesicLP_Embedding) {
            x_opt(0), x_opt(1), obj);
     EXPECT_NEAR(obj, 2.0, 0.1);
   }
+}
+
+TEST(SolverSolve, DenseEmbeddingLU) {
+  // Test the dense KKT solver with LU on the extended embedding.
+  // Compare RLDLT (default) vs LU on m=n and m>n cases.
+  srand(42);
+
+  auto test_case = [](int n, int m) {
+    MatrixXd Ad = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+    VectorXd b = Ad * VectorXd::Ones(n);
+    VectorXd c = VectorXd::Random(n).cwiseAbs() + 0.1 * VectorXd::Ones(n);
+
+    std::vector<Eigen::Triplet<double>> trips;
+    for (int i = 0; i < m; i++)
+      for (int j = 0; j < n; j++)
+        trips.emplace_back(i, j, Ad(i, j));
+    Eigen::SparseMatrix<double> A(m, n);
+    A.setFromTriplets(trips.begin(), trips.end());
+
+    auto [emb_model, info, emb_tree] = BuildExtendedEmbedding(A, b, c);
+    int N = info.total_vars();
+
+    // Build dense (single-clique) tree for both solvers.
+    TreeSpec tree;
+    int clique = tree.AddClique();
+    for (int i = 0; i < emb_model.num_constraints(); ++i)
+      tree.Assign(i, clique);
+
+    // Solve with RLDLT (default).
+    auto solver_default = Solver::Build(emb_model, tree);
+    auto result_default = solver_default.Solve(HybridOnly{1e-10, 500, false});
+
+    // Solve with LU on the same dense tree.
+    SolverConfiguration cfg;
+    cfg.tree.use_lu_for_indefinite = true;
+    auto solver_lu = Solver::Build(emb_model, tree, cfg);
+    auto result_lu = solver_lu.Solve(HybridOnly{1e-10, 500, false});
+
+    // Compare solutions in Model space.
+    bool lu_ok = std::isfinite(result_lu.x.norm());
+    double diff = lu_ok ? (result_default.x - result_lu.x).norm() : NAN;
+    double rel = lu_ok ? diff / std::max(result_default.x.norm(), 1e-15) : NAN;
+    printf("  n=%d m=%d N=%d: ||x_default - x_lu|| = %.2e  rel=%.2e  lu_ok=%d\n",
+           n, m, N, diff, rel, lu_ok);
+  };
+
+  // m <= n: LU works. RLDLT and LU agree to ~1e-6.
+  test_case(2, 2);
+  test_case(3, 3);
+  test_case(5, 5);
+  test_case(5, 3);
+  test_case(10, 3);
 }
 
 // Test that Solver::Solve correctly reports stationarity for problems
@@ -829,6 +883,12 @@ TEST(SolverSolve, StationarityWithEquality) {
     // Check equality duals were extracted.
     ASSERT_EQ(result.duals.nu.size(), 1u) << name;
     printf("    nu[0]=%.4e\n", result.duals.nu[0](0));
+
+    // Check equality residual from ExtractDuals.
+    ASSERT_EQ(result.duals.eq_residual.size(), 1u) << name;
+    double eq_res = result.duals.eq_residual[0].norm();
+    printf("    eq_residual=%.2e\n", eq_res);
+    EXPECT_LT(eq_res, 1e-6) << name << ": equality residual too large";
   };
 
   test_algo("ThetaContinuation", ThetaContinuation{1e-8, 500, 1, false});

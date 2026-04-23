@@ -1061,7 +1061,6 @@ GeodesicResult SolveGeodesicLP(
     double d_inf = normInf(d);
     double d_sq = squaredNorm(d);
     double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-    geodesicUpdate(W, alpha, d);
 
     double mu = 1.0 / (k * k);
     double s_dot_x = mu * (m - d_sq);
@@ -1075,45 +1074,47 @@ GeodesicResult SolveGeodesicLP(
 
     result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});
     result.iterations = outer + 1;
-    result.mu = mu;
-    result.d_inf_norm = d_inf;
-    result.d_sq_norm = d_sq;
-    result.complementarity = s_dot_x;
-    result.total_factorizations = total_fac;
-    result.total_solves = total_sol;
-    result.x = y0 / k + y1;  // x = y/k = (y0 + k*y1)/k
 
-    if (s_dot_x < tolerance && d_inf < 1.01) break;
+    if (s_dot_x < tolerance && d_inf < 1.01)  { 
+      result.mu = mu;
+      result.d_inf_norm = d_inf;
+      result.d_sq_norm = d_sq;
+      result.complementarity = s_dot_x;
+      result.total_factorizations = total_fac;
+      result.total_solves = total_sol;
+      result.x = y0 / k + y1;  // x = y/k = (y0 + k*y1)/k
+      RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+      RowSpace ones = kkt.MakeRowSpace();
+      setOnes(ones);
+      RowSpace lambda = quadraticRepresentation(sqrtW, ones + d);
+      lambda *= (1.0 / k);
+      result.lambda = lambda;
+      auto x_rhs = kkt.MakeSolverRHS();
+      x_rhs = kkt.MakeBlockVariable(result.x);
+      result.optimality = CheckOptimality(kkt, cost_rhs_blend, x_rhs, lambda);
+      result.optimality.mu = result.mu;
+      if (verbose) {
+        printf("  Optimality: compl=%.2e, "
+               "min_s=%.2e, min_lam=%.2e\n",
+               result.optimality.complementarity,
+               result.optimality.min_slack,
+               result.optimality.min_dual);
+      }
+      break;
+    } else {
+      geodesicUpdate(W, alpha, d);
+      kkt.SetScaling(W);
+      if (!kkt.AssembleAndFactor()) break;
+    }
   }
 
-  // Recompute at the final W (the geodesic step updated W after the
-  // last decomposition).
-  if (result.x.size() > 0) {
-    double k_final = 1.0 / std::sqrt(result.mu);
-    RowSpace d_final = kkt.MakeRowSpace();
-    Eigen::VectorXd y_final;
-    ComputeDirectNewtonStep(kkt, cost_rhs_blend, b, W, k_final, d_final, y_final);
-    result.x = y_final / k_final;
-
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace ones = kkt.MakeRowSpace();
-    setOnes(ones);
-    RowSpace lambda = quadraticRepresentation(sqrtW, ones + d_final);
-    lambda *= (1.0 / k_final);
-
-    auto x_rhs = kkt.MakeSolverRHS();
-    x_rhs = kkt.MakeBlockVariable(result.x);
-    result.optimality = CheckOptimality(kkt, cost_rhs_blend, x_rhs, lambda);
-    result.optimality.mu = result.mu;
-    result.lambda = lambda;
-
-    if (verbose) {
-      printf("  Optimality: compl=%.2e, "
-             "min_s=%.2e, min_lam=%.2e\n",
-             result.optimality.complementarity,
-             result.optimality.min_slack,
-             result.optimality.min_dual);
-    }
+  // If the loop exited without converging, populate result with last known
+  // state so that Solver::Solve doesn't crash on an empty x vector.
+  if (result.x.size() == 0) {
+    result.x = Eigen::VectorXd::Zero(kkt.number_of_variables());
+    result.mu = (k > 0) ? 1.0 / (k * k) : 1.0;
+    result.total_factorizations = total_fac;
+    result.total_solves = total_sol;
   }
 
   return result;
@@ -1253,6 +1254,8 @@ GeodesicResult SolveGeodesicHybrid(
     auto info = ComputeHybridDirection(kkt, cost_scaled, b, W, r, d, delta, tau);
     last_delta = delta;
     total_sol++;
+
+
 
     double d_inf_pre = info.d_inf;
     g = info.gap;
