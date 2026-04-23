@@ -318,4 +318,167 @@ $\theta = \mu = 1/k^2$ (e.g.\ $\theta \leftarrow 0.9\,\theta$) and
 re-centers at each level until $\theta < \varepsilon$.
 
 
+\section{Joint $(\tau, \theta)$ selection via gap and normalization}
+
+The previous sections select $\tau$ to satisfy the duality gap equation at
+fixed~$\theta$.  Here we jointly determine $(\tau, \theta)$ by enforcing
+\emph{both} the gap equation and a normalization equation, eliminating the
+need for an external $\theta$~schedule.
+
+\subsection{Setup}
+
+Recall the three-term decomposition at a fixed scaling~$W$:
+\begin{align}
+  d(k,\tau,\theta) &= d_0 + k\bigl(\tau\,d_1^{(0)} + \theta\,d_1^{(\theta)}\bigr), \label{eq:d-decomp} \\
+  y(k,\tau,\theta) &= y_0 + k\bigl(\tau\,y_1^{(0)} + \theta\,y_1^{(\theta)}\bigr). \label{eq:y-decomp}
+\end{align}
+The slack and dual are
+\begin{align}
+  s &= \tfrac{1}{k}\,P(w^{-1/2})(e - d), \qquad
+  \lambda = k\,P(w^{1/2})(e + d).
+\end{align}
+
+\subsection{The two equations}
+
+\paragraph{Gap equation (duality identity).}
+This is the equation from Section~6, enforcing the complementarity structure:
+\begin{equation} \label{eq:gap}
+  b^T \lambda + c^T x + d^T\nu + \frac{x^T Q x}{\tau} + \frac{\mu}{\tau}
+  = \theta\,(\langle b, e\rangle + 1).
+\end{equation}
+
+\paragraph{Normalization equation.}
+At the fixed point $(x_{\mathrm{hat}}, \lambda_{\mathrm{hat}}, \tau_{\mathrm{hat}}=1,
+\kappa_{\mathrm{hat}}=1, \theta_{\mathrm{hat}}=1)$, define the residuals
+\begin{align}
+  r_p &= A\,x_{\mathrm{hat}} + b - e, \\
+  r_d &= c - A^T e, \\
+  r_g &= -(b^T e + c^T x_{\mathrm{hat}} + 1), \\
+  \alpha &= \langle e, e\rangle + 1 = m + 1,
+\end{align}
+where $m$ is the number of cone constraints.
+The normalization equation is
+\begin{equation} \label{eq:norm}
+  r_p^T \lambda + r_d^T x + r_g\,\tau = -\alpha.
+\end{equation}
+This is the analog of E5 in the extended embedding.  It anchors the
+scale of the solution: at the fixed point ($\theta=1$, $\tau=1$),
+both~\eqref{eq:gap} and~\eqref{eq:norm} are satisfied identically.
+
+\subsection{Linear system in $(\tau, \theta)$}
+
+Both equations are \emph{linear} in $(\tau, \theta)$ at fixed~$k$.
+To see this, note that all quantities in~\eqref{eq:gap} and~\eqref{eq:norm}
+depend on $(\tau, \theta)$ through the decompositions~\eqref{eq:d-decomp}
+and~\eqref{eq:y-decomp}, which are linear in $(\tau, \theta)$.
+
+\paragraph{Expanding $\lambda$ and $x$.}
+The primal variable is $x = y_0/k + \tau\,y_1^{(0)} + \theta\,y_1^{(\theta)}$,
+which is affine in $(\tau, \theta)$.
+The dual variable is
+\[
+  \lambda = k\,P(w^{1/2})\bigl(e + d_0 + k\tau\,d_1^{(0)} + k\theta\,d_1^{(\theta)}\bigr),
+\]
+which is also affine in $(\tau, \theta)$.
+
+\paragraph{Substituting into the normalization.}
+Define
+\begin{align*}
+  \lambda_0 &= k\,P(w^{1/2})(e + d_0), \qquad
+  \lambda_\tau = k^2\,P(w^{1/2})\,d_1^{(0)}, \qquad
+  \lambda_\theta = k^2\,P(w^{1/2})\,d_1^{(\theta)},
+\end{align*}
+so that $\lambda = \lambda_0 + \tau\,\lambda_\tau + \theta\,\lambda_\theta$.
+Similarly, $x = x_0 + \tau\,x_\tau + \theta\,x_\theta$ where
+$x_0 = y_0/k$, $x_\tau = y_1^{(0)}$, $x_\theta = y_1^{(\theta)}$.
+
+Substituting into~\eqref{eq:norm}:
+\[
+  r_p^T(\lambda_0 + \tau\,\lambda_\tau + \theta\,\lambda_\theta)
+  + r_d^T(x_0 + \tau\,x_\tau + \theta\,x_\theta)
+  + r_g\,\tau = -\alpha.
+\]
+Collecting terms:
+\begin{equation} \label{eq:norm-linear}
+  \underbrace{(r_p^T\lambda_\tau + r_d^T x_\tau + r_g)}_{N_\tau}\,\tau
+  + \underbrace{(r_p^T\lambda_\theta + r_d^T x_\theta)}_{N_\theta}\,\theta
+  = -\alpha - r_p^T\lambda_0 - r_d^T x_0.
+\end{equation}
+
+\paragraph{Substituting into the gap equation.}
+For the LP case ($Q = 0$), the gap equation~\eqref{eq:gap} simplifies to
+\[
+  b^T\lambda + c^T x + \frac{\mu}{\tau}
+  = \theta\,(\langle b,e\rangle + 1).
+\]
+Substituting the affine expansions:
+\begin{equation} \label{eq:gap-linear-tau}
+  \underbrace{(b^T\lambda_\tau + c^T x_\tau)}_{G_\tau}\,\tau
+  + \underbrace{(b^T\lambda_\theta + c^T x_\theta)}_{G_\theta}\,\theta
+  + \frac{\mu}{\tau}
+  = \theta\,(\langle b,e\rangle + 1).
+\end{equation}
+The $\mu/\tau$ term makes this nonlinear.  However, at the central path
+$\mu = 1/k^2$ is fixed for a given~$k$, and the term $\mu/\tau$ is
+small when $\tau \approx 1$ and $k$ is large.  Dropping it (or treating
+$\tau^{-1} \approx 1$ at $\tau \approx 1$) gives the linear approximation
+\begin{equation} \label{eq:gap-linear}
+  G_\tau\,\tau
+  + \bigl(G_\theta - \langle b,e\rangle - 1\bigr)\,\theta
+  = -b^T\lambda_0 - c^T x_0 - \mu.
+\end{equation}
+
+\subsection{The $2 \times 2$ system}
+
+Combining~\eqref{eq:norm-linear} and~\eqref{eq:gap-linear}:
+\begin{equation} \label{eq:2x2}
+  \boxed{
+  \begin{pmatrix}
+    N_\tau & N_\theta \\
+    G_\tau & G_\theta - R
+  \end{pmatrix}
+  \begin{pmatrix} \tau \\ \theta \end{pmatrix}
+  =
+  \begin{pmatrix}
+    -\alpha - r_p^T\lambda_0 - r_d^T x_0 \\
+    -b^T\lambda_0 - c^T x_0 - \mu
+  \end{pmatrix},}
+\end{equation}
+where $R = \langle b, e\rangle + 1$.  The coefficients
+$N_\tau, N_\theta, G_\tau, G_\theta$ are inner products of the
+decomposition vectors with the residuals and data, computed once per
+factorization.  The RHS depends on~$k$ (through $\lambda_0 = k\,P(w^{1/2})(e+d_0)$
+and $\mu = 1/k^2$).
+
+\subsection{Algorithm}
+
+Given a fixed scaling~$W$:
+\begin{enumerate}
+  \item Compute the decomposition $(d_0, d_1^{(0)}, d_1^{(\theta)},
+        y_0, y_1^{(0)}, y_1^{(\theta)})$: one factorization, three back-solves.
+  \item Compute the $2\times 2$ matrix entries $N_\tau, N_\theta, G_\tau, G_\theta$
+        from inner products of the decomposition vectors.
+  \item For a candidate~$k$:
+    \begin{enumerate}
+      \item Compute $\lambda_0(k) = k\,P(w^{1/2})(e + d_0)$ and $x_0(k) = y_0/k$.
+      \item Solve the $2\times 2$ system~\eqref{eq:2x2} for $(\tau, \theta)$.
+      \item Evaluate $d(k, \tau, \theta)$ and check $\|d\|_\infty < 1$, $\tau > 0$.
+    \end{enumerate}
+  \item Line-search over~$k$: find the largest~$k$ such that the
+        resulting $(\tau, \theta)$ is feasible ($\|d\|_\infty < 1$, $\tau > 0$,
+        $\theta \geq 0$).
+\end{enumerate}
+
+The key difference from the previous algorithm: $\theta$ is no longer an
+external schedule parameter.  It is determined jointly with~$\tau$ by the
+gap and normalization equations at each~$k$.  As $k$ increases (barrier
+tightens), $\theta$ decreases toward~$0$ automatically.
+
+\subsection{Cost}
+
+Same as before: one factorization, three back-solves.  The $2 \times 2$ solve
+and inner products are negligible.  The line search over~$k$ is
+one-dimensional and cheap (the six inner products $a, f, g, p, q, r$
+give $\|d\|^2$ analytically).
+
 \end{document}
