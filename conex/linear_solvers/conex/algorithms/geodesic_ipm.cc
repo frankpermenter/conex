@@ -674,17 +674,21 @@ GeodesicResult SolveGeodesicHSD(
       result.complementarity = gap;
       result.total_factorizations = total_fac;
       result.total_solves = total_sol;
-      result.x = decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
+      // De-homogenize: x_phys = x_lifted / tau.
+      Eigen::VectorXd x_lifted =
+          decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
+      result.x = x_lifted / tau;
 
+      // lambda_phys = lambda_lifted / tau.
       RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
       RowSpace ones_v = kkt.MakeRowSpace();
       setOnes(ones_v);
       result.lambda = quadraticRepresentation(sqrtW, ones_v + d);
-      result.lambda *= (1.0 / k);
+      result.lambda *= (1.0 / (k * tau));
 
       auto x_rhs = kkt.MakeSolverRHS();
       x_rhs = kkt.MakeBlockVariable(result.x);
-      result.optimality = CheckOptimality(kkt, cost_rhs, x_rhs, result.lambda);
+      result.optimality = CheckOptimality(kkt, duality_cost, x_rhs, result.lambda);
       result.optimality.mu = mu;
 
       if (verbose) {
