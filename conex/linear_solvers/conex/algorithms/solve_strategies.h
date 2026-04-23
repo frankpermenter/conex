@@ -5,6 +5,21 @@
 
 namespace conex {
 
+// Strategy: theta-continuation with r-updates and tau from duality identity.
+struct ThetaContinuationR {
+  double tolerance = 1e-8;
+  int max_iterations = 500;
+  bool verbose = false;
+
+  GeodesicResult Run(KKTSolverBase& kkt,
+                     const SolverRHS& cost_rhs) const {
+    RowSpace W = kkt.MakeRowSpace();
+    setOnes(W);
+    return SolveGeodesicThetaContinuationR(
+        kkt, cost_rhs, W, max_iterations, tolerance, verbose);
+  }
+};
+
 // Strategy: hybrid r-updates with theta = |gap|/m.
 struct HybridR {
   double tolerance = 1e-8;

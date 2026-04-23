@@ -63,13 +63,21 @@ std::pair<double, double> VerifyHybridREquations(
     const RowSpace& delta,
     const Eigen::VectorXd& y);
 
-// Unified geodesic IPM: theta-continuation with free r-updates.
+// ThetaContinuation with r-updates interleaved.
 //
-// Outer loop: factor A'W²A (expensive).
-// Inner loop (free back-solves):
-//   - Decrease theta toward 0
-//   - Update r (shrinkR when gap > 0)
-//   - Center W when gap < 0 (triggers refactorization)
+// Uses ThetaContinuation's tau selection (duality identity V(tau)=0,
+// binary search over theta) at each W-update.  Between W-updates,
+// does free r-updates (shrinkR) with theta frozen.  W-updates triggered
+// when gap < 0.
+GeodesicResult SolveGeodesicThetaContinuationR(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    RowSpace& W,
+    int max_iterations = 500,
+    double tolerance = 1e-8,
+    bool verbose = false);
+
+// Original HybridR: theta = |gap|/m heuristic.
 GeodesicResult SolveGeodesicHybridR(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,

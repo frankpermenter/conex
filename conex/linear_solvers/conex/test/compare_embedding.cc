@@ -189,14 +189,23 @@ int main(int argc, char* argv[]) {
              r4.duals.stationarity_gradient.norm(),
              r4.optimality.complementarity, eq4);
 
-      auto r5 = solver.Solve(HybridR{1e-10, 500, verbose});
-      double eq5 = 0;
+      auto r5 = solver.Solve(ThetaContinuationR{1e-10, 500, verbose});
+      double eq5b = 0;
       for (const auto& er : r5.duals.eq_residual)
-        eq5 = std::max(eq5, er.norm());
-      printf("n=%2d  DIRECT   HybridR     %4d %12.6f %10.2e %10.2e %10.2e\n",
+        eq5b = std::max(eq5b, er.norm());
+      printf("n=%2d  DIRECT   ThetaContR  %4d %12.6f %10.2e %10.2e %10.2e\n",
              n, r5.factorizations, r5.objective,
              r5.duals.stationarity_gradient.norm(),
-             r5.optimality.complementarity, eq5);
+             r5.optimality.complementarity, eq5b);
+
+      auto r6 = solver.Solve(HybridR{1e-10, 500, verbose});
+      double eq6 = 0;
+      for (const auto& er : r6.duals.eq_residual)
+        eq6 = std::max(eq6, er.norm());
+      printf("n=%2d  DIRECT   HybridR     %4d %12.6f %10.2e %10.2e %10.2e\n",
+             n, r6.factorizations, r6.objective,
+             r6.duals.stationarity_gradient.norm(),
+             r6.optimality.complementarity, eq6);
     }
 
     // --- Embedding solve (from A,b,c) ---
