@@ -428,27 +428,58 @@ $\tau^{-1} \approx 1$ at $\tau \approx 1$) gives the linear approximation
   = -b^T\lambda_0 - c^T x_0 - \mu.
 \end{equation}
 
-\subsection{The $2 \times 2$ system}
+\subsection{Eliminating $\theta$ via the normalization}
 
-Combining~\eqref{eq:norm-linear} and~\eqref{eq:gap-linear}:
-\begin{equation} \label{eq:2x2}
-  \boxed{
-  \begin{pmatrix}
-    N_\tau & N_\theta \\
-    G_\tau & G_\theta - R
-  \end{pmatrix}
-  \begin{pmatrix} \tau \\ \theta \end{pmatrix}
-  =
-  \begin{pmatrix}
-    -\alpha - r_p^T\lambda_0 - r_d^T x_0 \\
-    -b^T\lambda_0 - c^T x_0 - \mu
-  \end{pmatrix},}
+The normalization~\eqref{eq:norm-linear} is purely linear in $(\tau,\theta)$.
+Solving for~$\theta$:
+\begin{equation} \label{eq:theta-from-tau}
+  \theta(\tau) = \frac{-\alpha - r_p^T\lambda_0 - r_d^T x_0 - N_\tau\,\tau}
+                      {N_\theta}.
 \end{equation}
-where $R = \langle b, e\rangle + 1$.  The coefficients
-$N_\tau, N_\theta, G_\tau, G_\theta$ are inner products of the
-decomposition vectors with the residuals and data, computed once per
-factorization.  The RHS depends on~$k$ (through $\lambda_0 = k\,P(w^{1/2})(e+d_0)$
-and $\mu = 1/k^2$).
+This expresses $\theta$ as a linear function of~$\tau$.
+
+\subsection{Quadratic in $\tau$}
+
+Substituting~\eqref{eq:theta-from-tau} into the full gap
+equation~\eqref{eq:gap-linear-tau} (retaining the $\mu/\tau$ term):
+\[
+  G_\tau\,\tau + G_\theta\,\theta(\tau) + \frac{\mu}{\tau}
+  = \theta(\tau)\,R,
+\]
+where $R = \langle b,e\rangle + 1$.  Since $\theta(\tau) = a_0 + a_1\,\tau$
+for constants $a_0, a_1$ from~\eqref{eq:theta-from-tau}, every term except
+$\mu/\tau$ is linear in~$\tau$.  Collecting:
+\[
+  \underbrace{\bigl(G_\tau + G_\theta\,a_1 - R\,a_1\bigr)}_{\beta}\,\tau
+  + \underbrace{\bigl(G_\theta\,a_0 - R\,a_0\bigr)
+  + G_\tau \cdot 0}_{\gamma}
+  + \frac{\mu}{\tau}
+  = 0,
+\]
+where we absorbed the constant terms into $\gamma$.  More precisely,
+define
+\begin{align*}
+  a_0 &= \frac{-\alpha - r_p^T\lambda_0 - r_d^T x_0}{N_\theta}, \qquad
+  a_1 = \frac{-N_\tau}{N_\theta}, \\[4pt]
+  \beta &= G_\tau + (G_\theta - R)\,a_1, \\
+  \gamma &= (G_\theta - R)\,a_0 + b^T\lambda_0 + c^T x_0.
+\end{align*}
+Then the gap equation becomes
+\[
+  \beta\,\tau + \gamma + \frac{\mu}{\tau} = 0.
+\]
+Multiplying by~$\tau$:
+\begin{equation} \label{eq:tau-quadratic}
+  \boxed{\beta\,\tau^2 + \gamma\,\tau + \mu = 0.}
+\end{equation}
+This is the \emph{same quadratic form} as the fixed-$\theta$ case
+(Section~7.5), but with coefficients that incorporate the normalization
+constraint.  The roots are
+\[
+  \tau = \frac{-\gamma \pm \sqrt{\gamma^2 - 4\beta\mu}}{2\beta}.
+\]
+When both roots are positive, choose the one with smaller~$\|d\|^2$.
+Recover~$\theta$ from~\eqref{eq:theta-from-tau}.
 
 \subsection{Algorithm}
 
@@ -456,29 +487,39 @@ Given a fixed scaling~$W$:
 \begin{enumerate}
   \item Compute the decomposition $(d_0, d_1^{(0)}, d_1^{(\theta)},
         y_0, y_1^{(0)}, y_1^{(\theta)})$: one factorization, three back-solves.
-  \item Compute the $2\times 2$ matrix entries $N_\tau, N_\theta, G_\tau, G_\theta$
-        from inner products of the decomposition vectors.
+  \item Compute the inner products for the normalization and gap
+        coefficients: $N_\tau, N_\theta, G_\tau, G_\theta$.
   \item For a candidate~$k$:
     \begin{enumerate}
-      \item Compute $\lambda_0(k) = k\,P(w^{1/2})(e + d_0)$ and $x_0(k) = y_0/k$.
-      \item Solve the $2\times 2$ system~\eqref{eq:2x2} for $(\tau, \theta)$.
-      \item Evaluate $d(k, \tau, \theta)$ and check $\|d\|_\infty < 1$, $\tau > 0$.
+      \item Compute $\lambda_0(k)$, $x_0(k)$, and $\mu = 1/k^2$.
+      \item Compute $a_0, a_1$ from~\eqref{eq:theta-from-tau},
+            then $\beta, \gamma$.
+      \item Solve the quadratic~\eqref{eq:tau-quadratic} for~$\tau$.
+      \item Recover $\theta = a_0 + a_1\,\tau$.
+      \item Evaluate $d(k, \tau, \theta)$ and check $\|d\|_\infty < 1$,
+            $\tau > 0$, $\theta \geq 0$.
     \end{enumerate}
-  \item Line-search over~$k$: find the largest~$k$ such that the
-        resulting $(\tau, \theta)$ is feasible ($\|d\|_\infty < 1$, $\tau > 0$,
-        $\theta \geq 0$).
+  \item Line-search over~$k$: find the largest~$k$ such that
+        $(\tau, \theta)$ is feasible.
 \end{enumerate}
 
-The key difference from the previous algorithm: $\theta$ is no longer an
-external schedule parameter.  It is determined jointly with~$\tau$ by the
-gap and normalization equations at each~$k$.  As $k$ increases (barrier
-tightens), $\theta$ decreases toward~$0$ automatically.
+\subsection{Comparison with fixed-$\theta$ selection}
 
-\subsection{Cost}
+\begin{center}
+\begin{tabular}{lcc}
+  & Fixed $\theta$ (Section~7) & Joint $(\tau,\theta)$ \\
+  \hline
+  Back-solves per factorization & 3 & 3 \\
+  $\theta$ schedule & external ($\theta \leftarrow 0.9\theta$) & from normalization \\
+  $\tau$ selection & quadratic in $\tau$ & quadratic in $\tau$ (same form) \\
+  Equations used & gap only & gap + normalization \\
+  Outer loop & decrease $\theta$ until $< \varepsilon$ & none ($\theta \to 0$ automatically) \\
+\end{tabular}
+\end{center}
 
-Same as before: one factorization, three back-solves.  The $2 \times 2$ solve
-and inner products are negligible.  The line search over~$k$ is
-one-dimensional and cheap (the six inner products $a, f, g, p, q, r$
-give $\|d\|^2$ analytically).
+The cost per iteration is identical.  The joint selection eliminates
+the outer $\theta$-loop and its tuning ($0.9$ factor, centering
+threshold, etc.).  The normalization equation provides the missing
+constraint that ties~$\theta$ to the barrier progress.
 
 \end{document}
