@@ -140,8 +140,8 @@ HybridRDecomposition ComputeHybridRDecomposition(
     const SolverRHS& cost_rhs,
     const RowSpace& b,
     const RowSpace& W,
-    const RowSpace& r,
-    double theta) {
+    const RowSpace& r) {
+  double theta = 0;  // theta not used for the three raw solves
   RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
   int nv = kkt.number_of_variables();
   RowSpace v = kkt.MakeRowSpace();
@@ -211,26 +211,61 @@ HybridRDecomposition ComputeHybridRDecomposition(
   ax1.col() = row.col(1);
   ax_th.col() = row.col(2);
 
-  // Two-term decomposition (§3):
-  //   f = x0 + theta*x_theta   (tau-free)
-  //   g = x1                    (tau-proportional)
   HybridRDecomposition decomp;
-  decomp.y_center = y_dense.col(0) + theta * y_dense.col(2);  // f
-  decomp.y_cost = y_dense.col(1);                              // g
 
-  // delta_c = r - P(W^{1/2})(A*f + theta*(e - b))
-  RowSpace Af = addScaled(ax0, ax_th, 1.0, theta);
+  // Store raw three-solve components.
+  decomp.x0 = y_dense.col(0);
+  decomp.x1 = y_dense.col(1);
+  decomp.x_theta = y_dense.col(2);
+
+  // lambda(tau,theta) = lam0 + tau*lam1 + theta*lam_theta
+  // where lam_i = P(W^{1/2})(r + delta_i) for the constant part,
+  // and lam_i = -P(W)(stuff) for tau/theta parts.
+  //
+  // r + delta = 2r - P(W^{1/2})(A*x + tau*b + theta*(e-b))
+  // so lambda = P(W^{1/2})(2r) - P(W)(A*x + tau*b + theta*(e-b))
+  //           = [P(W^{1/2})(2r) - P(W)(A*x0)]
+  //             + tau*[-P(W)(A*x1 + b)]
+  //             + theta*[-P(W)(A*x_theta + e - b)]
   RowSpace e_minus_b = addScaled(ones, b, 1.0, -1.0);
-  RowSpace delta_c_arg = addScaled(Af, e_minus_b, 1.0, theta);
-  decomp.delta_center = addScaled(r,
-      quadraticRepresentation(sqrtW, delta_c_arg), 1.0, -1.0);
+  RowSpace Psqrt2r = quadraticRepresentation(sqrtW, r);
+  Psqrt2r *= 2.0;
+  decomp.lam0 = addScaled(Psqrt2r,
+      quadraticRepresentation(W, ax0), 1.0, -1.0);
+  RowSpace arg1 = addScaled(ax1, b, 1.0, 1.0);
+  decomp.lam1 = quadraticRepresentation(W, arg1);
+  decomp.lam1 *= -1.0;
+  RowSpace arg_th = addScaled(ax_th, e_minus_b, 1.0, 1.0);
+  decomp.lam_theta = quadraticRepresentation(W, arg_th);
+  decomp.lam_theta *= -1.0;
 
-  // delta_t = -P(W^{1/2})(b + A*g)
-  RowSpace b_plus_Ag = addScaled(b, ax1, 1.0, 1.0);
-  decomp.delta_cost = quadraticRepresentation(sqrtW, b_plus_Ag);
+  // delta_cost = -P(W^{1/2})(b + A*x1) — independent of theta.
+  decomp.delta_cost = quadraticRepresentation(sqrtW, arg1);
   decomp.delta_cost *= -1.0;
 
+  // y_center, y_cost, delta_center are set by SetTheta().
   return decomp;
+}
+
+void SetTheta(HybridRDecomposition& decomp,
+              KKTSolverBase& kkt,
+              const RowSpace& b,
+              const RowSpace& W,
+              const RowSpace& r,
+              double theta) {
+  decomp.y_center = decomp.x0 + theta * decomp.x_theta;
+  decomp.y_cost = decomp.x1;
+
+  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  RowSpace ones = kkt.MakeRowSpace(); setOnes(ones);
+  RowSpace e_minus_b = addScaled(ones, b, 1.0, -1.0);
+  auto f_rhs = kkt.MakeSolverRHS();
+  f_rhs = kkt.MakeBlockVariable(decomp.y_center);
+  RowSpace Af = kkt.MakeRowSpace();
+  kkt.MultiplyA(f_rhs, Af);
+  RowSpace dc_arg = addScaled(Af, e_minus_b, 1.0, theta);
+  decomp.delta_center = addScaled(r,
+      quadraticRepresentation(sqrtW, dc_arg), 1.0, -1.0);
 }
 
 HybridRDirection EvalHybridRAtTau(
@@ -305,10 +340,10 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
   if (verbose) {
     printf("  %3s  %8s  %10s  %12s  %12s  %12s  %12s"
-           "  %12s  %12s  %12s  %12s  %3s\n",
+           "  %12s  %12s  %12s  %12s  %8s  %3s\n",
            "out", "theta", "tau", "kappa", "d_inf", "d_sqr",
-           "gap", "dual", "primal", "mu/tau", "eq_err", "st");
-    printf("  %s\n", std::string(149, '-').c_str());
+           "gap", "dual", "primal", "mu/tau", "eq_err", "norm_err", "st");
+    printf("  %s\n", std::string(160, '-').c_str());
   }
 
   RowSpace last_delta = kkt.MakeRowSpace();
@@ -318,66 +353,89 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   for (int iter = 0; iter < max_iterations; ++iter) {
     // Compute the two-solve decomposition when needed (after W-updates).
     if (need_decomp) {
-      decomp = ComputeHybridRDecomposition(kkt, cost_rhs, b, W, r, theta);
+      decomp = ComputeHybridRDecomposition(kkt, cost_rhs, b, W, r);
       total_sol += 3;
       need_decomp = false;
 
-      // Duality identity coefficients.
-      // sigma_0 = b' P(W^{1/2})(r + delta_center)  [tau-free lambda]
-      // sigma_1 = b' P(W^{1/2})(delta_cost)         [tau-proportional lambda]
-      RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-      RowSpace lam_c = quadraticRepresentation(sqrtW,
-          addScaled(r, decomp.delta_center, 1.0, 1.0));
-      RowSpace lam_t = quadraticRepresentation(sqrtW, decomp.delta_cost);
+      // Joint (tau, theta) selection from gap + normalization equations.
+      // lambda(tau,theta) = lam0 + tau*lam1 + theta*lam_theta
+      // x(tau,theta) = x0 + tau*x1 + theta*x_theta
+      //
+      // Gap equation (multiply by tau, Q=0 for now):
+      //   G1*tau^2 + G0*tau + G_theta*tau*theta + theta = 0
+      // Normalization:
+      //   N0 + N1*tau + N_theta*theta = -alpha
+      //
+      // Eliminate theta from normalization, substitute into gap.
 
-      double sigma_0 = dot(b, lam_c);
-      double sigma_1 = dot(b, lam_t);
+      RowSpace ones_sel = kkt.MakeRowSpace(); setOnes(ones_sel);
+      RowSpace rp = addScaled(b, ones_sel, 1.0, -1.0);  // b - e
 
-      auto yc_rhs = kkt.MakeSolverRHS();
-      yc_rhs = kkt.MakeBlockVariable(decomp.y_center);
-      auto yt_rhs = kkt.MakeSolverRHS();
-      yt_rhs = kkt.MakeBlockVariable(decomp.y_cost);
+      // Gap coefficients: G_i = b'lam_i + c'x_i  (for Q=0).
+      auto x0_rhs = kkt.MakeSolverRHS();
+      x0_rhs = kkt.MakeBlockVariable(decomp.x0);
+      auto x1_rhs = kkt.MakeSolverRHS();
+      x1_rhs = kkt.MakeBlockVariable(decomp.x1);
+      auto xth_rhs = kkt.MakeSolverRHS();
+      xth_rhs = kkt.MakeBlockVariable(decomp.x_theta);
 
-      double gamma_0 = duality_cost.dot(yc_rhs);
-      double gamma_1 = duality_cost.dot(yt_rhs);
+      double bTl0 = dot(b, decomp.lam0);
+      double bTl1 = dot(b, decomp.lam1);
+      double bTlth = dot(b, decomp.lam_theta);
+      double cTx0 = duality_cost.dot(x0_rhs);
+      double cTx1 = duality_cost.dot(x1_rhs);
+      double cTxth = duality_cost.dot(xth_rhs);
 
-      // QP terms: f = y_center (tau-free part), g = y_cost (tau-proportional).
-      auto qyc = kkt.MakeSolverRHS(); qyc.SetZero();
-      kkt.AccumulateQx(yc_rhs, qyc);
-      auto qyt = kkt.MakeSolverRHS(); qyt.SetZero();
-      kkt.AccumulateQx(yt_rhs, qyt);
-      double q_ff = qyc.dot(yc_rhs);   // f'Qf
-      double q_fg = qyc.dot(yt_rhs);   // f'Qg
-      double q_gg = qyt.dot(yt_rhs);   // g'Qg
+      // TODO: add Q terms for QP support.
+      double G0 = bTl0 + cTx0;       // constant
+      double G1 = bTl1 + cTx1;       // coefficient of tau
+      double Gth = bTlth + cTxth - R; // coefficient of tau*theta (includes -R)
 
-      // Duality identity: b'(λ/τ) + (c+d_eq)'(y/τ) + (y/τ)'Q(y/τ)/τ + θ/τ = θR
-      // Multiply by τ²: τb'λ + τ(c+d_eq)'y + y'Qy/τ + θτ = θRτ²
-      // Expand with λ(τ)=lam_c+τ·lam_t, y(τ)=y_c+τ·y_t:
-      //   (σ₁+γ₁+q_gg-θR)τ² + (σ₀+γ₀+2q_fg+θ)τ + q_ff = 0
-      double beta = sigma_1 + gamma_1 + q_gg;
-      double alpha_q = sigma_0 + gamma_0 + 2*q_fg - theta*R;
-      double mu_eff = q_ff + theta;
+      // Normalization coefficients: rp'lam_i + rd'x_i + rg*(tau coefficient).
+      // rd = c - A'e, so rd'x = c'x - e'(Ax) = c'x - e'(row from A*x).
+      // We compute rp'lam_i directly, rd'x_i via duality_cost - e'(Ax_i).
+      RowSpace Ax0_v = kkt.MakeRowSpace(); kkt.MultiplyA(x0_rhs, Ax0_v);
+      RowSpace Ax1_v = kkt.MakeRowSpace(); kkt.MultiplyA(x1_rhs, Ax1_v);
+      RowSpace Axth_v = kkt.MakeRowSpace(); kkt.MultiplyA(xth_rhs, Axth_v);
 
-      if (verbose) {
-        double V1 = beta + alpha_q + mu_eff;
-        printf("    tau-quad: beta=%.4e alpha=%.4e mu_eff=%.4e V(1)=%.4e\n",
-               beta, alpha_q, mu_eff, V1);
-        printf("      s0=%.4e s1=%.4e g0=%.4e g1=%.4e qff=%.4e qfg=%.4e qgg=%.4e R=%.4e\n",
-               sigma_0, sigma_1, gamma_0, gamma_1, q_ff, q_fg, q_gg, theta*R);
-        printf("      f+g norm=%.4e  bTe=%.4e  s0+s1=%.4e\n",
-               (decomp.y_center + decomp.y_cost).norm(), bT_ones, sigma_0+sigma_1);
-      }
-      double discr = alpha_q * alpha_q - 4.0 * beta * mu_eff;
-      if (discr >= 0 && std::abs(beta) > 1e-30) {
+      double rpTl0 = dot(rp, decomp.lam0);
+      double rpTl1 = dot(rp, decomp.lam1);
+      double rpTlth = dot(rp, decomp.lam_theta);
+      double rdTx0 = cTx0 - dot(ones_sel, Ax0_v);
+      double rdTx1 = cTx1 - dot(ones_sel, Ax1_v);
+      double rdTxth = cTxth - dot(ones_sel, Axth_v);
+      double rg = -(bT_ones + 1.0);
+      double alpha_norm = m + 1.0;
+
+      double N0 = rpTl0 + rdTx0;          // constant
+      double N1 = rpTl1 + rdTx1 + rg;     // coefficient of tau
+      double Nth = rpTlth + rdTxth;        // coefficient of theta
+
+      // Combined quadratic: eliminate theta = (-alpha_norm - N0 - N1*tau) / Nth.
+      // Gap*tau: G1*tau^2 + G0*tau + Gth*tau*theta + theta = 0
+      // Multiply by Nth:
+      //   G1*Nth*tau^2 + G0*Nth*tau + Gth*tau*(-alpha_norm-N0-N1*tau) + (-alpha_norm-N0-N1*tau) = 0
+      //   (G1*Nth - Gth*N1)*tau^2 + (G0*Nth - Gth*(alpha_norm+N0) - N1)*tau - (alpha_norm+N0) = 0
+      double A_coeff = G1*Nth - Gth*N1;
+      double B_coeff = G0*Nth - Gth*(alpha_norm + N0) - N1;
+      double C_coeff = -(alpha_norm + N0);
+
+      double discr = B_coeff * B_coeff - 4.0 * A_coeff * C_coeff;
+      if (discr >= 0 && std::abs(A_coeff) > 1e-30) {
         double sq = std::sqrt(discr);
-        double t1 = (-alpha_q + sq) / (2.0 * beta);
-        double t2 = (-alpha_q - sq) / (2.0 * beta);
-        // Pick the positive root closest to current tau.
+        double t1 = (-B_coeff + sq) / (2.0 * A_coeff);
+        double t2 = (-B_coeff - sq) / (2.0 * A_coeff);
         if (t1 > 0 && t2 > 0)
           tau = (std::abs(t1 - tau) < std::abs(t2 - tau)) ? t1 : t2;
         else if (t1 > 0) tau = t1;
         else if (t2 > 0) tau = t2;
       }
+      // Recover theta from normalization.
+      if (std::abs(Nth) > 1e-30) {
+        theta = (-alpha_norm - N0 - N1 * tau) / Nth;
+      }
+      // Update the two-term decomposition at the new theta.
+      SetTheta(decomp, kkt, b, W, r, theta);
     }
 
     // Evaluate direction at current (tau, r, theta).
@@ -411,12 +469,27 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double half_xQx_phys = (tau > 1e-30) ? 0.5 * xQx / (tau * tau) : 0.0;
       double primal_phys = (tau > 1e-30) ? cTx / tau + half_xQx_phys : 0.0;
       double dual_phys = (tau > 1e-30) ? -(bTl / tau + half_xQx_phys) : 0.0;
+      // Normalization check: r_p'λ + r_d'x + r_g·τ should = -(m+1).
+      // r_p = b - e, r_d = c - A'e, r_g = -(b'e + 1).
+      RowSpace ones_v = kkt.MakeRowSpace(); setOnes(ones_v);
+      double eTl = dot(ones_v, lam_v);
+      RowSpace Ax_v = kkt.MakeRowSpace();
+      kkt.MultiplyA(x_rhs, Ax_v);
+      double eTAx = dot(ones_v, Ax_v);
+
+      double rpTl = bTl - eTl;       // (b-e)'λ
+      double rdTx = cTx - eTAx;      // (c-A'e)'x
+      double r_g = -(bT_ones + 1.0); // -(b'e + 1)
+      double norm_target = -(m + 1.0);
+
+      double norm_val = rpTl + rdTx + r_g * tau;
+
       double d_sq = squaredNorm(delta);
       printf("  %3d  %8.6f  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e"
-             "  %12.4e  %12.4e  %12.4e  %12.2e  %3d\n",
+             "  %12.4e  %12.4e  %12.4e  %12.2e  %8.2e  %3d\n",
              iter, theta, tau, kappa_v, d_inf, d_sq, g,
              dual_phys, primal_phys, mu_over_tau, eq_err,
-             r_updates_since_fac);
+             norm_val - norm_target, r_updates_since_fac);
     }
 
     if (d_inf > 10 || !std::isfinite(d_inf) || !std::isfinite(g)) {
@@ -425,8 +498,11 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       break;
     }
 
-    bool do_center = (g < 0);
+    result.iterations = iter + 1;
+    if (theta < tolerance && std::abs(g) < tolerance && d_inf <= 1.001)
+      break;
 
+    bool do_center = (g < 0);
     if (do_center) {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       updateAutomorphism(W, r, alpha, d);
@@ -434,63 +510,12 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       if (!kkt.AssembleAndFactor()) break;
       total_fac++;
       r_updates_since_fac = 0;
-      need_decomp = true;  // recompute decomposition at new W
+      need_decomp = true;
     } else {
       shrinkR(r, delta);
       r_updates_since_fac++;
-      theta = std::abs(g) / m;
-      // r and theta changed — need new decomposition for the direction,
-      // but keep tau fixed until next W-update.
       need_decomp = true;
     }
-
-    // Recompute decomposition and tau at updated state.
-    if (need_decomp) {
-      decomp = ComputeHybridRDecomposition(kkt, cost_rhs, b, W, r, theta);
-      total_sol += 3;
-      need_decomp = false;
-
-      // Recompute tau at updated state (same quadratic structure).
-      RowSpace sqrtW2 = EuclideanJordanAlgebra::sqrt(W);
-      RowSpace lam_c2 = quadraticRepresentation(sqrtW2,
-          addScaled(r, decomp.delta_center, 1.0, 1.0));
-      RowSpace lam_t2 = quadraticRepresentation(sqrtW2, decomp.delta_cost);
-      double s0 = dot(b, lam_c2), s1 = dot(b, lam_t2);
-      auto yc2 = kkt.MakeSolverRHS();
-      yc2 = kkt.MakeBlockVariable(decomp.y_center);
-      auto yt2 = kkt.MakeSolverRHS();
-      yt2 = kkt.MakeBlockVariable(decomp.y_cost);
-      double g0 = duality_cost.dot(yc2), g1 = duality_cost.dot(yt2);
-      auto qyc2 = kkt.MakeSolverRHS(); qyc2.SetZero();
-      kkt.AccumulateQx(yc2, qyc2);
-      auto qyt2 = kkt.MakeSolverRHS(); qyt2.SetZero();
-      kkt.AccumulateQx(yt2, qyt2);
-      double qff2 = qyc2.dot(yc2), qfg2 = qyc2.dot(yt2), qgg2 = qyt2.dot(yt2);
-      double bt = s1+g1+qgg2, aq = s0+g0+2*qfg2-theta*R;
-      double me = qff2+theta;
-      double disc = aq*aq - 4*bt*me;
-      if (disc >= 0 && std::abs(bt) > 1e-30) {
-        double sq = std::sqrt(disc);
-        double t1 = (-aq+sq)/(2*bt), t2 = (-aq-sq)/(2*bt);
-        if (t1 > 0 && t2 > 0) tau = (std::abs(t1-tau)<std::abs(t2-tau))?t1:t2;
-        else if (t1 > 0) tau = t1;
-        else if (t2 > 0) tau = t2;
-      }
-
-      // Evaluate at new tau for post-step diagnostics.
-      RowSpace d2 = kkt.MakeRowSpace();
-      RowSpace delta2 = kkt.MakeRowSpace();
-      auto info2 = EvalHybridRAtTau(kkt, decomp, r, tau, d2, delta2);
-      last_delta = delta2;
-      g = info2.gap;
-      d_inf = info2.d_inf;
-    }
-
-
-
-    result.iterations = iter + 1;
-    if (theta < tolerance && std::abs(g) < tolerance && d_inf <= 1.001)
-      break;
   }
 
   result.d_inf_norm = d_inf;

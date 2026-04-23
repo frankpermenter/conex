@@ -64,27 +64,43 @@ std::pair<double, double> VerifyHybridREquations(
     const RowSpace& delta,
     const Eigen::VectorXd& y);
 
-// Three-solve decomposition for the r-parameterization with tau.
-// Internally: y0 (centering), y1 (cost with original b), y_theta (theta correction).
-// Combined: y(tau) = y_center + tau * y_cost  where
-//   y_center = y0 + theta*y_theta  (tau-free part)
-//   y_cost   = y1                   (tau-proportional part, uses original b)
-// This ensures y0 + y1 + y_theta = 0 at (W=I, r=e), so V(1)=0 at theta=1.
-// d(tau) solved from the Lyapunov equation at each tau.
+// Three-solve decomposition for the r-parameterization.
+// x(tau,theta) = x0 + tau*x1 + theta*x_theta
+// lambda(tau,theta) = lam0 + tau*lam1 + theta*lam_theta
+//
+// For direction evaluation at fixed theta:
+//   y_center = x0 + theta*x_theta  (f, tau-free)
+//   y_cost   = x1                   (g, tau-proportional)
+//   delta(tau) = delta_center + tau*delta_cost
 struct HybridRDecomposition {
-  Eigen::VectorXd y_center, y_cost;  // y(tau) = y_center + tau*y_cost
+  // Combined two-term for direction evaluation.
+  Eigen::VectorXd y_center, y_cost;  // x(tau) = y_center + tau*y_cost
   RowSpace delta_center, delta_cost;  // delta(tau) = delta_center + tau*delta_cost
+
+  // Raw three-solve components for joint (tau, theta) selection.
+  Eigen::VectorXd x0, x1, x_theta;
+  RowSpace lam0, lam1, lam_theta;
 };
 
-// Compute the three-solve decomposition at (W, r, theta).
+// Compute the three-solve decomposition at (W, r).
 // Requires one factorization (already done) and three back-solves.
+// The result contains raw components (x0, x1, x_theta, lam0, lam1, lam_theta).
+// Call SetTheta() to form the two-term combination at a specific theta.
 HybridRDecomposition ComputeHybridRDecomposition(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
     const RowSpace& b,
     const RowSpace& W,
-    const RowSpace& r,
-    double theta);
+    const RowSpace& r);
+
+// Update the two-term combination (y_center, y_cost, delta_center, delta_cost)
+// at a given theta.  Uses the raw three-solve components.
+void SetTheta(HybridRDecomposition& decomp,
+              KKTSolverBase& kkt,
+              const RowSpace& b,
+              const RowSpace& W,
+              const RowSpace& r,
+              double theta);
 
 // Evaluate the direction at a specific tau from the decomposition.
 // Returns (d, delta, gap, d_inf).

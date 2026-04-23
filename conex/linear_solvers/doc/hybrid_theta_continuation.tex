@@ -204,83 +204,113 @@ Hence $\delta(1) = \delta_c + \delta_c \cdot 1 = \delta_c - \delta_c = 0$,\;
 $x(1) = f + g = 0$,\; and
 $\lambda(1) = \PW(e + 0) = e$.\;\checkmark
 
-\section{Duality identity and $\tau$ selection}
+\section{Joint $(\tau,\theta)$ selection}
 
-The duality identity (with $\mu = \theta$) in homogenized
-variables is
+We select $\tau$ and $\theta$ simultaneously from two equations:
+the \emph{gap equation} (duality identity) and the
+\emph{normalization equation}.
+
+\subsection{The two equations}
+
+Both equations use the three-solve components
+$\lambda(\tau,\theta) = \lambda_0 + \tau\,\lambda_1 + \theta\,\lambda_\theta$
+and $x(\tau,\theta) = x_0 + \tau\,x_1 + \theta\,x_\theta$
+(before collapsing to the two-term form).
+
+\paragraph{Gap equation.}
+The duality identity (with $\mu = \theta$) in homogenized variables:
 \begin{equation}\label{eq:duality}
   b^T \lambda + c^T x + \frac{x^T Q x}{\tau} + \frac{\theta}{\tau}
   = \theta\,R,
 \end{equation}
-where $R = \ip{b}{e} + 1$, and $\lambda = \lambda_c + \tau\,\lambda_t$,
-$x = f + \tau\,g$ are the homogenized variables from Section~3.
-
-\subsection{Expansion in $\tau$}
-
-Substitute $\lambda = \lambda_c + \tau\,\lambda_t$ and
-$x = f + \tau\,g$ into each term of \eqref{eq:duality}:
+where $R = \ip{b}{e} + 1$.  Define
 \begin{align}
-  b^T \lambda &= b^T\lambda_c + \tau\,b^T\lambda_t
-               = \sigma_0 + \tau\,\sigma_1, \label{eq:bTlam}\\
-  c^T x &= c^T f + \tau\,c^T g
-          = \gamma_0 + \tau\,\gamma_1, \label{eq:cTx}\\
-  \frac{x^T Q x}{\tau}
-  &= \frac{(f + \tau g)^T Q (f + \tau g)}{\tau}
-   = \frac{f^T\!Qf}{\tau} + 2\,f^T\!Qg + \tau\,g^T\!Qg \notag\\
-  &= \frac{q_{ff}}{\tau} + 2\,q_{fg} + \tau\,q_{gg}. \label{eq:xQx}
+  G_i &= b^T \lambda_i + c^T x_i, \quad i \in \{0, 1, \theta\}. \notag
 \end{align}
-Substituting \eqref{eq:bTlam}--\eqref{eq:xQx} into \eqref{eq:duality}:
+For $Q = 0$ (LP case), substituting
+$\lambda = \lambda_0 + \tau\lambda_1 + \theta\lambda_\theta$ and
+$x = x_0 + \tau x_1 + \theta x_\theta$ into \eqref{eq:duality}
+and multiplying by~$\tau$ gives
+\begin{equation}\label{eq:gap-expanded}
+  G_1\,\tau^2 + G_0\,\tau + G_\theta\,\tau\,\theta + \theta = 0,
+\end{equation}
+where $G_\theta$ absorbs the $-R$ from the right-hand side:
+$G_\theta = b^T\lambda_\theta + c^T x_\theta - R$.
+
+\paragraph{Normalization equation.}
+At the fixed point $(\hat x = e,\, \hat\lambda = e,\,
+\hat\tau = 1,\, \hat\theta = 1)$, define
+\begin{align}
+  r_p &= b - e, &
+  r_d &= c - A^T e, &
+  r_g &= -(b^T e + 1), &
+  \alpha &= m + 1. \notag
+\end{align}
+The normalization constraint is
+\begin{equation}\label{eq:norm}
+  r_p^T \lambda + r_d^T x + r_g\,\tau = -\alpha.
+\end{equation}
+Substituting the three-component expansion:
+\begin{equation}\label{eq:norm-expanded}
+  N_0 + N_1\,\tau + N_\theta\,\theta = -\alpha,
+\end{equation}
+where
+\begin{align}
+  N_0 &= r_p^T \lambda_0 + r_d^T x_0, \notag\\
+  N_1 &= r_p^T \lambda_1 + r_d^T x_1 + r_g, \notag\\
+  N_\theta &= r_p^T \lambda_\theta + r_d^T x_\theta. \notag
+\end{align}
+
+\subsection{Eliminating $\theta$}
+
+From the normalization \eqref{eq:norm-expanded}:
+\begin{equation}\label{eq:theta-from-norm}
+  \theta = \frac{-\alpha - N_0 - N_1\,\tau}{N_\theta}.
+\end{equation}
+Substituting into the gap equation \eqref{eq:gap-expanded}
+and multiplying by $N_\theta$:
 \[
-  \sigma_0 + \tau\,\sigma_1
-  + \gamma_0 + \tau\,\gamma_1
-  + \frac{q_{ff}}{\tau} + 2\,q_{fg} + \tau\,q_{gg}
-  + \frac{\theta}{\tau}
-  = \theta\,R.
+  G_1 N_\theta\,\tau^2 + G_0 N_\theta\,\tau
+  + (G_\theta\,\tau + 1)(-\alpha - N_0 - N_1\,\tau) = 0.
 \]
-Multiplying through by $\tau$ and collecting powers of~$\tau$:
-\begin{equation}\label{eq:Vtau}
-  \boxed{V(\tau) = \beta\,\tau^2 + \alpha\,\tau + \mu_{\mathrm{eff}} = 0,}
+Expanding and collecting powers of $\tau$:
+\begin{equation}\label{eq:joint-quad}
+  \boxed{\mathcal{A}\,\tau^2 + \mathcal{B}\,\tau + \mathcal{C} = 0,}
 \end{equation}
 with
 \begin{align}
-  \beta &= \sigma_1 + \gamma_1 + q_{gg}, \label{eq:beta}\\
-  \alpha &= \sigma_0 + \gamma_0 + 2\,q_{fg} - \theta\,R, \label{eq:alpha}\\
-  \mu_{\mathrm{eff}} &= q_{ff} + \theta, \label{eq:mueff}
-\end{align}
-where
-\begin{align}
-  \sigma_0 &= b^T \lambda_c, &
-  \sigma_1 &= b^T \lambda_t, \notag\\
-  \gamma_0 &= c^T f, &
-  \gamma_1 &= c^T g, \notag\\
-  q_{ff} &= f^T Q f, \quad
-  q_{fg} = f^T Q g, \quad
-  q_{gg} = g^T Q g. \notag
+  \mathcal{A} &= G_1\,N_\theta - G_\theta\,N_1, \label{eq:Acoeff}\\
+  \mathcal{B} &= G_0\,N_\theta - G_\theta\,(\alpha + N_0) - N_1, \label{eq:Bcoeff}\\
+  \mathcal{C} &= -(\alpha + N_0). \label{eq:Ccoeff}
 \end{align}
 
-\paragraph{Verification: $V(1)=0$ at the fixed point.}
-At $(\theta=1, W=I, r=e, \tau=1)$: $f = -g$ (from the cancellation property),
-so $q_{ff} = q_{gg}$, $q_{fg} = -q_{gg}$, and the $Q$~terms cancel.
-Furthermore $x(1) = 0$ and $\lambda(1) = \lambda_c + \lambda_t = e$
-(from Section~3.5), giving
-$\sigma_0 + \sigma_1 = b^T e$ and $\gamma_0 + \gamma_1 = 0$.  Hence
-\[
-  V(1) = (b^T e - R) + (0 + 1) + 0 = b^T e - (b^T e + 1) + 1 = 0.\;\checkmark
-\]
+Solve \eqref{eq:joint-quad} for $\tau > 0$, then recover
+$\theta$ from \eqref{eq:theta-from-norm}.
+Finally, form $f = x_0 + \theta\,x_\theta$, $g = x_1$ and
+$\delta_c$, $\delta_t$ as in Section~3.
+
+\paragraph{Verification: $(\tau,\theta) = (1,1)$ at the fixed point.}
+At $(W=I, r=e)$: $x_0 + x_1 + x_\theta = 0$ and
+$\lambda_0 + \lambda_1 + \lambda_\theta = e$.
+Both equations \eqref{eq:gap-expanded} and \eqref{eq:norm-expanded}
+hold at $(\tau,\theta) = (1,1)$, so $\tau = 1$ is a root
+of~\eqref{eq:joint-quad} and $\theta = 1$ is recovered
+from~\eqref{eq:theta-from-norm}.\;\checkmark
 
 \section{Algorithm: ThetaContinuationR}
 
 \begin{enumerate}
 \item Initialize $W = I$, $r = e$, $\theta = 1$, $\tau = 1$.
 \item Factor $(A^T W^2 A + Q)$.  Compute the three-solve decomposition
-      \eqref{eq:x0}--\eqref{eq:xtheta} and form $f$, $g$,
-      $\delta_{\mathrm{center}}$, $\delta_{\mathrm{cost}}$.
-\item Select $\tau$ from $V(\tau)=0$ \eqref{eq:Vtau} (positive root
-      closest to current $\tau$).
+      \eqref{eq:x0}--\eqref{eq:xtheta}.
+\item Compute $G_i$, $N_i$ from the decomposition.
+      Solve the joint quadratic \eqref{eq:joint-quad} for~$\tau$,
+      recover $\theta$ from \eqref{eq:theta-from-norm}.
+      Form $f$, $g$, $\delta_c$, $\delta_t$.
 \item Evaluate $\delta(\tau)$, solve Lyapunov for $d$, compute gap and $\|d\|_\infty$.
 \item If gap $< 0$: \textbf{center} (W-update via geodesic step, refactor).
-\item If gap $\geq 0$: \textbf{r-update} (shrink $r$), set
-      $\theta = |\text{gap}|/m$, recompute decomposition and $\tau$.
+\item If gap $\geq 0$: \textbf{r-update} (shrink $r$), recompute
+      decomposition and $(\tau,\theta)$.
 \item Repeat until $\theta < \varepsilon$, $|\text{gap}| < \varepsilon$,
       $\|d\|_\infty \leq 1$.
 \end{enumerate}

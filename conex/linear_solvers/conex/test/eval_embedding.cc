@@ -452,6 +452,8 @@ int main(int argc, char* argv[]) {
       record(conex::RunAlgorithm("ThetaContR", emb_model, emb_tree, info, lp, algo, use_dense, use_lu));
     }
 
+
+
     // 4. GeodesicLP.
     if (should_run("GeodesicLP")) {
       conex::GeodesicLP algo;
