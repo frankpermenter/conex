@@ -216,8 +216,8 @@ TEST(ExtendedEmbedding, DualEquality) {
   printf("  rg = %.4f  alpha = %.4f\n", info.rg, info.alpha);
 
   // Solve with LU for best accuracy.
-  // Use AMD, default factorization.
-  auto solver = Solver::Build(emb_model);
+  // Use custom CliqueTree.
+  auto solver = Solver::Build(emb_model, emb_tree);
   auto result = solver.Solve(GeodesicLP{1e-10, 30, 0, false});
 
   double theta = result.x(info.theta_idx());
@@ -285,7 +285,7 @@ TEST(ExtendedEmbedding, DualEqualityRandom) {
 
   SolverConfiguration cfg;
   cfg.tree.use_lu_for_indefinite = true;
-  auto solver = Solver::Build(emb_model);
+  auto solver = Solver::Build(emb_model, emb_tree);
   auto result = solver.Solve(HybridOnly{1e-10, 500, false});
 
   double theta = result.x(info.theta_idx());

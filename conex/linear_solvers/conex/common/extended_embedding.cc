@@ -221,18 +221,23 @@ ExtendedEmbedding BuildExtendedEmbedding(
     const int nu_gap = N + m + n + p;
     const int nu_norm = N + m + n + p + 1;
 
-    // Separator: {tau, theta, nu_gap, nu_norm}.
-    std::vector<int> sep = {info.tau_idx(), info.theta_idx(), nu_gap, nu_norm};
+    // Separator: {w, tau, theta, nu_gap, nu_norm}.
+    std::vector<int> sep;
+    for (int i = 0; i < p; i++) sep.push_back(info.w_start() + i);
+    sep.push_back(info.tau_idx());
+    sep.push_back(info.theta_idx());
+    sep.push_back(nu_gap);
+    sep.push_back(nu_norm);
 
     // Leaf: {x, nu1}.
     std::vector<int> leaf_sn;
     for (int j = 0; j < n; j++) leaf_sn.push_back(info.x_start() + j);
     for (int i = 0; i < m; i++) leaf_sn.push_back(nu1_start + i);
 
-    // Root: separator + {y, w, s, kappa, nu2, nu3}.
+    // Root: separator + {y, s, kappa, nu2, nu3}.
+    // (w is already in the separator, not duplicated here.)
     std::vector<int> root_sn = sep;
     for (int i = 0; i < m; i++) root_sn.push_back(info.y_start() + i);
-    for (int i = 0; i < p; i++) root_sn.push_back(info.w_start() + i);
     for (int j = 0; j < n; j++) root_sn.push_back(info.s_start() + j);
     root_sn.push_back(info.kappa_idx());
     for (int j = 0; j < n; j++) root_sn.push_back(nu2_start + j);
