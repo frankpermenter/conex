@@ -406,26 +406,19 @@ Collecting terms:
 \end{equation}
 
 \paragraph{Substituting into the gap equation.}
-For the LP case ($Q = 0$), the gap equation~\eqref{eq:gap} simplifies to
+The full gap equation~\eqref{eq:gap} is
 \[
-  b^T\lambda + c^T x + \frac{\mu}{\tau}
-  = \theta\,(\langle b,e\rangle + 1).
+  b^T\lambda + c^T x + d^T\nu + \frac{x^T Q x}{\tau} + \frac{\mu}{\tau}
+  = \theta\,R,
 \]
-Substituting the affine expansions:
-\begin{equation} \label{eq:gap-linear-tau}
+where $R = \langle b,e\rangle + 1$.  The linear terms expand as
+\begin{equation} \label{eq:gap-expanded}
   \underbrace{(b^T\lambda_\tau + c^T x_\tau)}_{G_\tau}\,\tau
   + \underbrace{(b^T\lambda_\theta + c^T x_\theta)}_{G_\theta}\,\theta
-  + \frac{\mu}{\tau}
-  = \theta\,(\langle b,e\rangle + 1).
-\end{equation}
-The $\mu/\tau$ term makes this nonlinear.  However, at the central path
-$\mu = 1/k^2$ is fixed for a given~$k$, and the term $\mu/\tau$ is
-small when $\tau \approx 1$ and $k$ is large.  Dropping it (or treating
-$\tau^{-1} \approx 1$ at $\tau \approx 1$) gives the linear approximation
-\begin{equation} \label{eq:gap-linear}
-  G_\tau\,\tau
-  + \bigl(G_\theta - \langle b,e\rangle - 1\bigr)\,\theta
-  = -b^T\lambda_0 - c^T x_0 - \mu.
+  + (b^T\lambda_0 + c^T x_0)
+  + d^T\nu
+  + \frac{x^T Q x}{\tau} + \frac{\mu}{\tau}
+  = \theta\,R.
 \end{equation}
 
 \subsection{Eliminating $\theta$ via the normalization}
@@ -433,53 +426,60 @@ $\tau^{-1} \approx 1$ at $\tau \approx 1$) gives the linear approximation
 The normalization~\eqref{eq:norm-linear} is purely linear in $(\tau,\theta)$.
 Solving for~$\theta$:
 \begin{equation} \label{eq:theta-from-tau}
-  \theta(\tau) = \frac{-\alpha - r_p^T\lambda_0 - r_d^T x_0 - N_\tau\,\tau}
-                      {N_\theta}.
+  \theta(\tau) = a_0 + a_1\,\tau, \qquad
+  a_0 = \frac{-\alpha - r_p^T\lambda_0 - r_d^T x_0}{N_\theta}, \quad
+  a_1 = \frac{-N_\tau}{N_\theta}.
 \end{equation}
-This expresses $\theta$ as a linear function of~$\tau$.
 
-\subsection{Quadratic in $\tau$}
+\subsection{Quadratic in $\tau$ (with quadratic cost)}
 
-Substituting~\eqref{eq:theta-from-tau} into the full gap
-equation~\eqref{eq:gap-linear-tau} (retaining the $\mu/\tau$ term):
+Substituting $\theta = a_0 + a_1\,\tau$ eliminates $\theta$ from
+all terms.  In particular, $x = x_0 + \tau\,x_\tau + (a_0 + a_1\tau)\,x_\theta$
+is now linear in~$\tau$:
 \[
-  G_\tau\,\tau + G_\theta\,\theta(\tau) + \frac{\mu}{\tau}
-  = \theta(\tau)\,R,
+  x(\tau) = \underbrace{(x_0 + a_0\,x_\theta)}_{x_c}
+           + \underbrace{(x_\tau + a_1\,x_\theta)}_{x_l}\,\tau.
 \]
-where $R = \langle b,e\rangle + 1$.  Since $\theta(\tau) = a_0 + a_1\,\tau$
-for constants $a_0, a_1$ from~\eqref{eq:theta-from-tau}, every term except
-$\mu/\tau$ is linear in~$\tau$.  Collecting:
+The quadratic cost term becomes
 \[
-  \underbrace{\bigl(G_\tau + G_\theta\,a_1 - R\,a_1\bigr)}_{\beta}\,\tau
-  + \underbrace{\bigl(G_\theta\,a_0 - R\,a_0\bigr)
-  + G_\tau \cdot 0}_{\gamma}
-  + \frac{\mu}{\tau}
-  = 0,
+  \frac{x^T Q x}{\tau}
+  = \frac{x_c^T Q x_c}{\tau}
+  + 2\,x_c^T Q x_l
+  + x_l^T Q x_l\,\tau.
 \]
-where we absorbed the constant terms into $\gamma$.  More precisely,
-define
+Similarly, the linear terms in~\eqref{eq:gap-expanded} after substituting
+$\theta(\tau)$ collect to
+\[
+  \underbrace{\bigl[G_\tau + (G_\theta - R)\,a_1\bigr]}_{\beta_L}\,\tau
+  + \underbrace{\bigl[(G_\theta - R)\,a_0 + b^T\lambda_0 + c^T x_0 + d^T\nu\bigr]}_{\gamma_L}.
+\]
+Combining everything:
+\[
+  \bigl(\beta_L + x_l^T Q x_l\bigr)\,\tau
+  + \bigl(\gamma_L + 2\,x_c^T Q x_l\bigr)
+  + \frac{x_c^T Q x_c + \mu}{\tau}
+  = 0.
+\]
+Define
 \begin{align*}
-  a_0 &= \frac{-\alpha - r_p^T\lambda_0 - r_d^T x_0}{N_\theta}, \qquad
-  a_1 = \frac{-N_\tau}{N_\theta}, \\[4pt]
-  \beta &= G_\tau + (G_\theta - R)\,a_1, \\
-  \gamma &= (G_\theta - R)\,a_0 + b^T\lambda_0 + c^T x_0.
+  \beta &= \beta_L + x_l^T Q x_l, \\
+  \gamma &= \gamma_L + 2\,x_c^T Q x_l, \\
+  \mu_{\mathrm{eff}} &= x_c^T Q x_c + \mu.
 \end{align*}
-Then the gap equation becomes
-\[
-  \beta\,\tau + \gamma + \frac{\mu}{\tau} = 0.
-\]
 Multiplying by~$\tau$:
 \begin{equation} \label{eq:tau-quadratic}
-  \boxed{\beta\,\tau^2 + \gamma\,\tau + \mu = 0.}
+  \boxed{\beta\,\tau^2 + \gamma\,\tau + \mu_{\mathrm{eff}} = 0.}
 \end{equation}
-This is the \emph{same quadratic form} as the fixed-$\theta$ case
-(Section~7.5), but with coefficients that incorporate the normalization
-constraint.  The roots are
+The roots are
 \[
-  \tau = \frac{-\gamma \pm \sqrt{\gamma^2 - 4\beta\mu}}{2\beta}.
+  \tau = \frac{-\gamma \pm \sqrt{\gamma^2 - 4\beta\,\mu_{\mathrm{eff}}}}{2\beta}.
 \]
 When both roots are positive, choose the one with smaller~$\|d\|^2$.
 Recover~$\theta$ from~\eqref{eq:theta-from-tau}.
+
+\paragraph{LP case ($Q = 0$).}  $\mu_{\mathrm{eff}} = \mu$,
+$\beta = \beta_L$, $\gamma = \gamma_L$.  The quadratic reduces to
+$\beta\,\tau^2 + \gamma\,\tau + \mu = 0$.
 
 \subsection{Algorithm}
 
