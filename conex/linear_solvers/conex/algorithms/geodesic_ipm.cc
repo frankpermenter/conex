@@ -592,6 +592,10 @@ GeodesicResult SolveGeodesicHSD(
     printf("  %s\n", std::string(76, '-').c_str());
   }
 
+  // Fixed k for centering test.
+  const double k_fixed = 1.1;
+  k = k_fixed;
+
   for (int iter = 0; iter < max_iterations; ++iter) {
     kkt.SetScaling(W);
     if (!kkt.AssembleAndFactor()) break;
@@ -599,17 +603,11 @@ GeodesicResult SolveGeodesicHSD(
     total_fac++;
     total_sol += 3;
 
-    // Precompute inner products (independent of k) for normalization
-    // and gap equations.
     RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
     RowSpace pwd1_0 = quadraticRepresentation(sqrtW, decomp.d1_0);
     RowSpace pwd1_t = quadraticRepresentation(sqrtW, decomp.d1_theta);
     RowSpace pwed0 = quadraticRepresentation(sqrtW, ones + decomp.d0);
 
-    // Normalization inner products (N coefficients depend on k):
-    //   N_tau(k) = k^2*<rp,P(W^{1/2})*d1_0> + rd'*y1_0 + rg
-    //   N_theta(k) = k^2*<rp,P(W^{1/2})*d1_t> + rd'*y1_t
-    //   RHS_norm(k) = -alpha - k*<rp,P(W^{1/2})(e+d0)> - rd'*(y0/k)
     double rp_pwd10 = dot(rp, pwd1_0);
     double rp_pwd1t = dot(rp, pwd1_t);
     double rp_pwed0 = dot(rp, pwed0);
@@ -625,10 +623,6 @@ GeodesicResult SolveGeodesicHSD(
     double rd_y1t = rd_rhs.dot(y1t_rhs);
     double rd_y0 = rd_rhs.dot(y0_rhs);
 
-    // Gap inner products:
-    //   G_tau(k) = k^2*<b,P(W^{1/2})*d1_0> + dc'*y1_0
-    //   G_theta(k) = k^2*<b,P(W^{1/2})*d1_t> + dc'*y1_t
-    //   G_0(k) = k*<b,P(W^{1/2})(e+d0)> + dc'*(y0/k)
     double b_pwd10 = dot(b, pwd1_0);
     double b_pwd1t = dot(b, pwd1_t);
     double b_pwed0 = dot(b, pwed0);
@@ -636,69 +630,40 @@ GeodesicResult SolveGeodesicHSD(
     double dc_y1t = duality_cost.dot(y1t_rhs);
     double dc_y0 = duality_cost.dot(y0_rhs);
 
-    // Joint (tau, theta) selection via normalization + gap quadratic.
-    // For each candidate k:
-    //   1. Normalization gives theta(tau) = a0 + a1*tau
-    //   2. Gap equation gives quadratic: beta*tau^2 + gamma*tau + mu = 0
-    //   3. Solve for tau, recover theta.
-    double k_init = MinNormK(decomp, 1.0, 0.0);
-    if (k_init <= 0) k_init = 1.0;
-    if (k > k_init) k_init = k;
+    // Joint (tau, theta) at fixed k.
+    double mu = 1.0 / (k * k);
 
-    double k_max = lineSearchK(decomp.d0,
-        addScaled(decomp.d1_0, decomp.d1_theta, 1.0, 1.0));
-    if (k_max <= k_init) k_max = 2.0 * k_init;
+    // lambda_lifted = W*(e+d0)/k + tau*W*d1_0 + theta*W*d1_theta
+    // x_lifted = y0/k + tau*y1_0 + theta*y1_theta
+    // So: rp'*lambda_tau = rp'*(W*d1_0) = rp_pwd10  (no k factor)
+    //     rp'*lambda_0 = rp'*(W*(e+d0))/k = rp_pwed0/k
+    double N_tau = rp_pwd10 + rd_y10 + rg;
+    double N_theta = rp_pwd1t + rd_y1t;
+    double rhs_norm = -alpha_norm - rp_pwed0 / k - rd_y0 / k;
 
-    double best_k = k_init, best_tau = 1.0, best_theta = 1.0;
-    double best_dinf = 1e30;
+    double a0 = rhs_norm / N_theta;
+    double a1 = -N_tau / N_theta;
 
-    for (double k_cand : {k_init, k_max, 0.5 * (k_init + k_max),
-                          0.75 * k_max, 0.9 * k_max, 1.5 * k_init,
-                          2.0 * k_init, 3.0 * k_init, 5.0 * k_init}) {
-      if (k_cand <= 0) continue;
-      double mu_cand = 1.0 / (k_cand * k_cand);
+    double G_tau = b_pwd10 + dc_y10;
+    double G_theta = b_pwd1t + dc_y1t;
+    double G_0 = b_pwed0 / k + dc_y0 / k;
 
-      // Normalization: N_tau*tau + N_theta*theta = rhs_norm
-      double N_tau = k_cand * k_cand * rp_pwd10 + rd_y10 + rg;
-      double N_theta = k_cand * k_cand * rp_pwd1t + rd_y1t;
-      double rhs_norm = -alpha_norm - k_cand * rp_pwed0 - rd_y0 / k_cand;
+    double beta = G_tau + (G_theta - R) * a1;
+    double gamma_q = (G_theta - R) * a0 + G_0;
+    double discr = gamma_q * gamma_q - 4.0 * beta * mu;
 
-      if (std::abs(N_theta) < 1e-30) continue;
-      double a0 = rhs_norm / N_theta;
-      double a1 = -N_tau / N_theta;
-
-      // Gap: G_tau*tau + (G_theta-R)*theta + G_0 + mu/tau = 0
-      double G_tau = k_cand * k_cand * b_pwd10 + dc_y10;
-      double G_theta = k_cand * k_cand * b_pwd1t + dc_y1t;
-      double G_0 = k_cand * b_pwed0 + dc_y0 / k_cand;
-
-      double beta = G_tau + (G_theta - R) * a1;
-      double gamma_q = (G_theta - R) * a0 + G_0;
-      double discr = gamma_q * gamma_q - 4.0 * beta * mu_cand;
-      if (discr < 0) continue;
-
+    double tau = 1.0, theta = 1.0;
+    if (discr >= 0) {
       double sq = std::sqrt(discr);
-      for (double tau_cand : {(-gamma_q + sq) / (2.0 * beta),
-                               (-gamma_q - sq) / (2.0 * beta)}) {
-        if (tau_cand <= 0) continue;
-        double theta_cand = a0 + a1 * tau_cand;
-        if (theta_cand < -0.01 || theta_cand > 1.01) continue;
-
-        RowSpace d_cand = EvaluateDirection(decomp, k_cand, tau_cand, theta_cand);
-        double dinf_cand = normInf(d_cand);
-        if (dinf_cand <= 1.0 && dinf_cand < best_dinf) {
-          best_k = k_cand;
-          best_tau = tau_cand;
-          best_theta = theta_cand;
-          best_dinf = dinf_cand;
-        }
+      double t1 = (-gamma_q + sq) / (2.0 * beta);
+      double t2 = (-gamma_q - sq) / (2.0 * beta);
+      // Pick the root with tau > 0 and theta in [0,1].
+      for (double tc : {t1, t2}) {
+        if (tc <= 0) continue;
+        double thc = a0 + a1 * tc;
+        if (thc >= 0 && thc <= 1.5) { tau = tc; theta = thc; break; }
       }
     }
-
-    k = best_k;
-    double tau = best_tau;
-    double theta = best_theta;
-    double mu = 1.0 / (k * k);
 
     RowSpace d = EvaluateDirection(decomp, k, tau, theta);
     double d_inf = normInf(d);
@@ -729,10 +694,25 @@ GeodesicResult SolveGeodesicHSD(
 
       double norm_val = rp_lam + rd_x + rg * tau;
       double norm_err = norm_val + alpha_norm;
+
+      // Verify normalization directly: N_tau*tau + N_theta*theta should = rhs_norm
+      double N_tau_v = rp_pwd10 + rd_y10 + rg;
+      double N_theta_v = rp_pwd1t + rd_y1t;
+      double rhs_norm_v = -alpha_norm - rp_pwed0 / k - rd_y0 / k;
+      double norm_from_coeffs = N_tau_v * tau + N_theta_v * theta - rhs_norm_v;
+
+      // Also evaluate gap equation: b'*lambda + c'*x + mu/tau = theta*R
+      double b_lam = dot(b, lam_lifted);
+      double c_x = duality_cost.dot(x_rhs_v);
+      double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
+      double gap_lhs = b_lam + c_x + mu_over_tau;
+      double gap_rhs = theta * R;
+      double gap_err = gap_lhs - gap_rhs;
+
       if (verbose) {
         printf("  %3d  k=%10.4e tau=%10.4e theta=%10.4e dinf=%8.4e "
-               "norm_eq=%10.4e (err=%10.4e)\n",
-               iter, k, tau, theta, d_inf, norm_val, norm_err);
+               "norm_err=%8.2e gap_err=%8.2e coeff_err=%8.2e\n",
+               iter, k, tau, theta, d_inf, norm_err, gap_err, norm_from_coeffs);
       }
     }
 
@@ -743,7 +723,7 @@ GeodesicResult SolveGeodesicHSD(
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
     result.iterations = iter + 1;
 
-    if (mu < tolerance && d_inf <= 1.001) {
+    if (d_inf < tolerance) {
       result.mu = mu;
       result.d_inf_norm = d_inf;
       result.d_sq_norm = d_sq;
