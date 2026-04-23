@@ -64,17 +64,20 @@ std::pair<double, double> VerifyHybridREquations(
     const RowSpace& delta,
     const Eigen::VectorXd& y);
 
-// Two-solve decomposition for the r-parameterization with tau.
-// y(tau) = y_center + tau * y_cost
-// delta(tau) = delta_center + tau * delta_cost
+// Three-solve decomposition for the r-parameterization with tau.
+// Internally: y0 (centering), y1 (cost with original b), y_theta (theta correction).
+// Combined: y(tau) = y_center + tau * y_cost  where
+//   y_center = y0 + theta*y_theta  (tau-free part)
+//   y_cost   = y1                   (tau-proportional part, uses original b)
+// This ensures y0 + y1 + y_theta = 0 at (W=I, r=e), so V(1)=0 at theta=1.
 // d(tau) solved from the Lyapunov equation at each tau.
 struct HybridRDecomposition {
-  Eigen::VectorXd y_center, y_cost;
-  RowSpace delta_center, delta_cost;
+  Eigen::VectorXd y_center, y_cost;  // y(tau) = y_center + tau*y_cost
+  RowSpace delta_center, delta_cost;  // delta(tau) = delta_center + tau*delta_cost
 };
 
-// Compute the two-solve decomposition at (W, r, theta).
-// Requires one factorization (already done) and two back-solves.
+// Compute the three-solve decomposition at (W, r, theta).
+// Requires one factorization (already done) and three back-solves.
 HybridRDecomposition ComputeHybridRDecomposition(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,

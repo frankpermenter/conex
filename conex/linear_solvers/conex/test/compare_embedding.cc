@@ -76,6 +76,15 @@ int main(int argc, char* argv[]) {
              r3.factorizations, r3.objective,
              r3.duals.stationarity_gradient.norm(),
              r3.optimality.complementarity, eq3);
+
+      auto r4 = solver.Solve(ThetaContinuationR{1e-10, 500, verbose});
+      double eq4 = 0;
+      for (const auto& er : r4.duals.eq_residual)
+        eq4 = std::max(eq4, er.norm());
+      printf("      DIRECT   ThetaContR  %4d %12.6f %10.2e %10.2e %10.2e  tau=%.2e kappa=%.2e\n",
+             r4.factorizations, r4.objective,
+             r4.duals.stationarity_gradient.norm(),
+             r4.optimality.complementarity, eq4, r4.tau, r4.kappa);
     }
 
     // Embedding solve (from Model).
@@ -193,10 +202,10 @@ int main(int argc, char* argv[]) {
       double eq5b = 0;
       for (const auto& er : r5.duals.eq_residual)
         eq5b = std::max(eq5b, er.norm());
-      printf("n=%2d  DIRECT   ThetaContR  %4d %12.6f %10.2e %10.2e %10.2e\n",
+      printf("n=%2d  DIRECT   ThetaContR  %4d %12.6f %10.2e %10.2e %10.2e  tau=%.2e kappa=%.2e\n",
              n, r5.factorizations, r5.objective,
              r5.duals.stationarity_gradient.norm(),
-             r5.optimality.complementarity, eq5b);
+             r5.optimality.complementarity, eq5b, r5.tau, r5.kappa);
 
       auto r6 = solver.Solve(HybridR{1e-10, 500, verbose});
       double eq6 = 0;
@@ -252,5 +261,52 @@ int main(int argc, char* argv[]) {
     }
     printf("\n");
   }
+
+  // --- Infeasible LP test ---
+  // min c'x s.t. Ax = b, x >= 0 with b having a negative component.
+  // Since A >= 0 and x >= 0, Ax >= 0, so b < 0 makes it infeasible.
+  {
+    printf("\n=== INFEASIBLE LP TEST ===\n");
+    for (int n : sizes) {
+      int m = m_only > 0 ? m_only : (n / 2 > 0 ? n / 2 : 1);
+      srand(42);
+      MatrixXd Ad = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+      VectorXd b_inf = VectorXd::Ones(m);
+      b_inf(0) = -1.0;  // infeasible: A >= 0, x >= 0, so (Ax)(0) >= 0 != -1
+      VectorXd c = VectorXd::Random(n).cwiseAbs() + 0.1 * VectorXd::Ones(n);
+
+      std::vector<Eigen::Triplet<double>> trips;
+      for (int i = 0; i < m; i++)
+        for (int j = 0; j < n; j++)
+          trips.emplace_back(i, j, Ad(i, j));
+      Eigen::SparseMatrix<double> A(m, n);
+      A.setFromTriplets(trips.begin(), trips.end());
+
+      Eigen::SparseMatrix<double> I(n, n);
+      I.setIdentity();
+      std::vector<int> vars(n);
+      std::iota(vars.begin(), vars.end(), 0);
+
+      Model model;
+      model.AddLinearConstraint(I, VectorXd::Zero(n), vars);
+      model.AddEqualityConstraint(A, b_inf, vars);
+      model.SetLinearCost(c);
+
+      auto solver = Solver::Build(model, cfg);
+
+      auto r1 = solver.Solve(ThetaContinuationR{1e-10, 500, verbose});
+      printf("n=%2d  INFEAS   ThetaContR  %4d  obj=%12.6f  tau=%.4e  kappa=%.4e  mu=%.4e\n",
+             n, r1.factorizations, r1.objective, r1.tau, r1.kappa, r1.mu);
+
+      auto r2 = solver.Solve(HybridR{1e-10, 500, verbose});
+      printf("n=%2d  INFEAS   HybridR     %4d  obj=%12.6f  mu=%.4e\n",
+             n, r2.factorizations, r2.objective, r2.mu);
+
+      auto r3 = solver.Solve(ThetaContinuation{1e-10, 500, 1, verbose});
+      printf("n=%2d  INFEAS   ThetaCont   %4d  obj=%12.6f  tau=%.4e  mu=%.4e\n",
+             n, r3.factorizations, r3.objective, r3.tau, r3.mu);
+    }
+  }
+
   return 0;
 }

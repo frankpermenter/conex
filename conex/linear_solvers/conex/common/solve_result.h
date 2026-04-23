@@ -51,6 +51,8 @@ struct SolveResult {
   double mu = 0;               // barrier parameter at termination
   double gap = 0;              // algorithm's internal gap: |r|²-|r·d|²
   double d_inf = 0;            // ||d||_inf (feasible when <= 1)
+  double tau = 1.0;            // homogenization parameter at termination
+  double kappa = 0;            // theta/tau (infeasibility certificate when large)
   int iterations = 0;
   int factorizations = 0;
   bool converged = false;

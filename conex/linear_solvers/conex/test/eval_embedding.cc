@@ -444,7 +444,15 @@ int main(int argc, char* argv[]) {
     run_hybrid("Hybrid(default)",       conex::DefaultHybridPolicy);
     run_hybrid("Hybrid(DR only)",       conex::MakeAlwaysShrink());
 
-    // 3. GeodesicLP.
+    // 3. ThetaContinuationR.
+    if (should_run("ThetaContR")) {
+      conex::ThetaContinuationR algo;
+      algo.tolerance = eps;
+      algo.verbose = verbose;
+      record(conex::RunAlgorithm("ThetaContR", emb_model, emb_tree, info, lp, algo, use_dense, use_lu));
+    }
+
+    // 4. GeodesicLP.
     if (should_run("GeodesicLP")) {
       conex::GeodesicLP algo;
       algo.tolerance = eps;

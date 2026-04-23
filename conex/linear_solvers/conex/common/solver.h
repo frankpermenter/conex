@@ -105,6 +105,8 @@ SolveResult Solver::Solve(const Algorithm& algo) {
   result.x = ExpandSolution(raw.x);
   result.objective = ComputeObjective(cost_rhs, raw.x);
   result.mu = raw.mu;
+  result.tau = raw.tau;
+  result.kappa = raw.kappa;
   result.gap = raw.complementarity;
   result.d_inf = raw.d_inf_norm;
   result.iterations = raw.iterations;

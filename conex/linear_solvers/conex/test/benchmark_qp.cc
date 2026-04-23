@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "conex/algorithms/geodesic_hybrid_r.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/model.h"
@@ -32,6 +33,8 @@ struct AlgoResult {
   int iterations;
   int factorizations;
   double mu;
+  double tau;
+  double kappa;
   double primal_cost;
   double dual_residual;
   double complementarity;
@@ -75,11 +78,13 @@ AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
     }
   }
 
+  bool ok = (result.mu < 1e-6) ||
+            (result.kappa < 1e-4 && std::abs(result.complementarity) < 1e-4);
   return {name, result.iterations, result.total_factorizations,
-          result.mu, primal_cost,
+          result.mu, result.tau, result.kappa, primal_cost,
           result.optimality.dual_residual,
           result.optimality.complementarity,
-          ms, result.mu < 1e-6};
+          ms, ok};
 }
 
 void RunBenchmark(const Model& problem, const QPSInfo& info,
@@ -132,17 +137,23 @@ void RunBenchmark(const Model& problem, const QPSInfo& info,
       return result;
     });
 
+  // --- ThetaContinuationR ---
+  auto r4 = RunAlgo("ThetaContR", *kkt, cost_rhs, problem, solver,
+    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+      return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true);
+    });
+
   // --- Summary table ---
-  printf("  %-12s %5s %5s %10s %14s %10s %10s %8s %s\n",
+  printf("  %-12s %5s %5s %10s %14s %10s %10s %10s %10s %8s %s\n",
          "Algorithm", "iters", "fac", "mu", "cost", "dual_res",
-         "compl", "ms", "ok");
-  printf("  %s\n", std::string(90, '-').c_str());
+         "compl", "tau", "kappa", "ms", "ok");
+  printf("  %s\n", std::string(120, '-').c_str());
   double c0 = info.objective_constant;
-  for (const auto* r : {&r1, &r2, &r3}) {
-    printf("  %-12s %5d %5d %10.2e %14.6e %10.2e %10.2e %8.1f %s\n",
+  for (const auto* r : {&r1, &r2, &r3, &r4}) {
+    printf("  %-12s %5d %5d %10.2e %14.6e %10.2e %10.2e %10.2e %10.2e %8.1f %s\n",
            r->name, r->iterations, r->factorizations,
            r->mu, r->primal_cost + c0, r->dual_residual,
-           r->complementarity, r->time_ms,
+           r->complementarity, r->tau, r->kappa, r->time_ms,
            r->converged ? "yes" : "NO");
   }
 
@@ -150,7 +161,7 @@ void RunBenchmark(const Model& problem, const QPSInfo& info,
   printf("\n  Objective = c0 + c'x + (1/2)x'Qx");
   if (c0 != 0) printf("   (c0 = %.6e)", c0);
   printf("\n");
-  for (const auto* r : {&r1, &r2, &r3}) {
+  for (const auto* r : {&r1, &r2, &r3, &r4}) {
     printf("    %-12s  obj = %14.6e\n", r->name, r->primal_cost + c0);
   }
   printf("\n");

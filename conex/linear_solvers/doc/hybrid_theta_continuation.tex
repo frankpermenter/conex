@@ -1,0 +1,293 @@
+\documentclass{article}
+\usepackage{amsmath, amssymb}
+\newcommand{\PW}{P(W^{1/2})}
+\newcommand{\PiW}{P(W^{-1/2})}
+\newcommand{\Psq}{P(W)}
+\newcommand{\RR}{\mathbb{R}}
+\newcommand{\ip}[2]{\langle #1, #2 \rangle}
+
+\title{Hybrid $\theta$-Continuation with $r$-Parameterization}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setup}
+
+We solve
+\[
+  \min_x\; c^T x + \tfrac{1}{2} x^T Q x
+  \quad\text{s.t.}\quad Ax + b \succeq_K 0,
+\]
+where $K$ is a symmetric cone with identity~$e$, quadratic
+representation~$P(\cdot)$, and rank~$m = \ip{e}{e}$.
+
+\subsection{$r$-parameterization}
+
+Given a scaling point $W \succ 0$ and a centering vector $r \succ 0$,
+the primal slack and dual multiplier are
+\begin{align}
+  s &= \PiW(r - \delta), \label{eq:slack} \\
+  \lambda &= \PW(r + \delta). \label{eq:dual}
+\end{align}
+The complementarity gap is
+$\ip{s}{\lambda} = \|r\|^2 - \|\delta\|^2$.
+
+\subsection{Homogenized self-dual embedding (HSE)}
+
+The variables $(x, \lambda, s, \tau, \theta)$ satisfy the HSE:
+\begin{align}
+  A^T \lambda &= \tau\,c + Qx + \theta\,(A^T e - c), \label{eq:hse-dual}\\
+  s &= Ax + \tau\,b + \theta\,(e - b), \label{eq:hse-primal}\\
+  b^T \lambda + c^T x + \frac{x^T Q x}{\tau} + \frac{\theta}{\tau}
+    &= \theta\,\bigl(\ip{b}{e} + 1\bigr). \label{eq:hse-gap}
+\end{align}
+The parameter $\theta \in [0,1]$ is a homotopy: at $\theta = 1$
+the system has the trivial solution $(x, \lambda, s) = (0, e, e)$
+with $\tau = 1$; at $\theta = 0$ it reduces to the original problem.
+The parameter $\tau$ controls homogenization.
+
+\section{Three-solve decomposition}
+
+\subsection{KKT system and $\delta$}
+
+At fixed $(W, r, \theta, \tau)$, we eliminate $\lambda$ and $s$
+from the HSE \eqref{eq:hse-dual}--\eqref{eq:hse-primal}
+using the $r$-parameterization \eqref{eq:slack}--\eqref{eq:dual}.
+Substituting $s = \PiW(r-\delta)$ into \eqref{eq:hse-primal} gives
+\[
+  \delta = r - \PW\bigl(A\,x + \tau\,b + \theta\,(e - b)\bigr),
+\]
+and substituting $\lambda = \PW(r+\delta)$ into \eqref{eq:hse-dual}
+yields, after eliminating~$\delta$, the normal equation
+\begin{equation}\label{eq:kkt}
+  (A^T W^2 A + Q)\,x = 2\,A^T\PW(r)
+    - \tau\bigl(c + A^T\Psq(b)\bigr)
+    - \theta\bigl(A^Te - c + A^T\Psq(e - b)\bigr).
+\end{equation}
+Once $x$ is obtained, $\delta$ is recovered from
+\begin{equation}\label{eq:delta-from-x}
+  \delta = r - \PW\bigl(A\,x + \tau\,b + \theta\,(e - b)\bigr).
+\end{equation}
+
+\subsection{Decomposing the RHS}
+
+The right-hand side of \eqref{eq:kkt} separates into
+three independent terms:
+\[
+  \text{rhs}(\tau,\theta) =
+    \underbrace{2\,A^T \PW(r)}_{\text{rhs}_0}
+  + \tau\,\underbrace{\bigl(-c - A^T \Psq(b)\bigr)}_{\text{rhs}_1}
+  + \theta\,\underbrace{\bigl(c - A^T e + A^T\Psq(b) - A^T\Psq(e)\bigr)}_{\text{rhs}_2}.
+\]
+Note that $\text{rhs}_1$ (coefficient of $\tau$) and $\text{rhs}_2$
+(coefficient of $\theta$) use the original data $(c, b)$ only.
+The blending of $b$ and $c$ arises from the combination
+$\tau\,\text{rhs}_1 + \theta\,\text{rhs}_2$, not from
+blended quantities $b_\theta$ or $c_\theta$.
+
+One can verify that $\text{rhs}_0 + \text{rhs}_1 + \text{rhs}_2$
+vanishes at the fixed point $(W=I, r=e)$:
+\begin{align*}
+  \text{rhs}_0 + \text{rhs}_1 + \text{rhs}_2
+  &= 2A^Te - c - A^Tb + c - A^Te + A^Tb - A^Te = 0.
+\end{align*}
+
+\subsection{Three back-solves}
+
+Define three back-solves:
+\begin{align}
+  (A^T W^2 A + Q)\,x_0 &= \text{rhs}_0 = 2\,A^T \PW(r), \label{eq:x0}\\
+  (A^T W^2 A + Q)\,x_1 &= \text{rhs}_1 = -c - A^T \Psq(b), \label{eq:x1}\\
+  (A^T W^2 A + Q)\,x_\theta &= \text{rhs}_2 = c - A^T e + A^T\Psq(b) - A^T\Psq(e). \label{eq:xtheta}
+\end{align}
+Then
+\[
+  x(\tau,\theta) = x_0 + \tau\,x_1 + \theta\,x_\theta,
+\]
+and by \eqref{eq:delta-from-x},
+\[
+  \delta(\tau,\theta) = r - \PW\bigl(A\,x_0 + \tau\,(b + A\,x_1) + \theta\,(e - b + A\,x_\theta)\bigr).
+\]
+
+\paragraph{Cancellation property.}
+At the fixed point $(W=I, r=e)$,
+$\text{rhs}_0 + \text{rhs}_1 + \text{rhs}_2 = 0$ (shown above), so
+\begin{equation}\label{eq:cancel}
+  x_0 + x_1 + x_\theta = 0 \qquad\text{(at $W=I$, $r=e$)}.
+\end{equation}
+At the fixed point $(\theta=1, \tau=1)$ the lifted primal
+vanishes: $x(1,1) = x_0 + x_1 + x_\theta = 0$.
+
+\section{Two-term decomposition}
+
+For fixed $\theta$ and $r$, define
+\begin{align}
+  f &= x_0 + \theta\,x_\theta, & g &= x_1. \label{eq:fg}
+\end{align}
+
+\subsection{Primal $x(\tau)$}
+
+From Section~2.3, $x(\tau,\theta) = x_0 + \tau\,x_1 + \theta\,x_\theta
+= (x_0 + \theta\,x_\theta) + \tau\,x_1$, so
+\begin{equation}\label{eq:xtau}
+  \boxed{x(\tau) = f + \tau\,g.}
+\end{equation}
+
+\subsection{Direction $\delta(\tau)$}
+
+From \eqref{eq:delta-from-x},
+$\delta = r - \PW(Ax + \tau b + \theta(e-b))$.
+Substituting \eqref{eq:xtau}:
+\begin{align*}
+  Ax + \tau b + \theta(e-b)
+  &= A\,f + \tau\,(A\,g + b) + \theta\,(e - b).
+\end{align*}
+Since $f = x_0 + \theta\,x_\theta$, the $\theta$-dependent terms
+are absorbed into~$f$.  Defining
+\begin{align}
+  \delta_c &= r - \PW\bigl(A\,f + \theta\,(e-b)\bigr), \label{eq:delta-center}\\
+  \delta_t &= -\PW(b + A\,g), \label{eq:delta-cost}
+\end{align}
+we have
+\begin{equation}\label{eq:delta-tau}
+  \boxed{\delta(\tau) = \delta_c + \tau\,\delta_t.}
+\end{equation}
+
+\subsection{Dual $\lambda(\tau)$}
+
+The homogenized dual is $\lambda = \PW(r + \delta)$.
+Defining
+\begin{align}
+  \lambda_c &= \PW(r + \delta_c), &
+  \lambda_t &= \PW(\delta_t), \label{eq:lambda-ct}
+\end{align}
+linearity of $\PW$ gives
+\begin{equation}\label{eq:lambda-tau}
+  \boxed{\lambda(\tau) = \lambda_c + \tau\,\lambda_t.}
+\end{equation}
+
+\subsection{Summary}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{ll}
+\hline
+  & \textbf{Homogenized} \\
+\hline
+Primal & $x(\tau) = f + \tau\,g$ \\
+Direction & $\delta(\tau) = \delta_c + \tau\,\delta_t$ \\
+Dual & $\lambda(\tau) = \lambda_c + \tau\,\lambda_t$ \\
+\hline
+\end{tabular}
+\end{center}
+where
+\begin{alignat}{2}
+  f &= x_0 + \theta\,x_\theta, &\qquad g &= x_1, \notag\\
+  \delta_c &= r - \PW(A\,f + \theta(e-b)), &\qquad
+  \delta_t &= -\PW(b + A\,g), \notag\\
+  \lambda_c &= \PW(r + \delta_c), &\qquad
+  \lambda_t &= \PW(\delta_t). \notag
+\end{alignat}
+
+\subsection{Verification at the fixed point}
+
+At $(\theta=1, \tau=1, W=I, r=e)$:
+from \eqref{eq:cancel}, $x_0 + x_1 + x_\theta = 0$, so
+$f = x_0 + x_\theta = -x_1 = -g$ and $A\,f = -A\,g$.
+\begin{align*}
+  \delta_c &= e - (A\,f + (e-b)) = b - A\,f, \\
+  \delta_t &= -(b + A\,g) = -(b - A\,f) = -\delta_c.
+\end{align*}
+Hence $\delta(1) = \delta_c + \delta_c \cdot 1 = \delta_c - \delta_c = 0$,\;
+$x(1) = f + g = 0$,\; and
+$\lambda(1) = \PW(e + 0) = e$.\;\checkmark
+
+\section{Duality identity and $\tau$ selection}
+
+The duality identity (with $\mu = \theta$) in homogenized
+variables is
+\begin{equation}\label{eq:duality}
+  b^T \lambda + c^T x + \frac{x^T Q x}{\tau} + \frac{\theta}{\tau}
+  = \theta\,R,
+\end{equation}
+where $R = \ip{b}{e} + 1$, and $\lambda = \lambda_c + \tau\,\lambda_t$,
+$x = f + \tau\,g$ are the homogenized variables from Section~3.
+
+\subsection{Expansion in $\tau$}
+
+Substitute $\lambda = \lambda_c + \tau\,\lambda_t$ and
+$x = f + \tau\,g$ into each term of \eqref{eq:duality}:
+\begin{align}
+  b^T \lambda &= b^T\lambda_c + \tau\,b^T\lambda_t
+               = \sigma_0 + \tau\,\sigma_1, \label{eq:bTlam}\\
+  c^T x &= c^T f + \tau\,c^T g
+          = \gamma_0 + \tau\,\gamma_1, \label{eq:cTx}\\
+  \frac{x^T Q x}{\tau}
+  &= \frac{(f + \tau g)^T Q (f + \tau g)}{\tau}
+   = \frac{f^T\!Qf}{\tau} + 2\,f^T\!Qg + \tau\,g^T\!Qg \notag\\
+  &= \frac{q_{ff}}{\tau} + 2\,q_{fg} + \tau\,q_{gg}. \label{eq:xQx}
+\end{align}
+Substituting \eqref{eq:bTlam}--\eqref{eq:xQx} into \eqref{eq:duality}:
+\[
+  \sigma_0 + \tau\,\sigma_1
+  + \gamma_0 + \tau\,\gamma_1
+  + \frac{q_{ff}}{\tau} + 2\,q_{fg} + \tau\,q_{gg}
+  + \frac{\theta}{\tau}
+  = \theta\,R.
+\]
+Multiplying through by $\tau$ and collecting powers of~$\tau$:
+\begin{equation}\label{eq:Vtau}
+  \boxed{V(\tau) = \beta\,\tau^2 + \alpha\,\tau + \mu_{\mathrm{eff}} = 0,}
+\end{equation}
+with
+\begin{align}
+  \beta &= \sigma_1 + \gamma_1 + q_{gg}, \label{eq:beta}\\
+  \alpha &= \sigma_0 + \gamma_0 + 2\,q_{fg} - \theta\,R, \label{eq:alpha}\\
+  \mu_{\mathrm{eff}} &= q_{ff} + \theta, \label{eq:mueff}
+\end{align}
+where
+\begin{align}
+  \sigma_0 &= b^T \lambda_c, &
+  \sigma_1 &= b^T \lambda_t, \notag\\
+  \gamma_0 &= c^T f, &
+  \gamma_1 &= c^T g, \notag\\
+  q_{ff} &= f^T Q f, \quad
+  q_{fg} = f^T Q g, \quad
+  q_{gg} = g^T Q g. \notag
+\end{align}
+
+\paragraph{Verification: $V(1)=0$ at the fixed point.}
+At $(\theta=1, W=I, r=e, \tau=1)$: $f = -g$ (from the cancellation property),
+so $q_{ff} = q_{gg}$, $q_{fg} = -q_{gg}$, and the $Q$~terms cancel.
+Furthermore $x(1) = 0$ and $\lambda(1) = \lambda_c + \lambda_t = e$
+(from Section~3.5), giving
+$\sigma_0 + \sigma_1 = b^T e$ and $\gamma_0 + \gamma_1 = 0$.  Hence
+\[
+  V(1) = (b^T e - R) + (0 + 1) + 0 = b^T e - (b^T e + 1) + 1 = 0.\;\checkmark
+\]
+
+\section{Algorithm: ThetaContinuationR}
+
+\begin{enumerate}
+\item Initialize $W = I$, $r = e$, $\theta = 1$, $\tau = 1$.
+\item Factor $(A^T W^2 A + Q)$.  Compute the three-solve decomposition
+      \eqref{eq:x0}--\eqref{eq:xtheta} and form $f$, $g$,
+      $\delta_{\mathrm{center}}$, $\delta_{\mathrm{cost}}$.
+\item Select $\tau$ from $V(\tau)=0$ \eqref{eq:Vtau} (positive root
+      closest to current $\tau$).
+\item Evaluate $\delta(\tau)$, solve Lyapunov for $d$, compute gap and $\|d\|_\infty$.
+\item If gap $< 0$: \textbf{center} (W-update via geodesic step, refactor).
+\item If gap $\geq 0$: \textbf{r-update} (shrink $r$), set
+      $\theta = |\text{gap}|/m$, recompute decomposition and $\tau$.
+\item Repeat until $\theta < \varepsilon$, $|\text{gap}| < \varepsilon$,
+      $\|d\|_\infty \leq 1$.
+\end{enumerate}
+
+At convergence, recover $x_{\mathrm{phys}} = x(\tau)/\tau$ and
+$\lambda_{\mathrm{phys}} = \PW(r + \delta(\tau))/\tau$.
+The ratio $\kappa = \theta/\tau$ serves as an infeasibility certificate:
+$\kappa \to \infty$ indicates primal infeasibility ($\tau \to 0$).
+
+\end{document}
