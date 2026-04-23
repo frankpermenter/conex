@@ -135,6 +135,74 @@ std::pair<double, double> VerifyHybridREquations(
   return {primal_res, dual_res};
 }
 
+HybridRDecomposition ComputeHybridRDecomposition(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const RowSpace& b,
+    const RowSpace& W,
+    const RowSpace& r,
+    double theta) {
+  RowSpace b_theta = BlendAffine(kkt, b, theta);
+  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  int nv = kkt.number_of_variables();
+
+  // Solve 1 (centering, tau-independent):
+  //   RHS_center = 2*A'P(W^{1/2})(r) + d_eq
+  auto y_c = kkt.MakeSolverRHS();
+  y_c.SetZero();
+  RowSpace v = quadraticRepresentation(sqrtW, r);
+  v *= 2.0;
+  kkt.AccumulateAtranspose(v, y_c);
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+  if (ts && !ts->equality_sub_assemblers().empty()) {
+    y_c += ts->EqualityAffineTermRHS();
+  }
+  kkt.SolveSolverRHS(y_c);
+
+  // Solve 2 (cost, coefficient of tau):
+  //   RHS_cost = -(c + A'P(W)(b_theta))
+  auto y_t = kkt.MakeSolverRHS();
+  y_t = cost_rhs;
+  v = quadraticRepresentation(W, b_theta);
+  kkt.AccumulateAtranspose(v, y_t);
+  y_t *= -1;
+  kkt.SolveSolverRHS(y_t);
+
+  // delta_center = r - P(W^{1/2})(A*y_center)
+  // delta_cost = -P(W^{1/2})(b_theta + A*y_cost)
+  HybridRDecomposition decomp;
+  decomp.y_center.resize(nv);
+  y_c.supernodes->GatherInto(decomp.y_center);
+  decomp.y_cost.resize(nv);
+  y_t.supernodes->GatherInto(decomp.y_cost);
+
+  RowSpace Ay_c = kkt.MakeRowSpace();
+  kkt.MultiplyA(y_c, Ay_c);
+  decomp.delta_center = addScaled(r,
+      quadraticRepresentation(sqrtW, Ay_c), 1.0, -1.0);
+
+  RowSpace Ay_t = kkt.MakeRowSpace();
+  kkt.MultiplyA(y_t, Ay_t);
+  RowSpace b_plus_Ayt = addScaled(b_theta, Ay_t, 1.0, 1.0);
+  decomp.delta_cost = quadraticRepresentation(sqrtW, b_plus_Ayt);
+  decomp.delta_cost *= -1.0;
+
+  return decomp;
+}
+
+HybridRDirection EvalHybridRAtTau(
+    KKTSolverBase& kkt,
+    const HybridRDecomposition& decomp,
+    const RowSpace& r,
+    double tau,
+    RowSpace& d,
+    RowSpace& delta) {
+  // delta(tau) = delta_center + tau * delta_cost
+  delta = addScaled(decomp.delta_center, decomp.delta_cost, 1.0, tau);
+  d = solveLyapunovForD(r, delta);
+  return {gap(r, delta), normInf(d), squaredNorm(d), minSlack(r, delta)};
+}
+
 GeodesicResult SolveGeodesicThetaContinuationR(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
@@ -149,6 +217,14 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   setOnes(ones);
   const double bT_ones = dot(b, ones);
   const double R = bT_ones + 1.0;
+
+  // Duality cost (cost_rhs + equality dual correction).
+  auto duality_cost = kkt.MakeSolverRHS();
+  duality_cost = cost_rhs;
+  auto* ts_init = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+  if (ts_init && !ts_init->equality_sub_assemblers().empty()) {
+    duality_cost += ts_init->EqualityAffineTermRHS();
+  }
 
   RowSpace r = kkt.MakeRowSpace();
   setOnes(r);
@@ -172,23 +248,73 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   }
 
   RowSpace last_delta = kkt.MakeRowSpace();
+  bool need_decomp = true;
+  HybridRDecomposition decomp;
 
   for (int iter = 0; iter < max_iterations; ++iter) {
-    // Scale b and c by tau.
-    RowSpace b_tau = b;
-    b_tau *= tau;
-    auto cost_tau = kkt.MakeSolverRHS();
-    cost_tau = cost_rhs;
-    cost_tau *= tau;
+    // Compute the two-solve decomposition when needed (after W-updates).
+    if (need_decomp) {
+      decomp = ComputeHybridRDecomposition(kkt, cost_rhs, b, W, r, theta);
+      total_sol += 2;
+      need_decomp = false;
 
-    // Compute direction at (W, r, theta, tau), with solve vector y.
+      // Compute duality coefficients for tau selection.
+      // lambda(tau) = P(W^{1/2})(r + delta_center + tau*delta_cost)
+      // x(tau) = y_center + tau*y_cost
+      RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+      RowSpace lam_c = quadraticRepresentation(sqrtW,
+          addScaled(r, decomp.delta_center, 1.0, 1.0));
+      RowSpace lam_t = quadraticRepresentation(sqrtW, decomp.delta_cost);
+
+      double sigma_0 = dot(b, lam_c);
+      double sigma_1 = dot(b, lam_t);
+
+      auto yc_rhs = kkt.MakeSolverRHS();
+      yc_rhs = kkt.MakeBlockVariable(decomp.y_center);
+      auto yt_rhs = kkt.MakeSolverRHS();
+      yt_rhs = kkt.MakeBlockVariable(decomp.y_cost);
+
+      double gamma_0 = duality_cost.dot(yc_rhs);
+      double gamma_1 = duality_cost.dot(yt_rhs);
+
+      // QP terms.
+      auto qyc = kkt.MakeSolverRHS(); qyc.SetZero();
+      kkt.AccumulateQx(yc_rhs, qyc);
+      auto qyt = kkt.MakeSolverRHS(); qyt.SetZero();
+      kkt.AccumulateQx(yt_rhs, qyt);
+      double q00 = qyc.dot(yc_rhs);
+      double q01 = qyc.dot(yt_rhs);
+      double q11 = qyt.dot(yt_rhs);
+
+      // Inner products for gap(tau).
+      double r_sq = squaredNorm(r);
+      double dc_sq = squaredNorm(decomp.delta_center);
+      double dt_sq = squaredNorm(decomp.delta_cost);
+      double dc_dt = dot(decomp.delta_center, decomp.delta_cost);
+      double mu_0 = r_sq - dc_sq;
+
+      // Quadratic: beta*tau^2 + alpha_q*tau + mu_eff = 0
+      double beta = sigma_1 + gamma_1 + q11 - dt_sq;
+      double alpha_q = sigma_0 + gamma_0 + 2*q01 - 2*dc_dt - theta*R;
+      double mu_eff = q00 + mu_0;
+
+      double discr = alpha_q * alpha_q - 4.0 * beta * mu_eff;
+      if (discr >= 0 && std::abs(beta) > 1e-30) {
+        double sq = std::sqrt(discr);
+        double t1 = (-alpha_q + sq) / (2.0 * beta);
+        double t2 = (-alpha_q - sq) / (2.0 * beta);
+        if (t1 > 0 && t2 > 0)
+          tau = (std::abs(t1 - tau) < std::abs(t2 - tau)) ? t1 : t2;
+        else if (t1 > 0) tau = t1;
+        else if (t2 > 0) tau = t2;
+      }
+    }
+
+    // Evaluate direction at current (tau, r, theta).
     RowSpace d = kkt.MakeRowSpace();
     RowSpace delta = kkt.MakeRowSpace();
-    Eigen::VectorXd y_vec;
-    auto info = ComputeHybridRDirection(kkt, cost_tau, b_tau, W, r, theta,
-                                         d, delta, &y_vec);
+    auto info = EvalHybridRAtTau(kkt, decomp, r, tau, d, delta);
     last_delta = delta;
-    total_sol++;
     double d_inf_pre = info.d_inf;
     g = info.gap;
     d_inf = info.d_inf;
@@ -197,105 +323,6 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       if (verbose) printf("  TERMINATED: diverging (d_inf=%.2e, g=%.2e)\n",
                           d_inf, g);
       break;
-    }
-
-    // Update tau via duality identity.
-    //
-    // At the tau-scaled problem, the duality identity is:
-    //   b'λ + (c + d_eq)'x + x'Qx/τ + μ/τ = θ·R·τ
-    // where λ = P(W^{1/2})(r+δ), x = y (solve vector), μ = gap.
-    // All quantities are at the tau-scaled level.
-    //
-    // Rearranging for τ (multiply by τ, collect):
-    //   b'λ·τ + (c+d_eq)'x·τ + x'Qx + μ = θ·R·τ²
-    //   θ·R·τ² - (b'λ + (c+d_eq)'x)·τ - (x'Qx + μ) = 0
-    //
-    // But b'λ and c'x are ALREADY at the tau-scaled level (the direction
-    // was computed with tau*b, tau*c). So they implicitly include tau.
-    // The UNSCALED quantities are: b'λ_unscaled = b'λ (λ doesn't depend on tau
-    // scaling — it comes from r and delta which are tau-independent).
-    // And c'x_unscaled: the solve vector y satisfies (A'W²A)y = RHS(tau),
-    // and x = y. The cost contribution c'x = cost_rhs'·y, but the solve
-    // used cost_tau = tau*cost_rhs. So the contribution is already tau-scaled.
-    //
-    // Cleaner: evaluate everything in UNSCALED terms.
-    // λ = P(W^{1/2})(r + δ) — independent of tau (r and δ are tau-independent? NO)
-    //
-    // Actually δ DOES depend on tau because the direction was computed with
-    // tau-scaled data. So λ = P(W^{1/2})(r+δ(tau)) depends on tau.
-    //
-    // Simplest correct approach: compute the duality identity at the CURRENT
-    // tau, then solve for the NEW tau.
-    //
-    // At current tau:
-    //   b'λ + dc'x + xQx/τ + μ/τ = θ·R
-    // where dc = duality_cost (includes equality dual correction).
-    //
-    // This gives τ_new from: τ_new satisfies the identity at the NEXT iterate.
-    // But we don't know the next iterate. Use the current iterate's values.
-    //
-    // From: b'λ + dc'x + μ/τ = θ·R  (LP case, Q=0, dividing scaled eqn by τ)
-    //   τ = μ / (θ·R - b'λ/τ - dc'x/τ)
-    //
-    // The b'λ and dc'x are at the TAU-scaled problem. To get the unscaled:
-    //   b'λ_unscaled = b'λ  (λ doesn't change with tau-scaling of data)
-    //                   ... actually it does, because δ changes.
-    //
-    // Let me just compute everything directly.
-    {
-      RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-      RowSpace lam = quadraticRepresentation(sqrtW,
-          addScaled(r, delta, 1.0, 1.0));
-
-      // b'λ using UNSCALED b.
-      double bT_lam = dot(b, lam);
-
-      // c'x using duality_cost (UNSCALED) dotted with y.
-      auto y_rhs = kkt.MakeSolverRHS();
-      y_rhs = kkt.MakeBlockVariable(y_vec);
-      double dc_x = cost_rhs.dot(y_rhs);
-
-      // x'Qx contribution.
-      auto qx_rhs = kkt.MakeSolverRHS();
-      qx_rhs.SetZero();
-      kkt.AccumulateQx(y_rhs, qx_rhs);
-      double xQx = qx_rhs.dot(y_rhs);
-
-      double mu = g;  // gap = |r|² - |δ|² = total complementarity
-
-      // Duality identity (at the tau-scaled problem, divided by τ):
-      //   b'λ/τ + dc'x/τ + xQx/τ² + μ/τ = θ·R
-      //
-      // But b, dc, Q are UNSCALED while the direction used tau-scaled data.
-      // The solve vector y satisfies: (A'W²A + Q)y = -τc - A'P(W)(τb_θ) + 2A'P(W^½)r
-      // So y (and hence δ, λ) depend on τ. The duality identity at the
-      // current iterate gives:
-      //   bT_lam + dc_x + xQx/τ + μ/τ = θ·R·τ
-      //
-      // Note: bT_lam and dc_x are computed from the solve at the current τ,
-      // so they implicitly depend on τ. But for the identity, we just
-      // evaluate it and solve for the τ that makes it hold.
-      //
-      // Rearranging: θ·R·τ² - (bT_lam + dc_x)·τ - (xQx + μ) = 0
-      double a_coeff = theta * R;
-      double b_coeff = -(bT_lam + dc_x);
-      double c_coeff = -(xQx + mu);
-
-      if (std::abs(a_coeff) > 1e-30) {
-        double discr = b_coeff * b_coeff - 4 * a_coeff * c_coeff;
-        if (discr >= 0) {
-          double sq = std::sqrt(discr);
-          double t1 = (-b_coeff + sq) / (2 * a_coeff);
-          double t2 = (-b_coeff - sq) / (2 * a_coeff);
-          // Pick positive root closest to current tau.
-          double tau_new = tau;
-          if (t1 > 0 && t2 > 0)
-            tau_new = (std::abs(t1 - tau) < std::abs(t2 - tau)) ? t1 : t2;
-          else if (t1 > 0) tau_new = t1;
-          else if (t2 > 0) tau_new = t2;
-          tau = tau_new;
-        }
-      }
     }
 
     bool do_center = (g < 0);
@@ -307,28 +334,57 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       if (!kkt.AssembleAndFactor()) break;
       total_fac++;
       r_updates_since_fac = 0;
+      need_decomp = true;  // recompute decomposition at new W
     } else {
       shrinkR(r, delta);
       r_updates_since_fac++;
       theta = std::abs(g) / m;
+      need_decomp = true;  // r and theta changed, need new decomposition
     }
 
-    // Recompute direction at updated state.
-    {
-      RowSpace b_tau2 = b;
-      b_tau2 *= tau;
-      auto cost_tau2 = kkt.MakeSolverRHS();
-      cost_tau2 = cost_rhs;
-      cost_tau2 *= tau;
+    // Recompute at updated state for diagnostics.
+    if (need_decomp) {
+      decomp = ComputeHybridRDecomposition(kkt, cost_rhs, b, W, r, theta);
+      total_sol += 2;
+      need_decomp = false;
 
+      // Recompute tau at updated state (same quadratic).
+      RowSpace sqrtW2 = EuclideanJordanAlgebra::sqrt(W);
+      RowSpace lam_c2 = quadraticRepresentation(sqrtW2,
+          addScaled(r, decomp.delta_center, 1.0, 1.0));
+      RowSpace lam_t2 = quadraticRepresentation(sqrtW2, decomp.delta_cost);
+      double s0 = dot(b, lam_c2), s1 = dot(b, lam_t2);
+      auto yc2 = kkt.MakeSolverRHS();
+      yc2 = kkt.MakeBlockVariable(decomp.y_center);
+      auto yt2 = kkt.MakeSolverRHS();
+      yt2 = kkt.MakeBlockVariable(decomp.y_cost);
+      double g0 = duality_cost.dot(yc2), g1 = duality_cost.dot(yt2);
+      auto qyc2 = kkt.MakeSolverRHS(); qyc2.SetZero();
+      kkt.AccumulateQx(yc2, qyc2);
+      auto qyt2 = kkt.MakeSolverRHS(); qyt2.SetZero();
+      kkt.AccumulateQx(yt2, qyt2);
+      double qq00 = qyc2.dot(yc2), qq01 = qyc2.dot(yt2), qq11 = qyt2.dot(yt2);
+      double rsq = squaredNorm(r), dcsq = squaredNorm(decomp.delta_center);
+      double dtsq = squaredNorm(decomp.delta_cost);
+      double dcdt = dot(decomp.delta_center, decomp.delta_cost);
+      double bt = s1+g1+qq11-dtsq, aq = s0+g0+2*qq01-2*dcdt-theta*R;
+      double me = qq00+(rsq-dcsq);
+      double disc = aq*aq - 4*bt*me;
+      if (disc >= 0 && std::abs(bt) > 1e-30) {
+        double sq = std::sqrt(disc);
+        double t1 = (-aq+sq)/(2*bt), t2 = (-aq-sq)/(2*bt);
+        if (t1 > 0 && t2 > 0) tau = (std::abs(t1-tau)<std::abs(t2-tau))?t1:t2;
+        else if (t1 > 0) tau = t1;
+        else if (t2 > 0) tau = t2;
+      }
+
+      // Evaluate at new tau for post-step diagnostics.
       RowSpace d2 = kkt.MakeRowSpace();
       RowSpace delta2 = kkt.MakeRowSpace();
-      auto info2 = ComputeHybridRDirection(kkt, cost_tau2, b_tau2, W, r, theta,
-                                            d2, delta2);
+      auto info2 = EvalHybridRAtTau(kkt, decomp, r, tau, d2, delta2);
       last_delta = delta2;
       g = info2.gap;
       d_inf = info2.d_inf;
-      total_sol++;
     }
 
     if (verbose) {
@@ -349,35 +405,13 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   result.total_factorizations = total_fac;
   result.total_solves = total_sol;
 
-  // Recover x (at the final tau).
+  // Recover x (de-homogenized by tau).
   {
     kkt.SetScaling(W);
     kkt.AssembleAndFactor();
-    RowSpace b_theta = BlendAffine(kkt, b, theta);
-    b_theta *= tau;
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-
-    auto y = kkt.MakeSolverRHS();
-    y = cost_rhs;
-    y *= tau;
-    RowSpace v = quadraticRepresentation(W, b_theta);
-    kkt.AccumulateAtranspose(v, y);
-    y *= -1;
-    v = quadraticRepresentation(sqrtW, r);
-    v *= 2.0;
-    kkt.AccumulateAtranspose(v, y);
-    auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
-    if (ts && !ts->equality_sub_assemblers().empty()) {
-      auto d_rhs = ts->EqualityAffineTermRHS();
-      if (tau != 1.0) d_rhs *= tau;
-      y += d_rhs;
-    }
-    kkt.SolveSolverRHS(y);
-    int nr = kkt.number_of_variables();
-    result.x.resize(nr);
-    y.supernodes->GatherInto(result.x);
-    // De-homogenize.
-    if (tau > 0 && tau != 1.0) result.x /= tau;
+    // x = y_center + tau * y_cost, then divide by tau.
+    Eigen::VectorXd x_lifted = decomp.y_center + tau * decomp.y_cost;
+    result.x = x_lifted / tau;
   }
 
   // Lambda and optimality.

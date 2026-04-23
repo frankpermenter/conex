@@ -64,6 +64,35 @@ std::pair<double, double> VerifyHybridREquations(
     const RowSpace& delta,
     const Eigen::VectorXd& y);
 
+// Two-solve decomposition for the r-parameterization with tau.
+// y(tau) = y_center + tau * y_cost
+// delta(tau) = delta_center + tau * delta_cost
+// d(tau) solved from the Lyapunov equation at each tau.
+struct HybridRDecomposition {
+  Eigen::VectorXd y_center, y_cost;
+  RowSpace delta_center, delta_cost;
+};
+
+// Compute the two-solve decomposition at (W, r, theta).
+// Requires one factorization (already done) and two back-solves.
+HybridRDecomposition ComputeHybridRDecomposition(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    const RowSpace& b,
+    const RowSpace& W,
+    const RowSpace& r,
+    double theta);
+
+// Evaluate the direction at a specific tau from the decomposition.
+// Returns (d, delta, gap, d_inf).
+HybridRDirection EvalHybridRAtTau(
+    KKTSolverBase& kkt,
+    const HybridRDecomposition& decomp,
+    const RowSpace& r,
+    double tau,
+    RowSpace& d,
+    RowSpace& delta);
+
 // ThetaContinuation with r-updates interleaved.
 //
 // Uses ThetaContinuation's tau selection (duality identity V(tau)=0,
