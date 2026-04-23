@@ -182,48 +182,42 @@ TEST(ExtendedEmbedding, ThetaVsMuOnCentralPath) {
   auto cost_rhs = solver.MakeCostRHS();
   auto* kkt = solver.kkt();
 
-  // Use GeodesicLP which increases k each iteration. At each step,
-  // the solve determines theta as a Model variable.
-  auto result = solver.Solve(GeodesicLP{1e-10, 20, 0, false});
+  printf("  %10s %10s %10s %10s %10s %10s %10s\n",
+         "k", "mu", "d_inf", "theta", "tau", "kappa", "theta/mu");
 
-  // result.x is in Model space. Read embedding variables directly.
-  double theta_final = result.x(info.theta_idx());
-  double tau_final = result.x(info.tau_idx());
-  double kappa_final = result.x(info.kappa_idx());
-  double mu_final = result.mu;
-
-  printf("  Final: mu=%.6e theta=%.6e tau=%.6f kappa=%.6e theta/mu=%.6f\n",
-         mu_final, theta_final, tau_final, kappa_final,
-         (mu_final > 1e-30) ? theta_final / mu_final : 0.0);
-
-  // Now center at specific mu values using ThetaContinuation
-  // (which ties its external theta = mu).
-  printf("\n  Per-iteration theta vs mu:\n");
-  printf("  %10s %10s %10s %10s %10s\n",
-         "mu", "theta", "tau", "kappa", "theta/mu");
-
-  // Run ThetaContinuation and extract per-iteration values from iter_stats
-  // plus the final result.
-  auto result2 = solver.Solve(ThetaContinuation{1e-10, 20, 1, false});
-  // ThetaCont converges at some mu. Extract at each stat.
-  for (size_t i = 0; i < result2.duals.eq_residual.size(); i++) {
-    // iter_stats don't have theta/tau. Just report final.
+  // Part 1: GeodesicCenter at fixed k (verified: theta = mu).
+  for (double k_target : {1.0, 1.5, 2.0, 3.0, 5.0, 10.0}) {
+    RowSpace W = kkt->MakeRowSpace();
+    setOnes(W);
+    auto raw = GeodesicCenter(*kkt, cost_rhs, W, k_target, 50, 1e-4, false);
+    double mu_target = 1.0 / (k_target * k_target);
+    if (raw.x.size() == 0) {
+      printf("  %10.4f %10.6f  (no result)\n", k_target, mu_target);
+      continue;
+    }
+    auto x_model = solver.ExpandSolution(raw.x);
+    double theta = x_model(info.theta_idx());
+    double tau = x_model(info.tau_idx());
+    double kappa = x_model(info.kappa_idx());
+    printf("  %10.4f %10.6f %10.2e %10.6f %10.6f %10.6f %10.4f\n",
+           k_target, mu_target, raw.d_inf_norm, theta, tau, kappa,
+           theta / mu_target);
+    EXPECT_NEAR(theta / mu_target, 1.0, 0.01)
+        << "theta should equal mu on central path at k=" << k_target;
   }
 
-  // Best approach: solve at a few fixed mu levels and check theta.
-  // Use the embedding's cost = alpha*theta. At mu, objective = alpha*theta.
-  // If theta = mu: objective = alpha*mu.
-  double obj = result.objective;
-  double alpha = info.alpha;
-  double theta_from_obj = obj / alpha;
-  printf("\n  From objective: obj=%.6e alpha=%.4f theta_from_obj=%.6e mu=%.6e ratio=%.6f\n",
-         obj, alpha, theta_from_obj, mu_final,
-         (mu_final > 1e-30) ? theta_from_obj / mu_final : 0.0);
-
-  // Direct check: is theta ≈ mu at the solution?
-  // The GeodesicLP drives mu→0, so theta should also →0.
-  // The ratio theta/mu tells us if they track each other.
-  EXPECT_LT(std::abs(theta_final), 1e-3);
+  // Part 2: GeodesicHSD (joint tau/theta selection) on the embedding.
+  // Fixed k=1.1 internally. Should center and give theta ≈ mu.
+  printf("\n  GeodesicHSD on embedding (fixed k=1.1):\n");
+  {
+    auto result_hsd = solver.Solve(GeodesicHSD{1e-4, 20, true});
+    double theta_hsd = result_hsd.x(info.theta_idx());
+    double tau_hsd = result_hsd.x(info.tau_idx());
+    double mu_hsd = result_hsd.mu;
+    printf("  HSD final: mu=%.6e theta=%.6e tau=%.6f theta/mu=%.4f\n",
+           mu_hsd, theta_hsd, tau_hsd,
+           (mu_hsd > 1e-30) ? theta_hsd / mu_hsd : 0.0);
+  }
 }
 
 // =====================================================================

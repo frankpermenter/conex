@@ -143,7 +143,10 @@ GeodesicResult GeodesicCenter(
              iter, mu, d_sq, d_inf, s_dot_x, alpha, p_res, d_res);
     }
 
-    if (d_inf < tolerance) break;
+    if (d_inf < tolerance) {
+      result.x = y_direct / k;
+      break;
+    }
 
     geodesicUpdateFromSlack(W, alpha, slack);
   }

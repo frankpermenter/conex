@@ -1,8 +1,24 @@
 #pragma once
+#include "conex/algorithms/geodesic_hybrid_r.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/common/eja_ops.h"
 
 namespace conex {
+
+// Strategy: hybrid r-updates with theta = |gap|/m.
+struct HybridR {
+  double tolerance = 1e-8;
+  int max_iterations = 500;
+  bool verbose = false;
+
+  GeodesicResult Run(KKTSolverBase& kkt,
+                     const SolverRHS& cost_rhs) const {
+    RowSpace W = kkt.MakeRowSpace();
+    setOnes(W);
+    return SolveGeodesicHybridR(
+        kkt, cost_rhs, W, max_iterations, tolerance, verbose);
+  }
+};
 
 // Strategy: geodesic HSD (joint tau/theta selection).
 struct GeodesicHSD {

@@ -188,6 +188,15 @@ int main(int argc, char* argv[]) {
              n, r4.factorizations, r4.objective,
              r4.duals.stationarity_gradient.norm(),
              r4.optimality.complementarity, eq4);
+
+      auto r5 = solver.Solve(HybridR{1e-10, 500, verbose});
+      double eq5 = 0;
+      for (const auto& er : r5.duals.eq_residual)
+        eq5 = std::max(eq5, er.norm());
+      printf("n=%2d  DIRECT   HybridR     %4d %12.6f %10.2e %10.2e %10.2e\n",
+             n, r5.factorizations, r5.objective,
+             r5.duals.stationarity_gradient.norm(),
+             r5.optimality.complementarity, eq5);
     }
 
     // --- Embedding solve (from A,b,c) ---

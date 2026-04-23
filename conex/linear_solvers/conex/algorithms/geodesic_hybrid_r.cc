@@ -176,31 +176,21 @@ GeodesicResult SolveGeodesicHybridR(
       break;
     }
 
-    // r-update allowed only when well-centered:
-    //   d_inf <= 1 + theta  (near-feasible for the blended problem)
-    //   gap <= theta * m    (complementarity proportional to theta)
-    // Otherwise center (W-update).
-    bool can_update_r = (d_inf <= 1.0 + theta) && (g >= 0) &&
-                        (g <= theta * m);
-    bool do_center = !can_update_r;
+    bool do_center = (g < 0);
 
     if (do_center) {
-      // W-update: centering step.
+      // W-update: centering step. Keep r and theta frozen.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       updateAutomorphism(W, r, alpha, d);
       kkt.SetScaling(W);
       if (!kkt.AssembleAndFactor()) break;
       total_fac++;
       r_updates_since_fac = 0;
-
-      // Decrease theta only when post-center state is well-centered
-      // at the current theta (d_inf near 1 after recompute).
-      // The recompute below will give us d_inf; we defer theta decrease
-      // to after the recompute.
     } else {
-      // Free r-update (no theta change).
+      // r-update + theta update.
       shrinkR(r, delta);
       r_updates_since_fac++;
+      theta = std::abs(g) / m;
     }
 
     // Recompute direction at updated state.
@@ -213,14 +203,6 @@ GeodesicResult SolveGeodesicHybridR(
       g = info2.gap;
       d_inf = info2.d_inf;
       total_sol++;
-
-      // Decrease theta after centering, but only if well-centered
-      // at the current theta: d_inf <= 1 + 0.1*theta.
-      if (do_center && d_inf <= 1.0 + 0.1 * theta) {
-        double mu_r = squaredNorm(r) / m;
-        double theta_new = std::min(theta, mu_r);
-        if (theta_new < theta) theta = theta_new;
-      }
     }
 
     if (verbose) {
