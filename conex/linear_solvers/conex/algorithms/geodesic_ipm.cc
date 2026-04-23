@@ -636,13 +636,15 @@ GeodesicResult SolveGeodesicHSD(
     double dc_y1t = duality_cost.dot(y1t_rhs);
     double dc_y0 = duality_cost.dot(y0_rhs);
 
-    // Line search: find the largest k with feasible (tau, theta).
-    // Start from the minimum-norm k at (tau=1, theta=0).
+    // Joint (tau, theta) selection via normalization + gap quadratic.
+    // For each candidate k:
+    //   1. Normalization gives theta(tau) = a0 + a1*tau
+    //   2. Gap equation gives quadratic: beta*tau^2 + gamma*tau + mu = 0
+    //   3. Solve for tau, recover theta.
     double k_init = MinNormK(decomp, 1.0, 0.0);
     if (k_init <= 0) k_init = 1.0;
-    if (k > k_init) k_init = k;  // don't go backwards
+    if (k > k_init) k_init = k;
 
-    // Try increasing k values.
     double k_max = lineSearchK(decomp.d0,
         addScaled(decomp.d1_0, decomp.d1_theta, 1.0, 1.0));
     if (k_max <= k_init) k_max = 2.0 * k_init;
@@ -652,48 +654,38 @@ GeodesicResult SolveGeodesicHSD(
 
     for (double k_cand : {k_init, k_max, 0.5 * (k_init + k_max),
                           0.75 * k_max, 0.9 * k_max, 1.5 * k_init,
-                          2.0 * k_init, 3.0 * k_init}) {
+                          2.0 * k_init, 3.0 * k_init, 5.0 * k_init}) {
       if (k_cand <= 0) continue;
       double mu_cand = 1.0 / (k_cand * k_cand);
 
-      // Evaluate normalization coefficients at this k.
+      // Normalization: N_tau*tau + N_theta*theta = rhs_norm
       double N_tau = k_cand * k_cand * rp_pwd10 + rd_y10 + rg;
       double N_theta = k_cand * k_cand * rp_pwd1t + rd_y1t;
       double rhs_norm = -alpha_norm - k_cand * rp_pwed0 - rd_y0 / k_cand;
 
-      if (std::abs(N_theta) < 1e-30) continue;  // degenerate
-
+      if (std::abs(N_theta) < 1e-30) continue;
       double a0 = rhs_norm / N_theta;
       double a1 = -N_tau / N_theta;
 
-      // Evaluate gap coefficients at this k.
+      // Gap: G_tau*tau + (G_theta-R)*theta + G_0 + mu/tau = 0
       double G_tau = k_cand * k_cand * b_pwd10 + dc_y10;
       double G_theta = k_cand * k_cand * b_pwd1t + dc_y1t;
       double G_0 = k_cand * b_pwed0 + dc_y0 / k_cand;
 
-      // Quadratic: beta*tau^2 + gamma*tau + mu = 0.
       double beta = G_tau + (G_theta - R) * a1;
-      double gamma = (G_theta - R) * a0 + G_0;
-      double discr = gamma * gamma - 4.0 * beta * mu_cand;
-      if (verbose) {
-        printf("    k=%.4e N=[%.4e,%.4e] a=[%.4e,%.4e] beta=%.4e gamma=%.4e discr=%.4e\n",
-               k_cand, N_tau, N_theta, a0, a1, beta, gamma, discr);
-      }
+      double gamma_q = (G_theta - R) * a0 + G_0;
+      double discr = gamma_q * gamma_q - 4.0 * beta * mu_cand;
       if (discr < 0) continue;
 
       double sq = std::sqrt(discr);
-      for (double tau_cand : {(-gamma + sq) / (2.0 * beta),
-                               (-gamma - sq) / (2.0 * beta)}) {
+      for (double tau_cand : {(-gamma_q + sq) / (2.0 * beta),
+                               (-gamma_q - sq) / (2.0 * beta)}) {
+        if (tau_cand <= 0) continue;
         double theta_cand = a0 + a1 * tau_cand;
-        if (verbose) {
-          printf("      tau=%.4e theta=%.4e", tau_cand, theta_cand);
-        }
-        if (tau_cand <= 0) { if (verbose) printf(" SKIP:tau<=0\n"); continue; }
-        if (theta_cand < 0) { if (verbose) printf(" SKIP:theta<0\n"); continue; }
+        if (theta_cand < -0.01 || theta_cand > 1.01) continue;
 
         RowSpace d_cand = EvaluateDirection(decomp, k_cand, tau_cand, theta_cand);
         double dinf_cand = normInf(d_cand);
-        if (verbose) printf(" dinf=%.4e%s\n", dinf_cand, dinf_cand <= 1.0 ? " OK" : " SKIP:dinf");
         if (dinf_cand <= 1.0 && dinf_cand < best_dinf) {
           best_k = k_cand;
           best_tau = tau_cand;
@@ -703,30 +695,9 @@ GeodesicResult SolveGeodesicHSD(
       }
     }
 
-    // Fallback: use ThetaContinuation's approach (theta=mu, gap for tau)
-    // but evaluate normalization as a diagnostic.
-    {
-      double theta_try = (iter == 0) ? 1.0 : 1.0 / (k * k);
-      if (theta_try < tolerance) theta_try = tolerance;
-      // Binary search for smallest theta with feasible d.
-      double lo = 0, hi = theta_try;
-      double tau_sel = 0;
-      for (int bs = 0; bs < 30; bs++) {
-        double mid = 0.5 * (lo + hi);
-        auto [t, di] = EvalThetaCandidate(
-            kkt, duality_cost, b, W, decomp, bT_ones, mid);
-        if (t > 0 && di <= 1.0) { hi = mid; tau_sel = t; }
-        else lo = mid;
-      }
-      auto [tf, df] = EvalThetaCandidate(
-          kkt, duality_cost, b, W, decomp, bT_ones, hi);
-      if (tf > 0) tau_sel = tf;
-      k = 1.0 / std::sqrt(hi);
-    }
-    double theta = 1.0 / (k * k);
-    auto [tau_final, dinf_final] = EvalThetaCandidate(
-        kkt, duality_cost, b, W, decomp, bT_ones, theta);
-    double tau = (tau_final > 0) ? tau_final : 1.0;
+    k = best_k;
+    double tau = best_tau;
+    double theta = best_theta;
     double mu = 1.0 / (k * k);
 
     RowSpace d = EvaluateDirection(decomp, k, tau, theta);
