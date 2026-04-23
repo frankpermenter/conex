@@ -568,10 +568,11 @@ GeodesicResult SolveGeodesicHSD(
   const double R = bT_ones + 1.0;
   const double alpha_norm = static_cast<double>(m) + 1.0;
 
-  // rp = e - b (RowSpace): slack residual at the fixed point.
+  // rp = b - e (RowSpace): slack residual at the fixed point.
+  // At (x=0, tau=1, theta=1): slack = e, and rp'e + rg = -(m+1).
   RowSpace rp = kkt.MakeRowSpace();
-  rp = ones;
-  rp -= b;
+  rp = b;
+  rp -= ones;
   // rd = A'e - c (SolverRHS): dual residual at the fixed point.
   auto rd_rhs = kkt.MakeSolverRHS();
   rd_rhs.SetZero();
@@ -702,9 +703,30 @@ GeodesicResult SolveGeodesicHSD(
       }
     }
 
-    k = best_k;
-    double tau = best_tau;
-    double theta = best_theta;
+    // Fallback: use ThetaContinuation's approach (theta=mu, gap for tau)
+    // but evaluate normalization as a diagnostic.
+    {
+      double theta_try = (iter == 0) ? 1.0 : 1.0 / (k * k);
+      if (theta_try < tolerance) theta_try = tolerance;
+      // Binary search for smallest theta with feasible d.
+      double lo = 0, hi = theta_try;
+      double tau_sel = 0;
+      for (int bs = 0; bs < 30; bs++) {
+        double mid = 0.5 * (lo + hi);
+        auto [t, di] = EvalThetaCandidate(
+            kkt, duality_cost, b, W, decomp, bT_ones, mid);
+        if (t > 0 && di <= 1.0) { hi = mid; tau_sel = t; }
+        else lo = mid;
+      }
+      auto [tf, df] = EvalThetaCandidate(
+          kkt, duality_cost, b, W, decomp, bT_ones, hi);
+      if (tf > 0) tau_sel = tf;
+      k = 1.0 / std::sqrt(hi);
+    }
+    double theta = 1.0 / (k * k);
+    auto [tau_final, dinf_final] = EvalThetaCandidate(
+        kkt, duality_cost, b, W, decomp, bT_ones, theta);
+    double tau = (tau_final > 0) ? tau_final : 1.0;
     double mu = 1.0 / (k * k);
 
     RowSpace d = EvaluateDirection(decomp, k, tau, theta);
@@ -712,9 +734,39 @@ GeodesicResult SolveGeodesicHSD(
     double d_sq = squaredNorm(d);
     double gap = mu * (m - d_sq);
 
-    if (verbose) {
-      printf("  %3d  %10.4e  %10.4e  %10.4e  %10.4e  %10.4e  %10.4e\n",
-             iter, k, tau, theta, d_inf, d_sq, gap);
+    // Evaluate normalization equation at this (k, tau, theta).
+    // lambda = k * P(W^{1/2})(e + d)
+    // x = y0/k + tau*y1_0 + theta*y1_theta
+    // Norm: rp'*lambda + rd'*x + rg*tau should = -alpha
+    {
+      RowSpace lam = quadraticRepresentation(sqrtW, ones + d);
+      lam *= (1.0 / k);  // lambda_phys = lambda_lifted / k ... wait
+      // Actually lambda = k * P(W^{1/2})(e+d), not divided by k.
+      // Normalization in LIFTED space:
+      //   rp'*lambda_lifted + rd'*x_lifted + rg*tau = -alpha
+      // lambda_lifted = (1/k) * P(W^{1/2})(e+d)
+      // x_lifted = y0/k + tau*y1_0 + theta*y1_theta
+      RowSpace lam_lifted = quadraticRepresentation(sqrtW, ones + d);
+      lam_lifted *= (1.0 / k);
+      double rp_lam = dot(rp, lam_lifted);
+
+      Eigen::VectorXd x_lifted = decomp.y0 / k + tau * decomp.y1_0
+                               + theta * decomp.y1_theta;
+      auto x_rhs_v = kkt.MakeSolverRHS();
+      x_rhs_v = kkt.MakeBlockVariable(x_lifted);
+      double rd_x = rd_rhs.dot(x_rhs_v);
+
+      double norm_val = rp_lam + rd_x + rg * tau;
+      double norm_err = norm_val + alpha_norm;
+      if (verbose) {
+        printf("  %3d  k=%10.4e tau=%10.4e theta=%10.4e dinf=%8.4e "
+               "norm_eq=%10.4e (err=%10.4e)\n",
+               iter, k, tau, theta, d_inf, norm_val, norm_err);
+      }
+    }
+
+    if (!verbose) {
+      // Keep original verbose format for non-diagnostic mode.
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
