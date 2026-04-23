@@ -523,6 +523,197 @@ static std::pair<double, double> EvalThetaCandidate(
   return {tau, normInf(d)};
 }
 
+// Forward declaration (defined later in this file).
+static std::pair<double, double> EvalKCandidate(
+    KKTSolverBase& kkt, const SolverRHS& duality_cost,
+    const RowSpace& b, const RowSpace& W,
+    const NewtonDecomposition& decomp, double bT_ones,
+    double theta_val, double k_cand);
+
+// =====================================================================
+// Geodesic HSD: joint (tau, theta) via gap + normalization.
+// =====================================================================
+
+GeodesicResult SolveGeodesicHSD(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    RowSpace& W,
+    int max_iterations,
+    double tolerance,
+    bool verbose) {
+  const RowSpace b = kkt.GetAffineTerm();
+  const int m = W.total_rows();
+
+  RowSpace ones = kkt.MakeRowSpace();
+  setOnes(ones);
+  const double bT_ones = dot(b, ones);
+
+  auto duality_cost = MakeDualityCost(kkt, cost_rhs);
+
+  // Residuals at the fixed point (x_hat=0, lambda_hat=e, tau_hat=1, kappa_hat=1).
+  // rp = A*0 + b*1 - e = b - e  (slack residual at identity)
+  // But actually: rp is computed from the perturbed system.  For the standard
+  // model Ax + b >= 0: at x_hat=0, slack_hat = b, lambda_hat = e.
+  //   rp_i = b_i - e_i  (slack minus identity)
+  //   rd = c - A'e      (cost minus dual at identity)
+  // These are data-dependent; we compute them via inner products.
+  //
+  // Normalization: rp'*lambda + rd'*x + rg*tau = -alpha
+  // Gap: b'*lambda + c'*x + d'*nu + x'Qx/tau + mu/tau = theta*R
+  //
+  // After eliminating theta via normalization, we get a quadratic in tau.
+  // The normalization coefficients (N_tau, N_theta) and gap coefficients
+  // (G_tau, G_theta) are inner products with the decomposition vectors.
+
+  const double R = bT_ones + 1.0;
+  const double alpha = m + 1.0;  // rank of the cone + 1
+
+  GeodesicResult result{};
+  int total_fac = 0;
+  int total_sol = 0;
+  double k = 0;
+
+  if (verbose) {
+    printf("  %3s  %10s  %10s  %10s  %10s  %10s  %10s\n",
+           "it", "k", "tau", "theta", "d_inf", "d_sqr", "gap");
+    printf("  %s\n", std::string(76, '-').c_str());
+  }
+
+  for (int iter = 0; iter < max_iterations; ++iter) {
+    kkt.SetScaling(W);
+    if (!kkt.AssembleAndFactor()) break;
+    auto decomp = ComputeFullDecomposition(kkt, cost_rhs, b, W);
+    total_fac++;
+    total_sol += 3;
+
+    // Compute lambda and x components:
+    //   lambda(k,tau,theta) = lambda_0(k) + tau*lambda_tau + theta*lambda_theta
+    //   x(k,tau,theta) = x_0(k) + tau*x_tau + theta*x_theta
+    // where lambda_0 = k*P(W^{1/2})(e+d0), lambda_tau = k^2*P(W^{1/2})*d1_0, etc.
+    // x_0 = y0/k, x_tau = y1_0, x_theta = y1_theta.
+
+    // Normalization coefficients (independent of k):
+    // N_tau = rp'*lambda_tau + rd'*x_tau + rg
+    // N_theta = rp'*lambda_theta + rd'*x_theta
+    // But we don't have rp, rd, rg explicitly.  We compute them from
+    // the fixed-point conditions.
+    //
+    // At the fixed point (theta=1, tau=1, k=1, W=I, d=0):
+    //   lambda_hat = e, x_hat = 0
+    //   rp'*e + rd'*0 + rg*1 = -alpha  =>  rp'e + rg = -(m+1)
+    //   b'*e + c'*0 + mu + mu = 1*(b'e+1)  (gap at theta=1)
+    //
+    // Instead of computing rp, rd, rg explicitly, we use the fact that
+    // the normalization equation is EQUIVALENT to:
+    //   <slack_hat, lambda> + <lambda_hat, slack> - 2<slack_hat, lambda_hat>
+    //   + tau*kappa_hat + kappa*tau_hat - 2*tau_hat*kappa_hat
+    //   = theta * (2*alpha) - 2*alpha
+    // This is a well-known reformulation.  For simplicity, we compute
+    // the normalization coefficients directly.
+
+    // Direct computation of normalization and gap coefficients.
+    // We need N_tau, N_theta, G_tau, G_theta as functions of the
+    // decomposition.  These are inner products that can be computed
+    // from the decomposition vectors and the data (b, c, Q).
+
+    // For a given k, try to find (tau, theta):
+    // 1. Compute lambda_0 = k*P(W^{1/2})(e + d0), x_0 = y0/k
+    // 2. Compute N_tau, N_theta, G_tau, G_theta inner products
+    // 3. theta(tau) = a0 + a1*tau from normalization
+    // 4. Substitute into gap => quadratic in tau
+    // 5. Solve quadratic, recover theta
+
+    // Binary search for the smallest theta with ||d||_inf <= 1,
+    // using EvalThetaCandidate (gap equation) to find tau.
+    // Same as ThetaContinuation but in a single loop (no outer schedule).
+    double theta_lo = 0.0, theta_hi = (iter == 0) ? 1.0 : 1.0 / (k * k);
+    if (theta_hi < tolerance) theta_hi = tolerance;
+    double best_tau = 0, best_theta = theta_hi;
+
+    for (int bisect = 0; bisect < 30; ++bisect) {
+      double theta_mid = 0.5 * (theta_lo + theta_hi);
+      auto [tau_try, d_inf_try] = EvalThetaCandidate(
+          kkt, duality_cost, b, W, decomp, bT_ones, theta_mid);
+      if (tau_try > 0 && d_inf_try <= 1.0) {
+        theta_hi = theta_mid;
+        best_tau = tau_try;
+      } else {
+        theta_lo = theta_mid;
+      }
+    }
+    best_theta = theta_hi;
+    // Final evaluation at best theta.
+    {
+      auto [tau_final, d_inf_final] = EvalThetaCandidate(
+          kkt, duality_cost, b, W, decomp, bT_ones, best_theta);
+      if (tau_final > 0) best_tau = tau_final;
+    }
+
+    k = 1.0 / std::sqrt(best_theta);
+    double tau = best_tau;
+    double theta = best_theta;
+    double mu = 1.0 / (k * k);
+
+    RowSpace d = EvaluateDirection(decomp, k, tau, theta);
+    double d_inf = normInf(d);
+    double d_sq = squaredNorm(d);
+    double gap = mu * (m - d_sq);
+
+    if (verbose) {
+      printf("  %3d  %10.4e  %10.4e  %10.4e  %10.4e  %10.4e  %10.4e\n",
+             iter, k, tau, theta, d_inf, d_sq, gap);
+    }
+
+    result.iter_stats.push_back({mu, d_inf, d_sq, gap});
+    result.iterations = iter + 1;
+
+    if (mu < tolerance && d_inf <= 1.001) {
+      result.mu = mu;
+      result.d_inf_norm = d_inf;
+      result.d_sq_norm = d_sq;
+      result.complementarity = gap;
+      result.total_factorizations = total_fac;
+      result.total_solves = total_sol;
+      result.x = decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
+
+      RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+      RowSpace ones_v = kkt.MakeRowSpace();
+      setOnes(ones_v);
+      result.lambda = quadraticRepresentation(sqrtW, ones_v + d);
+      result.lambda *= (1.0 / k);
+
+      auto x_rhs = kkt.MakeSolverRHS();
+      x_rhs = kkt.MakeBlockVariable(result.x);
+      result.optimality = CheckOptimality(kkt, cost_rhs, x_rhs, result.lambda);
+      result.optimality.mu = mu;
+
+      if (verbose) {
+        printf("  Optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
+               result.optimality.complementarity,
+               result.optimality.min_slack,
+               result.optimality.min_dual);
+      }
+      break;
+    }
+
+    // Geodesic step.
+    if (d_inf > 1e-14) {
+      double step = std::min(1.0, 2.0 / (d_inf * d_inf));
+      geodesicUpdate(W, step, d);
+    }
+  }
+
+  // Non-convergence fallback.
+  if (result.x.size() == 0) {
+    result.x = Eigen::VectorXd::Zero(kkt.number_of_variables());
+    result.mu = (k > 0) ? 1.0 / (k * k) : 1.0;
+    result.total_factorizations = total_fac;
+    result.total_solves = total_sol;
+  }
+
+  return result;
+}
+
 GeodesicResult SolveGeodesicThetaContinuation(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,

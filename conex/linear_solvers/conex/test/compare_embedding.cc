@@ -179,6 +179,15 @@ int main(int argc, char* argv[]) {
              n, r3.factorizations, r3.objective,
              r3.duals.stationarity_gradient.norm(),
              r3.optimality.complementarity, eq3);
+
+      auto r4 = solver.Solve(GeodesicHSD{1e-10, 30, verbose});
+      double eq4 = 0;
+      for (const auto& er : r4.duals.eq_residual)
+        eq4 = std::max(eq4, er.norm());
+      printf("n=%2d  DIRECT   GeodesicHSD %4d %12.6f %10.2e %10.2e %10.2e\n",
+             n, r4.factorizations, r4.objective,
+             r4.duals.stationarity_gradient.norm(),
+             r4.optimality.complementarity, eq4);
     }
 
     // --- Embedding solve (from A,b,c) ---

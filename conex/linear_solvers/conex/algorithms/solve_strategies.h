@@ -4,6 +4,21 @@
 
 namespace conex {
 
+// Strategy: geodesic HSD (joint tau/theta selection).
+struct GeodesicHSD {
+  double tolerance = 1e-8;
+  int max_iterations = 30;
+  bool verbose = false;
+
+  GeodesicResult Run(KKTSolverBase& kkt,
+                     const SolverRHS& cost_rhs) const {
+    RowSpace W = kkt.MakeRowSpace();
+    setOnes(W);
+    return SolveGeodesicHSD(
+        kkt, cost_rhs, W, max_iterations, tolerance, verbose);
+  }
+};
+
 // Strategy: θ-continuation geodesic IPM.
 struct ThetaContinuation {
   double tolerance = 1e-8;

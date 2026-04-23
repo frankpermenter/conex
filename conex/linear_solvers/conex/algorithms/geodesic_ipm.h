@@ -172,6 +172,18 @@ DualityCoeffs ComputeDualityCoeffs(
     const RowSpace& W,
     const NewtonDecomposition& decomp);
 
+// Geodesic HSD: joint (τ, θ) selection via gap + normalization equations.
+// No external θ schedule — θ is determined by the normalization equation,
+// τ by a quadratic from the gap equation.  Uses ComputeFullDecomposition
+// (3 back-solves per factorization).  Single loop, no centering phase.
+GeodesicResult SolveGeodesicHSD(
+    KKTSolverBase& kkt,
+    const SolverRHS& cost_rhs,
+    RowSpace& W,
+    int max_iterations = 30,
+    double tolerance = 1e-8,
+    bool verbose = false);
+
 // θ-continuation geodesic IPM: start at θ=1 (trivially centered feasibility
 // problem) and decrease θ toward 0 (original problem).  At each θ, center
 // with MinNormK, then shrink θ by an amount determined by ||d1_theta||.
