@@ -147,25 +147,26 @@ HybridRDecomposition ComputeHybridRDecomposition(
   int nv = kkt.number_of_variables();
 
   // Solve 1 (centering, tau-independent):
-  //   RHS_center = 2*A'P(W^{1/2})(r) + d_eq
+  //   RHS_center = 2*A'P(W^{1/2})(r)
   auto y_c = kkt.MakeSolverRHS();
   y_c.SetZero();
   RowSpace v = quadraticRepresentation(sqrtW, r);
   v *= 2.0;
   kkt.AccumulateAtranspose(v, y_c);
-  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
-  if (ts && !ts->equality_sub_assemblers().empty()) {
-    y_c += ts->EqualityAffineTermRHS();
-  }
   kkt.SolveSolverRHS(y_c);
 
   // Solve 2 (cost, coefficient of tau):
-  //   RHS_cost = -(c + A'P(W)(b_theta))
+  //   RHS_cost = -(c + A'P(W)(b_theta)) + d_eq
+  //   d_eq scales with tau (following ThetaContinuation's convention).
   auto y_t = kkt.MakeSolverRHS();
   y_t = cost_rhs;
   v = quadraticRepresentation(W, b_theta);
   kkt.AccumulateAtranspose(v, y_t);
   y_t *= -1;
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+  if (ts && !ts->equality_sub_assemblers().empty()) {
+    y_t += ts->EqualityAffineTermRHS();
+  }
   kkt.SolveSolverRHS(y_t);
 
   // delta_center = r - P(W^{1/2})(A*y_center)
@@ -303,8 +304,14 @@ GeodesicResult SolveGeodesicThetaContinuationR(
         double sq = std::sqrt(discr);
         double t1 = (-alpha_q + sq) / (2.0 * beta);
         double t2 = (-alpha_q - sq) / (2.0 * beta);
+        // Pick the positive root with smaller ||d||^2 (= smaller gap violation).
+        // ||delta(t)||^2 = dc_sq + 2*t*dc_dt + t^2*dt_sq, and
+        // ||d||^2 ~ ||delta||^2, so pick the root with smaller ||delta||^2.
+        auto dsq = [&](double t) {
+          return dc_sq + 2*t*dc_dt + t*t*dt_sq;
+        };
         if (t1 > 0 && t2 > 0)
-          tau = (std::abs(t1 - tau) < std::abs(t2 - tau)) ? t1 : t2;
+          tau = (dsq(t1) < dsq(t2)) ? t1 : t2;
         else if (t1 > 0) tau = t1;
         else if (t2 > 0) tau = t2;
       }
@@ -339,10 +346,12 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       shrinkR(r, delta);
       r_updates_since_fac++;
       theta = std::abs(g) / m;
-      need_decomp = true;  // r and theta changed, need new decomposition
+      // r and theta changed — need new decomposition for the direction,
+      // but keep tau fixed until next W-update.
+      need_decomp = true;
     }
 
-    // Recompute at updated state for diagnostics.
+    // Recompute decomposition and tau at updated state.
     if (need_decomp) {
       decomp = ComputeHybridRDecomposition(kkt, cost_rhs, b, W, r, theta);
       total_sol += 2;
