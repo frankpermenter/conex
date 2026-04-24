@@ -118,13 +118,22 @@ HybridRDirection EvalHybridRAtTau(
 // binary search over theta) at each W-update.  Between W-updates,
 // does free r-updates (shrinkR) with theta frozen.  W-updates triggered
 // when gap < 0.
+// Switching policy for ThetaContR: returns true to center (W-update).
+// Arguments: (gap, d_inf, r_updates_since_last_center).
+// Default: center if d_inf > 1.
+using ThetaContRSwitchPolicy = std::function<bool(double, double, int)>;
+inline bool DefaultThetaContRPolicy(double, double d_inf, int) {
+  return d_inf > 1.0;
+}
+
 GeodesicResult SolveGeodesicThetaContinuationR(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
     RowSpace& W,
     int max_iterations = 500,
     double tolerance = 1e-8,
-    bool verbose = false);
+    bool verbose = false,
+    ThetaContRSwitchPolicy policy = DefaultThetaContRPolicy);
 
 // Original HybridR: theta = |gap|/m heuristic.
 GeodesicResult SolveGeodesicHybridR(
