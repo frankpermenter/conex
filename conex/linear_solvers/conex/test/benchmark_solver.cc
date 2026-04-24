@@ -28,6 +28,7 @@
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/algorithms/geodesic_hybrid_r.h"
 #include "conex/common/cbf_reader.h"
+#include "conex/algorithms/geodesic_hybrid_r.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/mps_reader.h"
 #include "conex/common/mtx_reader.h"
@@ -168,7 +169,12 @@ AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
 
 void ProfileAlgorithm(const Model& problem, const std::string& name,
                       const SolverConfiguration& config,
-                      double objective_constant = 0) {
+                      double objective_constant = 0,
+                      const std::string& algo_filter = "") {
+  auto should_run = [&](const char* aname) {
+    return algo_filter.empty() ||
+           std::string(aname).find(algo_filter) != std::string::npos;
+  };
   printf("=== %s ===\n", name.c_str());
   printf("  Variables: %d, Constraints: %d\n",
          problem.num_variables(), problem.num_constraints());
@@ -191,45 +197,51 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   const int max_iters = 500;
   const double tol = 1e-8;
 
-  // --- ThetaContinuation ---
-  auto r1 = RunAlgo("ThetaCont", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      return SolveGeodesicThetaContinuation(k, c, W, max_iters, 1, tol, true);
-    });
+  std::vector<AlgoResult> results;
 
-  // --- PhaseOne ---
-  auto r2 = RunAlgo("PhaseOne", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      return SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true);
-    });
-
-  // --- Phase1+Hybrid ---
-  auto r3 = RunAlgo("Ph1+Hybrid", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      auto p1 = SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true,
-                                       /*phase1_only=*/true);
-      double k_init = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
-      auto result = SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
-                                         k_init, p1.tau);
-      result.total_factorizations += p1.total_factorizations;
-      result.total_solves += p1.total_solves;
-      return result;
-    });
-
-  // --- Unified HybridR (theta-continuation + r-updates) ---
-  auto r4a = RunAlgo("HybridR", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      return SolveGeodesicHybridR(k, c, W, max_iters, tol, true);
-    });
-
-  // --- Cold-started Hybrid (no PhaseOne) ---
-  auto r4 = RunAlgo("ColdHybrid", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      return SolveGeodesicHybrid(k, c, W, max_iters, tol, true);
-    });
-
-  // --- Cold Hybrid with initial centering strategies ---
-  // Force N centerings first, then switch to default (gap < 0).
+  if (should_run("ThetaCont")) {
+    results.push_back(RunAlgo("ThetaCont", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicThetaContinuation(k, c, W, max_iters, 1, tol, true);
+      }));
+  }
+  if (should_run("PhaseOne")) {
+    results.push_back(RunAlgo("PhaseOne", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true);
+      }));
+  }
+  if (should_run("Ph1+Hybrid")) {
+    results.push_back(RunAlgo("Ph1+Hybrid", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        auto p1 = SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true,
+                                         /*phase1_only=*/true);
+        double k_init = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
+        auto result = SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+                                           k_init, p1.tau);
+        result.total_factorizations += p1.total_factorizations;
+        result.total_solves += p1.total_solves;
+        return result;
+      }));
+  }
+  if (should_run("HybridR")) {
+    results.push_back(RunAlgo("HybridR", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicHybridR(k, c, W, max_iters, tol, true);
+      }));
+  }
+  if (should_run("ThetaContR")) {
+    results.push_back(RunAlgo("ThetaContR", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true);
+      }));
+  }
+  if (should_run("ColdHybrid")) {
+    results.push_back(RunAlgo("ColdHybrid", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicHybrid(k, c, W, max_iters, tol, true);
+      }));
+  }
   auto make_warmup_policy = [](int warmup_centers) -> HybridSwitchPolicy {
     auto count = std::make_shared<int>(0);
     return [warmup_centers, count](double gap, double, int) {
@@ -237,30 +249,34 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
       return gap < 0;
     };
   };
-
-  auto r5 = RunAlgo("Cold+3ctr", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
-                                  -1, 1.0, make_warmup_policy(3));
-    });
-
-  auto r6 = RunAlgo("Cold+5ctr", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
-                                  -1, 1.0, make_warmup_policy(5));
-    });
-
-  auto r7 = RunAlgo("Cold+10ctr", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
-                                  -1, 1.0, make_warmup_policy(10));
-    });
-
-  auto r8 = RunAlgo("Cold+20ctr", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
-                                  -1, 1.0, make_warmup_policy(20));
-    });
+  if (should_run("Cold+3ctr")) {
+    results.push_back(RunAlgo("Cold+3ctr", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+                                    -1, 1.0, make_warmup_policy(3));
+      }));
+  }
+  if (should_run("Cold+5ctr")) {
+    results.push_back(RunAlgo("Cold+5ctr", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+                                    -1, 1.0, make_warmup_policy(5));
+      }));
+  }
+  if (should_run("Cold+10ctr")) {
+    results.push_back(RunAlgo("Cold+10ctr", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+                                    -1, 1.0, make_warmup_policy(10));
+      }));
+  }
+  if (should_run("Cold+20ctr")) {
+    results.push_back(RunAlgo("Cold+20ctr", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+                                    -1, 1.0, make_warmup_policy(20));
+      }));
+  }
 
   // --- Summary table ---
   printf("  %-12s %5s %5s %10s %14s %10s %10s %8s %s\n",
@@ -268,12 +284,12 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
          "compl", "ms", "ok");
   printf("  %s\n", std::string(90, '-').c_str());
   double c0 = objective_constant;
-  for (const auto* r : {&r1, &r2, &r3, &r4a, &r4, &r5, &r6, &r7, &r8}) {
+  for (const auto& r : results) {
     printf("  %-12s %5d %5d %10.2e %14.6e %10.2e %10.2e %8.1f %s\n",
-           r->name, r->iterations, r->factorizations,
-           r->mu, r->primal_cost + c0, r->dual_residual,
-           r->complementarity, r->time_ms,
-           r->converged ? "yes" : "NO");
+           r.name, r.iterations, r.factorizations,
+           r.mu, r.primal_cost + c0, r.dual_residual,
+           r.complementarity, r.time_ms,
+           r.converged ? "yes" : "NO");
   }
 
   if (c0 != 0) {
@@ -496,6 +512,7 @@ int main(int argc, char* argv[]) {
   conex::ColumnScaling strategy = conex::ColumnScaling::Ruiz;
   int limit = 0;
   int max_profile_iters = -1;
+  std::string algo_filter;
   std::vector<int> sweep_threads, sweep_merge;
   std::string arg1 = argv[1];
 
@@ -527,6 +544,8 @@ int main(int argc, char* argv[]) {
       cfg.tree.use_generic_factorization = true;
     } else if (arg == "--iters" && i + 1 < argc) {
       max_profile_iters = std::stoi(argv[++i]);
+    } else if (arg == "--algo" && i + 1 < argc) {
+      algo_filter = argv[++i];
     }
   }
 
@@ -562,7 +581,7 @@ int main(int argc, char* argv[]) {
       auto res = conex::ProfileFactorization(problem, name, cfg, max_profile_iters);
       conex::PrintProfileResult(res, cfg);
     } else {
-      conex::ProfileAlgorithm(problem, name, cfg);
+      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter);
     }
     return 0;
   }
@@ -592,7 +611,7 @@ int main(int argc, char* argv[]) {
           conex::PrintProfileResult(res, cfg);
         } else {
           conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                                   info.objective_constant);
+                                   info.objective_constant, algo_filter);
         }
         count++;
       } catch (const std::exception& e) {
@@ -643,7 +662,7 @@ int main(int argc, char* argv[]) {
       printf("Stages:  build=solver construction, asm+fac/solve are median of repeated runs\n");
     } else {
       conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                               info.objective_constant);
+                               info.objective_constant, algo_filter);
     }
   } catch (const std::exception& e) {
     printf("Error: %s\n", e.what());

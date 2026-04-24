@@ -375,7 +375,10 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double rdTx1 = cTx1 - dot(ones_sel, Ax1_v);
       double rdTxth = cTxth - dot(ones_sel, Axth_v);
       double rg = -(bT_ones + 1.0);
-      double alpha_norm = m + 1.0;
+      // alpha = <e, e> + 1.  For LP cones <e,e> = m, but for PSD
+      // cones <e,e> = sum of block dimensions (trace of identity).
+      RowSpace ones_alpha = kkt.MakeRowSpace(); setOnes(ones_alpha);
+      double alpha_norm = dot(ones_alpha, ones_alpha) + 1.0;
 
       double N0 = rpTl0 + rdTx0;
       double N1 = rpTl1 + rdTx1 + rg;
@@ -438,6 +441,15 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
       // Solve for tau'. Pick root that minimizes |d_tau|.
       double tau_new = tau;
+      if (verbose) {
+        double V1 = A_coeff + B_coeff + C_coeff;
+        double th1 = (std::abs(Nth) > 1e-30) ? (-alpha_norm - N0 - N1) / Nth : 1.0;
+        printf("    quad: A=%.4e B=%.4e C=%.4e V(1)=%.4e theta(1)=%.4e\n",
+               A_coeff, B_coeff, C_coeff, V1, th1);
+        printf("      cancel: |x0+x1+xth|=%.4e  N0=%.4e N1=%.4e Nth=%.4e alpha=%.4e\n",
+               (decomp.x0 + decomp.x1 + decomp.x_theta).norm(),
+               N0, N1, Nth, alpha_norm);
+      }
       double discr = B_coeff * B_coeff - 4.0 * A_coeff * C_coeff;
       if (discr >= 0 && std::abs(A_coeff) > 1e-30) {
         double sq = std::sqrt(discr);
@@ -526,8 +538,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
              norm_val - norm_target, r_norm, r_updates_since_fac);
     }
 
-    if (d_inf > 10 || !std::isfinite(d_inf) || !std::isfinite(g)) {
-      if (verbose) printf("  TERMINATED: diverging (d_inf=%.2e, g=%.2e)\n",
+    if (!std::isfinite(d_inf) || !std::isfinite(g)) {
+      if (verbose) printf("  TERMINATED: nan (d_inf=%.2e, g=%.2e)\n",
                           d_inf, g);
       break;
     }
