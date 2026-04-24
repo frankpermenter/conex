@@ -170,7 +170,8 @@ AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
 void ProfileAlgorithm(const Model& problem, const std::string& name,
                       const SolverConfiguration& config,
                       double objective_constant = 0,
-                      const std::string& algo_filter = "") {
+                      const std::string& algo_filter = "",
+                      double tol_override = 1e-8) {
   auto should_run = [&](const char* aname) {
     return algo_filter.empty() ||
            std::string(aname).find(algo_filter) != std::string::npos;
@@ -195,7 +196,7 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   auto cost_rhs = solver.MakeCostRHS();
 
   const int max_iters = 500;
-  const double tol = 1e-8;
+  const double tol = tol_override;
 
   std::vector<AlgoResult> results;
 
@@ -520,6 +521,7 @@ int main(int argc, char* argv[]) {
   int limit = 0;
   int max_profile_iters = -1;
   std::string algo_filter;
+  double tol = 1e-8;
   std::vector<int> sweep_threads, sweep_merge;
   std::string arg1 = argv[1];
 
@@ -553,6 +555,8 @@ int main(int argc, char* argv[]) {
       max_profile_iters = std::stoi(argv[++i]);
     } else if (arg == "--algo" && i + 1 < argc) {
       algo_filter = argv[++i];
+    } else if (arg == "--tol" && i + 1 < argc) {
+      tol = std::stod(argv[++i]);
     }
   }
 
@@ -588,7 +592,7 @@ int main(int argc, char* argv[]) {
       auto res = conex::ProfileFactorization(problem, name, cfg, max_profile_iters);
       conex::PrintProfileResult(res, cfg);
     } else {
-      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter);
+      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter, tol);
     }
     return 0;
   }
@@ -618,7 +622,7 @@ int main(int argc, char* argv[]) {
           conex::PrintProfileResult(res, cfg);
         } else {
           conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                                   info.objective_constant, algo_filter);
+                                   info.objective_constant, algo_filter, tol);
         }
         count++;
       } catch (const std::exception& e) {
@@ -669,7 +673,7 @@ int main(int argc, char* argv[]) {
       printf("Stages:  build=solver construction, asm+fac/solve are median of repeated runs\n");
     } else {
       conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                               info.objective_constant, algo_filter);
+                               info.objective_constant, algo_filter, tol);
     }
   } catch (const std::exception& e) {
     printf("Error: %s\n", e.what());

@@ -322,11 +322,12 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   double g = 0, d_inf = 0;
 
   if (verbose) {
-    printf("  %3s  %8s  %10s  %8s  %8s  %12s  %12s  %12s"
-           "  %12s  %12s  %12s  %12s  %8s  %8s  %3s\n",
+    printf("  %3s  %10s  %10s  %8s  %8s  %12s  %12s  %12s"
+           "  %12s  %12s  %12s  %12s  %8s  %10s  %10s  %10s  %10s  %3s\n",
            "out", "theta", "tau", "w_tau", "r_tau", "d_inf", "d_tau",
-           "gap", "dual", "primal", "mu/tau", "eq_err", "norm_err", "|r|", "cpl_err", "st");
-    printf("  %s\n", std::string(190, '-').c_str());
+           "gap", "dual", "primal", "mu/tau", "eq_err", "norm_err",
+           "compl", "th*alpha", "d_res", "cpl_err", "st");
+    printf("  %s\n", std::string(210, '-').c_str());
   }
 
   RowSpace last_delta = kkt.MakeRowSpace();
@@ -523,16 +524,41 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double norm_val = rpTl + rdTx + r_g_v * tau;
       double norm_target = -(dot(ones_v, ones_v) + 1.0);
       double r_norm = std::sqrt(squaredNorm(r));
+      // Dual residual: A'lambda = Qx + theta*(A'e - c) + tau'*c
+      // where lambda = P(W^{1/2})(r+delta) (homogenized), x = f+tau*g (homogenized).
+      // residual = A'lambda - Qx - theta*(A'e - c) - tau'*c
+      auto at_lam = kkt.MakeSolverRHS(); at_lam.SetZero();
+      kkt.AccumulateAtranspose(lam_v, at_lam);
+      // tau'*c
+      auto tauc = kkt.MakeSolverRHS();
+      tauc = cost_rhs;
+      tauc *= tau;
+      // theta*(A'e - c)
+      auto ate = kkt.MakeSolverRHS(); ate.SetZero();
+      kkt.AccumulateAtranspose(ones_v, ate);
+      auto theta_corr = kkt.MakeSolverRHS();
+      theta_corr = ate;
+      theta_corr -= cost_rhs;  // A'e - c
+      theta_corr *= theta;     // theta*(A'e - c)
+      // residual = A'lambda - Qx - tau'*c - theta*(A'e - c)
+      auto dual_res = at_lam;
+      dual_res -= qx;
+      dual_res -= tauc;
+      dual_res -= theta_corr;
+      Eigen::VectorXd dual_res_vec(kkt.number_of_variables());
+      dual_res.supernodes->GatherInto(dual_res_vec);
+      double dual_res_norm = dual_res_vec.norm();
+
       // Complementarity check: gap + r_tau^2 = theta * alpha.
-      // (gap = |r|^2 - |delta|^2, and tau*kappa = r_tau^2 from the gap equation.)
       double total_compl = info.gap + r_tau*r_tau;
       double alpha_val = dot(ones_v, ones_v) + 1.0;
-      double compl_err = total_compl - theta * alpha_val;
-      printf("  %3d  %8.6f  %10.2e  %8.4f  %8.4f  %12.4e  %12.4e  %12.4e"
-             "  %12.4e  %12.4e  %12.4e  %12.2e  %8.2e  %8.2e  %8.2e  %3d\n",
+      double compl_err_v = total_compl - theta * alpha_val;
+      printf("  %3d  %10.2e  %10.2e  %8.4f  %8.4f  %12.4e  %12.4e  %12.4e"
+             "  %12.4e  %12.4e  %12.4e  %12.2e  %8.2e  %10.4e  %10.4e  %10.2e  %10.2e  %3d\n",
              iter, theta, tau, w_tau, r_tau, d_inf, d_tau, g,
              dual_phys, primal_phys, mu_over_tau, eq_err,
-             norm_val - norm_target, r_norm, compl_err, r_updates_since_fac);
+             norm_val - norm_target, total_compl, theta * alpha_val,
+             dual_res_norm, compl_err_v, r_updates_since_fac);
     }
 
     if (!std::isfinite(d_inf) || !std::isfinite(g)) {
