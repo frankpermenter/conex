@@ -441,15 +441,6 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
       // Solve for tau'. Pick root that minimizes |d_tau|.
       double tau_new = tau;
-      if (verbose) {
-        double V1 = A_coeff + B_coeff + C_coeff;
-        double th1 = (std::abs(Nth) > 1e-30) ? (-alpha_norm - N0 - N1) / Nth : 1.0;
-        printf("    quad: A=%.4e B=%.4e C=%.4e V(1)=%.4e theta(1)=%.4e\n",
-               A_coeff, B_coeff, C_coeff, V1, th1);
-        printf("      cancel: |x0+x1+xth|=%.4e  N0=%.4e N1=%.4e Nth=%.4e alpha=%.4e\n",
-               (decomp.x0 + decomp.x1 + decomp.x_theta).norm(),
-               N0, N1, Nth, alpha_norm);
-      }
       double discr = B_coeff * B_coeff - 4.0 * A_coeff * C_coeff;
       if (discr >= 0 && std::abs(A_coeff) > 1e-30) {
         double sq = std::sqrt(discr);
