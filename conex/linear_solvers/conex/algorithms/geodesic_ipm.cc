@@ -728,6 +728,7 @@ GeodesicResult SolveGeodesicHSD(
 
     if (d_inf < tolerance) {
       result.mu = mu;
+      result.tau = tau;
       result.d_inf_norm = d_inf;
       result.d_sq_norm = d_sq;
       result.complementarity = gap;
@@ -905,6 +906,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
     result.iterations = outer + 1;
     result.mu = mu;
+    result.tau = tau;
     result.d_inf_norm = d_inf;
     result.d_sq_norm = d_sq;
     result.complementarity = gap;
