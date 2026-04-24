@@ -236,6 +236,13 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
         return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true);
       }));
   }
+  if (should_run("ThetaR+gap")) {
+    results.push_back(RunAlgo("ThetaR+gap", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true,
+            [](double gap, double, int) { return gap < 0; });
+      }));
+  }
   if (should_run("ColdHybrid")) {
     results.push_back(RunAlgo("ColdHybrid", *kkt, cost_rhs, problem, solver,
       [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {

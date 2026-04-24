@@ -150,6 +150,13 @@ void RunBenchmark(const Model& problem, const QPSInfo& info,
         return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true);
       }));
   }
+  if (should_run("ThetaR+gap")) {
+    results.push_back(RunAlgo("ThetaR+gap", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true,
+            [](double gap, double, int) { return gap < 0; });
+      }));
+  }
 
   // --- Summary table ---
   printf("  %-12s %5s %5s %10s %14s %10s %10s %10s %10s %8s %s\n",
