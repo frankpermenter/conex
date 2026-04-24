@@ -363,33 +363,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double cTx1 = duality_cost.dot(x1_rhs);
       double cTxth = duality_cost.dot(xth_rhs);
 
-      // Q inner products.
-      auto Qx0 = kkt.MakeSolverRHS(); Qx0.SetZero();
-      kkt.AccumulateQx(x0_rhs, Qx0);
-      auto Qx1 = kkt.MakeSolverRHS(); Qx1.SetZero();
-      kkt.AccumulateQx(x1_rhs, Qx1);
-      auto Qxth = kkt.MakeSolverRHS(); Qxth.SetZero();
-      kkt.AccumulateQx(xth_rhs, Qxth);
-      double q00 = Qx0.dot(x0_rhs);
-      double q01 = Qx0.dot(x1_rhs);
-      double q0th = Qx0.dot(xth_rhs);
-      double q11 = Qx1.dot(x1_rhs);
-      double q1th = Qx1.dot(xth_rhs);
-      double qthth = Qxth.dot(xth_rhs);
-
-      // Gap equation × tau with r_tau^2/tau replaced:
-      //   b'lambda + c'x + x'Qx/tau + r_tau^2/tau = theta*R
-      // Multiply by tau:
-      //   tau^2(S1) + tau(S0) + C0 + tau*theta(Sth) + theta(Cth_mod) + theta^2(Cthth) + r_tau^2 = 0
-      double r_tau2 = r_tau * r_tau;
-      double S0 = bTl0 + cTx0 + 2*q01;
-      double S1 = bTl1 + cTx1 + q11;
-      double Sth = bTlth + cTxth - R + 2*q1th;
-      double C0 = q00 + r_tau2;               // r_tau^2 added here
-      double Cth = 2*q0th;                     // no +1 (was theta, now r_tau^2)
-      double Cthth = qthth;
-
-      // Normalization.
+      // Normalization coefficients (no Q, always stable).
       RowSpace Ax0_v = kkt.MakeRowSpace(); kkt.MultiplyA(x0_rhs, Ax0_v);
       RowSpace Ax1_v = kkt.MakeRowSpace(); kkt.MultiplyA(x1_rhs, Ax1_v);
       RowSpace Axth_v = kkt.MakeRowSpace(); kkt.MultiplyA(xth_rhs, Axth_v);
@@ -406,19 +380,61 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double N0 = rpTl0 + rdTx0;
       double N1 = rpTl1 + rdTx1 + rg;
       double Nth = rpTlth + rdTxth;
-
-      // Eliminate theta = -(eta + N1*tau)/Nth, substitute into gap.
-      // Divide through by Nth^2 to avoid large scaling:
-      //   (S1 - Sth*n1 + Cthth*n1^2)*tau^2
-      //   + (S0 - Sth*e1 - Cth*n1 + 2*Cthth*e1*n1)*tau
-      //   + (C0 - Cth*e1 + Cthth*e1^2) = 0
-      // where n1 = N1/Nth, e1 = eta/Nth = (alpha+N0)/Nth.
       double eta = alpha_norm + N0;
       double n1 = (std::abs(Nth) > 1e-30) ? N1 / Nth : 0.0;
       double e1 = (std::abs(Nth) > 1e-30) ? eta / Nth : 0.0;
-      double A_coeff = S1 - Sth*n1 + Cthth*n1*n1;
-      double B_coeff = S0 - Sth*e1 - Cth*n1 + 2*Cthth*e1*n1;
-      double C_coeff = C0 - Cth*e1 + Cthth*e1*e1;
+
+      // Substitute theta(tau) = -(eta + N1*tau)/Nth into the gap equation
+      // BEFORE expanding Q terms.  This avoids the six cross-terms
+      // (q01, q0th, q1th etc.) that suffer catastrophic cancellation
+      // when x1 ≈ -x_theta.
+      //
+      // With theta(tau), x(tau) = x0 + tau*x1 + theta(tau)*x_theta
+      //   = (x0 - e1*x_theta) + tau*(x1 - n1*x_theta)
+      //   = f0 + tau*h
+      // where f0 = x0 - e1*x_theta, h = x1 - n1*x_theta.
+      //
+      // Similarly lambda(tau) = lam0 + tau*lam1 + theta(tau)*lam_theta
+      //   = (lam0 - e1*lam_theta) + tau*(lam1 - n1*lam_theta)
+      //   = l0 + tau*l1
+      //
+      // Gap × tau = tau*b'lambda + tau*c'x + x'Qx + r_tau^2 - theta*R*tau
+      //   = tau^2*(b'l1 + c'h + h'Qh) + tau*(b'l0 + c'f0 + 2*f0'Qh - theta(tau)*R)
+      //     + (f0'Qf0 + r_tau^2)
+      //
+      // But theta(tau)*R*tau = R*(-(eta+N1*tau)/Nth)*tau = -R*(e1*tau + n1*tau^2).
+      // So the theta*R*tau term contributes -R*n1 to tau^2 and -R*e1 to tau.
+      //
+      // Final quadratic: A*tau^2 + B*tau + C = 0 with:
+      //   A = b'l1 + c'h + h'Qh + R*n1
+      //   B = b'l0 + c'f0 + 2*f0'Qh + R*e1
+      //   C = f0'Qf0 + r_tau^2
+      double r_tau2 = r_tau * r_tau;
+
+      // Build f0 = x0 - e1*x_theta, h = x1 - n1*x_theta.
+      Eigen::VectorXd f0_vec = decomp.x0 - e1 * decomp.x_theta;
+      Eigen::VectorXd h_vec = decomp.x1 - n1 * decomp.x_theta;
+      auto f0_rhs = kkt.MakeSolverRHS(); f0_rhs = kkt.MakeBlockVariable(f0_vec);
+      auto h_rhs = kkt.MakeSolverRHS(); h_rhs = kkt.MakeBlockVariable(h_vec);
+
+      // Q inner products (three terms, all stable).
+      auto Qf0 = kkt.MakeSolverRHS(); Qf0.SetZero(); kkt.AccumulateQx(f0_rhs, Qf0);
+      auto Qh = kkt.MakeSolverRHS(); Qh.SetZero(); kkt.AccumulateQx(h_rhs, Qh);
+      double qff = Qf0.dot(f0_rhs);  // f0'Qf0
+      double qfh = Qf0.dot(h_rhs);   // f0'Qh
+      double qhh = Qh.dot(h_rhs);    // h'Qh
+
+      // Lambda: l0 = lam0 - e1*lam_theta, l1 = lam1 - n1*lam_theta.
+      double bTl0_sub = bTl0 - e1 * bTlth;
+      double bTl1_sub = bTl1 - n1 * bTlth;
+
+      // Cost: c'f0 = c'x0 - e1*c'x_theta, c'h = c'x1 - n1*c'x_theta.
+      double cTf0 = cTx0 - e1 * cTxth;
+      double cTh = cTx1 - n1 * cTxth;
+
+      double A_coeff = bTl1_sub + cTh + qhh + R*n1;
+      double B_coeff = bTl0_sub + cTf0 + 2*qfh + R*e1;
+      double C_coeff = qff + r_tau2;
 
       // Solve for tau'. Pick root that minimizes |d_tau|.
       double tau_new = tau;
