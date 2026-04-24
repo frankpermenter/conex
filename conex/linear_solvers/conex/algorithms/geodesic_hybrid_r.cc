@@ -325,7 +325,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     printf("  %3s  %8s  %10s  %8s  %8s  %12s  %12s  %12s"
            "  %12s  %12s  %12s  %12s  %8s  %8s  %3s\n",
            "out", "theta", "tau", "w_tau", "r_tau", "d_inf", "d_tau",
-           "gap", "dual", "primal", "mu/tau", "eq_err", "norm_err", "|r|", "st");
+           "gap", "dual", "primal", "mu/tau", "eq_err", "norm_err", "|r|", "cpl_err", "st");
     printf("  %s\n", std::string(190, '-').c_str());
   }
 
@@ -523,11 +523,16 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double norm_val = rpTl + rdTx + r_g_v * tau;
       double norm_target = -(dot(ones_v, ones_v) + 1.0);
       double r_norm = std::sqrt(squaredNorm(r));
+      // Complementarity check: gap + r_tau^2 = theta * alpha.
+      // (gap = |r|^2 - |delta|^2, and tau*kappa = r_tau^2 from the gap equation.)
+      double total_compl = info.gap + r_tau*r_tau;
+      double alpha_val = dot(ones_v, ones_v) + 1.0;
+      double compl_err = total_compl - theta * alpha_val;
       printf("  %3d  %8.6f  %10.2e  %8.4f  %8.4f  %12.4e  %12.4e  %12.4e"
-             "  %12.4e  %12.4e  %12.4e  %12.2e  %8.2e  %8.2e  %3d\n",
+             "  %12.4e  %12.4e  %12.4e  %12.2e  %8.2e  %8.2e  %8.2e  %3d\n",
              iter, theta, tau, w_tau, r_tau, d_inf, d_tau, g,
              dual_phys, primal_phys, mu_over_tau, eq_err,
-             norm_val - norm_target, r_norm, r_updates_since_fac);
+             norm_val - norm_target, r_norm, compl_err, r_updates_since_fac);
     }
 
     if (!std::isfinite(d_inf) || !std::isfinite(g)) {
@@ -540,7 +545,12 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     if (std::abs(theta) < tolerance && std::abs(g) < tolerance && d_inf <= 1.001)
       break;
 
-    bool do_center = policy(g, d_inf, r_updates_since_fac);
+    // Complementarity check: gap + r_tau^2 should = theta * alpha.
+    // Once this degrades beyond tolerance, freeze W (only r-updates).
+    double alpha_check = dot(ones, ones) + 1.0;
+    double compl_err = std::abs(info.gap + r_tau*r_tau - theta * alpha_check);
+    bool w_frozen = (compl_err > tolerance);
+    bool do_center = !w_frozen && policy(g, d_inf, r_updates_since_fac);
     if (do_center) {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       updateAutomorphism(W, r, alpha, d);
