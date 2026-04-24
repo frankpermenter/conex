@@ -425,7 +425,16 @@ GeodesicResult SolveGeodesicThetaContinuationR(
         double wtr = w_tau * r_tau;
         double d1 = (std::abs(wtr) > 1e-30) ? t1 / wtr - 1.0 : 1e30;
         double d2 = (std::abs(wtr) > 1e-30) ? t2 / wtr - 1.0 : 1e30;
-        tau_new = (std::abs(d1) < std::abs(d2)) ? t1 : t2;
+        // Prefer positive tau'. Among roots with similar |d_tau|,
+        // pick the one giving d_tau > -1 (i.e., tau' > 0).
+        bool t1_pos = (t1 > 0);
+        bool t2_pos = (t2 > 0);
+        if (t1_pos && !t2_pos)
+          tau_new = t1;
+        else if (t2_pos && !t1_pos)
+          tau_new = t2;
+        else
+          tau_new = (std::abs(d1) < std::abs(d2)) ? t1 : t2;
       }
       tau = tau_new;
 
