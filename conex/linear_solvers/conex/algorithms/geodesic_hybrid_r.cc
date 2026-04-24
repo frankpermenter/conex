@@ -444,17 +444,6 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       }
       tau = tau_new;
 
-      if (verbose) {
-        double V1 = A_coeff + B_coeff + C_coeff;
-        double Vt = A_coeff*tau*tau + B_coeff*tau + C_coeff;
-        double th_check = (std::abs(Nth) > 1e-30) ?
-            (-alpha_norm - N0 - N1*tau) / Nth : theta;
-        double gap_direct = S1*tau*tau + S0*tau + C0
-            + Sth*tau*th_check + Cth*th_check + Cthth*th_check*th_check;
-        printf("    V(tau)=%.4e gap=%.4e Nth=%.4e Cthth=%.4e eta=%.4e\n",
-               Vt, gap_direct, Nth, Cthth, eta);
-      }
-
       // Compute d_tau.
       double wtr = w_tau * r_tau;
       double d_tau = (std::abs(wtr) > 1e-30) ? tau / wtr - 1.0 : 0.0;
