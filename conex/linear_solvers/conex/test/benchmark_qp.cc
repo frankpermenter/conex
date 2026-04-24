@@ -88,7 +88,12 @@ AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
 }
 
 void RunBenchmark(const Model& problem, const QPSInfo& info,
-                  const std::string& filename) {
+                  const std::string& filename,
+                  const std::string& algo_filter = "") {
+  auto should_run = [&](const char* name) {
+    return algo_filter.empty() ||
+           std::string(name).find(algo_filter) != std::string::npos;
+  };
   printf("=== %s ===\n", filename.c_str());
   printf("  vars=%d, eq=%d, ineq=%d, quad=%d, bounds=%d, constraints=%d",
          info.num_variables, info.num_equality_rows,
@@ -112,36 +117,39 @@ void RunBenchmark(const Model& problem, const QPSInfo& info,
   const int max_iters = 500;
   const double tol = 1e-8;
 
-  // --- ThetaContinuation ---
-  auto r1 = RunAlgo("ThetaCont", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      return SolveGeodesicThetaContinuation(k, c, W, max_iters, 1, tol, true);
-    });
+  std::vector<AlgoResult> results;
 
-  // --- PhaseOne ---
-  auto r2 = RunAlgo("PhaseOne", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      return SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true);
-    });
-
-  // --- Phase1+Hybrid ---
-  auto r3 = RunAlgo("Ph1+Hybrid", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      auto p1 = SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true,
-                                       /*phase1_only=*/true);
-      double k_init = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
-      auto result = SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
-                                         k_init, p1.tau);
-      result.total_factorizations += p1.total_factorizations;
-      result.total_solves += p1.total_solves;
-      return result;
-    });
-
-  // --- ThetaContinuationR ---
-  auto r4 = RunAlgo("ThetaContR", *kkt, cost_rhs, problem, solver,
-    [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-      return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true);
-    });
+  if (should_run("ThetaCont")) {
+    results.push_back(RunAlgo("ThetaCont", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicThetaContinuation(k, c, W, max_iters, 1, tol, true);
+      }));
+  }
+  if (should_run("PhaseOne")) {
+    results.push_back(RunAlgo("PhaseOne", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true);
+      }));
+  }
+  if (should_run("Ph1+Hybrid")) {
+    results.push_back(RunAlgo("Ph1+Hybrid", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        auto p1 = SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true,
+                                         /*phase1_only=*/true);
+        double k_init = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
+        auto result = SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+                                           k_init, p1.tau);
+        result.total_factorizations += p1.total_factorizations;
+        result.total_solves += p1.total_solves;
+        return result;
+      }));
+  }
+  if (should_run("ThetaContR")) {
+    results.push_back(RunAlgo("ThetaContR", *kkt, cost_rhs, problem, solver,
+      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+        return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true);
+      }));
+  }
 
   // --- Summary table ---
   printf("  %-12s %5s %5s %10s %14s %10s %10s %10s %10s %8s %s\n",
@@ -149,20 +157,19 @@ void RunBenchmark(const Model& problem, const QPSInfo& info,
          "compl", "tau", "kappa", "ms", "ok");
   printf("  %s\n", std::string(120, '-').c_str());
   double c0 = info.objective_constant;
-  for (const auto* r : {&r1, &r2, &r3, &r4}) {
+  for (const auto& r : results) {
     printf("  %-12s %5d %5d %10.2e %14.6e %10.2e %10.2e %10.2e %10.2e %8.1f %s\n",
-           r->name, r->iterations, r->factorizations,
-           r->mu, r->primal_cost + c0, r->dual_residual,
-           r->complementarity, r->tau, r->kappa, r->time_ms,
-           r->converged ? "yes" : "NO");
+           r.name, r.iterations, r.factorizations,
+           r.mu, r.primal_cost + c0, r.dual_residual,
+           r.complementarity, r.tau, r.kappa, r.time_ms,
+           r.converged ? "yes" : "NO");
   }
 
-  // Print final objective values prominently.
   printf("\n  Objective = c0 + c'x + (1/2)x'Qx");
   if (c0 != 0) printf("   (c0 = %.6e)", c0);
   printf("\n");
-  for (const auto* r : {&r1, &r2, &r3, &r4}) {
-    printf("    %-12s  obj = %14.6e\n", r->name, r->primal_cost + c0);
+  for (const auto& r : results) {
+    printf("    %-12s  obj = %14.6e\n", r.name, r.primal_cost + c0);
   }
   printf("\n");
 }
@@ -180,9 +187,12 @@ int main(int argc, char* argv[]) {
 
   std::string path = argv[1];
   int limit = 0;
+  std::string algo_filter;
   for (int i = 2; i < argc; ++i) {
     if (std::string(argv[i]) == "--limit" && i + 1 < argc)
       limit = std::atoi(argv[++i]);
+    else if (std::string(argv[i]) == "--algo" && i + 1 < argc)
+      algo_filter = argv[++i];
   }
 
   namespace fs = std::filesystem;
@@ -207,7 +217,8 @@ int main(int argc, char* argv[]) {
       try {
         auto [problem, info] = conex::ReadQPS(filepath);
         conex::RunBenchmark(problem, info,
-                            fs::path(filepath).filename().string());
+                            fs::path(filepath).filename().string(),
+                            algo_filter);
         count++;
       } catch (const std::exception& e) {
         printf("SKIP %s: %s\n\n",
@@ -219,7 +230,8 @@ int main(int argc, char* argv[]) {
     try {
       auto [problem, info] = conex::ReadQPS(path);
       conex::RunBenchmark(problem, info,
-                          fs::path(path).filename().string());
+                          fs::path(path).filename().string(),
+                          algo_filter);
     } catch (const std::exception& e) {
       printf("Error: %s\n", e.what());
       return 1;

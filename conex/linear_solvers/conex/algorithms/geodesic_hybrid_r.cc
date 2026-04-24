@@ -407,12 +407,18 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double N1 = rpTl1 + rdTx1 + rg;
       double Nth = rpTlth + rdTxth;
 
-      // Eliminate theta, get quadratic in tau.
+      // Eliminate theta = -(eta + N1*tau)/Nth, substitute into gap.
+      // Divide through by Nth^2 to avoid large scaling:
+      //   (S1 - Sth*n1 + Cthth*n1^2)*tau^2
+      //   + (S0 - Sth*e1 - Cth*n1 + 2*Cthth*e1*n1)*tau
+      //   + (C0 - Cth*e1 + Cthth*e1^2) = 0
+      // where n1 = N1/Nth, e1 = eta/Nth = (alpha+N0)/Nth.
       double eta = alpha_norm + N0;
-      double Nth2 = Nth * Nth;
-      double A_coeff = Nth2*S1 - Nth*Sth*N1 + Cthth*N1*N1;
-      double B_coeff = Nth2*S0 - Nth*Sth*eta - Nth*Cth*N1 + 2*Cthth*eta*N1;
-      double C_coeff = Nth2*C0 - Nth*Cth*eta + Cthth*eta*eta;
+      double n1 = (std::abs(Nth) > 1e-30) ? N1 / Nth : 0.0;
+      double e1 = (std::abs(Nth) > 1e-30) ? eta / Nth : 0.0;
+      double A_coeff = S1 - Sth*n1 + Cthth*n1*n1;
+      double B_coeff = S0 - Sth*e1 - Cth*n1 + 2*Cthth*e1*n1;
+      double C_coeff = C0 - Cth*e1 + Cthth*e1*e1;
 
       // Solve for tau'. Pick root that minimizes |d_tau|.
       double tau_new = tau;
@@ -437,6 +443,17 @@ GeodesicResult SolveGeodesicThetaContinuationR(
           tau_new = (std::abs(d1) < std::abs(d2)) ? t1 : t2;
       }
       tau = tau_new;
+
+      if (verbose) {
+        double V1 = A_coeff + B_coeff + C_coeff;
+        double Vt = A_coeff*tau*tau + B_coeff*tau + C_coeff;
+        double th_check = (std::abs(Nth) > 1e-30) ?
+            (-alpha_norm - N0 - N1*tau) / Nth : theta;
+        double gap_direct = S1*tau*tau + S0*tau + C0
+            + Sth*tau*th_check + Cth*th_check + Cthth*th_check*th_check;
+        printf("    V(tau)=%.4e gap=%.4e Nth=%.4e Cthth=%.4e eta=%.4e\n",
+               Vt, gap_direct, Nth, Cthth, eta);
+      }
 
       // Compute d_tau.
       double wtr = w_tau * r_tau;
