@@ -17,6 +17,7 @@ using Eigen::VectorXd;
 int main(int argc, char* argv[]) {
   bool verbose = false;
   bool use_lu = false;
+  bool use_qp = false;
   int n_only = 0;
   int m_only = 0;
   std::string qps_file;
@@ -24,6 +25,7 @@ int main(int argc, char* argv[]) {
     std::string arg = argv[i];
     if (arg == "--verbose" || arg == "-v") verbose = true;
     else if (arg == "--lu" || arg == "-lu") use_lu = true;
+    else if (arg == "--qp") use_qp = true;
     else if ((arg == "--n" || arg == "-n") && i + 1 < argc) n_only = std::atoi(argv[++i]);
     else if ((arg == "--m" || arg == "-m") && i + 1 < argc) m_only = std::atoi(argv[++i]);
     else if ((arg == "--qps" || arg == "-qps") && i + 1 < argc) qps_file = argv[++i];
@@ -153,12 +155,19 @@ int main(int argc, char* argv[]) {
     std::vector<int> vars(n);
     std::iota(vars.begin(), vars.end(), 0);
 
-    // --- Direct solve: min c'x s.t. Ax = b, x >= 0 ---
+    // --- Direct solve: min c'x [+ 0.5 x'Qx] s.t. Ax = b, x >= 0 ---
     {
       Model model;
       model.AddLinearConstraint(I, VectorXd::Zero(n), vars);  // x >= 0
       model.AddEqualityConstraint(A, b, vars);                 // Ax = b
       model.SetLinearCost(c);
+      if (use_qp) {
+        // Add diagonal Q = 0.1*I.
+        Eigen::SparseMatrix<double> Q(n, n);
+        Q.setIdentity();
+        Q *= 0.1;
+        model.AddQuadraticCost(Q, vars);
+      }
 
       auto solver = Solver::Build(model, cfg);
 
