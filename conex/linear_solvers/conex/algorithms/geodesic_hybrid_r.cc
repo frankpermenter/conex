@@ -520,7 +520,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double rdTx = cTx - eTAx;
       double r_g_v = -(bT_ones + 1.0);
       double norm_val = rpTl + rdTx + r_g_v * tau;
-      double norm_target = -(m + 1.0);
+      double norm_target = -(dot(ones_v, ones_v) + 1.0);
       double r_norm = std::sqrt(squaredNorm(r));
       printf("  %3d  %8.6f  %10.2e  %8.4f  %8.4f  %12.4e  %12.4e  %12.4e"
              "  %12.4e  %12.4e  %12.4e  %12.2e  %8.2e  %8.2e  %3d\n",
