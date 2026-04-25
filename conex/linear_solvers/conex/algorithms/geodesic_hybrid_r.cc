@@ -337,7 +337,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   double tau = 1.0;
   double w_tau = 1.0;
   double r_tau = 1.0;
-  const double alpha_norm = cone_rank + 1.0;  // cached, constant
+  const double alpha_norm = cone_rank + 1.0;
+  bool skip_Q = false;  // set true after first iteration if Q=0
   kkt.SetScaling(W);
   kkt.AssembleAndFactor();
   int total_fac = 1;
@@ -451,15 +452,19 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       // Build f0 = x0 - e1*x_theta, h = x1 - n1*x_theta.
       Eigen::VectorXd f0_vec = decomp.x0 - e1 * decomp.x_theta;
       Eigen::VectorXd h_vec = decomp.x1 - n1 * decomp.x_theta;
-      auto f0_rhs = kkt.MakeSolverRHS(); f0_rhs = kkt.MakeBlockVariable(f0_vec);
-      auto h_rhs = kkt.MakeSolverRHS(); h_rhs = kkt.MakeBlockVariable(h_vec);
 
-      // Q inner products (three terms, all stable).
-      auto Qf0 = kkt.MakeSolverRHS(); Qf0.SetZero(); kkt.AccumulateQx(f0_rhs, Qf0);
-      auto Qh = kkt.MakeSolverRHS(); Qh.SetZero(); kkt.AccumulateQx(h_rhs, Qh);
-      double qff = Qf0.dot(f0_rhs);  // f0'Qf0
-      double qfh = Qf0.dot(h_rhs);   // f0'Qh
-      double qhh = Qh.dot(h_rhs);    // h'Qh
+      // Q inner products (skip if Q=0 detected on first iteration).
+      double qff = 0, qfh = 0, qhh = 0;
+      if (!skip_Q) {
+        auto f0_rhs = kkt.MakeSolverRHS(); f0_rhs = kkt.MakeBlockVariable(f0_vec);
+        auto h_rhs = kkt.MakeSolverRHS(); h_rhs = kkt.MakeBlockVariable(h_vec);
+        auto Qf0 = kkt.MakeSolverRHS(); Qf0.SetZero(); kkt.AccumulateQx(f0_rhs, Qf0);
+        auto Qh = kkt.MakeSolverRHS(); Qh.SetZero(); kkt.AccumulateQx(h_rhs, Qh);
+        qff = Qf0.dot(f0_rhs);
+        qfh = Qf0.dot(h_rhs);
+        qhh = Qh.dot(h_rhs);
+        if (iter == 0 && qff == 0 && qfh == 0 && qhh == 0) skip_Q = true;
+      }
 
       // Lambda: l0 = lam0 - e1*lam_theta, l1 = lam1 - n1*lam_theta.
       double bTl0_sub = bTl0 - e1 * bTlth;
