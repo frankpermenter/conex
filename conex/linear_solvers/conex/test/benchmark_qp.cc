@@ -150,6 +150,19 @@ void RunBenchmark(const Model& problem, const QPSInfo& info,
         return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true);
       }));
   }
+  for (double ct : {1e-8, 1e-10, 1e-12, 1e-14}) {
+    for (double tv : {1e-8, 1e-10, 1e-12}) {
+      char name[48];
+      snprintf(name, sizeof(name), "TR_t%.0e_c%.0e", tv, ct);
+      if (should_run(name)) {
+        results.push_back(RunAlgo(name, *kkt, cost_rhs, problem, solver,
+          [&, ct, tv](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
+            return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tv, true,
+                DefaultThetaContRPolicy, ct);
+          }));
+      }
+    }
+  }
   if (should_run("ThetaR+gap")) {
     results.push_back(RunAlgo("ThetaR+gap", *kkt, cost_rhs, problem, solver,
       [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {

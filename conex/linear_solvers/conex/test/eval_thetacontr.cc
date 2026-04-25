@@ -127,11 +127,11 @@ std::vector<Config> MakeConfigs() {
     {"dinf_t8_c12",      1e-8,  1e-12, dinf_policy,   0.1},
     {"noW_t8",           1e-8,  1e30,  never_center,  0.0},
 
-    // Theta-rate sweep (gap policy, tol=1e-8, compl_tol=1e-12).
-    {"rate_0.5",         1e-8,  1e-12, gap_policy,    0.5},
-    {"rate_0.1",         1e-8,  1e-12, gap_policy,    0.1},
-    {"rate_0.01",        1e-8,  1e-12, gap_policy,    0.01},
-    {"rate_off",         1e-8,  1e-12, gap_policy,    0.0},
+    // Theta-rate sweep (gap policy, tol=1e-12, compl_tol=1e-12).
+    {"rate_0.5",         1e-12, 1e-12, gap_policy,    0.5},
+    {"rate_0.1",         1e-12, 1e-12, gap_policy,    0.1},
+    {"rate_0.01",        1e-12, 1e-12, gap_policy,    0.01},
+    {"rate_off",         1e-12, 1e-12, gap_policy,    0.0},
 
     // compl_tol sweep (gap policy, tol=1e-8, theta_rate=0.1).
     {"gap_t8_c8",        1e-8,  1e-8,  gap_policy,    0.1},
