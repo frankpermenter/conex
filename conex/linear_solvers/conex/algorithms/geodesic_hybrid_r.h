@@ -133,7 +133,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     int max_iterations = 500,
     double tolerance = 1e-8,
     bool verbose = false,
-    ThetaContRSwitchPolicy policy = DefaultThetaContRPolicy);
+    ThetaContRSwitchPolicy policy = DefaultThetaContRPolicy,
+    double compl_tol = 1e-12);
 
 // Original HybridR: theta = |gap|/m heuristic.
 GeodesicResult SolveGeodesicHybridR(

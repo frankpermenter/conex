@@ -11,13 +11,15 @@ struct ThetaContinuationR {
   int max_iterations = 500;
   bool verbose = false;
   ThetaContRSwitchPolicy policy = DefaultThetaContRPolicy;
+  double compl_tol = 1e-12;
 
   GeodesicResult Run(KKTSolverBase& kkt,
                      const SolverRHS& cost_rhs) const {
     RowSpace W = kkt.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicThetaContinuationR(
-        kkt, cost_rhs, W, max_iterations, tolerance, verbose, policy);
+        kkt, cost_rhs, W, max_iterations, tolerance, verbose, policy,
+        compl_tol);
   }
 };
 

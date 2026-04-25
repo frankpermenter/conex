@@ -288,7 +288,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     int max_iterations,
     double tolerance,
     bool verbose,
-    ThetaContRSwitchPolicy policy) {
+    ThetaContRSwitchPolicy policy,
+    double compl_tol) {
   RowSpace b = kkt.GetAffineTerm();
   const int m = b.total_rows();
 
@@ -575,7 +576,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     // Once this degrades beyond tolerance, freeze W (only r-updates).
     double alpha_check = dot(ones, ones) + 1.0;
     double compl_err = std::abs(info.gap + r_tau*r_tau - theta * alpha_check);
-    bool w_frozen = (compl_err > tolerance);
+    bool w_frozen = (compl_err > compl_tol);
     bool do_center = !w_frozen && policy(g, d_inf, r_updates_since_fac);
     if (do_center) {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
