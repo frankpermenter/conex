@@ -62,12 +62,14 @@ EvalResult RunConfig(const char* problem_name, const char* config_name,
                      Solver& solver, const Model& model,
                      double tol, double compl_tol,
                      ThetaContRSwitchPolicy policy,
-                     bool verbose) {
+                     bool verbose,
+                     double theta_rate = 0.1) {
   ThetaContinuationR algo;
   algo.tolerance = tol;
   algo.compl_tol = compl_tol;
   algo.verbose = verbose;
   algo.policy = policy;
+  algo.theta_rate = theta_rate;
 
   auto t0 = Clock::now();
   auto raw = algo.Run(*solver.kkt(), solver.MakeCostRHS());
@@ -111,6 +113,7 @@ struct Config {
   double tol;
   double compl_tol;
   ThetaContRSwitchPolicy policy;
+  double theta_rate;
 };
 
 std::vector<Config> MakeConfigs() {
@@ -119,20 +122,25 @@ std::vector<Config> MakeConfigs() {
   auto never_center = [](double, double, int) { return false; };
 
   return {
-    // Switching policies (tol=1e-8, compl_tol=1e-12).
-    {"gap_t8_c12",       1e-8,  1e-12, gap_policy},
-    {"dinf_t8_c12",      1e-8,  1e-12, dinf_policy},
-    {"noW_t8",           1e-8,  1e30,  never_center},
+    // Switching policies (tol=1e-8, compl_tol=1e-12, theta_rate=0.1).
+    {"gap_t8_c12",       1e-8,  1e-12, gap_policy,    0.1},
+    {"dinf_t8_c12",      1e-8,  1e-12, dinf_policy,   0.1},
+    {"noW_t8",           1e-8,  1e30,  never_center,  0.0},
 
-    // compl_tol sweep (gap policy, tol=1e-8).
-    {"gap_t8_c8",        1e-8,  1e-8,  gap_policy},
-    {"gap_t8_c10",       1e-8,  1e-10, gap_policy},
-    {"gap_t8_c14",       1e-8,  1e-14, gap_policy},
-    {"gap_t8_cINF",      1e-8,  1e30,  gap_policy},
+    // Theta-rate sweep (gap policy, tol=1e-8, compl_tol=1e-12).
+    {"rate_0.5",         1e-8,  1e-12, gap_policy,    0.5},
+    {"rate_0.1",         1e-8,  1e-12, gap_policy,    0.1},
+    {"rate_0.01",        1e-8,  1e-12, gap_policy,    0.01},
+    {"rate_off",         1e-8,  1e-12, gap_policy,    0.0},
 
-    // tol sweep (gap policy, compl_tol=1e-12).
-    {"gap_t10_c12",      1e-10, 1e-12, gap_policy},
-    {"gap_t12_c12",      1e-12, 1e-12, gap_policy},
+    // compl_tol sweep (gap policy, tol=1e-8, theta_rate=0.1).
+    {"gap_t8_c8",        1e-8,  1e-8,  gap_policy,    0.1},
+    {"gap_t8_c10",       1e-8,  1e-10, gap_policy,    0.1},
+    {"gap_t8_cINF",      1e-8,  1e30,  gap_policy,    0.1},
+
+    // tol sweep (gap policy, compl_tol=1e-12, theta_rate=0.1).
+    {"gap_t10_c12",      1e-10, 1e-12, gap_policy,    0.1},
+    {"gap_t12_c12",      1e-12, 1e-12, gap_policy,    0.1},
   };
 }
 
@@ -299,7 +307,7 @@ int main(int argc, char* argv[]) {
         auto result = conex::RunConfig(
             prob.name.c_str(), cfg.name,
             solver, prob.model,
-            cfg.tol, cfg.compl_tol, cfg.policy, verbose);
+            cfg.tol, cfg.compl_tol, cfg.policy, verbose, cfg.theta_rate);
         result.objective += prob.objective_constant;
         conex::PrintResult(result);
         all_results.push_back(result);

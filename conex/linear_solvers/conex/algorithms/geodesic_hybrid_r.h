@@ -126,6 +126,7 @@ inline bool DefaultThetaContRPolicy(double, double d_inf, int) {
   return d_inf > 1.0;
 }
 
+
 GeodesicResult SolveGeodesicThetaContinuationR(
     KKTSolverBase& kkt,
     const SolverRHS& cost_rhs,
@@ -134,7 +135,9 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     double tolerance = 1e-8,
     bool verbose = false,
     ThetaContRSwitchPolicy policy = DefaultThetaContRPolicy,
-    double compl_tol = 1e-12);
+    double compl_tol = 1e-12,
+    double theta_rate = 0.1);  // center if theta hasn't decreased by this
+                                // factor since last W-update (0 = disabled)
 
 // Original HybridR: theta = |gap|/m heuristic.
 GeodesicResult SolveGeodesicHybridR(

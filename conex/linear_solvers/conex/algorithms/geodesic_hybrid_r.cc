@@ -289,7 +289,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     double tolerance,
     bool verbose,
     ThetaContRSwitchPolicy policy,
-    double compl_tol) {
+    double compl_tol,
+    double theta_rate) {
   RowSpace b = kkt.GetAffineTerm();
   const int m = b.total_rows();
 
@@ -334,6 +335,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   RowSpace last_delta = kkt.MakeRowSpace();
   bool need_decomp = true;
   HybridRDecomposition decomp;
+  double theta_at_last_w = 1.0;  // theta when last W-update happened
 
   for (int iter = 0; iter < max_iterations; ++iter) {
     if (need_decomp) {
@@ -586,16 +588,26 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     double tau_kappa_check = r_tau*r_tau*(1.0 - d_tau*d_tau);
     double compl_err = std::abs(info.gap + tau_kappa_check - theta * alpha_check);
     bool w_frozen = (compl_err > compl_tol);
-    bool do_center = !w_frozen && policy(g, d_inf, r_updates_since_fac);
+
+    // Theta-rate check: center if theta hasn't decreased enough since
+    // last W-update.  After at least 2 r-updates, if |theta| > theta_rate *
+    // |theta_at_last_w|, the r-updates are stalling and a W-update is needed.
+    bool theta_stalled = false;
+    if (theta_rate > 0 && r_updates_since_fac >= 2) {
+      theta_stalled = (std::abs(theta) > theta_rate * std::abs(theta_at_last_w));
+    }
+
+    bool do_center = !w_frozen && (policy(g, d_inf, r_updates_since_fac)
+                                    || theta_stalled);
     if (do_center) {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       updateAutomorphism(W, r, alpha, d);
-      // Update w_tau with geodesic step.
       w_tau *= std::exp(d_tau * alpha);
       kkt.SetScaling(W);
       if (!kkt.AssembleAndFactor()) break;
       total_fac++;
       r_updates_since_fac = 0;
+      theta_at_last_w = theta;
       need_decomp = true;
     } else {
       shrinkR(r, delta);

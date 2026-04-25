@@ -12,6 +12,7 @@ struct ThetaContinuationR {
   bool verbose = false;
   ThetaContRSwitchPolicy policy = DefaultThetaContRPolicy;
   double compl_tol = 1e-12;
+  double theta_rate = 0.1;  // center if theta hasn't decreased by this factor
 
   GeodesicResult Run(KKTSolverBase& kkt,
                      const SolverRHS& cost_rhs) const {
@@ -19,7 +20,7 @@ struct ThetaContinuationR {
     setOnes(W);
     return SolveGeodesicThetaContinuationR(
         kkt, cost_rhs, W, max_iterations, tolerance, verbose, policy,
-        compl_tol);
+        compl_tol, theta_rate);
   }
 };
 
