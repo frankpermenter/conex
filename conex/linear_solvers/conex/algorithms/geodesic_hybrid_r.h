@@ -79,6 +79,9 @@ struct HybridRDecomposition {
   // Raw three-solve components for joint (tau, theta) selection.
   Eigen::VectorXd x0, x1, x_theta;
   RowSpace lam0, lam1, lam_theta;
+
+  // Cached A*x products (avoid recomputing in SetTheta).
+  RowSpace ax0, ax1, ax_theta;
 };
 
 // Compute the three-solve decomposition at (W, r).
@@ -92,8 +95,15 @@ HybridRDecomposition ComputeHybridRDecomposition(
     const RowSpace& W,
     const RowSpace& r);
 
+// Re-solve only x0 after an r-update (x1 and x_theta are unchanged).
+// Returns 1 (number of solves performed).
+int UpdateX0(HybridRDecomposition& decomp,
+             KKTSolverBase& kkt,
+             const RowSpace& W,
+             const RowSpace& r);
+
 // Update the two-term combination (y_center, y_cost, delta_center, delta_cost)
-// at a given theta.  Uses the raw three-solve components.
+// at a given theta.  Uses cached ax0, ax_theta — no MultiplyA needed.
 void SetTheta(HybridRDecomposition& decomp,
               KKTSolverBase& kkt,
               const RowSpace& b,

@@ -204,16 +204,14 @@ HybridRDecomposition ComputeHybridRDecomposition(
   auto row = kkt.MakeRowSpace(3);
   kkt.MultiplyA(y, row);
 
-  RowSpace ax0 = kkt.MakeRowSpace();
-  RowSpace ax1 = kkt.MakeRowSpace();
-  RowSpace ax_th = kkt.MakeRowSpace();
-  ax0.col() = row.col(0);
-  ax1.col() = row.col(1);
-  ax_th.col() = row.col(2);
-
   HybridRDecomposition decomp;
+  decomp.ax0 = kkt.MakeRowSpace();
+  decomp.ax1 = kkt.MakeRowSpace();
+  decomp.ax_theta = kkt.MakeRowSpace();
+  decomp.ax0.col() = row.col(0);
+  decomp.ax1.col() = row.col(1);
+  decomp.ax_theta.col() = row.col(2);
 
-  // Store raw three-solve components.
   decomp.x0 = y_dense.col(0);
   decomp.x1 = y_dense.col(1);
   decomp.x_theta = y_dense.col(2);
@@ -231,11 +229,11 @@ HybridRDecomposition ComputeHybridRDecomposition(
   RowSpace Psqrt2r = quadraticRepresentation(sqrtW, r);
   Psqrt2r *= 2.0;
   decomp.lam0 = addScaled(Psqrt2r,
-      quadraticRepresentation(W, ax0), 1.0, -1.0);
-  RowSpace arg1 = addScaled(ax1, b, 1.0, 1.0);
+      quadraticRepresentation(W, decomp.ax0), 1.0, -1.0);
+  RowSpace arg1 = addScaled(decomp.ax1, b, 1.0, 1.0);
   decomp.lam1 = quadraticRepresentation(W, arg1);
   decomp.lam1 *= -1.0;
-  RowSpace arg_th = addScaled(ax_th, e_minus_b, 1.0, 1.0);
+  RowSpace arg_th = addScaled(decomp.ax_theta, e_minus_b, 1.0, 1.0);
   decomp.lam_theta = quadraticRepresentation(W, arg_th);
   decomp.lam_theta *= -1.0;
 
@@ -247,6 +245,33 @@ HybridRDecomposition ComputeHybridRDecomposition(
   return decomp;
 }
 
+int UpdateX0(HybridRDecomposition& decomp,
+             KKTSolverBase& kkt,
+             const RowSpace& W,
+             const RowSpace& r) {
+  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  RowSpace v = quadraticRepresentation(sqrtW, r);
+  v *= 2.0;
+  auto rhs0 = kkt.MakeSolverRHS();
+  rhs0.SetZero();
+  kkt.AccumulateAtranspose(v, rhs0);
+  kkt.SolveSolverRHS(rhs0);
+
+  int nv = kkt.number_of_variables();
+  decomp.x0.resize(nv);
+  rhs0.supernodes->GatherInto(decomp.x0);
+
+  kkt.MultiplyA(rhs0, decomp.ax0);
+
+  // Update lam0 = P(W^{1/2})(2r) - P(W)(A*x0).
+  RowSpace Psqrt2r = quadraticRepresentation(sqrtW, r);
+  Psqrt2r *= 2.0;
+  decomp.lam0 = addScaled(Psqrt2r,
+      quadraticRepresentation(W, decomp.ax0), 1.0, -1.0);
+
+  return 1;  // 1 solve
+}
+
 void SetTheta(HybridRDecomposition& decomp,
               KKTSolverBase& kkt,
               const RowSpace& b,
@@ -256,13 +281,12 @@ void SetTheta(HybridRDecomposition& decomp,
   decomp.y_center = decomp.x0 + theta * decomp.x_theta;
   decomp.y_cost = decomp.x1;
 
+  // delta_center = r - P(W^{1/2})(A*f + theta*(e-b))
+  // Use cached A*x0, A*x_theta: A*f = A*x0 + theta*A*x_theta.
   RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-  RowSpace ones = kkt.MakeRowSpace(); setOnes(ones);
-  RowSpace e_minus_b = addScaled(ones, b, 1.0, -1.0);
-  auto f_rhs = kkt.MakeSolverRHS();
-  f_rhs = kkt.MakeBlockVariable(decomp.y_center);
-  RowSpace Af = kkt.MakeRowSpace();
-  kkt.MultiplyA(f_rhs, Af);
+  RowSpace ones_v = kkt.MakeRowSpace(); setOnes(ones_v);
+  RowSpace e_minus_b = addScaled(ones_v, b, 1.0, -1.0);
+  RowSpace Af = addScaled(decomp.ax0, decomp.ax_theta, 1.0, theta);
   RowSpace dc_arg = addScaled(Af, e_minus_b, 1.0, theta);
   decomp.delta_center = addScaled(r,
       quadraticRepresentation(sqrtW, dc_arg), 1.0, -1.0);
@@ -311,9 +335,9 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   setOnes(r);
   double theta = 1.0;
   double tau = 1.0;
-  double w_tau = 1.0;   // tau scaling (like W for cone variables)
-  double r_tau = 1.0;   // tau centering parameter (like r for cone variables)
-
+  double w_tau = 1.0;
+  double r_tau = 1.0;
+  const double alpha_norm = cone_rank + 1.0;  // cached, constant
   kkt.SetScaling(W);
   kkt.AssembleAndFactor();
   int total_fac = 1;
@@ -333,16 +357,25 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   }
 
   RowSpace last_delta = kkt.MakeRowSpace();
+  RowSpace d_vec = kkt.MakeRowSpace();      // pre-allocated direction
+  RowSpace delta_vec = kkt.MakeRowSpace();   // pre-allocated delta
   bool need_decomp = true;
+  bool full_decomp = true;  // true = all 3 solves, false = only x0
   HybridRDecomposition decomp;
   double theta_at_last_w = 1.0;
-  double d_tau = 0;  // tau direction, persists across iterations
+  double d_tau = 0;
 
   for (int iter = 0; iter < max_iterations; ++iter) {
     if (need_decomp) {
-      decomp = ComputeHybridRDecomposition(kkt, cost_rhs, b, W, r);
-      total_sol += 3;
+      if (full_decomp) {
+        decomp = ComputeHybridRDecomposition(kkt, cost_rhs, b, W, r);
+        total_sol += 3;
+      } else {
+        // Only r changed — re-solve x0, keep x1 and x_theta.
+        total_sol += UpdateX0(decomp, kkt, W, r);
+      }
       need_decomp = false;
+      full_decomp = false;
 
       // Joint (tau', theta) selection from gap + normalization.
       // Gap: b'lambda + c'x + x'Qx/tau + kappa = theta*R
@@ -378,8 +411,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double rdTx1 = cTx1 - dot(ones, Ax1_v);
       double rdTxth = cTxth - dot(ones, Axth_v);
       double rg = -(bT_ones + 1.0);
-      // alpha = <e, e> + 1 (trace of identity + 1 for tau/kappa pair).
-      double alpha_norm = dot(ones, ones) + 1.0;
+      // alpha_norm = <e, e> + 1 (cached at init, constant).
 
       double N0 = rpTl0 + rdTx0;
       double N1 = rpTl1 + rdTx1 + rg;
@@ -480,10 +512,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     }
 
     // Evaluate cone direction at current (tau, r, theta).
-    RowSpace d = kkt.MakeRowSpace();
-    RowSpace delta = kkt.MakeRowSpace();
-    auto info = EvalHybridRAtTau(kkt, decomp, r, tau, d, delta);
-    last_delta = delta;
+    auto info = EvalHybridRAtTau(kkt, decomp, r, tau, d_vec, delta_vec);
+    last_delta = delta_vec;
     g = info.gap;
     d_inf = std::max(info.d_inf, std::abs(d_tau));
 
@@ -495,7 +525,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       // Diagnostics: gap equation, normalization, dual residual, complementarity.
       RowSpace sqrtW_v = EuclideanJordanAlgebra::sqrt(W);
       RowSpace lam_v = quadraticRepresentation(sqrtW_v,
-          addScaled(r, delta, 1.0, 1.0));
+          addScaled(r, delta_vec, 1.0, 1.0));
       Eigen::VectorXd x_vec = decomp.y_center + tau * decomp.y_cost;
       auto x_rhs = kkt.MakeSolverRHS();
       x_rhs = kkt.MakeBlockVariable(x_vec);
@@ -545,7 +575,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
     // Complementarity check: gap + r_tau^2 should = theta * alpha.
     // Once this degrades beyond tolerance, freeze W (only r-updates).
-    double alpha_check = dot(ones, ones) + 1.0;
+    double alpha_check = alpha_norm;
     double tau_kappa_check = r_tau*r_tau*(1.0 - d_tau*d_tau);
     double compl_err = std::abs(info.gap + tau_kappa_check - theta * alpha_check);
     bool w_frozen = (compl_err > compl_tol);
@@ -562,7 +592,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
                                     || theta_stalled);
     if (do_center) {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      updateAutomorphism(W, r, alpha, d);
+      updateAutomorphism(W, r, alpha, d_vec);
       w_tau *= std::exp(d_tau * alpha);
       kkt.SetScaling(W);
       if (!kkt.AssembleAndFactor()) break;
@@ -570,8 +600,9 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       r_updates_since_fac = 0;
       theta_at_last_w = theta;
       need_decomp = true;
+      full_decomp = true;  // W changed, need all 3 solves
     } else {
-      shrinkR(r, delta);
+      shrinkR(r, delta_vec);
       // Shrink r_tau: r_tau = r_tau/2 * (1 + |d_tau|).
       // This mirrors shrinkR: r_new = (r + |delta|) / 2 ≈ r*(1+|d|)/2.
       r_tau = 0.5 * r_tau * (1.0 + std::abs(d_tau));
