@@ -44,23 +44,27 @@ def plot_scatter(rows):
     markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'h']
     colors = plt.cm.tab10.colors
 
-    fig, ax = plt.subplots(figsize=(12, 7))
-    for i, c in enumerate(configs):
-        crows = [r for r in rows if r['config'] == c and r['stationarity'] > 0]
-        x = [r['factorizations'] for r in crows]
-        y = [math.log10(r['stationarity']) for r in crows]
-        ax.scatter(x, y, label=c, marker=markers[i % len(markers)],
-                   color=colors[i % len(colors)], alpha=0.7, s=40)
+    for x_key, x_label, fname in [
+        ('factorizations', 'Factorizations', 'scatter_fac_vs_stat.png'),
+        ('time_ms', 'Wall Clock Time (ms)', 'scatter_time_vs_stat.png'),
+    ]:
+        fig, ax = plt.subplots(figsize=(12, 7))
+        for i, c in enumerate(configs):
+            crows = [r for r in rows if r['config'] == c and r['stationarity'] > 0]
+            x = [r[x_key] for r in crows]
+            y = [math.log10(r['stationarity']) for r in crows]
+            ax.scatter(x, y, label=c, marker=markers[i % len(markers)],
+                       color=colors[i % len(colors)], alpha=0.7, s=40)
 
-    ax.set_xlabel('Factorizations')
-    ax.set_ylabel('log10(stationarity)')
-    ax.set_title('ThetaContR: Compute Effort vs Solution Quality')
-    ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
-    ax.grid(True, alpha=0.3)
-    ax.axhline(y=-8, color='gray', linestyle='--', alpha=0.5, label='tol=1e-8')
-    fig.tight_layout()
-    fig.savefig('scatter_fac_vs_stat.png', dpi=150)
-    print("Wrote scatter_fac_vs_stat.png")
+        ax.set_xlabel(x_label)
+        ax.set_ylabel('log10(stationarity)')
+        ax.set_title(f'ThetaContR: {x_label} vs Solution Quality')
+        ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
+        ax.grid(True, alpha=0.3)
+        ax.axhline(y=-8, color='gray', linestyle='--', alpha=0.5)
+        fig.tight_layout()
+        fig.savefig(fname, dpi=150)
+        print(f"Wrote {fname}")
 
 def plot_performance_profile(rows):
     """Performance profile: for each fac budget, fraction of problems
@@ -104,6 +108,46 @@ def plot_performance_profile(rows):
     fig.savefig('performance_profile.png', dpi=150, bbox_inches='tight')
     print("Wrote performance_profile.png")
 
+def plot_performance_profile_time(rows):
+    """Performance profile by wall clock time."""
+    configs = sorted(set(r['config'] for r in rows))
+    colors = plt.cm.tab10.colors
+    linestyles = ['-', '--', '-.', ':', '-', '--', '-.', ':', '-']
+
+    thresholds = [1e-2, 1e-6, 1e-10]
+    fig, axes = plt.subplots(1, len(thresholds), figsize=(5*len(thresholds), 5))
+    if len(thresholds) == 1:
+        axes = [axes]
+
+    time_budgets = [1, 2, 5, 10, 15, 20, 30, 50]
+
+    for ax, thresh in zip(axes, thresholds):
+        for i, c in enumerate(configs):
+            crows = [r for r in rows if r['config'] == c]
+            n_total = len(crows)
+            fracs = []
+            for t in time_budgets:
+                solved = sum(1 for r in crows
+                             if r['time_ms'] <= t
+                             and r['stationarity'] >= 0
+                             and r['stationarity'] < thresh)
+                fracs.append(solved / max(n_total, 1))
+            ax.plot(time_budgets, fracs, label=c,
+                    color=colors[i % len(colors)],
+                    linestyle=linestyles[i % len(linestyles)],
+                    linewidth=1.5)
+        ax.set_xlabel('Max Time (ms)')
+        ax.set_ylabel('Fraction Solved')
+        ax.set_title(f'stat < {thresh:.0e}')
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim(-0.05, 1.05)
+
+    axes[-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=7)
+    fig.suptitle('Performance Profile by Time: ThetaContR Configurations', y=1.02)
+    fig.tight_layout()
+    fig.savefig('performance_profile_time.png', dpi=150, bbox_inches='tight')
+    print("Wrote performance_profile_time.png")
+
 def plot_per_problem(rows):
     """Per-problem bar chart: factorizations by config."""
     configs = sorted(set(r['config'] for r in rows))
@@ -133,6 +177,134 @@ def plot_per_problem(rows):
     fig.tight_layout()
     fig.savefig('fac_per_problem.png', dpi=150, bbox_inches='tight')
     print("Wrote fac_per_problem.png")
+
+def plot_theta_convergence(rows):
+    """Plot theta vs iteration for each problem, comparing configs."""
+    import os
+    import glob
+
+    configs = sorted(set(r['config'] for r in rows))
+    problems = sorted(set(r['problem'] for r in rows))
+    colors = plt.cm.tab10.colors
+    linestyles = ['-', '--', '-.', ':', '-', '--', '-.', ':', '-']
+
+    # Find all theta trace files.
+    trace_files = glob.glob("theta_trace_*.csv")
+    if not trace_files:
+        print("No theta_trace_*.csv files found, skipping theta plots")
+        return
+
+    # Group by problem.
+    traces = defaultdict(dict)  # traces[problem][config] = [(iter, theta, fac), ...]
+    for f in trace_files:
+        # Parse filename: theta_trace_<problem>_<config>.csv
+        base = os.path.basename(f).replace("theta_trace_", "").replace(".csv", "")
+        # Find the config suffix.
+        for c in configs:
+            if base.endswith("_" + c):
+                prob = base[:-(len(c)+1)]
+                with open(f) as fh:
+                    reader = csv.DictReader(fh)
+                    data = []
+                    for row in reader:
+                        data.append((int(row['iter']),
+                                     float(row['theta']),
+                                     int(row['factorizations'])))
+                    traces[prob][c] = data
+                break
+
+    if not traces:
+        print("Could not parse theta trace files")
+        return
+
+    # Select a subset of interesting problems.
+    interesting = [p for p in problems if p in traces and len(traces[p]) > 1]
+    if len(interesting) > 12:
+        interesting = interesting[:12]
+
+    n_plots = len(interesting)
+    if n_plots == 0:
+        return
+
+    cols = min(4, n_plots)
+    plot_rows = (n_plots + cols - 1) // cols
+
+    # Plot 1: theta vs iteration.
+    fig, axes = plt.subplots(plot_rows, cols, figsize=(4*cols, 3*plot_rows))
+    if plot_rows == 1 and cols == 1:
+        axes = [[axes]]
+    elif plot_rows == 1:
+        axes = [axes]
+    elif cols == 1:
+        axes = [[ax] for ax in axes]
+
+    for idx, prob in enumerate(interesting):
+        r, c_idx = idx // cols, idx % cols
+        ax = axes[r][c_idx]
+        for i, cfg in enumerate(configs):
+            if cfg in traces[prob]:
+                data = traces[prob][cfg]
+                iters = [d[0] for d in data]
+                thetas = [abs(d[1]) + 1e-20 for d in data]  # abs for log
+                ax.semilogy(iters, thetas, label=cfg,
+                           color=colors[i % len(colors)],
+                           linestyle=linestyles[i % len(linestyles)],
+                           linewidth=1, alpha=0.8)
+        ax.set_title(prob, fontsize=9)
+        ax.set_xlabel('Iteration', fontsize=7)
+        ax.set_ylabel('|theta|', fontsize=7)
+        ax.tick_params(labelsize=6)
+        ax.grid(True, alpha=0.3)
+        ax.set_xlim(left=0)
+
+    # Hide empty axes.
+    for idx in range(n_plots, plot_rows * cols):
+        r, c_idx = idx // cols, idx % cols
+        axes[r][c_idx].set_visible(False)
+
+    axes[0][-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=6)
+    fig.suptitle('Theta Convergence by Problem and Config', fontsize=12)
+    fig.tight_layout()
+    fig.savefig('theta_convergence.png', dpi=150, bbox_inches='tight')
+    print("Wrote theta_convergence.png")
+
+    # Plot 2: theta vs factorizations.
+    fig2, axes2 = plt.subplots(plot_rows, cols, figsize=(4*cols, 3*plot_rows))
+    if plot_rows == 1 and cols == 1:
+        axes2 = [[axes2]]
+    elif plot_rows == 1:
+        axes2 = [axes2]
+    elif cols == 1:
+        axes2 = [[ax] for ax in axes2]
+
+    for idx, prob in enumerate(interesting):
+        r, c_idx = idx // cols, idx % cols
+        ax = axes2[r][c_idx]
+        for i, cfg in enumerate(configs):
+            if cfg in traces[prob]:
+                data = traces[prob][cfg]
+                facs = [d[2] for d in data]
+                thetas = [abs(d[1]) + 1e-20 for d in data]
+                ax.semilogy(facs, thetas, label=cfg,
+                           color=colors[i % len(colors)],
+                           linestyle=linestyles[i % len(linestyles)],
+                           linewidth=1, alpha=0.8)
+        ax.set_title(prob, fontsize=9)
+        ax.set_xlabel('Factorizations', fontsize=7)
+        ax.set_ylabel('|theta|', fontsize=7)
+        ax.tick_params(labelsize=6)
+        ax.grid(True, alpha=0.3)
+        ax.set_xlim(left=0)
+
+    for idx in range(n_plots, plot_rows * cols):
+        r, c_idx = idx // cols, idx % cols
+        axes2[r][c_idx].set_visible(False)
+
+    axes2[0][-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=6)
+    fig2.suptitle('Theta Convergence vs Factorizations', fontsize=12)
+    fig2.tight_layout()
+    fig2.savefig('theta_vs_fac.png', dpi=150, bbox_inches='tight')
+    print("Wrote theta_vs_fac.png")
 
 def print_ascii_tables(rows):
     """Print ASCII summary tables."""
@@ -184,7 +356,9 @@ def main():
     if HAS_MPL:
         plot_scatter(rows)
         plot_performance_profile(rows)
+        plot_performance_profile_time(rows)
         plot_per_problem(rows)
+        plot_theta_convergence(rows)
     else:
         print("\nInstall matplotlib for PNG plots: pip install matplotlib")
 

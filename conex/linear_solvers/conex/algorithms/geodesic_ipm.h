@@ -48,6 +48,8 @@ struct GeodesicIterStats {
   double complementarity;  // mu * (rank - d_sqr)
   int r_updates = 0;       // r-updates since last factorization (hybrid)
   double min_slack = 0;    // min(r_i - |r_i * d_i|)
+  double theta = 0;        // homotopy parameter (ThetaContR)
+  int factorizations = 0;  // cumulative factorizations at this iteration
 };
 
 struct OptimalityReport {

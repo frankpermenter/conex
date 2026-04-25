@@ -70,12 +70,32 @@ EvalResult RunConfig(const char* problem_name, const char* config_name,
   algo.policy = policy;
 
   auto t0 = Clock::now();
-  auto result = solver.Solve(algo);
+  auto raw = algo.Run(*solver.kkt(), solver.MakeCostRHS());
   auto t1 = Clock::now();
   double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
+  // Extract solution via Solver for residuals.
+  auto result = solver.Solve(algo);
+
   double stat = result.duals.stationarity_gradient.size() > 0 ?
       result.duals.stationarity_gradient.norm() : -1;
+
+  // Save theta trace to CSV.
+  {
+    char fname[128];
+    snprintf(fname, sizeof(fname), "theta_trace_%s_%s.csv",
+             problem_name, config_name);
+    FILE* f = fopen(fname, "w");
+    if (f) {
+      fprintf(f, "iter,theta,mu,d_inf,gap,factorizations\n");
+      for (int i = 0; i < (int)raw.iter_stats.size(); i++) {
+        const auto& s = raw.iter_stats[i];
+        fprintf(f, "%d,%.15e,%.15e,%.15e,%.15e,%d\n",
+                i, s.theta, s.mu, s.d_inf, s.complementarity, s.factorizations);
+      }
+      fclose(f);
+    }
+  }
 
   return {problem_name, config_name, result.factorizations,
           result.iterations, result.objective, stat,

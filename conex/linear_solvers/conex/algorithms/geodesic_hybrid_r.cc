@@ -496,6 +496,10 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     g = info.gap;
     d_inf = std::max(info.d_inf, std::abs(d_tau));
 
+    // Record per-iteration stats.
+    result.iter_stats.push_back({squaredNorm(r) / m, d_inf, info.d_sq,
+        g, r_updates_since_fac, info.min_slack, theta, total_fac});
+
     if (verbose) {
       RowSpace sqrtW_v = EuclideanJordanAlgebra::sqrt(W);
       RowSpace lam_v = quadraticRepresentation(sqrtW_v,
