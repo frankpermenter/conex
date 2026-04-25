@@ -583,6 +583,14 @@ target_link_libraries(compare_embedding
 )
 target_compile_options(compare_embedding PRIVATE -O2)
 
+add_executable(test_thetacontr conex/test/test_thetacontr.cc)
+target_link_libraries(test_thetacontr
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+target_compile_options(test_thetacontr PRIVATE -O2)
+
 add_executable(tree_structure_test conex/test/tree_structure_test.cc)
 target_link_libraries(tree_structure_test
   algorithms constraints sparse_linear_constraint

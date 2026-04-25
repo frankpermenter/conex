@@ -204,6 +204,19 @@ Hence $\delta(1) = \delta_c + \delta_c \cdot 1 = \delta_c - \delta_c = 0$,\;
 $x(1) = f + g = 0$,\; and
 $\lambda(1) = \PW(e + 0) = e$.\;\checkmark
 
+\section{Tau as a cone variable}
+
+The homogenization parameter $\tau$ is treated as a scalar cone
+variable with its own scaling $w_\tau$, centering parameter $r_\tau$,
+and direction $d_\tau$:
+\begin{equation}\label{eq:tau-param}
+  \tau = w_\tau \, r_\tau \, (1 + d_\tau).
+\end{equation}
+The complementary variable is $\kappa = w_\tau^{-1} r_\tau (1-d_\tau)$,
+giving $\tau\,\kappa = r_\tau^2(1-d_\tau^2)$.
+
+Initialization: $w_\tau = 1$, $r_\tau = 1$.
+
 \section{Joint $(\tau,\theta)$ selection}
 
 We select $\tau$ and $\theta$ simultaneously from two equations:
@@ -218,24 +231,16 @@ and $x(\tau,\theta) = x_0 + \tau\,x_1 + \theta\,x_\theta$
 (before collapsing to the two-term form).
 
 \paragraph{Gap equation.}
-The duality identity (with $\mu = \theta$) in homogenized variables:
+The duality identity in homogenized variables, with
+$r_\tau^2/\tau$ replacing $\theta/\tau$:
 \begin{equation}\label{eq:duality}
-  b^T \lambda + c^T x + \frac{x^T Q x}{\tau} + \frac{\theta}{\tau}
+  b^T \lambda + c^T x + \frac{x^T Q x}{\tau}
+    + \frac{r_\tau^2}{\tau}
   = \theta\,R,
 \end{equation}
-where $R = \ip{b}{e} + 1$.  Define
-\begin{align}
-  G_i &= b^T \lambda_i + c^T x_i, \quad i \in \{0, 1, \theta\}. \notag
-\end{align}
-For $Q = 0$ (LP case), substituting
-$\lambda = \lambda_0 + \tau\lambda_1 + \theta\lambda_\theta$ and
-$x = x_0 + \tau x_1 + \theta x_\theta$ into \eqref{eq:duality}
-and multiplying by~$\tau$ gives
-\begin{equation}\label{eq:gap-expanded}
-  G_1\,\tau^2 + G_0\,\tau + G_\theta\,\tau\,\theta + \theta = 0,
-\end{equation}
-where $G_\theta$ absorbs the $-R$ from the right-hand side:
-$G_\theta = b^T\lambda_\theta + c^T x_\theta - R$.
+where $R = \ip{b}{e} + 1$.  The substitution $r_\tau^2/\tau$
+decouples $\theta$ from the complementarity term; $r_\tau$ tracks
+the centering of the $\tau$ variable independently.
 
 \paragraph{Normalization equation.}
 At the fixed point $(\hat x = e,\, \hat\lambda = e,\,
@@ -244,7 +249,7 @@ At the fixed point $(\hat x = e,\, \hat\lambda = e,\,
   r_p &= b - e, &
   r_d &= c - A^T e, &
   r_g &= -(b^T e + 1), &
-  \alpha &= m + 1. \notag
+  \alpha &= \ip{e}{e} + 1. \notag
 \end{align}
 The normalization constraint is
 \begin{equation}\label{eq:norm}
@@ -261,58 +266,84 @@ where
   N_\theta &= r_p^T \lambda_\theta + r_d^T x_\theta. \notag
 \end{align}
 
+\paragraph{Complementarity identity.}
+At any point, the total complementarity satisfies
+\begin{equation}\label{eq:compl-id}
+  \underbrace{\|r\|^2 - \|\delta\|^2}_{\text{gap}}
+  + r_\tau^2 = \theta\,\alpha.
+\end{equation}
+
 \subsection{Eliminating $\theta$}
 
 From the normalization \eqref{eq:norm-expanded}:
 \begin{equation}\label{eq:theta-from-norm}
-  \theta = \frac{-\alpha - N_0 - N_1\,\tau}{N_\theta}.
+  \theta(\tau) = \frac{-\alpha - N_0 - N_1\,\tau}{N_\theta}.
 \end{equation}
-Substituting into the gap equation \eqref{eq:gap-expanded}
-and multiplying by $N_\theta$:
-\[
-  G_1 N_\theta\,\tau^2 + G_0 N_\theta\,\tau
-  + (G_\theta\,\tau + 1)(-\alpha - N_0 - N_1\,\tau) = 0.
-\]
-Expanding and collecting powers of $\tau$:
+Define $n_1 = N_1/N_\theta$ and $e_1 = (\alpha + N_0)/N_\theta$.
+Substituting $\theta(\tau)$ into \eqref{eq:duality} gives
+$x(\tau) = f_0 + \tau\,h$ where $f_0 = x_0 - e_1\,x_\theta$,
+$h = x_1 - n_1\,x_\theta$.
+
+After substitution, the gap equation $\times\tau$ becomes the
+\emph{violation quadratic}:
 \begin{equation}\label{eq:joint-quad}
   \boxed{\mathcal{A}\,\tau^2 + \mathcal{B}\,\tau + \mathcal{C} = 0,}
 \end{equation}
 with
 \begin{align}
-  \mathcal{A} &= G_1\,N_\theta - G_\theta\,N_1, \label{eq:Acoeff}\\
-  \mathcal{B} &= G_0\,N_\theta - G_\theta\,(\alpha + N_0) - N_1, \label{eq:Bcoeff}\\
-  \mathcal{C} &= -(\alpha + N_0). \label{eq:Ccoeff}
+  \mathcal{A} &= b^T l_1 + c^T h + h^T Q h + R\,n_1, \label{eq:Acoeff}\\
+  \mathcal{B} &= b^T l_0 + c^T f_0 + 2\,f_0^T Q h + R\,e_1, \label{eq:Bcoeff}\\
+  \mathcal{C} &= f_0^T Q f_0 + r_\tau^2, \label{eq:Ccoeff}
 \end{align}
+where $l_0 = \lambda_0 - e_1\,\lambda_\theta$,
+$l_1 = \lambda_1 - n_1\,\lambda_\theta$.
+The $Q$ inner products $(f_0^T Q f_0,\; f_0^T Q h,\; h^T Q h)$
+are computed from the combined vectors $f_0$ and $h$, avoiding
+the six cross-terms of $(x_0, x_1, x_\theta)$ that suffer
+catastrophic cancellation when $x_1 \approx -x_\theta$.
 
-Solve \eqref{eq:joint-quad} for $\tau > 0$, then recover
-$\theta$ from \eqref{eq:theta-from-norm}.
-Finally, form $f = x_0 + \theta\,x_\theta$, $g = x_1$ and
+\subsection{Root selection and $d_\tau$}
+
+Let $\tau'$ be a root of \eqref{eq:joint-quad}.  Compute
+\begin{equation}\label{eq:dtau}
+  d_\tau = \frac{\tau'}{w_\tau\,r_\tau} - 1.
+\end{equation}
+Among the two roots, prefer the one with $\tau' > 0$;
+if both are positive (or both negative), pick the one with
+smaller $|d_\tau|$.
+
+Recover $\theta$ from \eqref{eq:theta-from-norm}, then form
+$f = x_0 + \theta\,x_\theta$, $g = x_1$ and
 $\delta_c$, $\delta_t$ as in Section~3.
 
-\paragraph{Verification: $(\tau,\theta) = (1,1)$ at the fixed point.}
-At $(W=I, r=e)$: $x_0 + x_1 + x_\theta = 0$ and
-$\lambda_0 + \lambda_1 + \lambda_\theta = e$.
-Both equations \eqref{eq:gap-expanded} and \eqref{eq:norm-expanded}
-hold at $(\tau,\theta) = (1,1)$, so $\tau = 1$ is a root
-of~\eqref{eq:joint-quad} and $\theta = 1$ is recovered
-from~\eqref{eq:theta-from-norm}.\;\checkmark
+Set $d_\infty = \max(\|d\|_\infty,\; |d_\tau|)$.
 
 \section{Algorithm: ThetaContinuationR}
 
 \begin{enumerate}
-\item Initialize $W = I$, $r = e$, $\theta = 1$, $\tau = 1$.
+\item Initialize $W = I$, $r = e$, $\theta = 1$, $\tau = 1$,
+      $w_\tau = 1$, $r_\tau = 1$.
 \item Factor $(A^T W^2 A + Q)$.  Compute the three-solve decomposition
       \eqref{eq:x0}--\eqref{eq:xtheta}.
-\item Compute $G_i$, $N_i$ from the decomposition.
-      Solve the joint quadratic \eqref{eq:joint-quad} for~$\tau$,
-      recover $\theta$ from \eqref{eq:theta-from-norm}.
+\item Solve the joint quadratic \eqref{eq:joint-quad} for~$\tau'$.
+      Compute $d_\tau$ from \eqref{eq:dtau}.
+      Recover $\theta$ from \eqref{eq:theta-from-norm}.
       Form $f$, $g$, $\delta_c$, $\delta_t$.
-\item Evaluate $\delta(\tau)$, solve Lyapunov for $d$, compute gap and $\|d\|_\infty$.
-\item If gap $< 0$: \textbf{center} (W-update via geodesic step, refactor).
-\item If gap $\geq 0$: \textbf{r-update} (shrink $r$), recompute
-      decomposition and $(\tau,\theta)$.
-\item Repeat until $\theta < \varepsilon$, $|\text{gap}| < \varepsilon$,
-      $\|d\|_\infty \leq 1$.
+\item Evaluate $\delta(\tau)$, solve Lyapunov for $d$, compute gap
+      and $d_\infty = \max(\|d\|_\infty, |d_\tau|)$.
+\item Check complementarity error:
+      $\varepsilon_c = |\text{gap} + r_\tau^2 - \theta\,\alpha|$.
+      If $\varepsilon_c$ exceeds a threshold, freeze $W$
+      (only r-updates allowed).
+\item \textbf{W-update} (center): geodesic step on $(W, r)$
+      with step size $\alpha = \min(1, 2/d_\infty^2)$,
+      and $w_\tau \gets w_\tau \exp(d_\tau \cdot \alpha)$.
+      Refactor.
+\item \textbf{r-update} (shrink):
+      $r \gets (r + |\delta|)/2$ (component-wise), and
+      $r_\tau \gets r_\tau\,(1 + |d_\tau|)/2$.
+\item Repeat until $|\theta| < \varepsilon$,
+      $|\text{gap}| < \varepsilon$, $d_\infty \leq 1$.
 \end{enumerate}
 
 At convergence, recover $x_{\mathrm{phys}} = x(\tau)/\tau$ and
