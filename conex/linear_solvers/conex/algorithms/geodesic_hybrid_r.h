@@ -1,22 +1,21 @@
 #pragma once
-// Unified geodesic IPM with per-component centering parameter r
-// and theta-continuation.
+// ThetaContR: geodesic IPM with r-parameterization, joint (tau, theta)
+// selection, and tau treated as a cone variable.
+//
+// See doc/hybrid_theta_continuation.tex for the full derivation.
 //
 // Parameterization:
-//   s = P(W^{-1/2})(r - delta)    (primal slack)
-//   lambda = P(W^{1/2})(r + delta) (dual multiplier)
-//   s .* lambda = r^2 - delta^2    (complementarity = gap)
+//   s = P(W^{-1/2})(r - delta),  lambda = P(W^{1/2})(r + delta)
+//   tau = w_tau * r_tau * (1 + d_tau),  kappa = w_tau^{-1} * r_tau * (1 - d_tau)
 //
-// The data is blended via theta:
-//   b_theta = theta * e + (1 - theta) * b
+// Three-solve decomposition (x0, x1, x_theta) at fixed (W, r):
+//   x(tau, theta) = x0 + tau*x1 + theta*x_theta
 //
-// Direction at (W, r, theta):
-//   Solve [A'W²A + Q] y = -(c + A^T P(W)(b_theta)) + 2*A^T P(W^{1/2})(r) + d_eq
-//   delta = r - P(W^{1/2})(b_theta + A*y)
-//   d = solve_lyapunov(r, delta)   [r*d + d*r = 2*delta]
+// Joint (tau, theta) selection from gap + normalization equations.
+// Theta substituted before Q expansion to avoid cancellation.
 //
-// Only W-updates require refactorization.  r-updates and theta-updates
-// are free back-solves.
+// Switching: W-update if gap < 0 or theta progress stalls.
+// Complementarity freeze: stop W-updates when gap + tau*kappa != theta*alpha.
 
 #include <functional>
 #include <Eigen/Dense>
@@ -112,18 +111,18 @@ HybridRDirection EvalHybridRAtTau(
     RowSpace& d,
     RowSpace& delta);
 
-// ThetaContinuation with r-updates interleaved.
+// ThetaContR: joint (tau, theta) selection with r-updates.
 //
-// Uses ThetaContinuation's tau selection (duality identity V(tau)=0,
-// binary search over theta) at each W-update.  Between W-updates,
-// does free r-updates (shrinkR) with theta frozen.  W-updates triggered
-// when gap < 0.
+// Three-solve decomposition + joint quadratic for (tau, theta).
+// tau treated as cone variable with (w_tau, r_tau, d_tau).
+// Complementarity freeze prevents W-updates when numerics degrade.
+// Theta-rate trigger forces W-updates when r-updates stall.
 // Switching policy for ThetaContR: returns true to center (W-update).
 // Arguments: (gap, d_inf, r_updates_since_last_center).
-// Default: center if d_inf > 1.
+// Default: center if gap < 0 (complementarity violation).
 using ThetaContRSwitchPolicy = std::function<bool(double, double, int)>;
-inline bool DefaultThetaContRPolicy(double, double d_inf, int) {
-  return d_inf > 1.0;
+inline bool DefaultThetaContRPolicy(double gap, double, int) {
+  return gap < 0;
 }
 
 
