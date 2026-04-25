@@ -438,9 +438,12 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double cTf0 = cTx0 - e1 * cTxth;
       double cTh = cTx1 - n1 * cTxth;
 
-      double A_coeff = bTl1_sub + cTh + qhh + R*n1;
-      double B_coeff = bTl0_sub + cTf0 + 2*qfh + R*e1;
-      double C_coeff = qff + r_tau2;
+      // tau*kappa = 2*r_tau*tau/w_tau - tau^2/w_tau^2
+      // contributes -1/w_tau^2 to A, +2*r_tau/w_tau to B, 0 to C.
+      double inv_wt = 1.0 / (w_tau > 1e-30 ? w_tau : 1e-30);
+      double A_coeff = bTl1_sub + cTh + qhh + R*n1 - inv_wt*inv_wt;
+      double B_coeff = bTl0_sub + cTf0 + 2*qfh + R*e1 + 2*r_tau*inv_wt;
+      double C_coeff = qff;
 
       // Solve for tau'. Pick root that minimizes |d_tau|.
       double tau_new = tau;
@@ -508,9 +511,9 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double mu = squaredNorm(r) / m;
       double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
       double xQx_over_tau = (tau > 1e-30) ? xQx / tau : 0.0;
-      double r_tau2_over_tau = (tau > 1e-30) ? r_tau*r_tau / tau : 0.0;
+      double kappa_v = r_tau * (1.0 - d_tau) / (w_tau > 1e-30 ? w_tau : 1e-30);
       double eq_err = std::abs(bTl + cTx + xQx_over_tau
-                                + r_tau2_over_tau - theta * R);
+                                + kappa_v - theta * R);
       double half_xQx_phys = (tau > 1e-30) ? 0.5 * xQx / (tau * tau) : 0.0;
       double primal_phys = (tau > 1e-30) ? cTx / tau + half_xQx_phys : 0.0;
       double dual_phys = (tau > 1e-30) ? -(bTl / tau + half_xQx_phys) : 0.0;
@@ -551,7 +554,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double dual_res_norm = dual_res_vec.norm();
 
       // Complementarity check: gap + r_tau^2 = theta * alpha.
-      double total_compl = info.gap + r_tau*r_tau;
+      double tau_kappa = r_tau*r_tau*(1.0 - d_tau*d_tau);
+      double total_compl = info.gap + tau_kappa;
       double alpha_val = dot(ones_v, ones_v) + 1.0;
       double compl_err_v = total_compl - theta * alpha_val;
       printf("  %3d  %10.2e  %10.2e  %8.4f  %8.4f  %12.4e  %12.4e  %12.4e"
@@ -575,7 +579,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     // Complementarity check: gap + r_tau^2 should = theta * alpha.
     // Once this degrades beyond tolerance, freeze W (only r-updates).
     double alpha_check = dot(ones, ones) + 1.0;
-    double compl_err = std::abs(info.gap + r_tau*r_tau - theta * alpha_check);
+    double tau_kappa_check = r_tau*r_tau*(1.0 - d_tau*d_tau);
+    double compl_err = std::abs(info.gap + tau_kappa_check - theta * alpha_check);
     bool w_frozen = (compl_err > compl_tol);
     bool do_center = !w_frozen && policy(g, d_inf, r_updates_since_fac);
     if (do_center) {
