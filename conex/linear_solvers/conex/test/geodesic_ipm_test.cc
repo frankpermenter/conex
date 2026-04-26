@@ -1126,5 +1126,137 @@ TEST(GeodesicSDP, MixedPSDNonnegDisjoint) {
   EXPECT_LE(result2.iterations, 10);
 }
 
+// =====================================================================
+// Spin factor test: SOC(1+n) ≅ face of PSD(k) via Clifford embedding.
+// Build the same problem as SOC and SDP, verify iterations are isomorphic.
+// =====================================================================
+
+// Embed SOC element s = (s0, s1, ..., sn) into Sym(k) via gamma matrices.
+// For n=2, k=2: phi(s0, s1, s2) = s0*I + s1*gamma1 + s2*gamma2
+//   gamma1 = [1,0;0,-1], gamma2 = [0,1;1,0]
+//   phi(s) = [s0+s1, s2; s2, s0-s1]
+static Eigen::SparseMatrix<double> ToSparseMat(const MatrixXd& M) {
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int i = 0; i < M.rows(); ++i)
+    for (int j = 0; j < M.cols(); ++j)
+      if (std::abs(M(i, j)) > 1e-15)
+        trips.emplace_back(i, j, M(i, j));
+  Eigen::SparseMatrix<double> S(M.rows(), M.cols());
+  S.setFromTriplets(trips.begin(), trips.end());
+  return S;
+}
+
+// Gamma matrices for spin factor V_{1,2} embedded in Sym(2).
+static MatrixXd Gamma1_2x2() {
+  MatrixXd g(2, 2);
+  g << 1, 0, 0, -1;
+  return g;
+}
+
+static MatrixXd Gamma2_2x2() {
+  MatrixXd g(2, 2);
+  g << 0, 1, 1, 0;
+  return g;
+}
+
+// phi: R^3 (SOC element) -> Sym(2): phi(t, x1, x2) = t*I + x1*gamma1 + x2*gamma2
+static MatrixXd SpinEmbed(double t, double x1, double x2) {
+  return t * MatrixXd::Identity(2, 2) + x1 * Gamma1_2x2() + x2 * Gamma2_2x2();
+}
+
+// Embed a column of the SOC constraint matrix into a 2x2 PSD constraint matrix.
+static MatrixXd SpinEmbedColumn(const VectorXd& col) {
+  return SpinEmbed(col(0), col(1), col(2));
+}
+
+TEST(SpinFactor, SOCvsSDP_GeodesicLP) {
+  // SOC in R^3 (vec_dim=2), p=2 variables.
+  const int vec_dim = 2, p = 2, seed = 77;
+  srand(seed);
+  const int n_soc = 1 + vec_dim;
+
+  MatrixXd A_dense = MatrixXd::Random(n_soc, p);
+  VectorXd b_vec = VectorXd::Zero(n_soc);
+  b_vec(0) = 1.0;  // SOC identity
+  VectorXd c = A_dense.row(0).transpose();  // centered at W=I, k=1
+
+  // --- Build SOC model ---
+  Eigen::SparseMatrix<double> A_soc = ToSparseMat(A_dense);
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model soc_model;
+  soc_model.AddSOCConstraint(A_soc, b_vec, vars);
+  soc_model.SetLinearCost(c);
+
+  // --- Build SDP model via spin factor embedding ---
+  // PSD constraint: B + sum_j x_j * A_j >= 0 where
+  //   B = phi(b), A_j = phi(column_j of A)
+  const int k = 2;  // Sym(2) for n=2
+  MatrixXd B_psd = SpinEmbed(b_vec(0), b_vec(1), b_vec(2));
+  std::vector<Eigen::SparseMatrix<double>> A_psd_list;
+  for (int j = 0; j < p; ++j) {
+    A_psd_list.push_back(ToSparseMat(SpinEmbedColumn(A_dense.col(j))));
+  }
+
+  Model sdp_model;
+  sdp_model.AddPSDConstraint(A_psd_list, ToSparseMat(B_psd), vars,
+                              /*use_chordal=*/false);
+  sdp_model.SetLinearCost(c);
+
+  // --- Solve both with GeodesicLP ---
+  auto soc_solver = Solver::Build(soc_model);
+  auto* soc_kkt = soc_solver.kkt();
+  auto soc_cost = soc_kkt->MakeSolverRHS();
+  soc_cost = soc_kkt->MakeBlockVariable(c);
+  CompiledModel soc_cm(*soc_kkt, soc_cost);
+  RowSpace soc_W = soc_cm.MakeRowSpace();
+  setOnes(soc_W);
+  auto soc_result = SolveGeodesicLP(soc_cm, soc_W, 30, 0, 1e-8, true);
+
+  auto sdp_solver = Solver::Build(sdp_model);
+  auto* sdp_kkt = sdp_solver.kkt();
+  auto sdp_cost = sdp_kkt->MakeSolverRHS();
+  sdp_cost = sdp_kkt->MakeBlockVariable(c);
+  CompiledModel sdp_cm(*sdp_kkt, sdp_cost);
+  RowSpace sdp_W = sdp_cm.MakeRowSpace();
+  setOnes(sdp_W);
+  auto sdp_result = SolveGeodesicLP(sdp_cm, sdp_W, 30, 0, 1e-8, true);
+
+  printf("\n=== Spin Factor: SOC vs SDP (GeodesicLP) ===\n");
+  printf("SOC: %d fac, %d sol, mu=%.6e, d_inf=%.6e\n",
+         soc_result.total_factorizations, soc_result.total_solves,
+         soc_result.mu, soc_result.d_inf_norm);
+  printf("SDP: %d fac, %d sol, mu=%.6e, d_inf=%.6e\n",
+         sdp_result.total_factorizations, sdp_result.total_solves,
+         sdp_result.mu, sdp_result.d_inf_norm);
+
+  // Verify same primal solution.
+  ASSERT_EQ(soc_result.x.size(), sdp_result.x.size());
+  double x_diff = (soc_result.x - sdp_result.x).norm();
+  printf("||x_soc - x_sdp|| = %.2e\n", x_diff);
+  EXPECT_LT(x_diff, 1e-6);
+
+  // Verify per-iteration d_inf and k match (the Newton steps are isomorphic).
+  // The gap/complementarity may differ slightly due to trace form conventions,
+  // so one solver may take one extra iteration to cross the tolerance.
+  int n_common = std::min(soc_result.iter_stats.size(),
+                          sdp_result.iter_stats.size());
+  printf("\n  %3s  %12s %12s  %12s %12s\n",
+         "it", "soc_d_inf", "sdp_d_inf", "soc_gap", "sdp_gap");
+  for (int i = 0; i < n_common; ++i) {
+    const auto& ss = soc_result.iter_stats[i];
+    const auto& sd = sdp_result.iter_stats[i];
+    printf("  %3d  %12.6e %12.6e  %12.6e %12.6e\n",
+           i, ss.d_inf, sd.d_inf, ss.complementarity, sd.complementarity);
+    EXPECT_NEAR(ss.d_inf, sd.d_inf, 1e-8)
+        << "d_inf mismatch at iteration " << i;
+  }
+
+  // Factorization counts should be within 1 (stopping criterion sensitivity).
+  EXPECT_LE(std::abs(soc_result.total_factorizations -
+                     sdp_result.total_factorizations), 1);
+}
+
 }  // namespace
 }  // namespace conex
