@@ -244,7 +244,7 @@ void PSDConeOps::updateAutomorphismP(double* p, double* r, double alpha,
   Symmetrize(R);
 }
 
-void PSDConeOps::updateM(double* m, double alpha,
+void PSDConeOps::updateM(double* m, double* /*r*/, double alpha,
                          const double* d, int size) const {
   int n = MatrixDim(size);
   Eigen::Map<Eigen::MatrixXd> M(m, n, n);

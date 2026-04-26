@@ -74,10 +74,10 @@ class ConeOps {
 
   // Polar-free automorphism update: M_new = M_old * exp(alpha*D/2).
   // M tracks the full automorphism (no polar split into P*T).
-  // r is unchanged (stays in original frame).
-  //   Nonneg: m_i *= exp(alpha * d_i / 2)  (M = P for nonneg).
-  //   PSD:    M_new = M_old * exp(alpha*D/2)  (general n×n matrix).
-  virtual void updateM(double* m, double alpha,
+  // For PSD: r is unchanged (rotation absorbed into M).
+  // For SOC: polar is done internally (O(n)), r is rotated by T.
+  // For nonneg: r is unchanged (T = I).
+  virtual void updateM(double* m, double* r, double alpha,
                        const double* d, int size) const = 0;
 
   // Apply automorphism: out = M * x * M^T.
@@ -198,7 +198,7 @@ class NonnegOrthantOps : public ConeOps {
       p[i] *= std::exp(0.5 * alpha * d[i]);
   }
 
-  void updateM(double* m, double alpha,
+  void updateM(double* m, double* /*r*/, double alpha,
                const double* d, int size) const override {
     for (int i = 0; i < size; ++i)
       m[i] *= std::exp(0.5 * alpha * d[i]);

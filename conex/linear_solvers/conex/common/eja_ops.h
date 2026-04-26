@@ -97,10 +97,13 @@ inline void updateAutomorphismP(Variable& P, Variable& R, double alpha,
 }
 
 // Polar-free automorphism update: M_new = M_old * exp(alpha*D/2).
-// M tracks the full automorphism; r is unchanged.
-inline void updateM(Variable& M, double alpha, const Variable& d) {
+// PSD: r unchanged (rotation absorbed into M).
+// SOC: r rotated by polar T (O(n), since polar is spectral).
+// Nonneg: r unchanged (T = I).
+inline void updateM(Variable& M, Variable& r, double alpha,
+                    const Variable& d) {
   for (int i = 0; i < M.num_constraints(); ++i)
-    M.ops[i]->updateM(M.segment_ptr(i), alpha,
+    M.ops[i]->updateM(M.segment_ptr(i), r.segment_ptr(i), alpha,
                        d.segment_ptr(i), M.sizes[i]);
 }
 

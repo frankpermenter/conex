@@ -30,7 +30,7 @@ class SOCConeOps : public ConeOps {
                           const double* d, int size) const override;
   void updateAutomorphismP(double* p, double* r, double alpha,
                            const double* d, int size) const override;
-  void updateM(double* m, double alpha,
+  void updateM(double* m, double* r, double alpha,
                const double* d, int size) const override;
   void applyM(double* out, const double* m,
               const double* x, int size) const override;

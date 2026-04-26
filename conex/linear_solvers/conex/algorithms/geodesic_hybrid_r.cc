@@ -642,7 +642,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
                                     || theta_stalled);
     if (do_center) {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      updateM(M, alpha, d_vec);
+      updateM(M, r, alpha, d_vec);
       W = squareM(M);
       w_tau *= std::exp(d_tau * alpha);
       model.SetScaling(W);
@@ -753,7 +753,7 @@ GeodesicResult SolveGeodesicHybridR(
       // W-update: M_new = M * exp(αD/2). No polar decomposition.
       // r stays in M-frame (unchanged).
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      updateM(M, alpha, d);
+      updateM(M, r, alpha, d);
       W = squareM(M);
       model.SetScaling(W);
       if (!model.AssembleAndFactor()) break;

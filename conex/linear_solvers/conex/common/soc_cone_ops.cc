@@ -226,19 +226,20 @@ void SOCConeOps::updateAutomorphism(double* w, double* r, double alpha,
   sw.lam2 = p_lam2 * p_lam2;
   sw.Reconstruct(w, size);
 
-  // For SOC, the orthogonal part T only flips signs of eigenvalues.
-  // R_new = T^{-1} R T.  Since T just permutes/flips the two eigenvalues,
-  // and R is in the same eigenbasis, R is unchanged for SOC.
-  // (The SOC automorphism group is commutative in the spectral basis.)
-  (void)r;
+  // If an eigenvalue of M was negative, T is a nontrivial reflection.
+  // Rotate r: flip the component along M's spectral direction.
+  bool need_flip = (sm.lam1 < 0 || sm.lam2 < 0);
+  if (need_flip && size > 1) {
+    double r_t = r[0];
+    Eigen::Map<Eigen::VectorXd> r_x(r + 1, size - 1);
+    double r_along = r_x.dot(sm.xhat);
+    r_x -= 2.0 * r_along * sm.xhat;
+  }
 }
 
 void SOCConeOps::updateAutomorphismP(double* p, double* r, double alpha,
                                      const double* d, int size) const {
-  // Same as updateAutomorphism but operates on P = sqrt(W).
   // M = P * exp(α D / 2), polar decomposition, store P_new (not P²).
-
-  // sqrtW = P (input is already P, no eigendecomp needed).
 
   // exp(α/2 * D)
   double expHalfD[size];
@@ -250,27 +251,38 @@ void SOCConeOps::updateAutomorphismP(double* p, double* r, double alpha,
   double M[size];
   product(M, p, expHalfD, size);
 
-  // Polar: for SOC, P_new has eigenvalues |λᵢ(M)|.
+  // Polar: M = P_new * T. P_new has eigenvalues |λᵢ(M)|.
   SOCSpectral sm(M, size);
-  double p_lam1 = std::abs(sm.lam1);
-  double p_lam2 = std::abs(sm.lam2);
+  bool need_flip = (sm.lam1 < 0 || sm.lam2 < 0);
 
-  // P_new: eigenvalues are |λᵢ(M)| (not squared).
+  // P_new: eigenvalues are |λᵢ(M)|.
   SOCSpectral sp = sm;
-  sp.lam1 = p_lam1;
-  sp.lam2 = p_lam2;
+  sp.lam1 = std::abs(sm.lam1);
+  sp.lam2 = std::abs(sm.lam2);
   sp.Reconstruct(p, size);
 
-  // R unchanged for SOC (automorphism group is commutative).
-  (void)r;
+  // If an eigenvalue was negative, T is a nontrivial reflection in M's
+  // eigenbasis.  Rotate r by T: swap r's eigenvalue projections onto
+  // M's idempotents c₁ = (1, x̂)/2, c₂ = (1, -x̂)/2.
+  if (need_flip && size > 1) {
+    // Decompose r in M's eigenbasis.
+    double r_t = r[0];
+    Eigen::Map<Eigen::VectorXd> r_x(r + 1, size - 1);
+    double r_along = r_x.dot(sm.xhat);       // projection onto x̂
+    // Eigenvalue projections: μ₁ = r_t + r_along, μ₂ = r_t - r_along.
+    // T swaps μ₁ ↔ μ₂: (μ₁, μ₂) → (μ₂, μ₁).
+    // New r_t = (μ₂ + μ₁)/2 = r_t (unchanged).
+    // New r_along = (μ₂ - μ₁)/2 = -r_along.
+    // Perpendicular component: unchanged by T.
+    r_x -= 2.0 * r_along * sm.xhat;  // flip along-component sign
+  }
 }
 
-// SOC: M = P (no rotation), so M ops reduce to quadraticRepresentation.
-void SOCConeOps::updateM(double* m, double alpha,
+// SOC: polar is O(n), so do it internally and rotate r.
+// M output equals P (rotation absorbed into r).
+void SOCConeOps::updateM(double* m, double* r, double alpha,
                          const double* d, int size) const {
-  // Same as updateAutomorphismP since T=I for SOC.
-  double dummy_r[size];
-  updateAutomorphismP(m, dummy_r, alpha, d, size);
+  updateAutomorphismP(m, r, alpha, d, size);
 }
 
 void SOCConeOps::applyM(double* out, const double* m,
