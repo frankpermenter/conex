@@ -62,6 +62,7 @@ class KKTSolverBase {
   virtual void MultiplyA(const SolverRHS& x, RowSpace& out) = 0;
   virtual void AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) = 0;
   virtual void AccumulateQx(const SolverRHS& x, SolverRHS& rhs) = 0;
+  virtual bool has_quadratic_cost() const = 0;
   virtual void SetWeights(const RowSpace& w) = 0;
 
   // Set scaling W directly: Gram = A^T W² A (nonneg) or A^T kron(W,W) A (PSD).

@@ -19,7 +19,7 @@
 
 #include <functional>
 #include <Eigen/Dense>
-#include "conex/common/kkt_solver_interface.h"
+#include "conex/common/compiled_model.h"
 
 namespace conex {
 
@@ -38,8 +38,7 @@ struct HybridRDirection {
 // Assumes the KKT system is already factored with weights W².
 // Returns d, delta (via output params), and derived quantities.
 HybridRDirection ComputeHybridRDirection(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W,
     const RowSpace& r,
@@ -53,8 +52,7 @@ HybridRDirection ComputeHybridRDirection(
 //   Dual:   A^T P(W^{1/2})(r + delta) + Q*y = c + A^T P(W)(b_theta) - 2*A^T P(W^{1/2})(r)
 // Returns (primal_residual, dual_residual) norms.
 std::pair<double, double> VerifyHybridREquations(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W,
     const RowSpace& r,
@@ -89,8 +87,7 @@ struct HybridRDecomposition {
 // The result contains raw components (x0, x1, x_theta, lam0, lam1, lam_theta).
 // Call SetTheta() to form the two-term combination at a specific theta.
 HybridRDecomposition ComputeHybridRDecomposition(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W,
     const RowSpace& r);
@@ -98,14 +95,14 @@ HybridRDecomposition ComputeHybridRDecomposition(
 // Re-solve only x0 after an r-update (x1 and x_theta are unchanged).
 // Returns 1 (number of solves performed).
 int UpdateX0(HybridRDecomposition& decomp,
-             KKTSolverBase& kkt,
+             CompiledModel& model,
              const RowSpace& W,
              const RowSpace& r);
 
 // Update the two-term combination (y_center, y_cost, delta_center, delta_cost)
 // at a given theta.  Uses cached ax0, ax_theta — no MultiplyA needed.
 void SetTheta(HybridRDecomposition& decomp,
-              KKTSolverBase& kkt,
+              CompiledModel& model,
               const RowSpace& b,
               const RowSpace& W,
               const RowSpace& r,
@@ -114,7 +111,7 @@ void SetTheta(HybridRDecomposition& decomp,
 // Evaluate the direction at a specific tau from the decomposition.
 // Returns (d, delta, gap, d_inf).
 HybridRDirection EvalHybridRAtTau(
-    KKTSolverBase& kkt,
+    CompiledModel& model,
     const HybridRDecomposition& decomp,
     const RowSpace& r,
     double tau,
@@ -137,8 +134,7 @@ inline bool DefaultThetaContRPolicy(double gap, double, int) {
 
 
 GeodesicResult SolveGeodesicThetaContinuationR(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     RowSpace& W,
     int max_iterations = 500,
     double tolerance = 1e-8,
@@ -150,8 +146,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
 // Original HybridR: theta = |gap|/m heuristic.
 GeodesicResult SolveGeodesicHybridR(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     RowSpace& W,
     int max_iterations = 500,
     double tolerance = 1e-8,

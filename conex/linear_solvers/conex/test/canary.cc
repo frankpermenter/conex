@@ -117,18 +117,20 @@ int main() {
     auto cost_rhs = kkt->MakeSolverRHS();
     cost_rhs = kkt->MakeBlockVariable(c);
 
+    CompiledModel cm(*kkt, cost_rhs);
+
     // GeodesicCenter at k=1.
     RowSpace W1 = kkt->MakeRowSpace(); setOnes(W1);
-    auto rc = GeodesicCenter(*kkt, cost_rhs, W1, 1.0, 20, 1e-10);
+    auto rc = GeodesicCenter(cm, W1, 1.0, 20, 1e-10);
     PrintResult("LP4_Center", rc);
 
     // GeodesicLineSearch.
-    double k_new = GeodesicLineSearch(*kkt, cost_rhs, W1);
+    double k_new = GeodesicLineSearch(cm, W1);
     printf("[LP4_LineSearch] k=%.16e\n", k_new);
 
     // SolveGeodesicLP.
     RowSpace W2 = kkt->MakeRowSpace(); setOnes(W2);
-    auto rlp = SolveGeodesicLP(*kkt, cost_rhs, W2, 30, 0, 1e-8);
+    auto rlp = SolveGeodesicLP(cm, W2, 30, 0, 1e-8);
     PrintResult("LP4_LP", rlp);
   }
 
@@ -139,9 +141,10 @@ int main() {
     Eigen::VectorXd c(4); c << 1, 2, 3, 4;
     auto cost_rhs = kkt->MakeSolverRHS();
     cost_rhs = kkt->MakeBlockVariable(c);
+    CompiledModel cm(*kkt, cost_rhs);
     RowSpace W = kkt->MakeRowSpace(); setOnes(W);
     kkt->SetScaling(W); kkt->AssembleAndFactor();
-    auto r = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 100, 1, 1e-8);
+    auto r = SolveGeodesicThetaContinuation(cm, W, 100, 1, 1e-8);
     PrintResult("LP4_ThetaCont", r);
   }
 
@@ -152,9 +155,10 @@ int main() {
     Eigen::VectorXd c(4); c << 1, 2, 3, 4;
     auto cost_rhs = kkt->MakeSolverRHS();
     cost_rhs = kkt->MakeBlockVariable(c);
+    CompiledModel cm(*kkt, cost_rhs);
     RowSpace W = kkt->MakeRowSpace(); setOnes(W);
     kkt->SetScaling(W); kkt->AssembleAndFactor();
-    auto r = SolveGeodesicPhaseOne(*kkt, cost_rhs, W, 100, 1, 1e-8);
+    auto r = SolveGeodesicPhaseOne(cm, W, 100, 1, 1e-8);
     PrintResult("LP4_PhaseOne", r);
   }
 
@@ -165,9 +169,10 @@ int main() {
     Eigen::VectorXd c(4); c << 1, 2, 3, 4;
     auto cost_rhs = kkt->MakeSolverRHS();
     cost_rhs = kkt->MakeBlockVariable(c);
+    CompiledModel cm(*kkt, cost_rhs);
     RowSpace W = kkt->MakeRowSpace(); setOnes(W);
     kkt->SetScaling(W); kkt->AssembleAndFactor();
-    auto r = SolveGeodesicHybrid(*kkt, cost_rhs, W, 100, 1e-8);
+    auto r = SolveGeodesicHybrid(cm, W, 100, 1e-8);
     PrintResult("LP4_Hybrid", r);
   }
 
@@ -178,8 +183,9 @@ int main() {
     Eigen::VectorXd c(6); c << 1, 0.5, 0.3, 2, 0.1, 3;
     auto cost_rhs = kkt->MakeSolverRHS();
     cost_rhs = kkt->MakeBlockVariable(c);
+    CompiledModel cm(*kkt, cost_rhs);
     RowSpace W = kkt->MakeRowSpace(); setOnes(W);
-    auto r = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
+    auto r = SolveGeodesicLP(cm, W, 30, 0, 1e-8);
     PrintResult("SDP3_LP", r);
   }
 
@@ -190,9 +196,10 @@ int main() {
     Eigen::VectorXd c(6); c << 1, 0.5, 0.3, 2, 0.1, 3;
     auto cost_rhs = kkt->MakeSolverRHS();
     cost_rhs = kkt->MakeBlockVariable(c);
+    CompiledModel cm(*kkt, cost_rhs);
     RowSpace W = kkt->MakeRowSpace(); setOnes(W);
     kkt->SetScaling(W); kkt->AssembleAndFactor();
-    auto r = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 100, 1, 1e-8);
+    auto r = SolveGeodesicThetaContinuation(cm, W, 100, 1, 1e-8);
     PrintResult("SDP3_ThetaCont", r);
   }
 
@@ -202,9 +209,10 @@ int main() {
     auto* kkt = solver.kkt();
     Eigen::VectorXd c(4); c << 1, 2, 1, 2;
     auto cost_rhs = BuildCostRHS(*kkt, c);
+    CompiledModel cm(*kkt, cost_rhs);
     RowSpace W = kkt->MakeRowSpace(); setOnes(W);
     kkt->SetScaling(W); kkt->AssembleAndFactor();
-    auto r = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 200, 1, 1e-8);
+    auto r = SolveGeodesicThetaContinuation(cm, W, 200, 1, 1e-8);
     PrintResult("LPEq_ThetaCont", r);
   }
 

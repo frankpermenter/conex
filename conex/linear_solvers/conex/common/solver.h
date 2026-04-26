@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 
+#include "conex/common/compiled_model.h"
 #include "conex/common/conex.h"
 #include "conex/common/kkt_system.h"
 #include "conex/common/model.h"
@@ -13,7 +14,7 @@ namespace conex {
 // algorithms via the Solve() template.
 //
 // Solve() accepts any algorithm type that implements:
-//   GeodesicResult Run(KKTSolverBase& kkt, const SolverRHS& cost_rhs);
+//   GeodesicResult Run(CompiledModel& model);
 //
 // The algorithm operates in reduced space.  Solver handles preprocessing,
 // coordinate conversion, and objective computation.
@@ -37,7 +38,7 @@ class Solver {
 
   // Run an algorithm and return the result in Model (original) space.
   // The Algorithm type must implement:
-  //   GeodesicResult Run(KKTSolverBase& kkt, const SolverRHS& cost_rhs);
+  //   GeodesicResult Run(CompiledModel& model);
   template <typename Algorithm>
   SolveResult Solve(const Algorithm& algo);
 
@@ -70,6 +71,11 @@ class Solver {
   // Build the cost RHS in solver format (reduced space).
   SolverRHS MakeCostRHS();
 
+  // Build a CompiledModel for direct algorithm use.
+  CompiledModel MakeCompiledModel() {
+    return CompiledModel(*kkt(), MakeCostRHS());
+  }
+
   Solver();
   ~Solver();
   Solver(Solver&&) noexcept;
@@ -98,12 +104,12 @@ class Solver {
 
 template <typename Algorithm>
 SolveResult Solver::Solve(const Algorithm& algo) {
-  auto cost_rhs = MakeCostRHS();
-  auto raw = algo.Run(*kkt(), cost_rhs);
+  auto model = MakeCompiledModel();
+  auto raw = algo.Run(model);
 
   SolveResult result;
   result.x = ExpandSolution(raw.x);
-  result.objective = ComputeObjective(cost_rhs, raw.x);
+  result.objective = ComputeObjective(model.cost_rhs(), raw.x);
   result.mu = raw.mu;
   result.tau = raw.tau;
   result.kappa = raw.kappa;
@@ -112,8 +118,8 @@ SolveResult Solver::Solve(const Algorithm& algo) {
   result.iterations = raw.iterations;
   result.factorizations = raw.total_factorizations;
   if (raw.lambda.total_rows() > 0) {
-    result.optimality = ComputeOptimality(cost_rhs, raw.x, raw.lambda);
-    result.duals = ExtractDuals(raw.x, raw.lambda, cost_rhs);
+    result.optimality = ComputeOptimality(model.cost_rhs(), raw.x, raw.lambda);
+    result.duals = ExtractDuals(raw.x, raw.lambda, model.cost_rhs());
   }
   result.converged = result.optimality.complementarity < 1e-4 &&
                      result.duals.stationarity_gradient.norm() < 1e-4;

@@ -19,15 +19,15 @@ using EuclideanJordanAlgebra::squaredNorm;
 using EuclideanJordanAlgebra::updateAutomorphism;
 
 // Compute b_theta = theta * e + (1 - theta) * b.
-static RowSpace BlendAffine(KKTSolverBase& kkt, const RowSpace& b,
+static RowSpace BlendAffine(CompiledModel& model, const RowSpace& b,
                             double theta) {
-  RowSpace b_theta = kkt.MakeRowSpace();
+  RowSpace b_theta = model.MakeRowSpace();
   if (theta == 0.0) {
     b_theta = b;
   } else if (theta == 1.0) {
     setOnes(b_theta);
   } else {
-    RowSpace ones = kkt.MakeRowSpace();
+    RowSpace ones = model.MakeRowSpace();
     setOnes(ones);
     b_theta = addScaled(ones, b, theta, 1.0 - theta);
   }
@@ -35,8 +35,7 @@ static RowSpace BlendAffine(KKTSolverBase& kkt, const RowSpace& b,
 }
 
 HybridRDirection ComputeHybridRDirection(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W,
     const RowSpace& r,
@@ -44,37 +43,38 @@ HybridRDirection ComputeHybridRDirection(
     RowSpace& d,
     RowSpace& delta,
     Eigen::VectorXd* y_out) {
-  RowSpace b_theta = BlendAffine(kkt, b, theta);
+  const auto& cost_rhs = model.cost_rhs();
+  RowSpace b_theta = BlendAffine(model, b, theta);
   RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
 
   // RHS = -(c + A^T P(W)(b_theta)) + 2*A^T P(W^{1/2})(r) + d_eq
-  auto y = kkt.MakeSolverRHS();
+  auto y = model.MakeSolverRHS();
   y = cost_rhs;
   RowSpace v = quadraticRepresentation(W, b_theta);
-  kkt.AccumulateAtranspose(v, y);
+  model.AccumulateAtranspose(v, y);
   y *= -1;
   // + 2*A^T P(W^{1/2})(r)
   v = quadraticRepresentation(sqrtW, r);
   v *= 2.0;
-  kkt.AccumulateAtranspose(v, y);
+  model.AccumulateAtranspose(v, y);
   // + d_eq (equality RHS).
-  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
   if (ts && !ts->equality_sub_assemblers().empty()) {
     auto d_rhs = ts->EqualityAffineTermRHS();
     y += d_rhs;
   }
-  kkt.SolveSolverRHS(y);
+  model.SolveSolverRHS(y);
 
   // Optionally return the solve vector.
   if (y_out) {
-    int nv = kkt.number_of_variables();
+    int nv = model.number_of_variables();
     y_out->resize(nv);
     y.supernodes->GatherInto(*y_out);
   }
 
   // delta = r - P(W^{1/2})(b_theta + A*y)
-  RowSpace row = kkt.MakeRowSpace();
-  kkt.MultiplyA(y, row);
+  RowSpace row = model.MakeRowSpace();
+  model.MultiplyA(y, row);
   RowSpace slack_dir = addScaled(b_theta, row, 1.0, 1.0);
   delta = addScaled(r, quadraticRepresentation(sqrtW, slack_dir), 1.0, -1.0);
   d = solveLyapunovForD(r, delta);
@@ -83,8 +83,7 @@ HybridRDirection ComputeHybridRDirection(
 }
 
 std::pair<double, double> VerifyHybridREquations(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W,
     const RowSpace& r,
@@ -92,15 +91,16 @@ std::pair<double, double> VerifyHybridREquations(
     const RowSpace& d,
     const RowSpace& delta,
     const Eigen::VectorXd& y) {
-  RowSpace b_theta = BlendAffine(kkt, b, theta);
+  const auto& cost_rhs = model.cost_rhs();
+  RowSpace b_theta = BlendAffine(model, b, theta);
   RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
 
   // --- Primal check ---
   // delta should equal r - P(W^{1/2})(b_theta + A*y).
-  auto y_rhs = kkt.MakeSolverRHS();
-  y_rhs = kkt.MakeBlockVariable(y);
-  RowSpace Ay = kkt.MakeRowSpace();
-  kkt.MultiplyA(y_rhs, Ay);
+  auto y_rhs = model.MakeSolverRHS();
+  y_rhs = model.MakeBlockVariable(y);
+  RowSpace Ay = model.MakeRowSpace();
+  model.MultiplyA(y_rhs, Ay);
   RowSpace slack = addScaled(b_theta, Ay, 1.0, 1.0);
   RowSpace delta_expected = addScaled(r,
       quadraticRepresentation(sqrtW, slack), 1.0, -1.0);
@@ -114,20 +114,20 @@ std::pair<double, double> VerifyHybridREquations(
   // Check: A^T lambda - Qy - c = 0  (d_eq enters the KKT dual block).
   RowSpace lambda = quadraticRepresentation(sqrtW,
       addScaled(r, delta, 1.0, 1.0));
-  auto at_lambda = kkt.MakeSolverRHS();
+  auto at_lambda = model.MakeSolverRHS();
   at_lambda.SetZero();
-  kkt.AccumulateAtranspose(lambda, at_lambda);
+  model.AccumulateAtranspose(lambda, at_lambda);
 
   // - Qy
-  auto qy = kkt.MakeSolverRHS();
+  auto qy = model.MakeSolverRHS();
   qy.SetZero();
-  kkt.AccumulateQx(y_rhs, qy);
+  model.AccumulateQx(y_rhs, qy);
   at_lambda -= qy;
 
   // - c
   at_lambda -= cost_rhs;
 
-  int n = kkt.number_of_variables();
+  int n = model.number_of_variables();
   Eigen::VectorXd dual_err(n);
   at_lambda.supernodes->GatherInto(dual_err);
   double dual_res = dual_err.norm();
@@ -136,15 +136,15 @@ std::pair<double, double> VerifyHybridREquations(
 }
 
 HybridRDecomposition ComputeHybridRDecomposition(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W,
     const RowSpace& r) {
+  const auto& cost_rhs = model.cost_rhs();
   double theta = 0;  // theta not used for the three raw solves
   RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-  int nv = kkt.number_of_variables();
-  RowSpace v = kkt.MakeRowSpace();
+  int nv = model.number_of_variables();
+  RowSpace v = model.MakeRowSpace();
 
   // Three-solve decomposition (hybrid_theta_continuation.tex §2).
   //
@@ -160,54 +160,54 @@ HybridRDecomposition ComputeHybridRDecomposition(
   //   f = x0 + theta*x_theta   (tau-free)
   //   g = x1                    (tau-proportional)
 
-  RowSpace ones = kkt.MakeRowSpace();
+  RowSpace ones = model.MakeRowSpace();
   setOnes(ones);
 
   // rhs0 = 2*A'P(W^{1/2})(r)
-  auto rhs0 = kkt.MakeSolverRHS();
+  auto rhs0 = model.MakeSolverRHS();
   rhs0.SetZero();
   v = quadraticRepresentation(sqrtW, r);
   v *= 2.0;
-  kkt.AccumulateAtranspose(v, rhs0);
+  model.AccumulateAtranspose(v, rhs0);
 
   // rhs1 = -(c + A'P(W)(b)) + d_eq
-  auto rhs1 = kkt.MakeSolverRHS();
+  auto rhs1 = model.MakeSolverRHS();
   rhs1 = cost_rhs;
   v = quadraticRepresentation(W, b);
-  kkt.AccumulateAtranspose(v, rhs1);
+  model.AccumulateAtranspose(v, rhs1);
   rhs1 *= -1;
-  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
   if (ts && !ts->equality_sub_assemblers().empty()) {
     rhs1 += ts->EqualityAffineTermRHS();
   }
 
   // rhs2 = -rhs1 - A'(e + P(W)(e))
   //      = (c + A'P(W)(b)) - d_eq - A'(e + P(W)(e))
-  auto rhs2 = kkt.MakeSolverRHS();
+  auto rhs2 = model.MakeSolverRHS();
   rhs2 = rhs1;
   rhs2 *= -1;  // (c + A'P(W)(b)) - d_eq
   v = addScaled(ones, quadraticRepresentation(W, ones), 1.0, 1.0);
   v *= -1.0;   // -(e + P(W)(e))
-  kkt.AccumulateAtranspose(v, rhs2);
+  model.AccumulateAtranspose(v, rhs2);
 
   // Solve all three with one factorization.
-  auto y = kkt.MakeSolverRHS(3);
+  auto y = model.MakeSolverRHS(3);
   y.SetColumn(0, rhs0);
   y.SetColumn(1, rhs1);
   y.SetColumn(2, rhs2);
-  kkt.SolveSolverRHS(y);
+  model.SolveSolverRHS(y);
 
   Eigen::MatrixXd y_dense(nv, 3);
   y.supernodes->GatherInto(y_dense);
 
   // Multiply A * [x0, x1, x_theta].
-  auto row = kkt.MakeRowSpace(3);
-  kkt.MultiplyA(y, row);
+  auto row = model.MakeRowSpace(3);
+  model.MultiplyA(y, row);
 
   HybridRDecomposition decomp;
-  decomp.ax0 = kkt.MakeRowSpace();
-  decomp.ax1 = kkt.MakeRowSpace();
-  decomp.ax_theta = kkt.MakeRowSpace();
+  decomp.ax0 = model.MakeRowSpace();
+  decomp.ax1 = model.MakeRowSpace();
+  decomp.ax_theta = model.MakeRowSpace();
   decomp.ax0.col() = row.col(0);
   decomp.ax1.col() = row.col(1);
   decomp.ax_theta.col() = row.col(2);
@@ -246,22 +246,22 @@ HybridRDecomposition ComputeHybridRDecomposition(
 }
 
 int UpdateX0(HybridRDecomposition& decomp,
-             KKTSolverBase& kkt,
+             CompiledModel& model,
              const RowSpace& W,
              const RowSpace& r) {
   RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
   RowSpace v = quadraticRepresentation(sqrtW, r);
   v *= 2.0;
-  auto rhs0 = kkt.MakeSolverRHS();
+  auto rhs0 = model.MakeSolverRHS();
   rhs0.SetZero();
-  kkt.AccumulateAtranspose(v, rhs0);
-  kkt.SolveSolverRHS(rhs0);
+  model.AccumulateAtranspose(v, rhs0);
+  model.SolveSolverRHS(rhs0);
 
-  int nv = kkt.number_of_variables();
+  int nv = model.number_of_variables();
   decomp.x0.resize(nv);
   rhs0.supernodes->GatherInto(decomp.x0);
 
-  kkt.MultiplyA(rhs0, decomp.ax0);
+  model.MultiplyA(rhs0, decomp.ax0);
 
   // Update lam0 = P(W^{1/2})(2r) - P(W)(A*x0).
   RowSpace Psqrt2r = quadraticRepresentation(sqrtW, r);
@@ -273,7 +273,7 @@ int UpdateX0(HybridRDecomposition& decomp,
 }
 
 void SetTheta(HybridRDecomposition& decomp,
-              KKTSolverBase& kkt,
+              CompiledModel& model,
               const RowSpace& b,
               const RowSpace& W,
               const RowSpace& r,
@@ -284,7 +284,7 @@ void SetTheta(HybridRDecomposition& decomp,
   // delta_center = r - P(W^{1/2})(A*f + theta*(e-b))
   // Use cached A*x0, A*x_theta: A*f = A*x0 + theta*A*x_theta.
   RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-  RowSpace ones_v = kkt.MakeRowSpace(); setOnes(ones_v);
+  RowSpace ones_v = model.MakeRowSpace(); setOnes(ones_v);
   RowSpace e_minus_b = addScaled(ones_v, b, 1.0, -1.0);
   RowSpace Af = addScaled(decomp.ax0, decomp.ax_theta, 1.0, theta);
   RowSpace dc_arg = addScaled(Af, e_minus_b, 1.0, theta);
@@ -293,7 +293,7 @@ void SetTheta(HybridRDecomposition& decomp,
 }
 
 HybridRDirection EvalHybridRAtTau(
-    KKTSolverBase& kkt,
+    CompiledModel& model,
     const HybridRDecomposition& decomp,
     const RowSpace& r,
     double tau,
@@ -306,8 +306,7 @@ HybridRDirection EvalHybridRAtTau(
 }
 
 GeodesicResult SolveGeodesicThetaContinuationR(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     RowSpace& W,
     int max_iterations,
     double tolerance,
@@ -315,32 +314,33 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     ThetaContRSwitchPolicy policy,
     double compl_tol,
     double theta_rate) {
-  RowSpace b = kkt.GetAffineTerm();
+  const auto& cost_rhs = model.cost_rhs();
+  RowSpace b = model.GetAffineTerm();
 
-  RowSpace ones = kkt.MakeRowSpace();
+  RowSpace ones = model.MakeRowSpace();
   setOnes(ones);
   const double cone_rank = dot(ones, ones);  // <e, e> = trace(I), correct for PSD
   const double bT_ones = dot(b, ones);
   const double R = bT_ones + 1.0;
 
   // Duality cost (cost_rhs + equality dual correction).
-  auto duality_cost = kkt.MakeSolverRHS();
+  auto duality_cost = model.MakeSolverRHS();
   duality_cost = cost_rhs;
-  auto* ts_init = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+  auto* ts_init = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
   if (ts_init && !ts_init->equality_sub_assemblers().empty()) {
     duality_cost += ts_init->EqualityAffineTermRHS();
   }
 
-  RowSpace r = kkt.MakeRowSpace();
+  RowSpace r = model.MakeRowSpace();
   setOnes(r);
   double theta = 1.0;
   double tau = 1.0;
   double w_tau = 1.0;
   double r_tau = 1.0;
   const double alpha_norm = cone_rank + 1.0;
-  bool skip_Q = false;  // set true after first iteration if Q=0
-  kkt.SetScaling(W);
-  kkt.AssembleAndFactor();
+  const bool skip_Q = !model.has_quadratic_cost();
+  model.SetScaling(W);
+  model.AssembleAndFactor();
   int total_fac = 1;
   int total_sol = 0;
 
@@ -357,9 +357,9 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     printf("  %s\n", std::string(195, '-').c_str());
   }
 
-  RowSpace last_delta = kkt.MakeRowSpace();
-  RowSpace d_vec = kkt.MakeRowSpace();      // pre-allocated direction
-  RowSpace delta_vec = kkt.MakeRowSpace();   // pre-allocated delta
+  RowSpace last_delta = model.MakeRowSpace();
+  RowSpace d_vec = model.MakeRowSpace();      // pre-allocated direction
+  RowSpace delta_vec = model.MakeRowSpace();   // pre-allocated delta
   bool need_decomp = true;
   bool full_decomp = true;  // true = all 3 solves, false = only x0
   HybridRDecomposition decomp;
@@ -369,11 +369,11 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   for (int iter = 0; iter < max_iterations; ++iter) {
     if (need_decomp) {
       if (full_decomp) {
-        decomp = ComputeHybridRDecomposition(kkt, cost_rhs, b, W, r);
+        decomp = ComputeHybridRDecomposition(model, b, W, r);
         total_sol += 3;
       } else {
         // Only r changed — re-solve x0, keep x1 and x_theta.
-        total_sol += UpdateX0(decomp, kkt, W, r);
+        total_sol += UpdateX0(decomp, model, W, r);
       }
       need_decomp = false;
       full_decomp = false;
@@ -386,12 +386,12 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
       RowSpace rp = addScaled(b, ones, 1.0, -1.0);  // b - e
 
-      auto x0_rhs = kkt.MakeSolverRHS();
-      x0_rhs = kkt.MakeBlockVariable(decomp.x0);
-      auto x1_rhs = kkt.MakeSolverRHS();
-      x1_rhs = kkt.MakeBlockVariable(decomp.x1);
-      auto xth_rhs = kkt.MakeSolverRHS();
-      xth_rhs = kkt.MakeBlockVariable(decomp.x_theta);
+      auto x0_rhs = model.MakeSolverRHS();
+      x0_rhs = model.MakeBlockVariable(decomp.x0);
+      auto x1_rhs = model.MakeSolverRHS();
+      x1_rhs = model.MakeBlockVariable(decomp.x1);
+      auto xth_rhs = model.MakeSolverRHS();
+      xth_rhs = model.MakeBlockVariable(decomp.x_theta);
 
       double bTl0 = dot(b, decomp.lam0);
       double bTl1 = dot(b, decomp.lam1);
@@ -401,9 +401,9 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double cTxth = duality_cost.dot(xth_rhs);
 
       // Normalization coefficients (no Q, always stable).
-      RowSpace Ax0_v = kkt.MakeRowSpace(); kkt.MultiplyA(x0_rhs, Ax0_v);
-      RowSpace Ax1_v = kkt.MakeRowSpace(); kkt.MultiplyA(x1_rhs, Ax1_v);
-      RowSpace Axth_v = kkt.MakeRowSpace(); kkt.MultiplyA(xth_rhs, Axth_v);
+      RowSpace Ax0_v = model.MakeRowSpace(); model.MultiplyA(x0_rhs, Ax0_v);
+      RowSpace Ax1_v = model.MakeRowSpace(); model.MultiplyA(x1_rhs, Ax1_v);
+      RowSpace Axth_v = model.MakeRowSpace(); model.MultiplyA(xth_rhs, Axth_v);
 
       double rpTl0 = dot(rp, decomp.lam0);
       double rpTl1 = dot(rp, decomp.lam1);
@@ -456,14 +456,13 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       // Q inner products (skip if Q=0 detected on first iteration).
       double qff = 0, qfh = 0, qhh = 0;
       if (!skip_Q) {
-        auto f0_rhs = kkt.MakeSolverRHS(); f0_rhs = kkt.MakeBlockVariable(f0_vec);
-        auto h_rhs = kkt.MakeSolverRHS(); h_rhs = kkt.MakeBlockVariable(h_vec);
-        auto Qf0 = kkt.MakeSolverRHS(); Qf0.SetZero(); kkt.AccumulateQx(f0_rhs, Qf0);
-        auto Qh = kkt.MakeSolverRHS(); Qh.SetZero(); kkt.AccumulateQx(h_rhs, Qh);
+        auto f0_rhs = model.MakeSolverRHS(); f0_rhs = model.MakeBlockVariable(f0_vec);
+        auto h_rhs = model.MakeSolverRHS(); h_rhs = model.MakeBlockVariable(h_vec);
+        auto Qf0 = model.MakeSolverRHS(); Qf0.SetZero(); model.AccumulateQx(f0_rhs, Qf0);
+        auto Qh = model.MakeSolverRHS(); Qh.SetZero(); model.AccumulateQx(h_rhs, Qh);
         qff = Qf0.dot(f0_rhs);
         qfh = Qf0.dot(h_rhs);
         qhh = Qh.dot(h_rhs);
-        if (iter == 0 && qff == 0 && qfh == 0 && qhh == 0) skip_Q = true;
       }
 
       // Lambda: l0 = lam0 - e1*lam_theta, l1 = lam1 - n1*lam_theta.
@@ -513,11 +512,11 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       if (std::abs(Nth) > Nth_threshold) {
         theta = (-alpha_norm - N0 - N1 * tau) / Nth;
       }
-      SetTheta(decomp, kkt, b, W, r, theta);
+      SetTheta(decomp, model, b, W, r, theta);
     }
 
     // Evaluate cone direction at current (tau, r, theta).
-    auto info = EvalHybridRAtTau(kkt, decomp, r, tau, d_vec, delta_vec);
+    auto info = EvalHybridRAtTau(model, decomp, r, tau, d_vec, delta_vec);
     last_delta = delta_vec;
     g = info.gap;
     d_inf = std::max(info.d_inf, std::abs(d_tau));
@@ -532,10 +531,10 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       RowSpace lam_v = quadraticRepresentation(sqrtW_v,
           addScaled(r, delta_vec, 1.0, 1.0));
       Eigen::VectorXd x_vec = decomp.y_center + tau * decomp.y_cost;
-      auto x_rhs = kkt.MakeSolverRHS();
-      x_rhs = kkt.MakeBlockVariable(x_vec);
-      auto qx = kkt.MakeSolverRHS(); qx.SetZero();
-      kkt.AccumulateQx(x_rhs, qx);
+      auto x_rhs = model.MakeSolverRHS();
+      x_rhs = model.MakeBlockVariable(x_vec);
+      auto qx = model.MakeSolverRHS(); qx.SetZero();
+      model.AccumulateQx(x_rhs, qx);
 
       double bTl = dot(b, lam_v);
       double cTx = duality_cost.dot(x_rhs);
@@ -550,7 +549,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
       // Normalization: rp'lambda + rd'x + rg*tau vs -alpha.
       double eTl = dot(ones, lam_v);
-      RowSpace Ax_v = kkt.MakeRowSpace(); kkt.MultiplyA(x_rhs, Ax_v);
+      RowSpace Ax_v = model.MakeRowSpace(); model.MultiplyA(x_rhs, Ax_v);
       double norm_val = (bTl - eTl) + (cTx - dot(ones, Ax_v))
                         + (-(bT_ones + 1.0)) * tau;
       double alpha_v = dot(ones, ones) + 1.0;
@@ -599,8 +598,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       updateAutomorphism(W, r, alpha, d_vec);
       w_tau *= std::exp(d_tau * alpha);
-      kkt.SetScaling(W);
-      if (!kkt.AssembleAndFactor()) break;
+      model.SetScaling(W);
+      if (!model.AssembleAndFactor()) break;
       total_fac++;
       r_updates_since_fac = 0;
       theta_at_last_w = theta;
@@ -634,13 +633,13 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
   // Lambda and optimality.
   {
-    auto x_rhs = kkt.MakeSolverRHS();
-    x_rhs = kkt.MakeBlockVariable(result.x);
+    auto x_rhs = model.MakeSolverRHS();
+    x_rhs = model.MakeBlockVariable(result.x);
     RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
     RowSpace lambda = quadraticRepresentation(sqrtW,
         addScaled(r, last_delta, 1.0, 1.0));
     if (tau > 0 && tau != 1.0) lambda *= (1.0 / tau);
-    result.optimality = CheckOptimality(kkt, cost_rhs, x_rhs, lambda);
+    result.optimality = CheckOptimality(model, x_rhs, lambda);
     result.optimality.mu = result.mu;
     result.lambda = lambda;
   }
@@ -649,21 +648,21 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 }
 
 GeodesicResult SolveGeodesicHybridR(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     RowSpace& W,
     int max_iterations,
     double tolerance,
     bool verbose) {
-  RowSpace b = kkt.GetAffineTerm();
+  const auto& cost_rhs = model.cost_rhs();
+  RowSpace b = model.GetAffineTerm();
   const int m = b.total_rows();
 
-  RowSpace r = kkt.MakeRowSpace();
+  RowSpace r = model.MakeRowSpace();
   setOnes(r);
   double theta = 1.0;
 
-  kkt.SetScaling(W);
-  kkt.AssembleAndFactor();
+  model.SetScaling(W);
+  model.AssembleAndFactor();
   int total_fac = 1;
   int total_sol = 0;
 
@@ -678,12 +677,12 @@ GeodesicResult SolveGeodesicHybridR(
     printf("  %s\n", std::string(90, '-').c_str());
   }
 
-  RowSpace last_delta = kkt.MakeRowSpace();
+  RowSpace last_delta = model.MakeRowSpace();
 
   for (int iter = 0; iter < max_iterations; ++iter) {
-    RowSpace d = kkt.MakeRowSpace();
-    RowSpace delta = kkt.MakeRowSpace();
-    auto info = ComputeHybridRDirection(kkt, cost_rhs, b, W, r, theta,
+    RowSpace d = model.MakeRowSpace();
+    RowSpace delta = model.MakeRowSpace();
+    auto info = ComputeHybridRDirection(model, b, W, r, theta,
                                          d, delta);
     last_delta = delta;
     total_sol++;
@@ -703,8 +702,8 @@ GeodesicResult SolveGeodesicHybridR(
       // W-update: centering step. Keep r and theta frozen.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       updateAutomorphism(W, r, alpha, d);
-      kkt.SetScaling(W);
-      if (!kkt.AssembleAndFactor()) break;
+      model.SetScaling(W);
+      if (!model.AssembleAndFactor()) break;
       total_fac++;
       r_updates_since_fac = 0;
     } else {
@@ -716,9 +715,9 @@ GeodesicResult SolveGeodesicHybridR(
 
     // Recompute direction at updated state.
     {
-      RowSpace d2 = kkt.MakeRowSpace();
-      RowSpace delta2 = kkt.MakeRowSpace();
-      auto info2 = ComputeHybridRDirection(kkt, cost_rhs, b, W, r, theta,
+      RowSpace d2 = model.MakeRowSpace();
+      RowSpace delta2 = model.MakeRowSpace();
+      auto info2 = ComputeHybridRDirection(model, b, W, r, theta,
                                             d2, delta2);
       last_delta = delta2;
       g = info2.gap;
@@ -746,37 +745,37 @@ GeodesicResult SolveGeodesicHybridR(
 
   // Recover x.
   {
-    kkt.SetScaling(W);
-    kkt.AssembleAndFactor();
-    RowSpace b_theta = BlendAffine(kkt, b, theta);
+    model.SetScaling(W);
+    model.AssembleAndFactor();
+    RowSpace b_theta = BlendAffine(model, b, theta);
     RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
 
-    auto y = kkt.MakeSolverRHS();
+    auto y = model.MakeSolverRHS();
     y = cost_rhs;
     RowSpace v = quadraticRepresentation(W, b_theta);
-    kkt.AccumulateAtranspose(v, y);
+    model.AccumulateAtranspose(v, y);
     y *= -1;
     v = quadraticRepresentation(sqrtW, r);
     v *= 2.0;
-    kkt.AccumulateAtranspose(v, y);
-    auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&kkt);
+    model.AccumulateAtranspose(v, y);
+    auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
     if (ts && !ts->equality_sub_assemblers().empty()) {
       y += ts->EqualityAffineTermRHS();
     }
-    kkt.SolveSolverRHS(y);
-    int nr = kkt.number_of_variables();
+    model.SolveSolverRHS(y);
+    int nr = model.number_of_variables();
     result.x.resize(nr);
     y.supernodes->GatherInto(result.x);
   }
 
   // Lambda and optimality.
   {
-    auto x_rhs = kkt.MakeSolverRHS();
-    x_rhs = kkt.MakeBlockVariable(result.x);
+    auto x_rhs = model.MakeSolverRHS();
+    x_rhs = model.MakeBlockVariable(result.x);
     RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
     RowSpace lambda = quadraticRepresentation(sqrtW,
         addScaled(r, last_delta, 1.0, 1.0));
-    result.optimality = CheckOptimality(kkt, cost_rhs, x_rhs, lambda);
+    result.optimality = CheckOptimality(model, x_rhs, lambda);
     result.optimality.mu = result.mu;
     result.lambda = lambda;
   }

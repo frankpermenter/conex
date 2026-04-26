@@ -206,7 +206,8 @@ void RunCentering(Model& problem, const std::string& name, int max_iters) {
 
   setOnes(W);  // Reset W to identity (centered at k=1).
   auto t2 = std::chrono::high_resolution_clock::now();
-  auto result = GeodesicCenter(*kkt, cost_rhs, W, k_target,
+  CompiledModel cm(*kkt, cost_rhs);
+  auto result = GeodesicCenter(cm, W, k_target,
                                 max_iters, 1e-10, true);
   auto t3 = std::chrono::high_resolution_clock::now();
 
@@ -392,7 +393,8 @@ void RunCenteringRaw(Model& problem, const std::string& name, int max_iters) {
 
   W = W_init;
   auto t0 = std::chrono::high_resolution_clock::now();
-  auto result = GeodesicCenter(*kkt, cost_rhs, W, k_min,
+  CompiledModel cm(*kkt, cost_rhs);
+  auto result = GeodesicCenter(cm, W, k_min,
                                 max_iters, 1e-10, true);
   auto t1 = std::chrono::high_resolution_clock::now();
 

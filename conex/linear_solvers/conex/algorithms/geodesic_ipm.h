@@ -37,7 +37,7 @@
 #include <functional>
 #include <vector>
 #include <Eigen/Dense>
-#include "conex/common/kkt_solver_interface.h"
+#include "conex/common/compiled_model.h"
 
 namespace conex {
 
@@ -82,8 +82,7 @@ struct GeodesicResult {
 //   Dual:   A^T P(W^{1/2})(I + d) / k = c      (cost condition)
 // Returns (primal_residual, dual_residual) norms.
 std::pair<double, double> VerifyNewtonEquations(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W,
     const RowSpace& d,
@@ -105,8 +104,7 @@ struct NewtonDecomposition {
 // Factor the Gram system and compute the three-term decomposition.
 // Requires 1 factorization and 3 back-solves.
 NewtonDecomposition ComputeFullDecomposition(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W);
 
@@ -169,7 +167,7 @@ struct DualityCoeffs {
 // duality_cost must be the corrected cost vector from MakeDualityCost()
 // (with +d at equality dual positions, not -d).
 DualityCoeffs ComputeDualityCoeffs(
-    KKTSolverBase& kkt,
+    CompiledModel& model,
     const SolverRHS& duality_cost,
     const RowSpace& b,
     const RowSpace& W,
@@ -180,8 +178,7 @@ DualityCoeffs ComputeDualityCoeffs(
 // τ by a quadratic from the gap equation.  Uses ComputeFullDecomposition
 // (3 back-solves per factorization).  Single loop, no centering phase.
 GeodesicResult SolveGeodesicHSD(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     RowSpace& W,
     int max_iterations = 30,
     double tolerance = 1e-8,
@@ -192,8 +189,7 @@ GeodesicResult SolveGeodesicHSD(
 // with MinNormK, then shrink θ by an amount determined by ||d1_theta||.
 // Uses ComputeFullDecomposition (3 back-solves per factorization).
 GeodesicResult SolveGeodesicThetaContinuation(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     RowSpace& W,
     int max_outer_iterations = 50,
     int max_centering_steps = 10,
@@ -215,8 +211,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
 // Goal: trade off θ-continuation centering work for an aggressive μ
 // reduction once feasibility is established.
 GeodesicResult SolveGeodesicPhaseOne(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     RowSpace& W,
     int max_outer_iterations = 50,
     int max_centering_steps = 10,
@@ -233,8 +228,7 @@ GeodesicResult SolveGeodesicPhaseOne(
 // max_iterations: iteration limit.
 // tolerance: stop when ||d||_inf < tolerance.
 GeodesicResult GeodesicCenter(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     RowSpace& W,
     double k,
     int max_iterations,
@@ -244,8 +238,7 @@ GeodesicResult GeodesicCenter(
 // Run the full geodesic IPM: repeated line-search for k then center.
 // Returns per-outer-iteration stats for comparison with barrier method.
 GeodesicResult SolveGeodesicLP(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     RowSpace& W,
     int max_outer_iterations = 30,
     int max_centering_steps = 1,
@@ -256,8 +249,7 @@ GeodesicResult SolveGeodesicLP(
 // Requires W to be centered (d ≈ 0 at the current k).  Uses one factorization
 // and two back-solves.  Returns the new k (>= current k).
 double GeodesicLineSearch(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     const RowSpace& W);
 
 // =====================================================================
@@ -281,8 +273,7 @@ struct HybridDirection {
 // Check optimality conditions given primal x (as SolverRHS) and dual λ (as RowSpace).
 // Computes s = Ax + b, dual residual A^T λ - Qx - c, complementarity <s, λ>.
 OptimalityReport CheckOptimality(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     const SolverRHS& x_rhs,
     const RowSpace& lambda);
 
@@ -291,8 +282,7 @@ OptimalityReport CheckOptimality(
 // Returns d, delta (via output params), and derived quantities.
 // Performs one back-solve (no factorization).
 HybridDirection ComputeHybridDirection(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W,
     const RowSpace& r,
@@ -304,8 +294,7 @@ HybridDirection ComputeHybridDirection(
 // geodesic/automorphism step.  Modifies W and r in place.
 // Returns the direction info (gap, d_inf, etc.).
 HybridDirection HybridCenteringStep(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     RowSpace& W,
     RowSpace& r);
 
@@ -323,8 +312,7 @@ inline bool DefaultHybridPolicy(double gap, double, int) {
 // and shrinking per-component centering targets r (when gap >= 0).
 // gap(r, d) = <r.*(1+d), r.*(1-d)> = sum(r_i^2 * (1 - d_i^2)).
 GeodesicResult SolveGeodesicHybrid(
-    KKTSolverBase& kkt,
-    const SolverRHS& cost_rhs,
+    CompiledModel& model,
     RowSpace& W,
     int max_iterations = 50,
     double tolerance = 1e-8,

@@ -66,7 +66,8 @@ int main() {
   kkt->SetScaling(W);
   printf("Factor: %s\n", kkt->AssembleAndFactor() ? "ok" : "FAIL");
   printf("n_vars=%d\n", kkt->number_of_variables());
-  auto r = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 500, 1, 1e-8, true);
+  CompiledModel cm(*kkt, cost_rhs);
+  auto r = SolveGeodesicThetaContinuation(cm, W, 500, 1, 1e-8, true);
   printf("IPM: x.size=%d, mu=%.2e, iters=%d\n",
          (int)r.x.size(), r.mu, r.iterations);
   if (r.x.size() >= 2) {

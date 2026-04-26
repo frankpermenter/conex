@@ -14,12 +14,11 @@ struct ThetaContinuationR {
   double compl_tol = 1e-12;
   double theta_rate = 0.1;  // center if theta hasn't decreased by this factor
 
-  GeodesicResult Run(KKTSolverBase& kkt,
-                     const SolverRHS& cost_rhs) const {
-    RowSpace W = kkt.MakeRowSpace();
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace W = model.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicThetaContinuationR(
-        kkt, cost_rhs, W, max_iterations, tolerance, verbose, policy,
+        model, W, max_iterations, tolerance, verbose, policy,
         compl_tol, theta_rate);
   }
 };
@@ -30,12 +29,11 @@ struct HybridR {
   int max_iterations = 500;
   bool verbose = false;
 
-  GeodesicResult Run(KKTSolverBase& kkt,
-                     const SolverRHS& cost_rhs) const {
-    RowSpace W = kkt.MakeRowSpace();
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace W = model.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicHybridR(
-        kkt, cost_rhs, W, max_iterations, tolerance, verbose);
+        model, W, max_iterations, tolerance, verbose);
   }
 };
 
@@ -45,12 +43,11 @@ struct GeodesicHSD {
   int max_iterations = 30;
   bool verbose = false;
 
-  GeodesicResult Run(KKTSolverBase& kkt,
-                     const SolverRHS& cost_rhs) const {
-    RowSpace W = kkt.MakeRowSpace();
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace W = model.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicHSD(
-        kkt, cost_rhs, W, max_iterations, tolerance, verbose);
+        model, W, max_iterations, tolerance, verbose);
   }
 };
 
@@ -61,12 +58,11 @@ struct ThetaContinuation {
   int max_centering_steps = 1;
   bool verbose = false;
 
-  GeodesicResult Run(KKTSolverBase& kkt,
-                     const SolverRHS& cost_rhs) const {
-    RowSpace W = kkt.MakeRowSpace();
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace W = model.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicThetaContinuation(
-        kkt, cost_rhs, W, max_iterations, max_centering_steps,
+        model, W, max_iterations, max_centering_steps,
         tolerance, verbose);
   }
 };
@@ -78,12 +74,11 @@ struct PhaseOne {
   int max_centering_steps = 1;
   bool verbose = false;
 
-  GeodesicResult Run(KKTSolverBase& kkt,
-                     const SolverRHS& cost_rhs) const {
-    RowSpace W = kkt.MakeRowSpace();
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace W = model.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicPhaseOne(
-        kkt, cost_rhs, W, max_iterations, max_centering_steps,
+        model, W, max_iterations, max_centering_steps,
         tolerance, verbose);
   }
 };
@@ -97,16 +92,15 @@ struct PhaseOneHybrid {
   bool verbose = false;
   HybridSwitchPolicy policy = DefaultHybridPolicy;
 
-  GeodesicResult Run(KKTSolverBase& kkt,
-                     const SolverRHS& cost_rhs) const {
-    RowSpace W = kkt.MakeRowSpace();
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace W = model.MakeRowSpace();
     setOnes(W);
     auto p1 = SolveGeodesicPhaseOne(
-        kkt, cost_rhs, W, max_iterations, max_centering_steps,
+        model, W, max_iterations, max_centering_steps,
         tolerance, verbose, /*phase1_only=*/true);
     double k_init = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
     auto result = SolveGeodesicHybrid(
-        kkt, cost_rhs, W, max_iterations, tolerance, verbose,
+        model, W, max_iterations, tolerance, verbose,
         k_init, p1.tau, policy);
     result.total_factorizations += p1.total_factorizations;
     result.total_solves += p1.total_solves;
@@ -122,12 +116,11 @@ struct HybridOnly {
   bool verbose = false;
   HybridSwitchPolicy policy = DefaultHybridPolicy;
 
-  GeodesicResult Run(KKTSolverBase& kkt,
-                     const SolverRHS& cost_rhs) const {
-    RowSpace W = kkt.MakeRowSpace();
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace W = model.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicHybrid(
-        kkt, cost_rhs, W, max_iterations, tolerance, verbose,
+        model, W, max_iterations, tolerance, verbose,
         /*initial_k=*/-1, /*tau=*/1.0, policy);
   }
 };
@@ -139,12 +132,11 @@ struct GeodesicLP {
   int max_centering_steps = 0;
   bool verbose = false;
 
-  GeodesicResult Run(KKTSolverBase& kkt,
-                     const SolverRHS& cost_rhs) const {
-    RowSpace W = kkt.MakeRowSpace();
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace W = model.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicLP(
-        kkt, cost_rhs, W, max_iterations, max_centering_steps,
+        model, W, max_iterations, max_centering_steps,
         tolerance, verbose);
   }
 };

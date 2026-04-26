@@ -206,12 +206,12 @@ static QPSolution SolveGeodesicFromProblem(
   auto solver = Solver::Build(problem);
   auto* kkt = solver.kkt();
 
-  auto cost_rhs = solver.MakeCostRHS();
+  CompiledModel cm(*kkt, solver.MakeCostRHS());
 
-  RowSpace W = kkt->MakeRowSpace();
+  RowSpace W = cm.MakeRowSpace();
   setOnes(W);
 
-  auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
+  auto result = SolveGeodesicLP(cm, W, 30, 0, 1e-8);
 
   QPSolution sol;
   sol.x = solver.ExpandSolution(result.x);

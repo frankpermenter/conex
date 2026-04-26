@@ -32,7 +32,8 @@ TEST(LineSearchBug, EvaluatedNormExceedsBound) {
 
   // Run phase 1 with phase1_only — this exits at the exact iteration
   // where lineSearchK(d0, tau*d1_0, 1.1) > 0.
-  auto p1 = SolveGeodesicPhaseOne(*kkt, cost_rhs, W, 500, 1, 1e-8,
+  CompiledModel cm(*kkt, cost_rhs);
+  auto p1 = SolveGeodesicPhaseOne(cm, W, 500, 1, 1e-8,
                                    /*verbose=*/true, /*phase1_only=*/true);
   ASSERT_GT(p1.mu, 0) << "Phase 1 should have reached theta=0";
 
@@ -41,7 +42,7 @@ TEST(LineSearchBug, EvaluatedNormExceedsBound) {
 
   // Decompose at the exit W (same state as phase 1's last decomp).
   RowSpace b = kkt->GetAffineTerm();
-  auto decomp = ComputeFullDecomposition(*kkt, cost_rhs, b, W);
+  auto decomp = ComputeFullDecomposition(cm, b, W);
 
   // Reproduce lineSearchK call from phase 1.
   RowSpace tau_d1_0 = decomp.d1_0;

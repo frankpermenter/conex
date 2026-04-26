@@ -14,6 +14,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/geodesic_ipm.h"
+#include "conex/common/compiled_model.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
@@ -139,18 +140,20 @@ void RunComparison(int m, int n, int rank_Q, int seed) {
   // ===== Geodesic IPM (0 centering steps) =====
   {
     auto [solver, cost_rhs] = BuildSolver(qp, vars);
-    RowSpace W = solver.kkt()->MakeRowSpace();
+    CompiledModel cm(*solver.kkt(), cost_rhs);
+    RowSpace W = cm.MakeRowSpace();
     setOnes(W);
-    auto result = SolveGeodesicLP(*solver.kkt(), cost_rhs, W, 30, 0, 1e-8);
+    auto result = SolveGeodesicLP(cm, W, 30, 0, 1e-8);
     PrintResult("Geodesic IPM (0 centering)", result);
   }
 
   // ===== Geodesic IPM (Hybrid) =====
   {
     auto [solver, cost_rhs] = BuildSolver(qp, vars);
-    RowSpace W = solver.kkt()->MakeRowSpace();
+    CompiledModel cm(*solver.kkt(), cost_rhs);
+    RowSpace W = cm.MakeRowSpace();
     setOnes(W);
-    auto result = SolveGeodesicHybrid(*solver.kkt(), cost_rhs, W, 50, 1e-8);
+    auto result = SolveGeodesicHybrid(cm, W, 50, 1e-8);
     PrintResult("Geodesic IPM (Hybrid)", result, true);
   }
 }
@@ -196,20 +199,21 @@ void RunSDPComparison(int n, int p, int seed) {
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
+  CompiledModel cm(*kkt, cost_rhs);
 
   // ===== Geodesic IPM (0 centering steps) =====
   {
-    RowSpace W = kkt->MakeRowSpace();
+    RowSpace W = cm.MakeRowSpace();
     setOnes(W);
-    auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
+    auto result = SolveGeodesicLP(cm, W, 30, 0, 1e-8);
     PrintResult("SDP Geodesic IPM (0 centering)", result);
   }
 
   // ===== Geodesic IPM (Hybrid) =====
   {
-    RowSpace W = kkt->MakeRowSpace();
+    RowSpace W = cm.MakeRowSpace();
     setOnes(W);
-    auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W, 50, 1e-8);
+    auto result = SolveGeodesicHybrid(cm, W, 50, 1e-8);
     PrintResult("SDP Geodesic IPM (Hybrid)", result, true);
   }
 }
@@ -243,20 +247,21 @@ void RunSOCPComparison(int vec_dim, int p, int seed) {
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
+  CompiledModel cm(*kkt, cost_rhs);
 
   // ===== Geodesic IPM (0 centering steps) =====
   {
-    RowSpace W = kkt->MakeRowSpace();
+    RowSpace W = cm.MakeRowSpace();
     setOnes(W);
-    auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8);
+    auto result = SolveGeodesicLP(cm, W, 30, 0, 1e-8);
     PrintResult("SOCP Geodesic IPM (0 centering)", result);
   }
 
   // ===== Geodesic IPM (Hybrid) =====
   {
-    RowSpace W = kkt->MakeRowSpace();
+    RowSpace W = cm.MakeRowSpace();
     setOnes(W);
-    auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W, 50, 1e-8);
+    auto result = SolveGeodesicHybrid(cm, W, 50, 1e-8);
     PrintResult("SOCP Geodesic IPM (Hybrid)", result, true);
   }
 }

@@ -67,9 +67,10 @@ int main(int argc, char** argv) {
     cost_rhs.SetZero();
   }
 
+  CompiledModel cm(*kkt, cost_rhs);
   auto t0 = Clock::now();
   // Cold start: initial_k = -1 (auto), tau = 1.0.
-  auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W,
+  auto result = SolveGeodesicHybrid(cm, W,
                                      max_iters, 1e-8, /*verbose=*/true);
   auto t1 = Clock::now();
   double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();

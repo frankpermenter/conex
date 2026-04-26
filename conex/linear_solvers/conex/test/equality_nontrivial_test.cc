@@ -73,8 +73,9 @@ bool TestStandardFormLP() {
   setOnes(W);
   kkt->SetScaling(W); kkt->AssembleAndFactor();
 
+  CompiledModel cm(*kkt, cost_rhs);
   auto r = SolveGeodesicThetaContinuation(
-      *kkt, cost_rhs, W, 500, 1, 1e-8, true);
+      cm, W, 500, 1, 1e-8, true);
 
   Eigen::VectorXd x = r.x.head(n);
   double obj = cost.dot(x);
@@ -111,7 +112,8 @@ bool TestStandardFormLP() {
     cr2 = k2->MakeBlockVariable(rc);
     RowSpace W2 = k2->MakeRowSpace();
     setOnes(W2); k2->SetScaling(W2); k2->AssembleAndFactor();
-    auto r2 = SolveGeodesicThetaContinuation(*k2, cr2, W2, 500, 1, 1e-8, false);
+    CompiledModel cm2(*k2, cr2);
+    auto r2 = SolveGeodesicThetaContinuation(cm2, W2, 500, 1, 1e-8, false);
 
     double obj2 = cost.dot(x_feas);
     if (r2.x.size() >= nz) obj2 += rc.dot(r2.x.head(nz));
@@ -209,8 +211,9 @@ bool TestMaxcutSDP() {
   setOnes(W);
   kkt->SetScaling(W); kkt->AssembleAndFactor();
 
+  CompiledModel cm(*kkt, cost_rhs);
   auto r = SolveGeodesicThetaContinuation(
-      *kkt, cost_rhs, W, 500, 1, 1e-8, true);
+      cm, W, 500, 1, 1e-8, true);
 
   Eigen::VectorXd x = r.x.head(nvar);
   double obj = cost.dot(x);

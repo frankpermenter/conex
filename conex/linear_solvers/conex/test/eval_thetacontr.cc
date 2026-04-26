@@ -71,8 +71,9 @@ EvalResult RunConfig(const char* problem_name, const char* config_name,
   algo.policy = policy;
   algo.theta_rate = theta_rate;
 
+  CompiledModel cm(*solver.kkt(), solver.MakeCostRHS());
   auto t0 = Clock::now();
-  auto raw = algo.Run(*solver.kkt(), solver.MakeCostRHS());
+  auto raw = algo.Run(cm);
   auto t1 = Clock::now();
   double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 

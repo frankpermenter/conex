@@ -375,6 +375,9 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void MultiplyA(const SolverRHS& x, RowSpace& out) override;
   void AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) override;
   void AccumulateQx(const SolverRHS& x, SolverRHS& rhs) override;
+  bool has_quadratic_cost() const override {
+    return !quadratic_sub_assemblers_.empty();
+  }
   void SetWeights(const RowSpace& w) override;
   void SetScaling(const RowSpace& w) override;
   RowSpace GetAffineTerm() override;

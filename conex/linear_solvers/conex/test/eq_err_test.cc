@@ -38,7 +38,8 @@ static TestResult RunTest(const char* name, Model& prob,
   kkt->SetScaling(W);
   kkt->AssembleAndFactor();
 
-  auto r = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 200, 1, 1e-8, true);
+  CompiledModel cm(*kkt, cost_rhs);
+  auto r = SolveGeodesicThetaContinuation(cm, W, 200, 1, 1e-8, true);
 
   // Extract max eq_err from the verbose output.
   // Since iter_stats doesn't store eq_err, we re-derive it from the result.

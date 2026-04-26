@@ -189,7 +189,8 @@ TEST(ExtendedEmbedding, ThetaVsMuOnCentralPath) {
   for (double k_target : {1.0, 1.5, 2.0, 3.0, 5.0, 10.0}) {
     RowSpace W = kkt->MakeRowSpace();
     setOnes(W);
-    auto raw = GeodesicCenter(*kkt, cost_rhs, W, k_target, 50, 1e-4, false);
+    CompiledModel cm(*kkt, cost_rhs);
+    auto raw = GeodesicCenter(cm, W, k_target, 50, 1e-4, false);
     double mu_target = 1.0 / (k_target * k_target);
     if (raw.x.size() == 0) {
       printf("  %10.4f %10.6f  (no result)\n", k_target, mu_target);

@@ -5,6 +5,7 @@
 
 #include "conex/algorithms/geodesic_hybrid_r.h"
 #include "conex/algorithms/geodesic_ipm.h"
+#include "conex/common/compiled_model.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/kkt_system.h"
 #include "conex/common/model.h"
@@ -77,10 +78,11 @@ TEST(GeodesicHybridR, DirectionEquations) {
   kkt->AssembleAndFactor();
 
   // Test at several theta values.
+  CompiledModel cm(*kkt, cost_rhs);
   for (double theta : {0.0, 0.1, 0.5, 1.0}) {
     RowSpace d = kkt->MakeRowSpace();
     RowSpace delta = kkt->MakeRowSpace();
-    auto info = ComputeHybridRDirection(*kkt, cost_rhs, b, W, r, theta,
+    auto info = ComputeHybridRDirection(cm, b, W, r, theta,
                                          d, delta);
     // Extract y by re-solving (same RHS).
     RowSpace b_theta = kkt->MakeRowSpace();
@@ -106,7 +108,7 @@ TEST(GeodesicHybridR, DirectionEquations) {
     y_rhs.supernodes->GatherInto(y);
 
     auto [p_res, d_res] = VerifyHybridREquations(
-        *kkt, cost_rhs, b, W, r, theta, d, delta, y);
+        cm, b, W, r, theta, d, delta, y);
     printf("  theta=%.1f: gap=%.2e d_inf=%.4f primal_res=%.2e dual_res=%.2e\n",
            theta, info.gap, info.d_inf, p_res, d_res);
     EXPECT_LT(p_res, 1e-10);
@@ -134,10 +136,11 @@ TEST(GeodesicHybridR, DirectionEquationsNonUniformR) {
   kkt->SetScaling(W);
   kkt->AssembleAndFactor();
 
+  CompiledModel cm(*kkt, cost_rhs);
   for (double theta : {0.0, 0.3, 1.0}) {
     RowSpace d = kkt->MakeRowSpace();
     RowSpace delta = kkt->MakeRowSpace();
-    ComputeHybridRDirection(*kkt, cost_rhs, b, W, r, theta, d, delta);
+    ComputeHybridRDirection(cm, b, W, r, theta, d, delta);
 
     // Extract y.
     RowSpace b_theta = kkt->MakeRowSpace();
@@ -162,7 +165,7 @@ TEST(GeodesicHybridR, DirectionEquationsNonUniformR) {
     y_rhs.supernodes->GatherInto(y);
 
     auto [p_res, d_res] = VerifyHybridREquations(
-        *kkt, cost_rhs, b, W, r, theta, d, delta, y);
+        cm, b, W, r, theta, d, delta, y);
     printf("  theta=%.1f: primal_res=%.2e dual_res=%.2e\n",
            theta, p_res, d_res);
     EXPECT_LT(p_res, 1e-10);
@@ -202,7 +205,8 @@ TEST(GeodesicHybridR, CenteredFixedPoint) {
   // At theta=1, b_theta = e, and c = A'e. The direction d should be 0.
   RowSpace d = kkt->MakeRowSpace();
   RowSpace delta = kkt->MakeRowSpace();
-  auto info = ComputeHybridRDirection(*kkt, cost_rhs, b, W, r, 1.0,
+  CompiledModel cm(*kkt, cost_rhs);
+  auto info = ComputeHybridRDirection(cm, b, W, r, 1.0,
                                        d, delta);
   printf("  theta=1: d_inf=%.2e gap=%.2e\n", info.d_inf, info.gap);
   EXPECT_LT(info.d_inf, 1e-10);
@@ -230,7 +234,8 @@ TEST(GeodesicHybridR, SolveSmallLP) {
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 
-  auto result = SolveGeodesicHybridR(*kkt, cost_rhs, W, 500, 1e-8, true);
+  CompiledModel cm(*kkt, cost_rhs);
+  auto result = SolveGeodesicHybridR(cm, W, 500, 1e-8, true);
 
   printf("\n  fac=%d sol=%d mu=%.2e gap=%.2e d_inf=%.4f\n",
          result.total_factorizations, result.total_solves,

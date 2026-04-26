@@ -43,7 +43,8 @@ TEST(HybridTransition, TrivialCentering) {
   // Phase 1 with phase1_only: should transition immediately.
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
-  auto p1 = SolveGeodesicPhaseOne(*kkt, cost_rhs, W, 500, 1, 1e-8,
+  CompiledModel cm(*kkt, cost_rhs);
+  auto p1 = SolveGeodesicPhaseOne(cm, W, 500, 1, 1e-8,
                                    /*verbose=*/true, /*phase1_only=*/true);
   printf("Phase1: %d iters, mu=%.2e, tau=%.4f\n",
          p1.iterations, p1.mu, p1.tau);
@@ -69,7 +70,7 @@ TEST(HybridTransition, TrivialCentering) {
   r_check *= (1.0 / k);  // r = (1/k) * e = e at k=1
   RowSpace d_check = kkt->MakeRowSpace();
   RowSpace delta_check = kkt->MakeRowSpace();
-  auto info0 = ComputeHybridDirection(*kkt, cost_rhs, b_scaled,
+  auto info0 = ComputeHybridDirection(cm, b_scaled,
                                        W, r_check, d_check, delta_check);
   printf("Initial hybrid direction: d_inf=%.2e, gap=%.2e\n",
          info0.d_inf, info0.gap);

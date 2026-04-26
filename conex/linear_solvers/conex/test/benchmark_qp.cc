@@ -47,10 +47,11 @@ AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
                    const Model& problem,
                    const Solver& solver,
                    auto solve_fn) {
+  CompiledModel cm(kkt, cost_rhs);
   RowSpace W = kkt.MakeRowSpace();
   setOnes(W);
   auto t0 = Clock::now();
-  auto result = solve_fn(kkt, cost_rhs, W);
+  auto result = solve_fn(cm, W);
   auto t1 = Clock::now();
   double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
@@ -121,23 +122,23 @@ void RunBenchmark(const Model& problem, const QPSInfo& info,
 
   if (should_run("ThetaCont")) {
     results.push_back(RunAlgo("ThetaCont", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicThetaContinuation(k, c, W, max_iters, 1, tol, true);
+      [&](CompiledModel& m, RowSpace& W) {
+        return SolveGeodesicThetaContinuation(m, W, max_iters, 1, tol, true);
       }));
   }
   if (should_run("PhaseOne")) {
     results.push_back(RunAlgo("PhaseOne", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true);
+      [&](CompiledModel& m, RowSpace& W) {
+        return SolveGeodesicPhaseOne(m, W, max_iters, 1, tol, true);
       }));
   }
   if (should_run("Ph1+Hybrid")) {
     results.push_back(RunAlgo("Ph1+Hybrid", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        auto p1 = SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true,
+      [&](CompiledModel& m, RowSpace& W) {
+        auto p1 = SolveGeodesicPhaseOne(m, W, max_iters, 1, tol, true,
                                          /*phase1_only=*/true);
         double k_init = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
-        auto result = SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+        auto result = SolveGeodesicHybrid(m, W, max_iters, tol, true,
                                            k_init, p1.tau);
         result.total_factorizations += p1.total_factorizations;
         result.total_solves += p1.total_solves;
@@ -146,8 +147,8 @@ void RunBenchmark(const Model& problem, const QPSInfo& info,
   }
   if (should_run("ThetaContR")) {
     results.push_back(RunAlgo("ThetaContR", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true);
+      [&](CompiledModel& m, RowSpace& W) {
+        return SolveGeodesicThetaContinuationR(m, W, max_iters, tol, true);
       }));
   }
   for (double ct : {1e-8, 1e-10, 1e-12, 1e-14}) {
@@ -156,8 +157,8 @@ void RunBenchmark(const Model& problem, const QPSInfo& info,
       snprintf(name, sizeof(name), "TR_t%.0e_c%.0e", tv, ct);
       if (should_run(name)) {
         results.push_back(RunAlgo(name, *kkt, cost_rhs, problem, solver,
-          [&, ct, tv](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-            return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tv, true,
+          [&, ct, tv](CompiledModel& m, RowSpace& W) {
+            return SolveGeodesicThetaContinuationR(m, W, max_iters, tv, true,
                 DefaultThetaContRPolicy, ct);
           }));
       }
@@ -165,8 +166,8 @@ void RunBenchmark(const Model& problem, const QPSInfo& info,
   }
   if (should_run("ThetaR+gap")) {
     results.push_back(RunAlgo("ThetaR+gap", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true,
+      [&](CompiledModel& m, RowSpace& W) {
+        return SolveGeodesicThetaContinuationR(m, W, max_iters, tol, true,
             [](double gap, double, int) { return gap < 0; });
       }));
   }

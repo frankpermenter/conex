@@ -28,6 +28,7 @@
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/algorithms/geodesic_hybrid_r.h"
 #include "conex/common/cbf_reader.h"
+#include "conex/common/compiled_model.h"
 #include "conex/algorithms/geodesic_hybrid_r.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/mps_reader.h"
@@ -125,15 +126,14 @@ struct AlgoResult {
   bool converged;
 };
 
-AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
-                   const SolverRHS& cost_rhs,
+AlgoResult RunAlgo(const char* name, CompiledModel& model,
                    const Model& problem,
                    const Solver& solver,
                    auto solve_fn) {
-  RowSpace W = kkt.MakeRowSpace();
+  RowSpace W = model.MakeRowSpace();
   setOnes(W);
   auto t0 = Clock::now();
-  auto result = solve_fn(kkt, cost_rhs, W);
+  auto result = solve_fn(model, W);
   auto t1 = Clock::now();
   double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
@@ -194,6 +194,7 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   }
 
   auto cost_rhs = solver.MakeCostRHS();
+  CompiledModel model(*kkt, cost_rhs);
 
   const int max_iters = 500;
   const double tol = tol_override;
@@ -201,24 +202,24 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   std::vector<AlgoResult> results;
 
   if (should_run("ThetaCont")) {
-    results.push_back(RunAlgo("ThetaCont", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicThetaContinuation(k, c, W, max_iters, 1, tol, true);
+    results.push_back(RunAlgo("ThetaCont", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicThetaContinuation(model, W, max_iters, 1, tol, true);
       }));
   }
   if (should_run("PhaseOne")) {
-    results.push_back(RunAlgo("PhaseOne", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true);
+    results.push_back(RunAlgo("PhaseOne", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicPhaseOne(model, W, max_iters, 1, tol, true);
       }));
   }
   if (should_run("Ph1+Hybrid")) {
-    results.push_back(RunAlgo("Ph1+Hybrid", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        auto p1 = SolveGeodesicPhaseOne(k, c, W, max_iters, 1, tol, true,
+    results.push_back(RunAlgo("Ph1+Hybrid", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        auto p1 = SolveGeodesicPhaseOne(model, W, max_iters, 1, tol, true,
                                          /*phase1_only=*/true);
         double k_init = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
-        auto result = SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+        auto result = SolveGeodesicHybrid(model, W, max_iters, tol, true,
                                            k_init, p1.tau);
         result.total_factorizations += p1.total_factorizations;
         result.total_solves += p1.total_solves;
@@ -226,15 +227,15 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
       }));
   }
   if (should_run("HybridR")) {
-    results.push_back(RunAlgo("HybridR", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicHybridR(k, c, W, max_iters, tol, true);
+    results.push_back(RunAlgo("HybridR", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicHybridR(model, W, max_iters, tol, true);
       }));
   }
   if (should_run("ThetaContR")) {
-    results.push_back(RunAlgo("ThetaContR", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true);
+    results.push_back(RunAlgo("ThetaContR", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicThetaContinuationR(model, W, max_iters, tol, true);
       }));
   }
   for (double ct : {1e-8, 1e-10, 1e-12, 1e-14}) {
@@ -242,25 +243,25 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
       char name[48];
       snprintf(name, sizeof(name), "TR_t%g_c%g", tv, ct);
       if (should_run(name)) {
-        results.push_back(RunAlgo(name, *kkt, cost_rhs, problem, solver,
-          [&, ct, tv](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-            return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tv, true,
+        results.push_back(RunAlgo(name, model, problem, solver,
+          [&, ct, tv](CompiledModel& model, RowSpace& W) {
+            return SolveGeodesicThetaContinuationR(model, W, max_iters, tv, true,
                 DefaultThetaContRPolicy, ct);
           }));
       }
     }
   }
   if (should_run("ThetaR+gap")) {
-    results.push_back(RunAlgo("ThetaR+gap", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicThetaContinuationR(k, c, W, max_iters, tol, true,
+    results.push_back(RunAlgo("ThetaR+gap", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicThetaContinuationR(model, W, max_iters, tol, true,
             [](double gap, double, int) { return gap < 0; });
       }));
   }
   if (should_run("ColdHybrid")) {
-    results.push_back(RunAlgo("ColdHybrid", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicHybrid(k, c, W, max_iters, tol, true);
+    results.push_back(RunAlgo("ColdHybrid", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicHybrid(model, W, max_iters, tol, true);
       }));
   }
   auto make_warmup_policy = [](int warmup_centers) -> HybridSwitchPolicy {
@@ -271,30 +272,30 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
     };
   };
   if (should_run("Cold+3ctr")) {
-    results.push_back(RunAlgo("Cold+3ctr", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+    results.push_back(RunAlgo("Cold+3ctr", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicHybrid(model, W, max_iters, tol, true,
                                     -1, 1.0, make_warmup_policy(3));
       }));
   }
   if (should_run("Cold+5ctr")) {
-    results.push_back(RunAlgo("Cold+5ctr", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+    results.push_back(RunAlgo("Cold+5ctr", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicHybrid(model, W, max_iters, tol, true,
                                     -1, 1.0, make_warmup_policy(5));
       }));
   }
   if (should_run("Cold+10ctr")) {
-    results.push_back(RunAlgo("Cold+10ctr", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+    results.push_back(RunAlgo("Cold+10ctr", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicHybrid(model, W, max_iters, tol, true,
                                     -1, 1.0, make_warmup_policy(10));
       }));
   }
   if (should_run("Cold+20ctr")) {
-    results.push_back(RunAlgo("Cold+20ctr", *kkt, cost_rhs, problem, solver,
-      [&](KKTSolverBase& k, const SolverRHS& c, RowSpace& W) {
-        return SolveGeodesicHybrid(k, c, W, max_iters, tol, true,
+    results.push_back(RunAlgo("Cold+20ctr", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicHybrid(model, W, max_iters, tol, true,
                                     -1, 1.0, make_warmup_policy(20));
       }));
   }

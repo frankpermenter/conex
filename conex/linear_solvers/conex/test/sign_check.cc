@@ -42,7 +42,8 @@ int main() {
   setOnes(W);
   kkt->SetScaling(W); kkt->AssembleAndFactor();
 
-  auto r = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 200, 1, 1e-8, false);
+  CompiledModel cm(*kkt, cost_rhs);
+  auto r = SolveGeodesicThetaContinuation(cm, W, 200, 1, 1e-8, false);
 
   int nv = kkt->number_of_variables();  // 3 primal + 1 dual = 4
   int np = 3;  // primal vars

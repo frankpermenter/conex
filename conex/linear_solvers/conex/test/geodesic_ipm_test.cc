@@ -6,6 +6,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/geodesic_ipm.h"
+#include "conex/common/compiled_model.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
@@ -59,6 +60,7 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
   auto* kkt = solver.kkt();
 
   auto cost_rhs = solver.MakeCostRHS();
+  CompiledModel cm(*kkt, cost_rhs);
 
   // Initialize W = ones + small perturbation.
   RowSpace W = kkt->MakeRowSpace();
@@ -66,7 +68,7 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
 
   // Phase 1: center at k = 1.
   double k = 1.0;
-  auto result = GeodesicCenter(*kkt, cost_rhs, W, k, 100, 1e-10);
+  auto result = GeodesicCenter(cm, W, k, 100, 1e-10);
 
   printf("k=%.2f: %d iters, ||d||_inf=%.2e\n",
          k, result.iterations, result.d_inf_norm);
@@ -78,11 +80,11 @@ TEST(GeodesicBarrierQP, CentralPathConvergence) {
   // Phase 2: line-search for k, then re-center.
   const int num_updates = 6;
   for (int step = 0; step < num_updates; ++step) {
-    double k_new = GeodesicLineSearch(*kkt, cost_rhs, W);
+    double k_new = GeodesicLineSearch(cm, W);
     EXPECT_GE(k_new, k);
 
     k = k_new;
-    result = GeodesicCenter(*kkt, cost_rhs, W, k, 100, 1e-10);
+    result = GeodesicCenter(cm, W, k, 100, 1e-10);
     printf("k=%.4f  mu=%.2e: %d iters, d_inf=%.2e, d_sqr=%.2e, "
            "s_dot_x=%.2e\n",
            k, result.mu, result.iterations, result.d_inf_norm,
@@ -121,6 +123,7 @@ TEST(GeodesicBarrierQP, FullDecomposition) {
   auto* kkt = solver.kkt();
 
   auto cost_rhs = solver.MakeCostRHS();
+  CompiledModel cm(*kkt, cost_rhs);
 
   // Perturb W away from identity.
   RowSpace W = kkt->MakeRowSpace();
@@ -128,7 +131,7 @@ TEST(GeodesicBarrierQP, FullDecomposition) {
 
   const RowSpace b_rs = kkt->GetAffineTerm();
 
-  auto decomp = ComputeFullDecomposition(*kkt, cost_rhs, b_rs, W);
+  auto decomp = ComputeFullDecomposition(cm, b_rs, W);
 
   // Test several (k, theta) pairs.
   double test_ks[] = {0.5, 1.0, 2.0, 5.0};
@@ -148,7 +151,7 @@ TEST(GeodesicBarrierQP, FullDecomposition) {
         // (tau, theta) when tau=1, theta=0 (original problem, no blend).
         if (tau == 1.0 && theta == 0.0) {
           auto [p_res, d_res] = VerifyNewtonEquations(
-              *kkt, cost_rhs, b_rs, W, d, y, k, 0.0);
+              cm, b_rs, W, d, y, k, 0.0);
           printf("  k=%.1f tau=%.1f theta=%.1f: primal=%.2e  dual=%.2e\n",
                  k, tau, theta, p_res, d_res);
           EXPECT_LT(p_res, 1e-10);
@@ -216,6 +219,7 @@ TEST(GeodesicBarrierQP, MultipleConstraints) {
   auto* kkt = solver.kkt();
 
   auto cost_rhs = solver.MakeCostRHS();
+  CompiledModel cm(*kkt, cost_rhs);
 
   const int m = m1 + m2;
 
@@ -226,7 +230,7 @@ TEST(GeodesicBarrierQP, MultipleConstraints) {
     // Small perturbation.
     setFromVector(W, VectorXd::Ones(m) + 0.01 * VectorXd::Random(m));
 
-    auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 100, 1e-10);
+    auto result = GeodesicCenter(cm, W, 1.0, 100, 1e-10);
     EXPECT_LT(result.d_inf_norm, 1e-8);
 
     // W should return to ones.
@@ -243,7 +247,7 @@ TEST(GeodesicBarrierQP, MultipleConstraints) {
     RowSpace W = kkt->MakeRowSpace();
     setOnes(W);
 
-    auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-8, true);
+    auto result = SolveGeodesicLP(cm, W, 30, 0, 1e-8, true);
     EXPECT_LT(result.complementarity, 1e-7);
 
     printf("MultipleConstraints geodesic: %d fac, %d sol, gap=%.2e\n",
@@ -256,7 +260,7 @@ TEST(GeodesicBarrierQP, MultipleConstraints) {
     RowSpace W = kkt->MakeRowSpace();
     setOnes(W);
 
-    auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W, 50, 1e-8);
+    auto result = SolveGeodesicHybrid(cm, W, 50, 1e-8);
     EXPECT_LT(std::abs(result.complementarity), 1e-7);
 
     printf("MultipleConstraints hybrid: %d fac, %d sol, gap=%.2e\n",
@@ -321,18 +325,19 @@ TEST(GeodesicBarrierQP, HybridCenteringLoop) {
   RowSpace r = kkt->MakeRowSpace();
   setFromVector(r, VectorXd::Ones(m) + 0.1 * VectorXd::Random(m));
 
+  CompiledModel cm(*kkt, cost_rhs);
   for (int iter = 0; iter < 20; ++iter) {
-    auto info = HybridCenteringStep(*kkt, cost_rhs, W, r);
+    auto info = HybridCenteringStep(cm, W, r);
     if (info.d_inf < 1e-10) break;
   }
 
   // Verify convergence.
-  kkt->SetScaling(W);
-  kkt->AssembleAndFactor();
-  RowSpace d = kkt->MakeRowSpace();
-  RowSpace delta = kkt->MakeRowSpace();
-  const RowSpace b_aff = kkt->GetAffineTerm();
-  auto info = ComputeHybridDirection(*kkt, cost_rhs, b_aff, W, r, d, delta);
+  cm.SetScaling(W);
+  cm.AssembleAndFactor();
+  RowSpace d = cm.MakeRowSpace();
+  RowSpace delta = cm.MakeRowSpace();
+  const RowSpace b_aff = cm.GetAffineTerm();
+  auto info = ComputeHybridDirection(cm, b_aff, W, r, d, delta);
   printf("Nonneg HybridCentering: d_inf=%.2e\n", info.d_inf);
   EXPECT_LT(info.d_inf, 1e-6);
 }
@@ -390,6 +395,7 @@ TEST(GeodesicSDP, CenterConvergence) {
 
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
+  CompiledModel cm(*kkt, cost_rhs);
 
   // Initialize W = I + small perturbation (symmetric).
   RowSpace W = kkt->MakeRowSpace();
@@ -402,7 +408,7 @@ TEST(GeodesicSDP, CenterConvergence) {
     for (int i = 0; i < n2; ++i) W.segment_ptr(0)[i] = W0.data()[i];
   }
 
-  auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 100, 1e-10);
+  auto result = GeodesicCenter(cm, W, 1.0, 100, 1e-10);
   printf("SDP Center: %d iters, d_inf=%.2e\n",
          result.iterations, result.d_inf_norm);
   EXPECT_LT(result.d_inf_norm, 1e-6);
@@ -448,9 +454,10 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
   auto lp_solver = Solver::Build(lp_problem);
   auto* lp_kkt = lp_solver.kkt();
   auto lp_cost = lp_solver.MakeCostRHS();
+  CompiledModel lp_cm(*lp_kkt, lp_cost);
   RowSpace lp_W = lp_kkt->MakeRowSpace();
   setFromVector(lp_W, VectorXd::Ones(m) + pert);
-  auto lp_result = GeodesicCenter(*lp_kkt, lp_cost, lp_W, 1.0, 20, 1e-12, true);
+  auto lp_result = GeodesicCenter(lp_cm, lp_W, 1.0, 20, 1e-12, true);
 
   // --- SDP path (diagonal matrices, no chordal) ---
   Model sdp_problem;
@@ -471,6 +478,7 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
   auto sdp_solver = Solver::Build(sdp_problem);
   auto* sdp_kkt = sdp_solver.kkt();
   auto sdp_cost = sdp_solver.MakeCostRHS();
+  CompiledModel sdp_cm(*sdp_kkt, sdp_cost);
   RowSpace sdp_W = sdp_kkt->MakeRowSpace();
   // Set W = diag(ones + pert) as an m×m matrix.
   {
@@ -478,7 +486,7 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
     for (int i = 0; i < m2; ++i) sdp_W.segment_ptr(0)[i] = 0;
     for (int i = 0; i < m; ++i) sdp_W.segment_ptr(0)[i * m + i] = 1.0 + pert(i);
   }
-  auto sdp_result = GeodesicCenter(*sdp_kkt, sdp_cost, sdp_W, 1.0, 20, 1e-12, true);
+  auto sdp_result = GeodesicCenter(sdp_cm, sdp_W, 1.0, 20, 1e-12, true);
 
   printf("\nCentering:\n");
   printf("  LP:  %d iters, d_inf=%.2e\n", lp_result.iterations, lp_result.d_inf_norm);
@@ -496,8 +504,8 @@ TEST(GeodesicSDP, DiagonalMatchesLP) {
   }
 
   const int lp_iters = 12;
-  auto lp_lp = SolveGeodesicLP(*lp_kkt, lp_cost, lp_W, lp_iters, 0, 1e-12, true);
-  auto sdp_lp = SolveGeodesicLP(*sdp_kkt, sdp_cost, sdp_W, lp_iters, 0, 1e-12, true);
+  auto lp_lp = SolveGeodesicLP(lp_cm, lp_W, lp_iters, 0, 1e-12, true);
+  auto sdp_lp = SolveGeodesicLP(sdp_cm, sdp_W, lp_iters, 0, 1e-12, true);
 
   printf("\nLP solve:\n");
   printf("  %3s  %12s  %12s  %12s  %12s\n", "it", "LP_dinf", "SDP_dinf", "LP_mu", "SDP_mu");
@@ -546,11 +554,12 @@ TEST(GeodesicSDP, NonDiagonalCenter) {
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
+  CompiledModel cm(*kkt, cost_rhs);
 
   // Center at k=1 from W=I (should be 1 iter since already centered).
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
-  auto r0 = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 50, 1e-10);
+  auto r0 = GeodesicCenter(cm, W, 1.0, 50, 1e-10);
   printf("k=1 (W=I): %d iters, d_inf=%.2e\n", r0.iterations, r0.d_inf_norm);
   EXPECT_LT(r0.d_inf_norm, 1e-8);
   EXPECT_LE(r0.iterations, 2);
@@ -563,18 +572,18 @@ TEST(GeodesicSDP, NonDiagonalCenter) {
     MatrixXd W0 = MatrixXd::Identity(n, n) + pert;
     for (int i = 0; i < n2; ++i) W.segment_ptr(0)[i] = W0.data()[i];
   }
-  auto r1 = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 50, 1e-10);
+  auto r1 = GeodesicCenter(cm, W, 1.0, 50, 1e-10);
   printf("k=1 (perturbed): %d iters, d_inf=%.2e\n",
          r1.iterations, r1.d_inf_norm);
   EXPECT_LT(r1.d_inf_norm, 1e-8);
 
   // One line search + re-center should work.
   double k = 1.0;
-  double k_new = GeodesicLineSearch(*kkt, cost_rhs, W);
+  double k_new = GeodesicLineSearch(cm, W);
   printf("line search: k_new=%.4f\n", k_new);
   EXPECT_GT(k_new, k);
   k = k_new;
-  auto r2 = GeodesicCenter(*kkt, cost_rhs, W, k, 50, 1e-10);
+  auto r2 = GeodesicCenter(cm, W, k, 50, 1e-10);
   printf("k=%.4f: %d iters, d_inf=%.2e\n", k, r2.iterations, r2.d_inf_norm);
   EXPECT_LT(r2.d_inf_norm, 1e-8);
 }
@@ -607,11 +616,12 @@ TEST(GeodesicSDP, NonDiagonalLP) {
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
+  CompiledModel cm(*kkt, cost_rhs);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 
-  auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 30, 0, 1e-6, true);
+  auto result = SolveGeodesicLP(cm, W, 30, 0, 1e-6, true);
   printf("SDP LP: %d fac, mu=%.2e, d_inf=%.2e\n",
          result.total_factorizations, result.mu, result.d_inf_norm);
 
@@ -676,8 +686,9 @@ TEST(GeodesicSDP, HybridCenteringLoop) {
   printf("  %s\n", std::string(42, '-').c_str());
 
   // Centering loop: uses the same HybridCenteringStep as the algorithm.
+  CompiledModel cm(*kkt, cost_rhs);
   for (int iter = 0; iter < 20; ++iter) {
-    auto info = HybridCenteringStep(*kkt, cost_rhs, W, r);
+    auto info = HybridCenteringStep(cm, W, r);
     printf("  %3d  %12.4e  %12.4e  %12.4e\n",
            iter, info.gap, info.d_inf, info.d_sq);
     if (info.d_inf < 1e-10) break;
@@ -685,12 +696,12 @@ TEST(GeodesicSDP, HybridCenteringLoop) {
 
   // Verify convergence: one more direction computation (no step).
   {
-    kkt->SetScaling(W);
-    kkt->AssembleAndFactor();
-    RowSpace d = kkt->MakeRowSpace();
-    RowSpace delta = kkt->MakeRowSpace();
-    const RowSpace b_aff = kkt->GetAffineTerm();
-    auto info = ComputeHybridDirection(*kkt, cost_rhs, b_aff, W, r, d, delta);
+    cm.SetScaling(W);
+    cm.AssembleAndFactor();
+    RowSpace d = cm.MakeRowSpace();
+    RowSpace delta = cm.MakeRowSpace();
+    const RowSpace b_aff = cm.GetAffineTerm();
+    auto info = ComputeHybridDirection(cm, b_aff, W, r, d, delta);
     printf("\nFinal: d_inf=%.2e, gap=%.2e\n", info.d_inf, info.gap);
     EXPECT_LT(info.d_inf, 1e-6);
   }
@@ -750,6 +761,7 @@ TEST(GeodesicSOC, CenterConvergence) {
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(tp.c);
+  CompiledModel cm(*kkt, cost_rhs);
 
   // Perturb W from identity.
   RowSpace W = kkt->MakeRowSpace();
@@ -761,7 +773,7 @@ TEST(GeodesicSOC, CenterConvergence) {
     setFromVector(W, w0);
   }
 
-  auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 50, 1e-10, true);
+  auto result = GeodesicCenter(cm, W, 1.0, 50, 1e-10, true);
   printf("SOC Center: %d iters, d_inf=%.2e\n",
          result.iterations, result.d_inf_norm);
   EXPECT_LT(result.d_inf_norm, 1e-8);
@@ -779,11 +791,12 @@ TEST(GeodesicSOC, LP) {
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c_lp);
+  CompiledModel cm(*kkt, cost_rhs);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 
-  auto result = SolveGeodesicLP(*kkt, cost_rhs, W, 20, 0, 1e-6, true);
+  auto result = SolveGeodesicLP(cm, W, 20, 0, 1e-6, true);
   printf("SOC LP: %d fac, mu=%.2e, d_inf=%.2e\n",
          result.total_factorizations, result.mu, result.d_inf_norm);
 
@@ -818,18 +831,19 @@ TEST(GeodesicSOC, HybridCenteringLoop) {
 
   printf("  %3s  %12s  %12s\n", "iter", "gap", "d_inf");
   printf("  %s\n", std::string(30, '-').c_str());
+  CompiledModel cm(*kkt, cost_rhs);
   for (int iter = 0; iter < 20; ++iter) {
-    auto info = HybridCenteringStep(*kkt, cost_rhs, W, r);
+    auto info = HybridCenteringStep(cm, W, r);
     printf("  %3d  %12.4e  %12.4e\n", iter, info.gap, info.d_inf);
     if (info.d_inf < 1e-10) break;
   }
 
-  kkt->SetScaling(W);
-  kkt->AssembleAndFactor();
-  RowSpace d = kkt->MakeRowSpace();
-  RowSpace delta = kkt->MakeRowSpace();
-  const RowSpace b_aff = kkt->GetAffineTerm();
-  auto info = ComputeHybridDirection(*kkt, cost_rhs, b_aff, W, r, d, delta);
+  cm.SetScaling(W);
+  cm.AssembleAndFactor();
+  RowSpace d = cm.MakeRowSpace();
+  RowSpace delta = cm.MakeRowSpace();
+  const RowSpace b_aff = cm.GetAffineTerm();
+  auto info = ComputeHybridDirection(cm, b_aff, W, r, d, delta);
   printf("Final: d_inf=%.2e\n", info.d_inf);
   EXPECT_LT(info.d_inf, 1e-6);
 }
@@ -841,11 +855,12 @@ TEST(GeodesicSOC, Hybrid) {
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(tp.c);
+  CompiledModel cm(*kkt, cost_rhs);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 
-  auto result = SolveGeodesicHybrid(*kkt, cost_rhs, W, 50, 1e-8);
+  auto result = SolveGeodesicHybrid(cm, W, 50, 1e-8);
   printf("SOC Hybrid: %d fac, %d sol, gap=%.2e\n",
          result.total_factorizations, result.total_solves,
          result.complementarity);
@@ -890,12 +905,13 @@ TEST(GeodesicSDP, InterleavedVariablesRandom) {
   auto* kkt = solver.kkt();
 
   auto cost_rhs = solver.MakeCostRHS();
+  CompiledModel cm(*kkt, cost_rhs);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 
   // At W=I, k=1 with cost = A^T(I), d should be ~0.
-  auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 10, 1e-10, true);
+  auto result = GeodesicCenter(cm, W, 1.0, 10, 1e-10, true);
   printf("Interleaved PSD: %d iters, d_inf=%.2e\n",
          result.iterations, result.d_inf_norm);
   EXPECT_LT(result.d_inf_norm, 1e-8);
@@ -922,7 +938,7 @@ TEST(GeodesicSDP, InterleavedVariablesRandom) {
     }
   }
 
-  auto result2 = GeodesicCenter(*kkt, cost_rhs, W, std::sqrt(2.0),
+  auto result2 = GeodesicCenter(cm, W, std::sqrt(2.0),
                                  20, 1e-10, true);
   printf("Interleaved center mu=0.5: %d iters, d_inf=%.2e\n",
          result2.iterations, result2.d_inf_norm);
@@ -966,18 +982,19 @@ TEST(GeodesicSDP, InterleavedVariablesChordal) {
   auto* kkt = solver.kkt();
 
   auto cost_rhs = solver.MakeCostRHS();
+  CompiledModel cm(*kkt, cost_rhs);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 
-  auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 10, 1e-10);
+  auto result = GeodesicCenter(cm, W, 1.0, 10, 1e-10);
   printf("Interleaved chordal: %d iters, d_inf=%.2e\n",
          result.iterations, result.d_inf_norm);
   EXPECT_LT(result.d_inf_norm, 1e-8);
 
   // Perturb and center at mu=0.5.
   setOnes(W);
-  auto result2 = GeodesicCenter(*kkt, cost_rhs, W, std::sqrt(2.0),
+  auto result2 = GeodesicCenter(cm, W, std::sqrt(2.0),
                                  20, 1e-10);
   printf("Interleaved chordal center mu=0.5: %d iters, d_inf=%.2e\n",
          result2.iterations, result2.d_inf_norm);
@@ -1028,6 +1045,7 @@ TEST(GeodesicSDP, MixedPSDNonneg) {
 
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
+  CompiledModel cm(*kkt, cost_rhs);
 
   // At W=I, k=1: d should be ~0.
   RowSpace W = kkt->MakeRowSpace();
@@ -1037,14 +1055,14 @@ TEST(GeodesicSDP, MixedPSDNonneg) {
   for (int i = 0; i < W.num_constraints(); ++i)
     printf("  seg %d: size=%d\n", i, W.sizes[i]);
 
-  auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 10, 1e-10, true);
+  auto result = GeodesicCenter(cm, W, 1.0, 10, 1e-10, true);
   printf("Center at k=1: %d iters, d_inf=%.2e\n",
          result.iterations, result.d_inf_norm);
   EXPECT_LT(result.d_inf_norm, 1e-8);
 
   // Center at mu=0.5.
   setOnes(W);
-  auto result2 = GeodesicCenter(*kkt, cost_rhs, W, std::sqrt(2.0),
+  auto result2 = GeodesicCenter(cm, W, std::sqrt(2.0),
                                  20, 1e-10, true);
   printf("Center at mu=0.5: %d iters, d_inf=%.2e\n",
          result2.iterations, result2.d_inf_norm);
@@ -1088,18 +1106,19 @@ TEST(GeodesicSDP, MixedPSDNonnegDisjoint) {
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   cost_rhs = kkt->MakeBlockVariable(c);
+  CompiledModel cm(*kkt, cost_rhs);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 
-  auto result = GeodesicCenter(*kkt, cost_rhs, W, 1.0, 10, 1e-10, true);
+  auto result = GeodesicCenter(cm, W, 1.0, 10, 1e-10, true);
   printf("Mixed disjoint center k=1: %d iters, d_inf=%.2e\n",
          result.iterations, result.d_inf_norm);
   EXPECT_LT(result.d_inf_norm, 1e-8);
 
   // Center at mu=0.5.
   setOnes(W);
-  auto result2 = GeodesicCenter(*kkt, cost_rhs, W, std::sqrt(2.0),
+  auto result2 = GeodesicCenter(cm, W, std::sqrt(2.0),
                                  20, 1e-10, true);
   printf("Mixed disjoint center mu=0.5: %d iters, d_inf=%.2e\n",
          result2.iterations, result2.d_inf_norm);

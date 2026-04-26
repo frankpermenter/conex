@@ -45,7 +45,8 @@ static RunResult RunIPM(Model& prob, const Eigen::VectorXd& cost,
   kkt->SetScaling(W);
   kkt->AssembleAndFactor();
 
-  auto r = SolveGeodesicThetaContinuation(*kkt, cost_rhs, W, 500, 1, 1e-8, verbose);
+  CompiledModel cm(*kkt, cost_rhs);
+  auto r = SolveGeodesicThetaContinuation(cm, W, 500, 1, 1e-8, verbose);
 
   RunResult result;
   result.iterations = r.iterations;
