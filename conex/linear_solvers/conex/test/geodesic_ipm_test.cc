@@ -1451,13 +1451,20 @@ static void CheckIsomorphicIterations(const char* name,
   printf("\n=== %s isomorphism: SOC %d fac, SDP %d fac ===\n",
          name, soc_r.total_factorizations, sdp_r.total_factorizations);
   int n_common = std::min(soc_r.iter_stats.size(), sdp_r.iter_stats.size());
+  printf("  %3s  %12s %12s %5s  %12s %12s %5s\n",
+         "it", "soc_d_inf", "sdp_d_inf", "err", "soc_d_sqr", "sdp_d_sqr", "err");
   for (int i = 0; i < n_common; ++i) {
-    double d_err = std::abs(soc_r.iter_stats[i].d_inf -
-                            sdp_r.iter_stats[i].d_inf);
-    printf("  it %2d: soc_d=%.10e  sdp_d=%.10e  err=%.2e\n",
-           i, soc_r.iter_stats[i].d_inf, sdp_r.iter_stats[i].d_inf, d_err);
+    double d_inf_err = std::abs(soc_r.iter_stats[i].d_inf -
+                                sdp_r.iter_stats[i].d_inf);
+    double d_sqr_err = std::abs(soc_r.iter_stats[i].d_sqr -
+                                sdp_r.iter_stats[i].d_sqr);
+    printf("  %3d  %12.6e %12.6e %5.0e  %12.6e %12.6e %5.0e\n",
+           i, soc_r.iter_stats[i].d_inf, sdp_r.iter_stats[i].d_inf, d_inf_err,
+           soc_r.iter_stats[i].d_sqr, sdp_r.iter_stats[i].d_sqr, d_sqr_err);
     EXPECT_NEAR(soc_r.iter_stats[i].d_inf, sdp_r.iter_stats[i].d_inf, 1e-8)
         << name << ": d_inf mismatch at iteration " << i;
+    EXPECT_NEAR(soc_r.iter_stats[i].d_sqr, sdp_r.iter_stats[i].d_sqr, 1e-6)
+        << name << ": d_sqr mismatch at iteration " << i;
   }
   EXPECT_LE(std::abs(soc_r.total_factorizations -
                      sdp_r.total_factorizations), 1)
@@ -1473,8 +1480,9 @@ TEST(SpinFactor, GeodesicLP_Isomorphic) {
   CompiledModel sdp_cm(*sdp_s.kkt(), sdp_s.MakeCostRHS());
   RowSpace soc_W = soc_cm.MakeRowSpace(); setOnes(soc_W);
   RowSpace sdp_W = sdp_cm.MakeRowSpace(); setOnes(sdp_W);
-  auto soc_r = SolveGeodesicLP(soc_cm, soc_W, 30, 0, 1e-8);
-  auto sdp_r = SolveGeodesicLP(sdp_cm, sdp_W, 30, 0, 1e-8);
+  bool verbose = true;
+  auto soc_r = SolveGeodesicLP(soc_cm, soc_W, 30, 0, 1e-8, verbose);
+  auto sdp_r = SolveGeodesicLP(sdp_cm, sdp_W, 30, 0, 1e-8, verbose);
   CheckIsomorphicIterations("GeodesicLP", soc_r, sdp_r);
 }
 
