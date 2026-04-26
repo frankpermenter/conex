@@ -233,6 +233,38 @@ void SOCConeOps::updateAutomorphism(double* w, double* r, double alpha,
   (void)r;
 }
 
+void SOCConeOps::updateAutomorphismP(double* p, double* r, double alpha,
+                                     const double* d, int size) const {
+  // Same as updateAutomorphism but operates on P = sqrt(W).
+  // M = P * exp(α D / 2), polar decomposition, store P_new (not P²).
+
+  // sqrtW = P (input is already P, no eigendecomp needed).
+
+  // exp(α/2 * D)
+  double expHalfD[size];
+  SpectralApply(expHalfD, d, size, [alpha](double l) {
+    return std::exp(0.5 * alpha * l);
+  });
+
+  // M = P * expHalfD (Jordan product).
+  double M[size];
+  product(M, p, expHalfD, size);
+
+  // Polar: for SOC, P_new has eigenvalues |λᵢ(M)|.
+  SOCSpectral sm(M, size);
+  double p_lam1 = std::abs(sm.lam1);
+  double p_lam2 = std::abs(sm.lam2);
+
+  // P_new: eigenvalues are |λᵢ(M)| (not squared).
+  SOCSpectral sp = sm;
+  sp.lam1 = p_lam1;
+  sp.lam2 = p_lam2;
+  sp.Reconstruct(p, size);
+
+  // R unchanged for SOC (automorphism group is commutative).
+  (void)r;
+}
+
 // Find largest k > 0 with ||d0 + k*d1||_inf ≤ 1.
 // Eigenvalues: λ(k) = (t₀+k*t₁) ± ||x₀+k*x₁||.
 // Need |λ₁(k)| ≤ 1 and |λ₂(k)| ≤ 1.

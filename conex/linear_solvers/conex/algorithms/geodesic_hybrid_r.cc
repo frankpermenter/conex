@@ -16,7 +16,9 @@ using EuclideanJordanAlgebra::setOnes;
 using EuclideanJordanAlgebra::shrinkR;
 using EuclideanJordanAlgebra::solveLyapunovForD;
 using EuclideanJordanAlgebra::squaredNorm;
+using EuclideanJordanAlgebra::square;
 using EuclideanJordanAlgebra::updateAutomorphism;
+using EuclideanJordanAlgebra::updateAutomorphismP;
 
 // Compute b_theta = theta * e + (1 - theta) * b.
 static RowSpace BlendAffine(CompiledModel& model, const RowSpace& b,
@@ -138,11 +140,12 @@ std::pair<double, double> VerifyHybridREquations(
 HybridRDecomposition ComputeHybridRDecomposition(
     CompiledModel& model,
     const RowSpace& b,
+    const RowSpace& P,
     const RowSpace& W,
     const RowSpace& r) {
   const auto& cost_rhs = model.cost_rhs();
   double theta = 0;  // theta not used for the three raw solves
-  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  const RowSpace& sqrtW = P;  // P = sqrt(W), no eigendecomposition needed
   int nv = model.number_of_variables();
   RowSpace v = model.MakeRowSpace();
 
@@ -247,9 +250,10 @@ HybridRDecomposition ComputeHybridRDecomposition(
 
 int UpdateX0(HybridRDecomposition& decomp,
              CompiledModel& model,
+             const RowSpace& P,
              const RowSpace& W,
              const RowSpace& r) {
-  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  const RowSpace& sqrtW = P;
   RowSpace v = quadraticRepresentation(sqrtW, r);
   v *= 2.0;
   auto rhs0 = model.MakeSolverRHS();
@@ -275,7 +279,7 @@ int UpdateX0(HybridRDecomposition& decomp,
 void SetTheta(HybridRDecomposition& decomp,
               CompiledModel& model,
               const RowSpace& b,
-              const RowSpace& W,
+              const RowSpace& P,
               const RowSpace& r,
               double theta) {
   decomp.y_center = decomp.x0 + theta * decomp.x_theta;
@@ -283,7 +287,7 @@ void SetTheta(HybridRDecomposition& decomp,
 
   // delta_center = r - P(W^{1/2})(A*f + theta*(e-b))
   // Use cached A*x0, A*x_theta: A*f = A*x0 + theta*A*x_theta.
-  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  const RowSpace& sqrtW = P;
   RowSpace ones_v = model.MakeRowSpace(); setOnes(ones_v);
   RowSpace e_minus_b = addScaled(ones_v, b, 1.0, -1.0);
   RowSpace Af = addScaled(decomp.ax0, decomp.ax_theta, 1.0, theta);
@@ -339,6 +343,12 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   double r_tau = 1.0;
   const double alpha_norm = cone_rank + 1.0;
   const bool skip_Q = !model.has_quadratic_cost();
+  // Store P = sqrt(W) as the primary state.  W = P² is recomputed when needed.
+  // Caller passes W = I (ones), so P = I initially.
+  RowSpace P = model.MakeRowSpace();
+  setOnes(P);  // P = I = sqrt(I)
+  // W is now a derived quantity: W = square(P).
+  W = square(P);  // W = I initially
   model.SetScaling(W);
   model.AssembleAndFactor();
   int total_fac = 1;
@@ -369,11 +379,11 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   for (int iter = 0; iter < max_iterations; ++iter) {
     if (need_decomp) {
       if (full_decomp) {
-        decomp = ComputeHybridRDecomposition(model, b, W, r);
+        decomp = ComputeHybridRDecomposition(model, b, P, W, r);
         total_sol += 3;
       } else {
         // Only r changed — re-solve x0, keep x1 and x_theta.
-        total_sol += UpdateX0(decomp, model, W, r);
+        total_sol += UpdateX0(decomp, model, P, W, r);
       }
       need_decomp = false;
       full_decomp = false;
@@ -512,7 +522,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       if (std::abs(Nth) > Nth_threshold) {
         theta = (-alpha_norm - N0 - N1 * tau) / Nth;
       }
-      SetTheta(decomp, model, b, W, r, theta);
+      SetTheta(decomp, model, b, P, r, theta);
     }
 
     // Evaluate cone direction at current (tau, r, theta).
@@ -527,8 +537,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
     if (verbose) {
       // Diagnostics: gap equation, normalization, dual residual, complementarity.
-      RowSpace sqrtW_v = EuclideanJordanAlgebra::sqrt(W);
-      RowSpace lam_v = quadraticRepresentation(sqrtW_v,
+      RowSpace lam_v = quadraticRepresentation(P,
           addScaled(r, delta_vec, 1.0, 1.0));
       Eigen::VectorXd x_vec = decomp.y_center + tau * decomp.y_cost;
       auto x_rhs = model.MakeSolverRHS();
@@ -596,7 +605,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
                                     || theta_stalled);
     if (do_center) {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      updateAutomorphism(W, r, alpha, d_vec);
+      updateAutomorphismP(P, r, alpha, d_vec);
+      W = square(P);
       w_tau *= std::exp(d_tau * alpha);
       model.SetScaling(W);
       if (!model.AssembleAndFactor()) break;
@@ -635,8 +645,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   {
     auto x_rhs = model.MakeSolverRHS();
     x_rhs = model.MakeBlockVariable(result.x);
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace lambda = quadraticRepresentation(sqrtW,
+    RowSpace lambda = quadraticRepresentation(P,
         addScaled(r, last_delta, 1.0, 1.0));
     if (tau > 0 && tau != 1.0) lambda *= (1.0 / tau);
     result.optimality = CheckOptimality(model, x_rhs, lambda);

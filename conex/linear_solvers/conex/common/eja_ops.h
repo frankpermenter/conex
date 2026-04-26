@@ -87,6 +87,15 @@ inline void updateAutomorphism(Variable& W, Variable& R, double alpha,
                                  alpha, d.segment_ptr(i), W.sizes[i]);
 }
 
+// Same as updateAutomorphism but operates on P = sqrt(W) directly.
+// Updates P in-place to P_new (not P_new²), avoiding an eigendecomposition.
+inline void updateAutomorphismP(Variable& P, Variable& R, double alpha,
+                                const Variable& d) {
+  for (int i = 0; i < P.num_constraints(); ++i)
+    P.ops[i]->updateAutomorphismP(P.segment_ptr(i), R.segment_ptr(i),
+                                  alpha, d.segment_ptr(i), P.sizes[i]);
+}
+
 // Solve Lyapunov R*D + D*R = 2*Delta for D.: solve R*D + D*R = 2*Delta for D.
 inline Variable solveLyapunovForD(const Variable& r, const Variable& delta) {
   Variable out = like(r);
@@ -117,6 +126,13 @@ inline double minEigenvalue(const Variable& a) {
 inline void setOnes(Variable& v) {
   for (int i = 0; i < v.num_constraints(); ++i)
     v.ops[i]->setIdentity(v.segment_ptr(i), v.sizes[i]);
+}
+
+// Compute W = P² = quadraticRepresentation(P, e).
+inline Variable square(const Variable& P) {
+  Variable ones = like(P);
+  setOnes(ones);
+  return quadraticRepresentation(P, ones);
 }
 
 // ||a||_inf.
@@ -248,6 +264,8 @@ using EuclideanJordanAlgebra::addScaled;
 using EuclideanJordanAlgebra::geodesicUpdate;
 using EuclideanJordanAlgebra::geodesicUpdateFromSlack;
 using EuclideanJordanAlgebra::updateAutomorphism;
+using EuclideanJordanAlgebra::updateAutomorphismP;
+using EuclideanJordanAlgebra::square;
 using EuclideanJordanAlgebra::absEJA;
 using EuclideanJordanAlgebra::minEigenvalue;
 using EuclideanJordanAlgebra::setOnes;

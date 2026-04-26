@@ -214,6 +214,36 @@ void PSDConeOps::updateAutomorphism(double* w, double* r, double alpha,
   Symmetrize(R);
 }
 
+void PSDConeOps::updateAutomorphismP(double* p, double* r, double alpha,
+                                     const double* d, int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<Eigen::MatrixXd> P(p, n, n);
+  Eigen::Map<Eigen::MatrixXd> R(r, n, n);
+  Eigen::Map<const Eigen::MatrixXd> D(d, n, n);
+
+  // M = P * exp(alpha * D / 2).  No eigendecomp of W needed.
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigD(alpha * 0.5 * D);
+  Eigen::MatrixXd expHalfD = eigD.eigenvectors() *
+      eigD.eigenvalues().array().exp().matrix().asDiagonal() *
+      eigD.eigenvectors().transpose();
+
+  Eigen::MatrixXd M = P * expHalfD;
+
+  // Polar decomposition: M = P_new * T, P_new = (M M^T)^{1/2}, T = P_new^{-1} M.
+  Eigen::MatrixXd MMt = M * M.transpose();
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigP(MMt);
+  Eigen::MatrixXd P_new = eigP.eigenvectors() *
+      eigP.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
+      eigP.eigenvectors().transpose();
+  Eigen::MatrixXd T = P_new.inverse() * M;
+
+  // P = P_new, R = T^T R T.
+  P = P_new;
+  Symmetrize(P);
+  R = T.transpose() * R * T;
+  Symmetrize(R);
+}
+
 double PSDConeOps::lineSearchK(const double* d0, const double* d1,
                                int size) const {
   int n = MatrixDim(size);

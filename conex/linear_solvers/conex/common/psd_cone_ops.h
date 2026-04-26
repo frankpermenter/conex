@@ -26,6 +26,8 @@ class PSDConeOps : public ConeOps {
   double minEigenvalue(const double* a, int size) const override;
   void updateAutomorphism(double* w, double* r, double alpha,
                           const double* d, int size) const override;
+  void updateAutomorphismP(double* p, double* r, double alpha,
+                           const double* d, int size) const override;
   double lineSearchK(const double* d0, const double* d1,
                      int size) const override;
   void project(double* out, const double* a, int size) const override;

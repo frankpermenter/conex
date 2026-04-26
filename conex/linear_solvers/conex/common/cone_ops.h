@@ -64,6 +64,14 @@ class ConeOps {
   virtual void updateAutomorphism(double* w, double* r, double alpha,
                                   const double* d, int size) const = 0;
 
+  // Same as updateAutomorphism but operates on P = sqrt(W) directly.
+  // Input: p = P_old.  Output: p = P_new (not P_new²).
+  //   Nonneg: p_i *= exp(alpha * d_i / 2).
+  //   PSD:    M = P * exp(alpha*D/2), polar M=P_new*T,
+  //           p = P_new, R = T^T R T.
+  virtual void updateAutomorphismP(double* p, double* r, double alpha,
+                                   const double* d, int size) const = 0;
+
   // Line search: largest k > 0 with ||d0 + k*d1||_inf <= 1.
   //   Nonneg: per-element bound |d0_i + k*d1_i| <= 1.
   //   PSD:    GEV on (D1, I ± D0) to find when eigenvalues hit ±1.
@@ -157,6 +165,12 @@ class NonnegOrthantOps : public ConeOps {
                           const double* d, int size) const override {
     for (int i = 0; i < size; ++i)
       w[i] *= std::exp(alpha * d[i]);
+  }
+
+  void updateAutomorphismP(double* p, double* /*r*/, double alpha,
+                           const double* d, int size) const override {
+    for (int i = 0; i < size; ++i)
+      p[i] *= std::exp(0.5 * alpha * d[i]);
   }
 
   double lineSearchK(const double* d0, const double* d1,
