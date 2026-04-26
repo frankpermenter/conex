@@ -217,69 +217,96 @@ static Eigen::MatrixXd QuadRepMatrix(const double* a, int size) {
 
 void SOCConeOps::updateAutomorphism(double* w, double* r, double alpha,
                                     const double* d, int size) const {
-  // Correct implementation via matrix representation of the automorphism.
-  // M = P_matrix(sqrt(W)) * P_matrix(exp(αd/2))
-  // Polar: M = P_new * T, W_new = P_new², r_new = T^T r.
+  // O(n) implementation exploiting SOC rank-2 structure.
   //
-  // This is O(n²) but exact — isomorphic to PSD under spin factor embedding.
+  // The composed automorphism g = P(sqrt(W)) · P(exp(αd/2)) acts as a scalar
+  // (det(a)·det(b)) on the (n-2)-dimensional subspace perpendicular to both
+  // spectral directions. The nontrivial part is a 3×3 matrix in
+  // span{e_t, â_x, ê_perp} where â_x = a_x/||a_x|| and ê_perp is the
+  // component of b̂_x perpendicular to â_x.
 
-  double sqrtW[size];
-  sqrt(sqrtW, w, size);
-
-  double expHalfD[size];
-  SpectralApply(expHalfD, d, size, [alpha](double l) {
+  double a[size];  // a = sqrt(W)
+  sqrt(a, w, size);
+  double b[size];  // b = exp(αd/2)
+  SpectralApply(b, d, size, [alpha](double l) {
     return std::exp(0.5 * alpha * l);
   });
 
-  // M = P_matrix(sqrt(W)) * P_matrix(exp(αd/2))  — (1+n)×(1+n) matrix product.
-  Eigen::MatrixXd M = QuadRepMatrix(sqrtW, size) * QuadRepMatrix(expHalfD, size);
+  int n = size - 1;  // x-dimension
+  double a_t = a[0], b_t = b[0];
+  Eigen::Map<const Eigen::VectorXd> a_x(a + 1, n);
+  Eigen::Map<const Eigen::VectorXd> b_x(b + 1, n);
+  double na = a_x.norm(), nb = b_x.norm();
 
-  // W_new = g(e) = M * e (first column of the composed automorphism matrix).
-  Eigen::VectorXd e = Eigen::VectorXd::Zero(size);
-  e(0) = 1.0;
-  Eigen::VectorXd w_new = M * e;
-  std::copy(w_new.data(), w_new.data() + size, w);
+  // W_new = P(a)(b²) = geodesicUpdate(W, alpha, d).  O(n).
+  geodesicUpdate(w, w, alpha, d, size);
 
-  // Polar decomposition of M: M = P_pos * T, where P_pos = sqrt(M*M^T).
-  // r_new = T^T * r.
-  Eigen::MatrixXd MMt = M * M.transpose();
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(MMt);
-  Eigen::MatrixXd P_pos = eig.eigenvectors() *
+  // Special case: if either direction is zero, P(a) or P(b) is scalar and T = I.
+  if (na < 1e-15 || nb < 1e-15) return;
+
+  Eigen::VectorXd ahat = a_x / na;
+  Eigen::VectorXd bhat = b_x / nb;
+  double cos_ab = ahat.dot(bhat);
+  double sin_ab = std::sqrt(std::max(0.0, 1.0 - cos_ab * cos_ab));
+
+  // If spectral directions are parallel, P(a) and P(b) share eigenbasis and T = I.
+  if (sin_ab < 1e-14) return;
+
+  // Build orthonormal ê_perp: component of b̂ perpendicular to â.
+  Eigen::VectorXd eperp = bhat - cos_ab * ahat;
+  eperp /= sin_ab;
+
+  // P(a) in the 3D basis {e_t, â, ê_perp}:
+  //   [a_t²+na², 2*a_t*na, 0; 2*a_t*na, a_t²+na², 0; 0, 0, a_t²-na²]
+  Eigen::Matrix3d Pa;
+  Pa << a_t*a_t + na*na, 2*a_t*na, 0,
+        2*a_t*na, a_t*a_t + na*na, 0,
+        0, 0, a_t*a_t - na*na;
+
+  // P(b) in the 3D basis {e_t, â, ê_perp}:
+  // b_x in this basis: along â = nb*cos_ab, along ê_perp = nb*sin_ab.
+  double bc = nb * cos_ab, bs = nb * sin_ab;
+  Eigen::Matrix3d Pb;
+  Pb << b_t*b_t + nb*nb, 2*b_t*bc, 2*b_t*bs,
+        2*b_t*bc, b_t*b_t + 2*bc*bc - nb*nb, 2*bc*bs,
+        2*b_t*bs, 2*bc*bs, b_t*b_t + 2*bs*bs - nb*nb;
+
+  // Composed automorphism in 3D subspace.
+  Eigen::Matrix3d G = Pa * Pb;
+
+  // Polar decomposition of G: G = P3 * T3.
+  Eigen::Matrix3d GGt = G * G.transpose();
+  Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> eig(GGt);
+  Eigen::Matrix3d P3 = eig.eigenvectors() *
       eig.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
       eig.eigenvectors().transpose();
-  Eigen::MatrixXd T = P_pos.inverse() * M;
-  Eigen::Map<Eigen::VectorXd> r_vec(r, size);
-  r_vec = T.transpose() * r_vec;
+  Eigen::Matrix3d T3 = P3.inverse() * G;
+
+  // Apply T3^T to r's projection onto the 3D subspace.
+  // r = r_t * e_t + (r·â) * â + (r·ê_perp) * ê_perp + r_rest
+  // Only the 3D part rotates; r_rest is unchanged (T = I on perpendicular).
+  Eigen::Map<Eigen::VectorXd> r_x(r + 1, n);
+  double r_along_a = r_x.dot(ahat);
+  double r_along_e = r_x.dot(eperp);
+  Eigen::Vector3d r3(r[0], r_along_a, r_along_e);
+  Eigen::Vector3d r3_new = T3.transpose() * r3;
+
+  // Reconstruct r: remove old 3D components, add new ones.
+  r_x -= r_along_a * ahat + r_along_e * eperp;
+  r[0] = r3_new(0);
+  r_x += r3_new(1) * ahat + r3_new(2) * eperp;
 }
 
 void SOCConeOps::updateAutomorphismP(double* p, double* r, double alpha,
                                      const double* d, int size) const {
-  // Same as updateAutomorphism but stores P_new (not W_new = P_new²).
-  // Uses matrix representation for correct r rotation.
-  double expHalfD[size];
-  SpectralApply(expHalfD, d, size, [alpha](double l) {
-    return std::exp(0.5 * alpha * l);
-  });
-
-  Eigen::MatrixXd Mg = QuadRepMatrix(p, size) * QuadRepMatrix(expHalfD, size);
-
-  // W_new = g(e), P_new = sqrt(W_new).
-  Eigen::VectorXd e = Eigen::VectorXd::Zero(size);
-  e(0) = 1.0;
-  Eigen::VectorXd w_new = Mg * e;
-  double p_new[size];
-  sqrt(p_new, w_new.data(), size);
-  std::copy(p_new, p_new + size, p);
-
-  // Polar of Mg: T = sqrt(Mg*Mg^T)^{-1} * Mg. r_new = T^T * r.
-  Eigen::MatrixXd MMt = Mg * Mg.transpose();
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(MMt);
-  Eigen::MatrixXd P_pos = eig.eigenvectors() *
-      eig.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
-      eig.eigenvectors().transpose();
-  Eigen::MatrixXd T = P_pos.inverse() * Mg;
-  Eigen::Map<Eigen::VectorXd> r_vec(r, size);
-  r_vec = T.transpose() * r_vec;
+  // Compute W = P², update W and r, recover P = sqrt(W_new).
+  double w[size];
+  // W = P²: use quadraticRepresentation(P, e).
+  double e_vec[size];
+  setIdentity(e_vec, size);
+  quadraticRepresentation(w, p, e_vec, size);
+  updateAutomorphism(w, r, alpha, d, size);
+  sqrt(p, w, size);
 }
 
 // SOC: polar is O(n), so do it internally and rotate r.
