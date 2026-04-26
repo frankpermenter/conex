@@ -250,12 +250,8 @@ void PSDConeOps::updateM(double* m, double alpha,
   Eigen::Map<Eigen::MatrixXd> M(m, n, n);
   Eigen::Map<const Eigen::MatrixXd> D(d, n, n);
 
-  // M_new = M_old * exp(alpha * D / 2).  No polar decomposition.
-  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigD(alpha * 0.5 * D);
-  Eigen::MatrixXd expHalfD = eigD.eigenvectors() *
-      eigD.eigenvalues().array().exp().matrix().asDiagonal() *
-      eigD.eigenvectors().transpose();
-  M = M * expHalfD;
+  // M_new = M_old * exp(alpha * D / 2).  Padé approximant, no eigendecomp.
+  M = M * ExpmPade(alpha * 0.5 * D);
 }
 
 void PSDConeOps::applyM(double* out, const double* m,
