@@ -189,36 +189,25 @@ std::pair<double, double> VerifyHybridREquations(
 HybridRDecomposition ComputeHybridRDecomposition(
     CompiledModel& model,
     const RowSpace& b,
-    const RowSpace& P,
+    const RowSpace& M,
     const RowSpace& W,
     const RowSpace& r) {
   const auto& cost_rhs = model.cost_rhs();
-  double theta = 0;  // theta not used for the three raw solves
-  const RowSpace& sqrtW = P;  // P = sqrt(W), no eigendecomposition needed
   int nv = model.number_of_variables();
   RowSpace v = model.MakeRowSpace();
 
   // Three-solve decomposition (hybrid_theta_continuation.tex §2).
-  //
-  //   rhs0: 2*A'P(W^{1/2})(r)                               → x0
-  //   rhs1: -(c + A'P(W)(b)) + d_eq                          → x1
-  //   rhs2: (c + A'P(W)(b)) - d_eq - A'(e + P(W)(e))         → x_theta
-  //
-  // At fixed point (W=I, r=e): rhs0 + rhs1 + rhs2 = 0.
-  //
-  // Full direction: x(tau, theta) = x0 + tau*x1 + theta*x_theta
-  //
-  // Two-term decomposition (§3) with theta fixed:
-  //   f = x0 + theta*x_theta   (tau-free)
-  //   g = x1                    (tau-proportional)
+  // M is the full automorphism; r is in M-frame.
+  // applyM(M, r) = M*r*M^T replaces P(sqrt(W))(r).
+  // quadraticRepresentation(W, x) for physical-frame x uses W = M*M^T.
 
   RowSpace ones = model.MakeRowSpace();
   setOnes(ones);
 
-  // rhs0 = 2*A'P(W^{1/2})(r)
+  // rhs0 = 2*A' * applyM(M, r)
   auto rhs0 = model.MakeSolverRHS();
   rhs0.SetZero();
-  v = quadraticRepresentation(sqrtW, r);
+  v = applyM(M, r);
   v *= 2.0;
   model.AccumulateAtranspose(v, rhs0);
 
@@ -278,9 +267,10 @@ HybridRDecomposition ComputeHybridRDecomposition(
   //             + tau*[-P(W)(A*x1 + b)]
   //             + theta*[-P(W)(A*x_theta + e - b)]
   RowSpace e_minus_b = addScaled(ones, b, 1.0, -1.0);
-  RowSpace Psqrt2r = quadraticRepresentation(sqrtW, r);
-  Psqrt2r *= 2.0;
-  decomp.lam0 = addScaled(Psqrt2r,
+  // lam0 = applyM(M, 2r) - P(W)(A*x0)  (physical frame)
+  RowSpace Mr2 = applyM(M, r);
+  Mr2 *= 2.0;
+  decomp.lam0 = addScaled(Mr2,
       quadraticRepresentation(W, decomp.ax0), 1.0, -1.0);
   RowSpace arg1 = addScaled(decomp.ax1, b, 1.0, 1.0);
   decomp.lam1 = quadraticRepresentation(W, arg1);
@@ -289,8 +279,8 @@ HybridRDecomposition ComputeHybridRDecomposition(
   decomp.lam_theta = quadraticRepresentation(W, arg_th);
   decomp.lam_theta *= -1.0;
 
-  // delta_cost = -P(W^{1/2})(b + A*x1) — independent of theta.
-  decomp.delta_cost = quadraticRepresentation(sqrtW, arg1);
+  // delta_cost = -applyMt(M, b + A*x1) — independent of theta, in M-frame.
+  decomp.delta_cost = applyMt(M, arg1);
   decomp.delta_cost *= -1.0;
 
   // y_center, y_cost, delta_center are set by SetTheta().
@@ -299,11 +289,11 @@ HybridRDecomposition ComputeHybridRDecomposition(
 
 int UpdateX0(HybridRDecomposition& decomp,
              CompiledModel& model,
-             const RowSpace& P,
+             const RowSpace& M,
              const RowSpace& W,
              const RowSpace& r) {
-  const RowSpace& sqrtW = P;
-  RowSpace v = quadraticRepresentation(sqrtW, r);
+  // rhs0 = 2*A' * applyM(M, r)
+  RowSpace v = applyM(M, r);
   v *= 2.0;
   auto rhs0 = model.MakeSolverRHS();
   rhs0.SetZero();
@@ -316,10 +306,10 @@ int UpdateX0(HybridRDecomposition& decomp,
 
   model.MultiplyA(rhs0, decomp.ax0);
 
-  // Update lam0 = P(W^{1/2})(2r) - P(W)(A*x0).
-  RowSpace Psqrt2r = quadraticRepresentation(sqrtW, r);
-  Psqrt2r *= 2.0;
-  decomp.lam0 = addScaled(Psqrt2r,
+  // Update lam0 = applyM(M, 2r) - P(W)(A*x0).
+  RowSpace Mr2 = applyM(M, r);
+  Mr2 *= 2.0;
+  decomp.lam0 = addScaled(Mr2,
       quadraticRepresentation(W, decomp.ax0), 1.0, -1.0);
 
   return 1;  // 1 solve
@@ -328,21 +318,20 @@ int UpdateX0(HybridRDecomposition& decomp,
 void SetTheta(HybridRDecomposition& decomp,
               CompiledModel& model,
               const RowSpace& b,
-              const RowSpace& P,
+              const RowSpace& M,
               const RowSpace& r,
               double theta) {
   decomp.y_center = decomp.x0 + theta * decomp.x_theta;
   decomp.y_cost = decomp.x1;
 
-  // delta_center = r - P(W^{1/2})(A*f + theta*(e-b))
+  // delta_center = r - applyMt(M, A*f + theta*(e-b))  (M-frame)
   // Use cached A*x0, A*x_theta: A*f = A*x0 + theta*A*x_theta.
-  const RowSpace& sqrtW = P;
   RowSpace ones_v = model.MakeRowSpace(); setOnes(ones_v);
   RowSpace e_minus_b = addScaled(ones_v, b, 1.0, -1.0);
   RowSpace Af = addScaled(decomp.ax0, decomp.ax_theta, 1.0, theta);
   RowSpace dc_arg = addScaled(Af, e_minus_b, 1.0, theta);
   decomp.delta_center = addScaled(r,
-      quadraticRepresentation(sqrtW, dc_arg), 1.0, -1.0);
+      applyMt(M, dc_arg), 1.0, -1.0);
 }
 
 HybridRDirection EvalHybridRAtTau(
@@ -392,12 +381,11 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   double r_tau = 1.0;
   const double alpha_norm = cone_rank + 1.0;
   const bool skip_Q = !model.has_quadratic_cost();
-  // Store P = sqrt(W) as the primary state.  W = P² is recomputed when needed.
-  // Caller passes W = I (ones), so P = I initially.
-  RowSpace P = model.MakeRowSpace();
-  setOnes(P);  // P = I = sqrt(I)
-  // W is now a derived quantity: W = square(P).
-  W = square(P);  // W = I initially
+  // Store M (full automorphism, no polar split) as primary state.
+  // W = M*M^T. r stays in M-frame (not rotated during W-updates).
+  RowSpace M = model.MakeRowSpace();
+  setOnes(M);  // M = I initially
+  W = squareM(M);  // W = I initially
   model.SetScaling(W);
   model.AssembleAndFactor();
   int total_fac = 1;
@@ -428,11 +416,11 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   for (int iter = 0; iter < max_iterations; ++iter) {
     if (need_decomp) {
       if (full_decomp) {
-        decomp = ComputeHybridRDecomposition(model, b, P, W, r);
+        decomp = ComputeHybridRDecomposition(model, b, M, W, r);
         total_sol += 3;
       } else {
         // Only r changed — re-solve x0, keep x1 and x_theta.
-        total_sol += UpdateX0(decomp, model, P, W, r);
+        total_sol += UpdateX0(decomp, model, M, W, r);
       }
       need_decomp = false;
       full_decomp = false;
@@ -571,7 +559,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       if (std::abs(Nth) > Nth_threshold) {
         theta = (-alpha_norm - N0 - N1 * tau) / Nth;
       }
-      SetTheta(decomp, model, b, P, r, theta);
+      SetTheta(decomp, model, b, M, r, theta);
     }
 
     // Evaluate cone direction at current (tau, r, theta).
@@ -586,7 +574,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
     if (verbose) {
       // Diagnostics: gap equation, normalization, dual residual, complementarity.
-      RowSpace lam_v = quadraticRepresentation(P,
+      RowSpace lam_v = applyM(M,
           addScaled(r, delta_vec, 1.0, 1.0));
       Eigen::VectorXd x_vec = decomp.y_center + tau * decomp.y_cost;
       auto x_rhs = model.MakeSolverRHS();
@@ -654,8 +642,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
                                     || theta_stalled);
     if (do_center) {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      updateAutomorphismP(P, r, alpha, d_vec);
-      W = square(P);
+      updateM(M, alpha, d_vec);
+      W = squareM(M);
       w_tau *= std::exp(d_tau * alpha);
       model.SetScaling(W);
       if (!model.AssembleAndFactor()) break;
@@ -694,7 +682,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   {
     auto x_rhs = model.MakeSolverRHS();
     x_rhs = model.MakeBlockVariable(result.x);
-    RowSpace lambda = quadraticRepresentation(P,
+    RowSpace lambda = applyM(M,
         addScaled(r, last_delta, 1.0, 1.0));
     if (tau > 0 && tau != 1.0) lambda *= (1.0 / tau);
     result.optimality = CheckOptimality(model, x_rhs, lambda);

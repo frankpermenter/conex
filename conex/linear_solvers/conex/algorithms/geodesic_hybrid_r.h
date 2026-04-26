@@ -82,14 +82,15 @@ struct HybridRDecomposition {
   RowSpace ax0, ax1, ax_theta;
 };
 
-// Compute the three-solve decomposition at (P, W, r) where P = sqrt(W).
+// Compute the three-solve decomposition at (M, W, r) where W = M*M^T.
+// M is the full automorphism; r is in the M-frame.
 // Requires one factorization (already done) and three back-solves.
 // The result contains raw components (x0, x1, x_theta, lam0, lam1, lam_theta).
 // Call SetTheta() to form the two-term combination at a specific theta.
 HybridRDecomposition ComputeHybridRDecomposition(
     CompiledModel& model,
     const RowSpace& b,
-    const RowSpace& P,
+    const RowSpace& M,
     const RowSpace& W,
     const RowSpace& r);
 
@@ -97,7 +98,7 @@ HybridRDecomposition ComputeHybridRDecomposition(
 // Returns 1 (number of solves performed).
 int UpdateX0(HybridRDecomposition& decomp,
              CompiledModel& model,
-             const RowSpace& P,
+             const RowSpace& M,
              const RowSpace& W,
              const RowSpace& r);
 
@@ -106,7 +107,7 @@ int UpdateX0(HybridRDecomposition& decomp,
 void SetTheta(HybridRDecomposition& decomp,
               CompiledModel& model,
               const RowSpace& b,
-              const RowSpace& P,
+              const RowSpace& M,
               const RowSpace& r,
               double theta);
 
