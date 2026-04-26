@@ -681,4 +681,215 @@ TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
   EXPECT_LT(factorizations, 25) << "Should converge in < 25 factorizations";
 }
 
+// =====================================================================
+// Geodesic LP for a product of m exponential cones.
+//
+// min c^T x  s.t.  A_i x + b_i ∈ K_exp  for i = 1..m
+//
+// Barrier: F(s) = Σᵢ Fᵢ(sᵢ)  where sᵢ = Aᵢx + bᵢ.
+// Gram = Σᵢ Aᵢ^T Hᵢ(sᵢ) Aᵢ  (block-additive).
+// Gradient = Σᵢ Aᵢ^T ∇Fᵢ(sᵢ).
+// Geodesic step: component-wise on each cone.
+// =====================================================================
+
+struct ExpConeConstraint {
+  Eigen::Matrix<double, 3, Eigen::Dynamic> A;
+  Eigen::Vector3d b;
+};
+
+TEST(ExpCone, GeodesicLP_ProductCone) {
+  using Eigen::VectorXd;
+  using Eigen::MatrixXd;
+  using Eigen::Vector3d;
+  using Eigen::Matrix3d;
+
+  ExpConeOps ops;
+  srand(42);
+
+  const int p = 4;     // variables
+  const int m = 3;     // number of exp cone constraints
+
+  // Build m exp cone constraints: A_i x + b_i ∈ K_exp.
+  // Use identity-like A_i so the feasible region is bounded.
+  // Each constraint uses a different pair of variables.
+  std::vector<ExpConeConstraint> cones(m);
+  for (int i = 0; i < m; ++i) {
+    cones[i].A = MatrixXd::Zero(3, p);
+    // Map variable i to the x-component, variable (i+1)%p to y and z.
+    cones[i].A(0, i % p) = 1.0;          // x-component
+    cones[i].A(1, (i+1) % p) = 0.5;      // y-component
+    cones[i].A(2, (i+2) % p) = 0.3;      // z-component
+    cones[i].b = Vector3d(0, 1.0, 3.0);  // interior: y=1, z=3, ye^{0}=1 < 3
+  }
+  // Cost that points into the bounded region.
+  VectorXd c = VectorXd::Ones(p);
+
+  auto is_interior = [](const Vector3d& s) {
+    return s(1) > 1e-15 && s(2) > s(1) * std::exp(s(0) / s(1)) + 1e-15;
+  };
+  auto in_dual_cone = [](const Vector3d& lam) {
+    return lam(0) < -1e-15 && lam(2) > 1e-15 &&
+           -lam(0) * std::exp(lam(1)/lam(0) - 1) <= lam(2) - 1e-15;
+  };
+
+  auto all_interior = [&](const VectorXd& xv) {
+    for (int i = 0; i < m; ++i) {
+      Vector3d si = cones[i].A * xv + cones[i].b;
+      if (!is_interior(si)) return false;
+    }
+    return true;
+  };
+
+  VectorXd x = VectorXd::Zero(p);
+  ASSERT_TRUE(all_interior(x)) << "Initial point not interior";
+
+  printf("\n=== Geodesic LP (product of %d exp cones, %d vars) ===\n", m, p);
+  printf("  %3s  %12s  %12s  %10s  %10s\n",
+         "fac", "k", "k_new", "d_norm", "c^Tx");
+  printf("  %s\n", std::string(58, '-').c_str());
+
+  int factorizations = 0;
+  double k_prev = 0.0;
+
+  for (int outer = 0; outer < 30; ++outer) {
+    // Accumulate Gram = Σ Aᵢ^T Hᵢ Aᵢ and grad = Σ Aᵢ^T ∇Fᵢ.
+    MatrixXd Gram = MatrixXd::Zero(p, p);
+    VectorXd grad = VectorXd::Zero(p);
+    std::vector<Vector3d> slacks(m);
+    std::vector<Matrix3d> hessians(m);
+
+    bool feasible = true;
+    for (int i = 0; i < m; ++i) {
+      slacks[i] = cones[i].A * x + cones[i].b;
+      if (!is_interior(slacks[i])) { feasible = false; break; }
+      double Hi[9], gi[3];
+      ExpConeOps::BarrierHessian(slacks[i](0), slacks[i](1), slacks[i](2), Hi);
+      ExpConeOps::BarrierGrad(slacks[i](0), slacks[i](1), slacks[i](2), gi);
+      for (int r = 0; r < 3; ++r)
+        for (int cc = 0; cc < 3; ++cc)
+          hessians[i](r, cc) = Hi[3*r+cc];
+      Gram += cones[i].A.transpose() * hessians[i] * cones[i].A;
+      grad += cones[i].A.transpose() * Eigen::Map<Vector3d>(gi);
+    }
+    if (!feasible) { printf("  INFEASIBLE at iter %d\n", outer); break; }
+
+    // Factor Gram once.
+    auto Gf = Gram.ldlt();
+    factorizations++;
+
+    // Two back-solves.
+    VectorXd y0 = Gf.solve(-grad);  // centering
+    VectorXd y1 = Gf.solve(-c);     // optimality
+
+    // Per-cone directions.
+    std::vector<Vector3d> d0(m), d1(m);
+    for (int i = 0; i < m; ++i) {
+      d0[i] = cones[i].A * y0;
+      d1[i] = cones[i].A * y1;
+    }
+
+    // Hessian norm: ||d₀ + k·d₁||²_H = Σᵢ (d₀ᵢ+k·d₁ᵢ)^T Hᵢ (d₀ᵢ+k·d₁ᵢ).
+    double aa = 0, ff = 0, pp = 0;
+    for (int i = 0; i < m; ++i) {
+      aa += d0[i].dot(hessians[i] * d0[i]);
+      ff += d0[i].dot(hessians[i] * d1[i]);
+      pp += d1[i].dot(hessians[i] * d1[i]);
+    }
+
+    // Dikin bound.
+    double k_dikin = 0;
+    double disc = 4*ff*ff - 4*pp*(aa - 1);
+    if (disc >= 0 && pp > 1e-30) {
+      double k1 = (-2*ff + std::sqrt(disc)) / (2*pp);
+      double k2 = (-2*ff - std::sqrt(disc)) / (2*pp);
+      k_dikin = std::max(std::max(k1, k2), 0.0);
+    }
+
+    // Primal-dual feasibility search beyond Dikin.
+    auto try_k = [&](double k_try) -> bool {
+      for (int i = 0; i < m; ++i) {
+        Vector3d dki = d0[i] + k_try * d1[i];
+        double dn = std::sqrt(std::max(dki.dot(hessians[i] * dki), 0.0));
+        double al = 1.0 / (1.0 + dn);
+        double si[3] = {slacks[i](0), slacks[i](1), slacks[i](2)};
+        double di[3] = {dki(0), dki(1), dki(2)};
+        ops.geodesicStep(si, al, di);
+        Vector3d sn(si[0], si[1], si[2]);
+        if (!is_interior(sn)) return false;
+        double gn[3];
+        ExpConeOps::BarrierGrad(sn(0), sn(1), sn(2), gn);
+        Vector3d lam_new(-gn[0], -gn[1], -gn[2]);
+        if (!in_dual_cone(lam_new)) return false;
+      }
+      return true;
+    };
+
+    double k_new = std::max(k_dikin, k_prev);
+    double k_hi = k_new * 10 + 1;
+    for (int i = 0; i < 30; ++i) {
+      double k_mid = 0.5 * (k_new + k_hi);
+      if (try_k(k_mid)) { k_new = k_mid; } else { k_hi = k_mid; }
+    }
+    k_new = std::max(k_new, k_prev);
+
+    // Total Hessian norm of the combined direction.
+    double d_sqr = 0;
+    for (int i = 0; i < m; ++i) {
+      Vector3d dki = d0[i] + k_new * d1[i];
+      d_sqr += dki.dot(hessians[i] * dki);
+    }
+    double d_norm = std::sqrt(std::max(d_sqr, 0.0));
+    double mu = (k_new > 0) ? 1.0/(k_new*k_new) : 1.0;
+
+    printf("  %3d  %12.4e  %12.4e  %10.4f  %10.4f\n",
+           factorizations, k_prev, k_new, d_norm, c.dot(x));
+
+    if (mu < 1e-8) break;
+
+    // Geodesic step: component-wise on each cone.
+    bool stepped = false;
+    std::vector<Vector3d> s_new(m);
+    for (int i = 0; i < m; ++i) {
+      Vector3d dki = d0[i] + k_new * d1[i];
+      double dn = std::sqrt(std::max(dki.dot(hessians[i] * dki), 0.0));
+      double al = 1.0 / (1.0 + dn);
+      double si[3] = {slacks[i](0), slacks[i](1), slacks[i](2)};
+      double di[3] = {dki(0), dki(1), dki(2)};
+      ops.geodesicStep(si, al, di);
+      s_new[i] = Vector3d(si[0], si[1], si[2]);
+    }
+
+    // Recover x from s_new = A_i x + b_i (least squares over all cones).
+    // Stack: [A₁; A₂; ...] x = [s₁-b₁; s₂-b₂; ...]
+    MatrixXd A_stack(3*m, p);
+    VectorXd rhs_stack(3*m);
+    for (int i = 0; i < m; ++i) {
+      A_stack.block(3*i, 0, 3, p) = cones[i].A;
+      rhs_stack.segment(3*i, 3) = s_new[i] - cones[i].b;
+    }
+    VectorXd x_new = (A_stack.transpose()*A_stack).ldlt().solve(
+        A_stack.transpose() * rhs_stack);
+
+    if (all_interior(x_new)) {
+      x = x_new;
+    } else {
+      // Euclidean fallback.
+      VectorXd dx = y1 + (1.0/k_new) * y0;
+      for (double a = 0.5; a > 1e-10; a *= 0.5) {
+        VectorXd x_try = x + a * dx;
+        if (all_interior(x_try)) { x = x_try; break; }
+      }
+    }
+
+    k_prev = k_new;
+  }
+
+  double final_obj = c.dot(x);
+  printf("  Final: c^Tx = %.6f, fac = %d\n", final_obj, factorizations);
+
+  // Should make progress. k should increase and objective should decrease.
+  EXPECT_LT(final_obj, 0) << "Objective should be negative";
+  EXPECT_GT(k_prev, 1.0) << "k should increase beyond 1";
+}
+
 }  // namespace
