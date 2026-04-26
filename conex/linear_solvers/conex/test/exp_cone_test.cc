@@ -10,6 +10,8 @@
 #include <cmath>
 #include <cstdio>
 
+#include <Eigen/Dense>
+
 #include "conex/common/exp_cone_ops.h"
 
 using conex::EuclideanJordanAlgebra::ExpConeOps;
@@ -418,6 +420,171 @@ TEST(ExpCone, InvertGradientRoundtrip) {
                        + (x0[2]-x_recovered[2])*(x0[2]-x_recovered[2]));
   printf("InvertGradient roundtrip error: %.2e\n", err);
   EXPECT_LT(err, 1e-10);
+}
+
+// =====================================================================
+// Prototype geodesic IPM for the exponential cone.
+//
+// min c^T x  s.t.  Ax + b in K_exp
+//
+// Barrier subproblem at parameter mu:
+//   min c^T x + mu * F(Ax + b)
+// Newton: (A^T H A) dx = -(c + mu * A^T grad_F(s))
+// Geodesic step: s_new via Bregman midpoint in K_exp.
+// =====================================================================
+
+TEST(ExpCone, PrototypeGeodesicIPM) {
+  // Problem: min c^T x  s.t.  y*exp(x0/y) <= z, y > 0
+  // where s = (x0, y, z) = A*x + b.
+  //
+  // Use p=2 variables. A is 3x2, b is 3x1.
+  // Construct so that the problem is bounded and feasible.
+  using Eigen::Matrix;
+  using Eigen::Vector2d;
+  using Eigen::Vector3d;
+  using Eigen::Matrix3d;
+  typedef Matrix<double, 3, 2> Matrix32;
+
+  srand(42);
+  Matrix32 A;
+  A << 1.0, 0.0,
+       0.0, 1.0,
+       0.5, 0.3;
+  Vector3d b(0.0, 1.0, 3.0);  // b is interior: y=1, z=3, y*exp(0/1)=1 < 3
+  Vector2d c(1.0, -0.5);      // cost
+
+  ExpConeOps ops;
+
+  // Initial x such that s = Ax + b is interior.
+  Vector2d x(0.0, 0.0);
+
+  auto slack = [&](const Vector2d& xv) -> Vector3d { return A * xv + b; };
+  auto is_interior = [](const Vector3d& s) {
+    return s(1) > 0 && s(2) > s(1) * std::exp(s(0) / s(1));
+  };
+
+  ASSERT_TRUE(is_interior(slack(x))) << "Initial point not interior";
+
+  double mu = 1.0;
+  const double mu_factor = 0.5;
+  const int max_outer = 15;
+  const int max_inner = 20;
+
+  printf("\n=== Prototype Geodesic IPM (Exp Cone) ===\n");
+  printf("  %3s %3s  %10s  %10s  %10s  %10s  %10s  %5s\n",
+         "out", "in", "mu", "c^Tx", "||grad||", "alpha", "slack_u", "step");
+  printf("  %s\n", std::string(75, '-').c_str());
+
+  // Track results for both step types.
+  double obj_geo = 0, obj_euler = 0;
+  int total_iters_geo = 0, total_iters_euler = 0;
+
+  for (int use_geodesic = 0; use_geodesic <= 1; ++use_geodesic) {
+    const char* step_name = use_geodesic ? "bregman" : "euler";
+    Vector2d xk(0.0, 0.0);
+    mu = 1.0;
+
+    for (int outer = 0; outer < max_outer; ++outer) {
+      for (int inner = 0; inner < max_inner; ++inner) {
+        Vector3d s = slack(xk);
+        if (!is_interior(s)) {
+          printf("  INFEASIBLE at outer=%d inner=%d\n", outer, inner);
+          goto done;
+        }
+
+        // Barrier gradient and Hessian at s.
+        double g[3], H[9];
+        ExpConeOps::BarrierGrad(s(0), s(1), s(2), g);
+        ExpConeOps::BarrierHessian(s(0), s(1), s(2), H);
+        Matrix3d Hm;
+        for (int i = 0; i < 3; ++i)
+          for (int j = 0; j < 3; ++j)
+            Hm(i, j) = H[3*i+j];
+
+        // Gram: A^T H A (2x2).
+        Eigen::Matrix2d G = A.transpose() * Hm * A;
+        // RHS: -(c + mu * A^T g).
+        Eigen::Map<Vector3d> gv(g);
+        Vector2d rhs = -(c + mu * A.transpose() * gv);
+
+        // Check convergence: ||grad||.
+        double grad_norm = rhs.norm();
+        if (grad_norm < 1e-8 * mu) break;
+
+        // Newton step.
+        Vector2d dx = G.ldlt().solve(rhs);
+        Vector3d ds = A * dx;
+
+        // Step size via backtracking.
+        double alpha = 1.0;
+        bool stepped = false;
+
+        if (use_geodesic) {
+          // Bregman midpoint step in the cone.
+          for (int ls = 0; ls < 20; ++ls) {
+            double s_new[3] = {s(0), s(1), s(2)};
+            double dir[3] = {ds(0), ds(1), ds(2)};
+            ops.bregmanMidpointStep(s_new, alpha, dir);
+            if (is_interior(Vector3d(s_new[0], s_new[1], s_new[2]))) {
+              // Recover x from s_new = A*x_new + b.
+              // x_new = A^† (s_new - b). For 3x2 A: use normal equations.
+              Vector3d s_new_v(s_new[0], s_new[1], s_new[2]);
+              Vector2d x_new = (A.transpose()*A).ldlt().solve(
+                  A.transpose() * (s_new_v - b));
+              // Check that A*x_new + b ≈ s_new (residual).
+              Vector3d s_check = A * x_new + b;
+              if (is_interior(s_check)) {
+                xk = x_new;
+                stepped = true;
+                break;
+              }
+            }
+            alpha *= 0.5;
+          }
+        } else {
+          // Euclidean step with backtracking.
+          for (int ls = 0; ls < 20; ++ls) {
+            Vector2d x_new = xk + alpha * dx;
+            if (is_interior(slack(x_new))) {
+              xk = x_new;
+              stepped = true;
+              break;
+            }
+            alpha *= 0.5;
+          }
+        }
+
+        if (!stepped) {
+          printf("  LINE SEARCH FAILED at outer=%d inner=%d\n", outer, inner);
+          goto done;
+        }
+
+        Vector3d s_final = slack(xk);
+        double u_final = s_final(2) - s_final(1) * std::exp(s_final(0)/s_final(1));
+        if (inner == 0 || grad_norm > 1e-6 * mu) {
+          printf("  %3d %3d  %10.2e  %10.4f  %10.2e  %10.4f  %10.2e  %s\n",
+                 outer, inner, mu, c.dot(xk), grad_norm, alpha, u_final,
+                 step_name);
+        }
+      }
+      done_inner:
+      mu *= mu_factor;
+    }
+    done:
+
+    double final_obj = c.dot(xk);
+    if (use_geodesic) {
+      obj_geo = final_obj;
+    } else {
+      obj_euler = final_obj;
+    }
+    printf("  %s final: c^Tx = %.6f, x = (%.4f, %.4f)\n\n",
+           step_name, final_obj, xk(0), xk(1));
+  }
+
+  // Both methods should find the same optimum.
+  EXPECT_NEAR(obj_geo, obj_euler, 1e-3)
+      << "Geodesic and Euler should converge to same optimum";
 }
 
 }  // namespace
