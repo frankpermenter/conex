@@ -72,6 +72,31 @@ class ConeOps {
   virtual void updateAutomorphismP(double* p, double* r, double alpha,
                                    const double* d, int size) const = 0;
 
+  // Polar-free automorphism update: M_new = M_old * exp(alpha*D/2).
+  // M tracks the full automorphism (no polar split into P*T).
+  // r is unchanged (stays in original frame).
+  //   Nonneg: m_i *= exp(alpha * d_i / 2)  (M = P for nonneg).
+  //   PSD:    M_new = M_old * exp(alpha*D/2)  (general n×n matrix).
+  virtual void updateM(double* m, double alpha,
+                       const double* d, int size) const = 0;
+
+  // Apply automorphism: out = M * x * M^T.
+  //   Nonneg: out_i = m_i^2 * x_i.
+  //   PSD:    Out = M * X * M^T  (M general, X symmetric).
+  virtual void applyM(double* out, const double* m,
+                      const double* x, int size) const = 0;
+
+  // Apply transpose automorphism: out = M^T * x * M.
+  //   Nonneg: out_i = m_i^2 * x_i  (same as applyM).
+  //   PSD:    Out = M^T * X * M  (M general, X symmetric).
+  virtual void applyMt(double* out, const double* m,
+                       const double* x, int size) const = 0;
+
+  // Compute W = M * M^T.
+  //   Nonneg: w_i = m_i^2.
+  //   PSD:    W = M * M^T  (symmetric, positive semidefinite).
+  virtual void squareM(double* w, const double* m, int size) const = 0;
+
   // Line search: largest k > 0 with ||d0 + k*d1||_inf <= 1.
   //   Nonneg: per-element bound |d0_i + k*d1_i| <= 1.
   //   PSD:    GEV on (D1, I ± D0) to find when eigenvalues hit ±1.
@@ -171,6 +196,26 @@ class NonnegOrthantOps : public ConeOps {
                            const double* d, int size) const override {
     for (int i = 0; i < size; ++i)
       p[i] *= std::exp(0.5 * alpha * d[i]);
+  }
+
+  void updateM(double* m, double alpha,
+               const double* d, int size) const override {
+    for (int i = 0; i < size; ++i)
+      m[i] *= std::exp(0.5 * alpha * d[i]);
+  }
+
+  void applyM(double* out, const double* m,
+              const double* x, int size) const override {
+    for (int i = 0; i < size; ++i) out[i] = m[i] * m[i] * x[i];
+  }
+
+  void applyMt(double* out, const double* m,
+               const double* x, int size) const override {
+    for (int i = 0; i < size; ++i) out[i] = m[i] * m[i] * x[i];
+  }
+
+  void squareM(double* w, const double* m, int size) const override {
+    for (int i = 0; i < size; ++i) w[i] = m[i] * m[i];
   }
 
   double lineSearchK(const double* d0, const double* d1,

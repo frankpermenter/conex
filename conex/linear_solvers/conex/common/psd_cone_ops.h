@@ -28,6 +28,13 @@ class PSDConeOps : public ConeOps {
                           const double* d, int size) const override;
   void updateAutomorphismP(double* p, double* r, double alpha,
                            const double* d, int size) const override;
+  void updateM(double* m, double alpha,
+               const double* d, int size) const override;
+  void applyM(double* out, const double* m,
+              const double* x, int size) const override;
+  void applyMt(double* out, const double* m,
+               const double* x, int size) const override;
+  void squareM(double* w, const double* m, int size) const override;
   double lineSearchK(const double* d0, const double* d1,
                      int size) const override;
   void project(double* out, const double* a, int size) const override;

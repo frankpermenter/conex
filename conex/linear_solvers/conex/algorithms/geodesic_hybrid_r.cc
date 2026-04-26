@@ -17,8 +17,12 @@ using EuclideanJordanAlgebra::shrinkR;
 using EuclideanJordanAlgebra::solveLyapunovForD;
 using EuclideanJordanAlgebra::squaredNorm;
 using EuclideanJordanAlgebra::square;
+using EuclideanJordanAlgebra::squareM;
+using EuclideanJordanAlgebra::applyM;
+using EuclideanJordanAlgebra::applyMt;
 using EuclideanJordanAlgebra::updateAutomorphism;
 using EuclideanJordanAlgebra::updateAutomorphismP;
+using EuclideanJordanAlgebra::updateM;
 
 // Compute b_theta = theta * e + (1 - theta) * b.
 static RowSpace BlendAffine(CompiledModel& model, const RowSpace& b,
@@ -79,6 +83,51 @@ HybridRDirection ComputeHybridRDirection(
   model.MultiplyA(y, row);
   RowSpace slack_dir = addScaled(b_theta, row, 1.0, 1.0);
   delta = addScaled(r, quadraticRepresentation(sqrtW, slack_dir), 1.0, -1.0);
+  d = solveLyapunovForD(r, delta);
+
+  return {gap(r, delta), normInf(d), squaredNorm(d), minSlack(r, delta)};
+}
+
+// M-based variant: uses M (full automorphism, no polar split) instead of W.
+// W = M*M^T is passed pre-computed. r is in the M-frame.
+// Replaces P(sqrt(W))(x) with applyM(M, x) and P(sqrt(W))^T(x) with applyMt(M, x).
+static HybridRDirection ComputeHybridRDirectionM(
+    CompiledModel& model,
+    const RowSpace& b,
+    const RowSpace& M,
+    const RowSpace& W,
+    const RowSpace& r,
+    double theta,
+    RowSpace& d,
+    RowSpace& delta) {
+  const auto& cost_rhs = model.cost_rhs();
+  RowSpace b_theta = BlendAffine(model, b, theta);
+
+  // RHS = -(c + A^T P(W)(b_theta)) + 2*A^T applyM(M, r) + d_eq
+  auto y = model.MakeSolverRHS();
+  y = cost_rhs;
+  RowSpace v = quadraticRepresentation(W, b_theta);
+  model.AccumulateAtranspose(v, y);
+  y *= -1;
+  // + 2*A^T M*r*M^T  (replaces P(sqrt(W))(r) since r is in M-frame)
+  v = applyM(M, r);
+  v *= 2.0;
+  model.AccumulateAtranspose(v, y);
+  // + d_eq (equality RHS).
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
+  if (ts && !ts->equality_sub_assemblers().empty()) {
+    auto d_rhs = ts->EqualityAffineTermRHS();
+    y += d_rhs;
+  }
+  model.SolveSolverRHS(y);
+
+  // delta = r - M^T*(b_theta + A*y)*M  (in M-frame)
+  // Physical-frame slack = b_theta + A*y.
+  // M-frame delta: r - applyMt(M, slack) = r - M^T*slack*M.
+  RowSpace row = model.MakeRowSpace();
+  model.MultiplyA(y, row);
+  RowSpace slack_dir = addScaled(b_theta, row, 1.0, 1.0);
+  delta = addScaled(r, applyMt(M, slack_dir), 1.0, -1.0);
   d = solveLyapunovForD(r, delta);
 
   return {gap(r, delta), normInf(d), squaredNorm(d), minSlack(r, delta)};
@@ -670,10 +719,11 @@ GeodesicResult SolveGeodesicHybridR(
   setOnes(r);
   double theta = 1.0;
 
-  // Store P = sqrt(W) as primary state; W = P² is derived.
-  RowSpace P = model.MakeRowSpace();
-  setOnes(P);
-  W = square(P);
+  // Store M (full automorphism, no polar split) as primary state.
+  // W = M*M^T. r stays in M-frame (not rotated during W-updates).
+  RowSpace M = model.MakeRowSpace();
+  setOnes(M);  // M = I initially
+  W = squareM(M);
   model.SetScaling(W);
   model.AssembleAndFactor();
   int total_fac = 1;
@@ -695,8 +745,8 @@ GeodesicResult SolveGeodesicHybridR(
   for (int iter = 0; iter < max_iterations; ++iter) {
     RowSpace d = model.MakeRowSpace();
     RowSpace delta = model.MakeRowSpace();
-    auto info = ComputeHybridRDirection(model, b, W, r, theta,
-                                         d, delta);
+    auto info = ComputeHybridRDirectionM(model, b, M, W, r, theta,
+                                          d, delta);
     last_delta = delta;
     total_sol++;
     double d_inf_pre = info.d_inf;
@@ -712,10 +762,11 @@ GeodesicResult SolveGeodesicHybridR(
     bool do_center = (g < 0);
 
     if (do_center) {
-      // W-update: centering step. Keep r and theta frozen.
+      // W-update: M_new = M * exp(αD/2). No polar decomposition.
+      // r stays in M-frame (unchanged).
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      updateAutomorphismP(P, r, alpha, d);
-      W = square(P);
+      updateM(M, alpha, d);
+      W = squareM(M);
       model.SetScaling(W);
       if (!model.AssembleAndFactor()) break;
       total_fac++;
@@ -731,8 +782,8 @@ GeodesicResult SolveGeodesicHybridR(
     {
       RowSpace d2 = model.MakeRowSpace();
       RowSpace delta2 = model.MakeRowSpace();
-      auto info2 = ComputeHybridRDirection(model, b, W, r, theta,
-                                            d2, delta2);
+      auto info2 = ComputeHybridRDirectionM(model, b, M, W, r, theta,
+                                             d2, delta2);
       last_delta = delta2;
       g = info2.gap;
       d_inf = info2.d_inf;
@@ -768,7 +819,8 @@ GeodesicResult SolveGeodesicHybridR(
     RowSpace v = quadraticRepresentation(W, b_theta);
     model.AccumulateAtranspose(v, y);
     y *= -1;
-    v = quadraticRepresentation(P, r);
+    // 2*A^T * M*r*M^T  (applyM since r is in M-frame)
+    v = applyM(M, r);
     v *= 2.0;
     model.AccumulateAtranspose(v, y);
     auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
@@ -782,10 +834,11 @@ GeodesicResult SolveGeodesicHybridR(
   }
 
   // Lambda and optimality.
+  // lambda = M*(r+delta)*M^T  (in physical frame, from M-frame r and delta)
   {
     auto x_rhs = model.MakeSolverRHS();
     x_rhs = model.MakeBlockVariable(result.x);
-    RowSpace lambda = quadraticRepresentation(P,
+    RowSpace lambda = applyM(M,
         addScaled(r, last_delta, 1.0, 1.0));
     result.optimality = CheckOptimality(model, x_rhs, lambda);
     result.optimality.mu = result.mu;

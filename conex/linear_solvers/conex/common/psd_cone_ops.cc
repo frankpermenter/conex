@@ -244,6 +244,48 @@ void PSDConeOps::updateAutomorphismP(double* p, double* r, double alpha,
   Symmetrize(R);
 }
 
+void PSDConeOps::updateM(double* m, double alpha,
+                         const double* d, int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<Eigen::MatrixXd> M(m, n, n);
+  Eigen::Map<const Eigen::MatrixXd> D(d, n, n);
+
+  // M_new = M_old * exp(alpha * D / 2).  No polar decomposition.
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eigD(alpha * 0.5 * D);
+  Eigen::MatrixXd expHalfD = eigD.eigenvectors() *
+      eigD.eigenvalues().array().exp().matrix().asDiagonal() *
+      eigD.eigenvectors().transpose();
+  M = M * expHalfD;
+}
+
+void PSDConeOps::applyM(double* out, const double* m,
+                         const double* x, int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<Eigen::MatrixXd> Out(out, n, n);
+  Eigen::Map<const Eigen::MatrixXd> M(m, n, n);
+  Eigen::Map<const Eigen::MatrixXd> X(x, n, n);
+  Out = M * X * M.transpose();
+  Symmetrize(Out);
+}
+
+void PSDConeOps::applyMt(double* out, const double* m,
+                          const double* x, int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<Eigen::MatrixXd> Out(out, n, n);
+  Eigen::Map<const Eigen::MatrixXd> M(m, n, n);
+  Eigen::Map<const Eigen::MatrixXd> X(x, n, n);
+  Out = M.transpose() * X * M;
+  Symmetrize(Out);
+}
+
+void PSDConeOps::squareM(double* w, const double* m, int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<Eigen::MatrixXd> W(w, n, n);
+  Eigen::Map<const Eigen::MatrixXd> M(m, n, n);
+  W = M * M.transpose();
+  Symmetrize(W);
+}
+
 double PSDConeOps::lineSearchK(const double* d0, const double* d1,
                                int size) const {
   int n = MatrixDim(size);

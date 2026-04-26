@@ -96,6 +96,40 @@ inline void updateAutomorphismP(Variable& P, Variable& R, double alpha,
                                   alpha, d.segment_ptr(i), P.sizes[i]);
 }
 
+// Polar-free automorphism update: M_new = M_old * exp(alpha*D/2).
+// M tracks the full automorphism; r is unchanged.
+inline void updateM(Variable& M, double alpha, const Variable& d) {
+  for (int i = 0; i < M.num_constraints(); ++i)
+    M.ops[i]->updateM(M.segment_ptr(i), alpha,
+                       d.segment_ptr(i), M.sizes[i]);
+}
+
+// Apply automorphism: out = M * x * M^T.
+inline Variable applyM(const Variable& M, const Variable& x) {
+  Variable out = like(x);
+  for (int i = 0; i < x.num_constraints(); ++i)
+    x.ops[i]->applyM(out.segment_ptr(i), M.segment_ptr(i),
+                      x.segment_ptr(i), x.sizes[i]);
+  return out;
+}
+
+// Apply transpose automorphism: out = M^T * x * M.
+inline Variable applyMt(const Variable& M, const Variable& x) {
+  Variable out = like(x);
+  for (int i = 0; i < x.num_constraints(); ++i)
+    x.ops[i]->applyMt(out.segment_ptr(i), M.segment_ptr(i),
+                       x.segment_ptr(i), x.sizes[i]);
+  return out;
+}
+
+// Compute W = M * M^T (symmetric scaling from automorphism).
+inline Variable squareM(const Variable& M) {
+  Variable out = like(M);
+  for (int i = 0; i < M.num_constraints(); ++i)
+    M.ops[i]->squareM(out.segment_ptr(i), M.segment_ptr(i), M.sizes[i]);
+  return out;
+}
+
 // Solve Lyapunov R*D + D*R = 2*Delta for D.: solve R*D + D*R = 2*Delta for D.
 inline Variable solveLyapunovForD(const Variable& r, const Variable& delta) {
   Variable out = like(r);

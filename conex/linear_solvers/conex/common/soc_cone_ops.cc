@@ -265,6 +265,30 @@ void SOCConeOps::updateAutomorphismP(double* p, double* r, double alpha,
   (void)r;
 }
 
+// SOC: M = P (no rotation), so M ops reduce to quadraticRepresentation.
+void SOCConeOps::updateM(double* m, double alpha,
+                         const double* d, int size) const {
+  // Same as updateAutomorphismP since T=I for SOC.
+  double dummy_r[size];
+  updateAutomorphismP(m, dummy_r, alpha, d, size);
+}
+
+void SOCConeOps::applyM(double* out, const double* m,
+                         const double* x, int size) const {
+  quadraticRepresentation(out, m, x, size);
+}
+
+void SOCConeOps::applyMt(double* out, const double* m,
+                          const double* x, int size) const {
+  quadraticRepresentation(out, m, x, size);
+}
+
+void SOCConeOps::squareM(double* w, const double* m, int size) const {
+  double ones[size];
+  setIdentity(ones, size);
+  quadraticRepresentation(w, m, ones, size);
+}
+
 // Find largest k > 0 with ||d0 + k*d1||_inf ≤ 1.
 // Eigenvalues: λ(k) = (t₀+k*t₁) ± ||x₀+k*x₁||.
 // Need |λ₁(k)| ≤ 1 and |λ₂(k)| ≤ 1.
