@@ -567,24 +567,82 @@ TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
     Vector3d d0 = A * y0;
     Vector3d d1 = A * y1;
 
-    // δw(k) = d₀ + k·d₁ in the H(s)-metric.
-    // Line search: ||d₀ + k·d₁||²_H ≤ 1.
+    // Primal-dual line search for k.
+    // At parameter k, the primal and dual steps (from δx = (1/k)y₀ + y₁) are:
+    //   δs(k) = (1/k)·d₀ + d₁  (primal tangent in s-space)
+    //   δλ(k) = -H·δs(k)       (dual tangent via Hessian)
+    //
+    // Current dual: λ = -μ·∇F(s) = -(1/k²)·∇F(s).
+    // Current primal: s.
+    //
+    // After geodesic step with step size α=1/(1+||d||):
+    //   s_new ≈ s + α·δs(k)     (first order)
+    //   λ_new ≈ λ + α·δλ(k)     (first order)
+    //
+    // Find largest k such that s_new ∈ int(K) AND λ_new ∈ int(K*).
+    //
+    // K_exp: y > 0, z > y·exp(x/y)
+    // K*_exp: a < 0, c > 0, -a·exp(b/a - 1) ≤ c
+
+    auto in_dual_cone = [](const Vector3d& lam) {
+      return lam(0) < -1e-15 && lam(2) > 1e-15 &&
+             -lam(0) * std::exp(lam(1)/lam(0) - 1) <= lam(2) - 1e-15;
+    };
+
+    // Current dual point.
+    Vector3d lambda_cur;
+    {
+      double g_cur[3];
+      ExpConeOps::BarrierGrad(s(0), s(1), s(2), g_cur);
+      // λ = -∇F(s) (up to μ scaling — for feasibility check, scaling doesn't matter).
+      lambda_cur = Vector3d(-g_cur[0], -g_cur[1], -g_cur[2]);
+    }
+
+    // Line search for k: Dikin bound ||d₀ + k·d₁||²_H ≤ 1,
+    // then verify primal-dual feasibility of the geodesic step.
     auto hip = [&](const Vector3d& a_v, const Vector3d& b_v) {
       return a_v.dot(Hw * b_v);
     };
     double aa = hip(d0, d0), ff = hip(d0, d1), pp = hip(d1, d1);
-    double k_new = 0;
+
+    // Dikin bound: pp·k² + 2ff·k + (aa - 1) ≤ 0.
+    double k_dikin = 0;
     double disc = 4*ff*ff - 4*pp*(aa - 1);
     if (disc >= 0 && pp > 1e-30) {
       double k1 = (-2*ff + std::sqrt(disc)) / (2*pp);
       double k2 = (-2*ff - std::sqrt(disc)) / (2*pp);
-      k_new = std::max(k1, k2);
-      k_new = std::max(k_new, 0.0);
+      k_dikin = std::max(k1, k2);
+      k_dikin = std::max(k_dikin, 0.0);
+    }
+
+    // Now try to go beyond Dikin by checking actual geodesic feasibility.
+    // Binary search from k_dikin to k_dikin*10.
+    double k_new = std::max(k_dikin, k_prev);
+    double k_hi = k_new * 10 + 1;
+    for (int i = 0; i < 30; ++i) {
+      double k_mid = 0.5 * (k_new + k_hi);
+      Vector3d dk_test = d0 + k_mid * d1;
+      double dn = std::sqrt(std::max(dk_test.dot(Hw * dk_test), 0.0));
+      double al = 1.0 / (1.0 + dn);
+      double s_test[3] = {s(0), s(1), s(2)};
+      double ds_test[3] = {dk_test(0), dk_test(1), dk_test(2)};
+      ops.geodesicStep(s_test, al, ds_test);
+      Vector3d sn(s_test[0], s_test[1], s_test[2]);
+      if (is_interior(sn)) {
+        double g_new[3];
+        ExpConeOps::BarrierGrad(sn(0), sn(1), sn(2), g_new);
+        Vector3d lam_new(-g_new[0], -g_new[1], -g_new[2]);
+        if (in_dual_cone(lam_new)) {
+          k_new = k_mid;
+          continue;
+        }
+      }
+      k_hi = k_mid;
     }
     k_new = std::max(k_new, k_prev);
 
     Vector3d dk = d0 + k_new * d1;
-    double d_sqr = hip(dk, dk);
+    double d_sqr = dk.dot(Hw * dk);
     double d_norm = std::sqrt(std::max(d_sqr, 0.0));
     double mu = (k_new > 0) ? 1.0/(k_new*k_new) : 1.0;
 
@@ -594,10 +652,7 @@ TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
     if (mu < 1e-8) break;
 
     // Geodesic step on s.
-    // dk is the direction in the H(s)-metric with ||dk||_H ≤ 1.
-    // The actual primal step is δs = dk / k² (from the scaling).
-    // But the geodesic should be taken in the metric of s.
-    double alpha = 1.0 / (1.0 + d_norm);  // safe step for self-concordant barrier
+    double alpha = 1.0 / (1.0 + d_norm);
     double s_arr[3] = {s(0), s(1), s(2)};
     double ds[3] = {dk(0), dk(1), dk(2)};
     ops.geodesicStep(s_arr, alpha, ds);
