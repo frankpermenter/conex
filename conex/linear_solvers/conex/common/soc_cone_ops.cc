@@ -195,87 +195,91 @@ double SOCConeOps::minEigenvalue(const double* a, int size) const {
   return std::min(s.lam1, s.lam2);
 }
 
+// Build the (1+n)×(1+n) matrix form of the quadratic representation P(a)
+// for SOC element a = (a_t, a_x).
+// P(a) = [a_t²+||a_x||²,     2·a_t·a_x^T                    ]
+//        [2·a_t·a_x,          (a_t²-||a_x||²)·I + 2·a_x·a_x^T]
+static Eigen::MatrixXd QuadRepMatrix(const double* a, int size) {
+  int n = size - 1;
+  double a_t = a[0];
+  Eigen::Map<const Eigen::VectorXd> a_x(a + 1, n);
+  double nx2 = a_x.squaredNorm();
+
+  Eigen::MatrixXd P(size, size);
+  P(0, 0) = a_t * a_t + nx2;
+  P.block(0, 1, 1, n) = 2.0 * a_t * a_x.transpose();
+  P.block(1, 0, n, 1) = 2.0 * a_t * a_x;
+  P.bottomRightCorner(n, n) =
+      (a_t * a_t - nx2) * Eigen::MatrixXd::Identity(n, n)
+      + 2.0 * a_x * a_x.transpose();
+  return P;
+}
+
 void SOCConeOps::updateAutomorphism(double* w, double* r, double alpha,
                                     const double* d, int size) const {
-  // M = W^{1/2} exp(α D / 2).  For SOC, polar decomposition is trivial
-  // (rank 2, the "rotation" is just a sign flip on eigenvalues).
-  // Compute via spectral: apply to eigenvalues, reconstruct.
+  // Correct implementation via matrix representation of the automorphism.
+  // M = P_matrix(sqrt(W)) * P_matrix(exp(αd/2))
+  // Polar: M = P_new * T, W_new = P_new², r_new = T^T r.
+  //
+  // This is O(n²) but exact — isomorphic to PSD under spin factor embedding.
 
-  // sqrtW
   double sqrtW[size];
   sqrt(sqrtW, w, size);
 
-  // exp(α/2 * D)
   double expHalfD[size];
   SpectralApply(expHalfD, d, size, [alpha](double l) {
     return std::exp(0.5 * alpha * l);
   });
 
-  // M = sqrtW * expHalfD (Jordan product).
-  double M[size];
-  product(M, sqrtW, expHalfD, size);
+  // M = P_matrix(sqrt(W)) * P_matrix(exp(αd/2))  — (1+n)×(1+n) matrix product.
+  Eigen::MatrixXd M = QuadRepMatrix(sqrtW, size) * QuadRepMatrix(expHalfD, size);
 
-  // Polar: for SOC, M = P * T where P has eigenvalues |λᵢ(M)|.
-  SOCSpectral sm(M, size);
-  double p_lam1 = std::abs(sm.lam1);
-  double p_lam2 = std::abs(sm.lam2);
+  // W_new = g(e) = M * e (first column of the composed automorphism matrix).
+  Eigen::VectorXd e = Eigen::VectorXd::Zero(size);
+  e(0) = 1.0;
+  Eigen::VectorXd w_new = M * e;
+  std::copy(w_new.data(), w_new.data() + size, w);
 
-  // W = P² (eigenvalues squared).
-  SOCSpectral sw = sm;
-  sw.lam1 = p_lam1 * p_lam1;
-  sw.lam2 = p_lam2 * p_lam2;
-  sw.Reconstruct(w, size);
-
-  // If an eigenvalue of M was negative, T is a nontrivial reflection.
-  // Rotate r: flip the component along M's spectral direction.
-  bool need_flip = (sm.lam1 < 0 || sm.lam2 < 0);
-  if (need_flip && size > 1) {
-    double r_t = r[0];
-    Eigen::Map<Eigen::VectorXd> r_x(r + 1, size - 1);
-    double r_along = r_x.dot(sm.xhat);
-    r_x -= 2.0 * r_along * sm.xhat;
-  }
+  // Polar decomposition of M: M = P_pos * T, where P_pos = sqrt(M*M^T).
+  // r_new = T^T * r.
+  Eigen::MatrixXd MMt = M * M.transpose();
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(MMt);
+  Eigen::MatrixXd P_pos = eig.eigenvectors() *
+      eig.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
+      eig.eigenvectors().transpose();
+  Eigen::MatrixXd T = P_pos.inverse() * M;
+  Eigen::Map<Eigen::VectorXd> r_vec(r, size);
+  r_vec = T.transpose() * r_vec;
 }
 
 void SOCConeOps::updateAutomorphismP(double* p, double* r, double alpha,
                                      const double* d, int size) const {
-  // M = P * exp(α D / 2), polar decomposition, store P_new (not P²).
-
-  // exp(α/2 * D)
+  // Same as updateAutomorphism but stores P_new (not W_new = P_new²).
+  // Uses matrix representation for correct r rotation.
   double expHalfD[size];
   SpectralApply(expHalfD, d, size, [alpha](double l) {
     return std::exp(0.5 * alpha * l);
   });
 
-  // M = P * expHalfD (Jordan product).
-  double M[size];
-  product(M, p, expHalfD, size);
+  Eigen::MatrixXd Mg = QuadRepMatrix(p, size) * QuadRepMatrix(expHalfD, size);
 
-  // Polar: M = P_new * T. P_new has eigenvalues |λᵢ(M)|.
-  SOCSpectral sm(M, size);
-  bool need_flip = (sm.lam1 < 0 || sm.lam2 < 0);
+  // W_new = g(e), P_new = sqrt(W_new).
+  Eigen::VectorXd e = Eigen::VectorXd::Zero(size);
+  e(0) = 1.0;
+  Eigen::VectorXd w_new = Mg * e;
+  double p_new[size];
+  sqrt(p_new, w_new.data(), size);
+  std::copy(p_new, p_new + size, p);
 
-  // P_new: eigenvalues are |λᵢ(M)|.
-  SOCSpectral sp = sm;
-  sp.lam1 = std::abs(sm.lam1);
-  sp.lam2 = std::abs(sm.lam2);
-  sp.Reconstruct(p, size);
-
-  // If an eigenvalue was negative, T is a nontrivial reflection in M's
-  // eigenbasis.  Rotate r by T: swap r's eigenvalue projections onto
-  // M's idempotents c₁ = (1, x̂)/2, c₂ = (1, -x̂)/2.
-  if (need_flip && size > 1) {
-    // Decompose r in M's eigenbasis.
-    double r_t = r[0];
-    Eigen::Map<Eigen::VectorXd> r_x(r + 1, size - 1);
-    double r_along = r_x.dot(sm.xhat);       // projection onto x̂
-    // Eigenvalue projections: μ₁ = r_t + r_along, μ₂ = r_t - r_along.
-    // T swaps μ₁ ↔ μ₂: (μ₁, μ₂) → (μ₂, μ₁).
-    // New r_t = (μ₂ + μ₁)/2 = r_t (unchanged).
-    // New r_along = (μ₂ - μ₁)/2 = -r_along.
-    // Perpendicular component: unchanged by T.
-    r_x -= 2.0 * r_along * sm.xhat;  // flip along-component sign
-  }
+  // Polar of Mg: T = sqrt(Mg*Mg^T)^{-1} * Mg. r_new = T^T * r.
+  Eigen::MatrixXd MMt = Mg * Mg.transpose();
+  Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(MMt);
+  Eigen::MatrixXd P_pos = eig.eigenvectors() *
+      eig.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
+      eig.eigenvectors().transpose();
+  Eigen::MatrixXd T = P_pos.inverse() * Mg;
+  Eigen::Map<Eigen::VectorXd> r_vec(r, size);
+  r_vec = T.transpose() * r_vec;
 }
 
 // SOC: polar is O(n), so do it internally and rotate r.

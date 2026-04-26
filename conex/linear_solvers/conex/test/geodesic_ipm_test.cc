@@ -1389,19 +1389,8 @@ static void RunConeOpsIsomorphismTest(int vec_dim) {
     double w_err = (w_soc - w_via_psd).norm();
     double r_err = (r_soc - r_via_psd).norm();
     printf("    updateAutomorphism: w_err=%.2e r_err=%.2e\n", w_err, r_err);
-    // For n=1 (commutative), exact match. For n>=2, the SOC implementation
-    // does not rotate r by the polar T — this is a known discrepancy.
-    // The PSD implementation correctly handles r rotation.
-    // W should still match (polar only affects T, not P²).
-    if (vec_dim <= 1) {
-      EXPECT_LT(w_err, 1e-10);
-      EXPECT_LT(r_err, 1e-10);
-    } else {
-      // W matches well but not exactly (different numerical paths).
-      EXPECT_LT(w_err, 1e-3);
-      // r diverges due to missing SOC rotation — document but don't enforce.
-      printf("    (SOC r-rotation not implemented for n>=%d)\n", vec_dim);
-    }
+    EXPECT_LT(w_err, 1e-10);
+    EXPECT_LT(r_err, 1e-10);
   }
 
   // --- lineSearchK ---
@@ -1421,6 +1410,60 @@ static void RunConeOpsIsomorphismTest(int vec_dim) {
 TEST(SpinFactor, ConeOps_n1) { RunConeOpsIsomorphismTest(1); }
 TEST(SpinFactor, ConeOps_n2) { RunConeOpsIsomorphismTest(2); }
 TEST(SpinFactor, ConeOps_n3) { RunConeOpsIsomorphismTest(3); }
+
+// Verify full algorithm iterations are isomorphic (SOC vs SDP via spin factor).
+TEST(SpinFactor, GeodesicLP_Isomorphic_n2) {
+  const int vec_dim = 2, p = 2, seed = 77;
+  srand(seed);
+  const int n_soc = 1 + vec_dim;
+  auto gammas = BuildGammaMatrices(vec_dim);
+
+  MatrixXd A_dense = MatrixXd::Random(n_soc, p);
+  VectorXd b_vec = VectorXd::Zero(n_soc);
+  b_vec(0) = 1.0;
+  VectorXd c = A_dense.row(0).transpose();
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  // SOC model.
+  Model soc_model;
+  soc_model.AddSOCConstraint(ToSparseMat(A_dense), b_vec, vars);
+  soc_model.SetLinearCost(c);
+  auto soc_solver = Solver::Build(soc_model);
+  CompiledModel soc_cm(*soc_solver.kkt(), soc_solver.MakeCostRHS());
+  RowSpace soc_W = soc_cm.MakeRowSpace();
+  setOnes(soc_W);
+  auto soc_r = SolveGeodesicLP(soc_cm, soc_W, 30, 0, 1e-8);
+
+  // SDP model via spin factor.
+  MatrixXd B_psd = SpinEmbedVec(b_vec, gammas);
+  std::vector<Eigen::SparseMatrix<double>> A_psd_list;
+  for (int j = 0; j < p; ++j)
+    A_psd_list.push_back(ToSparseMat(SpinEmbedVec(A_dense.col(j), gammas)));
+  Model sdp_model;
+  sdp_model.AddPSDConstraint(A_psd_list, ToSparseMat(B_psd), vars, false);
+  sdp_model.SetLinearCost(c);
+  auto sdp_solver = Solver::Build(sdp_model);
+  CompiledModel sdp_cm(*sdp_solver.kkt(), sdp_solver.MakeCostRHS());
+  RowSpace sdp_W = sdp_cm.MakeRowSpace();
+  setOnes(sdp_W);
+  auto sdp_r = SolveGeodesicLP(sdp_cm, sdp_W, 30, 0, 1e-8);
+
+  printf("\n=== GeodesicLP isomorphism: SOC %d fac, SDP %d fac ===\n",
+         soc_r.total_factorizations, sdp_r.total_factorizations);
+  int n_common = std::min(soc_r.iter_stats.size(), sdp_r.iter_stats.size());
+  for (int i = 0; i < n_common; ++i) {
+    double d_err = std::abs(soc_r.iter_stats[i].d_inf - sdp_r.iter_stats[i].d_inf);
+    printf("  it %2d: soc_d=%.10e  sdp_d=%.10e  err=%.2e\n",
+           i, soc_r.iter_stats[i].d_inf, sdp_r.iter_stats[i].d_inf, d_err);
+    EXPECT_NEAR(soc_r.iter_stats[i].d_inf, sdp_r.iter_stats[i].d_inf, 1e-10)
+        << "d_inf mismatch at iteration " << i;
+  }
+  // Factorization counts may differ by 1 due to gap/trace-form scaling.
+  EXPECT_LE(std::abs(soc_r.total_factorizations -
+                     sdp_r.total_factorizations), 1);
+  EXPECT_LT((soc_r.x - sdp_r.x).norm(), 1e-6);
+}
 
 }  // namespace
 }  // namespace conex
