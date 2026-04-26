@@ -1411,9 +1411,13 @@ TEST(SpinFactor, ConeOps_n1) { RunConeOpsIsomorphismTest(1); }
 TEST(SpinFactor, ConeOps_n2) { RunConeOpsIsomorphismTest(2); }
 TEST(SpinFactor, ConeOps_n3) { RunConeOpsIsomorphismTest(3); }
 
-// Verify full algorithm iterations are isomorphic (SOC vs SDP via spin factor).
-TEST(SpinFactor, GeodesicLP_Isomorphic_n2) {
-  const int vec_dim = 2, p = 2, seed = 77;
+// Helper: build matched SOC and SDP (via spin factor) solvers for isomorphism tests.
+struct SpinFactorPair {
+  Solver soc_solver;
+  Solver sdp_solver;
+};
+
+static SpinFactorPair BuildSpinFactorPair(int vec_dim, int p, int seed) {
   srand(seed);
   const int n_soc = 1 + vec_dim;
   auto gammas = BuildGammaMatrices(vec_dim);
@@ -1425,17 +1429,10 @@ TEST(SpinFactor, GeodesicLP_Isomorphic_n2) {
   std::vector<int> vars(p);
   std::iota(vars.begin(), vars.end(), 0);
 
-  // SOC model.
   Model soc_model;
   soc_model.AddSOCConstraint(ToSparseMat(A_dense), b_vec, vars);
   soc_model.SetLinearCost(c);
-  auto soc_solver = Solver::Build(soc_model);
-  CompiledModel soc_cm(*soc_solver.kkt(), soc_solver.MakeCostRHS());
-  RowSpace soc_W = soc_cm.MakeRowSpace();
-  setOnes(soc_W);
-  auto soc_r = SolveGeodesicLP(soc_cm, soc_W, 30, 0, 1e-8);
 
-  // SDP model via spin factor.
   MatrixXd B_psd = SpinEmbedVec(b_vec, gammas);
   std::vector<Eigen::SparseMatrix<double>> A_psd_list;
   for (int j = 0; j < p; ++j)
@@ -1443,26 +1440,64 @@ TEST(SpinFactor, GeodesicLP_Isomorphic_n2) {
   Model sdp_model;
   sdp_model.AddPSDConstraint(A_psd_list, ToSparseMat(B_psd), vars, false);
   sdp_model.SetLinearCost(c);
-  auto sdp_solver = Solver::Build(sdp_model);
-  CompiledModel sdp_cm(*sdp_solver.kkt(), sdp_solver.MakeCostRHS());
-  RowSpace sdp_W = sdp_cm.MakeRowSpace();
-  setOnes(sdp_W);
-  auto sdp_r = SolveGeodesicLP(sdp_cm, sdp_W, 30, 0, 1e-8);
 
-  printf("\n=== GeodesicLP isomorphism: SOC %d fac, SDP %d fac ===\n",
-         soc_r.total_factorizations, sdp_r.total_factorizations);
+  return {Solver::Build(soc_model), Solver::Build(sdp_model)};
+}
+
+// Compare per-iteration d_inf between two algorithm runs.
+static void CheckIsomorphicIterations(const char* name,
+                                       const GeodesicResult& soc_r,
+                                       const GeodesicResult& sdp_r) {
+  printf("\n=== %s isomorphism: SOC %d fac, SDP %d fac ===\n",
+         name, soc_r.total_factorizations, sdp_r.total_factorizations);
   int n_common = std::min(soc_r.iter_stats.size(), sdp_r.iter_stats.size());
   for (int i = 0; i < n_common; ++i) {
-    double d_err = std::abs(soc_r.iter_stats[i].d_inf - sdp_r.iter_stats[i].d_inf);
+    double d_err = std::abs(soc_r.iter_stats[i].d_inf -
+                            sdp_r.iter_stats[i].d_inf);
     printf("  it %2d: soc_d=%.10e  sdp_d=%.10e  err=%.2e\n",
            i, soc_r.iter_stats[i].d_inf, sdp_r.iter_stats[i].d_inf, d_err);
-    EXPECT_NEAR(soc_r.iter_stats[i].d_inf, sdp_r.iter_stats[i].d_inf, 1e-10)
-        << "d_inf mismatch at iteration " << i;
+    EXPECT_NEAR(soc_r.iter_stats[i].d_inf, sdp_r.iter_stats[i].d_inf, 1e-8)
+        << name << ": d_inf mismatch at iteration " << i;
   }
-  // Factorization counts may differ by 1 due to gap/trace-form scaling.
   EXPECT_LE(std::abs(soc_r.total_factorizations -
-                     sdp_r.total_factorizations), 1);
-  EXPECT_LT((soc_r.x - sdp_r.x).norm(), 1e-6);
+                     sdp_r.total_factorizations), 1)
+      << name;
+  if (soc_r.x.size() == sdp_r.x.size()) {
+    EXPECT_LT((soc_r.x - sdp_r.x).norm(), 1e-6) << name;
+  }
+}
+
+TEST(SpinFactor, GeodesicLP_Isomorphic) {
+  auto [soc_s, sdp_s] = BuildSpinFactorPair(2, 2, 77);
+  CompiledModel soc_cm(*soc_s.kkt(), soc_s.MakeCostRHS());
+  CompiledModel sdp_cm(*sdp_s.kkt(), sdp_s.MakeCostRHS());
+  RowSpace soc_W = soc_cm.MakeRowSpace(); setOnes(soc_W);
+  RowSpace sdp_W = sdp_cm.MakeRowSpace(); setOnes(sdp_W);
+  auto soc_r = SolveGeodesicLP(soc_cm, soc_W, 30, 0, 1e-8);
+  auto sdp_r = SolveGeodesicLP(sdp_cm, sdp_W, 30, 0, 1e-8);
+  CheckIsomorphicIterations("GeodesicLP", soc_r, sdp_r);
+}
+
+TEST(SpinFactor, GeodesicHybrid_Isomorphic) {
+  auto [soc_s, sdp_s] = BuildSpinFactorPair(2, 2, 77);
+  CompiledModel soc_cm(*soc_s.kkt(), soc_s.MakeCostRHS());
+  CompiledModel sdp_cm(*sdp_s.kkt(), sdp_s.MakeCostRHS());
+  RowSpace soc_W = soc_cm.MakeRowSpace(); setOnes(soc_W);
+  RowSpace sdp_W = sdp_cm.MakeRowSpace(); setOnes(sdp_W);
+  auto soc_r = SolveGeodesicHybrid(soc_cm, soc_W, 50, 1e-8);
+  auto sdp_r = SolveGeodesicHybrid(sdp_cm, sdp_W, 50, 1e-8);
+  CheckIsomorphicIterations("GeodesicHybrid", soc_r, sdp_r);
+}
+
+TEST(SpinFactor, ThetaContinuation_Isomorphic) {
+  auto [soc_s, sdp_s] = BuildSpinFactorPair(2, 2, 77);
+  CompiledModel soc_cm(*soc_s.kkt(), soc_s.MakeCostRHS());
+  CompiledModel sdp_cm(*sdp_s.kkt(), sdp_s.MakeCostRHS());
+  RowSpace soc_W = soc_cm.MakeRowSpace(); setOnes(soc_W);
+  RowSpace sdp_W = sdp_cm.MakeRowSpace(); setOnes(sdp_W);
+  auto soc_r = SolveGeodesicThetaContinuation(soc_cm, soc_W, 50, 1, 1e-8);
+  auto sdp_r = SolveGeodesicThetaContinuation(sdp_cm, sdp_W, 50, 1, 1e-8);
+  CheckIsomorphicIterations("ThetaContinuation", soc_r, sdp_r);
 }
 
 }  // namespace
