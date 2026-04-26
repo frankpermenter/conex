@@ -505,104 +505,117 @@ TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
     return 1.0 / t;
   };
 
+  // Geodesic LP for the exp cone (primal formulation).
+  //
+  // Primal barrier: F(s) = -log(z-ye^{x/y}) - log(y) on K.
+  // Gram = A^T ∇²F(s) A  (primal Hessian, NOT inverse).
+  //
+  // Newton for min c^T x + μ F(Ax+b):
+  //   (A^T H A) δx = -(c + μ A^T ∇F(s))
+  //
+  // Substitute s = (1/k)·w (log-homogeneity: H(s) = k²H(w), ∇F(s) = k∇F(w)):
+  //   k²(A^T H(w) A) δx = -(c + (1/k) A^T ∇F(w))
+  //
+  // Let δx̃ = k²δx:
+  //   (A^T H(w) A) δx̃ = -(k²c + k A^T ∇F(w))
+  //
+  // Decompose: δx̃(k) = k·y₀ + k²·y₁ where
+  //   (A^T H(w) A) y₀ = -A^T ∇F(w)   (centering)
+  //   (A^T H(w) A) y₁ = -c            (optimality)
+  //
+  // Cone direction: d(k) = A·δx̃(k) = k·d₀ + k²·d₁
+  //   where d₀ = A·y₀, d₁ = A·y₁.
+  //
+  // The "w-space" direction is δs = (1/k²)·d(k) = (1/k)·d₀ + d₁.
+  // But for the step, we work in w = k·s space.
+  // δw = k·δs = d₀ + k·d₁.
+  //
+  // Line search: largest k with ||d₀ + k·d₁||_H(w) ≤ 1.
+
   Vector2d x(0.0, 0.0);
 
-  printf("\n=== Geodesic IPM (log-homogeneous, exp cone) ===\n");
+  printf("\n=== Geodesic LP (exp cone) ===\n");
   printf("  %3s  %12s  %12s  %10s  %10s  %10s\n",
-         "fac", "k", "k_new", "d_inf", "d_sqr", "c^Tx");
+         "fac", "k", "k_new", "d_norm", "d_sqr", "c^Tx");
   printf("  %s\n", std::string(72, '-').c_str());
 
   int factorizations = 0;
+  double k_prev = 0.0;
 
   for (int outer = 0; outer < 30; ++outer) {
     Vector3d s = A * x + b;
-    if (!is_interior(s)) { printf("  INFEASIBLE\n"); break; }
+    if (!is_interior(s)) { printf("  INFEASIBLE at iter %d\n", outer); break; }
 
-    // Evaluate at w = s (k=1 initially; after centering, w IS the scaling).
-    double gw[3], Hw[9];
-    ExpConeOps::BarrierGrad(s(0), s(1), s(2), gw);
-    ExpConeOps::BarrierHessian(s(0), s(1), s(2), Hw);
-    Matrix3d Hm;
+    // Hessian and gradient at s.
+    double Hw_arr[9], gw_arr[3];
+    ExpConeOps::BarrierHessian(s(0), s(1), s(2), Hw_arr);
+    ExpConeOps::BarrierGrad(s(0), s(1), s(2), gw_arr);
+    Matrix3d Hw;
     for (int i = 0; i < 3; ++i)
       for (int j = 0; j < 3; ++j)
-        Hm(i, j) = Hw[3*i+j];
+        Hw(i, j) = Hw_arr[3*i+j];
+    Eigen::Map<Vector3d> gw(gw_arr);
 
-    // Factor Gram = A^T H(s) A.
-    Eigen::Matrix2d G = A.transpose() * Hm * A;
+    // Gram = A^T H(s) A (primal Hessian).
+    Eigen::Matrix2d G = A.transpose() * Hw * A;
     auto Gf = G.ldlt();
     factorizations++;
 
-    // Two back-solves: d(k) = d0 + k*d1.
-    // rhs0 = A^T(2*(-∇F(s))) = -2*A^T∇F(s)  (centering: matches 2W in symmetric case)
-    // rhs1 = -(c + A^T ∇²F(s) b)              (cost + affine)
-    Eigen::Map<Vector3d> gwv(gw);
-    Vector2d dx0 = Gf.solve(-2.0 * A.transpose() * gwv);  // centering (2W analog)
-    Vector2d dx1 = Gf.solve(-(c + A.transpose() * (Hm * b)));  // cost+affine
-    Vector3d d0 = A * dx0;
-    Vector3d d1 = A * dx1;
+    // Two back-solves.
+    Vector2d y0 = Gf.solve(-A.transpose() * gw);  // centering
+    Vector2d y1 = Gf.solve(-c);                    // optimality
+    Vector3d d0 = A * y0;
+    Vector3d d1 = A * y1;
 
-    // d0 corresponds to the centering part: at the analytic center, d0=0.
-    // d1 corresponds to the optimality part: at theta=0, d = k*d1.
-    // d(k) = d0 + k*d1. The combined RHS at parameter k is:
-    //   -2 A^T ∇F(s) + k*(-(c + A^T H b))
-    // This matches the symmetric cone: rhs0 + k*rhs1.
-
-    // Line search for k: largest k with ||d0 + k*d1||_H ≤ 1.
-    double k_new = line_search_k(d1, d0, Hw, 1.0);
-    // Note: line_search_k(d0, d1, bound) finds k with ||d1 + (1/k)*d0|| ≤ bound.
-    // We want ||d0 + k*d1|| ≤ 1, so swap roles: find 1/k from line_search_k(d1, d0).
-    // Actually, let me just compute it directly:
-    // ||d0 + k*d1||²_H = ||d0||² + 2k<d0,d1> + k²||d1||² ≤ 1
-    auto ip = [&](const Vector3d& a_v, const Vector3d& b_v) {
-      double v = 0;
-      for (int i = 0; i < 3; ++i)
-        for (int j = 0; j < 3; ++j)
-          v += a_v(i) * Hw[3*i+j] * b_v(j);
-      return v;
+    // δw(k) = d₀ + k·d₁ in the H(s)-metric.
+    // Line search: ||d₀ + k·d₁||²_H ≤ 1.
+    auto hip = [&](const Vector3d& a_v, const Vector3d& b_v) {
+      return a_v.dot(Hw * b_v);
     };
-    double aa = ip(d0, d0), ff = ip(d0, d1), pp = ip(d1, d1);
-    // pp*k² + 2ff*k + (aa - 1) = 0
+    double aa = hip(d0, d0), ff = hip(d0, d1), pp = hip(d1, d1);
+    double k_new = 0;
     double disc = 4*ff*ff - 4*pp*(aa - 1);
     if (disc >= 0 && pp > 1e-30) {
-      k_new = (-2*ff + std::sqrt(disc)) / (2*pp);
-      if (k_new < 0) k_new = (-2*ff - std::sqrt(disc)) / (2*pp);
+      double k1 = (-2*ff + std::sqrt(disc)) / (2*pp);
+      double k2 = (-2*ff - std::sqrt(disc)) / (2*pp);
+      k_new = std::max(k1, k2);
       k_new = std::max(k_new, 0.0);
-    } else {
-      k_new = 0.0;
     }
+    k_new = std::max(k_new, k_prev);
 
-    Vector3d d_k = d0 + k_new * d1;
-    double d_sqr = ip(d_k, d_k);
-    double d_inf = std::sqrt(std::max(d_sqr, 0.0));
+    Vector3d dk = d0 + k_new * d1;
+    double d_sqr = hip(dk, dk);
+    double d_norm = std::sqrt(std::max(d_sqr, 0.0));
     double mu = (k_new > 0) ? 1.0/(k_new*k_new) : 1.0;
 
     printf("  %3d  %12.4e  %12.4e  %10.4f  %10.4f  %10.4f\n",
-           factorizations, 0.0, k_new, d_inf, d_sqr, c.dot(x));
+           factorizations, k_prev, k_new, d_norm, d_sqr, c.dot(x));
 
     if (mu < 1e-8) break;
 
-    // Geodesic step: s_new = Exp_s(alpha * d(k) / k²).
-    // In the barrier subproblem at mu = 1/k², the Newton direction in s-space
-    // is δs = d(k)/k² (from the scaling). But the geodesic metric at s is
-    // ∇²F(s), and d(k) was computed in this metric. So step in s-space:
-    double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+    // Geodesic step on s.
+    // dk is the direction in the H(s)-metric with ||dk||_H ≤ 1.
+    // The actual primal step is δs = dk / k² (from the scaling).
+    // But the geodesic should be taken in the metric of s.
+    double alpha = std::min(1.0, 2.0 / (d_norm * d_norm));
     double s_arr[3] = {s(0), s(1), s(2)};
-    double ds[3] = {d_k(0), d_k(1), d_k(2)};
+    double ds[3] = {dk(0), dk(1), dk(2)};
     ops.bregmanMidpointStep(s_arr, alpha, ds);
     Vector3d s_new(s_arr[0], s_arr[1], s_arr[2]);
 
     if (is_interior(s_new)) {
       x = (A.transpose()*A).ldlt().solve(A.transpose() * (s_new - b));
     } else {
-      // Euclidean fallback.
       for (double a = alpha; a > 1e-10; a *= 0.5) {
-        Vector3d s_try = s + a * d_k;
+        Vector3d s_try = s + a * dk;
         if (is_interior(s_try)) {
           x = (A.transpose()*A).ldlt().solve(A.transpose() * (s_try - b));
           break;
         }
       }
     }
+
+    k_prev = k_new;
   }
 
   double final_obj = c.dot(x);
