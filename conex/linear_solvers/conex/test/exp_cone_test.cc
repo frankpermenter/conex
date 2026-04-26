@@ -210,4 +210,132 @@ TEST(ExpCone, GeodesicConvergesWithRefinement) {
   printf("Geodesic endpoint: (%.6f, %.6f, %.6f)\n", ref[0], ref[1], ref[2]);
 }
 
+// Check dual cone membership for the exponential cone.
+// K* = cl{(a,b,c) : a <= 0, c >= 0, -a*exp(b/a - 1) <= c} (when a < 0).
+bool InDualCone(double a, double b, double c) {
+  if (a > 0) return false;
+  if (c < 0) return false;
+  if (std::abs(a) < 1e-15) return c >= 0;  // a = 0: need c >= 0, b >= 0
+  return -a * std::exp(b / a - 1) <= c + 1e-14;
+}
+
+// Invert 3x3 matrix.
+void Invert3x3(const double* A, double* Ainv) {
+  double det = A[0]*(A[4]*A[8]-A[5]*A[7])
+             - A[1]*(A[3]*A[8]-A[5]*A[6])
+             + A[2]*(A[3]*A[7]-A[4]*A[6]);
+  Ainv[0] = (A[4]*A[8]-A[5]*A[7])/det;
+  Ainv[1] = (A[2]*A[7]-A[1]*A[8])/det;
+  Ainv[2] = (A[1]*A[5]-A[2]*A[4])/det;
+  Ainv[3] = (A[5]*A[6]-A[3]*A[8])/det;
+  Ainv[4] = (A[0]*A[8]-A[2]*A[6])/det;
+  Ainv[5] = (A[2]*A[3]-A[0]*A[5])/det;
+  Ainv[6] = (A[3]*A[7]-A[4]*A[6])/det;
+  Ainv[7] = (A[1]*A[6]-A[0]*A[7])/det;
+  Ainv[8] = (A[0]*A[4]-A[1]*A[3])/det;
+}
+
+// Dual energy: |λ̇|²_{H⁻¹} = λ̇ᵀ H(x)⁻¹ λ̇
+double DualEnergy(double x, double y, double z, const double* ldot) {
+  double H[9], Hinv[9];
+  ExpConeOps::BarrierHessian(x, y, z, H);
+  Invert3x3(H, Hinv);
+  double e = 0;
+  for (int i = 0; i < 3; ++i)
+    for (int j = 0; j < 3; ++j)
+      e += ldot[i] * Hinv[3*i+j] * ldot[j];
+  return e;
+}
+
+TEST(ExpCone, DualGeodesicViaGradientMap) {
+  // Verify that λ(t) = -∇F(γ(t)) is a geodesic in K* when γ(t) is
+  // a geodesic in K.
+  //
+  // Checks:
+  // 1. λ(t) ∈ K* for all t (dual feasibility)
+  // 2. Dual energy |λ̇|²_{H⁻¹} is constant (geodesic ⟺ constant speed)
+  // 3. Primal energy = dual energy (isometry)
+
+  ExpConeOps ops;
+  double w0[3] = {0.1, 1.0, 2.5};
+  double d[3] = {0.2, -0.1, 0.15};
+
+  // Sample the geodesic at many points.
+  const int N = 20;
+  double alpha_max = 0.6;
+  double dt = alpha_max / N;
+
+  // Compute primal geodesic and dual image at each sample.
+  double gamma[N+1][3], lambda[N+1][3];
+  for (int i = 0; i <= N; ++i) {
+    double t = i * dt;
+    gamma[i][0] = w0[0]; gamma[i][1] = w0[1]; gamma[i][2] = w0[2];
+    if (t > 0) ops.geodesicStep(gamma[i], t, d);
+
+    // λ(t) = -∇F(γ(t))
+    double g[3];
+    ExpConeOps::BarrierGrad(gamma[i][0], gamma[i][1], gamma[i][2], g);
+    lambda[i][0] = -g[0]; lambda[i][1] = -g[1]; lambda[i][2] = -g[2];
+  }
+
+  // Check 1: dual cone membership.
+  printf("\n=== Dual geodesic via gradient map ===\n");
+  printf("  %3s  %10s %10s %10s  %10s %10s %10s  %5s  %10s\n",
+         "i", "gam_x", "gam_y", "gam_z", "lam_0", "lam_1", "lam_2",
+         "K*?", "dual_E");
+  for (int i = 0; i <= N; ++i) {
+    bool in_dual = InDualCone(lambda[i][0], lambda[i][1], lambda[i][2]);
+
+    // Check 2: dual energy via finite differences.
+    double dual_e = -1;
+    if (i > 0 && i < N) {
+      double ldot[3];
+      for (int k = 0; k < 3; ++k)
+        ldot[k] = (lambda[i+1][k] - lambda[i-1][k]) / (2*dt);
+      dual_e = DualEnergy(gamma[i][0], gamma[i][1], gamma[i][2], ldot);
+    }
+
+    printf("  %3d  %10.4f %10.4f %10.4f  %10.4f %10.4f %10.4f  %5s  %10.4e\n",
+           i, gamma[i][0], gamma[i][1], gamma[i][2],
+           lambda[i][0], lambda[i][1], lambda[i][2],
+           in_dual ? "yes" : "NO", dual_e);
+
+    EXPECT_TRUE(in_dual) << "λ(" << i << ") not in dual cone";
+  }
+
+  // Check 2 (quantitative): dual energy should be constant.
+  // Collect interior dual energies (skip endpoints where finite diff is one-sided).
+  double E_first = -1, E_max = 0, E_min = 1e30;
+  for (int i = 2; i < N-1; ++i) {
+    double ldot[3];
+    for (int k = 0; k < 3; ++k)
+      ldot[k] = (lambda[i+1][k] - lambda[i-1][k]) / (2*dt);
+    double e = DualEnergy(gamma[i][0], gamma[i][1], gamma[i][2], ldot);
+    if (E_first < 0) E_first = e;
+    E_max = std::max(E_max, e);
+    E_min = std::min(E_min, e);
+  }
+  double rel_var = (E_max - E_min) / E_first;
+  printf("  Dual energy: min=%.6e max=%.6e relative variation=%.2e\n",
+         E_min, E_max, rel_var);
+  EXPECT_LT(rel_var, 1e-2)
+      << "Dual energy not constant — dual curve is not geodesic";
+
+  // Check 3: primal energy at t=0 should equal dual energy.
+  double v0[3] = {d[0]*alpha_max, d[1]*alpha_max, d[2]*alpha_max};
+  // Actually initial velocity is just d (not alpha_max*d) since geodesicStep
+  // integrates gamma(alpha) = Exp_{w0}(alpha*d). So velocity at t is d.
+  // But we sampled at t = i*dt with dt = alpha_max/N. The velocity of gamma
+  // w.r.t. parameter t (not alpha) is d * (alpha_max / alpha_max) = d...
+  // Hmm, geodesicStep(w, alpha, d) computes Exp_w(alpha*d). So gamma(alpha)
+  // has velocity d at alpha=0. The parameterization has |γ̇|² = |d|²_H.
+  double primal_E = Energy(w0[0], w0[1], w0[2], d);
+  printf("  Primal energy at t=0: %.6e, dual energy: ~%.6e\n",
+         primal_E, E_first);
+  // They should be equal (isometry of gradient map).
+  // But finite-diff introduces error, so be lenient.
+  EXPECT_NEAR(primal_E, E_first, primal_E * 0.05)
+      << "Primal and dual energies differ — gradient map not isometric";
+}
+
 }  // namespace
