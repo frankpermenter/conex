@@ -670,6 +670,10 @@ GeodesicResult SolveGeodesicHybridR(
   setOnes(r);
   double theta = 1.0;
 
+  // Store P = sqrt(W) as primary state; W = P² is derived.
+  RowSpace P = model.MakeRowSpace();
+  setOnes(P);
+  W = square(P);
   model.SetScaling(W);
   model.AssembleAndFactor();
   int total_fac = 1;
@@ -710,7 +714,8 @@ GeodesicResult SolveGeodesicHybridR(
     if (do_center) {
       // W-update: centering step. Keep r and theta frozen.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      updateAutomorphism(W, r, alpha, d);
+      updateAutomorphismP(P, r, alpha, d);
+      W = square(P);
       model.SetScaling(W);
       if (!model.AssembleAndFactor()) break;
       total_fac++;
@@ -757,14 +762,13 @@ GeodesicResult SolveGeodesicHybridR(
     model.SetScaling(W);
     model.AssembleAndFactor();
     RowSpace b_theta = BlendAffine(model, b, theta);
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
 
     auto y = model.MakeSolverRHS();
     y = cost_rhs;
     RowSpace v = quadraticRepresentation(W, b_theta);
     model.AccumulateAtranspose(v, y);
     y *= -1;
-    v = quadraticRepresentation(sqrtW, r);
+    v = quadraticRepresentation(P, r);
     v *= 2.0;
     model.AccumulateAtranspose(v, y);
     auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
@@ -781,8 +785,7 @@ GeodesicResult SolveGeodesicHybridR(
   {
     auto x_rhs = model.MakeSolverRHS();
     x_rhs = model.MakeBlockVariable(result.x);
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace lambda = quadraticRepresentation(sqrtW,
+    RowSpace lambda = quadraticRepresentation(P,
         addScaled(r, last_delta, 1.0, 1.0));
     result.optimality = CheckOptimality(model, x_rhs, lambda);
     result.optimality.mu = result.mu;
