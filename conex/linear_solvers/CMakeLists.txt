@@ -67,6 +67,7 @@ add_library(constraints
   conex/common/blas_wrapper.cc
   conex/common/psd_cone_ops.cc
   conex/common/soc_cone_ops.cc
+  conex/common/exp_cone_ops.cc
   conex/common/soc_linear_constraint.cc
 )
 target_link_libraries(constraints PUBLIC Eigen3::Eigen clique_ordering)
@@ -313,6 +314,15 @@ target_link_libraries(geodesic_hybrid_r_test
   GTest::gtest_main
 )
 gtest_discover_tests(geodesic_hybrid_r_test)
+
+add_executable(exp_cone_test
+  conex/test/exp_cone_test.cc
+)
+target_link_libraries(exp_cone_test PRIVATE
+  constraints
+  GTest::gtest_main
+)
+gtest_discover_tests(exp_cone_test)
 
 add_executable(extended_embedding_test
   conex/test/extended_embedding_test.cc

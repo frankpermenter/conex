@@ -1,0 +1,234 @@
+// Exponential cone operations.
+// K = cl{(x, y, z) : y*exp(x/y) <= z, y > 0}
+// Barrier: F = -log(z - y*exp(x/y)) - log(y)
+//
+// Key quantities:
+//   e = exp(x/y) = exp(s), where s = x/y
+//   u = z - y*e  (slack, > 0 in interior)
+
+#include "conex/common/exp_cone_ops.h"
+
+#include <cmath>
+#include <algorithm>
+
+namespace conex {
+namespace EuclideanJordanAlgebra {
+
+double ExpConeOps::Barrier(double x, double y, double z) {
+  double e = std::exp(x / y);
+  double u = z - y * e;
+  return -std::log(u) - std::log(y);
+}
+
+void ExpConeOps::BarrierGrad(double x, double y, double z, double* g) {
+  double s = x / y;
+  double e = std::exp(s);
+  double u = z - y * e;
+  g[0] = e / (-u);            // dF/dx = e/(-u) = -e/u... wait
+  // F = -log(u) - log(y), u = z - y*e
+  // dF/dx = -(1/u)*du/dx = -(1/u)*(-y*e*(1/y)) = e/u
+  g[0] = e / u;               // but u < 0 if we define u = z - ye...
+  // Actually u = z - y*e > 0 in the interior (y*e < z).
+  // dF/dx = -(1/u)*(du/dx) = -(1/u)*(-e) = e/u
+  // Wait: du/dx = d/dx(z - y*exp(x/y)) = -y * exp(x/y) * (1/y) = -exp(x/y) = -e
+  // So dF/dx = -(1/u)*(-e) = e/u
+  g[0] = e / u;
+  // dF/dy = -(1/u)*du/dy - 1/y
+  // du/dy = -e + y*e*(x/y^2) = -e + e*s/1 ... wait
+  // du/dy = d/dy(z - y*e^{x/y}) = -e^{x/y} - y*e^{x/y}*(-x/y^2) = -e + e*x/y = e*(s - 1)
+  // So dF/dy = -(1/u)*e*(s-1) - 1/y = -e*(s-1)/u - 1/y
+  g[1] = -e * (s - 1) / u - 1.0 / y;
+  // dF/dz = -(1/u)*1 = -1/u
+  g[2] = -1.0 / u;
+}
+
+void ExpConeOps::BarrierHessian(double x, double y, double z, double* H) {
+  // H is stored as 9 doubles in row-major: H[3*i + j].
+  double s = x / y;
+  double e = std::exp(s);
+  double u = z - y * e;
+  double u2 = u * u;
+  double y2 = y * y;
+  double ey = e * y;
+
+  // H[0,0] = e*(e*y + u)/(u^2*y)
+  H[0] = e * (ey + u) / (u2 * y);
+  // H[0,1] = -e*(e*y*(s-1) + s*u)/(u^2*y)
+  H[1] = -e * (ey * (s - 1) + s * u) / (u2 * y);
+  // H[0,2] = -e/u^2
+  H[2] = -e / u2;
+  // Symmetric
+  H[3] = H[1];
+  // H[1,1] = e^2*(s-1)^2/u^2 + e*s^2/(u*y) + 1/y^2
+  double sm1 = s - 1;
+  H[4] = e * e * sm1 * sm1 / u2 + e * s * s / (u * y) + 1.0 / y2;
+  // H[1,2] = e*(s-1)/u^2
+  H[5] = e * sm1 / u2;
+  // Symmetric
+  H[6] = H[2];
+  H[7] = H[5];
+  // H[2,2] = 1/u^2
+  H[8] = 1.0 / u2;
+}
+
+void ExpConeOps::ThirdDerivContract(double x, double y, double z,
+                                     const double* v, double* T) {
+  // Compute T_l = sum_{i,j} F_{ijl} * v_i * v_j for l = 0, 1, 2.
+  // This is v^T * (dH/dx_l) * v.
+  double s = x / y;
+  double e = std::exp(s);
+  double u = z - y * e;
+  double u2 = u * u, u3 = u2 * u;
+  double y2 = y * y, y3 = y2 * y;
+  double sm1 = s - 1;
+  double ey = e * y;
+
+  // Third derivatives F_{ijl} — 10 unique values (symmetric in all indices).
+  // Using notation: Fijk where i<=j<=k.
+  double F000 = 2*e*e*e/u3 + 3*e*e/(u2*y) + e/(u*y2);
+  double F001 = -e*(2*e*e*y2*sm1 + e*u*y*(3*s-1) + u2*(s+1)) / (u3*y2);
+  double F002 = -e*(2*ey + u) / (u3*y);
+  double F011 = e*(2*e*s*u*y*sm1 + e*y*(2*ey*sm1*sm1 + s*s*u)
+                   + s*u2*(s+2)) / (u3*y2);
+  double F012 = e*(2*ey*sm1 + s*u) / (u3*y);
+  double F022 = 2*e / u3;
+  double F111 = (-2*e*e*e*y3*sm1*sm1*sm1 + 3*e*e*s*s*u*y2*(1-s)
+                 - e*s*s*u2*y*(s+3) - 2*u3) / (u3*y3);
+  double F112 = -e*(2*ey*sm1*sm1 + s*s*u) / (u3*y);
+  double F122 = 2*e*(1-s) / u3;
+  double F222 = -2.0 / u3;
+
+  // T_l = sum_{ij} F_{ijl} v_i v_j.  Since F is symmetric, use:
+  // T_l = F_{00l}*v0^2 + F_{11l}*v1^2 + F_{22l}*v2^2
+  //      + 2*F_{01l}*v0*v1 + 2*F_{02l}*v0*v2 + 2*F_{12l}*v1*v2
+  double v0 = v[0], v1 = v[1], v2 = v[2];
+  double v00 = v0*v0, v11 = v1*v1, v22 = v2*v2;
+  double v01 = v0*v1, v02 = v0*v2, v12 = v1*v2;
+
+  T[0] = F000*v00 + F011*v11 + F022*v22
+       + 2*(F001*v01 + F002*v02 + F012*v12);
+  T[1] = F001*v00 + F111*v11 + F122*v22
+       + 2*(F011*v01 + F012*v02 + F112*v12);
+  T[2] = F002*v00 + F112*v11 + F222*v22
+       + 2*(F012*v01 + F022*v02 + F122*v12);
+}
+
+void ExpConeOps::geodesicStep(double* w, double alpha,
+                               const double* d) const {
+  // Integrate the geodesic ODE on the Hessian manifold:
+  //   ẍ = -(1/2) H(x)^{-1} T(ẋ, ẋ)
+  // using Störmer-Verlet (symplectic) integration.
+  double pos[3] = {w[0], w[1], w[2]};
+  double vel[3] = {alpha * d[0], alpha * d[1], alpha * d[2]};
+
+  const int steps = 8;
+  double dt = 1.0 / steps;
+
+  for (int step = 0; step < steps; ++step) {
+    // Compute acceleration: a = -(1/2) H^{-1} T(v, v).
+    double H[9], T[3];
+    BarrierHessian(pos[0], pos[1], pos[2], H);
+    ThirdDerivContract(pos[0], pos[1], pos[2], vel, T);
+
+    // Invert 3x3 H.
+    double det = H[0]*(H[4]*H[8] - H[5]*H[7])
+               - H[1]*(H[3]*H[8] - H[5]*H[6])
+               + H[2]*(H[3]*H[7] - H[4]*H[6]);
+    double Hinv[9];
+    Hinv[0] = (H[4]*H[8] - H[5]*H[7]) / det;
+    Hinv[1] = (H[2]*H[7] - H[1]*H[8]) / det;
+    Hinv[2] = (H[1]*H[5] - H[2]*H[4]) / det;
+    Hinv[3] = (H[5]*H[6] - H[3]*H[8]) / det;
+    Hinv[4] = (H[0]*H[8] - H[2]*H[6]) / det;
+    Hinv[5] = (H[2]*H[3] - H[0]*H[5]) / det;
+    Hinv[6] = (H[3]*H[7] - H[4]*H[6]) / det;
+    Hinv[7] = (H[1]*H[6] - H[0]*H[7]) / det;
+    Hinv[8] = (H[0]*H[4] - H[1]*H[3]) / det;
+
+    double a[3];
+    for (int k = 0; k < 3; ++k)
+      a[k] = -0.5 * (Hinv[3*k]*T[0] + Hinv[3*k+1]*T[1] + Hinv[3*k+2]*T[2]);
+
+    // Störmer-Verlet: half-step velocity, full-step position, half-step velocity.
+    for (int k = 0; k < 3; ++k) vel[k] += 0.5 * dt * a[k];
+    for (int k = 0; k < 3; ++k) pos[k] += dt * vel[k];
+
+    // Recompute acceleration at new position.
+    BarrierHessian(pos[0], pos[1], pos[2], H);
+    ThirdDerivContract(pos[0], pos[1], pos[2], vel, T);
+    det = H[0]*(H[4]*H[8] - H[5]*H[7])
+        - H[1]*(H[3]*H[8] - H[5]*H[6])
+        + H[2]*(H[3]*H[7] - H[4]*H[6]);
+    Hinv[0] = (H[4]*H[8] - H[5]*H[7]) / det;
+    Hinv[1] = (H[2]*H[7] - H[1]*H[8]) / det;
+    Hinv[2] = (H[1]*H[5] - H[2]*H[4]) / det;
+    Hinv[3] = (H[5]*H[6] - H[3]*H[8]) / det;
+    Hinv[4] = (H[0]*H[8] - H[2]*H[6]) / det;
+    Hinv[5] = (H[2]*H[3] - H[0]*H[5]) / det;
+    Hinv[6] = (H[3]*H[7] - H[4]*H[6]) / det;
+    Hinv[7] = (H[1]*H[6] - H[0]*H[7]) / det;
+    Hinv[8] = (H[0]*H[4] - H[1]*H[3]) / det;
+    for (int k = 0; k < 3; ++k)
+      a[k] = -0.5 * (Hinv[3*k]*T[0] + Hinv[3*k+1]*T[1] + Hinv[3*k+2]*T[2]);
+    for (int k = 0; k < 3; ++k) vel[k] += 0.5 * dt * a[k];
+  }
+
+  w[0] = pos[0]; w[1] = pos[1]; w[2] = pos[2];
+}
+
+void ExpConeOps::geodesicUpdate(double* out, const double* a, double alpha,
+                                 const double* d, int /*size*/) const {
+  out[0] = a[0]; out[1] = a[1]; out[2] = a[2];
+  geodesicStep(out, alpha, d);
+}
+
+void ExpConeOps::setIdentity(double* out, int /*size*/) const {
+  // Interior point: (0, 1, exp(0)) = (0, 1, 1).
+  // Actually the "analytic center" of the barrier:
+  // ∇F = 0 at x=0, y=1, z=2 (where u = z - y*e^0 = 1, and dF/dy = 0 gives y=1).
+  // Check: dF/dx = e/u = 1/1 = 1 ≠ 0. Hmm.
+  // The analytic center satisfies ∇F = -e (the "identity direction").
+  // For the exponential cone, a natural interior point is (0, 1, e) ≈ (0, 1, 2.718).
+  // But there's no canonical "identity" like symmetric cones have.
+  // Use (0, 1, 1+1) = (0, 1, 2) as a well-centered interior point.
+  out[0] = 0.0;
+  out[1] = 1.0;
+  out[2] = std::exp(1.0);  // z = y*e^{x/y} + 1 at center
+}
+
+double ExpConeOps::normInf(const double* a, int /*size*/) const {
+  return std::max({std::abs(a[0]), std::abs(a[1]), std::abs(a[2])});
+}
+
+double ExpConeOps::squaredNorm(const double* a, int /*size*/) const {
+  return a[0]*a[0] + a[1]*a[1] + a[2]*a[2];
+}
+
+double ExpConeOps::dot(const double* a, const double* b, int /*size*/) const {
+  return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+}
+
+double ExpConeOps::minEigenvalue(const double* a, int /*size*/) const {
+  // Not meaningful for exp cone (not a symmetric cone).
+  // Return min component as a proxy.
+  return std::min({a[0], a[1], a[2]});
+}
+
+void ExpConeOps::project(double* out, const double* a, int /*size*/) const {
+  // Projection onto the exponential cone.  Rough approximation:
+  // if already feasible, keep; otherwise project onto boundary.
+  // TODO: proper projection.
+  out[0] = a[0]; out[1] = a[1]; out[2] = a[2];
+  if (a[1] > 0 && a[2] >= a[1] * std::exp(a[0] / a[1])) return;
+  // Fallback: move z to boundary.
+  out[1] = std::max(a[1], 1e-10);
+  out[2] = out[1] * std::exp(out[0] / out[1]) + 1e-10;
+}
+
+const ExpConeOps& expConeOps() {
+  static const ExpConeOps instance;
+  return instance;
+}
+
+}  // namespace EuclideanJordanAlgebra
+}  // namespace conex
