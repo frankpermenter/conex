@@ -710,19 +710,21 @@ TEST(ExpCone, GeodesicLP_ProductCone) {
   const int m = 3;     // number of exp cone constraints
 
   // Build m exp cone constraints: A_i x + b_i ∈ K_exp.
-  // Use identity-like A_i so the feasible region is bounded.
-  // Each constraint uses a different pair of variables.
+  // Choose b_i in int(K_exp) and c = -Σ Aᵢ^T ∇Fᵢ(bᵢ) so that x=0
+  // is on the central path at μ=1 (centered and feasible).
   std::vector<ExpConeConstraint> cones(m);
   for (int i = 0; i < m; ++i) {
-    cones[i].A = MatrixXd::Zero(3, p);
-    // Map variable i to the x-component, variable (i+1)%p to y and z.
-    cones[i].A(0, i % p) = 1.0;          // x-component
-    cones[i].A(1, (i+1) % p) = 0.5;      // y-component
-    cones[i].A(2, (i+2) % p) = 0.3;      // z-component
-    cones[i].b = Vector3d(0, 1.0, 3.0);  // interior: y=1, z=3, ye^{0}=1 < 3
+    cones[i].A = 0.3 * MatrixXd::Random(3, p);
+    // b_i well inside K_exp: (0, 1, e+1) where slack = e.
+    cones[i].b = Vector3d(0, 1.0, std::exp(1.0) + 1.0);
   }
-  // Cost that points into the bounded region.
-  VectorXd c = VectorXd::Ones(p);
+  // c = -Σ Aᵢ^T ∇Fᵢ(bᵢ) ensures x=0 is on the central path at k=1.
+  VectorXd c = VectorXd::Zero(p);
+  for (int i = 0; i < m; ++i) {
+    double gi[3];
+    ExpConeOps::BarrierGrad(cones[i].b(0), cones[i].b(1), cones[i].b(2), gi);
+    c -= cones[i].A.transpose() * Eigen::Map<Vector3d>(gi);
+  }
 
   auto is_interior = [](const Vector3d& s) {
     return s(1) > 1e-15 && s(2) > s(1) * std::exp(s(0) / s(1)) + 1e-15;
