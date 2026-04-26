@@ -1409,20 +1409,58 @@ HybridDirection ComputeHybridDirection(
   return {gap(r, delta), normInf(d), squaredNorm(d), minSlack(r, delta)};
 }
 
+// M-based variant: uses applyM/applyMt instead of sqrt(W).
+static HybridDirection ComputeHybridDirectionM(
+    CompiledModel& model,
+    const RowSpace& b,
+    const RowSpace& M,
+    const RowSpace& W,
+    const RowSpace& r,
+    RowSpace& d,
+    RowSpace& delta,
+    double tau_scale = 1.0) {
+  const auto& cost_rhs = model.cost_rhs();
+  auto y = model.MakeSolverRHS();
+  y = cost_rhs;
+  y *= -1;
+  RowSpace v = addScaled(quadraticRepresentation(W, b),
+                         applyM(M, r), -1, 2.0);
+  model.AccumulateAtranspose(v, y);
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
+  if (ts && !ts->equality_sub_assemblers().empty()) {
+    auto d_rhs = ts->EqualityAffineTermRHS();
+    if (tau_scale != 1.0) d_rhs *= tau_scale;
+    y += d_rhs;
+  }
+  model.SolveSolverRHS(y);
+
+  RowSpace row = model.MakeRowSpace();
+  model.MultiplyA(y, row);
+  RowSpace slack_dir = addScaled(b, row, 1.0, 1.0);
+  delta = addScaled(r, applyMt(M, slack_dir), 1.0, -1.0);
+  d = solveLyapunovForD(r, delta);
+
+  return {gap(r, delta), normInf(d), squaredNorm(d), minSlack(r, delta)};
+}
+
 HybridDirection HybridCenteringStep(
     CompiledModel& model,
     RowSpace& W,
     RowSpace& r) {
   const RowSpace b = model.GetAffineTerm();
+  // HybridCenteringStep is a single-step helper used by tests.
+  // Use M-based approach: initialize M = sqrt(W), update, recover W.
+  RowSpace M = EuclideanJordanAlgebra::sqrt(W);
   model.SetScaling(W);
   model.AssembleAndFactor();
 
   RowSpace d = model.MakeRowSpace();
   RowSpace delta = model.MakeRowSpace();
-  auto info = ComputeHybridDirection(model, b, W, r, d, delta);
+  auto info = ComputeHybridDirectionM(model, b, M, W, r, d, delta);
 
   double alpha = std::min(1.0, 2.0 / (info.d_inf * info.d_inf));
-  updateAutomorphism(W, r, alpha, d);
+  updateM(M, r, alpha, d);
+  W = squareM(M);
   return info;
 }
 
@@ -1450,6 +1488,10 @@ GeodesicResult SolveGeodesicHybrid(
 
   RowSpace r = model.MakeRowSpace();
   setOnes(r);
+
+  // M-based automorphism: M tracks the full automorphism, r stays in M-frame.
+  RowSpace M = model.MakeRowSpace();
+  setOnes(M);  // M = I initially
 
   // Initial scaling: use caller-supplied k if positive, otherwise
   // decompose at W to find the minimum-norm k.
@@ -1503,11 +1545,9 @@ GeodesicResult SolveGeodesicHybrid(
   for (int iter = 0; iter < max_iterations; ++iter) {
     RowSpace d = model.MakeRowSpace();
     RowSpace delta = model.MakeRowSpace();
-    auto info = ComputeHybridDirection(model, b, W, r, d, delta, tau);
+    auto info = ComputeHybridDirectionM(model, b, M, W, r, d, delta, tau);
     last_delta = delta;
     total_sol++;
-
-
 
     double d_inf_pre = info.d_inf;
     g = info.gap;
@@ -1524,9 +1564,10 @@ GeodesicResult SolveGeodesicHybrid(
 
     bool do_center = policy(g, d_inf, r_updates_this_fac);
     if (do_center) {
-      // Centering step: update W and r, then refactor.
+      // Centering step: update M (and r for SOC), then refactor.
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      updateAutomorphism(W, r, alpha, d);
+      updateM(M, r, alpha, d);
+      W = squareM(M);
       model.SetScaling(W);
       if (!model.AssembleAndFactor()) break;
       total_fac++;
@@ -1546,7 +1587,7 @@ GeodesicResult SolveGeodesicHybrid(
     {
       RowSpace d2 = model.MakeRowSpace();
       RowSpace delta2 = model.MakeRowSpace();
-      auto info2 = ComputeHybridDirection(model, b, W, r, d2, delta2, tau);
+      auto info2 = ComputeHybridDirectionM(model, b, M, W, r, d2, delta2, tau);
       total_sol++;
       g = info2.gap;
       d_inf = info2.d_inf;
@@ -1557,19 +1598,16 @@ GeodesicResult SolveGeodesicHybrid(
     if (verbose) {
       double mu_r = squaredNorm(r) / m;
       // Compute physical bTl and cTx (divided by tau).
-      // lambda_lifted = P(W^{1/2})(r + delta2).
-      RowSpace sqrtW_v = EuclideanJordanAlgebra::sqrt(W);
-      RowSpace lam_v = quadraticRepresentation(sqrtW_v, r + last_delta);
+      // lambda_lifted = applyM(M, r + delta2).
+      RowSpace lam_v = applyM(M, r + last_delta);
       double bTl_phys = dot(b_unscaled, lam_v) / tau;
       // cTx + dTnu: re-solve and dot with duality_cost (includes d_eq).
-      // Also extract dTnu to add to bTl.
       auto y_v = model.MakeSolverRHS();
       y_v = cost_scaled;
       y_v *= -1;
       RowSpace v_v = addScaled(quadraticRepresentation(W, b),
-                               quadraticRepresentation(sqrtW_v, r), -1, 2.0);
+                               applyM(M, r), -1, 2.0);
       model.AccumulateAtranspose(v_v, y_v);
-      // Inject d_eq into the solve RHS (must match ComputeHybridDirection).
       auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
       if (ts && !ts->equality_sub_assemblers().empty()) {
         auto d_rhs = ts->EqualityAffineTermRHS();
@@ -1577,7 +1615,6 @@ GeodesicResult SolveGeodesicHybrid(
         y_v += d_rhs;
       }
       model.SolveSolverRHS(y_v);
-      // d'ν from the equality dual positions in y_v.
       if (ts && !ts->equality_sub_assemblers().empty()) {
         auto d_rhs2 = ts->EqualityAffineTermRHS();
         bTl_phys += model.dot(d_rhs2, y_v) / tau;
@@ -1602,18 +1639,15 @@ GeodesicResult SolveGeodesicHybrid(
   result.total_solves = total_sol;
 
   // Recover x: solve Gram * y = RHS at the final (W, r).
-  // Recover x by re-solving the Newton system (same as ComputeHybridDirection).
   {
     model.SetScaling(W);
     model.AssembleAndFactor();
     auto y = model.MakeSolverRHS();
     y = cost_scaled;
     y *= -1;
-    RowSpace sqrtW_final = EuclideanJordanAlgebra::sqrt(W);
     RowSpace v = addScaled(quadraticRepresentation(W, b),
-                           quadraticRepresentation(sqrtW_final, r), -1, 2.0);
+                           applyM(M, r), -1, 2.0);
     model.AccumulateAtranspose(v, y);
-    // Inject equality RHS (must match ComputeHybridDirection).
     auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
     if (ts && !ts->equality_sub_assemblers().empty()) {
       auto d_rhs = ts->EqualityAffineTermRHS();
@@ -1624,16 +1658,14 @@ GeodesicResult SolveGeodesicHybrid(
     int nr = model.number_of_variables();
     result.x.resize(nr);
     y.supernodes->GatherInto(result.x);
-    // De-homogenize: x_phys = x_scaled / tau.
     if (tau != 1.0 && tau > 0) result.x /= tau;
   }
 
-  // Optimality check against the UNSCALED problem (including equality duals).
+  // Optimality check against the UNSCALED problem.
   {
     auto x_rhs = model.MakeSolverRHS();
     x_rhs = model.MakeBlockVariable(result.x);
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace lambda = quadraticRepresentation(sqrtW, r + last_delta);
+    RowSpace lambda = applyM(M, r + last_delta);
     if (tau != 1.0 && tau > 0) lambda *= (1.0 / tau);
     result.optimality = CheckOptimality(model, x_rhs, lambda);
     result.optimality.mu = result.mu;
