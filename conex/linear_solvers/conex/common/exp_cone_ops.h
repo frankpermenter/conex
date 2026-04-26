@@ -22,6 +22,14 @@ class ExpConeOps : public ConeOps {
   // Geodesic step: integrate geodesic ODE for the Hessian metric.
   void geodesicStep(double* w, double alpha, const double* d) const;
 
+  // Bregman midpoint step: second-order approximation to the Levi-Civita
+  // geodesic using primal and dual flat structures.  No third derivatives.
+  void bregmanMidpointStep(double* w, double alpha, const double* d) const;
+
+  // Invert the gradient map: given lambda, find x such that -grad F(x) = lambda.
+  // Uses Newton's method (3x3 system, typically 3-5 iterations).
+  static bool InvertGradient(const double* lambda, double* x, int max_iter = 20);
+
   // ConeOps interface — most are not meaningful for exp cone
   // since it's not a symmetric cone. Stubs for compilation.
   void product(double*, const double*, const double*, int) const override {}

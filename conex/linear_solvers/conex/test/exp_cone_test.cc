@@ -338,4 +338,86 @@ TEST(ExpCone, DualGeodesicViaGradientMap) {
       << "Primal and dual energies differ — gradient map not isometric";
 }
 
+TEST(ExpCone, BregmanMidpointStaysInterior) {
+  ExpConeOps ops;
+  double w0[3] = {0, 1, 2};
+  double d[3] = {0.5, -0.2, 0.3};
+  for (int i = 0; i <= 10; ++i) {
+    double alpha = i * 0.1;
+    double p[3] = {w0[0], w0[1], w0[2]};
+    if (alpha > 0) ops.bregmanMidpointStep(p, alpha, d);
+    EXPECT_TRUE(InInterior(p[0], p[1], p[2]))
+        << "Bregman step left cone at alpha=" << alpha;
+  }
+}
+
+TEST(ExpCone, BregmanVsGeodesicODE) {
+  // Compare the Bregman midpoint step with the ODE geodesic.
+  // They should agree to second order in alpha.
+  ExpConeOps ops;
+  double w0[3] = {0.1, 1.0, 2.5};
+  double d[3] = {0.2, -0.1, 0.15};
+
+  printf("\n=== Bregman midpoint vs ODE geodesic ===\n");
+  printf("  %6s  %12s  %12s  %12s\n", "alpha", "||diff||", "||geo-euler||", "ratio");
+
+  double prev_diff = 0;
+  for (int i = 1; i <= 8; ++i) {
+    double alpha = i * 0.1;
+    double geo[3] = {w0[0], w0[1], w0[2]};
+    double breg[3] = {w0[0], w0[1], w0[2]};
+    double euler[3] = {w0[0]+alpha*d[0], w0[1]+alpha*d[1], w0[2]+alpha*d[2]};
+
+    ops.geodesicStep(geo, alpha, d);
+    ops.bregmanMidpointStep(breg, alpha, d);
+
+    double diff = std::sqrt((geo[0]-breg[0])*(geo[0]-breg[0])
+                          + (geo[1]-breg[1])*(geo[1]-breg[1])
+                          + (geo[2]-breg[2])*(geo[2]-breg[2]));
+    double euler_diff = std::sqrt((geo[0]-euler[0])*(geo[0]-euler[0])
+                                + (geo[1]-euler[1])*(geo[1]-euler[1])
+                                + (geo[2]-euler[2])*(geo[2]-euler[2]));
+    printf("  %6.2f  %12.4e  %12.4e  %12.4f\n",
+           alpha, diff, euler_diff, euler_diff > 0 ? diff/euler_diff : 0);
+    prev_diff = diff;
+  }
+
+  // At small alpha, Bregman should be much closer to geodesic than Euler.
+  double alpha_small = 0.1;
+  double geo[3] = {w0[0], w0[1], w0[2]};
+  double breg[3] = {w0[0], w0[1], w0[2]};
+  double euler[3] = {w0[0]+alpha_small*d[0], w0[1]+alpha_small*d[1],
+                     w0[2]+alpha_small*d[2]};
+  ops.geodesicStep(geo, alpha_small, d);
+  ops.bregmanMidpointStep(breg, alpha_small, d);
+  double breg_err = std::sqrt((geo[0]-breg[0])*(geo[0]-breg[0])
+                            + (geo[1]-breg[1])*(geo[1]-breg[1])
+                            + (geo[2]-breg[2])*(geo[2]-breg[2]));
+  double euler_err = std::sqrt((geo[0]-euler[0])*(geo[0]-euler[0])
+                             + (geo[1]-euler[1])*(geo[1]-euler[1])
+                             + (geo[2]-euler[2])*(geo[2]-euler[2]));
+  printf("  At alpha=0.1: breg_err=%.2e, euler_err=%.2e, improvement=%.1fx\n",
+         breg_err, euler_err, euler_err / std::max(breg_err, 1e-30));
+  EXPECT_LT(breg_err, euler_err)
+      << "Bregman should be closer to geodesic than Euler";
+}
+
+TEST(ExpCone, InvertGradientRoundtrip) {
+  // Verify that InvertGradient correctly inverts the gradient map.
+  double x0[3] = {0.3, 1.2, 3.0};
+  double g[3];
+  ExpConeOps::BarrierGrad(x0[0], x0[1], x0[2], g);
+  double lambda[3] = {-g[0], -g[1], -g[2]};
+
+  double x_recovered[3];
+  bool ok = ExpConeOps::InvertGradient(lambda, x_recovered);
+  ASSERT_TRUE(ok) << "InvertGradient did not converge";
+
+  double err = std::sqrt((x0[0]-x_recovered[0])*(x0[0]-x_recovered[0])
+                       + (x0[1]-x_recovered[1])*(x0[1]-x_recovered[1])
+                       + (x0[2]-x_recovered[2])*(x0[2]-x_recovered[2]));
+  printf("InvertGradient roundtrip error: %.2e\n", err);
+  EXPECT_LT(err, 1e-10);
+}
+
 }  // namespace

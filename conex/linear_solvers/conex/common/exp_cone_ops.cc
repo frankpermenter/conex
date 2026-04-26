@@ -182,6 +182,126 @@ void ExpConeOps::geodesicUpdate(double* out, const double* a, double alpha,
   geodesicStep(out, alpha, d);
 }
 
+// Invert 3x3 system in-place: solve A*dx = b, return dx.
+static void Solve3x3(const double* A, const double* b, double* dx) {
+  double det = A[0]*(A[4]*A[8]-A[5]*A[7])
+             - A[1]*(A[3]*A[8]-A[5]*A[6])
+             + A[2]*(A[3]*A[7]-A[4]*A[6]);
+  double inv[9];
+  inv[0] = (A[4]*A[8]-A[5]*A[7])/det;
+  inv[1] = (A[2]*A[7]-A[1]*A[8])/det;
+  inv[2] = (A[1]*A[5]-A[2]*A[4])/det;
+  inv[3] = (A[5]*A[6]-A[3]*A[8])/det;
+  inv[4] = (A[0]*A[8]-A[2]*A[6])/det;
+  inv[5] = (A[2]*A[3]-A[0]*A[5])/det;
+  inv[6] = (A[3]*A[7]-A[4]*A[6])/det;
+  inv[7] = (A[1]*A[6]-A[0]*A[7])/det;
+  inv[8] = (A[0]*A[4]-A[1]*A[3])/det;
+  for (int i = 0; i < 3; ++i)
+    dx[i] = inv[3*i]*b[0] + inv[3*i+1]*b[1] + inv[3*i+2]*b[2];
+}
+
+bool ExpConeOps::InvertGradient(const double* lambda, double* x,
+                                 int max_iter) {
+  // Solve -∇F(x) = λ by Newton: residual r(x) = -∇F(x) - λ,
+  // Jacobian J = -∇²F(x) = -H.  Newton step: H·δx = r.
+  // Start from a feasible interior point.
+  // Initial guess: x = (0, 1, e+1) (near analytic center).
+  x[0] = 0; x[1] = 1.0; x[2] = std::exp(1.0) + 1.0;
+
+  for (int iter = 0; iter < max_iter; ++iter) {
+    double g[3], H[9];
+    BarrierGrad(x[0], x[1], x[2], g);
+    // Residual: -g - lambda.
+    double res[3] = {-g[0] - lambda[0], -g[1] - lambda[1], -g[2] - lambda[2]};
+    double rnorm = std::sqrt(res[0]*res[0] + res[1]*res[1] + res[2]*res[2]);
+    if (rnorm < 1e-12) return true;
+
+    // Newton step: H · dx = res (since J = -H, and we want J·dx = -res,
+    // i.e. -H·dx = -res, i.e. H·dx = res).
+    BarrierHessian(x[0], x[1], x[2], H);
+    double dx[3];
+    Solve3x3(H, res, dx);
+
+    // Line search: ensure we stay interior.
+    double step = 1.0;
+    for (int ls = 0; ls < 20; ++ls) {
+      double xn[3] = {x[0]+step*dx[0], x[1]+step*dx[1], x[2]+step*dx[2]};
+      if (xn[1] > 0 && xn[2] > xn[1] * std::exp(xn[0]/xn[1])) {
+        x[0] = xn[0]; x[1] = xn[1]; x[2] = xn[2];
+        break;
+      }
+      step *= 0.5;
+    }
+  }
+  return false;  // didn't converge
+}
+
+void ExpConeOps::bregmanMidpointStep(double* w, double alpha,
+                                      const double* d) const {
+  // Bregman midpoint: second-order approximation to Levi-Civita geodesic.
+  //
+  // 1. Compute dual point: λ₀ = -∇F(x₀)
+  // 2. Compute dual velocity: δλ = -∇²F(x₀) · (α·d) = -H · v
+  // 3. Primal half-step: x_{1/2} = x₀ + (α/2)·d
+  // 4. Map to dual at midpoint: λ_{1/2} = -∇F(x_{1/2})
+  // 5. Dual full-step using midpoint velocity:
+  //    λ₁ = λ₀ + α · (-∇²F(x_{1/2}) · d)
+  // 6. Invert: x₁ = (-∇F)⁻¹(λ₁)
+
+  double x0[3] = {w[0], w[1], w[2]};
+  double v[3] = {alpha*d[0], alpha*d[1], alpha*d[2]};
+
+  // Step 1: dual point at x₀.
+  double g0[3];
+  BarrierGrad(x0[0], x0[1], x0[2], g0);
+  double lam0[3] = {-g0[0], -g0[1], -g0[2]};
+
+  // Step 2: primal half-step (Euler in primal-flat coords).
+  double xhalf[3] = {x0[0] + 0.5*v[0], x0[1] + 0.5*v[1], x0[2] + 0.5*v[2]};
+
+  // Check xhalf is interior; if not, shrink.
+  if (xhalf[1] <= 0 || xhalf[2] <= xhalf[1]*std::exp(xhalf[0]/xhalf[1])) {
+    for (int k = 0; k < 3; ++k) xhalf[k] = x0[k] + 0.25*v[k];
+  }
+
+  // Step 3: dual point at midpoint.
+  double ghalf[3];
+  BarrierGrad(xhalf[0], xhalf[1], xhalf[2], ghalf);
+  double lamhalf[3] = {-ghalf[0], -ghalf[1], -ghalf[2]};
+
+  // Step 4: extrapolate dual: λ₁ = 2·λ_{1/2} - λ₀
+  // (midpoint rule: λ̇ ≈ (λ_{1/2} - λ₀)/(α/2), so λ₁ = λ₀ + α·λ̇).
+  double lam1[3] = {2*lamhalf[0]-lam0[0], 2*lamhalf[1]-lam0[1], 2*lamhalf[2]-lam0[2]};
+
+  // Step 6: invert gradient map.
+  double x1[3];
+  // Use x0 as initial guess (closer than default).
+  x1[0] = x0[0]; x1[1] = x0[1]; x1[2] = x0[2];
+  // Newton solve: -∇F(x1) = lam1.
+  for (int iter = 0; iter < 15; ++iter) {
+    double g[3], H[9];
+    BarrierGrad(x1[0], x1[1], x1[2], g);
+    double res[3] = {-g[0]-lam1[0], -g[1]-lam1[1], -g[2]-lam1[2]};
+    double rnorm = res[0]*res[0] + res[1]*res[1] + res[2]*res[2];
+    if (rnorm < 1e-24) break;
+    BarrierHessian(x1[0], x1[1], x1[2], H);
+    double dx[3];
+    Solve3x3(H, res, dx);
+    double step = 1.0;
+    for (int ls = 0; ls < 20; ++ls) {
+      double xn[3] = {x1[0]+step*dx[0], x1[1]+step*dx[1], x1[2]+step*dx[2]};
+      if (xn[1] > 1e-15 && xn[2] > xn[1]*std::exp(xn[0]/xn[1]) + 1e-15) {
+        x1[0] = xn[0]; x1[1] = xn[1]; x1[2] = xn[2];
+        break;
+      }
+      step *= 0.5;
+    }
+  }
+
+  w[0] = x1[0]; w[1] = x1[1]; w[2] = x1[2];
+}
+
 void ExpConeOps::setIdentity(double* out, int /*size*/) const {
   // Interior point: (0, 1, exp(0)) = (0, 1, 1).
   // Actually the "analytic center" of the barrier:
