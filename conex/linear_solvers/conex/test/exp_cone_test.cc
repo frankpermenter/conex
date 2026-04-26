@@ -597,10 +597,10 @@ TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
     // dk is the direction in the H(s)-metric with ||dk||_H ≤ 1.
     // The actual primal step is δs = dk / k² (from the scaling).
     // But the geodesic should be taken in the metric of s.
-    double alpha = std::min(1.0, 2.0 / (d_norm * d_norm));
+    double alpha = 1.0 / (1.0 + d_norm);  // safe step for self-concordant barrier
     double s_arr[3] = {s(0), s(1), s(2)};
     double ds[3] = {dk(0), dk(1), dk(2)};
-    ops.bregmanMidpointStep(s_arr, alpha, ds);
+    ops.geodesicStep(s_arr, alpha, ds);
     Vector3d s_new(s_arr[0], s_arr[1], s_arr[2]);
 
     if (is_interior(s_new)) {
