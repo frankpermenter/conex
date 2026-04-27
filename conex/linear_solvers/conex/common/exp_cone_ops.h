@@ -37,8 +37,12 @@ class ExpConeOps : public ConeOps {
 
   // Yoshida 4th-order composition of Bregman midpoint steps.
   // No third derivatives. Three Bregman substeps with Yoshida coefficients.
-  // Returns energy error: |D_sym(s0,s1) - h²||v||²_H| (O(h⁶) for 4th-order).
+  // Returns energy error: |D_sym(s0,s1) - h²||v||²_H|.
   double yoshida4Step(double* w, double alpha, const double* d) const;
+
+  // Yoshida 6th-order: compose three 4th-order steps = 9 Bregman substeps.
+  // No third derivatives.
+  void yoshida6Step(double* w, double alpha, const double* d) const;
 
   // 2-stage Gauss-Legendre: 4th-order implicit RK (generalizes [2/2] Padé).
   // No third derivatives. Solves a coupled 6×6 nonlinear system via Newton.

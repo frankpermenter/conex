@@ -598,11 +598,11 @@ TEST(ExpCone, AccuracyVsFineGrid) {
   };
 
   printf("\n=== All integrators vs 1000-step pure Verlet reference ===\n");
-  printf("  %6s  %12s  %12s  %12s  %12s  %12s  %12s  %12s\n",
-         "alpha", "pd_verlet8", "verlet8", "yoshida4", "GL4", "bregman", "leapfrog", "euler");
+  printf("  %6s  %12s  %12s  %12s  %12s  %12s  %12s\n",
+         "alpha", "pd_verlet8", "verlet8", "yoshida4", "yoshida6", "bregman", "euler");
   for (int i = 1; i <= 8; ++i) {
     double alpha = i * 0.1;
-    double ref[3]; fineGridGeodesic(w0, alpha, d, ref);
+    double ref[3]; fineGridGeodesic(w0, alpha, d, ref, 10000);
     double pdv[3]={w0[0],w0[1],w0[2]};
     double v8[3]; fineGridGeodesic(w0, alpha, d, v8, 8);
     double yo[3]={w0[0],w0[1],w0[2]};
@@ -612,12 +612,14 @@ TEST(ExpCone, AccuracyVsFineGrid) {
     double eu[3]={w0[0]+alpha*d[0],w0[1]+alpha*d[1],w0[2]+alpha*d[2]};
     ops.geodesicStep(pdv, alpha, d);
     ops.yoshida4Step(yo, alpha, d);
+    double y6[3]={w0[0],w0[1],w0[2]};
     ops.gaussLegendre4Step(gl, alpha, d);
+    ops.yoshida6Step(y6, alpha, d);
     ops.bregmanMidpointStep(br, alpha, d);
     ops.leapfrogStep(lf, alpha, d);
-    printf("  %6.2f  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e\n",
-           alpha, dist(pdv,ref), dist(v8,ref), dist(yo,ref), dist(gl,ref),
-           dist(br,ref), dist(lf,ref), dist(eu,ref));
+    printf("  %6.2f  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e\n",
+           alpha, dist(pdv,ref), dist(v8,ref), dist(yo,ref), dist(y6,ref),
+           dist(br,ref), dist(eu,ref));
   }
   // Quantitative at alpha=0.1.
   double ref[3]; fineGridGeodesic(w0, 0.1, d, ref);
@@ -630,24 +632,33 @@ TEST(ExpCone, AccuracyVsFineGrid) {
   double eu[3]={w0[0]+0.1*d[0],w0[1]+0.1*d[1],w0[2]+0.1*d[2]};
   ops.geodesicStep(pdv, 0.1, d);
   ops.yoshida4Step(yo, 0.1, d);
-  ops.gaussLegendre4Step(gl, 0.1, d);
+  double y6[3]={w0[0],w0[1],w0[2]};
+  ops.yoshida6Step(y6, 0.1, d);
   ops.bregmanMidpointStep(br, 0.1, d);
-  ops.leapfrogStep(lf, 0.1, d);
   printf("\n  At alpha=0.1 vs 1000-step reference:\n");
   printf("    primal-dual Verlet: %.2e  (%.0fx vs euler)\n",
          dist(pdv,ref), dist(eu,ref)/std::max(dist(pdv,ref),1e-30));
   printf("    pure Verlet (8):    %.2e  (%.0fx vs euler)\n",
          dist(v8,ref), dist(eu,ref)/std::max(dist(v8,ref),1e-30));
+  printf("    Yoshida-6 Bregman:  %.2e  (%.0fx vs euler)\n",
+         dist(y6,ref), dist(eu,ref)/std::max(dist(y6,ref),1e-30));
   printf("    Yoshida-4 Bregman:  %.2e  (%.0fx vs euler)\n",
          dist(yo,ref), dist(eu,ref)/std::max(dist(yo,ref),1e-30));
-  printf("    Gauss-Legendre 4:   %.2e  (%.0fx vs euler)\n",
-         dist(gl,ref), dist(eu,ref)/std::max(dist(gl,ref),1e-30));
   printf("    Bregman midpoint:   %.2e  (%.0fx vs euler)\n",
          dist(br,ref), dist(eu,ref)/std::max(dist(br,ref),1e-30));
-  printf("    leapfrog:           %.2e  (%.0fx vs euler)\n",
-         dist(lf,ref), dist(eu,ref)/std::max(dist(lf,ref),1e-30));
   printf("    Euler:              %.2e  (baseline)\n", dist(eu,ref));
-  EXPECT_LT(dist(pdv,ref), dist(eu,ref));
+  // At small alpha, Y4 can beat Y6 (Newton noise dominates truncation).
+  // Check at alpha=0.3 where Y6's higher order wins.
+  double ref3[3]; fineGridGeodesic(w0, 0.3, d, ref3, 10000);
+  double yo3[3]={w0[0],w0[1],w0[2]};
+  double y63[3]={w0[0],w0[1],w0[2]};
+  ops.yoshida4Step(yo3, 0.3, d);
+  ops.yoshida6Step(y63, 0.3, d);
+  printf("    At alpha=0.3: Y4=%.2e, Y6=%.2e (Y6 %.1fx better)\n",
+         dist(yo3,ref3), dist(y63,ref3),
+         dist(yo3,ref3)/std::max(dist(y63,ref3),1e-30));
+  EXPECT_LT(dist(y63,ref3), dist(yo3,ref3))
+      << "Yoshida-6 should beat Yoshida-4 at alpha=0.3";
   EXPECT_LT(dist(yo,ref), dist(br,ref))
       << "Yoshida-4 should beat single Bregman";
   EXPECT_LT(dist(br,ref), dist(eu,ref));

@@ -744,6 +744,39 @@ void ExpConeOps::gaussLegendre4Step(double* w, double alpha,
   w[2] = s0[2] + 0.5*(v1f[2]+v2f[2]);
 }
 
+// Internal 4th-order step that tracks (s, lam, v) for composition.
+static void yoshida4Internal(double* s, double* lam, double* v, double h) {
+  static const double cbrt2 = 1.2599210498948732;
+  static const double x1 = 1.0 / (2.0 - cbrt2);
+  static const double x0 = -cbrt2 / (2.0 - cbrt2);
+  pdpStep(s, lam, v, x1 * h);
+  pdpStep(s, lam, v, x0 * h);
+  pdpStep(s, lam, v, x1 * h);
+}
+
+void ExpConeOps::yoshida6Step(double* w, double alpha,
+                               const double* d) const {
+  // Yoshida 6th-order: compose three 4th-order steps with coefficients
+  //   y₁ = 1/(2 - 2^{1/5}),  y₀ = -2^{1/5}/(2 - 2^{1/5}),  2y₁ + y₀ = 1.
+  // Total: 9 Bregman midpoint substeps. No third derivatives.
+
+  static const double fifth_root_2 = 1.1486983549970351;  // 2^{1/5}
+  static const double y1 = 1.0 / (2.0 - fifth_root_2);   // ≈ 1.1747
+  static const double y0 = -fifth_root_2 / (2.0 - fifth_root_2); // ≈ -1.3494
+
+  double s[3] = {w[0], w[1], w[2]};
+  double v[3] = {alpha*d[0], alpha*d[1], alpha*d[2]};
+  double g0[3];
+  BarrierGrad(s[0], s[1], s[2], g0);
+  double lam[3] = {-g0[0], -g0[1], -g0[2]};
+
+  yoshida4Internal(s, lam, v, y1);
+  yoshida4Internal(s, lam, v, y0);
+  yoshida4Internal(s, lam, v, y1);
+
+  w[0] = s[0]; w[1] = s[1]; w[2] = s[2];
+}
+
 void ExpConeOps::setIdentity(double* out, int /*size*/) const {
   // Interior point: (0, 1, exp(0)) = (0, 1, 1).
   // Actually the "analytic center" of the barrier:
