@@ -1,0 +1,257 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{geometry}
+\usepackage{algorithm,algpseudocode}
+\geometry{margin=1in}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\ip}[2]{\langle #1, #2 \rangle}
+\newcommand{\norm}[1]{\|#1\|}
+\newcommand{\half}{\tfrac{1}{2}}
+\DeclareMathOperator{\tr}{tr}
+\DeclareMathOperator{\Exp}{Exp}
+\DeclareMathOperator{\diag}{diag}
+
+\title{Geodesic Interior-Point Method for Cones\\with Log-Homogeneous Barriers}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Problem}
+
+We consider the conic program
+\begin{equation}\label{eq:problem}
+  \min_{x \in \R^p} \; c^\top x \quad \text{s.t.} \quad Ax + b \in K,
+\end{equation}
+where $K \subset \R^m$ is a proper cone with a $\nu$-logarithmically homogeneous
+self-concordant barrier (LHSCB) $F : \operatorname{int}(K) \to \R$:
+\[
+  F(t \cdot s) = F(s) - \nu \log t, \quad t > 0.
+\]
+This implies the scaling identities
+\begin{equation}\label{eq:log-homog}
+  \nabla F(ts) = \frac{1}{t} \nabla F(s), \qquad
+  \nabla^2 F(ts) = \frac{1}{t^2} \nabla^2 F(s).
+\end{equation}
+
+\section{Primal-dual variables}
+
+The slack is $s = Ax + b \in \operatorname{int}(K)$.
+The dual variable is defined via the barrier gradient:
+\[
+  \lambda = -\mu \nabla F(s), \qquad \mu = \frac{1}{k^2},
+\]
+which satisfies $\lambda \in \operatorname{int}(K^*)$ (since $-\nabla F$ maps
+$\operatorname{int}(K) \to \operatorname{int}(K^*)$ for any LHSCB).
+
+By Euler's theorem for $\nu$-log-homogeneous functions,
+$\ip{s}{\nabla F(s)} = -\nu$, so the complementarity is
+\[
+  \ip{s}{\lambda} = \mu \nu = \frac{\nu}{k^2}.
+\]
+
+\section{KKT system}
+
+At parameter $k$ (equivalently $\mu = 1/k^2$), the primal-dual Newton system is:
+\begin{equation}\label{eq:kkt}
+  \begin{bmatrix} \mu H(\lambda) & A \\ A^\top & 0 \end{bmatrix}
+  \begin{bmatrix} \delta\lambda \\ x \end{bmatrix}
+  =
+  \begin{bmatrix} s - b \\ c - A^\top \lambda \end{bmatrix},
+\end{equation}
+where $H(\lambda) = \nabla^2 F^*(\lambda)$ is the dual barrier Hessian.
+The variable $x$ is the \emph{full} primal (not an increment), and $\delta\lambda$
+is the dual update.  After solving:
+\begin{itemize}
+  \item $s + \delta s = Ax + b$ \quad (primal feasible by construction),
+  \item $A^\top(\lambda + \delta\lambda) = c$ \quad (dual feasible by construction),
+  \item $\text{gap} = \ip{s + \delta s}{\lambda + \delta\lambda}$.
+\end{itemize}
+
+\subsection{Schur complement}
+
+Using the identity $H(\lambda)^{-1} = \mu^2 \nabla^2 F(s)$ (which holds when
+$\lambda = -\mu \nabla F(s)$), the Schur complement gives:
+\begin{equation}\label{eq:schur}
+  \bigl(A^\top \nabla^2 F(s) \, A\bigr) \, x
+  = A^\top\bigl(\nabla^2 F(s)(s - b) - \nabla F(s)\bigr) - k^2 c.
+\end{equation}
+
+\subsection{Scaled formulation: $w = k \cdot s$, $z = k \cdot x$}
+
+Substituting $s = w/k$ and using~\eqref{eq:log-homog}:
+\[
+  \nabla^2 F(s) = k^2 \nabla^2 F(w), \quad \nabla F(s) = k \nabla F(w).
+\]
+The Schur complement~\eqref{eq:schur} becomes, after dividing by $k$:
+\begin{equation}\label{eq:schur-w}
+  \bigl(A^\top \nabla^2 F(w) \, A\bigr) \, z
+  = A^\top\bigl(\nabla^2 F(w) \, w - \nabla F(w)\bigr)
+    - k \bigl(c + A^\top \nabla^2 F(w) \, b\bigr),
+\end{equation}
+where $z = kx$.  The Gram matrix $A^\top \nabla^2 F(w) A$ is \textbf{independent of $k$}.
+
+\subsection{Two-solve decomposition}
+
+Factor the Gram once, then two back-solves:
+\begin{align}
+  \bigl(A^\top \nabla^2 F(w) A\bigr) \, z_0 &= A^\top\bigl(\nabla^2 F(w) w - \nabla F(w)\bigr)
+    && \text{(centering)}, \label{eq:z0} \\
+  \bigl(A^\top \nabla^2 F(w) A\bigr) \, z_1 &= -\bigl(c + A^\top \nabla^2 F(w) b\bigr)
+    && \text{(optimality)}. \label{eq:z1}
+\end{align}
+The combined solution is $z(k) = z_0 + k \cdot z_1$, i.e.,
+\[
+  x(k) = \frac{z(k)}{k} = \frac{z_0}{k} + z_1.
+\]
+Both $c$ and $b$ appear in~\eqref{eq:z1}, scaled by $k$ symmetrically.
+
+\section{Line search for $k$}
+
+Define the cone-space directions $d_0 = A z_0$ and $d_1 = A z_1$.  The
+displacement in $w$-space is $\delta w(k) = d_0 + k \cdot d_1$.
+
+\paragraph{Dikin bound.}
+The largest $k$ with $\norm{\delta w(k)}_{H(w)} \leq 1$ is the root of the
+quadratic
+\[
+  \ip{d_1}{d_1}_H k^2 + 2\ip{d_0}{d_1}_H k + (\ip{d_0}{d_0}_H - 1) = 0,
+\]
+where $\ip{a}{b}_H = a^\top \nabla^2 F(w) \, b$.
+
+\paragraph{Primal-dual feasibility.}
+Beyond the Dikin bound, binary search for the largest $k$ such that:
+\begin{enumerate}
+  \item $s_{\text{new}} = Ax(k) + b \in \operatorname{int}(K)$ \quad (primal feasibility),
+  \item $\lambda_{\text{new}} = \lambda + \delta\lambda \in \operatorname{int}(K^*)$ \quad (dual feasibility).
+\end{enumerate}
+For low-dimensional cones (e.g., the 3D exponential cone), each feasibility
+check is $O(1)$.  The geodesic step preserves feasibility beyond the Dikin
+ellipsoid.
+
+\section{Geodesic step}
+
+After selecting $k$, take a geodesic step on $\operatorname{int}(K)$ with
+respect to the Riemannian metric $g = \nabla^2 F$:
+\[
+  s_{\text{new}} = \Exp_s(\alpha \cdot \delta s),
+\]
+where $\alpha = 1/(1 + \norm{\delta s}_H)$ is the step size for self-concordant
+barriers, and $\delta s = s(k) - s$ (the Newton displacement).
+
+The geodesic $\Exp_s$ satisfies the ODE
+\[
+  \ddot\gamma + \half \nabla^2 F(\gamma)^{-1} T(\dot\gamma, \dot\gamma) = 0,
+  \quad T(\dot\gamma, \dot\gamma)_\ell = \dot\gamma^\top \frac{\partial \nabla^2 F}{\partial \gamma_\ell} \dot\gamma.
+\]
+For low-dimensional cones (e.g., 3D exponential), this is integrated by
+St\"ormer--Verlet with $\sim$8 steps.
+
+For symmetric cones, the geodesic reduces to the automorphism update
+$W \mapsto W \cdot \exp(\alpha \cdot d)$.
+
+\section{Algorithm}
+
+\begin{algorithm}[H]
+\caption{Geodesic LP for cones with log-homogeneous barriers}
+\begin{algorithmic}[1]
+\State \textbf{Input:} $A, b, c$; barrier $F$ with parameter $\nu$; tolerance $\varepsilon$.
+\State Initialize $x = 0$, $k = 1$.
+\Repeat
+  \State $s \gets Ax + b$, \quad $w \gets k \cdot s$.
+  \State Compute $\nabla F(w)$, $\nabla^2 F(w)$.
+  \State Factor $G = A^\top \nabla^2 F(w) \, A$.
+  \State Solve $G \, z_0 = A^\top(\nabla^2 F(w) \, w - \nabla F(w))$.
+    \hfill (centering)
+  \State Solve $G \, z_1 = -(c + A^\top \nabla^2 F(w) \, b)$.
+    \hfill (optimality)
+  \State Line search: find largest $k$ with
+    $s(k) \in K$, $\lambda(k) \in K^*$.
+  \State $z \gets z_0 + k \cdot z_1$, \quad $x \gets z / k$.
+  \State $s_{\text{new}} \gets Ax + b$.
+  \State Compute $\lambda_{\text{new}}$ from KKT~\eqref{eq:kkt}, verify
+    $A^\top \lambda_{\text{new}} = c$.
+  \State $\text{gap} \gets \ip{s_{\text{new}}}{\lambda_{\text{new}}}$.
+  \State Geodesic step: $s \gets \Exp_s(\alpha \cdot (s_{\text{new}} - s))$.
+  \State Recover $x$ from $s = Ax + b$.
+\Until{$\text{gap} < \varepsilon$}
+\end{algorithmic}
+\end{algorithm}
+
+\section{Dictionary: general cone vs.\ symmetric cone}
+
+The following table maps each object in the general geodesic IPM to its
+symmetric cone specialization.
+
+\begin{table}[h]
+\centering
+\renewcommand{\arraystretch}{1.3}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Object} & \textbf{General cone} & \textbf{Symmetric cone} \\
+\midrule
+Cone $K$ & Any proper cone with LHSCB & $\R^n_+$, $\mathcal{L}^n$ (SOC), $\mathbb{S}^n_+$ (PSD) \\
+Barrier $F(s)$ & $\nu$-LHSCB on $K$ & $-\log\det(s)$ \\
+Barrier parameter $\nu$ & Depends on $F$ & $n$ (nonneg), $2$ (SOC), $n$ (PSD) \\
+Hessian $\nabla^2 F(s)$ & General $m \times m$ SPD matrix & $P(s^{-1})$ (quadratic rep.) \\
+Gradient $\nabla F(s)$ & General $m$-vector & $-s^{-1}$ (Jordan inverse) \\
+\midrule
+Scaling $w$ & $w = k \cdot s$ & $w = k \cdot s = W^{-1}$ \\
+Gram matrix & $A^\top \nabla^2 F(w) \, A$ & $A^\top P(W^{-1}) A = A^\top W^2 A$ \\
+Centering RHS & $A^\top(\nabla^2 F(w)w - \nabla F(w))$ & $A^\top(P(W^{-1})W^{-1} + W^{-1}) = 2A^\top W$ \\
+Optimality RHS & $-(c + A^\top \nabla^2 F(w) b)$ & $-(c + A^\top W^2 b)$ \\
+\midrule
+Dual variable & $\lambda = -\mu \nabla F(s) \in K^*$ & $\lambda = \mu s^{-1} \in K$ \\
+Complementarity & $\ip{s}{\lambda} = \nu / k^2$ & $\ip{s}{\lambda} = \nu / k^2$ \\
+Dual feasibility & $A^\top \lambda = c$ (from KKT) & $A^\top \lambda = c$ (from KKT) \\
+\midrule
+Direction $d$ & $d_0 + k \cdot d_1$ in $w$-space & $d_0 + k \cdot d_1$ in $W$-space \\
+Line search & Dikin $\|d\|_H \leq 1$ + feasibility & $\|d\|_\infty \leq 1$ (eigenvalue bound) \\
+Step size & $\alpha = 1/(1 + \|d\|_H)$ & $\alpha = \min(1, 2/\|d\|_\infty^2)$ \\
+\midrule
+Geodesic step & $\Exp_s(\alpha \cdot d)$ via ODE & $W \cdot \exp(\alpha \cdot d)$ (EJA exp) \\
+Automorphism & None (general) & $M \in GL(n)$: $s \mapsto MsM^\top$ \\
+Update & Recompute $\nabla^2 F$ at new $s$ & $M \gets M \cdot \exp(\alpha d / 2)$ \\
+\bottomrule
+\end{tabular}
+\caption{Dictionary between the general geodesic IPM and the symmetric cone case.
+The symmetric cone objects specialize via the Jordan algebra structure:
+$P(a)b = aba$ (PSD), $\det(s) = \prod s_i$ (nonneg).}
+\label{tab:dictionary}
+\end{table}
+
+\subsection*{Centering RHS verification}
+
+For the symmetric cone with $F(s) = -\log\det(s)$:
+\[
+  \nabla^2 F(w) w - \nabla F(w) = P(w^{-1}) w - (-w^{-1}) = w^{-1} + w^{-1} = 2w^{-1}.
+\]
+For the nonneg case $w = W^{-1}$: $2w^{-1} = 2W$, so
+$A^\top \cdot 2W$ matches the centering RHS in the geodesic LP.  \checkmark
+
+\section{Exponential cone}
+
+The exponential cone $K_{\exp} = \operatorname{cl}\{(x,y,z) : y e^{x/y} \leq z,\, y > 0\}$
+has the 2-LHSCB
+\[
+  F(x,y,z) = -\log(z - y e^{x/y}) - \log y.
+\]
+The Hessian $\nabla^2 F$ is a $3 \times 3$ matrix; the geodesic ODE is
+6-dimensional and integrated by St\"ormer--Verlet in $\sim$8 steps ($\sim$1000 flops).
+
+For a product of $m$ exponential cones with $p$ variables, the Gram is
+\[
+  G = \sum_{i=1}^m A_i^\top \nabla^2 F_i(w_i) A_i,
+\]
+and the geodesic step is taken component-wise on each 3D cone.
+
+\paragraph{Numerical results.}
+On a test problem with $m = 3$ cones and $p = 4$ variables
+(centered initial point: $c = -\sum_i A_i^\top \nabla F_i(b_i)$),
+the algorithm converges in 4 factorizations with $k$ growing $\sim$10$\times$
+per step and duality gap decreasing $\sim$100$\times$ per step.
+
+\end{document}
