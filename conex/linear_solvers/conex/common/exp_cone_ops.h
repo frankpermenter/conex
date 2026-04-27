@@ -22,6 +22,10 @@ class ExpConeOps : public ConeOps {
   // Geodesic step: integrate geodesic ODE for the Hessian metric.
   void geodesicStep(double* w, double alpha, const double* d) const;
 
+  // Same as geodesicStep but returns the consistency error ||λ_int - H(s)s||.
+  // Uses the log-homogeneity identity λ = H(s)s as a free error estimate.
+  double geodesicStepWithErrorEstimate(double* w, double alpha, const double* d) const;
+
   // Bregman midpoint step: second-order approximation to the Levi-Civita
   // geodesic using primal and dual flat structures.  No third derivatives.
   void bregmanMidpointStep(double* w, double alpha, const double* d) const;

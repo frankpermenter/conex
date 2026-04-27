@@ -113,67 +113,92 @@ void ExpConeOps::ThirdDerivContract(double x, double y, double z,
        + 2*(F012*v01 + F022*v02 + F122*v12);
 }
 
+// Forward declaration.
+static void Solve3x3(const double* A, const double* b, double* dx);
+
+// Geodesic acceleration: a = -(1/2) H⁻¹ T(v,v).
+static void GeodesicAccel(const double* pos, const double* vel,
+                           const double* H, double* a) {
+  double T[3];
+  ExpConeOps::ThirdDerivContract(pos[0], pos[1], pos[2], vel, T);
+  double neg_half_T[3] = {-0.5*T[0], -0.5*T[1], -0.5*T[2]};
+  Solve3x3(H, neg_half_T, a);
+}
+
+// H(s)·s (= λ by log-homogeneity).
+static void Hess_times_s(const double* H, const double* s, double* Hs) {
+  for (int i = 0; i < 3; ++i)
+    Hs[i] = H[3*i]*s[0] + H[3*i+1]*s[1] + H[3*i+2]*s[2];
+}
+
 void ExpConeOps::geodesicStep(double* w, double alpha,
                                const double* d) const {
-  // Integrate the geodesic ODE on the Hessian manifold:
-  //   ẍ = -(1/2) H(x)^{-1} T(ẋ, ẋ)
-  // using Störmer-Verlet (symplectic) integration.
+  // Störmer-Verlet integration of the geodesic ODE.
+  // Tracks λ_integrated alongside via λ̇ = -H·ṡ for consistency checking.
+  // The identity λ = H·s holds on the true geodesic; deviation measures error.
   double pos[3] = {w[0], w[1], w[2]};
-  double vel[3] = {alpha * d[0], alpha * d[1], alpha * d[2]};
+  double vel[3] = {alpha*d[0], alpha*d[1], alpha*d[2]};
 
   const int steps = 8;
   double dt = 1.0 / steps;
 
   for (int step = 0; step < steps; ++step) {
-    // Compute acceleration: a = -(1/2) H^{-1} T(v, v).
-    double H[9], T[3];
+    double H[9], a[3];
     BarrierHessian(pos[0], pos[1], pos[2], H);
-    ThirdDerivContract(pos[0], pos[1], pos[2], vel, T);
-
-    // Invert 3x3 H.
-    double det = H[0]*(H[4]*H[8] - H[5]*H[7])
-               - H[1]*(H[3]*H[8] - H[5]*H[6])
-               + H[2]*(H[3]*H[7] - H[4]*H[6]);
-    double Hinv[9];
-    Hinv[0] = (H[4]*H[8] - H[5]*H[7]) / det;
-    Hinv[1] = (H[2]*H[7] - H[1]*H[8]) / det;
-    Hinv[2] = (H[1]*H[5] - H[2]*H[4]) / det;
-    Hinv[3] = (H[5]*H[6] - H[3]*H[8]) / det;
-    Hinv[4] = (H[0]*H[8] - H[2]*H[6]) / det;
-    Hinv[5] = (H[2]*H[3] - H[0]*H[5]) / det;
-    Hinv[6] = (H[3]*H[7] - H[4]*H[6]) / det;
-    Hinv[7] = (H[1]*H[6] - H[0]*H[7]) / det;
-    Hinv[8] = (H[0]*H[4] - H[1]*H[3]) / det;
-
-    double a[3];
-    for (int k = 0; k < 3; ++k)
-      a[k] = -0.5 * (Hinv[3*k]*T[0] + Hinv[3*k+1]*T[1] + Hinv[3*k+2]*T[2]);
-
-    // Störmer-Verlet: half-step velocity, full-step position, half-step velocity.
+    GeodesicAccel(pos, vel, H, a);
     for (int k = 0; k < 3; ++k) vel[k] += 0.5 * dt * a[k];
     for (int k = 0; k < 3; ++k) pos[k] += dt * vel[k];
-
-    // Recompute acceleration at new position.
     BarrierHessian(pos[0], pos[1], pos[2], H);
-    ThirdDerivContract(pos[0], pos[1], pos[2], vel, T);
-    det = H[0]*(H[4]*H[8] - H[5]*H[7])
-        - H[1]*(H[3]*H[8] - H[5]*H[6])
-        + H[2]*(H[3]*H[7] - H[4]*H[6]);
-    Hinv[0] = (H[4]*H[8] - H[5]*H[7]) / det;
-    Hinv[1] = (H[2]*H[7] - H[1]*H[8]) / det;
-    Hinv[2] = (H[1]*H[5] - H[2]*H[4]) / det;
-    Hinv[3] = (H[5]*H[6] - H[3]*H[8]) / det;
-    Hinv[4] = (H[0]*H[8] - H[2]*H[6]) / det;
-    Hinv[5] = (H[2]*H[3] - H[0]*H[5]) / det;
-    Hinv[6] = (H[3]*H[7] - H[4]*H[6]) / det;
-    Hinv[7] = (H[1]*H[6] - H[0]*H[7]) / det;
-    Hinv[8] = (H[0]*H[4] - H[1]*H[3]) / det;
-    for (int k = 0; k < 3; ++k)
-      a[k] = -0.5 * (Hinv[3*k]*T[0] + Hinv[3*k+1]*T[1] + Hinv[3*k+2]*T[2]);
+    GeodesicAccel(pos, vel, H, a);
     for (int k = 0; k < 3; ++k) vel[k] += 0.5 * dt * a[k];
   }
 
   w[0] = pos[0]; w[1] = pos[1]; w[2] = pos[2];
+}
+
+double ExpConeOps::geodesicStepWithErrorEstimate(
+    double* w, double alpha, const double* d) const {
+  // Same as geodesicStep but returns the consistency error
+  // ||λ_integrated - H(s)·s|| as a free error estimate.
+  double pos[3] = {w[0], w[1], w[2]};
+  double vel[3] = {alpha*d[0], alpha*d[1], alpha*d[2]};
+
+  const int steps = 8;
+  double dt = 1.0 / steps;
+
+  // λ_integrated = H(s₀)·s₀.
+  double H[9];
+  BarrierHessian(pos[0], pos[1], pos[2], H);
+  double lam[3];
+  Hess_times_s(H, pos, lam);
+
+  double max_err = 0;
+
+  for (int step = 0; step < steps; ++step) {
+    double a[3];
+    BarrierHessian(pos[0], pos[1], pos[2], H);
+    GeodesicAccel(pos, vel, H, a);
+    for (int k = 0; k < 3; ++k) vel[k] += 0.5 * dt * a[k];
+    for (int k = 0; k < 3; ++k) pos[k] += dt * vel[k];
+    BarrierHessian(pos[0], pos[1], pos[2], H);
+    GeodesicAccel(pos, vel, H, a);
+    for (int k = 0; k < 3; ++k) vel[k] += 0.5 * dt * a[k];
+
+    // Accumulate λ: λ += dt·(-H·ṡ).
+    for (int i = 0; i < 3; ++i)
+      lam[i] -= dt * (H[3*i]*vel[0] + H[3*i+1]*vel[1] + H[3*i+2]*vel[2]);
+
+    // Consistency: λ_exact = H(s)·s.
+    double lam_exact[3];
+    Hess_times_s(H, pos, lam_exact);
+    double err = 0;
+    for (int i = 0; i < 3; ++i)
+      err += (lam[i]-lam_exact[i]) * (lam[i]-lam_exact[i]);
+    max_err = std::max(max_err, std::sqrt(err));
+  }
+
+  w[0] = pos[0]; w[1] = pos[1]; w[2] = pos[2];
+  return max_err;
 }
 
 void ExpConeOps::geodesicUpdate(double* out, const double* a, double alpha,

@@ -470,6 +470,35 @@ TEST(ExpCone, LeapfrogVsVerlet) {
   EXPECT_GT(lf2[2] - lf2[1]*std::exp(lf2[0]/lf2[1]), 0) << "should be interior";
 }
 
+TEST(ExpCone, ConsistencyErrorEstimate) {
+  // The λ = H(s)·s consistency error should increase with step size
+  // (larger steps → more integration error) and decrease for the
+  // identity λ=Hs (which is exact on the true geodesic).
+  ExpConeOps ops;
+  double w0[3] = {0.1, 1.0, 2.5};
+  double d[3] = {0.2, -0.1, 0.15};
+
+  printf("\n=== Consistency error estimate ===\n");
+  printf("  %6s  %12s\n", "alpha", "||lam_int - Hs||");
+  double prev_err = 0;
+  for (int i = 1; i <= 10; ++i) {
+    double alpha = i * 0.1;
+    double w[3] = {w0[0], w0[1], w0[2]};
+    double err = ops.geodesicStepWithErrorEstimate(w, alpha, d);
+    printf("  %6.2f  %12.4e\n", alpha, err);
+    if (i > 1) {
+      EXPECT_GT(err, prev_err * 0.5)
+          << "Error should generally increase with alpha";
+    }
+    prev_err = err;
+  }
+  // At small alpha, error should be small.
+  double w_small[3] = {w0[0], w0[1], w0[2]};
+  double err_small = ops.geodesicStepWithErrorEstimate(w_small, 0.01, d);
+  printf("  alpha=0.01: err=%.2e\n", err_small);
+  EXPECT_LT(err_small, 1e-5) << "Small step should have small consistency error";
+}
+
 // =====================================================================
 // Prototype geodesic IPM for the exponential cone.
 //
