@@ -133,27 +133,79 @@ static void Hess_times_s(const double* H, const double* s, double* Hs) {
 
 void ExpConeOps::geodesicStep(double* w, double alpha,
                                const double* d) const {
-  // Störmer-Verlet integration of the geodesic ODE:
-  //   s̈ = -(1/2) H⁻¹ T(ṡ,ṡ)
-  // where H = ∇²F(s) and T(v,v)_ℓ = v^T (∂H/∂s_ℓ) v.
+  // Primal-dual Verlet with geodesic mean reconciliation.
+  //
+  // Integrate BOTH the primal geodesic (s̈ = -½H⁻¹T) and the dual
+  // geodesic (λ̈ = -½T) simultaneously. The dual uses the same T —
+  // no extra derivative evaluations.
+  //
+  // After integration, reconcile via geodesic mean:
+  //   λ_primal = H(s_new)·s_new    (from log-homogeneity identity)
+  //   λ_dual   = independently integrated dual
+  //   λ̄ = (λ_primal + λ_dual) / 2  (Euclidean approx to geodesic mean)
+  //   s̄ = (-∇F)⁻¹(λ̄)              (recover primal from averaged dual)
+  //
+  // This generalizes the Padé approximant: the primal and dual errors
+  // have opposite structure, so averaging cancels leading-order terms.
+
   double pos[3] = {w[0], w[1], w[2]};
   double vel[3] = {alpha*d[0], alpha*d[1], alpha*d[2]};
+
+  // Initialize dual: λ₀ = H(s₀)·s₀, λ̇₀ = -H(s₀)·ṡ₀.
+  double H[9];
+  BarrierHessian(pos[0], pos[1], pos[2], H);
+  double lam[3], lam_dot[3];
+  Hess_times_s(H, pos, lam);
+  for (int i = 0; i < 3; ++i)
+    lam_dot[i] = -(H[3*i]*vel[0] + H[3*i+1]*vel[1] + H[3*i+2]*vel[2]);
 
   const int steps = 8;
   double dt = 1.0 / steps;
 
   for (int step = 0; step < steps; ++step) {
-    double H[9], a[3];
+    // Primal Verlet: half-step vel, full-step pos, half-step vel.
+    double a[3];
     BarrierHessian(pos[0], pos[1], pos[2], H);
     GeodesicAccel(pos, vel, H, a);
+    // Primal half-step velocity.
     for (int k = 0; k < 3; ++k) vel[k] += 0.5 * dt * a[k];
+
+    // Dual half-step: λ̈ = -(1/2)T = H·s̈ = H·a (reuse primal accel).
+    // But λ̈ = -(1/2)T, and a = -(1/2)H⁻¹T, so H·a = -(1/2)T = λ̈.
+    double lam_accel[3];
+    for (int i = 0; i < 3; ++i)
+      lam_accel[i] = H[3*i]*a[0] + H[3*i+1]*a[1] + H[3*i+2]*a[2];
+    for (int k = 0; k < 3; ++k) lam_dot[k] += 0.5 * dt * lam_accel[k];
+
+    // Full-step position (primal and dual).
     for (int k = 0; k < 3; ++k) pos[k] += dt * vel[k];
+    for (int k = 0; k < 3; ++k) lam[k] += dt * lam_dot[k];
+
+    // Second half-step.
     BarrierHessian(pos[0], pos[1], pos[2], H);
     GeodesicAccel(pos, vel, H, a);
     for (int k = 0; k < 3; ++k) vel[k] += 0.5 * dt * a[k];
+    for (int i = 0; i < 3; ++i)
+      lam_accel[i] = H[3*i]*a[0] + H[3*i+1]*a[1] + H[3*i+2]*a[2];
+    for (int k = 0; k < 3; ++k) lam_dot[k] += 0.5 * dt * lam_accel[k];
   }
 
-  w[0] = pos[0]; w[1] = pos[1]; w[2] = pos[2];
+  // Reconcile: average primal-derived and dual-integrated λ.
+  double lam_primal[3];
+  Hess_times_s(H, pos, lam_primal);  // λ = H(s_new)·s_new
+
+  double lam_avg[3];
+  for (int k = 0; k < 3; ++k)
+    lam_avg[k] = 0.5 * (lam[k] + lam_primal[k]);
+
+  // Recover s̄ from λ̄: solve -∇F(s̄) = λ̄.
+  double s_avg[3] = {pos[0], pos[1], pos[2]};  // start from primal estimate
+  if (InvertGradient(lam_avg, s_avg)) {
+    w[0] = s_avg[0]; w[1] = s_avg[1]; w[2] = s_avg[2];
+  } else {
+    // Fallback: use primal Verlet result.
+    w[0] = pos[0]; w[1] = pos[1]; w[2] = pos[2];
+  }
 }
 
 double ExpConeOps::geodesicStepWithErrorEstimate(
