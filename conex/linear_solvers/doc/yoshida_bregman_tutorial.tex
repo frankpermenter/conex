@@ -588,61 +588,57 @@ search.  The error bound guarantees that the geodesic step stays
 interior whenever $\delta$ is below the method-specific threshold.
 No post-hoc feasibility check is needed.
 
-\section{Beyond self-concordance: $M$-concordant barriers}
+\section{Improved dependence on the self-concordance parameter}
 \label{sec:m-concordance}
 
-Self-concordance ($M = 2$) is the standard regularity condition for
-IPM barriers.  We show that higher-order integrators relax this
-requirement, enabling a wider family of barriers.
-
-\subsection{$M$-concordance}
-
-\begin{definition}
-A convex function $F$ is \emph{$M$-concordant} if
+Nesterov~\cite{nesterov2018} parameterizes self-concordance with a
+constant $M_f$:
 \begin{equation}\label{eq:m-concordance}
-  |D^3 F(s)[v, v, v]| \leq M \|v\|_H^3
+  |D^3 F(s)[v, v, v]| \leq 2M_f \|v\|_H^3.
 \end{equation}
-for all $s \in \operatorname{int}(K)$ and $v \in \R^n$.  Standard
-self-concordance is $M = 2$.
-\end{definition}
+Standard self-concordant barriers have $M_f = 1$.  Larger $M_f$
+means the Hessian varies faster---the barrier is ``less regular.''
+The classical IPM theory (using tangent-line steps) gives step-size
+and iteration bounds that depend on $M_f$.
 
-Larger $M$ means the Hessian varies faster---the barrier is ``less
-regular.''  An $M$-concordant barrier may be cheaper to evaluate,
-simpler to construct, or available for cones where no $M = 2$
-barrier is known.
+We show that higher-order integrators \emph{improve the dependence
+on $M_f$}: the Yoshida hierarchy reduces the sensitivity from
+$M_f^{-1/2}$ (tangent line) to $M_f^{-1/(2p+1)}$ (order $2p$).
+This is a new consequence, not present in Nesterov's analysis.
 
-\subsection{Step-size bounds under $M$-concordance}
+\subsection{Step-size bounds}
 
 From the error bounds in the previous section, the maximum step
 $\delta = h\|v\|_H$ for staying in the Dikin ellipsoid depends on
-both $M$ and the integrator order.
+both $M_f$ and the integrator order.
 
-\paragraph{Tangent line.}
-Error $\leq \frac{M}{4}\delta^2$.  Interior if $\delta < 2/\sqrt{M}$.
+\paragraph{Tangent line (Nesterov's analysis).}
+Error $\leq \frac{M_f}{2}\delta^2$.  Interior if
+$\delta < \sqrt{2/M_f}$.  This is the classical bound.
 
-\paragraph{Bregman midpoint.}
+\paragraph{Bregman midpoint (new).}
 The midpoint quadrature error is controlled by the variation of
 $\dot\lambda = -Hv$, which involves $D^3 F$.  The bound:
 \[
-  \text{error} \leq C_2 \frac{M}{M_0}\delta^3,
+  \text{error} \leq C_2 \, M_f \, \delta^3,
 \]
-where $M_0 = 2$ and $C_2$ is a universal constant.
-Interior if $\delta < (C_2 M / M_0)^{-1/3}$.
+where $C_2$ is a universal constant.
+Interior if $\delta < (C_2 M_f)^{-1/3}$.
 
-\paragraph{Yoshida-$2p$.}
+\paragraph{Yoshida-$2p$ (new).}
 The Yoshida composition cancels error terms up to order $2p$:
 \[
-  \text{error} \leq C_p \left(\frac{M}{M_0}\right)^{p} \delta^{2p+1}.
+  \text{error} \leq C_p \, M_f^{p} \, \delta^{2p+1}.
 \]
-Interior if $\delta < (C_p (M/M_0)^p)^{-1/(2p+1)}$.
+Interior if $\delta < (C_p \, M_f^p)^{-1/(2p+1)}$.
 
-\subsection{The trade-off: integrator order vs.\ barrier regularity}
+\subsection{The improvement: integrator order reduces $M_f$ sensitivity}
 
 For fixed accuracy (error $= \varepsilon$), the required step size is:
 \[
-  \delta_{\max} \propto \left(\frac{\varepsilon}{M^p}\right)^{1/(2p+1)}.
+  \delta_{\max} \propto \left(\frac{\varepsilon}{M_f^p}\right)^{1/(2p+1)}.
 \]
-As $M$ increases (worse barrier), $\delta_{\max}$ shrinks.  But the
+As $M_f$ increases (worse barrier), $\delta_{\max}$ shrinks.  But the
 rate of shrinkage depends on the method order $2p$:
 
 \begin{center}
@@ -651,7 +647,7 @@ rate of shrinkage depends on the method order $2p$:
 \toprule
 & & \multicolumn{4}{c}{\textbf{Max step $\delta$ for $\|\text{error}\|_H < 1$}} \\
 \cmidrule(l){3-6}
-\textbf{Method} & \textbf{Order} & $M\!=\!2$ & $M\!=\!10^2$ & $M\!=\!10^4$ & $M\!=\!10^6$ \\
+\textbf{Method} & \textbf{Order} & $M_f\!=\!1$ & $M_f\!=\!50$ & $M_f\!=\!5000$ & $M_f\!=\!5 \!\times\! 10^5$ \\
 \midrule
 Tangent line      & 1 & $1.00$ & $0.14$ & $0.014$ & $0.0014$ \\
 Bregman midpoint  & 2 & $\sim\!1$   & $0.22$ & $0.046$ & $0.010$ \\
@@ -662,9 +658,9 @@ Yoshida-6         & 6 & $\sim\!1$   & $0.52$ & $0.27$  & $0.14$ \\
 \end{center}
 
 \paragraph{Reading the table.}
-At $M = 10^6$ (far from self-concordant), the tangent line requires
-$\delta < 0.0014$ (thousands of tiny steps), while Yoshida-6 permits
-$\delta < 0.14$ (a few large steps).  The higher-order method
+At $M_f = 5 \times 10^5$ (far from self-concordant), the tangent line
+requires $\delta < 0.0014$ (thousands of tiny steps), while Yoshida-6
+permits $\delta < 0.14$ (a few large steps).  The higher-order method
 compensates for the poor regularity of the barrier.
 
 \subsection{What this enables}
@@ -693,15 +689,21 @@ compensates for the poor regularity of the barrier.
     IPMs can.
 \end{enumerate}
 
-\paragraph{The punchline.}
-The Yoshida hierarchy converts integrator sophistication into barrier
-generality.  Each level relaxes the concordance requirement:
+\paragraph{The new result.}
+Nesterov's classical analysis gives step size $\delta \propto M_f^{-1/2}$
+for the tangent-line step.  The Yoshida hierarchy improves this to:
 \[
-  M^{-1/2} \;\to\; M^{-1/3} \;\to\; M^{-1/5} \;\to\; M^{-1/7} \;\to\; \cdots
+  M_f^{-1/2} \;\to\; M_f^{-1/3} \;\to\; M_f^{-1/5} \;\to\; M_f^{-1/7} \;\to\; \cdots
 \]
-This opens the door to barriers that classical (tangent-line) IPMs
-cannot use, at the cost of a few extra gradient and Hessian evaluations
-per step.
+Each level reduces the sensitivity to $M_f$, making barriers with
+large self-concordance parameter practical at the cost of a few extra
+gradient and Hessian evaluations per step.
+
+For barriers with $M_f = 1$ (standard self-concordant), the improvement
+manifests as larger feasible step sizes (effectively reducing the
+barrier parameter $\nu$).  For barriers with $M_f \gg 1$, the
+improvement is qualitative: the Yoshida-based IPM converges where the
+classical tangent-line IPM cannot take meaningful steps.
 
 \section{Application to interior-point methods}
 
@@ -722,5 +724,19 @@ exit).  The Yoshida--Bregman method provides:
 For the exponential cone (3-dimensional), the method converges in
 4 factorizations on test problems, with the duality gap decreasing
 by a factor of $\sim\!100$ per factorization.
+
+\begin{thebibliography}{9}
+\bibitem{nesterov2018}
+Y.~Nesterov, \emph{Lectures on Convex Optimization}, 2nd ed.,
+Springer, 2018.
+
+\bibitem{yoshida1990}
+H.~Yoshida, ``Construction of higher order symplectic integrators,''
+\emph{Phys.\ Lett.\ A}, 150(5--7):262--268, 1990.
+
+\bibitem{amari2000}
+S.~Amari and H.~Nagaoka, \emph{Methods of Information Geometry},
+AMS/Oxford, 2000.
+\end{thebibliography}
 
 \end{document}
