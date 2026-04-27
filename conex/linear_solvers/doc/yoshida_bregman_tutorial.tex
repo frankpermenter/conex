@@ -203,6 +203,75 @@ Each Bregman step requires:
 \end{itemize}
 No third derivatives.
 
+\section{Exactness for the log barrier: Bregman midpoint = Pad\'e}
+
+For the LP barrier $F(s) = -\sum_i \log s_i$, the Bregman midpoint
+is not merely a second-order approximation---it is \emph{exactly}
+the $[1/1]$ Pad\'e approximant of the geodesic exponential.
+
+\begin{theorem}\label{thm:pade}
+Let $F(s) = -\sum_i \log s_i$ (the logarithmic barrier on $\R^n_+$).
+The geodesic from $s_0 > 0$ with velocity $v$ is
+$\gamma_i(h) = s_{0,i} \exp(h v_i / s_{0,i})$.
+The Bregman midpoint step from $s_0$ with step size $h$ and direction $v$
+gives
+\[
+  s_{1,i} = s_{0,i} \cdot \frac{1 + d_i/2}{1 - d_i/2},
+  \qquad d_i = \frac{h v_i}{s_{0,i}},
+\]
+which is the $[1/1]$ Pad\'e approximant of $\exp(d_i)$:
+\[
+  \frac{1 + d/2}{1 - d/2} = \exp(d) + O(d^3).
+\]
+\end{theorem}
+
+\begin{proof}
+The barrier has $\nabla F(s) = -s^{-1}$ (componentwise) and
+$\nabla^2 F(s) = \operatorname{diag}(s^{-2})$.  The Legendre transform
+is $\lambda = -\nabla F(s) = s^{-1}$, with inverse $s = \lambda^{-1}$.
+
+The four Bregman steps (componentwise, dropping the index $i$):
+\begin{enumerate}
+  \item $s_{1/2} = s_0 + \frac{h}{2}v$.
+
+  \item $\lambda_{1/2} = s_{1/2}^{-1} = (s_0 + \frac{h}{2}v)^{-1}$, \quad
+        $\lambda_0 = s_0^{-1}$.
+
+  \item $\lambda_1 = 2\lambda_{1/2} - \lambda_0
+        = \frac{2}{s_0 + \frac{h}{2}v} - \frac{1}{s_0}
+        = \frac{2s_0 - (s_0 + \frac{h}{2}v)}{s_0(s_0 + \frac{h}{2}v)}
+        = \frac{s_0 - \frac{h}{2}v}{s_0(s_0 + \frac{h}{2}v)}$.
+
+  \item $s_1 = \lambda_1^{-1}
+        = \frac{s_0(s_0 + \frac{h}{2}v)}{s_0 - \frac{h}{2}v}
+        = s_0 \cdot \frac{1 + d/2}{1 - d/2}$,
+        \quad where $d = hv/s_0$.
+\end{enumerate}
+The $[1/1]$ Pad\'e approximant of $e^d$ is $(1+d/2)/(1-d/2)$, which
+satisfies $(1+d/2)/(1-d/2) = 1 + d + d^2/2 + \cdots = e^d + O(d^3)$.
+\end{proof}
+
+\begin{corollary}
+For $F(s) = -\log\det(S)$ on the PSD cone $\mathbb{S}^n_+$, the Bregman
+midpoint reduces to the $[1/1]$ matrix Pad\'e approximant of $\exp(D)$
+when $S_0$ and $V$ are simultaneously diagonalizable.
+\end{corollary}
+\begin{proof}
+In the joint eigenbasis, $F$ decomposes into $-\sum_i \log \sigma_i$
+where $\sigma_i$ are the eigenvalues.  Each component follows
+Theorem~\ref{thm:pade} independently.
+\end{proof}
+
+\paragraph{Remark.}
+The Yoshida fourth-order composition of three Pad\'e $[1/1]$ steps
+produces a higher-order rational approximation to $\exp(d)$---a
+$[2/2]$-like Pad\'e obtained by composition rather than direct
+construction.  For the log barrier, the Yoshida--Bregman method is
+therefore a \emph{high-order rational approximation to the geodesic
+exponential} that generalizes seamlessly from symmetric cones (where
+it reduces to Pad\'e) to arbitrary barriers (where it uses the
+Legendre transform in place of the matrix exponential).
+
 \section{The Yoshida fourth-order composition}
 
 The Bregman midpoint is second-order: the error is $O(h^3)$.  To get
