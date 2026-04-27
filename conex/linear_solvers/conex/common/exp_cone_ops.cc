@@ -133,17 +133,29 @@ static void Hess_times_s(const double* H, const double* s, double* Hs) {
 
 void ExpConeOps::geodesicStep(double* w, double alpha,
                                const double* d) const {
-  // Störmer-Verlet integration of the geodesic ODE.
-  // Tracks λ_integrated alongside via λ̇ = -H·ṡ for consistency checking.
-  // The identity λ = H·s holds on the true geodesic; deviation measures error.
+  // Störmer-Verlet with Baumgarte stabilization from the λ = H(s)·s identity.
+  //
+  // After each substep, the constraint violation e = λ_int - H(s)·s is
+  // fed back as a velocity correction: ṡ -= γ·H⁻¹·e.
+  // This prevents drift from the constraint manifold without changing
+  // the ODE (on the true geodesic, e = 0 and the correction vanishes).
+
   double pos[3] = {w[0], w[1], w[2]};
   double vel[3] = {alpha*d[0], alpha*d[1], alpha*d[2]};
 
   const int steps = 8;
   double dt = 1.0 / steps;
+  const double gamma = 1.0;  // stabilization strength (1 = full correction)
+
+  // Initialize λ_integrated = H(s₀)·s₀.
+  double H[9];
+  BarrierHessian(pos[0], pos[1], pos[2], H);
+  double lam[3];
+  Hess_times_s(H, pos, lam);
 
   for (int step = 0; step < steps; ++step) {
-    double H[9], a[3];
+    // Störmer-Verlet: half-step vel, full-step pos, half-step vel.
+    double a[3];
     BarrierHessian(pos[0], pos[1], pos[2], H);
     GeodesicAccel(pos, vel, H, a);
     for (int k = 0; k < 3; ++k) vel[k] += 0.5 * dt * a[k];
@@ -151,6 +163,24 @@ void ExpConeOps::geodesicStep(double* w, double alpha,
     BarrierHessian(pos[0], pos[1], pos[2], H);
     GeodesicAccel(pos, vel, H, a);
     for (int k = 0; k < 3; ++k) vel[k] += 0.5 * dt * a[k];
+
+    // Update λ_integrated: λ += dt·(-H·ṡ).
+    for (int i = 0; i < 3; ++i)
+      lam[i] -= dt * (H[3*i]*vel[0] + H[3*i+1]*vel[1] + H[3*i+2]*vel[2]);
+
+    // Baumgarte stabilization: correct velocity by constraint error.
+    // e = λ_integrated - H(s)·s (should be zero on true geodesic).
+    double lam_exact[3];
+    Hess_times_s(H, pos, lam_exact);
+    double err[3] = {lam[0]-lam_exact[0], lam[1]-lam_exact[1], lam[2]-lam_exact[2]};
+
+    // ṡ -= γ · H⁻¹ · e  (correction in primal velocity).
+    double corr[3];
+    Solve3x3(H, err, corr);
+    for (int k = 0; k < 3; ++k) vel[k] -= gamma * corr[k];
+
+    // Reset λ_integrated to exact (project onto constraint manifold).
+    lam[0] = lam_exact[0]; lam[1] = lam_exact[1]; lam[2] = lam_exact[2];
   }
 
   w[0] = pos[0]; w[1] = pos[1]; w[2] = pos[2];
