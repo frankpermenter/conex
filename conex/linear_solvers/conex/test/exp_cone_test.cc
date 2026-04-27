@@ -566,24 +566,26 @@ TEST(ExpCone, AccuracyVsFineGrid) {
   };
 
   printf("\n=== All integrators vs 1000-step pure Verlet reference ===\n");
-  printf("  %6s  %12s  %12s  %12s  %12s\n",
-         "alpha", "pd_verlet", "bregman", "leapfrog", "euler");
+  printf("  %6s  %12s  %12s  %12s  %12s  %12s\n",
+         "alpha", "pd_verlet8", "verlet8", "bregman", "leapfrog", "euler");
   for (int i = 1; i <= 8; ++i) {
     double alpha = i * 0.1;
     double ref[3]; fineGridGeodesic(w0, alpha, d, ref);
     double pdv[3]={w0[0],w0[1],w0[2]};
+    double v8[3]; fineGridGeodesic(w0, alpha, d, v8, 8);  // 8-step pure Verlet
     double br[3]={w0[0],w0[1],w0[2]};
     double lf[3]={w0[0],w0[1],w0[2]};
     double eu[3]={w0[0]+alpha*d[0],w0[1]+alpha*d[1],w0[2]+alpha*d[2]};
     ops.geodesicStep(pdv, alpha, d);
     ops.bregmanMidpointStep(br, alpha, d);
     ops.leapfrogStep(lf, alpha, d);
-    printf("  %6.2f  %12.4e  %12.4e  %12.4e  %12.4e\n",
-           alpha, dist(pdv,ref), dist(br,ref), dist(lf,ref), dist(eu,ref));
+    printf("  %6.2f  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e\n",
+           alpha, dist(pdv,ref), dist(v8,ref), dist(br,ref), dist(lf,ref), dist(eu,ref));
   }
   // Quantitative at alpha=0.1.
   double ref[3]; fineGridGeodesic(w0, 0.1, d, ref);
   double pdv[3]={w0[0],w0[1],w0[2]};
+  double v8[3]; fineGridGeodesic(w0, 0.1, d, v8, 8);
   double br[3]={w0[0],w0[1],w0[2]};
   double lf[3]={w0[0],w0[1],w0[2]};
   double eu[3]={w0[0]+0.1*d[0],w0[1]+0.1*d[1],w0[2]+0.1*d[2]};
@@ -591,13 +593,18 @@ TEST(ExpCone, AccuracyVsFineGrid) {
   ops.bregmanMidpointStep(br, 0.1, d);
   ops.leapfrogStep(lf, 0.1, d);
   printf("\n  At alpha=0.1 vs 1000-step reference:\n");
-  printf("    primal-dual Verlet: %.2e  (%.0fx vs euler)\n",
-         dist(pdv,ref), dist(eu,ref)/std::max(dist(pdv,ref),1e-30));
+  printf("    primal-dual Verlet: %.2e  (%.0fx vs euler, %.1fx vs pure verlet8)\n",
+         dist(pdv,ref), dist(eu,ref)/std::max(dist(pdv,ref),1e-30),
+         dist(v8,ref)/std::max(dist(pdv,ref),1e-30));
+  printf("    pure Verlet (8):    %.2e  (%.0fx vs euler)\n",
+         dist(v8,ref), dist(eu,ref)/std::max(dist(v8,ref),1e-30));
   printf("    Bregman midpoint:   %.2e  (%.0fx vs euler)\n",
          dist(br,ref), dist(eu,ref)/std::max(dist(br,ref),1e-30));
   printf("    leapfrog:           %.2e  (%.0fx vs euler)\n",
          dist(lf,ref), dist(eu,ref)/std::max(dist(lf,ref),1e-30));
   printf("    Euler:              %.2e  (baseline)\n", dist(eu,ref));
+  EXPECT_LT(dist(pdv,ref), dist(v8,ref))
+      << "Primal-dual should beat pure Verlet at same step count";
   EXPECT_LT(dist(pdv,ref), dist(eu,ref));
   EXPECT_LT(dist(br,ref), dist(eu,ref));
 }
