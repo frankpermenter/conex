@@ -37,7 +37,8 @@ class ExpConeOps : public ConeOps {
 
   // Yoshida 4th-order composition of Bregman midpoint steps.
   // No third derivatives. Three Bregman substeps with Yoshida coefficients.
-  void yoshida4Step(double* w, double alpha, const double* d) const;
+  // Returns energy error: |D_sym(s0,s1) - h²||v||²_H| (O(h⁶) for 4th-order).
+  double yoshida4Step(double* w, double alpha, const double* d) const;
 
   // Invert the gradient map: given lambda, find x such that -grad F(x) = lambda.
   // Uses Newton's method (3x3 system, typically 3-5 iterations).

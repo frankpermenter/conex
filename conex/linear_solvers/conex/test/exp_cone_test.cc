@@ -499,6 +499,38 @@ TEST(ExpCone, ConsistencyErrorEstimate) {
   EXPECT_LT(err_small, 1e-5) << "Small step should have small consistency error";
 }
 
+TEST(ExpCone, Yoshida4EnergyError) {
+  // The Yoshida-4 energy error (from symmetrized Bregman divergence)
+  // should scale as O(h⁶) since the method is 4th-order.
+  ExpConeOps ops;
+  double w0[3] = {0.1, 1.0, 2.5};
+  double d[3] = {0.2, -0.1, 0.15};
+
+  printf("\n=== Yoshida-4 energy error (symmetrized Bregman divergence) ===\n");
+  printf("  %6s  %12s  %12s\n", "alpha", "energy_err", "ratio");
+  double prev_err = 0;
+  for (int i = 1; i <= 8; ++i) {
+    double alpha = i * 0.05;
+    double w[3] = {w0[0], w0[1], w0[2]};
+    double err = ops.yoshida4Step(w, alpha, d);
+    double ratio = (prev_err > 1e-30) ? err / prev_err : 0;
+    printf("  %6.3f  %12.4e  %12.4f\n", alpha, err, ratio);
+    prev_err = err;
+  }
+  // At small alpha, ratio of successive errors should be ~(1.05/0.05)^6... no,
+  // successive alphas differ by 0.05. Ratio = ((i+1)/i)^6.
+  // From alpha=0.05 to alpha=0.10: ratio ≈ 2^6 = 64.
+  // Check that error decreases rapidly with smaller alpha.
+  double w_small[3] = {w0[0], w0[1], w0[2]};
+  double err_small = ops.yoshida4Step(w_small, 0.01, d);
+  double w_med[3] = {w0[0], w0[1], w0[2]};
+  double err_med = ops.yoshida4Step(w_med, 0.1, d);
+  double scaling = err_med / std::max(err_small, 1e-30);
+  // Expected: (0.1/0.01)^6 = 10^6 = 1e6.
+  printf("  Scaling from 0.01 to 0.1: %.1f (expect ~1e6 for O(h^6))\n", scaling);
+  EXPECT_GT(scaling, 1e4) << "Energy error should scale as high power of h";
+}
+
 // =====================================================================
 // Prototype geodesic IPM for the exponential cone.
 //

@@ -536,12 +536,17 @@ static void pdpStep(double* s, double* lam, double* v, double h) {
   lam[0]=lam_new[0]; lam[1]=lam_new[1]; lam[2]=lam_new[2];
 }
 
-void ExpConeOps::yoshida4Step(double* w, double alpha,
-                               const double* d) const {
+double ExpConeOps::yoshida4Step(double* w, double alpha,
+                                const double* d) const {
   // Yoshida 4th-order composition of 2nd-order Bregman midpoint steps.
   // No third derivatives. Three PDP steps with coefficients:
   //   x1 = 1/(2 - 2^{1/3}),  x0 = -2^{1/3}/(2 - 2^{1/3}),  2x1 + x0 = 1.
   // The 3rd-order error of the base method cancels in the composition.
+  //
+  // Returns the energy error: |D_sym(s₀,s₁) - h²||v||²_H|
+  // where D_sym = (s₁-s₀)^T(λ₀-λ₁) is the symmetrized Bregman divergence.
+  // For a perfect geodesic this is zero; nonzero values indicate integration error.
+  // This is O(h⁶) for the 4th-order method — a free error estimate.
 
   static const double cbrt2 = 1.2599210498948732;  // 2^{1/3}
   static const double x1 = 1.0 / (2.0 - cbrt2);   // ≈ 1.3512
@@ -550,17 +555,34 @@ void ExpConeOps::yoshida4Step(double* w, double alpha,
   double s[3] = {w[0], w[1], w[2]};
   double v[3] = {alpha*d[0], alpha*d[1], alpha*d[2]};
 
+  // Initial energy: h²||v||²_H = v^T H(s₀) v (since v already includes alpha).
+  double H0[9];
+  BarrierHessian(s[0], s[1], s[2], H0);
+  double energy0 = 0;
+  for (int i = 0; i < 3; ++i)
+    for (int j = 0; j < 3; ++j)
+      energy0 += v[i] * H0[3*i+j] * v[j];
+
   // λ₀ = -∇F(s₀).
   double g0[3];
   BarrierGrad(s[0], s[1], s[2], g0);
-  double lam[3] = {-g0[0], -g0[1], -g0[2]};
+  double lam0[3] = {-g0[0], -g0[1], -g0[2]};
+  double lam[3] = {lam0[0], lam0[1], lam0[2]};
 
   // Three Bregman steps with Yoshida coefficients.
   pdpStep(s, lam, v, x1);   // forward
   pdpStep(s, lam, v, x0);   // backward (correction)
   pdpStep(s, lam, v, x1);   // forward
 
+  // Symmetrized Bregman divergence: D_sym = (s₁-s₀)^T(λ₀-λ₁).
+  double ds[3] = {s[0]-w[0], s[1]-w[1], s[2]-w[2]};
+  double dlam[3] = {lam0[0]-lam[0], lam0[1]-lam[1], lam0[2]-lam[2]};
+  double d_sym = ds[0]*dlam[0] + ds[1]*dlam[1] + ds[2]*dlam[2];
+
+  double energy_err = std::abs(d_sym - energy0);
+
   w[0] = s[0]; w[1] = s[1]; w[2] = s[2];
+  return energy_err;
 }
 
 void ExpConeOps::setIdentity(double* out, int /*size*/) const {
