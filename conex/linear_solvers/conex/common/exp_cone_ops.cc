@@ -489,6 +489,80 @@ void ExpConeOps::bregmanMidpointStep(double* w, double alpha,
   w[0] = x1[0]; w[1] = x1[1]; w[2] = x1[2];
 }
 
+// Single primal-dual-primal (PDP) Bregman step tracking (s, λ, v).
+// Returns updated (s, lam, v) after a step of size h.
+static void pdpStep(double* s, double* lam, double* v, double h) {
+  // 1. Primal half-step.
+  double s_half[3] = {s[0]+0.5*h*v[0], s[1]+0.5*h*v[1], s[2]+0.5*h*v[2]};
+
+  // 2. λ at midpoint (using λ = -∇F identity).
+  double g_half[3];
+  ExpConeOps::BarrierGrad(s_half[0], s_half[1], s_half[2], g_half);
+  double lam_half[3] = {-g_half[0], -g_half[1], -g_half[2]};
+
+  // 3. Dual extrapolation: λ_new = 2λ_half - λ_old.
+  double lam_new[3] = {2*lam_half[0]-lam[0], 2*lam_half[1]-lam[1],
+                        2*lam_half[2]-lam[2]};
+
+  // 4. Invert gradient: find s_new with -∇F(s_new) = lam_new.
+  double s_new[3] = {s_half[0], s_half[1], s_half[2]};  // warm start
+  for (int iter = 0; iter < 15; ++iter) {
+    double g[3], H[9];
+    ExpConeOps::BarrierGrad(s_new[0], s_new[1], s_new[2], g);
+    double res[3] = {-g[0]-lam_new[0], -g[1]-lam_new[1], -g[2]-lam_new[2]};
+    if (res[0]*res[0]+res[1]*res[1]+res[2]*res[2] < 1e-24) break;
+    ExpConeOps::BarrierHessian(s_new[0], s_new[1], s_new[2], H);
+    double dx[3];
+    Solve3x3(H, res, dx);
+    double step = 1.0;
+    for (int ls = 0; ls < 10; ++ls) {
+      double sn[3] = {s_new[0]+step*dx[0], s_new[1]+step*dx[1],
+                       s_new[2]+step*dx[2]};
+      if (sn[1] > 1e-15 && sn[2] > sn[1]*std::exp(sn[0]/sn[1]) + 1e-15) {
+        s_new[0]=sn[0]; s_new[1]=sn[1]; s_new[2]=sn[2]; break;
+      }
+      step *= 0.5;
+    }
+  }
+
+  // 5. Recover velocity from second half-step: v = (s_new - s_half)/(h/2).
+  if (std::abs(h) > 1e-30) {
+    for (int k = 0; k < 3; ++k)
+      v[k] = (s_new[k] - s_half[k]) / (0.5 * h);
+  }
+
+  // Update s and λ.
+  s[0]=s_new[0]; s[1]=s_new[1]; s[2]=s_new[2];
+  lam[0]=lam_new[0]; lam[1]=lam_new[1]; lam[2]=lam_new[2];
+}
+
+void ExpConeOps::yoshida4Step(double* w, double alpha,
+                               const double* d) const {
+  // Yoshida 4th-order composition of 2nd-order Bregman midpoint steps.
+  // No third derivatives. Three PDP steps with coefficients:
+  //   x1 = 1/(2 - 2^{1/3}),  x0 = -2^{1/3}/(2 - 2^{1/3}),  2x1 + x0 = 1.
+  // The 3rd-order error of the base method cancels in the composition.
+
+  static const double cbrt2 = 1.2599210498948732;  // 2^{1/3}
+  static const double x1 = 1.0 / (2.0 - cbrt2);   // ≈ 1.3512
+  static const double x0 = -cbrt2 / (2.0 - cbrt2); // ≈ -1.7024
+
+  double s[3] = {w[0], w[1], w[2]};
+  double v[3] = {alpha*d[0], alpha*d[1], alpha*d[2]};
+
+  // λ₀ = -∇F(s₀).
+  double g0[3];
+  BarrierGrad(s[0], s[1], s[2], g0);
+  double lam[3] = {-g0[0], -g0[1], -g0[2]};
+
+  // Three Bregman steps with Yoshida coefficients.
+  pdpStep(s, lam, v, x1);   // forward
+  pdpStep(s, lam, v, x0);   // backward (correction)
+  pdpStep(s, lam, v, x1);   // forward
+
+  w[0] = s[0]; w[1] = s[1]; w[2] = s[2];
+}
+
 void ExpConeOps::setIdentity(double* out, int /*size*/) const {
   // Interior point: (0, 1, exp(0)) = (0, 1, 1).
   // Actually the "analytic center" of the barrier:

@@ -35,6 +35,10 @@ class ExpConeOps : public ConeOps {
   // No third derivatives, no Newton solve.
   void leapfrogStep(double* w, double alpha, const double* d) const;
 
+  // Yoshida 4th-order composition of Bregman midpoint steps.
+  // No third derivatives. Three Bregman substeps with Yoshida coefficients.
+  void yoshida4Step(double* w, double alpha, const double* d) const;
+
   // Invert the gradient map: given lambda, find x such that -grad F(x) = lambda.
   // Uses Newton's method (3x3 system, typically 3-5 iterations).
   static bool InvertGradient(const double* lambda, double* x, int max_iter = 20);
