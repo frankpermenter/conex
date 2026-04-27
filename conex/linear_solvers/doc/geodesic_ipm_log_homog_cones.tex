@@ -199,27 +199,28 @@ Barrier parameter $\nu$ & Depends on $F$ & $n$ (nonneg), $2$ (SOC), $n$ (PSD) \\
 Hessian $\nabla^2 F(s)$ & General $m \times m$ SPD matrix & $P(s^{-1})$ (quadratic rep.) \\
 Gradient $\nabla F(s)$ & General $m$-vector & $-s^{-1}$ (Jordan inverse) \\
 \midrule
-Scaling $w$ & $w = k \cdot s$ & $w = k \cdot s = W^{-1}$ \\
-Gram matrix & $A^\top \nabla^2 F(w) \, A$ & $A^\top P(W^{-1}) A = A^\top W^2 A$ \\
-Centering RHS & $A^\top(\nabla^2 F(w)w - \nabla F(w))$ & $A^\top(P(W^{-1})W^{-1} + W^{-1}) = 2A^\top W$ \\
-Optimality RHS & $-(c + A^\top \nabla^2 F(w) b)$ & $-(c + A^\top W^2 b)$ \\
+Scaling $w$ & $w = k \cdot s$ & $w = k \cdot s$ \\
+Gram matrix & $A^\top \nabla^2 F(w) \, A$ & $A^\top P(w^{-1}) \, A$ \\
+Centering RHS & $A^\top(\nabla^2 F(w)w - \nabla F(w))$ & $2A^\top w^{-1}$ \\
+Optimality RHS & $-(c + A^\top \nabla^2 F(w) b)$ & $-(c + A^\top P(w^{-1}) b)$ \\
 \midrule
 Dual variable & $\lambda = -\mu \nabla F(s) \in K^*$ & $\lambda = \mu s^{-1} \in K$ \\
 Complementarity & $\ip{s}{\lambda} = \nu / k^2$ & $\ip{s}{\lambda} = \nu / k^2$ \\
 Dual feasibility & $A^\top \lambda = c$ (from KKT) & $A^\top \lambda = c$ (from KKT) \\
 \midrule
-Direction $d$ & $d_0 + k \cdot d_1$ in $w$-space & $d_0 + k \cdot d_1$ in $W$-space \\
+Direction $d$ & $d_0 + k \cdot d_1$ in $w$-space & $d_0 + k \cdot d_1$ in $w$-space \\
 Line search & Dikin $\|d\|_H \leq 1$ + feasibility & $\|d\|_\infty \leq 1$ (eigenvalue bound) \\
 Step size & $\alpha = 1/(1 + \|d\|_H)$ & $\alpha = \min(1, 2/\|d\|_\infty^2)$ \\
 \midrule
-Geodesic step & $\Exp_s(\alpha \cdot d)$ via ODE & $W \cdot \exp(\alpha \cdot d)$ (EJA exp) \\
+Geodesic step & $\Exp_s(\alpha \cdot d)$ via ODE & $w \gets w \cdot \exp(-\alpha \cdot d)$ \\
 Automorphism & None (general) & $M \in GL(n)$: $s \mapsto MsM^\top$ \\
 Update & Recompute $\nabla^2 F$ at new $s$ & $M \gets M \cdot \exp(\alpha d / 2)$ \\
 \bottomrule
 \end{tabular}
 \caption{Dictionary between the general geodesic IPM and the symmetric cone case.
 The symmetric cone objects specialize via the Jordan algebra structure:
-$P(a)b = aba$ (PSD), $\det(s) = \prod s_i$ (nonneg).}
+$P(a)b = aba$ (PSD), $\det(s) = \prod s_i$ (nonneg).
+Note: conex stores $W = w^{-1}$ internally; all formulas here use $w$ directly.}
 \label{tab:dictionary}
 \end{table}
 
@@ -227,10 +228,10 @@ $P(a)b = aba$ (PSD), $\det(s) = \prod s_i$ (nonneg).}
 
 For the symmetric cone with $F(s) = -\log\det(s)$:
 \[
-  \nabla^2 F(w) w - \nabla F(w) = P(w^{-1}) w - (-w^{-1}) = w^{-1} + w^{-1} = 2w^{-1}.
+  \nabla^2 F(w) w - \nabla F(w) = P(w^{-1}) w + w^{-1} = w^{-1} + w^{-1} = 2w^{-1}.
 \]
-For the nonneg case $w = W^{-1}$: $2w^{-1} = 2W$, so
-$A^\top \cdot 2W$ matches the centering RHS in the geodesic LP.  \checkmark
+This gives $A^\top \cdot 2w^{-1}$ as the centering RHS.  In conex's convention
+($W = w^{-1}$), this is $2A^\top W$. \checkmark
 
 \section{Exponential cone: barrier derivatives}
 
