@@ -505,32 +505,27 @@ TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
     return 1.0 / t;
   };
 
-  // Geodesic LP for the exp cone (primal formulation).
+  // Geodesic LP for the exp cone.
   //
-  // Primal barrier: F(s) = -log(z-ye^{x/y}) - log(y) on K.
-  // Gram = A^T ∇²F(s) A  (primal Hessian, NOT inverse).
+  // KKT system (variables: x, δλ):
+  //   [ μH(λ),  A ] [δλ]   [ s - b      ]
+  //   [ A^T,    0 ] [ x] = [ c - A^T λ  ]
   //
-  // Newton for min c^T x + μ F(Ax+b):
-  //   (A^T H A) δx = -(c + μ A^T ∇F(s))
+  // H(λ) = ∇²F(λ) (dual barrier). For primal barrier F on K:
+  //   H(λ)⁻¹ = μ² H(s)  where H(s) = ∇²F(s), λ = -μ∇F(s).
   //
-  // Substitute s = (1/k)·w (log-homogeneity: H(s) = k²H(w), ∇F(s) = k∇F(w)):
-  //   k²(A^T H(w) A) δx = -(c + (1/k) A^T ∇F(w))
+  // Schur complement: (A^T H(s) A) x = A^T H(s)(s-b) - (1/μ)(c - A^T λ)
+  //   = A^T(H(s)(s-b) - ∇F(s)) - k²c     (using 1/μ = k², λ = -μ∇F)
   //
-  // Let δx̃ = k²δx:
-  //   (A^T H(w) A) δx̃ = -(k²c + k A^T ∇F(w))
+  // Two solves with k-independent Gram A^T H(s) A:
+  //   x₀ = solve for A^T(H(s)(s-b) - ∇F(s))   (centering)
+  //   x₁ = solve for -c                          (optimality)
+  //   x(k) = x₀ + k²·x₁
   //
-  // Decompose: δx̃(k) = k·y₀ + k²·y₁ where
-  //   (A^T H(w) A) y₀ = -A^T ∇F(w)   (centering)
-  //   (A^T H(w) A) y₁ = -c            (optimality)
-  //
-  // Cone direction: d(k) = A·δx̃(k) = k·d₀ + k²·d₁
-  //   where d₀ = A·y₀, d₁ = A·y₁.
-  //
-  // The "w-space" direction is δs = (1/k²)·d(k) = (1/k)·d₀ + d₁.
-  // But for the step, we work in w = k·s space.
-  // δw = k·δs = d₀ + k·d₁.
-  //
-  // Line search: largest k with ||d₀ + k·d₁||_H(w) ≤ 1.
+  // After solving x: s_new = Ax + b (primal feasible).
+  //   δλ = μ H(s)((s-b) - Ax)   (from first KKT row, using H(λ)⁻¹ = μ²H(s)).
+  //   λ_new = λ + δλ, A^T λ_new = c (dual feasible).
+  //   gap = <s_new, λ_new>.
 
   Vector2d x(0.0, 0.0);
 
@@ -542,148 +537,102 @@ TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
   int factorizations = 0;
   double k_prev = 0.0;
 
+  auto in_dual_cone = [](const Vector3d& lam) {
+    return lam(0) < -1e-15 && lam(2) > 1e-15 &&
+           -lam(0) * std::exp(lam(1)/lam(0) - 1) <= lam(2) - 1e-15;
+  };
+
   for (int outer = 0; outer < 30; ++outer) {
     Vector3d s = A * x + b;
     if (!is_interior(s)) { printf("  INFEASIBLE at iter %d\n", outer); break; }
 
     // Hessian and gradient at s.
-    double Hw_arr[9], gw_arr[3];
-    ExpConeOps::BarrierHessian(s(0), s(1), s(2), Hw_arr);
-    ExpConeOps::BarrierGrad(s(0), s(1), s(2), gw_arr);
-    Matrix3d Hw;
+    double Hs_arr[9], gs_arr[3];
+    ExpConeOps::BarrierHessian(s(0), s(1), s(2), Hs_arr);
+    ExpConeOps::BarrierGrad(s(0), s(1), s(2), gs_arr);
+    Matrix3d Hs;
     for (int i = 0; i < 3; ++i)
       for (int j = 0; j < 3; ++j)
-        Hw(i, j) = Hw_arr[3*i+j];
-    Eigen::Map<Vector3d> gw(gw_arr);
+        Hs(i, j) = Hs_arr[3*i+j];
+    Vector3d gs(gs_arr[0], gs_arr[1], gs_arr[2]);
 
-    // Gram = A^T H(s) A (primal Hessian).
-    Eigen::Matrix2d G = A.transpose() * Hw * A;
+    // Gram = A^T H(s) A.
+    Eigen::Matrix2d G = A.transpose() * Hs * A;
     auto Gf = G.ldlt();
     factorizations++;
 
-    // Two back-solves.
-    Vector2d y0 = Gf.solve(-A.transpose() * gw);  // centering
-    Vector2d y1 = Gf.solve(-c);                    // optimality
-    Vector3d d0 = A * y0;
-    Vector3d d1 = A * y1;
+    // Two back-solves: x(k) = x₀ + k²·x₁.
+    Vector3d rhs0 = Hs * (s - b) - gs;  // H(s)(s-b) - ∇F(s)
+    Vector2d x0 = Gf.solve(A.transpose() * rhs0);  // centering
+    Vector2d x1 = Gf.solve(-c);                     // optimality
 
-    // Primal-dual line search for k.
-    // At parameter k, the primal and dual steps (from δx = (1/k)y₀ + y₁) are:
-    //   δs(k) = (1/k)·d₀ + d₁  (primal tangent in s-space)
-    //   δλ(k) = -H·δs(k)       (dual tangent via Hessian)
-    //
-    // Current dual: λ = -μ·∇F(s) = -(1/k²)·∇F(s).
-    // Current primal: s.
-    //
-    // After geodesic step with step size α=1/(1+||d||):
-    //   s_new ≈ s + α·δs(k)     (first order)
-    //   λ_new ≈ λ + α·δλ(k)     (first order)
-    //
-    // Find largest k such that s_new ∈ int(K) AND λ_new ∈ int(K*).
-    //
-    // K_exp: y > 0, z > y·exp(x/y)
-    // K*_exp: a < 0, c > 0, -a·exp(b/a - 1) ≤ c
+    // Line search for k: find largest k such that s_new = A·x(k)+b ∈ K
+    // and λ_new ∈ K*.
+    // Use Dikin bound as starting point, then binary search with geodesic.
+    Vector3d d0 = A * x0 + b - s;  // s_new - s at k=0 (centering part - s)
+    // Actually: s_new(k) = A(x₀ + k²x₁) + b. So the "direction from s" is
+    // A(x₀+k²x₁)+b - s. The Hessian norm of the displacement:
+    // For the line search, evaluate at each k.
 
-    auto in_dual_cone = [](const Vector3d& lam) {
-      return lam(0) < -1e-15 && lam(2) > 1e-15 &&
-             -lam(0) * std::exp(lam(1)/lam(0) - 1) <= lam(2) - 1e-15;
-    };
-
-    // Current dual point.
-    Vector3d lambda_cur;
-    {
-      double g_cur[3];
-      ExpConeOps::BarrierGrad(s(0), s(1), s(2), g_cur);
-      // λ = -∇F(s) (up to μ scaling — for feasibility check, scaling doesn't matter).
-      lambda_cur = Vector3d(-g_cur[0], -g_cur[1], -g_cur[2]);
+    double k_new = std::max(k_prev, 1.0);
+    // Binary search: find largest k where geodesic step is feasible.
+    double k_hi = k_new * 100 + 10;
+    // First bracket.
+    for (int i = 0; i < 20; ++i) {
+      Vector2d xk = x0 + k_hi*k_hi * x1;
+      Vector3d sk = A * xk + b;
+      if (!is_interior(sk)) break;
+      k_hi *= 2;
     }
-
-    // Line search for k: Dikin bound ||d₀ + k·d₁||²_H ≤ 1,
-    // then verify primal-dual feasibility of the geodesic step.
-    auto hip = [&](const Vector3d& a_v, const Vector3d& b_v) {
-      return a_v.dot(Hw * b_v);
-    };
-    double aa = hip(d0, d0), ff = hip(d0, d1), pp = hip(d1, d1);
-
-    // Dikin bound: pp·k² + 2ff·k + (aa - 1) ≤ 0.
-    double k_dikin = 0;
-    double disc = 4*ff*ff - 4*pp*(aa - 1);
-    if (disc >= 0 && pp > 1e-30) {
-      double k1 = (-2*ff + std::sqrt(disc)) / (2*pp);
-      double k2 = (-2*ff - std::sqrt(disc)) / (2*pp);
-      k_dikin = std::max(k1, k2);
-      k_dikin = std::max(k_dikin, 0.0);
-    }
-
-    // Now try to go beyond Dikin by checking actual geodesic feasibility.
-    // Binary search from k_dikin to k_dikin*10.
-    double k_new = std::max(k_dikin, k_prev);
-    double k_hi = k_new * 10 + 1;
-    for (int i = 0; i < 30; ++i) {
+    for (int i = 0; i < 40; ++i) {
       double k_mid = 0.5 * (k_new + k_hi);
-      Vector3d dk_test = d0 + k_mid * d1;
-      double dn = std::sqrt(std::max(dk_test.dot(Hw * dk_test), 0.0));
-      double al = 1.0 / (1.0 + dn);
-      double s_test[3] = {s(0), s(1), s(2)};
-      double ds_test[3] = {dk_test(0), dk_test(1), dk_test(2)};
-      ops.geodesicStep(s_test, al, ds_test);
-      Vector3d sn(s_test[0], s_test[1], s_test[2]);
-      if (is_interior(sn)) {
-        double g_new[3];
-        ExpConeOps::BarrierGrad(sn(0), sn(1), sn(2), g_new);
-        Vector3d lam_new(-g_new[0], -g_new[1], -g_new[2]);
-        if (in_dual_cone(lam_new)) {
-          k_new = k_mid;
-          continue;
-        }
+      Vector2d xk = x0 + k_mid*k_mid * x1;
+      Vector3d sk = A * xk + b;
+      // Also check dual: λ_new = -μ∇F(s) + μ H(s)((s-b) - A xk)
+      double mu = 1.0/(k_mid*k_mid);
+      Vector3d dlam = mu * Hs * ((s - b) - A * xk);
+      Vector3d lam_new = -mu * gs + dlam;
+      if (is_interior(sk) && in_dual_cone(lam_new)) {
+        k_new = k_mid;
+      } else {
+        k_hi = k_mid;
       }
-      k_hi = k_mid;
     }
     k_new = std::max(k_new, k_prev);
 
-    Vector3d dk = d0 + k_new * d1;
-    double d_sqr = dk.dot(Hw * dk);
-    double d_norm = std::sqrt(std::max(d_sqr, 0.0));
-    double mu = (k_new > 0) ? 1.0/(k_new*k_new) : 1.0;
-
-    // Compute duality gap from Newton primal-dual pair BEFORE stepping.
-    // λ_old = -(1/k²)∇F(s), δλ = -(1/k²)H·A·δx.
-    // λ_new = λ_old + δλ satisfies A^T λ_new = c exactly.
-    // s_new = s + δs where δs = A·δx (first order).
-    // Gap = <s + δs, λ + δλ> ≈ <s, λ> + <δs, λ> + <s, δλ> + <δs, δλ>.
-    // Use first-order: <s + A·δx, λ_new>.
-    double k2 = k_new * k_new;
-    Vector2d dx_k = y1 + (1.0/k_new) * y0;
-    Vector3d lam_old = -(1.0/k2) * gw;
-    Vector3d dlam = -(1.0/k2) * (Hw * (A * dx_k));
-    Vector3d lam_new = lam_old + dlam;
-    Vector3d ds_lin = A * dx_k;
-    Vector3d s_lin = s + ds_lin;  // first-order new primal
-    double gap = s_lin.dot(lam_new);
+    // Compute primal-dual pair at k_new.
+    double mu = 1.0 / (k_new * k_new);
+    Vector2d x_new = x0 + k_new*k_new * x1;
+    Vector3d s_new = A * x_new + b;
+    Vector3d dlam = mu * Hs * ((s - b) - A * x_new);
+    Vector3d lam_new = -mu * gs + dlam;
+    double gap = s_new.dot(lam_new);
     double dual_res = (A.transpose() * lam_new - c).norm();
 
+    // Direction norm (for step size).
+    Vector3d ds = s_new - s;
+    double d_norm = std::sqrt(std::max(ds.dot(Hs * ds), 0.0));
+
     printf("  %3d  %12.4e  %12.4e  %10.4f  %10.2e  %10.2e  %10.4f\n",
-           factorizations, k_prev, k_new, d_norm, gap, dual_res, c.dot(x));
+           factorizations, k_prev, k_new, d_norm, gap, dual_res, c.dot(x_new));
 
-    if (gap < 1e-6 && gap > 0) break;
+    if (gap < 1e-6 && gap > 0) {
+      x = x_new;
+      break;
+    }
 
-    // Geodesic step on s.
+    // Geodesic step: integrate from s in direction ds.
     double alpha = 1.0 / (1.0 + d_norm);
     double s_arr[3] = {s(0), s(1), s(2)};
-    double ds_arr[3] = {dk(0), dk(1), dk(2)};
+    double ds_arr[3] = {ds(0), ds(1), ds(2)};
     ops.geodesicStep(s_arr, alpha, ds_arr);
-    Vector3d s_new(s_arr[0], s_arr[1], s_arr[2]);
+    Vector3d s_geo(s_arr[0], s_arr[1], s_arr[2]);
 
-    if (is_interior(s_new)) {
-      x = (A.transpose()*A).ldlt().solve(A.transpose() * (s_new - b));
+    if (is_interior(s_geo)) {
+      x = (A.transpose()*A).ldlt().solve(A.transpose() * (s_geo - b));
     } else {
-      for (double a = alpha; a > 1e-10; a *= 0.5) {
-        Vector3d s_try = s + a * dk;
-        if (is_interior(s_try)) {
-          x = (A.transpose()*A).ldlt().solve(A.transpose() * (s_try - b));
-          break;
-        }
-      }
+      // Fallback: use the linear x directly.
+      x = x_new;
     }
 
     k_prev = k_new;
@@ -863,16 +812,16 @@ TEST(ExpCone, GeodesicLP_ProductCone) {
     // λᵢ_old = -(1/k²)∇Fᵢ(sᵢ), δλᵢ = -(1/k²)Hᵢ·Aᵢ·δx.
     // λᵢ_new = λᵢ_old + δλᵢ. A^T Σ λᵢ_new = c exactly.
     // sᵢ_new = sᵢ + Aᵢ·δx (first order).
+    // δx = (1/k)y₀ + y₁. Per cone: δsᵢ = Aᵢ·δx, λᵢ = -(1/k²)(∇Fᵢ + Hᵢ·δsᵢ).
     double k2 = k_new * k_new;
-    VectorXd dx_k = y1 + (1.0/k_new) * y0;
+    VectorXd dx_k = (1.0/k_new) * y0 + y1;
     double gap = 0;
     VectorXd At_lam = VectorXd::Zero(p);
     for (int i = 0; i < m; ++i) {
       double gi[3];
       ExpConeOps::BarrierGrad(slacks[i](0), slacks[i](1), slacks[i](2), gi);
-      Vector3d lam_old_i = -(1.0/k2) * Eigen::Map<Vector3d>(gi);
-      Vector3d dlam_i = -(1.0/k2) * (hessians[i] * (cones[i].A * dx_k));
-      Vector3d lam_new_i = lam_old_i + dlam_i;
+      Vector3d ds_i = cones[i].A * dx_k;
+      Vector3d lam_new_i = -(1.0/k2) * (Eigen::Map<Vector3d>(gi) + hessians[i] * ds_i);
       Vector3d si_new = slacks[i] + cones[i].A * dx_k;
       gap += si_new.dot(lam_new_i);
       At_lam += cones[i].A.transpose() * lam_new_i;
