@@ -376,15 +376,21 @@ At these non-symmetric points, we can evaluate $\lambda_i = -\nabla F(s_i)$
 stage points from the gradient map alone.
 
 \paragraph{The velocity problem.}
-At the midpoint ($c = 1/2$), the Bregman velocity is
-$v = (s_1 - s_{1/2})/(h/2)$, which is second-order accurate because
-the midpoint symmetry cancels the first-order error.
+At the midpoint ($c = 1/2$), the dual extrapolation
+$\lambda_1 = 2\lambda_{1/2} - \lambda_0$ is the \emph{midpoint rule}
+for the integral $\lambda_1 = \lambda_0 + \int_0^h \dot\lambda \, dt$.
+The midpoint rule is second-order accurate: the error is $O(h^3)$
+because the first-order error term vanishes when the sample point is
+at the center of the interval.
 
-At a general GL node ($c_i \neq 1/2$), the analogous chord velocity
-$v_i = -H(s_i)^{-1}(\lambda_i - \lambda_0)/c_i$ is only \emph{first-order}
-accurate.  The GL consistency conditions couple $v_1$ and $v_2$ through
-the Butcher matrix $a_{ij}$, but without the geodesic acceleration
-(which requires $\partial^3 F$), the coupled system is underdetermined.
+At a general GL node $c_i \neq 1/2$, the analogous extrapolation
+$\lambda_1 = \lambda_0 + (\lambda_{c_i} - \lambda_0)/c_i$ is
+\emph{not} a midpoint rule---it is a forward-Euler extrapolation
+from an off-center sample point, which is only \emph{first-order}
+accurate ($O(h^2)$ error).  The GL consistency conditions couple
+$v_1$ and $v_2$ through the Butcher matrix $a_{ij}$, but without
+the geodesic acceleration (which requires $\partial^3 F$), the
+coupled system is underdetermined.
 
 \paragraph{What goes wrong.}
 We implemented the 2-stage GL with Bregman-derived velocities and
@@ -421,12 +427,15 @@ ${}^\dagger$\,The $[2/2]$ Pad\'e is a closed-form rational function of $d$,
 specific to $F = -\log$.  It does not generalize to arbitrary barriers.
 
 \paragraph{Summary.}
-The midpoint is special: it is the only evaluation point where the
-Legendre transform provides both position \emph{and} velocity
-information to second order.  Yoshida's genius is to achieve fourth
-order by composing three midpoint evaluations with the right weights,
-rather than attempting to evaluate at non-midpoint nodes (which would
-require the ODE acceleration).
+The midpoint ($c = 1/2$) is special: it is the unique evaluation point
+where the dual extrapolation $\lambda_1 = \lambda_0 + (\lambda_c - \lambda_0)/c$
+reduces to the \emph{midpoint quadrature rule}, which is second-order
+accurate.  At any other $c$, the extrapolation is first-order (forward
+Euler from an off-center point), and the resulting velocity is too
+inaccurate for a fourth-order method.  Yoshida achieves fourth order
+by composing three midpoint evaluations---the only node where the
+Legendre transform gives second-order velocity---with algebraic
+weights that cancel the third-order error.
 
 \section{Connection to Hamiltonian mechanics}
 
