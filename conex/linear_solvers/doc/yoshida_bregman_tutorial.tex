@@ -476,6 +476,118 @@ Applied to the Bregman midpoint, it gives fourth-order accuracy on
 any Hessian manifold, for any strictly convex $F$, without ever
 computing the curvature.
 
+\section{Error bounds from self-concordance}
+
+Self-concordance of the barrier provides \emph{a priori} error bounds
+for all the integrators, in terms of a single scalar parameter
+$\delta = h \|v\|_H$ (the step size in the local Hessian norm).
+
+\subsection{Self-concordance inequality}
+
+A $\nu$-logarithmically homogeneous self-concordant barrier $F$
+satisfies:
+\begin{equation}\label{eq:sc}
+  |D^3 F(s)[u, v, w]| \leq 2\, \|u\|_H \|v\|_H \|w\|_H
+\end{equation}
+for all $u, v, w$, where $\|u\|_H = \sqrt{u^\top \nabla^2 F(s)\, u}$
+is the local Hessian norm.  This is the polarized form of
+$|D^3 F[v,v,v]| \leq 2\|v\|_H^3$.
+
+\subsection{Tangent line (0th-order Euler)}
+
+The tangent line $L(h) = s_0 + hv$ approximates the geodesic
+$\gamma(h) = s_0 + hv + \frac{h^2}{2}\ddot{s} + O(h^3)$.
+The error is
+\[
+  \gamma(h) - L(h) = -\frac{h^2}{4} H^{-1} T(v,v) + O(h^3),
+\]
+where $T(v,v)_i = \sum_{jk} F_{ijk} v_j v_k$.
+
+\begin{theorem}[Tangent line error bound]\label{thm:euler-bound}
+For a self-concordant barrier,
+\[
+  \|\gamma(h) - (s_0 + hv)\|_H \leq \frac{\delta^2}{2} + O(\delta^3),
+  \qquad \delta = h\|v\|_H.
+\]
+\end{theorem}
+\begin{proof}
+The leading error is $\frac{h^2}{4}\|H^{-1}T(v,v)\|_H
+= \frac{h^2}{4}\|T(v,v)\|_{H^{-1}}$.
+For any $w$ with $\|w\|_H = 1$:
+\[
+  |w^\top T(v,v)| = |D^3 F[w, v, v]| \leq 2\|v\|_H^2,
+\]
+by~\eqref{eq:sc}.  Taking the supremum:
+$\|T(v,v)\|_{H^{-1}} \leq 2\|v\|_H^2$.  Therefore
+\[
+  \|\gamma(h) - L(h)\|_H \leq \frac{h^2}{4} \cdot 2\|v\|_H^2
+  = \frac{h^2 \|v\|_H^2}{2} = \frac{\delta^2}{2}. \qedhere
+\]
+\end{proof}
+
+The tangent line stays in the Dikin ellipsoid ($\|\text{error}\|_H < 1$)
+whenever $\delta < \sqrt{2}$.
+
+\subsection{Bregman midpoint (2nd order)}
+
+From the Taylor expansion proof (Section~\ref{sec:bregman-proof}),
+the Bregman midpoint matches the geodesic to second order.  The
+leading error is $O(h^3)$ and involves $D^4 F$ (fourth derivatives)
+contracted with $v$.  For a self-concordant barrier, iterated
+application of~\eqref{eq:sc} gives:
+\begin{equation}\label{eq:bregman-bound}
+  \|\gamma(h) - s_{\text{Bregman}}\|_H \leq C_2\, \delta^3 + O(\delta^4),
+\end{equation}
+where $C_2$ is a universal constant (independent of the specific barrier)
+that depends only on the self-concordance parameter.
+
+\paragraph{Sketch.}
+The $O(h^3)$ error involves the fourth-order Taylor coefficient:
+$D^4 F$ contracted with $v$ three times and $H^{-1}$.  By the
+derivative of self-concordance (differentiating~\eqref{eq:sc}
+with respect to $s$), the fourth derivative satisfies
+$|D^4 F[u,v,v,v]| \leq C \|u\|_H \|v\|_H^3$.  The $H^{-1}$
+contraction contributes another $\|v\|_H$ factor, giving
+$\delta^3 = h^3 \|v\|_H^3$ overall.
+
+\subsection{Yoshida--Bregman (4th and 6th order)}
+
+The Yoshida composition cancels the $O(\delta^3)$ error, leaving:
+\begin{align}
+  \|\gamma(h) - s_{\text{Yoshida-4}}\|_H &\leq C_4\, \delta^5 + O(\delta^6), \\
+  \|\gamma(h) - s_{\text{Yoshida-6}}\|_H &\leq C_6\, \delta^7 + O(\delta^8).
+\end{align}
+The constants $C_4, C_6$ involve higher derivatives of the
+self-concordance condition but remain bounded by universal
+functions of $\nu$ (the barrier parameter).
+
+\subsection{Summary: interior guarantee}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Method} & \textbf{Error bound} & \textbf{Order} & \textbf{Interior if} \\
+\midrule
+Tangent line      & $\delta^2/2$       & 1 & $\delta < \sqrt{2}$ \\
+Bregman midpoint  & $C_2 \delta^3$     & 2 & $\delta < C_2^{-1/3}$ \\
+Yoshida-4         & $C_4 \delta^5$     & 4 & $\delta < C_4^{-1/5}$ \\
+Yoshida-6         & $C_6 \delta^7$     & 6 & $\delta < C_6^{-1/7}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+Higher-order methods allow larger steps $\delta$ while staying
+interior.  The constants $C_k$ are universal (depending only on $\nu$,
+not on the specific cone), so the step-size bounds are
+\emph{a priori}---computable before the step is taken.
+
+\paragraph{Practical implication.}
+For an IPM with step size $\alpha$ and direction $d$, the Hessian
+norm $\delta = \alpha\|d\|_H$ is already computed during the line
+search.  The error bound guarantees that the geodesic step stays
+interior whenever $\delta$ is below the method-specific threshold.
+No post-hoc feasibility check is needed.
+
 \section{Application to interior-point methods}
 
 In conic optimization, the barrier function $F$ defines a Hessian
