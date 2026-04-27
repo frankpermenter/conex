@@ -422,6 +422,54 @@ TEST(ExpCone, InvertGradientRoundtrip) {
   EXPECT_LT(err, 1e-10);
 }
 
+TEST(ExpCone, LeapfrogVsVerlet) {
+  // Compare the (s,λ) leapfrog with the Störmer-Verlet reference.
+  ExpConeOps ops;
+  double w0[3] = {0.1, 1.0, 2.5};
+  double d[3] = {0.2, -0.1, 0.15};
+
+  printf("\n=== Leapfrog vs Verlet vs Bregman ===\n");
+  printf("  %6s  %12s  %12s  %12s\n",
+         "alpha", "||lf-vl||", "||br-vl||", "||euler-vl||");
+
+  for (int i = 1; i <= 8; ++i) {
+    double alpha = i * 0.1;
+    double geo[3] = {w0[0], w0[1], w0[2]};   // Verlet (reference)
+    double lf[3] = {w0[0], w0[1], w0[2]};    // leapfrog
+    double br[3] = {w0[0], w0[1], w0[2]};    // Bregman
+    double eu[3] = {w0[0]+alpha*d[0], w0[1]+alpha*d[1], w0[2]+alpha*d[2]};
+
+    ops.geodesicStep(geo, alpha, d);
+    ops.leapfrogStep(lf, alpha, d);
+    ops.bregmanMidpointStep(br, alpha, d);
+
+    auto dist = [](const double* a, const double* b) {
+      return std::sqrt((a[0]-b[0])*(a[0]-b[0]) + (a[1]-b[1])*(a[1]-b[1])
+                     + (a[2]-b[2])*(a[2]-b[2]));
+    };
+    printf("  %6.2f  %12.4e  %12.4e  %12.4e\n",
+           alpha, dist(lf, geo), dist(br, geo), dist(eu, geo));
+  }
+
+  // At small alpha, leapfrog should be close to Verlet.
+  double alpha = 0.1;
+  double geo[3] = {w0[0], w0[1], w0[2]};
+  double lf[3] = {w0[0], w0[1], w0[2]};
+  ops.geodesicStep(geo, alpha, d);
+  ops.leapfrogStep(lf, alpha, d);
+  double err = std::sqrt((lf[0]-geo[0])*(lf[0]-geo[0])
+                       + (lf[1]-geo[1])*(lf[1]-geo[1])
+                       + (lf[2]-geo[2])*(lf[2]-geo[2]));
+  printf("  Leapfrog vs Verlet at alpha=0.1: %.2e\n", err);
+  EXPECT_LT(err, 1e-3) << "Leapfrog should be close to Verlet";
+
+  // Leapfrog should stay interior.
+  double lf2[3] = {w0[0], w0[1], w0[2]};
+  ops.leapfrogStep(lf2, 0.8, d);
+  EXPECT_GT(lf2[1], 0) << "y should be positive";
+  EXPECT_GT(lf2[2] - lf2[1]*std::exp(lf2[0]/lf2[1]), 0) << "should be interior";
+}
+
 // =====================================================================
 // Prototype geodesic IPM for the exponential cone.
 //

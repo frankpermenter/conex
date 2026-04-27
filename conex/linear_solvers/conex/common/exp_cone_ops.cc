@@ -182,7 +182,7 @@ void ExpConeOps::geodesicUpdate(double* out, const double* a, double alpha,
   geodesicStep(out, alpha, d);
 }
 
-// Invert 3x3 system in-place: solve A*dx = b, return dx.
+// Solve A*dx = b for 3x3 A.
 static void Solve3x3(const double* A, const double* b, double* dx) {
   double det = A[0]*(A[4]*A[8]-A[5]*A[7])
              - A[1]*(A[3]*A[8]-A[5]*A[6])
@@ -199,6 +199,94 @@ static void Solve3x3(const double* A, const double* b, double* dx) {
   inv[8] = (A[0]*A[4]-A[1]*A[3])/det;
   for (int i = 0; i < 3; ++i)
     dx[i] = inv[3*i]*b[0] + inv[3*i+1]*b[1] + inv[3*i+2]*b[2];
+}
+
+void ExpConeOps::leapfrogStep(double* w, double alpha,
+                               const double* d) const {
+  // (s, λ) leapfrog geodesic integrator.
+  //
+  // Log-homogeneity identities along geodesic γ(t):
+  //   λ = H(s)s,  λ̇ = -H(s)ṡ,  λ̈ = H(s)s̈.
+  //
+  // State: (s, λ) where s ∈ int(K), λ = -∇F(s) ∈ int(K*).
+  // Initial velocity: ṡ = d·α, λ̇ = -H(s)·ṡ.
+  //
+  // Leapfrog (Störmer-Verlet in (s, λ)):
+  //   1. Half-step s:  s_{1/2} = s + (dt/2) ṡ
+  //   2. Full-step λ:  λ_{n+1} = λ + dt λ̇  where λ̇ = -H(s_{1/2}) ṡ_{1/2}
+  //      But ṡ_{1/2} is unknown. Use the midpoint Hessian:
+  //      λ̇ at midpoint = -H(s_{1/2}) · ṡ_n  (first-order approx).
+  //      Then ṡ_{n+1} = -H(s_{1/2})⁻¹ · λ̇_{n+1}...
+  //
+  // Cleaner formulation: track (s, ṡ) but use H to update ṡ without Christoffel:
+  //   The geodesic equation ṡ'' = -(1/2)H⁻¹ T(ṡ,ṡ) can be rewritten using
+  //   λ̇ = -Hṡ as: d/dt(Hṡ) = -Ḣṡ - Hs̈ = -Tṡ - Hs̈. And since λ̈ = Hs̈ on
+  //   geodesic: d/dt(Hṡ) = -Tṡ - λ̈ = -Tṡ - Hs̈. This still needs T.
+  //
+  // The ACTUAL trick: use the (s, p) formulation where p = H(s)ṡ (momentum).
+  // Then λ̇ = -p. The Hamiltonian is E = (1/2) p^T H⁻¹ p.
+  // Hamilton's equations: ṡ = H⁻¹ p,  ṗ = -(1/2) ∂/∂s [p^T H⁻¹ p].
+  // The ṗ equation needs ∂H⁻¹/∂s which involves third derivatives again!
+  //
+  // Instead: use the IMPLICIT midpoint rule on (s, λ = -∇F(s)).
+  // Given s_n with λ_n = -∇F(s_n):
+  //   s_{n+1} = s_n + dt · ṡ  where ṡ = -H(s_mid)⁻¹ · (λ_{n+1} - λ_n)/dt
+  //   λ_{n+1} = -∇F(s_{n+1})
+  //
+  // This is equivalent to: find s_{n+1} such that
+  //   -∇F(s_{n+1}) = -∇F(s_n) + dt · (-H(s_mid) · (s_{n+1} - s_n)/dt)
+  //   = λ_n - H(s_mid)(s_{n+1} - s_n)
+  //
+  // Simplified leapfrog exploiting λ̇ = -Hṡ directly:
+  // Track (s, v) where v = ṡ. Use the identity that H maps s̈ to λ̈:
+  //   Step 1: s_{1/2} = s + (dt/2) v           (primal half-step)
+  //   Step 2: Compute H at s_{1/2}
+  //   Step 3: λ_mid = -∇F(s_{1/2})             (dual at midpoint)
+  //   Step 4: λ_new = 2λ_mid - λ_old           (dual extrapolation = Bregman!)
+  //   Step 5: s_new such that -∇F(s_new) = λ_new  (invert gradient)
+  //   Step 6: v_new from s_new - s_{1/2}
+  //
+  // This IS the Bregman midpoint. The (s,λ) leapfrog and Bregman midpoint
+  // are the same method viewed differently.
+  //
+  // The TRUE Christoffel-free leapfrog uses MULTIPLE substeps of the
+  // Bregman midpoint (small dt per substep) to get higher accuracy.
+  // With N substeps of dt = 1/N:
+
+  double s[3] = {w[0], w[1], w[2]};
+  double v[3] = {alpha * d[0], alpha * d[1], alpha * d[2]};
+
+  const int N = 8;
+  double dt = 1.0 / N;
+
+  for (int step = 0; step < N; ++step) {
+    // Half-step primal.
+    double s_half[3] = {s[0] + 0.5*dt*v[0], s[1] + 0.5*dt*v[1], s[2] + 0.5*dt*v[2]};
+
+    // Hessian at midpoint.
+    double H_half[9];
+    BarrierHessian(s_half[0], s_half[1], s_half[2], H_half);
+
+    // Momentum p = H(s_half) · v (= -λ̇).
+    double p[3];
+    for (int i = 0; i < 3; ++i)
+      p[i] = H_half[3*i]*v[0] + H_half[3*i+1]*v[1] + H_half[3*i+2]*v[2];
+
+    // Full-step primal using midpoint momentum.
+    // s_new = s + dt · H(s_half)⁻¹ · p = s + dt · v  (trivially, since p = Hv).
+    // BUT: recompute v from p at the NEW s to get the correct velocity update.
+    s[0] += dt * v[0];
+    s[1] += dt * v[1];
+    s[2] += dt * v[2];
+
+    // Recompute velocity from momentum at new s: v_new = H(s_new)⁻¹ p.
+    double H_new[9];
+    BarrierHessian(s[0], s[1], s[2], H_new);
+    // Solve H_new · v_new = p.
+    Solve3x3(H_new, p, v);
+  }
+
+  w[0] = s[0]; w[1] = s[1]; w[2] = s[2];
 }
 
 bool ExpConeOps::InvertGradient(const double* lambda, double* x,

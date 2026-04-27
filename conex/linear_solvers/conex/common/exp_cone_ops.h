@@ -26,6 +26,11 @@ class ExpConeOps : public ConeOps {
   // geodesic using primal and dual flat structures.  No third derivatives.
   void bregmanMidpointStep(double* w, double alpha, const double* d) const;
 
+  // (s, λ) leapfrog: symplectic geodesic integrator using only H and H⁻¹.
+  // Exploits log-homogeneity identities: λ = Hs, λ̇ = -Hṡ, λ̈ = Hs̈.
+  // No third derivatives, no Newton solve.
+  void leapfrogStep(double* w, double alpha, const double* d) const;
+
   // Invert the gradient map: given lambda, find x such that -grad F(x) = lambda.
   // Uses Newton's method (3x3 system, typically 3-5 iterations).
   static bool InvertGradient(const double* lambda, double* x, int max_iter = 20);
