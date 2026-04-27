@@ -523,6 +523,85 @@ TEST(ExpCone, ConsistencyErrorEstimate) {
 // Line search: largest k with ||d(k)||_{∇²F(w)} ≤ 1.
 // Geodesic step via Bregman midpoint.
 
+// Fine-grid pure Verlet reference (no primal-dual reconciliation).
+// Uses ThirdDerivContract + BarrierHessian directly.
+static void fineGridGeodesic(const double* w0, double alpha, const double* d,
+                              double* out, int fine_steps = 1000) {
+  double pos[3] = {w0[0], w0[1], w0[2]};
+  double vel[3] = {alpha*d[0], alpha*d[1], alpha*d[2]};
+  double dt = 1.0 / fine_steps;
+  for (int step = 0; step < fine_steps; ++step) {
+    for (int half = 0; half < 2; ++half) {
+      double H[9], T[3];
+      ExpConeOps::BarrierHessian(pos[0], pos[1], pos[2], H);
+      ExpConeOps::ThirdDerivContract(pos[0], pos[1], pos[2], vel, T);
+      // a = -(1/2) H⁻¹ T
+      double det = H[0]*(H[4]*H[8]-H[5]*H[7])
+                 - H[1]*(H[3]*H[8]-H[5]*H[6])
+                 + H[2]*(H[3]*H[7]-H[4]*H[6]);
+      double inv[9];
+      inv[0]=(H[4]*H[8]-H[5]*H[7])/det; inv[1]=(H[2]*H[7]-H[1]*H[8])/det;
+      inv[2]=(H[1]*H[5]-H[2]*H[4])/det; inv[3]=(H[5]*H[6]-H[3]*H[8])/det;
+      inv[4]=(H[0]*H[8]-H[2]*H[6])/det; inv[5]=(H[2]*H[3]-H[0]*H[5])/det;
+      inv[6]=(H[3]*H[7]-H[4]*H[6])/det; inv[7]=(H[1]*H[6]-H[0]*H[7])/det;
+      inv[8]=(H[0]*H[4]-H[1]*H[3])/det;
+      double a[3];
+      for (int k = 0; k < 3; ++k)
+        a[k] = -0.5*(inv[3*k]*T[0]+inv[3*k+1]*T[1]+inv[3*k+2]*T[2]);
+      for (int k = 0; k < 3; ++k) vel[k] += 0.5 * dt * a[k];
+      if (half == 0)
+        for (int k = 0; k < 3; ++k) pos[k] += dt * vel[k];
+    }
+  }
+  out[0] = pos[0]; out[1] = pos[1]; out[2] = pos[2];
+}
+
+TEST(ExpCone, AccuracyVsFineGrid) {
+  ExpConeOps ops;
+  double w0[3] = {0.1, 1.0, 2.5};
+  double d[3] = {0.2, -0.1, 0.15};
+  auto dist = [](const double* a, const double* b) {
+    return std::sqrt((a[0]-b[0])*(a[0]-b[0])+(a[1]-b[1])*(a[1]-b[1])
+                   +(a[2]-b[2])*(a[2]-b[2]));
+  };
+
+  printf("\n=== All integrators vs 1000-step pure Verlet reference ===\n");
+  printf("  %6s  %12s  %12s  %12s  %12s\n",
+         "alpha", "pd_verlet", "bregman", "leapfrog", "euler");
+  for (int i = 1; i <= 8; ++i) {
+    double alpha = i * 0.1;
+    double ref[3]; fineGridGeodesic(w0, alpha, d, ref);
+    double pdv[3]={w0[0],w0[1],w0[2]};
+    double br[3]={w0[0],w0[1],w0[2]};
+    double lf[3]={w0[0],w0[1],w0[2]};
+    double eu[3]={w0[0]+alpha*d[0],w0[1]+alpha*d[1],w0[2]+alpha*d[2]};
+    ops.geodesicStep(pdv, alpha, d);
+    ops.bregmanMidpointStep(br, alpha, d);
+    ops.leapfrogStep(lf, alpha, d);
+    printf("  %6.2f  %12.4e  %12.4e  %12.4e  %12.4e\n",
+           alpha, dist(pdv,ref), dist(br,ref), dist(lf,ref), dist(eu,ref));
+  }
+  // Quantitative at alpha=0.1.
+  double ref[3]; fineGridGeodesic(w0, 0.1, d, ref);
+  double pdv[3]={w0[0],w0[1],w0[2]};
+  double br[3]={w0[0],w0[1],w0[2]};
+  double lf[3]={w0[0],w0[1],w0[2]};
+  double eu[3]={w0[0]+0.1*d[0],w0[1]+0.1*d[1],w0[2]+0.1*d[2]};
+  ops.geodesicStep(pdv, 0.1, d);
+  ops.bregmanMidpointStep(br, 0.1, d);
+  ops.leapfrogStep(lf, 0.1, d);
+  printf("\n  At alpha=0.1 vs 1000-step reference:\n");
+  printf("    primal-dual Verlet: %.2e  (%.0fx vs euler)\n",
+         dist(pdv,ref), dist(eu,ref)/std::max(dist(pdv,ref),1e-30));
+  printf("    Bregman midpoint:   %.2e  (%.0fx vs euler)\n",
+         dist(br,ref), dist(eu,ref)/std::max(dist(br,ref),1e-30));
+  printf("    leapfrog:           %.2e  (%.0fx vs euler)\n",
+         dist(lf,ref), dist(eu,ref)/std::max(dist(lf,ref),1e-30));
+  printf("    Euler:              %.2e  (baseline)\n", dist(eu,ref));
+  EXPECT_LT(dist(pdv,ref), dist(eu,ref));
+  EXPECT_LT(dist(br,ref), dist(eu,ref));
+}
+
 TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
   using Eigen::Matrix;
   using Eigen::Vector2d;
