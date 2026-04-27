@@ -256,34 +256,56 @@ void ExpConeOps::leapfrogStep(double* w, double alpha,
   double s[3] = {w[0], w[1], w[2]};
   double v[3] = {alpha * d[0], alpha * d[1], alpha * d[2]};
 
+  // Compute λ = H(s)·s at start (from log-homogeneity: λ = -∇F(s) = H(s)s).
+  double H[9];
+  BarrierHessian(s[0], s[1], s[2], H);
+  double lam[3];
+  for (int i = 0; i < 3; ++i)
+    lam[i] = H[3*i]*s[0] + H[3*i+1]*s[1] + H[3*i+2]*s[2];
+
   const int N = 8;
   double dt = 1.0 / N;
 
   for (int step = 0; step < N; ++step) {
-    // Half-step primal.
-    double s_half[3] = {s[0] + 0.5*dt*v[0], s[1] + 0.5*dt*v[1], s[2] + 0.5*dt*v[2]};
+    // Half-step s.
+    double s_half[3] = {s[0]+0.5*dt*v[0], s[1]+0.5*dt*v[1], s[2]+0.5*dt*v[2]};
 
-    // Hessian at midpoint.
+    // λ at midpoint (exact from identity).
     double H_half[9];
     BarrierHessian(s_half[0], s_half[1], s_half[2], H_half);
-
-    // Momentum p = H(s_half) · v (= -λ̇).
-    double p[3];
+    double lam_half[3];
     for (int i = 0; i < 3; ++i)
-      p[i] = H_half[3*i]*v[0] + H_half[3*i+1]*v[1] + H_half[3*i+2]*v[2];
+      lam_half[i] = H_half[3*i]*s_half[0] + H_half[3*i+1]*s_half[1] + H_half[3*i+2]*s_half[2];
 
-    // Full-step primal using midpoint momentum.
-    // s_new = s + dt · H(s_half)⁻¹ · p = s + dt · v  (trivially, since p = Hv).
-    // BUT: recompute v from p at the NEW s to get the correct velocity update.
-    s[0] += dt * v[0];
-    s[1] += dt * v[1];
-    s[2] += dt * v[2];
+    // Midpoint velocity from λ change: ṡ = -H⁻¹ · λ̇ ≈ -H⁻¹ · (λ_half - λ)/(dt/2).
+    double dlam[3] = {(lam_half[0]-lam[0])/(0.5*dt),
+                      (lam_half[1]-lam[1])/(0.5*dt),
+                      (lam_half[2]-lam[2])/(0.5*dt)};
+    double neg_dlam[3] = {-dlam[0], -dlam[1], -dlam[2]};
+    double v_mid[3];
+    Solve3x3(H_half, neg_dlam, v_mid);
 
-    // Recompute velocity from momentum at new s: v_new = H(s_new)⁻¹ p.
+    // Full-step s using midpoint velocity.
+    s[0] += dt * v_mid[0];
+    s[1] += dt * v_mid[1];
+    s[2] += dt * v_mid[2];
+
+    // λ at new s (exact from identity).
     double H_new[9];
     BarrierHessian(s[0], s[1], s[2], H_new);
-    // Solve H_new · v_new = p.
-    Solve3x3(H_new, p, v);
+    double lam_new[3];
+    for (int i = 0; i < 3; ++i)
+      lam_new[i] = H_new[3*i]*s[0] + H_new[3*i+1]*s[1] + H_new[3*i+2]*s[2];
+
+    // Update velocity from λ change over second half-step.
+    double dlam2[3] = {(lam_new[0]-lam_half[0])/(0.5*dt),
+                       (lam_new[1]-lam_half[1])/(0.5*dt),
+                       (lam_new[2]-lam_half[2])/(0.5*dt)};
+    double neg_dlam2[3] = {-dlam2[0], -dlam2[1], -dlam2[2]};
+    Solve3x3(H_new, neg_dlam2, v);
+
+    // Update λ for next step.
+    lam[0] = lam_new[0]; lam[1] = lam_new[1]; lam[2] = lam_new[2];
   }
 
   w[0] = s[0]; w[1] = s[1]; w[2] = s[2];
