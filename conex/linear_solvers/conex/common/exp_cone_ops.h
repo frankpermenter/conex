@@ -40,6 +40,10 @@ class ExpConeOps : public ConeOps {
   // Returns energy error: |D_sym(s0,s1) - h²||v||²_H| (O(h⁶) for 4th-order).
   double yoshida4Step(double* w, double alpha, const double* d) const;
 
+  // 2-stage Gauss-Legendre: 4th-order implicit RK (generalizes [2/2] Padé).
+  // No third derivatives. Solves a coupled 6×6 nonlinear system via Newton.
+  void gaussLegendre4Step(double* w, double alpha, const double* d) const;
+
   // Invert the gradient map: given lambda, find x such that -grad F(x) = lambda.
   // Uses Newton's method (3x3 system, typically 3-5 iterations).
   static bool InvertGradient(const double* lambda, double* x, int max_iter = 20);

@@ -598,35 +598,39 @@ TEST(ExpCone, AccuracyVsFineGrid) {
   };
 
   printf("\n=== All integrators vs 1000-step pure Verlet reference ===\n");
-  printf("  %6s  %12s  %12s  %12s  %12s  %12s  %12s\n",
-         "alpha", "pd_verlet8", "verlet8", "yoshida4", "bregman", "leapfrog", "euler");
+  printf("  %6s  %12s  %12s  %12s  %12s  %12s  %12s  %12s\n",
+         "alpha", "pd_verlet8", "verlet8", "yoshida4", "GL4", "bregman", "leapfrog", "euler");
   for (int i = 1; i <= 8; ++i) {
     double alpha = i * 0.1;
     double ref[3]; fineGridGeodesic(w0, alpha, d, ref);
     double pdv[3]={w0[0],w0[1],w0[2]};
     double v8[3]; fineGridGeodesic(w0, alpha, d, v8, 8);
     double yo[3]={w0[0],w0[1],w0[2]};
+    double gl[3]={w0[0],w0[1],w0[2]};
     double br[3]={w0[0],w0[1],w0[2]};
     double lf[3]={w0[0],w0[1],w0[2]};
     double eu[3]={w0[0]+alpha*d[0],w0[1]+alpha*d[1],w0[2]+alpha*d[2]};
     ops.geodesicStep(pdv, alpha, d);
     ops.yoshida4Step(yo, alpha, d);
+    ops.gaussLegendre4Step(gl, alpha, d);
     ops.bregmanMidpointStep(br, alpha, d);
     ops.leapfrogStep(lf, alpha, d);
-    printf("  %6.2f  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e\n",
-           alpha, dist(pdv,ref), dist(v8,ref), dist(yo,ref), dist(br,ref),
-           dist(lf,ref), dist(eu,ref));
+    printf("  %6.2f  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e\n",
+           alpha, dist(pdv,ref), dist(v8,ref), dist(yo,ref), dist(gl,ref),
+           dist(br,ref), dist(lf,ref), dist(eu,ref));
   }
   // Quantitative at alpha=0.1.
   double ref[3]; fineGridGeodesic(w0, 0.1, d, ref);
   double pdv[3]={w0[0],w0[1],w0[2]};
   double v8[3]; fineGridGeodesic(w0, 0.1, d, v8, 8);
   double yo[3]={w0[0],w0[1],w0[2]};
+  double gl[3]={w0[0],w0[1],w0[2]};
   double br[3]={w0[0],w0[1],w0[2]};
   double lf[3]={w0[0],w0[1],w0[2]};
   double eu[3]={w0[0]+0.1*d[0],w0[1]+0.1*d[1],w0[2]+0.1*d[2]};
   ops.geodesicStep(pdv, 0.1, d);
   ops.yoshida4Step(yo, 0.1, d);
+  ops.gaussLegendre4Step(gl, 0.1, d);
   ops.bregmanMidpointStep(br, 0.1, d);
   ops.leapfrogStep(lf, 0.1, d);
   printf("\n  At alpha=0.1 vs 1000-step reference:\n");
@@ -636,6 +640,8 @@ TEST(ExpCone, AccuracyVsFineGrid) {
          dist(v8,ref), dist(eu,ref)/std::max(dist(v8,ref),1e-30));
   printf("    Yoshida-4 Bregman:  %.2e  (%.0fx vs euler)\n",
          dist(yo,ref), dist(eu,ref)/std::max(dist(yo,ref),1e-30));
+  printf("    Gauss-Legendre 4:   %.2e  (%.0fx vs euler)\n",
+         dist(gl,ref), dist(eu,ref)/std::max(dist(gl,ref),1e-30));
   printf("    Bregman midpoint:   %.2e  (%.0fx vs euler)\n",
          dist(br,ref), dist(eu,ref)/std::max(dist(br,ref),1e-30));
   printf("    leapfrog:           %.2e  (%.0fx vs euler)\n",
