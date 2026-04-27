@@ -646,6 +646,27 @@ TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
     double d_norm = std::sqrt(std::max(d_sqr, 0.0));
     double mu = (k_new > 0) ? 1.0/(k_new*k_new) : 1.0;
 
+    // Compute duality gap from Newton primal-dual pair BEFORE stepping.
+    // λ_old = -(1/k²)∇F(s), δλ = -(1/k²)H·A·δx.
+    // λ_new = λ_old + δλ satisfies A^T λ_new = c exactly.
+    // s_new = s + δs where δs = A·δx (first order).
+    // Gap = <s + δs, λ + δλ> ≈ <s, λ> + <δs, λ> + <s, δλ> + <δs, δλ>.
+    // Use first-order: <s + A·δx, λ_new>.
+    double k2 = k_new * k_new;
+    Vector2d dx_k = y1 + (1.0/k_new) * y0;
+    Vector3d lam_old = -(1.0/k2) * gw;
+    Vector3d dlam = -(1.0/k2) * (Hw * (A * dx_k));
+    Vector3d lam_new = lam_old + dlam;
+    Vector3d ds_lin = A * dx_k;
+    Vector3d s_lin = s + ds_lin;  // first-order new primal
+    double gap = s_lin.dot(lam_new);
+    double dual_res = (A.transpose() * lam_new - c).norm();
+
+    printf("  %3d  %12.4e  %12.4e  %10.4f  %10.2e  %10.2e  %10.4f\n",
+           factorizations, k_prev, k_new, d_norm, gap, dual_res, c.dot(x));
+
+    if (gap < 1e-6 && gap > 0) break;
+
     // Geodesic step on s.
     double alpha = 1.0 / (1.0 + d_norm);
     double s_arr[3] = {s(0), s(1), s(2)};
@@ -664,25 +685,6 @@ TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
         }
       }
     }
-
-    // Compute duality gap from the actual new primal-dual pair.
-    // s_new ∈ K (primal feasible by geodesic/line search).
-    // λ_new = -(1/k²)∇F(s_new) ∈ K* (dual from barrier gradient, scaled by μ).
-    // Gap = <s_new, λ_new> = -(1/k²)<s_new, ∇F(s_new)> = ν/k² by Euler.
-    // But compute it explicitly to verify.
-    Vector3d s_actual = A * x + b;
-    double g_new[3];
-    ExpConeOps::BarrierGrad(s_actual(0), s_actual(1), s_actual(2), g_new);
-    double k2 = k_new * k_new;
-    Vector3d lambda_new = -(1.0/k2) * Eigen::Map<Vector3d>(g_new);
-    double gap = s_actual.dot(lambda_new);
-    // Dual residual: ||A^T λ - c||.
-    double dual_res = (A.transpose() * lambda_new - c).norm();
-
-    printf("  %3d  %12.4e  %12.4e  %10.4f  %10.2e  %10.2e  %10.4f\n",
-           factorizations, k_prev, k_new, d_norm, gap, dual_res, c.dot(x));
-
-    if (gap < 1e-6) break;
 
     k_prev = k_new;
   }
@@ -857,6 +859,31 @@ TEST(ExpCone, GeodesicLP_ProductCone) {
     double d_norm = std::sqrt(std::max(d_sqr, 0.0));
     double mu = (k_new > 0) ? 1.0/(k_new*k_new) : 1.0;
 
+    // Compute duality gap BEFORE stepping, using Newton primal-dual pair.
+    // λᵢ_old = -(1/k²)∇Fᵢ(sᵢ), δλᵢ = -(1/k²)Hᵢ·Aᵢ·δx.
+    // λᵢ_new = λᵢ_old + δλᵢ. A^T Σ λᵢ_new = c exactly.
+    // sᵢ_new = sᵢ + Aᵢ·δx (first order).
+    double k2 = k_new * k_new;
+    VectorXd dx_k = y1 + (1.0/k_new) * y0;
+    double gap = 0;
+    VectorXd At_lam = VectorXd::Zero(p);
+    for (int i = 0; i < m; ++i) {
+      double gi[3];
+      ExpConeOps::BarrierGrad(slacks[i](0), slacks[i](1), slacks[i](2), gi);
+      Vector3d lam_old_i = -(1.0/k2) * Eigen::Map<Vector3d>(gi);
+      Vector3d dlam_i = -(1.0/k2) * (hessians[i] * (cones[i].A * dx_k));
+      Vector3d lam_new_i = lam_old_i + dlam_i;
+      Vector3d si_new = slacks[i] + cones[i].A * dx_k;
+      gap += si_new.dot(lam_new_i);
+      At_lam += cones[i].A.transpose() * lam_new_i;
+    }
+    double dual_res = (At_lam - c).norm();
+
+    printf("  %3d  %12.4e  %12.4e  %10.4f  %10.2e  %10.2e  %10.4f\n",
+           factorizations, k_prev, k_new, d_norm, gap, dual_res, c.dot(x));
+
+    if (gap < 1e-6 && gap > 0) break;
+
     // Geodesic step: component-wise on each cone.
     std::vector<Vector3d> s_new(m);
     for (int i = 0; i < m; ++i) {
@@ -888,26 +915,6 @@ TEST(ExpCone, GeodesicLP_ProductCone) {
         if (all_interior(x_try)) { x = x_try; break; }
       }
     }
-
-    // Compute duality gap from actual primal-dual pair.
-    // sᵢ_new ∈ K_exp, λᵢ_new = -(1/k²)∇Fᵢ(sᵢ_new) ∈ K*_exp.
-    // Gap = Σᵢ <sᵢ, λᵢ>.
-    double gap = 0, dual_res_sq = 0;
-    VectorXd At_lam = VectorXd::Zero(p);
-    for (int i = 0; i < m; ++i) {
-      Vector3d si = cones[i].A * x + cones[i].b;
-      double gi[3];
-      ExpConeOps::BarrierGrad(si(0), si(1), si(2), gi);
-      Vector3d lami = -(1.0/(k_new*k_new)) * Eigen::Map<Vector3d>(gi);
-      gap += si.dot(lami);
-      At_lam += cones[i].A.transpose() * lami;
-    }
-    double dual_res = (At_lam - c).norm();
-
-    printf("  %3d  %12.4e  %12.4e  %10.4f  %10.2e  %10.2e  %10.4f\n",
-           factorizations, k_prev, k_new, d_norm, gap, dual_res, c.dot(x));
-
-    if (gap < 1e-6) break;
 
     k_prev = k_new;
   }
