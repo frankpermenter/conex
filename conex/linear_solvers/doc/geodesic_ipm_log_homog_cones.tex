@@ -455,4 +455,195 @@ per step and duality gap decreasing $\sim$100$\times$ per step.  The dual
 residual $\|A^\top \lambda - c\|$ is $\sim 10^{-16}$ (machine zero) at each
 iteration.
 
+\section{Connection splitting and the Bregman midpoint}
+\label{sec:splitting}
+
+The Bregman midpoint's second-order accuracy has a precise explanation
+in terms of connection splitting on Hessian manifolds.  The same
+algebraic structure appears in Hamiltonian mechanics as symplectic
+splitting, providing a unified view of both settings.
+
+\subsection{Three connections on a Hessian manifold}
+
+A Hessian manifold $(\operatorname{int}(K), g = \nabla^2 F)$ carries a
+one-parameter family of connections $\nabla^{(\alpha)}$, $\alpha \in [-1, 1]$:
+\begin{itemize}
+  \item $\nabla^{(1)} = \nabla$: the \emph{primal flat connection} (e-connection).
+    Geodesics are straight lines in the primal coordinates $s$.
+  \item $\nabla^{(-1)} = \nabla^*$: the \emph{dual flat connection} (m-connection).
+    Geodesics are straight lines in the dual coordinates $\lambda = -\nabla F(s)$.
+  \item $\nabla^{(0)} = \nabla^{LC}$: the \emph{Levi-Civita connection}
+    (Riemannian, metric-compatible, torsion-free).
+\end{itemize}
+The family interpolates linearly in the Christoffel symbols:
+\begin{equation}\label{eq:alpha-connection}
+  \Gamma^{(\alpha)}_{ijk} = \frac{1+\alpha}{2} \Gamma^{(1)}_{ijk}
+    + \frac{1-\alpha}{2} \Gamma^{(-1)}_{ijk}.
+\end{equation}
+At $\alpha = 0$: $\Gamma^{LC} = (\Gamma^{(1)} + \Gamma^{(-1)})/2$.
+In primal coordinates $\Gamma^{(1)} = 0$ (primal-flat), so
+\begin{equation}\label{eq:lc-half-dual}
+  \Gamma^{LC}_{ijk} = \tfrac{1}{2} \Gamma^{(-1)}_{ijk}
+    = \tfrac{1}{4} F_{ijk}.
+\end{equation}
+The Levi-Civita Christoffel symbols are \emph{half} the dual connection's
+Christoffel symbols in primal coordinates.
+
+\subsection{Splitting and the BCH formula}
+
+Consider two flows on the manifold:
+\begin{itemize}
+  \item $\Phi^{(1)}_t$: the flow of the $\nabla$-geodesic equation (straight
+    line in primal coordinates: $s \mapsto s + t \cdot v$).
+  \item $\Phi^{(-1)}_t$: the flow of the $\nabla^*$-geodesic equation
+    (straight line in dual coordinates: $\lambda \mapsto \lambda + t \cdot w$,
+    pulled back to primal via $(-\nabla F)^{-1}$).
+\end{itemize}
+Neither flow preserves the Riemannian distance (they are flat, not
+metric-compatible).  But their \emph{symmetric composition}
+\begin{equation}\label{eq:strang}
+  \Psi_t = \Phi^{(1)}_{t/2} \circ \Phi^{(-1)}_t \circ \Phi^{(1)}_{t/2}
+\end{equation}
+approximates the Levi-Civita geodesic flow $\Phi^{LC}_t$ to second order:
+\begin{equation}\label{eq:bch}
+  \Psi_t = \Phi^{LC}_t + O(t^3).
+\end{equation}
+This follows from the Baker--Campbell--Hausdorff (BCH) formula for the
+composition of flows.  If $X$ and $Y$ are the vector fields generating
+$\Phi^{(1)}$ and $\Phi^{(-1)}$, then the generator of $\Psi$ is
+\[
+  Z = \frac{X + Y}{2} + \frac{t^2}{12}[X, [X, Y]] + \cdots
+\]
+The leading term $(X+Y)/2$ is the generator of $\Phi^{LC}$ (since
+$\Gamma^{LC} = (\Gamma^{(1)} + \Gamma^{(-1)})/2$).  The error is
+$O(t^2)$ in the generator, giving $O(t^3)$ in the flow --- second-order
+accuracy.
+
+\paragraph{The Bregman midpoint as Strang splitting.}
+The Bregman midpoint method (Section~\ref{sec:bregman}) is precisely
+the composition~\eqref{eq:strang}:
+\begin{enumerate}
+  \item Half-step in primal flat: $s_{1/2} = s + \frac{t}{2} v$
+    \hfill ($\Phi^{(1)}_{t/2}$)
+  \item Full step in dual flat: $\lambda_1 = 2\lambda_{1/2} - \lambda_0$
+    \hfill ($\Phi^{(-1)}_t$)
+  \item Implicit half-step in primal: $s_1 = (-\nabla F)^{-1}(\lambda_1)$
+    \hfill ($\Phi^{(1)}_{t/2}$ via pullback)
+\end{enumerate}
+The Newton solve in step~3 is the cost of pulling the dual-flat step back
+to primal coordinates.  No Christoffel symbols (third derivatives) are
+needed because each individual flow is flat.
+
+\subsection{Analogy with Hamiltonian mechanics}
+
+The same splitting structure appears in Hamiltonian mechanics.
+
+\paragraph{Separable Hamiltonians.}
+For $H(q, p) = T(p) + V(q)$ (kinetic + potential), the St\"ormer--Verlet
+method is the Strang splitting of the kinetic and potential flows:
+\[
+  \Psi_t = \Phi^V_{t/2} \circ \Phi^T_t \circ \Phi^V_{t/2}.
+\]
+Each sub-flow is exact: $\Phi^T$ moves $q$ (straight line at constant $p$),
+$\Phi^V$ moves $p$ (impulse at constant $q$).  The composition is
+symplectic and second-order.  This is the direct analogue of the
+Bregman midpoint, with:
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Hamiltonian mechanics} & \textbf{Hessian manifold} \\
+\midrule
+Position $q$ & Primal coordinate $s$ \\
+Momentum $p$ & Dual coordinate $\lambda = -\nabla F(s)$ \\
+Kinetic flow $\Phi^T$ (moves $q$) & Primal flat flow $\Phi^{(1)}$ (moves $s$) \\
+Potential flow $\Phi^V$ (moves $p$) & Dual flat flow $\Phi^{(-1)}$ (moves $\lambda$) \\
+Legendre transform $p = \partial L / \partial \dot{q}$ & Gradient map $\lambda = -\nabla F(s)$ \\
+$H = T + V$ separable & $\nabla^{LC} = (\nabla + \nabla^*)/2$ \\
+Verlet = Strang splitting & Bregman midpoint = Strang splitting \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Non-separable Hamiltonians.}
+The geodesic Hamiltonian on a Hessian manifold is
+$\mathcal{H}(s, p) = \frac{1}{2} p^\top [\nabla^2 F(s)]^{-1} p$,
+which is \emph{non-separable} (the ``kinetic energy'' depends on $s$
+through the metric).  For non-separable Hamiltonians, the standard
+Verlet is no longer symplectic or second-order.
+
+The Bregman midpoint sidesteps this by working in the \emph{connection}
+picture rather than the \emph{Hamiltonian} picture.  It splits
+$\nabla^{LC}$ into $\nabla$ and $\nabla^*$ (which are individually flat
+and thus trivially integrable), rather than splitting $\mathcal{H}$ into
+$T$ and $V$ (which is impossible for non-separable systems).
+
+\paragraph{Summary.}
+The Bregman midpoint is the natural generalization of symplectic
+Verlet from separable Hamiltonians to non-symmetric Hessian manifolds.
+Both are Strang splittings of a symmetric decomposition:
+$H = T + V$ for mechanics, $\nabla^{LC} = (\nabla + \nabla^*)/2$ for
+geometry.  Both achieve second-order accuracy without computing the
+full dynamics (Christoffel symbols or force gradients) --- they compose
+exact sub-flows whose generators sum to the desired generator.
+
+\section{Primal-dual Verlet: generalized Pad\'e approximant}
+\label{sec:pd-verlet}
+
+The Bregman midpoint avoids third derivatives but is limited to second
+order.  The St\"ormer--Verlet uses third derivatives and achieves higher
+accuracy.  The \emph{primal-dual Verlet} combines both:
+
+\begin{enumerate}
+  \item Integrate the \textbf{primal geodesic} $(s, \dot{s})$ via
+    St\"ormer--Verlet using $\ddot{s} = -\frac{1}{2} H^{-1} T(\dot{s}, \dot{s})$.
+  \item Simultaneously integrate the \textbf{dual geodesic} $(\lambda, \dot{\lambda})$
+    using $\ddot{\lambda} = -\frac{1}{2} T(\dot{s}, \dot{s})$.
+    This reuses the \emph{same} $T$ --- no extra derivative evaluations.
+  \item After integration, reconcile via the \textbf{geodesic mean}:
+    \[
+      \bar{\lambda} = \tfrac{1}{2}\bigl(\underbrace{\nabla^2 F(s_{\text{new}}) \cdot s_{\text{new}}}_{\text{primal-derived}} + \underbrace{\lambda_{\text{dual}}}_{\text{independently integrated}}\bigr),
+    \]
+    then recover $\bar{s} = (-\nabla F)^{-1}(\bar{\lambda})$.
+\end{enumerate}
+
+The primal and dual integration errors have \emph{opposite structure}:
+the primal uses $H^{-1} T$ (contracting with the inverse Hessian), the
+dual uses $T$ directly.  Averaging cancels the leading error terms ---
+the same mechanism as the Pad\'e approximant $\exp(M) \approx N(M)/D(M)$,
+where $N$ captures the forward Taylor series and $D$ the backward.
+
+\paragraph{Log-homogeneity identities.}
+The dual integration exploits the identities (valid along the geodesic):
+\begin{align}
+  \lambda &= \nabla^2 F(s) \cdot s, \label{eq:lam0} \\
+  \dot{\lambda} &= -\nabla^2 F(s) \cdot \dot{s}, \label{eq:lam1} \\
+  \ddot{\lambda} &= \nabla^2 F(s) \cdot \ddot{s}
+    = -\tfrac{1}{2} T(\dot{s}, \dot{s}). \label{eq:lam2}
+\end{align}
+Identity~\eqref{eq:lam0} is algebraic (from $\nabla^2 F(s) \cdot s = -\nabla F(s)$).
+Identity~\eqref{eq:lam1} is the chain rule.
+Identity~\eqref{eq:lam2} uses the geodesic equation to cancel Christoffel terms.
+The alternating sign pattern ($+H$, $-H$, $+H$) does \emph{not} continue
+to third order.
+
+\paragraph{Numerical results.}
+At step size $\alpha = 0.1$ with 8 substeps, measured against a
+1000-step pure Verlet reference:
+\begin{center}
+\begin{tabular}{@{}lrl@{}}
+\toprule
+\textbf{Integrator} & \textbf{Error} & \textbf{vs Euler} \\
+\midrule
+Primal-dual Verlet (8 steps) & $3.1 \times 10^{-8}$ & $7555\times$ \\
+Pure Verlet (8 steps)        & $3.3 \times 10^{-7}$ & $710\times$ \\
+Bregman midpoint             & $7.7 \times 10^{-7}$ & $303\times$ \\
+Euler                        & $2.3 \times 10^{-4}$ & $1\times$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+The geodesic mean reconciliation provides a $10.6\times$ improvement over
+pure Verlet at the same substep count, for essentially zero extra cost
+(6 additions per substep for the dual accumulation, plus one $3 \times 3$
+Newton solve at the end).
+
 \end{document}
