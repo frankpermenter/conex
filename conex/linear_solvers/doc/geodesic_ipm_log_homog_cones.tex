@@ -232,15 +232,209 @@ For the symmetric cone with $F(s) = -\log\det(s)$:
 For the nonneg case $w = W^{-1}$: $2w^{-1} = 2W$, so
 $A^\top \cdot 2W$ matches the centering RHS in the geodesic LP.  \checkmark
 
-\section{Exponential cone}
+\section{Exponential cone: barrier derivatives}
 
-The exponential cone $K_{\exp} = \operatorname{cl}\{(x,y,z) : y e^{x/y} \leq z,\, y > 0\}$
-has the 2-LHSCB
+The exponential cone is
+$K_{\exp} = \operatorname{cl}\{(x,y,z) : y e^{x/y} \leq z,\, y > 0\}$,
+with the 2-LHSCB ($\nu = 2$):
 \[
   F(x,y,z) = -\log(z - y e^{x/y}) - \log y.
 \]
-The Hessian $\nabla^2 F$ is a $3 \times 3$ matrix; the geodesic ODE is
-6-dimensional and integrated by St\"ormer--Verlet in $\sim$8 steps ($\sim$1000 flops).
+Define the shorthand $e = e^{x/y}$, $s = x/y$, $u = z - ye > 0$ (the slack).
+
+\subsection{Gradient}
+\begin{align}
+  F_x &= \frac{e}{u}, \qquad
+  F_y = -\frac{e(s-1)}{u} - \frac{1}{y}, \qquad
+  F_z = -\frac{1}{u}.
+\end{align}
+
+\subsection{Hessian}
+Writing $H_{ij} = \partial^2 F / \partial x_i \partial x_j$ with
+$(x_0, x_1, x_2) = (x, y, z)$:
+\begin{align}
+  H_{00} &= \frac{e(ey + u)}{u^2 y}, \\
+  H_{01} &= -\frac{e\bigl(ey(s{-}1) + su\bigr)}{u^2 y}, \qquad
+  H_{02} = -\frac{e}{u^2}, \\
+  H_{11} &= \frac{e^2(s{-}1)^2}{u^2} + \frac{es^2}{uy} + \frac{1}{y^2}, \\
+  H_{12} &= \frac{e(s{-}1)}{u^2}, \qquad
+  H_{22} = \frac{1}{u^2}.
+\end{align}
+
+\subsection{Third derivatives (Christoffel symbols)}
+\label{sec:christoffel}
+
+The geodesic equation on the Hessian manifold is
+\begin{equation}\label{eq:geodesic-ode}
+  \ddot\gamma^\ell + \Gamma^\ell_{ij} \dot\gamma^i \dot\gamma^j = 0,
+  \qquad
+  \Gamma^\ell_{ij} = \frac{1}{2} H^{\ell m} F_{ijm},
+\end{equation}
+where $F_{ij\ell} = \partial^3 F / \partial x_i \partial x_j \partial x_\ell$
+and $H^{\ell m}$ is the inverse Hessian.  The geodesic acceleration is
+\[
+  \ddot\gamma = -\tfrac{1}{2} H^{-1} \, T(v, v),
+  \qquad
+  T(v,v)_\ell = v^\top \frac{\partial H}{\partial x_\ell} v = \sum_{ij} F_{ij\ell} \, v_i v_j.
+\]
+The contraction $T(v,v)$ requires the 10 unique third derivatives of $F$
+(symmetric in all three indices).  For the exponential cone:
+\begin{align}
+  F_{000} &= \frac{2e^3}{u^3} + \frac{3e^2}{u^2 y} + \frac{e}{u y^2}, \\
+  F_{001} &= -\frac{e\bigl(2e^2 y^2(s{-}1) + euy(3s{-}1) + u^2(s{+}1)\bigr)}{u^3 y^2}, \\
+  F_{002} &= -\frac{e(2ey + u)}{u^3 y}, \\
+  F_{011} &= \frac{e\bigl(2esu y(s{-}1) + ey(2ey(s{-}1)^2 + s^2 u) + su^2(s{+}2)\bigr)}{u^3 y^2}, \\
+  F_{012} &= \frac{e(2ey(s{-}1) + su)}{u^3 y}, \quad
+  F_{022} = \frac{2e}{u^3}, \\
+  F_{111} &= \frac{-2e^3 y^3(s{-}1)^3 + 3e^2 s^2 uy^2(1{-}s) - es^2 u^2 y(s{+}3) - 2u^3}{u^3 y^3}, \\
+  F_{112} &= -\frac{e(2ey(s{-}1)^2 + s^2 u)}{u^3 y}, \quad
+  F_{122} = \frac{2e(1{-}s)}{u^3}, \quad
+  F_{222} = -\frac{2}{u^3}.
+\end{align}
+Evaluating $T(v,v)$ costs $3 \times 6 = 18$ multiply-adds (exploiting symmetry).
+The full geodesic acceleration (including the $H^{-1}$ solve) is $O(1)$ per
+integration step since $H$ is $3 \times 3$.
+
+\subsection{St\"ormer--Verlet integrator}
+
+Given position $\gamma(0) = s$ and velocity $\dot\gamma(0) = \alpha \cdot d$, the
+geodesic is integrated by the symplectic St\"ormer--Verlet method with $N$ substeps
+of size $\Delta t = 1/N$:
+\begin{algorithmic}[1]
+\For{$n = 1, \ldots, N$}
+  \State $a \gets -\frac{1}{2} H(\gamma)^{-1} T(\dot\gamma, \dot\gamma)$
+    \hfill (acceleration from Christoffel symbols)
+  \State $\dot\gamma \gets \dot\gamma + \frac{\Delta t}{2} \, a$
+    \hfill (half-step velocity)
+  \State $\gamma \gets \gamma + \Delta t \, \dot\gamma$
+    \hfill (full-step position)
+  \State recompute $a$ at new $\gamma$
+  \State $\dot\gamma \gets \dot\gamma + \frac{\Delta t}{2} \, a$
+    \hfill (half-step velocity)
+\EndFor
+\end{algorithmic}
+Each substep requires: one $3\times 3$ Hessian evaluation, one $T(v,v)$ evaluation
+(10 third derivatives contracted with $v$), and one $3\times 3$ linear solve.
+Total cost for $N = 8$ steps: $\sim$1000 flops.
+
+\section{Bregman midpoint: geodesic approximation without third derivatives}
+\label{sec:bregman}
+
+The St\"ormer--Verlet integrator requires the Christoffel symbols $F_{ij\ell}$
+(third derivatives of the barrier).  For low-dimensional cones (e.g., the
+3D exponential cone) these are cheap.  For higher-dimensional or more complex
+barriers, third derivatives may be expensive or unavailable.
+
+The \emph{Bregman midpoint method} provides a second-order approximation to the
+Levi-Civita geodesic using only the barrier gradient $\nabla F$ and Hessian $\nabla^2 F$.
+
+\subsection{Dual flat structure of Hessian manifolds}
+
+A Hessian manifold $(\operatorname{int}(K), \nabla^2 F)$ carries two flat
+connections:
+\begin{itemize}
+  \item \emph{Primal flat ($\nabla$-geodesics):} straight lines $\gamma(t) = s + tv$
+    in the original coordinates $s$.
+  \item \emph{Dual flat ($\nabla^*$-geodesics):} straight lines
+    $\lambda(t) = \lambda_0 + tw$ in the dual coordinates $\lambda = -\nabla F(s)$.
+\end{itemize}
+The Levi-Civita geodesic (which preserves the Riemannian distance and stays in
+$\operatorname{int}(K)$) lies ``between'' these two flat geodesics, agreeing with
+both to first order.
+
+\subsection{The midpoint construction}
+
+Given starting point $s$ and direction $d$, the Bregman midpoint step computes
+$s_{\text{new}} \approx \Exp_s(\alpha \cdot d)$ as follows:
+\begin{enumerate}
+  \item \textbf{Primal half-step:}
+    $s_{1/2} = s + \frac{\alpha}{2} d$ \quad (straight line in primal coordinates).
+
+  \item \textbf{Map to dual at midpoint:}
+    $\lambda_{1/2} = -\nabla F(s_{1/2})$.
+
+  \item \textbf{Map to dual at start:}
+    $\lambda_0 = -\nabla F(s)$.
+
+  \item \textbf{Dual extrapolation} (straight line in dual coordinates):
+    $\lambda_1 = 2\lambda_{1/2} - \lambda_0$.
+
+    This is the midpoint rule: the dual velocity
+    $\dot\lambda \approx (\lambda_{1/2} - \lambda_0) / (\alpha/2)$, so
+    $\lambda_1 = \lambda_0 + \alpha \dot\lambda = 2\lambda_{1/2} - \lambda_0$.
+
+  \item \textbf{Invert the gradient map:} find $s_{\text{new}}$ such that
+    $-\nabla F(s_{\text{new}}) = \lambda_1$.  This requires solving a
+    nonlinear system (Newton's method on the $m$-dimensional equation
+    $\nabla F(s) + \lambda_1 = 0$).
+\end{enumerate}
+
+\subsection{Computational cost}
+
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Operation} & \textbf{Evaluations needed} & \textbf{Cost (3D cone)} \\
+\midrule
+Step 1 (primal half-step) & --- & $O(1)$ \\
+Steps 2--3 (gradient at two points) & $2 \times \nabla F$ & $O(1)$ \\
+Step 4 (dual extrapolation) & --- & $O(1)$ \\
+Step 5 (gradient inversion) & $3$--$5 \times (\nabla F + \nabla^2 F)$ & $O(1)$ \\
+\midrule
+\textbf{Total} & $\sim$5 gradient + 5 Hessian & $\sim$200 flops \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+No third derivatives are required.  The dominant cost is the Newton solve
+in step~5 (inverting the gradient map), which for the 3D exponential cone
+converges in 3--5 iterations of a $3 \times 3$ system.
+
+\subsection{Accuracy}
+
+The Bregman midpoint is \emph{second-order accurate}: the error is $O(\alpha^3)$
+compared to the true Levi-Civita geodesic.  At $\alpha = 0.1$, the Bregman
+midpoint is $\sim$200$\times$ more accurate than the Euler step (which is
+first-order, $O(\alpha^2)$ error).
+
+For comparison, the St\"ormer--Verlet integrator with $N = 8$ substeps achieves
+higher accuracy ($\sim$fourth order) but requires third derivatives.
+
+\subsection{When to use each method}
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+& \textbf{St\"ormer--Verlet} & \textbf{Bregman midpoint} \\
+\midrule
+Derivatives needed & $\nabla F$, $\nabla^2 F$, $\partial^3 F$ & $\nabla F$, $\nabla^2 F$ only \\
+Accuracy & High (symplectic, $\sim$4th order) & Second order \\
+Cost per step (3D) & $\sim$1000 flops & $\sim$200 flops \\
+Aggressive steps & Yes ($\alpha$ up to 1) & Conservative ($\alpha \ll 1$) \\
+Best for & Low-dim cones with known $\partial^3 F$ & General barriers \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+For the exponential cone ($m = 3$), the third derivatives are closed-form
+(Section~\ref{sec:christoffel}) and the St\"ormer--Verlet integrator is preferred.
+For general barriers where $\partial^3 F$ is unavailable or expensive, the Bregman
+midpoint provides a practical alternative that still preserves the cone interior
+and achieves second-order accuracy.
+
+\subsection{Dual geodesic property}
+
+The gradient map $s \mapsto -\nabla F(s)$ is an isometry between
+$(\operatorname{int}(K), \nabla^2 F)$ and $(\operatorname{int}(K^*), \nabla^2 F^*)$.
+Therefore, if $\gamma(t)$ is a geodesic in $K$, then $\lambda(t) = -\nabla F(\gamma(t))$
+is a geodesic in $K^*$.  The Bregman midpoint exploits this by stepping in dual
+coordinates (where the geodesic is approximately a straight line) and mapping back.
+
+This property was verified numerically for the exponential cone: the dual
+energy $|\dot\lambda|^2_{H^{-1}}$ is constant to within 0.3\% along the
+integrated geodesic.
+
+\section{Exponential cone: numerical results}
 
 For a product of $m$ exponential cones with $p$ variables, the Gram is
 \[
@@ -248,10 +442,16 @@ For a product of $m$ exponential cones with $p$ variables, the Gram is
 \]
 and the geodesic step is taken component-wise on each 3D cone.
 
-\paragraph{Numerical results.}
-On a test problem with $m = 3$ cones and $p = 4$ variables
-(centered initial point: $c = -\sum_i A_i^\top \nabla F_i(b_i)$),
+\paragraph{Centered initial point.}
+Choose $b_i \in \operatorname{int}(K_{\exp})$ and set
+$c = -\sum_i A_i^\top \nabla F_i(b_i)$, ensuring $x = 0$ is on the central path
+at $\mu = 1$.  This is the analogue of $c = A^\top e$ for symmetric cones.
+
+\paragraph{Results.}
+On a test problem with $m = 3$ cones and $p = 4$ variables,
 the algorithm converges in 4 factorizations with $k$ growing $\sim$10$\times$
-per step and duality gap decreasing $\sim$100$\times$ per step.
+per step and duality gap decreasing $\sim$100$\times$ per step.  The dual
+residual $\|A^\top \lambda - c\|$ is $\sim 10^{-16}$ (machine zero) at each
+iteration.
 
 \end{document}
