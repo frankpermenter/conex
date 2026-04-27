@@ -535,9 +535,9 @@ TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
   Vector2d x(0.0, 0.0);
 
   printf("\n=== Geodesic LP (exp cone) ===\n");
-  printf("  %3s  %12s  %12s  %10s  %10s  %10s\n",
-         "fac", "k", "k_new", "d_norm", "d_sqr", "c^Tx");
-  printf("  %s\n", std::string(72, '-').c_str());
+  printf("  %3s  %12s  %12s  %10s  %10s  %10s  %10s\n",
+         "fac", "k", "k_new", "d_norm", "gap", "dual_res", "c^Tx");
+  printf("  %s\n", std::string(82, '-').c_str());
 
   int factorizations = 0;
   double k_prev = 0.0;
@@ -646,16 +646,11 @@ TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
     double d_norm = std::sqrt(std::max(d_sqr, 0.0));
     double mu = (k_new > 0) ? 1.0/(k_new*k_new) : 1.0;
 
-    printf("  %3d  %12.4e  %12.4e  %10.4f  %10.4f  %10.4f\n",
-           factorizations, k_prev, k_new, d_norm, d_sqr, c.dot(x));
-
-    if (mu < 1e-8) break;
-
     // Geodesic step on s.
     double alpha = 1.0 / (1.0 + d_norm);
     double s_arr[3] = {s(0), s(1), s(2)};
-    double ds[3] = {dk(0), dk(1), dk(2)};
-    ops.geodesicStep(s_arr, alpha, ds);
+    double ds_arr[3] = {dk(0), dk(1), dk(2)};
+    ops.geodesicStep(s_arr, alpha, ds_arr);
     Vector3d s_new(s_arr[0], s_arr[1], s_arr[2]);
 
     if (is_interior(s_new)) {
@@ -669,6 +664,25 @@ TEST(ExpCone, GeodesicIPM_LogHomogeneous) {
         }
       }
     }
+
+    // Compute duality gap from the actual new primal-dual pair.
+    // s_new ∈ K (primal feasible by geodesic/line search).
+    // λ_new = -(1/k²)∇F(s_new) ∈ K* (dual from barrier gradient, scaled by μ).
+    // Gap = <s_new, λ_new> = -(1/k²)<s_new, ∇F(s_new)> = ν/k² by Euler.
+    // But compute it explicitly to verify.
+    Vector3d s_actual = A * x + b;
+    double g_new[3];
+    ExpConeOps::BarrierGrad(s_actual(0), s_actual(1), s_actual(2), g_new);
+    double k2 = k_new * k_new;
+    Vector3d lambda_new = -(1.0/k2) * Eigen::Map<Vector3d>(g_new);
+    double gap = s_actual.dot(lambda_new);
+    // Dual residual: ||A^T λ - c||.
+    double dual_res = (A.transpose() * lambda_new - c).norm();
+
+    printf("  %3d  %12.4e  %12.4e  %10.4f  %10.2e  %10.2e  %10.4f\n",
+           factorizations, k_prev, k_new, d_norm, gap, dual_res, c.dot(x));
+
+    if (gap < 1e-6) break;
 
     k_prev = k_new;
   }
@@ -746,9 +760,9 @@ TEST(ExpCone, GeodesicLP_ProductCone) {
   ASSERT_TRUE(all_interior(x)) << "Initial point not interior";
 
   printf("\n=== Geodesic LP (product of %d exp cones, %d vars) ===\n", m, p);
-  printf("  %3s  %12s  %12s  %10s  %10s\n",
-         "fac", "k", "k_new", "d_norm", "c^Tx");
-  printf("  %s\n", std::string(58, '-').c_str());
+  printf("  %3s  %12s  %12s  %10s  %10s  %10s  %10s\n",
+         "fac", "k", "k_new", "d_norm", "gap", "dual_res", "c^Tx");
+  printf("  %s\n", std::string(82, '-').c_str());
 
   int factorizations = 0;
   double k_prev = 0.0;
@@ -843,13 +857,7 @@ TEST(ExpCone, GeodesicLP_ProductCone) {
     double d_norm = std::sqrt(std::max(d_sqr, 0.0));
     double mu = (k_new > 0) ? 1.0/(k_new*k_new) : 1.0;
 
-    printf("  %3d  %12.4e  %12.4e  %10.4f  %10.4f\n",
-           factorizations, k_prev, k_new, d_norm, c.dot(x));
-
-    if (mu < 1e-8) break;
-
     // Geodesic step: component-wise on each cone.
-    bool stepped = false;
     std::vector<Vector3d> s_new(m);
     for (int i = 0; i < m; ++i) {
       Vector3d dki = d0[i] + k_new * d1[i];
@@ -861,8 +869,7 @@ TEST(ExpCone, GeodesicLP_ProductCone) {
       s_new[i] = Vector3d(si[0], si[1], si[2]);
     }
 
-    // Recover x from s_new = A_i x + b_i (least squares over all cones).
-    // Stack: [A₁; A₂; ...] x = [s₁-b₁; s₂-b₂; ...]
+    // Recover x from s_new = A_i x + b_i (least squares).
     MatrixXd A_stack(3*m, p);
     VectorXd rhs_stack(3*m);
     for (int i = 0; i < m; ++i) {
@@ -875,7 +882,6 @@ TEST(ExpCone, GeodesicLP_ProductCone) {
     if (all_interior(x_new)) {
       x = x_new;
     } else {
-      // Euclidean fallback.
       VectorXd dx = y1 + (1.0/k_new) * y0;
       for (double a = 0.5; a > 1e-10; a *= 0.5) {
         VectorXd x_try = x + a * dx;
@@ -883,13 +889,32 @@ TEST(ExpCone, GeodesicLP_ProductCone) {
       }
     }
 
+    // Compute duality gap from actual primal-dual pair.
+    // sᵢ_new ∈ K_exp, λᵢ_new = -(1/k²)∇Fᵢ(sᵢ_new) ∈ K*_exp.
+    // Gap = Σᵢ <sᵢ, λᵢ>.
+    double gap = 0, dual_res_sq = 0;
+    VectorXd At_lam = VectorXd::Zero(p);
+    for (int i = 0; i < m; ++i) {
+      Vector3d si = cones[i].A * x + cones[i].b;
+      double gi[3];
+      ExpConeOps::BarrierGrad(si(0), si(1), si(2), gi);
+      Vector3d lami = -(1.0/(k_new*k_new)) * Eigen::Map<Vector3d>(gi);
+      gap += si.dot(lami);
+      At_lam += cones[i].A.transpose() * lami;
+    }
+    double dual_res = (At_lam - c).norm();
+
+    printf("  %3d  %12.4e  %12.4e  %10.4f  %10.2e  %10.2e  %10.4f\n",
+           factorizations, k_prev, k_new, d_norm, gap, dual_res, c.dot(x));
+
+    if (gap < 1e-6) break;
+
     k_prev = k_new;
   }
 
   double final_obj = c.dot(x);
   printf("  Final: c^Tx = %.6f, fac = %d\n", final_obj, factorizations);
 
-  // Should make progress. k should increase and objective should decrease.
   EXPECT_LT(final_obj, 0) << "Objective should be negative";
   EXPECT_GT(k_prev, 1.0) << "k should increase beyond 1";
 }
