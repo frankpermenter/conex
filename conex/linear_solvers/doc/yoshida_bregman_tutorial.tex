@@ -350,6 +350,84 @@ The Yoshida--Bregman method achieves fourth-order accuracy
 outperforming even the primal-dual Verlet ($3.1 \times 10^{-8}$)
 which uses 8 substeps with full Christoffel symbol evaluations.
 
+\section{Why Yoshida and not Gauss--Legendre?}
+
+The Yoshida construction composes three $[1/1]$ Pad\'e steps to get
+fourth-order accuracy.  A natural question: can we instead use the
+$[2/2]$ Pad\'e directly?  For the log barrier, the $[2/2]$ Pad\'e of
+$\exp(d)$ has optimal error constants (about $40\times$ smaller than
+Yoshida at fifth order).  The $[2/2]$ Pad\'e corresponds to the
+2-stage Gauss--Legendre implicit Runge--Kutta method.
+
+\subsection{The obstruction}
+
+The Bregman midpoint works because the Legendre transform provides
+an \emph{exact} dual evaluation at the midpoint: $\lambda_{1/2} = -\nabla F(s_{1/2})$.
+From the Taylor expansion proof (Section~\ref{sec:bregman-proof}), the
+curvature enters through the nonlinearity of $\nabla F$ at the midpoint.
+The \emph{symmetry} of the midpoint ($c = 1/2$) is essential: it is the
+unique point where the Strang splitting of primal and dual flat flows
+gives second-order accuracy.
+
+The 2-stage Gauss--Legendre method evaluates at $c_1 = \frac{1}{2} - \frac{\sqrt{3}}{6}
+\approx 0.21$ and $c_2 = \frac{1}{2} + \frac{\sqrt{3}}{6} \approx 0.79$.
+At these non-symmetric points, we can evaluate $\lambda_i = -\nabla F(s_i)$
+(the dual position), but we cannot recover the \emph{velocity} $v_i$ at the
+stage points from the gradient map alone.
+
+\paragraph{The velocity problem.}
+At the midpoint ($c = 1/2$), the Bregman velocity is
+$v = (s_1 - s_{1/2})/(h/2)$, which is second-order accurate because
+the midpoint symmetry cancels the first-order error.
+
+At a general GL node ($c_i \neq 1/2$), the analogous chord velocity
+$v_i = -H(s_i)^{-1}(\lambda_i - \lambda_0)/c_i$ is only \emph{first-order}
+accurate.  The GL consistency conditions couple $v_1$ and $v_2$ through
+the Butcher matrix $a_{ij}$, but without the geodesic acceleration
+(which requires $\partial^3 F$), the coupled system is underdetermined.
+
+\paragraph{What goes wrong.}
+We implemented the 2-stage GL with Bregman-derived velocities and
+fixed-point iteration.  The result: the iteration does not converge
+to the geodesic.  The error ($1.3 \times 10^{-4}$) is comparable to
+Euler, indicating that the Bregman velocity approximation destroys
+the fourth-order accuracy of the GL method.
+
+\paragraph{Why Yoshida avoids this.}
+The Yoshida construction sidesteps the velocity problem entirely:
+it composes three \emph{midpoint} steps (where the Bregman trick is
+exact) with algebraic coefficients.  The midpoint is the only node
+where the Legendre transform provides a second-order velocity without
+the ODE acceleration.  Yoshida is the optimal way to achieve fourth
+order from this midpoint-only primitive.
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}lccl@{}}
+\toprule
+\textbf{Method} & \textbf{Order} & \textbf{Needs $\partial^3 F$} & \textbf{Error at $\alpha = 0.1$} \\
+\midrule
+Bregman midpoint ($= [1/1]$ Pad\'e) & 2 & No & $7.7 \times 10^{-7}$ \\
+Yoshida--Bregman (3 midpoint steps) & 4 & No & $2.5 \times 10^{-9}$ \\
+Gauss--Legendre 2-stage (attempted) & 4 & \textbf{Yes}${}^*$ & fails \\
+\midrule
+$[2/2]$ Pad\'e (optimal, log barrier) & 4 & No${}^\dagger$ & $\sim\!10^{-10}$ (theory) \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent
+${}^*$\,Without $\partial^3 F$, the GL stage velocities are only first-order. \\
+${}^\dagger$\,The $[2/2]$ Pad\'e is a closed-form rational function of $d$,
+specific to $F = -\log$.  It does not generalize to arbitrary barriers.
+
+\paragraph{Summary.}
+The midpoint is special: it is the only evaluation point where the
+Legendre transform provides both position \emph{and} velocity
+information to second order.  Yoshida's genius is to achieve fourth
+order by composing three midpoint evaluations with the right weights,
+rather than attempting to evaluate at non-midpoint nodes (which would
+require the ODE acceleration).
+
 \section{Connection to Hamiltonian mechanics}
 
 The structure exploited here is the same as in symplectic mechanics:
