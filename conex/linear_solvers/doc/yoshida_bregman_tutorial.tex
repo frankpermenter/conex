@@ -117,18 +117,83 @@ that uses one primal step and one dual step:
     Hessian $\nabla^2 F$ as the Jacobian).
 \end{enumerate}
 
-\paragraph{Why is this second-order?}
-The primal step approximates the geodesic to first order (it's a
-tangent line).  The dual step \emph{also} approximates the geodesic to
-first order (a tangent line in dual coordinates).  When composed
-symmetrically (half primal, full dual, half primal via the inversion),
-the first-order errors cancel, giving second-order accuracy.
+\subsection{Why is this second-order?}
 
-This is the same principle as the St\"ormer--Verlet method in mechanics:
-a half-step in position, a full step in momentum, a half-step in
-position.  The Legendre transform $\lambda = -\nabla F(s)$ plays the
-role of the Legendre transform $p = \partial L / \partial \dot{q}$
-that relates position and momentum.
+We prove that the Bregman midpoint matches the geodesic to second order
+by Taylor expansion alone---no connections or parallel transport.
+
+Let the true geodesic from $s_0$ with velocity $v$ be
+\[
+  \gamma(h) = s_0 + hv + \frac{h^2}{2}\ddot{s} + O(h^3),
+\]
+where $\ddot{s} = -\frac{1}{2}[\nabla^2 F]^{-1} T(v)$ from the geodesic
+equation~\eqref{eq:geodesic}, with $T(v)_i = \sum_{jk} F_{ijk} v_j v_k$.
+
+Write the Bregman output as $s_1 = s_0 + hv + \frac{h^2}{2}a + O(h^3)$
+with unknown $a$.  We will show $a = \ddot{s}$.
+
+\paragraph{Step 1 (primal half-step).}
+$s_{1/2} = s_0 + \frac{h}{2}v$.
+
+\paragraph{Step 2 (dual at midpoint).}
+Taylor-expand $\nabla F$ at $s_{1/2}$:
+\[
+  \lambda_{1/2} = -\nabla F\!\left(s_0 + \tfrac{h}{2}v\right)
+  = \lambda_0 - \tfrac{h}{2}Hv - \tfrac{h^2}{8}T(v) + O(h^3),
+\]
+where $H = \nabla^2 F(s_0)$ and $T(v)_i = \sum_{jk} F_{ijk} v_j v_k$.
+The third-derivative term $T(v)$ appears from the \emph{nonlinearity
+of $\nabla F$}---this is where curvature enters.
+
+\paragraph{Step 3 (dual extrapolation).}
+\[
+  \lambda_1 = 2\lambda_{1/2} - \lambda_0
+  = \lambda_0 - hHv - \tfrac{h^2}{4}T(v) + O(h^3).
+\]
+The midpoint extrapolation doubles the $O(h)$ term (correct) and
+doubles the $O(h^2)$ curvature term: $2 \times \frac{h^2}{8} = \frac{h^2}{4}$.
+
+\paragraph{Step 4 (inversion).}
+Taylor-expand $-\nabla F(s_1)$ at the ansatz $s_1 = s_0 + hv + \frac{h^2}{2}a$:
+\[
+  -\nabla F(s_1)
+  = \lambda_0 - hHv - \tfrac{h^2}{2}Ha - \tfrac{h^2}{2}T(v) + O(h^3).
+\]
+The two $O(h^2)$ terms come from: $-\frac{h^2}{2}Ha$ (Hessian acting
+on the unknown $a$) and $-\frac{h^2}{2}T(v)$ (curvature from the $hv$
+displacement).
+
+\paragraph{Match.}
+Setting $-\nabla F(s_1) = \lambda_1$:
+\[
+  -\tfrac{h^2}{2}Ha - \tfrac{h^2}{2}T(v)
+  = -\tfrac{h^2}{4}T(v).
+\]
+Solving:
+\[
+  Ha = -\tfrac{1}{2}T(v),
+  \qquad\text{i.e.,}\qquad
+  \boxed{a = -\tfrac{1}{2}H^{-1}T(v) = \ddot{s}.}
+\]
+The Bregman output matches the geodesic to second order.~$\square$
+
+\paragraph{Where does the curvature come from?}
+The method never computes $F_{ijk}$ (third derivatives) explicitly.
+Instead, the curvature information is encoded in the
+\emph{nonlinearity of $\nabla F$}: the Taylor expansion of
+$\nabla F(s_0 + \frac{h}{2}v)$ contains the $\frac{h^2}{8}T(v)$ term
+automatically.  The midpoint extrapolation (Step~3) amplifies it to
+$\frac{h^2}{4}T(v)$, and the inversion (Step~4) contributes another
+$\frac{h^2}{2}T(v)$.  Together:
+$-\frac{1}{4} + \frac{1}{2} = \frac{1}{4}$, which after the $H^{-1}$
+solve gives $\frac{1}{2}H^{-1}T$---exactly the geodesic acceleration.
+
+\paragraph{Analogy with mechanics.}
+This is the same principle as the St\"ormer--Verlet method: a half-step
+in position, a full step in momentum, a half-step in position.  The
+Legendre transform $\lambda = -\nabla F(s)$ plays the role of
+$p = \partial L / \partial \dot{q}$.  In both cases, the second-order
+accuracy comes from sampling the nonlinearity at the midpoint.
 
 \paragraph{Cost.}
 Each Bregman step requires:
