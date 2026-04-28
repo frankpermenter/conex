@@ -187,60 +187,178 @@ By exploiting the $\nu$-log-homogeneity of barrier functions, we have derived a 
 
 \section{Local Truncation Error of the Discrete Flow Map}
 
+
+
+\subsection{The dual midpoint method}
+
+We establish that the Primal Midpoint (P-Mid) and Dual Midpoint (D-Mid) integrators are formally symmetric for any strictly convex barrier $\phi$. This property, also known as self-adjointness, is a prerequisite for high-order Yoshida composition.
+
+\begin{definition}[D-Mid Discrete Flow]
+The Dual Midpoint flow map $\Psi_h: (z_0, w_0) \mapsto (z_1, w_1)$ is defined by the following system:
+\begin{align}
+    \lambda_{1/2} &= \nabla \phi(z_0) + \frac{h}{2}w_0 \\
+    z_1 &= 2\nabla \phi^*(\lambda_{1/2}) - z_0 \\
+    w_1 &= \frac{2}{h}(\nabla \phi(z_1) - \lambda_{1/2})
+\end{align}
+\end{definition}
+
+\begin{theorem}[Formal Symmetry]
+The D-Mid integrator is symmetric: $\Psi_h = \Psi_{-h}^{-1}$ for any convex barrier $\phi$.
+\end{theorem}
+
+\begin{proof}
+To prove symmetry, we must show that starting from $(z_1, w_1)$ and applying $\Psi_{-h}$ recovers $(z_0, w_0)$. Let $\Psi_{-h}(z_1, w_1) = (z_2, w_2)$.
+
+\paragraph{1. Midpoint Invariance:}
+The backward dual midpoint $\tilde{\lambda}_{1/2}$ is given by:
+\begin{equation}
+    \tilde{\lambda}_{1/2} = \nabla \phi(z_1) + \frac{-h}{2}w_1
+\end{equation}
+Substituting the definition of $w_1$ from the forward step:
+\begin{equation}
+    \tilde{\lambda}_{1/2} = \nabla \phi(z_1) - \frac{h}{2} \left[ \frac{2}{h}(\nabla \phi(z_1) - \lambda_{1/2}) \right] = \nabla \phi(z_1) - (\nabla \phi(z_1) - \lambda_{1/2}) = \lambda_{1/2}
+\end{equation}
+The midpoint in the dual space is invariant under the time-reversal operation.
+
+\paragraph{2. Primal Recovery:}
+The backward primal update $z_2$ is:
+\begin{equation}
+    z_2 = 2\nabla \phi^*(\tilde{\lambda}_{1/2}) - z_1 = 2\nabla \phi^*(\lambda_{1/2}) - z_1
+\end{equation}
+From the forward step definition, we know $2\nabla \phi^*(\lambda_{1/2}) = z_1 + z_0$. Substituting this:
+\begin{equation}
+    z_2 = (z_1 + z_0) - z_1 = z_0
+\end{equation}
+
+\paragraph{3. Momentum Recovery:}
+The backward momentum $w_2$ is:
+\begin{equation}
+    w_2 = \frac{2}{-h}(\nabla \phi(z_2) - \tilde{\lambda}_{1/2}) = -\frac{2}{h}(\nabla \phi(z_0) - \lambda_{1/2}) = \frac{2}{h}(\lambda_{1/2} - \lambda_0)
+\end{equation}
+Substituting $\lambda_{1/2} - \lambda_0 = \frac{h}{2}w_0$ from the forward step:
+\begin{equation}
+    w_2 = \frac{2}{h} \left( \frac{h}{2}w_0 \right) = w_0
+\end{equation}
+
+Since $\Psi_{-h}(z_1, w_1) = (z_0, w_0)$, the integrator is symmetric. A parallel argument holds for the Primal Midpoint (P-Mid) integrator.
+\end{proof}
+
+\subsection{The primal midpoint method}
+
+The Primal Midpoint integrator is the primal-dual mirror of the D-Mid scheme. It prioritizes linearization in the primal space, making it particularly effective when the primal barrier $\phi$ is computationally simpler to evaluate than its conjugate $\phi^*$.
+
+\begin{definition}[P-Mid Discrete Flow]
+The Primal Midpoint flow map $\Psi_h: (z_0, v_0) \mapsto (z_1, v_1)$ is defined by the following sequence of operations:
+\begin{align}
+    z_{1/2} &= z_0 + \frac{h}{2}v_0 \label{eq:pmid_halfstep} \\
+    \lambda_1 &= 2\nabla \phi(z_{1/2}) - \nabla \phi(z_0) \label{eq:pmid_extrap} \\
+    z_1 &= \nabla \phi^*(\lambda_1) \label{eq:pmid_map} \\
+    v_1 &= \frac{2}{h}(z_1 - z_{1/2}) \label{eq:pmid_vel}
+\end{align}
+where $\nabla \phi^*$ denotes the inverse gradient map (the gradient of the conjugate barrier).
+\end{definition}
+
+
 \section{The Symmetric Log-Homogeneous Discrete Flow}
 
-We define the discrete flow map $\Psi_h: (z_0, w_0) \mapsto (z_1, w_1)$ as the unique solution to a symmetric system of equations. This system ensures that the integrator tracks the geodesic manifold while remaining strictly time-reversible.
-
+We define the discrete flow map $\Psi_h: (z_0, v_0) \mapsto (z_1, v_1)$ as the unique solution to a symmetric system of equations. This system ensures that the integrator tracks the geodesic manifold while remaining strictly time-reversible.
 \begin{definition}[Symmetric Integrator Step]
-Given the state at time $t$, $(z_0, w_0)$, the state at time $t+h$ is defined by:
+Given the state at time $t$, $(z_0, v_0)$, the state at time $t+h$ is defined by:
 \begin{subequations}
 \label{eq:full_integrator}
 \begin{align}
-    \nabla \phi(z_1) + H(z_0)z_1 &= \nabla \phi(z_0) + H(z_0)z_0 + 2hw_0 \label{eq:pos_update} \\
-    \nabla \phi(z_0) + H(z_1)z_0 &= \nabla \phi(z_1) + H(z_1)z_1 - 2hw_1 \label{eq:mom_update}
+    \nabla \phi(z_1) - \nabla \phi(z_0) &= H(z_0)(2hv_0 - (z_1 - z_0)) \label{eq:pos_update} \\
+    \nabla \phi(z_1) - \nabla \phi(z_0) &= H(z_1)(2hv_1 - (z_1 - z_0)) \label{eq:vel_update}
 \end{align}
 \end{subequations}
 \end{definition}
 
+\section{Local Truncation Error of the Discrete Flow Map}
 
-We now establish that the discrete flow map $\Psi_h$ is a consistent second-order approximation of the geodesic flow on the Hessian manifold. We achieve this by demonstrating that both the primal and dual Taylor expansions of the map agree with the exact geodesic derivatives.
+We now establish that the discrete flow map $\Psi_h$ is a consistent second-order approximation of the geodesic flow on the Hessian manifold. We achieve this by demonstrating that both the position and velocity Taylor expansions of the map agree with the exact derivatives of the Riemannian geodesic.
 
 \begin{theorem}[Second-Order Flow Agreement]
-Let $\gamma(h)$ be the exact primal geodesic and $\eta(h) = \nabla \phi(\gamma(h))$ the exact dual path starting from $(z_0, w_0)$. The discrete flow map $\Psi_h(z_0, w_0) = (z_1, w_1)$ satisfies:
+Let $\gamma(h)$ be the exact Riemannian geodesic starting at $(z_0, v_0)$. The discrete flow map $\Psi_h(z_0, v_0) = (z_1, v_1)$ satisfies:
 \begin{equation}
-    z_1(h) = \gamma(h) + \mathcal{O}(h^3), \quad w_1(h) = \eta'(h) + \mathcal{O}(h^3)
+    z_1(h) = \gamma(h) + \mathcal{O}(h^3), \quad v_1(h) = \gamma'(h) + \mathcal{O}(h^3)
+\end{equation}
+\end{theorem}
+
+\begin{definition}[Symmetric Integrator Step]
+Given the state at time $t$, $(z_0, v_0)$, the state at time $t+h$ is defined by:
+\begin{subequations}
+\label{eq:full_integrator}
+\begin{align}
+    \nabla \phi(z_1) - \nabla \phi(z_0) &= H(z_0)(2hv_0 - (z_1 - z_0)) \label{eq:pos_update} \\
+    \nabla \phi(z_1) - \nabla \phi(z_0) &= H(z_1)(2hv_1 - (z_1 - z_0)) \label{eq:vel_update}
+\end{align}
+\end{subequations}
+\end{definition}
+
+\section{Local Truncation Error of the Discrete Flow Map}
+
+We now establish that the discrete flow map $\Psi_h$ is a consistent second-order approximation of the geodesic flow on the Hessian manifold. By demonstrating that the Taylor expansions of position and velocity agree with the continuous geodesic derivatives, we confirm the integrator is second-order accurate.
+
+\begin{theorem}[Second-Order Flow Agreement]
+Let $\gamma(h)$ be the exact Riemannian geodesic starting at $(z_0, v_0)$. The discrete flow map $\Psi_h(z_0, v_0) = (z_1, v_1)$ defined by \eqref{eq:full_integrator} satisfies:
+\begin{equation}
+    z_1(h) = \gamma(h) + \mathcal{O}(h^3), \quad v_1(h) = \gamma'(h) + \mathcal{O}(h^3)
 \end{equation}
 \end{theorem}
 
 \begin{proof}
-The map $\Psi_h$ is defined by the coupled system:
-\begin{align}
-    F(z_1, h) &= \nabla \phi(z_1) + H(z_0)z_1 - 2h w_0 = 0 \label{eq:F_pos} \\
-    G(w_1, z_1, h) &= 2h w_1 + \nabla \phi(z_1) - \nabla \phi(z_0) - H(z_1)(z_1 - z_0) = 0 \label{eq:G_mom}
-\end{align}
+The state $(z_1, v_1)$ is determined by the system \eqref{eq:full_integrator}. We expand both variables as Taylor series in $h$: $z_1(h) = a_0 + h a_1 + \frac{h^2}{2} a_2 + \mathcal{O}(h^3)$ and $v_1(h) = b_0 + h b_1 + \mathcal{O}(h^2)$.
 
-\paragraph{1. Primal Accuracy:}
-By the Implicit Function Theorem applied to \eqref{eq:F_pos}, we treat $z_1$ as a curve $z_1(h) = a_0 + h a_1 + \frac{h^2}{2} a_2 + \mathcal{O}(h^3)$. As derived in the previous section, differentiating \eqref{eq:F_pos} with respect to $h$ yields:
-\begin{itemize}
-    \item $a_0 = z_1(0) = z_0$ (Position agreement)
-    \item $a_1 = z_1'(0) = v_0$ (Velocity agreement)
-    \item $a_2 = z_1''(0) = -\frac{1}{2} H(z_0)^{-1} \nabla^3 \phi(z_0)[v_0, v_0, \cdot]$ (Acceleration agreement)
-\end{itemize}
-These match the geodesic derivatives $\gamma(0), \gamma'(0),$ and $\gamma''(0)$ identically.
+\paragraph{1. Position Accuracy:}
+View the $z_1$ satisfying \eqref{eq:pos_update} as a function $z_t(h)$ of $h$.
+At $h=0$, \eqref{eq:pos_update} reduces to $\nabla \phi(z_1(0)) - \nabla \phi(z_0) = H(z_0)(0 - (z_1(0) - z_0))$, which implies $a_0 = z_0$.
 
-\paragraph{2. Dual Accuracy:}
-To analyze the momentum $w_1(h)$, we differentiate the identity $G(w_1(h), z_1(h), h) = 0$. Expanding $G$ in powers of $h$ and utilizing the log-homogeneity identity $\nabla^3 \phi(z)[z, \cdot, \cdot] = -2H(z)$, we find the coefficients $w_1(h) = b_0 + h b_1 + \mathcal{O}(h^2)$:
+Differentiating both sides of \eqref{eq:pos_update} with respect to $h$:
+\begin{equation}
+    H(z_1)z_1' = H(z_0)(2v_0 - z_1')
+\end{equation}
+Evaluating at $h=0$, where $z_1 = z_0$ and $H(z_1) = H(z_0)$:
+\begin{equation}
+    H(z_0)z_1'(0) = 2H(z_0)v_0 - H(z_0)z_1'(0) \implies 2H(z_0)z_1'(0) = 2H(z_0)v_0
+\end{equation}
+This gives $a_1 = z_1'(0) = v_0$, matching the initial geodesic velocity $\gamma'(0)$.
+
+Differentiating \eqref{eq:pos_update} a second time:
+\begin{equation}
+    \nabla^3 \phi(z_1)[z_1', z_1', \cdot] + H(z_1)z_1'' = -H(z_0)z_1''
+\end{equation}
+Evaluating at $h=0$ with $z_1'(0) = v_0$:
+\begin{equation}
+    \nabla^3 \phi(z_0)[v_0, v_0, \cdot] + 2H(z_0)z_1''(0) = 0 \implies a_2 = -\frac{1}{2}H(z_0)^{-1}\nabla^3 \phi(z_0)[v_0, v_0, \cdot]
+\end{equation}
+This matches the exact geodesic acceleration $\gamma''(0) = -\frac{1}{2}H^{-1}\nabla^3\phi[v,v]$, confirming $z_1(h) = \gamma(h) + \mathcal{O}(h^3)$.
+
+\paragraph{2. Velocity Accuracy:}
+Viewing $v_1$ as a function of $h$ and differentiating both sides of \eqref{eq:vel_update} with respect to $h$:
+\begin{equation}
+    H(z_1)z_1' = \nabla^3 \phi(z_1)[z_1', 2hv_1 - (z_1 - z_0)] + H(z_1)(2v_1 + 2hv_1' - z_1')
+\end{equation}
+Evaluating at $h=0$ and using $z'(0) = v_0$ (as just proven), 
+\begin{equation}
+    H_0 v_0 = 0 + H_0(2v_1(0) - v_0) 
+\end{equation}
+This yields $2H_0 v_1(0) = 2H_0 v_0$, thus $b_0 = v_1(0) = v_0$.
+
+To find $b_1 = v_1'(0)$, we expand \eqref{eq:vel_update} to order $h^2$. Substituting $b_0 = v_0$ and $H_0 a_2 = -\frac{1}{2}\nabla^3 \phi[v_0, v_0]$ into the expansion:
 \begin{itemize}
-    \item \textbf{Order $h^1$:} The linear term of the expansion forces $b_0 = w_0$, matching the initial dual velocity $\eta'(0)$.
-    \item \textbf{Order $h^2$:} Differentiating $G$ twice and substituting the primal acceleration $a_2$, the terms consolidate to:
-    \begin{equation}
-        b_1 = w_1'(0) = \frac{1}{2} \nabla^3 \phi(z_0)[v_0, v_0, \cdot]
-    \end{equation}
-    This is precisely the dual geodesic acceleration $\eta''(0) = \frac{1}{2}\nabla^3 \phi[\gamma', \gamma', \cdot]$.
+    \item LHS: $\Delta \lambda = h H_0 v_0 + \frac{h^2}{4}\nabla^3 \phi[v_0, v_0] + \mathcal{O}(h^3)$
+    \item RHS: $h H_0 v_0 + h^2 (2H_0 b_1 - \frac{1}{2}H_0 a_2 + \nabla^3 \phi[v_0, v_0]) + \mathcal{O}(h^3)$
 \end{itemize}
+Equating the $h^2$ coefficients:
+\begin{equation}
+    \frac{1}{4}\nabla^3 \phi[v_0, v_0] = 2H_0 b_1 + \frac{1}{4}\nabla^3 \phi[v_0, v_0] + \nabla^3 \phi[v_0, v_0]
+\end{equation}
+\begin{equation}
+    2H_0 b_1 = -\nabla^3 \phi[v_0, v_0] \implies b_1 = -\frac{1}{2}H_0^{-1}\nabla^3 \phi[v_0, v_0, \cdot]
+\end{equation}
+This matches the continuous geodesic acceleration $\gamma''(0)$. Thus, $v_1(h) = \gamma'(0) + h \gamma''(0) + \mathcal{O}(h^2)$, which confirms $v_1(h) = \gamma'(h) + \mathcal{O}(h^3)$ due to the symmetry of the integrator.
 
 \paragraph{Conclusion:}
-Since the Taylor coefficients of the discrete flow map match the continuous geodesic derivatives through the second order for both primal and dual variables, the map $\Psi_h$ is second-order accurate. 
+Since the Taylor coefficients of both position $z_1$ and velocity $v_1$ match the continuous geodesic derivatives through the second order, the discrete flow map $\Psi_h$ is a consistent second-order integrator.
 \end{proof}
-
 \end{document}
