@@ -9,8 +9,11 @@
 \newcommand{\half}{\tfrac{1}{2}}
 \DeclareMathOperator{\Exp}{Exp}
 
+\newtheorem{definition}{Definition}
 \newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
 \newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{lemma}{Lemma}
 
 \title{High-Order Geodesic Integration on Hessian Manifolds\\
 Without Third Derivatives:\\
@@ -26,7 +29,7 @@ We describe a method for integrating geodesics on Hessian manifolds
 (the Riemannian geometry induced by the Hessian of a convex function)
 that achieves fourth-order accuracy using only gradient and Hessian
 evaluations---no third derivatives (Christoffel symbols) are needed.
-The method composes a second-order ``Bregman midpoint'' step using
+The method composes a second-order ``Legendre midpoint'' step using
 the classical Yoshida construction.  We explain the ideas using only
 the geodesic equation and the Legendre transform, without the
 machinery of affine connections.
@@ -87,9 +90,9 @@ A straight line in primal coordinates ($s(t) = s_0 + tv$) is
 the true geodesic lies ``between'' these two approximations in a
 precise sense.
 
-\section{The Bregman midpoint step}
+\section{The Legendre midpoint step}
 
-The Bregman midpoint is a second-order approximation to the geodesic
+The Legendre midpoint is a second-order approximation to the geodesic
 that uses one primal step and one dual step:
 
 \begin{enumerate}
@@ -120,69 +123,98 @@ that uses one primal step and one dual step:
     Hessian $\nabla^2 F$ as the Jacobian).
 \end{enumerate}
 
-\subsection{Why is this second-order?}
+\subsection{Second-order accuracy}
+\label{sec:legendre-proof}
 
-We prove that the Bregman midpoint matches the geodesic to second order
-by Taylor expansion alone---no connections or parallel transport.
-
-Let the true geodesic from $s_0$ with velocity $v$ be
+\begin{theorem}[Legendre midpoint matches the geodesic to second order]
+\label{thm:legendre-second-order}
+Let $F$ be a $C^3$ barrier on the interior of a proper cone, with
+Hessian $H_0 = \nabla^2 F(s_0)$.  Let $\gamma$ be the geodesic
+from $s_0$ with velocity $v$ (i.e., $\gamma(0) = s_0$,
+$\dot\gamma(0) = v$, and $\gamma$ satisfies the geodesic
+equation~\eqref{eq:geodesic}).  Let $s_1$ be the output of the
+Legendre midpoint step with step size $h$.  Then
 \[
-  \gamma(h) = s_0 + hv + \frac{h^2}{2}\ddot{s} + O(h^3),
+  s_1 = \gamma(h) + O(h^3).
 \]
-where $\ddot{s} = -\frac{1}{2}[\nabla^2 F]^{-1} T(v)$ from the geodesic
-equation~\eqref{eq:geodesic}, with $T(v)_i = \sum_{jk} F_{ijk} v_j v_k$.
+More precisely: the Taylor expansions of $s_1$ and $\gamma(h)$
+in powers of $h$ agree through order $h^2$, with
+\[
+  s_1 = s_0 + hv + \frac{h^2}{2}\ddot\gamma(0) + O(h^3),
+\]
+where $\ddot\gamma(0) = -\frac{1}{2}H_0^{-1}T(v,v)$ and
+$T(v,v)_i = \sum_{jk} F_{ijk}(s_0)\, v_j v_k$.
+\end{theorem}
 
-Write the Bregman output as $s_1 = s_0 + hv + \frac{h^2}{2}a + O(h^3)$
-with unknown $a$.  We will show $a = \ddot{s}$.
+\begin{proof}
+Write $H = H_0$, $\lambda_0 = -\nabla F(s_0)$, and
+$T(v) = T(v,v)$ for brevity.  We compute the Taylor expansion
+of the Legendre midpoint output $s_1$ and show its $O(h^2)$ coefficient
+equals $\ddot\gamma(0)$.
 
-\paragraph{Step 1 (primal half-step).}
+Write $s_1 = s_0 + hv + \frac{h^2}{2}a + O(h^3)$ with unknown
+acceleration $a$.  The proof determines $a$ by expanding each
+step of the algorithm.
+
+\medskip\noindent
+\textit{Step 1 (primal half-step).}\quad
 $s_{1/2} = s_0 + \frac{h}{2}v$.
 
-\paragraph{Step 2 (dual at midpoint).}
+\medskip\noindent
+\textit{Step 2 (dual at midpoint).}\quad
 Taylor-expand $\nabla F$ at $s_{1/2}$:
 \[
   \lambda_{1/2} = -\nabla F\!\left(s_0 + \tfrac{h}{2}v\right)
-  = \lambda_0 - \tfrac{h}{2}Hv - \tfrac{h^2}{8}T(v) + O(h^3),
+  = \lambda_0 - \tfrac{h}{2}Hv - \tfrac{h^2}{8}T(v) + O(h^3).
 \]
-where $H = \nabla^2 F(s_0)$ and $T(v)_i = \sum_{jk} F_{ijk} v_j v_k$.
-The third-derivative term $T(v)$ appears from the \emph{nonlinearity
-of $\nabla F$}---this is where curvature enters.
+The third-derivative term $T(v)$ appears from the nonlinearity
+of $\nabla F$---this is where curvature enters.
 
-\paragraph{Step 3 (dual extrapolation).}
+\medskip\noindent
+\textit{Step 3 (dual extrapolation).}\quad
 \[
   \lambda_1 = 2\lambda_{1/2} - \lambda_0
   = \lambda_0 - hHv - \tfrac{h^2}{4}T(v) + O(h^3).
 \]
-The midpoint extrapolation doubles the $O(h)$ term (correct) and
-doubles the $O(h^2)$ curvature term: $2 \times \frac{h^2}{8} = \frac{h^2}{4}$.
 
-\paragraph{Step 4 (inversion).}
-Taylor-expand $-\nabla F(s_1)$ at the ansatz $s_1 = s_0 + hv + \frac{h^2}{2}a$:
-\[
-  -\nabla F(s_1)
-  = \lambda_0 - hHv - \tfrac{h^2}{2}Ha - \tfrac{h^2}{2}T(v) + O(h^3).
-\]
-The two $O(h^2)$ terms come from: $-\frac{h^2}{2}Ha$ (Hessian acting
-on the unknown $a$) and $-\frac{h^2}{2}T(v)$ (curvature from the $hv$
-displacement).
+\medskip\noindent
+\textit{Step 4 (inversion).}\quad
+The algorithm defines $s_1$ by $-\nabla F(s_1) = \lambda_1$.
+We do not solve this equation; instead we determine the $O(h^2)$
+coefficient $a$ by showing consistency.
 
-\paragraph{Match.}
-Setting $-\nabla F(s_1) = \lambda_1$:
+Write $u = s_1 - s_0 = hv + \frac{h^2}{2}a + O(h^3)$ and
+Taylor-expand $\nabla F(s_0 + u)$ around~$s_0$:
 \[
-  -\tfrac{h^2}{2}Ha - \tfrac{h^2}{2}T(v)
-  = -\tfrac{h^2}{4}T(v).
+  \nabla F(s_0 + u)
+  = \nabla F(s_0) + Hu + \tfrac{1}{2}D^2(\nabla F)[u,u] + O(\|u\|^3).
 \]
-Solving:
+The linear term gives $Hu = hHv + \frac{h^2}{2}Ha$.
+The quadratic term is $\frac{1}{2}T(u,u)$, where
+$T(u,u)_i = \sum_{jk}F_{ijk}u_j u_k$.  Since $u = hv + O(h^2)$,
+we have $T(u,u) = h^2 T(v,v) + O(h^3) = h^2 T(v) + O(h^3)$.
+Combining (and using $\lambda_0 = -\nabla F(s_0)$):
 \[
-  Ha = -\tfrac{1}{2}T(v),
-  \qquad\text{i.e.,}\qquad
-  \boxed{a = -\tfrac{1}{2}H^{-1}T(v) = \ddot{s}.}
+  -\nabla F(s_1) = \lambda_0 - hHv
+    - \tfrac{h^2}{2}Ha - \tfrac{h^2}{2}T(v) + O(h^3).
 \]
-The Bregman output matches the geodesic to second order.~$\square$
+
+\medskip\noindent
+\textit{Matching.}\quad
+Setting $-\nabla F(s_1) = \lambda_1$ and comparing the $O(h^2)$
+coefficients from Step~3 and Step~4:
+\[
+  \underbrace{-\tfrac{1}{2}Ha - \tfrac{1}{2}T(v)}_{\text{from }
+    -\nabla F(s_1)}
+  = \underbrace{-\tfrac{1}{4}T(v)}_{\text{from }\lambda_1}.
+\]
+Solving: $Ha = -\frac{1}{2}T(v)$, i.e.,
+$a = -\frac{1}{2}H^{-1}T(v) = \ddot\gamma(0)$. \qedhere
+\end{proof}
 
 \paragraph{Where does the curvature come from?}
 The method never computes $F_{ijk}$ (third derivatives) explicitly.
-Instead, the curvature information is encoded in the
+The curvature information is encoded in the
 \emph{nonlinearity of $\nabla F$}: the Taylor expansion of
 $\nabla F(s_0 + \frac{h}{2}v)$ contains the $\frac{h^2}{8}T(v)$ term
 automatically.  The midpoint extrapolation (Step~3) amplifies it to
@@ -199,16 +231,16 @@ $p = \partial L / \partial \dot{q}$.  In both cases, the second-order
 accuracy comes from sampling the nonlinearity at the midpoint.
 
 \paragraph{Cost.}
-Each Bregman step requires:
+Each Legendre midpoint step requires:
 \begin{itemize}
   \item 2 gradient evaluations ($\nabla F$ at $s_0$ and $s_{1/2}$),
   \item 1 Newton solve ($\sim$3--5 Hessian evaluations for the inversion).
 \end{itemize}
 No third derivatives.
 
-\section{Exactness for the log barrier: Bregman midpoint = Pad\'e}
+\section{Exactness for the log barrier: Legendre midpoint = Pad\'e}
 
-For the LP barrier $F(s) = -\sum_i \log s_i$, the Bregman midpoint
+For the LP barrier $F(s) = -\sum_i \log s_i$, the Legendre midpoint
 is not merely a second-order approximation---it is \emph{exactly}
 the $[1/1]$ Pad\'e approximant of the geodesic exponential.
 
@@ -216,7 +248,7 @@ the $[1/1]$ Pad\'e approximant of the geodesic exponential.
 Let $F(s) = -\sum_i \log s_i$ (the logarithmic barrier on $\R^n_+$).
 The geodesic from $s_0 > 0$ with velocity $v$ is
 $\gamma_i(h) = s_{0,i} \exp(h v_i / s_{0,i})$.
-The Bregman midpoint step from $s_0$ with step size $h$ and direction $v$
+The Legendre midpoint step from $s_0$ with step size $h$ and direction $v$
 gives
 \[
   s_{1,i} = s_{0,i} \cdot \frac{1 + d_i/2}{1 - d_i/2},
@@ -233,7 +265,7 @@ The barrier has $\nabla F(s) = -s^{-1}$ (componentwise) and
 $\nabla^2 F(s) = \operatorname{diag}(s^{-2})$.  The Legendre transform
 is $\lambda = -\nabla F(s) = s^{-1}$, with inverse $s = \lambda^{-1}$.
 
-The four Bregman steps (componentwise, dropping the index $i$):
+The four Legendre midpoint steps (componentwise, dropping the index $i$):
 \begin{enumerate}
   \item $s_{1/2} = s_0 + \frac{h}{2}v$.
 
@@ -255,7 +287,7 @@ satisfies $(1+d/2)/(1-d/2) = 1 + d + d^2/2 + \cdots = e^d + O(d^3)$.
 \end{proof}
 
 \begin{corollary}
-For $F(s) = -\log\det(S)$ on the PSD cone $\mathbb{S}^n_+$, the Bregman
+For $F(s) = -\log\det(S)$ on the PSD cone $\mathbb{S}^n_+$, the Legendre
 midpoint reduces to the $[1/1]$ matrix Pad\'e approximant of $\exp(D)$
 when $S_0$ and $V$ are simultaneously diagonalizable.
 \end{corollary}
@@ -269,7 +301,7 @@ Theorem~\ref{thm:pade} independently.
 The Yoshida fourth-order composition of three Pad\'e $[1/1]$ steps
 produces a higher-order rational approximation to $\exp(d)$---a
 $[2/2]$-like Pad\'e obtained by composition rather than direct
-construction.  For the log barrier, the Yoshida--Bregman method is
+construction.  For the log barrier, the Yoshida--Legendre method is
 therefore a \emph{high-order rational approximation to the geodesic
 exponential} that generalizes seamlessly from symmetric cones (where
 it reduces to Pad\'e) to arbitrary barriers (where it uses the
@@ -277,7 +309,7 @@ Legendre transform in place of the matrix exponential).
 
 \section{The Yoshida fourth-order composition}
 
-The Bregman midpoint is second-order: the error is $O(h^3)$.  To get
+The Legendre midpoint is second-order: the error is $O(h^3)$.  To get
 fourth-order accuracy ($O(h^5)$ error), we use the \emph{Yoshida
 construction} (1990).
 
@@ -308,20 +340,20 @@ The condition $2x_1^3 + x_0^3 = 0$ kills the cubic error.  The
 negative coefficient $x_0 < 0$ corresponds to a ``backward'' step
 that cancels the forward steps' third-order error.
 
-\paragraph{Applied to the Bregman midpoint.}
+\paragraph{Applied to the Legendre midpoint.}
 The Yoshida fourth-order geodesic step is:
 \begin{enumerate}
-  \item Bregman step with step size $x_1 \cdot h$ \quad (forward),
-  \item Bregman step with step size $x_0 \cdot h$ \quad (backward correction),
-  \item Bregman step with step size $x_1 \cdot h$ \quad (forward).
+  \item Legendre step with step size $x_1 \cdot h$ \quad (forward),
+  \item Legendre step with step size $x_0 \cdot h$ \quad (backward correction),
+  \item Legendre step with step size $x_1 \cdot h$ \quad (forward).
 \end{enumerate}
-Each Bregman step updates $(s, \lambda, v)$: position, dual, and
+Each Legendre midpoint step updates $(s, \lambda, v)$: position, dual, and
 velocity.  The velocity at the end of each substep is recovered from
 the position change during the second primal half-step:
 $v_{\text{new}} = (s_{\text{new}} - s_{1/2}) / (h_i/2)$.
 
 \paragraph{Cost.}
-Three Bregman steps $= 3 \times (2$ gradient $+ 1$ Newton$)$
+Three Legendre steps $= 3 \times (2$ gradient $+ 1$ Newton$)$
 $= 6$ gradient evaluations $+ 3$ Newton solves.  For a 3D cone
 (e.g., the exponential cone), this is $\sim$150 floating-point
 operations.  No third derivatives at any point.
@@ -336,8 +368,8 @@ operations.  No third derivatives at any point.
   \textbf{Newton solves} & \textbf{Error at $\alpha\!=\!0.1$} \\
 \midrule
 Euler & 1 & No & 0 & $2.3 \times 10^{-4}$ \\
-Bregman midpoint & 2 & No & 1 & $7.7 \times 10^{-7}$ \\
-Yoshida--Bregman & 4 & No & 3 & $2.5 \times 10^{-9}$ \\
+Legendre midpoint & 2 & No & 1 & $7.7 \times 10^{-7}$ \\
+Yoshida--Legendre & 4 & No & 3 & $2.5 \times 10^{-9}$ \\
 \midrule
 St\"ormer--Verlet (8 steps) & 2 & Yes & 0 & $3.3 \times 10^{-7}$ \\
 Primal-dual Verlet (8 steps) & 2+ & Yes & 1 & $3.1 \times 10^{-8}$ \\
@@ -345,7 +377,7 @@ Primal-dual Verlet (8 steps) & 2+ & Yes & 1 & $3.1 \times 10^{-8}$ \\
 \end{tabular}
 \end{center}
 
-The Yoshida--Bregman method achieves fourth-order accuracy
+The Yoshida--Legendre method achieves fourth-order accuracy
 ($2.5 \times 10^{-9}$) without any third-derivative computation,
 outperforming even the primal-dual Verlet ($3.1 \times 10^{-8}$)
 which uses 8 substeps with full Christoffel symbol evaluations.
@@ -361,9 +393,9 @@ Yoshida at fifth order).  The $[2/2]$ Pad\'e corresponds to the
 
 \subsection{The obstruction}
 
-The Bregman midpoint works because the Legendre transform provides
+The Legendre midpoint works because the Legendre transform provides
 an \emph{exact} dual evaluation at the midpoint: $\lambda_{1/2} = -\nabla F(s_{1/2})$.
-From the Taylor expansion proof (Section~\ref{sec:bregman-proof}), the
+From the Taylor expansion proof (Section~\ref{sec:legendre-proof}), the
 curvature enters through the nonlinearity of $\nabla F$ at the midpoint.
 The \emph{symmetry} of the midpoint ($c = 1/2$) is essential: it is the
 unique point where the Strang splitting of primal and dual flat flows
@@ -393,15 +425,15 @@ the geodesic acceleration (which requires $\partial^3 F$), the
 coupled system is underdetermined.
 
 \paragraph{What goes wrong.}
-We implemented the 2-stage GL with Bregman-derived velocities and
+We implemented the 2-stage GL with Legendre-derived velocities and
 fixed-point iteration.  The result: the iteration does not converge
 to the geodesic.  The error ($1.3 \times 10^{-4}$) is comparable to
-Euler, indicating that the Bregman velocity approximation destroys
+Euler, indicating that the Legendre velocity approximation destroys
 the fourth-order accuracy of the GL method.
 
 \paragraph{Why Yoshida avoids this.}
 The Yoshida construction sidesteps the velocity problem entirely:
-it composes three \emph{midpoint} steps (where the Bregman trick is
+it composes three \emph{midpoint} steps (where the Legendre trick is
 exact) with algebraic coefficients.  The midpoint is the only node
 where the Legendre transform provides a second-order velocity without
 the ODE acceleration.  Yoshida is the optimal way to achieve fourth
@@ -413,8 +445,8 @@ order from this midpoint-only primitive.
 \toprule
 \textbf{Method} & \textbf{Order} & \textbf{Needs $\partial^3 F$} & \textbf{Error at $\alpha = 0.1$} \\
 \midrule
-Bregman midpoint ($= [1/1]$ Pad\'e) & 2 & No & $7.7 \times 10^{-7}$ \\
-Yoshida--Bregman (3 midpoint steps) & 4 & No & $2.5 \times 10^{-9}$ \\
+Legendre midpoint ($= [1/1]$ Pad\'e) & 2 & No & $7.7 \times 10^{-7}$ \\
+Yoshida--Legendre (3 midpoint steps) & 4 & No & $2.5 \times 10^{-9}$ \\
 Gauss--Legendre 2-stage (attempted) & 4 & \textbf{Yes}${}^*$ & fails \\
 \midrule
 $[2/2]$ Pad\'e (optimal, log barrier) & 4 & No${}^\dagger$ & $\sim\!10^{-10}$ (theory) \\
@@ -450,8 +482,8 @@ Position $q$ & Primal coordinate $s$ \\
 Momentum $p = \partial L / \partial \dot{q}$ & Dual coordinate $\lambda = -\nabla F(s)$ \\
 Kinetic energy $T(p)$ & Primal ``straight line'' \\
 Potential energy $V(q)$ & Dual ``straight line'' \\
-Verlet = split $T + V$ & Bregman = split primal + dual \\
-Yoshida on Verlet & Yoshida on Bregman \\
+Verlet = split $T + V$ & Legendre = split primal + dual \\
+Yoshida on Verlet & Yoshida on Legendre \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -466,13 +498,13 @@ $\mathcal{H}(s, p) = \frac{1}{2} p^\top [\nabla^2 F(s)]^{-1} p$
 is \emph{not} separable (the ``kinetic energy'' depends on $s$).
 But the Legendre transform provides a different splitting: primal
 coordinates (where straight lines are ``free'') and dual coordinates
-(where straight lines are also ``free'').  The Bregman midpoint
+(where straight lines are also ``free'').  The Legendre midpoint
 splits along this primal-dual axis instead of the kinetic-potential
 axis.
 
 The Yoshida construction is purely algebraic---it works for any
 symmetric second-order method, regardless of the underlying geometry.
-Applied to the Bregman midpoint, it gives fourth-order accuracy on
+Applied to the Legendre midpoint, it gives fourth-order accuracy on
 any Hessian manifold, for any strictly convex $F$, without ever
 computing the curvature.
 
@@ -493,50 +525,98 @@ for all $u, v, w$, where $\|u\|_H = \sqrt{u^\top \nabla^2 F(s)\, u}$
 is the local Hessian norm.  This is the polarized form of
 $|D^3 F[v,v,v]| \leq 2\|v\|_H^3$.
 
-\subsection{Tangent line (0th-order Euler)}
+\subsection{Tangent line (1st order)}
 
 The tangent line $L(h) = s_0 + hv$ approximates the geodesic
 $\gamma(h) = s_0 + hv + \frac{h^2}{2}\ddot{s} + O(h^3)$.
-The error is
+The leading error is
 \[
   \gamma(h) - L(h) = -\frac{h^2}{4} H^{-1} T(v,v) + O(h^3),
 \]
 where $T(v,v)_i = \sum_{jk} F_{ijk} v_j v_k$.
 
 \begin{theorem}[Tangent line error bound]\label{thm:euler-bound}
-For a self-concordant barrier,
-\[
-  \|\gamma(h) - (s_0 + hv)\|_H \leq \frac{\delta^2}{2} + O(\delta^3),
-  \qquad \delta = h\|v\|_H.
-\]
+Let $F$ be a $\nu$-LHSCB with self-concordance
+parameter $M_f$ (so~\eqref{eq:sc} becomes $|D^3 F[u,v,w]| \leq
+2M_f\|u\|_H\|v\|_H\|w\|_H$).  Let $\gamma$ be the geodesic
+from $s_0$ with velocity $v$, and set $\delta = h\|v\|_{H_0}$,
+$H_0 = \nabla^2 F(s_0)$.  If $M_f \delta < \frac{1}{4}$, then
+\begin{equation}\label{eq:tangent-bound}
+  \|\gamma(h) - (s_0 + hv)\|_{H_0} \leq M_f\,\delta^2.
+\end{equation}
 \end{theorem}
+
 \begin{proof}
-The leading error is $\frac{h^2}{4}\|H^{-1}T(v,v)\|_H
-= \frac{h^2}{4}\|T(v,v)\|_{H^{-1}}$.
-For any $w$ with $\|w\|_H = 1$:
+\textit{Step 1: geodesic acceleration.}\quad
+The geodesic equation gives $\ddot\gamma = -\frac{1}{2}H(\gamma)^{-1}
+T(\dot\gamma,\dot\gamma)$, so $\|\ddot\gamma\|_{H(\gamma)}
+= \frac{1}{2}\|T(\dot\gamma,\dot\gamma)\|_{H(\gamma)^{-1}}$.
+For any $w$ with $\|w\|_{H(\gamma)} = 1$:
 \[
-  |w^\top T(v,v)| = |D^3 F[w, v, v]| \leq 2\|v\|_H^2,
+  |w^\top T(\dot\gamma,\dot\gamma)|
+  = |D^3F[\dot\gamma,\dot\gamma,w]|
+  \leq 2M_f\|\dot\gamma\|_{H(\gamma)}^2.
 \]
-by~\eqref{eq:sc}.  Taking the supremum:
-$\|T(v,v)\|_{H^{-1}} \leq 2\|v\|_H^2$.  Therefore
+Since geodesics have constant speed
+$\|\dot\gamma(t)\|_{H(\gamma(t))} = \|v\|_{H_0}$, we obtain
+\begin{equation}\label{eq:accel-inst}
+  \|\ddot\gamma(t)\|_{H(\gamma(t))} \leq M_f\|v\|_{H_0}^2
+\end{equation}
+for all $t$ in the domain of $\gamma$.
+
+\medskip\noindent
+\textit{Step 2: trajectory containment.}\quad
+Set $\beta(t) = M_f\|\gamma(t) - s_0\|_{H_0}$.  On any interval
+where $\beta < \frac{1}{2}$, the Hessian comparison theorem gives
+$(1-\beta)^2 H_0 \preceq H(\gamma) \preceq (1-\beta)^{-2}H_0$, so
+$\|w\|_{H_0} \leq (1-\beta)^{-1}\|w\|_{H(\gamma)}$ and
 \[
-  \|\gamma(h) - L(h)\|_H \leq \frac{h^2}{4} \cdot 2\|v\|_H^2
-  = \frac{h^2 \|v\|_H^2}{2} = \frac{\delta^2}{2}. \qedhere
+  \|\ddot\gamma(t)\|_{H_0}
+  \leq \frac{M_f\|v\|_{H_0}^2}{1-\beta(t)}
+  \leq 2M_f\|v\|_{H_0}^2.
+\]
+Integrating: $\|\dot\gamma(t) - v\|_{H_0}
+\leq 2M_f\|v\|_{H_0}^2\,t$, and then
+\[
+  \beta(t) \leq M_f\bigl(t\|v\|_{H_0} + M_f\|v\|_{H_0}^2 t^2\bigr)
+  \leq M_f\delta + (M_f\delta)^2
+  < \tfrac{1}{4} + \tfrac{1}{16}
+  = \tfrac{5}{16} < \tfrac{1}{2}.
+\]
+Since $\beta(0) = 0$ and the bound shows $\beta$ cannot reach
+$\frac{1}{2}$ on $[0,h]$, the containment holds by continuity.
+
+\medskip\noindent
+\textit{Step 3: error bound.}\quad
+With $\|\ddot\gamma(t)\|_{H_0} \leq 2M_f\|v\|_{H_0}^2$ for all
+$t \in [0,h]$:
+\[
+  \|\gamma(h) - s_0 - hv\|_{H_0}
+  = \Bigl\|\int_0^h (h-t)\,\ddot\gamma(t)\,dt\Bigr\|_{H_0}
+  \leq 2M_f\|v\|_{H_0}^2 \cdot \frac{h^2}{2}
+  = M_f\,\delta^2. \qedhere
 \]
 \end{proof}
 
-The tangent line stays in the Dikin ellipsoid ($\|\text{error}\|_H < 1$)
-whenever $\delta < \sqrt{2}$.
+\paragraph{Remark.}
+The constant $M_f$ (rather than $\frac{1}{2}M_f$) is the price of
+a uniform bound over the trajectory: the Hessian comparison
+factor $(1-\beta)^{-1} \leq 2$ converts the
+instantaneous bound~\eqref{eq:accel-inst} to the base-point norm.
+For $M_f\delta \ll 1$, the true error approaches the leading-order
+value $\frac{1}{2}M_f\delta^2$.  For $M_f = 1$, the bound gives
+$\delta^2$, and the tangent line stays in the Dikin ellipsoid
+whenever $\delta < 1$.
 
-\subsection{Bregman midpoint (2nd order)}
+\subsection{Legendre midpoint (2nd order)}
 
-From the Taylor expansion proof (Section~\ref{sec:bregman-proof}),
-the Bregman midpoint matches the geodesic to second order.  The
+From the Taylor expansion proof (Section~\ref{sec:legendre-proof}),
+the Legendre midpoint matches the geodesic to second order.  The
 leading error is $O(h^3)$ and involves $D^4 F$ (fourth derivatives)
 contracted with $v$.  For a self-concordant barrier, iterated
 application of~\eqref{eq:sc} gives:
-\begin{equation}\label{eq:bregman-bound}
-  \|\gamma(h) - s_{\text{Bregman}}\|_H \leq C_2\, \delta^3 + O(\delta^4),
+\begin{equation}\label{eq:legendre-bound}
+  \|\gamma(h) - s_{\text{Leg}}\|_H \leq C_2\, \delta^3 + O(\delta^4),
 \end{equation}
 where $C_2$ is a universal constant (independent of the specific barrier)
 that depends only on the self-concordance parameter.
@@ -550,7 +630,7 @@ $|D^4 F[u,v,v,v]| \leq C \|u\|_H \|v\|_H^3$.  The $H^{-1}$
 contraction contributes another $\|v\|_H$ factor, giving
 $\delta^3 = h^3 \|v\|_H^3$ overall.
 
-\subsection{Yoshida--Bregman (4th and 6th order)}
+\subsection{Yoshida--Legendre (4th and 6th order)}
 
 The Yoshida composition cancels the $O(\delta^3)$ error, leaving:
 \begin{align}
@@ -570,7 +650,7 @@ functions of $\nu$ (the barrier parameter).
 \textbf{Method} & \textbf{Error bound} & \textbf{Order} & \textbf{Interior if} \\
 \midrule
 Tangent line      & $\delta^2/2$       & 1 & $\delta < \sqrt{2}$ \\
-Bregman midpoint  & $C_2 \delta^3$     & 2 & $\delta < C_2^{-1/3}$ \\
+Legendre midpoint  & $C_2 \delta^3$     & 2 & $\delta < C_2^{-1/3}$ \\
 Yoshida-4         & $C_4 \delta^5$     & 4 & $\delta < C_4^{-1/5}$ \\
 Yoshida-6         & $C_6 \delta^7$     & 6 & $\delta < C_6^{-1/7}$ \\
 \bottomrule
@@ -588,129 +668,452 @@ search.  The error bound guarantees that the geodesic step stays
 interior whenever $\delta$ is below the method-specific threshold.
 No post-hoc feasibility check is needed.
 
-\section{Improved dependence on the self-concordance parameter}
-\label{sec:m-concordance}
+\section{Error analysis for general $M_f$}
+\label{sec:rel-smooth}
 
-Nesterov~\cite{nesterov2018} parameterizes self-concordance with a
-constant $M_f$:
-\begin{equation}\label{eq:m-concordance}
-  |D^3 F(s)[v, v, v]| \leq 2M_f \|v\|_H^3.
+The error bounds in Sections~\ref{sec:legendre-proof}--\ref{sec:yoshida}
+were stated for the standard self-concordant case $M_f = 1$.  We now
+give rigorous bounds for general $(M_f, \nu)$-self-concordant barriers,
+showing how the integrator order controls the dependence on $M_f$.
+
+We begin with a digression on a weaker regularity condition that
+captures what the integrators use in practice: they never evaluate
+$D^3 F$, only $\nabla F$ and $\nabla^2 F$ at different points.
+
+\subsection{Relative smoothness}
+
+\begin{definition}\label{def:rel-smooth}
+The gradient $\nabla F$ is \emph{$L$-smooth relative to $\nabla^2 F$}
+if for all $s \in \operatorname{int}(K)$ and $\|u\|_{H(s)} < 1/L$:
+\begin{equation}\label{eq:rel-smooth}
+  \|\nabla F(s + u) - \nabla F(s) - \nabla^2 F(s) \cdot u\|_{H^{-1}}
+  \leq \frac{L \, \|u\|_H^2}{1 - L\|u\|_H},
 \end{equation}
-Standard self-concordant barriers have $M_f = 1$.  Larger $M_f$
-means the Hessian varies faster---the barrier is ``less regular.''
-The classical IPM theory (using tangent-line steps) gives step-size
-and iteration bounds that depend on $M_f$.
+where $H = \nabla^2 F(s)$ and $\|\cdot\|_{H^{-1}}$ is the dual norm.
+The domain restriction $\|u\|_H < 1/L$ and the denominator
+$1 - L\|u\|_H$ are the Hessian-metric analogs of the Dikin ellipsoid.
+\end{definition}
 
-We show that higher-order integrators \emph{improve the dependence
-on $M_f$}: the Yoshida hierarchy reduces the sensitivity from
-$M_f^{-1/2}$ (tangent line) to $M_f^{-1/(2p+1)}$ (order $2p$).
-This is a new consequence, not present in Nesterov's analysis.
-
-\subsection{Step-size bounds}
-
-From the error bounds in the previous section, the maximum step
-$\delta = h\|v\|_H$ for staying in the Dikin ellipsoid depends on
-both $M_f$ and the integrator order.
-
-\paragraph{Tangent line (Nesterov's analysis).}
-Error $\leq \frac{M_f}{2}\delta^2$.  Interior if
-$\delta < \sqrt{2/M_f}$.  This is the classical bound.
-
-\paragraph{Bregman midpoint (new).}
-The midpoint quadrature error is controlled by the variation of
-$\dot\lambda = -Hv$, which involves $D^3 F$.  The bound:
-\[
-  \text{error} \leq C_2 \, M_f \, \delta^3,
-\]
-where $C_2$ is a universal constant.
-Interior if $\delta < (C_2 M_f)^{-1/3}$.
-
-\paragraph{Yoshida-$2p$ (new).}
-The Yoshida composition cancels error terms up to order $2p$:
-\[
-  \text{error} \leq C_p \, M_f^{p} \, \delta^{2p+1}.
-\]
-Interior if $\delta < (C_p \, M_f^p)^{-1/(2p+1)}$.
-
-\subsection{The improvement: integrator order reduces $M_f$ sensitivity}
-
-For fixed accuracy (error $= \varepsilon$), the required step size is:
-\[
-  \delta_{\max} \propto \left(\frac{\varepsilon}{M_f^p}\right)^{1/(2p+1)}.
-\]
-As $M_f$ increases (worse barrier), $\delta_{\max}$ shrinks.  But the
-rate of shrinkage depends on the method order $2p$:
-
+This is the scale-invariant, self-referential analog of classical
+$L$-smoothness ($\nabla^2 F \leq LI$):
 \begin{center}
-\renewcommand{\arraystretch}{1.2}
-\begin{tabular}{@{}lccccc@{}}
+\begin{tabular}{@{}ll@{}}
 \toprule
-& & \multicolumn{4}{c}{\textbf{Max step $\delta$ for $\|\text{error}\|_H < 1$}} \\
-\cmidrule(l){3-6}
-\textbf{Method} & \textbf{Order} & $M_f\!=\!1$ & $M_f\!=\!50$ & $M_f\!=\!5000$ & $M_f\!=\!5 \!\times\! 10^5$ \\
+\textbf{Classical (Euclidean)} & \textbf{Self-referential (Hessian)} \\
 \midrule
-Tangent line      & 1 & $1.00$ & $0.14$ & $0.014$ & $0.0014$ \\
-Bregman midpoint  & 2 & $\sim\!1$   & $0.22$ & $0.046$ & $0.010$ \\
-Yoshida-4         & 4 & $\sim\!1$   & $0.40$ & $0.16$  & $0.063$ \\
-Yoshida-6         & 6 & $\sim\!1$   & $0.52$ & $0.27$  & $0.14$ \\
+$\nabla^2 F \leq L \cdot I$ (smooth) &
+  $\nabla F$ varies $\leq L$ relative to $\nabla^2 F$ \\
+$\nabla^2 F \geq \mu \cdot I$ (strongly convex) &
+  trivially holds with $\mu = 1$ \\
+Step size $\delta < 1/L$ (absolute) &
+  Step size $\delta < 1/L$ in local Hessian norm \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-\paragraph{Reading the table.}
-At $M_f = 5 \times 10^5$ (far from self-concordant), the tangent line
-requires $\delta < 0.0014$ (thousands of tiny steps), while Yoshida-6
-permits $\delta < 0.14$ (a few large steps).  The higher-order method
-compensates for the poor regularity of the barrier.
+\paragraph{Relation to self-concordance.}
 
-\subsection{What this enables}
+\begin{definition}[Generalized self-concordance {\cite[Def.~5.1.1]{nesterov2004}}]
+A $C^3$ convex function $F$ is \emph{$(M_f, \nu)$-self-concordant} if
+for all $s \in \operatorname{dom} F$ and $v \in \R^n$,
+\begin{equation}\label{eq:gsc}
+  |D^3 F(s)[v,v,v]| \;\leq\; 2M_f \,\|v\|_{H(s)}^3,
+\end{equation}
+where $H(s) = \nabla^2 F(s)$.  The standard self-concordant case is
+$M_f = 1$.
+\end{definition}
 
-\begin{enumerate}
-  \item \textbf{Approximate barriers.}  A cheap approximation to $F$
-    (polynomial fit, interpolation, neural network) may have $M \gg 2$
-    but fast $\nabla F$ and $\nabla^2 F$ evaluations.  Yoshida
-    compensates for the large $M$.
+\begin{proposition}\label{prop:sc-implies-rs}
+If $F$ is $(M_f, \nu)$-self-concordant, then $\nabla F$ is
+$L$-smooth relative to $\nabla^2 F$ with $L = M_f$.
+\end{proposition}
 
-  \item \textbf{Universal barriers.}  The universal barrier exists
-    for any proper cone but has large barrier parameter $\nu$ and
-    poor concordance constants.  Higher-order integrators make it
-    practical by tolerating the large $M$.
-
-  \item \textbf{Composite barriers.}  $F = F_1 + \varepsilon F_2$
-    where $F_1$ is a good barrier for most of the cone and $F_2$
-    handles a difficult boundary region.  The perturbation
-    $\varepsilon F_2$ may have large $M$ but small overall effect;
-    Yoshida tolerates it.
-
-  \item \textbf{Exotic cones.}  For cones where constructing an
-    $M = 2$ barrier is hard (matrix power cones, quantum entropy
-    cones), an $M = 100$ barrier may be straightforward.  Classical
-    IPMs (which assume $M = 2$) cannot use such barriers; Yoshida-based
-    IPMs can.
-\end{enumerate}
-
-\paragraph{The new result.}
-Nesterov's classical analysis gives step size $\delta \propto M_f^{-1/2}$
-for the tangent-line step.  The Yoshida hierarchy improves this to:
+\begin{proof}
+Write the Taylor remainder as
 \[
-  M_f^{-1/2} \;\to\; M_f^{-1/3} \;\to\; M_f^{-1/5} \;\to\; M_f^{-1/7} \;\to\; \cdots
+  \nabla F(s+u) - \nabla F(s) - H(s)\,u
+  \;=\; \int_0^1 \bigl[H(s+tu) - H(s)\bigr]\,u\;\mathrm{d}t.
 \]
-Each level reduces the sensitivity to $M_f$, making barriers with
-large self-concordance parameter practical at the cost of a few extra
-gradient and Hessian evaluations per step.
+Set $\alpha = M_f\|u\|_{H(s)} < 1$.  The Hessian comparison theorem
+for self-concordant functions~\cite[Thm.~5.1.1]{nesterov2004} gives
+\[
+  H(s+tu) \;\preceq\; \frac{1}{(1 - t\alpha)^2}\, H(s).
+\]
+Therefore $H(s+tu) - H(s) \preceq \bigl[(1-t\alpha)^{-2} - 1\bigr] H(s)$,
+and taking the $H(s)^{-1}$ norm of the integral:
+\begin{align*}
+  \bigl\|\nabla F(s\!+\!u) - \nabla F(s) - H(s)u\bigr\|_{H^{-1}}
+  &\leq \|u\|_H \int_0^1 \!\Bigl(\frac{1}{(1-t\alpha)^2} - 1\Bigr)\mathrm{d}t \\
+  &= \|u\|_H \biggl[\frac{1}{\alpha(1-t\alpha)}\bigg|_0^1 - 1\biggr]
+  \;=\; \|u\|_H \cdot \frac{\alpha}{1-\alpha}
+  \;=\; \frac{M_f\,\|u\|_H^2}{1 - M_f\|u\|_H},
+\end{align*}
+which is~\eqref{eq:rel-smooth} with $L = M_f$.
+\end{proof}
 
-For barriers with $M_f = 1$ (standard self-concordant), the improvement
-manifests as larger feasible step sizes (effectively reducing the
-barrier parameter $\nu$).  For barriers with $M_f \gg 1$, the
-improvement is qualitative: the Yoshida-based IPM converges where the
-classical tangent-line IPM cannot take meaningful steps.
+\paragraph{The converse is false.}
+A barrier can be $L$-smooth relative to $\nabla^2 F$
+(finite $L$) even when $D^3 F$ has localized spikes (large or
+undefined $M_f$).  Relative smoothness is strictly weaker: it
+measures the \emph{integrated} gradient deviation, not pointwise
+third derivatives.  This gap is practically significant for
+approximate barriers (where $D^3 F$ may not exist everywhere) and
+composite barriers (where a small perturbation can create large
+pointwise $D^3 F$ without affecting the integrated bound).
+
+\subsection{Error bounds for self-concordant barriers}
+
+Throughout this section, $F$ is $(M_f, \nu)$-self-concordant,
+$\gamma$ is the geodesic from $s_0$ with velocity $v$,
+and $\delta = h\|v\|_{H_0}$ with $H_0 = \nabla^2 F(s_0)$.
+
+\subsubsection{Preliminaries}
+
+\begin{lemma}[Geodesic acceleration]\label{lem:accel}
+Along the geodesic, the acceleration in the instantaneous metric
+satisfies
+\begin{equation}\label{eq:accel-bound}
+  \|\ddot\gamma(t)\|_{H(\gamma(t))} \leq M_f \|v\|_{H_0}^2
+\end{equation}
+for all $t$ in the domain of $\gamma$.
+\end{lemma}
+\begin{proof}
+The geodesic equation gives $H(\gamma)\ddot\gamma
+= -\frac{1}{2}T(\dot\gamma,\dot\gamma)$, so
+$\|\ddot\gamma\|_H = \frac{1}{2}\|T(\dot\gamma,\dot\gamma)\|_{H^{-1}}$.
+For any $w$ with $\|w\|_H = 1$,
+\[
+  |w^\top T(\dot\gamma,\dot\gamma)|
+  = |D^3 F[\dot\gamma, \dot\gamma, w]|
+  \leq 2M_f\,\|\dot\gamma\|_H^2\,\|w\|_H
+  = 2M_f\,\|\dot\gamma\|_H^2,
+\]
+where the inequality is the polarized form
+of~\eqref{eq:gsc}.  Since $\|\dot\gamma(t)\|_{H(\gamma(t))}
+= \|v\|_{H_0}$ (constant speed on a geodesic), the bound follows.
+\end{proof}
+
+To convert from the instantaneous norm $H(\gamma(t))$ to the
+base-point norm $H_0$, we use the Hessian comparison theorem:
+for $\beta = M_f\|\gamma(t) - s_0\|_{H_0} < 1$,
+\begin{equation}\label{eq:hess-compare}
+  (1-\beta)^2\, H_0 \;\preceq\; H(\gamma(t)) \;\preceq\;
+  (1-\beta)^{-2}\, H_0.
+\end{equation}
+In particular, $\|w\|_{H_0} \leq (1-\beta)^{-1}\|w\|_{H(\gamma)}$
+for any vector $w$.
+
+\begin{lemma}[Trajectory containment]\label{lem:contain}
+If $M_f\delta < \frac{1}{4}$, then $\gamma(t)$ remains inside the
+ball $M_f\|\gamma(t) - s_0\|_{H_0} < \frac{1}{2}$ for $t \in [0, h]$.
+In particular, $\|\ddot\gamma(t)\|_{H_0} \leq 2M_f\|v\|_{H_0}^2$.
+\end{lemma}
+\begin{proof}
+Define $\beta(t) = M_f\|\gamma(t) - s_0\|_{H_0}$.  On any interval
+$[0, t_*]$ where $\beta < \frac{1}{2}$,
+Lemma~\ref{lem:accel} and~\eqref{eq:hess-compare} give
+\[
+  \|\ddot\gamma(\tau)\|_{H_0}
+  \leq \frac{M_f\|v\|_{H_0}^2}{1-\beta(\tau)}
+  \leq 2M_f\|v\|_{H_0}^2.
+\]
+Integrating: $\|\dot\gamma(\tau) - v\|_{H_0}
+\leq 2M_f\|v\|_{H_0}^2\,\tau$, so
+\begin{align*}
+  \beta(t)
+  &= M_f\Bigl\|\int_0^t \dot\gamma(\tau)\,d\tau - s_0\Bigr\|_{H_0}
+  \leq M_f\bigl(t\|v\|_{H_0} + M_f\|v\|_{H_0}^2 t^2\bigr) \\
+  &\leq M_f\delta + (M_f\delta)^2
+  < \tfrac{1}{4} + \tfrac{1}{16}
+  = \tfrac{5}{16} < \tfrac{1}{2}.
+\end{align*}
+The set $\{t : \beta(t) < \frac{1}{2}\}$ is open and contains $0$;
+the bound shows it cannot have a first exit time in $[0,h]$.
+\end{proof}
+
+\subsubsection{Tangent line (order 1)}
+
+\begin{theorem}[Tangent line, general $M_f$]\label{thm:tangent-Mf}
+If $M_f\delta < \frac{1}{4}$, then
+\[
+  \|\gamma(h) - (s_0 + hv)\|_{H_0}
+  \leq M_f\,\delta^2.
+\]
+\end{theorem}
+\begin{proof}
+By Lemma~\ref{lem:contain},
+$\|\ddot\gamma(t)\|_{H_0} \leq 2M_f\|v\|_{H_0}^2$ for
+$t \in [0,h]$.  Since $\gamma(h) - s_0 - hv
+= \int_0^h (h-t)\,\ddot\gamma(t)\,dt$,
+\[
+  \|\gamma(h) - s_0 - hv\|_{H_0}
+  \leq 2M_f\|v\|_{H_0}^2 \cdot \frac{h^2}{2}
+  = M_f\,\delta^2. \qedhere
+\]
+\end{proof}
+
+\paragraph{Remark.}
+The factor of $2$ (compared to the leading-order bound $\frac{1}{2}M_f\delta^2$
+from Theorem~\ref{thm:euler-bound}) is the price of a rigorous global bound:
+Lemma~\ref{lem:contain} controls $\|\ddot\gamma\|_{H_0}$ uniformly
+over the trajectory, not just at $t = 0$.  For small $M_f\delta$,
+the true error approaches $\frac{1}{2}M_f\delta^2$.
+
+\subsubsection{Legendre midpoint (order 2)}
+
+\begin{theorem}[Legendre midpoint, general $M_f$]\label{thm:legendre-Mf}
+If $M_f\delta < \frac{1}{4}$, then
+\[
+  \|\gamma(h) - s_{\textup{Leg}}\|_{H_0}
+  \leq C\, M_f^2\, \delta^3,
+\]
+where $C$ is a universal constant.
+\end{theorem}
+\begin{proof}
+Define the dual variable along the geodesic:
+$\lambda(t) = -\nabla F(\gamma(t))$, with $\dot\lambda = H(\gamma)\dot\gamma$.
+
+\medskip\noindent\textit{Step 1: bound $\ddot\lambda$.}\quad
+Differentiating: $\ddot\lambda
+= D^3F[\dot\gamma,\dot\gamma,\cdot] + H\ddot\gamma
+= T(\dot\gamma,\dot\gamma) + H\ddot\gamma$.
+The geodesic equation gives $H\ddot\gamma = -\frac{1}{2}T$, so
+\begin{equation}\label{eq:dual-accel}
+  \ddot\lambda = \tfrac{1}{2}T(\dot\gamma,\dot\gamma).
+\end{equation}
+By the same argument as Lemma~\ref{lem:accel},
+$\|\ddot\lambda\|_{H^{-1}} = \frac{1}{2}\|T\|_{H^{-1}}
+\leq M_f\|v\|_{H_0}^2$.
+
+\medskip\noindent\textit{Step 2: bound $\dddot\lambda$.}\quad
+Differentiating~\eqref{eq:dual-accel}:
+$\dddot\lambda = D^4F[\dot\gamma,\dot\gamma,\dot\gamma,\cdot]
++ D^3F[\ddot\gamma,\dot\gamma,\cdot] + \text{sym}$.
+Differentiating the self-concordance
+inequality~\eqref{eq:gsc} gives
+$|D^4F[u,v,v,v]| \leq C_1 M_f^2\|u\|_H\|v\|_H^3$ and the
+$D^3F[\ddot\gamma,\cdot,\cdot]$ terms are bounded using
+$\|\ddot\gamma\|_H \leq M_f\|v\|_H^2$
+(Lemma~\ref{lem:accel}).  Together, in the $H_0^{-1}$ norm
+(using~\eqref{eq:hess-compare} with $\beta < \frac{1}{2}$):
+\begin{equation}\label{eq:dual-jerk}
+  \|\dddot\lambda(t)\|_{H_0^{-1}} \leq C_2 M_f^2\|v\|_{H_0}^3
+\end{equation}
+for a universal constant $C_2$.
+
+\medskip\noindent\textit{Step 3: midpoint quadrature error.}\quad
+The Legendre midpoint computes (Section~\ref{sec:legendre-proof}):
+\[
+  \lambda_1^{\text{Leg}}
+  = -2\nabla F(s_0 + \tfrac{h}{2}v) + \nabla F(s_0)
+  = \lambda_0 + h\dot\lambda_*,
+\]
+where $\dot\lambda_* = H(s_0 + \frac{h}{2}v)\,v$ is the dual
+velocity evaluated at the \emph{primal} midpoint $s_0 + \frac{h}{2}v$.
+
+The true geodesic endpoint in dual coordinates is
+\[
+  \lambda(h) = \lambda_0 + \int_0^h \dot\lambda(t)\,dt.
+\]
+The difference $\lambda_1^{\text{Leg}} - \lambda(h)$ has two
+sources of error:
+\begin{enumerate}
+  \item \emph{Midpoint quadrature.}  Even if we evaluated
+    $\dot\lambda$ at the true geodesic midpoint $\gamma(h/2)$,
+    the midpoint rule
+    $\int_0^h f(t)\,dt \approx hf(h/2)$ has error
+    $\frac{h^3}{24}\ddot f(\xi)$.  Applied to $f = \dot\lambda$:
+    error $= \frac{h^3}{24}\dddot\lambda(\xi)$, bounded
+    by~\eqref{eq:dual-jerk}.
+  \item \emph{Primal vs.\ geodesic midpoint.}  The Legendre step
+    evaluates at $s_0 + \frac{h}{2}v$ instead of $\gamma(h/2)$.
+    These differ by $O(h^2)$ (Theorem~\ref{thm:tangent-Mf} at
+    half-step), so $H(s_0 + \frac{h}{2}v)v - H(\gamma(h/2))\dot\gamma(h/2)
+    = O(M_f\|v\|_H^2 h)$.  Multiplied by $h$: $O(M_f\delta^2 h)
+    = O(M_f\delta^3/\|v\|_H)$.  But this error enters at $O(h^3)$
+    because the midpoint evaluation is already correct to $O(h)$
+    in velocity.
+\end{enumerate}
+Combining: $\|\lambda_1^{\text{Leg}} - \lambda(h)\|_{H_0^{-1}}
+\leq C_3 M_f^2 \|v\|_{H_0}^3 h^3 = C_3 M_f^2 \delta^3$.
+
+\medskip\noindent\textit{Step 4: dual to primal.}\quad
+For the barrier $F$, the gradient map $s \mapsto -\nabla F(s)$ has
+Jacobian $H(s)$.  By the inverse function theorem, a dual error
+$\Delta\lambda$ in $H_0^{-1}$ norm produces a primal error
+$\|\Delta s\|_{H_0} \leq (1-\beta)^{-2}\|\Delta\lambda\|_{H_0^{-1}}
+\leq 4\|\Delta\lambda\|_{H_0^{-1}}$.
+
+Therefore $\|\gamma(h) - s_{\text{Leg}}\|_{H_0}
+\leq C\, M_f^2\, \delta^3$.
+\end{proof}
+
+\subsubsection{Yoshida-$2p$ (order $2p$)}
+
+\begin{theorem}[Yoshida composition, general $M_f$]\label{thm:yoshida-Mf}
+If $M_f\delta < \frac{1}{4}$, then the Yoshida-$2p$ composition
+of Legendre midpoint steps satisfies
+\[
+  \|\gamma(h) - s_{\textup{Y}_{2p}}\|_{H_0}
+  \leq C_p\, M_f^{2p}\, \delta^{2p+1}.
+\]
+\end{theorem}
+\begin{proof}
+The Yoshida composition of order $2p$ is built from $2p-1$ Legendre
+substeps with coefficients $c_1, \ldots, c_{2p-1}$ summing to $1$,
+chosen so that the local error expansion
+\[
+  s_{\text{Leg}}(c_i h)
+  = \gamma(c_i h) + c_i^3 h^3\, e_3 + c_i^5 h^5\, e_5 + \cdots
+\]
+(where $e_k$ depends on $D^{k+1}F$ contracted with $v$)
+satisfies $\sum_i c_i^3 = 0$ (cancels $O(h^3)$),
+$\sum_i c_i^5 = 0$ (cancels $O(h^5)$), and so on through
+$\sum_i c_i^{2p-1} = 0$.
+
+The leading surviving error has coefficient $\sum_i c_i^{2p+1}$
+multiplied by $e_{2p+1}$, which involves $D^{2p+2}F$ contracted
+with $v$.  By iterated differentiation of the self-concordance
+inequality~\eqref{eq:gsc}, the $k$-th derivative of $F$ satisfies
+\[
+  |D^k F[v, \ldots, v]| \leq C_k'\, M_f^{k-2}\, \|v\|_H^k
+\]
+for universal constants $C_k'$ (the pattern: each differentiation
+of $|D^3F| \leq 2M_f\|v\|_H^3$ introduces one factor of $M_f$
+from the Hessian comparison).
+
+The error term $e_{2p+1}$ involves $H^{-1} D^{2p+2}F[v^{2p+1}]$
+(schematically), contributing $M_f^{2p}\|v\|_H^{2p+1}$.
+Multiplied by $h^{2p+1}$:
+\[
+  \|e_{2p+1}\|_{H_0} \cdot h^{2p+1}
+  \leq C_p\, M_f^{2p}\, \delta^{2p+1}. \qedhere
+\]
+\end{proof}
+
+\paragraph{Remark.}
+The $M_f^{2p}$ scaling shows that higher-order methods are more
+sensitive to $M_f$ in the \emph{coefficient}, but less sensitive
+in the \emph{exponent} of $\delta$.  For target error $\varepsilon$:
+\[
+  \delta_{\max} \propto \left(\frac{\varepsilon}{M_f^{2p}}\right)^{1/(2p+1)}.
+\]
+This is the content of the step-size table below.
+
+\subsection{Step-size and work comparison}
+
+\subsubsection{Max step size for unit error}
+
+For target error $\varepsilon$, each method's max step size scales as
+$\delta_{\max} \propto (\varepsilon / M_f^{2p})^{1/(2p+1)}$:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Method} & \textbf{Error bound} & \textbf{$\delta_{\max}$ scaling} &
+  $M_f\!=\!1$ & $M_f\!=\!10$ \\
+\midrule
+Tangent line      & $M_f\,\delta^2$ & $M_f^{-1/2}$ &
+  $1.00$ & $0.32$ \\
+Legendre midpoint  & $C M_f^2\,\delta^3$ & $M_f^{-2/3}$ &
+  $\sim\!1$ & $0.22$ \\
+Yoshida-4         & $C_4 M_f^4\,\delta^5$ & $M_f^{-4/5}$ &
+  $\sim\!1$ & $0.16$ \\
+Yoshida-6         & $C_6 M_f^6\,\delta^7$ & $M_f^{-6/7}$ &
+  $\sim\!1$ & $0.12$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Observation.}
+The max step size for unit error actually \emph{decreases} with
+method order when $M_f > 1$.  The coefficient $M_f^{2p}$ grows
+faster than the exponent $\delta^{2p+1}$ can compensate.  This is
+because the leading error term at order $2p$ involves the
+$(2p+2)$-th derivative of $F$, which self-concordance bounds as
+$O(M_f^{2p})$.
+
+\subsubsection{Where higher order helps: fixed step accuracy}
+
+The correct comparison is at a \textbf{fixed step size} $\delta$
+(constrained to $M_f\delta < 1/4$ by the trajectory containment
+lemma).  For example, at $\delta = 0.1 / M_f$:
+
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\textbf{Method} & \textbf{Error at $\delta = 0.1/M_f$} & \textbf{Ratio} \\
+\midrule
+Tangent line      & $M_f \cdot (0.1/M_f)^2 = 0.01/M_f$ & $1$ \\
+Legendre midpoint  & $C M_f^2 \cdot (0.1/M_f)^3 = 10^{-3} C / M_f$ & $0.1 C$ \\
+Yoshida-4         & $C_4 M_f^4 \cdot (0.1/M_f)^5 = 10^{-5} C_4 / M_f$ & $10^{-3} C_4$ \\
+Yoshida-6         & $C_6 M_f^6 \cdot (0.1/M_f)^7 = 10^{-7} C_6 / M_f$ & $10^{-5} C_6$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+At any fixed fraction of the Dikin radius, higher-order methods
+give dramatically better accuracy.  The error ratio is independent
+of $M_f$: each Yoshida level gains a factor of $\sim\!100$ for
+the same step size.  This matches the $94{,}000\times$ improvement
+observed in the exponential cone experiments
+(Section~\ref{sec:exp-cone-numerics}).
+
+\subsubsection{Total work comparison}
+
+For a target per-step accuracy $\varepsilon$ and total path length
+$D$ (in Hessian norm), the total number of Hessian solves is
+(step count) $\times$ (solves per step):
+\begin{center}
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Method} & \textbf{Solves/step} & \textbf{$\delta(\varepsilon)$} &
+  \textbf{Total solves} \\
+\midrule
+Tangent & $1$ & $(\varepsilon/M_f)^{1/2}$ &
+  $D\,(M_f/\varepsilon)^{1/2}$ \\
+Legendre & $\sim\!3$ & $(\varepsilon/CM_f^2)^{1/3}$ &
+  $3D\,(CM_f^2/\varepsilon)^{1/3}$ \\
+Yoshida-4 & $9$ & $(\varepsilon/C_4 M_f^4)^{1/5}$ &
+  $9D\,(C_4 M_f^4/\varepsilon)^{1/5}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Scaling with $\varepsilon$.}
+For fixed $M_f$, tangent scales as $\varepsilon^{-1/2}$, Legendre as
+$\varepsilon^{-1/3}$, Yoshida-4 as $\varepsilon^{-1/5}$.  Higher
+order wins decisively when high per-step accuracy is needed.
+
+\paragraph{Scaling with $M_f$.}
+Tangent scales as $M_f^{1/2}$, Legendre as $M_f^{2/3}$, Yoshida-4
+as $M_f^{4/5}$.  Higher order has \emph{worse} $M_f$ scaling.
+The $M_f^{2p}$ error coefficient (from higher derivatives of $F$)
+grows faster than the step-size exponent can absorb.
+
+\paragraph{Summary.}
+Higher-order Yoshida methods are most valuable when:
+\begin{itemize}
+  \item The barrier is well-behaved ($M_f$ moderate), so the
+    coefficient penalty is small,
+  \item High per-step accuracy is needed (geodesic step must closely
+    approximate the true geodesic),
+  \item The overhead of multiple Hessian solves per step is acceptable.
+\end{itemize}
+For barriers with $M_f \gg 1$, higher order does not compensate for
+the poor regularity --- the error coefficient $M_f^{2p}$ dominates.
+In this regime, the tangent-line step (with smaller steps) may be
+more efficient.
 
 \section{Application to interior-point methods}
 
 In conic optimization, the barrier function $F$ defines a Hessian
 manifold on the interior of the cone.  The geodesic step keeps
 iterates strictly inside the cone (unlike a linear step which may
-exit).  The Yoshida--Bregman method provides:
+exit).  The Yoshida--Legendre method provides:
 \begin{itemize}
   \item \textbf{Cone-preserving steps} without computing third
     derivatives of the barrier,
