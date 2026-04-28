@@ -4,6 +4,8 @@
 \usepackage{amsmath, amssymb, amsthm, bm}
 \usepackage{geometry}
 \usepackage{hyperref}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
 
 \geometry{margin=1in}
 
@@ -188,6 +190,31 @@ By exploiting the $\nu$-log-homogeneity of barrier functions, we have derived a 
 \section{Local Truncation Error of the Discrete Flow Map}
 
 
+\begin{algorithm}
+\caption{Symmetric Geodesic Step (Log-Homogeneous)}
+\label{alg:symmetric_step}
+\begin{algorithmic}[1]
+\Require{Current position $z_k \in \text{int}(K)$, velocity $v_k \in T_{z_k}K$, step size $h$}
+\Ensure{Updated state $(z_{k+1}, v_{k+1})$}
+
+\State $w_k \gets H(z_k)v_k$ \Comment{Compute initial dual momentum}
+\State $\text{Target} \gets 2h w_k$ 
+
+\State \textbf{Solve for } $z_{k+1}$: \Comment{Implicit Primal Update}
+\State \quad $\nabla \phi(z_{k+1}) + H(z_k)z_{k+1} = \text{Target}$ \label{alg:implicit_solve}
+
+\State $\lambda_{k+1} \gets \nabla \phi(z_{k+1})$
+\State $\lambda_k \gets \nabla \phi(z_k)$ \Comment{Note: $\lambda_k = -H(z_k)z_k$ by homogeneity}
+
+\State $w_{k+1} \gets \frac{1}{2h} \left[ (\lambda_{k+1} - \lambda_k) + H(z_{k+1})(z_{k+1} - z_k) \right]$ \label{alg:momentum_update}
+\State $v_{k+1} \gets H(z_{k+1})^{-1} w_{k+1}$ \Comment{Map back to tangent space}
+
+\State \Return $(z_{k+1}, v_{k+1})$
+\end{algorithmic}
+\end{algorithm}
+
+
+
 
 \subsection{The dual midpoint method}
 
@@ -334,30 +361,36 @@ Evaluating at $h=0$ with $z_1'(0) = v_0$:
 This matches the exact geodesic acceleration $\gamma''(0) = -\frac{1}{2}H^{-1}\nabla^3\phi[v,v]$, confirming $z_1(h) = \gamma(h) + \mathcal{O}(h^3)$.
 
 \paragraph{2. Velocity Accuracy:}
-Viewing $v_1$ as a function of $h$ and differentiating both sides of \eqref{eq:vel_update} with respect to $h$:
+Since \eqref{eq:vel_update} is an identity of the form $0=0$ at $h=0$, we define the velocity residual function $G(v_1, z_1, h) = 2h H(z_1)v_1 - (\nabla \phi(z_1) - \nabla \phi(z_0)) - H(z_1)(z_1 - z_0) = 0$. Because $G \equiv 0$, all derivatives with respect to $h$ must vanish. The first derivative $\frac{dG}{dh} = 0$ is:
 \begin{equation}
-    H(z_1)z_1' = \nabla^3 \phi(z_1)[z_1', 2hv_1 - (z_1 - z_0)] + H(z_1)(2v_1 + 2hv_1' - z_1')
+    2H(z_1)v_1 + 2h\frac{d}{dh}[H(z_1)v_1] - H(z_1)z_1' - \left( \nabla^3 \phi(z_1)[z_1', z_1 - z_0] + H(z_1)z_1' \right) = 0
 \end{equation}
-Evaluating at $h=0$ and using $z'(0) = v_0$ (as just proven), 
+Evaluating at $h=0$, noting that $z_1(0) - z_0 = 0$ and the $2h$ term vanishes:
 \begin{equation}
-    H_0 v_0 = 0 + H_0(2v_1(0) - v_0) 
+    2H(z_0)v_1(0) - 2H(z_0)z_1'(0) = 0 \implies b_0 = v_0
 \end{equation}
-This yields $2H_0 v_1(0) = 2H_0 v_0$, thus $b_0 = v_1(0) = v_0$.
-
-To find $b_1 = v_1'(0)$, we expand \eqref{eq:vel_update} to order $h^2$. Substituting $b_0 = v_0$ and $H_0 a_2 = -\frac{1}{2}\nabla^3 \phi[v_0, v_0]$ into the expansion:
+To find $b_1 = v_1'(0)$, we differentiate $G$ a second time and evaluate at $h=0$. Grouping terms:
+\begin{equation}
+    \frac{d^2G}{dh^2} = 4\frac{d}{dh}[H(z_1)v_1] - 2\frac{d}{dh}[H(z_1)z_1'] - \frac{d}{dh}\left( \nabla^3 \phi(z_1)[z_1', z_1 - z_0] \right) = 0
+\end{equation}
+Applying the chain rule and evaluating at $h=0$ (where $z_1' = v_1 = v_0$ and $z_1 - z_0 = 0$):
 \begin{itemize}
-    \item LHS: $\Delta \lambda = h H_0 v_0 + \frac{h^2}{4}\nabla^3 \phi[v_0, v_0] + \mathcal{O}(h^3)$
-    \item RHS: $h H_0 v_0 + h^2 (2H_0 b_1 - \frac{1}{2}H_0 a_2 + \nabla^3 \phi[v_0, v_0]) + \mathcal{O}(h^3)$
+    \item $\left( 4\frac{d}{dh}[H(z_1)v_1] \right)_{|h=0} = 4(\nabla^3 \phi(z_0)[v_0, v_0, \cdot] + H_0 b_1)$
+    \item $\left( 2\frac{d}{dh}[H(z_1)z_1'] \right)_{|h=0} = 2(\nabla^3 \phi(z_0)[v_0, v_0, \cdot] + H_0 a_2)$
+    \item $\left( \frac{d}{dh} \nabla^3 \phi(z_1)[z_1', z_1 - z_0] \right)_{|h=0} = \nabla^3 \phi(z_0)[v_0, v_0, \cdot]$
 \end{itemize}
-Equating the $h^2$ coefficients:
-\begin{equation}
-    \frac{1}{4}\nabla^3 \phi[v_0, v_0] = 2H_0 b_1 + \frac{1}{4}\nabla^3 \phi[v_0, v_0] + \nabla^3 \phi[v_0, v_0]
-\end{equation}
-\begin{equation}
-    2H_0 b_1 = -\nabla^3 \phi[v_0, v_0] \implies b_1 = -\frac{1}{2}H_0^{-1}\nabla^3 \phi[v_0, v_0, \cdot]
-\end{equation}
-This matches the continuous geodesic acceleration $\gamma''(0)$. Thus, $v_1(h) = \gamma'(0) + h \gamma''(0) + \mathcal{O}(h^2)$, which confirms $v_1(h) = \gamma'(h) + \mathcal{O}(h^3)$ due to the symmetry of the integrator.
 
+
+
+Combining these yields:
+\begin{equation}
+    4H_0 b_1 + 4\nabla^3 \phi[v_0, v_0] - 2\nabla^3 \phi[v_0, v_0] - 2H_0 a_2 - \nabla^3 \phi[v_0, v_0] = 0
+\end{equation}
+Substituting $H_0 a_2 = -\frac{1}{2}\nabla^3 \phi[v_0, v_0]$ from the position analysis:
+\begin{equation}
+    4H_0 b_1 + 2\nabla^3 \phi[v_0, v_0] = 0 \implies b_1 = -\frac{1}{2}H_0^{-1}\nabla^3 \phi(z_0)[v_0, v_0, \cdot]
+\end{equation}
+This matches the continuous geodesic acceleration $\gamma''(0)$. Thus, $v_1(h) = \gamma'(0) + h \gamma''(0) + \mathcal{O}(h^2)$, which confirms $v_1(h) = \gamma'(h) + \mathcal{O}(h^3)$.
 \paragraph{Conclusion:}
 Since the Taylor coefficients of both position $z_1$ and velocity $v_1$ match the continuous geodesic derivatives through the second order, the discrete flow map $\Psi_h$ is a consistent second-order integrator.
 \end{proof}
