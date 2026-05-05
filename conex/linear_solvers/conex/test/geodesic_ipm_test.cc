@@ -1556,19 +1556,38 @@ TEST(GeodesicBarrierQP, BarrierLP_BitIdentical) {
   CompiledModel cm_w(*solver_w.kkt(), cost_w);
   CompiledModel cm_z(*solver_z.kkt(), cost_z);
 
-  const int max_iter = 30;
-  const double tol = 1e-8;
+  // Run with two tolerances: tight (full convergence) and loose (1 iter).
+  auto run_both = [&](double tol, int max_iter, const char* label) {
+    auto sw = build(); auto sz = build();
+    auto cw = sw.MakeCostRHS(); auto cz = sz.MakeCostRHS();
+    CompiledModel cmw(*sw.kkt(), cw), cmz(*sz.kkt(), cz);
+    RowSpace W = sw.kkt()->MakeRowSpace(); setOnes(W);
+    RowSpace z = sz.kkt()->MakeRowSpace(); setOnes(z);
+    auto rw = SolveGeodesicLP(cmw, W, max_iter, 0, tol, true);
+    auto rz = SolveGeodesicBarrierLP(cmz, z, max_iter, tol, true);
+    printf("\n=== %s (tol=%.0e, max_iter=%d) ===\n", label, tol, max_iter);
+    printf("  W-space: %d iters, gap=%.2e\n", rw.iterations, rw.complementarity);
+    printf("  z-space: %d iters, gap=%.2e\n", rz.iterations, rz.complementarity);
+    return std::make_pair(rw, rz);
+  };
 
-  // W-space: existing algorithm.
-  RowSpace W = solver_w.kkt()->MakeRowSpace();
-  setOnes(W);
-  auto result_w = SolveGeodesicLP(cm_w, W, max_iter, 0, tol, true);
+  // First: 1-iteration test (no geodesic step drift).
+  auto [result_w1, result_z1] = run_both(1e2, 2, "1-iter");
+  {
+    double lam_diff = 0, lam_norm = 0;
+    for (int i = 0; i < result_w1.lambda.total_rows(); ++i) {
+      double d = result_w1.lambda.col()(i) - result_z1.lambda.col()(i);
+      lam_diff = std::max(lam_diff, std::abs(d));
+      lam_norm = std::max(lam_norm, std::abs(result_w1.lambda.col()(i)));
+    }
+    printf("  1-iter lambda: max_diff=%.2e, norm=%.2e, rel=%.2e\n",
+           lam_diff, lam_norm, lam_diff / (lam_norm + 1e-30));
+    EXPECT_LT(lam_diff / (lam_norm + 1e-30), 1e-12)
+        << "Lambda should be identical at iter 0 (no drift)";
+  }
 
-  // z-space: new algorithm. Initialize z = W = ones (at k=1, z=s=b=ones,
-  // and W = -∇F(z) = 1/z = ones).
-  RowSpace z = solver_z.kkt()->MakeRowSpace();
-  setOnes(z);
-  auto result_z = SolveGeodesicBarrierLP(cm_z, z, max_iter, tol, true);
+  // Full convergence test.
+  auto [result_w, result_z] = run_both(1e-8, 30, "full");
 
   printf("\n=== Bit-identical comparison ===\n");
   printf("  W-space: %d iters, gap=%.2e, x_norm=%.6e\n",
