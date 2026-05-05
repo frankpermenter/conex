@@ -1586,6 +1586,20 @@ TEST(GeodesicBarrierQP, BarrierLP_BitIdentical) {
         << "Lambda should be identical at iter 0 (no drift)";
   }
 
+  // Sweep max_iter to see drift growth.
+  printf("\n=== Lambda drift vs iteration count ===\n");
+  for (int mi : {1, 2, 3, 4, 6, 8, 10, 14}) {
+    auto [rw, rz] = run_both(1e-14, mi, "sweep");
+    double lam_diff = 0, lam_norm = 0;
+    for (int i = 0; i < rw.lambda.total_rows(); ++i) {
+      double d = rw.lambda.col()(i) - rz.lambda.col()(i);
+      lam_diff = std::max(lam_diff, std::abs(d));
+      lam_norm = std::max(lam_norm, std::abs(rw.lambda.col()(i)));
+    }
+    printf("  %2d iters: lambda diff=%.2e  norm=%.2e  rel=%.2e\n",
+           mi, lam_diff, lam_norm, lam_diff / (lam_norm + 1e-30));
+  }
+
   // Full convergence test.
   auto [result_w, result_z] = run_both(1e-8, 30, "full");
 

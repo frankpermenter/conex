@@ -1328,7 +1328,10 @@ GeodesicResult SolveGeodesicLP(
     result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});
     result.iterations = outer + 1;
 
-    if (s_dot_x < tolerance && d_inf < 1.01)  { 
+    bool converged = (s_dot_x < tolerance && d_inf < 1.01);
+    bool last_iter = (outer + 1 == max_outer_iterations);
+
+    if (converged || last_iter) {
       result.mu = mu;
       result.d_inf_norm = d_inf;
       result.d_sq_norm = d_sq;
@@ -1487,7 +1490,10 @@ GeodesicResult SolveGeodesicBarrierLP(
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
     result.iterations = outer + 1;
 
-    if (gap < tolerance && d_inf < 1.01) {
+    bool converged = (gap < tolerance && d_inf < 1.01);
+    bool last_iter = (outer + 1 == max_outer_iterations);
+
+    if (converged || last_iter) {
       result.mu = mu;
       result.d_inf_norm = d_inf;
       result.d_sq_norm = d_sq;
@@ -1521,13 +1527,6 @@ GeodesicResult SolveGeodesicBarrierLP(
       // Update z in place, then SetScaling syncs at top of next iteration.
       geodesicStepTarget(z, alpha, target_k);
     }
-  }
-
-  if (result.x.size() == 0) {
-    result.x = Eigen::VectorXd::Zero(model.number_of_variables());
-    result.mu = (k > 0) ? 1.0 / (k * k) : 1.0;
-    result.total_factorizations = total_fac;
-    result.total_solves = total_sol;
   }
 
   return result;
