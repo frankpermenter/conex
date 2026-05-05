@@ -1599,6 +1599,35 @@ TEST(GeodesicBarrierQP, BarrierLP_BitIdentical) {
   // Same solution.
   EXPECT_LT((result_w.x - result_z.x).norm(), 1e-8)
       << "Solution mismatch";
+
+  // Same lambda (dual variable).
+  ASSERT_EQ(result_w.lambda.total_rows(), result_z.lambda.total_rows());
+  double lam_diff = 0;
+  for (int i = 0; i < result_w.lambda.total_rows(); ++i) {
+    double d = result_w.lambda.col()(i) - result_z.lambda.col()(i);
+    lam_diff = std::max(lam_diff, std::abs(d));
+  }
+  printf("  lambda max diff: %.2e\n", lam_diff);
+  double lam_norm = 0;
+  for (int i = 0; i < result_w.lambda.total_rows(); ++i)
+    lam_norm = std::max(lam_norm, std::abs(result_w.lambda.col()(i)));
+  double rel_lam = lam_diff / (lam_norm + 1e-30);
+  EXPECT_LT(rel_lam, 1e-4) << "Lambda mismatch: abs=" << lam_diff
+      << " rel=" << rel_lam;
+
+  // Same optimality report.
+  printf("  W-space optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
+         result_w.optimality.complementarity,
+         result_w.optimality.min_slack,
+         result_w.optimality.min_dual);
+  printf("  z-space optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
+         result_z.optimality.complementarity,
+         result_z.optimality.min_slack,
+         result_z.optimality.min_dual);
+  double rel_compl = std::abs(result_w.optimality.complementarity -
+                              result_z.optimality.complementarity) /
+                     (std::abs(result_w.optimality.complementarity) + 1e-30);
+  EXPECT_LT(rel_compl, 1e-4) << "Complementarity mismatch";
 }
 
 }  // namespace
