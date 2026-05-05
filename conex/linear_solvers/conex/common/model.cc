@@ -26,6 +26,9 @@ std::pair<Model, Expansion> RemoveStructuralRankDeficiency(
     } else if (auto* sc = std::get_if<Model::SOCConstraintData>(&c)) {
       A_ptr = &sc->A;
       vars_ptr = &sc->vars;
+    } else if (auto* bc = std::get_if<Model::BarrierConstraintData>(&c)) {
+      A_ptr = &bc->A;
+      vars_ptr = &bc->vars;
     }
     if (A_ptr) {
       for (int k = 0; k < A_ptr->outerSize(); ++k)

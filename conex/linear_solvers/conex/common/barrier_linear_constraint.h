@@ -19,8 +19,6 @@ class BarrierGramEvaluator : public GramEvaluator {
   }
 
   void update_weights() override {
-    printf("BarrierGramEvaluator::update_weights called, n=%d\n",
-           static_cast<int>(ws_->W.size()));
     const int n = static_cast<int>(ws_->W.size());
 
     // Compute full Hessian H(z) where z is stored in ws_->W.
@@ -30,8 +28,9 @@ class BarrierGramEvaluator : public GramEvaluator {
     // Cholesky: H = L L^T.
     Eigen::LLT<Eigen::MatrixXd> llt(H);
 
-    // WA_perm_ = L * A_perm_.  Gram = (WA)^T(WA) = A^T H A.
-    WA_perm_.noalias() = llt.matrixL() * A_perm_;
+    // WA_perm_ = L^T * A_perm_.  Gram = (WA)^T(WA) = A^T L L^T A = A^T H A.
+    WA_perm_.noalias() = llt.matrixU() * A_perm_;
+
     weights_dirty_ = false;
   }
 
@@ -59,8 +58,6 @@ class BarrierLinearConstraint : public LinearConstraint {
   const GramEvaluator& gram() const override { return barrier_gram_; }
 
   void SetScaling(const Eigen::VectorXd& scaling) override {
-    printf("BarrierLinearConstraint::SetScaling called, size=%d\n",
-           static_cast<int>(scaling.size()));
     workspace_.W = scaling;
     barrier_gram_.update_weights();
   }
@@ -83,16 +80,11 @@ class SparseBarrierConstraintAssembler
       const std::vector<int>& all_variables,
       const EuclideanJordanAlgebra::SymmetricConeOperations* ops)
       : SparseLinearConstraintAssembler(std::move(slc), all_variables),
-        ops_(ops) {
-    printf("SparseBarrierConstraintAssembler created, nvars=%d\n",
-           static_cast<int>(all_variables.size()));
-  }
+        ops_(ops) {}
 
  protected:
   std::unique_ptr<LinearConstraint> MakeConstraint(
       const Eigen::MatrixXd& A, const Eigen::VectorXd& b) override {
-    printf("SparseBarrierConstraintAssembler::MakeConstraint called, %dx%d\n",
-           static_cast<int>(A.rows()), static_cast<int>(A.cols()));
     return std::make_unique<BarrierLinearConstraint>(A, b, ops_);
   }
 

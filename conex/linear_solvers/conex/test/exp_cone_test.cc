@@ -16,6 +16,7 @@
 #include "conex/common/exp_cone_ops.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/tree_solver/kkt_tree_solver.h"
 
 using conex::EuclideanJordanAlgebra::ExpConeOps;
 
@@ -1288,14 +1289,22 @@ TEST(ExpCone, BarrierLP_ModelSolver) {
   printf("  Model has %d constraints\n", model.num_constraints());
   model.SetLinearCost(c);
 
-  auto solver = Solver::Build(model);
+  conex::SolverConfiguration config;
+  config.row_scale = false;
+  auto solver = Solver::Build(model, config);
   auto cm = solver.MakeCompiledModel();
 
   // Initialize z = b (the affine term = starting interior point).
-  // Can't use GeodesicBarrierLP strategy directly because setOnes(z)
-  // gives the wrong initial point for non-nonneg cones.
   conex::RowSpace z = cm.MakeRowSpace();
   z.col() = cm.GetAffineTerm().col();
+
+  // Enable arena zeroing before each assembly.
+  auto* ts = solver.tree_solver();
+  printf("  tree_solver = %p\n", (void*)ts);
+  if (ts) {
+    ts->EnableAutoUpdateAtAssemble(true);
+  }
+
   auto result = conex::SolveGeodesicBarrierLP(cm, z, 30, 1e-6, true);
 
   printf("\n=== BarrierLP via Model/Solver (exp cone) ===\n");
