@@ -1496,10 +1496,14 @@ GeodesicResult SolveGeodesicBarrierLP(
       result.total_solves = total_sol;
       result.x = y0 / k + y1;
 
-      // Lambda recovery: λ = -(1/k)∇F(z).
+      // Lambda recovery: λ = (1/k)(-2∇F(z) - H(z)·target_k).
       RowSpace lambda = model.MakeRowSpace();
       computeGradient(z, lambda);
-      lambda *= -(1.0 / k);
+      lambda *= -2.0;
+      RowSpace h_target = model.MakeRowSpace();
+      hessianProduct(z, target_k, h_target);
+      lambda -= h_target;
+      lambda *= (1.0 / k);
       result.lambda = lambda;
 
       auto x_rhs = model.MakeSolverRHS();
