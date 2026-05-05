@@ -326,6 +326,17 @@ target_link_libraries(exp_cone_test PRIVATE
 )
 gtest_discover_tests(exp_cone_test)
 
+add_executable(polyhedral_cone_test
+  conex/test/polyhedral_cone_test.cc
+)
+target_link_libraries(polyhedral_cone_test PRIVATE
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(polyhedral_cone_test)
+
 add_executable(extended_embedding_test
   conex/test/extended_embedding_test.cc
 )
