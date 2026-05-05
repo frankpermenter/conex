@@ -414,7 +414,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
 
   // Register decomposed sub-assemblers for the generic interface.
   void RegisterLinearSubAssembler(class ConeConstraint* lc) {
-    linear_sub_assemblers_.push_back(lc);
+    cone_constraints_.push_back(lc);
   }
   void RegisterQuadraticSubAssembler(class QuadraticCost* qc) {
     quadratic_sub_assemblers_.push_back(qc);
@@ -505,7 +505,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
 
   mutable SeparatorScratch sep_scratch_;
   mutable SeparatorScratch sep_scratch_out_;
-  std::vector<class ConeConstraint*> linear_sub_assemblers_;
+  std::vector<class ConeConstraint*> cone_constraints_;
   std::vector<class EqualityConstraint*> equality_sub_assemblers_;
   std::vector<class QuadraticCost*> quadratic_sub_assemblers_;
   // Per-node precomputed child scatter info for blocked solve.

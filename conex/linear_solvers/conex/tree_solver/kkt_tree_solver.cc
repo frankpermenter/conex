@@ -1027,7 +1027,7 @@ SolverRHS T::MakeSolverRHS(int cols) {
 RowSpace T::MakeRowSpace(int cols) {
   RowSpace rs;
   int offset = 0;
-  for (auto* lc : linear_sub_assemblers_) {
+  for (auto* lc : cone_constraints_) {
     rs.offsets.push_back(offset);
     rs.sizes.push_back(lc->num_rows());
     auto* ops = lc->cone_ops();
@@ -1048,8 +1048,8 @@ void T::MultiplyA(const SolverRHS& x, RowSpace& out) {
   }
   const auto& sep_read = x.has_separators() ? *x.separators : sep_scratch_;
   int nc = x.cols();
-  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
-    auto result = linear_sub_assemblers_[ci]->MultiplyA(
+  for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
+    auto result = cone_constraints_[ci]->MultiplyA(
         *x.supernodes, sep_read, nc);
     out.segment(ci) = result.leftCols(out.cols());
   }
@@ -1057,8 +1057,8 @@ void T::MultiplyA(const SolverRHS& x, RowSpace& out) {
 
 void T::AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) {
   int nc = rhs.cols();
-  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
-    linear_sub_assemblers_[ci]->ContributeAtranspose(
+  for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
+    cone_constraints_[ci]->ContributeAtranspose(
         v.segment(ci), *rhs.supernodes, *rhs.separators, nc);
   }
   // ContributeAtranspose writes to separators, so the RHS is no longer
@@ -1109,21 +1109,21 @@ SolverRHS T::EqualityAffineTermRHS() {
 
 RowSpace T::GetAffineTerm() {
   RowSpace rs = MakeRowSpace();
-  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
-    rs.segment(ci) = linear_sub_assemblers_[ci]->affine_term();
+  for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
+    rs.segment(ci) = cone_constraints_[ci]->affine_term();
   }
   return rs;
 }
 
 void T::SetWeights(const RowSpace& w) {
-  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
-    linear_sub_assemblers_[ci]->SetWeights(w.segment(ci));
+  for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
+    cone_constraints_[ci]->SetWeights(w.segment(ci));
   }
 }
 
 void T::SetScaling(const RowSpace& w) {
-  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
-    linear_sub_assemblers_[ci]->SetScaling(w.segment(ci));
+  for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
+    cone_constraints_[ci]->SetScaling(w.segment(ci));
   }
 }
 
