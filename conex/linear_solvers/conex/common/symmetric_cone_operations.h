@@ -4,6 +4,7 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <vector>
 
 namespace conex {
@@ -122,6 +123,57 @@ class SymmetricConeOperations {
     setIdentity(ones.data(), size);
     for (int i = 0; i < size; ++i) d[i] += ones[i];
     geodesicUpdate(W_out, W, alpha, d.data(), size);
+  }
+  // --- z-space operations for geodesic IPM on general cones ---
+  //
+  // These are stateless: the segment data z (first argument) is the
+  // internal representation (W = -∇F(z) for symmetric cones, z itself
+  // for barrier cones).  The algorithm owns the RowSpace and calls
+  // SetScaling to sync with constraint workspaces for Gram assembly.
+
+  // Gradient: grad = ∇F(z).  Nonneg: grad_i = -z_i (since z stores W).
+  virtual void computeGradient(double* grad, const double* z,
+                               int size) const {
+    (void)grad; (void)z; (void)size; std::abort();
+  }
+
+  // Hessian-vector product: out = H(z) · v.  Nonneg: out_i = z_i² v_i.
+  virtual void hessianProduct(double* out, const double* z,
+                              const double* v, int size) const {
+    (void)out; (void)z; (void)v; (void)size; std::abort();
+  }
+
+  // Squared Hessian norm: ||target - z_primal||²_{H(z)}.
+  // Nonneg: Σ (z_i target_i - 1)² (where z stores W, z_primal = 1/W).
+  virtual double hessianNormSquared(const double* z, const double* target,
+                                    int size) const {
+    (void)z; (void)target; (void)size; std::abort(); return 0;
+  }
+
+  // Step size from z-space tangent (target - z_primal).
+  // Nonneg: min(1, 2/||d||²_∞) where d_i = 1 - z_i target_i.
+  virtual double stepSize(const double* z, const double* target,
+                          int size) const {
+    (void)z; (void)target; (void)size; std::abort(); return 0;
+  }
+
+  // Geodesic step: z ← updated state after Exp_z(α(target - z_primal)).
+  // Modifies z in place.  Nonneg: d_i = 1 - z_i target_i; z_i *= exp(αd_i).
+  virtual void geodesicStepTarget(double* z, double alpha,
+                                  const double* target, int size) const {
+    (void)z; (void)alpha; (void)target; (void)size; std::abort();
+  }
+
+  // Line search: max k with feasibility for ż(k) = target0 + k·target1 - z_primal.
+  // Nonneg: d0_i = 1 - z_i target0_i, d1_i = -z_i target1_i, then lineSearchK.
+  virtual double lineSearchTarget(const double* z, const double* target0,
+                                  const double* target1, int size) const {
+    (void)z; (void)target0; (void)target1; (void)size; std::abort(); return 0;
+  }
+
+  // Barrier parameter ν for a cone of this dimension.
+  virtual double barrierParameter(int size) const {
+    (void)size; std::abort(); return 0;
   }
 };
 

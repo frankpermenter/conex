@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cstdlib>
 #include "conex/common/block_partition.h"
 #include "conex/common/block_variable.h"
 #include "conex/common/error_checking_macros.h"
@@ -86,43 +85,6 @@ class KKTSolverBase {
 
   virtual void SolveSolverRHS(SolverRHS& rhs);
 
-  // --- z-space operations for geodesic IPM on general cones ---
-  // These dispatch to per-constraint ConeConstraint::z-space methods.
-  // Default implementations abort; tree solver overrides.
-
-  // Gradient of the barrier: grad_i = ∇F(z_i) per segment.
-  virtual void ComputeGradient(RowSpace& grad) { (void)grad; std::abort(); }
-
-  // Hessian-vector product: out_i = H(z_i) · v_i per segment.
-  virtual void HessianProduct(const RowSpace& v, RowSpace& out) {
-    (void)v; (void)out; std::abort();
-  }
-
-  // Step size from z-space tangent (target - z).
-  // Returns min over segments of per-segment step sizes.
-  virtual double StepSize(const RowSpace& target_k) {
-    (void)target_k; std::abort(); return 0;
-  }
-
-  // Geodesic step: update internal scaling via Exp_z(α(target - z)).
-  virtual void GeodesicStep(double alpha, const RowSpace& target) {
-    (void)alpha; (void)target; std::abort();
-  }
-
-  // Line search: max k with z + ż(k) feasible across all segments.
-  // ż(k) = target0 + k·target1 - z.
-  virtual double LineSearch(const RowSpace& target0,
-                            const RowSpace& target1) {
-    (void)target0; (void)target1; std::abort(); return 0;
-  }
-
-  // Squared Hessian norm: sum of ||target_i - z_i||²_{H(z_i)} over segments.
-  virtual double HessianNormSquared(const RowSpace& target) {
-    (void)target; std::abort(); return 0;
-  }
-
-  // Total barrier parameter: sum of ν_i across all segments.
-  virtual double BarrierParameter() { std::abort(); return 0; }
 
  private:
   virtual void DoAssemble() = 0;

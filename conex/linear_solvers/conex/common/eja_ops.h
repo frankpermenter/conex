@@ -291,6 +291,62 @@ inline void setFromVector(Variable& v, const Eigen::VectorXd& vec) {
   v.col() = vec;
 }
 
+// --- z-space operations for geodesic IPM on general cones ---
+
+inline void computeGradient(const Variable& z, Variable& grad) {
+  for (int i = 0; i < z.num_constraints(); ++i)
+    z.ops[i]->computeGradient(grad.segment_ptr(i), z.segment_ptr(i),
+                              z.sizes[i]);
+}
+
+inline void hessianProduct(const Variable& z, const Variable& v,
+                           Variable& out) {
+  for (int i = 0; i < z.num_constraints(); ++i)
+    z.ops[i]->hessianProduct(out.segment_ptr(i), z.segment_ptr(i),
+                             v.segment_ptr(i), z.sizes[i]);
+}
+
+inline double hessianNormSquared(const Variable& z, const Variable& target) {
+  double result = 0;
+  for (int i = 0; i < z.num_constraints(); ++i)
+    result += z.ops[i]->hessianNormSquared(z.segment_ptr(i),
+                                           target.segment_ptr(i), z.sizes[i]);
+  return result;
+}
+
+inline double stepSize(const Variable& z, const Variable& target) {
+  double alpha = std::numeric_limits<double>::max();
+  for (int i = 0; i < z.num_constraints(); ++i)
+    alpha = std::min(alpha,
+        z.ops[i]->stepSize(z.segment_ptr(i), target.segment_ptr(i),
+                           z.sizes[i]));
+  return alpha;
+}
+
+inline void geodesicStepTarget(Variable& z, double alpha,
+                               const Variable& target) {
+  for (int i = 0; i < z.num_constraints(); ++i)
+    z.ops[i]->geodesicStepTarget(z.segment_ptr(i), alpha,
+                                 target.segment_ptr(i), z.sizes[i]);
+}
+
+inline double lineSearchTarget(const Variable& z, const Variable& target0,
+                               const Variable& target1) {
+  double k_max = std::numeric_limits<double>::max();
+  for (int i = 0; i < z.num_constraints(); ++i)
+    k_max = std::min(k_max,
+        z.ops[i]->lineSearchTarget(z.segment_ptr(i), target0.segment_ptr(i),
+                                   target1.segment_ptr(i), z.sizes[i]));
+  return k_max;
+}
+
+inline double barrierParameter(const Variable& z) {
+  double nu = 0;
+  for (int i = 0; i < z.num_constraints(); ++i)
+    nu += z.ops[i]->barrierParameter(z.sizes[i]);
+  return nu;
+}
+
 }  // namespace EuclideanJordanAlgebra
 
 // Bring free functions into conex namespace.
@@ -315,5 +371,12 @@ using EuclideanJordanAlgebra::shrinkR;
 using EuclideanJordanAlgebra::setFromVector;
 using EuclideanJordanAlgebra::lineSearchK;
 using EuclideanJordanAlgebra::project;
+using EuclideanJordanAlgebra::computeGradient;
+using EuclideanJordanAlgebra::hessianProduct;
+using EuclideanJordanAlgebra::hessianNormSquared;
+using EuclideanJordanAlgebra::stepSize;
+using EuclideanJordanAlgebra::geodesicStepTarget;
+using EuclideanJordanAlgebra::lineSearchTarget;
+using EuclideanJordanAlgebra::barrierParameter;
 
 }  // namespace conex

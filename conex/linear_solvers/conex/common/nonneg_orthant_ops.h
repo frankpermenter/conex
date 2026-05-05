@@ -125,6 +125,64 @@ class NonnegOrthantOps : public SymmetricConeOperations {
     for (int i = 0; i < size; ++i)
       W_out[i] = W[i] * std::exp(alpha * (1.0 + W[i] * slack[i]));
   }
+  // --- z-space operations (nonneg: z stores W = 1/z_primal) ---
+
+  void computeGradient(double* grad, const double* z,
+                       int size) const override {
+    for (int i = 0; i < size; ++i) grad[i] = -z[i];
+  }
+
+  void hessianProduct(double* out, const double* z,
+                      const double* v, int size) const override {
+    for (int i = 0; i < size; ++i) out[i] = z[i] * z[i] * v[i];
+  }
+
+  double hessianNormSquared(const double* z, const double* target,
+                            int size) const override {
+    double result = 0;
+    for (int i = 0; i < size; ++i) {
+      double di = z[i] * target[i] - 1.0;
+      result += di * di;
+    }
+    return result;
+  }
+
+  double stepSize(const double* z, const double* target,
+                  int size) const override {
+    double d_inf = 0;
+    for (int i = 0; i < size; ++i) {
+      double di = 1.0 - z[i] * target[i];
+      d_inf = std::max(d_inf, std::abs(di));
+    }
+    return std::min(1.0, 2.0 / (d_inf * d_inf));
+  }
+
+  void geodesicStepTarget(double* z, double alpha,
+                          const double* target, int size) const override {
+    for (int i = 0; i < size; ++i) {
+      double di = 1.0 - z[i] * target[i];
+      z[i] *= std::exp(alpha * di);
+    }
+  }
+
+  double lineSearchTarget(const double* z, const double* target0,
+                           const double* target1, int size) const override {
+    // d0_i = 1 - z_i*target0_i, d1_i = -z_i*target1_i.
+    double k_max = std::numeric_limits<double>::max();
+    for (int i = 0; i < size; ++i) {
+      double d0i = 1.0 - z[i] * target0[i];
+      double d1i = -z[i] * target1[i];
+      if (d1i > 0)
+        k_max = std::min(k_max, (1.0 - d0i) / d1i);
+      else if (d1i < 0)
+        k_max = std::min(k_max, (-1.0 - d0i) / d1i);
+    }
+    return k_max;
+  }
+
+  double barrierParameter(int size) const override {
+    return static_cast<double>(size);
+  }
 };
 
 // Singleton for the nonneg orthant ops.

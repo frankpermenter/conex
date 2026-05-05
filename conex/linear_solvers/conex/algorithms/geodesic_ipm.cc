@@ -1381,7 +1381,7 @@ GeodesicResult SolveGeodesicBarrierLP(
     bool verbose) {
   const auto& cost_rhs = model.cost_rhs();
   const RowSpace b = model.GetAffineTerm();
-  const double nu = model.BarrierParameter();
+  const double nu = barrierParameter(z);
   double k = 0.0;
 
   GeodesicResult result{};
@@ -1394,15 +1394,14 @@ GeodesicResult SolveGeodesicBarrierLP(
     printf("  %s\n", std::string(72, '-').c_str());
   }
 
-  // Initial factor (z is set by caller via SetScaling before entry,
-  // or we do it here).
-  model.SetScaling(z);
-  model.AssembleAndFactor();
-
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
+    // 0. Sync z to constraint workspaces and factor Gram = A^T H(z) A.
+    model.SetScaling(z);
+    if (!model.AssembleAndFactor()) break;
+
     // 1. Centering RHS: A^T(-2∇F(z)).
     RowSpace grad = model.MakeRowSpace();
-    model.ComputeGradient(grad);
+    computeGradient(z, grad);
     grad *= -2.0;
     auto rhs0 = model.MakeSolverRHS();
     rhs0.SetZero();
@@ -1410,7 +1409,7 @@ GeodesicResult SolveGeodesicBarrierLP(
 
     // 2. Optimality RHS: -(c + A^T H(z) b).
     RowSpace hb = model.MakeRowSpace();
-    model.HessianProduct(b, hb);
+    hessianProduct(z, b, hb);
     auto rhs1 = model.MakeSolverRHS();
     rhs1 = cost_rhs;
     model.AccumulateAtranspose(hb, rhs1);
@@ -1448,26 +1447,19 @@ GeodesicResult SolveGeodesicBarrierLP(
     target1 += b;
 
     // 6. Line search for k.
-    double k_new = model.LineSearch(target0, target1);
+    double k_new = lineSearchTarget(z, target0, target1);
     double k_prev = k;
 
     // Minimum-norm fallback (same logic as SolveGeodesicLP).
     if (k_new > k) {
       k = k_new;
     } else if (outer == 0 || k_new == 0) {
-      // min-norm k via Hessian inner products:
-      // ||target0 + k*target1 - z||²_H = a + 2fk + pk²
-      // Minimizer: k* = -f/p.
-      // For nonneg, d = e - W*(target0 + k*target1), so
-      // ||d||² = a + 2fk + pk². The min-norm k is -f/p.
-      // We compute via d0·d1 and ||d1||² equivalents.
-      RowSpace t = addScaled(target0, target1, 1.0, 0.0);
-      double a_coeff = model.HessianNormSquared(target0);
-      // For f: need (target0-z)^T H (target1). Use polarization:
-      // ||target0 + target1 - z||²_H = a + 2f + p
+      // ||target0 + k*target1 - z_primal||²_H = a + 2fk + pk²
+      // Minimizer: k* = -f/p.  Compute via polarization.
+      double a_coeff = hessianNormSquared(z, target0);
       RowSpace t01 = addScaled(target0, target1, 1.0, 1.0);
-      double ap = model.HessianNormSquared(t01);
-      double p_coeff = model.HessianNormSquared(target1);
+      double ap = hessianNormSquared(z, t01);
+      double p_coeff = hessianNormSquared(z, target1);
       double f_coeff = 0.5 * (ap - a_coeff - p_coeff);
       if (p_coeff > 1e-30) {
         double k_min_norm = std::max(0.0, -f_coeff / p_coeff);
@@ -1477,9 +1469,8 @@ GeodesicResult SolveGeodesicBarrierLP(
 
     // 7. Assemble target_k, compute step size and norms.
     RowSpace target_k = addScaled(target0, target1, 1.0, k);
-    double d_sq = model.HessianNormSquared(target_k);
-    double d_inf_sq = 0;  // Not directly available; use StepSize.
-    double alpha = model.StepSize(target_k);
+    double d_sq = hessianNormSquared(z, target_k);
+    double alpha = stepSize(z, target_k);
 
     // For reporting: d_inf from alpha.  alpha = min(1, 2/d_inf²)
     // => d_inf = sqrt(2/alpha) if alpha < 1, else d_inf ≈ 0.
@@ -1507,7 +1498,7 @@ GeodesicResult SolveGeodesicBarrierLP(
 
       // Lambda recovery: λ = -(1/k)∇F(z).
       RowSpace lambda = model.MakeRowSpace();
-      model.ComputeGradient(lambda);
+      computeGradient(z, lambda);
       lambda *= -(1.0 / k);
       result.lambda = lambda;
 
@@ -1523,9 +1514,8 @@ GeodesicResult SolveGeodesicBarrierLP(
       }
       break;
     } else {
-      model.GeodesicStep(alpha, target_k);
-      // GeodesicStep updates internal state + Gram weights.
-      if (!model.AssembleAndFactor()) break;
+      // Update z in place, then SetScaling syncs at top of next iteration.
+      geodesicStepTarget(z, alpha, target_k);
     }
   }
 
