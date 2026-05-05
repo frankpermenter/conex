@@ -63,6 +63,19 @@ class ExpConeOps : public SymmetricConeOperations, public BarrierOps {
                       double alpha, const double* d) const override;
   bool isInterior(const double* s) const override;
 
+  // z-space operations (exp cone: z stores z directly).
+  void computeGradient(double* grad, const double* z, int size) const override;
+  void hessianProduct(double* out, const double* z, const double* v,
+                      int size) const override;
+  double hessianNormSquared(const double* z, const double* target,
+                            int size) const override;
+  double stepSize(const double* z, const double* target, int size) const override;
+  void geodesicStepTarget(double* z, double alpha, const double* target,
+                          int size) const override;
+  double lineSearchTarget(const double* z, const double* target0,
+                           const double* target1, int size) const override;
+  double barrierParameter(int size) const override;
+
   // SymmetricConeOperations interface — most are not meaningful for exp cone
   // since it's not a symmetric cone. Stubs for compilation.
   void product(double*, const double*, const double*, int) const override {}

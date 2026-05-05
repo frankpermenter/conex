@@ -851,6 +851,75 @@ bool ExpConeOps::isInterior(const double* s) const {
   return s[1] > 0 && s[2] > s[1] * std::exp(s[0] / s[1]);
 }
 
+// z-space operations (exp cone: z stores z directly).
+
+void ExpConeOps::computeGradient(double* grad, const double* z,
+                                 int /*size*/) const {
+  BarrierGrad(z[0], z[1], z[2], grad);
+}
+
+void ExpConeOps::hessianProduct(double* out, const double* z,
+                                const double* v, int /*size*/) const {
+  double H[9];
+  BarrierHessian(z[0], z[1], z[2], H);
+  for (int i = 0; i < 3; ++i) {
+    out[i] = 0;
+    for (int j = 0; j < 3; ++j)
+      out[i] += H[3 * i + j] * v[j];
+  }
+}
+
+double ExpConeOps::hessianNormSquared(const double* z, const double* target,
+                                      int /*size*/) const {
+  double H[9];
+  BarrierHessian(z[0], z[1], z[2], H);
+  double d[3] = {target[0] - z[0], target[1] - z[1], target[2] - z[2]};
+  double result = 0;
+  for (int i = 0; i < 3; ++i)
+    for (int j = 0; j < 3; ++j)
+      result += d[i] * H[3 * i + j] * d[j];
+  return std::max(result, 0.0);
+}
+
+double ExpConeOps::stepSize(const double* z, const double* target,
+                            int size) const {
+  double dn = std::sqrt(hessianNormSquared(z, target, size));
+  return 1.0 / (1.0 + dn);
+}
+
+void ExpConeOps::geodesicStepTarget(double* z, double alpha,
+                                    const double* target, int /*size*/) const {
+  double d[3] = {target[0] - z[0], target[1] - z[1], target[2] - z[2]};
+  geodesicStep(z, alpha, d);
+}
+
+double ExpConeOps::lineSearchTarget(const double* z, const double* target0,
+                                     const double* target1,
+                                     int size) const {
+  // Dikin bound: ||target0 - z + k*target1||²_H ≤ 1.
+  // Quadratic in k: aa + 2*ff*k + pp*k² ≤ 1.
+  double H[9];
+  BarrierHessian(z[0], z[1], z[2], H);
+  double dz0[3] = {target0[0] - z[0], target0[1] - z[1], target0[2] - z[2]};
+  double aa = 0, ff = 0, pp = 0;
+  for (int i = 0; i < 3; ++i)
+    for (int j = 0; j < 3; ++j) {
+      aa += dz0[i] * H[3*i+j] * dz0[j];
+      ff += dz0[i] * H[3*i+j] * target1[j];
+      pp += target1[i] * H[3*i+j] * target1[j];
+    }
+
+  double disc = 4*ff*ff - 4*pp*(aa - 1);
+  if (disc < 0 || pp < 1e-30) return 0;
+  double k1 = (-2*ff + std::sqrt(disc)) / (2*pp);
+  double k2 = (-2*ff - std::sqrt(disc)) / (2*pp);
+  return std::max(std::max(k1, k2), 0.0);
+}
+
+double ExpConeOps::barrierParameter(int /*size*/) const {
+  return 2.0;  // ν = 2 for the exponential cone.
+}
+
 const ExpConeOps& expConeOps() {
   static const ExpConeOps instance;
   return instance;

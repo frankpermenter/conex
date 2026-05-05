@@ -1106,4 +1106,138 @@ TEST(ExpCone, GeodesicLP_ProductCone) {
   EXPECT_GT(k_prev, 1.0) << "k should increase beyond 1";
 }
 
+// Test the z-space ops on ExpConeOps by running a manual z-space geodesic LP
+// and comparing with the existing s-space implementation above.
+TEST(ExpCone, ZSpaceGeodesicLP) {
+  using Eigen::VectorXd;
+  using Eigen::MatrixXd;
+  using Eigen::Vector3d;
+  using Eigen::Matrix3d;
+
+  ExpConeOps ops;
+  srand(42);
+
+  const int p = 4;
+  const int m = 3;
+
+  struct Cone { MatrixXd A; Vector3d b; };
+  std::vector<Cone> cones(m);
+  for (int i = 0; i < m; ++i) {
+    cones[i].A = 0.3 * MatrixXd::Random(3, p);
+    cones[i].b = Vector3d(0, 1.0, std::exp(1.0) + 1.0);
+  }
+  VectorXd c = VectorXd::Zero(p);
+  for (int i = 0; i < m; ++i) {
+    double gi[3];
+    ExpConeOps::BarrierGrad(cones[i].b(0), cones[i].b(1), cones[i].b(2), gi);
+    c -= cones[i].A.transpose() * Eigen::Map<Vector3d>(gi);
+  }
+
+  const double nu = 2.0 * m;  // ν = 2 per exp cone.
+
+  // z-space state: z_i for each cone. Initialize z_i = b_i (= s_i at k=1).
+  std::vector<Vector3d> z(m);
+  for (int i = 0; i < m; ++i) z[i] = cones[i].b;
+
+  printf("\n=== z-space Geodesic LP (product of %d exp cones) ===\n", m);
+  printf("  %3s  %12s  %12s  %10s  %10s  %10s\n",
+         "fac", "k_prev", "k_new", "d_norm", "gap", "c^Tx");
+  printf("  %s\n", std::string(72, '-').c_str());
+
+  double k = 0.0;
+  int fac = 0;
+
+  for (int outer = 0; outer < 30; ++outer) {
+    // Gram = Σ A_i^T H(z_i) A_i, centering = -2 Σ A_i^T ∇F(z_i).
+    MatrixXd Gram = MatrixXd::Zero(p, p);
+    VectorXd centering_rhs = VectorXd::Zero(p);
+    VectorXd opt_rhs = -c;
+    std::vector<Matrix3d> Hi(m);
+
+    for (int i = 0; i < m; ++i) {
+      double H[9], g[3];
+      ops.hessian(H, z[i].data());
+      ops.gradient(g, z[i].data());
+      for (int r = 0; r < 3; ++r)
+        for (int cc = 0; cc < 3; ++cc)
+          Hi[i](r, cc) = H[3*r+cc];
+      Gram += cones[i].A.transpose() * Hi[i] * cones[i].A;
+      centering_rhs -= 2.0 * cones[i].A.transpose() * Eigen::Map<Vector3d>(g);
+      opt_rhs -= cones[i].A.transpose() * (Hi[i] * cones[i].b);
+    }
+
+    auto Gf = Gram.ldlt();
+    fac++;
+
+    VectorXd y0 = Gf.solve(centering_rhs);
+    VectorXd y1 = Gf.solve(opt_rhs);
+
+    // Targets: target0_i = A_i y0, target1_i = A_i y1 + b_i.
+    std::vector<Vector3d> target0(m), target1(m);
+    for (int i = 0; i < m; ++i) {
+      target0[i] = cones[i].A * y0;
+      target1[i] = cones[i].A * y1 + cones[i].b;
+    }
+
+    // Line search: min over cones.
+    double k_new = std::numeric_limits<double>::max();
+    for (int i = 0; i < m; ++i) {
+      double ki = ops.lineSearchTarget(z[i].data(), target0[i].data(),
+                                        target1[i].data(), 3);
+      k_new = std::min(k_new, ki);
+    }
+
+    double k_prev = k;
+    if (k_new > k) {
+      k = k_new;
+    } else if (outer == 0 || k_new == 0) {
+      // Min-norm fallback via polarization.
+      double a = 0, f = 0, pp = 0;
+      for (int i = 0; i < m; ++i) {
+        a += ops.hessianNormSquared(z[i].data(), target0[i].data(), 3);
+        Vector3d t01 = target0[i] + target1[i];
+        double ap = ops.hessianNormSquared(z[i].data(), t01.data(), 3);
+        pp += ops.hessianNormSquared(z[i].data(), target1[i].data(), 3);
+        f += 0.5 * (ap - a - pp);
+      }
+      if (pp > 1e-30) {
+        double k_mn = std::max(0.0, -f / pp);
+        if (k_mn > k) k = k_mn;
+      }
+    }
+
+    // Step size and norms.
+    double d_sq = 0, alpha_min = 1e30;
+    for (int i = 0; i < m; ++i) {
+      Vector3d tk = target0[i] + k * target1[i];
+      d_sq += ops.hessianNormSquared(z[i].data(), tk.data(), 3);
+      alpha_min = std::min(alpha_min,
+          ops.stepSize(z[i].data(), tk.data(), 3));
+    }
+    double d_norm = std::sqrt(std::max(d_sq, 0.0));
+    double mu = (k > 0) ? 1.0 / (k * k) : 1.0;
+    double gap = mu * (nu - d_sq);
+
+    VectorXd x_cur = y0 / k + y1;
+    printf("  %3d  %12.4e  %12.4e  %10.4f  %10.2e  %10.4f\n",
+           fac, k_prev, k, d_norm, gap, c.dot(x_cur));
+
+    if (gap < 1e-6 && gap > 0) break;
+
+    // Geodesic step per cone.
+    for (int i = 0; i < m; ++i) {
+      Vector3d tk = target0[i] + k * target1[i];
+      ops.geodesicStepTarget(z[i].data(), alpha_min, tk.data(), 3);
+    }
+  }
+
+  VectorXd x_final = VectorXd::Zero(p);
+  // Recover from last y0, y1 (approximate).
+  double final_obj = c.dot(x_final);
+  printf("  k = %.4f, mu = %.2e\n", k, 1.0/(k*k));
+
+  EXPECT_GT(k, 1.0) << "k should increase beyond 1";
+  EXPECT_LT(1.0 / (k * k), 1e-4) << "mu should be small";
+}
+
 }  // namespace
