@@ -8,7 +8,7 @@
 #include "conex/common/error_checking_macros.h"
 
 namespace conex {
-namespace EuclideanJordanAlgebra { class ConeOps; }
+namespace EuclideanJordanAlgebra { class SymmetricConeOperations; }
 
 // Handle to a constraint registered with a Model.
 using ConstraintId = int;

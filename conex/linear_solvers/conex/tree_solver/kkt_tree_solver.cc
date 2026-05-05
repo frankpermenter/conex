@@ -1,5 +1,5 @@
 #include "conex/tree_solver/kkt_tree_solver.h"
-#include "conex/common/cone_ops.h"
+#include "conex/common/nonneg_orthant_ops.h"
 #include "conex/common/equality_constraint.h"
 #include "conex/common/linear_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"

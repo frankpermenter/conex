@@ -4,12 +4,12 @@
 // Eigenvalues: λ₁ = t + ||x||, λ₂ = t - ||x||.
 
 #pragma once
-#include "conex/common/cone_ops.h"
+#include "conex/common/symmetric_cone_operations.h"
 
 namespace conex {
 namespace EuclideanJordanAlgebra {
 
-class SOCConeOps : public ConeOps {
+class SOCConeOps : public SymmetricConeOperations {
  public:
   void product(double* out, const double* a, const double* b,
                int size) const override;

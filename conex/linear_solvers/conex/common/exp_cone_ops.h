@@ -4,12 +4,12 @@
 // Segments store 3 doubles: (x, y, z).
 
 #pragma once
-#include "conex/common/cone_ops.h"
+#include "conex/common/symmetric_cone_operations.h"
 
 namespace conex {
 namespace EuclideanJordanAlgebra {
 
-class ExpConeOps : public ConeOps {
+class ExpConeOps : public SymmetricConeOperations {
  public:
   // Barrier function and derivatives.
   static double Barrier(double x, double y, double z);
@@ -52,7 +52,7 @@ class ExpConeOps : public ConeOps {
   // Uses Newton's method (3x3 system, typically 3-5 iterations).
   static bool InvertGradient(const double* lambda, double* x, int max_iter = 20);
 
-  // ConeOps interface — most are not meaningful for exp cone
+  // SymmetricConeOperations interface — most are not meaningful for exp cone
   // since it's not a symmetric cone. Stubs for compilation.
   void product(double*, const double*, const double*, int) const override {}
   void geodesicUpdate(double*, const double*, double, const double*, int) const override;

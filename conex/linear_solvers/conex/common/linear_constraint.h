@@ -178,7 +178,7 @@ class LinearConstraint : public ConeConstraint {
 
   Eigen::MatrixXd affine_term() const override { return constraint_affine_; }
   int num_rows() const override { return constraint_matrix_.rows(); }
-  const EuclideanJordanAlgebra::ConeOps* cone_ops() const override {
+  const EuclideanJordanAlgebra::SymmetricConeOperations* cone_ops() const override {
     return cone_ops_;
   }
 
@@ -213,7 +213,7 @@ class LinearConstraint : public ConeConstraint {
   virtual const GramEvaluator& gram() const { return gram_evaluator_; }
 
   // Public cone_ops pointer — set by constraint assemblers.
-  const EuclideanJordanAlgebra::ConeOps* cone_ops_ = nullptr;
+  const EuclideanJordanAlgebra::SymmetricConeOperations* cone_ops_ = nullptr;
 
   // ArenaAllocatable interface.
   size_t RequiredArenaBytes() const override {

@@ -2,12 +2,12 @@
 // Segments store n*n doubles as a column-major n×n matrix.
 
 #pragma once
-#include "conex/common/cone_ops.h"
+#include "conex/common/symmetric_cone_operations.h"
 
 namespace conex {
 namespace EuclideanJordanAlgebra {
 
-class PSDConeOps : public ConeOps {
+class PSDConeOps : public SymmetricConeOperations {
  public:
   void product(double* out, const double* a, const double* b,
                int size) const override;

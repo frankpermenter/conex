@@ -1,8 +1,8 @@
 // Free functions on EuclideanJordanAlgebra::Variable.
-// Each function iterates segments and dispatches to the per-segment ConeOps.
+// Each function iterates segments and dispatches to the per-segment SymmetricConeOperations.
 
 #pragma once
-#include "conex/common/cone_ops.h"
+#include "conex/common/symmetric_cone_operations.h"
 #include "conex/common/tree_rhs.h"
 
 namespace conex {
