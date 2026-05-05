@@ -72,37 +72,46 @@ class PolyhedralConeOps : public SymmetricConeOperations {
 
   void geodesicStepTarget(double* z, double alpha, const double* target,
                           int n) const override {
-    // Tangent d = target - z.  Integrate via Legendre midpoint.
     Eigen::Map<Eigen::VectorXd> zv(z, n);
     Eigen::Map<const Eigen::VectorXd> tv(target, n);
-    Eigen::VectorXd d = tv - zv;
+    Eigen::VectorXd vel = alpha * (tv - zv);
+    Eigen::VectorXd pos = zv;
 
-    // Half-step in primal.
-    Eigen::VectorXd z_half = zv + 0.5 * alpha * d;
+    // Primal Verlet integrator with Christoffel symbols.
+    const int steps = 8;
+    double dt = 1.0 / steps;
 
-    // Dual at start and midpoint.
-    Eigen::VectorXd lam0 = -C_.transpose() * (C_ * zv).cwiseInverse();
-    Eigen::VectorXd lam_half = -C_.transpose() * (C_ * z_half).cwiseInverse();
+    for (int step = 0; step < steps; ++step) {
+      // Acceleration: a = -(1/2) H^{-1} T(v, v).
+      auto accel = [&](const Eigen::VectorXd& p, const Eigen::VectorXd& v)
+          -> Eigen::VectorXd {
+        Eigen::VectorXd s = C_ * p;
+        if (s.minCoeff() <= 0) return Eigen::VectorXd::Zero(n);
+        Eigen::VectorXd Cv = C_ * v;
+        // T(v,v) = -2 C^T ((Cv)^2 / s^3).
+        Eigen::VectorXd T = -2.0 * C_.transpose() *
+            (Cv.cwiseAbs2().cwiseQuotient(s.cwiseAbs2().cwiseProduct(s)));
+        // H = C^T diag(s^{-2}) C.
+        Eigen::VectorXd s_inv = s.cwiseInverse();
+        Eigen::MatrixXd WC = s_inv.asDiagonal() * C_;
+        Eigen::MatrixXd H = WC.transpose() * WC;
+        // a = -(1/2) H^{-1} T = H^{-1} (C^T ((Cv)^2 / s^3)).
+        return H.ldlt().solve(-0.5 * T);
+      };
 
-    // Dual extrapolation: midpoint rule.
-    Eigen::VectorXd lam1 = 2.0 * lam_half - lam0;
+      // Half-step velocity.
+      Eigen::VectorXd a = accel(pos, vel);
+      vel += 0.5 * dt * a;
 
-    // Invert gradient map: find z1 such that -∇F(z1) = -lam1,
-    // i.e., C^T (1/(C z1)) = -lam1.
-    // Newton solve starting from z + alpha*d.
-    Eigen::VectorXd z1 = zv + alpha * d;
-    for (int iter = 0; iter < 20; ++iter) {
-      Eigen::VectorXd s1 = C_ * z1;
-      Eigen::VectorXd g1 = -C_.transpose() * s1.cwiseInverse();
-      Eigen::VectorXd res = g1 - lam1;
-      if (res.norm() < 1e-13 * (1.0 + lam1.norm())) break;
-      // H(z1) = C^T diag(s1^{-2}) C.
-      Eigen::VectorXd s1_inv = s1.cwiseInverse();
-      Eigen::MatrixXd WC = s1_inv.asDiagonal() * C_;
-      Eigen::MatrixXd H = WC.transpose() * WC;
-      z1 -= H.ldlt().solve(res);
+      // Full-step position.
+      pos += dt * vel;
+
+      // Second half-step velocity.
+      a = accel(pos, vel);
+      vel += 0.5 * dt * a;
     }
-    zv = z1;
+
+    zv = pos;
   }
 
   double lineSearchTarget(const double* z, const double* target0,
