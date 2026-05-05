@@ -66,8 +66,12 @@ class PolyhedralConeOps : public SymmetricConeOperations {
 
   double stepSize(const double* z, const double* target,
                   int n) const override {
-    double dn = std::sqrt(hessianNormSquared(z, target, n));
-    return 1.0 / (1.0 + dn);
+    Eigen::Map<const Eigen::VectorXd> zv(z, n);
+    Eigen::Map<const Eigen::VectorXd> tv(target, n);
+    Eigen::VectorXd s = C_ * zv;
+    Eigen::VectorXd r = (C_ * (tv - zv)).cwiseQuotient(s);
+    double d_inf = r.cwiseAbs().maxCoeff();
+    return std::min(1.0, 2.0 / (d_inf * d_inf));
   }
 
   void geodesicStepTarget(double* z, double alpha, const double* target,
@@ -116,23 +120,24 @@ class PolyhedralConeOps : public SymmetricConeOperations {
 
   double lineSearchTarget(const double* z, const double* target0,
                            const double* target1, int n) const override {
-    // Dikin bound: ||C(target0 + k*target1 - z) / s||² <= 1
-    // where s = Cz.  Quadratic in k: a + 2fk + pk² <= 1.
+    // Primal-dual feasibility: |C*zdot / s|_i <= 1 for all i.
+    // zdot(k) = target0 + k*target1 - z, so C*zdot = r0 + k*r1
+    // where r0 = C*target0 - s, r1 = C*target1, s = Cz.
+    // Rescale: d0 = r0/s, d1 = r1/s.  Find max k with ||d0+k*d1||_inf <= 1.
     Eigen::Map<const Eigen::VectorXd> zv(z, n);
     Eigen::Map<const Eigen::VectorXd> t0(target0, n);
     Eigen::Map<const Eigen::VectorXd> t1(target1, n);
     Eigen::VectorXd s = C_ * zv;
-    Eigen::VectorXd s_inv = s.cwiseInverse();
-    Eigen::VectorXd r0 = (C_ * (t0 - zv)).cwiseProduct(s_inv);
-    Eigen::VectorXd r1 = (C_ * t1).cwiseProduct(s_inv);
-    double aa = r0.squaredNorm();
-    double ff = r0.dot(r1);
-    double pp = r1.squaredNorm();
-    double disc = 4*ff*ff - 4*pp*(aa - 1);
-    if (disc < 0 || pp < 1e-30) return 0;
-    double k1 = (-2*ff + std::sqrt(disc)) / (2*pp);
-    double k2 = (-2*ff - std::sqrt(disc)) / (2*pp);
-    return std::max(std::max(k1, k2), 0.0);
+    Eigen::VectorXd d0 = (C_ * t0 - s).cwiseQuotient(s);
+    Eigen::VectorXd d1 = (C_ * t1).cwiseQuotient(s);
+    double k_max = std::numeric_limits<double>::max();
+    for (int i = 0; i < d0.size(); ++i) {
+      if (d1(i) > 0)
+        k_max = std::min(k_max, (1.0 - d0(i)) / d1(i));
+      else if (d1(i) < 0)
+        k_max = std::min(k_max, (-1.0 - d0(i)) / d1(i));
+    }
+    return k_max;
   }
 
   double barrierParameter(int /*size*/) const override {
