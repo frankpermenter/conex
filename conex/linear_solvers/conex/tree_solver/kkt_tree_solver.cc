@@ -1127,4 +1127,62 @@ void T::SetScaling(const RowSpace& w) {
   }
 }
 
+void T::ComputeGradient(RowSpace& grad) {
+  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
+    Eigen::VectorXd seg_grad;
+    linear_sub_assemblers_[ci]->ComputeGradient(seg_grad);
+    grad.segment(ci) = seg_grad;
+  }
+}
+
+void T::HessianProduct(const RowSpace& v, RowSpace& out) {
+  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
+    Eigen::VectorXd seg_out;
+    linear_sub_assemblers_[ci]->HessianProduct(v.segment(ci), seg_out);
+    out.segment(ci) = seg_out;
+  }
+}
+
+double T::StepSize(const RowSpace& target_k) {
+  double alpha = std::numeric_limits<double>::max();
+  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
+    alpha = std::min(alpha,
+        linear_sub_assemblers_[ci]->StepSize(target_k.segment(ci)));
+  }
+  return alpha;
+}
+
+void T::GeodesicStep(double alpha, const RowSpace& target) {
+  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
+    linear_sub_assemblers_[ci]->GeodesicStep(alpha, target.segment(ci));
+  }
+}
+
+double T::LineSearch(const RowSpace& target0, const RowSpace& target1) {
+  double k_max = std::numeric_limits<double>::max();
+  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
+    k_max = std::min(k_max,
+        linear_sub_assemblers_[ci]->LineSearch(
+            target0.segment(ci), target1.segment(ci)));
+  }
+  return k_max;
+}
+
+double T::HessianNormSquared(const RowSpace& target) {
+  double result = 0;
+  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
+    result += linear_sub_assemblers_[ci]->HessianNormSquared(
+        target.segment(ci));
+  }
+  return result;
+}
+
+double T::BarrierParameter() {
+  double nu = 0;
+  for (int ci = 0; ci < static_cast<int>(linear_sub_assemblers_.size()); ++ci) {
+    nu += linear_sub_assemblers_[ci]->BarrierParameter();
+  }
+  return nu;
+}
+
 }  // namespace conex

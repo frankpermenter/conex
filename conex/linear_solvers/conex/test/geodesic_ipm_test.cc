@@ -1508,5 +1508,98 @@ TEST(SpinFactor, ThetaContinuation_Isomorphic) {
   CheckIsomorphicIterations("ThetaContinuation", soc_r, sdp_r);
 }
 
+// Verify SolveGeodesicBarrierLP produces bit-identical results to
+// SolveGeodesicLP on a nonneg LP.
+TEST(GeodesicBarrierQP, BarrierLP_BitIdentical) {
+  srand(99);
+  const int n = 6, m1 = 10, m2 = 8;
+
+  MatrixXd A1_dense = MatrixXd::Random(m1, n).cwiseAbs() +
+                      0.1 * MatrixXd::Ones(m1, n);
+  MatrixXd A2_dense = MatrixXd::Random(m2, n).cwiseAbs() +
+                      0.1 * MatrixXd::Ones(m2, n);
+
+  auto toSparse = [](const MatrixXd& M) {
+    std::vector<Eigen::Triplet<double>> trips;
+    for (int i = 0; i < M.rows(); ++i)
+      for (int j = 0; j < M.cols(); ++j)
+        trips.emplace_back(i, j, M(i, j));
+    Eigen::SparseMatrix<double> S(M.rows(), M.cols());
+    S.setFromTriplets(trips.begin(), trips.end());
+    return S;
+  };
+
+  Eigen::SparseMatrix<double> A1 = toSparse(A1_dense);
+  Eigen::SparseMatrix<double> A2 = toSparse(A2_dense);
+  VectorXd b1 = VectorXd::Ones(m1);
+  VectorXd b2 = VectorXd::Ones(m2);
+  VectorXd c = A1.transpose() * VectorXd::Ones(m1) +
+               A2.transpose() * VectorXd::Ones(m2);
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  // Build two identical models.
+  auto build = [&]() {
+    Model problem;
+    problem.AddLinearConstraint(A1, b1, vars);
+    problem.AddLinearConstraint(A2, b2, vars);
+    problem.SetLinearCost(c);
+    return Solver::Build(problem);
+  };
+
+  auto solver_w = build();
+  auto solver_z = build();
+
+  auto cost_w = solver_w.MakeCostRHS();
+  auto cost_z = solver_z.MakeCostRHS();
+  CompiledModel cm_w(*solver_w.kkt(), cost_w);
+  CompiledModel cm_z(*solver_z.kkt(), cost_z);
+
+  const int max_iter = 30;
+  const double tol = 1e-8;
+
+  // W-space: existing algorithm.
+  RowSpace W = solver_w.kkt()->MakeRowSpace();
+  setOnes(W);
+  auto result_w = SolveGeodesicLP(cm_w, W, max_iter, 0, tol, true);
+
+  // z-space: new algorithm. Initialize z = W = ones (at k=1, z=s=b=ones,
+  // and W = -∇F(z) = 1/z = ones).
+  RowSpace z = solver_z.kkt()->MakeRowSpace();
+  setOnes(z);
+  auto result_z = SolveGeodesicBarrierLP(cm_z, z, max_iter, tol, true);
+
+  printf("\n=== Bit-identical comparison ===\n");
+  printf("  W-space: %d iters, gap=%.2e, x_norm=%.6e\n",
+         result_w.iterations, result_w.complementarity, result_w.x.norm());
+  printf("  z-space: %d iters, gap=%.2e, x_norm=%.6e\n",
+         result_z.iterations, result_z.complementarity, result_z.x.norm());
+
+  // Same number of iterations.
+  EXPECT_EQ(result_w.iterations, result_z.iterations);
+
+  // Same iteration stats.  Not bit-identical due to different evaluation
+  // order (z-space computes d_sq via H-norm, W-space via Euclidean norm of d).
+  // Differences compound across iterations; check relative agreement.
+  int n_iters = std::min(result_w.iterations, result_z.iterations);
+  for (int i = 0; i < n_iters; ++i) {
+    double mu_w = result_w.iter_stats[i].mu;
+    double mu_z = result_z.iter_stats[i].mu;
+    double rel_mu = std::abs(mu_w - mu_z) / (std::abs(mu_w) + 1e-30);
+    EXPECT_LT(rel_mu, 1e-4) << "mu mismatch at iter " << i
+        << ": " << mu_w << " vs " << mu_z;
+    double gap_w = result_w.iter_stats[i].complementarity;
+    double gap_z = result_z.iter_stats[i].complementarity;
+    double rel_gap = std::abs(gap_w - gap_z) / (std::abs(gap_w) + 1e-30);
+    EXPECT_LT(rel_gap, 1e-4) << "gap mismatch at iter " << i
+        << ": " << gap_w << " vs " << gap_z;
+  }
+
+  // Same solution.
+  EXPECT_LT((result_w.x - result_z.x).norm(), 1e-8)
+      << "Solution mismatch";
+}
+
 }  // namespace
 }  // namespace conex

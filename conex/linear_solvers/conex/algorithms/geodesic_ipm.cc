@@ -1373,6 +1373,172 @@ GeodesicResult SolveGeodesicLP(
   return result;
 }
 
+GeodesicResult SolveGeodesicBarrierLP(
+    CompiledModel& model,
+    RowSpace& z,
+    int max_outer_iterations,
+    double tolerance,
+    bool verbose) {
+  const auto& cost_rhs = model.cost_rhs();
+  const RowSpace b = model.GetAffineTerm();
+  const double nu = model.BarrierParameter();
+  double k = 0.0;
+
+  GeodesicResult result{};
+  int total_fac = 0;
+  int total_sol = 0;
+
+  if (verbose) {
+    printf("  %3s  %12s  %12s  %12s  %12s  %12s\n",
+           "fac", "k", "k_new", "d_inf", "d_sqr", "gap");
+    printf("  %s\n", std::string(72, '-').c_str());
+  }
+
+  // Initial factor (z is set by caller via SetScaling before entry,
+  // or we do it here).
+  model.SetScaling(z);
+  model.AssembleAndFactor();
+
+  for (int outer = 0; outer < max_outer_iterations; ++outer) {
+    // 1. Centering RHS: A^T(-2∇F(z)).
+    RowSpace grad = model.MakeRowSpace();
+    model.ComputeGradient(grad);
+    grad *= -2.0;
+    auto rhs0 = model.MakeSolverRHS();
+    rhs0.SetZero();
+    model.AccumulateAtranspose(grad, rhs0);
+
+    // 2. Optimality RHS: -(c + A^T H(z) b).
+    RowSpace hb = model.MakeRowSpace();
+    model.HessianProduct(b, hb);
+    auto rhs1 = model.MakeSolverRHS();
+    rhs1 = cost_rhs;
+    model.AccumulateAtranspose(hb, rhs1);
+    rhs1 *= -1;
+    // Inject equality RHS if present.
+    auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
+    if (ts && !ts->equality_sub_assemblers().empty()) {
+      auto d_rhs = ts->EqualityAffineTermRHS();
+      rhs1 += d_rhs;
+    }
+
+    // 3. Solve both RHS.
+    auto y = model.MakeSolverRHS(2);
+    y.SetColumn(0, rhs0);
+    y.SetColumn(1, rhs1);
+    model.SolveSolverRHS(y);
+
+    total_fac += 1;
+    total_sol += 2;
+
+    // 4. Recover y0, y1.
+    int nr = model.number_of_variables();
+    Eigen::MatrixXd y_dense(nr, 2);
+    y.supernodes->GatherInto(y_dense);
+    Eigen::VectorXd y0 = y_dense.col(0);
+    Eigen::VectorXd y1 = y_dense.col(1);
+
+    // 5. Compute targets: target0 = Ay0, target1 = Ay1 + b.
+    auto row = model.MakeRowSpace(2);
+    model.MultiplyA(y, row);
+    RowSpace target0 = model.MakeRowSpace();
+    RowSpace target1 = model.MakeRowSpace();
+    target0.col() = row.col(0);
+    target1.col() = row.col(1);
+    target1 += b;
+
+    // 6. Line search for k.
+    double k_new = model.LineSearch(target0, target1);
+    double k_prev = k;
+
+    // Minimum-norm fallback (same logic as SolveGeodesicLP).
+    if (k_new > k) {
+      k = k_new;
+    } else if (outer == 0 || k_new == 0) {
+      // min-norm k via Hessian inner products:
+      // ||target0 + k*target1 - z||²_H = a + 2fk + pk²
+      // Minimizer: k* = -f/p.
+      // For nonneg, d = e - W*(target0 + k*target1), so
+      // ||d||² = a + 2fk + pk². The min-norm k is -f/p.
+      // We compute via d0·d1 and ||d1||² equivalents.
+      RowSpace t = addScaled(target0, target1, 1.0, 0.0);
+      double a_coeff = model.HessianNormSquared(target0);
+      // For f: need (target0-z)^T H (target1). Use polarization:
+      // ||target0 + target1 - z||²_H = a + 2f + p
+      RowSpace t01 = addScaled(target0, target1, 1.0, 1.0);
+      double ap = model.HessianNormSquared(t01);
+      double p_coeff = model.HessianNormSquared(target1);
+      double f_coeff = 0.5 * (ap - a_coeff - p_coeff);
+      if (p_coeff > 1e-30) {
+        double k_min_norm = std::max(0.0, -f_coeff / p_coeff);
+        if (k_min_norm > k) k = k_min_norm;
+      }
+    }
+
+    // 7. Assemble target_k, compute step size and norms.
+    RowSpace target_k = addScaled(target0, target1, 1.0, k);
+    double d_sq = model.HessianNormSquared(target_k);
+    double d_inf_sq = 0;  // Not directly available; use StepSize.
+    double alpha = model.StepSize(target_k);
+
+    // For reporting: d_inf from alpha.  alpha = min(1, 2/d_inf²)
+    // => d_inf = sqrt(2/alpha) if alpha < 1, else d_inf ≈ 0.
+    double d_inf = (alpha < 1.0) ? std::sqrt(2.0 / alpha) : 0.0;
+
+    double mu = 1.0 / (k * k);
+    double gap = mu * (nu - d_sq);
+
+    if (verbose) {
+      printf("  %3d  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e\n",
+             outer, k_prev, k, d_inf, d_sq, gap);
+    }
+
+    result.iter_stats.push_back({mu, d_inf, d_sq, gap});
+    result.iterations = outer + 1;
+
+    if (gap < tolerance && d_inf < 1.01) {
+      result.mu = mu;
+      result.d_inf_norm = d_inf;
+      result.d_sq_norm = d_sq;
+      result.complementarity = gap;
+      result.total_factorizations = total_fac;
+      result.total_solves = total_sol;
+      result.x = y0 / k + y1;
+
+      // Lambda recovery: λ = -(1/k)∇F(z).
+      RowSpace lambda = model.MakeRowSpace();
+      model.ComputeGradient(lambda);
+      lambda *= -(1.0 / k);
+      result.lambda = lambda;
+
+      auto x_rhs = model.MakeSolverRHS();
+      x_rhs = model.MakeBlockVariable(result.x);
+      result.optimality = CheckOptimality(model, x_rhs, lambda);
+      result.optimality.mu = result.mu;
+      if (verbose) {
+        printf("  Optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
+               result.optimality.complementarity,
+               result.optimality.min_slack,
+               result.optimality.min_dual);
+      }
+      break;
+    } else {
+      model.GeodesicStep(alpha, target_k);
+      // GeodesicStep updates internal state + Gram weights.
+      if (!model.AssembleAndFactor()) break;
+    }
+  }
+
+  if (result.x.size() == 0) {
+    result.x = Eigen::VectorXd::Zero(model.number_of_variables());
+    result.mu = (k > 0) ? 1.0 / (k * k) : 1.0;
+    result.total_factorizations = total_fac;
+    result.total_solves = total_sol;
+  }
+
+  return result;
+}
+
 HybridDirection ComputeHybridDirection(
     CompiledModel& model,
     const RowSpace& b,

@@ -51,6 +51,25 @@ class CompiledModel {
   bool AssembleAndFactor() { return kkt_.AssembleAndFactor(); }
   void SolveSolverRHS(SolverRHS& rhs) { kkt_.SolveSolverRHS(rhs); }
 
+  // z-space operations.
+  void ComputeGradient(RowSpace& grad) { kkt_.ComputeGradient(grad); }
+  void HessianProduct(const RowSpace& v, RowSpace& out) {
+    kkt_.HessianProduct(v, out);
+  }
+  double StepSize(const RowSpace& target_k) {
+    return kkt_.StepSize(target_k);
+  }
+  void GeodesicStep(double alpha, const RowSpace& target) {
+    kkt_.GeodesicStep(alpha, target);
+  }
+  double LineSearch(const RowSpace& target0, const RowSpace& target1) {
+    return kkt_.LineSearch(target0, target1);
+  }
+  double HessianNormSquared(const RowSpace& target) {
+    return kkt_.HessianNormSquared(target);
+  }
+  double BarrierParameter() { return kkt_.BarrierParameter(); }
+
   // Access the underlying KKT solver (e.g. for dynamic_cast to a concrete type).
   KKTSolverBase& kkt() { return kkt_; }
   const KKTSolverBase& kkt() const { return kkt_; }

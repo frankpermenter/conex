@@ -4,12 +4,13 @@
 // Segments store 3 doubles: (x, y, z).
 
 #pragma once
+#include "conex/common/barrier_ops.h"
 #include "conex/common/symmetric_cone_operations.h"
 
 namespace conex {
 namespace EuclideanJordanAlgebra {
 
-class ExpConeOps : public SymmetricConeOperations {
+class ExpConeOps : public SymmetricConeOperations, public BarrierOps {
  public:
   // Barrier function and derivatives.
   static double Barrier(double x, double y, double z);
@@ -51,6 +52,16 @@ class ExpConeOps : public SymmetricConeOperations {
   // Invert the gradient map: given lambda, find x such that -grad F(x) = lambda.
   // Uses Newton's method (3x3 system, typically 3-5 iterations).
   static bool InvertGradient(const double* lambda, double* x, int max_iter = 20);
+
+  // BarrierOps interface.
+  double barrierParameter() const override { return 2.0; }
+  int dim() const override { return 3; }
+  void gradient(double* out, const double* s) const override;
+  void hessian(double* out, const double* s) const override;
+  double normH(const double* s, const double* v) const override;
+  void ExponentialMap(double* s_out, const double* s,
+                      double alpha, const double* d) const override;
+  bool isInterior(const double* s) const override;
 
   // SymmetricConeOperations interface — most are not meaningful for exp cone
   // since it's not a symmetric cone. Stubs for compilation.

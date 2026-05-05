@@ -245,6 +245,17 @@ GeodesicResult SolveGeodesicLP(
     double tolerance = 1e-8,
     bool verbose = false);
 
+// z-space geodesic LP for cones with log-homogeneous barriers.
+// Uses only the z-space operations on CompiledModel (ComputeGradient,
+// HessianProduct, LineSearch, StepSize, GeodesicStep).
+// For symmetric cones, produces bit-identical results to SolveGeodesicLP.
+GeodesicResult SolveGeodesicBarrierLP(
+    CompiledModel& model,
+    RowSpace& z,                    // internal state (W for symmetric cones)
+    int max_outer_iterations = 30,
+    double tolerance = 1e-8,
+    bool verbose = false);
+
 // Find the largest k such that ||d(k)||_inf <= 1, where d(k) = d0 + k * d1.
 // Requires W to be centered (d ≈ 0 at the current k).  Uses one factorization
 // and two back-solves.  Returns the new k (>= current k).

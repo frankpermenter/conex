@@ -381,6 +381,15 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void SetWeights(const RowSpace& w) override;
   void SetScaling(const RowSpace& w) override;
   RowSpace GetAffineTerm() override;
+
+  // z-space operations.
+  void ComputeGradient(RowSpace& grad) override;
+  void HessianProduct(const RowSpace& v, RowSpace& out) override;
+  double StepSize(const RowSpace& target_k) override;
+  void GeodesicStep(double alpha, const RowSpace& target) override;
+  double LineSearch(const RowSpace& target0, const RowSpace& target1) override;
+  double HessianNormSquared(const RowSpace& target) override;
+  double BarrierParameter() override;
   // Gather unscattered separator data into supernode blocks.
   void GatherSeparators(SolverRHS& rhs) {
     GatherSeparators(*rhs.supernodes, *rhs.separators);
