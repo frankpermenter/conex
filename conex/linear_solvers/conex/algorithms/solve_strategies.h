@@ -141,4 +141,19 @@ struct GeodesicLP {
   }
 };
 
+// Strategy: z-space geodesic LP for general log-homogeneous barriers.
+// Bit-identical to GeodesicLP for symmetric cones.
+struct GeodesicBarrierLP {
+  double tolerance = 1e-8;
+  int max_iterations = 30;
+  bool verbose = false;
+
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace z = model.MakeRowSpace();
+    setOnes(z);
+    return SolveGeodesicBarrierLP(
+        model, z, max_iterations, tolerance, verbose);
+  }
+};
+
 }  // namespace conex

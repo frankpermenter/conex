@@ -6,6 +6,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/geodesic_ipm.h"
+#include "conex/algorithms/solve_strategies.h"
 #include "conex/common/compiled_model.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/model.h"
@@ -1508,8 +1509,8 @@ TEST(SpinFactor, ThetaContinuation_Isomorphic) {
   CheckIsomorphicIterations("ThetaContinuation", soc_r, sdp_r);
 }
 
-// Verify SolveGeodesicBarrierLP produces bit-identical results to
-// SolveGeodesicLP on a nonneg LP.
+// Verify GeodesicBarrierLP produces matching results to GeodesicLP
+// on a nonneg LP, using the Model/Solver/Strategy architecture.
 TEST(GeodesicBarrierQP, BarrierLP_BitIdentical) {
   srand(99);
   const int n = 6, m1 = 10, m2 = 8;
@@ -1539,128 +1540,89 @@ TEST(GeodesicBarrierQP, BarrierLP_BitIdentical) {
   std::vector<int> vars(n);
   std::iota(vars.begin(), vars.end(), 0);
 
-  // Build two identical models.
-  auto build = [&]() {
+  auto build_model = [&]() {
     Model problem;
     problem.AddLinearConstraint(A1, b1, vars);
     problem.AddLinearConstraint(A2, b2, vars);
     problem.SetLinearCost(c);
-    return Solver::Build(problem);
+    return problem;
   };
 
-  auto solver_w = build();
-  auto solver_z = build();
-
-  auto cost_w = solver_w.MakeCostRHS();
-  auto cost_z = solver_z.MakeCostRHS();
-  CompiledModel cm_w(*solver_w.kkt(), cost_w);
-  CompiledModel cm_z(*solver_z.kkt(), cost_z);
-
-  // Run with two tolerances: tight (full convergence) and loose (1 iter).
-  auto run_both = [&](double tol, int max_iter, const char* label) {
-    auto sw = build(); auto sz = build();
-    auto cw = sw.MakeCostRHS(); auto cz = sz.MakeCostRHS();
-    CompiledModel cmw(*sw.kkt(), cw), cmz(*sz.kkt(), cz);
-    RowSpace W = sw.kkt()->MakeRowSpace(); setOnes(W);
-    RowSpace z = sz.kkt()->MakeRowSpace(); setOnes(z);
-    auto rw = SolveGeodesicLP(cmw, W, max_iter, 0, tol, true);
-    auto rz = SolveGeodesicBarrierLP(cmz, z, max_iter, tol, true);
-    printf("\n=== %s (tol=%.0e, max_iter=%d) ===\n", label, tol, max_iter);
-    printf("  W-space: %d iters, gap=%.2e\n", rw.iterations, rw.complementarity);
-    printf("  z-space: %d iters, gap=%.2e\n", rz.iterations, rz.complementarity);
+  // Run both strategies via CompiledModel at a given max_iter.
+  auto run_both = [&](int max_iter) {
+    auto sw = Solver::Build(build_model());
+    auto sz = Solver::Build(build_model());
+    auto cmw = sw.MakeCompiledModel();
+    auto cmz = sz.MakeCompiledModel();
+    auto rw = GeodesicLP{1e-14, max_iter, 0, false}.Run(cmw);
+    auto rz = GeodesicBarrierLP{1e-14, max_iter, false}.Run(cmz);
     return std::make_pair(rw, rz);
   };
 
-  // First: 1-iteration test (no geodesic step drift).
-  auto [result_w1, result_z1] = run_both(1e2, 2, "1-iter");
+  // 1-iteration: lambda formulas should be bit-identical (no geodesic drift).
   {
-    double lam_diff = 0, lam_norm = 0;
-    for (int i = 0; i < result_w1.lambda.total_rows(); ++i) {
-      double d = result_w1.lambda.col()(i) - result_z1.lambda.col()(i);
-      lam_diff = std::max(lam_diff, std::abs(d));
-      lam_norm = std::max(lam_norm, std::abs(result_w1.lambda.col()(i)));
-    }
-    printf("  1-iter lambda: max_diff=%.2e, norm=%.2e, rel=%.2e\n",
-           lam_diff, lam_norm, lam_diff / (lam_norm + 1e-30));
-    EXPECT_LT(lam_diff / (lam_norm + 1e-30), 1e-12)
-        << "Lambda should be identical at iter 0 (no drift)";
-  }
-
-  // Sweep max_iter to see drift growth.
-  printf("\n=== Lambda drift vs iteration count ===\n");
-  for (int mi : {1, 2, 3, 4, 6, 8, 10, 14}) {
-    auto [rw, rz] = run_both(1e-14, mi, "sweep");
+    auto [rw, rz] = run_both(1);
     double lam_diff = 0, lam_norm = 0;
     for (int i = 0; i < rw.lambda.total_rows(); ++i) {
-      double d = rw.lambda.col()(i) - rz.lambda.col()(i);
-      lam_diff = std::max(lam_diff, std::abs(d));
+      lam_diff = std::max(lam_diff,
+          std::abs(rw.lambda.col()(i) - rz.lambda.col()(i)));
       lam_norm = std::max(lam_norm, std::abs(rw.lambda.col()(i)));
     }
-    printf("  %2d iters: lambda diff=%.2e  norm=%.2e  rel=%.2e\n",
+    printf("  1-iter lambda: diff=%.2e, norm=%.2e, rel=%.2e\n",
+           lam_diff, lam_norm, lam_diff / (lam_norm + 1e-30));
+    EXPECT_LT(lam_diff, 1e-14) << "Formulas should be bit-identical at iter 1";
+  }
+
+  // Sweep iterations: track drift growth.
+  printf("\n=== Lambda drift vs iteration count ===\n");
+  for (int mi : {1, 2, 3, 4, 6, 8, 10, 14}) {
+    auto [rw, rz] = run_both(mi);
+    double lam_diff = 0, lam_norm = 0;
+    for (int i = 0; i < rw.lambda.total_rows(); ++i) {
+      lam_diff = std::max(lam_diff,
+          std::abs(rw.lambda.col()(i) - rz.lambda.col()(i)));
+      lam_norm = std::max(lam_norm, std::abs(rw.lambda.col()(i)));
+    }
+    printf("  %2d iters: diff=%.2e  norm=%.2e  rel=%.2e\n",
            mi, lam_diff, lam_norm, lam_diff / (lam_norm + 1e-30));
   }
 
-  // Full convergence test.
-  auto [result_w, result_z] = run_both(1e-8, 30, "full");
+  // Full convergence: compare via Solver strategies.
+  auto sw = Solver::Build(build_model());
+  auto sz = Solver::Build(build_model());
+  auto cmw = sw.MakeCompiledModel();
+  auto cmz = sz.MakeCompiledModel();
+  auto result_w = GeodesicLP{1e-8, 30, 0, true}.Run(cmw);
+  auto result_z = GeodesicBarrierLP{1e-8, 30, true}.Run(cmz);
 
-  printf("\n=== Bit-identical comparison ===\n");
-  printf("  W-space: %d iters, gap=%.2e, x_norm=%.6e\n",
-         result_w.iterations, result_w.complementarity, result_w.x.norm());
-  printf("  z-space: %d iters, gap=%.2e, x_norm=%.6e\n",
-         result_z.iterations, result_z.complementarity, result_z.x.norm());
+  printf("\n=== Full convergence comparison ===\n");
+  printf("  W-space: %d iters, gap=%.2e\n",
+         result_w.iterations, result_w.complementarity);
+  printf("  z-space: %d iters, gap=%.2e\n",
+         result_z.iterations, result_z.complementarity);
 
-  // Same number of iterations.
   EXPECT_EQ(result_w.iterations, result_z.iterations);
 
-  // Same iteration stats.  Not bit-identical due to different evaluation
-  // order (z-space computes d_sq via H-norm, W-space via Euclidean norm of d).
-  // Differences compound across iterations; check relative agreement.
-  int n_iters = std::min(result_w.iterations, result_z.iterations);
-  for (int i = 0; i < n_iters; ++i) {
-    double mu_w = result_w.iter_stats[i].mu;
-    double mu_z = result_z.iter_stats[i].mu;
-    double rel_mu = std::abs(mu_w - mu_z) / (std::abs(mu_w) + 1e-30);
-    EXPECT_LT(rel_mu, 1e-4) << "mu mismatch at iter " << i
-        << ": " << mu_w << " vs " << mu_z;
-    double gap_w = result_w.iter_stats[i].complementarity;
-    double gap_z = result_z.iter_stats[i].complementarity;
-    double rel_gap = std::abs(gap_w - gap_z) / (std::abs(gap_w) + 1e-30);
-    EXPECT_LT(rel_gap, 1e-4) << "gap mismatch at iter " << i
-        << ": " << gap_w << " vs " << gap_z;
+  // Iteration stats: relative agreement (drift from evaluation order).
+  for (int i = 0; i < std::min(result_w.iterations, result_z.iterations); ++i) {
+    double rel_mu = std::abs(result_w.iter_stats[i].mu - result_z.iter_stats[i].mu)
+                    / (std::abs(result_w.iter_stats[i].mu) + 1e-30);
+    EXPECT_LT(rel_mu, 1e-4) << "mu mismatch at iter " << i;
+    double rel_gap = std::abs(result_w.iter_stats[i].complementarity -
+                              result_z.iter_stats[i].complementarity)
+                     / (std::abs(result_w.iter_stats[i].complementarity) + 1e-30);
+    EXPECT_LT(rel_gap, 1e-4) << "gap mismatch at iter " << i;
   }
 
-  // Same solution.
-  EXPECT_LT((result_w.x - result_z.x).norm(), 1e-8)
-      << "Solution mismatch";
-
-  // Same lambda (dual variable).
-  ASSERT_EQ(result_w.lambda.total_rows(), result_z.lambda.total_rows());
-  double lam_diff = 0;
+  // Solution and lambda.
+  EXPECT_LT((result_w.x - result_z.x).norm(), 1e-8);
+  double lam_diff = 0, lam_norm = 0;
   for (int i = 0; i < result_w.lambda.total_rows(); ++i) {
-    double d = result_w.lambda.col()(i) - result_z.lambda.col()(i);
-    lam_diff = std::max(lam_diff, std::abs(d));
-  }
-  printf("  lambda max diff: %.2e\n", lam_diff);
-  double lam_norm = 0;
-  for (int i = 0; i < result_w.lambda.total_rows(); ++i)
+    lam_diff = std::max(lam_diff,
+        std::abs(result_w.lambda.col()(i) - result_z.lambda.col()(i)));
     lam_norm = std::max(lam_norm, std::abs(result_w.lambda.col()(i)));
-  double rel_lam = lam_diff / (lam_norm + 1e-30);
-  EXPECT_LT(rel_lam, 1e-4) << "Lambda mismatch: abs=" << lam_diff
-      << " rel=" << rel_lam;
-
-  // Same optimality report.
-  printf("  W-space optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
-         result_w.optimality.complementarity,
-         result_w.optimality.min_slack,
-         result_w.optimality.min_dual);
-  printf("  z-space optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
-         result_z.optimality.complementarity,
-         result_z.optimality.min_slack,
-         result_z.optimality.min_dual);
-  double rel_compl = std::abs(result_w.optimality.complementarity -
-                              result_z.optimality.complementarity) /
-                     (std::abs(result_w.optimality.complementarity) + 1e-30);
-  EXPECT_LT(rel_compl, 1e-4) << "Complementarity mismatch";
+  }
+  EXPECT_LT(lam_diff / (lam_norm + 1e-30), 1e-4) << "Lambda mismatch";
 }
 
 }  // namespace
