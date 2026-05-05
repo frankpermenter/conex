@@ -177,6 +177,23 @@ class Model {
     return id;
   }
 
+  // Add a barrier cone constraint: Ax + b ∈ K where K has a general
+  // log-homogeneous barrier.  The ops pointer must implement the z-space
+  // SymmetricConeOperations methods and outlive the Model.
+  ConstraintId AddBarrierConstraint(
+      const Eigen::SparseMatrix<double>& A,
+      const Eigen::VectorXd& b,
+      const std::vector<int>& vars,
+      const EuclideanJordanAlgebra::SymmetricConeOperations* ops) {
+    CONEX_DEMAND(static_cast<size_t>(A.cols()) == vars.size(),
+                 "AddBarrierConstraint: A.cols() must equal vars.size().");
+    CONEX_DEMAND(A.rows() == b.size(),
+                 "AddBarrierConstraint: A.rows() must equal b.size().");
+    int id = static_cast<int>(constraints_.size());
+    constraints_.push_back(BarrierConstraintData{A, b, vars, ops});
+    return id;
+  }
+
   // Set the linear cost: min c^T x.
   void SetLinearCost(const Eigen::VectorXd& c) { linear_cost_ = c; }
 
@@ -220,9 +237,16 @@ class Model {
     std::vector<int> primal_vars;
   };
 
+  struct BarrierConstraintData {
+    Eigen::SparseMatrix<double> A;
+    Eigen::VectorXd b;
+    std::vector<int> vars;
+    const EuclideanJordanAlgebra::SymmetricConeOperations* ops;
+  };
+
   using ConstraintData = std::variant<
       LinearConstraintData, PSDConstraintData, SOCConstraintData,
-      QuadraticCostData, EqualityConstraintData>;
+      QuadraticCostData, EqualityConstraintData, BarrierConstraintData>;
 
   const ConstraintData& constraint(ConstraintId id) const {
     return constraints_.at(id);

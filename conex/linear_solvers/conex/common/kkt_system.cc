@@ -7,6 +7,7 @@
 #include "conex/common/sparse_soc_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
 #include "conex/common/sparse_equality_constraint.h"
+#include "conex/common/barrier_linear_constraint.h"
 #include "conex/tree_solver/assembler_adapter.h"
 #include "conex/tree_solver/kkt_solver_factory.h"
 #include "conex/tree_solver/kkt_tree_solver.h"
@@ -124,6 +125,14 @@ void KKTSystem::BuildInternal(const Model& model,
         auto asm_ptr = std::make_unique<SparseEqualityConstraintAssembler>(
             std::move(sec), data.primal_vars, dual);
         equality_assemblers_[i] = asm_ptr.get();
+        cm_->AddCustomAssembler(std::move(asm_ptr));
+
+      } else if constexpr (std::is_same_v<T,
+                                          Model::BarrierConstraintData>) {
+        auto slc = std::make_unique<SparseLinearConstraint>(data.A, data.b);
+        auto asm_ptr = std::make_unique<SparseBarrierConstraintAssembler>(
+            std::move(slc), data.vars, data.ops);
+        linear_assemblers_[i] = asm_ptr.get();
         cm_->AddCustomAssembler(std::move(asm_ptr));
       }
     }, model.constraint(i));

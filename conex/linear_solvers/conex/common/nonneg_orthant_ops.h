@@ -137,6 +137,12 @@ class NonnegOrthantOps : public SymmetricConeOperations {
     for (int i = 0; i < size; ++i) out[i] = z[i] * z[i] * v[i];
   }
 
+  void hessian(double* out, const double* z, int size) const override {
+    // H(z) = diag(z²) for nonneg (z stores W = 1/z_primal, H = diag(W²)).
+    std::fill(out, out + size * size, 0.0);
+    for (int i = 0; i < size; ++i) out[i * size + i] = z[i] * z[i];
+  }
+
   double hessianNormSquared(const double* z, const double* target,
                             int size) const override {
     double result = 0;

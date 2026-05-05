@@ -12,7 +12,10 @@
 
 #include <Eigen/Dense>
 
+#include "conex/algorithms/solve_strategies.h"
 #include "conex/common/exp_cone_ops.h"
+#include "conex/common/model.h"
+#include "conex/common/solver.h"
 
 using conex::EuclideanJordanAlgebra::ExpConeOps;
 
@@ -1238,6 +1241,69 @@ TEST(ExpCone, ZSpaceGeodesicLP) {
 
   EXPECT_GT(k, 1.0) << "k should increase beyond 1";
   EXPECT_LT(1.0 / (k * k), 1e-4) << "mu should be small";
+}
+
+// Test SolveGeodesicBarrierLP on exp cones through the Model/Solver
+// architecture, using BarrierLinearConstraint for Gram assembly.
+// Compare with the standalone z-space test above.
+TEST(ExpCone, BarrierLP_ModelSolver) {
+  using Eigen::VectorXd;
+  using Eigen::MatrixXd;
+  using Eigen::Vector3d;
+  using conex::Model;
+  using conex::Solver;
+  using conex::GeodesicBarrierLP;
+
+  ExpConeOps ops;
+  srand(42);
+
+  const int p = 4;
+  const int m = 3;
+
+  // Same problem setup as ZSpaceGeodesicLP and GeodesicLP_ProductCone.
+  struct Cone { MatrixXd A; Vector3d b; };
+  std::vector<Cone> cones(m);
+  for (int i = 0; i < m; ++i) {
+    cones[i].A = 0.3 * MatrixXd::Random(3, p);
+    cones[i].b = Vector3d(0, 1.0, std::exp(1.0) + 1.0);
+  }
+  VectorXd c = VectorXd::Zero(p);
+  for (int i = 0; i < m; ++i) {
+    double gi[3];
+    ExpConeOps::BarrierGrad(cones[i].b(0), cones[i].b(1), cones[i].b(2), gi);
+    c -= cones[i].A.transpose() * Eigen::Map<Vector3d>(gi);
+  }
+
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  // Build Model with barrier constraints.
+  Model model;
+  for (int i = 0; i < m; ++i) {
+    Eigen::SparseMatrix<double> As = cones[i].A.sparseView();
+    printf("  Adding barrier constraint %d: %dx%d\n", i,
+           static_cast<int>(As.rows()), static_cast<int>(As.cols()));
+    model.AddBarrierConstraint(As, cones[i].b, vars, &ops);
+  }
+  printf("  Model has %d constraints\n", model.num_constraints());
+  model.SetLinearCost(c);
+
+  auto solver = Solver::Build(model);
+  auto cm = solver.MakeCompiledModel();
+
+  // Initialize z = b (the affine term = starting interior point).
+  // Can't use GeodesicBarrierLP strategy directly because setOnes(z)
+  // gives the wrong initial point for non-nonneg cones.
+  conex::RowSpace z = cm.MakeRowSpace();
+  z.col() = cm.GetAffineTerm().col();
+  auto result = conex::SolveGeodesicBarrierLP(cm, z, 30, 1e-6, true);
+
+  printf("\n=== BarrierLP via Model/Solver (exp cone) ===\n");
+  printf("  iters=%d, gap=%.2e, mu=%.2e\n",
+         result.iterations, result.complementarity, result.mu);
+
+  EXPECT_GT(result.iterations, 0);
+  EXPECT_LT(result.mu, 1e-4) << "mu should decrease";
 }
 
 }  // namespace

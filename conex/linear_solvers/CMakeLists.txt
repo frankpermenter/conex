@@ -319,7 +319,9 @@ add_executable(exp_cone_test
   conex/test/exp_cone_test.cc
 )
 target_link_libraries(exp_cone_test PRIVATE
-  constraints
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
   GTest::gtest_main
 )
 gtest_discover_tests(exp_cone_test)

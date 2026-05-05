@@ -858,6 +858,10 @@ void ExpConeOps::computeGradient(double* grad, const double* z,
   BarrierGrad(z[0], z[1], z[2], grad);
 }
 
+void ExpConeOps::hessian(double* out, const double* z, int /*size*/) const {
+  BarrierHessian(z[0], z[1], z[2], out);
+}
+
 void ExpConeOps::hessianProduct(double* out, const double* z,
                                 const double* v, int /*size*/) const {
   double H[9];

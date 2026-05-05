@@ -110,7 +110,8 @@ std::pair<Model, Expansion> RemoveStructuralRankDeficiency(
       using T = std::decay_t<decltype(data)>;
 
       if constexpr (std::is_same_v<T, Model::LinearConstraintData> ||
-                     std::is_same_v<T, Model::SOCConstraintData>) {
+                     std::is_same_v<T, Model::SOCConstraintData> ||
+                     std::is_same_v<T, Model::BarrierConstraintData>) {
         // Build new_vars and a local column map: original local col ->
         // new local col.  Dropped vars are skipped entirely.
         std::vector<int> new_vars;
@@ -134,6 +135,8 @@ std::pair<Model, Expansion> RemoveStructuralRankDeficiency(
         A_new.setFromTriplets(t.begin(), t.end());
         if constexpr (std::is_same_v<T, Model::SOCConstraintData>)
           reduced.AddSOCConstraint(A_new, data.b, new_vars);
+        else if constexpr (std::is_same_v<T, Model::BarrierConstraintData>)
+          reduced.AddBarrierConstraint(A_new, data.b, new_vars, data.ops);
         else
           reduced.AddLinearConstraint(A_new, data.b, new_vars);
 
@@ -307,6 +310,10 @@ std::pair<Model, RowScaling> RowScaleModel(const Model& model) {
                                  data.use_chordal);
       } else if constexpr (std::is_same_v<T, Model::EqualityConstraintData>) {
         scaled.AddEqualityConstraint(data.C, data.d, data.primal_vars);
+      } else if constexpr (std::is_same_v<T, Model::BarrierConstraintData>) {
+        // Barrier constraints: pass through unscaled (row scaling
+        // would break the cone structure).
+        scaled.AddBarrierConstraint(data.A, data.b, data.vars, data.ops);
       }
     }, model.constraint(i));
   }

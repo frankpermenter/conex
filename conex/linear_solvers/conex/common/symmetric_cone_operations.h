@@ -143,6 +143,17 @@ class SymmetricConeOperations {
     (void)out; (void)z; (void)v; (void)size; std::abort();
   }
 
+  // Full Hessian matrix: out = H(z), column-major, size × size.
+  // Used for Gram assembly (chol(H) * A).  Default builds from hessianProduct.
+  virtual void hessian(double* out, const double* z, int size) const {
+    std::vector<double> ei(size, 0.0);
+    for (int j = 0; j < size; ++j) {
+      ei[j] = 1.0;
+      hessianProduct(out + j * size, z, ei.data(), size);
+      ei[j] = 0.0;
+    }
+  }
+
   // Squared Hessian norm: ||target - z_primal||²_{H(z)}.
   // Nonneg: Σ (z_i target_i - 1)² (where z stores W, z_primal = 1/W).
   virtual double hessianNormSquared(const double* z, const double* target,

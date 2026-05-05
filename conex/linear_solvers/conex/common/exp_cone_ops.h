@@ -67,6 +67,7 @@ class ExpConeOps : public SymmetricConeOperations, public BarrierOps {
   void computeGradient(double* grad, const double* z, int size) const override;
   void hessianProduct(double* out, const double* z, const double* v,
                       int size) const override;
+  void hessian(double* out, const double* z, int size) const override;
   double hessianNormSquared(const double* z, const double* target,
                             int size) const override;
   double stepSize(const double* z, const double* target, int size) const override;

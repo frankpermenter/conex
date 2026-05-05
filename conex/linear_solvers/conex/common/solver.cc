@@ -188,6 +188,12 @@ ConstraintDuals Solver::ExtractDuals(
           xv(j) = x_reduced(data.primal_vars[j]);
         duals.eq_residual.push_back(
             Eigen::MatrixXd(data.C) * xv - data.d);
+
+      } else if constexpr (std::is_same_v<T, Model::BarrierConstraintData>) {
+        auto s_gathered = system_.GatherConstraintRows(i, slack_rs);
+        auto l_gathered = system_.GatherConstraintRows(i, lambda);
+        duals.slack.push_back(s_gathered);
+        duals.lambda.push_back(l_gathered);
       }
     }, reduced_model_.constraint(i));
   }
