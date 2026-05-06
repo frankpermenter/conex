@@ -1160,8 +1160,8 @@ TEST(ExpCone, ZSpaceGeodesicLP) {
 
     for (int i = 0; i < m; ++i) {
       double H[9], g[3];
-      ops.hessian(H, z[i].data());
-      ops.gradient(g, z[i].data());
+      ops.hessian(H, z[i].data(), 3);
+      ops.computeGradient(g, z[i].data(), 3);
       for (int r = 0; r < 3; ++r)
         for (int cc = 0; cc < 3; ++cc)
           Hi[i](r, cc) = H[3*r+cc];

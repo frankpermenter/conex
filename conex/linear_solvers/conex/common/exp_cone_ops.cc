@@ -820,37 +820,6 @@ void ExpConeOps::project(double* out, const double* a, int /*size*/) const {
   out[2] = out[1] * std::exp(out[0] / out[1]) + 1e-10;
 }
 
-// BarrierOps implementation.
-
-void ExpConeOps::gradient(double* out, const double* s) const {
-  BarrierGrad(s[0], s[1], s[2], out);
-}
-
-void ExpConeOps::hessian(double* out, const double* s) const {
-  BarrierHessian(s[0], s[1], s[2], out);
-}
-
-double ExpConeOps::normH(const double* s, const double* v) const {
-  double H[9];
-  BarrierHessian(s[0], s[1], s[2], H);
-  // v^T H v where H is 3x3 row-major.
-  double result = 0;
-  for (int i = 0; i < 3; ++i)
-    for (int j = 0; j < 3; ++j)
-      result += v[i] * H[3 * i + j] * v[j];
-  return std::sqrt(std::max(result, 0.0));
-}
-
-void ExpConeOps::ExponentialMap(double* s_out, const double* s,
-                                double alpha, const double* d) const {
-  s_out[0] = s[0]; s_out[1] = s[1]; s_out[2] = s[2];
-  geodesicStep(s_out, alpha, d);
-}
-
-bool ExpConeOps::isInterior(const double* s) const {
-  return s[1] > 0 && s[2] > s[1] * std::exp(s[0] / s[1]);
-}
-
 // z-space operations (exp cone: z stores z directly).
 
 void ExpConeOps::computeGradient(double* grad, const double* z,
