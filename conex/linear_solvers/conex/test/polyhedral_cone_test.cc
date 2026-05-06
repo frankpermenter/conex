@@ -44,9 +44,10 @@ TEST(PolyhedralCone, ConvergenceProfile) {
       1e-11, 1e-12, 1e-13};
   const int max_iter = 40;
 
-  // Accumulators: iters_to_target[method][target_idx] = sum of iterations.
+  // Accumulators: iters_to_target[method][target_idx] = list of iterations.
   std::vector<std::vector<int>> nn_iters(gap_targets.size());
   std::vector<std::vector<int>> poly_iters(gap_targets.size());
+  std::vector<std::vector<int>> sym_iters(gap_targets.size());
 
   for (int prob = 0; prob < num_problems; ++prob) {
     srand(prob + 1);
@@ -97,6 +98,20 @@ TEST(PolyhedralCone, ConvergenceProfile) {
     z.col() = w0;
     auto poly_result = SolveGeodesicBarrierLP(poly_cm, z, max_iter, 1e-14, false);
 
+    // Symmetric integrator.
+    EuclideanJordanAlgebra::PolyhedralConeOps sym_ops(C, /*use_symmetric=*/true);
+    Model sym_model;
+    sym_model.AddBarrierConstraint(toSparse(I_np), b_zero, vars_np, &sym_ops);
+    sym_model.AddEqualityConstraint(toSparse(E), d, vars_np);
+    sym_model.SetLinearCost(c_ext);
+    auto sym_solver = Solver::BuildDense(sym_model);
+    auto sym_cm = sym_solver.MakeCompiledModel();
+    if (auto* ts2 = sym_solver.tree_solver())
+      ts2->EnableAutoUpdateAtAssemble(true);
+    RowSpace z2 = sym_cm.MakeRowSpace();
+    z2.col() = w0;
+    auto sym_result = SolveGeodesicBarrierLP(sym_cm, z2, max_iter, 1e-14, false);
+
     // Record iterations to each gap target.
     for (int ti = 0; ti < (int)gap_targets.size(); ++ti) {
       double tgt = gap_targets[ti];
@@ -117,23 +132,35 @@ TEST(PolyhedralCone, ConvergenceProfile) {
         }
       }
       poly_iters[ti].push_back(poly_it);
+
+      int sym_it = max_iter;
+      for (int i = 0; i < (int)sym_result.iter_stats.size(); ++i) {
+        if (sym_result.iter_stats[i].complementarity < tgt &&
+            sym_result.iter_stats[i].complementarity > 0) {
+          sym_it = i + 1; break;
+        }
+      }
+      sym_iters[ti].push_back(sym_it);
     }
   }
 
   // Print average iterations.
   printf("\n=== Average iterations to gap target (%d problems, n=%d, m=%d) ===\n",
          num_problems, n, m);
-  printf("  %10s  %12s  %12s  %8s\n",
-         "gap_target", "nonneg_avg", "polyhedral_avg", "ratio");
-  printf("  %s\n", std::string(48, '-').c_str());
+  printf("  %10s  %12s  %12s  %12s  %8s  %8s\n",
+         "gap_target", "nonneg", "verlet", "symmetric", "v_ratio", "s_ratio");
+  printf("  %s\n", std::string(72, '-').c_str());
   for (int ti = 0; ti < (int)gap_targets.size(); ++ti) {
-    double nn_avg = 0, poly_avg = 0;
+    double nn_avg = 0, poly_avg = 0, sym_avg = 0;
     for (int v : nn_iters[ti]) nn_avg += v;
     for (int v : poly_iters[ti]) poly_avg += v;
+    for (int v : sym_iters[ti]) sym_avg += v;
     nn_avg /= num_problems;
     poly_avg /= num_problems;
-    printf("  %10.0e  %12.2f  %12.2f  %8.2f\n",
-           gap_targets[ti], nn_avg, poly_avg, poly_avg / nn_avg);
+    sym_avg /= num_problems;
+    printf("  %10.0e  %12.2f  %12.2f  %12.2f  %8.2f  %8.2f\n",
+           gap_targets[ti], nn_avg, poly_avg, sym_avg,
+           poly_avg / nn_avg, sym_avg / nn_avg);
   }
 
   // Basic sanity: both should converge on most problems.

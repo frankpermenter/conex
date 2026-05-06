@@ -23,7 +23,9 @@ namespace EuclideanJordanAlgebra {
 
 class PolyhedralConeOps : public SymmetricConeOperations {
  public:
-  explicit PolyhedralConeOps(const Eigen::MatrixXd& C) : C_(C) {}
+  explicit PolyhedralConeOps(const Eigen::MatrixXd& C,
+                             bool use_symmetric = false)
+      : C_(C), use_symmetric_(use_symmetric) {}
 
   // --- z-space operations (z stores the primal point directly) ---
 
@@ -78,48 +80,117 @@ class PolyhedralConeOps : public SymmetricConeOperations {
                           int n) const override {
     Eigen::Map<Eigen::VectorXd> zv(z, n);
     Eigen::Map<const Eigen::VectorXd> tv(target, n);
-    Eigen::VectorXd vel = alpha * (tv - zv);
+
+    if (use_symmetric_) {
+      symmetricStep(zv, alpha * (tv - zv), n);
+    } else {
+      verletStep(zv, alpha * (tv - zv), n);
+    }
+  }
+
+ private:
+  void verletStep(Eigen::Map<Eigen::VectorXd>& zv,
+                  const Eigen::VectorXd& vel_in, int n) const {
+    Eigen::VectorXd vel = vel_in;
     Eigen::VectorXd pos = zv;
 
-    // Primal Verlet integrator with Christoffel symbols.
-    // Adaptive substeps: each substep covers Riemannian distance ~1.
+    // Adaptive substeps based on Riemannian speed.
     Eigen::VectorXd s0 = C_ * pos;
-    double speed = (C_ * vel).cwiseQuotient(s0).norm();  // ||ẋ||_H
+    double speed = (C_ * vel).cwiseQuotient(s0).norm();
     int steps = std::max(1, (int)std::ceil(speed));
     double dt = 1.0 / steps;
 
     for (int step = 0; step < steps; ++step) {
-      // Acceleration: a = -(1/2) H^{-1} T(v, v).
       auto accel = [&](const Eigen::VectorXd& p, const Eigen::VectorXd& v)
           -> Eigen::VectorXd {
         Eigen::VectorXd s = C_ * p;
         if (s.minCoeff() <= 0) return Eigen::VectorXd::Zero(n);
         Eigen::VectorXd Cv = C_ * v;
-        // T(v,v) = -2 C^T ((Cv)^2 / s^3).
         Eigen::VectorXd T = -2.0 * C_.transpose() *
             (Cv.cwiseAbs2().cwiseQuotient(s.cwiseAbs2().cwiseProduct(s)));
-        // H = C^T diag(s^{-2}) C.
         Eigen::VectorXd s_inv = s.cwiseInverse();
         Eigen::MatrixXd WC = s_inv.asDiagonal() * C_;
         Eigen::MatrixXd H = WC.transpose() * WC;
-        // a = -(1/2) H^{-1} T = H^{-1} (C^T ((Cv)^2 / s^3)).
         return H.ldlt().solve(-0.5 * T);
       };
 
-      // Half-step velocity.
       Eigen::VectorXd a = accel(pos, vel);
       vel += 0.5 * dt * a;
-
-      // Full-step position.
       pos += dt * vel;
-
-      // Second half-step velocity.
       a = accel(pos, vel);
       vel += 0.5 * dt * a;
     }
-
     zv = pos;
   }
+
+  // Symmetric integrator from integrator.tex Definition.
+  // Solves: ∇φ(z1) - ∇φ(z0) = H(z0)(2h·v0 - (z1 - z0))
+  // for z1 via Newton, using h=1, v0 = vel.
+  void symmetricStep(Eigen::Map<Eigen::VectorXd>& zv,
+                     const Eigen::VectorXd& vel_in, int n) const {
+    // Adaptive substeps based on Riemannian speed.
+    Eigen::VectorXd s0 = C_ * zv;
+    double speed = (C_ * vel_in).cwiseQuotient(s0).norm();
+    int steps = std::max(1, (int)std::ceil(speed));
+    Eigen::VectorXd vel = vel_in / steps;
+
+    for (int step = 0; step < steps; ++step) {
+      symmetricSubstep(zv, vel, n);
+    }
+  }
+
+  void symmetricSubstep(Eigen::Map<Eigen::VectorXd>& zv,
+                        Eigen::VectorXd& vel, int n) const {
+    Eigen::VectorXd z0 = zv;
+    Eigen::VectorXd s0 = C_ * z0;
+    Eigen::VectorXd lam0 = -C_.transpose() * s0.cwiseInverse();  // ∇φ(z0)
+
+    // H(z0) = C^T diag(s0^{-2}) C.
+    Eigen::VectorXd s0_inv = s0.cwiseInverse();
+    Eigen::MatrixXd WC0 = s0_inv.asDiagonal() * C_;
+    Eigen::MatrixXd H0 = WC0.transpose() * WC0;
+
+    Eigen::VectorXd u = 2.0 * vel;  // 2h·v0 with h=1
+
+    // Newton solve for z1. Initial guess: z1 = z0 + vel (tangent line).
+    Eigen::VectorXd z1 = z0 + vel;
+    for (int iter = 0; iter < 20; ++iter) {
+      Eigen::VectorXd s1 = C_ * z1;
+      if (s1.minCoeff() <= 0) {
+        // Backtrack towards z0.
+        z1 = 0.5 * (z1 + z0);
+        continue;
+      }
+      Eigen::VectorXd lam1 = -C_.transpose() * s1.cwiseInverse();
+      Eigen::VectorXd d = z1 - z0;
+
+      // F(z1) = (lam1 - lam0) - H0*(u - d)
+      Eigen::VectorXd F = (lam1 - lam0) - H0 * (u - d);
+
+      if (F.norm() < 1e-13 * (1.0 + lam0.norm())) break;
+
+      // Jacobian: H(z1) + H0.
+      Eigen::VectorXd s1_inv = s1.cwiseInverse();
+      Eigen::MatrixXd WC1 = s1_inv.asDiagonal() * C_;
+      Eigen::MatrixXd H1 = WC1.transpose() * WC1;
+      Eigen::MatrixXd J = H1 + H0;
+
+      z1 -= J.ldlt().solve(F);
+    }
+    // Update velocity from second equation:
+    // ∇φ(z1) - ∇φ(z0) = H(z1)(2·v1 - d) → v1 = (d + H(z1)^{-1}(lam1-lam0))/2
+    Eigen::VectorXd s1 = C_ * z1;
+    Eigen::VectorXd lam1 = -C_.transpose() * s1.cwiseInverse();
+    Eigen::VectorXd s1_inv = s1.cwiseInverse();
+    Eigen::MatrixXd WC1 = s1_inv.asDiagonal() * C_;
+    Eigen::MatrixXd H1 = WC1.transpose() * WC1;
+    Eigen::VectorXd d = z1 - z0;
+    vel = 0.5 * (d + H1.ldlt().solve(lam1 - lam0));
+
+    zv = z1;
+  }
+
+ public:
 
   double lineSearchTarget(const double* z, const double* target0,
                            const double* target1, int n) const override {
@@ -185,6 +256,7 @@ class PolyhedralConeOps : public SymmetricConeOperations {
 
  private:
   Eigen::MatrixXd C_;
+  bool use_symmetric_ = false;
 };
 
 }  // namespace EuclideanJordanAlgebra
