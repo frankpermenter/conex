@@ -1848,5 +1848,141 @@ TEST(GeodesicBarrierQP, MehrotraCorrection) {
   }
 }
 
+// Frozen-Jacobian speedup on SDP.
+TEST(GeodesicBarrierQP, FrozenJacobian_SDP) {
+  srand(42);
+  const int n_psd = 4, p = 6;
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  auto make_sym = [](int n) {
+    MatrixXd M = MatrixXd::Random(n, n);
+    return (M + M.transpose()) / 2.0;
+  };
+  for (int i = 0; i < p; ++i)
+    A_list.push_back(toSparse(make_sym(n_psd)));
+  Eigen::SparseMatrix<double> B = toSparse(
+      3.0 * MatrixXd::Identity(n_psd, n_psd));
+  VectorXd c(p);
+  for (int i = 0; i < p; ++i)
+    c(i) = Eigen::MatrixXd(A_list[i]).trace();
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddPSDConstraint(A_list, B, vars, false);
+  model.SetLinearCost(c);
+
+  // Baseline: GeodesicLP (no frozen-Jacobian).
+  auto s1 = Solver::Build(model);
+  auto cm1 = s1.MakeCompiledModel();
+  auto r1 = GeodesicLP{1e-10, 30, 0, true}.Run(cm1);
+
+  // Frozen-Jacobian (1 inner step).
+  auto s2 = Solver::Build(model);
+  auto cm2 = s2.MakeCompiledModel();
+  auto r2 = GeodesicJacobianReuseLP{1e-10, 30, 1, true}.Run(cm2);
+
+  printf("\n=== SDP frozen-Jacobian comparison ===\n");
+  printf("  Baseline:       %2d fac, %3d solves, gap=%.2e\n",
+         r1.total_factorizations, r1.total_solves, r1.complementarity);
+  printf("  Frozen-J (1):   %2d fac, %3d solves, gap=%.2e\n",
+         r2.total_factorizations, r2.total_solves, r2.complementarity);
+  if (r1.total_factorizations > 0) {
+    printf("  Factorization reduction: %.0f%%\n",
+           100.0 * (1.0 - static_cast<double>(r2.total_factorizations) /
+                          r1.total_factorizations));
+  }
+
+  EXPECT_LT(r1.complementarity, 1e-8);
+  EXPECT_LT(r2.complementarity, 1e-8);
+  EXPECT_LT(r2.total_factorizations, r1.total_factorizations);
+}
+
+// Frozen-Jacobian speedup on LP (nonneg).
+TEST(GeodesicBarrierQP, FrozenJacobian_LP) {
+  srand(99);
+  const int n = 6, m = 14;
+  MatrixXd A = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(toSparse(A), b, vars);
+  model.SetLinearCost(c);
+
+  auto s1 = Solver::Build(model);
+  auto cm1 = s1.MakeCompiledModel();
+  auto r1 = GeodesicLP{1e-10, 30, 0, false}.Run(cm1);
+
+  auto s2 = Solver::Build(model);
+  auto cm2 = s2.MakeCompiledModel();
+  auto r2 = GeodesicJacobianReuseLP{1e-10, 30, 1, false}.Run(cm2);
+
+  printf("\n=== LP frozen-Jacobian comparison ===\n");
+  printf("  Baseline:       %2d fac, %3d solves, gap=%.2e\n",
+         r1.total_factorizations, r1.total_solves, r1.complementarity);
+  printf("  Frozen-J (1):   %2d fac, %3d solves, gap=%.2e\n",
+         r2.total_factorizations, r2.total_solves, r2.complementarity);
+  if (r1.total_factorizations > 0) {
+    printf("  Factorization reduction: %.0f%%\n",
+           100.0 * (1.0 - static_cast<double>(r2.total_factorizations) /
+                          r1.total_factorizations));
+  }
+
+  EXPECT_LT(r1.complementarity, 1e-8);
+  EXPECT_LT(r2.complementarity, 1e-8);
+  EXPECT_LT(r2.total_factorizations, r1.total_factorizations);
+}
+
+// Frozen-Jacobian speedup on SOC (multiple cones for nontrivial problem).
+TEST(GeodesicBarrierQP, FrozenJacobian_SOC) {
+  srand(77);
+  const int n = 8, soc_dim = 4, num_cones = 3;
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  // Also add nonneg constraints for boundedness.
+  MatrixXd A_nn = MatrixXd::Identity(n, n);
+  VectorXd b_nn = 5.0 * VectorXd::Ones(n);
+  model.AddLinearConstraint(toSparse(A_nn), b_nn, vars);
+  for (int k = 0; k < num_cones; ++k) {
+    MatrixXd A_dense = MatrixXd::Random(soc_dim, n) * 0.3;
+    VectorXd b_soc(soc_dim);
+    b_soc(0) = 2.0 + k;
+    b_soc.tail(soc_dim - 1).setZero();
+    model.AddSOCConstraint(toSparse(A_dense), b_soc, vars);
+  }
+  // Cost: sum of A₀ rows so x=0 is near-centered.
+  VectorXd c = VectorXd::Zero(n);
+  for (int k = 0; k < num_cones; ++k)
+    c += MatrixXd::Random(soc_dim, n).row(0).transpose() * 0.1;
+  model.SetLinearCost(c);
+
+  auto s1 = Solver::Build(model);
+  auto cm1 = s1.MakeCompiledModel();
+  auto r1 = GeodesicLP{1e-10, 30, 0, false}.Run(cm1);
+
+  auto s2 = Solver::Build(model);
+  auto cm2 = s2.MakeCompiledModel();
+  auto r2 = GeodesicJacobianReuseLP{1e-10, 30, 1, false}.Run(cm2);
+
+  printf("\n=== SOC frozen-Jacobian comparison ===\n");
+  printf("  Baseline:       %2d fac, %3d solves, gap=%.2e\n",
+         r1.total_factorizations, r1.total_solves, r1.complementarity);
+  printf("  Frozen-J (1):   %2d fac, %3d solves, gap=%.2e\n",
+         r2.total_factorizations, r2.total_solves, r2.complementarity);
+  if (r1.total_factorizations > 0) {
+    printf("  Factorization reduction: %.0f%%\n",
+           100.0 * (1.0 - static_cast<double>(r2.total_factorizations) /
+                          r1.total_factorizations));
+  }
+
+  EXPECT_LT(r1.complementarity, 1e-8);
+  EXPECT_LT(r2.complementarity, 1e-8);
+  EXPECT_LE(r2.total_factorizations, r1.total_factorizations);
+}
+
 }  // namespace
 }  // namespace conex
