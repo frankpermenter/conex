@@ -1,0 +1,136 @@
+\begin{theorem}[Kinematic Bound on Divergence Curvature]
+\label{thm:acceleration_bound}
+Let $z(t)$ be a geodesic parameterized by arc length on the Hessian manifold defined by a self-concordant barrier $\phi$, with constant kinetic energy $E = \|\dot{z}\|_z^2$. Let $z_*$ be an arbitrary target point in the domain. Assuming the kinematic stability axiom $\|\ddot{z}\|_z \le E$, the second time derivative of the generalized Jeffreys divergence $V(t) = \langle z - z_*, \nabla \phi(z) - \nabla \phi(z_*) \rangle$ is bounded by:
+\begin{equation}
+    \ddot{V} \le 2E + E \|U\|_z
+\end{equation}
+where $U = (z - z_*) - H(z)^{-1}(\nabla \phi(z) - \nabla \phi(z_*))$ is the aggregated residual vector.
+\end{theorem}
+
+\begin{proof}
+We begin by taking the first time derivative of the generalized Jeffreys divergence $V(z) = \langle z - z_*, \nabla \phi(z) - \nabla \phi(z_*) \rangle$ along the geodesic $z(t)$. Since $z_*$ and $\nabla \phi(z_*)$ are fixed constants, their time derivatives are zero:
+\begin{equation}
+    \dot{V} = \langle \dot{z}, \nabla \phi(z) - \nabla \phi(z_*) \rangle + \langle z - z_*, H(z)\dot{z} \rangle.
+\end{equation}
+Taking the second time derivative yields:
+\begin{align}
+    \ddot{V} &= \langle \ddot{z}, \nabla \phi(z) - \nabla \phi(z_*) \rangle + \langle \dot{z}, H(z)\dot{z} \rangle \nonumber \\
+             &\quad + \langle \dot{z}, H(z)\dot{z} \rangle + \langle z - z_*, \dot{H}(z)\dot{z} \rangle + \langle z - z_*, H(z)\ddot{z} \rangle.
+\end{align}
+Recognizing that the kinetic energy is $E = \langle \dot{z}, H(z)\dot{z} \rangle$, we substitute $2E$ and group the acceleration terms:
+\begin{equation} \label{eq:ddot_V_expanded}
+    \ddot{V} = 2E + \langle \ddot{z}, \nabla \phi(z) - \nabla \phi(z_*) + H(z)(z - z_*) \rangle + D^3\phi(z)[\dot{z}, \dot{z}, z - z_*].
+\end{equation}
+By the definition of a geodesic on a Hessian manifold, the acceleration $\ddot{z}$ is driven by the Levi-Civita connection:
+\begin{equation}
+    \ddot{z} = -\frac{1}{2} H(z)^{-1} D^3\phi(z)[\dot{z}, \dot{z}, \cdot].
+\end{equation}
+Applying this identity to the vector $w = z - z_*$ allows us to rewrite the third derivative term as a local inner product with the acceleration:
+\begin{equation}
+    D^3\phi(z)[\dot{z}, \dot{z}, z - z_*] = -2 \langle \ddot{z}, H(z)(z - z_*) \rangle.
+\end{equation}
+Substituting this back into Equation \ref{eq:ddot_V_expanded} results in the cancellation of one of the primal residual terms:
+\begin{align}
+    \ddot{V} &= 2E + \langle \ddot{z}, \nabla \phi(z) - \nabla \phi(z_*) + H(z)(z - z_*) \rangle - 2 \langle \ddot{z}, H(z)(z - z_*) \rangle \nonumber \\
+             &= 2E + \langle \ddot{z}, (\nabla \phi(z) - \nabla \phi(z_*)) - H(z)(z - z_*) \rangle.
+\end{align}
+We factor out $-H(z)$ from the right side of the inner product to reveal the generalized aggregated residual $U$:
+\begin{align}
+    \ddot{V} &= 2E - \langle \ddot{z}, H(z) \left[ (z - z_*) - H(z)^{-1}(\nabla \phi(z) - \nabla \phi(z_*)) \right] \rangle \nonumber \\
+             &= 2E - \langle \ddot{z}, U \rangle_z.
+\end{align}
+To strictly bound this geometric drift, we apply the Cauchy-Schwarz inequality in the local metric space:
+\begin{equation}
+    | \langle \ddot{z}, U \rangle_z | \le \|\ddot{z}\|_z \|U\|_z.
+\end{equation}
+Finally, invoking the kinematic stability axiom $\|\ddot{z}\|_z \le E$, we obtain the upper bound:
+\begin{equation}
+    \ddot{V} \le 2E + E \|U\|_z.
+\end{equation}
+\end{proof}
+
+
+\begin{lemma}[Global Bound on the Residual and Divergence Drift]
+\label{lem:residual_and_drift}
+Let $\phi$ be a standard self-concordant barrier (where $L=2$). Let $z_*$ be an arbitrary target point, and let $V(z) = \langle z - z_*, \nabla \phi(z) - \nabla \phi(z_*) \rangle$ be the Jeffreys divergence. Consider the aggregated centering residual $U = (z - z_*) - H(z)^{-1}(\nabla \phi(z) - \nabla \phi(z_*))$.
+
+The local norm of the residual is strictly bounded by:
+\begin{equation}
+    \|U\|_z \le 2V(z) + 2\sqrt{V(z)}.
+\end{equation}
+Consequently, along a Riemannian geodesic $z(t)$ with constant kinetic energy $E = \|\dot{z}\|_z^2$ satisfying the kinematic stability axiom $\|\ddot{z}\|_z \le E$, the second time derivative of the divergence is globally bounded by:
+\begin{equation}
+    \ddot{V} \le 2E \left( 1 + \sqrt{V(z)} + V(z) \right).
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+We begin by bounding the local magnitude of the aggregated residual vector $U$. Applying the triangle inequality in the local metric space at $z$:
+\begin{equation}
+    \|U\|_z = \| (z - z_*) - H(z)^{-1}(\nabla \phi(z) - \nabla \phi(z_*)) \|_z \le \|z - z_*\|_z + \|H(z)^{-1}(\nabla \phi(z) - \nabla \phi(z_*))\|_z.
+\end{equation}
+Recognizing that the second term is exactly the local dual norm of the gradient difference, we have:
+\begin{equation} \label{eq:triangle_u}
+    \|U\|_z \le \|z - z_*\|_z + \|\nabla \phi(z) - \nabla \phi(z_*)\|^*_z.
+\end{equation}
+
+To bound these local norms using the Jeffreys divergence $V$, we rely on the fundamental primal-dual inner product inequalities for standard self-concordant functions. Let $r = \|z - z_*\|_z$ be the local primal distance. The divergence strictly bounds $r$ according to:
+\begin{equation}
+    V \ge \frac{r^2}{1 + r}.
+\end{equation}
+Rearranging this into a standard quadratic inequality yields $r^2 - V r - V \le 0$. By the quadratic formula, the positive root is bounded by:
+\begin{equation}
+    r \le \frac{V + \sqrt{V^2 + 4V}}{2}.
+\end{equation}
+By the subadditivity of the square root function for non-negative operands, $\sqrt{V^2 + 4V} \le \sqrt{V^2} + \sqrt{4V} = V + 2\sqrt{V}$. Substituting this upper bound establishes a strict limit on the primal distance that correctly vanishes at $V=0$:
+\begin{equation}
+    \|z - z_*\|_z \le \frac{V + (V + 2\sqrt{V})}{2} = V + \sqrt{V}.
+\end{equation}
+
+By the geometric symmetry of the self-concordant Legendre transform, the exact same bounding logic applies to the local dual distance $g = \|\nabla \phi(z) - \nabla \phi(z_*)\|^*_z$. The divergence satisfies $V \ge \frac{g^2}{1 + g}$, which via identical algebraic simplification is bounded as:
+\begin{equation}
+    \|\nabla \phi(z) - \nabla \phi(z_*)\|^*_z \le V + \sqrt{V}.
+\end{equation}
+
+Substituting these two bounds back into the triangle inequality (Equation \ref{eq:triangle_u}) yields the strict global bound on the residual:
+\begin{equation} \label{eq:u_bound_final}
+    \|U\|_z \le (V + \sqrt{V}) + (V + \sqrt{V}) = 2V + 2\sqrt{V}.
+\end{equation}
+
+Finally, we project this residual bound onto the continuous geodesic path. The second time derivative of the divergence along the geodesic is given by:
+\begin{equation}
+    \ddot{V} = 2E - \langle \ddot{z}, U \rangle_z.
+\end{equation}
+Applying the Cauchy-Schwarz inequality to the local inner product:
+\begin{equation}
+    \ddot{V} \le 2E + \|\ddot{z}\|_z \|U\|_z.
+\end{equation}
+Invoking the kinematic stability axiom for standard self-concordant barriers ($\|\ddot{z}\|_z \le E$) and substituting our bound from Equation \ref{eq:u_bound_final}:
+\begin{equation}
+    \ddot{V} \le 2E + E(2V + 2\sqrt{V}) = 2E(1 + \sqrt{V} + V).
+\end{equation}
+\end{proof}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

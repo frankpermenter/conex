@@ -1,0 +1,157 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage[margin=1.2in]{geometry}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{definition}{Definition}
+
+\title{\textbf{Geodesic Divergence Curvature,\\ Torsional Decomposition, and the Commutator Bound}}
+\author{}
+\date{\vspace{-5ex}}
+
+\begin{document}
+\maketitle
+
+\section{Kinematic Bound on Divergence Curvature}
+We study a curve $z(t)$ tracing a geodesic on a Hessian manifold defined by a self-concordant barrier $\phi$. 
+
+\begin{theorem}
+Let $z(t)$ be a geodesic parameterized by arc length with constant kinetic energy $E = \|\dot{z}\|_{H(z)}^2$. Let $z_*$ be an arbitrary target point. Then the second time derivative of the generalized Jeffreys divergence $V(z) = \langle z - z_*, \nabla \phi(z) - \nabla \phi(z_*) \rangle$ is given by:
+\begin{equation}
+    \ddot{V} = 2E - \langle \ddot{z}, U \rangle_z
+\end{equation}
+where $U = (z - z_*) - H(z)^{-1}(\nabla \phi(z) - \nabla \phi(z_*))$ is the exact aggregated residual vector, and the inner product is in the local metric $\langle a, b \rangle_z = a^T H(z) b$.
+\end{theorem}
+
+\begin{proof}
+Taking the first time derivative of $V(z)$ along the geodesic $z(t)$:
+\begin{equation}
+    \dot{V} = \langle \dot{z}, \nabla \phi(z) - \nabla \phi(z_*) \rangle + \langle z - z_*, H(z)\dot{z} \rangle
+\end{equation}
+Taking the second time derivative yields:
+\begin{align}
+    \ddot{V} &= \langle \ddot{z}, \nabla \phi(z) - \nabla \phi(z_*) \rangle + \langle \dot{z}, H(z)\dot{z} \rangle \nonumber \\
+             &\quad + \langle \dot{z}, H(z)\dot{z} \rangle + \langle z - z_*, \dot{H}(z)\dot{z} \rangle + \langle z - z_*, H(z)\ddot{z} \rangle
+\end{align}
+Recognizing that the kinetic energy is $E = \langle \dot{z}, H(z)\dot{z} \rangle$, we substitute $2E$ and group the acceleration terms:
+\begin{equation} \label{eq:ddot_V_expanded}
+    \ddot{V} = 2E + \langle \ddot{z}, \nabla \phi(z) - \nabla \phi(z_*) + H(z)(z - z_*) \rangle + D^3\phi(z)[\dot{z}, \dot{z}, z - z_*]
+\end{equation}
+
+By the definition of a geodesic on a Hessian manifold, the acceleration $\ddot{z}$ is driven by the Levi-Civita connection:
+\begin{equation}
+    \ddot{z} = -\frac{1}{2} H(z)^{-1} D^3\phi(z)[\dot{z}, \dot{z}, \cdot]
+\end{equation}
+Applying this identity to the vector $w = z - z_*$ rewrites the third derivative term as a local inner product with the acceleration:
+\begin{equation}
+    D^3\phi(z)[\dot{z}, \dot{z}, z - z_*] = -2 \langle \ddot{z}, H(z)(z - z_*) \rangle
+\end{equation}
+Substituting this back into Equation \ref{eq:ddot_V_expanded} results in the exact cancellation of one of the primal residual terms:
+\begin{align}
+    \ddot{V} &= 2E + \langle \ddot{z}, \nabla \phi(z) - \nabla \phi(z_*) + H(z)(z - z_*) \rangle - 2 \langle \ddot{z}, H(z)(z - z_*) \rangle \nonumber \\
+             &= 2E + \langle \ddot{z}, \nabla \phi(z) - \nabla \phi(z_*) - H(z)(z - z_*) \rangle
+\end{align}
+Factoring out $-H(z)$ reveals the exact generalized aggregated residual $U$:
+\begin{align}
+    \ddot{V} &= 2E - \langle \ddot{z}, H(z) \left[ (z - z_*) - H(z)^{-1}(\nabla \phi(z) - \nabla \phi(z_*)) \right] \rangle \nonumber \\
+             &= 2E - \langle \ddot{z}, U \rangle_z
+\end{align}
+\end{proof}
+
+\section{The Commutator and Torsional Decomposition}
+For a general self-concordant barrier $\phi(z)$, the metric-warping operator $M_u(v) = H(z)^{-1} D^3\phi(z)[u, v, \cdot]$ equips the tangent space with a commutative (but generally non-associative) algebraic product $u \bullet v = M_u(v)$. The local geometric square is $u^2 = M_u(u)$. 
+
+We formally define the \textbf{Sectional Curvature Commutator} as the Lie bracket of the multiplication operators:
+\begin{equation}
+    \mathcal{C}(u) = [M_u, M_{u^2}] = M_u M_{u^2} - M_{u^2} M_u
+\end{equation}
+
+By expanding the generalized residual $U$ via the operator algebra along the step $\Delta = z_* - z$, the residual splits strictly into a power-associative component $U_{\mathrm{sym}}$ and a non-associative torsional component $U_{\mathrm{torsion}}$:
+\begin{equation}
+    U = U_{\mathrm{sym}} + U_{\mathrm{torsion}}
+\end{equation}
+The decomposition of the inner product yields:
+\begin{equation}
+    \langle \ddot{z}, U \rangle_z = \langle \ddot{z}, U_{\mathrm{sym}} \rangle_z + \langle \ddot{z}, \mathcal{C}(\Delta)[v] \rangle_z
+\end{equation}
+where $v$ encapsulates higher-order remainders. The energy leakage in the inner product exists purely because $\mathcal{C}(\Delta) \neq 0$.
+
+\section{Recovering the Symmetric Cone Case and the Exact Formula}
+If the barrier possesses the self-scaled symmetry $\phi(-\nabla \phi(z)) = \phi(z) + c$, the operators form a Euclidean Jordan Algebra. The commutator universally vanishes ($\mathcal{C} \equiv 0 \implies U_{\mathrm{torsion}} = 0$), so $U = U_{\mathrm{sym}}$.
+
+In this perfect geometry, we map the residual to an isotropic frame using the quadratic representation $P(z) = H(z)^{-1}$. Let the relative stretch vector be $w = P(z)^{-1/2} z_*$. The primal acceleration maps to $\tilde{\ddot{z}} = -\frac{1}{2}\tilde{\dot{z}}^2$.
+
+The dual-gradient mapping acts as the Jordan inverse. The generalized residual $U = (z - z_*) - P(z)(-\nabla \phi(z) + \nabla \phi(z_*))$ maps identically to the isotropic frame as $\tilde{U}_{sym} = 2\mathbf{1} - w - w^{-1}$. Thus, the inner product evaluates to the spectacularly clean associative formula:
+\begin{equation}
+    \langle \ddot{z}, U_{\mathrm{sym}} \rangle_z = -\frac{1}{2} \langle \tilde{\dot{z}}^2, 2\mathbf{1} - w - w^{-1} \rangle
+\end{equation}
+Since $w \approx \mathbf{1} + \Delta w$, a Taylor expansion yields $2\mathbf{1} - w - w^{-1} \approx -(\Delta w)^2$. The symmetric residual flawlessly produces the pure quadratic centering force without higher-order torsion.
+
+\section{Polyhedral Cone}
+
+\begin{theorem}[Polyhedral Commutator and Inner Product Decomposition]
+Let $\mathcal{M} = \{z \in \mathbb{R}^n \mid Az > 0\}$ be a polyhedral cone equipped with the logarithmic barrier $F(z) = -\sum_{i=1}^m \ln(a_i^T z)$. Let $H(z) = \nabla^2 F(z)$ be the local metric. For a tangent vector $u$, let $\tilde{u} = S^{-1}Au$ be its lift into the scaled slack space, where $S = \mathrm{diag}(Az)$. Let $P = S^{-1}A(A^TS^{-2}A)^{-1}A^TS^{-1}$ be the orthogonal projection matrix onto the column space of $S^{-1}A$.
+
+Then, the following hold:
+\begin{enumerate}
+    \item \textbf{(Commutator Formula):} The sectional curvature commutator $\mathcal{C}(u) = [M_u, M_{u^2}]$, lifted to the slack space, evaluates exactly to:
+    \begin{equation}
+        \widetilde{\mathcal{C}}(\tilde{u})[\tilde{v}] = P \Big( \tilde{u} \circ P \big( P(\tilde{u}^{\circ 2}) \circ \tilde{v} \big) \Big) - P \Big( P(\tilde{u}^{\circ 2}) \circ P(\tilde{u} \circ \tilde{v}) \Big)
+    \end{equation}
+    where $\circ$ denotes the element-wise Hadamard product.
+    
+    \item \textbf{(Inner Product Decomposition):} For a continuous geodesic $z(t)$ and a target point $z_*$, define the relative stretch vector $w = S^{-1}Az_*$. The inner product between the acceleration $\ddot{z}$ and the exact aggregated residual $U = (z - z_*) - H(z)^{-1}(\nabla F(z) - \nabla F(z_*))$ evaluates exactly to:
+    \begin{equation}
+        \langle \ddot{z}, U \rangle_z = (\tilde{\dot{z}}^{\circ 2})^T P \big( 2\mathbf{1} - w - w^{-1} \big)
+    \end{equation}
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+\textbf{Part 1: The Commutator Formula.} \\
+The local metric is $H(z) = A^T S^{-2} A$. The third derivative tensor evaluated in directions $u$ and $v$ is $D^3F(z)[u, v, \cdot] = -2 A^T S^{-3} \mathrm{diag}(Au) Av$.
+The metric-warping operator is defined as $M_u(v) = H(z)^{-1} D^3F(z)[u, v, \cdot]$. Dropping the $-2$ scale factor for the structural commutator mapping, we map the operator into the slack space via $\widetilde{M}_{\tilde{u}}(\tilde{v}) = S^{-1} A M_u(v)$. Substituting $H(z)^{-1}$ gives:
+\begin{align*}
+    \widetilde{M}_{\tilde{u}}(\tilde{v}) &= \left( S^{-1} A (A^T S^{-2} A)^{-1} A^T S^{-1} \right) (S^{-1} A u \circ S^{-1} A v) \\
+    &= P(\tilde{u} \circ \tilde{v})
+\end{align*}
+The local geometric square lifts to $\tilde{u}^{\circ 2}_M = P(\tilde{u} \circ \tilde{u}) = P(\tilde{u}^{\circ 2})$. Substituting these into the Lie bracket $\mathcal{C}(u)[v] = M_u(M_{u^2}(v)) - M_{u^2}(M_u(v))$ directly yields the lifted commutator formula:
+\begin{equation*}
+    \widetilde{\mathcal{C}}(\tilde{u})[\tilde{v}] = P \Big( \tilde{u} \circ P \big( P(\tilde{u}^{\circ 2}) \circ \tilde{v} \big) \Big) - P \Big( P(\tilde{u}^{\circ 2}) \circ P(\tilde{u} \circ \tilde{v}) \Big)
+\end{equation*}
+
+\textbf{Part 2: The Inner Product Decomposition.} \\
+We first lift the exact aggregated residual $U$ into the slack space. We have $\nabla F(z) = -A^T S^{-1}\mathbf{1}$ and $\nabla F(z_*) = -A^T S_*^{-1}\mathbf{1}$. By definition $w = S^{-1}s_*$, so $S_*^{-1} = S^{-1} \mathrm{diag}(w^{-1})$. Therefore:
+\begin{equation*}
+    \nabla F(z) - \nabla F(z_*) = -A^T S^{-1} (\mathbf{1} - w^{-1})
+\end{equation*}
+Applying the inverse Hessian and projecting into the slack space via $S^{-1}A$ yields $-P(\mathbf{1} - w^{-1})$. The primal difference lifts as $S^{-1}A(z - z_*) = \mathbf{1} - w$. The lifted residual is thus exactly:
+\begin{equation*}
+    \tilde{U} = (\mathbf{1} - w) + P(\mathbf{1} - w^{-1})
+\end{equation*}
+
+Next, from the Levi-Civita connection $\ddot{z} = -\frac{1}{2} H(z)^{-1} D^3F(z)[\dot{z}, \dot{z}, \cdot]$, substituting the 3rd derivative perfectly cancels the constants, yielding the lifted acceleration $\tilde{\ddot{z}} = P(\tilde{\dot{z}}^{\circ 2})$.
+The local inner product is the standard Euclidean product in the lifted space:
+\begin{align*}
+    \langle \ddot{z}, U \rangle_z &= \tilde{\ddot{z}}^T \tilde{U} = P(\tilde{\dot{z}}^{\circ 2})^T \Big( (\mathbf{1} - w) + P(\mathbf{1} - w^{-1}) \Big)
+\end{align*}
+Since $P$ is a symmetric orthogonal projection matrix ($P^T = P = P^2$), and the stretch vector $w$ strictly resides in the column space ($P(w) = w$, and assuming $P(\mathbf{1}) = \mathbf{1}$), the projection distributes smoothly:
+\begin{align*}
+    \langle \ddot{z}, U \rangle_z &= (\tilde{\dot{z}}^{\circ 2})^T P \Big( \mathbf{1} - w + \mathbf{1} - w^{-1} \Big) \\
+    &= (\tilde{\dot{z}}^{\circ 2})^T P \big( 2\mathbf{1} - w - w^{-1} \big)
+\end{align*}
+This completes the proof.
+\end{proof}
+
+
+
+
+
+
+
+\end{document}

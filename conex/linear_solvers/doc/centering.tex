@@ -1,0 +1,403 @@
+\begin{lemma}[Exact Geodesic Acceleration of the Jeffreys Divergence]
+\label{lem:divergence_acceleration}
+Let $V(z) = \langle z - z_*, \nabla \phi(z) - \nabla \phi(z_*) \rangle$ be the Jeffreys divergence, $E = \|\dot{z}\|_z^2$ be the local kinetic energy, and $U = (z - z_*) - H(z)^{-1}(\nabla \phi(z) - \nabla \phi(z_*))$ be the centering residual. For a trajectory $z(t)$ following the natural geodesic equation on the Hessian manifold induced by $\phi$, the second time derivative of the divergence is exactly:
+\begin{equation}
+    \ddot{V} = 2E - \langle \ddot{z}, U \rangle_z.
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+Let $v = z - z_*$ and $g = \nabla \phi(z) - \nabla \phi(z_*)$, such that $V = \langle v, g \rangle$. Differentiating with respect to the trajectory parameter $t$ yields the first derivative:
+\begin{equation}
+    \dot{V} = \langle \dot{v}, g \rangle + \langle v, \dot{g} \rangle.
+\end{equation}
+Since $\dot{v} = \dot{z}$ and $\dot{g} = \frac{d}{dt}\nabla \phi(z) = H(z)\dot{z}$, we have $\dot{V} = \langle \dot{z}, g \rangle + \langle v, H(z)\dot{z} \rangle$. Differentiating a second time yields:
+\begin{equation} \label{eq:vddot_expanded}
+    \ddot{V} = \left( \langle \ddot{z}, g \rangle + \langle \dot{z}, \dot{g} \rangle \right) + \left( \langle \dot{v}, H(z)\dot{z} \rangle + \langle v, \dot{H}(z)\dot{z} \rangle + \langle v, H(z)\ddot{z} \rangle \right).
+\end{equation}
+We evaluate the first-order inner products using $\dot{v} = \dot{z}$ and $\dot{g} = H(z)\dot{z}$:
+\begin{align}
+    \langle \dot{z}, \dot{g} \rangle &= \langle \dot{z}, H(z)\dot{z} \rangle = E \\
+    \langle \dot{v}, H(z)\dot{z} \rangle &= \langle \dot{z}, H(z)\dot{z} \rangle = E.
+\end{align}
+These terms sum exactly to $2E$. For the tensor derivative term, we use the definition of the Hessian directional derivative along the path: $\langle v, \dot{H}(z)\dot{z} \rangle = D^3\phi(z)[\dot{z}, \dot{z}, v]$. Because $z(t)$ is a geodesic on the Hessian manifold, it satisfies the length-minimizing condition $\ddot{z} + \frac{1}{2}H(z)^{-1}D^3\phi(z)[\dot{z}, \dot{z}] = 0$, yielding the identity:
+\begin{equation}
+    D^3\phi(z)[\dot{z}, \dot{z}] = -2H(z)\ddot{z}.
+\end{equation}
+Substituting this directly into the inner product gives:
+\begin{equation}
+    \langle v, \dot{H}(z)\dot{z} \rangle = \langle v, -2H(z)\ddot{z} \rangle = -2\langle v, H(z)\ddot{z} \rangle.
+\end{equation}
+Plugging these simplified terms back into Equation \ref{eq:vddot_expanded} yields:
+\begin{equation}
+    \ddot{V} = 2E + \langle \ddot{z}, g \rangle + \langle v, H(z)\ddot{z} \rangle - 2\langle v, H(z)\ddot{z} \rangle = 2E + \langle \ddot{z}, g \rangle - \langle v, H(z)\ddot{z} \rangle.
+\end{equation}
+By the symmetry of the Hessian matrix, $\langle v, H(z)\ddot{z} \rangle = \langle H(z)v, \ddot{z} \rangle$. Factoring out the $\ddot{z}$ vector from the remaining inner products gives:
+\begin{equation}
+    \ddot{V} = 2E + \langle \ddot{z}, g - H(z)v \rangle.
+\end{equation}
+To convert this to the local metric geometry $\langle a, b \rangle_z = \langle a, H(z)b \rangle$, we factor $H(z)$ out of the right-hand side:
+\begin{equation}
+    g - H(z)v = H(z)(H(z)^{-1}g - v).
+\end{equation}
+By the definition of the centering residual, $U = v - H(z)^{-1}g$, meaning $(H(z)^{-1}g - v) = -U$. Substituting this back into the standard Euclidean inner product produces the local metric formulation, completing the proof:
+\begin{equation}
+    \ddot{V} = 2E + \langle \ddot{z}, H(z)(-U) \rangle = 2E - \langle \ddot{z}, U \rangle_z.
+\end{equation}
+\end{proof}
+
+
+
+\begin{definition}[Newton Target Tangent]
+\label{def:newton_tangent}
+Let $z$ be the current state on the manifold and $z_*$ be the target state. Let $g = \nabla \phi(z) - \nabla \phi(z_*)$ denote the dual residual vector. The geodesic velocity (tangent) $\dot{z}$ is defined as the pure local Newton direction minimizing the dual residual:
+\begin{equation}
+    \dot{z} = -H(z)^{-1} (\nabla \phi(z) - \nabla \phi(z_*)) = -H(z)^{-1}g.
+\end{equation}
+By definition, this tangent induces a local kinetic energy $E = \|\dot{z}\|_z^2 = \langle \dot{z}, H(z)\dot{z} \rangle$, which is mathematically equivalent to the squared Newton decrement $E = \|g\|_z^{*2}$.
+\end{definition}
+
+\begin{lemma}[Exact Derivative of the Divergence]
+\label{lem:divergence_derivative}
+Let $V(z) = \langle z - z_*, \nabla \phi(z) - \nabla \phi(z_*) \rangle$ be the Jeffreys divergence between the current state and the target. Under the Newton Target Tangent $\dot{z}$, the continuous time derivative of the divergence is perfectly locked to the sum of the current divergence and the local kinetic energy:
+\begin{equation}
+    \dot{V} = -(E + V).
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+We differentiate the Jeffreys divergence $V = \langle z - z_*, \nabla \phi(z) - \nabla \phi(z_*) \rangle$ with respect to the continuous path parameter $t$. Applying the standard product rule for inner products yields:
+\begin{equation} \label{eq:vdot_expanded}
+    \dot{V} = \left\langle \dot{z}, \nabla \phi(z) - \nabla \phi(z_*) \right\rangle + \left\langle z - z_*, \frac{d}{dt} \nabla \phi(z) \right\rangle.
+\end{equation}
+
+By the chain rule, the time derivative of the gradient along the trajectory is exactly the Hessian-vector product: $\frac{d}{dt}\nabla \phi(z) = H(z)\dot{z}$. Substituting this into Equation \ref{eq:vdot_expanded} and applying the symmetry of the Hessian $H(z)$ to the second term gives:
+\begin{equation} \label{eq:vdot_hessian}
+    \dot{V} = \langle \dot{z}, g \rangle + \langle z - z_*, H(z)\dot{z} \rangle.
+\end{equation}
+
+From Definition \ref{def:newton_tangent}, the chosen tangent satisfies $H(z)\dot{z} = -g$. We substitute this identity into both terms of Equation \ref{eq:vdot_hessian}:
+\begin{enumerate}
+    \item For the first term: $\langle \dot{z}, g \rangle = \langle \dot{z}, -H(z)\dot{z} \rangle = -\|\dot{z}\|_z^2 = -E$.
+    \item For the second term: $\langle z - z_*, H(z)\dot{z} \rangle = \langle z - z_*, -g \rangle = -V$.
+\end{enumerate}
+
+Combining these results mathematically proves that the exact rate of descent of the Jeffreys divergence is dictated purely by the native geometric quantities:
+\begin{equation}
+    \dot{V} = -E - V = -(E + V).
+\end{equation}
+\end{proof}
+
+
+\begin{lemma}[Curvature Bounds of the Jeffreys Divergence]
+\label{lem:curvature_bounds}
+Let $V$ be the Jeffreys divergence, $E = \|\dot{z}\|_z^2$ be the local kinetic energy, and $U$ be the centering residual. Under the standard self-concordant inequalities, the second derivative of the divergence along the geodesic, $\ddot{V} \le 2E + E\|U\|_z$, admits three strict upper bounds depending on the geometric regime:
+
+\begin{enumerate}
+    \item \textbf{Global Relaxed Bound (Far-Field):} By applying the triangle inequality to $U$ and using subadditivity ($\sqrt{V^2+4V} \le V+2\sqrt{V}$), we obtain:
+    \begin{equation}
+        \ddot{V}_{relax} \le 2E(1 + V + \sqrt{V}).
+    \end{equation}
+    
+    \item \textbf{Global Exact Bound (Mid-Field):} Using the exact root of the self-concordant inequality $V \ge r^2/(1+r)$ without subadditive relaxation yields a tighter global bound:
+    \begin{equation}
+        \ddot{V}_{exact} \le E\left( 2 + V + \sqrt{V^2 + 4V} \right).
+    \end{equation}
+    
+    \item \textbf{Local Unrelaxed Bound (Near-Field):} For $E < 1/4$, the target is deep inside the Dikin ellipsoid. Bypassing the triangle inequality entirely, standard self-concordant theory bounds the residual exactly by $\|U\|_z \le \frac{r^2}{1-r}$, where $r \le \frac{\sqrt{E}}{1-\sqrt{E}}$. This yields the purely local metric bound:
+    \begin{equation}
+        \ddot{V}_{local} \le E \left( 2 + \frac{E}{(1-\sqrt{E})(1-2\sqrt{E})} \right).
+    \end{equation}
+\end{enumerate}
+\end{lemma}
+
+
+
+
+
+
+
+
+
+\begin{theorem}[Global Convergence and Rates of the Discrete Geodesic Step]
+\label{thm:global_geodesic_step}
+Consider a geodesic trajectory parameterized by kinetic energy $E$, with velocity satisfying $\dot{V} = -(E + V)$, and kinematic stability $\|\ddot{z}\|_z \le E$. We define the discrete step-size policy:
+\begin{equation}
+    h(E) =
+    \begin{cases}
+        \frac{1}{2E} & \text{if } E \ge 1 \quad \text{(Far-Field)} \\
+        \frac{1}{2\sqrt{E}} & \text{if } 1/4 \le E < 1 \quad \text{(Mid-Field)} \\
+        1 & \text{if } E < 1/4 \quad \text{(Near-Field)}
+    \end{cases}
+\end{equation}
+This policy guarantees strict monotonic descent ($\Delta V < 0$) across all
+regimes, achieving a linear contraction rate in the Far-Field and a pure
+quadratic convergence rate ($V(h) \le \mathcal{O}(V(0)^2)$) in the Near-Field.
+\end{theorem}
+
+\begin{proof}
+We evaluate the Taylor surrogate $V(h) \le V - h(E+V) + \frac{1}{2}h^2 \ddot{V}_{upper}$ across the three regimes.
+
+\textbf{Case 1: The Far-Field ($E \ge 1$).} \\
+Using the Global Relaxed Bound ($\ddot{V}_{relax}$) and $h = \frac{1}{2E}$, the surrogate simplifies to:
+\begin{equation}
+    \Delta V \le -\frac{E+V}{2E} + \frac{1}{4E^2} E(V + \sqrt{V} + 1) = \frac{1}{4E}\left( 1 - 2E + \sqrt{V} - V \right).
+\end{equation}
+The expression $(\sqrt{V} - V)$ attains its global maximum of $0.25$ at $V = 1/4$. Thus, the bound is universally limited by $\Delta V \le \frac{1}{4E}(1.25 - 2E)$. Because $E \ge 1$, we have $(1.25 - 2E) \le -0.75$, yielding $\Delta V \le -\frac{0.75}{4E} < 0$. Strict linear descent is guaranteed.
+
+\textbf{Case 2: The Mid-Field ($1/4 \le E < 1$).} \\
+We apply the Global Exact Bound ($\ddot{V}_{exact}$) to prevent over-estimation in the transition zone, evaluating the surrogate at a constant $h = 1/2$:
+
+Substituting $h = 1/(2\sqrt{E})$ into the exact Taylor surrogate, strict descent requires:
+\begin{equation}
+    \sqrt{E}(2 + V + \sqrt{V^2 + 4V}) < 4E + 4V.
+\end{equation}
+Let $x = \sqrt{E}$. We rearrange the inequality to isolate the square root term:
+\begin{equation}
+    x\sqrt{V^2 + 4V} < 4x^2 - 2x + V(4-x).
+\end{equation}
+Because the Mid-Field restricts $x \ge 0.5$, the right-hand side is strictly positive ($4x^2 - 2x \ge 0$ and $4-x > 0$). Therefore, we can safely square both sides:
+\begin{equation}
+    x^2(V^2 + 4V) < (4x^2 - 2x)^2 + 2V(4-x)(4x^2 - 2x) + V^2(4-x)^2.
+\end{equation}
+Subtracting $x^2(V^2 + 4V)$ from both sides and grouping by powers of $V$ yields a simple quadratic inequality:
+\begin{equation}
+    8(2-x)V^2 + 8x(4x - x^2 - 2)V + 4x^2(2x-1)^2 > 0.
+\end{equation}
+This is an upward-facing parabola in $V$. By standard self-concordant geometry, the divergence is strictly bounded below by $V \ge \frac{x^2}{1+x}$. 
+
+Substituting this minimum bound into the quadratic yields the condition:
+\begin{equation}
+    \frac{4x^2}{(1+x)^2} \left( 2x^4 + 8x^3 + 5x^2 - 6x + 1 \right) > 0.
+\end{equation}
+For the entire Mid-Field interval ($x \in [0.5, 1)$), the polynomial $P(x) = 2x^4 + 8x^3 + 5x^2 - 6x + 1$ is strictly positive. (It attains its minimum value on this interval at $x=0.5$, where $P(0.5) = 0.375$). Because the quadratic in $V$ is positive at the manifold boundary and strictly increasing for valid states, descent is universally guaranteed.
+
+
+\textbf{Case 3: The Near-Field ($E < 1/4$).} \\
+Entering the deep quadratic basin, we take a full step $h = 1$ and apply the Local Unrelaxed Bound ($\ddot{V}_{local}$). The continuous linear terms exactly annihilate the base state:
+\begin{equation}
+    V(1) \le V(0) - (E + V(0)) + \frac{1}{2}\ddot{V}_{local} = -E + E + \frac{1}{2}\left( \frac{E^2}{(1-\sqrt{E})(1-2\sqrt{E})} \right).
+\end{equation}
+
+Using the general inequality $E \le V(1 + \sqrt{E})$ and the
+assumption $E < 1/4$, we conclude that in the near-field,
+\begin{equation}
+ E \le 1.5 V(0)
+\end{equation}
+Substituting into the previous inequality proves $V(1) \mathcal{O} V(0)^2$ .
+
+
+\end{proof}
+
+
+
+\begin{theorem}[Global Convergence of the Exact Rescaled Geodesic Step]
+\label{thm:exact_unified_step}
+Let $V$ be the Jeffreys divergence and $E$ be the local kinetic energy. For a geodesic parameterized by the continuous step-size policy:
+\begin{equation}
+    h(E) = 
+    \begin{cases} 
+        \frac{3}{4E} & \text{if } E \ge 1 \quad \text{(Far-Field)} \\
+        \frac{3}{2(1+\sqrt{E})} & \text{if } 1/4 \le E < 1 \quad \text{(Mid-Field)} \\
+        1 & \text{if } E < 1/4 \quad \text{(Near-Field)}
+    \end{cases}
+\end{equation}
+The algorithm exhibits $C^0$ continuity across all boundaries and guarantees strict monotonic descent ($\Delta V < 0$) for all $E \ge 1/4$, seamlessly transitioning to pure quadratic convergence when $E < 1/4$.
+\end{theorem}
+
+\begin{proof}
+To guarantee descent, we evaluate the exact Taylor surrogate $\Delta V \le -h(E+V) + \frac{1}{2}h^2 \ddot{V}_{exact}$, requiring the curvature penalty to be strictly bounded by the linear descent:
+\begin{equation} \label{eq:exact_descent_base}
+    \frac{1}{2}h^2 E \left( 2 + V + \sqrt{V^2+4V} \right) \le h(E+V).
+\end{equation}
+
+\textbf{Part 1: The Far-Field ($E \ge 1$)} \\
+Substitute $h = \frac{3}{4E}$ into Equation \ref{eq:exact_descent_base} and divide by $h$:
+\begin{equation}
+    \frac{3}{8E} E \left( 2 + V + \sqrt{V^2+4V} \right) \le E+V.
+\end{equation}
+Multiply by 8 and isolate the square root term:
+\begin{equation}
+    3\sqrt{V^2+4V} \le 8E + 8V - 6 - 3V = 8E - 6 + 5V.
+\end{equation}
+Because we are in the Far-Field ($E \ge 1$), the absolute minimum of the right side occurs at $E=1$, yielding $3\sqrt{V^2+4V} \le 2 + 5V$. Since $V \ge 0$, both sides are strictly positive, allowing us to square them:
+\begin{equation}
+    9(V^2 + 4V) \le 4 + 20V + 25V^2.
+\end{equation}
+Subtracting the left side from the right yields:
+\begin{equation}
+    16V^2 - 16V + 4 \ge 0 \implies 4(2V-1)^2 \ge 0.
+\end{equation}
+This perfect square is universally non-negative for all $V$. Thus, strict descent is mathematically guaranteed everywhere in the Far-Field.
+
+\textbf{Part 2: The Mid-Field ($1/4 \le E < 1$)} \\
+
+Substitute $h = \frac{3}{2(1+\sqrt{E})}$ into Equation \ref{eq:exact_descent_base}. Letting $x = \sqrt{E} \in [0.5, 1)$, we require:
+\begin{equation}
+    \frac{3x^2}{4(1+x)} \left( 2 + V + \sqrt{V^2+4V} \right) \le x^2+V.
+\end{equation}
+Multiply by $\frac{4(1+x)}{x^2}$ and isolate the square root:
+\begin{equation}
+    3\sqrt{V^2+4V} \le \frac{4(1+x)}{x^2}(x^2+V) - 3(2+V).
+\end{equation}
+We split the fraction into $\left( \frac{4}{x^2} + \frac{4}{x} \right)$ and distribute it across $(x^2+V)$:
+\begin{align}
+    3\sqrt{V^2+4V} &\le \left( 4 + \frac{4V}{x^2} + 4x + \frac{4V}{x} \right) - 6 - 3V \nonumber \\
+    3\sqrt{V^2+4V} &\le (4x - 2) + V\left( \frac{4}{x^2} + \frac{4}{x} - 3 \right). \label{eq:mid_field_linear}
+\end{align}
+Define the coefficients $A(x) = 4x - 2$ and $B(x) = \frac{4}{x^2} + \frac{4}{x} - 3$. 
+For the interval $x \in [0.5, 1)$, the coefficient $A(x)$ ranges strictly from $0$ to $2$, and $B(x)$ ranges from $21$ down to $5$. Since $A(x) \ge 0$, $B(x) > 0$, and $V \ge 0$, the right-hand side is universally non-negative, allowing us to safely square both sides:
+\begin{equation}
+    9V^2 + 36V \le A^2 + 2ABV + B^2V^2.
+\end{equation}
+Rearranging into a standard quadratic form in terms of $V$:
+\begin{equation}
+    P(V) = (B^2 - 9)V^2 + (2AB - 36)V + A^2 \ge 0.
+\end{equation}
+At the upper boundary $x \to 1$, we have $A=2$ and $B=5$. The polynomial becomes $16V^2 - 16V + 4 = 4(2V-1)^2 \ge 0$, which is the exact perfect square from the Far-Field. 
+
+At the lower boundary $x = 0.5$, we have $A=0$ and $B=21$. The polynomial becomes:
+\begin{equation}
+    (441 - 9)V^2 - 36V \ge 0 \implies 432V^2 - 36V \ge 0.
+\end{equation}
+This factors to $36V(12V - 1) \ge 0$, which is strictly satisfied for all $V \ge 1/12$. The self-concordant geometry of the manifold strictly mandates $V \ge \frac{E}{1+\sqrt{E}}$. At $E=1/4$, this structural minimum is $V \ge 1/6$. Since $1/6 > 1/12$, the descent condition is strictly guaranteed at the boundary. 
+
+Because the leading coefficient $(B(x)^2-9) \ge 16 > 0$ across the entire interval, $P(V)$ is an upward-facing parabola whose required minimum root is bounded safely below the geometric reality of the manifold ($V \ge \frac{x^2}{1+x}$). Therefore, the exact continuous step size guarantees strict monotonic descent universally across the Mid-Field.
+
+\textbf{Case 3: The Near-Field ($E < 1/4$).} \\
+Entering the deep quadratic basin, we take a full step $h = 1$ and apply the Local Unrelaxed Bound ($\ddot{V}_{local}$). The continuous linear terms exactly annihilate the base state:
+\begin{equation}
+    V(1) \le V(0) - (E + V(0)) + \frac{1}{2}\ddot{V}_{local} = -E + E + \frac{1}{2}\left( \frac{E^2}{(1-\sqrt{E})(1-2\sqrt{E})} \right).
+\end{equation}
+
+Using the general inequality $E \le V(1 + \sqrt{E})$ and the
+assumption $E < 1/4$, we conclude that in the near-field,
+\begin{equation}
+ E \le 1.5 V(0)
+\end{equation}
+Substituting into the previous inequality proves $V(1) \mathcal{O} V(0)^2$ .
+\end{proof}
+
+
+
+
+
+
+\subsection{Second version}
+
+
+
+
+\begin{lemma}[The Coupled Integral Bound for Self-Concordant Remainder]
+\label{lemma:coupled_integral}
+Let $F$ be a standard self-concordant function. For any base point $z$ and a target point $y$ strictly inside the local Dikin ellipsoid centered at $z$ (such that the local Newton distance is $r = \|y - z\|_z < 1$), let $V(z, y)$ denote the Jeffreys divergence and $R(z, y)$ denote the exact Taylor remainder of the gradient map:
+\begin{align}
+    V(z, y) &= \langle y - z, \nabla F(y) - \nabla F(z) \rangle \\
+    R(z, y) &= \nabla F(y) - \nabla F(z) - \nabla^2 F(z)(y - z)
+\end{align}
+Then, the dual local norm of the remainder is strictly bounded by the divergence:
+\begin{equation}
+    \|R(z, y)\|^*_z \le 2 V(z, y)
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+Let $h = y - z$. We parameterize the affine line segment connecting $z$ to $y$ as $x_s = z + sh$ for $s \in [0, 1]$. 
+
+The Jeffreys divergence can be expressed as the exact path integral of the local Hessian norm along this affine segment:
+\begin{equation}
+    V(z, y) = \int_0^1 \langle h, \nabla^2 F(x_s) h \rangle \, ds = \int_0^1 \|h\|_{x_s}^2 \, ds
+\end{equation}
+Similarly, applying Taylor's theorem with the integral remainder to the gradient map yields the exact path integral for $R$:
+\begin{equation}
+    R(z, y) = \int_0^1 (1-s) \nabla^3 F(x_s)[h, h, \cdot] \, ds
+\end{equation}
+We wish to bound the dual local norm at the base point, $\|R\|_z^*$. Applying Minkowski's inequality for integrals gives:
+\begin{equation} \label{eq:R_minkowski}
+    \|R\|_z^* \le \int_0^1 (1-s) \|\nabla^3 F(x_s)[h, h, \cdot]\|_z^* \, ds
+\end{equation}
+Because $y$ is strictly inside the Dikin ellipsoid ($r < 1$), the affine path $x_s$ never exits the valid domain of the base metric. By standard self-concordant metric properties, the dual norm evaluated at the base point $z$ is bounded by the dual norm at the shifted point $x_s$:
+\begin{equation}
+    \|\cdot\|_z^* \le \frac{1}{1-sr} \|\cdot\|_{x_s}^*
+\end{equation}
+Substituting this metric shift into Equation \ref{eq:R_minkowski}, and applying the classical local definition of standard self-concordance ($\|\nabla^3 F(x_s)[h, h, \cdot]\|_{x_s}^* \le 2\|h\|_{x_s}^2$), we obtain:
+\begin{equation}
+    \|R\|_z^* \le \int_0^1 \frac{1-s}{1-sr} \left( 2\|h\|_{x_s}^2 \right) ds = 2 \int_0^1 \left( \frac{1-s}{1-sr} \right) \|h\|_{x_s}^2 \, ds
+\end{equation}
+For any $r < 1$ and $s \in [0, 1]$, the rational scaling function $f(s) = \frac{1-s}{1-sr}$ is strictly decreasing. Its global maximum over the interval occurs at $s=0$, where $f(0) = 1$. Therefore, we can bound the fraction by $1$ and pull it out of the integral:
+\begin{equation}
+    \|R\|_z^* \le 2(1) \int_0^1 \|h\|_{x_s}^2 \, ds
+\end{equation}
+Recognizing the remaining integral as the exact definition of the Jeffreys divergence completes the proof:
+\begin{equation}
+    \|R(z, y)\|^*_z \le 2 V(z, y)
+\end{equation}
+\end{proof}
+
+\begin{theorem}[Pure Quadratic Convergence Cascade]
+\label{thm:pure_quadratic}
+Assume the local kinetic energy of the algorithm satisfies $E < 1/4$. This kinematic condition strictly implies the target lies within the local Dikin ellipsoid ($r < 1$). 
+
+Under this condition, taking a full geodesic Newton step ($h=1$) guarantees immediate strict contraction of the Jeffreys divergence. The subsequent state $V_{next}$ is governed by a dual-bound system, satisfying both an immediate linear contraction and a pure quadratic asymptote:
+\begin{align}
+    V_{next} &< \frac{1}{4} V \\
+    V_{next} &< \frac{3}{2} V^2 \le \mathcal{O}(V^2)
+\end{align}
+\end{theorem}
+
+\begin{proof}
+By the exact definition of the Jeffreys divergence $V = \langle z - z_*, \nabla F(z) - \nabla F(z_*) \rangle$, the first derivative of the divergence along the Newton-directed geodesic ($\dot{z} = -H^{-1}g$) decomposes perfectly into the kinetic energy and the linear distance:
+\begin{equation}
+    \dot{V} = \langle \dot{z}, g \rangle + \langle z - z_*, H\dot{z} \rangle = -E - V.
+\end{equation}
+For the second derivative, we start with the fundamental geodesic identity:
+\begin{equation}
+    \ddot{V} \le 2E + \langle \ddot{z}, R \rangle.
+\end{equation}
+Applying the local Cauchy-Schwarz inequality and the standard geodesic acceleration bound ($\|\ddot{z}\|_z \le E$):
+\begin{equation}
+    \ddot{V} \le 2E + E\|R\|_z^*.
+\end{equation}
+Because the hypothesis $E < 1/4$ mathematically guarantees the Newton distance satisfies $r < \frac{\sqrt{E}}{1-\sqrt{E}} < 1$, the state is strictly inside the local Dikin ellipsoid. Thus, we may apply the Coupled Integral Lemma ($\|R\|_z^* \le 2V$) to completely eliminate the remainder norm:
+\begin{equation}
+    \ddot{V} \le 2E + E(2V) = 2E(1+V).
+\end{equation}
+We now evaluate the exact continuous Taylor surrogate for a full geodesic step ($h=1$):
+\begin{align}
+    V_{next} &\le V + \dot{V}(1) + \frac{1}{2}\ddot{V}(1)^2 \\
+    &\le V + (-E - V) + \frac{1}{2} \left[ 2E(1+V) \right].
+\end{align}
+Distributing the second-order curvature perfectly cancels both the linear descent baseline ($-E$) and the current divergence ($V$), yielding the core transitional map:
+\begin{equation} \label{eq:vnext_ev}
+    V_{next} \le -E + E(1+V) = -E + E + EV = E \cdot V.
+\end{equation}
+
+\textbf{Phase 1: The Strict Linear Contraction} \\
+Applying the hypothesis $E < 1/4$ directly to Equation \ref{eq:vnext_ev} guarantees an immediate, aggressive geometric decrease, regardless of the magnitude of $V$:
+\begin{equation}
+    V_{next} < \frac{1}{4} V.
+\end{equation}
+
+\textbf{Phase 2: The Pure Quadratic Cascade} \\
+To decouple the metrics and formulate a pure contraction map in terms of $V$, we rely on the foundational geometric inequality $V \ge \frac{E}{1+\sqrt{E}}$. Rearranging this yields a strict upper bound on the local kinetic energy: $E \le V(1 + \sqrt{E})$. 
+
+Substituting this clean bound into Equation \ref{eq:vnext_ev} yields:
+\begin{equation}
+    V_{next} \le \left[ V(1 + \sqrt{E}) \right] V = V^2(1 + \sqrt{E}).
+\end{equation}
+Applying the hypothesis $E < 1/4$, which dictates that the velocity is strictly bounded by $\sqrt{E} < 1/2$, completes the pure quadratic bound:
+\begin{equation}
+    V_{next} < V^2 \left( 1 + \frac{1}{2} \right) = \frac{3}{2} V^2.
+\end{equation}
+
+\textbf{Conclusion} \\
+Upon entering the domain $E < 1/4$, the linear bound ($V_{next} < V/4$) unconditionally drives the divergence downward. Once the divergence crosses the threshold where $\frac{3}{2}V^2 < \frac{1}{4}V$ (specifically $V < 1/6$), the quadratic bound dominates, and the algorithm permanently locks into a pure $\mathcal{O}(V^2)$ convergence cascade.
+\end{proof}
+
+
+
+
+
+
+
+

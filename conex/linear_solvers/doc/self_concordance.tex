@@ -1,0 +1,262 @@
+\begin{theorem}[Equivalence of Hessian Stability and Generalized Self-Concordance]
+\label{thm:equivalence}
+Let $\phi \colon \operatorname{int}(K) \to \mathbb{R}$ be a strictly convex, three times continuously differentiable barrier function defining a Hessian manifold with metric $H(x) = \nabla^2 \phi(x)$ and local norm $\|u\|_x = \langle u, H(x)u \rangle^{1/2}$. Let $d(x,y)$ denote the Riemannian geodesic distance between points $x, y \in \operatorname{int}(K)$. For any constant $L > 0$, the following two conditions are mathematically equivalent:
+\begin{enumerate}
+    \item \textbf{The Differential Condition (Generalized Self-Concordance):} For all $x \in \operatorname{int}(K)$ and all vectors $v, u \in \mathbb{R}^n$,
+    \begin{equation}
+        |D^3\phi(x)[v, u, u]| \le L \|v\|_x \|u\|_x^2.
+    \end{equation}
+    \item \textbf{The Integral Condition (Hessian Stability):} For all $x, y \in \operatorname{int}(K)$,
+    \begin{equation}
+        e^{-L \cdot d(x,y)} H(x) \preceq H(y) \preceq e^{L \cdot d(x,y)} H(x).
+    \end{equation}
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+We prove this equivalence in two parts.
+
+\noindent \textbf{Part 1: Differential Condition $\implies$ Integral Condition}\\
+Assume the differential condition holds. Let $\gamma(s)$ be a unit-speed Riemannian geodesic connecting $x$ to $y$, parameterized by arc length $s \in [0, d(x,y)]$. By definition, $\gamma(0) = x$, $\gamma(d(x,y)) = y$, and $\|\gamma'(s)\|_{\gamma(s)} = 1$ for all $s$.
+
+Fix an arbitrary vector $u \in \mathbb{R}^n$. We define the scalar function $Q(s) = \langle u, H(\gamma(s)) u \rangle = \|u\|_{\gamma(s)}^2$, which measures the magnitude of the metric along the path. Differentiating $Q(s)$ with respect to $s$ yields:
+\begin{equation}
+    Q'(s) = \frac{d}{ds} D^2\phi(\gamma(s))[u, u] = D^3\phi(\gamma(s))[\gamma'(s), u, u].
+\end{equation}
+Applying the differential condition to bound the derivative, we obtain:
+\begin{equation}
+    |Q'(s)| \le L \|\gamma'(s)\|_{\gamma(s)} \|u\|_{\gamma(s)}^2.
+\end{equation}
+Since $\gamma$ is parameterized by arc length, $\|\gamma'(s)\|_{\gamma(s)} = 1$. Substituting $Q(s) = \|u\|_{\gamma(s)}^2$, we establish the differential inequality:
+\begin{equation}
+    -L \cdot Q(s) \le Q'(s) \le L \cdot Q(s).
+\end{equation}
+Dividing by $Q(s)$ and integrating from $s = 0$ to $s = d(x,y)$ gives:
+\begin{equation}
+    -L \cdot d(x,y) \le \ln(Q(d(x,y))) - \ln(Q(0)) \le L \cdot d(x,y).
+\end{equation}
+Exponentiating all terms yields:
+\begin{equation}
+    e^{-L \cdot d(x,y)} \langle u, H(x) u \rangle \le \langle u, H(y) u \rangle \le e^{L \cdot d(x,y)} \langle u, H(x) u \rangle.
+\end{equation}
+Because this inequality holds for all vectors $u \in \mathbb{R}^n$, the positive semi-definite matrix ordering directly follows:
+\begin{equation}
+    e^{-L \cdot d(x,y)} H(x) \preceq H(y) \preceq e^{L \cdot d(x,y)} H(x).
+\end{equation}
+
+\noindent \textbf{Part 2: Integral Condition $\implies$ Differential Condition}\\
+Assume the integral condition holds. We evaluate the local geometry using a first-order Euclidean perturbation, which bypasses the need for geodesic parameterization. Fix $x \in \operatorname{int}(K)$ and arbitrary nonzero vectors $v, u \in \mathbb{R}^n$. For an infinitesimally small step size $\epsilon > 0$, define the point $y = x + \epsilon \frac{v}{\|v\|_x}$.
+
+Because the first-order approximation of the Riemannian distance along any smooth path matches the local metric norm, the distance to $y$ is $d(x, y) = \epsilon + o(\epsilon)$. Applying the upper bound of the integral condition for the chosen vector $u$:
+\begin{equation}
+    D^2\phi\left(x + \epsilon \frac{v}{\|v\|_x}\right)[u,u] \le e^{L\epsilon + o(\epsilon)} D^2\phi(x)[u,u].
+\end{equation}
+Rearranging to isolate the change in the Hessian quadratic form gives:
+\begin{equation}
+    D^2\phi\left(x + \epsilon \frac{v}{\|v\|_x}\right)[u,u] - D^2\phi(x)[u,u] \le \left(e^{L\epsilon + o(\epsilon)} - 1\right) \|u\|_x^2.
+\end{equation}
+Dividing both sides by $\epsilon$ and taking the limit as $\epsilon \to 0$, the left-hand side converges to the directional derivative of the Hessian, while the right-hand side converges via standard Taylor expansion:
+\begin{equation}
+    D^3\phi(x)\left[ \frac{v}{\|v\|_x}, u, u \right] \le L \|u\|_x^2.
+\end{equation}
+Because the third derivative tensor is linear in its first argument, we multiply by the scalar $\|v\|_x$ to obtain:
+\begin{equation}
+    D^3\phi(x)[v, u, u] \le L \|v\|_x \|u\|_x^2.
+\end{equation}
+By applying the exact same limit procedure to the lower bound $e^{-L \cdot d(x,y)}$, we derive the symmetric negative bound $D^3\phi(x)[v, u, u] \ge -L \|v\|_x \|u\|_x^2$. Combining these yields the strict absolute value bound $|D^3\phi(x)[v, u, u]| \le L \|v\|_x \|u\|_x^2$, completing the proof.
+\end{proof}
+
+
+\begin{lemma}[Kinematic Properties of Hessian Geodesics]
+\label{lem:kinematic_energy}
+Let $z(t)$ be a geodesic path parameterized by $t$ on a Hessian manifold defined by a strictly convex barrier $\phi(z)$, and let $H(z) = \nabla^2 \phi(z)$ be the local metric tensor. Let $E(t) = \|\dot{z}(t)\|_{z(t)}^2$ denote the kinetic energy of the path.
+\begin{enumerate}
+    \item \textbf{Conservation of Kinetic Energy:} For any such geodesic, the kinetic energy is strictly conserved along the path ($\dot{E}(t) = 0$).
+    \item \textbf{Kinematic Acceleration Bound:} If $\phi$ satisfies $L$-generalized self-concordance (an equivalent consequence of $L$-Hessian stability), the local magnitude of the geodesic acceleration is strictly bounded by the kinetic energy:
+    \begin{equation}
+        \|\ddot{z}\|_z \le \frac{L}{2} E.
+    \end{equation}
+    (Note: For standard self-concordant barriers where $L=2$, this recovers exactly $\|\ddot{z}\|_z \le E$).
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+\noindent \textbf{Part 1: Conservation of Kinetic Energy}\\
+We compute the time derivative of the kinetic energy $E(t) = \langle \dot{z}, H(z)\dot{z} \rangle$ applying the standard product and chain rules:
+\begin{equation}
+    \frac{d}{dt} E(t) = 2 \langle \ddot{z}, H(z)\dot{z} \rangle + \langle \dot{z}, \dot{H}(z)\dot{z} \rangle.
+\end{equation}
+By the definition of a geodesic on a Hessian manifold, the path satisfies the differential equation defined by the Levi-Civita connection:
+\begin{equation} \label{eq:geodesic_ode}
+    \ddot{z} = -\frac{1}{2} H(z)^{-1} D^3\phi(z)[\dot{z}, \dot{z}, \cdot].
+\end{equation}
+We substitute Equation \ref{eq:geodesic_ode} into the first term of the derivative:
+\begin{equation}
+    2 \langle \ddot{z}, H(z)\dot{z} \rangle = 2 \left\langle -\frac{1}{2} H(z)^{-1} D^3\phi(z)[\dot{z}, \dot{z}, \cdot], H(z)\dot{z} \right\rangle = -D^3\phi(z)[\dot{z}, \dot{z}, \dot{z}].
+\end{equation}
+For the second term, the time derivative of the Hessian matrix acting on the velocity vector is exactly the third directional derivative:
+\begin{equation}
+    \langle \dot{z}, \dot{H}(z)\dot{z} \rangle = D^3\phi(z)[\dot{z}, \dot{z}, \dot{z}].
+\end{equation}
+Adding these terms together results in perfect cancellation:
+\begin{equation}
+    \frac{d}{dt} E(t) = -D^3\phi(z)[\dot{z}, \dot{z}, \dot{z}] + D^3\phi(z)[\dot{z}, \dot{z}, \dot{z}] = 0.
+\end{equation}
+Thus, the kinetic energy $E(t)$ remains constant for the entire duration of the geodesic step.
+
+\vspace{0.5cm}
+
+\noindent \textbf{Part 2: Kinematic Acceleration Bound}\\
+To bound the local magnitude of the geodesic acceleration, we express its local norm using the dual supremum over the unit ball in the local metric:
+\begin{equation}
+    \|\ddot{z}\|_z = \sup_{\|w\|_z \le 1} \langle \ddot{z}, H(z)w \rangle.
+\end{equation}
+Substituting the geodesic equation (Equation \ref{eq:geodesic_ode}) into the inner product yields:
+\begin{equation}
+    \langle \ddot{z}, H(z)w \rangle = \left\langle -\frac{1}{2} H(z)^{-1} D^3\phi(z)[\dot{z}, \dot{z}, \cdot], H(z)w \right\rangle = -\frac{1}{2} D^3\phi(z)[\dot{z}, \dot{z}, w].
+\end{equation}
+Under the assumption of $L$-generalized self-concordance (which is equivalent to $L$-Hessian stability), the third derivative tensor is bounded by the local norms of its arguments:
+\begin{equation}
+    |D^3\phi(z)[\dot{z}, \dot{z}, w]| \le L \|\dot{z}\|_z^2 \|w\|_z.
+\end{equation}
+Applying this inequality to our inner product:
+\begin{equation}
+    | \langle \ddot{z}, H(z)w \rangle | \le \frac{L}{2} \|\dot{z}\|_z^2 \|w\|_z.
+\end{equation}
+Taking the supremum over all vectors $w$ such that $\|w\|_z \le 1$, the right-hand side is maximized exactly at $\frac{L}{2}\|\dot{z}\|_z^2$. Since $E = \|\dot{z}\|_z^2$, we conclude:
+\begin{equation}
+    \|\ddot{z}\|_z \le \frac{L}{2} E.
+\end{equation}
+\end{proof}
+
+
+\begin{lemma}[Sharp Geodesic Bound on the Jeffreys Divergence]
+\label{lem:sharp_divergence_bound}
+Let $z_*$ and $z$ be points on a Hessian manifold with metric $H$ satisfying global $L$-Hessian stability. The generalized Jeffreys divergence $V(z) = \langle z - z_* , \nabla \phi(z) - \nabla \phi(z_*) \rangle$ is strictly bounded by the Riemannian geodesic distance $d_R(z, z_*)$ according to:
+\begin{equation}
+    V(z) \le \frac{8}{L^2} \left( e^{\frac{L}{2} d_R(z, z_*)} - 1 \right) - \frac{4}{L} d_R(z, z_*).
+\end{equation}
+(Note: For standard self-concordance where $L=2$, this sharply limits the divergence to $V \le 2(e^{d_R} - d_R - 1)$).
+\end{lemma}
+
+\begin{proof}
+Let $\gamma(s)$ be the unit-speed true Riemannian geodesic connecting $\gamma(0) = z_*$ to $\gamma(d_R) = z$, where $d_R$ is the geodesic distance. Since the path is parameterized by arc length, the local velocity satisfies $\|\gamma'(s)\|_{\gamma(s)} = 1$ for all $s \in [0, d_R]$.
+
+We represent the primal and dual displacement vectors exactly as their line integrals along this geodesic:
+\begin{align}
+    z - z_* &= \int_0^{d_R} \gamma'(s) ds, \\
+    \nabla \phi(z) - \nabla \phi(z_*) &= \int_0^{d_R} H(\gamma(u)) \gamma'(u) du.
+\end{align}
+
+We express the Jeffreys divergence by taking the inner product of these two integrals. By linearity of the inner product, this forms a double integral over the square $[0, d_R] \times [0, d_R]$:
+\begin{equation} \label{eq:double_integral}
+    V(z) = \int_0^{d_R} \int_0^{d_R} \langle \gamma'(s), H(\gamma(u)) \gamma'(u) \rangle \, ds \, du.
+\end{equation}
+
+To bound the integrand, we apply the Cauchy-Schwarz inequality pointwise in the local metric space at $\gamma(u)$:
+\begin{equation}
+    \langle \gamma'(s), H(\gamma(u)) \gamma'(u) \rangle \le \|\gamma'(s)\|_{\gamma(u)} \|\gamma'(u)\|_{\gamma(u)}.
+\end{equation}
+Since $\gamma$ is a unit-speed geodesic, the second term is identically $1$. For the first term, we invoke the global $L$-Hessian stability property. The metric stretch between any two points $s$ and $u$ on the geodesic is strictly bounded by the arc length between them, $|u - s|$:
+\begin{equation}
+    H(\gamma(u)) \preceq e^{L|u - s|} H(\gamma(s)).
+\end{equation}
+Therefore, the local norm of the velocity vector $\gamma'(s)$ evaluated at the point $\gamma(u)$ is bounded by:
+\begin{equation}
+    \|\gamma'(s)\|_{\gamma(u)}^2 = \langle \gamma'(s), H(\gamma(u)) \gamma'(s) \rangle \le e^{L|u - s|} \|\gamma'(s)\|_{\gamma(s)}^2 = e^{L|u - s|}.
+\end{equation}
+Taking the square root yields $\|\gamma'(s)\|_{\gamma(u)} \le e^{\frac{L}{2}|u - s|}$. Substituting this back into Equation \ref{eq:double_integral}, we obtain a scalar double integral:
+\begin{equation}
+    V(z) \le \int_0^{d_R} \int_0^{d_R} e^{\frac{L}{2}|u - s|} \, ds \, du.
+\end{equation}
+
+By symmetry, we evaluate this integral by doubling the integral over the lower triangle (where $u \ge s$ and $|u-s| = u-s$):
+\begin{equation}
+    V(z) \le 2 \int_0^{d_R} \left( \int_0^u e^{\frac{L}{2}(u - s)} \, ds \right) du.
+\end{equation}
+Evaluating the inner integral with respect to $s$:
+\begin{equation}
+    \int_0^u e^{\frac{L}{2}(u - s)} \, ds = \left[ -\frac{2}{L} e^{\frac{L}{2}(u - s)} \right]_{s=0}^{s=u} = \frac{2}{L} \left( e^{\frac{L}{2}u} - 1 \right).
+\end{equation}
+Substituting this back into the outer integral:
+\begin{equation}
+    V(z) \le \frac{4}{L} \int_0^{d_R} \left( e^{\frac{L}{2}u} - 1 \right) du = \frac{4}{L} \left[ \frac{2}{L} e^{\frac{L}{2}u} - u \right]_0^{d_R}.
+\end{equation}
+Evaluating at the boundaries yields the final, sharp bound:
+\begin{equation}
+    V(z) \le \frac{8}{L^2} \left( e^{\frac{L}{2} d_R(z, z_*)} - 1 \right) - \frac{4}{L} d_R(z, z_*).
+\end{equation}
+\end{proof}
+
+
+\begin{proof}[Adapted Proof for Symmetric Cones]
+Let the domain be a symmetric cone with rank $r$. By the spectral theorem of Euclidean Jordan Algebras, the Riemannian geodesic $\gamma$ connecting $z_*$ to $z$ can be perfectly diagonalized. There exists a parallel-transported, orthogonal frame of eigenvectors $\{e_1, \dots, e_r\}$ such that the local velocity vector is constant in this frame:
+\begin{equation}
+    \gamma'(t) = \sum_{i=1}^r \frac{\lambda_i}{d_R} e_i,
+\end{equation}
+where $\lambda_i$ are the eigenvalues of the displacement, and the total Riemannian distance is the Euclidean norm of the spectrum: $d_R = \sqrt{\sum_{i=1}^r \lambda_i^2}$.
+
+Because the metric commutes with the tangent vectors along the geodesic, the action of the Hessian $H(\gamma(u))$ on the velocity vector $\gamma'(s)$ decomposes exactly into independent 1-dimensional exponential stretches and compressions:
+\begin{equation}
+    H(\gamma(u)) e_i = e^{\lambda_i \frac{u-s}{d_R}} H(\gamma(s)) e_i.
+\end{equation}
+
+We substitute this exact spectral representation into the double integral of the Jeffreys divergence:
+\begin{equation}
+    V(z) = \int_0^{d_R} \int_0^{d_R} \langle \gamma'(s), H(\gamma(u)) \gamma'(u) \rangle \, ds \, du.
+\end{equation}
+Because the eigen-frame is strictly orthogonal in the local metric space ($\langle e_i, H e_j \rangle = 0$ for $i \neq j$), all cross-terms vanish. The inner product collapses into an exact sum of scalar components:
+\begin{equation}
+    \langle \gamma'(s), H(\gamma(u)) \gamma'(u) \rangle = \sum_{i=1}^r \left( \frac{\lambda_i}{d_R} \right)^2 e^{\lambda_i \frac{u-s}{d_R}}.
+\end{equation}
+
+We inject this exact equality back into the double integral. By Fubini's theorem, we can swap the sum and the integrals, yielding $r$ independent 1-dimensional integrals:
+\begin{equation}
+    V(z) = \sum_{i=1}^r \left( \frac{\lambda_i}{d_R} \right)^2 \int_0^{d_R} \int_0^{d_R} e^{\lambda_i \frac{u-s}{d_R}} \, ds \, du.
+\end{equation}
+Evaluating the inner integral with respect to $s$:
+\begin{equation}
+    \int_0^{d_R} e^{\lambda_i \frac{u-s}{d_R}} \, ds = \left[ -\frac{d_R}{\lambda_i} e^{\lambda_i \frac{u-s}{d_R}} \right]_{s=0}^{s=d_R} = \frac{d_R}{\lambda_i} \left( e^{\lambda_i \frac{u}{d_R}} - e^{\lambda_i \frac{u-d_R}{d_R}} \right).
+\end{equation}
+Evaluating the outer integral with respect to $u$:
+\begin{equation}
+    \frac{\lambda_i}{d_R} \int_0^{d_R} \left( e^{\lambda_i \frac{u}{d_R}} - e^{\lambda_i \frac{u-d_R}{d_R}} \right) du = \left[ e^{\lambda_i \frac{u}{d_R}} - e^{\lambda_i \frac{u-d_R}{d_R}} \right]_0^{d_R} = e^{\lambda_i} - 1 - (1 - e^{-\lambda_i}).
+\end{equation}
+This beautifully simplifies to $e^{\lambda_i} + e^{-\lambda_i} - 2$, which is exactly $2(\cosh(\lambda_i) - 1)$. Thus, the divergence evaluates to the exact equality:
+\begin{equation}
+    V(z) = \sum_{i=1}^r 2(\cosh(\lambda_i) - 1).
+\end{equation}
+
+Finally, to bound this sum by the total Riemannian distance $d_R$, we note that the function $f(x) = 2(\cosh(x) - 1)$ is strictly convex, monotonically increasing for $x \ge 0$, and grows faster than quadratically. Therefore, for any vector $\lambda \in \mathbb{R}^r$, the sum of the functions of its components is strictly bounded by the function of its Euclidean norm:
+\begin{equation}
+    \sum_{i=1}^r 2(\cosh(\lambda_i) - 1) \le 2\left(\cosh\left(\sqrt{\sum_{i=1}^r \lambda_i^2}\right) - 1\right).
+\end{equation}
+Since $d_R = \sqrt{\sum_{i=1}^r \lambda_i^2}$, we recover the exact, sharp symmetric bound:
+\begin{equation}
+    V(z) \le 2(\cosh(d_R(z, z_*)) - 1).
+\end{equation}
+\end{proof}
+
+\begin{lemma}[Curvature Bounds of the Jeffreys Divergence]
+\label{lem:curvature_bounds}
+Let $V$ be the Jeffreys divergence, $E = \|\dot{z}\|_z^2$ be the local kinetic energy, and $U$ be the centering residual. Under the standard self-concordant inequalities, the second derivative of the divergence along the geodesic, $\ddot{V} \le 2E + E\|U\|_z$, admits three strict upper bounds depending on the geometric regime:
+
+\begin{enumerate}
+    \item \textbf{Global Relaxed Bound (Far-Field):} By applying the triangle inequality to $U$ and using subadditivity ($\sqrt{V^2+4V} \le V+2\sqrt{V}$), we obtain:
+    \begin{equation}
+        \ddot{V}_{relax} \le 2E(1 + V + \sqrt{V}).
+    \end{equation}
+    
+    \item \textbf{Global Exact Bound (Mid-Field):} Using the exact root of the self-concordant inequality $V \ge r^2/(1+r)$ without subadditive relaxation yields a tighter global bound:
+    \begin{equation}
+        \ddot{V}_{exact} \le E\left( 2 + V + \sqrt{V^2 + 4V} \right).
+    \end{equation}
+    
+    \item \textbf{Local Unrelaxed Bound (Near-Field):} For $E < 1/4$, the target is deep inside the Dikin ellipsoid. Bypassing the triangle inequality entirely, standard self-concordant theory bounds the residual exactly by $\|U\|_z \le \frac{r^2}{1-r}$, where $r \le \frac{\sqrt{E}}{1-\sqrt{E}}$. This yields the purely local metric bound:
+    \begin{equation}
+        \ddot{V}_{local} \le E \left( 2 + \frac{E}{(1-\sqrt{E})(1-2\sqrt{E})} \right).
+    \end{equation}
+\end{enumerate}
+\end{lemma}
+
+

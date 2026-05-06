@@ -1,0 +1,37 @@
+\section{Variational and Proximal Foundations of the Symmetric Integrator}
+
+On a Hessian manifold defined by a strictly convex barrier function $\phi$, the transition from an initial state $(z_0, v_0)$ to a subsequent state $(z_1, v_1)$ over a time step $h$ can be characterized through a sequence of proximal optimizations. These updates balance the information geometry of the barrier with the mechanical momentum of the particle.
+
+\subsection{The Primal Proximal Objective}
+The primal update anchors its physics in the coordinate space $z$ and utilizes the initial Hessian $H_0 = \nabla^2 \phi(z_0)$ as the local metric. The next position $z_1$ is defined as the unique minimizer of the potential function $P(z)$:
+
+\begin{equation}
+P(z) = D_\phi(z, z_0) + \frac{1}{2}\|z - z_0\|_{H_0}^2 - \langle 2h H_0 v_0, z \rangle
+\end{equation}
+
+where $D_\phi(z, z_0) = \phi(z) - \phi(z_0) - \langle \nabla \phi(z_0), z - z_0 \rangle$ is the Bregman divergence. A fundamental property of the Bregman divergence is that its gradient with respect to the first argument is the difference of the gradients of the base function:
+\begin{equation}
+\label{eq:bregman_gradient}
+\nabla_z D_\phi(z, z_0) = \nabla \phi(z) - \nabla \phi(z_0)
+\end{equation}
+Using this identity, the optimality condition $\nabla_z P(z) = 0$ yields the primal update:
+\begin{equation}
+\label{eq:primal_update}
+\nabla \phi(z_1) - \nabla \phi(z_0) = H_0(2hv_0 - (z_1 - z_0))
+\end{equation}
+
+\subsection{The Dual Proximal Objective}
+The dual method views the update through the momentum space $\lambda = \nabla \phi(z)$. Utilizing the conjugate barrier $\phi^*(\lambda)$ and the dual metric $H_0^{-1}$, the next dual state $\lambda_1$ minimizes:
+
+\begin{equation}
+Q(\lambda) = D_{\phi^*}(\lambda, \lambda_0) + \frac{1}{2}\|\lambda - \lambda_0\|_{H_0^{-1}}^2 - \langle 2h v_0, \lambda \rangle
+\end{equation}
+
+By the same property established in~\eqref{eq:bregman_gradient}, $\nabla_\lambda D_{\phi^*}(\lambda, \lambda_0) = \nabla \phi^*(\lambda) - \nabla \phi^*(\lambda_0)$. Noting that $\nabla \phi^*(\lambda) = z$, setting $\nabla_\lambda Q(\lambda) = 0$ yields:
+\begin{equation}
+\label{eq:dual_update}
+z_1 - z_0 + H_0^{-1}(\lambda_1 - \lambda_0) - 2hv_0 = 0
+\end{equation}
+
+
+

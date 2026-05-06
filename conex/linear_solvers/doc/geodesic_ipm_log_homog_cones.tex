@@ -159,25 +159,21 @@ $W \mapsto W \cdot \exp(\alpha \cdot d)$.
 \caption{Geodesic LP for cones with log-homogeneous barriers}
 \begin{algorithmic}[1]
 \State \textbf{Input:} $A, b, c$; barrier $F$ with parameter $\nu$; tolerance $\varepsilon$.
-\State Initialize $x = 0$, $k = 1$.
+\State Initialize $x = 0$, $k = 1$, $s = b$, $z=s$
 \Repeat
-  \State $s \gets Ax + b$, \quad $w \gets k \cdot s$.
-  \State Compute $\nabla F(w)$, $\nabla^2 F(w)$.
-  \State Factor $G = A^\top \nabla^2 F(w) \, A$.
-  \State Solve $G \, z_0 = A^\top(\nabla^2 F(w) \, w - \nabla F(w))$.
-    \hfill (centering)
-  \State Solve $G \, z_1 = -(c + A^\top \nabla^2 F(w) \, b)$.
-    \hfill (optimality)
-  \State Line search: find largest $k$ with
-    $s(k) \in K$, $\lambda(k) \in K^*$.
-  \State $z \gets z_0 + k \cdot z_1$, \quad $x \gets z / k$.
-  \State $s_{\text{new}} \gets Ax + b$.
-  \State Compute $\lambda_{\text{new}}$ from KKT~\eqref{eq:kkt}, verify
-    $A^\top \lambda_{\text{new}} = c$.
-  \State $\text{gap} \gets \ip{s_{\text{new}}}{\lambda_{\text{new}}}$.
-  \State Geodesic step: $s \gets \Exp_s(\alpha \cdot (s_{\text{new}} - s))$.
-  \State Recover $x$ from $s = Ax + b$.
-\Until{$\text{gap} < \varepsilon$}
+  \State Compute $\nabla F(z)$, $\nabla^2 F(z)$.
+  \State Factor $G = A^\top \nabla^2 F(z) \, A$.
+  \State Solve $G \, y_0 = -2 A^\top(\nabla F(z))$.
+  \State Solve $G \, y_1 = -(c + A^\top \nabla^2 F(z) \, b)$.
+  \State Build decomp: $y(k) = y_0 + k y_1$.
+  \State Set $\dot z(k)$: $Ay(k) + b k - z$ 
+  \State Line search $k_*$: find largest $k$ with
+    $z+\dot z(k) \in K$, $ H(z)(z-\dot z(k))  \in K^*$.
+  \State $\text{gap} \gets 1/k_*^2 (\|z\|^2_z - \|\dot z(k_*)\|^2_z)$.
+  %\If {$\gap < eps$}
+  %  \Return{ $x = y(k)/k$, $s = 1/k(z+\dot z(k)$, $\lambda = 1/k (H(z) z - \dot z(k)$
+  %\Else
+  %  \State Geodesic step: $z \gets \Exp_z(\alpha z(k))$.
 \end{algorithmic}
 \end{algorithm}
 
