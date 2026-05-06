@@ -8,7 +8,10 @@
 #include "conex/common/error_checking_macros.h"
 
 namespace conex {
-namespace EuclideanJordanAlgebra { class SymmetricConeOperations; }
+namespace EuclideanJordanAlgebra {
+class BarrierConeOperations;
+class SymmetricConeOperations;
+}
 
 // Handle to a constraint registered with a Model.
 using ConstraintId = int;
@@ -184,7 +187,7 @@ class Model {
       const Eigen::SparseMatrix<double>& A,
       const Eigen::VectorXd& b,
       const std::vector<int>& vars,
-      const EuclideanJordanAlgebra::SymmetricConeOperations* ops) {
+      const EuclideanJordanAlgebra::BarrierConeOperations* ops) {
     CONEX_DEMAND(static_cast<size_t>(A.cols()) == vars.size(),
                  "AddBarrierConstraint: A.cols() must equal vars.size().");
     CONEX_DEMAND(A.rows() == b.size(),
@@ -241,7 +244,7 @@ class Model {
     Eigen::SparseMatrix<double> A;
     Eigen::VectorXd b;
     std::vector<int> vars;
-    const EuclideanJordanAlgebra::SymmetricConeOperations* ops;
+    const EuclideanJordanAlgebra::BarrierConeOperations* ops;
   };
 
   using ConstraintData = std::variant<

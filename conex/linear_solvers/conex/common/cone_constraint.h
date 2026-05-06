@@ -14,7 +14,7 @@ namespace conex {
 
 class BlockPartition;
 struct SeparatorScratch;
-namespace EuclideanJordanAlgebra { class SymmetricConeOperations; }
+namespace EuclideanJordanAlgebra { class BarrierConeOperations; }
 
 class ConeConstraint : public SupernodalAssemblerBase, public ArenaAllocatable {
  public:
@@ -34,7 +34,7 @@ class ConeConstraint : public SupernodalAssemblerBase, public ArenaAllocatable {
   virtual void SetWeights(const Eigen::VectorXd& w) = 0;
   virtual Eigen::MatrixXd affine_term() const = 0;
   virtual int num_rows() const = 0;
-  virtual const EuclideanJordanAlgebra::SymmetricConeOperations* cone_ops() const = 0;
+  virtual const EuclideanJordanAlgebra::BarrierConeOperations* cone_ops() const = 0;
 
 };
 

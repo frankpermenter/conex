@@ -2,6 +2,7 @@
 // Segments store n*n doubles as a column-major n×n matrix.
 
 #pragma once
+#include <cmath>
 #include "conex/common/symmetric_cone_operations.h"
 
 namespace conex {
@@ -43,6 +44,12 @@ class PSDConeOps : public SymmetricConeOperations {
   void geodesicUpdateFromSlack(double* W_out, const double* W,
                                double alpha, const double* slack,
                                int size) const override;
+
+  // PSD barrier parameter: ν = n (matrix dimension), size = n².
+  double barrierParameter(int size) const override {
+    int n = static_cast<int>(std::round(std::sqrt(size)));
+    return static_cast<double>(n);
+  }
 };
 
 const PSDConeOps& psdConeOps();

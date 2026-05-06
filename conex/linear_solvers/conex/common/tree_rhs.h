@@ -226,7 +226,8 @@ inline std::ostream& operator<<(std::ostream& os, const SolverRHS& rhs) {
 
 namespace EuclideanJordanAlgebra {
 
-class BarrierConeOperations;  // forward declaration
+class BarrierConeOperations;       // forward declaration
+class SymmetricConeOperations;     // forward declaration
 
 // Element of a product of Euclidean Jordan algebras.
 // Single-column by default; supports n-column for batched operations.
@@ -304,8 +305,9 @@ class Variable {
     out.ops = a.ops;
     out.data_.resizeLike(a.data_);
     for (int i = 0; i < a.num_constraints(); ++i)
-      a.ops[i]->product(out.segment_ptr(i), a.segment_ptr(i),
-                        b.segment_ptr(i), a.sizes[i]);
+      static_cast<const SymmetricConeOperations*>(a.ops[i])->product(
+          out.segment_ptr(i), a.segment_ptr(i),
+          b.segment_ptr(i), a.sizes[i]);
     return out;
   }
 

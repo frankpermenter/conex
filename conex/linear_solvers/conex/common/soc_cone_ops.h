@@ -40,6 +40,9 @@ class SOCConeOps : public SymmetricConeOperations {
   double lineSearchK(const double* d0, const double* d1,
                      int size) const override;
   void project(double* out, const double* a, int size) const override;
+
+  // SOC barrier parameter is always 2 (rank of the Jordan algebra).
+  double barrierParameter(int /*size*/) const override { return 2.0; }
 };
 
 const SOCConeOps& socConeOps();

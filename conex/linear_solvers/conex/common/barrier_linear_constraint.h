@@ -2,7 +2,7 @@
 //
 // Like LinearConstraint, but the Gram assembly uses chol(H(z)) * A
 // instead of diag(W) * A.  Works with any cone whose z-space
-// SymmetricConeOperations methods are implemented.
+// BarrierConeOperations methods are implemented.
 
 #pragma once
 
@@ -14,7 +14,7 @@ namespace conex {
 
 class BarrierGramEvaluator : public GramEvaluator {
  public:
-  void set_ops(const EuclideanJordanAlgebra::SymmetricConeOperations* ops) {
+  void set_ops(const EuclideanJordanAlgebra::BarrierConeOperations* ops) {
     ops_ = ops;
   }
 
@@ -35,7 +35,7 @@ class BarrierGramEvaluator : public GramEvaluator {
   }
 
  private:
-  const EuclideanJordanAlgebra::SymmetricConeOperations* ops_ = nullptr;
+  const EuclideanJordanAlgebra::BarrierConeOperations* ops_ = nullptr;
 };
 
 // Inherits from LinearConstraint, overriding the GramEvaluator.
@@ -44,7 +44,7 @@ class BarrierLinearConstraint : public LinearConstraint {
   BarrierLinearConstraint(
       const Eigen::MatrixXd& constraint_matrix,
       const Eigen::MatrixXd& constraint_affine,
-      const EuclideanJordanAlgebra::SymmetricConeOperations* ops)
+      const EuclideanJordanAlgebra::BarrierConeOperations* ops)
       : LinearConstraint(constraint_matrix, constraint_affine) {
     cone_ops_ = ops;
     barrier_gram_.set_ops(ops);
@@ -78,7 +78,7 @@ class SparseBarrierConstraintAssembler
   SparseBarrierConstraintAssembler(
       std::unique_ptr<SparseLinearConstraint> slc,
       const std::vector<int>& all_variables,
-      const EuclideanJordanAlgebra::SymmetricConeOperations* ops)
+      const EuclideanJordanAlgebra::BarrierConeOperations* ops)
       : SparseLinearConstraintAssembler(std::move(slc), all_variables),
         ops_(ops) {}
 
@@ -89,7 +89,7 @@ class SparseBarrierConstraintAssembler
   }
 
  private:
-  const EuclideanJordanAlgebra::SymmetricConeOperations* ops_;
+  const EuclideanJordanAlgebra::BarrierConeOperations* ops_;
 };
 
 }  // namespace conex

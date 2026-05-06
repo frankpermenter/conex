@@ -148,7 +148,7 @@ PSDConstraint::PSDConstraint(
   psd_assembler_.bind_matrices(&A_list_, static_cast<int>(A_list_.size()));
 }
 
-const EuclideanJordanAlgebra::SymmetricConeOperations* PSDConstraint::cone_ops() const {
+const EuclideanJordanAlgebra::BarrierConeOperations* PSDConstraint::cone_ops() const {
   return &EuclideanJordanAlgebra::psdConeOps();
 }
 

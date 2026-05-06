@@ -78,7 +78,7 @@ class PSDConstraint : public ConeConstraint {
 
   Eigen::MatrixXd affine_term() const override { return b_vec_; }
   int num_rows() const override { return psd_n_ * psd_n_; }
-  const EuclideanJordanAlgebra::SymmetricConeOperations* cone_ops() const override;
+  const EuclideanJordanAlgebra::BarrierConeOperations* cone_ops() const override;
 
   Eigen::MatrixXd MultiplyA(
       const BlockPartition& supernodes, const SeparatorScratch& sep,
