@@ -1280,32 +1280,19 @@ TEST(ExpCone, BarrierLP_ModelSolver) {
 
   // Build Model with barrier constraints.
   Model model;
+  Eigen::VectorXd z0(3 * m);
   for (int i = 0; i < m; ++i) {
     Eigen::SparseMatrix<double> As = cones[i].A.sparseView();
-    printf("  Adding barrier constraint %d: %dx%d\n", i,
-           static_cast<int>(As.rows()), static_cast<int>(As.cols()));
     model.AddBarrierConstraint(As, cones[i].b, vars, &ops);
+    z0.segment(3 * i, 3) = cones[i].b;  // initial z = b (interior point)
   }
-  printf("  Model has %d constraints\n", model.num_constraints());
   model.SetLinearCost(c);
 
-  conex::SolverConfiguration config;
-  config.row_scale = false;
-  auto solver = Solver::Build(model, config);
-  auto cm = solver.MakeCompiledModel();
-
-  // Initialize z = b (the affine term = starting interior point).
-  conex::RowSpace z = cm.MakeRowSpace();
-  z.col() = cm.GetAffineTerm().col();
-
-  // Enable arena zeroing before each assembly.
-  auto* ts = solver.tree_solver();
-  printf("  tree_solver = %p\n", (void*)ts);
-  if (ts) {
+  auto solver = Solver::Build(model);
+  if (auto* ts = solver.tree_solver())
     ts->EnableAutoUpdateAtAssemble(true);
-  }
-
-  auto result = conex::SolveGeodesicBarrierLP(cm, z, 30, 1e-6, true);
+  auto cm = solver.MakeCompiledModel();
+  auto result = conex::GeodesicBarrierLP{1e-6, 30, true, z0}.Run(cm);
 
   printf("\n=== BarrierLP via Model/Solver (exp cone) ===\n");
   printf("  iters=%d, gap=%.2e, mu=%.2e\n",
