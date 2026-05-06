@@ -1384,7 +1384,8 @@ GeodesicResult SolveGeodesicBarrierLP(
     bool verbose) {
   const auto& cost_rhs = model.cost_rhs();
   const RowSpace b = model.GetAffineTerm();
-  const double nu = barrierParameter(z);
+  const int m = z.total_rows();
+  const double nu = static_cast<double>(m);
   double k = 0.0;
 
   GeodesicResult result{};
@@ -1651,7 +1652,8 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
     bool verbose) {
   const auto& cost_rhs = model.cost_rhs();
   const RowSpace b = model.GetAffineTerm();
-  const double nu = barrierParameter(z);
+  const int m = z.total_rows();
+  const double nu = static_cast<double>(m);
 
   // Starting point z_0 = z (the initial interior point).
   // For nonneg with z = W = ones, this is e.
