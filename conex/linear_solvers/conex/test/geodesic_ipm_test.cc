@@ -1695,5 +1695,64 @@ TEST(GeodesicBarrierQP, BarrierThetaCont_LP) {
   CompareThetaContBarrierVsClassic("LP", model);
 }
 
+TEST(GeodesicBarrierQP, BarrierThetaCont_QP) {
+  srand(42);
+  const int n = 6, m = 12;
+  MatrixXd A = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+  MatrixXd R = 0.3 * MatrixXd::Random(n, n);
+  Eigen::SparseMatrix<double> Q = toSparse(R.transpose() * R +
+                                            MatrixXd::Identity(n, n));
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(toSparse(A), b, vars);
+  model.AddQuadraticCost(Q, vars);
+  model.SetLinearCost(c);
+  CompareThetaContBarrierVsClassic("QP", model);
+}
+
+TEST(GeodesicBarrierQP, BarrierThetaCont_EqualityConstraints) {
+  srand(77);
+  const int n = 8, m = 15, p = 2;
+  MatrixXd A = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+  MatrixXd C_dense = MatrixXd::Random(p, n);
+  VectorXd d = VectorXd::Zero(p);
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(toSparse(A), b, vars);
+  model.AddEqualityConstraint(toSparse(C_dense), d, vars);
+  model.SetLinearCost(c);
+  CompareThetaContBarrierVsClassic("LP+Equality", model);
+}
+
+TEST(GeodesicBarrierQP, BarrierThetaCont_QPWithEquality) {
+  srand(55);
+  const int n = 8, m = 15, p = 2;
+  MatrixXd A = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+  MatrixXd R = 0.3 * MatrixXd::Random(n, n);
+  Eigen::SparseMatrix<double> Q = toSparse(R.transpose() * R +
+                                            MatrixXd::Identity(n, n));
+  MatrixXd C_dense = MatrixXd::Random(p, n);
+  VectorXd d = VectorXd::Zero(p);
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(toSparse(A), b, vars);
+  model.AddQuadraticCost(Q, vars);
+  model.AddEqualityConstraint(toSparse(C_dense), d, vars);
+  model.SetLinearCost(c);
+  CompareThetaContBarrierVsClassic("QP+Equality", model);
+}
+
 }  // namespace
 }  // namespace conex

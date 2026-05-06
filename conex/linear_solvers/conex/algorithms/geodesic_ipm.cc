@@ -1767,11 +1767,9 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
       double theta_hi = theta;
       for (int bisect = 0; bisect < 30; ++bisect) {
         double theta_mid = 0.5 * (theta_lo + theta_hi);
-        auto [tau_try, alpha_try] = EvalBarrierThetaCandidate(
+        auto [tau_try, d_inf_try] = EvalBarrierThetaCandidate(
             model, duality_cost, z, b, grad, ay0, t1_tau, t1_th,
             y0_vec, y1_0_vec, y1_theta_vec, nu, R_theta1, theta_mid);
-        double d_inf_try = (alpha_try < 1.0) ?
-            std::sqrt(2.0 / alpha_try) : 0.0;
         if (tau_try > 0 && d_inf_try <= beta_target) {
           theta_hi = theta_mid;
         } else {
@@ -1782,10 +1780,9 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
     }
     k = 1.0 / std::sqrt(theta);
 
-    if (verbose) printf("  theta: %.6e -> %.6e\n", theta_prev, theta);
 
     // Evaluate at chosen θ.
-    auto [tau_sel, alpha_sel] = EvalBarrierThetaCandidate(
+    auto [tau_sel, d_inf_sel] = EvalBarrierThetaCandidate(
         model, duality_cost, z, b, grad, ay0, t1_tau, t1_th,
         y0_vec, y1_0_vec, y1_theta_vec, nu, R_theta1, theta);
     if (tau_sel <= 0) {
@@ -1811,7 +1808,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
     result.iterations = outer + 1;
 
-    bool converged = (mu < tolerance && d_inf <= 1.001);
+    bool converged = (mu < tolerance);
     bool last_iter = (outer + 1 == max_outer_iterations);
 
     if (converged || last_iter) {
@@ -1850,10 +1847,8 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
       }
       if (converged) break;
     } else {
-      // Geodesic step.
-      if (d_inf > 1e-14) {
-        geodesicStepTarget(z, alpha, target_k);
-      }
+      // Geodesic step (always take — d_inf may be ≤ 1 by design in ThetaCont).
+      geodesicStepTarget(z, alpha, target_k);
     }
   }
 
