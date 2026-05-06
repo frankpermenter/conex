@@ -1289,8 +1289,6 @@ TEST(ExpCone, BarrierLP_ModelSolver) {
   model.SetLinearCost(c);
 
   auto solver = Solver::Build(model);
-  if (auto* ts = solver.tree_solver())
-    ts->EnableAutoUpdateAtAssemble(true);
   auto cm = solver.MakeCompiledModel();
   auto result = conex::GeodesicBarrierLP{1e-6, 30, true, z0}.Run(cm);
 

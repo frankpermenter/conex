@@ -96,8 +96,6 @@ TEST(PolyhedralCone, ConvergenceProfile) {
       m.AddEqualityConstraint(toSparse(E), d, vars_np);
       m.SetLinearCost(c_ext);
       auto s = Solver::BuildDense(m);
-      if (auto* ts = s.tree_solver())
-        ts->EnableAutoUpdateAtAssemble(true);
       auto cm = s.MakeCompiledModel();
       return GeodesicBarrierLP{1e-14, max_iter, false, w0}.Run(cm);
     };
@@ -236,8 +234,6 @@ TEST(PolyhedralCone, NonnegVsPolyhedral) {
   w0(n) = 1.0;
 
   auto poly_solver = Solver::BuildDense(poly_model);
-  if (auto* ts = poly_solver.tree_solver())
-    ts->EnableAutoUpdateAtAssemble(true);
   auto poly_cm = poly_solver.MakeCompiledModel();
   auto poly_result = GeodesicBarrierLP{1e-14, 100, true, w0}.Run(poly_cm);
 
