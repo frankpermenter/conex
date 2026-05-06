@@ -130,6 +130,14 @@ void PSDConeOps::sqrt(double* out, const double* a, int size) const {
   Symmetrize(Out);
 }
 
+void PSDConeOps::inverse(double* out, const double* a, int size) const {
+  int n = MatrixDim(size);
+  Eigen::Map<const Eigen::MatrixXd> A(a, n, n);
+  Eigen::Map<Eigen::MatrixXd> Out(out, n, n);
+  Out = A.inverse();
+  Symmetrize(Out);
+}
+
 void PSDConeOps::quadraticRepresentation(double* out, const double* a,
                                          const double* b, int size) const {
   int n = MatrixDim(size);

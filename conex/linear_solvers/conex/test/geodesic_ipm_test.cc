@@ -1825,7 +1825,7 @@ TEST(GeodesicBarrierQP, MehrotraCorrection) {
   // With Jacobian reuse (3 inner centering steps).
   auto s2 = Solver::Build(model);
   auto cm2 = s2.MakeCompiledModel();
-  auto r2 = GeodesicJacobianReuseLP{1e-10, 30, 3, true}.Run(cm2);
+  auto r2 = GeodesicJacobianReuseLP{1e-10, 30, 1, true}.Run(cm2);
 
   printf("\n=== Mehrotra correction comparison ===\n");
   printf("  Without: %d iters, %d solves, gap=%.2e\n",

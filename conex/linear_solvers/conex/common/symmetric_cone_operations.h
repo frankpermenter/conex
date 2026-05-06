@@ -111,6 +111,9 @@ class SymmetricConeOperations : public BarrierConeOperations {
   // Symmetric square root.
   virtual void sqrt(double* out, const double* a, int size) const = 0;
 
+  // Jordan algebra inverse: a^{-1} such that a ∘ a^{-1} = e.
+  virtual void inverse(double* out, const double* a, int size) const = 0;
+
   // Quadratic representation: P(a)b.
   virtual void quadraticRepresentation(double* out, const double* a,
                                        const double* b, int size) const = 0;

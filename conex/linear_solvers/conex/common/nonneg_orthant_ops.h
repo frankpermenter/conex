@@ -50,6 +50,10 @@ class NonnegOrthantOps : public SymmetricConeOperations {
     for (int i = 0; i < size; ++i) out[i] = std::sqrt(a[i]);
   }
 
+  void inverse(double* out, const double* a, int size) const override {
+    for (int i = 0; i < size; ++i) out[i] = 1.0 / a[i];
+  }
+
   void quadraticRepresentation(double* out, const double* a,
                                const double* b, int size) const override {
     for (int i = 0; i < size; ++i) out[i] = a[i] * a[i] * b[i];

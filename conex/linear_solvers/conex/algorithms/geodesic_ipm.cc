@@ -262,11 +262,11 @@ static void ComputeDecomposition(
 // but builds RHS with current W_i. No SetScaling or AssembleAndFactor.
 //
 // d = d0 + k*d1  where:
-//   d0 = W0*(1/W_i - A*y0)           (centering, depends on W_i)
-//   d1 = W0*(-b - A*y1)              (cost, frozen — depends only on W0)
+//   d0 = P(sqrt(W0))(W_i^{-1} - A*y0)   (centering, depends on W_i)
+//   d1 = P(sqrt(W0))(-b - A*y1)          (cost, frozen)
 //
-// rhs0 = A^T(W_i + W0^2/W_i)        (centering)
-// rhs1 = -(c + A^T W0^2 b) + d_eq   (cost, frozen)
+// rhs0 = A^T(W_i + P(W0)(W_i^{-1}))     (centering)
+// rhs1 = -(c + A^T P(W0)(b)) + d_eq     (cost, frozen)
 //
 // If d1 and y1 are already known (from a previous call), pass
 // precomputed_rhs1 to skip the second solve (1 solve instead of 2).
@@ -281,10 +281,11 @@ static void ComputeFrozenDecomposition(
     Eigen::VectorXd* y0_out = nullptr,
     Eigen::VectorXd* y1_out = nullptr,
     const SolverRHS* precomputed_rhs1 = nullptr) {
-  // rhs0 = A^T(Wi + W0^2/Wi)
-  RowSpace center = model.MakeRowSpace();
-  center.col() = Wi.col().array() +
-      W0.col().array().square() / Wi.col().array();
+  RowSpace Wi_inv = EuclideanJordanAlgebra::inverse(Wi);
+  RowSpace sqrtW0 = EuclideanJordanAlgebra::sqrt(W0);
+
+  // rhs0 = A^T(Wi + P(W0)(Wi^{-1}))
+  RowSpace center = addScaled(Wi, quadraticRepresentation(W0, Wi_inv), 1.0, 1.0);
   auto rhs0 = model.MakeSolverRHS();
   rhs0.SetZero();
   model.AccumulateAtranspose(center, rhs0);
@@ -299,12 +300,11 @@ static void ComputeFrozenDecomposition(
     }
     RowSpace ay0 = model.MakeRowSpace();
     model.MultiplyA(rhs0, ay0);
-    // d0 = W0 * (1/Wi - A*y0)
-    d0 = model.MakeRowSpace();
-    d0.col() = W0.col().array() *
-        (Wi.col().array().inverse() - ay0.col().array());
+    // d0 = P(sqrt(W0))(Wi^{-1} - A*y0)
+    d0 = quadraticRepresentation(sqrtW0,
+        addScaled(Wi_inv, ay0, 1.0, -1.0));
   } else {
-    // rhs1 = -(c + A^T W0^2 b) + d_eq
+    // rhs1 = -(c + A^T P(W0)(b)) + d_eq
     auto rhs1 = model.MakeSolverRHS();
     rhs1 = cost_rhs;
     RowSpace v = quadraticRepresentation(W0, b);
@@ -335,14 +335,12 @@ static void ComputeFrozenDecomposition(
     ay0.col() = row.col(0);
     ay1.col() = row.col(1);
 
-    // d0 = W0 * (1/Wi - A*y0)
-    d0 = model.MakeRowSpace();
-    d0.col() = W0.col().array() *
-        (Wi.col().array().inverse() - ay0.col().array());
-    // d1 = W0 * (-b - A*y1)
-    d1 = model.MakeRowSpace();
-    d1.col() = W0.col().array() *
-        (-b.col().array() - ay1.col().array());
+    // d0 = P(sqrt(W0))(Wi^{-1} - A*y0)
+    d0 = quadraticRepresentation(sqrtW0,
+        addScaled(Wi_inv, ay0, 1.0, -1.0));
+    // d1 = P(sqrt(W0))(-b - A*y1)
+    d1 = quadraticRepresentation(sqrtW0,
+        addScaled(b, ay1, -1.0, -1.0));
   }
 }
 

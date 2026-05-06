@@ -47,6 +47,14 @@ inline Variable sqrt(const Variable& a) {
   return out;
 }
 
+// Jordan algebra inverse: a^{-1} such that a ∘ a^{-1} = e.
+inline Variable inverse(const Variable& a) {
+  Variable out = like(a);
+  for (int i = 0; i < a.num_constraints(); ++i)
+    sym_ops(a.ops[i])->inverse(out.segment_ptr(i), a.segment_ptr(i), a.sizes[i]);
+  return out;
+}
+
 // Quadratic representation: P(a)b.
 //   Nonneg: out_i = a_i² * b_i.
 //   PSD:    Out = A * B * A.

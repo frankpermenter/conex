@@ -120,6 +120,11 @@ void SOCConeOps::sqrt(double* out, const double* a, int size) const {
   });
 }
 
+void SOCConeOps::inverse(double* out, const double* a, int size) const {
+  // a^{-1} = (t, -x) / (t² - ||x||²) for SOC element (t, x).
+  SpectralApply(out, a, size, [](double l) { return 1.0 / l; });
+}
+
 // P(a)b = 2(a ∘ b) ∘ a - a² ∘ b.
 void SOCConeOps::quadraticRepresentation(double* out, const double* a,
                                          const double* b, int size) const {

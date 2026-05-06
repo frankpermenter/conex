@@ -20,6 +20,7 @@ class SOCConeOps : public SymmetricConeOperations {
   double squaredNorm(const double* a, int size) const override;
   double dot(const double* a, const double* b, int size) const override;
   void sqrt(double* out, const double* a, int size) const override;
+  void inverse(double* out, const double* a, int size) const override;
   void quadraticRepresentation(double* out, const double* a,
                                const double* b, int size) const override;
   void solveLyapunovForD(double* out, const double* r,
