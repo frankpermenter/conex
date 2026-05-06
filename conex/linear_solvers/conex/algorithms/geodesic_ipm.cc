@@ -1258,7 +1258,8 @@ GeodesicResult SolveGeodesicLP(
     int max_outer_iterations,
     int max_centering_steps,
     double tolerance,
-    bool verbose) {
+    bool verbose,
+    bool mehrotra_correction) {
   const auto& cost_rhs = model.cost_rhs();
   double k = 0.0;
   const int m = W.total_rows();
@@ -1363,6 +1364,30 @@ GeodesicResult SolveGeodesicLP(
       }
       break;
     } else {
+      // Mehrotra-like correction: find δ such that exp(α(d+δ)) agrees
+      // with 1+αd at the affine constraint level.
+      // δ_range = -P(W^{1/2}) A (G^{-1} A^T P(W^{1/2})(α d²/2))
+      if (mehrotra_correction) {
+        RowSpace d_sq_jordan = cwiseProduct(d, d);  // d² (Jordan square)
+        d_sq_jordan *= (alpha / 2.0);
+        RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+        RowSpace corr_v = quadraticRepresentation(sqrtW, d_sq_jordan);
+
+        auto corr_rhs = model.MakeSolverRHS();
+        corr_rhs.SetZero();
+        model.AccumulateAtranspose(corr_v, corr_rhs);
+        corr_rhs *= -1;
+        model.SolveSolverRHS(corr_rhs);  // reuses existing factorization
+        total_sol += 1;
+
+        auto corr_row = model.MakeRowSpace();
+        model.MultiplyA(corr_rhs, corr_row);
+        RowSpace delta = quadraticRepresentation(sqrtW, corr_row);
+        delta *= -1;
+
+        d += delta;
+      }
+
       geodesicUpdate(W, alpha, d);
       model.SetScaling(W);
       if (!model.AssembleAndFactor()) break;

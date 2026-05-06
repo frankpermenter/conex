@@ -243,7 +243,8 @@ GeodesicResult SolveGeodesicLP(
     int max_outer_iterations = 30,
     int max_centering_steps = 1,
     double tolerance = 1e-8,
-    bool verbose = false);
+    bool verbose = false,
+    bool mehrotra_correction = false);
 
 // z-space geodesic LP for cones with log-homogeneous barriers.
 // Uses only the z-space operations on CompiledModel (ComputeGradient,

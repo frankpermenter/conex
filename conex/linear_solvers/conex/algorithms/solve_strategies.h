@@ -141,6 +141,22 @@ struct GeodesicLP {
   }
 };
 
+// Strategy: geodesic LP with Mehrotra-like correction.
+// One extra back-solve per iteration to reduce constraint residual.
+struct GeodesicMehrotraLP {
+  double tolerance = 1e-8;
+  int max_iterations = 30;
+  bool verbose = false;
+
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace W = model.MakeRowSpace();
+    setOnes(W);
+    return SolveGeodesicLP(
+        model, W, max_iterations, 0, tolerance, verbose,
+        /*mehrotra_correction=*/true);
+  }
+};
+
 // Strategy: z-space geodesic LP for general log-homogeneous barriers.
 // Bit-identical to GeodesicLP for symmetric cones when initial_z is empty.
 struct GeodesicBarrierLP {

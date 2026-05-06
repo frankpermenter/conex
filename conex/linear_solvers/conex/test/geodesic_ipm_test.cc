@@ -1803,5 +1803,50 @@ TEST(GeodesicBarrierQP, BarrierLP_SOC) {
   CompareBarrierVsClassic("SOC", model);
 }
 
+// Compare GeodesicLP with and without Mehrotra correction.
+TEST(GeodesicBarrierQP, MehrotraCorrection) {
+  srand(99);
+  const int n = 6, m = 14;
+  MatrixXd A = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(toSparse(A), b, vars);
+  model.SetLinearCost(c);
+
+  // Without correction.
+  auto s1 = Solver::Build(model);
+  auto cm1 = s1.MakeCompiledModel();
+  auto r1 = GeodesicLP{1e-10, 30, 0, true}.Run(cm1);
+
+  // With Mehrotra correction.
+  auto s2 = Solver::Build(model);
+  auto cm2 = s2.MakeCompiledModel();
+  auto r2 = GeodesicMehrotraLP{1e-10, 30, true}.Run(cm2);
+
+  printf("\n=== Mehrotra correction comparison ===\n");
+  printf("  Without: %d iters, %d solves, gap=%.2e\n",
+         r1.iterations, r1.total_solves, r1.complementarity);
+  printf("  With:    %d iters, %d solves, gap=%.2e\n",
+         r2.iterations, r2.total_solves, r2.complementarity);
+
+  // Both should converge.
+  EXPECT_LT(r1.complementarity, 1e-8);
+  EXPECT_LT(r2.complementarity, 1e-8);
+
+  // Compare iteration stats.
+  int n_iters = std::min(r1.iterations, r2.iterations);
+  printf("  iter  gap_without     gap_with       ratio\n");
+  for (int i = 0; i < n_iters; ++i) {
+    double g1 = r1.iter_stats[i].complementarity;
+    double g2 = r2.iter_stats[i].complementarity;
+    printf("  %3d   %12.4e    %12.4e    %.2f\n", i, g1, g2,
+           (g1 > 0 && g2 > 0) ? g1 / g2 : 0.0);
+  }
+}
+
 }  // namespace
 }  // namespace conex
