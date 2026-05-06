@@ -82,7 +82,10 @@ class PolyhedralConeOps : public SymmetricConeOperations {
     Eigen::VectorXd pos = zv;
 
     // Primal Verlet integrator with Christoffel symbols.
-    const int steps = 8;
+    // Adaptive substeps: each substep covers Riemannian distance ~1.
+    Eigen::VectorXd s0 = C_ * pos;
+    double speed = (C_ * vel).cwiseQuotient(s0).norm();  // ||ẋ||_H
+    int steps = std::max(1, (int)std::ceil(speed));
     double dt = 1.0 / steps;
 
     for (int step = 0; step < steps; ++step) {
