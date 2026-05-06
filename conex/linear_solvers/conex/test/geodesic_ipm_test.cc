@@ -2164,5 +2164,115 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_SDP) {
   PrintSolveResult("HybridOnly", r8);
 }
 
+// Sweep over problem sizes and compare all algorithms.
+TEST(GeodesicBarrierQP, AlgorithmSweep_LP) {
+  struct Config { int n; int m; };
+  Config configs[] = {{4, 8}, {6, 14}, {10, 25}, {15, 40}, {20, 60}, {30, 80}};
+
+  printf("\n=== LP sweep: factorizations (fac) and stationarity (stat) ===\n");
+  printf("  %4s %4s  %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
+         "n", "m", "ThetaCont", "TC+frozenJ", "ThetaContR",
+         "GeodesicLP", "LP+frozenJ", "HybridR", "P1Hybrid", "HybridOnly");
+  printf("  %4s %4s  %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
+         "", "", "fac/stat", "fac/stat", "fac/stat",
+         "fac/stat", "fac/stat", "fac/stat", "fac/stat", "fac/stat");
+  printf("  %s\n", std::string(112, '-').c_str());
+
+  for (auto& cfg : configs) {
+    srand(42 + cfg.n);
+    MatrixXd A = MatrixXd::Random(cfg.m, cfg.n).cwiseAbs()
+                 + 0.1 * MatrixXd::Ones(cfg.m, cfg.n);
+    VectorXd b = VectorXd::Ones(cfg.m);
+    VectorXd c = A.transpose() * VectorXd::Ones(cfg.m);
+    std::vector<int> vars(cfg.n);
+    std::iota(vars.begin(), vars.end(), 0);
+
+    Model model;
+    model.AddLinearConstraint(toSparse(A), b, vars);
+    model.SetLinearCost(c);
+
+    auto r1 = Solver::Build(model).Solve(ThetaContinuation{1e-10, 50, 0});
+    auto r2 = Solver::Build(model).Solve(ThetaContinuation{1e-10, 50, 1});
+    auto r3 = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 500});
+    auto r4 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30});
+    auto r5 = Solver::Build(model).Solve(GeodesicJacobianReuseLP{1e-10, 30, 1});
+    auto r6 = Solver::Build(model).Solve(HybridR{1e-10, 500});
+    auto r7 = Solver::Build(model).Solve(PhaseOneHybrid{1e-10, 500});
+    auto r8 = Solver::Build(model).Solve(HybridOnly{1e-10, 500});
+
+    auto fmt = [](const SolveResult& r) {
+      char buf[32];
+      snprintf(buf, sizeof(buf), "%3d/%.0e", r.factorizations,
+               r.duals.stationarity_gradient.norm());
+      return std::string(buf);
+    };
+
+    printf("  %4d %4d  %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
+           cfg.n, cfg.m,
+           fmt(r1).c_str(), fmt(r2).c_str(), fmt(r3).c_str(),
+           fmt(r4).c_str(), fmt(r5).c_str(), fmt(r6).c_str(),
+           fmt(r7).c_str(), fmt(r8).c_str());
+  }
+}
+
+TEST(GeodesicBarrierQP, AlgorithmSweep_SDP) {
+  struct Config { int n_psd; int p; };
+  Config configs[] = {{3, 4}, {4, 6}, {5, 8}, {6, 10}, {8, 12}, {10, 15}};
+
+  printf("\n=== SDP sweep: factorizations (fac) and stationarity (stat) ===\n");
+  printf("  %5s %4s  %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
+         "n_psd", "p", "ThetaCont", "TC+frozenJ", "ThetaContR",
+         "GeodesicLP", "LP+frozenJ", "HybridR", "P1Hybrid", "HybridOnly");
+  printf("  %5s %4s  %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
+         "", "", "fac/stat", "fac/stat", "fac/stat",
+         "fac/stat", "fac/stat", "fac/stat", "fac/stat", "fac/stat");
+  printf("  %s\n", std::string(114, '-').c_str());
+
+  auto make_sym = [](int n) {
+    MatrixXd M = MatrixXd::Random(n, n);
+    return (M + M.transpose()) / 2.0;
+  };
+
+  for (auto& cfg : configs) {
+    srand(42 + cfg.n_psd);
+    std::vector<Eigen::SparseMatrix<double>> A_list;
+    for (int i = 0; i < cfg.p; ++i)
+      A_list.push_back(toSparse(make_sym(cfg.n_psd)));
+    Eigen::SparseMatrix<double> B = toSparse(
+        3.0 * MatrixXd::Identity(cfg.n_psd, cfg.n_psd));
+    VectorXd c(cfg.p);
+    for (int i = 0; i < cfg.p; ++i)
+      c(i) = Eigen::MatrixXd(A_list[i]).trace();
+    std::vector<int> vars(cfg.p);
+    std::iota(vars.begin(), vars.end(), 0);
+
+    Model model;
+    model.AddPSDConstraint(A_list, B, vars, false);
+    model.SetLinearCost(c);
+
+    auto r1 = Solver::Build(model).Solve(ThetaContinuation{1e-10, 50, 0});
+    auto r2 = Solver::Build(model).Solve(ThetaContinuation{1e-10, 50, 1});
+    auto r3 = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 500});
+    auto r4 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30});
+    auto r5 = Solver::Build(model).Solve(GeodesicJacobianReuseLP{1e-10, 30, 1});
+    auto r6 = Solver::Build(model).Solve(HybridR{1e-10, 500});
+    auto r7 = Solver::Build(model).Solve(PhaseOneHybrid{1e-10, 500});
+    auto r8 = Solver::Build(model).Solve(HybridOnly{1e-10, 500});
+
+    auto fmt = [](const SolveResult& r) {
+      char buf[32];
+      snprintf(buf, sizeof(buf), "%3d/%.0e", r.factorizations,
+               r.duals.stationarity_gradient.norm());
+      return std::string(buf);
+    };
+
+    printf("  %5d %4d  %-12s %-12s %-12s %-12s %-12s %-12s %-12s %-12s\n",
+           cfg.n_psd, cfg.p,
+           fmt(r1).c_str(), fmt(r2).c_str(), fmt(r3).c_str(),
+           fmt(r4).c_str(), fmt(r5).c_str(), fmt(r6).c_str(),
+           fmt(r7).c_str(), fmt(r8).c_str());
+  }
+}
+
 }  // namespace
 }  // namespace conex
