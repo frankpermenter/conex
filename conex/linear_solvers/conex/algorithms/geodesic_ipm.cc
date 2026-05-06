@@ -108,6 +108,7 @@ GeodesicResult GeodesicCenter(
     double tolerance,
     bool verbose) {
   const int m = W.total_rows();
+  const double nu = barrierParameter(W);
   const double mu = 1.0 / (k * k);
   const RowSpace b = model.GetAffineTerm();
 
@@ -124,7 +125,7 @@ GeodesicResult GeodesicCenter(
     double d_sq = squaredNorm(d);
     double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
 
-    double s_dot_x = mu * (m - d_sq);
+    double s_dot_x = mu * (nu - d_sq);
 
     result.iterations = iter + 1;
     result.total_factorizations = iter + 1;
@@ -544,6 +545,7 @@ GeodesicResult SolveGeodesicHSD(
   const auto& cost_rhs = model.cost_rhs();
   const RowSpace b = model.GetAffineTerm();
   const int m = W.total_rows();
+  const double nu = barrierParameter(W);
 
   RowSpace ones = model.MakeRowSpace();
   setOnes(ones);
@@ -669,7 +671,7 @@ GeodesicResult SolveGeodesicHSD(
     RowSpace d = EvaluateDirection(decomp, k, tau, theta);
     double d_inf = normInf(d);
     double d_sq = squaredNorm(d);
-    double gap = mu * (m - d_sq);
+    double gap = mu * (nu - d_sq);
 
     // Evaluate normalization equation at this (k, tau, theta).
     // lambda = k * P(W^{1/2})(e + d)
@@ -786,6 +788,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
   const auto& cost_rhs = model.cost_rhs();
   const RowSpace b = model.GetAffineTerm();
   const int m = W.total_rows();
+  const double nu = barrierParameter(W);
 
   RowSpace ones_bTe = model.MakeRowSpace();
   setOnes(ones_bTe);
@@ -852,7 +855,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     double d_inf = normInf(d_step);
     double d_sq = squaredNorm(d_step);
     double mu = 1.0 / (k * k);
-    double gap = mu * (m - d_sq);
+    double gap = mu * (nu - d_sq);
 
     RowSpace sqrtW_step = EuclideanJordanAlgebra::sqrt(W);
     RowSpace ones_step = model.MakeRowSpace();
@@ -1052,6 +1055,7 @@ GeodesicResult SolveGeodesicPhaseOne(
   const auto& cost_rhs = model.cost_rhs();
   const RowSpace b = model.GetAffineTerm();
   const int m = W.total_rows();
+  const double nu = barrierParameter(W);
 
   RowSpace ones_bTe = model.MakeRowSpace();
   setOnes(ones_bTe);
@@ -1162,7 +1166,7 @@ GeodesicResult SolveGeodesicPhaseOne(
     double d_inf = normInf(d_step);
     double d_sq = squaredNorm(d_step);
     double mu = 1.0 / (k * k);
-    double gap = mu * (m - d_sq);
+    double gap = mu * (nu - d_sq);
 
     RowSpace sqrtW_step = EuclideanJordanAlgebra::sqrt(W);
     RowSpace ones_step = model.MakeRowSpace();
@@ -1258,6 +1262,7 @@ GeodesicResult SolveGeodesicLP(
   const auto& cost_rhs = model.cost_rhs();
   double k = 0.0;
   const int m = W.total_rows();
+  const double nu = barrierParameter(W);
   constexpr double theta = 0.0;
   RowSpace ones_b = model.MakeRowSpace();
   setOnes(ones_b);
@@ -1316,7 +1321,7 @@ GeodesicResult SolveGeodesicLP(
     double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
 
     double mu = 1.0 / (k * k);
-    double s_dot_x = mu * (m - d_sq);
+    double s_dot_x = mu * (nu - d_sq);
 
     if (verbose) {
       double d0_inf = normInf(d0);
@@ -1385,7 +1390,7 @@ GeodesicResult SolveGeodesicBarrierLP(
   const auto& cost_rhs = model.cost_rhs();
   const RowSpace b = model.GetAffineTerm();
   const int m = z.total_rows();
-  const double nu = static_cast<double>(m);
+  const double nu = barrierParameter(z);
   double k = 0.0;
 
   GeodesicResult result{};
@@ -1653,7 +1658,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
   const auto& cost_rhs = model.cost_rhs();
   const RowSpace b = model.GetAffineTerm();
   const int m = z.total_rows();
-  const double nu = static_cast<double>(m);
+  const double nu = barrierParameter(z);
 
   // Starting point z_0 = z (the initial interior point).
   // For nonneg with z = W = ones, this is e.
