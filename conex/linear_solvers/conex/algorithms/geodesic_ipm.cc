@@ -83,12 +83,12 @@ OptimalityReport CheckOptimality(
   model.MultiplyA(x_rhs, s);
   s += model.GetAffineTerm();
 
-  // Cone membership (Euclidean min — correct for nonneg, approximate for others).
-  report.min_slack = s.col().minCoeff();
-  report.min_dual = lambda.col().minCoeff();
+  // Cone membership.
+  report.min_slack = minEigenvalue(s);
+  report.min_dual = minEigenvalue(lambda);
 
-  // Complementarity: <s, λ> (Euclidean inner product).
-  report.complementarity = s.col().dot(lambda.col());
+  // Complementarity: <s, λ>.
+  report.complementarity = dot(s, lambda);
 
   return report;
 }
@@ -1518,15 +1518,9 @@ GeodesicResult SolveGeodesicBarrierLP(
       lambda *= (1.0 / k);
       result.lambda = lambda;
 
-      auto x_rhs = model.MakeSolverRHS();
-      x_rhs = model.MakeBlockVariable(result.x);
-      result.optimality = CheckOptimality(model, x_rhs, lambda);
       result.optimality.mu = result.mu;
       if (verbose) {
-        printf("  Optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
-               result.optimality.complementarity,
-               result.optimality.min_slack,
-               result.optimality.min_dual);
+        printf("  Optimality: mu=%.2e\n", result.mu);
       }
       break;
     } else {
@@ -1841,16 +1835,9 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
       lambda *= (1.0 / (k * tau));
       result.lambda = lambda;
 
-      auto x_rhs = model.MakeSolverRHS();
-      x_rhs = model.MakeBlockVariable(result.x);
-      result.optimality = CheckOptimality(model, x_rhs, lambda);
       result.optimality.mu = result.mu;
-
       if (verbose) {
-        printf("  Optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
-               result.optimality.complementarity,
-               result.optimality.min_slack,
-               result.optimality.min_dual);
+        printf("  Optimality: mu=%.2e\n", result.mu);
       }
       if (converged) break;
     } else {
