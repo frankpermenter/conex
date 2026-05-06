@@ -258,6 +258,94 @@ static void ComputeDecomposition(
   d1 = quadraticRepresentation(sqrtW, addScaled(b, ay1, -1.0, -1.0));
 }
 
+// Frozen-Jacobian decomposition: uses stale factorization (Gram at W0)
+// but builds RHS with current W_i. No SetScaling or AssembleAndFactor.
+//
+// d = d0 + k*d1  where:
+//   d0 = W0*(1/W_i - A*y0)           (centering, depends on W_i)
+//   d1 = W0*(-b - A*y1)              (cost, frozen — depends only on W0)
+//
+// rhs0 = A^T(W_i + W0^2/W_i)        (centering)
+// rhs1 = -(c + A^T W0^2 b) + d_eq   (cost, frozen)
+//
+// If d1 and y1 are already known (from a previous call), pass
+// precomputed_rhs1 to skip the second solve (1 solve instead of 2).
+static void ComputeFrozenDecomposition(
+    CompiledModel& model,
+    const SolverRHS& cost_rhs,
+    const RowSpace& b,
+    const RowSpace& W0,       // frozen Jacobian point
+    const RowSpace& Wi,       // current iterate
+    RowSpace& d0,
+    RowSpace& d1,
+    Eigen::VectorXd* y0_out = nullptr,
+    Eigen::VectorXd* y1_out = nullptr,
+    const SolverRHS* precomputed_rhs1 = nullptr) {
+  // rhs0 = A^T(Wi + W0^2/Wi)
+  RowSpace center = model.MakeRowSpace();
+  center.col() = Wi.col().array() +
+      W0.col().array().square() / Wi.col().array();
+  auto rhs0 = model.MakeSolverRHS();
+  rhs0.SetZero();
+  model.AccumulateAtranspose(center, rhs0);
+
+  if (precomputed_rhs1) {
+    // Only solve rhs0; d1 already known.
+    model.SolveSolverRHS(rhs0);
+    if (y0_out) {
+      int nr = model.number_of_variables();
+      y0_out->resize(nr);
+      rhs0.supernodes->GatherInto(*y0_out);
+    }
+    RowSpace ay0 = model.MakeRowSpace();
+    model.MultiplyA(rhs0, ay0);
+    // d0 = W0 * (1/Wi - A*y0)
+    d0 = model.MakeRowSpace();
+    d0.col() = W0.col().array() *
+        (Wi.col().array().inverse() - ay0.col().array());
+  } else {
+    // rhs1 = -(c + A^T W0^2 b) + d_eq
+    auto rhs1 = model.MakeSolverRHS();
+    rhs1 = cost_rhs;
+    RowSpace v = quadraticRepresentation(W0, b);
+    model.AccumulateAtranspose(v, rhs1);
+    rhs1 *= -1;
+    auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
+    if (ts && !ts->equality_sub_assemblers().empty()) {
+      rhs1 += ts->EqualityAffineTermRHS();
+    }
+
+    auto y = model.MakeSolverRHS(2);
+    y.SetColumn(0, rhs0);
+    y.SetColumn(1, rhs1);
+    model.SolveSolverRHS(y);
+
+    if (y0_out || y1_out) {
+      int nr = model.number_of_variables();
+      Eigen::MatrixXd y_dense(nr, 2);
+      y.supernodes->GatherInto(y_dense);
+      if (y0_out) *y0_out = y_dense.col(0);
+      if (y1_out) *y1_out = y_dense.col(1);
+    }
+
+    auto row = model.MakeRowSpace(2);
+    model.MultiplyA(y, row);
+    RowSpace ay0 = model.MakeRowSpace();
+    RowSpace ay1 = model.MakeRowSpace();
+    ay0.col() = row.col(0);
+    ay1.col() = row.col(1);
+
+    // d0 = W0 * (1/Wi - A*y0)
+    d0 = model.MakeRowSpace();
+    d0.col() = W0.col().array() *
+        (Wi.col().array().inverse() - ay0.col().array());
+    // d1 = W0 * (-b - A*y1)
+    d1 = model.MakeRowSpace();
+    d1.col() = W0.col().array() *
+        (-b.col().array() - ay1.col().array());
+  }
+}
+
 // Build the "duality cost" for the V(tau)=0 identity:
 //   b^T lambda + c^T x + d^T nu + mu/tau = theta * R
 // cost_rhs has [c; 0] (primal cost, zeros at dual positions).
@@ -1309,128 +1397,108 @@ GeodesicResult SolveGeodesicLP(
       }
     }
 
-    // Inner loop: take steps with frozen k, stale Gram.
-    double d0_norm_prev = std::numeric_limits<double>::max();
-    int inner_steps = std::max(1, max_centering_steps);
-    bool done = false;
+    // Evaluate direction at current k.
+    RowSpace d = addScaled(d0, d1, 1.0, k);
+    double d_inf = normInf(d);
+    double d_sq = squaredNorm(d);
+    double mu = 1.0 / (k * k);
+    double s_dot_x = mu * (nu - d_sq);
 
-    for (int inner = 0; inner < inner_steps && !done; ++inner) {
-      RowSpace d = addScaled(d0, d1, 1.0, k);
-      double d_inf = normInf(d);
-      double d_sq = squaredNorm(d);
-      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      double mu = 1.0 / (k * k);
-      double s_dot_x = mu * (nu - d_sq);
-      double d0_norm = normInf(d0);
+    if (verbose) {
+      printf("  %3d  %10.4e  %10.4e  %10.4e  %10.4e  %10.4e"
+             "  d0=%.2e d1=%.2e\n",
+             outer, k_prev, k, d_inf, d_sq, s_dot_x,
+             normInf(d0), normInf(d1));
+    }
 
+    result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});
+    result.iterations = outer + 1;
+
+    bool converged = (s_dot_x < tolerance && d_inf < 1.01);
+    bool last_iter = (outer + 1 >= max_outer_iterations);
+
+    if (converged || last_iter) {
+      result.mu = mu;
+      result.d_inf_norm = d_inf;
+      result.d_sq_norm = d_sq;
+      result.complementarity = s_dot_x;
+      result.total_factorizations = total_fac;
+      result.total_solves = total_sol;
+      result.x = y0 / k + y1;
+      RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+      RowSpace ones = model.MakeRowSpace();
+      setOnes(ones);
+      RowSpace lambda = quadraticRepresentation(sqrtW, ones + d);
+      lambda *= (1.0 / k);
+      result.lambda = lambda;
+      auto x_rhs = model.MakeSolverRHS();
+      x_rhs = model.MakeBlockVariable(result.x);
+      result.optimality = CheckOptimality(model, x_rhs, lambda);
+      result.optimality.mu = result.mu;
       if (verbose) {
-        printf("  %3d.%d  %10.4e  %10.4e  %10.4e  %10.4e  %10.4e"
-               "  d0=%.2e d1=%.2e\n",
-               outer, inner, k_prev, k, d_inf, d_sq, s_dot_x,
-               d0_norm, normInf(d1));
+        printf("  Optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
+               result.optimality.complementarity,
+               result.optimality.min_slack,
+               result.optimality.min_dual);
       }
+      break;
+    }
 
-      result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});
-      result.iterations = outer + 1;
+    // Save W₀ (frozen Jacobian point) before stepping.
+    RowSpace W0 = W;
 
-      bool converged = (s_dot_x < tolerance && d_inf < 1.01);
-      bool last_iter = (outer + 1 >= max_outer_iterations);
+    // Geodesic step.
+    double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+    geodesicUpdate(W, alpha, d);
 
-      if (converged || last_iter) {
-        result.mu = mu;
-        result.d_inf_norm = d_inf;
-        result.d_sq_norm = d_sq;
-        result.complementarity = s_dot_x;
-        result.total_factorizations = total_fac;
-        result.total_solves = total_sol;
-        result.x = y0 / k + y1;
-        RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-        RowSpace ones = model.MakeRowSpace();
-        setOnes(ones);
-        RowSpace lambda = quadraticRepresentation(sqrtW, ones + d);
-        lambda *= (1.0 / k);
-        result.lambda = lambda;
-        auto x_rhs = model.MakeSolverRHS();
-        x_rhs = model.MakeBlockVariable(result.x);
-        result.optimality = CheckOptimality(model, x_rhs, lambda);
-        result.optimality.mu = result.mu;
+    // Frozen-Jacobian iterations: decompose d = d0 + k*d1 using stale
+    // Gram (at W₀) but correct RHS (at W_i). d1 is frozen (depends only
+    // on W₀). Each iteration: 1 solve for d0, line search, step.
+    if (max_centering_steps > 0) {
+      // Full frozen decomposition (2 solves) to get d1_frozen.
+      RowSpace d0_f = model.MakeRowSpace();
+      RowSpace d1_f = model.MakeRowSpace();
+      Eigen::VectorXd y0_f, y1_f;
+      ComputeFrozenDecomposition(model, cost_rhs_blend, b, W0, W,
+                                 d0_f, d1_f, &y0_f, &y1_f);
+      total_sol += 2;
+
+      // Dummy rhs1 marker for single-solve path (d1 already known).
+      auto rhs1_marker = model.MakeSolverRHS();
+      rhs1_marker.SetZero();  // not used, just a flag
+
+      for (int inner = 0; inner < max_centering_steps; ++inner) {
+        // Line search: find largest k_new with ||d0_f + k_new*d1_f||_inf <= 1.
+        double k_new = lineSearchK(d0_f, d1_f);
+        if (k_new > k) k = k_new;
+
+        RowSpace d_f = addScaled(d0_f, d1_f, 1.0, k);
+        double d_inf_f = normInf(d_f);
+        double d_sq_f = squaredNorm(d_f);
+        double mu_f = 1.0 / (k * k);
+        double s_dot_x_f = mu_f * (nu - d_sq_f);
+
         if (verbose) {
-          printf("  Optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
-                 result.optimality.complementarity,
-                 result.optimality.min_slack,
-                 result.optimality.min_dual);
-        }
-        done = true;
-        break;
-      }
-
-      // Geodesic step.
-      geodesicUpdate(W, alpha, d);
-
-      // Check if centering residual is growing (stale Gram degrading).
-      if (inner > 0 && d0_norm > d0_norm_prev) {
-        if (verbose) printf("  [refactor: d0 grew %.2e > %.2e]\n",
-                            d0_norm, d0_norm_prev);
-        break;  // exit inner loop → refactor
-      }
-      d0_norm_prev = d0_norm;
-
-      // Recompute d0, d1 with fresh RHS but stale Gram.
-      if (inner + 1 < inner_steps) {
-        // Update scaling for RHS computation (but don't refactor).
-        model.SetScaling(W);
-        // Build fresh RHS.
-        RowSpace v = model.MakeRowSpace();
-        auto rhs0 = model.MakeSolverRHS();
-        rhs0.SetZero();
-        v = W; v *= 2.0;
-        model.AccumulateAtranspose(v, rhs0);
-
-        auto rhs1 = model.MakeSolverRHS();
-        rhs1 = cost_rhs_blend;
-        v = quadraticRepresentation(W, b);
-        model.AccumulateAtranspose(v, rhs1);
-        rhs1 *= -1;
-        auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
-        if (ts && !ts->equality_sub_assemblers().empty()) {
-          auto d_rhs = ts->EqualityAffineTermRHS();
-          rhs1 += d_rhs;
+          printf("  %3d.%d  %10s  %10.4e  %10.4e  %10.4e  %10.4e"
+                 "  d0=%.2e d1=%.2e  (frozen-J)\n",
+                 outer, inner + 1, "", k, d_inf_f, d_sq_f, s_dot_x_f,
+                 normInf(d0_f), normInf(d1_f));
         }
 
-        // Solve with STALE factorization.
-        auto y = model.MakeSolverRHS(2);
-        y.SetColumn(0, rhs0);
-        y.SetColumn(1, rhs1);
-        model.SolveSolverRHS(y);
-        total_sol += 2;
+        // Take geodesic step.
+        double alpha_f = std::min(1.0, 2.0 / (d_inf_f * d_inf_f));
+        geodesicUpdate(W, alpha_f, d_f);
 
-        int nr = model.number_of_variables();
-        Eigen::MatrixXd y_dense(nr, 2);
-        y.supernodes->GatherInto(y_dense);
-        y0 = y_dense.col(0);
-        y1 = y_dense.col(1);
-
-        auto row = model.MakeRowSpace(2);
-        model.MultiplyA(y, row);
-        RowSpace ay0 = model.MakeRowSpace();
-        RowSpace ay1 = model.MakeRowSpace();
-        ay0.col() = row.col(0);
-        ay1.col() = row.col(1);
-
-        RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-        d0 = model.MakeRowSpace();
-        setOnes(d0);
-        d0 -= quadraticRepresentation(sqrtW, ay0);
-        d1 = quadraticRepresentation(sqrtW,
-            addScaled(b, ay1, -1.0, -1.0));
+        // Re-solve only d0 with updated W_i (1 solve). d1 is frozen.
+        if (inner + 1 < max_centering_steps) {
+          ComputeFrozenDecomposition(model, cost_rhs_blend, b, W0, W,
+                                     d0_f, d1_f, &y0_f, nullptr,
+                                     &rhs1_marker);
+          total_sol += 1;
+        }
       }
     }
 
-    if (done) break;
-
-    // Refactor for next outer iteration.
-    model.SetScaling(W);
-    if (!model.AssembleAndFactor()) break;
     ++outer;
   }
 
