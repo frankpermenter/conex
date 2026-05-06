@@ -35,6 +35,117 @@ Eigen::SparseMatrix<double> toSparse(const MatrixXd& M) {
   return S;
 }
 
+// Benchmark: average iterations to reach gap targets across many random LPs.
+TEST(PolyhedralCone, ConvergenceProfile) {
+  const int n = 5, m = 10;
+  const int num_problems = 200;
+  const std::vector<double> gap_targets = {
+      1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10,
+      1e-11, 1e-12, 1e-13};
+  const int max_iter = 40;
+
+  // Accumulators: iters_to_target[method][target_idx] = sum of iterations.
+  std::vector<std::vector<int>> nn_iters(gap_targets.size());
+  std::vector<std::vector<int>> poly_iters(gap_targets.size());
+
+  for (int prob = 0; prob < num_problems; ++prob) {
+    srand(prob + 1);
+    MatrixXd A = MatrixXd::Random(m, n).cwiseAbs() +
+                 0.1 * MatrixXd::Ones(m, n);
+    VectorXd b = VectorXd::Ones(m);
+    VectorXd c = A.transpose() * VectorXd::Ones(m);
+
+    std::vector<int> vars_n(n);
+    std::iota(vars_n.begin(), vars_n.end(), 0);
+
+    // Nonneg.
+    Model nn_model;
+    nn_model.AddLinearConstraint(toSparse(A), b, vars_n);
+    nn_model.SetLinearCost(c);
+    auto nn_solver = Solver::Build(nn_model);
+    auto nn_cm = nn_solver.MakeCompiledModel();
+    auto nn_result = GeodesicBarrierLP{1e-14, max_iter, false}.Run(nn_cm);
+
+    // Polyhedral.
+    const int np = n + 1;
+    MatrixXd C(m, np);
+    C.leftCols(n) = A;
+    C.col(n) = b;
+    EuclideanJordanAlgebra::PolyhedralConeOps poly_ops(C);
+
+    MatrixXd I_np = MatrixXd::Identity(np, np);
+    VectorXd b_zero = VectorXd::Zero(np);
+    MatrixXd E(1, np); E.setZero(); E(0, n) = 1.0;
+    VectorXd d(1); d(0) = 1.0;
+    VectorXd c_ext(np); c_ext.head(n) = c; c_ext(n) = 0;
+
+    std::vector<int> vars_np(np);
+    std::iota(vars_np.begin(), vars_np.end(), 0);
+
+    Model poly_model;
+    poly_model.AddBarrierConstraint(toSparse(I_np), b_zero, vars_np, &poly_ops);
+    poly_model.AddEqualityConstraint(toSparse(E), d, vars_np);
+    poly_model.SetLinearCost(c_ext);
+
+    auto poly_solver = Solver::BuildDense(poly_model);
+    auto poly_cm = poly_solver.MakeCompiledModel();
+    if (auto* ts = poly_solver.tree_solver())
+      ts->EnableAutoUpdateAtAssemble(true);
+
+    RowSpace z = poly_cm.MakeRowSpace();
+    VectorXd w0(np); w0.head(n).setZero(); w0(n) = 1.0;
+    z.col() = w0;
+    auto poly_result = SolveGeodesicBarrierLP(poly_cm, z, max_iter, 1e-14, false);
+
+    // Record iterations to each gap target.
+    for (int ti = 0; ti < (int)gap_targets.size(); ++ti) {
+      double tgt = gap_targets[ti];
+      int nn_it = max_iter;
+      for (int i = 0; i < (int)nn_result.iter_stats.size(); ++i) {
+        if (nn_result.iter_stats[i].complementarity < tgt &&
+            nn_result.iter_stats[i].complementarity > 0) {
+          nn_it = i + 1; break;
+        }
+      }
+      nn_iters[ti].push_back(nn_it);
+
+      int poly_it = max_iter;
+      for (int i = 0; i < (int)poly_result.iter_stats.size(); ++i) {
+        if (poly_result.iter_stats[i].complementarity < tgt &&
+            poly_result.iter_stats[i].complementarity > 0) {
+          poly_it = i + 1; break;
+        }
+      }
+      poly_iters[ti].push_back(poly_it);
+    }
+  }
+
+  // Print average iterations.
+  printf("\n=== Average iterations to gap target (%d problems, n=%d, m=%d) ===\n",
+         num_problems, n, m);
+  printf("  %10s  %12s  %12s  %8s\n",
+         "gap_target", "nonneg_avg", "polyhedral_avg", "ratio");
+  printf("  %s\n", std::string(48, '-').c_str());
+  for (int ti = 0; ti < (int)gap_targets.size(); ++ti) {
+    double nn_avg = 0, poly_avg = 0;
+    for (int v : nn_iters[ti]) nn_avg += v;
+    for (int v : poly_iters[ti]) poly_avg += v;
+    nn_avg /= num_problems;
+    poly_avg /= num_problems;
+    printf("  %10.0e  %12.2f  %12.2f  %8.2f\n",
+           gap_targets[ti], nn_avg, poly_avg, poly_avg / nn_avg);
+  }
+
+  // Basic sanity: both should converge on most problems.
+  double nn_avg_final = 0, poly_avg_final = 0;
+  for (int v : nn_iters.back()) nn_avg_final += v;
+  for (int v : poly_iters.back()) poly_avg_final += v;
+  nn_avg_final /= num_problems;
+  poly_avg_final /= num_problems;
+  EXPECT_LT(nn_avg_final, max_iter - 1) << "Nonneg should converge";
+  EXPECT_LT(poly_avg_final, max_iter - 1) << "Polyhedral should converge";
+}
+
 TEST(PolyhedralCone, NonnegVsPolyhedral) {
   srand(99);
   const int n = 5, m = 10;
@@ -56,7 +167,7 @@ TEST(PolyhedralCone, NonnegVsPolyhedral) {
   auto nonneg_solver = Solver::Build(nonneg_model);
   printf("  Built nonneg. Running...\n");
   auto nonneg_cm = nonneg_solver.MakeCompiledModel();
-  auto nonneg_result = GeodesicBarrierLP{1e-8, 30, true}.Run(nonneg_cm);
+  auto nonneg_result = GeodesicBarrierLP{1e-14, 100, true}.Run(nonneg_cm);
 
   printf("\n=== Nonneg formulation ===\n");
   printf("  iters=%d, gap=%.2e, mu=%.2e, c^Tx=%.6f\n",
@@ -119,7 +230,7 @@ TEST(PolyhedralCone, NonnegVsPolyhedral) {
   w0(n) = 1.0;  // y = 1, x = 0 → Cw = A*0 + b*1 = b > 0.
   z.col() = w0;
 
-  auto poly_result = SolveGeodesicBarrierLP(poly_cm, z, 60, 1e-8, true);
+  auto poly_result = SolveGeodesicBarrierLP(poly_cm, z, 100, 1e-14, true);
 
   printf("\n=== Polyhedral formulation ===\n");
   printf("  iters=%d, gap=%.2e, mu=%.2e\n",
