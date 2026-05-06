@@ -206,4 +206,186 @@ The crucial ingredient is combining the frozen-Jacobian with a line
 search: this advances $k$ (reduces $\mu$) using only cheap back-solves,
 avoiding the factorization cost of the standard approach.
 
+\section{Extension to $\theta$-continuation}
+
+The $\theta$-continuation algorithm (see \texttt{geodesic\_newton\_direction.tex})
+uses a three-term decomposition
+\[
+  d(k,\tau,\theta) = d_0 + k\bigl(\tau\,d_1^{(0)} + \theta\,d_1^{(\theta)}\bigr)
+\]
+and selects $(\tau, \theta)$ jointly via the duality identity (gap equation)
+and a normalization equation.  Here we derive the frozen-Jacobian variant.
+
+\subsection{Frozen-Jacobian primal-dual equations}
+
+At frozen Jacobian $W_0$ and current iterate $W_i$, the $\theta$-blended
+primal-dual equations are:
+\begin{align}
+  \lambda &= \frac{1}{k}\bigl(W_i + P(W_0^{1/2})(d)\bigr),
+    \label{eq:lam-frozen-theta} \\
+  s &= \frac{1}{k}\bigl(W_i^{-1} - P(W_0^{-1/2})(d)\bigr),
+    \label{eq:s-frozen-theta}
+\end{align}
+with primal feasibility $s = Ax + \tau b + \theta(e - b)$ and dual
+stationarity $A^T\lambda = \tau c + \theta(A^T e - c) + d_{\text{eq}}$.
+
+Comparing with the standard parameterization where
+$\lambda = \frac{1}{k}P(W^{1/2})(e + d)$:
+the \emph{value} $W_i$ replaces $P(W^{1/2})(e)$,
+and the \emph{Jacobian} $P(W_0^{1/2})$ replaces $P(W^{1/2})$.
+
+\subsection{Three-term decomposition}
+
+Eliminating $d$ from~\eqref{eq:s-frozen-theta} as in Section~2.1, the
+Gram system $(A^T P(W_0) A + Q)\,y = \text{rhs}$ has three right-hand sides:
+\begin{align}
+  \text{rhs}_0 &= A^T\bigl(W_i + P(W_0)(W_i^{-1})\bigr),
+    &\quad &\text{(centering, depends on $W_i$)} \\
+  \text{rhs}_1 &= -\bigl(c + A^T P(W_0)\,b\bigr) + d_{\text{eq}},
+    &\quad &\text{(cost, frozen)} \\
+  \text{rhs}_2 &= -\text{rhs}_1 - A^T\bigl(e + P(W_0)\,e\bigr),
+    &\quad &\text{($\theta$ correction, frozen)}
+\end{align}
+yielding solutions $y_0, y_1^{(0)}, y_1^{(\theta)}$ with $y = y_0/k
++ \tau\,y_1^{(0)} + \theta\,y_1^{(\theta)}$.
+
+The directions are recovered using $P(W_0^{1/2})$:
+\begin{align}
+  d_0 &= P(W_0^{1/2})\bigl(W_i^{-1} - A\,y_0\bigr),
+    \label{eq:d0-frozen-theta} \\
+  d_1^{(0)} &= P(W_0^{1/2})\bigl(-b - A\,y_1^{(0)}\bigr),
+    \quad\text{(frozen)} \label{eq:d10-frozen-theta} \\
+  d_1^{(\theta)} &= P(W_0^{1/2})\bigl(b - e - A\,y_1^{(\theta)}\bigr).
+    \quad\text{(frozen)} \label{eq:d1t-frozen-theta}
+\end{align}
+
+\paragraph{Key observation.}  Only $\text{rhs}_0$ (and hence $d_0$)
+depends on $W_i$.  The cost and theta components $d_1^{(0)},
+d_1^{(\theta)}$ are frozen.  After the initial 3-solve decomposition,
+each frozen-Jacobian step requires \textbf{one back-solve} to refresh~$d_0$.
+
+\paragraph{Consistency check.}  When $W_i = W_0$:
+$P(W_0)(W_0^{-1}) = e$, so $\text{rhs}_0 = A^T(W_0 + e)$\ldots
+no, that is wrong.  We have $W_0 + P(W_0)(W_0^{-1}) = W_0 + W_0 = 2W_0$,
+recovering the standard $\text{rhs}_0 = A^T(2W)$.  And
+$P(W_0^{1/2})(W_0^{-1}) = W_0 \cdot W_0^{-1} = e$, recovering
+$d_0 = e - P(W_0^{1/2})(Ay_0)$. \checkmark
+
+\subsection{Duality identity with frozen Jacobian}
+
+The duality identity (gap equation) from \texttt{geodesic\_newton\_direction.tex}
+\S6 is
+\begin{equation}\label{eq:gap-identity}
+  b^T\lambda + c^Tx + d^T\nu + \frac{x^TQx}{\tau} + \frac{\mu}{\tau}
+  = \theta\,R,
+\end{equation}
+where $R = \langle b, e\rangle + 1$.  With the frozen Jacobian, $\lambda$
+and $x$ are:
+\begin{align}
+  \lambda &= \frac{1}{k}\bigl(W_i + P(W_0^{1/2})(d)\bigr)
+    = \frac{W_i}{k}
+      + \tau\,P(W_0^{1/2})\,d_1^{(0)}
+      + \theta\,P(W_0^{1/2})\,d_1^{(\theta)}
+      + \frac{1}{k}\,P(W_0^{1/2})(d_0), \\
+  x &= \frac{y_0}{k} + \tau\,y_1^{(0)} + \theta\,y_1^{(\theta)}.
+\end{align}
+Both are affine in $(\tau, \theta)$.  The key difference from the standard
+case is in the $b^T\lambda$ term: the constant part is $b^T W_i / k$
+(depends on $W_i$) rather than $b^T P(W^{1/2})(e + d_0)/k$ (depends on
+a single~$W$).
+
+\paragraph{Decomposing $b^T\lambda$.}
+\begin{align}
+  b^T\lambda &= \underbrace{\frac{1}{k}\bigl(b^T W_i
+    + b^T P(W_0^{1/2})(d_0)\bigr)}_{\sigma_0}
+    + \underbrace{b^T P(W_0^{1/2})\,d_1^{(0)}}_{\sigma_1}\,\tau
+    + \underbrace{b^T P(W_0^{1/2})\,d_1^{(\theta)}}_{\sigma_\theta}\,\theta.
+    \label{eq:sigma-frozen}
+\end{align}
+Compare with the standard case where
+$\sigma_0 = \frac{1}{k} b^T P(W^{1/2})(e + d_0)$:
+the frozen version splits the ``value'' $W_i$ from the ``Jacobian''
+$P(W_0^{1/2})$.
+
+The $\sigma_1$ and $\sigma_\theta$ terms depend only on $W_0$ (frozen).
+Only $\sigma_0$ changes when $W_i$ is updated.
+
+\paragraph{The $c^Tx$ and $d^T\nu$ terms.}
+These use $y_0, y_1^{(0)}, y_1^{(\theta)}$ from the frozen Gram solve:
+\begin{align}
+  c^Tx &= \frac{c^T y_0}{k} + c^T y_1^{(0)}\,\tau + c^T y_1^{(\theta)}\,\theta
+         = \frac{\gamma_0^{(c)}}{k} + \gamma_1\,\tau + \gamma_\theta\,\theta, \\
+  d^T\nu &\text{ enters through $d_{\text{eq}}$ in the same pattern.}
+\end{align}
+The $\gamma_1$ and $\gamma_\theta$ terms use the frozen $y_1^{(0)}$
+and $y_1^{(\theta)}$.  Only $\gamma_0^{(c)} = c^T y_0$ changes when
+$d_0$ is refreshed.
+
+\paragraph{Quadratic cost.}
+The $x^TQx/\tau$ term decomposes identically to the standard case
+(see \texttt{geodesic\_newton\_direction.tex} \S6.2), since
+$x = y_0/k + \tau\,y_1^{(0)} + \theta\,y_1^{(\theta)}$ has the same
+structure.  The frozen Jacobian only affects how $y_0$ is computed,
+not the algebraic form.
+
+\subsection{Violation quadratic}
+
+Following the same elimination as the standard case
+(\texttt{geodesic\_newton\_direction.tex} \S8), we use the normalization
+equation to express $\theta(\tau) = a_0 + a_1\,\tau$, substitute into
+the gap equation, and obtain
+\begin{equation}\label{eq:frozen-tau-quad}
+  \beta\,\tau^2 + \gamma\,\tau + \mu_{\text{eff}} = 0,
+\end{equation}
+where the coefficients have the same algebraic form as the standard case
+but with:
+\begin{itemize}
+  \item $\sigma_0$ computed from $W_i$ and $W_0$ via~\eqref{eq:sigma-frozen},
+  \item $\sigma_1, \sigma_\theta$ computed from $W_0$ only (frozen),
+  \item $y_0$ from the frozen Gram solve (refreshed), $y_1^{(0)},
+    y_1^{(\theta)}$ frozen.
+\end{itemize}
+
+\paragraph{What changes per frozen-Jacobian step.}
+After refreshing $d_0$ and $y_0$ (1 back-solve):
+\begin{enumerate}
+  \item Recompute $\sigma_0 = \frac{1}{k}(b^T W_i + b^T P(W_0^{1/2})(d_0))$
+    and $\gamma_0^{(c)} = c^T y_0$.
+  \item Recompute the quadratic cost terms involving $y_0$:
+    $f = y_0/k + \theta\,y_1^{(\theta)}$, $f^TQf$, $f^TQy_1^{(0)}$.
+  \item Solve the quadratic~\eqref{eq:frozen-tau-quad} for $\tau$,
+    recover $\theta$.
+  \item Binary search over $\theta$ (or direct selection) as in the
+    standard algorithm.
+\end{enumerate}
+The normalization coefficients $N_\tau, N_\theta$ also have a $W_i$-dependent
+part (through $\lambda_0$) that must be refreshed.
+
+\subsection{Algorithm for frozen-Jacobian $\theta$-continuation}
+
+\begin{enumerate}
+\item \textbf{Factor:} Set $W_0 \leftarrow W_i$.  Compute
+  $G = A^T P(W_0) A + Q$ and factor.  Decompose into
+  $(d_0, d_1^{(0)}, d_1^{(\theta)})$: 3 back-solves.
+  Select $(\tau, \theta)$ via gap + normalization.  Take geodesic step.
+\item \textbf{Frozen-Jacobian step:}
+  \begin{enumerate}
+  \item Refresh $d_0$ via 1 back-solve with
+    $\text{rhs}_0 = A^T(W_i + P(W_0)(W_i^{-1}))$.
+  \item Recompute the $W_i$-dependent duality coefficients ($\sigma_0$,
+    normalization constant, quadratic cost terms involving $y_0$).
+  \item Select $(\tau, \theta)$ from the updated quadratic.
+  \item Take geodesic step.
+  \end{enumerate}
+\item Go to step~1 (refactor at new $W_i$).
+\end{enumerate}
+
+\paragraph{Cost per outer iteration.}
+One factorization, $3 + n_{\text{inner}}$ back-solves (3 for the initial
+decomposition, 1 per frozen-Jacobian step), and $1 + n_{\text{inner}}$
+$(\tau,\theta)$ selections.  The frozen components ($d_1^{(0)},
+d_1^{(\theta)}, \sigma_1, \sigma_\theta, \gamma_1, \gamma_\theta$,
+normalization coefficients $N_\tau, N_\theta$) are computed once and
+reused.
+
 \end{document}
