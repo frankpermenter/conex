@@ -2101,6 +2101,9 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_LP) {
   auto r3 = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 500});
   auto r4 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30});
   auto r5 = Solver::Build(model).Solve(GeodesicJacobianReuseLP{1e-10, 30, 1});
+  auto r6 = Solver::Build(model).Solve(HybridR{1e-10, 500});
+  auto r7 = Solver::Build(model).Solve(PhaseOneHybrid{1e-10, 500});
+  auto r8 = Solver::Build(model).Solve(HybridOnly{1e-10, 500});
 
   printf("\n=== LP algorithm comparison ===\n");
   printf("  %-25s  %3s  %5s  %12s  %10s  %10s  %10s  %10s  %10s\n",
@@ -2111,6 +2114,9 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_LP) {
   PrintSolveResult("ThetaContR", r3);
   PrintSolveResult("GeodesicLP", r4);
   PrintSolveResult("GeodesicLP + frozen-J", r5);
+  PrintSolveResult("HybridR", r6);
+  PrintSolveResult("PhaseOneHybrid", r7);
+  PrintSolveResult("HybridOnly", r8);
 }
 
 TEST(GeodesicBarrierQP, CompareAlgorithms_SDP) {
@@ -2140,6 +2146,9 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_SDP) {
   auto r3 = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 500});
   auto r4 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30});
   auto r5 = Solver::Build(model).Solve(GeodesicJacobianReuseLP{1e-10, 30, 1});
+  auto r6 = Solver::Build(model).Solve(HybridR{1e-10, 500});
+  auto r7 = Solver::Build(model).Solve(PhaseOneHybrid{1e-10, 500});
+  auto r8 = Solver::Build(model).Solve(HybridOnly{1e-10, 500});
 
   printf("\n=== SDP algorithm comparison ===\n");
   printf("  %-25s  %3s  %5s  %12s  %10s  %10s  %10s  %10s  %10s\n",
@@ -2150,6 +2159,9 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_SDP) {
   PrintSolveResult("ThetaContR", r3);
   PrintSolveResult("GeodesicLP", r4);
   PrintSolveResult("GeodesicLP + frozen-J", r5);
+  PrintSolveResult("HybridR", r6);
+  PrintSolveResult("PhaseOneHybrid", r7);
+  PrintSolveResult("HybridOnly", r8);
 }
 
 }  // namespace
