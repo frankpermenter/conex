@@ -156,4 +156,20 @@ struct GeodesicBarrierLP {
   }
 };
 
+// Strategy: z-space θ-continuation for general log-homogeneous barriers.
+struct GeodesicBarrierThetaContinuation {
+  double tolerance = 1e-8;
+  int max_iterations = 500;
+  int max_centering_steps = 1;
+  bool verbose = false;
+
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace z = model.MakeRowSpace();
+    setOnes(z);
+    return SolveGeodesicBarrierThetaContinuation(
+        model, z, max_iterations, max_centering_steps,
+        tolerance, verbose);
+  }
+};
+
 }  // namespace conex

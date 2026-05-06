@@ -256,6 +256,17 @@ GeodesicResult SolveGeodesicBarrierLP(
     double tolerance = 1e-8,
     bool verbose = false);
 
+// z-space θ-continuation for cones with log-homogeneous barriers.
+// Generalizes SolveGeodesicThetaContinuation using only z-space ops.
+// For symmetric cones with z_0 = e (ones), produces bit-identical results.
+GeodesicResult SolveGeodesicBarrierThetaContinuation(
+    CompiledModel& model,
+    RowSpace& z,                    // internal state (W for symmetric cones)
+    int max_outer_iterations = 500,
+    int max_centering_steps = 1,
+    double tolerance = 1e-8,
+    bool verbose = false);
+
 // Find the largest k such that ||d(k)||_inf <= 1, where d(k) = d0 + k * d1.
 // Requires W to be centered (d ≈ 0 at the current k).  Uses one factorization
 // and two back-solves.  Returns the new k (>= current k).

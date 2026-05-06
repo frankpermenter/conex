@@ -1648,5 +1648,52 @@ TEST(GeodesicBarrierQP, BarrierLP_QPWithEquality) {
   CompareBarrierVsClassic("QP+Equality", model);
 }
 
+// Compare z-space BarrierThetaContinuation vs W-space ThetaContinuation.
+static void CompareThetaContBarrierVsClassic(const char* name,
+                                              const Model& model) {
+  printf("\n====== ThetaCont %s ======\n", name);
+
+  auto sw = Solver::Build(model);
+  auto sz = Solver::Build(model);
+  auto cmw = sw.MakeCompiledModel();
+  auto cmz = sz.MakeCompiledModel();
+
+  auto rw = ThetaContinuation{1e-8, 50, 1, true}.Run(cmw);
+  auto rz = GeodesicBarrierThetaContinuation{1e-8, 50, 1, true}.Run(cmz);
+
+  printf("  W-space: %d iters, gap=%.2e, mu=%.2e\n",
+         rw.iterations, rw.complementarity, rw.mu);
+  printf("  z-space: %d iters, gap=%.2e, mu=%.2e\n",
+         rz.iterations, rz.complementarity, rz.mu);
+
+  // Both should converge.
+  EXPECT_LT(rw.mu, 1e-6) << name << ": W-space should converge";
+  EXPECT_LT(rz.mu, 1e-6) << name << ": z-space should converge";
+
+  // Solutions should match.
+  if (rw.x.size() > 0 && rz.x.size() > 0) {
+    printf("  x_diff = %.2e\n", (rw.x - rz.x).norm());
+    EXPECT_LT((rw.x - rz.x).norm(), 1e-4) << name << ": solution mismatch";
+  }
+}
+
+TEST(GeodesicBarrierQP, BarrierThetaCont_LP) {
+  srand(99);
+  const int n = 6, m1 = 10, m2 = 8;
+  MatrixXd A1 = MatrixXd::Random(m1, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m1, n);
+  MatrixXd A2 = MatrixXd::Random(m2, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m2, n);
+  VectorXd b1 = VectorXd::Ones(m1), b2 = VectorXd::Ones(m2);
+  VectorXd c = A1.transpose() * VectorXd::Ones(m1) +
+               A2.transpose() * VectorXd::Ones(m2);
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(toSparse(A1), b1, vars);
+  model.AddLinearConstraint(toSparse(A2), b2, vars);
+  model.SetLinearCost(c);
+  CompareThetaContBarrierVsClassic("LP", model);
+}
+
 }  // namespace
 }  // namespace conex

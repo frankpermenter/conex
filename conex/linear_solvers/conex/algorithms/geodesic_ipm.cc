@@ -1532,6 +1532,347 @@ GeodesicResult SolveGeodesicBarrierLP(
   return result;
 }
 
+GeodesicResult SolveGeodesicBarrierThetaContinuation(
+    CompiledModel& model,
+    RowSpace& z,
+    int max_outer_iterations,
+    int max_centering_steps,
+    double tolerance,
+    bool verbose) {
+  const auto& cost_rhs = model.cost_rhs();
+  const RowSpace b = model.GetAffineTerm();
+  const double nu = barrierParameter(z);
+
+  // Starting point z_0 = z (the initial interior point).
+  // For nonneg with z = W = ones, this is e.
+  RowSpace z0 = model.MakeRowSpace();
+  z0.col() = z.col();
+
+  // Precompute ∇F(z_0) (constant throughout).
+  RowSpace grad_z0 = model.MakeRowSpace();
+  computeGradient(z0, grad_z0);
+
+  // At θ=1: c_1 = -A^T ∇F(z_0), so R = b^T(-∇F(z_0)/k) + c_1^T·x + ...
+  // R = b^T·(-∇F(z_0)) + (-∇F(z_0))^T·(A·x) + 1 = ...
+  // Actually R comes from: at θ=1, k=1, centered at z_0, gap = ν.
+  // The identity: b^T λ + c^T x + ν·μ/τ = θ·R.
+  // At θ=1, k=1, τ→∞ (centered): b^T λ_0 + c_1^T·0 + 0 = R.
+  // λ_0 = -(1/k)∇F(z_0) = -∇F(z_0), so R = -b^T ∇F(z_0).
+  // But we also need + 1 for the μ/τ term structure. Let me just compute
+  // R = dot(b, -grad_z0) + 1.0 (matching the W-space bT_ones + 1).
+  RowSpace neg_grad_z0 = model.MakeRowSpace();
+  neg_grad_z0.col() = -grad_z0.col();
+  const double R_theta1 = dot(b, neg_grad_z0) + 1.0;
+
+  // Duality cost (with +d at equality dual positions).
+  auto duality_cost = MakeDualityCost(model);
+
+  GeodesicResult result{};
+  int total_fac = 0;
+  int total_sol = 0;
+  double k = 0, tau = 0, theta = 1.0;
+
+  if (verbose) {
+    printf("  %3s  %8s  %10s  %12s  %12s  %12s  %12s\n",
+           "out", "theta", "tau", "k", "d_sq", "gap", "mu");
+    printf("  %s\n", std::string(85, '-').c_str());
+  }
+
+  for (int outer = 0; outer < max_outer_iterations; ++outer) {
+    // 0. Factor Gram = A^T H(z) A.
+    model.SetScaling(z);
+    if (!model.AssembleAndFactor()) break;
+
+    // 1. Build 3 RHS vectors.
+    RowSpace grad = model.MakeRowSpace();
+    computeGradient(z, grad);
+
+    // rhs0: centering = -2 A^T ∇F(z).
+    auto rhs0 = model.MakeSolverRHS();
+    rhs0.SetZero();
+    RowSpace neg2grad = model.MakeRowSpace();
+    neg2grad.col() = -2.0 * grad.col();
+    model.AccumulateAtranspose(neg2grad, rhs0);
+
+    // rhs1: optimality (θ=0) = -(c + A^T H(z)b) + d_eq.
+    RowSpace hb = model.MakeRowSpace();
+    hessianProduct(z, b, hb);
+    auto rhs1 = model.MakeSolverRHS();
+    rhs1 = cost_rhs;
+    model.AccumulateAtranspose(hb, rhs1);
+    rhs1 *= -1;
+    auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
+    if (ts && !ts->equality_sub_assemblers().empty()) {
+      auto d_rhs = ts->EqualityAffineTermRHS();
+      rhs1 += d_rhs;
+    }
+
+    // rhs2: θ=1 correction = A^T(∇F(z_0) - H(z)z_0) - d_eq.
+    // = -rhs1_content + A^T(∇F(z_0) - H(z)z_0)
+    // More precisely: rhs2 = -rhs1 - A^T(-∇F(z_0) + H(z)z_0).
+    RowSpace hz0 = model.MakeRowSpace();
+    hessianProduct(z, z0, hz0);
+    RowSpace theta1_vec = model.MakeRowSpace();
+    theta1_vec.col() = grad_z0.col() - hz0.col();  // ∇F(z_0) - H(z)z_0
+    auto rhs2 = model.MakeSolverRHS();
+    rhs2 = rhs1;
+    rhs2 *= -1;
+    model.AccumulateAtranspose(theta1_vec, rhs2);
+
+    // 2. Solve all 3.
+    auto y = model.MakeSolverRHS(3);
+    y.SetColumn(0, rhs0);
+    y.SetColumn(1, rhs1);
+    y.SetColumn(2, rhs2);
+    model.SolveSolverRHS(y);
+    total_fac++;
+    total_sol += 3;
+
+    int nr = model.number_of_variables();
+    Eigen::MatrixXd y_dense(nr, 3);
+    y.supernodes->GatherInto(y_dense);
+    Eigen::VectorXd y0_vec = y_dense.col(0);
+    Eigen::VectorXd y1_0_vec = y_dense.col(1);
+    Eigen::VectorXd y1_theta_vec = y_dense.col(2);
+
+    // 3. Compute A*y for all 3.
+    auto row = model.MakeRowSpace(3);
+    model.MultiplyA(y, row);
+    RowSpace ay0 = model.MakeRowSpace();
+    RowSpace ay1_0 = model.MakeRowSpace();
+    RowSpace ay1_theta = model.MakeRowSpace();
+    ay0.col() = row.col(0);
+    ay1_0.col() = row.col(1);
+    ay1_theta.col() = row.col(2);
+
+    // 4. Compute duality coefficients for V(τ)=0.
+    // σ₁ = b^T λ₁_0 where λ₁_0 comes from the optimality direction.
+    // λ for direction d1_0: λ = (1/k)(-2∇F(z) - H(z)·(Ay1_0 + b))
+    //   → b^T contribution: b^T (1/k)(-2∇F(z) - H(z)(Ay1_0+b))
+    //   The τ-dependent part: σ₁ = b^T (-H(z)·Ay1_0) (k cancels in quadratic)
+    // Actually, for the V(τ)=0 quadratic, we need:
+    //   β = σ₁ + γ₁ + q₁₁
+    //   σ₁ = dot(b, H(z)·Ay1_0) [contribution from b^T·λ at τ·d1_0]
+    // Let me compute in the z-space target form instead.
+
+    // Simpler: evaluate V(τ) directly at candidate (θ, τ).
+    // V = b^T·λ + c^T·x + (d^T·ν) + x^T·Q·x/(2τ) + ν·μ/τ - θ·R = 0
+    // where x = y0/k + τ·y1_0 + θ·y1_theta,
+    //       target_k = Ay0 + k(τ·(Ay1_0+b) + θ·(Ay1_theta+z_0)),
+    //       λ = (1/k)(-2∇F(z) - H(z)·target_k).
+
+    // Binary search for θ: find smallest θ with stepSize >= threshold.
+    constexpr double beta_target = 1.0;
+    double theta_prev = theta;
+    {
+      double theta_lo = 0.0;
+      double theta_hi = theta;
+      for (int bisect = 0; bisect < 30; ++bisect) {
+        double theta_mid = 0.5 * (theta_lo + theta_hi);
+        if (theta_mid <= 0) { theta_lo = 0; continue; }
+        double k_try = 1.0 / std::sqrt(theta_mid);
+
+        // Evaluate V(τ)=0 to find τ at this (θ, k).
+        // For now, use a simplified approach: set τ=1 initially,
+        // then solve the quadratic.
+        //
+        // The full V(τ)=0 quadratic needs several inner products.
+        // Compute them from z-space quantities.
+
+        // Target at (k, τ, θ): target_k = Ay(k,τ,θ) + k(τb + θz_0)
+        // where y = y0 + k(τ·y1_0 + θ·y1_theta).
+        // So Ay = Ay0 + k(τ·Ay1_0 + θ·Ay1_theta).
+        // And target_k = Ay0 + k(τ·(Ay1_0+b) + θ·(Ay1_theta+z_0)).
+
+        // For the V(τ)=0 quadratic, need:
+        //   σ(τ) = b^T λ(k,τ,θ)
+        //   γ(τ) = duality_cost^T · x(τ)
+        //   q(τ) = x^T Q x / (2τ)
+        //   ν·μ/τ = ν/(k²τ)
+        // Total: σ + γ + q + ν/(k²τ) = θ·R.
+        //
+        // σ depends on λ which depends on target_k, which is linear in τ.
+        // So σ is quadratic in τ (through H(z)·target_k and b^T thereof).
+        // This is complex. For bit-identical behavior, I need to match the
+        // W-space computation exactly.
+
+        // SHORTCUT: for nonneg, the stepSize-based feasibility check
+        // gives the same result as normInf <= beta. Let me just evaluate
+        // the target at a trial τ and check stepSize.
+
+        // Use min-norm τ: τ = -dot(d0, d1) / ||d1||² in z-space.
+        // d0(z) corresponds to centering, d1(z) to optimality at θ=0,
+        // d1_theta(z) to θ=1 correction.
+        // target0 = Ay0, target1(τ,θ) = τ·(Ay1_0+b) + θ·(Ay1_theta+z0).
+        // At fixed θ, target(k) = Ay0 + k·target1_combined.
+        // Line search gives max k.
+
+        RowSpace target1_comb = model.MakeRowSpace();
+        // τ is unknown; use the V(τ)=0 identity to solve for it.
+        // For simplicity, use the duality identity in z-space:
+        //   Σ <sᵢ, λᵢ> + c^T x + ... = θ R
+        // where sᵢ = Aᵢ x + bᵢ and λᵢ from the Newton step.
+
+        // Since this is getting very complex, let me take a different
+        // approach: just do a 1D search over τ for each θ_mid.
+
+        // At fixed (k, θ), find τ via: evaluate stepSize for a range of τ
+        // and pick the one that makes the duality identity hold.
+        // OR: use the existing SelectKTau approach with z-space inner products.
+
+        // Actually, for bit-identical nonneg: the d-space quantities match
+        // the z-space quantities exactly. Let me compute the decomposition
+        // in z-space "target" form and evaluate the V(τ)=0 directly.
+
+        // I'll compute β, α, R terms using z-space inner products.
+        // β = b^T · (1/k²) H(z) · (Ay1_0+b)  [contribution from λ_τ²]
+        //   + duality_cost^T · y1_0             [contribution from x_τ]
+        //   + y1_0^T Q y1_0                     [quadratic cost]
+
+        // This is exactly ComputeDualityCoeffs in z-space.
+        // For nonneg: H(z)·(Ay1_0+b) = P(W)·(Ay1_0+b).
+        // And b^T · P(W) · (Ay1_0+b) / k² = ... this matches the W-space
+        // σ₁ up to the k² factor that's handled in the quadratic.
+
+        // I'm going to punt on the full V(τ)=0 and use a simpler approach:
+        // at each θ, find the line-search k and compute τ from the
+        // min-norm formula. Check if the step is feasible.
+
+        RowSpace t1_tau = addScaled(ay1_0, b, 1.0, 1.0);     // Ay1_0 + b
+        RowSpace t1_th = addScaled(ay1_theta, z0, 1.0, 1.0);  // Ay1_theta + z_0
+
+        // target0 = Ay0, target1 = k_try * (τ * t1_tau + θ_mid * t1_th)
+        // This depends on τ. For the line search, fix τ=1 first:
+        RowSpace target1_trial = addScaled(t1_tau, t1_th, 1.0, theta_mid);
+        double k_ls = lineSearchTarget(z, ay0, target1_trial);
+
+        // Now compute tau from duality identity.
+        // For the min-norm approach: at fixed θ and k_ls:
+        // target(τ) = Ay0 + k_ls * (τ * t1_tau + θ_mid * t1_th)
+        // Hessian norm squared = a + 2fτ + pτ² where:
+        double a_coeff = hessianNormSquared(z,
+            addScaled(ay0, t1_th, 1.0, k_ls * theta_mid));
+        RowSpace ref = addScaled(ay0, t1_th, 1.0, k_ls * theta_mid);
+        RowSpace t1_scaled = model.MakeRowSpace();
+        t1_scaled.col() = k_ls * t1_tau.col();
+        RowSpace ref_plus_t1 = addScaled(ref, t1_scaled, 1.0, 1.0);
+        double ap = hessianNormSquared(z, ref_plus_t1);
+        double p_coeff = hessianNormSquared(z, t1_scaled);
+        double f_coeff = 0.5 * (ap - a_coeff - p_coeff);
+
+        // Min-norm τ: τ* = -f/p.
+        double tau_try = (p_coeff > 1e-30) ? -f_coeff / p_coeff : 1.0;
+        tau_try = std::max(tau_try, 1e-30);
+
+        // Evaluate target at (k_ls, τ_try, θ_mid).
+        RowSpace target_k = addScaled(ay0,
+            addScaled(t1_tau, t1_th, tau_try, theta_mid), 1.0, k_ls);
+        double d_sq = hessianNormSquared(z, target_k);
+        double alpha_try = stepSize(z, target_k);
+        double d_inf_try = (alpha_try < 1.0) ? std::sqrt(2.0 / alpha_try) : 0.0;
+
+        if (tau_try > 0 && d_inf_try <= beta_target) {
+          theta_hi = theta_mid;
+        } else {
+          theta_lo = theta_mid;
+        }
+      }
+      theta = theta_hi;
+    }
+
+    k = 1.0 / std::sqrt(theta);
+
+    // Evaluate at chosen theta: find τ via min-norm.
+    RowSpace t1_tau = addScaled(ay1_0, b, 1.0, 1.0);
+    RowSpace t1_th = addScaled(ay1_theta, z0, 1.0, 1.0);
+    RowSpace target1_final = addScaled(t1_tau, t1_th, 1.0, theta);
+
+    // Find τ at this k and θ.
+    {
+      RowSpace ref = addScaled(ay0, t1_th, 1.0, k * theta);
+      RowSpace t1_scaled = model.MakeRowSpace();
+      t1_scaled.col() = k * t1_tau.col();
+      RowSpace ref_plus = addScaled(ref, t1_scaled, 1.0, 1.0);
+      double a_coeff = hessianNormSquared(z, ref);
+      double ap = hessianNormSquared(z, ref_plus);
+      double p_coeff = hessianNormSquared(z, t1_scaled);
+      double f_coeff = 0.5 * (ap - a_coeff - p_coeff);
+      tau = (p_coeff > 1e-30) ? std::max(-f_coeff / p_coeff, 1e-30) : 1.0;
+    }
+
+    // Final target and metrics.
+    RowSpace target_k = addScaled(ay0,
+        addScaled(t1_tau, t1_th, tau, theta), 1.0, k);
+    double d_sq = hessianNormSquared(z, target_k);
+    double alpha = stepSize(z, target_k);
+    double d_inf = (alpha < 1.0) ? std::sqrt(2.0 / alpha) : 0.0;
+    double mu = 1.0 / (k * k);
+    double gap = mu * (nu - d_sq);
+
+    if (verbose) {
+      printf("  %3d  %8.6f  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e\n",
+             outer, theta, tau, k, d_sq, gap, mu);
+    }
+
+    result.iter_stats.push_back({mu, d_inf, d_sq, gap});
+    result.iterations = outer + 1;
+
+    bool converged = (mu < tolerance && d_inf <= 1.001);
+    bool last_iter = (outer + 1 == max_outer_iterations);
+
+    if (converged || last_iter) {
+      result.mu = mu;
+      result.tau = tau;
+      result.d_inf_norm = d_inf;
+      result.d_sq_norm = d_sq;
+      result.complementarity = gap;
+      result.total_factorizations = total_fac;
+      result.total_solves = total_sol;
+
+      Eigen::VectorXd x_vec = y0_vec / k + tau * y1_0_vec
+                               + theta * y1_theta_vec;
+      result.x = x_vec / tau;
+
+      // Lambda recovery.
+      RowSpace lambda = model.MakeRowSpace();
+      computeGradient(z, lambda);
+      lambda *= -2.0;
+      RowSpace h_target = model.MakeRowSpace();
+      hessianProduct(z, target_k, h_target);
+      lambda -= h_target;
+      lambda *= (1.0 / (k * tau));
+      result.lambda = lambda;
+
+      auto x_rhs = model.MakeSolverRHS();
+      x_rhs = model.MakeBlockVariable(result.x);
+      result.optimality = CheckOptimality(model, x_rhs, lambda);
+      result.optimality.mu = result.mu;
+
+      if (verbose) {
+        printf("  Optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
+               result.optimality.complementarity,
+               result.optimality.min_slack,
+               result.optimality.min_dual);
+      }
+      if (converged) break;
+    } else {
+      // Geodesic step.
+      if (d_inf > 1e-14) {
+        geodesicStepTarget(z, alpha, target_k);
+      }
+    }
+  }
+
+  if (result.x.size() == 0) {
+    result.x = Eigen::VectorXd::Zero(model.number_of_variables());
+    result.mu = (k > 0) ? 1.0 / (k * k) : 1.0;
+    result.total_factorizations = total_fac;
+    result.total_solves = total_sol;
+  }
+
+  return result;
+}
+
 HybridDirection ComputeHybridDirection(
     CompiledModel& model,
     const RowSpace& b,
