@@ -1364,31 +1364,23 @@ GeodesicResult SolveGeodesicLP(
       }
       break;
     } else {
-      // Mehrotra-like correction: find δ such that exp(α(d+δ)) agrees
-      // with 1+αd at the affine constraint level.
-      // δ_range = -P(W^{1/2}) A (G^{-1} A^T P(W^{1/2})(α d²/2))
       if (mehrotra_correction) {
-        RowSpace d_sq_jordan = cwiseProduct(d, d);  // d² (Jordan square)
-        d_sq_jordan *= (alpha / 2.0);
-        RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-        RowSpace corr_v = quadraticRepresentation(sqrtW, d_sq_jordan);
-
-        auto corr_rhs = model.MakeSolverRHS();
-        corr_rhs.SetZero();
-        model.AccumulateAtranspose(corr_v, corr_rhs);
-        corr_rhs *= -1;
-        model.SolveSolverRHS(corr_rhs);  // reuses existing factorization
-        total_sol += 1;
-
-        auto corr_row = model.MakeRowSpace();
-        model.MultiplyA(corr_rhs, corr_row);
-        RowSpace delta = quadraticRepresentation(sqrtW, corr_row);
-        delta *= -1;
-
-        d += delta;
+        // Componentwise arctanh correction:
+        // W_i *= sqrt((1 + α d_i) / (1 - α d_i))
+        // Requires |α d_i| < 1, so clamp α < 1/||d||_∞.
+        double alpha_at = std::min(alpha, 0.99 / d_inf);
+        for (int seg = 0; seg < W.num_constraints(); ++seg) {
+          double* w = W.segment_ptr(seg);
+          const double* di = d.segment_ptr(seg);
+          int sz = W.sizes[seg];
+          for (int i = 0; i < sz; ++i) {
+            double ad = alpha_at * di[i];
+            w[i] *= std::sqrt((1.0 + ad) / (1.0 - ad));
+          }
+        }
+      } else {
+        geodesicUpdate(W, alpha, d);
       }
-
-      geodesicUpdate(W, alpha, d);
       model.SetScaling(W);
       if (!model.AssembleAndFactor()) break;
     }
