@@ -2071,5 +2071,93 @@ TEST(GeodesicBarrierQP, FrozenJacobian_ThetaCont_SDP) {
   EXPECT_LE(r2.total_factorizations, r1.total_factorizations);
 }
 
+// Compare ThetaCont (baseline), ThetaCont (frozen-J), and ThetaContR.
+TEST(GeodesicBarrierQP, CompareAlgorithms_LP) {
+  srand(99);
+  const int n = 6, m = 14;
+  MatrixXd A = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(toSparse(A), b, vars);
+  model.SetLinearCost(c);
+
+  auto s1 = Solver::Build(model);
+  auto cm1 = s1.MakeCompiledModel();
+  auto r1 = ThetaContinuation{1e-10, 50, 0, false}.Run(cm1);
+
+  auto s2 = Solver::Build(model);
+  auto cm2 = s2.MakeCompiledModel();
+  auto r2 = ThetaContinuation{1e-10, 50, 1, false}.Run(cm2);
+
+  auto s3 = Solver::Build(model);
+  auto cm3 = s3.MakeCompiledModel();
+  auto r3 = ThetaContinuationR{1e-10, 500, false}.Run(cm3);
+
+  printf("\n=== LP algorithm comparison ===\n");
+  printf("  %-25s  %3s  %5s  %12s  %12s\n",
+         "Algorithm", "fac", "sol", "gap", "compl");
+  printf("  %-25s  %3d  %5d  %12.2e  %12.2e\n",
+         "ThetaCont", r1.total_factorizations, r1.total_solves,
+         r1.complementarity, r1.optimality.complementarity);
+  printf("  %-25s  %3d  %5d  %12.2e  %12.2e\n",
+         "ThetaCont + frozen-J", r2.total_factorizations, r2.total_solves,
+         r2.complementarity, r2.optimality.complementarity);
+  printf("  %-25s  %3d  %5d  %12.2e  %12.2e\n",
+         "ThetaContR", r3.total_factorizations, r3.total_solves,
+         r3.complementarity, r3.optimality.complementarity);
+}
+
+TEST(GeodesicBarrierQP, CompareAlgorithms_SDP) {
+  srand(42);
+  const int n_psd = 4, p = 6;
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  auto make_sym = [](int n) {
+    MatrixXd M = MatrixXd::Random(n, n);
+    return (M + M.transpose()) / 2.0;
+  };
+  for (int i = 0; i < p; ++i)
+    A_list.push_back(toSparse(make_sym(n_psd)));
+  Eigen::SparseMatrix<double> B = toSparse(
+      3.0 * MatrixXd::Identity(n_psd, n_psd));
+  VectorXd c(p);
+  for (int i = 0; i < p; ++i)
+    c(i) = Eigen::MatrixXd(A_list[i]).trace();
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddPSDConstraint(A_list, B, vars, false);
+  model.SetLinearCost(c);
+
+  auto s1 = Solver::Build(model);
+  auto cm1 = s1.MakeCompiledModel();
+  auto r1 = ThetaContinuation{1e-10, 50, 0, false}.Run(cm1);
+
+  auto s2 = Solver::Build(model);
+  auto cm2 = s2.MakeCompiledModel();
+  auto r2 = ThetaContinuation{1e-10, 50, 1, false}.Run(cm2);
+
+  auto s3 = Solver::Build(model);
+  auto cm3 = s3.MakeCompiledModel();
+  auto r3 = ThetaContinuationR{1e-10, 500, false}.Run(cm3);
+
+  printf("\n=== SDP algorithm comparison ===\n");
+  printf("  %-25s  %3s  %5s  %12s  %12s\n",
+         "Algorithm", "fac", "sol", "gap", "compl");
+  printf("  %-25s  %3d  %5d  %12.2e  %12.2e\n",
+         "ThetaCont", r1.total_factorizations, r1.total_solves,
+         r1.complementarity, r1.optimality.complementarity);
+  printf("  %-25s  %3d  %5d  %12.2e  %12.2e\n",
+         "ThetaCont + frozen-J", r2.total_factorizations, r2.total_solves,
+         r2.complementarity, r2.optimality.complementarity);
+  printf("  %-25s  %3d  %5d  %12.2e  %12.2e\n",
+         "ThetaContR", r3.total_factorizations, r3.total_solves,
+         r3.complementarity, r3.optimality.complementarity);
+}
+
 }  // namespace
 }  // namespace conex
