@@ -142,15 +142,20 @@ struct GeodesicLP {
 };
 
 // Strategy: z-space geodesic LP for general log-homogeneous barriers.
-// Bit-identical to GeodesicLP for symmetric cones.
+// Bit-identical to GeodesicLP for symmetric cones when initial_z is empty.
 struct GeodesicBarrierLP {
   double tolerance = 1e-8;
   int max_iterations = 30;
   bool verbose = false;
+  Eigen::VectorXd initial_z;  // empty → setOnes (symmetric cone default)
 
   GeodesicResult Run(CompiledModel& model) const {
     RowSpace z = model.MakeRowSpace();
-    setOnes(z);
+    if (initial_z.size() > 0) {
+      z.col() = initial_z;
+    } else {
+      setOnes(z);
+    }
     return SolveGeodesicBarrierLP(
         model, z, max_iterations, tolerance, verbose);
   }
@@ -162,10 +167,15 @@ struct GeodesicBarrierThetaContinuation {
   int max_iterations = 500;
   int max_centering_steps = 1;
   bool verbose = false;
+  Eigen::VectorXd initial_z;  // empty → setOnes
 
   GeodesicResult Run(CompiledModel& model) const {
     RowSpace z = model.MakeRowSpace();
-    setOnes(z);
+    if (initial_z.size() > 0) {
+      z.col() = initial_z;
+    } else {
+      setOnes(z);
+    }
     return SolveGeodesicBarrierThetaContinuation(
         model, z, max_iterations, max_centering_steps,
         tolerance, verbose);

@@ -88,29 +88,24 @@ TEST(PolyhedralCone, ConvergenceProfile) {
     poly_model.AddEqualityConstraint(toSparse(E), d, vars_np);
     poly_model.SetLinearCost(c_ext);
 
-    auto poly_solver = Solver::BuildDense(poly_model);
-    auto poly_cm = poly_solver.MakeCompiledModel();
-    if (auto* ts = poly_solver.tree_solver())
-      ts->EnableAutoUpdateAtAssemble(true);
-
-    RowSpace z = poly_cm.MakeRowSpace();
     VectorXd w0(np); w0.head(n).setZero(); w0(n) = 1.0;
-    z.col() = w0;
-    auto poly_result = SolveGeodesicBarrierLP(poly_cm, z, max_iter, 1e-14, false);
 
-    // Symmetric integrator.
+    auto run_poly = [&](const EuclideanJordanAlgebra::SymmetricConeOperations* ops) {
+      Model m;
+      m.AddBarrierConstraint(toSparse(I_np), b_zero, vars_np, ops);
+      m.AddEqualityConstraint(toSparse(E), d, vars_np);
+      m.SetLinearCost(c_ext);
+      auto s = Solver::BuildDense(m);
+      if (auto* ts = s.tree_solver())
+        ts->EnableAutoUpdateAtAssemble(true);
+      auto cm = s.MakeCompiledModel();
+      return GeodesicBarrierLP{1e-14, max_iter, false, w0}.Run(cm);
+    };
+
+    auto poly_result = run_poly(&poly_ops);
+
     EuclideanJordanAlgebra::PolyhedralConeOps sym_ops(C, /*use_symmetric=*/true);
-    Model sym_model;
-    sym_model.AddBarrierConstraint(toSparse(I_np), b_zero, vars_np, &sym_ops);
-    sym_model.AddEqualityConstraint(toSparse(E), d, vars_np);
-    sym_model.SetLinearCost(c_ext);
-    auto sym_solver = Solver::BuildDense(sym_model);
-    auto sym_cm = sym_solver.MakeCompiledModel();
-    if (auto* ts2 = sym_solver.tree_solver())
-      ts2->EnableAutoUpdateAtAssemble(true);
-    RowSpace z2 = sym_cm.MakeRowSpace();
-    z2.col() = w0;
-    auto sym_result = SolveGeodesicBarrierLP(sym_cm, z2, max_iter, 1e-14, false);
+    auto sym_result = run_poly(&sym_ops);
 
     // Record iterations to each gap target.
     for (int ti = 0; ti < (int)gap_targets.size(); ++ti) {
@@ -236,28 +231,15 @@ TEST(PolyhedralCone, NonnegVsPolyhedral) {
   poly_model.AddEqualityConstraint(toSparse(E), d, vars_np);
   poly_model.SetLinearCost(c_ext);
 
-  fprintf(stderr, "  Building polyhedral solver (nconstr=%d)...\n",
-          poly_model.num_constraints());
-  // Use BuildDense to skip structural rank / tree decomposition.
-  auto poly_solver = Solver::BuildDense(poly_model);
-  printf("  Built. num_vars=%d\n", poly_solver.kkt()->number_of_variables());
-  auto poly_cm = poly_solver.MakeCompiledModel();
-
-  // Enable arena zeroing (needed for BarrierGramEvaluator).
-  if (auto* ts = poly_solver.tree_solver()) {
-    ts->EnableAutoUpdateAtAssemble(true);
-  }
-
-  // Initialize z = w_0 where w_0 = [0; 1] (feasible: Cw_0 = b > 0).
-  RowSpace z = poly_cm.MakeRowSpace();
-  // Set z to the affine term... but b_zero = 0, so we need to set
-  // z manually to a feasible interior point.
   VectorXd w0(np);
   w0.head(n).setZero();
-  w0(n) = 1.0;  // y = 1, x = 0 → Cw = A*0 + b*1 = b > 0.
-  z.col() = w0;
+  w0(n) = 1.0;
 
-  auto poly_result = SolveGeodesicBarrierLP(poly_cm, z, 100, 1e-14, true);
+  auto poly_solver = Solver::BuildDense(poly_model);
+  if (auto* ts = poly_solver.tree_solver())
+    ts->EnableAutoUpdateAtAssemble(true);
+  auto poly_cm = poly_solver.MakeCompiledModel();
+  auto poly_result = GeodesicBarrierLP{1e-14, 100, true, w0}.Run(poly_cm);
 
   printf("\n=== Polyhedral formulation ===\n");
   printf("  iters=%d, gap=%.2e, mu=%.2e\n",
