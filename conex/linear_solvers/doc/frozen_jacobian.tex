@@ -1,0 +1,209 @@
+\documentclass{article}
+\usepackage{amsmath, amssymb, booktabs}
+
+\title{Frozen-Jacobian Line Search for the Geodesic IPM}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setup}
+
+We consider the geodesic interior-point method for the conic program
+\[
+  \min_x\; c^T x \quad \text{s.t.}\quad Ax + b \succeq 0,
+\]
+with the weight parameterization
+\[
+  s = \tfrac{1}{k}\,W^{-1}(e - d), \qquad
+  \lambda = \tfrac{1}{k}\,W(e + d),
+\]
+where $k = 1/\sqrt{\mu}$ and $W$ is a positive diagonal scaling (or,
+more generally, an element of the automorphism group of the cone).
+We write $P(W) = W^2$ for the quadratic representation.
+
+Eliminating $d$ from the KKT conditions $s = Ax + b$ and
+$A^T\lambda = c$ yields the normal equations
+\begin{equation}\label{eq:standard}
+  (A^T W^2 A + Q)\,y = 2A^T W - k(c + A^T W^2 b),
+\end{equation}
+where $y = kx$ and $Q$ accounts for any quadratic cost.  The Newton
+direction is recovered as $d = e + W\,\text{slack}$, where
+$\text{slack} = -kb - Ay$.
+
+The standard geodesic LP algorithm repeats:
+\begin{enumerate}
+\item Factor $G = A^T W^2 A + Q$.
+\item Decompose into $d = d_0 + k\,d_1$ (2 back-solves).
+\item Line search: find $k_{\max}$ with $\|d_0 + k_{\max} d_1\|_\infty \le 1$.
+\item Geodesic step: $W \leftarrow W \cdot \exp(\alpha\, d)$.
+\end{enumerate}
+Each outer iteration requires one factorization and two back-solves.
+
+\section{Frozen-Jacobian Newton system}
+
+When we step from $W_0$ (the factorization point) to a new iterate $W_i$,
+the standard approach refactors at $W_i$.  Instead, we freeze the Jacobian
+at $W_0$ and only update the residual at $W_i$.
+
+The standard linearized equations at $W$ with direction $d$ are:
+\begin{align}
+  A^T\bigl(W(e+d)\bigr)/k &= Qx + c, \label{eq:dual-std}\\
+  W^{-1}(e-d)/k &= Ax + b. \label{eq:primal-std}
+\end{align}
+In the frozen-Jacobian variant, the ``value'' terms use $W_i$ (current
+iterate) while the ``Jacobian'' terms use $W_0$ (frozen):
+\begin{align}
+  A^T(W_i + W_0\, d)/k &= Qx + c, \label{eq:dual-frozen}\\
+  (W_i^{-1} - W_0^{-1}\, d)/k &= Ax + b. \label{eq:primal-frozen}
+\end{align}
+
+\subsection{Elimination}
+
+From~\eqref{eq:primal-frozen}:
+\[
+  d = W_0\bigl(W_i^{-1} - k(Ax + b)\bigr)
+    = W_0 W_i^{-1} - k\,W_0(Ax + b).
+\]
+Substituting into~\eqref{eq:dual-frozen}:
+\[
+  A^T\!\bigl(W_i + W_0^2 W_i^{-1} - k\,W_0^2(Ax+b)\bigr)/k = Qx + c.
+\]
+Rearranging:
+\begin{equation}\label{eq:frozen-system}
+  \boxed{
+  (A^T W_0^2 A + Q)\, x
+  = \frac{1}{k}\,A^T\!\bigl(W_i + W_0^2 W_i^{-1}\bigr)
+    - A^T W_0^2 b - c.
+  }
+\end{equation}
+
+\paragraph{Consistency check.}
+When $W_i = W_0$, the centering term becomes
+$W_0 + W_0^2 W_0^{-1} = 2W_0$, recovering~\eqref{eq:standard}.
+
+\subsection{Direction recovery}
+
+After solving~\eqref{eq:frozen-system} for $y = kx$:
+\begin{equation}\label{eq:d-recovery}
+  d = \frac{W_0}{W_i} + W_0 \cdot \text{slack},
+  \qquad \text{slack} = -kb - Ay.
+\end{equation}
+Compare with the standard recovery $d = e + W \cdot \text{slack}$:
+the centering term changes from $e$ to $W_0/W_i$, and the Jacobian
+in the slack term changes from $W_i$ to $W_0$.
+
+\section{Two-term decomposition}
+
+The frozen system~\eqref{eq:frozen-system} decomposes into centering and
+cost components:
+\begin{align}
+  (A^T W_0^2 A + Q)\,y_0 &= A^T(W_i + W_0^2 W_i^{-1}),
+    &\quad &\text{(centering, depends on $W_i$)} \label{eq:rhs0}\\
+  (A^T W_0^2 A + Q)\,y_1 &= -(c + A^T W_0^2 b) + d_{\text{eq}},
+    &\quad &\text{(cost, frozen)} \label{eq:rhs1}
+\end{align}
+where $d_{\text{eq}}$ is the equality constraint correction.
+
+\paragraph{Key observation.}
+The cost component $y_1$ depends only on $W_0$ and is \emph{constant}
+across all frozen-Jacobian iterations.  After the initial 2-solve
+decomposition, each subsequent iteration requires only \textbf{one
+back-solve} (for $y_0$) plus a line search on
+$d = d_0^{(i)} + k\,d_1^{\text{frozen}}$.
+
+The directions are recovered componentwise:
+\begin{align}
+  d_0 &= W_0 \cdot (W_i^{-1} - A y_0), \\
+  d_1 &= W_0 \cdot (-b - A y_1). \quad \text{(frozen)}
+\end{align}
+
+\section{Algorithm}
+
+\begin{enumerate}
+\item \textbf{Factor:} Set $W_0 \leftarrow W_i$.  Compute $G = A^T W_0^2 A + Q$
+  and factor.  Decompose $d = d_0 + k\,d_1$ via standard 2-solve decomposition.
+  Line search for $k$.  Take geodesic step.
+\item \textbf{Frozen-Jacobian iterations} (repeat until degradation):
+  \begin{enumerate}
+  \item Compute $d_0^{(i)}$ via 1 back-solve with RHS from~\eqref{eq:rhs0}.
+    Reuse $d_1^{\text{frozen}}$ from step~1.
+  \item Line search: find $k_{\max}$ with
+    $\|d_0^{(i)} + k_{\max}\,d_1^{\text{frozen}}\|_\infty \le 1$.
+    Set $k \leftarrow \max(k, k_{\max})$.
+  \item Take geodesic step $W_i \leftarrow W_i \cdot \exp(\alpha\, d)$.
+  \item If $\|d_0^{(i)}\|$ is growing (frozen Jacobian degrading), exit.
+  \end{enumerate}
+\item Go to step~1 (refactor at new $W_i$).
+\end{enumerate}
+
+\paragraph{Cost per outer iteration.}
+One factorization, $2 + n_{\text{inner}}$ back-solves (2 for the initial
+decomposition, 1 per frozen-Jacobian step), and $1 + n_{\text{inner}}$
+line searches.
+
+\section{Results}
+
+On a test QP (HS21-type, 7 variables, 10 constraints):
+
+\begin{center}
+\begin{tabular}{lrrr}
+\toprule
+Method & Factorizations & Back-solves & Final gap \\
+\midrule
+Standard GeodesicLP & 16 & 32 & $9.7 \times 10^{-11}$ \\
+Frozen-Jacobian ($n_{\text{inner}}=3$) & 9 & 50 & $8.4 \times 10^{-12}$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The frozen-Jacobian variant halves the number of factorizations at
+the cost of additional back-solves.  For problems where factorization
+dominates (large sparse systems), this is a significant win.
+
+\subsection{Convergence behavior}
+
+The gap per factorization shows accelerating convergence:
+
+\begin{center}
+\begin{tabular}{crrc}
+\toprule
+Fac & $k$ & Gap & $k$ ratio \\
+\midrule
+0 & 1.7 & $2.8$ & --- \\
+1 & 4.1 & $6.5 \times 10^{-1}$ & 2.4$\times$ \\
+2 & 8.2 & $4.2 \times 10^{-2}$ & 2.0$\times$ \\
+3 & 30 & $6.0 \times 10^{-3}$ & 3.7$\times$ \\
+4 & 136 & $4.0 \times 10^{-4}$ & 4.5$\times$ \\
+5 & 577 & $1.2 \times 10^{-5}$ & 4.2$\times$ \\
+6 & $7.3\times10^3$ & $3.0 \times 10^{-8}$ & 12.7$\times$ \\
+7 & $4.4\times10^4$ & $1.8 \times 10^{-9}$ & 6.0$\times$ \\
+8 & $7.5\times10^5$ & $8.4 \times 10^{-12}$ & 17.2$\times$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The $k$-ratio (hence $\mu$-reduction) per factorization accelerates as
+the algorithm approaches the solution.  Near the optimum, $d_1$ is small
+(the cost direction vanishes), so the frozen Jacobian stays accurate over
+many steps and the line search can push $k$ much further before the
+approximation degrades.  This produces near-quadratic convergence in
+the number of factorizations.
+
+\subsection{Why frozen-Jacobian centering alone fails}
+
+An earlier experiment froze the Jacobian but held $k$ fixed (pure
+centering, no line search).  This reduced $\|d\|_\infty$ from $1.0$
+to $\sim 0.6$ per step, but the subsequent fresh decomposition showed
+the same $\|d_0\| \approx 1$ regardless.  The centering did not help
+the next line search because $d_0$ (the centering residual at a fresh
+factorization) is determined by the distance from $W$ to the central
+path at the \emph{current} $k$---not by how well centered $W$ was at
+the \emph{previous} $k$.
+
+The crucial ingredient is combining the frozen-Jacobian with a line
+search: this advances $k$ (reduces $\mu$) using only cheap back-solves,
+avoiding the factorization cost of the standard approach.
+
+\end{document}
