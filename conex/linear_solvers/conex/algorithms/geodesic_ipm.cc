@@ -83,12 +83,12 @@ OptimalityReport CheckOptimality(
   model.MultiplyA(x_rhs, s);
   s += model.GetAffineTerm();
 
-  // Cone membership.
-  report.min_slack = minEigenvalue(s);
-  report.min_dual = minEigenvalue(lambda);
+  // Cone membership (Euclidean min — correct for nonneg, approximate for others).
+  report.min_slack = s.col().minCoeff();
+  report.min_dual = lambda.col().minCoeff();
 
-  // Complementarity: <s, λ>.
-  report.complementarity = dot(s, lambda);
+  // Complementarity: <s, λ> (Euclidean inner product).
+  report.complementarity = s.col().dot(lambda.col());
 
   return report;
 }

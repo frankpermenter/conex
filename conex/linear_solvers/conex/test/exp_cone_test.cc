@@ -1247,7 +1247,7 @@ TEST(ExpCone, ZSpaceGeodesicLP) {
 // Test SolveGeodesicBarrierLP on exp cones through the Model/Solver
 // architecture, using BarrierLinearConstraint for Gram assembly.
 // Compare with the standalone z-space test above.
-TEST(ExpCone, DISABLED_BarrierLP_ModelSolver) {
+TEST(ExpCone, BarrierLP_ModelSolver) {
   using Eigen::VectorXd;
   using Eigen::MatrixXd;
   using Eigen::Vector3d;

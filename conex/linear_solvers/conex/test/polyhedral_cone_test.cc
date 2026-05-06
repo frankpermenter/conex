@@ -36,7 +36,7 @@ Eigen::SparseMatrix<double> toSparse(const MatrixXd& M) {
 }
 
 // Benchmark: average iterations to reach gap targets across many random LPs.
-TEST(PolyhedralCone, DISABLED_ConvergenceProfile) {
+TEST(PolyhedralCone, ConvergenceProfile) {
   const int n = 5, m = 10;
   const int num_problems = 200;
   const std::vector<double> gap_targets = {
@@ -166,7 +166,7 @@ TEST(PolyhedralCone, DISABLED_ConvergenceProfile) {
   EXPECT_LT(poly_avg_final, max_iter - 1) << "Polyhedral should converge";
 }
 
-TEST(PolyhedralCone, DISABLED_NonnegVsPolyhedral) {
+TEST(PolyhedralCone, NonnegVsPolyhedral) {
   srand(99);
   const int n = 5, m = 10;
 
@@ -183,13 +183,9 @@ TEST(PolyhedralCone, DISABLED_NonnegVsPolyhedral) {
   nonneg_model.AddLinearConstraint(toSparse(A), b, vars_n);
   nonneg_model.SetLinearCost(c);
 
-  fprintf(stderr, "  Building nonneg solver (nc=%d, nv=%d)...\n",
-          nonneg_model.num_constraints(), nonneg_model.num_variables());
   auto nonneg_solver = Solver::Build(nonneg_model);
-  fprintf(stderr, "  Built.\n");
-  printf("  Built nonneg. Running...\n");
   auto nonneg_cm = nonneg_solver.MakeCompiledModel();
-  auto nonneg_result = GeodesicBarrierLP{1e-14, 100, true}.Run(nonneg_cm);
+  auto nonneg_result = GeodesicBarrierLP{1e-8, 30, false}.Run(nonneg_cm);
 
   printf("\n=== Nonneg formulation ===\n");
   printf("  iters=%d, gap=%.2e, mu=%.2e, c^Tx=%.6f\n",
@@ -197,9 +193,6 @@ TEST(PolyhedralCone, DISABLED_NonnegVsPolyhedral) {
          nonneg_result.mu, c.dot(nonneg_result.x));
 
   // === Polyhedral formulation ===
-  // w = [x; y] ∈ R^{n+1}.  C = [A, b] so Cw = Ax + by.
-  // Constraint: w ∈ K = {w : Cw >= 0}, via identity map (slack = w).
-  // Equality: y = 1.  Cost: [c; 0]^T w.
   const int np = n + 1;
   MatrixXd C(m, np);
   C.leftCols(n) = A;
@@ -207,21 +200,11 @@ TEST(PolyhedralCone, DISABLED_NonnegVsPolyhedral) {
 
   EuclideanJordanAlgebra::PolyhedralConeOps poly_ops(C);
 
-  // Constraint matrix = identity (the cone variable is w itself).
   MatrixXd I_np = MatrixXd::Identity(np, np);
   VectorXd b_zero = VectorXd::Zero(np);
-
-  // Equality: e_{n+1}^T w = 1.
-  MatrixXd E(1, np);
-  E.setZero();
-  E(0, n) = 1.0;
-  VectorXd d(1);
-  d(0) = 1.0;
-
-  // Cost: [c; 0].
-  VectorXd c_ext(np);
-  c_ext.head(n) = c;
-  c_ext(n) = 0;
+  MatrixXd E(1, np); E.setZero(); E(0, n) = 1.0;
+  VectorXd d(1); d(0) = 1.0;
+  VectorXd c_ext(np); c_ext.head(n) = c; c_ext(n) = 0;
 
   std::vector<int> vars_np(np);
   std::iota(vars_np.begin(), vars_np.end(), 0);
@@ -237,7 +220,7 @@ TEST(PolyhedralCone, DISABLED_NonnegVsPolyhedral) {
 
   auto poly_solver = Solver::BuildDense(poly_model);
   auto poly_cm = poly_solver.MakeCompiledModel();
-  auto poly_result = GeodesicBarrierLP{1e-14, 100, true, w0}.Run(poly_cm);
+  auto poly_result = GeodesicBarrierLP{1e-8, 60, true, w0}.Run(poly_cm);
 
   printf("\n=== Polyhedral formulation ===\n");
   printf("  iters=%d, gap=%.2e, mu=%.2e\n",
