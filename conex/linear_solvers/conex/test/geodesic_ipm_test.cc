@@ -1822,10 +1822,10 @@ TEST(GeodesicBarrierQP, MehrotraCorrection) {
   auto cm1 = s1.MakeCompiledModel();
   auto r1 = GeodesicLP{1e-10, 30, 0, true}.Run(cm1);
 
-  // With Mehrotra correction.
+  // With Jacobian reuse (3 inner centering steps).
   auto s2 = Solver::Build(model);
   auto cm2 = s2.MakeCompiledModel();
-  auto r2 = GeodesicMehrotraLP{1e-10, 30, true}.Run(cm2);
+  auto r2 = GeodesicJacobianReuseLP{1e-10, 30, 3, true}.Run(cm2);
 
   printf("\n=== Mehrotra correction comparison ===\n");
   printf("  Without: %d iters, %d solves, gap=%.2e\n",

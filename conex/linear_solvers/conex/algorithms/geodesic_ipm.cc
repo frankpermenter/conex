@@ -1280,29 +1280,24 @@ GeodesicResult SolveGeodesicLP(
     printf("  %s\n", std::string(72, '-').c_str());
   }
 
-  model.AssembleAndFactor();
-  for (int outer = 0; outer < max_outer_iterations; ++outer) {
+  for (int outer = 0; outer < max_outer_iterations; ) {
     b = addScaled(ones_b, model.GetAffineTerm(), theta, 1.0 - theta);
     cost_rhs_blend.SetZero();
     model.AccumulateAtranspose(ones_b, cost_rhs_blend);
     cost_rhs_blend *= theta;
     cost_rhs_blend.AddScaled(1.0 - theta, cost_rhs);
 
-    // Decompose: 1 factor + 2 back-solves.
+    // Factor + decompose.
     RowSpace d0 = model.MakeRowSpace();
     RowSpace d1 = model.MakeRowSpace();
     Eigen::VectorXd y0, y1;
     ComputeDecomposition(model, cost_rhs_blend, b, W, d0, d1, &y0, &y1);
-
     total_fac += 1;
     total_sol += 2;
 
-    // Line search for k.
+    // Line search for k (fresh factorization).
     double k_new = lineSearchK(d0, d1);
     double k_prev = k;
-
-    // On first iteration or when line search fails (k_new <= k),
-    // use the minimum-norm k: k* = -<d0,d1> / ||d1||^2.
     if (k_new > k) {
       k = k_new;
     } else if (outer == 0 || k_new == 0) {
@@ -1314,76 +1309,129 @@ GeodesicResult SolveGeodesicLP(
       }
     }
 
-    // Take one geodesic step at k using d = d0 + k * d1.
-    RowSpace d = addScaled(d0, d1, 1.0, k);
+    // Inner loop: take steps with frozen k, stale Gram.
+    double d0_norm_prev = std::numeric_limits<double>::max();
+    int inner_steps = std::max(1, max_centering_steps);
+    bool done = false;
 
-    double d_inf = normInf(d);
-    double d_sq = squaredNorm(d);
-    double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+    for (int inner = 0; inner < inner_steps && !done; ++inner) {
+      RowSpace d = addScaled(d0, d1, 1.0, k);
+      double d_inf = normInf(d);
+      double d_sq = squaredNorm(d);
+      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+      double mu = 1.0 / (k * k);
+      double s_dot_x = mu * (nu - d_sq);
+      double d0_norm = normInf(d0);
 
-    double mu = 1.0 / (k * k);
-    double s_dot_x = mu * (nu - d_sq);
-
-    if (verbose) {
-      double d0_inf = normInf(d0);
-      double d1_inf = normInf(d1);
-      printf("  %3d  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e  d0=%.2e d1=%.2e\n",
-             outer, k_prev, k, d_inf, d_sq, s_dot_x, d0_inf, d1_inf);
-    }
-
-    result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});
-    result.iterations = outer + 1;
-
-    bool converged = (s_dot_x < tolerance && d_inf < 1.01);
-    bool last_iter = (outer + 1 == max_outer_iterations);
-
-    if (converged || last_iter) {
-      result.mu = mu;
-      result.d_inf_norm = d_inf;
-      result.d_sq_norm = d_sq;
-      result.complementarity = s_dot_x;
-      result.total_factorizations = total_fac;
-      result.total_solves = total_sol;
-      result.x = y0 / k + y1;  // x = y/k = (y0 + k*y1)/k
-      RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-      RowSpace ones = model.MakeRowSpace();
-      setOnes(ones);
-      RowSpace lambda = quadraticRepresentation(sqrtW, ones + d);
-      lambda *= (1.0 / k);
-      result.lambda = lambda;
-      auto x_rhs = model.MakeSolverRHS();
-      x_rhs = model.MakeBlockVariable(result.x);
-      result.optimality = CheckOptimality(model, x_rhs, lambda);
-      result.optimality.mu = result.mu;
       if (verbose) {
-        printf("  Optimality: compl=%.2e, "
-               "min_s=%.2e, min_lam=%.2e\n",
-               result.optimality.complementarity,
-               result.optimality.min_slack,
-               result.optimality.min_dual);
+        printf("  %3d.%d  %10.4e  %10.4e  %10.4e  %10.4e  %10.4e"
+               "  d0=%.2e d1=%.2e\n",
+               outer, inner, k_prev, k, d_inf, d_sq, s_dot_x,
+               d0_norm, normInf(d1));
       }
-      break;
-    } else {
-      if (mehrotra_correction) {
-        // Componentwise arctanh correction:
-        // W_i *= sqrt((1 + α d_i) / (1 - α d_i))
-        // Requires |α d_i| < 1, so clamp α < 1/||d||_∞.
-        double alpha_at = std::min(alpha, 0.99 / d_inf);
-        for (int seg = 0; seg < W.num_constraints(); ++seg) {
-          double* w = W.segment_ptr(seg);
-          const double* di = d.segment_ptr(seg);
-          int sz = W.sizes[seg];
-          for (int i = 0; i < sz; ++i) {
-            double ad = alpha_at * di[i];
-            w[i] *= std::sqrt((1.0 + ad) / (1.0 - ad));
-          }
+
+      result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});
+      result.iterations = outer + 1;
+
+      bool converged = (s_dot_x < tolerance && d_inf < 1.01);
+      bool last_iter = (outer + 1 >= max_outer_iterations);
+
+      if (converged || last_iter) {
+        result.mu = mu;
+        result.d_inf_norm = d_inf;
+        result.d_sq_norm = d_sq;
+        result.complementarity = s_dot_x;
+        result.total_factorizations = total_fac;
+        result.total_solves = total_sol;
+        result.x = y0 / k + y1;
+        RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+        RowSpace ones = model.MakeRowSpace();
+        setOnes(ones);
+        RowSpace lambda = quadraticRepresentation(sqrtW, ones + d);
+        lambda *= (1.0 / k);
+        result.lambda = lambda;
+        auto x_rhs = model.MakeSolverRHS();
+        x_rhs = model.MakeBlockVariable(result.x);
+        result.optimality = CheckOptimality(model, x_rhs, lambda);
+        result.optimality.mu = result.mu;
+        if (verbose) {
+          printf("  Optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
+                 result.optimality.complementarity,
+                 result.optimality.min_slack,
+                 result.optimality.min_dual);
         }
-      } else {
-        geodesicUpdate(W, alpha, d);
+        done = true;
+        break;
       }
-      model.SetScaling(W);
-      if (!model.AssembleAndFactor()) break;
+
+      // Geodesic step.
+      geodesicUpdate(W, alpha, d);
+
+      // Check if centering residual is growing (stale Gram degrading).
+      if (inner > 0 && d0_norm > d0_norm_prev) {
+        if (verbose) printf("  [refactor: d0 grew %.2e > %.2e]\n",
+                            d0_norm, d0_norm_prev);
+        break;  // exit inner loop → refactor
+      }
+      d0_norm_prev = d0_norm;
+
+      // Recompute d0, d1 with fresh RHS but stale Gram.
+      if (inner + 1 < inner_steps) {
+        // Update scaling for RHS computation (but don't refactor).
+        model.SetScaling(W);
+        // Build fresh RHS.
+        RowSpace v = model.MakeRowSpace();
+        auto rhs0 = model.MakeSolverRHS();
+        rhs0.SetZero();
+        v = W; v *= 2.0;
+        model.AccumulateAtranspose(v, rhs0);
+
+        auto rhs1 = model.MakeSolverRHS();
+        rhs1 = cost_rhs_blend;
+        v = quadraticRepresentation(W, b);
+        model.AccumulateAtranspose(v, rhs1);
+        rhs1 *= -1;
+        auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
+        if (ts && !ts->equality_sub_assemblers().empty()) {
+          auto d_rhs = ts->EqualityAffineTermRHS();
+          rhs1 += d_rhs;
+        }
+
+        // Solve with STALE factorization.
+        auto y = model.MakeSolverRHS(2);
+        y.SetColumn(0, rhs0);
+        y.SetColumn(1, rhs1);
+        model.SolveSolverRHS(y);
+        total_sol += 2;
+
+        int nr = model.number_of_variables();
+        Eigen::MatrixXd y_dense(nr, 2);
+        y.supernodes->GatherInto(y_dense);
+        y0 = y_dense.col(0);
+        y1 = y_dense.col(1);
+
+        auto row = model.MakeRowSpace(2);
+        model.MultiplyA(y, row);
+        RowSpace ay0 = model.MakeRowSpace();
+        RowSpace ay1 = model.MakeRowSpace();
+        ay0.col() = row.col(0);
+        ay1.col() = row.col(1);
+
+        RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+        d0 = model.MakeRowSpace();
+        setOnes(d0);
+        d0 -= quadraticRepresentation(sqrtW, ay0);
+        d1 = quadraticRepresentation(sqrtW,
+            addScaled(b, ay1, -1.0, -1.0));
+      }
     }
+
+    if (done) break;
+
+    // Refactor for next outer iteration.
+    model.SetScaling(W);
+    if (!model.AssembleAndFactor()) break;
+    ++outer;
   }
 
   // If the loop exited without converging, populate result with last known
