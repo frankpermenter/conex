@@ -1984,5 +1984,92 @@ TEST(GeodesicBarrierQP, FrozenJacobian_SOC) {
   EXPECT_LE(r2.total_factorizations, r1.total_factorizations);
 }
 
+// Frozen-Jacobian speedup on ThetaContinuation (LP).
+TEST(GeodesicBarrierQP, FrozenJacobian_ThetaCont_LP) {
+  srand(99);
+  const int n = 6, m = 14;
+  MatrixXd A = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddLinearConstraint(toSparse(A), b, vars);
+  model.SetLinearCost(c);
+
+  // Baseline: ThetaContinuation (no frozen-Jacobian).
+  auto s1 = Solver::Build(model);
+  auto cm1 = s1.MakeCompiledModel();
+  auto r1 = ThetaContinuation{1e-10, 50, 0, true}.Run(cm1);
+
+  // Frozen-Jacobian (1 inner step).
+  auto s2 = Solver::Build(model);
+  auto cm2 = s2.MakeCompiledModel();
+  auto r2 = ThetaContinuation{1e-10, 50, 1, true}.Run(cm2);
+
+  printf("\n=== ThetaCont LP frozen-Jacobian comparison ===\n");
+  printf("  Baseline:       %2d fac, %3d solves, gap=%.2e\n",
+         r1.total_factorizations, r1.total_solves, r1.complementarity);
+  printf("  Frozen-J (1):   %2d fac, %3d solves, gap=%.2e\n",
+         r2.total_factorizations, r2.total_solves, r2.complementarity);
+  if (r1.total_factorizations > 0) {
+    printf("  Factorization reduction: %.0f%%\n",
+           100.0 * (1.0 - static_cast<double>(r2.total_factorizations) /
+                          r1.total_factorizations));
+  }
+
+  EXPECT_LT(r1.complementarity, 1e-8);
+  EXPECT_LT(r2.complementarity, 1e-8);
+  EXPECT_LE(r2.total_factorizations, r1.total_factorizations);
+}
+
+// Frozen-Jacobian speedup on ThetaContinuation (SDP).
+TEST(GeodesicBarrierQP, FrozenJacobian_ThetaCont_SDP) {
+  srand(42);
+  const int n_psd = 4, p = 6;
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  auto make_sym = [](int n) {
+    MatrixXd M = MatrixXd::Random(n, n);
+    return (M + M.transpose()) / 2.0;
+  };
+  for (int i = 0; i < p; ++i)
+    A_list.push_back(toSparse(make_sym(n_psd)));
+  Eigen::SparseMatrix<double> B = toSparse(
+      3.0 * MatrixXd::Identity(n_psd, n_psd));
+  VectorXd c(p);
+  for (int i = 0; i < p; ++i)
+    c(i) = Eigen::MatrixXd(A_list[i]).trace();
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddPSDConstraint(A_list, B, vars, false);
+  model.SetLinearCost(c);
+
+  auto s1 = Solver::Build(model);
+  auto cm1 = s1.MakeCompiledModel();
+  auto r1 = ThetaContinuation{1e-10, 50, 0, true}.Run(cm1);
+
+  auto s2 = Solver::Build(model);
+  auto cm2 = s2.MakeCompiledModel();
+  auto r2 = ThetaContinuation{1e-10, 50, 1, true}.Run(cm2);
+
+  printf("\n=== ThetaCont SDP frozen-Jacobian comparison ===\n");
+  printf("  Baseline:       %2d fac, %3d solves, gap=%.2e\n",
+         r1.total_factorizations, r1.total_solves, r1.complementarity);
+  printf("  Frozen-J (1):   %2d fac, %3d solves, gap=%.2e\n",
+         r2.total_factorizations, r2.total_solves, r2.complementarity);
+  if (r1.total_factorizations > 0) {
+    printf("  Factorization reduction: %.0f%%\n",
+           100.0 * (1.0 - static_cast<double>(r2.total_factorizations) /
+                          r1.total_factorizations));
+  }
+
+  EXPECT_LT(r1.complementarity, 1e-8);
+  EXPECT_LT(r2.complementarity, 1e-8);
+  EXPECT_LE(r2.total_factorizations, r1.total_factorizations);
+}
+
 }  // namespace
 }  // namespace conex

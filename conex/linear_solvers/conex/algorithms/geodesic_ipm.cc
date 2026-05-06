@@ -611,6 +611,122 @@ static std::pair<double, double> EvalThetaCandidate(
   return {tau, normInf(d)};
 }
 
+// Frozen-Jacobian variant of EvalThetaCandidate.
+// Uses W0 for the Jacobian (Gram, sqrt, P(W)) and Wi for the value
+// (the b^T Wi/k term in sigma0).  decomp contains d0 refreshed at Wi,
+// d1_0 and d1_theta frozen at W0.
+static std::pair<double, double> FrozenEvalThetaCandidate(
+    CompiledModel& model,
+    const SolverRHS& duality_cost,
+    const RowSpace& b,
+    const RowSpace& W0,       // frozen Jacobian point
+    const RowSpace& Wi,       // current iterate
+    const NewtonDecomposition& decomp,
+    double bT_ones,
+    double theta_cand) {
+  if (theta_cand <= 0) return {-1, 1e30};
+  double k = 1.0 / std::sqrt(theta_cand);
+  double mu = theta_cand;
+
+  // beta = sigma1 + gamma1 + q11 (all frozen at W0).
+  auto dc = ComputeDualityCoeffs(model, duality_cost, b, W0, decomp);
+  double beta = dc.sigma1 + dc.gamma1 + dc.q11;
+
+  // sigma0 = (1/k) * (b^T Wi + b^T P(W0^{1/2})(d0 + k*theta*d1_theta))
+  // The frozen-Jacobian lambda is:
+  //   lambda = Wi/k + P(W0^{1/2})(d0)/k + tau*P(W0^{1/2})(d1_0) + theta*P(W0^{1/2})(d1_theta)
+  // So sigma0 (the tau-independent part of b^T lambda) is:
+  //   sigma0 = b^T Wi/k + b^T P(W0^{1/2})(d0 + k*theta*d1_theta)/k
+  RowSpace sqrtW0 = EuclideanJordanAlgebra::sqrt(W0);
+  RowSpace arg = addScaled(decomp.d0, decomp.d1_theta, 1.0, k * theta_cand);
+  double sigma0 = dot(b, Wi) / k
+                 + dot(b, quadraticRepresentation(sqrtW0, arg)) / k;
+
+  auto y0_rhs = model.MakeSolverRHS();
+  y0_rhs = model.MakeBlockVariable(decomp.y0);
+  double cT_y0 = duality_cost.dot(y0_rhs);
+  auto yt_rhs = model.MakeSolverRHS();
+  yt_rhs = model.MakeBlockVariable(decomp.y1_theta);
+  double cT_yt = duality_cost.dot(yt_rhs);
+  double gamma0 = cT_y0 / k + theta_cand * cT_yt;
+
+  // Quadratic cost: f = y0/k + theta*y1_theta.
+  Eigen::VectorXd f_vec = decomp.y0 / k + theta_cand * decomp.y1_theta;
+  auto f_rhs = model.MakeSolverRHS();
+  f_rhs = model.MakeBlockVariable(f_vec);
+  auto qf = model.MakeSolverRHS();
+  qf.SetZero();
+  model.AccumulateQx(f_rhs, qf);
+  double q_ff = qf.dot(f_rhs);
+  auto y1_rhs = model.MakeSolverRHS();
+  y1_rhs = model.MakeBlockVariable(decomp.y1_0);
+  double q_f1 = qf.dot(y1_rhs);
+
+  double alpha = sigma0 + gamma0 + 2.0 * q_f1;
+  double R = theta_cand * (bT_ones + 1.0);
+  double mu_eff = mu + q_ff;
+
+  double B = alpha - R;
+  double disc = B * B - 4.0 * beta * mu_eff;
+  if (disc < 0) return {-1, 1e30};
+
+  double sqrt_disc = std::sqrt(disc);
+  double tau1 = (-B + sqrt_disc) / (2.0 * beta);
+  double tau2 = (-B - sqrt_disc) / (2.0 * beta);
+
+  auto eval_dsq = [&](double tau) -> double {
+    if (tau <= 0) return 1e30;
+    RowSpace d = EvaluateDirection(decomp, k, tau, theta_cand);
+    return squaredNorm(d);
+  };
+
+  double dsq1 = eval_dsq(tau1);
+  double dsq2 = eval_dsq(tau2);
+
+  double tau_out;
+  if (tau1 > 0 && (tau2 <= 0 || dsq1 <= dsq2)) {
+    tau_out = tau1;
+  } else if (tau2 > 0) {
+    tau_out = tau2;
+  } else {
+    return {-1, 1e30};
+  }
+
+  RowSpace d = EvaluateDirection(decomp, k, tau_out, theta_cand);
+  return {tau_out, normInf(d)};
+}
+
+// Refresh only d0 (and y0) in a NewtonDecomposition using frozen Jacobian.
+// W0 = frozen Jacobian, Wi = current iterate.
+// d1_0, d1_theta, y1_0, y1_theta are unchanged.
+static void RefreshD0Frozen(
+    CompiledModel& model,
+    const RowSpace& b,
+    const RowSpace& W0,
+    const RowSpace& Wi,
+    NewtonDecomposition& decomp) {
+  RowSpace Wi_inv = EuclideanJordanAlgebra::inverse(Wi);
+  RowSpace sqrtW0 = EuclideanJordanAlgebra::sqrt(W0);
+
+  // rhs0 = A^T(Wi + P(W0)(Wi^{-1}))
+  RowSpace center = addScaled(Wi, quadraticRepresentation(W0, Wi_inv), 1.0, 1.0);
+  auto rhs0 = model.MakeSolverRHS();
+  rhs0.SetZero();
+  model.AccumulateAtranspose(center, rhs0);
+  model.SolveSolverRHS(rhs0);
+
+  int nr = model.number_of_variables();
+  decomp.y0.resize(nr);
+  rhs0.supernodes->GatherInto(decomp.y0);
+
+  RowSpace ay0 = model.MakeRowSpace();
+  model.MultiplyA(rhs0, ay0);
+
+  // d0 = P(sqrt(W0))(Wi^{-1} - A*y0)
+  decomp.d0 = quadraticRepresentation(sqrtW0,
+      addScaled(Wi_inv, ay0, 1.0, -1.0));
+}
+
 // Forward declaration (defined later in this file).
 static std::pair<double, double> EvalKCandidate(
     CompiledModel& model, const SolverRHS& duality_cost,
@@ -966,11 +1082,55 @@ GeodesicResult SolveGeodesicThetaContinuation(
     double eq_err_final = std::abs(bT_lambda + cT_x + dT_nu + xQx_over_tau
                                     + mu_over_tau - theta * (bT_ones + 1.0));
 
-    // Take exactly one geodesic step per theta update — no inner
-    // centering loop.
+    // Take geodesic step.
+    RowSpace W0 = W;  // save frozen Jacobian point
     if (d_inf > 1e-14) {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       geodesicUpdate(W, alpha, d_step);
+    }
+
+    // Frozen-Jacobian steps: refresh d0 (1 solve), redo theta binary
+    // search with frozen d1_0, d1_theta, then step.
+    for (int inner = 0; inner < max_centering_steps; ++inner) {
+      RefreshD0Frozen(model, b, W0, W, decomp);
+      total_sol += 1;
+
+      // Binary search for smallest theta with frozen-Jacobian decomp.
+      double theta_lo_f = 0.0, theta_hi_f = theta;
+      for (int bisect = 0; bisect < 30; ++bisect) {
+        double theta_mid = 0.5 * (theta_lo_f + theta_hi_f);
+        auto [tau_try, d_inf_try] = FrozenEvalThetaCandidate(
+            model, duality_cost, b, W0, W, decomp, bT_ones, theta_mid);
+        if (tau_try > 0 && d_inf_try <= beta_target) {
+          theta_hi_f = theta_mid;
+        } else {
+          theta_lo_f = theta_mid;
+        }
+      }
+      double theta_f = theta_hi_f;
+      double k_f = 1.0 / std::sqrt(theta_f);
+      auto [tau_f, d_inf_f] = FrozenEvalThetaCandidate(
+          model, duality_cost, b, W0, W, decomp, bT_ones, theta_f);
+      if (tau_f <= 0) break;
+
+      RowSpace d_f = EvaluateDirection(decomp, k_f, tau_f, theta_f);
+      double d_inf_fv = normInf(d_f);
+      if (verbose) {
+        double mu_f = 1.0 / (k_f * k_f);
+        double gap_f = mu_f * (nu - squaredNorm(d_f));
+        printf("  %3d.%d  %8.6f  %10.2e  %12s  %12.4e  %12.4e  %12s  %12.4e"
+               "  %12s  %12s  %12s  %12s  (frozen-J)\n",
+               outer, inner + 1, theta_f, tau_f, "", k_f, d_inf_fv, "",
+               gap_f, "", "", "", "");
+      }
+
+      if (d_inf_fv > 1e-14) {
+        double alpha_f = std::min(1.0, 2.0 / (d_inf_fv * d_inf_fv));
+        geodesicUpdate(W, alpha_f, d_f);
+      }
+      theta = theta_f;
+      k = k_f;
+      tau = tau_f;
     }
     int centering_iters = 0;
 
