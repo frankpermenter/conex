@@ -173,50 +173,48 @@ class SymmetricConeOperations : public BarrierConeOperations {
     quadraticRepresentation(out, z, v, size);
   }
 
-  // ||target - z_primal||²_H = ||e - W·target||² = squaredNorm(d)
-  // where d_i = e_i - P(W^{1/2}, target)... actually for symmetric cones
-  // d = e - product(W, target) in the Jordan algebra sense.
-  // But for nonneg d_i = 1 - W_i*target_i, and squaredNorm(d) = Σ d_i².
-  // For PSD: d = I - W*target (matrix product), squaredNorm = ||d||_F².
-  // These are both "e - W·target" in the Jordan product sense.
+  // Convert target to d-space: d = e - P(W^{1/2})(target).
+  // For nonneg: d_i = 1 - W_i * target_i (product commutes).
+  // For PSD: d = I - W^{1/2} target W^{1/2} (quadratic representation).
   double hessianNormSquared(const double* z, const double* target,
                             int size) const override {
-    std::vector<double> d(size), e(size);
+    std::vector<double> sqW(size), d(size), e(size);
+    sqrt(sqW.data(), z, size);
+    quadraticRepresentation(d.data(), sqW.data(), target, size);
     setIdentity(e.data(), size);
-    product(d.data(), z, target, size);
     for (int i = 0; i < size; ++i) d[i] = e[i] - d[i];
     return squaredNorm(d.data(), size);
   }
 
-  // Step size: min(1, 2/||d||²_∞) where d = e - W·target.
   double stepSize(const double* z, const double* target,
                   int size) const override {
-    std::vector<double> d(size), e(size);
+    std::vector<double> sqW(size), d(size), e(size);
+    sqrt(sqW.data(), z, size);
+    quadraticRepresentation(d.data(), sqW.data(), target, size);
     setIdentity(e.data(), size);
-    product(d.data(), z, target, size);
     for (int i = 0; i < size; ++i) d[i] = e[i] - d[i];
     double d_inf = normInf(d.data(), size);
     return std::min(1.0, 2.0 / (d_inf * d_inf));
   }
 
-  // Geodesic step: d = e - W·target, W *= exp(alpha·d).
   void geodesicStepTarget(double* z, double alpha,
                           const double* target, int size) const override {
-    std::vector<double> d(size), e(size);
+    std::vector<double> sqW(size), d(size), e(size);
+    sqrt(sqW.data(), z, size);
+    quadraticRepresentation(d.data(), sqW.data(), target, size);
     setIdentity(e.data(), size);
-    product(d.data(), z, target, size);
     for (int i = 0; i < size; ++i) d[i] = e[i] - d[i];
     geodesicUpdate(z, z, alpha, d.data(), size);
   }
 
-  // Line search: d0 = e - W·target0, d1 = -W·target1, then lineSearchK.
   double lineSearchTarget(const double* z, const double* target0,
                           const double* target1, int size) const override {
-    std::vector<double> d0(size), d1(size), e(size);
+    std::vector<double> sqW(size), d0(size), d1(size), e(size);
+    sqrt(sqW.data(), z, size);
+    quadraticRepresentation(d0.data(), sqW.data(), target0, size);
     setIdentity(e.data(), size);
-    product(d0.data(), z, target0, size);
     for (int i = 0; i < size; ++i) d0[i] = e[i] - d0[i];
-    product(d1.data(), z, target1, size);
+    quadraticRepresentation(d1.data(), sqW.data(), target1, size);
     for (int i = 0; i < size; ++i) d1[i] = -d1[i];
     return lineSearchK(d0.data(), d1.data(), size);
   }

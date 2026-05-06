@@ -1754,5 +1754,54 @@ TEST(GeodesicBarrierQP, BarrierThetaCont_QPWithEquality) {
   CompareThetaContBarrierVsClassic("QP+Equality", model);
 }
 
+// PSD: verify GeodesicBarrierLP matches GeodesicLP.
+TEST(GeodesicBarrierQP, BarrierLP_SDP) {
+  srand(42);
+  const int n_psd = 3, p = 4;
+  // Build a small SDP: min c^T x s.t. Σ A_i x_i + B ≽ 0.
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  auto make_sym = [](int n) {
+    MatrixXd M = MatrixXd::Random(n, n);
+    return (M + M.transpose()) / 2.0;
+  };
+  for (int i = 0; i < p; ++i)
+    A_list.push_back(toSparse(make_sym(n_psd)));
+  Eigen::SparseMatrix<double> B = toSparse(
+      3.0 * MatrixXd::Identity(n_psd, n_psd));
+  // Cost: c_i = trace(A_i) so x=0 is centered (slack = B = 3I).
+  VectorXd c(p);
+  for (int i = 0; i < p; ++i)
+    c(i) = Eigen::MatrixXd(A_list[i]).trace();
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddPSDConstraint(A_list, B, vars, false);
+  model.SetLinearCost(c);
+  CompareBarrierVsClassic("SDP", model);
+}
+
+// SOC: verify GeodesicBarrierLP matches GeodesicLP.
+TEST(GeodesicBarrierQP, BarrierLP_SOC) {
+  srand(77);
+  const int n = 5, m = 4;  // SOC dim = 1+m = 5
+  // SOC constraint: ||A₁x + b₁|| ≤ A₀x + b₀.
+  // A is (1+m)×n, b is (1+m).
+  MatrixXd A_dense = MatrixXd::Random(1 + m, n) * 0.3;
+  VectorXd b_soc(1 + m);
+  b_soc(0) = 2.0;  // b₀ = 2 (scalar bound)
+  b_soc.tail(m).setZero();  // b₁ = 0
+  // Cost: c = A₀ (so x=0 is on the central path with slack = (2, 0,...,0)).
+  VectorXd c = A_dense.row(0).transpose();
+
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  Model model;
+  model.AddSOCConstraint(toSparse(A_dense), b_soc, vars);
+  model.SetLinearCost(c);
+  CompareBarrierVsClassic("SOC", model);
+}
+
 }  // namespace
 }  // namespace conex
