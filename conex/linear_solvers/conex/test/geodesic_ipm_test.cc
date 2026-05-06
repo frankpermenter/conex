@@ -2071,7 +2071,18 @@ TEST(GeodesicBarrierQP, FrozenJacobian_ThetaCont_SDP) {
   EXPECT_LE(r2.total_factorizations, r1.total_factorizations);
 }
 
-// Compare ThetaCont (baseline), ThetaCont (frozen-J), and ThetaContR.
+static void PrintSolveResult(const char* name, const SolveResult& r) {
+  printf("  %-25s  %3d  %5d  %12.6e  %10.2e  %10.2e  %10.2e  %10.2e  %10.2e\n",
+         name, r.factorizations, r.iterations,
+         r.objective,
+         r.optimality.dual_residual,
+         r.optimality.complementarity,
+         r.optimality.min_slack,
+         r.optimality.min_dual,
+         r.duals.stationarity_gradient.norm());
+}
+
+// Compare ThetaCont (baseline), ThetaCont (frozen-J), ThetaContR, and GeodesicLP.
 TEST(GeodesicBarrierQP, CompareAlgorithms_LP) {
   srand(99);
   const int n = 6, m = 14;
@@ -2085,30 +2096,21 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_LP) {
   model.AddLinearConstraint(toSparse(A), b, vars);
   model.SetLinearCost(c);
 
-  auto s1 = Solver::Build(model);
-  auto cm1 = s1.MakeCompiledModel();
-  auto r1 = ThetaContinuation{1e-10, 50, 0, false}.Run(cm1);
-
-  auto s2 = Solver::Build(model);
-  auto cm2 = s2.MakeCompiledModel();
-  auto r2 = ThetaContinuation{1e-10, 50, 1, false}.Run(cm2);
-
-  auto s3 = Solver::Build(model);
-  auto cm3 = s3.MakeCompiledModel();
-  auto r3 = ThetaContinuationR{1e-10, 500, false}.Run(cm3);
+  auto r1 = Solver::Build(model).Solve(ThetaContinuation{1e-10, 50, 0});
+  auto r2 = Solver::Build(model).Solve(ThetaContinuation{1e-10, 50, 1});
+  auto r3 = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 500});
+  auto r4 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30});
+  auto r5 = Solver::Build(model).Solve(GeodesicJacobianReuseLP{1e-10, 30, 1});
 
   printf("\n=== LP algorithm comparison ===\n");
-  printf("  %-25s  %3s  %5s  %12s  %12s\n",
-         "Algorithm", "fac", "sol", "gap", "compl");
-  printf("  %-25s  %3d  %5d  %12.2e  %12.2e\n",
-         "ThetaCont", r1.total_factorizations, r1.total_solves,
-         r1.complementarity, r1.optimality.complementarity);
-  printf("  %-25s  %3d  %5d  %12.2e  %12.2e\n",
-         "ThetaCont + frozen-J", r2.total_factorizations, r2.total_solves,
-         r2.complementarity, r2.optimality.complementarity);
-  printf("  %-25s  %3d  %5d  %12.2e  %12.2e\n",
-         "ThetaContR", r3.total_factorizations, r3.total_solves,
-         r3.complementarity, r3.optimality.complementarity);
+  printf("  %-25s  %3s  %5s  %12s  %10s  %10s  %10s  %10s  %10s\n",
+         "Algorithm", "fac", "iter", "objective",
+         "dual_res", "compl", "min_s", "min_lam", "stat_grad");
+  PrintSolveResult("ThetaCont", r1);
+  PrintSolveResult("ThetaCont + frozen-J", r2);
+  PrintSolveResult("ThetaContR", r3);
+  PrintSolveResult("GeodesicLP", r4);
+  PrintSolveResult("GeodesicLP + frozen-J", r5);
 }
 
 TEST(GeodesicBarrierQP, CompareAlgorithms_SDP) {
@@ -2133,30 +2135,21 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_SDP) {
   model.AddPSDConstraint(A_list, B, vars, false);
   model.SetLinearCost(c);
 
-  auto s1 = Solver::Build(model);
-  auto cm1 = s1.MakeCompiledModel();
-  auto r1 = ThetaContinuation{1e-10, 50, 0, false}.Run(cm1);
-
-  auto s2 = Solver::Build(model);
-  auto cm2 = s2.MakeCompiledModel();
-  auto r2 = ThetaContinuation{1e-10, 50, 1, false}.Run(cm2);
-
-  auto s3 = Solver::Build(model);
-  auto cm3 = s3.MakeCompiledModel();
-  auto r3 = ThetaContinuationR{1e-10, 500, false}.Run(cm3);
+  auto r1 = Solver::Build(model).Solve(ThetaContinuation{1e-10, 50, 0});
+  auto r2 = Solver::Build(model).Solve(ThetaContinuation{1e-10, 50, 1});
+  auto r3 = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 500});
+  auto r4 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30});
+  auto r5 = Solver::Build(model).Solve(GeodesicJacobianReuseLP{1e-10, 30, 1});
 
   printf("\n=== SDP algorithm comparison ===\n");
-  printf("  %-25s  %3s  %5s  %12s  %12s\n",
-         "Algorithm", "fac", "sol", "gap", "compl");
-  printf("  %-25s  %3d  %5d  %12.2e  %12.2e\n",
-         "ThetaCont", r1.total_factorizations, r1.total_solves,
-         r1.complementarity, r1.optimality.complementarity);
-  printf("  %-25s  %3d  %5d  %12.2e  %12.2e\n",
-         "ThetaCont + frozen-J", r2.total_factorizations, r2.total_solves,
-         r2.complementarity, r2.optimality.complementarity);
-  printf("  %-25s  %3d  %5d  %12.2e  %12.2e\n",
-         "ThetaContR", r3.total_factorizations, r3.total_solves,
-         r3.complementarity, r3.optimality.complementarity);
+  printf("  %-25s  %3s  %5s  %12s  %10s  %10s  %10s  %10s  %10s\n",
+         "Algorithm", "fac", "iter", "objective",
+         "dual_res", "compl", "min_s", "min_lam", "stat_grad");
+  PrintSolveResult("ThetaCont", r1);
+  PrintSolveResult("ThetaCont + frozen-J", r2);
+  PrintSolveResult("ThetaContR", r3);
+  PrintSolveResult("GeodesicLP", r4);
+  PrintSolveResult("GeodesicLP + frozen-J", r5);
 }
 
 }  // namespace
