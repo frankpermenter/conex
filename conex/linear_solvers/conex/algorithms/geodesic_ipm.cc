@@ -1532,6 +1532,116 @@ GeodesicResult SolveGeodesicBarrierLP(
   return result;
 }
 
+// Helper: evaluate the V(τ)=0 quadratic for the z-space θ-continuation.
+// Returns (τ, stepSize_alpha) or (-1, 1e30) if no positive root.
+static std::pair<double, double> EvalBarrierThetaCandidate(
+    CompiledModel& model,
+    const SolverRHS& duality_cost,
+    const RowSpace& z,
+    const RowSpace& b,
+    const RowSpace& grad_z,       // ∇F(z) at current z
+    const RowSpace& ay0,          // A y0
+    const RowSpace& t1_tau,       // Ay1_0 + b
+    const RowSpace& t1_th,        // Ay1_theta + z0
+    const Eigen::VectorXd& y0_vec,
+    const Eigen::VectorXd& y1_0_vec,
+    const Eigen::VectorXd& y1_theta_vec,
+    double nu, double R_theta1, double theta_cand) {
+  if (theta_cand <= 0) return {-1, 1e30};
+  double k = 1.0 / std::sqrt(theta_cand);
+  double k2 = k * k;
+
+  // f = y0/k + θ·y1_theta, g = y1_0.
+  Eigen::VectorXd f_vec = y0_vec / k + theta_cand * y1_theta_vec;
+
+  // σ₁ = -b^T H(z)·t1_tau  (coefficient of τ in b^T λ)
+  RowSpace h_t1_tau = model.MakeRowSpace();
+  hessianProduct(z, t1_tau, h_t1_tau);
+  double sigma1 = -dot(b, h_t1_tau);
+
+  // γ₁ = duality_cost^T y1_0
+  auto y1_rhs = model.MakeSolverRHS();
+  y1_rhs = model.MakeBlockVariable(y1_0_vec);
+  double gamma1 = duality_cost.dot(y1_rhs);
+
+  // q_gg = y1_0^T Q y1_0
+  auto qg = model.MakeSolverRHS();
+  qg.SetZero();
+  model.AccumulateQx(y1_rhs, qg);
+  double q_gg = qg.dot(y1_rhs);
+
+  double beta = sigma1 + gamma1 + q_gg;
+
+  // σ₀ = (1/k) b^T (-2∇F(z) - H(z)·(Ay₀ + kθ·t1_th))
+  RowSpace target0_part = addScaled(ay0, t1_th, 1.0, k * theta_cand);
+  RowSpace h_target0 = model.MakeRowSpace();
+  hessianProduct(z, target0_part, h_target0);
+  RowSpace lam0_unscaled = model.MakeRowSpace();
+  lam0_unscaled.col() = -2.0 * grad_z.col() - h_target0.col();
+  double sigma0 = dot(b, lam0_unscaled) / k;
+
+  // γ₀ = duality_cost^T (y0/k + θ·y1_theta)
+  auto f_rhs = model.MakeSolverRHS();
+  f_rhs = model.MakeBlockVariable(f_vec);
+  double gamma0 = duality_cost.dot(f_rhs);
+
+  // q_fg = f^T Q g, q_ff = f^T Q f
+  auto qf = model.MakeSolverRHS();
+  qf.SetZero();
+  model.AccumulateQx(f_rhs, qf);
+  double q_ff = qf.dot(f_rhs);
+  double q_fg = qf.dot(y1_rhs);
+
+  double B = sigma0 + gamma0 + 2.0 * q_fg - theta_cand * R_theta1;
+  double mu_eff = q_ff + theta_cand;  // μ = θ = 1/k²
+
+  // Solve: β·τ² + B·τ + μ_eff = 0.
+  double disc = B * B - 4.0 * beta * mu_eff;
+  if (disc < 0) return {-1, 1e30};
+
+  double sqrt_disc = std::sqrt(disc);
+  double tau1 = (-B + sqrt_disc) / (2.0 * beta);
+  double tau2 = (-B - sqrt_disc) / (2.0 * beta);
+
+  // Pick the positive root with smaller ||d||_H².
+  auto eval = [&](double tau) -> std::pair<double, double> {
+    if (tau <= 0) return {1e30, 1e30};
+    RowSpace target_k = addScaled(ay0,
+        addScaled(t1_tau, t1_th, tau, theta_cand), 1.0, k);
+    double d_sq = hessianNormSquared(z, target_k);
+    // Compute d_inf via stepSize: for nonneg, stepSize = min(1, 2/d_inf²).
+    // When stepSize < 1: d_inf = sqrt(2/stepSize).
+    // When stepSize = 1: d_inf ≤ sqrt(2). Compute exactly from 2/stepSize
+    // by NOT capping: use the raw 2/d_inf² value.
+    // We need normInf directly. The stepSize formula clamps at 1 so
+    // we can't recover d_inf. Use the line search as a proxy:
+    // lineSearchTarget returns max k with d_inf(k) ≤ 1. If we query
+    // at the current k, we check if d_inf ≤ 1 at this (k, τ, θ).
+    // The target is already at the given k: target_k = Ay0 + k*(...).
+    // Reformulate: at k_fixed, d_inf ≤ 1 iff lineSearch at k_fixed is feasible.
+    // lineSearchTarget(z, target0, target1) finds max k with d_inf(k) ≤ 1.
+    // If the returned k ≥ k_fixed, then d_inf ≤ 1.
+    double k_max = lineSearchTarget(z, ay0,
+        addScaled(t1_tau, t1_th, tau, theta_cand));
+    double d_inf = (k_max >= k) ? 0.0 : 2.0;  // feasible or not
+    return {d_sq, d_inf};
+  };
+
+  auto [dsq1, dinf1] = eval(tau1);
+  auto [dsq2, dinf2] = eval(tau2);
+
+  double tau_out, d_inf_out;
+  if (tau1 > 0 && (tau2 <= 0 || dsq1 <= dsq2)) {
+    tau_out = tau1; d_inf_out = dinf1;
+  } else if (tau2 > 0) {
+    tau_out = tau2; d_inf_out = dinf2;
+  } else {
+    return {-1, 1e30};
+  }
+
+  return {tau_out, d_inf_out};
+}
+
 GeodesicResult SolveGeodesicBarrierThetaContinuation(
     CompiledModel& model,
     RowSpace& z,
@@ -1645,23 +1755,11 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
     ay1_0.col() = row.col(1);
     ay1_theta.col() = row.col(2);
 
-    // 4. Compute duality coefficients for V(τ)=0.
-    // σ₁ = b^T λ₁_0 where λ₁_0 comes from the optimality direction.
-    // λ for direction d1_0: λ = (1/k)(-2∇F(z) - H(z)·(Ay1_0 + b))
-    //   → b^T contribution: b^T (1/k)(-2∇F(z) - H(z)(Ay1_0+b))
-    //   The τ-dependent part: σ₁ = b^T (-H(z)·Ay1_0) (k cancels in quadratic)
-    // Actually, for the V(τ)=0 quadratic, we need:
-    //   β = σ₁ + γ₁ + q₁₁
-    //   σ₁ = dot(b, H(z)·Ay1_0) [contribution from b^T·λ at τ·d1_0]
-    // Let me compute in the z-space target form instead.
+    // 4. Precompute target building blocks.
+    RowSpace t1_tau = addScaled(ay1_0, b, 1.0, 1.0);     // Ay1_0 + b
+    RowSpace t1_th = addScaled(ay1_theta, addScaled(z0, b, 1.0, -1.0), 1.0, 1.0);  // Ay1_theta + z_0 - b
 
-    // Simpler: evaluate V(τ) directly at candidate (θ, τ).
-    // V = b^T·λ + c^T·x + (d^T·ν) + x^T·Q·x/(2τ) + ν·μ/τ - θ·R = 0
-    // where x = y0/k + τ·y1_0 + θ·y1_theta,
-    //       target_k = Ay0 + k(τ·(Ay1_0+b) + θ·(Ay1_theta+z_0)),
-    //       λ = (1/k)(-2∇F(z) - H(z)·target_k).
-
-    // Binary search for θ: find smallest θ with stepSize >= threshold.
+    // 5. Binary search for θ: find smallest θ with V(τ)=0 feasible.
     constexpr double beta_target = 1.0;
     double theta_prev = theta;
     {
@@ -1669,108 +1767,11 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
       double theta_hi = theta;
       for (int bisect = 0; bisect < 30; ++bisect) {
         double theta_mid = 0.5 * (theta_lo + theta_hi);
-        if (theta_mid <= 0) { theta_lo = 0; continue; }
-        double k_try = 1.0 / std::sqrt(theta_mid);
-
-        // Evaluate V(τ)=0 to find τ at this (θ, k).
-        // For now, use a simplified approach: set τ=1 initially,
-        // then solve the quadratic.
-        //
-        // The full V(τ)=0 quadratic needs several inner products.
-        // Compute them from z-space quantities.
-
-        // Target at (k, τ, θ): target_k = Ay(k,τ,θ) + k(τb + θz_0)
-        // where y = y0 + k(τ·y1_0 + θ·y1_theta).
-        // So Ay = Ay0 + k(τ·Ay1_0 + θ·Ay1_theta).
-        // And target_k = Ay0 + k(τ·(Ay1_0+b) + θ·(Ay1_theta+z_0)).
-
-        // For the V(τ)=0 quadratic, need:
-        //   σ(τ) = b^T λ(k,τ,θ)
-        //   γ(τ) = duality_cost^T · x(τ)
-        //   q(τ) = x^T Q x / (2τ)
-        //   ν·μ/τ = ν/(k²τ)
-        // Total: σ + γ + q + ν/(k²τ) = θ·R.
-        //
-        // σ depends on λ which depends on target_k, which is linear in τ.
-        // So σ is quadratic in τ (through H(z)·target_k and b^T thereof).
-        // This is complex. For bit-identical behavior, I need to match the
-        // W-space computation exactly.
-
-        // SHORTCUT: for nonneg, the stepSize-based feasibility check
-        // gives the same result as normInf <= beta. Let me just evaluate
-        // the target at a trial τ and check stepSize.
-
-        // Use min-norm τ: τ = -dot(d0, d1) / ||d1||² in z-space.
-        // d0(z) corresponds to centering, d1(z) to optimality at θ=0,
-        // d1_theta(z) to θ=1 correction.
-        // target0 = Ay0, target1(τ,θ) = τ·(Ay1_0+b) + θ·(Ay1_theta+z0).
-        // At fixed θ, target(k) = Ay0 + k·target1_combined.
-        // Line search gives max k.
-
-        RowSpace target1_comb = model.MakeRowSpace();
-        // τ is unknown; use the V(τ)=0 identity to solve for it.
-        // For simplicity, use the duality identity in z-space:
-        //   Σ <sᵢ, λᵢ> + c^T x + ... = θ R
-        // where sᵢ = Aᵢ x + bᵢ and λᵢ from the Newton step.
-
-        // Since this is getting very complex, let me take a different
-        // approach: just do a 1D search over τ for each θ_mid.
-
-        // At fixed (k, θ), find τ via: evaluate stepSize for a range of τ
-        // and pick the one that makes the duality identity hold.
-        // OR: use the existing SelectKTau approach with z-space inner products.
-
-        // Actually, for bit-identical nonneg: the d-space quantities match
-        // the z-space quantities exactly. Let me compute the decomposition
-        // in z-space "target" form and evaluate the V(τ)=0 directly.
-
-        // I'll compute β, α, R terms using z-space inner products.
-        // β = b^T · (1/k²) H(z) · (Ay1_0+b)  [contribution from λ_τ²]
-        //   + duality_cost^T · y1_0             [contribution from x_τ]
-        //   + y1_0^T Q y1_0                     [quadratic cost]
-
-        // This is exactly ComputeDualityCoeffs in z-space.
-        // For nonneg: H(z)·(Ay1_0+b) = P(W)·(Ay1_0+b).
-        // And b^T · P(W) · (Ay1_0+b) / k² = ... this matches the W-space
-        // σ₁ up to the k² factor that's handled in the quadratic.
-
-        // I'm going to punt on the full V(τ)=0 and use a simpler approach:
-        // at each θ, find the line-search k and compute τ from the
-        // min-norm formula. Check if the step is feasible.
-
-        RowSpace t1_tau = addScaled(ay1_0, b, 1.0, 1.0);     // Ay1_0 + b
-        RowSpace t1_th = addScaled(ay1_theta, z0, 1.0, 1.0);  // Ay1_theta + z_0
-
-        // target0 = Ay0, target1 = k_try * (τ * t1_tau + θ_mid * t1_th)
-        // This depends on τ. For the line search, fix τ=1 first:
-        RowSpace target1_trial = addScaled(t1_tau, t1_th, 1.0, theta_mid);
-        double k_ls = lineSearchTarget(z, ay0, target1_trial);
-
-        // Now compute tau from duality identity.
-        // For the min-norm approach: at fixed θ and k_ls:
-        // target(τ) = Ay0 + k_ls * (τ * t1_tau + θ_mid * t1_th)
-        // Hessian norm squared = a + 2fτ + pτ² where:
-        double a_coeff = hessianNormSquared(z,
-            addScaled(ay0, t1_th, 1.0, k_ls * theta_mid));
-        RowSpace ref = addScaled(ay0, t1_th, 1.0, k_ls * theta_mid);
-        RowSpace t1_scaled = model.MakeRowSpace();
-        t1_scaled.col() = k_ls * t1_tau.col();
-        RowSpace ref_plus_t1 = addScaled(ref, t1_scaled, 1.0, 1.0);
-        double ap = hessianNormSquared(z, ref_plus_t1);
-        double p_coeff = hessianNormSquared(z, t1_scaled);
-        double f_coeff = 0.5 * (ap - a_coeff - p_coeff);
-
-        // Min-norm τ: τ* = -f/p.
-        double tau_try = (p_coeff > 1e-30) ? -f_coeff / p_coeff : 1.0;
-        tau_try = std::max(tau_try, 1e-30);
-
-        // Evaluate target at (k_ls, τ_try, θ_mid).
-        RowSpace target_k = addScaled(ay0,
-            addScaled(t1_tau, t1_th, tau_try, theta_mid), 1.0, k_ls);
-        double d_sq = hessianNormSquared(z, target_k);
-        double alpha_try = stepSize(z, target_k);
-        double d_inf_try = (alpha_try < 1.0) ? std::sqrt(2.0 / alpha_try) : 0.0;
-
+        auto [tau_try, alpha_try] = EvalBarrierThetaCandidate(
+            model, duality_cost, z, b, grad, ay0, t1_tau, t1_th,
+            y0_vec, y1_0_vec, y1_theta_vec, nu, R_theta1, theta_mid);
+        double d_inf_try = (alpha_try < 1.0) ?
+            std::sqrt(2.0 / alpha_try) : 0.0;
         if (tau_try > 0 && d_inf_try <= beta_target) {
           theta_hi = theta_mid;
         } else {
@@ -1779,26 +1780,19 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
       }
       theta = theta_hi;
     }
-
     k = 1.0 / std::sqrt(theta);
 
-    // Evaluate at chosen theta: find τ via min-norm.
-    RowSpace t1_tau = addScaled(ay1_0, b, 1.0, 1.0);
-    RowSpace t1_th = addScaled(ay1_theta, z0, 1.0, 1.0);
-    RowSpace target1_final = addScaled(t1_tau, t1_th, 1.0, theta);
+    if (verbose) printf("  theta: %.6e -> %.6e\n", theta_prev, theta);
 
-    // Find τ at this k and θ.
-    {
-      RowSpace ref = addScaled(ay0, t1_th, 1.0, k * theta);
-      RowSpace t1_scaled = model.MakeRowSpace();
-      t1_scaled.col() = k * t1_tau.col();
-      RowSpace ref_plus = addScaled(ref, t1_scaled, 1.0, 1.0);
-      double a_coeff = hessianNormSquared(z, ref);
-      double ap = hessianNormSquared(z, ref_plus);
-      double p_coeff = hessianNormSquared(z, t1_scaled);
-      double f_coeff = 0.5 * (ap - a_coeff - p_coeff);
-      tau = (p_coeff > 1e-30) ? std::max(-f_coeff / p_coeff, 1e-30) : 1.0;
+    // Evaluate at chosen θ.
+    auto [tau_sel, alpha_sel] = EvalBarrierThetaCandidate(
+        model, duality_cost, z, b, grad, ay0, t1_tau, t1_th,
+        y0_vec, y1_0_vec, y1_theta_vec, nu, R_theta1, theta);
+    if (tau_sel <= 0) {
+      result.iterations = outer + 1;
+      break;
     }
+    tau = tau_sel;
 
     // Final target and metrics.
     RowSpace target_k = addScaled(ay0,
