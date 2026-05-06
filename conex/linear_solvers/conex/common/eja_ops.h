@@ -1,5 +1,11 @@
 // Free functions on EuclideanJordanAlgebra::Variable.
-// Each function iterates segments and dispatches to the per-segment SymmetricConeOperations.
+//
+// z-space functions (computeGradient, hessianProduct, etc.) dispatch
+// through BarrierConeOperations — works for all cone types.
+//
+// Symmetric-cone functions (setOnes, geodesicUpdate, quadraticRepresentation,
+// etc.) dispatch through SymmetricConeOperations — only valid for segments
+// backed by symmetric cones (nonneg, SOC, PSD).
 
 #pragma once
 #include "conex/common/symmetric_cone_operations.h"
@@ -7,6 +13,12 @@
 
 namespace conex {
 namespace EuclideanJordanAlgebra {
+
+// Cast a BarrierConeOperations* to SymmetricConeOperations*.
+// Only valid for segments backed by symmetric cones.
+inline const SymmetricConeOperations* sym_ops(const BarrierConeOperations* o) {
+  return static_cast<const SymmetricConeOperations*>(o);
+}
 
 // Helper: create a Variable with same layout as src.
 inline Variable like(const Variable& src) {
@@ -22,7 +34,7 @@ inline Variable like(const Variable& src) {
 inline Variable cwiseProduct(const Variable& a, const Variable& b) {
   Variable out = like(a);
   for (int i = 0; i < a.num_constraints(); ++i)
-    a.ops[i]->product(out.segment_ptr(i), a.segment_ptr(i),
+    sym_ops(a.ops[i])->product(out.segment_ptr(i), a.segment_ptr(i),
                       b.segment_ptr(i), a.sizes[i]);
   return out;
 }
@@ -31,7 +43,7 @@ inline Variable cwiseProduct(const Variable& a, const Variable& b) {
 inline Variable sqrt(const Variable& a) {
   Variable out = like(a);
   for (int i = 0; i < a.num_constraints(); ++i)
-    a.ops[i]->sqrt(out.segment_ptr(i), a.segment_ptr(i), a.sizes[i]);
+    sym_ops(a.ops[i])->sqrt(out.segment_ptr(i), a.segment_ptr(i), a.sizes[i]);
   return out;
 }
 
@@ -41,7 +53,7 @@ inline Variable sqrt(const Variable& a) {
 inline Variable quadraticRepresentation(const Variable& a, const Variable& b) {
   Variable out = like(a);
   for (int i = 0; i < a.num_constraints(); ++i)
-    a.ops[i]->quadraticRepresentation(out.segment_ptr(i), a.segment_ptr(i),
+    sym_ops(a.ops[i])->quadraticRepresentation(out.segment_ptr(i), a.segment_ptr(i),
                                       b.segment_ptr(i), a.sizes[i]);
   return out;
 }
@@ -65,7 +77,7 @@ inline Variable addScaled(const Variable& a, const Variable& b,
 // Geodesic update: W *= exp(alpha * d).  (No R tracking.)
 inline void geodesicUpdate(Variable& W, double alpha, const Variable& d) {
   for (int i = 0; i < W.num_constraints(); ++i)
-    W.ops[i]->geodesicUpdate(W.segment_ptr(i), W.segment_ptr(i),
+    sym_ops(W.ops[i])->geodesicUpdate(W.segment_ptr(i), W.segment_ptr(i),
                              alpha, d.segment_ptr(i), W.sizes[i]);
 }
 
@@ -74,7 +86,7 @@ inline void geodesicUpdate(Variable& W, double alpha, const Variable& d) {
 inline void geodesicUpdateFromSlack(Variable& W, double alpha,
                                     const Variable& slack) {
   for (int i = 0; i < W.num_constraints(); ++i)
-    W.ops[i]->geodesicUpdateFromSlack(W.segment_ptr(i), W.segment_ptr(i),
+    sym_ops(W.ops[i])->geodesicUpdateFromSlack(W.segment_ptr(i), W.segment_ptr(i),
                                       alpha, slack.segment_ptr(i), W.sizes[i]);
 }
 
@@ -83,7 +95,7 @@ inline void geodesicUpdateFromSlack(Variable& W, double alpha,
 inline void updateAutomorphism(Variable& W, Variable& R, double alpha,
                                const Variable& d) {
   for (int i = 0; i < W.num_constraints(); ++i)
-    W.ops[i]->updateAutomorphism(W.segment_ptr(i), R.segment_ptr(i),
+    sym_ops(W.ops[i])->updateAutomorphism(W.segment_ptr(i), R.segment_ptr(i),
                                  alpha, d.segment_ptr(i), W.sizes[i]);
 }
 
@@ -92,7 +104,7 @@ inline void updateAutomorphism(Variable& W, Variable& R, double alpha,
 inline void updateAutomorphismP(Variable& P, Variable& R, double alpha,
                                 const Variable& d) {
   for (int i = 0; i < P.num_constraints(); ++i)
-    P.ops[i]->updateAutomorphismP(P.segment_ptr(i), R.segment_ptr(i),
+    sym_ops(P.ops[i])->updateAutomorphismP(P.segment_ptr(i), R.segment_ptr(i),
                                   alpha, d.segment_ptr(i), P.sizes[i]);
 }
 
@@ -103,7 +115,7 @@ inline void updateAutomorphismP(Variable& P, Variable& R, double alpha,
 inline void updateM(Variable& M, Variable& r, double alpha,
                     const Variable& d) {
   for (int i = 0; i < M.num_constraints(); ++i)
-    M.ops[i]->updateM(M.segment_ptr(i), r.segment_ptr(i), alpha,
+    sym_ops(M.ops[i])->updateM(M.segment_ptr(i), r.segment_ptr(i), alpha,
                        d.segment_ptr(i), M.sizes[i]);
 }
 
@@ -111,7 +123,7 @@ inline void updateM(Variable& M, Variable& r, double alpha,
 inline Variable applyM(const Variable& M, const Variable& x) {
   Variable out = like(x);
   for (int i = 0; i < x.num_constraints(); ++i)
-    x.ops[i]->applyM(out.segment_ptr(i), M.segment_ptr(i),
+    sym_ops(x.ops[i])->applyM(out.segment_ptr(i), M.segment_ptr(i),
                       x.segment_ptr(i), x.sizes[i]);
   return out;
 }
@@ -120,7 +132,7 @@ inline Variable applyM(const Variable& M, const Variable& x) {
 inline Variable applyMt(const Variable& M, const Variable& x) {
   Variable out = like(x);
   for (int i = 0; i < x.num_constraints(); ++i)
-    x.ops[i]->applyMt(out.segment_ptr(i), M.segment_ptr(i),
+    sym_ops(x.ops[i])->applyMt(out.segment_ptr(i), M.segment_ptr(i),
                        x.segment_ptr(i), x.sizes[i]);
   return out;
 }
@@ -129,7 +141,7 @@ inline Variable applyMt(const Variable& M, const Variable& x) {
 inline Variable squareM(const Variable& M) {
   Variable out = like(M);
   for (int i = 0; i < M.num_constraints(); ++i)
-    M.ops[i]->squareM(out.segment_ptr(i), M.segment_ptr(i), M.sizes[i]);
+    sym_ops(M.ops[i])->squareM(out.segment_ptr(i), M.segment_ptr(i), M.sizes[i]);
   return out;
 }
 
@@ -137,7 +149,7 @@ inline Variable squareM(const Variable& M) {
 inline Variable solveLyapunovForD(const Variable& r, const Variable& delta) {
   Variable out = like(r);
   for (int i = 0; i < r.num_constraints(); ++i)
-    r.ops[i]->solveLyapunovForD(out.segment_ptr(i), r.segment_ptr(i),
+    sym_ops(r.ops[i])->solveLyapunovForD(out.segment_ptr(i), r.segment_ptr(i),
                                  delta.segment_ptr(i), r.sizes[i]);
   return out;
 }
@@ -146,7 +158,7 @@ inline Variable solveLyapunovForD(const Variable& r, const Variable& delta) {
 inline Variable absEJA(const Variable& a) {
   Variable out = like(a);
   for (int i = 0; i < a.num_constraints(); ++i)
-    a.ops[i]->abs(out.segment_ptr(i), a.segment_ptr(i), a.sizes[i]);
+    sym_ops(a.ops[i])->abs(out.segment_ptr(i), a.segment_ptr(i), a.sizes[i]);
   return out;
 }
 
@@ -155,14 +167,14 @@ inline double minEigenvalue(const Variable& a) {
   double result = std::numeric_limits<double>::max();
   for (int i = 0; i < a.num_constraints(); ++i)
     result = std::min(result,
-                      a.ops[i]->minEigenvalue(a.segment_ptr(i), a.sizes[i]));
+                      sym_ops(a.ops[i])->minEigenvalue(a.segment_ptr(i), a.sizes[i]));
   return result;
 }
 
 // Set to identity element.
 inline void setOnes(Variable& v) {
   for (int i = 0; i < v.num_constraints(); ++i)
-    v.ops[i]->setIdentity(v.segment_ptr(i), v.sizes[i]);
+    sym_ops(v.ops[i])->setIdentity(v.segment_ptr(i), v.sizes[i]);
 }
 
 // Compute W = P² = quadraticRepresentation(P, e).
@@ -177,7 +189,7 @@ inline double normInf(const Variable& a) {
   double result = 0;
   for (int i = 0; i < a.num_constraints(); ++i)
     result = std::max(result,
-                      a.ops[i]->normInf(a.segment_ptr(i), a.sizes[i]));
+                      sym_ops(a.ops[i])->normInf(a.segment_ptr(i), a.sizes[i]));
   return result;
 }
 
@@ -185,7 +197,7 @@ inline double normInf(const Variable& a) {
 inline double squaredNorm(const Variable& a) {
   double result = 0;
   for (int i = 0; i < a.num_constraints(); ++i)
-    result += a.ops[i]->squaredNorm(a.segment_ptr(i), a.sizes[i]);
+    result += sym_ops(a.ops[i])->squaredNorm(a.segment_ptr(i), a.sizes[i]);
   return result;
 }
 
@@ -193,7 +205,7 @@ inline double squaredNorm(const Variable& a) {
 inline double dot(const Variable& a, const Variable& b) {
   double result = 0;
   for (int i = 0; i < a.num_constraints(); ++i)
-    result += a.ops[i]->dot(a.segment_ptr(i), b.segment_ptr(i),
+    result += sym_ops(a.ops[i])->dot(a.segment_ptr(i), b.segment_ptr(i),
                             a.sizes[i]);
   return result;
 }
@@ -236,7 +248,7 @@ inline double lineSearchK(const Variable& d0, const Variable& d1) {
   double k_max = std::numeric_limits<double>::max();
   for (int i = 0; i < d0.num_constraints(); ++i)
     k_max = std::min(k_max,
-        d0.ops[i]->lineSearchK(d0.segment_ptr(i), d1.segment_ptr(i),
+        sym_ops(d0.ops[i])->lineSearchK(d0.segment_ptr(i), d1.segment_ptr(i),
                                d0.sizes[i]));
   if (k_max <= 0 || k_max >= 1e15) return k_max;
 
@@ -283,7 +295,7 @@ inline double lineSearchK(const Variable& d0, const Variable& d1,
 // Project onto the cone.
 inline void project(Variable& out, const Variable& a) {
   for (int i = 0; i < a.num_constraints(); ++i)
-    a.ops[i]->project(out.segment_ptr(i), a.segment_ptr(i), a.sizes[i]);
+    sym_ops(a.ops[i])->project(out.segment_ptr(i), a.segment_ptr(i), a.sizes[i]);
 }
 
 // Initialize from a VectorXd (copies data into col 0).

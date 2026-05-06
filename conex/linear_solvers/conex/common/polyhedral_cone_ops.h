@@ -21,7 +21,7 @@
 namespace conex {
 namespace EuclideanJordanAlgebra {
 
-class PolyhedralConeOps : public SymmetricConeOperations {
+class PolyhedralConeOps : public BarrierConeOperations {
  public:
   explicit PolyhedralConeOps(const Eigen::MatrixXd& C,
                              bool use_symmetric = false)
@@ -226,33 +226,6 @@ class PolyhedralConeOps : public SymmetricConeOperations {
     return s.minCoeff() > 0;
   }
 
-  // --- SymmetricConeOperations stubs (not a symmetric cone) ---
-  void product(double*, const double*, const double*, int) const override {}
-  void geodesicUpdate(double*, const double*, double, const double*,
-                      int) const override {}
-  void setIdentity(double*, int) const override {}
-  double normInf(const double*, int) const override { return 0; }
-  double squaredNorm(const double*, int) const override { return 0; }
-  double dot(const double*, const double*, int) const override { return 0; }
-  void sqrt(double*, const double*, int) const override {}
-  void quadraticRepresentation(double*, const double*, const double*,
-                               int) const override {}
-  void solveLyapunovForD(double*, const double*, const double*,
-                         int) const override {}
-  void abs(double*, const double*, int) const override {}
-  double minEigenvalue(const double*, int) const override { return 0; }
-  void updateAutomorphism(double*, double*, double, const double*,
-                          int) const override {}
-  void updateAutomorphismP(double*, double*, double, const double*,
-                           int) const override {}
-  void updateM(double*, double*, double, const double*, int) const override {}
-  void applyM(double*, const double*, const double*, int) const override {}
-  void applyMt(double*, const double*, const double*, int) const override {}
-  void squareM(double*, const double*, int) const override {}
-  double lineSearchK(const double*, const double*, int) const override {
-    return 0;
-  }
-  void project(double*, const double*, int) const override {}
 
  private:
   Eigen::MatrixXd C_;

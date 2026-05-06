@@ -226,17 +226,17 @@ inline std::ostream& operator<<(std::ostream& os, const SolverRHS& rhs) {
 
 namespace EuclideanJordanAlgebra {
 
-class SymmetricConeOperations;  // forward declaration
+class BarrierConeOperations;  // forward declaration
 
 // Element of a product of Euclidean Jordan algebras.
 // Single-column by default; supports n-column for batched operations.
-// Each segment has an associated SymmetricConeOperations for dispatching.
+// Each segment has an associated BarrierConeOperations for dispatching.
 class Variable {
  public:
   // Segment metadata (public for read access by MakeRowSpace builders).
   std::vector<int> offsets;
   std::vector<int> sizes;
-  std::vector<const SymmetricConeOperations*> ops;  // one per segment (non-owning)
+  std::vector<const BarrierConeOperations*> ops;  // one per segment (non-owning)
 
   // Allocate storage.
   void resize(int rows, int ncols) { data_.resize(rows, ncols); }
@@ -250,7 +250,7 @@ class Variable {
     return data_.block(offsets[i], 0, sizes[i], data_.cols());
   }
 
-  // Raw pointer to segment data (for SymmetricConeOperations dispatch).
+  // Raw pointer to segment data (for BarrierConeOperations dispatch).
   double* segment_ptr(int i) { return &data_(offsets[i], 0); }
   const double* segment_ptr(int i) const { return &data_(offsets[i], 0); }
 
@@ -263,7 +263,7 @@ class Variable {
   int num_constraints() const { return static_cast<int>(sizes.size()); }
   void SetZero() { data_.setZero(); }
 
-  // Set all entries to a scalar value (bypasses SymmetricConeOperations dispatch).
+  // Set all entries to a scalar value (bypasses cone dispatch).
   // Useful for setting per-row scalar weights uniformly (e.g., identity
   // Gram weights where setOnes would produce the EJA identity element).
   void SetScalarWeights(double val) { data_.setConstant(val); }

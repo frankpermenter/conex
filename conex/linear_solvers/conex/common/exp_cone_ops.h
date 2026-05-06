@@ -9,7 +9,7 @@
 namespace conex {
 namespace EuclideanJordanAlgebra {
 
-class ExpConeOps : public SymmetricConeOperations {
+class ExpConeOps : public BarrierConeOperations {
  public:
   // Barrier function and derivatives.
   static double Barrier(double x, double y, double z);
@@ -66,27 +66,14 @@ class ExpConeOps : public SymmetricConeOperations {
                            const double* target1, int size) const override;
   double barrierParameter(int size) const override;
 
-  // Symmetric cone stubs — not meaningful for exp cone
-  // since it's not a symmetric cone. Stubs for compilation.
-  void product(double*, const double*, const double*, int) const override {}
-  void geodesicUpdate(double*, const double*, double, const double*, int) const override;
-  void setIdentity(double* out, int size) const override;
-  double normInf(const double* a, int size) const override;
-  double squaredNorm(const double* a, int size) const override;
-  double dot(const double* a, const double* b, int size) const override;
-  void sqrt(double*, const double*, int) const override {}
-  void quadraticRepresentation(double*, const double*, const double*, int) const override {}
-  void solveLyapunovForD(double*, const double*, const double*, int) const override {}
-  void abs(double*, const double*, int) const override {}
-  double minEigenvalue(const double* a, int size) const override;
-  void updateAutomorphism(double*, double*, double, const double*, int) const override {}
-  void updateAutomorphismP(double*, double*, double, const double*, int) const override {}
-  void updateM(double*, double*, double, const double*, int) const override {}
-  void applyM(double*, const double*, const double*, int) const override {}
-  void applyMt(double*, const double*, const double*, int) const override {}
-  void squareM(double*, const double*, int) const override {}
-  double lineSearchK(const double*, const double*, int) const override { return 0; }
-  void project(double* out, const double* a, int size) const override;
+  // Utility methods used by the geodesic IPM (not part of BarrierConeOperations).
+  void geodesicUpdate(double*, const double*, double, const double*, int) const;
+  void setIdentity(double* out, int size) const;
+  double normInf(const double* a, int size) const;
+  double squaredNorm(const double* a, int size) const;
+  double dot(const double* a, const double* b, int size) const;
+  double minEigenvalue(const double* a, int size) const;
+  void project(double* out, const double* a, int size) const;
 };
 
 const ExpConeOps& expConeOps();
