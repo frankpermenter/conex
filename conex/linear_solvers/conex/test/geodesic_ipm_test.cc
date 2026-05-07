@@ -2071,6 +2071,30 @@ TEST(GeodesicBarrierQP, FrozenJacobian_ThetaCont_SDP) {
   EXPECT_LE(r2.total_factorizations, r1.total_factorizations);
 }
 
+// Debug: run frozen-J ThetaCont on the spin factor SOC instance.
+TEST(GeodesicBarrierQP, FrozenJacobian_ThetaCont_SpinFactor) {
+  auto [soc_s, sdp_s] = BuildSpinFactorPair(2, 2, 77);
+
+  // SOC: baseline vs frozen-J.
+  CompiledModel soc_cm(*soc_s.kkt(), soc_s.MakeCostRHS());
+  RowSpace soc_W0 = soc_cm.MakeRowSpace(); setOnes(soc_W0);
+  printf("\n--- SOC baseline ---\n");
+  auto soc_base = SolveGeodesicThetaContinuation(soc_cm, soc_W0, 50, 0, 1e-8, true);
+
+  CompiledModel soc_cm2(*soc_s.kkt(), soc_s.MakeCostRHS());
+  RowSpace soc_W1 = soc_cm2.MakeRowSpace(); setOnes(soc_W1);
+  printf("\n--- SOC frozen-J ---\n");
+  auto soc_froz = SolveGeodesicThetaContinuation(soc_cm2, soc_W1, 50, 1, 1e-8, true);
+
+  printf("\n=== SpinFactor SOC: ThetaCont frozen-J ===\n");
+  printf("  Baseline:     %2d fac, %3d solves, gap=%.2e\n",
+         soc_base.total_factorizations, soc_base.total_solves,
+         soc_base.complementarity);
+  printf("  Frozen-J (1): %2d fac, %3d solves, gap=%.2e\n",
+         soc_froz.total_factorizations, soc_froz.total_solves,
+         soc_froz.complementarity);
+}
+
 static void PrintSolveResult(const char* name, const SolveResult& r) {
   printf("  %-25s  %3d  %5d  %12.6e  %10.2e  %10.2e  %10.2e  %10.2e  %10.2e\n",
          name, r.factorizations, r.iterations,
