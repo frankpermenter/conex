@@ -276,7 +276,10 @@ GeodesicResult SolveGeodesicHSDE(
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       geodesicUpdate(W, alpha, d);
       w_tau *= std::exp(d_tau * alpha);
-      r_tau = 0.5 * r_tau * (1.0 + std::abs(d_tau));
+      // Set r_tau = 1/k so that at the central path (d=0, d_tau=0):
+      // mu*nu + r_tau^2 = nu/k^2 + 1/k^2 = alpha/k^2 = theta*alpha
+      // → theta = 1/k^2 = mu.
+      r_tau = 1.0 / k;
       total_fac++;  // count the factorization that will happen next iteration
     }
   }
