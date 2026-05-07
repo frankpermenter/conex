@@ -2115,6 +2115,32 @@ TEST(GeodesicBarrierQP, FrozenJacobian_ThetaCont_SpinFactor) {
   }
 }
 
+TEST(GeodesicBarrierQP, HSDE_Affinity) {
+  srand(42);
+  const int n_psd = 4, p = 6;
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  auto make_sym = [](int n) {
+    MatrixXd M = MatrixXd::Random(n, n);
+    return (M + M.transpose()) / 2.0;
+  };
+  for (int i = 0; i < p; ++i)
+    A_list.push_back(toSparse(make_sym(n_psd)));
+  Eigen::SparseMatrix<double> B = toSparse(
+      3.0 * MatrixXd::Identity(n_psd, n_psd));
+  VectorXd c(p);
+  for (int i = 0; i < p; ++i)
+    c(i) = Eigen::MatrixXd(A_list[i]).trace();
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+  Model model;
+  model.AddPSDConstraint(A_list, B, vars, false);
+  model.SetLinearCost(c);
+
+  auto s = Solver::Build(model);
+  auto cm = s.MakeCompiledModel();
+  GeodesicHSDE{1e-10, 5, true}.Run(cm);
+}
+
 static void PrintSolveResult(const char* name, const SolveResult& r) {
   printf("  %-25s  %3d  %5d  %12.6e  %10.2e  %10.2e  %10.2e  %10.2e  %10.2e\n",
          name, r.factorizations, r.iterations,

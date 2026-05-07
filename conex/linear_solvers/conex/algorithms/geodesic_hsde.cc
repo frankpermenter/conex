@@ -85,7 +85,7 @@ static HSDEEval EvalAtK(
   double inv_wt = 1.0 / (c.w_tau > 1e-30 ? c.w_tau : 1e-30);
   double A_coeff = bTl1_sub + cTh + qhh + c.R * n1 - inv_wt * inv_wt;
   double B_coeff = bTl0_sub + cTf0 + 2 * qfh + c.R * e1 + 2 * c.r_tau * inv_wt;
-  double C_coeff = qff;
+  double C_coeff = qff;  // mu absorbed in kappa (ThetaContR formulation)
 
   // Solve quadratic for tau.
   double tau = -1;
@@ -276,34 +276,82 @@ GeodesicResult SolveGeodesicHSDE(
     if (std::abs(theta) < tolerance && std::abs(gap) < tolerance && d_inf <= 1.001)
       break;
 
-    // k-update first (at current W, before stepping): binary search for
-    // largest k with max(d_inf, |d_tau|) <= 1.  Same principle as GeodesicLP:
-    // the decomposition at W supports a range of k values.
+    // Affinity check: d(k) and d_tau(k) should be affine in k.
+    // Evaluate at k, 2k, 3k and check d(2k) = (d(k) + d(3k)) / 2.
+    if (verbose && iter < 3) {
+      double k1 = std::max(k, 1.0), k2 = 2.0 * k1, k3 = 3.0 * k1;
+      auto ev1 = EvalAtK(decomp, coeff, k1);
+      auto ev2 = EvalAtK(decomp, coeff, k2);
+      auto ev3 = EvalAtK(decomp, coeff, k3);
+      RowSpace d1v = EvaluateDirection(decomp, k1, ev1.tau, ev1.theta);
+      RowSpace d2v = EvaluateDirection(decomp, k2, ev2.tau, ev2.theta);
+      RowSpace d3v = EvaluateDirection(decomp, k3, ev3.tau, ev3.theta);
+      // If affine: d2 = (d1 + d3)/2, so d2 - (d1+d3)/2 should be zero.
+      RowSpace avg = addScaled(d1v, d3v, 0.5, 0.5);
+      RowSpace err = addScaled(d2v, avg, 1.0, -1.0);
+      double affine_err = normInf(err);
+      // Also check d_tau affinity.
+      double dtau_avg = 0.5 * (ev1.d_tau + ev3.d_tau);
+      double dtau_err = std::abs(ev2.d_tau - dtau_avg);
+      printf("  [affine] k=%.2e,%.2e,%.2e  tau=%.2e,%.2e,%.2e  "
+             "theta=%.2e,%.2e,%.2e  d_err=%.2e  dtau_err=%.2e  "
+             "dinf=%.2e,%.2e,%.2e\n",
+             k1, k2, k3,
+             ev1.tau, ev2.tau, ev3.tau,
+             ev1.theta, ev2.theta, ev3.theta,
+             affine_err, dtau_err,
+             ev1.d_inf, ev2.d_inf, ev3.d_inf);
+    }
+
+    // k-update: d(k) is affine in k.  Extract the affine decomposition
+    // d(k) = D0 + k*D1 by evaluating at two k values, then use lineSearchK.
     {
-      double k_lo = k, k_hi = k;
-      for (int i = 0; i < 50; ++i) {
-        k_hi *= 2.0;
-        auto ev_hi = EvalAtK(decomp, coeff, k_hi);
-        if (ev_hi.tau <= 0 || ev_hi.d_inf > 1.0) break;
-      }
-      for (int bisect = 0; bisect < 50; ++bisect) {
-        double k_mid = 0.5 * (k_lo + k_hi);
-        auto ev_mid = EvalAtK(decomp, coeff, k_mid);
-        if (ev_mid.tau > 0 && ev_mid.d_inf <= 1.0) {
-          k_lo = k_mid;
-        } else {
-          k_hi = k_mid;
+      double ka = k, kb = k + 1.0;
+      auto eva = EvalAtK(decomp, coeff, ka);
+      auto evb = EvalAtK(decomp, coeff, kb);
+      if (eva.tau > 0 && evb.tau > 0) {
+        if (verbose && iter < 5) {
+          printf("  [lsK] k=%.4e dinf=%.4e dtau=%.4e | k+1=%.4e dinf=%.4e dtau=%.4e\n",
+                 ka, eva.d_inf, eva.d_tau, kb, evb.d_inf, evb.d_tau);
         }
-      }
-      if (k_lo > k) {
-        k = k_lo;
-        // Re-evaluate at the new k to get the step direction.
-        auto ev_new = EvalAtK(decomp, coeff, k);
-        tau = ev_new.tau;
-        theta = ev_new.theta;
-        d_tau = ev_new.d_tau;
-        d = EvaluateDirection(decomp, k, tau, theta);
-        d_inf = ev_new.d_inf;
+        RowSpace da = EvaluateDirection(decomp, ka, eva.tau, eva.theta);
+        RowSpace db = EvaluateDirection(decomp, kb, evb.tau, evb.theta);
+        // d(k) = D0 + k*D1 where D1 = (db - da)/(kb - ka), D0 = da - ka*D1.
+        RowSpace D1 = addScaled(db, da, 1.0, -1.0);  // kb-ka=1
+        RowSpace D0 = addScaled(da, D1, 1.0, -ka);
+        double k_cone = lineSearchK(D0, D1);
+        if (verbose && iter < 5) {
+          printf("  [lsK] D0_inf=%.4e D1_inf=%.4e k_cone=%.4e (cur k=%.4e)\n",
+                 normInf(D0), normInf(D1), k_cone, k);
+        }
+
+        // d_tau constraint: d_tau(k) = tau(k)/(wt*rt) - 1, monotone in k.
+        // Clamp k_cone if |d_tau| > 1.
+        if (k_cone > k) {
+          auto ev_test = EvalAtK(decomp, coeff, k_cone);
+          if (ev_test.tau <= 0 || std::abs(ev_test.d_tau) > 1.0) {
+            double lo = k, hi = k_cone;
+            for (int bs = 0; bs < 50; ++bs) {
+              double mid = 0.5 * (lo + hi);
+              auto evm = EvalAtK(decomp, coeff, mid);
+              if (evm.tau > 0 && std::abs(evm.d_tau) <= 1.0)
+                lo = mid;
+              else
+                hi = mid;
+            }
+            k_cone = lo;
+          }
+        }
+
+        if (k_cone > k) {
+          k = k_cone;
+          auto ev_new = EvalAtK(decomp, coeff, k);
+          tau = ev_new.tau;
+          theta = ev_new.theta;
+          d_tau = ev_new.d_tau;
+          d = EvaluateDirection(decomp, k, tau, theta);
+          d_inf = ev_new.d_inf;
+        }
       }
     }
 
