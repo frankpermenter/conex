@@ -1034,22 +1034,52 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
     // Frozen-Jacobian steps: refresh d0 (1 solve), redo theta binary
     // search with frozen d1_0, d1_theta, then step.
-    // Precompute frozen duality coefficients (constant across inner iters).
+    //
+    // Debug: set refactor_inner=true to refactor at Wi and use the
+    // standard (non-frozen) path.  This should produce the same
+    // trajectory as baseline ThetaCont.  Any difference is a bug.
+    constexpr bool refactor_inner = false;
+
     RowSpace sqrtW0_f = EuclideanJordanAlgebra::sqrt(W0);
     auto dc_f = ComputeDualityCoeffs(model, duality_cost, b, W0, decomp);
     double beta_f = dc_f.sigma1 + dc_f.gamma1 + dc_f.q11;
 
     for (int inner = 0; inner < max_centering_steps; ++inner) {
-      RefreshD0Frozen(model, b, W0, W, decomp);
-      total_sol += 1;
+      if (refactor_inner) {
+        // Full refactor: makes inner iteration identical to outer.
+        W0 = W;
+        sqrtW0_f = EuclideanJordanAlgebra::sqrt(W0);
+        dc_f = ComputeDualityCoeffs(model, duality_cost, b, W0, decomp);
+        beta_f = dc_f.sigma1 + dc_f.gamma1 + dc_f.q11;
+        decomp = ComputeFullDecomposition(model, b, W);
+        total_fac++;
+        total_sol += 3;
+      } else {
+        RefreshD0Frozen(model, b, W0, W, decomp);
+        total_sol += 1;
+      }
 
-      // Binary search for smallest theta with frozen-Jacobian decomp.
-      double theta_lo_f = theta * 0.1, theta_hi_f = theta;
+      // Binary search for smallest theta.
+      double theta_lo_f, theta_hi_f;
+      if (refactor_inner) {
+        theta_lo_f = 0.0;  // standard: allow theta to reach 0
+      } else {
+        theta_lo_f = theta * 0.1;  // frozen-J: limit reduction
+      }
+      theta_hi_f = theta;
+
       for (int bisect = 0; bisect < 30; ++bisect) {
         double theta_mid = 0.5 * (theta_lo_f + theta_hi_f);
-        auto [tau_try, d_inf_try] = FrozenEvalThetaCandidate(
-            model, duality_cost, b, W, sqrtW0_f, decomp,
-            bT_ones, beta_f, theta_mid);
+        std::pair<double, double> result_try;
+        if (refactor_inner) {
+          result_try = EvalThetaCandidate(
+              model, duality_cost, b, W, decomp, bT_ones, theta_mid);
+        } else {
+          result_try = FrozenEvalThetaCandidate(
+              model, duality_cost, b, W, sqrtW0_f, decomp,
+              bT_ones, beta_f, theta_mid);
+        }
+        auto [tau_try, d_inf_try] = result_try;
         if (tau_try > 0 && d_inf_try <= beta_target) {
           theta_hi_f = theta_mid;
         } else {
@@ -1058,9 +1088,16 @@ GeodesicResult SolveGeodesicThetaContinuation(
       }
       double theta_f = theta_hi_f;
       double k_f = 1.0 / std::sqrt(theta_f);
-      auto [tau_f, d_inf_f] = FrozenEvalThetaCandidate(
-          model, duality_cost, b, W, sqrtW0_f, decomp,
-          bT_ones, beta_f, theta_f);
+      std::pair<double, double> result_sel;
+      if (refactor_inner) {
+        result_sel = EvalThetaCandidate(
+            model, duality_cost, b, W, decomp, bT_ones, theta_f);
+      } else {
+        result_sel = FrozenEvalThetaCandidate(
+            model, duality_cost, b, W, sqrtW0_f, decomp,
+            bT_ones, beta_f, theta_f);
+      }
+      auto [tau_f, d_inf_f] = result_sel;
       if (tau_f <= 0) break;
 
       RowSpace d_f = EvaluateDirection(decomp, k_f, tau_f, theta_f);
