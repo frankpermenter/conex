@@ -2226,14 +2226,14 @@ TEST(GeodesicBarrierQP, HSDE_QP_Affinity) {
     printf("\n--- LP affinity check ---\n");
     Solver::Build(model).Solve(GeodesicHSDE{1e-10, 3, 0, true});
   }
-  // QP (Q≠0): check if d is still affine.
+  // QP (large Q): check affinity and show iter stats.
   {
     Model model;
     model.AddLinearConstraint(toSparse(A), b, vars);
-    model.AddQuadraticCost(toSparse(MatrixXd::Identity(n, n) * 0.5), vars);
+    model.AddQuadraticCost(toSparse(MatrixXd::Identity(n, n) * 10.0), vars);
     model.SetLinearCost(c);
-    printf("\n--- QP affinity check ---\n");
-    Solver::Build(model).Solve(GeodesicHSDE{1e-10, 3, 0, true});
+    printf("\n--- QP (large Q=10*I) iter stats ---\n");
+    Solver::Build(model).Solve(GeodesicHSDE{1e-10, 30, 0, true});
   }
 }
 
