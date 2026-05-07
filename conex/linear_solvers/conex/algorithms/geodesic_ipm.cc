@@ -1044,7 +1044,10 @@ GeodesicResult SolveGeodesicThetaContinuation(
       total_sol += 1;
 
       // Binary search for smallest theta with frozen-Jacobian decomp.
-      double theta_lo_f = 0.0, theta_hi_f = theta;
+      // Limit theta reduction: don't let theta drop below 10% of current
+      // value in a single frozen step, to prevent the degenerate theta→0
+      // jump that causes tau collapse.
+      double theta_lo_f = theta * 0.1, theta_hi_f = theta;
       for (int bisect = 0; bisect < 30; ++bisect) {
         double theta_mid = 0.5 * (theta_lo_f + theta_hi_f);
         auto [tau_try, d_inf_try] = FrozenEvalThetaCandidate(
