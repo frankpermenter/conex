@@ -118,6 +118,7 @@ struct AlgoResult {
   const char* name;
   int iterations;
   int factorizations;
+  int solves;
   double mu;
   double primal_cost;
   double dual_residual;
@@ -161,7 +162,7 @@ AlgoResult RunAlgo(const char* name, CompiledModel& model,
   }
 
   return {name, result.iterations, result.total_factorizations,
-          result.mu, primal_cost,
+          result.total_solves, result.mu, primal_cost,
           result.optimality.dual_residual,
           result.optimality.complementarity,
           ms, result.mu < 1e-6};
@@ -204,22 +205,40 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   if (should_run("ThetaCont")) {
     results.push_back(RunAlgo("ThetaCont", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicThetaContinuation(model, W, max_iters, 1, tol, true);
+        return SolveGeodesicThetaContinuation(model, W, max_iters, 0, tol);
+      }));
+  }
+  if (should_run("TC+frzJ")) {
+    results.push_back(RunAlgo("TC+frzJ", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicThetaContinuation(model, W, max_iters, 1, tol);
+      }));
+  }
+  if (should_run("GeodesicLP")) {
+    results.push_back(RunAlgo("GeodesicLP", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicLP(model, W, 30, 0, tol);
+      }));
+  }
+  if (should_run("LP+frzJ")) {
+    results.push_back(RunAlgo("LP+frzJ", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicLP(model, W, 30, 1, tol);
       }));
   }
   if (should_run("PhaseOne")) {
     results.push_back(RunAlgo("PhaseOne", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicPhaseOne(model, W, max_iters, 1, tol, true);
+        return SolveGeodesicPhaseOne(model, W, max_iters, 1, tol);
       }));
   }
   if (should_run("Ph1+Hybrid")) {
     results.push_back(RunAlgo("Ph1+Hybrid", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        auto p1 = SolveGeodesicPhaseOne(model, W, max_iters, 1, tol, true,
+        auto p1 = SolveGeodesicPhaseOne(model, W, max_iters, 1, tol, false,
                                          /*phase1_only=*/true);
         double k_init = (p1.mu > 0) ? 1.0 / std::sqrt(p1.mu) : -1;
-        auto result = SolveGeodesicHybrid(model, W, max_iters, tol, true,
+        auto result = SolveGeodesicHybrid(model, W, max_iters, tol, false,
                                            k_init, p1.tau);
         result.total_factorizations += p1.total_factorizations;
         result.total_solves += p1.total_solves;
@@ -229,13 +248,13 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   if (should_run("HybridR")) {
     results.push_back(RunAlgo("HybridR", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicHybridR(model, W, max_iters, tol, true);
+        return SolveGeodesicHybridR(model, W, max_iters, tol);
       }));
   }
   if (should_run("ThetaContR")) {
     results.push_back(RunAlgo("ThetaContR", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicThetaContinuationR(model, W, max_iters, tol, true);
+        return SolveGeodesicThetaContinuationR(model, W, max_iters, tol);
       }));
   }
   for (double ct : {1e-8, 1e-10, 1e-12, 1e-14}) {
@@ -254,14 +273,14 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   if (should_run("ThetaR+gap")) {
     results.push_back(RunAlgo("ThetaR+gap", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicThetaContinuationR(model, W, max_iters, tol, true,
+        return SolveGeodesicThetaContinuationR(model, W, max_iters, tol, false,
             [](double gap, double, int) { return gap < 0; });
       }));
   }
   if (should_run("ColdHybrid")) {
     results.push_back(RunAlgo("ColdHybrid", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicHybrid(model, W, max_iters, tol, true);
+        return SolveGeodesicHybrid(model, W, max_iters, tol);
       }));
   }
   auto make_warmup_policy = [](int warmup_centers) -> HybridSwitchPolicy {
@@ -274,41 +293,41 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   if (should_run("Cold+3ctr")) {
     results.push_back(RunAlgo("Cold+3ctr", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicHybrid(model, W, max_iters, tol, true,
+        return SolveGeodesicHybrid(model, W, max_iters, tol, false,
                                     -1, 1.0, make_warmup_policy(3));
       }));
   }
   if (should_run("Cold+5ctr")) {
     results.push_back(RunAlgo("Cold+5ctr", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicHybrid(model, W, max_iters, tol, true,
+        return SolveGeodesicHybrid(model, W, max_iters, tol, false,
                                     -1, 1.0, make_warmup_policy(5));
       }));
   }
   if (should_run("Cold+10ctr")) {
     results.push_back(RunAlgo("Cold+10ctr", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicHybrid(model, W, max_iters, tol, true,
+        return SolveGeodesicHybrid(model, W, max_iters, tol, false,
                                     -1, 1.0, make_warmup_policy(10));
       }));
   }
   if (should_run("Cold+20ctr")) {
     results.push_back(RunAlgo("Cold+20ctr", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicHybrid(model, W, max_iters, tol, true,
+        return SolveGeodesicHybrid(model, W, max_iters, tol, false,
                                     -1, 1.0, make_warmup_policy(20));
       }));
   }
 
   // --- Summary table ---
-  printf("  %-12s %5s %5s %10s %14s %10s %10s %8s %s\n",
-         "Algorithm", "iters", "fac", "mu", "cost", "dual_res",
+  printf("  %-12s %5s %5s %5s %10s %14s %10s %10s %8s %s\n",
+         "Algorithm", "fac", "sol", "iter", "mu", "cost", "dual_res",
          "compl", "ms", "ok");
-  printf("  %s\n", std::string(90, '-').c_str());
+  printf("  %s\n", std::string(96, '-').c_str());
   double c0 = objective_constant;
   for (const auto& r : results) {
-    printf("  %-12s %5d %5d %10.2e %14.6e %10.2e %10.2e %8.1f %s\n",
-           r.name, r.iterations, r.factorizations,
+    printf("  %-12s %5d %5d %5d %10.2e %14.6e %10.2e %10.2e %8.1f %s\n",
+           r.name, r.factorizations, r.solves, r.iterations,
            r.mu, r.primal_cost + c0, r.dual_residual,
            r.complementarity, r.time_ms,
            r.converged ? "yes" : "NO");
