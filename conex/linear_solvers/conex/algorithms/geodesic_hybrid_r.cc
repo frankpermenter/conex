@@ -482,56 +482,96 @@ GeodesicResult SolveGeodesicThetaContinuationR(
         }
       } else {
         // Q≠0: eliminate theta via normalization, solve quadratic in tau.
+        // When Nth ≈ 0: normalization determines tau directly, gap determines theta.
         double eta = alpha_norm + N0;
         double Nth_threshold = 1e-12 * (std::abs(N0) + std::abs(N1) + 1.0);
-        double n1 = (std::abs(Nth) > Nth_threshold) ? N1 / Nth : 0.0;
-        double e1 = (std::abs(Nth) > Nth_threshold) ? eta / Nth : 0.0;
 
-        Eigen::VectorXd f0_vec = decomp.x0 - e1 * decomp.x_theta;
-        Eigen::VectorXd h_vec = decomp.x1 - n1 * decomp.x_theta;
+        if (std::abs(Nth) > Nth_threshold) {
+          // Normal case: eliminate theta, quadratic in tau.
+          double n1 = N1 / Nth;
+          double e1 = eta / Nth;
 
-        double qff = 0, qfh = 0, qhh = 0;
-        {
-          auto f0_rhs = model.MakeSolverRHS(); f0_rhs = model.MakeBlockVariable(f0_vec);
-          auto h_rhs = model.MakeSolverRHS(); h_rhs = model.MakeBlockVariable(h_vec);
-          auto Qf0 = model.MakeSolverRHS(); Qf0.SetZero(); model.AccumulateQx(f0_rhs, Qf0);
-          auto Qh = model.MakeSolverRHS(); Qh.SetZero(); model.AccumulateQx(h_rhs, Qh);
-          qff = Qf0.dot(f0_rhs);
-          qfh = Qf0.dot(h_rhs);
-          qhh = Qh.dot(h_rhs);
-        }
+          Eigen::VectorXd f0_vec = decomp.x0 - e1 * decomp.x_theta;
+          Eigen::VectorXd h_vec = decomp.x1 - n1 * decomp.x_theta;
 
-        double bTl0_sub = bTl0 - e1 * bTlth;
-        double bTl1_sub = bTl1 - n1 * bTlth;
-        double cTf0 = cTx0 - e1 * cTxth;
-        double cTh = cTx1 - n1 * cTxth;
+          double qff = 0, qfh = 0, qhh = 0;
+          {
+            auto f0_rhs = model.MakeSolverRHS(); f0_rhs = model.MakeBlockVariable(f0_vec);
+            auto h_rhs = model.MakeSolverRHS(); h_rhs = model.MakeBlockVariable(h_vec);
+            auto Qf0 = model.MakeSolverRHS(); Qf0.SetZero(); model.AccumulateQx(f0_rhs, Qf0);
+            auto Qh = model.MakeSolverRHS(); Qh.SetZero(); model.AccumulateQx(h_rhs, Qh);
+            qff = Qf0.dot(f0_rhs);
+            qfh = Qf0.dot(h_rhs);
+            qhh = Qh.dot(h_rhs);
+          }
 
-        double inv_wt = 1.0 / (w_tau > 1e-30 ? w_tau : 1e-30);
-        double A_coeff = bTl1_sub + cTh + qhh + R*n1 - inv_wt*inv_wt;
-        double B_coeff = bTl0_sub + cTf0 + 2*qfh + R*e1 + 2*r_tau*inv_wt;
-        double C_coeff = qff;
+          double bTl0_sub = bTl0 - e1 * bTlth;
+          double bTl1_sub = bTl1 - n1 * bTlth;
+          double cTf0 = cTx0 - e1 * cTxth;
+          double cTh = cTx1 - n1 * cTxth;
 
-        double tau_new = tau;
-        double discr = B_coeff * B_coeff - 4.0 * A_coeff * C_coeff;
-        if (discr >= 0 && std::abs(A_coeff) > 1e-30) {
-          double sq = std::sqrt(discr);
-          double t1 = (-B_coeff + sq) / (2.0 * A_coeff);
-          double t2 = (-B_coeff - sq) / (2.0 * A_coeff);
+          double inv_wt = 1.0 / (w_tau > 1e-30 ? w_tau : 1e-30);
+          double A_coeff = bTl1_sub + cTh + qhh + R*n1 - inv_wt*inv_wt;
+          double B_coeff = bTl0_sub + cTf0 + 2*qfh + R*e1 + 2*r_tau*inv_wt;
+          double C_coeff = qff;
+
+          double tau_new = tau;
+          double discr = B_coeff * B_coeff - 4.0 * A_coeff * C_coeff;
+          if (discr >= 0 && std::abs(A_coeff) > 1e-30) {
+            double sq = std::sqrt(discr);
+            double t1 = (-B_coeff + sq) / (2.0 * A_coeff);
+            double t2 = (-B_coeff - sq) / (2.0 * A_coeff);
+            double wtr = w_tau * r_tau;
+            double d1v = (std::abs(wtr) > 1e-30) ? t1 / wtr - 1.0 : 1e30;
+            double d2v = (std::abs(wtr) > 1e-30) ? t2 / wtr - 1.0 : 1e30;
+            if (t1 > 0 && !(t2 > 0))
+              tau_new = t1;
+            else if (t2 > 0 && !(t1 > 0))
+              tau_new = t2;
+            else
+              tau_new = (std::abs(d1v) < std::abs(d2v)) ? t1 : t2;
+          }
+          tau = tau_new;
           double wtr = w_tau * r_tau;
-          double d1v = (std::abs(wtr) > 1e-30) ? t1 / wtr - 1.0 : 1e30;
-          double d2v = (std::abs(wtr) > 1e-30) ? t2 / wtr - 1.0 : 1e30;
-          if (t1 > 0 && !(t2 > 0))
-            tau_new = t1;
-          else if (t2 > 0 && !(t1 > 0))
-            tau_new = t2;
-          else
-            tau_new = (std::abs(d1v) < std::abs(d2v)) ? t1 : t2;
-        }
-        tau = tau_new;
-        double wtr = w_tau * r_tau;
-        d_tau = (std::abs(wtr) > 1e-30) ? tau / wtr - 1.0 : 0.0;
-        if (std::abs(Nth) > 1e-30) {
+          d_tau = (std::abs(wtr) > 1e-30) ? tau / wtr - 1.0 : 0.0;
           theta = (-alpha_norm - N0 - N1 * tau) / Nth;
+        } else {
+          // Nth ≈ 0: normalization is N0 + N1*tau = -alpha (no theta).
+          // Solve for tau directly, then theta from gap equation.
+          if (std::abs(N1) > 1e-30) {
+            tau = (-alpha_norm - N0) / N1;
+          }
+          double wtr = w_tau * r_tau;
+          d_tau = (std::abs(wtr) > 1e-30) ? tau / wtr - 1.0 : 0.0;
+
+          // Gap: bTl0 + tau*bTl1 + theta*bTlth + cTx0 + tau*cTx1 + theta*cTxth
+          //      + x'Qx/tau + kappa = theta*R
+          // Rearrange: theta*(bTlth + cTxth - R) = -(bTl0 + tau*bTl1 + cTx0 + tau*cTx1
+          //            + x'Qx/tau + kappa)
+          double kappa_val = r_tau * (1.0 - d_tau) / (w_tau > 1e-30 ? w_tau : 1e-30);
+          double gap_linear = bTl0 + tau * bTl1 + cTx0 + tau * cTx1 + kappa_val;
+
+          // x'Qx/tau: x = x0 + tau*x1 + theta*x_theta.
+          // At this point theta is unknown, but for Nth≈0 the theta*x_theta
+          // contribution is typically small. Use theta from previous iteration
+          // as initial estimate for the Q term.
+          Eigen::VectorXd x_est = decomp.x0 + tau * decomp.x1
+                                + theta * decomp.x_theta;
+          auto x_rhs = model.MakeSolverRHS();
+          x_rhs = model.MakeBlockVariable(x_est);
+          auto qx = model.MakeSolverRHS(); qx.SetZero();
+          model.AccumulateQx(x_rhs, qx);
+          double xQx = qx.dot(x_rhs);
+          double xQx_tau = (std::abs(tau) > 1e-30) ? xQx / tau : 0.0;
+
+          double G_theta = bTlth + cTxth - R;
+          if (std::abs(G_theta) > 1e-30) {
+            theta = -(gap_linear + xQx_tau) / G_theta;
+          }
+          if (verbose) {
+            printf("  [Nth≈0] tau=%.4e theta=%.4e G_theta=%.4e N1=%.4e\n",
+                   tau, theta, G_theta, N1);
+          }
         }
       }
       SetTheta(decomp, model, b, M, r, theta);

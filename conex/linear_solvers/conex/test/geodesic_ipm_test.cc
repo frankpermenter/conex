@@ -2226,21 +2226,47 @@ TEST(GeodesicBarrierQP, HSDE_QP_Affinity) {
     printf("\n--- LP affinity check ---\n");
     Solver::Build(model).Solve(GeodesicHSDE{1e-10, 3, 0, true});
   }
-  // QP (large Q): HSDE vs ThetaContR.
+  // QP: sweep Q scale.
+  // No Q.
   {
     Model model;
     model.AddLinearConstraint(toSparse(A), b, vars);
-    model.AddQuadraticCost(toSparse(MatrixXd::Identity(n, n) * 10.0), vars);
     model.SetLinearCost(c);
-    printf("\n--- QP (large Q=10*I) ThetaContR ---\n");
-    auto r_tcr = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 100, true});
-    printf("\n--- QP (large Q=10*I) HSDE ---\n");
-    auto r_hsde = Solver::Build(model).Solve(GeodesicHSDE{1e-10, 30, 0, true});
-    printf("\n=== QP comparison ===\n");
-    printf("  ThetaContR:  fac=%d iter=%d obj=%.6e\n",
-           r_tcr.factorizations, r_tcr.iterations, r_tcr.objective);
-    printf("  HSDE:        fac=%d iter=%d obj=%.6e\n",
-           r_hsde.factorizations, r_hsde.iterations, r_hsde.objective);
+    auto s = Solver::Build(model);
+    auto cm = s.MakeCompiledModel();
+    RowSpace W = cm.MakeRowSpace();
+    EuclideanJordanAlgebra::setOnes(W);
+    printf("\n--- No Q ---\n");
+    auto r = SolveGeodesicThetaContinuationR(cm, W, 3, 1e-10, true);
+  }
+  // Q = 0*I (triggers quadratic path with zero Q data).
+  {
+    Model model;
+    model.AddLinearConstraint(toSparse(A), b, vars);
+    Eigen::SparseMatrix<double> Q_zero(n, n);
+    model.AddQuadraticCost(Q_zero, vars);
+    model.SetLinearCost(c);
+    auto s = Solver::Build(model);
+    auto cm = s.MakeCompiledModel();
+    RowSpace W = cm.MakeRowSpace();
+    EuclideanJordanAlgebra::setOnes(W);
+    printf("\n--- Q = 0*I (quadratic path) ---\n");
+    auto r = SolveGeodesicThetaContinuationR(cm, W, 3, 1e-10, true);
+  }
+  // Q = 1e-9*I.
+  {
+    Model model;
+    model.AddLinearConstraint(toSparse(A), b, vars);
+    model.AddQuadraticCost(toSparse(MatrixXd::Identity(n, n) * 1e-9), vars);
+    model.SetLinearCost(c);
+    auto s = Solver::Build(model);
+    auto cm = s.MakeCompiledModel();
+    RowSpace W = cm.MakeRowSpace();
+    EuclideanJordanAlgebra::setOnes(W);
+    printf("\n--- Q = 0.001*I ---\n");
+    auto r = SolveGeodesicThetaContinuationR(cm, W, 3, 1e-10, true);
+  }
+  {
   }
 }
 
