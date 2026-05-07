@@ -426,7 +426,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       full_decomp = false;
 
       // Joint (d_tau, theta) selection from gap + normalization.
-      // Both equations are linear in (d_tau, theta) at fixed (W, r).
+      // Both equations are linear in (d_tau, theta) when Q=0.
+      // TODO: For Q≠0, x'Qx/tau introduces nonlinearity.
       //
       // tau = w_tau * r_tau * (1 + d_tau)
       // kappa = r_tau * (1 - d_tau) / w_tau
