@@ -93,6 +93,55 @@ OptimalityReport CheckOptimality(
   return report;
 }
 
+// Core solve pattern shared by all Newton-step variants.
+// Adds A^T(cone_rhs) to var_rhs, solves with the current factorization,
+// and returns A*x (for direction recovery).  Optionally outputs x.
+static RowSpace SolveConeSystem(
+    CompiledModel& model,
+    SolverRHS& var_rhs,               // variable-space RHS (modified: += A^T cone_rhs, then solved)
+    const RowSpace& cone_rhs,         // cone-space RHS (accumulated via A^T)
+    Eigen::VectorXd* x_out = nullptr) {
+  model.AccumulateAtranspose(cone_rhs, var_rhs);
+  model.SolveSolverRHS(var_rhs);
+  if (x_out) {
+    int nr = model.number_of_variables();
+    x_out->resize(nr);
+    var_rhs.supernodes->GatherInto(*x_out);
+  }
+  RowSpace Ax = model.MakeRowSpace();
+  model.MultiplyA(var_rhs, Ax);
+  return Ax;
+}
+
+// Build the cost (variable-space) RHS: -cost_scale*(c) + eq_scale*d_eq.
+// cost_scale and eq_scale are usually the same (k for GeodesicLP, 1 for
+// decomposition) but differ for the Hybrid where cost is pre-scaled by tau
+// but equality RHS needs explicit tau scaling.
+static SolverRHS MakeCostVarRHS(
+    CompiledModel& model,
+    const SolverRHS& cost_rhs,
+    double cost_scale,
+    double eq_scale) {
+  auto rhs = model.MakeSolverRHS();
+  rhs = cost_rhs;
+  rhs *= -cost_scale;
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
+  if (ts && !ts->equality_sub_assemblers().empty()) {
+    auto d_rhs = ts->EqualityAffineTermRHS();
+    d_rhs *= eq_scale;
+    rhs += d_rhs;
+  }
+  return rhs;
+}
+
+// Convenience: same scale for cost and equality.
+static SolverRHS MakeCostVarRHS(
+    CompiledModel& model,
+    const SolverRHS& cost_rhs,
+    double scale) {
+  return MakeCostVarRHS(model, cost_rhs, scale, scale);
+}
+
 static void ComputeDirectNewtonStep(
     CompiledModel& model,
     const RowSpace& b,
@@ -163,27 +212,15 @@ static void ComputeDirectNewtonStep(
     RowSpace& d_out,
     Eigen::VectorXd& y_out,
     RowSpace* slack_out) {
-  const auto& cost_rhs = model.cost_rhs();
   model.SetScaling(W);
   model.AssembleAndFactor();
 
-  auto y = model.MakeSolverRHS();
-  y = cost_rhs;
-  y *= -k;
-  RowSpace v = addScaled(quadraticRepresentation(W, b), W, -k, 2.0);
-  model.AccumulateAtranspose(v, y);
-  // Inject equality RHS: +k*d at dual positions.
-  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
-  if (ts && !ts->equality_sub_assemblers().empty()) {
-    auto d_rhs = ts->EqualityAffineTermRHS();
-    d_rhs *= k;
-    y += d_rhs;
-  }
-  model.SolveSolverRHS(y);
-
-  RowSpace row = model.MakeRowSpace();
-  model.MultiplyA(y, row);
-  RowSpace slack = addScaled(b, row, -k, -1.0);
+  // Combined RHS: centering (2W) + cost (-k·P(W)(b)) in cone space,
+  //               -k·c + k·d_eq in variable space.
+  auto var_rhs = MakeCostVarRHS(model, model.cost_rhs(), k);
+  RowSpace cone_rhs = addScaled(quadraticRepresentation(W, b), W, -k, 2.0);
+  RowSpace Ax = SolveConeSystem(model, var_rhs, cone_rhs);
+  RowSpace slack = addScaled(b, Ax, -k, -1.0);
   if (slack_out) *slack_out = slack;
 
   d_out = quadraticRepresentation(EuclideanJordanAlgebra::sqrt(W), slack);
@@ -193,7 +230,7 @@ static void ComputeDirectNewtonStep(
 
   int nr = model.number_of_variables();
   y_out.resize(nr);
-  y.supernodes->GatherInto(y_out);
+  var_rhs.supernodes->GatherInto(y_out);
 }
 
 // Factor, two back-solves, 2-column MultiplyA → compute d0, d1.
@@ -612,23 +649,15 @@ static void RefreshD0Frozen(
   RowSpace Wi_inv = EuclideanJordanAlgebra::inverse(Wi);
   RowSpace sqrtW0 = EuclideanJordanAlgebra::sqrt(W0);
 
-  // rhs0 = A^T(Wi + P(W0)(Wi^{-1}))
+  // Centering-only solve: cone_rhs = Wi + P(W0)(Wi^{-1}), no cost.
   RowSpace center = addScaled(Wi, quadraticRepresentation(W0, Wi_inv), 1.0, 1.0);
-  auto rhs0 = model.MakeSolverRHS();
-  rhs0.SetZero();
-  model.AccumulateAtranspose(center, rhs0);
-  model.SolveSolverRHS(rhs0);
+  auto var_rhs = model.MakeSolverRHS();
+  var_rhs.SetZero();
+  RowSpace Ax = SolveConeSystem(model, var_rhs, center, &y0_out);
 
-  int nr = model.number_of_variables();
-  y0_out.resize(nr);
-  rhs0.supernodes->GatherInto(y0_out);
-
-  RowSpace ay0 = model.MakeRowSpace();
-  model.MultiplyA(rhs0, ay0);
-
-  // d0 = P(sqrt(W0))(Wi^{-1} - A*y0)
+  // d0 = P(sqrt(W0))(Wi^{-1} - Ax)
   d0_out = quadraticRepresentation(sqrtW0,
-      addScaled(Wi_inv, ay0, 1.0, -1.0));
+      addScaled(Wi_inv, Ax, 1.0, -1.0));
 }
 
 // Overload for NewtonDecomposition (ThetaCont frozen-J).
@@ -2071,27 +2100,16 @@ HybridDirection ComputeHybridDirection(
     RowSpace& d,
     RowSpace& delta,
     double tau_scale) {
-  const auto& cost_rhs = model.cost_rhs();
-  auto y = model.MakeSolverRHS();
-  y = cost_rhs;
-  y *= -1;
   RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-  RowSpace v = addScaled(quadraticRepresentation(W, b),
-                         quadraticRepresentation(sqrtW, r), -1, 2.0);
-  model.AccumulateAtranspose(v, y);
-  // Inject equality RHS: +d_eq at dual positions, scaled by tau to match
-  // the tau-scaled cost_rhs and b passed by SolveGeodesicHybrid.
-  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
-  if (ts && !ts->equality_sub_assemblers().empty()) {
-    auto d_rhs = ts->EqualityAffineTermRHS();
-    if (tau_scale != 1.0) d_rhs *= tau_scale;
-    y += d_rhs;
-  }
-  model.SolveSolverRHS(y);
 
-  RowSpace row = model.MakeRowSpace();
-  model.MultiplyA(y, row);
-  RowSpace slack_dir = addScaled(b, row, 1.0, 1.0);
+  // Combined solve: centering 2·P(√W)(r) + cost -P(W)(b) in cone space.
+  // cost_scale=1 because cost_rhs is unscaled; eq_scale=tau_scale for d_eq.
+  auto var_rhs = MakeCostVarRHS(model, model.cost_rhs(), 1.0, tau_scale);
+  RowSpace cone_rhs = addScaled(quadraticRepresentation(W, b),
+                                quadraticRepresentation(sqrtW, r), -1, 2.0);
+  RowSpace Ax = SolveConeSystem(model, var_rhs, cone_rhs);
+
+  RowSpace slack_dir = addScaled(b, Ax, 1.0, 1.0);
   delta = addScaled(r,
       quadraticRepresentation(sqrtW, slack_dir), 1.0, -1.0);
   d = solveLyapunovForD(r, delta);
@@ -2109,24 +2127,14 @@ static HybridDirection ComputeHybridDirectionM(
     RowSpace& d,
     RowSpace& delta,
     double tau_scale = 1.0) {
-  const auto& cost_rhs = model.cost_rhs();
-  auto y = model.MakeSolverRHS();
-  y = cost_rhs;
-  y *= -1;
-  RowSpace v = addScaled(quadraticRepresentation(W, b),
-                         applyM(M, r), -1, 2.0);
-  model.AccumulateAtranspose(v, y);
-  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
-  if (ts && !ts->equality_sub_assemblers().empty()) {
-    auto d_rhs = ts->EqualityAffineTermRHS();
-    if (tau_scale != 1.0) d_rhs *= tau_scale;
-    y += d_rhs;
-  }
-  model.SolveSolverRHS(y);
+  // Combined solve: centering 2·M·r·M^T + cost -P(W)(b) in cone space.
+  // cost_scale=1 because cost_rhs is unscaled; eq_scale=tau_scale for d_eq.
+  auto var_rhs = MakeCostVarRHS(model, model.cost_rhs(), 1.0, tau_scale);
+  RowSpace cone_rhs = addScaled(quadraticRepresentation(W, b),
+                                applyM(M, r), -1, 2.0);
+  RowSpace Ax = SolveConeSystem(model, var_rhs, cone_rhs);
 
-  RowSpace row = model.MakeRowSpace();
-  model.MultiplyA(y, row);
-  RowSpace slack_dir = addScaled(b, row, 1.0, 1.0);
+  RowSpace slack_dir = addScaled(b, Ax, 1.0, 1.0);
   delta = addScaled(r, applyMt(M, slack_dir), 1.0, -1.0);
   d = solveLyapunovForD(r, delta);
 
