@@ -218,7 +218,7 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   if (should_run("HSDE")) {
     results.push_back(RunAlgo("HSDE", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicHSDE(model, W, max_iters, 0, tol);
+        return SolveGeodesicHSDE(model, W, max_iters, 0, tol, true);
       }));
   }
   if (should_run("HSDE+frzJ")) {

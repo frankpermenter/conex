@@ -70,11 +70,13 @@ static DTauTheta SolveDTauTheta(const HSDECoeffs& c, double k) {
 
   // Q≠0: normalization + gap equations with quadratic cost.
   // Convert from d_tau to tau for the quadratic formulation.
-  double N0_k = c.N_0_raw / k + (c.N_0_const - c.alpha_norm);
+  // Normalization in tau-space: N0(k) + N1*tau + Nth*theta = -alpha.
+  // N0(k) = N_0_raw/k (the k-dependent constant, WITHOUT wt*rt*N1).
+  double N0_tau = c.N_0_raw / k;
   double N1_val = (std::abs(wt * rt) > 1e-30) ? c.N_dtau / (wt * rt) : 0;
   double Nth = c.N_theta;
-  double eta = c.alpha_norm + N0_k;
-  double Nth_thr = 1e-12 * (std::abs(N0_k) + std::abs(N1_val) + 1.0);
+  double eta = c.alpha_norm + N0_tau;
+  double Nth_thr = 1e-12 * (std::abs(N0_tau) + std::abs(N1_val) + 1.0);
 
   double tau, d_tau, theta;
 
@@ -113,7 +115,7 @@ static DTauTheta SolveDTauTheta(const HSDECoeffs& c, double k) {
     }
     if (tau <= 0) return {0, 0, 0, false};
     d_tau = (std::abs(wt * rt) > 1e-30) ? tau / (wt * rt) - 1.0 : 0.0;
-    theta = (-c.alpha_norm - N0_k - N1_val * tau) / Nth;
+    theta = (-c.alpha_norm - N0_tau - N1_val * tau) / Nth;
   } else {
     // Nth ≈ 0: normalization determines tau, gap determines theta.
     // Normalization in tau-space: N_0_raw/k + N1*tau = -alpha.
