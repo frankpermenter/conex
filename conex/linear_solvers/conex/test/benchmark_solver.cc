@@ -27,6 +27,7 @@
 
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/algorithms/geodesic_hybrid_r.h"
+#include "conex/algorithms/geodesic_hsde.h"
 #include "conex/common/cbf_reader.h"
 #include "conex/common/compiled_model.h"
 #include "conex/algorithms/geodesic_hybrid_r.h"
@@ -212,6 +213,18 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
     results.push_back(RunAlgo("TC+frzJ", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
         return SolveGeodesicThetaContinuation(model, W, max_iters, 1, tol);
+      }));
+  }
+  if (should_run("HSDE")) {
+    results.push_back(RunAlgo("HSDE", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicHSDE(model, W, max_iters, 0, tol);
+      }));
+  }
+  if (should_run("HSDE+frzJ")) {
+    results.push_back(RunAlgo("HSDE+frzJ", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicHSDE(model, W, max_iters, 1, tol);
       }));
   }
   if (should_run("GeodesicLP")) {
