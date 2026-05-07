@@ -66,12 +66,12 @@ std::pair<double, double> VerifyHybridREquations(
 // lambda(tau,theta) = lam0 + tau*lam1 + theta*lam_theta
 //
 // For direction evaluation at fixed theta:
-//   y_center = x0 + theta*x_theta  (f, tau-free)
-//   y_cost   = x1                   (g, tau-proportional)
+//   x_center_combined = x0 + theta*x_theta  (f, tau-free)
+//   x_cost_combined   = x1                   (g, tau-proportional)
 //   delta(tau) = delta_center + tau*delta_cost
 struct HybridRDecomposition {
   // Combined two-term for direction evaluation.
-  Eigen::VectorXd y_center, y_cost;  // x(tau) = y_center + tau*y_cost
+  Eigen::VectorXd x_center_combined, x_cost_combined;  // x(tau) = x_center_combined + tau*x_cost_combined
   RowSpace delta_center, delta_cost;  // delta(tau) = delta_center + tau*delta_cost
 
   // Raw three-solve components for joint (tau, theta) selection.
@@ -102,7 +102,7 @@ int UpdateX0(HybridRDecomposition& decomp,
              const RowSpace& W,
              const RowSpace& r);
 
-// Update the two-term combination (y_center, y_cost, delta_center, delta_cost)
+// Update the two-term combination (x_center_combined, x_cost_combined, delta_center, delta_cost)
 // at a given theta.  Uses cached ax0, ax_theta — no MultiplyA needed.
 void SetTheta(HybridRDecomposition& decomp,
               CompiledModel& model,

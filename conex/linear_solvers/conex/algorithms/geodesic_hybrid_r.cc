@@ -283,7 +283,7 @@ HybridRDecomposition ComputeHybridRDecomposition(
   decomp.delta_cost = applyMt(M, arg1);
   decomp.delta_cost *= -1.0;
 
-  // y_center, y_cost, delta_center are set by SetTheta().
+  // x_center_combined, x_cost_combined, delta_center are set by SetTheta().
   return decomp;
 }
 
@@ -321,8 +321,8 @@ void SetTheta(HybridRDecomposition& decomp,
               const RowSpace& M,
               const RowSpace& r,
               double theta) {
-  decomp.y_center = decomp.x0 + theta * decomp.x_theta;
-  decomp.y_cost = decomp.x1;
+  decomp.x_center_combined = decomp.x0 + theta * decomp.x_theta;
+  decomp.x_cost_combined = decomp.x1;
 
   // delta_center = r - applyMt(M, A*f + theta*(e-b))  (M-frame)
   // Use cached A*x0, A*x_theta: A*f = A*x0 + theta*A*x_theta.
@@ -576,7 +576,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       // Diagnostics: gap equation, normalization, dual residual, complementarity.
       RowSpace lam_v = applyM(M,
           addScaled(r, delta_vec, 1.0, 1.0));
-      Eigen::VectorXd x_vec = decomp.y_center + tau * decomp.y_cost;
+      Eigen::VectorXd x_vec = decomp.x_center_combined + tau * decomp.x_cost_combined;
       auto x_rhs = model.MakeSolverRHS();
       x_rhs = model.MakeBlockVariable(x_vec);
       auto qx = model.MakeSolverRHS(); qx.SetZero();
@@ -674,7 +674,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   // Recover x (de-homogenized by tau).
   // W hasn't changed since last factorization (convergence check is before step).
   {
-    Eigen::VectorXd x_lifted = decomp.y_center + tau * decomp.y_cost;
+    Eigen::VectorXd x_lifted = decomp.x_center_combined + tau * decomp.x_cost_combined;
     result.x = x_lifted / tau;
   }
 
