@@ -619,25 +619,15 @@ static std::pair<double, double> FrozenEvalThetaCandidate(
     CompiledModel& model,
     const SolverRHS& duality_cost,
     const RowSpace& b,
-    const RowSpace& W0,       // frozen Jacobian point
     const RowSpace& Wi,       // current iterate
+    const RowSpace& sqrtW0,   // precomputed sqrt(W0)
     const NewtonDecomposition& decomp,
     double bT_ones,
+    double beta,              // precomputed sigma1 + gamma1 + q11
     double theta_cand) {
   if (theta_cand <= 0) return {-1, 1e30};
   double k = 1.0 / std::sqrt(theta_cand);
   double mu = theta_cand;
-
-  // beta = sigma1 + gamma1 + q11 (all frozen at W0).
-  auto dc = ComputeDualityCoeffs(model, duality_cost, b, W0, decomp);
-  double beta = dc.sigma1 + dc.gamma1 + dc.q11;
-
-  // sigma0 = (1/k) * (b^T Wi + b^T P(W0^{1/2})(d0 + k*theta*d1_theta))
-  // The frozen-Jacobian lambda is:
-  //   lambda = Wi/k + P(W0^{1/2})(d0)/k + tau*P(W0^{1/2})(d1_0) + theta*P(W0^{1/2})(d1_theta)
-  // So sigma0 (the tau-independent part of b^T lambda) is:
-  //   sigma0 = b^T Wi/k + b^T P(W0^{1/2})(d0 + k*theta*d1_theta)/k
-  RowSpace sqrtW0 = EuclideanJordanAlgebra::sqrt(W0);
   RowSpace arg = addScaled(decomp.d0, decomp.d1_theta, 1.0, k * theta_cand);
   double sigma0 = dot(b, Wi) / k
                  + dot(b, quadraticRepresentation(sqrtW0, arg)) / k;
@@ -696,15 +686,15 @@ static std::pair<double, double> FrozenEvalThetaCandidate(
   return {tau_out, normInf(d)};
 }
 
-// Refresh only d0 (and y0) in a NewtonDecomposition using frozen Jacobian.
-// W0 = frozen Jacobian, Wi = current iterate.
-// d1_0, d1_theta, y1_0, y1_theta are unchanged.
+// Core frozen-Jacobian d0 refresh: 1 back-solve with stale Gram.
+// Computes d0 = P(sqrt(W0))(Wi^{-1} - Ay0) and optionally outputs y0.
 static void RefreshD0Frozen(
     CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W0,
     const RowSpace& Wi,
-    NewtonDecomposition& decomp) {
+    RowSpace& d0_out,
+    Eigen::VectorXd& y0_out) {
   RowSpace Wi_inv = EuclideanJordanAlgebra::inverse(Wi);
   RowSpace sqrtW0 = EuclideanJordanAlgebra::sqrt(W0);
 
@@ -716,15 +706,25 @@ static void RefreshD0Frozen(
   model.SolveSolverRHS(rhs0);
 
   int nr = model.number_of_variables();
-  decomp.y0.resize(nr);
-  rhs0.supernodes->GatherInto(decomp.y0);
+  y0_out.resize(nr);
+  rhs0.supernodes->GatherInto(y0_out);
 
   RowSpace ay0 = model.MakeRowSpace();
   model.MultiplyA(rhs0, ay0);
 
   // d0 = P(sqrt(W0))(Wi^{-1} - A*y0)
-  decomp.d0 = quadraticRepresentation(sqrtW0,
+  d0_out = quadraticRepresentation(sqrtW0,
       addScaled(Wi_inv, ay0, 1.0, -1.0));
+}
+
+// Overload for NewtonDecomposition (ThetaCont frozen-J).
+static void RefreshD0Frozen(
+    CompiledModel& model,
+    const RowSpace& b,
+    const RowSpace& W0,
+    const RowSpace& Wi,
+    NewtonDecomposition& decomp) {
+  RefreshD0Frozen(model, b, W0, Wi, decomp.d0, decomp.y0);
 }
 
 // Forward declaration (defined later in this file).
@@ -1091,6 +1091,11 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
     // Frozen-Jacobian steps: refresh d0 (1 solve), redo theta binary
     // search with frozen d1_0, d1_theta, then step.
+    // Precompute frozen duality coefficients (constant across inner iters).
+    RowSpace sqrtW0_f = EuclideanJordanAlgebra::sqrt(W0);
+    auto dc_f = ComputeDualityCoeffs(model, duality_cost, b, W0, decomp);
+    double beta_f = dc_f.sigma1 + dc_f.gamma1 + dc_f.q11;
+
     for (int inner = 0; inner < max_centering_steps; ++inner) {
       RefreshD0Frozen(model, b, W0, W, decomp);
       total_sol += 1;
@@ -1100,7 +1105,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
       for (int bisect = 0; bisect < 30; ++bisect) {
         double theta_mid = 0.5 * (theta_lo_f + theta_hi_f);
         auto [tau_try, d_inf_try] = FrozenEvalThetaCandidate(
-            model, duality_cost, b, W0, W, decomp, bT_ones, theta_mid);
+            model, duality_cost, b, W, sqrtW0_f, decomp,
+            bT_ones, beta_f, theta_mid);
         if (tau_try > 0 && d_inf_try <= beta_target) {
           theta_hi_f = theta_mid;
         } else {
@@ -1110,7 +1116,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
       double theta_f = theta_hi_f;
       double k_f = 1.0 / std::sqrt(theta_f);
       auto [tau_f, d_inf_f] = FrozenEvalThetaCandidate(
-          model, duality_cost, b, W0, W, decomp, bT_ones, theta_f);
+          model, duality_cost, b, W, sqrtW0_f, decomp,
+          bT_ones, beta_f, theta_f);
       if (tau_f <= 0) break;
 
       RowSpace d_f = EvaluateDirection(decomp, k_f, tau_f, theta_f);
@@ -1610,25 +1617,22 @@ GeodesicResult SolveGeodesicLP(
     geodesicUpdate(W, alpha, d);
 
     // Frozen-Jacobian iterations: decompose d = d0 + k*d1 using stale
-    // Gram (at W₀) but correct RHS (at W_i). d1 is frozen (depends only
-    // on W₀). Each iteration: 1 solve for d0, line search, step.
+    // Gram (at W₀) but correct RHS (at W_i). d1 is frozen (identical to
+    // the standard d1 since rhs1 depends only on W₀).
+    // Each iteration: 1 solve for d0, line search, step.
     if (max_centering_steps > 0) {
-      // Full frozen decomposition (2 solves) to get d1_frozen.
+      // d1 is frozen — reuse from the standard decomposition (same rhs1).
+      // Only refresh d0 at the current W_i (1 solve).
       RowSpace d0_f = model.MakeRowSpace();
-      RowSpace d1_f = model.MakeRowSpace();
-      Eigen::VectorXd y0_f, y1_f;
-      ComputeFrozenDecomposition(model, cost_rhs_blend, b, W0, W,
-                                 d0_f, d1_f, &y0_f, &y1_f);
-      total_sol += 2;
-
-      // Dummy rhs1 marker for single-solve path (d1 already known).
-      auto rhs1_marker = model.MakeSolverRHS();
-      rhs1_marker.SetZero();  // not used, just a flag
+      RowSpace d1_f = d1;  // frozen, same as standard d1
+      Eigen::VectorXd y0_f;
+      RefreshD0Frozen(model, model.GetAffineTerm(), W0, W, d0_f, y0_f);
+      total_sol += 1;
 
       for (int inner = 0; inner < max_centering_steps; ++inner) {
         // Line search: find largest k_new with ||d0_f + k_new*d1_f||_inf <= 1.
-        double k_new = lineSearchK(d0_f, d1_f);
-        if (k_new > k) k = k_new;
+        double k_new_f = lineSearchK(d0_f, d1_f);
+        if (k_new_f > k) k = k_new_f;
 
         RowSpace d_f = addScaled(d0_f, d1_f, 1.0, k);
         double d_inf_f = normInf(d_f);
@@ -1649,9 +1653,7 @@ GeodesicResult SolveGeodesicLP(
 
         // Re-solve only d0 with updated W_i (1 solve). d1 is frozen.
         if (inner + 1 < max_centering_steps) {
-          ComputeFrozenDecomposition(model, cost_rhs_blend, b, W0, W,
-                                     d0_f, d1_f, &y0_f, nullptr,
-                                     &rhs1_marker);
+          RefreshD0Frozen(model, model.GetAffineTerm(), W0, W, d0_f, y0_f);
           total_sol += 1;
         }
       }
