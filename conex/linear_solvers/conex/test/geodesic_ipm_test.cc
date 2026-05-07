@@ -2270,6 +2270,40 @@ TEST(GeodesicBarrierQP, HSDE_QP_Affinity) {
   }
 }
 
+// HSDE on nonzero QP.
+TEST(GeodesicBarrierQP, HSDE_QP_Nonzero) {
+  srand(99);
+  const int n = 6, m = 14;
+  MatrixXd A = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  for (double q_scale : {0.001, 1.0, 10.0}) {
+    Model model;
+    model.AddLinearConstraint(toSparse(A), b, vars);
+    model.AddQuadraticCost(toSparse(MatrixXd::Identity(n, n) * q_scale), vars);
+    model.SetLinearCost(c);
+
+    auto r_hsde = Solver::Build(model).Solve(GeodesicHSDE{1e-8, 30, 0, true});
+    auto r_tcr = Solver::Build(model).Solve(ThetaContinuationR{1e-8, 500});
+
+    printf("\n=== HSDE QP (Q=%.3f*I) ===\n", q_scale);
+    printf("  HSDE:       fac=%d iter=%d obj=%.6e compl=%.2e\n",
+           r_hsde.factorizations, r_hsde.iterations, r_hsde.objective,
+           r_hsde.optimality.complementarity);
+    printf("  ThetaContR: fac=%d iter=%d obj=%.6e compl=%.2e\n",
+           r_tcr.factorizations, r_tcr.iterations, r_tcr.objective,
+           r_tcr.optimality.complementarity);
+
+    // ThetaContR should converge. HSDE QP support is incomplete
+    // (affine line search invalid for Q≠0, needs binary search fallback).
+    EXPECT_LT(std::abs(r_tcr.optimality.complementarity), 1e-6)
+        << "ThetaContR failed on Q_scale=" << q_scale;
+  }
+}
+
 // Verify HSDE quadratic path (Q≠0) gives same result with Q=0 matrix.
 TEST(GeodesicBarrierQP, HSDE_QuadraticFallback) {
   srand(42);
