@@ -1044,9 +1044,11 @@ GeodesicResult SolveGeodesicThetaContinuation(
       total_sol += 1;
 
       // Binary search for smallest theta with frozen-Jacobian decomp.
-      // Limit theta reduction: don't let theta drop below 10% of current
-      // value in a single frozen step, to prevent the degenerate theta→0
-      // jump that causes tau collapse.
+      // Limit theta reduction to 10x per frozen step. Without this,
+      // theta can jump to 0 in one step (the frozen Jacobian makes
+      // theta=0 appear feasible), causing tau to collapse.
+      // V(tau)=0 is satisfied either way — the limit prevents
+      // the degenerate operating point, not an equation error.
       double theta_lo_f = theta * 0.1, theta_hi_f = theta;
       for (int bisect = 0; bisect < 30; ++bisect) {
         double theta_mid = 0.5 * (theta_lo_f + theta_hi_f);
@@ -1071,10 +1073,33 @@ GeodesicResult SolveGeodesicThetaContinuation(
       if (verbose) {
         double mu_f = 1.0 / (k_f * k_f);
         double gap_f = mu_f * (nu - squaredNorm(d_f));
+
+        // Check V(tau)=0: b^T lambda + c^T x + xQx/tau + mu/tau = theta*R.
+        // Frozen-J lambda: Wi/k + P(sqrtW0)(d)/k.
+        RowSpace lam_f = W;  // Wi term
+        lam_f *= (1.0 / k_f);
+        RowSpace Pd = quadraticRepresentation(sqrtW0_f, d_f);
+        Pd *= (1.0 / k_f);
+        lam_f += Pd;  // + P(sqrtW0)(d)/k
+
+        double bTl_f = dot(b, lam_f);
+        Eigen::VectorXd x_f = decomp.y0 / k_f + tau_f * decomp.y1_0
+                             + theta_f * decomp.y1_theta;
+        auto x_rhs_f = model.MakeSolverRHS();
+        x_rhs_f = model.MakeBlockVariable(x_f);
+        double cTx_f = duality_cost.dot(x_rhs_f);
+        auto qx_f = model.MakeSolverRHS(); qx_f.SetZero();
+        model.AccumulateQx(x_rhs_f, qx_f);
+        double xQx_f = qx_f.dot(x_rhs_f);
+        double mu_tau_f = (tau_f > 1e-30) ? mu_f / tau_f : 0;
+        double xQx_tau_f = (tau_f > 1e-30) ? xQx_f / tau_f : 0;
+        double R_f = theta_f * (bT_ones + 1.0);
+        double eq_err_f = std::abs(bTl_f + cTx_f + xQx_tau_f + mu_tau_f - R_f);
+
         printf("  %3d.%d  %8.6f  %10.2e  %12s  %12.4e  %12.4e  %12s  %12.4e"
-               "  %12s  %12s  %12s  %12s  (frozen-J)\n",
+               "  %12s  %12s  %12s  eq=%.2e  (frozen-J)\n",
                outer, inner + 1, theta_f, tau_f, "", k_f, d_inf_fv, "",
-               gap_f, "", "", "", "");
+               gap_f, "", "", "", eq_err_f);
       }
 
       if (d_inf_fv > 1e-14) {
