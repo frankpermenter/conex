@@ -2071,28 +2071,48 @@ TEST(GeodesicBarrierQP, FrozenJacobian_ThetaCont_SDP) {
   EXPECT_LE(r2.total_factorizations, r1.total_factorizations);
 }
 
-// Debug: run frozen-J ThetaCont on the spin factor SOC instance.
+// Debug: verify refactor_inner mode produces same trajectory as baseline.
 TEST(GeodesicBarrierQP, FrozenJacobian_ThetaCont_SpinFactor) {
   auto [soc_s, sdp_s] = BuildSpinFactorPair(2, 2, 77);
 
-  // SOC: baseline vs frozen-J.
-  CompiledModel soc_cm(*soc_s.kkt(), soc_s.MakeCostRHS());
-  RowSpace soc_W0 = soc_cm.MakeRowSpace(); setOnes(soc_W0);
-  printf("\n--- SOC baseline ---\n");
-  auto soc_base = SolveGeodesicThetaContinuation(soc_cm, soc_W0, 50, 0, 1e-8, true);
+  // Baseline: max_centering_steps=0.
+  CompiledModel cm_base(*soc_s.kkt(), soc_s.MakeCostRHS());
+  RowSpace W_base = cm_base.MakeRowSpace(); setOnes(W_base);
+  auto r_base = SolveGeodesicThetaContinuation(cm_base, W_base, 20, 0, 1e-10);
 
-  CompiledModel soc_cm2(*soc_s.kkt(), soc_s.MakeCostRHS());
-  RowSpace soc_W1 = soc_cm2.MakeRowSpace(); setOnes(soc_W1);
-  printf("\n--- SOC frozen-J ---\n");
-  auto soc_froz = SolveGeodesicThetaContinuation(soc_cm2, soc_W1, 50, 1, 1e-8, true);
+  // refactor_inner=true, max_centering_steps=1: each "outer" does 2 steps.
+  // Should visit the same W points as baseline, just in pairs.
+  CompiledModel cm_ref(*soc_s.kkt(), soc_s.MakeCostRHS());
+  RowSpace W_ref = cm_ref.MakeRowSpace(); setOnes(W_ref);
+  auto r_ref = SolveGeodesicThetaContinuation(cm_ref, W_ref, 20, 1, 1e-10);
 
-  printf("\n=== SpinFactor SOC: ThetaCont frozen-J ===\n");
-  printf("  Baseline:     %2d fac, %3d solves, gap=%.2e\n",
-         soc_base.total_factorizations, soc_base.total_solves,
-         soc_base.complementarity);
-  printf("  Frozen-J (1): %2d fac, %3d solves, gap=%.2e\n",
-         soc_froz.total_factorizations, soc_froz.total_solves,
-         soc_froz.complementarity);
+  printf("\n=== Refactor-inner identity check ===\n");
+  printf("  Baseline:       %2d iters, %2d fac, gap=%.2e\n",
+         r_base.iterations, r_base.total_factorizations,
+         r_base.complementarity);
+  printf("  Refactor-inner: %2d iters, %2d fac, gap=%.2e\n",
+         r_ref.iterations, r_ref.total_factorizations,
+         r_ref.complementarity);
+
+  // The refactor-inner version does 2 steps per outer iteration.
+  // Its iter_stats should match baseline's iter_stats at every OTHER index.
+  // refactor_inner iter 0 = baseline iter 0 (outer step)
+  // refactor_inner iter 0 inner = baseline iter 1 (inner step after refactor)
+  // But iter_stats only records outer steps...
+  // So let's just compare mu sequences: they should interleave.
+  // refactor_inner iter i corresponds to baseline iter 2*i (every other step).
+  printf("  ref_i  base_i  ref_mu         base_mu        err\n");
+  for (int i = 0; i < r_ref.iterations; ++i) {
+    int base_i = 2 * i;
+    if (base_i >= r_base.iterations) break;
+    double r_mu = r_ref.iter_stats[i].mu;
+    double b_mu = r_base.iter_stats[base_i].mu;
+    double err = std::abs(b_mu - r_mu) / (std::abs(b_mu) + 1e-30);
+    printf("  %3d    %3d    %.6e  %.6e  %.2e %s\n",
+           i, base_i, r_mu, b_mu, err, err < 1e-10 ? "OK" : "MISMATCH");
+    EXPECT_LT(err, 1e-10) << "mu mismatch at ref iter " << i
+                           << " (baseline iter " << base_i << ")";
+  }
 }
 
 static void PrintSolveResult(const char* name, const SolveResult& r) {
