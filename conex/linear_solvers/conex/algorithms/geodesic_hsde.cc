@@ -206,10 +206,18 @@ GeodesicResult SolveGeodesicHSDE(
       double primal_phys = (std::abs(tau) > 1e-30) ? cTx / tau : 0.0;
       double dual_phys = (std::abs(tau) > 1e-30) ? -bTl / tau : 0.0;
 
+      // Complementarity check: gap + tau*kappa should = theta*alpha.
+      // gap = mu*(nu - d_sq), tau*kappa = rt^2*(1 - d_tau^2).
+      double tau_kappa = rt * rt * (1.0 - d_tau * d_tau);
+      double compl_lhs = gap + tau_kappa;
+      double compl_rhs = theta * alpha_norm;
+      double compl_err = std::abs(compl_lhs - compl_rhs);
+
       printf("  %3d  %10.2e  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e"
-             "  %12.4e  %12.4e  %12.4e  %12.2e\n",
+             "  %12.4e  %12.4e  %12.4e  eq=%.1e  cpl=%.1e (%.2e vs %.2e)\n",
              iter, theta, tau, k, d_inf, d_tau, gap,
-             dual_phys, primal_phys, mu_tau, eq_err);
+             dual_phys, primal_phys, mu_tau, eq_err,
+             compl_err, compl_lhs, compl_rhs);
     }
 
     if (!std::isfinite(d_inf) || !std::isfinite(gap)) {
