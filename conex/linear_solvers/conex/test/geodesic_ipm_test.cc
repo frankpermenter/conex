@@ -2208,6 +2208,47 @@ TEST(GeodesicBarrierQP, HSDE_Affinity) {
   }
 }
 
+// Verify HSDE quadratic path (Q≠0) gives same result with Q=0 matrix.
+TEST(GeodesicBarrierQP, HSDE_QuadraticFallback) {
+  srand(42);
+  const int n_psd = 4, p = 6;
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  auto make_sym = [](int n) {
+    MatrixXd M = MatrixXd::Random(n, n);
+    return (M + M.transpose()) / 2.0;
+  };
+  for (int i = 0; i < p; ++i)
+    A_list.push_back(toSparse(make_sym(n_psd)));
+  Eigen::SparseMatrix<double> B = toSparse(
+      3.0 * MatrixXd::Identity(n_psd, n_psd));
+  VectorXd c(p);
+  for (int i = 0; i < p; ++i)
+    c(i) = Eigen::MatrixXd(A_list[i]).trace();
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  // Without Q (2x2 path).
+  Model model;
+  model.AddPSDConstraint(A_list, B, vars, false);
+  model.SetLinearCost(c);
+  auto r1 = Solver::Build(model).Solve(GeodesicHSDE{1e-10, 20, 0});
+
+  // With Q=0 (quadratic path).
+  Model model_q;
+  model_q.AddPSDConstraint(A_list, B, vars, false);
+  model_q.SetLinearCost(c);
+  Eigen::SparseMatrix<double> Q_zero(p, p);
+  model_q.AddQuadraticCost(Q_zero, vars);
+  auto r2 = Solver::Build(model_q).Solve(GeodesicHSDE{1e-10, 20, 0});
+
+  printf("\n=== HSDE quadratic fallback (Q=0 matrix) ===\n");
+  printf("  2x2 path:  fac=%d iter=%d obj=%.10e\n",
+         r1.factorizations, r1.iterations, r1.objective);
+  printf("  quad path: fac=%d iter=%d obj=%.10e\n",
+         r2.factorizations, r2.iterations, r2.objective);
+  EXPECT_NEAR(r1.objective, r2.objective, 1e-6);
+}
+
 static void PrintSolveResult(const char* name, const SolveResult& r) {
   printf("  %-25s  %3d  %5d  %12.6e  %10.2e  %10.2e  %10.2e  %10.2e  %10.2e\n",
          name, r.factorizations, r.iterations,

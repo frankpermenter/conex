@@ -39,6 +39,11 @@ struct HSDECoeffs {
 
   // Raw k-independent inner products (for recomputing G/N with new w_tau, r_tau).
   double bTl1, cTx1, rpTl1, rdTx1, rg;
+  bool has_Q = false;
+
+  // For Q≠0 quadratic path: 6 Q inner products q_ij = yi'Q*yj.
+  // Computed once per decomposition; used to form qff/qfh/qhh at each k.
+  double q00, q01, q0t, q11, q1t, qtt;  // y0'Qy0, y0'Qy1, y0'Qyth, etc.
 };
 
 // Solve the 2x2 system for (d_tau, theta) at fixed k.
@@ -49,19 +54,107 @@ struct DTauTheta {
 };
 
 static DTauTheta SolveDTauTheta(const HSDECoeffs& c, double k) {
-  // Gap:  G_dtau * d_tau + G_theta * theta = -(G_0_raw/k + G_0_const)
-  // Norm: N_dtau * d_tau + N_theta * theta = -(N_0_raw/k + N_0_const)
-  double g_rhs = -(c.G_0_raw / k + c.G_0_const);
-  double n_rhs = -(c.N_0_raw / k + c.N_0_const);
+  double wt = c.w_tau, rt = c.r_tau;
 
-  double det = c.G_dtau * c.N_theta - c.G_theta * c.N_dtau;
-  if (std::abs(det) < 1e-30) return {0, 0, 0, false};
+  if (!c.has_Q) {
+    // Q=0: 2x2 linear solve in (d_tau, theta).
+    double g_rhs = -(c.G_0_raw / k + c.G_0_const);
+    double n_rhs = -(c.N_0_raw / k + c.N_0_const);
+    double det = c.G_dtau * c.N_theta - c.G_theta * c.N_dtau;
+    if (std::abs(det) < 1e-30) return {0, 0, 0, false};
+    double d_tau = (c.N_theta * g_rhs - c.G_theta * n_rhs) / det;
+    double theta = (c.G_dtau * n_rhs - c.N_dtau * g_rhs) / det;
+    double tau = wt * rt * (1.0 + d_tau);
+    return {d_tau, theta, tau, tau > 0};
+  }
 
-  double d_tau = (c.N_theta * g_rhs - c.G_theta * n_rhs) / det;
-  double theta = (c.G_dtau * n_rhs - c.N_dtau * g_rhs) / det;
-  double tau = c.w_tau * c.r_tau * (1.0 + d_tau);
+  // Q≠0: eliminate theta via normalization, solve quadratic in tau.
+  // Same approach as ThetaContR's quadratic path.
+  //
+  // Normalization (in tau, not d_tau):
+  //   N0(k) + N1*tau + Nth*theta = -alpha
+  // where N0(k) depends on 1/k through lambda_0 and x_0.
+  // N1 = N_dtau / (wt*rt), since tau = wt*rt*(1+d_tau).
+  double N0_k = c.N_0_raw / k + (c.N_0_const - c.alpha_norm);
+  double N1_val = (std::abs(wt * rt) > 1e-30) ? c.N_dtau / (wt * rt) : 0;
+  double Nth = c.N_theta;
+  double eta = c.alpha_norm + N0_k;
+  double Nth_thr = 1e-12 * (std::abs(N0_k) + std::abs(N1_val) + 1.0);
+  double n1 = (std::abs(Nth) > Nth_thr) ? N1_val / Nth : 0.0;
+  double e1 = (std::abs(Nth) > Nth_thr) ? eta / Nth : 0.0;
 
-  return {d_tau, theta, tau, tau > 0};
+  // Gap equation coefficients (same as ThetaContR).
+  // bTl0(k) = bTl0_raw/k, cTx0(k) = cTx0_raw/k (extracted from G_0_raw).
+  // G_0_raw = bTl0_raw + cTx0_raw. We also need them separately for
+  // the theta-eliminated gap. Use stored bTl1, cTx1, etc.
+  double bTl0_k = (c.G_0_raw - c.G_0_const + rt / wt) / k;  // approximate extraction
+  // Actually this is fragile. Let me use the normalization approach directly.
+  // bTl0_sub = bTl0 - e1*bTlth, etc.
+  // bTl0 = (G_0_raw - cTx0_raw)/k... we don't have them separately.
+  //
+  // Simpler: compute the gap quadratic from the stored 2x2 coefficients.
+  // Gap*tau (after theta elim): A*tau^2 + B*tau + C = 0.
+  // The gap without Q is: G_dtau*d_tau + G_theta*theta + G_0(k) = 0.
+  // In tau: (G_dtau/(wt*rt))*tau + G_theta*theta + (G_0(k) - G_dtau) = 0...
+  // This mapping is messy. Let me just compute A, B, C directly.
+  //
+  // From the original derivation (see ThetaContR):
+  // A = bTl1_sub + cTh + qhh + R*n1 - 1/wt^2
+  // B = bTl0_sub + cTf0 + 2*qfh + R*e1 + 2*rt/wt
+  // C = qff
+  // where bTl0_sub = bTl0(k) - e1*bTlth, etc.
+  // and qff, qfh, qhh from the 6 stored Q dot products.
+
+  // qff = f0'Qf0 where f0 = y0/k - e1*yth
+  //     = q00/k^2 - 2*e1*q0t/k + e1^2*qtt
+  double qff = c.q00 / (k * k) - 2 * e1 * c.q0t / k + e1 * e1 * c.qtt;
+  // qfh = f0'Qh where h = y1 - n1*yth
+  //     = q01/k - n1*q0t/k - e1*q1t + e1*n1*qtt
+  double qfh = c.q01 / k - n1 * c.q0t / k - e1 * c.q1t + e1 * n1 * c.qtt;
+  // qhh = h'Qh = q11 - 2*n1*q1t + n1^2*qtt
+  double qhh = c.q11 - 2 * n1 * c.q1t + n1 * n1 * c.qtt;
+
+  // Gap coefficients (reusing the 2x2 G terms but in tau form).
+  // bTl0_sub + cTf0 = (gap constant terms - kappa) after theta elim.
+  // From G_0(k) = bTl0 + cTx0 + wt*rt*(bTl1+cTx1) + rt/wt:
+  //   bTl0 + cTx0 = G_0_raw/k
+  // From G_theta = bTlth + cTxth - R:
+  //   bTlth + cTxth = G_theta + R
+  // bTl0_sub = bTl0 - e1*bTlth, cTf0 = cTx0 - e1*cTxth
+  // bTl0_sub + cTf0 = (bTl0+cTx0) - e1*(bTlth+cTxth) = G_0_raw/k - e1*(G_theta+R)
+  double gap_const = c.G_0_raw / k - e1 * (c.G_theta + c.R);
+  // bTl1_sub + cTh = (bTl1+cTx1) - n1*(bTlth+cTxth)
+  double gap_lin = (c.bTl1 + c.cTx1) - n1 * (c.G_theta + c.R);
+
+  double inv_wt = 1.0 / (wt > 1e-30 ? wt : 1e-30);
+  double A_coeff = gap_lin + qhh + c.R * n1 - inv_wt * inv_wt;
+  double B_coeff = gap_const + 2 * qfh + c.R * e1 + 2 * rt * inv_wt;
+  double C_coeff = qff;
+
+  double tau = -1;
+  double discr = B_coeff * B_coeff - 4.0 * A_coeff * C_coeff;
+  if (discr >= 0 && std::abs(A_coeff) > 1e-30) {
+    double sq = std::sqrt(discr);
+    double t1 = (-B_coeff + sq) / (2.0 * A_coeff);
+    double t2 = (-B_coeff - sq) / (2.0 * A_coeff);
+    double wtr = wt * rt;
+    double dt1 = (std::abs(wtr) > 1e-30) ? t1 / wtr - 1.0 : 1e30;
+    double dt2 = (std::abs(wtr) > 1e-30) ? t2 / wtr - 1.0 : 1e30;
+    if (t1 > 0 && !(t2 > 0))
+      tau = t1;
+    else if (t2 > 0 && !(t1 > 0))
+      tau = t2;
+    else
+      tau = (std::abs(dt1) < std::abs(dt2)) ? t1 : t2;
+  }
+  if (tau <= 0) return {0, 0, 0, false};
+
+  double d_tau = (std::abs(wt * rt) > 1e-30) ? tau / (wt * rt) - 1.0 : 0.0;
+  double theta = 0;
+  if (std::abs(Nth) > Nth_thr) {
+    theta = (-c.alpha_norm - N0_k - N1_val * tau) / Nth;
+  }
+  return {d_tau, theta, tau, true};
 }
 
 GeodesicResult SolveGeodesicHSDE(
@@ -184,6 +277,25 @@ GeodesicResult SolveGeodesicHSDE(
     coeff.rpTl1 = rpTl1;
     coeff.rdTx1 = rdTx1;
     coeff.rg = rg;
+    coeff.has_Q = model.has_quadratic_cost();
+
+    // Q dot products for the quadratic fallback.
+    coeff.q00 = coeff.q01 = coeff.q0t = 0;
+    coeff.q11 = coeff.q1t = coeff.qtt = 0;
+    if (coeff.has_Q) {
+      auto Qy0 = model.MakeSolverRHS(); Qy0.SetZero();
+      model.AccumulateQx(x0_rhs, Qy0);
+      auto Qy1 = model.MakeSolverRHS(); Qy1.SetZero();
+      model.AccumulateQx(x1_rhs, Qy1);
+      auto Qyth = model.MakeSolverRHS(); Qyth.SetZero();
+      model.AccumulateQx(xth_rhs, Qyth);
+      coeff.q00 = Qy0.dot(x0_rhs);
+      coeff.q01 = Qy0.dot(x1_rhs);
+      coeff.q0t = Qy0.dot(xth_rhs);
+      coeff.q11 = Qy1.dot(x1_rhs);
+      coeff.q1t = Qy1.dot(xth_rhs);
+      coeff.qtt = Qyth.dot(xth_rhs);
+    }
 
     // Solve 2x2 at current k.
     auto sel = SolveDTauTheta(coeff, k);
