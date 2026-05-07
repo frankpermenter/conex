@@ -330,10 +330,22 @@ GeodesicResult SolveGeodesicHSDE(
       x_rhs_v = model.MakeBlockVariable(x_vec);
       double cTx = duality_cost.dot(x_rhs_v);
       double kappa_v = rt * (1.0 - d_tau) / std::max(wt, 1e-30);
-      double eq_err = std::abs(bTl + cTx + kappa_v - theta * R);
+      auto qx = model.MakeSolverRHS(); qx.SetZero();
+      model.AccumulateQx(x_rhs_v, qx);
+      double xQx = qx.dot(x_rhs_v);
+      double xQx_tau = (std::abs(tau) > 1e-30) ? xQx / tau : 0.0;
+      double eq_err = std::abs(bTl + cTx + xQx_tau + kappa_v - theta * R);
       double mu_tau = (std::abs(tau) > 1e-30) ? mu / tau : 0.0;
       double primal_phys = (std::abs(tau) > 1e-30) ? cTx / tau : 0.0;
       double dual_phys = (std::abs(tau) > 1e-30) ? -bTl / tau : 0.0;
+
+      // Normalization: rp'lam + rd'x + rg*tau should = -alpha.
+      RowSpace rp_v = addScaled(b, ones, 1.0, -1.0);
+      RowSpace Ax_v = model.MakeRowSpace(); model.MultiplyA(x_rhs_v, Ax_v);
+      double eTl = dot(ones, lam_v);
+      double norm_val = (bTl - eTl) + (cTx - dot(ones, Ax_v))
+                        + (-(bT_ones + 1.0)) * tau;
+      double norm_err = norm_val - (-alpha_norm);
 
       // Complementarity check: gap + tau*kappa should = theta*alpha.
       // gap = mu*(nu - d_sq), tau*kappa = rt^2*(1 - d_tau^2).
@@ -343,10 +355,9 @@ GeodesicResult SolveGeodesicHSDE(
       double compl_err = std::abs(compl_lhs - compl_rhs);
 
       printf("  %3d  %10.2e  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e"
-             "  %12.4e  %12.4e  %12.4e  eq=%.1e  cpl=%.1e (%.2e vs %.2e)\n",
+             "  %12.4e  %12.4e  %12.4e  eq=%.1e  nrm=%.1e  cpl=%.1e\n",
              iter, theta, tau, k, d_inf, d_tau, gap,
-             dual_phys, primal_phys, mu_tau, eq_err,
-             compl_err, compl_lhs, compl_rhs);
+             dual_phys, primal_phys, mu_tau, eq_err, norm_err, compl_err);
     }
 
     if (!std::isfinite(d_inf) || !std::isfinite(gap)) {
