@@ -141,22 +141,6 @@ struct GeodesicLP {
   }
 };
 
-// Strategy: geodesic LP with Jacobian reuse (stale Gram centering).
-// max_centering_steps inner steps per factorization with frozen k.
-struct GeodesicJacobianReuseLP {
-  double tolerance = 1e-8;
-  int max_iterations = 30;
-  int max_centering_steps = 3;
-  bool verbose = false;
-
-  GeodesicResult Run(CompiledModel& model) const {
-    RowSpace W = model.MakeRowSpace();
-    setOnes(W);
-    return SolveGeodesicLP(
-        model, W, max_iterations, max_centering_steps, tolerance, verbose);
-  }
-};
-
 // Strategy: z-space geodesic LP for general log-homogeneous barriers.
 // Bit-identical to GeodesicLP for symmetric cones when initial_z is empty.
 struct GeodesicBarrierLP {

@@ -1825,7 +1825,7 @@ TEST(GeodesicBarrierQP, MehrotraCorrection) {
   // With Jacobian reuse (3 inner centering steps).
   auto s2 = Solver::Build(model);
   auto cm2 = s2.MakeCompiledModel();
-  auto r2 = GeodesicJacobianReuseLP{1e-10, 30, 1, true}.Run(cm2);
+  auto r2 = GeodesicLP{1e-10, 30, 1, true}.Run(cm2);
 
   printf("\n=== Mehrotra correction comparison ===\n");
   printf("  Without: %d iters, %d solves, gap=%.2e\n",
@@ -1879,7 +1879,7 @@ TEST(GeodesicBarrierQP, FrozenJacobian_SDP) {
   // Frozen-Jacobian (1 inner step).
   auto s2 = Solver::Build(model);
   auto cm2 = s2.MakeCompiledModel();
-  auto r2 = GeodesicJacobianReuseLP{1e-10, 30, 1, true}.Run(cm2);
+  auto r2 = GeodesicLP{1e-10, 30, 1, true}.Run(cm2);
 
   printf("\n=== SDP frozen-Jacobian comparison ===\n");
   printf("  Baseline:       %2d fac, %3d solves, gap=%.2e\n",
@@ -1917,7 +1917,7 @@ TEST(GeodesicBarrierQP, FrozenJacobian_LP) {
 
   auto s2 = Solver::Build(model);
   auto cm2 = s2.MakeCompiledModel();
-  auto r2 = GeodesicJacobianReuseLP{1e-10, 30, 1, false}.Run(cm2);
+  auto r2 = GeodesicLP{1e-10, 30, 1, false}.Run(cm2);
 
   printf("\n=== LP frozen-Jacobian comparison ===\n");
   printf("  Baseline:       %2d fac, %3d solves, gap=%.2e\n",
@@ -1966,7 +1966,7 @@ TEST(GeodesicBarrierQP, FrozenJacobian_SOC) {
 
   auto s2 = Solver::Build(model);
   auto cm2 = s2.MakeCompiledModel();
-  auto r2 = GeodesicJacobianReuseLP{1e-10, 30, 1, false}.Run(cm2);
+  auto r2 = GeodesicLP{1e-10, 30, 1, false}.Run(cm2);
 
   printf("\n=== SOC frozen-Jacobian comparison ===\n");
   printf("  Baseline:       %2d fac, %3d solves, gap=%.2e\n",
@@ -2100,7 +2100,7 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_LP) {
   auto r2 = Solver::Build(model).Solve(ThetaContinuation{1e-10, 50, 1});
   auto r3 = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 500});
   auto r4 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30});
-  auto r5 = Solver::Build(model).Solve(GeodesicJacobianReuseLP{1e-10, 30, 1});
+  auto r5 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30, 1});
   auto r6 = Solver::Build(model).Solve(HybridR{1e-10, 500});
   auto r7 = Solver::Build(model).Solve(PhaseOneHybrid{1e-10, 500});
   auto r8 = Solver::Build(model).Solve(HybridOnly{1e-10, 500});
@@ -2145,7 +2145,7 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_SDP) {
   auto r2 = Solver::Build(model).Solve(ThetaContinuation{1e-10, 50, 1});
   auto r3 = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 500});
   auto r4 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30});
-  auto r5 = Solver::Build(model).Solve(GeodesicJacobianReuseLP{1e-10, 30, 1});
+  auto r5 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30, 1});
   auto r6 = Solver::Build(model).Solve(HybridR{1e-10, 500});
   auto r7 = Solver::Build(model).Solve(PhaseOneHybrid{1e-10, 500});
   auto r8 = Solver::Build(model).Solve(HybridOnly{1e-10, 500});
@@ -2195,7 +2195,7 @@ TEST(GeodesicBarrierQP, AlgorithmSweep_LP) {
     auto r2 = Solver::Build(model).Solve(ThetaContinuation{1e-10, 50, 1});
     auto r3 = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 500});
     auto r4 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30});
-    auto r5 = Solver::Build(model).Solve(GeodesicJacobianReuseLP{1e-10, 30, 1});
+    auto r5 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30, 1});
     auto r6 = Solver::Build(model).Solve(HybridR{1e-10, 500});
     auto r7 = Solver::Build(model).Solve(PhaseOneHybrid{1e-10, 500});
     auto r8 = Solver::Build(model).Solve(HybridOnly{1e-10, 500});
@@ -2254,7 +2254,7 @@ TEST(GeodesicBarrierQP, AlgorithmSweep_SDP) {
     auto r2 = Solver::Build(model).Solve(ThetaContinuation{1e-10, 50, 1});
     auto r3 = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 500});
     auto r4 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30});
-    auto r5 = Solver::Build(model).Solve(GeodesicJacobianReuseLP{1e-10, 30, 1});
+    auto r5 = Solver::Build(model).Solve(GeodesicLP{1e-10, 30, 1});
     auto r6 = Solver::Build(model).Solve(HybridR{1e-10, 500});
     auto r7 = Solver::Build(model).Solve(PhaseOneHybrid{1e-10, 500});
     auto r8 = Solver::Build(model).Solve(HybridOnly{1e-10, 500});
