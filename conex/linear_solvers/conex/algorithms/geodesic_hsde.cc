@@ -125,17 +125,26 @@ static DTauTheta SolveDTauTheta(const HSDECoeffs& c, double k) {
     if (tau <= 0) return {0, 0, 0, false};
     d_tau = (std::abs(wt * rt) > 1e-30) ? tau / (wt * rt) - 1.0 : 0.0;
 
-    // Gap: G_0(k) + G_dtau_tau*tau + G_theta*theta + xQx/tau + kappa = 0
-    // where G_dtau_tau = (bTl1+cTx1), kappa = rt*(1-d_tau)/wt.
-    // Solve: G_theta*theta = -(G_0_raw/k + wt*rt*(bTl1+cTx1)*(1+d_tau)
-    //         + rt/wt*(1-d_tau) + xQx/tau)
-    // But we don't have xQx here (need x which depends on theta).
-    // Use the Q=0 approximation for theta (iterate if needed).
+    // Gap: b'lam + c'x + x'Qx/tau + kappa = theta*R
+    // Solve for theta including Q term.
+    // x = y0/k + tau*y1 + theta*y_theta.  Use previous theta as estimate
+    // for x'Qx/tau, then solve for theta (same as ThetaContR).
     double kappa_val = rt * (1.0 - d_tau) / (wt > 1e-30 ? wt : 1e-30);
-    double gap_no_Q = c.G_0_raw / k + (c.bTl1 + c.cTx1) * tau + kappa_val;
+    double gap_linear = c.G_0_raw / k + (c.bTl1 + c.cTx1) * tau + kappa_val;
+
+    // x'Qx/tau from cached Q dot products.
+    // x = y0/k + tau*y1 + theta*y_theta (use previous theta).
+    // x'Qx = (y0/k)' Q (y0/k) + 2*(y0/k)' Q (tau*y1+theta*yth)
+    //       + (tau*y1+theta*yth)' Q (tau*y1+theta*yth)
+    //      = q00/k^2 + 2*tau*q01/k + 2*theta*q0t/k
+    //       + tau^2*q11 + 2*tau*theta*q1t + theta^2*qtt
+    double xQx = c.q00/(k*k) + 2*tau*c.q01/k + 2*theta*c.q0t/k
+               + tau*tau*c.q11 + 2*tau*theta*c.q1t + theta*theta*c.qtt;
+    double xQx_tau = (std::abs(tau) > 1e-30) ? xQx / tau : 0.0;
+
     double G_theta = c.G_theta;
     if (std::abs(G_theta) > 1e-30) {
-      theta = -(gap_no_Q) / G_theta;
+      theta = -(gap_linear + xQx_tau) / G_theta;
     } else {
       theta = 0;
     }
