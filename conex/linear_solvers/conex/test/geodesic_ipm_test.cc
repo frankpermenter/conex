@@ -2071,6 +2071,35 @@ TEST(GeodesicBarrierQP, FrozenJacobian_ThetaCont_SDP) {
   EXPECT_LE(r2.total_factorizations, r1.total_factorizations);
 }
 
+// Canary for ThetaContR 2x2 refactor: compare iter stats.
+TEST(GeodesicBarrierQP, ThetaContR_2x2_Canary) {
+  srand(42);
+  const int n_psd = 4, p = 6;
+  std::vector<Eigen::SparseMatrix<double>> A_list;
+  auto make_sym = [](int n) {
+    MatrixXd M = MatrixXd::Random(n, n);
+    return (M + M.transpose()) / 2.0;
+  };
+  for (int i = 0; i < p; ++i)
+    A_list.push_back(toSparse(make_sym(n_psd)));
+  Eigen::SparseMatrix<double> B = toSparse(
+      3.0 * MatrixXd::Identity(n_psd, n_psd));
+  VectorXd c(p);
+  for (int i = 0; i < p; ++i)
+    c(i) = Eigen::MatrixXd(A_list[i]).trace();
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+  Model model;
+  model.AddPSDConstraint(A_list, B, vars, false);
+  model.SetLinearCost(c);
+
+  auto r = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 500});
+  printf("\n=== ThetaContR canary (SDP 4x4) ===\n");
+  printf("  fac=%d iter=%d obj=%.10e dual_res=%.2e compl=%.2e\n",
+         r.factorizations, r.iterations, r.objective,
+         r.optimality.dual_residual, r.optimality.complementarity);
+}
+
 // Debug: verify refactor_inner mode produces same trajectory as baseline.
 TEST(GeodesicBarrierQP, FrozenJacobian_ThetaCont_SpinFactor) {
   auto [soc_s, sdp_s] = BuildSpinFactorPair(2, 2, 77);
@@ -2139,12 +2168,13 @@ TEST(GeodesicBarrierQP, HSDE_Affinity) {
   auto s = Solver::Build(model);
   auto cm = s.MakeCompiledModel();
   // Baseline (no frozen steps).
-  auto r_base = GeodesicHSDE{1e-10, 20, 0}.Run(cm);
+  auto r_base = GeodesicHSDE{1e-10, 20, 0, true}.Run(cm);
 
-  // With frozen steps (refactor_inner=true should be bit-identical to baseline).
+  // With frozen steps.
   auto s2 = Solver::Build(model);
   auto cm2 = s2.MakeCompiledModel();
-  auto r_ref = GeodesicHSDE{1e-10, 20, 1}.Run(cm2);
+  printf("\n--- HSDE + frozen-J ---\n");
+  auto r_ref = GeodesicHSDE{1e-10, 20, 1, true}.Run(cm2);
 
   printf("\n=== HSDE refactor-inner identity check ===\n");
   printf("  Baseline:       %2d iters, %2d fac\n",

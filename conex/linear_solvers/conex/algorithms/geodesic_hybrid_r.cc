@@ -425,11 +425,19 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       need_decomp = false;
       full_decomp = false;
 
-      // Joint (tau', theta) selection from gap + normalization.
-      // Gap: b'lambda + c'x + x'Qx/tau + kappa = theta*R
-      //   where kappa = w_tau^{-1}*r_tau*(1-d_tau).
-      // Normalization: N0 + N1*tau + Nth*theta = -alpha.
-      // Eliminate theta, substitute into gap, get quadratic in tau.
+      // Joint (d_tau, theta) selection from gap + normalization.
+      // Both equations are linear in (d_tau, theta) at fixed (W, r).
+      //
+      // tau = w_tau * r_tau * (1 + d_tau)
+      // kappa = r_tau * (1 - d_tau) / w_tau
+      //
+      // lambda = lam0 + tau*lam1 + theta*lam_theta
+      //        = lam0 + wt*rt*(1+d_tau)*lam1 + theta*lam_theta
+      // x = x0 + tau*x1 + theta*x_theta
+      //   = x0 + wt*rt*(1+d_tau)*x1 + theta*x_theta
+      //
+      // Gap: b'lam + c'x + kappa = theta*R  (Q=0; TODO: handle Q≠0)
+      // Norm: rp'lam + rd'x + rg*tau = -alpha
 
       RowSpace rp = addScaled(b, ones, 1.0, -1.0);  // b - e
 
@@ -447,7 +455,6 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double cTx1 = duality_cost.dot(x1_rhs);
       double cTxth = duality_cost.dot(xth_rhs);
 
-      // Normalization coefficients (no Q, always stable).
       RowSpace Ax0_v = model.MakeRowSpace(); model.MultiplyA(x0_rhs, Ax0_v);
       RowSpace Ax1_v = model.MakeRowSpace(); model.MultiplyA(x1_rhs, Ax1_v);
       RowSpace Axth_v = model.MakeRowSpace(); model.MultiplyA(xth_rhs, Axth_v);
@@ -459,105 +466,32 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double rdTx1 = cTx1 - dot(ones, Ax1_v);
       double rdTxth = cTxth - dot(ones, Axth_v);
       double rg = -(bT_ones + 1.0);
-      // alpha_norm = <e, e> + 1 (cached at init, constant).
 
-      double N0 = rpTl0 + rdTx0;
-      double N1 = rpTl1 + rdTx1 + rg;
-      double Nth = rpTlth + rdTxth;
-      double eta = alpha_norm + N0;
-      double Nth_threshold = 1e-12 * (std::abs(N0) + std::abs(N1) + 1.0);
-      double n1 = (std::abs(Nth) > Nth_threshold) ? N1 / Nth : 0.0;
-      double e1 = (std::abs(Nth) > Nth_threshold) ? eta / Nth : 0.0;
+      double wt = w_tau, rt = r_tau;
 
-      // Substitute theta(tau) = -(eta + N1*tau)/Nth into the gap equation
-      // BEFORE expanding Q terms.  This avoids the six cross-terms
-      // (q01, q0th, q1th etc.) that suffer catastrophic cancellation
-      // when x1 ≈ -x_theta.
-      //
-      // With theta(tau), x(tau) = x0 + tau*x1 + theta(tau)*x_theta
-      //   = (x0 - e1*x_theta) + tau*(x1 - n1*x_theta)
-      //   = f0 + tau*h
-      // where f0 = x0 - e1*x_theta, h = x1 - n1*x_theta.
-      //
-      // Similarly lambda(tau) = lam0 + tau*lam1 + theta(tau)*lam_theta
-      //   = (lam0 - e1*lam_theta) + tau*(lam1 - n1*lam_theta)
-      //   = l0 + tau*l1
-      //
-      // Gap × tau = tau*b'lambda + tau*c'x + x'Qx + r_tau^2 - theta*R*tau
-      //   = tau^2*(b'l1 + c'h + h'Qh) + tau*(b'l0 + c'f0 + 2*f0'Qh - theta(tau)*R)
-      //     + (f0'Qf0 + r_tau^2)
-      //
-      // But theta(tau)*R*tau = R*(-(eta+N1*tau)/Nth)*tau = -R*(e1*tau + n1*tau^2).
-      // So the theta*R*tau term contributes -R*n1 to tau^2 and -R*e1 to tau.
-      //
-      // Final quadratic: A*tau^2 + B*tau + C = 0 with:
-      //   A = b'l1 + c'h + h'Qh + R*n1
-      //   B = b'l0 + c'f0 + 2*f0'Qh + R*e1
-      //   C = f0'Qf0 + r_tau^2
-      double r_tau2 = r_tau * r_tau;
+      // Gap equation: G_dtau*d_tau + G_theta*theta + G_0 = 0
+      // Collecting d_tau: wt*rt*(bTl1 + cTx1) - rt/wt
+      // Collecting theta: bTlth + cTxth - R
+      // Constant: bTl0 + cTx0 + wt*rt*(bTl1 + cTx1) + rt/wt
+      double G_dtau = wt * rt * (bTl1 + cTx1) - rt / wt;
+      double G_theta = bTlth + cTxth - R;
+      double G_0 = bTl0 + cTx0 + wt * rt * (bTl1 + cTx1) + rt / wt;
 
-      // Build f0 = x0 - e1*x_theta, h = x1 - n1*x_theta.
-      Eigen::VectorXd f0_vec = decomp.x0 - e1 * decomp.x_theta;
-      Eigen::VectorXd h_vec = decomp.x1 - n1 * decomp.x_theta;
+      // Normalization: N_dtau*d_tau + N_theta*theta + N_0 = 0
+      // Collecting d_tau: wt*rt*(rpTl1 + rdTx1 + rg)
+      // Collecting theta: rpTlth + rdTxth
+      // Constant: rpTl0 + rdTx0 + wt*rt*(rpTl1 + rdTx1 + rg) + alpha_norm
+      double N_dtau = wt * rt * (rpTl1 + rdTx1 + rg);
+      double N_theta = rpTlth + rdTxth;
+      double N_0 = rpTl0 + rdTx0 + wt * rt * (rpTl1 + rdTx1 + rg) + alpha_norm;
 
-      // Q inner products (skip if Q=0 detected on first iteration).
-      double qff = 0, qfh = 0, qhh = 0;
-      if (!skip_Q) {
-        auto f0_rhs = model.MakeSolverRHS(); f0_rhs = model.MakeBlockVariable(f0_vec);
-        auto h_rhs = model.MakeSolverRHS(); h_rhs = model.MakeBlockVariable(h_vec);
-        auto Qf0 = model.MakeSolverRHS(); Qf0.SetZero(); model.AccumulateQx(f0_rhs, Qf0);
-        auto Qh = model.MakeSolverRHS(); Qh.SetZero(); model.AccumulateQx(h_rhs, Qh);
-        qff = Qf0.dot(f0_rhs);
-        qfh = Qf0.dot(h_rhs);
-        qhh = Qh.dot(h_rhs);
-      }
-
-      // Lambda: l0 = lam0 - e1*lam_theta, l1 = lam1 - n1*lam_theta.
-      double bTl0_sub = bTl0 - e1 * bTlth;
-      double bTl1_sub = bTl1 - n1 * bTlth;
-
-      // Cost: c'f0 = c'x0 - e1*c'x_theta, c'h = c'x1 - n1*c'x_theta.
-      double cTf0 = cTx0 - e1 * cTxth;
-      double cTh = cTx1 - n1 * cTxth;
-
-      // tau*kappa = 2*r_tau*tau/w_tau - tau^2/w_tau^2
-      // contributes -1/w_tau^2 to A, +2*r_tau/w_tau to B, 0 to C.
-      double inv_wt = 1.0 / (w_tau > 1e-30 ? w_tau : 1e-30);
-      double A_coeff = bTl1_sub + cTh + qhh + R*n1 - inv_wt*inv_wt;
-      double B_coeff = bTl0_sub + cTf0 + 2*qfh + R*e1 + 2*r_tau*inv_wt;
-      double C_coeff = qff;
-
-      // Solve for tau'. Pick root that minimizes |d_tau|.
-      double tau_new = tau;
-      double discr = B_coeff * B_coeff - 4.0 * A_coeff * C_coeff;
-      if (discr >= 0 && std::abs(A_coeff) > 1e-30) {
-        double sq = std::sqrt(discr);
-        double t1 = (-B_coeff + sq) / (2.0 * A_coeff);
-        double t2 = (-B_coeff - sq) / (2.0 * A_coeff);
-        // Pick root minimizing |d_tau| = |tau'/(w_tau*r_tau) - 1|.
-        double wtr = w_tau * r_tau;
-        double d1 = (std::abs(wtr) > 1e-30) ? t1 / wtr - 1.0 : 1e30;
-        double d2 = (std::abs(wtr) > 1e-30) ? t2 / wtr - 1.0 : 1e30;
-        // Prefer positive tau'. Among roots with similar |d_tau|,
-        // pick the one giving d_tau > -1 (i.e., tau' > 0).
-        bool t1_pos = (t1 > 0);
-        bool t2_pos = (t2 > 0);
-        if (t1_pos && !t2_pos)
-          tau_new = t1;
-        else if (t2_pos && !t1_pos)
-          tau_new = t2;
-        else
-          tau_new = (std::abs(d1) < std::abs(d2)) ? t1 : t2;
-      }
-      tau = tau_new;
-
-      // Compute d_tau.
-      double wtr = w_tau * r_tau;
-      d_tau = (std::abs(wtr) > 1e-30) ? tau / wtr - 1.0 : 0.0;
-
-      // Recover theta from normalization.
-      if (std::abs(Nth) > Nth_threshold) {
-        theta = (-alpha_norm - N0 - N1 * tau) / Nth;
+      // 2x2 solve: [G_dtau G_theta] [d_tau]   [-G_0]
+      //            [N_dtau N_theta] [theta] = [-N_0]
+      double det = G_dtau * N_theta - G_theta * N_dtau;
+      if (std::abs(det) > 1e-30) {
+        d_tau = (N_theta * (-G_0) - G_theta * (-N_0)) / det;
+        theta = (G_dtau * (-N_0) - N_dtau * (-G_0)) / det;
+        tau = wt * rt * (1.0 + d_tau);
       }
       SetTheta(decomp, model, b, M, r, theta);
     }
