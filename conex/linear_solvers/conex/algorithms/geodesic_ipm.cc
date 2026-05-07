@@ -1044,11 +1044,6 @@ GeodesicResult SolveGeodesicThetaContinuation(
       total_sol += 1;
 
       // Binary search for smallest theta with frozen-Jacobian decomp.
-      // Limit theta reduction to 10x per frozen step. Without this,
-      // theta can jump to 0 in one step (the frozen Jacobian makes
-      // theta=0 appear feasible), causing tau to collapse.
-      // V(tau)=0 is satisfied either way — the limit prevents
-      // the degenerate operating point, not an equation error.
       double theta_lo_f = theta * 0.1, theta_hi_f = theta;
       for (int bisect = 0; bisect < 30; ++bisect) {
         double theta_mid = 0.5 * (theta_lo_f + theta_hi_f);
