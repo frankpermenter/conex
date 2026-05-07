@@ -116,8 +116,9 @@ static DTauTheta SolveDTauTheta(const HSDECoeffs& c, double k) {
     theta = (-c.alpha_norm - N0_k - N1_val * tau) / Nth;
   } else {
     // Nth ≈ 0: normalization determines tau, gap determines theta.
+    // Normalization in tau-space: N_0_raw/k + N1*tau = -alpha.
     if (std::abs(N1_val) > 1e-30) {
-      tau = (-c.alpha_norm - N0_k) / N1_val;
+      tau = (-c.alpha_norm - c.N_0_raw / k) / N1_val;
     } else {
       tau = wt * rt;  // fallback
     }
