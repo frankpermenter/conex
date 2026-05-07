@@ -2286,13 +2286,17 @@ TEST(GeodesicBarrierQP, HSDE_QP_Nonzero) {
     model.AddQuadraticCost(toSparse(MatrixXd::Identity(n, n) * q_scale), vars);
     model.SetLinearCost(c);
 
-    auto r_hsde = Solver::Build(model).Solve(GeodesicHSDE{1e-8, 30, 0, true});
+    auto r_hsde = Solver::Build(model).Solve(GeodesicHSDE{1e-8, 30, 0});
+    auto r_hsde_fj = Solver::Build(model).Solve(GeodesicHSDE{1e-8, 30, 1});
     auto r_tcr = Solver::Build(model).Solve(ThetaContinuationR{1e-8, 500});
 
     printf("\n=== HSDE QP (Q=%.3f*I) ===\n", q_scale);
     printf("  HSDE:       fac=%d iter=%d obj=%.6e compl=%.2e\n",
            r_hsde.factorizations, r_hsde.iterations, r_hsde.objective,
            r_hsde.optimality.complementarity);
+    printf("  HSDE+frzJ:  fac=%d iter=%d obj=%.6e compl=%.2e\n",
+           r_hsde_fj.factorizations, r_hsde_fj.iterations, r_hsde_fj.objective,
+           r_hsde_fj.optimality.complementarity);
     printf("  ThetaContR: fac=%d iter=%d obj=%.6e compl=%.2e\n",
            r_tcr.factorizations, r_tcr.iterations, r_tcr.objective,
            r_tcr.optimality.complementarity);
