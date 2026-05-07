@@ -276,24 +276,16 @@ GeodesicResult SolveGeodesicHSDE(
     if (std::abs(theta) < tolerance && std::abs(gap) < tolerance && d_inf <= 1.001)
       break;
 
-    if (gap < 0) {
-      // W-update: geodesic step + refactor.
-      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      geodesicUpdate(W, alpha, d);
-      w_tau *= std::exp(d_tau * alpha);
-      model.SetScaling(W);
-      if (!model.AssembleAndFactor()) break;
-      total_fac++;
-    } else {
-      // k-update: binary search for largest k with max(d_inf, |d_tau|) <= 1.
+    // k-update first (at current W, before stepping): binary search for
+    // largest k with max(d_inf, |d_tau|) <= 1.  Same principle as GeodesicLP:
+    // the decomposition at W supports a range of k values.
+    {
       double k_lo = k, k_hi = k;
-      // First find an upper bound by doubling.
       for (int i = 0; i < 50; ++i) {
         k_hi *= 2.0;
         auto ev_hi = EvalAtK(decomp, coeff, k_hi);
         if (ev_hi.tau <= 0 || ev_hi.d_inf > 1.0) break;
       }
-      // Binary search.
       for (int bisect = 0; bisect < 50; ++bisect) {
         double k_mid = 0.5 * (k_lo + k_hi);
         auto ev_mid = EvalAtK(decomp, coeff, k_mid);
@@ -303,7 +295,26 @@ GeodesicResult SolveGeodesicHSDE(
           k_hi = k_mid;
         }
       }
-      if (k_lo > k) k = k_lo;
+      if (k_lo > k) {
+        k = k_lo;
+        // Re-evaluate at the new k to get the step direction.
+        auto ev_new = EvalAtK(decomp, coeff, k);
+        tau = ev_new.tau;
+        theta = ev_new.theta;
+        d_tau = ev_new.d_tau;
+        d = EvaluateDirection(decomp, k, tau, theta);
+        d_inf = ev_new.d_inf;
+      }
+    }
+
+    // W-update: geodesic step + refactor.
+    {
+      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+      geodesicUpdate(W, alpha, d);
+      w_tau *= std::exp(d_tau * alpha);
+      model.SetScaling(W);
+      if (!model.AssembleAndFactor()) break;
+      total_fac++;
       // Shrink r_tau.
       r_tau = 0.5 * r_tau * (1.0 + std::abs(d_tau));
     }
