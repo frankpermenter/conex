@@ -2094,10 +2094,25 @@ TEST(GeodesicBarrierQP, ThetaContR_2x2_Canary) {
   model.SetLinearCost(c);
 
   auto r = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 500});
+
+  // Same problem but with a zero Q matrix to trigger the quadratic path.
+  Model model_q;
+  model_q.AddPSDConstraint(A_list, B, vars, false);
+  model_q.SetLinearCost(c);
+  Eigen::SparseMatrix<double> Q_zero(p, p);
+  model_q.AddQuadraticCost(Q_zero, vars);
+  auto r_q = Solver::Build(model_q).Solve(ThetaContinuationR{1e-10, 500});
+
   printf("\n=== ThetaContR canary (SDP 4x4) ===\n");
-  printf("  fac=%d iter=%d obj=%.10e dual_res=%.2e compl=%.2e\n",
+  printf("  2x2 (Q=0): fac=%d iter=%d obj=%.10e dual_res=%.2e compl=%.2e\n",
          r.factorizations, r.iterations, r.objective,
          r.optimality.dual_residual, r.optimality.complementarity);
+  printf("  quad(Q=0): fac=%d iter=%d obj=%.10e dual_res=%.2e compl=%.2e\n",
+         r_q.factorizations, r_q.iterations, r_q.objective,
+         r_q.optimality.dual_residual, r_q.optimality.complementarity);
+
+  // Both should converge to the same objective.
+  EXPECT_NEAR(r.objective, r_q.objective, 1e-6);
 }
 
 // Debug: verify refactor_inner mode produces same trajectory as baseline.
