@@ -2226,14 +2226,21 @@ TEST(GeodesicBarrierQP, HSDE_QP_Affinity) {
     printf("\n--- LP affinity check ---\n");
     Solver::Build(model).Solve(GeodesicHSDE{1e-10, 3, 0, true});
   }
-  // QP (large Q): check affinity and show iter stats.
+  // QP (large Q): HSDE vs ThetaContR.
   {
     Model model;
     model.AddLinearConstraint(toSparse(A), b, vars);
     model.AddQuadraticCost(toSparse(MatrixXd::Identity(n, n) * 10.0), vars);
     model.SetLinearCost(c);
-    printf("\n--- QP (large Q=10*I) iter stats ---\n");
-    Solver::Build(model).Solve(GeodesicHSDE{1e-10, 30, 0, true});
+    printf("\n--- QP (large Q=10*I) ThetaContR ---\n");
+    auto r_tcr = Solver::Build(model).Solve(ThetaContinuationR{1e-10, 100, true});
+    printf("\n--- QP (large Q=10*I) HSDE ---\n");
+    auto r_hsde = Solver::Build(model).Solve(GeodesicHSDE{1e-10, 30, 0, true});
+    printf("\n=== QP comparison ===\n");
+    printf("  ThetaContR:  fac=%d iter=%d obj=%.6e\n",
+           r_tcr.factorizations, r_tcr.iterations, r_tcr.objective);
+    printf("  HSDE:        fac=%d iter=%d obj=%.6e\n",
+           r_hsde.factorizations, r_hsde.iterations, r_hsde.objective);
   }
 }
 
