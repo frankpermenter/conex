@@ -146,8 +146,8 @@ TEST(GeodesicBarrierQP, FullDecomposition) {
       for (double theta : test_thetas) {
         RowSpace d = EvaluateDirection(decomp, k, tau, theta);
 
-        // Reconstruct x = x_center + k * (tau * x_cost + theta * x_theta).
-        Eigen::VectorXd y = decomp.x_center + k * (tau * decomp.x_cost + theta * decomp.x_theta);
+        // Reconstruct y = y0 + k * (tau * y1_0 + theta * y1_theta).
+        Eigen::VectorXd y = decomp.y0 + k * (tau * decomp.y1_0 + theta * decomp.y1_theta);
 
         // VerifyNewtonEquations uses a single blend parameter theta
         // (b = theta*e + (1-theta)*b_0), which only matches the decoupled

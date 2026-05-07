@@ -71,7 +71,7 @@ struct GeodesicResult {
   double complementarity;  // mu * (rank - ||d||^2)
   int total_factorizations = 0;
   int total_solves = 0;
-  Eigen::VectorXd x;  // primal variable from last Newton solve
+  Eigen::VectorXd x;  // primal variable: x = y/k from last Newton solve
   RowSpace lambda;     // dual variable (cone multipliers), reduced space
   std::vector<GeodesicIterStats> iter_stats;
   OptimalityReport optimality;
@@ -93,12 +93,12 @@ std::pair<double, double> VerifyNewtonEquations(
 // Decomposition of the Newton direction into components that are
 // independent of k and theta:
 //   d(k, theta) = d0 + k * (d1_0 + theta * d1_theta)
-//   x(k, theta) = x_center + k * (x_cost + theta * x_theta)
+//   y(k, theta) = y0 + k * (y1_0 + theta * y1_theta)
 struct NewtonDecomposition {
   RowSpace d0;
   RowSpace d1_0;       // standard optimality direction
   RowSpace d1_theta;   // theta correction direction
-  Eigen::VectorXd x_center, x_cost, x_theta;
+  Eigen::VectorXd y0, y1_0, y1_theta;
 };
 
 // Factor the Gram system and compute the three-term decomposition.
@@ -159,8 +159,8 @@ KTauResult SelectKTau(const DecompInnerProducts& ip);
 // multiplied by tau): beta*tau^2 + (alpha - R)*tau + mu_eff = 0.
 struct DualityCoeffs {
   double sigma1;  // <b0, P(W^{1/2})(d1_0)>
-  double gamma1;  // duality_cost^T x_cost
-  double q11;     // x_cost' Q x_cost  (quadratic cost; enters beta as q11/2)
+  double gamma1;  // duality_cost^T y1_0
+  double q11;     // y1_0' Q y1_0  (quadratic cost; enters beta as q11/2)
 };
 
 // Compute the tau-independent duality coefficients (sigma1, gamma1, q11).

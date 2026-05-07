@@ -66,9 +66,9 @@ void Check(const char* name, Model& prob, const Eigen::VectorXd& cost) {
 
   printf("%s (nv=%d, eq=%d):\n", name, nv,
          ts ? (int)ts->equality_sub_assemblers().size() : 0);
-  check_col(decomp.x_center, "x_center");
-  check_col(decomp.x_cost, "x_cost");
-  check_col(decomp.x_theta, "x_theta");
+  check_col(decomp.y0, "y0");
+  check_col(decomp.y1_0, "y1_0");
+  check_col(decomp.y1_theta, "y1_theta");
   printf("\n");
 }
 
