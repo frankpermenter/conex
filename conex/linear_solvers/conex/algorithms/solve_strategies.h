@@ -1,5 +1,6 @@
 #pragma once
 #include "conex/algorithms/geodesic_hybrid_r.h"
+#include "conex/algorithms/geodesic_hsde.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/common/eja_ops.h"
 
@@ -179,6 +180,21 @@ struct GeodesicBarrierThetaContinuation {
     return SolveGeodesicBarrierThetaContinuation(
         model, z, max_iterations, max_centering_steps,
         tolerance, verbose);
+  }
+};
+
+// Strategy: HSDE with scalar k and line search.
+// Theta from gap+normalization, tau as cone variable.
+struct GeodesicHSDE {
+  double tolerance = 1e-8;
+  int max_iterations = 500;
+  bool verbose = false;
+
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace W = model.MakeRowSpace();
+    setOnes(W);
+    return SolveGeodesicHSDE(
+        model, W, max_iterations, tolerance, verbose);
   }
 };
 

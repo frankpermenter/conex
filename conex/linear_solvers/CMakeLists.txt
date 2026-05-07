@@ -108,6 +108,7 @@ add_library(algorithms
   conex/algorithms/barrier_qp.cc
   conex/algorithms/geodesic_ipm.cc
   conex/algorithms/geodesic_hybrid_r.cc
+  conex/algorithms/geodesic_hsde.cc
   conex/algorithms/alternating_projections.cc
   conex/algorithms/solve_lp.cc
   conex/algorithms/least_squares.cc
