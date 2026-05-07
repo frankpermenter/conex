@@ -68,92 +68,78 @@ static DTauTheta SolveDTauTheta(const HSDECoeffs& c, double k) {
     return {d_tau, theta, tau, tau > 0};
   }
 
-  // Q≠0: eliminate theta via normalization, solve quadratic in tau.
-  // Same approach as ThetaContR's quadratic path.
-  //
-  // Normalization (in tau, not d_tau):
-  //   N0(k) + N1*tau + Nth*theta = -alpha
-  // where N0(k) depends on 1/k through lambda_0 and x_0.
-  // N1 = N_dtau / (wt*rt), since tau = wt*rt*(1+d_tau).
+  // Q≠0: normalization + gap equations with quadratic cost.
+  // Convert from d_tau to tau for the quadratic formulation.
   double N0_k = c.N_0_raw / k + (c.N_0_const - c.alpha_norm);
   double N1_val = (std::abs(wt * rt) > 1e-30) ? c.N_dtau / (wt * rt) : 0;
   double Nth = c.N_theta;
   double eta = c.alpha_norm + N0_k;
   double Nth_thr = 1e-12 * (std::abs(N0_k) + std::abs(N1_val) + 1.0);
-  double n1 = (std::abs(Nth) > Nth_thr) ? N1_val / Nth : 0.0;
-  double e1 = (std::abs(Nth) > Nth_thr) ? eta / Nth : 0.0;
 
-  // Gap equation coefficients (same as ThetaContR).
-  // bTl0(k) = bTl0_raw/k, cTx0(k) = cTx0_raw/k (extracted from G_0_raw).
-  // G_0_raw = bTl0_raw + cTx0_raw. We also need them separately for
-  // the theta-eliminated gap. Use stored bTl1, cTx1, etc.
-  double bTl0_k = (c.G_0_raw - c.G_0_const + rt / wt) / k;  // approximate extraction
-  // Actually this is fragile. Let me use the normalization approach directly.
-  // bTl0_sub = bTl0 - e1*bTlth, etc.
-  // bTl0 = (G_0_raw - cTx0_raw)/k... we don't have them separately.
-  //
-  // Simpler: compute the gap quadratic from the stored 2x2 coefficients.
-  // Gap*tau (after theta elim): A*tau^2 + B*tau + C = 0.
-  // The gap without Q is: G_dtau*d_tau + G_theta*theta + G_0(k) = 0.
-  // In tau: (G_dtau/(wt*rt))*tau + G_theta*theta + (G_0(k) - G_dtau) = 0...
-  // This mapping is messy. Let me just compute A, B, C directly.
-  //
-  // From the original derivation (see ThetaContR):
-  // A = bTl1_sub + cTh + qhh + R*n1 - 1/wt^2
-  // B = bTl0_sub + cTf0 + 2*qfh + R*e1 + 2*rt/wt
-  // C = qff
-  // where bTl0_sub = bTl0(k) - e1*bTlth, etc.
-  // and qff, qfh, qhh from the 6 stored Q dot products.
+  double tau, d_tau, theta;
 
-  // qff = f0'Qf0 where f0 = y0/k - e1*yth
-  //     = q00/k^2 - 2*e1*q0t/k + e1^2*qtt
-  double qff = c.q00 / (k * k) - 2 * e1 * c.q0t / k + e1 * e1 * c.qtt;
-  // qfh = f0'Qh where h = y1 - n1*yth
-  //     = q01/k - n1*q0t/k - e1*q1t + e1*n1*qtt
-  double qfh = c.q01 / k - n1 * c.q0t / k - e1 * c.q1t + e1 * n1 * c.qtt;
-  // qhh = h'Qh = q11 - 2*n1*q1t + n1^2*qtt
-  double qhh = c.q11 - 2 * n1 * c.q1t + n1 * n1 * c.qtt;
-
-  // Gap coefficients (reusing the 2x2 G terms but in tau form).
-  // bTl0_sub + cTf0 = (gap constant terms - kappa) after theta elim.
-  // From G_0(k) = bTl0 + cTx0 + wt*rt*(bTl1+cTx1) + rt/wt:
-  //   bTl0 + cTx0 = G_0_raw/k
-  // From G_theta = bTlth + cTxth - R:
-  //   bTlth + cTxth = G_theta + R
-  // bTl0_sub = bTl0 - e1*bTlth, cTf0 = cTx0 - e1*cTxth
-  // bTl0_sub + cTf0 = (bTl0+cTx0) - e1*(bTlth+cTxth) = G_0_raw/k - e1*(G_theta+R)
-  double gap_const = c.G_0_raw / k - e1 * (c.G_theta + c.R);
-  // bTl1_sub + cTh = (bTl1+cTx1) - n1*(bTlth+cTxth)
-  double gap_lin = (c.bTl1 + c.cTx1) - n1 * (c.G_theta + c.R);
-
-  double inv_wt = 1.0 / (wt > 1e-30 ? wt : 1e-30);
-  double A_coeff = gap_lin + qhh + c.R * n1 - inv_wt * inv_wt;
-  double B_coeff = gap_const + 2 * qfh + c.R * e1 + 2 * rt * inv_wt;
-  double C_coeff = qff;
-
-  double tau = -1;
-  double discr = B_coeff * B_coeff - 4.0 * A_coeff * C_coeff;
-  if (discr >= 0 && std::abs(A_coeff) > 1e-30) {
-    double sq = std::sqrt(discr);
-    double t1 = (-B_coeff + sq) / (2.0 * A_coeff);
-    double t2 = (-B_coeff - sq) / (2.0 * A_coeff);
-    double wtr = wt * rt;
-    double dt1 = (std::abs(wtr) > 1e-30) ? t1 / wtr - 1.0 : 1e30;
-    double dt2 = (std::abs(wtr) > 1e-30) ? t2 / wtr - 1.0 : 1e30;
-    if (t1 > 0 && !(t2 > 0))
-      tau = t1;
-    else if (t2 > 0 && !(t1 > 0))
-      tau = t2;
-    else
-      tau = (std::abs(dt1) < std::abs(dt2)) ? t1 : t2;
-  }
-  if (tau <= 0) return {0, 0, 0, false};
-
-  double d_tau = (std::abs(wt * rt) > 1e-30) ? tau / (wt * rt) - 1.0 : 0.0;
-  double theta = 0;
   if (std::abs(Nth) > Nth_thr) {
+    // Normal case: eliminate theta, quadratic in tau.
+    double n1 = N1_val / Nth;
+    double e1 = eta / Nth;
+
+    double qff = c.q00 / (k*k) - 2*e1*c.q0t/k + e1*e1*c.qtt;
+    double qfh = c.q01/k - n1*c.q0t/k - e1*c.q1t + e1*n1*c.qtt;
+    double qhh = c.q11 - 2*n1*c.q1t + n1*n1*c.qtt;
+
+    double gap_const = c.G_0_raw / k - e1 * (c.G_theta + c.R);
+    double gap_lin = (c.bTl1 + c.cTx1) - n1 * (c.G_theta + c.R);
+
+    double inv_wt = 1.0 / (wt > 1e-30 ? wt : 1e-30);
+    double A_coeff = gap_lin + qhh + c.R * n1 - inv_wt * inv_wt;
+    double B_coeff = gap_const + 2 * qfh + c.R * e1 + 2 * rt * inv_wt;
+    double C_coeff = qff;
+
+    tau = -1;
+    double discr = B_coeff * B_coeff - 4.0 * A_coeff * C_coeff;
+    if (discr >= 0 && std::abs(A_coeff) > 1e-30) {
+      double sq = std::sqrt(discr);
+      double t1 = (-B_coeff + sq) / (2.0 * A_coeff);
+      double t2 = (-B_coeff - sq) / (2.0 * A_coeff);
+      double wtr = wt * rt;
+      double dt1 = (std::abs(wtr) > 1e-30) ? t1 / wtr - 1.0 : 1e30;
+      double dt2 = (std::abs(wtr) > 1e-30) ? t2 / wtr - 1.0 : 1e30;
+      if (t1 > 0 && !(t2 > 0))
+        tau = t1;
+      else if (t2 > 0 && !(t1 > 0))
+        tau = t2;
+      else
+        tau = (std::abs(dt1) < std::abs(dt2)) ? t1 : t2;
+    }
+    if (tau <= 0) return {0, 0, 0, false};
+    d_tau = (std::abs(wt * rt) > 1e-30) ? tau / (wt * rt) - 1.0 : 0.0;
     theta = (-c.alpha_norm - N0_k - N1_val * tau) / Nth;
+  } else {
+    // Nth ≈ 0: normalization determines tau, gap determines theta.
+    if (std::abs(N1_val) > 1e-30) {
+      tau = (-c.alpha_norm - N0_k) / N1_val;
+    } else {
+      tau = wt * rt;  // fallback
+    }
+    if (tau <= 0) return {0, 0, 0, false};
+    d_tau = (std::abs(wt * rt) > 1e-30) ? tau / (wt * rt) - 1.0 : 0.0;
+
+    // Gap: G_0(k) + G_dtau_tau*tau + G_theta*theta + xQx/tau + kappa = 0
+    // where G_dtau_tau = (bTl1+cTx1), kappa = rt*(1-d_tau)/wt.
+    // Solve: G_theta*theta = -(G_0_raw/k + wt*rt*(bTl1+cTx1)*(1+d_tau)
+    //         + rt/wt*(1-d_tau) + xQx/tau)
+    // But we don't have xQx here (need x which depends on theta).
+    // Use the Q=0 approximation for theta (iterate if needed).
+    double kappa_val = rt * (1.0 - d_tau) / (wt > 1e-30 ? wt : 1e-30);
+    double gap_no_Q = c.G_0_raw / k + (c.bTl1 + c.cTx1) * tau + kappa_val;
+    double G_theta = c.G_theta;
+    if (std::abs(G_theta) > 1e-30) {
+      theta = -(gap_no_Q) / G_theta;
+    } else {
+      theta = 0;
+    }
   }
+
   return {d_tau, theta, tau, true};
 }
 
