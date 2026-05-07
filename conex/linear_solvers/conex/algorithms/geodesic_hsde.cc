@@ -217,7 +217,7 @@ GeodesicResult SolveGeodesicHSDE(
       break;
     }
 
-    if (std::abs(theta) < tolerance && std::abs(gap) < tolerance && d_inf <= 1.001)
+    if (std::abs(gap) < tolerance && d_inf <= 1.001)
       break;
 
     // Line search for k: d(k) is affine in k.

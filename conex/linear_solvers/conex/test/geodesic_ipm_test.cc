@@ -2138,7 +2138,7 @@ TEST(GeodesicBarrierQP, HSDE_Affinity) {
 
   auto s = Solver::Build(model);
   auto cm = s.MakeCompiledModel();
-  GeodesicHSDE{1e-10, 5, true}.Run(cm);
+  GeodesicHSDE{1e-10, 30, true}.Run(cm);
 }
 
 static void PrintSolveResult(const char* name, const SolveResult& r) {
