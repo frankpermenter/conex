@@ -36,6 +36,9 @@ struct HSDECoeffs {
   double w_tau, r_tau;
   double alpha_norm, R;
   double nu;
+
+  // Raw k-independent inner products (for recomputing G/N with new w_tau, r_tau).
+  double bTl1, cTx1, rpTl1, rdTx1, rg;
 };
 
 // Solve the 2x2 system for (d_tau, theta) at fixed k.
@@ -65,6 +68,7 @@ GeodesicResult SolveGeodesicHSDE(
     CompiledModel& model,
     RowSpace& W,
     int max_iterations,
+    int max_frozen_steps,
     double tolerance,
     bool verbose) {
   const auto& cost_rhs = model.cost_rhs();
@@ -175,6 +179,11 @@ GeodesicResult SolveGeodesicHSDE(
     coeff.alpha_norm = alpha_norm;
     coeff.R = R;
     coeff.nu = nu;
+    coeff.bTl1 = bTl1;
+    coeff.cTx1 = cTx1;
+    coeff.rpTl1 = rpTl1;
+    coeff.rdTx1 = rdTx1;
+    coeff.rg = rg;
 
     // Solve 2x2 at current k.
     auto sel = SolveDTauTheta(coeff, k);
@@ -270,17 +279,135 @@ GeodesicResult SolveGeodesicHSDE(
       }
     }
 
-    // Geodesic step (refactor happens at top of next iteration via
-    // ComputeFullDecomposition).
+    // Geodesic step.
+    RowSpace W0 = W;  // save for frozen-J
     {
       double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
       geodesicUpdate(W, alpha, d);
       w_tau *= std::exp(d_tau * alpha);
-      // Set r_tau = 1/k so that at the central path (d=0, d_tau=0):
-      // mu*nu + r_tau^2 = nu/k^2 + 1/k^2 = alpha/k^2 = theta*alpha
-      // → theta = 1/k^2 = mu.
       r_tau = 1.0 / k;
-      total_fac++;  // count the factorization that will happen next iteration
+      total_fac++;
+    }
+
+    // Frozen-Jacobian inner steps: refresh d0 at current W using stale
+    // Gram (at W0), redo 2x2 solve + k line search, step.
+    // Debug: set refactor_inner=true to verify inner=outer (bit-identical).
+    constexpr bool refactor_inner = false;
+
+    for (int inner = 0; inner < max_frozen_steps; ++inner) {
+      if (refactor_inner) {
+        // Full refactor: recompute everything (should match next outer iter).
+        decomp = ComputeFullDecomposition(model, b, W);
+        total_fac++;
+        total_sol += 3;
+        sqrtW = EuclideanJordanAlgebra::sqrt(W);
+        pw_d1_0 = quadraticRepresentation(sqrtW, decomp.d1_0);
+        pw_d1_th = quadraticRepresentation(sqrtW, decomp.d1_theta);
+        pw_ed0 = quadraticRepresentation(sqrtW, ones + decomp.d0);
+        x0_rhs = model.MakeBlockVariable(decomp.y0);
+        x1_rhs = model.MakeBlockVariable(decomp.y1_0);
+        xth_rhs = model.MakeBlockVariable(decomp.y1_theta);
+        Ax0 = model.MakeRowSpace(); model.MultiplyA(x0_rhs, Ax0);
+        Ax1 = model.MakeRowSpace(); model.MultiplyA(x1_rhs, Ax1);
+        Axth = model.MakeRowSpace(); model.MultiplyA(xth_rhs, Axth);
+        bTl1 = dot(b, pw_d1_0); bTlth = dot(b, pw_d1_th);
+        bTl0_raw = dot(b, pw_ed0);
+        cTx1 = duality_cost.dot(x1_rhs); cTxth = duality_cost.dot(xth_rhs);
+        cTx0_raw = duality_cost.dot(x0_rhs);
+        rpTl1 = dot(rp, pw_d1_0); rpTlth = dot(rp, pw_d1_th);
+        rpTl0_raw = dot(rp, pw_ed0);
+        rdTx1 = cTx1 - dot(ones, Ax1); rdTxth = cTxth - dot(ones, Axth);
+        rdTx0_raw = cTx0_raw - dot(ones, Ax0);
+        double wt = w_tau, rt = r_tau;
+        coeff.G_dtau = wt*rt*(bTl1+cTx1) - rt/wt;
+        coeff.G_theta = bTlth + cTxth - R;
+        coeff.G_0_raw = bTl0_raw + cTx0_raw;
+        coeff.G_0_const = wt*rt*(bTl1+cTx1) + rt/wt;
+        coeff.N_dtau = wt*rt*(rpTl1+rdTx1+rg);
+        coeff.N_theta = rpTlth + rdTxth;
+        coeff.N_0_raw = rpTl0_raw + rdTx0_raw;
+        coeff.N_0_const = wt*rt*(rpTl1+rdTx1+rg) + alpha_norm;
+        coeff.w_tau = wt; coeff.r_tau = rt;
+        coeff.bTl1=bTl1; coeff.cTx1=cTx1;
+        coeff.rpTl1=rpTl1; coeff.rdTx1=rdTx1; coeff.rg=rg;
+      } else {
+        // Frozen-J: refresh d0 only, keep d1_0/d1_theta frozen.
+        RowSpace d0_new = model.MakeRowSpace();
+        Eigen::VectorXd y0_new;
+        RefreshD0Frozen(model, b, W0, W, d0_new, y0_new);
+        decomp.d0 = d0_new;
+        decomp.y0 = y0_new;
+        total_sol += 1;
+        // Update d0-dependent coefficients.
+        RowSpace sqrtW0 = EuclideanJordanAlgebra::sqrt(W0);
+        RowSpace pw_d0_f = quadraticRepresentation(sqrtW0, decomp.d0);
+        auto x0_rhs_f = model.MakeSolverRHS();
+        x0_rhs_f = model.MakeBlockVariable(decomp.y0);
+        RowSpace Ax0_f = model.MakeRowSpace();
+        model.MultiplyA(x0_rhs_f, Ax0_f);
+        double cTx0_f = duality_cost.dot(x0_rhs_f);
+        double rdTx0_f = cTx0_f - dot(ones, Ax0_f);
+        coeff.G_0_raw = dot(b, W) + dot(b, pw_d0_f) + cTx0_f;
+        coeff.N_0_raw = dot(rp, W) + dot(rp, pw_d0_f) + rdTx0_f;
+        // Update w_tau/r_tau dependent terms.
+        double wt = w_tau, rt = r_tau;
+        coeff.G_dtau = wt*rt*(coeff.bTl1+coeff.cTx1) - rt/wt;
+        coeff.G_0_const = wt*rt*(coeff.bTl1+coeff.cTx1) + rt/wt;
+        coeff.N_dtau = wt*rt*(coeff.rpTl1+coeff.rdTx1+coeff.rg);
+        coeff.N_0_const = wt*rt*(coeff.rpTl1+coeff.rdTx1+coeff.rg) + alpha_norm;
+        coeff.w_tau = wt; coeff.r_tau = rt;
+      }
+
+      // 2x2 solve + line search (same as outer).
+      auto sel_f = SolveDTauTheta(coeff, k);
+      if (!sel_f.valid) break;
+
+      double ka = k, kb = k + 1.0;
+      auto sa = SolveDTauTheta(coeff, ka);
+      auto sb = SolveDTauTheta(coeff, kb);
+      if (sa.valid && sb.valid) {
+        RowSpace da = EvaluateDirection(decomp, ka, sa.tau, sa.theta);
+        RowSpace db = EvaluateDirection(decomp, kb, sb.tau, sb.theta);
+        RowSpace D1 = addScaled(db, da, 1.0, -1.0);
+        RowSpace D0 = addScaled(da, D1, 1.0, -ka);
+        double k_new = lineSearchK(D0, D1);
+
+        if (k_new > k) {
+          auto ev = SolveDTauTheta(coeff, k_new);
+          if (!ev.valid || std::abs(ev.d_tau) > 1.0) {
+            double lo = k, hi = k_new;
+            for (int bs = 0; bs < 50; ++bs) {
+              double mid = 0.5 * (lo + hi);
+              auto evm = SolveDTauTheta(coeff, mid);
+              if (evm.valid && std::abs(evm.d_tau) <= 1.0) lo = mid;
+              else hi = mid;
+            }
+            k_new = lo;
+          }
+          if (k_new > k) k = k_new;
+        }
+      }
+
+      // Re-evaluate at new k.
+      auto ev_f = SolveDTauTheta(coeff, k);
+      double tau_f = ev_f.tau, theta_f = ev_f.theta, d_tau_f = ev_f.d_tau;
+      RowSpace d_f = EvaluateDirection(decomp, k, tau_f, theta_f);
+      double d_inf_f = std::max(normInf(d_f), std::abs(d_tau_f));
+
+      if (verbose) {
+        double mu_f = 1.0 / (k * k);
+        double gap_f = mu_f * (nu - squaredNorm(d_f));
+        printf("  %3d.%d  %10.2e  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e"
+               "  %12s  %12s  %12s  %12s  (frozen-J)\n",
+               iter, inner + 1, theta_f, tau_f, k, d_inf_f, d_tau_f, gap_f,
+               "", "", "", "");
+      }
+
+      // Geodesic step.
+      double alpha_f = std::min(1.0, 2.0 / (d_inf_f * d_inf_f));
+      geodesicUpdate(W, alpha_f, d_f);
+      w_tau *= std::exp(d_tau_f * alpha_f);
+      r_tau = 1.0 / k;
     }
   }
 

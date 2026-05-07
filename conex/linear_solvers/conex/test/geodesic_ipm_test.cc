@@ -2138,7 +2138,29 @@ TEST(GeodesicBarrierQP, HSDE_Affinity) {
 
   auto s = Solver::Build(model);
   auto cm = s.MakeCompiledModel();
-  GeodesicHSDE{1e-10, 30, true}.Run(cm);
+  // Baseline (no frozen steps).
+  auto r_base = GeodesicHSDE{1e-10, 20, 0}.Run(cm);
+
+  // With frozen steps (refactor_inner=true should be bit-identical to baseline).
+  auto s2 = Solver::Build(model);
+  auto cm2 = s2.MakeCompiledModel();
+  auto r_ref = GeodesicHSDE{1e-10, 20, 1}.Run(cm2);
+
+  printf("\n=== HSDE refactor-inner identity check ===\n");
+  printf("  Baseline:       %2d iters, %2d fac\n",
+         r_base.iterations, r_base.total_factorizations);
+  printf("  Refactor-inner: %2d iters, %2d fac\n",
+         r_ref.iterations, r_ref.total_factorizations);
+
+  // refactor-inner iter i should match baseline iter 2*i.
+  printf("  ref_i  base_i  ref_mu         base_mu        err\n");
+  for (int i = 0; i < r_ref.iterations && 2*i < r_base.iterations; ++i) {
+    double r_mu = r_ref.iter_stats[i].mu;
+    double b_mu = r_base.iter_stats[2*i].mu;
+    double err = std::abs(b_mu - r_mu) / (std::abs(b_mu) + 1e-30);
+    printf("  %3d    %3d    %.6e  %.6e  %.2e %s\n",
+           i, 2*i, r_mu, b_mu, err, err < 1e-10 ? "OK" : "DIFF");
+  }
 }
 
 static void PrintSolveResult(const char* name, const SolveResult& r) {
@@ -2174,7 +2196,8 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_LP) {
   auto r6 = Solver::Build(model).Solve(HybridR{1e-10, 500});
   auto r7 = Solver::Build(model).Solve(PhaseOneHybrid{1e-10, 500});
   auto r8 = Solver::Build(model).Solve(HybridOnly{1e-10, 500});
-  auto r9 = Solver::Build(model).Solve(GeodesicHSDE{1e-10, 500});
+  auto r9 = Solver::Build(model).Solve(GeodesicHSDE{1e-10, 500, 0});
+  auto r10 = Solver::Build(model).Solve(GeodesicHSDE{1e-10, 500, 1});
 
   printf("\n=== LP algorithm comparison ===\n");
   printf("  %-25s  %3s  %5s  %12s  %10s  %10s  %10s  %10s  %10s\n",
@@ -2188,7 +2211,8 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_LP) {
   PrintSolveResult("HybridR", r6);
   PrintSolveResult("PhaseOneHybrid", r7);
   PrintSolveResult("HybridOnly", r8);
-  PrintSolveResult("GeodesicHSDE", r9);
+  PrintSolveResult("HSDE", r9);
+  PrintSolveResult("HSDE + frozen-J", r10);
 }
 
 TEST(GeodesicBarrierQP, CompareAlgorithms_SDP) {
@@ -2221,7 +2245,8 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_SDP) {
   auto r6 = Solver::Build(model).Solve(HybridR{1e-10, 500});
   auto r7 = Solver::Build(model).Solve(PhaseOneHybrid{1e-10, 500});
   auto r8 = Solver::Build(model).Solve(HybridOnly{1e-10, 500});
-  auto r9 = Solver::Build(model).Solve(GeodesicHSDE{1e-10, 500});
+  auto r9 = Solver::Build(model).Solve(GeodesicHSDE{1e-10, 500, 0});
+  auto r10 = Solver::Build(model).Solve(GeodesicHSDE{1e-10, 500, 1});
 
   printf("\n=== SDP algorithm comparison ===\n");
   printf("  %-25s  %3s  %5s  %12s  %10s  %10s  %10s  %10s  %10s\n",
@@ -2235,7 +2260,8 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_SDP) {
   PrintSolveResult("HybridR", r6);
   PrintSolveResult("PhaseOneHybrid", r7);
   PrintSolveResult("HybridOnly", r8);
-  PrintSolveResult("GeodesicHSDE", r9);
+  PrintSolveResult("HSDE", r9);
+  PrintSolveResult("HSDE + frozen-J", r10);
 }
 
 // Sweep over problem sizes and compare all algorithms.

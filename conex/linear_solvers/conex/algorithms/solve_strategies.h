@@ -188,13 +188,14 @@ struct GeodesicBarrierThetaContinuation {
 struct GeodesicHSDE {
   double tolerance = 1e-8;
   int max_iterations = 500;
+  int max_frozen_steps = 0;
   bool verbose = false;
 
   GeodesicResult Run(CompiledModel& model) const {
     RowSpace W = model.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicHSDE(
-        model, W, max_iterations, tolerance, verbose);
+        model, W, max_iterations, max_frozen_steps, tolerance, verbose);
   }
 };
 

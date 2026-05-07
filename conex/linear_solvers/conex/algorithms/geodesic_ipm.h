@@ -344,4 +344,13 @@ GeodesicResult SolveGeodesicHybrid(
     double tau = 1.0,
     HybridSwitchPolicy policy = DefaultHybridPolicy);
 
+// Frozen-Jacobian d0 refresh: 1 back-solve with stale Gram at W0.
+void RefreshD0Frozen(
+    CompiledModel& model,
+    const RowSpace& b,
+    const RowSpace& W0,
+    const RowSpace& Wi,
+    RowSpace& d0_out,
+    Eigen::VectorXd& y0_out);
+
 }  // namespace conex

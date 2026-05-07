@@ -639,7 +639,7 @@ static std::pair<double, double> FrozenEvalThetaCandidate(
 
 // Core frozen-Jacobian d0 refresh: 1 back-solve with stale Gram.
 // Computes d0 = P(sqrt(W0))(Wi^{-1} - Ay0) and optionally outputs y0.
-static void RefreshD0Frozen(
+void RefreshD0Frozen(
     CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W0,
