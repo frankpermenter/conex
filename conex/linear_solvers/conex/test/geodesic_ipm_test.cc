@@ -1504,8 +1504,8 @@ TEST(SpinFactor, ThetaContinuation_Isomorphic) {
   CompiledModel sdp_cm(*sdp_s.kkt(), sdp_s.MakeCostRHS());
   RowSpace soc_W = soc_cm.MakeRowSpace(); setOnes(soc_W);
   RowSpace sdp_W = sdp_cm.MakeRowSpace(); setOnes(sdp_W);
-  auto soc_r = SolveGeodesicThetaContinuation(soc_cm, soc_W, 50, 1, 1e-8);
-  auto sdp_r = SolveGeodesicThetaContinuation(sdp_cm, sdp_W, 50, 1, 1e-8);
+  auto soc_r = SolveGeodesicThetaContinuation(soc_cm, soc_W, 50, 0, 1e-8);
+  auto sdp_r = SolveGeodesicThetaContinuation(sdp_cm, sdp_W, 50, 0, 1e-8);
   CheckIsomorphicIterations("ThetaContinuation", soc_r, sdp_r);
 }
 
