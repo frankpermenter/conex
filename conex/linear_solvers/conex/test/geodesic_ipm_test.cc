@@ -2208,6 +2208,35 @@ TEST(GeodesicBarrierQP, HSDE_Affinity) {
   }
 }
 
+// Check affinity of d(k) for QP (Q≠0) vs LP (Q=0).
+TEST(GeodesicBarrierQP, HSDE_QP_Affinity) {
+  srand(99);
+  const int n = 6, m = 14;
+  MatrixXd A = MatrixXd::Random(m, n).cwiseAbs() + 0.1 * MatrixXd::Ones(m, n);
+  VectorXd b = VectorXd::Ones(m);
+  VectorXd c = A.transpose() * VectorXd::Ones(m);
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  // LP (Q=0): d should be affine in k.
+  {
+    Model model;
+    model.AddLinearConstraint(toSparse(A), b, vars);
+    model.SetLinearCost(c);
+    printf("\n--- LP affinity check ---\n");
+    Solver::Build(model).Solve(GeodesicHSDE{1e-10, 3, 0, true});
+  }
+  // QP (Q≠0): check if d is still affine.
+  {
+    Model model;
+    model.AddLinearConstraint(toSparse(A), b, vars);
+    model.AddQuadraticCost(toSparse(MatrixXd::Identity(n, n) * 0.5), vars);
+    model.SetLinearCost(c);
+    printf("\n--- QP affinity check ---\n");
+    Solver::Build(model).Solve(GeodesicHSDE{1e-10, 3, 0, true});
+  }
+}
+
 // Verify HSDE quadratic path (Q≠0) gives same result with Q=0 matrix.
 TEST(GeodesicBarrierQP, HSDE_QuadraticFallback) {
   srand(42);

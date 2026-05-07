@@ -309,6 +309,27 @@ GeodesicResult SolveGeodesicHSDE(
     double mu = 1.0 / (k * k);
     double gap = mu * (nu - d_sq);
 
+    // Affinity check: d(k) should be affine in k.
+    if (verbose && iter < 3) {
+      double k1 = std::max(k, 1.0), k2 = 2*k1, k3 = 3*k1;
+      auto e1 = SolveDTauTheta(coeff, k1);
+      auto e2 = SolveDTauTheta(coeff, k2);
+      auto e3 = SolveDTauTheta(coeff, k3);
+      if (e1.valid && e2.valid && e3.valid) {
+        RowSpace d1v = EvaluateDirection(decomp, k1, e1.tau, e1.theta);
+        RowSpace d2v = EvaluateDirection(decomp, k2, e2.tau, e2.theta);
+        RowSpace d3v = EvaluateDirection(decomp, k3, e3.tau, e3.theta);
+        RowSpace avg = addScaled(d1v, d3v, 0.5, 0.5);
+        RowSpace err = addScaled(d2v, avg, 1.0, -1.0);
+        double d_err = normInf(err);
+        double dtau_avg = 0.5 * (e1.d_tau + e3.d_tau);
+        double dtau_err = std::abs(e2.d_tau - dtau_avg);
+        printf("  [affine] k=%.2e,%.2e,%.2e  d_err=%.2e  dtau_err=%.2e"
+               "  Q=%s\n", k1, k2, k3, d_err, dtau_err,
+               coeff.has_Q ? "yes" : "no");
+      }
+    }
+
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
     result.iterations = iter + 1;
 
