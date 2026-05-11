@@ -114,9 +114,9 @@ static void symmetricSubstep(const Ops* ops,
   ops->hessian(H0_buf, z0_buf, n);
   ops->computeGradient(grad0_buf, z0_buf, n);
 
-  // RHS = H(z₀)·(z₀ + 2h·v₀) = -∇φ(z₀) + 2h·H(z₀)·v₀
-  // (using log-homogeneity: H(z₀)·z₀ = -∇φ(z₀))
-  rhs = -g0 + 2.0 * h * (H0 * v);
+  // RHS = ∇φ(z₀) + H(z₀)·z₀ + 2h·H(z₀)·v₀
+  // (NOT simplified via log-homogeneity — keep both terms for generality)
+  rhs = g0 + H0 * z0 + 2.0 * h * (H0 * v);
 
   // Newton solve for z₁: F(z₁) = ∇φ(z₁) + H(z₀)·z₁ - rhs = 0.
   // Initial guess: z₁ = z₀ + h·v₀ (tangent line).
@@ -208,7 +208,7 @@ void primalMidpointStep(const Ops* ops,
   std::memcpy(z, zhalf_buf, n * sizeof(double));
   invertGradient(ops, z, lambda1_buf, n, gradhalf_buf, H_buf, delta_buf);
 
-  // v₁ = (2/h)·(z₁ - z½).
+  // v₁ = (2/h)·(z₁ - z½).  [from integrator.tex eq. (4)]
   v = (2.0 / h) * (zv - zhalf);
 }
 
@@ -262,7 +262,7 @@ void dualMidpointStep(const Ops* ops,
   // z₁ = 2·(∇φ)⁻¹(λ½) - z₀.
   zv = 2.0 * zstar - z0;
 
-  // w₁ = (2/h)·(∇φ(z₁) - λ½).
+  // w₁ = (2/h)·(∇φ(z₁) - λ½).  [from integrator.tex Definition 3]
   ops->computeGradient(grad1_buf, z, n);
   Eigen::VectorXd w1 = (2.0 / h) * (g1 - lamhalf);
 
