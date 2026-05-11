@@ -17,7 +17,7 @@
 namespace conex {
 namespace EuclideanJordanAlgebra {
 
-class PowerConeOps : public BarrierConeOperations {
+class PowerConeOps : public BarrierConeOpsThirdDeriv {
  public:
   explicit PowerConeOps(const Eigen::VectorXd& alpha)
       : alpha_(alpha), m_(alpha.size()) {}
@@ -28,6 +28,8 @@ class PowerConeOps : public BarrierConeOperations {
                       int size) const override;
   double barrierParameter(int size) const override;
   void getInteriorPoint(double* out, int size) const override;
+  void thirdDerivContract(double* out, const double* z,
+                          const double* v, int size) const override;
 
   const Eigen::VectorXd& alpha() const { return alpha_; }
   int m() const { return m_; }

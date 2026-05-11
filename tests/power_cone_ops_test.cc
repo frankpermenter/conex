@@ -102,6 +102,45 @@ TEST_F(PowerConeTest, HessianPD) {
   EXPECT_GT(eig.eigenvalues().minCoeff(), 0) << "Hessian not positive definite";
 }
 
+TEST_F(PowerConeTest, ThirdDerivContract) {
+  PowerConeOps ops(alpha);
+  VectorXd z(4), v(4);
+  z << 2.0, 1.5, 0.3, 0.2;
+  v << 0.1, -0.2, 0.15, -0.1;
+
+  double T_hand[4];
+  ops.thirdDerivContract(T_hand, z.data(), v.data(), 4);
+
+  auto T_ad = derivatives::third_deriv_contract(
+      barriers::power_cone<derivatives::AD3>, z, v);
+
+  for (int i = 0; i < 4; ++i)
+    EXPECT_NEAR(T_hand[i], T_ad(i), 1e-8) << "T[" << i << "]";
+}
+
+TEST_F(PowerConeTest, ThirdDerivContract_LargerDim) {
+  Eigen::VectorXd alpha3(3);
+  alpha3 << 0.2, 0.3, 0.5;
+  barriers::g_power_alpha = &alpha3;
+  PowerConeOps ops3(alpha3);
+
+  VectorXd z(5), v(5);
+  z << 1.5, 2.0, 1.0, 0.4, 0.3;
+  v << 0.1, -0.15, 0.08, 0.2, -0.1;
+
+  double T_hand[5];
+  ops3.thirdDerivContract(T_hand, z.data(), v.data(), 5);
+
+  auto T_ad = derivatives::third_deriv_contract(
+      barriers::power_cone<derivatives::AD3>, z, v);
+
+  for (int i = 0; i < 5; ++i)
+    EXPECT_NEAR(T_hand[i], T_ad(i), 1e-7) << "T[" << i << "] at dim=5";
+
+  // Restore alpha for other tests.
+  barriers::g_power_alpha = &alpha;
+}
+
 TEST_F(PowerConeTest, InteriorPoint) {
   PowerConeOps ops(alpha);
   double z[4];
