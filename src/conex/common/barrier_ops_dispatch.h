@@ -61,15 +61,6 @@ inline double squaredNorm(const Variable& a) {
   return result;
 }
 
-// ||a||_inf.
-inline double normInf(const Variable& a) {
-  double result = 0;
-  for (int i = 0; i < a.num_constraints(); ++i)
-    result = std::max(result,
-                      a.ops[i]->normInf(a.segment_ptr(i), a.sizes[i]));
-  return result;
-}
-
 // Recover raw cone point from stored representation.
 inline Variable getConePoint(const Variable& stored) {
   Variable out = like(stored);
@@ -146,7 +137,6 @@ inline double barrierParameter(const Variable& z) {
 // Bring barrier-level free functions into conex namespace.
 namespace EJA = EuclideanJordanAlgebra;
 using EuclideanJordanAlgebra::addScaled;
-using EuclideanJordanAlgebra::normInf;
 using EuclideanJordanAlgebra::squaredNorm;
 using EuclideanJordanAlgebra::dot;
 using EuclideanJordanAlgebra::setFromVector;

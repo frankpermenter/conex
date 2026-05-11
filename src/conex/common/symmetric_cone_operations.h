@@ -139,12 +139,6 @@ class BarrierConeOperations {
     return dot(a, a, size);
   }
 
-  // TODO: remove normInf from BarrierConeOperations after refactor complete.
-  // It doesn't make sense for general barrier cones (no spectral structure).
-  // Kept temporarily for compatibility with eja_ops.h dispatchers.
-  virtual double normInf(const double* a, int size) const {
-    double r = 0; for (int i = 0; i < size; ++i) r = std::max(r, std::abs(a[i])); return r;
-  }
 };
 
 // Extended: cones with an analytic third-derivative contraction.

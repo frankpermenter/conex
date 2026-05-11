@@ -153,6 +153,15 @@ inline double minEigenvalue(const Variable& a) {
   return result;
 }
 
+// ||a||_inf (max eigenvalue magnitude). Symmetric cones only.
+inline double normInf(const Variable& a) {
+  double result = 0;
+  for (int i = 0; i < a.num_constraints(); ++i)
+    result = std::max(result,
+                      sym_ops(a.ops[i])->normInf(a.segment_ptr(i), a.sizes[i]));
+  return result;
+}
+
 // Set to identity element.
 inline void setOnes(Variable& v) {
   for (int i = 0; i < v.num_constraints(); ++i)
