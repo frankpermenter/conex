@@ -11,6 +11,17 @@
 namespace conex {
 namespace EuclideanJordanAlgebra {
 
+// Default isInterior: check that gradient is finite.
+// For most barriers, ∇φ(z) → ∞ as z → ∂K, so isfinite(grad) implies interior.
+// Cones where this is insufficient (e.g., exp cone) should override.
+bool BarrierConeOperations::isInterior(const double* z, int size) const {
+  std::vector<double> grad(size);
+  computeGradient(grad.data(), z, size);
+  for (int i = 0; i < size; ++i)
+    if (!std::isfinite(grad[i])) return false;
+  return true;
+}
+
 // Generic Störmer-Verlet geodesic integrator.
 // Uses thirdDerivContract for the geodesic acceleration:
 //   z̈ = -½ H(z)⁻¹ D³F[ż, ż, ·]

@@ -128,6 +128,12 @@ class BarrierConeOperations {
     for (int i = 0; i < size; ++i) out[i] = stored[i];
   }
 
+  // Interior check: returns true if z ∈ int(K).
+  // Default: check that computeGradient produces finite values AND
+  // that the barrier value is finite (gradient alone can be finite
+  // at some infeasible points).
+  virtual bool isInterior(const double* z, int size) const;
+
   // Inner product <a, b>.  Default: Euclidean dot product.
   // Symmetric cones override with trace inner product.
   virtual double dot(const double* a, const double* b, int size) const {

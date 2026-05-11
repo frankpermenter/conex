@@ -32,18 +32,13 @@ static void invertGradient(const Ops* ops, double* z,
     ops->hessian(H_buf, z, size);
     dv = Hm.ldlt().solve(-gv);
 
-    // Backtracking: ensure z + delta is feasible (gradient finite).
+    // Backtracking: ensure z + delta is interior.
     double alpha = 1.0;
     double z_save[kMaxBarrierDim];
     std::memcpy(z_save, z, size * sizeof(double));
     for (int bt = 0; bt < 10; ++bt) {
       for (int i = 0; i < size; ++i) z[i] = z_save[i] + alpha * dv(i);
-      ops->computeGradient(grad_buf, z, size);
-      bool ok = true;
-      for (int i = 0; i < size; ++i) {
-        if (!std::isfinite(grad_buf[i])) { ok = false; break; }
-      }
-      if (ok) break;
+      if (ops->isInterior(z, size)) break;
       alpha *= 0.5;
     }
   }
@@ -125,23 +120,12 @@ static void symmetricSubstep(const Ops* ops,
 
   // Initial guess: z_pred = z₀ + h·v₀. If infeasible, backtrack toward z₀.
   z1 = z0 + h * v;
-  {
-    double test_grad[kMaxBarrierDim];
-    ops->computeGradient(test_grad, z1_buf, n);
-    bool feasible = true;
-    for (int i = 0; i < n; ++i)
-      if (!std::isfinite(test_grad[i])) { feasible = false; break; }
-    if (!feasible) {
-      double t = 1.0;
-      for (int bt = 0; bt < 30; ++bt) {
-        t *= 0.5;
-        z1 = z0 + t * h * v;
-        ops->computeGradient(test_grad, z1_buf, n);
-        feasible = true;
-        for (int i = 0; i < n; ++i)
-          if (!std::isfinite(test_grad[i])) { feasible = false; break; }
-        if (feasible) break;
-      }
+  if (!ops->isInterior(z1_buf, n)) {
+    double t = 1.0;
+    for (int bt = 0; bt < 30; ++bt) {
+      t *= 0.5;
+      z1 = z0 + t * h * v;
+      if (ops->isInterior(z1_buf, n)) break;
     }
   }
 
@@ -156,22 +140,17 @@ static void symmetricSubstep(const Ops* ops,
 
     Eigen::VectorXd delta = J.ldlt().solve(-F);
 
-    // Backtracking: try Newton step, fall back to step toward z₀.
+    // Backtracking with proper feasibility check.
     double alpha = 1.0;
     Eigen::VectorXd z1_save = z1;
     bool found = false;
     for (int bt = 0; bt < 20; ++bt) {
       z1 = z1_save + alpha * delta;
-      ops->computeGradient(grad1_buf, z1_buf, n);
-      bool ok = true;
-      for (int i = 0; i < n; ++i) {
-        if (!std::isfinite(grad1_buf[i])) { ok = false; break; }
-      }
-      if (ok) { found = true; break; }
+      if (ops->isInterior(z1_buf, n)) { found = true; break; }
       alpha *= 0.5;
     }
     if (!found) {
-      // Newton direction doesn't lead to interior. Step toward z₀ instead.
+      // Newton direction doesn't lead to interior. Step toward z₀.
       z1 = 0.5 * (z1_save + z0);
     }
   }

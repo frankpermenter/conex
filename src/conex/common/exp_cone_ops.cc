@@ -893,6 +893,11 @@ double ExpConeOps::barrierParameter(int /*size*/) const {
   return 2.0;  // ν = 2 for the exponential cone.
 }
 
+bool ExpConeOps::isInterior(const double* z, int /*size*/) const {
+  // K_exp = { (x,y,z) : y > 0, z > y*exp(x/y) }
+  return z[1] > 0 && z[2] > z[1] * std::exp(z[0] / z[1]);
+}
+
 void ExpConeOps::getInteriorPoint(double* out, int /*size*/) const {
   // (x, y, z) = (0, 1, e+1) is interior: y > 0, z > y*exp(x/y) = e.
   out[0] = 0.0;
