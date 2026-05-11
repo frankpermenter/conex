@@ -398,6 +398,13 @@ target_link_libraries(barrier_integrators_test PRIVATE
 )
 gtest_discover_tests(barrier_integrators_test)
 
+add_executable(integrator_evaluation bench/integrator_evaluation.cc)
+target_link_libraries(integrator_evaluation PRIVATE
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+
 add_executable(extended_embedding_test
   tests/extended_embedding_test.cc
 )
