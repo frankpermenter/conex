@@ -114,8 +114,9 @@ static void symmetricSubstep(const Ops* ops,
   ops->hessian(H0_buf, z0_buf, n);
   ops->computeGradient(grad0_buf, z0_buf, n);
 
-  // RHS = ∇φ(z₀) + H(z₀)·z₀ + 2h·H(z₀)·v₀
-  // (NOT simplified via log-homogeneity — keep both terms for generality)
+  // RHS = ∇φ(z₀) + H₀·z₀ + 2h·H₀·v₀ = 0 + 2h·H₀·v₀  (by log-homogeneity).
+  // We keep the unsimplified form for numerical robustness (∇φ + H·z may
+  // not be exactly zero in floating point).
   rhs = g0 + H0 * z0 + 2.0 * h * (H0 * v);
 
   // Newton solve for z₁: F(z₁) = ∇φ(z₁) + H(z₀)·z₁ - rhs = 0.
