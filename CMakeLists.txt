@@ -71,6 +71,7 @@ add_library(constraints
   src/conex/common/soc_cone_ops.cc
   src/conex/common/exp_cone_ops.cc
   src/conex/common/power_cone_ops.cc
+  src/conex/common/rel_entropy_cone_ops.cc
   src/conex/common/barrier_cone_operations.cc
   src/conex/common/soc_linear_constraint.cc
 )
@@ -365,6 +366,16 @@ target_link_libraries(power_cone_ops_test PRIVATE
   GTest::gtest_main
 )
 gtest_discover_tests(power_cone_ops_test)
+
+add_executable(rel_entropy_cone_ops_test tests/rel_entropy_cone_ops_test.cc)
+target_link_libraries(rel_entropy_cone_ops_test PRIVATE
+  derivatives
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(rel_entropy_cone_ops_test)
 
 add_executable(extended_embedding_test
   tests/extended_embedding_test.cc
