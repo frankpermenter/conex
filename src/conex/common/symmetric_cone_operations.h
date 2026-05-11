@@ -45,6 +45,10 @@ class BarrierConeOperations {
   // Barrier parameter ν for a cone of this dimension.
   virtual double barrierParameter(int size) const = 0;
 
+  // An interior point of the cone (e.g., identity element for symmetric
+  // cones). Used as z₀ for theta-continuation and initialization.
+  virtual void getInteriorPoint(double* out, int size) const = 0;
+
   // --- Defaults built from primitives (override for performance) ---
 
   // Full Hessian matrix: out = H(z), column-major, size × size.
@@ -222,6 +226,11 @@ class SymmetricConeOperations : public BarrierConeOperations {
   void getConePoint(double* out, const double* stored,
                     int size) const override {
     inverse(out, stored, size);
+  }
+
+  // Interior point: the identity element (W = e).
+  void getInteriorPoint(double* out, int size) const override {
+    setIdentity(out, size);
   }
 
   // ∇F(z) = -W (since z stores W = -∇F(z_primal)).

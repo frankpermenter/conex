@@ -218,6 +218,17 @@ class PolyhedralConeOps : public BarrierConeOperations {
     return static_cast<double>(C_.rows());
   }
 
+  // Interior point: solve C*z > 0 with z = C^T * ones (C^T * 1 gives
+  // a point with all slacks = C * C^T * 1, which is PD if C has full
+  // row rank). Falls back to ones if that fails.
+  void getInteriorPoint(double* out, int n) const override {
+    Eigen::Map<Eigen::VectorXd> zv(out, n);
+    zv = C_.transpose() * Eigen::VectorXd::Ones(C_.rows());
+    if ((C_ * zv).minCoeff() <= 0) {
+      zv.setOnes();
+    }
+  }
+
   // --- BarrierOps-style methods ---
 
   bool isInterior(const double* z, int n) const {

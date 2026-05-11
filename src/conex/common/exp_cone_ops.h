@@ -65,6 +65,7 @@ class ExpConeOps : public BarrierConeOpsThirdDeriv {
   double lineSearchTarget(const double* z, const double* target0,
                            const double* target1, int size) const override;
   double barrierParameter(int size) const override;
+  void getInteriorPoint(double* out, int size) const override;
   void thirdDerivContract(double* out, const double* z,
                           const double* v, int size) const override;
 

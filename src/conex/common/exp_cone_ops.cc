@@ -893,6 +893,13 @@ double ExpConeOps::barrierParameter(int /*size*/) const {
   return 2.0;  // ν = 2 for the exponential cone.
 }
 
+void ExpConeOps::getInteriorPoint(double* out, int /*size*/) const {
+  // (x, y, z) = (0, 1, e+1) is interior: y > 0, z > y*exp(x/y) = e.
+  out[0] = 0.0;
+  out[1] = 1.0;
+  out[2] = std::exp(1.0) + 1.0;
+}
+
 void ExpConeOps::thirdDerivContract(double* out, const double* z,
                                      const double* v, int /*size*/) const {
   ThirdDerivContract(z[0], z[1], z[2], v, out);
