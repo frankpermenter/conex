@@ -5,3 +5,12 @@ build/
 CMakeLists.txt.bak
 
 build_dbg/
+doc/*.aux
+doc/*.log
+doc/*.fdb_latexmk
+doc/*.fls
+doc/*.out
+doc/*.pdf
+doc/*.synctex.gz
+doc/.*.swp
+doc/.*.swo

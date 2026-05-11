@@ -3,35 +3,58 @@
 On a Hessian manifold defined by a strictly convex barrier function $\phi$, the transition from an initial state $(z_0, v_0)$ to a subsequent state $(z_1, v_1)$ over a time step $h$ can be characterized through a sequence of proximal optimizations. These updates balance the information geometry of the barrier with the mechanical momentum of the particle.
 
 \subsection{The Primal Proximal Objective}
-The primal update anchors its physics in the coordinate space $z$ and utilizes the initial Hessian $H_0 = \nabla^2 \phi(z_0)$ as the local metric. The next position $z_1$ is defined as the unique minimizer of the potential function $P(z)$:
-
+The primal update anchors its physics in the coordinate space $z$ and utilizes the initial Hessian $H_0 = \nabla^2 \phi(z_0)$ as the local metric. Define the \textbf{linear prediction}:
 \begin{equation}
-P(z) = D_\phi(z, z_0) + \frac{1}{2}\|z - z_0\|_{H_0}^2 - \langle 2h H_0 v_0, z \rangle
+z_{\mathrm{pred}} = z_0 + 2h v_0
 \end{equation}
-
-where $D_\phi(z, z_0) = \phi(z) - \phi(z_0) - \langle \nabla \phi(z_0), z - z_0 \rangle$ is the Bregman divergence. A fundamental property of the Bregman divergence is that its gradient with respect to the first argument is the difference of the gradients of the base function:
+This is the position a free particle would reach after time $2h$ at velocity $v_0$. The next position $z_1$ is the unique minimizer of:
 \begin{equation}
-\label{eq:bregman_gradient}
-\nabla_z D_\phi(z, z_0) = \nabla \phi(z) - \nabla \phi(z_0)
+\label{eq:primal_objective}
+P(z) = D_\phi(z, z_0) + \frac{1}{2}\|z - z_{\mathrm{pred}}\|_{H_0}^2
 \end{equation}
-Using this identity, the optimality condition $\nabla_z P(z) = 0$ yields the primal update:
+where $D_\phi(z, z_0) = \phi(z) - \phi(z_0) - \langle \nabla \phi(z_0), z - z_0 \rangle$ is the Bregman divergence.
+
+The objective balances two competing terms:
+\begin{itemize}
+    \item $D_\phi(z, z_0)$: the Bregman divergence from $z_0$. This is non-negative, zero only at $z_0$, and blows up as $z$ approaches the boundary of the cone. It \textbf{guarantees that $z_1$ is interior}.
+    \item $\frac{1}{2}\|z - z_{\mathrm{pred}}\|_{H_0}^2$: the squared distance to the linear prediction, measured in the frozen Hessian metric. This pulls $z_1$ toward where the geodesic should go.
+\end{itemize}
+
+\subsection{Optimality Condition}
+Using the identity $\nabla_z D_\phi(z, z_0) = \nabla \phi(z) - \nabla \phi(z_0)$, setting $\nabla P(z_1) = 0$ yields:
 \begin{equation}
 \label{eq:primal_update}
+\nabla \phi(z_1) - \nabla \phi(z_0) + H_0(z_1 - z_{\mathrm{pred}}) = 0
+\end{equation}
+which is equivalent to the symmetric integrator equation from \texttt{integrator.tex}:
+\begin{equation}
 \nabla \phi(z_1) - \nabla \phi(z_0) = H_0(2hv_0 - (z_1 - z_0))
 \end{equation}
+
+\subsection{Newton Solve}
+Rearranging for numerical solution:
+\begin{equation}
+F(z) = \nabla \phi(z) + H_0 z - \underbrace{(\nabla \phi(z_0) + H_0 z_0 + 2h H_0 v_0)}_{\text{constant (= $2h H_0 v_0$ by log-homogeneity)}} = 0
+\end{equation}
+The Jacobian is $J(z) = H(z) + H_0$, which is the sum of two positive definite matrices and therefore always positive definite. This ensures Newton convergence from any feasible initial guess. Since the objective $P(z)$ is strictly convex on the cone interior and has a barrier at the boundary, the unique minimizer is always interior.
 
 \subsection{The Dual Proximal Objective}
 The dual method views the update through the momentum space $\lambda = \nabla \phi(z)$. Utilizing the conjugate barrier $\phi^*(\lambda)$ and the dual metric $H_0^{-1}$, the next dual state $\lambda_1$ minimizes:
 
 \begin{equation}
-Q(\lambda) = D_{\phi^*}(\lambda, \lambda_0) + \frac{1}{2}\|\lambda - \lambda_0\|_{H_0^{-1}}^2 - \langle 2h v_0, \lambda \rangle
+Q(\lambda) = D_{\phi^*}(\lambda, \lambda_0) + \frac{1}{2}\|\lambda - \lambda_{\mathrm{pred}}\|_{H_0^{-1}}^2
 \end{equation}
+where $\lambda_{\mathrm{pred}} = \lambda_0 + 2h w_0$ with $w_0 = H_0 v_0$, and $\lambda_0 = \nabla \phi(z_0)$.
 
-By the same property established in~\eqref{eq:bregman_gradient}, $\nabla_\lambda D_{\phi^*}(\lambda, \lambda_0) = \nabla \phi^*(\lambda) - \nabla \phi^*(\lambda_0)$. Noting that $\nabla \phi^*(\lambda) = z$, setting $\nabla_\lambda Q(\lambda) = 0$ yields:
+By the same reasoning, $\nabla_\lambda Q(\lambda) = 0$ yields:
 \begin{equation}
 \label{eq:dual_update}
 z_1 - z_0 + H_0^{-1}(\lambda_1 - \lambda_0) - 2hv_0 = 0
 \end{equation}
 
-
-
+\subsection{Summary}
+The symmetric integrator is a Bregman-regularized proximal step:
+\begin{equation}
+z_1 = \arg\min_{z \in \mathrm{int}(K)} \left\{ D_\phi(z, z_0) + \frac{1}{2}\|z - z_{\mathrm{pred}}\|_{H_0}^2 \right\}
+\end{equation}
+The Bregman divergence enforces interiority (no need for explicit feasibility checks). The $H_0$-quadratic term provides the geodesic-tracking force. The sum $H(z) + H_0$ in the Jacobian ensures robust Newton convergence.
