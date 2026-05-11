@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <vector>
 
 namespace conex {
@@ -138,6 +139,24 @@ class BarrierConeOperations {
   virtual void getConePoint(double* out, const double* stored,
                             int size) const {
     for (int i = 0; i < size; ++i) out[i] = stored[i];
+  }
+
+  // Inner product <a, b>.  Default: Euclidean dot product.
+  // Symmetric cones override with trace inner product.
+  virtual double dot(const double* a, const double* b, int size) const {
+    double r = 0; for (int i = 0; i < size; ++i) r += a[i]*b[i]; return r;
+  }
+
+  // ||a||^2.  Default: Euclidean squared norm.
+  virtual double squaredNorm(const double* a, int size) const {
+    return dot(a, a, size);
+  }
+
+  // TODO: remove normInf from BarrierConeOperations after refactor complete.
+  // It doesn't make sense for general barrier cones (no spectral structure).
+  // Kept temporarily for compatibility with eja_ops.h dispatchers.
+  virtual double normInf(const double* a, int size) const {
+    double r = 0; for (int i = 0; i < size; ++i) r = std::max(r, std::abs(a[i])); return r;
   }
 };
 

@@ -1,15 +1,15 @@
 // Free functions on EuclideanJordanAlgebra::Variable.
 //
-// z-space functions (computeGradient, hessianProduct, etc.) dispatch
-// through BarrierConeOperations — works for all cone types.
+// This file provides symmetric-cone dispatchers (product, sqrt,
+// geodesicUpdate, quadraticRepresentation, etc.) that go through
+// SymmetricConeOperations — only valid for segments backed by
+// symmetric cones (nonneg, SOC, PSD).
 //
-// Symmetric-cone functions (setOnes, geodesicUpdate, quadraticRepresentation,
-// etc.) dispatch through SymmetricConeOperations — only valid for segments
-// backed by symmetric cones (nonneg, SOC, PSD).
+// Barrier-level dispatchers (dot, computeGradient, hessianProduct, etc.)
+// live in barrier_ops_dispatch.h (included below).
 
 #pragma once
-#include "conex/common/symmetric_cone_operations.h"
-#include "conex/common/tree_rhs.h"
+#include "conex/common/barrier_ops_dispatch.h"
 
 namespace conex {
 namespace EuclideanJordanAlgebra {
@@ -18,16 +18,6 @@ namespace EuclideanJordanAlgebra {
 // Only valid for segments backed by symmetric cones.
 inline const SymmetricConeOperations* sym_ops(const BarrierConeOperations* o) {
   return static_cast<const SymmetricConeOperations*>(o);
-}
-
-// Helper: create a Variable with same layout as src.
-inline Variable like(const Variable& src) {
-  Variable out;
-  out.offsets = src.offsets;
-  out.sizes = src.sizes;
-  out.ops = src.ops;
-  out.setZero(src.total_rows(), src.cols());
-  return out;
 }
 
 // Element-wise product (Jordan product).
@@ -63,22 +53,6 @@ inline Variable quadraticRepresentation(const Variable& a, const Variable& b) {
   for (int i = 0; i < a.num_constraints(); ++i)
     sym_ops(a.ops[i])->quadraticRepresentation(out.segment_ptr(i), a.segment_ptr(i),
                                       b.segment_ptr(i), a.sizes[i]);
-  return out;
-}
-
-// out = alpha * a + beta * b.
-inline Variable addScaled(const Variable& a, const Variable& b,
-                          double alpha, double beta) {
-  Variable out = like(a);
-  // addScaled is a linear operation — same for all cone types.
-  for (int i = 0; i < a.num_constraints(); ++i) {
-    int sz = a.sizes[i];
-    const double* ap = a.segment_ptr(i);
-    const double* bp = b.segment_ptr(i);
-    double* op = out.segment_ptr(i);
-    for (int j = 0; j < sz; ++j)
-      op[j] = alpha * ap[j] + beta * bp[j];
-  }
   return out;
 }
 
@@ -153,7 +127,7 @@ inline Variable squareM(const Variable& M) {
   return out;
 }
 
-// Solve Lyapunov R*D + D*R = 2*Delta for D.: solve R*D + D*R = 2*Delta for D.
+// Solve Lyapunov R*D + D*R = 2*Delta for D.
 inline Variable solveLyapunovForD(const Variable& r, const Variable& delta) {
   Variable out = like(r);
   for (int i = 0; i < r.num_constraints(); ++i)
@@ -190,40 +164,6 @@ inline Variable square(const Variable& P) {
   Variable ones = like(P);
   setOnes(ones);
   return quadraticRepresentation(P, ones);
-}
-
-// ||a||_inf.
-inline double normInf(const Variable& a) {
-  double result = 0;
-  for (int i = 0; i < a.num_constraints(); ++i)
-    result = std::max(result,
-                      sym_ops(a.ops[i])->normInf(a.segment_ptr(i), a.sizes[i]));
-  return result;
-}
-
-// ||a||^2.
-inline double squaredNorm(const Variable& a) {
-  double result = 0;
-  for (int i = 0; i < a.num_constraints(); ++i)
-    result += sym_ops(a.ops[i])->squaredNorm(a.segment_ptr(i), a.sizes[i]);
-  return result;
-}
-
-// <a, b>.
-inline double dot(const Variable& a, const Variable& b) {
-  double result = 0;
-  for (int i = 0; i < a.num_constraints(); ++i) {
-    auto* sops = dynamic_cast<const SymmetricConeOperations*>(a.ops[i]);
-    if (sops) {
-      result += sops->dot(a.segment_ptr(i), b.segment_ptr(i), a.sizes[i]);
-    } else {
-      // Generic fallback: Euclidean dot product.
-      const double* ap = a.segment_ptr(i);
-      const double* bp = b.segment_ptr(i);
-      for (int j = 0; j < a.sizes[i]; ++j) result += ap[j] * bp[j];
-    }
-  }
-  return result;
 }
 
 // Gap in terms of (R, Delta): ||R||² - ||Delta||².
@@ -314,84 +254,12 @@ inline void project(Variable& out, const Variable& a) {
     sym_ops(a.ops[i])->project(out.segment_ptr(i), a.segment_ptr(i), a.sizes[i]);
 }
 
-// Initialize from a VectorXd (copies data into col 0).
-inline void setFromVector(Variable& v, const Eigen::VectorXd& vec) {
-  v.col() = vec;
-}
-
-// --- z-space operations for geodesic IPM on general cones ---
-
-// Recover raw cone point from stored representation.
-// Identity for barrier cones (exp), inverse for symmetric cones.
-inline Variable getConePoint(const Variable& stored) {
-  Variable out = like(stored);
-  for (int i = 0; i < stored.num_constraints(); ++i)
-    stored.ops[i]->getConePoint(out.segment_ptr(i), stored.segment_ptr(i),
-                                stored.sizes[i]);
-  return out;
-}
-
-inline void computeGradient(const Variable& z, Variable& grad) {
-  for (int i = 0; i < z.num_constraints(); ++i)
-    z.ops[i]->computeGradient(grad.segment_ptr(i), z.segment_ptr(i),
-                              z.sizes[i]);
-}
-
-inline void hessianProduct(const Variable& z, const Variable& v,
-                           Variable& out) {
-  for (int i = 0; i < z.num_constraints(); ++i)
-    z.ops[i]->hessianProduct(out.segment_ptr(i), z.segment_ptr(i),
-                             v.segment_ptr(i), z.sizes[i]);
-}
-
-inline double hessianNormSquared(const Variable& z, const Variable& target) {
-  double result = 0;
-  for (int i = 0; i < z.num_constraints(); ++i)
-    result += z.ops[i]->hessianNormSquared(z.segment_ptr(i),
-                                           target.segment_ptr(i), z.sizes[i]);
-  return result;
-}
-
-inline double stepSize(const Variable& z, const Variable& target) {
-  double alpha = std::numeric_limits<double>::max();
-  for (int i = 0; i < z.num_constraints(); ++i)
-    alpha = std::min(alpha,
-        z.ops[i]->stepSize(z.segment_ptr(i), target.segment_ptr(i),
-                           z.sizes[i]));
-  return alpha;
-}
-
-inline void geodesicStepTarget(Variable& z, double alpha,
-                               const Variable& target) {
-  for (int i = 0; i < z.num_constraints(); ++i)
-    z.ops[i]->geodesicStepTarget(z.segment_ptr(i), alpha,
-                                 target.segment_ptr(i), z.sizes[i]);
-}
-
-inline double lineSearchTarget(const Variable& z, const Variable& target0,
-                               const Variable& target1) {
-  double k_max = std::numeric_limits<double>::max();
-  for (int i = 0; i < z.num_constraints(); ++i)
-    k_max = std::min(k_max,
-        z.ops[i]->lineSearchTarget(z.segment_ptr(i), target0.segment_ptr(i),
-                                   target1.segment_ptr(i), z.sizes[i]));
-  return k_max;
-}
-
-inline double barrierParameter(const Variable& z) {
-  double nu = 0;
-  for (int i = 0; i < z.num_constraints(); ++i)
-    nu += z.ops[i]->barrierParameter(z.sizes[i]);
-  return nu;
-}
-
 }  // namespace EuclideanJordanAlgebra
 
-// Bring free functions into conex namespace.
-namespace EJA = EuclideanJordanAlgebra;
+// Bring symmetric-cone free functions into conex namespace.
+// (Barrier-level using declarations already provided by barrier_ops_dispatch.h.)
 using EuclideanJordanAlgebra::cwiseProduct;
 using EuclideanJordanAlgebra::quadraticRepresentation;
-using EuclideanJordanAlgebra::addScaled;
 using EuclideanJordanAlgebra::geodesicUpdate;
 using EuclideanJordanAlgebra::geodesicUpdateFromSlack;
 using EuclideanJordanAlgebra::updateAutomorphism;
@@ -400,21 +268,10 @@ using EuclideanJordanAlgebra::square;
 using EuclideanJordanAlgebra::absEJA;
 using EuclideanJordanAlgebra::minEigenvalue;
 using EuclideanJordanAlgebra::setOnes;
-using EuclideanJordanAlgebra::normInf;
-using EuclideanJordanAlgebra::squaredNorm;
-using EuclideanJordanAlgebra::dot;
 using EuclideanJordanAlgebra::gap;
 using EuclideanJordanAlgebra::minSlack;
 using EuclideanJordanAlgebra::shrinkR;
-using EuclideanJordanAlgebra::setFromVector;
 using EuclideanJordanAlgebra::lineSearchK;
 using EuclideanJordanAlgebra::project;
-using EuclideanJordanAlgebra::computeGradient;
-using EuclideanJordanAlgebra::hessianProduct;
-using EuclideanJordanAlgebra::hessianNormSquared;
-using EuclideanJordanAlgebra::stepSize;
-using EuclideanJordanAlgebra::geodesicStepTarget;
-using EuclideanJordanAlgebra::lineSearchTarget;
-using EuclideanJordanAlgebra::barrierParameter;
 
 }  // namespace conex
