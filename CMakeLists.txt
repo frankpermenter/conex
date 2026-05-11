@@ -70,6 +70,7 @@ add_library(constraints
   src/conex/common/psd_cone_ops.cc
   src/conex/common/soc_cone_ops.cc
   src/conex/common/exp_cone_ops.cc
+  src/conex/common/barrier_cone_operations.cc
   src/conex/common/soc_linear_constraint.cc
 )
 target_link_libraries(constraints PUBLIC Eigen3::Eigen clique_ordering)

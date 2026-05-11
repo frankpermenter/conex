@@ -18,32 +18,36 @@ namespace conex {
 namespace EuclideanJordanAlgebra {
 
 // Base class for any cone with a computable log-homogeneous barrier.
-// ExpConeOps and PolyhedralConeOps inherit this directly.
+//
+// Required: computeGradient, hessianProduct, barrierParameter.
+// Everything else has working defaults built from these primitives.
+//
+// Hierarchy:
+//   BarrierConeOperations           — primitives + Bregman geodesic step
+//   ├── BarrierConeOpsThirdDeriv    — adds thirdDerivContract, Verlet step
+//   │   └── ExpConeOps, etc.
+//   └── SymmetricConeOperations     — Jordan algebra, exact geodesic
+//       └── NonnegOrthantOps, PSDConeOps, SOCConeOps
 class BarrierConeOperations {
  public:
   virtual ~BarrierConeOperations() = default;
 
-  // --- z-space operations for geodesic IPM ---
-  //
-  // These are stateless: the segment data z (first argument) is the
-  // internal representation (W = -∇F(z) for symmetric cones, z itself
-  // for barrier cones).  The algorithm owns the RowSpace and calls
-  // SetScaling to sync with constraint workspaces for Gram assembly.
+  // --- Required primitives ---
 
   // Gradient: grad = ∇F(z).
   virtual void computeGradient(double* grad, const double* z,
-                               int size) const {
-    (void)grad; (void)z; (void)size; std::abort();
-  }
+                               int size) const = 0;
 
   // Hessian-vector product: out = H(z) · v.
   virtual void hessianProduct(double* out, const double* z,
-                              const double* v, int size) const {
-    (void)out; (void)z; (void)v; (void)size; std::abort();
-  }
+                              const double* v, int size) const = 0;
+
+  // Barrier parameter ν for a cone of this dimension.
+  virtual double barrierParameter(int size) const = 0;
+
+  // --- Defaults built from primitives (override for performance) ---
 
   // Full Hessian matrix: out = H(z), column-major, size × size.
-  // Default builds from hessianProduct.
   virtual void hessian(double* out, const double* z, int size) const {
     std::vector<double> ei(size, 0.0);
     for (int j = 0; j < size; ++j) {
@@ -53,42 +57,84 @@ class BarrierConeOperations {
     }
   }
 
-  // Squared Hessian norm: ||target - z_primal||²_{H(z)}.
+  // Squared Hessian norm: ||target - z||²_{H(z)}.
   virtual double hessianNormSquared(const double* z, const double* target,
                                     int size) const {
-    (void)z; (void)target; (void)size; std::abort(); return 0;
+    // d = target - z, return d^T H(z) d.
+    std::vector<double> d(size), Hd(size);
+    for (int i = 0; i < size; ++i) d[i] = target[i] - z[i];
+    hessianProduct(Hd.data(), z, d.data(), size);
+    double result = 0;
+    for (int i = 0; i < size; ++i) result += d[i] * Hd[i];
+    return result;
   }
 
-  // Step size from z-space tangent (target - z_primal).
+  // Step size: α = min(1, 2/||target - z||²_{H,∞}).
+  // Default uses the Hessian norm squared (conservative).
   virtual double stepSize(const double* z, const double* target,
                           int size) const {
-    (void)z; (void)target; (void)size; std::abort(); return 0;
+    double d_sq = hessianNormSquared(z, target, size);
+    if (d_sq <= 2.0) return 1.0;
+    return 2.0 / d_sq;
   }
 
-  // Geodesic step: z ← updated state after Exp_z(α(target - z_primal)).
+  // Geodesic step: z ← Exp_z(α(target - z)).
+  // Default: Bregman midpoint step (first-order, no third derivatives).
+  //   z_new = z + α(target - z)  [Euler step as fallback]
+  // Override with Verlet (BarrierConeOpsThirdDeriv) or exact (symmetric).
   virtual void geodesicStepTarget(double* z, double alpha,
                                   const double* target, int size) const {
-    (void)z; (void)alpha; (void)target; (void)size; std::abort();
+    // Euler step (simplest default — Bregman midpoint would be better
+    // but requires solving a nonlinear equation).
+    for (int i = 0; i < size; ++i)
+      z[i] += alpha * (target[i] - z[i]);
   }
 
-  // Line search: max k with feasibility for ż(k) = target0 + k·target1 - z_primal.
+  // Line search: max k with ||target0 + k·target1 - z||²_{H(z)} ≤ 1.
+  // Quadratic in k: a + 2fk + pk² ≤ 1.
   virtual double lineSearchTarget(const double* z, const double* target0,
                                   const double* target1, int size) const {
-    (void)z; (void)target0; (void)target1; (void)size; std::abort(); return 0;
-  }
-
-  // Barrier parameter ν for a cone of this dimension.
-  virtual double barrierParameter(int size) const {
-    (void)size; std::abort(); return 0;
+    // Compute inner products via hessianProduct.
+    std::vector<double> d0(size), d1(size), Hd0(size), Hd1(size);
+    for (int i = 0; i < size; ++i) {
+      d0[i] = target0[i] - z[i];
+      d1[i] = target1[i];
+    }
+    hessianProduct(Hd0.data(), z, d0.data(), size);
+    hessianProduct(Hd1.data(), z, d1.data(), size);
+    double a = 0, f = 0, p = 0;
+    for (int i = 0; i < size; ++i) {
+      a += d0[i] * Hd0[i];
+      f += d0[i] * Hd1[i];
+      p += d1[i] * Hd1[i];
+    }
+    double disc = 4*f*f - 4*p*(a - 1);
+    if (disc < 0 || p < 1e-30) return 0;
+    double k1 = (-2*f + std::sqrt(disc)) / (2*p);
+    double k2 = (-2*f - std::sqrt(disc)) / (2*p);
+    return std::max(std::max(k1, k2), 0.0);
   }
 
   // Recover the raw cone point z from the stored representation.
-  // For barrier cones (e.g., exp cone), stored = raw, so this is identity.
-  // Override in SymmetricConeOperations where stored = W = -∇F(z).
+  // Identity for barrier cones (stored = raw). Override for symmetric
+  // cones where stored = W = -∇F(z), so raw = W^{-1}.
   virtual void getConePoint(double* out, const double* stored,
                             int size) const {
     for (int i = 0; i < size; ++i) out[i] = stored[i];
   }
+};
+
+// Extended: cones with an analytic third-derivative contraction.
+// Default geodesicStepTarget upgrades from Euler to Störmer-Verlet.
+class BarrierConeOpsThirdDeriv : public BarrierConeOperations {
+ public:
+  // Third-derivative contraction: out_l = v^T (∂H/∂z_l) v.
+  virtual void thirdDerivContract(double* out, const double* z,
+                                  const double* v, int size) const = 0;
+
+  // Default: Störmer-Verlet geodesic integrator using thirdDerivContract.
+  void geodesicStepTarget(double* z, double alpha,
+                          const double* target, int size) const override;
 };
 
 // Extended interface for symmetric cones (nonneg, SOC, PSD).

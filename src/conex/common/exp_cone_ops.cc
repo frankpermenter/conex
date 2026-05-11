@@ -893,6 +893,11 @@ double ExpConeOps::barrierParameter(int /*size*/) const {
   return 2.0;  // ν = 2 for the exponential cone.
 }
 
+void ExpConeOps::thirdDerivContract(double* out, const double* z,
+                                     const double* v, int /*size*/) const {
+  ThirdDerivContract(z[0], z[1], z[2], v, out);
+}
+
 const ExpConeOps& expConeOps() {
   static const ExpConeOps instance;
   return instance;

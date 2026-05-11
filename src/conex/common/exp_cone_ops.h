@@ -9,7 +9,7 @@
 namespace conex {
 namespace EuclideanJordanAlgebra {
 
-class ExpConeOps : public BarrierConeOperations {
+class ExpConeOps : public BarrierConeOpsThirdDeriv {
  public:
   // Barrier function and derivatives.
   static double Barrier(double x, double y, double z);
@@ -65,6 +65,8 @@ class ExpConeOps : public BarrierConeOperations {
   double lineSearchTarget(const double* z, const double* target0,
                            const double* target1, int size) const override;
   double barrierParameter(int size) const override;
+  void thirdDerivContract(double* out, const double* z,
+                          const double* v, int size) const override;
 
   // Utility methods used by the geodesic IPM (not part of BarrierConeOperations).
   void geodesicUpdate(double*, const double*, double, const double*, int) const;
