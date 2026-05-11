@@ -156,7 +156,7 @@ cm.ReduceVector(v)        // slices to kept variables
 ## Dependency Structure
 
 ```
-algorithms/              depends on common/, tree_solver/
+algorithms/              depends on common/, linear_solvers/
   least_squares.cc
   equality_constrained_least_squares.cc
   irls.cc
@@ -172,7 +172,7 @@ algorithms/              depends on common/, tree_solver/
   lqr_tree_solver.cc
   tree_solver_builder.cc
 
-common/                  no dependency on tree_solver/
+common/                  no dependency on linear_solvers/
   constraint_manager.h       Preprocess, ExpandSolution, ReduceVector
   supernodal_assembler_base.h  BlockAssembler, BlockContribution
   arena_allocatable.h        ArenaAllocatable base class
@@ -184,11 +184,11 @@ common/                  no dependency on tree_solver/
   clique_ordering.h          EliminationOrdering, Phase 1 + Phase 2
   structural_rank.h          DropStructurallyDependentColumns/Rows
 
-tree_solver/             implements KKTSolverBase
+linear_solvers/             implements KKTSolverBase
   kkt_tree_solver.h      SymmetricLinearSystemTreeSolver
   kkt_solver_factory.h   MakeTreeSolver
 
-gpu_tree_solver/         implements KKTSolverBase (requires CUDA)
+gpu_linear_solvers/         implements KKTSolverBase (requires CUDA)
   gpu_tree_solver.h      GpuTreeSolver
 ```
 

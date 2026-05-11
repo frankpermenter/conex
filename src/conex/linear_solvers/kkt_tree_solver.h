@@ -7,9 +7,9 @@
 #include "conex/common/cone_constraint.h"
 #include "conex/common/kkt_solver_interface.h"
 #include "conex/common/tree_rhs.h"
-#include "conex/tree_solver/kkt_subsystem.h"
-#include "conex/tree_solver/assembler_adapter.h"
-#include "conex/tree_solver/tree_utils.h"
+#include "conex/linear_solvers/kkt_subsystem.h"
+#include "conex/linear_solvers/assembler_adapter.h"
+#include "conex/linear_solvers/tree_utils.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 

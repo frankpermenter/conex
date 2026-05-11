@@ -7,7 +7,7 @@
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/algorithms/geodesic_ipm.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 #include "conex/common/equality_constraint.h"
 using namespace conex;
 

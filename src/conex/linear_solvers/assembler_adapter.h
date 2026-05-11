@@ -1,5 +1,5 @@
 #pragma once
-#include "conex/tree_solver/kkt_subsystem.h"
+#include "conex/linear_solvers/kkt_subsystem.h"
 #include "conex/common/supernodal_assembler_base.h"
 
 namespace conex {

@@ -4,14 +4,14 @@
 #include <numeric>
 #include <set>
 
-#include "conex/tree_solver/cholesky_solvers.h"
+#include "conex/linear_solvers/cholesky_solvers.h"
 #include "conex/common/clique_ordering.h"
 #include "conex/common/constraint_manager.h"
 #include "conex/common/equality_constraint.h"
-#include "conex/tree_solver/kkt_solver_factory.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
-#include "conex/tree_solver/assembler_adapter.h"
-#include "conex/tree_solver/tree_utils.h"
+#include "conex/linear_solvers/kkt_solver_factory.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
+#include "conex/linear_solvers/assembler_adapter.h"
+#include "conex/linear_solvers/tree_utils.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>

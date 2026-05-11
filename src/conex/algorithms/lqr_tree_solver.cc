@@ -4,7 +4,7 @@
 
 #include "conex/common/clique_tree.h"
 #include "conex/common/error_checking_macros.h"
-#include "conex/tree_solver/assembler_adapter.h"
+#include "conex/linear_solvers/assembler_adapter.h"
 
 namespace conex {
 

@@ -1,4 +1,4 @@
-#include "conex/tree_solver/low_rank_diagonal_subsystem.h"
+#include "conex/linear_solvers/low_rank_diagonal_subsystem.h"
 
 #include <cstdlib>
 #include <cstring>
@@ -7,8 +7,8 @@
 #include <numeric>
 #include <vector>
 
-#include "conex/tree_solver/kkt_tree_solver.h"
-#include "conex/tree_solver/tree_utils.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
+#include "conex/linear_solvers/tree_utils.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 

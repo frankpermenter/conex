@@ -10,7 +10,7 @@
 #include "conex/common/solver.h"
 #include "conex/common/qps_reader.h"
 #include "conex/common/equality_constraint.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 using namespace conex;
 
 bool TestInstance(const char* name, const char* path,

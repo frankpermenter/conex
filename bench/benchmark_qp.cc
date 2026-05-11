@@ -20,7 +20,7 @@
 #include "conex/common/model.h"
 #include "conex/common/qps_reader.h"
 #include "conex/common/solver.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 
 namespace conex {
 namespace {

@@ -16,7 +16,7 @@
 #include "conex/common/exp_cone_ops.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 
 using conex::EuclideanJordanAlgebra::ExpConeOps;
 

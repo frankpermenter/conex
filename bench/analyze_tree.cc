@@ -4,7 +4,7 @@
 #include <Eigen/Sparse>
 #include "conex/common/extended_embedding.h"
 #include "conex/common/solver.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 
 using namespace conex;
 using Eigen::MatrixXd;

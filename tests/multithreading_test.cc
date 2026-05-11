@@ -4,7 +4,7 @@
 #include <set>
 
 #include "conex/common/constraint_manager.h"
-#include "conex/tree_solver/kkt_solver_factory.h"
+#include "conex/linear_solvers/kkt_solver_factory.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>

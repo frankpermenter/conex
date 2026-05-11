@@ -8,9 +8,9 @@
 #include "conex/common/sparse_quadratic_term.h"
 #include "conex/common/sparse_equality_constraint.h"
 #include "conex/common/barrier_linear_constraint.h"
-#include "conex/tree_solver/assembler_adapter.h"
-#include "conex/tree_solver/kkt_solver_factory.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/linear_solvers/assembler_adapter.h"
+#include "conex/linear_solvers/kkt_solver_factory.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 
 namespace conex {
 

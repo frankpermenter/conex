@@ -1,4 +1,4 @@
-#include "conex/tree_solver/kkt_solver_factory.h"
+#include "conex/linear_solvers/kkt_solver_factory.h"
 
 #include <set>
 #include <unordered_map>
@@ -6,9 +6,9 @@
 
 #include "conex/common/clique_ordering.h"
 #include "conex/common/sparse_linear_constraint.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
-#include "conex/tree_solver/low_rank_diagonal_subsystem.h"
-#include "conex/tree_solver/tree_utils.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
+#include "conex/linear_solvers/low_rank_diagonal_subsystem.h"
+#include "conex/linear_solvers/tree_utils.h"
 
 namespace conex {
 using std::vector;

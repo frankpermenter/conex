@@ -15,7 +15,7 @@
 #include "conex/common/kkt_solver_interface.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 

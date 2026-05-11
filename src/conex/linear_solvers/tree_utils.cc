@@ -1,4 +1,4 @@
-#include "conex/tree_solver/tree_utils.h"
+#include "conex/linear_solvers/tree_utils.h"
 
 #include <algorithm>
 #include <stack>

@@ -1,7 +1,7 @@
-#include "conex/tree_solver/assembler_adapter.h"
+#include "conex/linear_solvers/assembler_adapter.h"
 
 #include "conex/common/debug_macros.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 
 namespace conex {
 using T = AssemblerAdapter;

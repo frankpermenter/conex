@@ -1,4 +1,4 @@
-#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 #include "conex/common/nonneg_orthant_ops.h"
 #include "conex/common/equality_constraint.h"
 #include "conex/common/linear_constraint.h"
@@ -14,10 +14,10 @@
 #include <thread>
 #include <unordered_map>
 
-#include "conex/tree_solver/cholesky_solvers.h"
+#include "conex/linear_solvers/cholesky_solvers.h"
 #include "conex/common/debug_macros.h"
-#include "conex/tree_solver/assembler_adapter.h"
-#include "conex/tree_solver/tree_utils.h"
+#include "conex/linear_solvers/assembler_adapter.h"
+#include "conex/linear_solvers/tree_utils.h"
 
 namespace conex {
 

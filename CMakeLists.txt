@@ -25,10 +25,10 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tests)
 
 # --- Tree solver core ---
 add_library(tree_solver
-  src/conex/tree_solver/kkt_tree_solver.cc
-  src/conex/tree_solver/kkt_subsystem.cc
-  src/conex/tree_solver/assembler_adapter.cc
-  src/conex/tree_solver/tree_utils.cc
+  src/conex/linear_solvers/kkt_tree_solver.cc
+  src/conex/linear_solvers/kkt_subsystem.cc
+  src/conex/linear_solvers/assembler_adapter.cc
+  src/conex/linear_solvers/tree_utils.cc
 )
 find_package(BLAS)
 target_link_libraries(tree_solver PUBLIC Eigen3::Eigen)
@@ -80,7 +80,7 @@ endif()
 
 # --- Solver factory (MakeTreeSolver only) ---
 add_library(kkt_solver_factory
-  src/conex/tree_solver/kkt_solver_factory.cc
+  src/conex/linear_solvers/kkt_solver_factory.cc
 )
 target_link_libraries(kkt_solver_factory PUBLIC tree_solver clique_ordering constraints)
 

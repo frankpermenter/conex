@@ -8,7 +8,7 @@
 #include "conex/common/clique_ordering.h"
 #include "conex/common/clique_tree.h"
 #include "conex/common/sparse_linear_constraint.h"
-#include "conex/tree_solver/tree_utils.h"
+#include "conex/linear_solvers/tree_utils.h"
 #include "gtest/gtest.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>

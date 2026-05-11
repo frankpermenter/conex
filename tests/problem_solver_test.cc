@@ -18,7 +18,7 @@
 #include "conex/common/solver.h"
 #include "conex/common/sparse_linear_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
-#include "conex/tree_solver/kkt_solver_factory.h"
+#include "conex/linear_solvers/kkt_solver_factory.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;

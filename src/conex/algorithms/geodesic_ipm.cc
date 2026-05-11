@@ -4,7 +4,7 @@
 #include <cstdio>
 
 #include "conex/common/equality_constraint.h"
-#include "conex/tree_solver/kkt_tree_solver.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 
 #include "conex/common/eja_ops.h"
 

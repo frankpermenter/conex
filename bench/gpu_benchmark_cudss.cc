@@ -11,7 +11,7 @@
 #include "conex/common/clique_ordering.h"
 #include "conex/common/constraint_manager.h"
 #include "conex/common/sparse_linear_constraint.h"
-#include "conex/tree_solver/kkt_solver_factory.h"
+#include "conex/linear_solvers/kkt_solver_factory.h"
 
 #include <chrono>
 #include <cstdio>

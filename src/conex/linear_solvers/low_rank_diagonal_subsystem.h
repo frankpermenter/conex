@@ -1,7 +1,7 @@
 #pragma once
 #include <unordered_map>
-#include "conex/tree_solver/kkt_subsystem.h"
-#include "conex/tree_solver/assembler_adapter.h"
+#include "conex/linear_solvers/kkt_subsystem.h"
+#include "conex/linear_solvers/assembler_adapter.h"
 #include <Eigen/Dense>
 
 namespace conex {

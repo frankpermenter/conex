@@ -1,5 +1,5 @@
 #define CONEX_ENABLE_TIMER 0
-#include "conex/tree_solver/kkt_subsystem.h"
+#include "conex/linear_solvers/kkt_subsystem.h"
 
 #include <algorithm>
 #include <atomic>
