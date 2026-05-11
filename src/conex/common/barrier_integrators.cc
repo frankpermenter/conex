@@ -114,12 +114,15 @@ static void symmetricSubstep(const Ops* ops,
   ops->hessian(H0_buf, z0_buf, n);
   ops->computeGradient(grad0_buf, z0_buf, n);
 
-  // RHS = 2h·H₀·v₀.
-  // (∇φ(z₀) + H₀·z₀ cancels exactly by log-homogeneity.)
+  // From integrator.tex equation (2):
+  //   ∇φ(z₁) - ∇φ(z₀) = H₀·(z₁ - z₀) + 2h·w₀
+  //
+  // Solved as: ∇φ(z₁) + H₀·z₁ = target, where
+  //   target = ∇φ(z₀) + H₀·z₀ + 2h·H₀·v₀
+  // By log-homogeneity ∇φ(z₀) + H₀·z₀ = 0, so target = 2h·H₀·v₀.
+  // Jacobian: H(z₁) + H₀ (positive definite).
   rhs = 2.0 * h * (H0 * v);
 
-  // Newton solve for z₁: F(z₁) = ∇φ(z₁) + H(z₀)·z₁ - rhs = 0.
-  // Initial guess: z₁ = z₀ + h·v₀ (tangent line).
   z1 = z0 + h * v;
 
   for (int iter = 0; iter < 20; ++iter) {
@@ -128,7 +131,6 @@ static void symmetricSubstep(const Ops* ops,
 
     if (F.norm() < 1e-13 * (1.0 + rhs.norm())) break;
 
-    // Jacobian: H(z₁) + H(z₀).
     ops->hessian(H1_buf, z1_buf, n);
     Eigen::MatrixXd J = H1 + H0;
 
