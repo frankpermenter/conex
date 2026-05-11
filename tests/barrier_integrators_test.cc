@@ -152,16 +152,17 @@ TEST(BarrierIntegrators, AccuracyVsReference) {
     double err_dm = dist(z_dm, ref, n);
 
     // Yoshida-4 variants (1 composite step = 3 sub-steps each).
-    auto run_y4 = [&](auto step_fn) {
-      double z[conex::kMaxBarrierDim], vel[conex::kMaxBarrierDim];
-      std::memcpy(z, tc.z0.data(), n * sizeof(double));
+    auto run_y4 = [&](auto step_fn, double* z_out) {
+      double vel[conex::kMaxBarrierDim];
+      std::memcpy(z_out, tc.z0.data(), n * sizeof(double));
       for (int i = 0; i < n; ++i) vel[i] = alpha * tc.d[i];
-      step_fn(tc.ops, z, vel, 1.0, n);
-      return dist(z, ref, n);
+      step_fn(tc.ops, z_out, vel, 1.0, n);
+      return dist(z_out, ref, n);
     };
-    double err_y4s = run_y4(conex::yoshida4Step);
-    double err_y4p = run_y4(conex::yoshida4PrimalStep);
-    double err_y4d = run_y4(conex::yoshida4DualStep);
+    double z_y4s[conex::kMaxBarrierDim], z_y4p[conex::kMaxBarrierDim], z_y4d[conex::kMaxBarrierDim];
+    double err_y4s = run_y4(conex::yoshida4Step, z_y4s);
+    double err_y4p = run_y4(conex::yoshida4PrimalStep, z_y4p);
+    double err_y4d = run_y4(conex::yoshida4DualStep, z_y4d);
 
     // Euler.
     double z_eu[conex::kMaxBarrierDim];
@@ -182,6 +183,23 @@ TEST(BarrierIntegrators, AccuracyVsReference) {
     printf("    Y4-dual-mid:     %.4e  (%.0fx vs euler)\n",
            err_y4d, err_eu / std::max(err_y4d, 1e-30));
     printf("    Euler:           %.4e  (baseline)\n", err_eu);
+
+    // Also measure dual error: ||∇φ(z) - ∇φ(z_ref)||.
+    auto dual_err = [&](const double* z_test) {
+      double g_test[conex::kMaxBarrierDim], g_ref[conex::kMaxBarrierDim];
+      tc.ops->computeGradient(g_test, z_test, n);
+      tc.ops->computeGradient(g_ref, ref, n);
+      return dist(g_test, g_ref, n);
+    };
+
+    printf("    --- dual space (grad error) ---\n");
+    printf("    Symmetric:       %.4e\n", dual_err(z_sym));
+    printf("    Primal-mid:      %.4e\n", dual_err(z_pm));
+    printf("    Dual-mid:        %.4e\n", dual_err(z_dm));
+    printf("    Y4-symmetric:    %.4e\n", dual_err(z_y4s));
+    printf("    Y4-primal-mid:   %.4e\n", dual_err(z_y4p));
+    printf("    Y4-dual-mid:     %.4e\n", dual_err(z_y4d));
+    printf("    Euler:           %.4e\n", dual_err(z_eu));
 
     // All integrators should beat Euler.
     EXPECT_LT(err_pm, err_eu) << tc.name << ": primal midpoint worse than Euler";
