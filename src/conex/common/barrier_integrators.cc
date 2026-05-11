@@ -123,9 +123,29 @@ static void symmetricSubstep(const Ops* ops,
   // Jacobian: H(z₁) + H₀ (positive definite).
   rhs = 2.0 * h * (H0 * v);
 
+  // Initial guess: z_pred = z₀ + h·v₀. If infeasible, backtrack toward z₀.
   z1 = z0 + h * v;
+  {
+    double test_grad[kMaxBarrierDim];
+    ops->computeGradient(test_grad, z1_buf, n);
+    bool feasible = true;
+    for (int i = 0; i < n; ++i)
+      if (!std::isfinite(test_grad[i])) { feasible = false; break; }
+    if (!feasible) {
+      double t = 1.0;
+      for (int bt = 0; bt < 30; ++bt) {
+        t *= 0.5;
+        z1 = z0 + t * h * v;
+        ops->computeGradient(test_grad, z1_buf, n);
+        feasible = true;
+        for (int i = 0; i < n; ++i)
+          if (!std::isfinite(test_grad[i])) { feasible = false; break; }
+        if (feasible) break;
+      }
+    }
+  }
 
-  for (int iter = 0; iter < 20; ++iter) {
+  for (int iter = 0; iter < 30; ++iter) {
     ops->computeGradient(grad1_buf, z1_buf, n);
     F = g1 + H0 * z1 - rhs;
 
@@ -136,18 +156,23 @@ static void symmetricSubstep(const Ops* ops,
 
     Eigen::VectorXd delta = J.ldlt().solve(-F);
 
-    // Backtracking.
+    // Backtracking: try Newton step, fall back to step toward z₀.
     double alpha = 1.0;
     Eigen::VectorXd z1_save = z1;
-    for (int bt = 0; bt < 10; ++bt) {
+    bool found = false;
+    for (int bt = 0; bt < 20; ++bt) {
       z1 = z1_save + alpha * delta;
       ops->computeGradient(grad1_buf, z1_buf, n);
       bool ok = true;
       for (int i = 0; i < n; ++i) {
         if (!std::isfinite(grad1_buf[i])) { ok = false; break; }
       }
-      if (ok) break;
+      if (ok) { found = true; break; }
       alpha *= 0.5;
+    }
+    if (!found) {
+      // Newton direction doesn't lead to interior. Step toward z₀ instead.
+      z1 = 0.5 * (z1_save + z0);
     }
   }
 

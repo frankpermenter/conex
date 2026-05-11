@@ -1,0 +1,2 @@
+latexmk integrator.tex
+latexmk yoshida_bregman_tutorial.tex
