@@ -1,0 +1,315 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage[margin=1.2in]{geometry}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{proposition}[theorem]{Proposition}
+
+\title{\textbf{Frozen-Jacobian Divergence Analysis}}
+\author{}
+\date{\vspace{-5ex}}
+
+\begin{document}
+\maketitle
+
+\section{Setup}
+
+Let $\phi$ be a self-concordant barrier on a cone $K$ with barrier
+parameter $\nu$.  Let $z \in \mathrm{int}(K)$ be the current iterate
+and $z_0 \in \mathrm{int}(K)$ the reference point at which the Hessian
+was last factored.  The constraint map is $z = Ax + b$ with
+$A \in \mathbb{R}^{m \times n}$.
+
+Let $z_*$ be a fixed target point and define the Jeffreys divergence
+\begin{equation}
+    V(z) = \langle z - z_*, \nabla\phi(z) - \nabla\phi(z_*) \rangle.
+\end{equation}
+Define the two kinetic energies
+\begin{equation}
+    E = \|\dot{z}\|_z^2 = \dot{z}^T H(z)\dot{z}, \qquad
+    E_0 = \|\dot{z}\|_{z_0}^2 = \dot{z}^T H(z_0)\dot{z},
+\end{equation}
+the Hessian distortion ratio $\sigma = E_0 / E$, and the infinity-norm
+energy $E_\infty = \|\dot{z}\|_{z,\infty}^2$ (i.e., the squared
+maximum eigenvalue of $\dot{z}$ in the local metric at $z$; for
+nonneg, $E_\infty = d_\infty^2 = \max_i(\dot{z}_i/z_i)^2$).
+
+\section{Frozen-Jacobian KKT Orthogonality}
+
+The frozen Newton direction $\dot{z} \in \mathrm{range}(A)$ is
+determined by the KKT system with Gram $A^T H(z_0) A$.  The resulting
+direction satisfies:
+\begin{equation} \label{eq:frozen_kkt}
+    \nabla\phi(z) + H(z_0)\dot{z} - \nabla\phi(z_*) \perp \mathrm{range}(A).
+\end{equation}
+Since both $\dot{z} \in \mathrm{range}(A)$ and
+$z - z_* \in \mathrm{range}(A)$, substituting each into
+\eqref{eq:frozen_kkt} gives:
+\begin{align}
+    \langle \dot{z},\; \nabla\phi(z) - \nabla\phi(z_*) \rangle
+        &= -E_0, \label{eq:orth_zdot} \\
+    V &= -\langle z - z_*,\; H(z_0)\dot{z} \rangle. \label{eq:orth_v}
+\end{align}
+
+\section{First Derivative of the Divergence}
+
+\begin{lemma}[Frozen $\dot{V}$ Identity]
+\label{lem:vdot_frozen}
+Under the frozen-Jacobian Newton direction,
+\begin{equation} \label{eq:vdot_frozen}
+    \dot{V} = -(E_0 + V) + \epsilon,
+\end{equation}
+where $\epsilon = \langle z - z_*,\; \Delta H\, \dot{z} \rangle$
+with $\Delta H = H(z) - H(z_0)$.
+\end{lemma}
+
+\begin{proof}
+By the chain rule:
+$\dot{V} = \langle \dot{z}, \nabla\phi(z) - \nabla\phi(z_*) \rangle
+         + \langle z - z_*, H(z)\dot{z} \rangle$.
+Substituting \eqref{eq:orth_zdot} and decomposing $H(z) = H(z_0) + \Delta H$:
+$\dot{V} = -E_0 + \langle z-z_*, H(z_0)\dot{z}\rangle + \epsilon
+         = -E_0 - V + \epsilon$.
+\end{proof}
+
+\begin{lemma}[Error Bound]
+\label{lem:epsilon_bound}
+If $\rho = \|z - z_0\|_z < 1$, then
+\begin{equation}
+    |\epsilon| \le \frac{\rho}{1-\rho}\,(V + \sqrt{V})\,\sqrt{E}.
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+Cauchy--Schwarz in the $H(z)$-metric:
+$|\epsilon| \le \|z-z_*\|_z \cdot \|H(z)^{-1}\Delta H\,\dot{z}\|_z$.
+The first factor satisfies $\|z-z_*\|_z \le V + \sqrt{V}$
+(self-concordant bound).  The second satisfies
+$\|H(z)^{-1}\Delta H\,\dot{z}\|_z \le \frac{\rho}{1-\rho}\sqrt{E}$
+(integral metric comparison).
+\end{proof}
+
+\section{Second Derivative: General Case}
+
+\begin{lemma}[$\ddot{V}$ Exact Identity]
+\label{lem:vddot}
+The geodesic follows the true metric $H(z)$ regardless of which
+Hessian was used in the Newton solve:
+\begin{equation} \label{eq:vddot_exact}
+    \ddot{V} = 2E - \langle \ddot{z}, U \rangle_z,
+\end{equation}
+where $U = (z - z_*) - H(z)^{-1}(\nabla\phi(z) - \nabla\phi(z_*))$.
+\end{lemma}
+
+\begin{lemma}[General Curvature Bounds]
+\label{lem:curvature_general}
+Under the kinematic stability axiom $\|\ddot{z}\|_z \le E$:
+\begin{enumerate}
+    \item \textbf{Global:}
+    $\ddot{V} \le 2E(1 + \sqrt{V} + V)$.
+    \item \textbf{Near-field} ($E < 1/4$):
+    $\ddot{V} \le 2E(1 + V)$.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+From \eqref{eq:vddot_exact} and Cauchy--Schwarz:
+$\ddot{V} \le 2E + E\|U\|_z$.  The global bound uses
+$\|U\|_z \le 2V + 2\sqrt{V}$ (triangle inequality).  The near-field
+bound uses $\|U\|_z \le 2V$ (coupled integral bound when
+$\|z-z_*\|_z < 1$).
+\end{proof}
+
+\section{Second Derivative: Symmetric Cones}
+
+For symmetric cones (nonneg, SOC, PSD), the barrier $\phi$ defines a
+Euclidean Jordan algebra.  In the isotropic frame at $z$, the Newton
+direction has spectral components $d_i = \tilde{\dot{z}}_i$ with
+$E = \sum_i d_i^2$, $E_\infty = \max_i d_i^2 = d_\infty^2$.  The
+relative stretch vector is $w_i = (\text{eigenvalues of } P(z)^{-1/2}z_*)_i$.
+
+\begin{lemma}[Symmetric Cone Exact Formula]
+\label{lem:sym_exact}
+For symmetric cones, the inner product evaluates exactly to:
+\begin{equation} \label{eq:sym_exact}
+    \langle \ddot{z}, U \rangle_z = \sum_i d_i^2\,(2 - w_i - w_i^{-1}).
+\end{equation}
+Since $w_i + w_i^{-1} \ge 2$ by AM-GM, each term is non-positive, so
+$\langle \ddot{z}, U \rangle_z \le 0$ and:
+\begin{equation}
+    \ddot{V} = 2E + \sum_i d_i^2\,(w_i + w_i^{-1} - 2) \ge 2E.
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+In the isotropic frame, the geodesic acceleration satisfies
+$\tilde{\ddot{z}}_i = d_i^2/w_i$ (from the Jordan algebra geodesic
+equation).  The residual has spectral components
+$\tilde{U}_i = z_i(2 - w_i - w_i^{-1})$.  The local inner product
+$\langle \ddot{z}, U \rangle_z = \sum_i \tilde{\ddot{z}}_i
+\tilde{U}_i H_{ii}$ reduces to \eqref{eq:sym_exact} after
+cancellation of the metric factors.
+\end{proof}
+
+\begin{theorem}[Symmetric Cone Curvature Bound]
+\label{thm:sym_curvature}
+For symmetric cones:
+\begin{equation} \label{eq:sym_curvature}
+    \ddot{V} \le 2E + d_\infty^2\, V.
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+From \eqref{eq:sym_exact}, define $f_i = w_i + w_i^{-1} - 2 \ge 0$.
+Then $\ddot{V} = 2E + \sum_i d_i^2 f_i$.  Apply H\"older's inequality
+($\ell^\infty \cdot \ell^1$):
+\begin{equation}
+    \sum_i d_i^2 f_i \le \max_i(d_i^2) \cdot \sum_i f_i
+    = d_\infty^2 \cdot V,
+\end{equation}
+where the last equality uses $V = \sum_i (w_i + w_i^{-1} - 2) = \sum_i f_i$
+(the spectral decomposition of the Jeffreys divergence for symmetric
+cones).
+\end{proof}
+
+\begin{corollary}
+The symmetric cone bound \eqref{eq:sym_curvature} is strictly tighter
+than the general bound (Lemma~\ref{lem:curvature_general}) whenever
+$d_\infty^2 < 2E$, i.e., the direction is not concentrated on a single
+eigenvalue.  Since $E = \sum_i d_i^2 \ge d_\infty^2$ with equality
+iff all mass is on one component, the symmetric cone bound replaces
+$2EV$ (from the general near-field) with $d_\infty^2 V$---a factor
+of $E/d_\infty^2 = \nu_{\text{eff}}$ improvement, where
+$\nu_{\text{eff}}$ is the effective number of active eigenvalues.
+\end{corollary}
+
+\section{Frozen-J Descent on Symmetric Cones}
+
+We now combine the frozen $\dot{V}$ identity
+(Lemma~\ref{lem:vdot_frozen}) with the symmetric cone curvature bound
+(Theorem~\ref{thm:sym_curvature}).  The Taylor surrogate becomes:
+\begin{equation} \label{eq:taylor_sym}
+    V(h) \le V - h(E_0 + V - |\epsilon|) + \tfrac{1}{2}h^2(2E + d_\infty^2 V).
+\end{equation}
+
+\begin{theorem}[Frozen-J Descent, Symmetric Cone, Far-Field]
+\label{thm:sym_farfield}
+Suppose $E \ge 1$ and $|\epsilon| \le E_0/2$.  The step size
+\begin{equation}
+    h_f = \frac{E_0}{2(2E + d_\infty^2 V)}
+\end{equation}
+guarantees strict descent with
+\begin{equation}
+    \Delta V \le -\frac{E_0^2}{8(2E + d_\infty^2 V)}.
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+From \eqref{eq:taylor_sym}, descent holds when
+$h < D/C$ where $D = E_0 + V - |\epsilon| \ge E_0/2$ and
+$C = \frac{1}{2}(2E + d_\infty^2 V)$.  Setting $h_f = D/(2C) \ge
+E_0/(4C) = E_0/(2(2E + d_\infty^2 V))$:
+\begin{equation}
+    \Delta V \le -h_f D + h_f^2 C = -\frac{D^2}{4C}
+    \le -\frac{E_0^2/4}{2(2E + d_\infty^2 V)/2}
+    = -\frac{E_0^2}{8(2E + d_\infty^2 V)}.
+\end{equation}
+Geodesic feasibility ($h_f \le \alpha$): since $\alpha = 2/d_\infty^2$
+in the far-field, $h_f \le \alpha$ requires
+$E_0 d_\infty^2 \le 4(2E + d_\infty^2 V)$, which holds because
+$E_0 \le 4E$ and $d_\infty^2 V \ge 0$.
+\end{proof}
+
+\begin{theorem}[Frozen-J Descent, Symmetric Cone, Near-Field]
+\label{thm:sym_nearfield}
+Suppose $d_\infty^2 < 2$ (so $\alpha = 1$) and $|\epsilon| \le E_0/2$.
+The step size $h_f = 1$ guarantees strict descent with
+\begin{equation}
+    V(1) \le \tfrac{1}{2}d_\infty^2 V + (E - E_0) + |\epsilon|.
+\end{equation}
+When $z_0 = z$ (unfrozen): $V(1) \le \frac{1}{2}d_\infty^2 V$
+(pure quadratic convergence with rate $d_\infty^2/2$ instead of $E$).
+\end{theorem}
+
+\begin{proof}
+Substituting $h = 1$ into \eqref{eq:taylor_sym}:
+\begin{align}
+    V(1) &\le V - (E_0 + V - |\epsilon|) + \tfrac{1}{2}(2E + d_\infty^2 V) \nonumber \\
+         &= V - E_0 - V + |\epsilon| + E + \tfrac{1}{2}d_\infty^2 V \nonumber \\
+         &= (E - E_0) + \tfrac{1}{2}d_\infty^2 V + |\epsilon|.
+\end{align}
+For the unfrozen case ($z_0 = z$): $E_0 = E$, $\epsilon = 0$, giving
+$V(1) \le \frac{1}{2}d_\infty^2 V$.
+
+For descent, we need $\frac{1}{2}d_\infty^2 V + |E-E_0| + |\epsilon| < V$,
+i.e., $(1 - \frac{1}{2}d_\infty^2)V > |E-E_0| + |\epsilon|$.  Since
+$d_\infty^2 < 2$, the left side is positive, and the condition holds
+when the frozen perturbations are small relative to $V$.
+\end{proof}
+
+\begin{corollary}[Improvement over General Near-Field]
+\label{cor:improvement}
+In the unfrozen near-field, the general bound gives $V(1) \le EV$
+(Theorem in \texttt{centering.tex}), while the symmetric cone bound
+gives $V(1) \le \frac{1}{2}d_\infty^2 V$.  The improvement factor is
+$2E/d_\infty^2$.  For well-distributed directions ($E = \nu d_\infty^2/m$
+where $m$ is the number of eigenvalues), this is $2\nu/m$---significant
+for large cones.
+\end{corollary}
+
+\section{Metric Comparison}
+
+\begin{lemma}[Metric Comparison]
+\label{lem:metric_comparison}
+If $\rho = \|z - z_0\|_z < 1$:
+\begin{equation}
+    (1-\rho)^2\, E \;\le\; E_0 \;\le\; (1+\rho)^2\, E.
+\end{equation}
+\end{lemma}
+
+\section{Computable Step-Size Policy}
+
+All quantities in the symmetric cone bounds are computable:
+\begin{itemize}
+    \item $E = \texttt{hessianNormSquared}(z, \text{target})$
+    \item $E_0 = \texttt{hessianNormSquared}(z_0, \text{target})$
+    \item $d_\infty^2$: recovered from
+      $\alpha = \texttt{stepSize}(z, \text{target})$ via
+      $d_\infty^2 = 2/\alpha$ when $\alpha < 1$
+    \item $\sigma = E_0/E$
+\end{itemize}
+
+\begin{corollary}[Unified Frozen-J Step Size for Symmetric Cones]
+\label{cor:sym_unified}
+Define $\alpha = \texttt{stepSize}(z, \text{target})$.  The step size
+\begin{equation}
+    h_f = \min\!\left(\alpha,\; \frac{E_0}{2E + d_\infty^2 V}\right)
+\end{equation}
+guarantees descent provided $|\epsilon| \le E_0/2$.
+
+Since $V$ is not directly available, we can use the conservative
+substitution $V \le \nu/k^2$ (the gap bound) or simply use
+\begin{equation}
+    h_f = \min\!\left(\alpha,\; \frac{\sigma}{2 + d_\infty^2 \cdot \nu/k^2 / E}\right)
+\end{equation}
+where $\nu/k^2$ is the current barrier gap (computable).
+
+In the near-field ($d_\infty^2 < 2$, so $\alpha = 1$): take $h_f = 1$
+and check descent via $\frac{1}{2}d_\infty^2 + |1-\sigma| + |\epsilon|/V < 1$.
+\end{corollary}
+
+\subsection{Refactoring Condition}
+
+\begin{proposition}[Refactoring Criterion]
+\label{prop:refactor}
+Take the frozen step if $\sigma = E_0/E \in [\tfrac{1}{4}, 4]$;
+otherwise refactor.  This ensures $\rho < 1$ (within Dikin ellipsoids).
+\end{proposition}
+
+
+\end{document}

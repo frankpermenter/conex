@@ -254,6 +254,7 @@ GeodesicResult SolveGeodesicBarrierLP(
     CompiledModel& model,
     RowSpace& z,                    // internal state (W for symmetric cones)
     int max_outer_iterations = 30,
+    int max_frozen_steps = 0,
     double tolerance = 1e-8,
     bool verbose = false);
 

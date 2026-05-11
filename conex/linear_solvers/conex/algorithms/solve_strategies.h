@@ -147,6 +147,7 @@ struct GeodesicLP {
 struct GeodesicBarrierLP {
   double tolerance = 1e-8;
   int max_iterations = 30;
+  int max_frozen_steps = 0;
   bool verbose = false;
   Eigen::VectorXd initial_z;  // empty → setOnes (symmetric cone default)
 
@@ -158,7 +159,7 @@ struct GeodesicBarrierLP {
       setOnes(z);
     }
     return SolveGeodesicBarrierLP(
-        model, z, max_iterations, tolerance, verbose);
+        model, z, max_iterations, max_frozen_steps, tolerance, verbose);
   }
 };
 

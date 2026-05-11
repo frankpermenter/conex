@@ -1681,6 +1681,7 @@ GeodesicResult SolveGeodesicBarrierLP(
     CompiledModel& model,
     RowSpace& z,
     int max_outer_iterations,
+    int max_frozen_steps,
     double tolerance,
     bool verbose) {
   const auto& cost_rhs = model.cost_rhs();
@@ -1820,8 +1821,104 @@ GeodesicResult SolveGeodesicBarrierLP(
       }
       break;
     } else {
-      // Update z in place, then SetScaling syncs at top of next iteration.
+      // Save z₀ for frozen-J, then step.
+      RowSpace z0 = z;
       geodesicStepTarget(z, alpha, target_k);
+
+      // Frozen-Jacobian inner steps: use stale Gram (H(z₀)) with
+      // frozen centering = -∇F(z_i) + H(z₀)·z_i.
+      // Cost RHS (rhs1) is frozen (depends only on z₀ through H(z₀)·b).
+      // d1 from the standard decomposition is reused.
+      //
+      // Debug: set refactor_inner=true to refactor at z_i and use the
+      // standard (non-frozen) path.  This should produce the same
+      // trajectory as baseline (max_frozen_steps=0).  Any difference
+      // is a bug in the frozen-J logic.
+      constexpr bool refactor_inner = false;
+
+      for (int inner = 0; inner < max_frozen_steps; ++inner) {
+        RowSpace target0_f = model.MakeRowSpace();
+        RowSpace target1_f = target1;  // default: frozen
+
+        if (refactor_inner) {
+          // Full refactor: makes inner iteration identical to outer.
+          model.SetScaling(z);
+          model.AssembleAndFactor();
+          total_fac++;
+
+          // Recompute centering RHS: A^T(-2∇F(z_i)).
+          RowSpace grad_r = model.MakeRowSpace();
+          computeGradient(z, grad_r);
+          grad_r *= -2.0;
+          auto rhs0_r = model.MakeSolverRHS();
+          rhs0_r.SetZero();
+          model.AccumulateAtranspose(grad_r, rhs0_r);
+
+          // Recompute optimality RHS: -(c + A^T H(z_i) b).
+          RowSpace hb_r = model.MakeRowSpace();
+          hessianProduct(z, b, hb_r);
+          auto rhs1_r = model.MakeSolverRHS();
+          rhs1_r = cost_rhs;
+          model.AccumulateAtranspose(hb_r, rhs1_r);
+          rhs1_r *= -1;
+          if (ts && !ts->equality_sub_assemblers().empty()) {
+            rhs1_r += ts->EqualityAffineTermRHS();
+          }
+
+          // Solve both.
+          auto y_r = model.MakeSolverRHS(2);
+          y_r.SetColumn(0, rhs0_r);
+          y_r.SetColumn(1, rhs1_r);
+          model.SolveSolverRHS(y_r);
+          total_sol += 2;
+
+          // Recover targets.
+          auto row_r = model.MakeRowSpace(2);
+          model.MultiplyA(y_r, row_r);
+          target0_f.col() = row_r.col(0);
+          target1_f.col() = row_r.col(1);
+          target1_f += b;
+        } else {
+          // Frozen centering: -∇F(z_i) + H(z₀)·z_i_raw
+          // getConePoint recovers the raw cone point from stored representation
+          // (identity for exp cone, inverse for symmetric cones).
+          RowSpace grad_i = model.MakeRowSpace();
+          computeGradient(z, grad_i);  // ∇F(z_i)
+          RowSpace z_raw_i = getConePoint(z);
+          RowSpace hz0_zi = model.MakeRowSpace();
+          hessianProduct(z0, z_raw_i, hz0_zi);  // H(z₀)·z_i_raw
+          RowSpace centering = addScaled(grad_i, hz0_zi, -1.0, 1.0);
+
+          // Centering-only solve with stale Gram (1 back-solve).
+          auto rhs0_f = model.MakeSolverRHS();
+          rhs0_f.SetZero();
+          model.AccumulateAtranspose(centering, rhs0_f);
+          model.SolveSolverRHS(rhs0_f);
+          total_sol += 1;
+
+          // Recover target0 from solve.
+          model.MultiplyA(rhs0_f, target0_f);
+        }
+
+        // Line search for k.
+        double k_new_f = lineSearchTarget(z, target0_f, target1_f);
+        if (k_new_f > k) k = k_new_f;
+
+        // Assemble target_k, step.
+        RowSpace target_k_f = addScaled(target0_f, target1_f, 1.0, k);
+        double alpha_f = stepSize(z, target_k_f);
+
+        if (verbose) {
+          double d_sq_f = hessianNormSquared(z, target_k_f);
+          double d_inf_f = (alpha_f < 1.0) ? std::sqrt(2.0 / alpha_f) : 0.0;
+          double mu_f = 1.0 / (k * k);
+          double gap_f = mu_f * (nu - d_sq_f);
+          printf("  %3d.%d  %12s  %12.4e  %12.4e  %12.4e  %12.4e  (frozen-J)\n",
+                 outer, inner + 1, "", k, d_inf_f, d_sq_f, gap_f);
+        }
+
+        geodesicStepTarget(z, alpha_f, target_k_f);
+      }
     }
   }
 
@@ -1830,10 +1927,17 @@ GeodesicResult SolveGeodesicBarrierLP(
 
 // Helper: evaluate the V(τ)=0 quadratic for the z-space θ-continuation.
 // Returns (τ, stepSize_alpha) or (-1, 1e30) if no positive root.
+//
+// z_hess: point at which Hessian products are evaluated (= z for standard,
+//         = z₀ for frozen-J where the Gram was factored at z₀).
+// z:      current iterate (used for lineSearchTarget / hessianNormSquared
+//         feasibility checks).
+// grad_z: ∇F(z) at the current iterate (not z_hess).
 static std::pair<double, double> EvalBarrierThetaCandidate(
     CompiledModel& model,
     const SolverRHS& duality_cost,
     const RowSpace& z,
+    const RowSpace& z_hess,
     const RowSpace& b,
     const RowSpace& grad_z,       // ∇F(z) at current z
     const RowSpace& ay0,          // A y0
@@ -1850,9 +1954,9 @@ static std::pair<double, double> EvalBarrierThetaCandidate(
   // f = y0/k + θ·y1_theta, g = y1_0.
   Eigen::VectorXd f_vec = y0_vec / k + theta_cand * y1_theta_vec;
 
-  // σ₁ = -b^T H(z)·t1_tau  (coefficient of τ in b^T λ)
+  // σ₁ = -b^T H(z_hess)·t1_tau  (coefficient of τ in b^T λ)
   RowSpace h_t1_tau = model.MakeRowSpace();
-  hessianProduct(z, t1_tau, h_t1_tau);
+  hessianProduct(z_hess, t1_tau, h_t1_tau);
   double sigma1 = -dot(b, h_t1_tau);
 
   // γ₁ = duality_cost^T y1_0
@@ -1868,10 +1972,10 @@ static std::pair<double, double> EvalBarrierThetaCandidate(
 
   double beta = sigma1 + gamma1 + q_gg;
 
-  // σ₀ = (1/k) b^T (-2∇F(z) - H(z)·(Ay₀ + kθ·t1_th))
+  // σ₀ = (1/k) b^T (-2∇F(z) - H(z_hess)·(Ay₀ + kθ·t1_th))
   RowSpace target0_part = addScaled(ay0, t1_th, 1.0, k * theta_cand);
   RowSpace h_target0 = model.MakeRowSpace();
-  hessianProduct(z, target0_part, h_target0);
+  hessianProduct(z_hess, target0_part, h_target0);
   RowSpace lam0_unscaled = model.MakeRowSpace();
   lam0_unscaled.col() = -2.0 * grad_z.col() - h_target0.col();
   double sigma0 = dot(b, lam0_unscaled) / k;
@@ -2065,7 +2169,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
       for (int bisect = 0; bisect < 30; ++bisect) {
         double theta_mid = 0.5 * (theta_lo + theta_hi);
         auto [tau_try, d_inf_try] = EvalBarrierThetaCandidate(
-            model, duality_cost, z, b, grad, ay0, t1_tau, t1_th,
+            model, duality_cost, z, z, b, grad, ay0, t1_tau, t1_th,
             y0_vec, y1_0_vec, y1_theta_vec, nu, R_theta1, theta_mid);
         if (tau_try > 0 && d_inf_try <= beta_target) {
           theta_hi = theta_mid;
@@ -2080,7 +2184,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
 
     // Evaluate at chosen θ.
     auto [tau_sel, d_inf_sel] = EvalBarrierThetaCandidate(
-        model, duality_cost, z, b, grad, ay0, t1_tau, t1_th,
+        model, duality_cost, z, z, b, grad, ay0, t1_tau, t1_th,
         y0_vec, y1_0_vec, y1_theta_vec, nu, R_theta1, theta);
     if (tau_sel <= 0) {
       result.iterations = outer + 1;
@@ -2138,7 +2242,168 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
       if (converged) break;
     } else {
       // Geodesic step (always take — d_inf may be ≤ 1 by design in ThetaCont).
+      RowSpace z_outer = z;  // save z₀ for frozen-J
       geodesicStepTarget(z, alpha, target_k);
+
+      // Frozen-Jacobian inner steps: use stale Gram (H(z_outer)) with
+      // frozen centering = -∇F(z_i) + H(z_outer)·z_i.
+      // rhs1 (optimality) and rhs2 (theta correction) are frozen.
+      // y1_0 and y1_theta are frozen. Only y0 (centering) is refreshed.
+      //
+      // Debug: set refactor_inner=true to refactor at z_i and use the
+      // standard (non-frozen) path.  This should produce the same
+      // trajectory as baseline (max_centering_steps=0).
+      constexpr bool refactor_inner = false;
+
+      for (int inner = 0; inner < max_centering_steps; ++inner) {
+        RowSpace ay0_f = model.MakeRowSpace();
+        RowSpace t1_tau_f = t1_tau;  // frozen
+        RowSpace t1_th_f = t1_th;    // frozen
+        Eigen::VectorXd y0_f, y1_0_f = y1_0_vec, y1_theta_f = y1_theta_vec;
+        RowSpace z_hess_f = z_outer;
+        RowSpace grad_f = model.MakeRowSpace();
+
+        if (refactor_inner) {
+          // Full refactor: makes inner iteration identical to outer.
+          z_outer = z;
+          z_hess_f = z;
+          model.SetScaling(z);
+          model.AssembleAndFactor();
+          total_fac++;
+
+          // Recompute all 3 RHS.
+          computeGradient(z, grad_f);
+
+          auto rhs0_r = model.MakeSolverRHS();
+          rhs0_r.SetZero();
+          RowSpace neg2grad_r = model.MakeRowSpace();
+          neg2grad_r.col() = -2.0 * grad_f.col();
+          model.AccumulateAtranspose(neg2grad_r, rhs0_r);
+
+          RowSpace hb_r = model.MakeRowSpace();
+          hessianProduct(z, b, hb_r);
+          auto rhs1_r = model.MakeSolverRHS();
+          rhs1_r = cost_rhs;
+          model.AccumulateAtranspose(hb_r, rhs1_r);
+          rhs1_r *= -1;
+          if (ts && !ts->equality_sub_assemblers().empty()) {
+            rhs1_r += ts->EqualityAffineTermRHS();
+          }
+
+          RowSpace hz0_r = model.MakeRowSpace();
+          hessianProduct(z, z0, hz0_r);
+          RowSpace theta1_vec_r = model.MakeRowSpace();
+          theta1_vec_r.col() = grad_z0.col() - hz0_r.col();
+          auto rhs2_r = model.MakeSolverRHS();
+          rhs2_r = rhs1_r;
+          rhs2_r *= -1;
+          model.AccumulateAtranspose(theta1_vec_r, rhs2_r);
+
+          auto y_r = model.MakeSolverRHS(3);
+          y_r.SetColumn(0, rhs0_r);
+          y_r.SetColumn(1, rhs1_r);
+          y_r.SetColumn(2, rhs2_r);
+          model.SolveSolverRHS(y_r);
+          total_sol += 3;
+
+          Eigen::MatrixXd y_dense_r(nr, 3);
+          y_r.supernodes->GatherInto(y_dense_r);
+          y0_f = y_dense_r.col(0);
+          y1_0_f = y_dense_r.col(1);
+          y1_theta_f = y_dense_r.col(2);
+
+          auto row_r = model.MakeRowSpace(3);
+          model.MultiplyA(y_r, row_r);
+          ay0_f.col() = row_r.col(0);
+          RowSpace ay1_0_r = model.MakeRowSpace();
+          RowSpace ay1_theta_r = model.MakeRowSpace();
+          ay1_0_r.col() = row_r.col(1);
+          ay1_theta_r.col() = row_r.col(2);
+          t1_tau_f = addScaled(ay1_0_r, b, 1.0, 1.0);
+          t1_th_f = addScaled(ay1_theta_r,
+              addScaled(z0, b, 1.0, -1.0), 1.0, 1.0);
+
+          // Full theta binary search (same as outer).
+          double theta_lo_r = 0.0;
+          double theta_hi_r = theta;
+          for (int bisect = 0; bisect < 30; ++bisect) {
+            double theta_mid = 0.5 * (theta_lo_r + theta_hi_r);
+            auto [tau_try, d_inf_try] = EvalBarrierThetaCandidate(
+                model, duality_cost, z, z, b, grad_f,
+                ay0_f, t1_tau_f, t1_th_f,
+                y0_f, y1_0_f, y1_theta_f,
+                nu, R_theta1, theta_mid);
+            if (tau_try > 0 && d_inf_try <= beta_target) {
+              theta_hi_r = theta_mid;
+            } else {
+              theta_lo_r = theta_mid;
+            }
+          }
+          theta = theta_hi_r;
+          k = 1.0 / std::sqrt(theta);
+
+          auto [tau_r, d_inf_r] = EvalBarrierThetaCandidate(
+              model, duality_cost, z, z, b, grad_f,
+              ay0_f, t1_tau_f, t1_th_f,
+              y0_f, y1_0_f, y1_theta_f,
+              nu, R_theta1, theta);
+          if (tau_r <= 0) break;
+          tau = tau_r;
+
+          RowSpace target_k_r = addScaled(ay0_f,
+              addScaled(t1_tau_f, t1_th_f, tau, theta), 1.0, k);
+          double alpha_r = stepSize(z, target_k_r);
+
+          if (verbose) {
+            double d_sq_r = hessianNormSquared(z, target_k_r);
+            double mu_r = theta;
+            double gap_r = mu_r * (nu - d_sq_r);
+            printf("  %3d.%d  %8.6f  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  (frozen-J)\n",
+                   outer, inner + 1, theta, tau, k, d_sq_r, gap_r, mu_r);
+          }
+          geodesicStepTarget(z, alpha_r, target_k_r);
+        } else {
+          // Frozen centering: -∇F(z_i) + H(z_outer)·z_i.
+          // Keep theta fixed, refresh centering, line search for k.
+          computeGradient(z, grad_f);
+          RowSpace z_raw_i = getConePoint(z);
+          RowSpace hz0_zi = model.MakeRowSpace();
+          hessianProduct(z_outer, z_raw_i, hz0_zi);
+          RowSpace centering_f = addScaled(grad_f, hz0_zi, -1.0, 1.0);
+
+          auto rhs0_f = model.MakeSolverRHS();
+          rhs0_f.SetZero();
+          model.AccumulateAtranspose(centering_f, rhs0_f);
+          model.SolveSolverRHS(rhs0_f);
+          total_sol += 1;
+
+          // Recover target0.
+          model.MultiplyA(rhs0_f, ay0_f);
+
+          // Frozen inner step: treat tau·t1_tau + theta·t1_th as
+          // a single frozen "d1" direction. Line search for k using
+          // the refreshed centering (ay0_f) and frozen d1.
+          RowSpace d1_frozen = addScaled(t1_tau, t1_th, tau, theta);
+          double k_new_f = lineSearchTarget(z, ay0_f, d1_frozen);
+          if (k_new_f > k) {
+            k = k_new_f;
+            theta = 1.0 / (k * k);
+          }
+          RowSpace target_k_f = addScaled(ay0_f, d1_frozen, 1.0, k);
+
+          double alpha_f = stepSize(z, target_k_f);
+
+          if (verbose) {
+            double d_sq_f = hessianNormSquared(z, target_k_f);
+            double mu_f = theta;
+            double gap_f = mu_f * (nu - d_sq_f);
+            printf("  %3d.%d  %8.6f  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  (frozen-J)\n",
+                   outer, inner + 1, theta, tau, k, d_sq_f, gap_f, mu_f);
+          }
+
+          geodesicStepTarget(z, alpha_f, target_k_f);
+        }
+      }
     }
   }
 

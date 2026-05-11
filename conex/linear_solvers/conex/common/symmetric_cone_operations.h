@@ -81,6 +81,14 @@ class BarrierConeOperations {
   virtual double barrierParameter(int size) const {
     (void)size; std::abort(); return 0;
   }
+
+  // Recover the raw cone point z from the stored representation.
+  // For barrier cones (e.g., exp cone), stored = raw, so this is identity.
+  // Override in SymmetricConeOperations where stored = W = -∇F(z).
+  virtual void getConePoint(double* out, const double* stored,
+                            int size) const {
+    for (int i = 0; i < size; ++i) out[i] = stored[i];
+  }
 };
 
 // Extended interface for symmetric cones (nonneg, SOC, PSD).
@@ -163,6 +171,12 @@ class SymmetricConeOperations : public BarrierConeOperations {
   // --- Default z-space implementations for symmetric cones ---
   // These use the Jordan algebra: d = e - P(W, target), where W = z.
   // Override in NonnegOrthantOps for elementwise (faster) versions.
+
+  // Stored W = -∇F(z_primal), so z_primal = W^{-1} (Jordan algebra inverse).
+  void getConePoint(double* out, const double* stored,
+                    int size) const override {
+    inverse(out, stored, size);
+  }
 
   // ∇F(z) = -W (since z stores W = -∇F(z_primal)).
   void computeGradient(double* grad, const double* z,

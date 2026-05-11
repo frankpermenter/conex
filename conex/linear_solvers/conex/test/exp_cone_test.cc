@@ -1290,7 +1290,7 @@ TEST(ExpCone, BarrierLP_ModelSolver) {
 
   auto solver = Solver::Build(model);
   auto cm = solver.MakeCompiledModel();
-  auto result = conex::GeodesicBarrierLP{1e-4, 20, true, z0}.Run(cm);
+  auto result = conex::GeodesicBarrierLP{1e-4, 20, 0, true, z0}.Run(cm);
 
   printf("\n=== BarrierLP via Model/Solver (exp cone) ===\n");
   printf("  iters=%d, gap=%.2e, mu=%.2e\n",
@@ -1298,6 +1298,68 @@ TEST(ExpCone, BarrierLP_ModelSolver) {
 
   EXPECT_GT(result.iterations, 0);
   EXPECT_LT(result.mu, 1e-2) << "mu should decrease";
+}
+
+// Test frozen-Jacobian BarrierLP on exp cones.
+TEST(ExpCone, FrozenJacobian_BarrierLP) {
+  using Eigen::VectorXd;
+  using Eigen::MatrixXd;
+  using Eigen::Vector3d;
+  using conex::Model;
+  using conex::Solver;
+  using conex::GeodesicBarrierLP;
+
+  ExpConeOps ops;
+  srand(42);
+
+  const int p = 4;
+  const int m = 3;
+
+  struct Cone { MatrixXd A; Vector3d b; };
+  std::vector<Cone> cones(m);
+  for (int i = 0; i < m; ++i) {
+    cones[i].A = 0.3 * MatrixXd::Random(3, p);
+    cones[i].b = Vector3d(0, 1.0, std::exp(1.0) + 1.0);
+  }
+  VectorXd c = VectorXd::Zero(p);
+  for (int i = 0; i < m; ++i) {
+    double gi[3];
+    ExpConeOps::BarrierGrad(cones[i].b(0), cones[i].b(1), cones[i].b(2), gi);
+    c -= cones[i].A.transpose() * Eigen::Map<Vector3d>(gi);
+  }
+
+  std::vector<int> vars(p);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  auto run = [&](int frozen_steps) {
+    Model model;
+    Eigen::VectorXd z0(3 * m);
+    for (int i = 0; i < m; ++i) {
+      Eigen::SparseMatrix<double> As = cones[i].A.sparseView();
+      model.AddBarrierConstraint(As, cones[i].b, vars, &ops);
+      z0.segment(3 * i, 3) = cones[i].b;
+    }
+    model.SetLinearCost(c);
+    auto solver = Solver::Build(model);
+    auto cm = solver.MakeCompiledModel();
+    return GeodesicBarrierLP{1e-4, 25, frozen_steps, true, z0}.Run(cm);
+  };
+
+  auto r0 = run(0);
+  auto r1 = run(1);
+  auto r2 = run(2);
+
+  printf("\n=== Frozen-J BarrierLP on exp cone ===\n");
+  printf("  frozen=0: %2d iters, %2d fac, gap=%.2e, mu=%.2e\n",
+         r0.iterations, r0.total_factorizations, r0.complementarity, r0.mu);
+  printf("  frozen=1: %2d iters, %2d fac, gap=%.2e, mu=%.2e\n",
+         r1.iterations, r1.total_factorizations, r1.complementarity, r1.mu);
+  printf("  frozen=2: %2d iters, %2d fac, gap=%.2e, mu=%.2e\n",
+         r2.iterations, r2.total_factorizations, r2.complementarity, r2.mu);
+
+  EXPECT_LT(r0.complementarity, 1e-4);
+  EXPECT_LT(r1.complementarity, 1e-4);
+  EXPECT_LT(r2.complementarity, 1e-4);
 }
 
 }  // namespace

@@ -313,6 +313,16 @@ inline void setFromVector(Variable& v, const Eigen::VectorXd& vec) {
 
 // --- z-space operations for geodesic IPM on general cones ---
 
+// Recover raw cone point from stored representation.
+// Identity for barrier cones (exp), inverse for symmetric cones.
+inline Variable getConePoint(const Variable& stored) {
+  Variable out = like(stored);
+  for (int i = 0; i < stored.num_constraints(); ++i)
+    stored.ops[i]->getConePoint(out.segment_ptr(i), stored.segment_ptr(i),
+                                stored.sizes[i]);
+  return out;
+}
+
 inline void computeGradient(const Variable& z, Variable& grad) {
   for (int i = 0; i < z.num_constraints(); ++i)
     z.ops[i]->computeGradient(grad.segment_ptr(i), z.segment_ptr(i),

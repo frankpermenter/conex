@@ -65,7 +65,7 @@ TEST(PolyhedralCone, ConvergenceProfile) {
     nn_model.SetLinearCost(c);
     auto nn_solver = Solver::Build(nn_model);
     auto nn_cm = nn_solver.MakeCompiledModel();
-    auto nn_result = GeodesicBarrierLP{1e-14, max_iter, false}.Run(nn_cm);
+    auto nn_result = GeodesicBarrierLP{1e-14, max_iter, 0, false}.Run(nn_cm);
 
     // Polyhedral.
     const int np = n + 1;
@@ -97,7 +97,7 @@ TEST(PolyhedralCone, ConvergenceProfile) {
       m.SetLinearCost(c_ext);
       auto s = Solver::BuildDense(m);
       auto cm = s.MakeCompiledModel();
-      return GeodesicBarrierLP{1e-14, max_iter, false, w0}.Run(cm);
+      return GeodesicBarrierLP{1e-14, max_iter, 0, false, w0}.Run(cm);
     };
 
     auto poly_result = run_poly(&poly_ops);
@@ -185,7 +185,7 @@ TEST(PolyhedralCone, NonnegVsPolyhedral) {
 
   auto nonneg_solver = Solver::Build(nonneg_model);
   auto nonneg_cm = nonneg_solver.MakeCompiledModel();
-  auto nonneg_result = GeodesicBarrierLP{1e-8, 30, false}.Run(nonneg_cm);
+  auto nonneg_result = GeodesicBarrierLP{1e-8, 30, 0, false}.Run(nonneg_cm);
 
   printf("\n=== Nonneg formulation ===\n");
   printf("  iters=%d, gap=%.2e, mu=%.2e, c^Tx=%.6f\n",
@@ -220,9 +220,27 @@ TEST(PolyhedralCone, NonnegVsPolyhedral) {
 
   auto poly_solver = Solver::BuildDense(poly_model);
   auto poly_cm = poly_solver.MakeCompiledModel();
-  auto poly_result = GeodesicBarrierLP{1e-8, 60, true, w0}.Run(poly_cm);
+  auto poly_result = GeodesicBarrierLP{1e-8, 60, 0, true, w0}.Run(poly_cm);
+
+  // Frozen-J comparison.
+  auto poly_solver_f1 = Solver::BuildDense(poly_model);
+  auto poly_cm_f1 = poly_solver_f1.MakeCompiledModel();
+  auto poly_f1 = GeodesicBarrierLP{1e-8, 60, 1, true, w0}.Run(poly_cm_f1);
+
+  auto poly_solver_f2 = Solver::BuildDense(poly_model);
+  auto poly_cm_f2 = poly_solver_f2.MakeCompiledModel();
+  auto poly_f2 = GeodesicBarrierLP{1e-8, 60, 2, true, w0}.Run(poly_cm_f2);
 
   printf("\n=== Polyhedral formulation ===\n");
+  printf("  frozen=0: %2d iters, %2d fac, gap=%.2e, mu=%.2e\n",
+         poly_result.iterations, poly_result.total_factorizations,
+         poly_result.complementarity, poly_result.mu);
+  printf("  frozen=1: %2d iters, %2d fac, gap=%.2e, mu=%.2e\n",
+         poly_f1.iterations, poly_f1.total_factorizations,
+         poly_f1.complementarity, poly_f1.mu);
+  printf("  frozen=2: %2d iters, %2d fac, gap=%.2e, mu=%.2e\n",
+         poly_f2.iterations, poly_f2.total_factorizations,
+         poly_f2.complementarity, poly_f2.mu);
   printf("  iters=%d, gap=%.2e, mu=%.2e\n",
          poly_result.iterations, poly_result.complementarity,
          poly_result.mu);
