@@ -1,32 +1,38 @@
 # conex
-An implementation of a geodesic interior-point method for symmetric cone optimization.
 
-## Build requirements
+A geodesic interior-point method for conic optimization (LP, QP, SDP, SOCP, exponential cone).
 
-- Bazel **9.0.0** is required for Bazel targets in this repo (pinned in `.bazelversion`).
-- Recommended: install and use `bazelisk` so the version in `.bazelversion` is selected automatically.
-- If you use a plain `bazel` binary directly, it should be version `9.0.0`.
+## Build
 
-## Quick start
+Requires CMake 3.14+, a C++17 compiler, and Eigen 3.
 
-Run core tests:
 ```bash
-bazel test --config=debug //conex/...
+mkdir build && cd build
+cmake ..
+make -j$(nproc)
+ctest
 ```
 
-Run the full project build/test script:
-```bash
-./build_all.sh
+## Repository Structure
+
+```
+src/conex/          C++ library source
+  common/           Model, solver, cone ops, constraint assemblers
+  algorithms/       Geodesic IPM, HSDE, hybrid, theta-continuation
+  tree_solver/      Supernodal Cholesky factorization
+tests/              GTest unit tests
+bench/              Benchmarks and utilities
+doc/                LaTeX documentation
+python/             Python bindings (planned)
+legacy/             Archived Bazel-based code and old C API
 ```
 
-Useful flags for `build_all.sh`:
-- `SKIP_FORMATTING=1` to skip `buildifier` and `clang-format`
-- `SKIP_BAZEL=1` to skip Bazel test steps
+## Citation
 
-If this code is useful to you, please cite:
 ```
 @article{permenter2020geodesic,
   title={A geodesic interior-point method for linear optimization over symmetric cones},
   author={Permenter, Frank},
   year={2020}
 }
+```
