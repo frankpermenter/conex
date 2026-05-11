@@ -186,7 +186,7 @@ TEST_F(PowerConeTest, SolverIntegration_BarrierLP) {
   EXPECT_GT(result.iterations, 0);
 }
 
-TEST_F(PowerConeTest, DISABLED_SolverIntegration_ThetaCont) {
+TEST_F(PowerConeTest, SolverIntegration_ThetaCont) {
   srand(42);
   const int n = 3, cone_dim = 4;
   PowerConeOps ops(alpha);
@@ -212,7 +212,7 @@ TEST_F(PowerConeTest, DISABLED_SolverIntegration_ThetaCont) {
   auto solver = conex::Solver::Build(model);
   auto cm = solver.MakeCompiledModel();
   auto result = conex::GeodesicBarrierThetaContinuation{
-      1e-4, 20, 0, true, z0}.Run(cm);
+      1e-4, 20, 0, false, z0}.Run(cm);
 
   printf("\n=== PowerCone ThetaCont ===\n");
   printf("  iters=%d, fac=%d, gap=%.2e, mu=%.2e\n",

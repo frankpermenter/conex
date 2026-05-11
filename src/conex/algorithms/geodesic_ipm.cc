@@ -2055,7 +2055,6 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
   const double nu = barrierParameter(z);
 
   // Starting point z_0 = z (the initial interior point).
-  // For nonneg with z = W = ones, this is e.
   RowSpace z0 = model.MakeRowSpace();
   z0.col() = z.col();
 
@@ -2063,14 +2062,6 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
   RowSpace grad_z0 = model.MakeRowSpace();
   computeGradient(z0, grad_z0);
 
-  // At θ=1: c_1 = -A^T ∇F(z_0), so R = b^T(-∇F(z_0)/k) + c_1^T·x + ...
-  // R = b^T·(-∇F(z_0)) + (-∇F(z_0))^T·(A·x) + 1 = ...
-  // Actually R comes from: at θ=1, k=1, centered at z_0, gap = ν.
-  // The identity: b^T λ + c^T x + ν·μ/τ = θ·R.
-  // At θ=1, k=1, τ→∞ (centered): b^T λ_0 + c_1^T·0 + 0 = R.
-  // λ_0 = -(1/k)∇F(z_0) = -∇F(z_0), so R = -b^T ∇F(z_0).
-  // But we also need + 1 for the μ/τ term structure. Let me just compute
-  // R = dot(b, -grad_z0) + 1.0 (matching the W-space bT_ones + 1).
   RowSpace neg_grad_z0 = model.MakeRowSpace();
   neg_grad_z0.col() = -grad_z0.col();
   const double R_theta1 = dot(b, neg_grad_z0) + 1.0;

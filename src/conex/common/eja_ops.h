@@ -212,9 +212,17 @@ inline double squaredNorm(const Variable& a) {
 // <a, b>.
 inline double dot(const Variable& a, const Variable& b) {
   double result = 0;
-  for (int i = 0; i < a.num_constraints(); ++i)
-    result += sym_ops(a.ops[i])->dot(a.segment_ptr(i), b.segment_ptr(i),
-                            a.sizes[i]);
+  for (int i = 0; i < a.num_constraints(); ++i) {
+    auto* sops = dynamic_cast<const SymmetricConeOperations*>(a.ops[i]);
+    if (sops) {
+      result += sops->dot(a.segment_ptr(i), b.segment_ptr(i), a.sizes[i]);
+    } else {
+      // Generic fallback: Euclidean dot product.
+      const double* ap = a.segment_ptr(i);
+      const double* bp = b.segment_ptr(i);
+      for (int j = 0; j < a.sizes[i]; ++j) result += ap[j] * bp[j];
+    }
+  }
   return result;
 }
 
