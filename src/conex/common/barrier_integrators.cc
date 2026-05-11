@@ -65,10 +65,29 @@ static void invertGradient(const Ops* ops, double* z,
 //   w₁ = [(∇φ(z₁) - ∇φ(z₀)) + H(z₁)·(z₁ - z₀)] / (2h)
 //   v₁ = H(z₁)⁻¹ · w₁
 
+// Single substep of the symmetric integrator (no adaptive subdivision).
+static void symmetricSubstep(const Ops* ops,
+                              double* z, double* vel, double h, int size);
+
 void symmetricStep(const Ops* ops,
                    double* z, double* vel, double h, int size) {
   assert(size <= kMaxBarrierDim);
 
+  // Adaptive substeps: subdivide if Riemannian speed is large.
+  double Hv[kMaxBarrierDim];
+  ops->hessianProduct(Hv, z, vel, size);
+  double speed_sq = 0;
+  for (int i = 0; i < size; ++i) speed_sq += vel[i] * Hv[i];
+  double speed = std::sqrt(std::max(speed_sq, 0.0)) * std::abs(h);
+  int steps = std::max(1, (int)std::ceil(speed));
+  double sub_h = h / steps;
+
+  for (int s = 0; s < steps; ++s)
+    symmetricSubstep(ops, z, vel, sub_h, size);
+}
+
+static void symmetricSubstep(const Ops* ops,
+                              double* z, double* vel, double h, int size) {
   double grad0_buf[kMaxBarrierDim];
   double grad1_buf[kMaxBarrierDim];
   double H0_buf[kMaxBarrierDim * kMaxBarrierDim];

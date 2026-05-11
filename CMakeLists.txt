@@ -389,6 +389,15 @@ target_link_libraries(hypo_geomean_cone_ops_test PRIVATE
 )
 gtest_discover_tests(hypo_geomean_cone_ops_test)
 
+add_executable(barrier_integrators_test tests/barrier_integrators_test.cc)
+target_link_libraries(barrier_integrators_test PRIVATE
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
+gtest_discover_tests(barrier_integrators_test)
+
 add_executable(extended_embedding_test
   tests/extended_embedding_test.cc
 )
