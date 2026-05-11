@@ -83,15 +83,28 @@ class BarrierConeOperations {
   }
 
   // Geodesic step: z ← Exp_z(α(target - z)).
-  // Default: Bregman midpoint step (first-order, no third derivatives).
-  //   z_new = z + α(target - z)  [Euler step as fallback]
+  // Default: damped Euler step with backtracking to preserve feasibility.
   // Override with Verlet (BarrierConeOpsThirdDeriv) or exact (symmetric).
   virtual void geodesicStepTarget(double* z, double alpha,
                                   const double* target, int size) const {
-    // Euler step (simplest default — Bregman midpoint would be better
-    // but requires solving a nonlinear equation).
-    for (int i = 0; i < size; ++i)
-      z[i] += alpha * (target[i] - z[i]);
+    // Damped Euler step with backtracking. We check feasibility by
+    // attempting computeGradient — if it produces NaN/inf, halve alpha.
+    std::vector<double> z_try(size), grad_try(size);
+    for (int attempt = 0; attempt < 20; ++attempt) {
+      for (int i = 0; i < size; ++i)
+        z_try[i] = z[i] + alpha * (target[i] - z[i]);
+      computeGradient(grad_try.data(), z_try.data(), size);
+      bool ok = true;
+      for (int i = 0; i < size; ++i) {
+        if (!std::isfinite(grad_try[i])) { ok = false; break; }
+      }
+      if (ok) {
+        for (int i = 0; i < size; ++i) z[i] = z_try[i];
+        return;
+      }
+      alpha *= 0.5;
+    }
+    // All attempts failed — don't move.
   }
 
   // Line search: max k with ||target0 + k·target1 - z||²_{H(z)} ≤ 1.

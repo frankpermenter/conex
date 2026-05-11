@@ -4,3 +4,4 @@ build/
 *.so
 CMakeLists.txt.bak
 
+build_dbg/
