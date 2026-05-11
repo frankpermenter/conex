@@ -275,3 +275,102 @@ TEST(BarrierIntegrators, EnergyConservation) {
     EXPECT_LT(rel_var, 0.1) << tc.name << ": energy not conserved";
   }
 }
+
+// ============================================================
+// Exact reference for exp cone using analytic ThirdDerivContract
+// ============================================================
+
+// Fine-grid Störmer-Verlet using ExpConeOps::ThirdDerivContract (exact).
+static void expConeExactReference(const double* z0, double alpha,
+                                   const double* d, double* out,
+                                   int steps = 10000) {
+  ExpConeOps ops;
+  const int n = 3;
+  double pos[3] = {z0[0], z0[1], z0[2]};
+  double vel[3] = {alpha * d[0], alpha * d[1], alpha * d[2]};
+  double dt = 1.0 / steps;
+  for (int s = 0; s < steps; ++s) {
+    auto kick = [&]() {
+      double T[3], H_buf[9];
+      ops.thirdDerivContract(T, pos, vel, n);
+      ops.hessian(H_buf, pos, n);
+      Eigen::Map<Eigen::MatrixXd> H(H_buf, 3, 3);
+      Eigen::Map<Eigen::VectorXd> Tv(T, 3);
+      Eigen::Vector3d a = H.ldlt().solve(-0.5 * Tv);
+      for (int i = 0; i < 3; ++i) vel[i] += 0.5 * dt * a(i);
+    };
+    kick();
+    for (int i = 0; i < 3; ++i) pos[i] += dt * vel[i];
+    kick();
+  }
+  for (int i = 0; i < 3; ++i) out[i] = pos[i];
+}
+
+TEST(BarrierIntegrators, ExpCone_ExactThirdDerivReference) {
+  const int n = 3;
+  double z0[3] = {0.1, 1.0, 2.5};
+  double d[3] = {0.2, -0.1, 0.15};
+  double alpha = 0.3;
+
+  // Exact reference: 10000-step Verlet with analytic third derivative.
+  double ref_exact[3];
+  expConeExactReference(z0, alpha, d, ref_exact);
+
+  // Finite-diff reference (used by other tests).
+  double ref_fd[3];
+  fineGridReference(&g_exp_ops, z0, alpha, d, ref_fd, n);
+
+  // They should agree closely (finite-diff error ≈ 1e-10 × 10000 steps).
+  double ref_diff = dist(ref_exact, ref_fd, n);
+  printf("\n  Exact vs finite-diff reference: %.2e\n", ref_diff);
+  EXPECT_LT(ref_diff, 1e-6) << "references disagree";
+
+  // Now test each integrator against the exact reference.
+  auto test = [&](const char* name, auto step_fn) {
+    double z[3], vel[3];
+    std::memcpy(z, z0, sizeof(z));
+    for (int i = 0; i < n; ++i) vel[i] = alpha * d[i];
+    step_fn(z, vel);
+    double err = dist(z, ref_exact, n);
+    printf("  %s: %.4e\n", name, err);
+    return err;
+  };
+
+  double err_sym = test("Symmetric", [&](double* z, double* v) {
+    conex::symmetricStep(&g_exp_ops, z, v, 1.0, n);
+  });
+  double err_pm = test("Primal-mid", [&](double* z, double* v) {
+    conex::primalMidpointStep(&g_exp_ops, z, v, 1.0, n);
+  });
+  double err_dm = test("Dual-mid", [&](double* z, double* v) {
+    conex::dualMidpointStep(&g_exp_ops, z, v, 1.0, n);
+  });
+  double err_y4 = test("Yoshida-4", [&](double* z, double* v) {
+    conex::yoshida4Step(&g_exp_ops, z, v, 1.0, n);
+  });
+  double z_eu[3] = {z0[0]+alpha*d[0], z0[1]+alpha*d[1], z0[2]+alpha*d[2]};
+  double err_eu = dist(z_eu, ref_exact, n);
+  printf("  Euler:       %.4e\n", err_eu);
+
+  // Verify Yoshida-4 is 4th order: compare h=1 vs h=0.5 (ratio ≈ 16).
+  double z_h1[3], v_h1[3], z_h05[3], v_h05[3];
+  std::memcpy(z_h1, z0, sizeof(z_h1));
+  std::memcpy(z_h05, z0, sizeof(z_h05));
+  for (int i = 0; i < n; ++i) v_h1[i] = v_h05[i] = alpha * d[i];
+  conex::yoshida4Step(&g_exp_ops, z_h1, v_h1, 1.0, n);
+  conex::yoshida4Step(&g_exp_ops, z_h05, v_h05, 0.5, n);
+  conex::yoshida4Step(&g_exp_ops, z_h05, v_h05, 0.5, n);
+  double err_y4_h1 = dist(z_h1, ref_exact, n);
+  double err_y4_h05 = dist(z_h05, ref_exact, n);
+  double ratio = err_y4_h1 / std::max(err_y4_h05, 1e-30);
+  printf("  Yoshida-4 convergence: h=1 err=%.2e, h=0.5 err=%.2e, ratio=%.1f (expect ~16)\n",
+         err_y4_h1, err_y4_h05, ratio);
+  EXPECT_GT(ratio, 8.0) << "Yoshida-4 should be 4th order (ratio ≈ 16)";
+
+  // All integrators should beat Euler.
+  EXPECT_LT(err_sym, err_eu);
+  EXPECT_LT(err_pm, err_eu);
+  EXPECT_LT(err_dm, err_eu);
+  EXPECT_LT(err_y4, err_eu);
+  EXPECT_LT(err_y4, err_sym) << "Yoshida-4 should beat symmetric";
+}
