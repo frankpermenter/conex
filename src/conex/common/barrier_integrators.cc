@@ -289,4 +289,26 @@ void yoshida4Step(const Ops* ops,
   symmetricStep(ops, z, vel, w1 * h, size);
 }
 
+void yoshida4PrimalStep(const Ops* ops,
+                        double* z, double* vel, double h, int size) {
+  const double cbrt2 = std::cbrt(2.0);
+  const double w1 = 1.0 / (2.0 - cbrt2);
+  const double w0 = 1.0 - 2.0 * w1;
+
+  primalMidpointStep(ops, z, vel, w1 * h, size);
+  primalMidpointStep(ops, z, vel, w0 * h, size);
+  primalMidpointStep(ops, z, vel, w1 * h, size);
+}
+
+void yoshida4DualStep(const Ops* ops,
+                      double* z, double* vel, double h, int size) {
+  const double cbrt2 = std::cbrt(2.0);
+  const double w1 = 1.0 / (2.0 - cbrt2);
+  const double w0 = 1.0 - 2.0 * w1;
+
+  dualMidpointStep(ops, z, vel, w1 * h, size);
+  dualMidpointStep(ops, z, vel, w0 * h, size);
+  dualMidpointStep(ops, z, vel, w1 * h, size);
+}
+
 }  // namespace conex

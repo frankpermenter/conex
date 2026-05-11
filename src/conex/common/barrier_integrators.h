@@ -37,8 +37,12 @@ void primalMidpointStep(const EuclideanJordanAlgebra::BarrierConeOperations* ops
 void dualMidpointStep(const EuclideanJordanAlgebra::BarrierConeOperations* ops,
                       double* z, double* vel, double h, int size);
 
-// Yoshida 4th-order: compose 3 symmetric sub-steps.
+// Yoshida 4th-order compositions of each base integrator.
 void yoshida4Step(const EuclideanJordanAlgebra::BarrierConeOperations* ops,
                   double* z, double* vel, double h, int size);
+void yoshida4PrimalStep(const EuclideanJordanAlgebra::BarrierConeOperations* ops,
+                        double* z, double* vel, double h, int size);
+void yoshida4DualStep(const EuclideanJordanAlgebra::BarrierConeOperations* ops,
+                      double* z, double* vel, double h, int size);
 
 }  // namespace conex

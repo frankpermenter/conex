@@ -151,12 +151,17 @@ TEST(BarrierIntegrators, AccuracyVsReference) {
     conex::dualMidpointStep(tc.ops, z_dm, vel_dm, 1.0, n);
     double err_dm = dist(z_dm, ref, n);
 
-    // Yoshida-4 (1 composite step = 3 symmetric sub-steps).
-    double z_y4[conex::kMaxBarrierDim], vel_y4[conex::kMaxBarrierDim];
-    std::memcpy(z_y4, tc.z0.data(), n * sizeof(double));
-    for (int i = 0; i < n; ++i) vel_y4[i] = alpha * tc.d[i];
-    conex::yoshida4Step(tc.ops, z_y4, vel_y4, 1.0, n);
-    double err_y4 = dist(z_y4, ref, n);
+    // Yoshida-4 variants (1 composite step = 3 sub-steps each).
+    auto run_y4 = [&](auto step_fn) {
+      double z[conex::kMaxBarrierDim], vel[conex::kMaxBarrierDim];
+      std::memcpy(z, tc.z0.data(), n * sizeof(double));
+      for (int i = 0; i < n; ++i) vel[i] = alpha * tc.d[i];
+      step_fn(tc.ops, z, vel, 1.0, n);
+      return dist(z, ref, n);
+    };
+    double err_y4s = run_y4(conex::yoshida4Step);
+    double err_y4p = run_y4(conex::yoshida4PrimalStep);
+    double err_y4d = run_y4(conex::yoshida4DualStep);
 
     // Euler.
     double z_eu[conex::kMaxBarrierDim];
@@ -164,20 +169,26 @@ TEST(BarrierIntegrators, AccuracyVsReference) {
     double err_eu = dist(z_eu, ref, n);
 
     printf("\n  %s (alpha=%.1f):\n", tc.name, alpha);
-    printf("    Symmetric:     %.4e  (%.0fx vs euler)\n",
+    printf("    Symmetric:       %.4e  (%.0fx vs euler)\n",
            err_sym, err_eu / std::max(err_sym, 1e-30));
-    printf("    Primal-mid:    %.4e  (%.0fx vs euler)\n",
+    printf("    Primal-mid:      %.4e  (%.0fx vs euler)\n",
            err_pm, err_eu / std::max(err_pm, 1e-30));
-    printf("    Dual-mid:      %.4e  (%.0fx vs euler)\n",
+    printf("    Dual-mid:        %.4e  (%.0fx vs euler)\n",
            err_dm, err_eu / std::max(err_dm, 1e-30));
-    printf("    Yoshida-4:     %.4e  (%.0fx vs euler)\n",
-           err_y4, err_eu / std::max(err_y4, 1e-30));
-    printf("    Euler:         %.4e  (baseline)\n", err_eu);
+    printf("    Y4-symmetric:    %.4e  (%.0fx vs euler)\n",
+           err_y4s, err_eu / std::max(err_y4s, 1e-30));
+    printf("    Y4-primal-mid:   %.4e  (%.0fx vs euler)\n",
+           err_y4p, err_eu / std::max(err_y4p, 1e-30));
+    printf("    Y4-dual-mid:     %.4e  (%.0fx vs euler)\n",
+           err_y4d, err_eu / std::max(err_y4d, 1e-30));
+    printf("    Euler:           %.4e  (baseline)\n", err_eu);
 
-    // Midpoint integrators should beat Euler.
+    // All integrators should beat Euler.
     EXPECT_LT(err_pm, err_eu) << tc.name << ": primal midpoint worse than Euler";
     EXPECT_LT(err_dm, err_eu) << tc.name << ": dual midpoint worse than Euler";
-    // TODO: fix symmetric step Newton solve — currently diverges at h=1.
+    EXPECT_LT(err_y4s, err_sym) << tc.name << ": Y4-sym worse than symmetric";
+    EXPECT_LT(err_y4p, err_pm) << tc.name << ": Y4-primal worse than primal";
+    EXPECT_LT(err_y4d, err_dm) << tc.name << ": Y4-dual worse than dual";
   }
 }
 
