@@ -340,13 +340,13 @@ target_link_libraries(polyhedral_cone_test PRIVATE
 )
 gtest_discover_tests(polyhedral_cone_test)
 
-# Autodiff barrier oracle library (compiler firewall for Eigen AutoDiff).
-add_library(autodiff_barrier STATIC tests/autodiff_barrier.cc)
-target_link_libraries(autodiff_barrier PUBLIC Eigen3::Eigen)
+# Derivative computation library (Eigen AutoDiff lift/extract, compiled once).
+add_library(derivatives STATIC tests/derivatives.cc)
+target_link_libraries(derivatives PUBLIC Eigen3::Eigen)
 
 add_executable(autodiff_barrier_test tests/autodiff_barrier_test.cc)
 target_link_libraries(autodiff_barrier_test PRIVATE
-  autodiff_barrier
+  derivatives
   algorithms constraints sparse_linear_constraint
   clique_ordering kkt_solver_factory tree_solver
   structural_rank
