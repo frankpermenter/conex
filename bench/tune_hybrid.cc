@@ -22,7 +22,7 @@
 #include "conex/algorithms/solve_strategies.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
-#include "conex/test/kkt_residuals.h"
+#include "kkt_residuals.h"
 
 namespace conex {
 namespace {
