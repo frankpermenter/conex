@@ -107,140 +107,76 @@ double PowerConeOps::barrierParameter(int /*size*/) const {
 
 void PowerConeOps::thirdDerivContract(double* out, const double* z,
                                        const double* v, int size) const {
-  auto [phi, s] = computePhiS(z, size);
-  const int n_w = size - m_;
+  // F = -log(s) - sum log(u_i), so T_l = T_l^{log} + T_l^{diag}.
+  //
+  // For -log(s), the third-derivative contraction decomposes as:
+  //   T_l^{log} = -d3s_v_l/s + s_l*(d2s_v - 2*ds_v^2/s)/s^2 + 2*ds_v_l*ds_v/s^2
+  //
+  // For -sum log(u_i):
+  //   T_l^{diag} = -2*v_l^2/u_l^3  if l < m, else 0.
+  //
+  // Building blocks:
+  //   s_l   = ds/dz_l
+  //   ds_v  = sum v_j * s_j           (first directional derivative of s)
+  //   ds_v_l = d(ds_v)/dz_l           (mixed second)
+  //   d2s_v = sum_{jk} v_j v_k s_{jk} (second directional derivative of s)
+  //   d3s_v_l = d(d2s_v)/dz_l         (third — zero for w-components!)
 
-  // Precompute directional derivatives of phi and s along v.
-  // dphi_v = sum_i 2*alpha_i*phi/u_i * v_i
+  auto [phi, s] = computePhiS(z, size);
+
+  // --- First-order: dphi_v, ds_v ---
   double dphi_v = 0;
   for (int i = 0; i < m_; ++i)
     dphi_v += 2.0 * alpha_(i) * phi / z[i] * v[i];
 
-  double dw_dot_v = 0;
-  for (int j = m_; j < size; ++j)
-    dw_dot_v += z[j] * v[j];
-  double ds_v = dphi_v - 2.0 * dw_dot_v;
+  double vw_sq = 0;  // sum v_j^2 for j >= m
+  double wv = 0;     // sum w_j * v_j
+  for (int j = m_; j < size; ++j) {
+    wv += z[j] * v[j];
+    vw_sq += v[j] * v[j];
+  }
+  double ds_v = dphi_v - 2.0 * wv;
 
-  // T_l = v^T (dH/dz_l) v = d/dz_l [v^T H(z) v].
-  // We compute this by differentiating (Hv)^T v = sum_k (Hv)_k v_k
-  // where (Hv)_k is the k-th component of the Hessian-vector product.
-  //
-  // Strategy: compute (Hv) as a function of (phi, s, dphi_v, ds_v, z)
-  // and take its derivative w.r.t. z_l, contracted with v.
-  //
-  // For the u-components of Hv:
-  //   (Hv)_i = -2*a_i*(dphi_v/(s*u_i) - phi*ds_v/(s^2*u_i)
-  //            - phi*v_i/(s*u_i^2)) + v_i/u_i^2
-  //
-  // For the w-components of Hv:
-  //   (Hv)_j = 2*v_j/s - 2*w_j*ds_v/s^2
-  //
-  // We need d/dz_l of (Hv)^T v.  Since H is symmetric,
-  // d/dz_l [v^T H v] = 2 * v^T (dH/dz_l) v ... no, that's wrong.
-  // v^T H v is a scalar, its derivative w.r.t. z_l is the third deriv
-  // contraction T_l directly.  But (dH/dz_l) is the derivative of the
-  // Hessian matrix, not of the quadratic form.
-  //
-  // Actually T_l = v^T (dH/dz_l) v, and d/dz_l [v^T H v] = T_l since
-  // v doesn't depend on z.
-  //
-  // So T_l = d/dz_l [(Hv)^T v] = [d(Hv)/dz_l]^T v.
-  //
-  // Equivalently: T_l = (d/dz_l of each component of Hv) dotted with v.
+  // --- Second-order: d2s_v = d2phi_v - 2*||v_w||^2 ---
+  // d2phi_v = dphi_v^2/phi - sum_i 2*a_i*phi*v_i^2/u_i^2
+  double sum_av2u2 = 0;  // sum a_i * phi * v_i^2 / u_i^2
+  for (int i = 0; i < m_; ++i)
+    sum_av2u2 += alpha_(i) * phi * v[i] * v[i] / (z[i] * z[i]);
+  double d2phi_v = dphi_v * dphi_v / phi - 2.0 * sum_av2u2;
+  double d2s_v = d2phi_v - 2.0 * vw_sq;
 
-  // Precompute second-order directional derivatives.
-  // For each direction e_l, we need d(dphi_v)/dz_l and d(ds_v)/dz_l.
-  //
-  // dphi_v = sum_i 2*a_i*phi/u_i * v_i
-  // d(dphi_v)/du_l = sum_i 2*a_i*v_i * d(phi/u_i)/du_l
-  //   d(phi/u_i)/du_l = (dphi/du_l)/u_i - delta_{il}*phi/u_i^2
-  //                   = 2*a_l*phi/(u_l*u_i) - delta_{il}*phi/u_i^2
-  //   So d(dphi_v)/du_l = dphi_v * 2*a_l/u_l - 2*a_l*phi/u_l^2 * v_l
-  //
-  // d(dphi_v)/dw_j = 0  (phi doesn't depend on w)
-  //
-  // ds_v = dphi_v - 2*sum_j w_j*v_{m+j}
-  // d(ds_v)/du_l = d(dphi_v)/du_l
-  // d(ds_v)/dw_j = d(dphi_v)/dw_j - 2*v_{m+j} = -2*v_{m+j}
+  // --- Shared scalar: Q = d2s_v - 2*ds_v^2/s ---
+  double Q = d2s_v - 2.0 * ds_v * ds_v / s;
 
+  // --- Assemble T_l ---
   for (int l = 0; l < size; ++l) {
-    // Compute d(dphi_v)/dz_l and d(ds_v)/dz_l.
-    double d2phi_v;  // d(dphi_v)/dz_l
-    double d2s_v;    // d(ds_v)/dz_l
-    double dphi_l;   // dphi/dz_l
-    double ds_l;     // ds/dz_l
+    double s_l;       // ds/dz_l
+    double ds_v_l;    // d(ds_v)/dz_l
+    double d3s_v_l;   // d(d2s_v)/dz_l
+    double T_diag;    // from -sum log(u_i)
 
     if (l < m_) {
-      // z_l = u_l
       double al = alpha_(l);
       double ul = z[l];
-      dphi_l = 2.0 * al * phi / ul;
-      ds_l = dphi_l;
-      d2phi_v = dphi_v * 2.0 * al / ul - 2.0 * al * phi / (ul * ul) * v[l];
-      d2s_v = d2phi_v;
+
+      s_l = 2.0 * al * phi / ul;
+      ds_v_l = 2.0 * al / ul * dphi_v - 2.0 * al * phi / (ul * ul) * v[l];
+      // d3s_v_l = d(d2phi_v)/du_l  (since d(vw_sq)/du_l = 0)
+      //         = 2*a_l/u_l * (d2phi_v - 2*dphi_v*v_l/u_l + 2*phi*v_l^2/u_l^2)
+      d3s_v_l = 2.0 * al / ul *
+          (d2phi_v - 2.0 * dphi_v * v[l] / ul + 2.0 * phi * v[l] * v[l] / (ul * ul));
+      T_diag = -2.0 * v[l] * v[l] / (ul * ul * ul);
     } else {
-      // z_l = w_{l-m}
-      dphi_l = 0;
-      ds_l = -2.0 * z[l];
-      d2phi_v = 0;
-      d2s_v = -2.0 * v[l];
+      s_l = -2.0 * z[l];
+      ds_v_l = -2.0 * v[l];
+      d3s_v_l = 0;  // phi and ||w||^2 have no third derivatives in w
+      T_diag = 0;
     }
 
-    // Now compute T_l = sum_k [d(Hv)_k/dz_l] * v_k.
-    double T_l = 0;
-
-    // u-components: (Hv)_i = -2*a_i*(dphi_v/(s*u_i) - phi*ds_v/(s^2*u_i)
-    //                         - phi*v_i/(s*u_i^2)) + v_i/u_i^2
-    for (int i = 0; i < m_; ++i) {
-      double ai = alpha_(i);
-      double ui = z[i];
-      // Let A = dphi_v/(s*u_i), B = phi*ds_v/(s^2*u_i), C = phi*v_i/(s*u_i^2)
-      // (Hv)_i = -2*a_i*(A - B - C) + v_i/u_i^2
-      //
-      // d(Hv)_i/dz_l = -2*a_i*(dA - dB - dC) + d(v_i/u_i^2)/dz_l
-      // where d means d/dz_l.
-
-      // dA = d[dphi_v/(s*u_i)]/dz_l
-      //    = [d2phi_v*s*u_i - dphi_v*(ds_l*u_i + s*delta_{il})] / (s*u_i)^2
-      double dA = (d2phi_v * s * ui - dphi_v * (ds_l * ui + (l == i ? s : 0)))
-                  / (s * s * ui * ui);
-
-      // dB = d[phi*ds_v/(s^2*u_i)]/dz_l
-      //    = [dphi_l*ds_v + phi*d2s_v]/(s^2*u_i)
-      //      - phi*ds_v*[2*s*ds_l*u_i + s^2*delta_{il}]/(s^4*u_i^2)
-      //    = (dphi_l*ds_v + phi*d2s_v)/(s^2*u_i)
-      //      - phi*ds_v*(2*ds_l)/(s^3*u_i)
-      //      - phi*ds_v*delta_{il}/(s^2*u_i^2)
-      double dB = (dphi_l * ds_v + phi * d2s_v) / (s * s * ui)
-                  - phi * ds_v * 2.0 * ds_l / (s * s * s * ui)
-                  - (l == i ? phi * ds_v / (s * s * ui * ui) : 0);
-
-      // dC = d[phi*v_i/(s*u_i^2)]/dz_l
-      //    = dphi_l*v_i/(s*u_i^2)
-      //      - phi*v_i*ds_l/(s^2*u_i^2)
-      //      - delta_{il}*2*phi*v_i/(s*u_i^3)
-      double dC = dphi_l * v[i] / (s * ui * ui)
-                  - phi * v[i] * ds_l / (s * s * ui * ui)
-                  - (l == i ? 2.0 * phi * v[i] / (s * ui * ui * ui) : 0);
-
-      // d(v_i/u_i^2)/dz_l = -delta_{il}*2*v_i/u_i^3
-      double dD = (l == i ? -2.0 * v[i] / (ui * ui * ui) : 0);
-
-      T_l += (-2.0 * ai * (dA - dB - dC) + dD) * v[i];
-    }
-
-    // w-components: (Hv)_j = 2*v_j/s - 2*w_j*ds_v/s^2
-    for (int j = m_; j < size; ++j) {
-      // d(Hv)_j/dz_l = -2*v_j*ds_l/s^2
-      //   - 2*[delta_{jl}*ds_v/s^2 + w_j*d2s_v/s^2 - 2*w_j*ds_v*ds_l/s^3]
-      double dHvj = -2.0 * v[j] * ds_l / (s * s)
-                    - 2.0 * ((l == j ? 1.0 : 0.0) * ds_v / (s * s)
-                             + z[j] * d2s_v / (s * s)
-                             - 2.0 * z[j] * ds_v * ds_l / (s * s * s));
-      T_l += dHvj * v[j];
-    }
-
-    out[l] = T_l;
+    out[l] = -d3s_v_l / s
+             + s_l * Q / (s * s)
+             + 2.0 * ds_v_l * ds_v / (s * s)
+             + T_diag;
   }
 }
 
