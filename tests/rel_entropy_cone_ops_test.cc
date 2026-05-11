@@ -99,6 +99,39 @@ TEST(RelEntropyConeOps, InteriorPoint) {
   for (int i = 1; i < 5; ++i) EXPECT_GT(z[i], 0);
 }
 
+TEST(RelEntropyConeOps, ThirdDerivContract) {
+  RelEntropyConeOps ops;
+  VectorXd z(5), v(5);
+  z << 3.0, 1.0, 2.0, 0.5, 0.8;
+  v << 0.1, -0.1, 0.05, 0.08, -0.05;
+
+  double T_hand[5];
+  ops.thirdDerivContract(T_hand, z.data(), v.data(), 5);
+
+  auto T_ad = derivatives::third_deriv_contract(
+      barriers::rel_entropy<derivatives::AD3>, z, v);
+
+  for (int i = 0; i < 5; ++i)
+    EXPECT_NEAR(T_hand[i], T_ad(i), 1e-8) << "T[" << i << "]";
+}
+
+TEST(RelEntropyConeOps, ThirdDerivContract_LargerDim) {
+  RelEntropyConeOps ops;
+  // d=3, dim=7
+  VectorXd z(7), v(7);
+  z << 5.0, 1.2, 0.8, 1.5, 0.6, 0.9, 1.1;
+  v << 0.05, -0.1, 0.08, -0.03, 0.07, -0.04, 0.06;
+
+  double T_hand[7];
+  ops.thirdDerivContract(T_hand, z.data(), v.data(), 7);
+
+  auto T_ad = derivatives::third_deriv_contract(
+      barriers::rel_entropy<derivatives::AD3>, z, v);
+
+  for (int i = 0; i < 7; ++i)
+    EXPECT_NEAR(T_hand[i], T_ad(i), 1e-7) << "T[" << i << "] at dim=7";
+}
+
 TEST(RelEntropyConeOps, LargerDimension) {
   // d=4, dim=9: (u, v1..v4, w1..w4)
   RelEntropyConeOps ops;

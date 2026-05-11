@@ -17,7 +17,7 @@
 namespace conex {
 namespace EuclideanJordanAlgebra {
 
-class RelEntropyConeOps : public BarrierConeOperations {
+class RelEntropyConeOps : public BarrierConeOpsThirdDeriv {
  public:
   void computeGradient(double* grad, const double* z,
                        int size) const override;
@@ -25,6 +25,8 @@ class RelEntropyConeOps : public BarrierConeOperations {
                       int size) const override;
   double barrierParameter(int size) const override;
   void getInteriorPoint(double* out, int size) const override;
+  void thirdDerivContract(double* out, const double* z,
+                          const double* v, int size) const override;
 };
 
 }  // namespace EuclideanJordanAlgebra

@@ -105,6 +105,97 @@ void RelEntropyConeOps::hessianProduct(double* out, const double* z,
   }
 }
 
+void RelEntropyConeOps::thirdDerivContract(double* out, const double* z,
+                                            const double* p, int size) const {
+  // F = -log(s) - sum log(v_i) - sum log(w_i)
+  // T_l = -d3s_p_l/s + s_l*Q/s^2 + 2*ds_p_l*ds_p/s^2 + T_diag_l
+  // where Q = d2s_p - 2*ds_p^2/s.
+  //
+  // Building blocks for s = u - sum w_i*log(w_i/v_i):
+  //   s_u = 1, s_{v_i} = w_i/v_i, s_{w_i} = -(log(w_i/v_i) + 1)
+  //   d2s_p = sum_i [-pv_i^2*w_i/v_i^2 + 2*pv_i*pw_i/v_i - pw_i^2/w_i]
+  //   d3s_p_u = 0
+  //   d3s_p_{v_i} = 2*pv_i*(pv_i*w_i - pw_i*v_i)/v_i^3
+  //   d3s_p_{w_i} = pw_i^2/w_i^2 - pv_i^2/v_i^2
+
+  const int d = (size - 1) / 2;
+  const double u = z[0];
+
+  // Compute s.
+  double s = u;
+  for (int i = 0; i < d; ++i) {
+    double vi = z[1 + i];
+    double wi = z[1 + d + i];
+    s -= wi * std::log(wi / vi);
+  }
+
+  // ds_p = pu + sum [pv_i*w_i/v_i - pw_i*(log(w_i/v_i) + 1)]
+  double ds_p = p[0];
+  for (int i = 0; i < d; ++i) {
+    double vi = z[1 + i];
+    double wi = z[1 + d + i];
+    ds_p += p[1 + i] * wi / vi - p[1 + d + i] * (std::log(wi / vi) + 1.0);
+  }
+
+  // d2s_p = sum_i [-pv_i^2*w_i/v_i^2 + 2*pv_i*pw_i/v_i - pw_i^2/w_i]
+  double d2s_p = 0;
+  for (int i = 0; i < d; ++i) {
+    double vi = z[1 + i];
+    double wi = z[1 + d + i];
+    double pvi = p[1 + i];
+    double pwi = p[1 + d + i];
+    d2s_p += -pvi * pvi * wi / (vi * vi) + 2.0 * pvi * pwi / vi - pwi * pwi / wi;
+  }
+
+  double Q = d2s_p - 2.0 * ds_p * ds_p / s;
+
+  // T for u-component (l = 0): d3s_p_u = 0, s_u = 1, ds_p_u = pu... wait.
+  // ds_p_l = d(ds_p)/dz_l. For l=u: ds_p doesn't depend on u (s_u = 1,
+  // and the only u-dependence in ds_p is through pu*1 = pu, which is constant).
+  // Actually ds_p = pu + sum[...] where none of the terms depend on u.
+  // So ds_p_u = 0.
+  // But s_u = 1, so:
+  out[0] = Q / (s * s);  // -0/s + 1*Q/s^2 + 0 + 0
+
+  // T for v_i components (l = 1+i):
+  for (int i = 0; i < d; ++i) {
+    double vi = z[1 + i];
+    double wi = z[1 + d + i];
+    double pvi = p[1 + i];
+    double pwi = p[1 + d + i];
+
+    double s_l = wi / vi;
+    // ds_p_l = d(ds_p)/dv_i:
+    //   d(pv_i*w_i/v_i)/dv_i = -pv_i*w_i/v_i^2
+    //   d(-pw_i*log(w_i/v_i))/dv_i = pw_i/v_i
+    double ds_p_l = -pvi * wi / (vi * vi) + pwi / vi;
+    double d3s_p_l = 2.0 * pvi * (pvi * wi - pwi * vi) / (vi * vi * vi);
+    double T_diag = -2.0 * pvi * pvi / (vi * vi * vi);  // from -log(v_i)
+
+    out[1 + i] = -d3s_p_l / s + s_l * Q / (s * s)
+                 + 2.0 * ds_p_l * ds_p / (s * s) + T_diag;
+  }
+
+  // T for w_i components (l = 1+d+i):
+  for (int i = 0; i < d; ++i) {
+    double vi = z[1 + i];
+    double wi = z[1 + d + i];
+    double pvi = p[1 + i];
+    double pwi = p[1 + d + i];
+
+    double s_l = -(std::log(wi / vi) + 1.0);
+    // ds_p_l = d(ds_p)/dw_i: ds_p has terms pv_i*w_i/v_i and -pw_i*(log(w_i/v_i)+1).
+    // d/dw_i [pv_i*w_i/v_i] = pv_i/v_i
+    // d/dw_i [-pw_i*(log(w_i/v_i)+1)] = -pw_i/w_i
+    double ds_p_l = pvi / vi - pwi / wi;
+    double d3s_p_l = pwi * pwi / (wi * wi) - pvi * pvi / (vi * vi);
+    double T_diag = -2.0 * pwi * pwi / (wi * wi * wi);  // from -log(w_i)
+
+    out[1 + d + i] = -d3s_p_l / s + s_l * Q / (s * s)
+                     + 2.0 * ds_p_l * ds_p / (s * s) + T_diag;
+  }
+}
+
 double RelEntropyConeOps::barrierParameter(int size) const {
   return static_cast<double>(size);  // nu = dim = 1 + 2d
 }

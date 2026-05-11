@@ -84,6 +84,38 @@ TEST(HypoGeoMeanConeOps, HessianPD) {
   EXPECT_GT(eig.eigenvalues().minCoeff(), 0);
 }
 
+TEST(HypoGeoMeanConeOps, ThirdDerivContract) {
+  HypoGeoMeanConeOps ops;
+  VectorXd z(4), v(4);
+  z << 0.5, 2.0, 1.5, 1.8;
+  v << 0.05, -0.1, 0.08, -0.06;
+
+  double T_hand[4];
+  ops.thirdDerivContract(T_hand, z.data(), v.data(), 4);
+
+  auto T_ad = derivatives::third_deriv_contract(
+      barriers::hypo_geomean<derivatives::AD3>, z, v);
+
+  for (int i = 0; i < 4; ++i)
+    EXPECT_NEAR(T_hand[i], T_ad(i), 1e-8) << "T[" << i << "]";
+}
+
+TEST(HypoGeoMeanConeOps, ThirdDerivContract_LargerDim) {
+  HypoGeoMeanConeOps ops;
+  VectorXd z(6), v(6);  // d=5
+  z << 0.3, 1.2, 1.5, 0.8, 2.0, 1.1;
+  v << 0.03, -0.05, 0.04, -0.02, 0.06, -0.03;
+
+  double T_hand[6];
+  ops.thirdDerivContract(T_hand, z.data(), v.data(), 6);
+
+  auto T_ad = derivatives::third_deriv_contract(
+      barriers::hypo_geomean<derivatives::AD3>, z, v);
+
+  for (int i = 0; i < 6; ++i)
+    EXPECT_NEAR(T_hand[i], T_ad(i), 1e-7) << "T[" << i << "] at dim=6";
+}
+
 TEST(HypoGeoMeanConeOps, LargerDimension) {
   HypoGeoMeanConeOps ops;
   VectorXd z(6);  // d=5
