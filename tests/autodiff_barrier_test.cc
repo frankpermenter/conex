@@ -57,7 +57,7 @@ TEST(AutodiffBarrier, ExpCone_ThirdDeriv) {
   ExpConeOps::ThirdDerivContract(z(0), z(1), z(2), v.data(), T);
 
   for (int i = 0; i < 3; ++i) {
-    EXPECT_NEAR(ad_T(i), T[i], 1e-3)
+    EXPECT_NEAR(ad_T(i), T[i], 1e-10)
         << "ThirdDeriv[" << i << "]";
   }
 }

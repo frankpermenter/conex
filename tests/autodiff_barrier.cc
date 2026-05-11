@@ -72,6 +72,85 @@ static Eigen::MatrixXd extract_hessian(const AD2& f, int n) {
   return 0.5 * (H + H.transpose());
 }
 
+// Helper: scale an AD scalar by a double. Works at any nesting depth
+// by recursively scaling value and derivatives.
+inline double scale(double c, double x) { return c * x; }
+
+inline AD1 scale(double c, const AD1& x) {
+  return AD1(c * x.value(), c * x.derivatives());
+}
+
+inline AD2 scale(double c, const AD2& x) {
+  Inner scaled_derivs(x.derivatives().size());
+  for (int i = 0; i < x.derivatives().size(); ++i)
+    scaled_derivs(i) = scale(c, x.derivatives()(i));
+  return AD2(scale(c, x.value()), scaled_derivs);
+}
+
+using AD3 = Eigen::AutoDiffScalar<Eigen::Matrix<AD2, Eigen::Dynamic, 1>>;
+using AV3 = Eigen::Matrix<AD3, Eigen::Dynamic, 1>;
+
+inline AD3 scale(double c, const AD3& x) {
+  Eigen::Matrix<AD2, Eigen::Dynamic, 1> scaled_derivs(x.derivatives().size());
+  for (int i = 0; i < x.derivatives().size(); ++i)
+    scaled_derivs(i) = scale(c, x.derivatives()(i));
+  return AD3(scale(c, x.value()), scaled_derivs);
+}
+
+// AD3/AV3 defined above (before scale overloads).
+
+static AV3 lift3(const Eigen::VectorXd& z) {
+  const int n = z.size();
+  AV3 az(n);
+  for (int i = 0; i < n; ++i) {
+    // Level 1 (innermost, AD1): value = z_i, deriv = e_i
+    az(i).value().value().value() = z(i);
+    az(i).value().value().derivatives() = Eigen::VectorXd::Unit(n, i);
+
+    // Level 2 (middle, AD2): deriv(j) = AD1(δ_{ij}, 0)
+    az(i).value().derivatives().resize(n);
+    for (int j = 0; j < n; ++j) {
+      az(i).value().derivatives()(j).value() = (i == j) ? 1.0 : 0.0;
+      az(i).value().derivatives()(j).derivatives() = Eigen::VectorXd::Zero(n);
+    }
+
+    // Level 3 (outermost, AD3): deriv(l) = AD2(δ_{il}, 0)
+    az(i).derivatives().resize(n);
+    for (int l = 0; l < n; ++l) {
+      az(i).derivatives()(l).value().value() = (i == l) ? 1.0 : 0.0;
+      az(i).derivatives()(l).value().derivatives() = Eigen::VectorXd::Zero(n);
+      az(i).derivatives()(l).derivatives().resize(n);
+      for (int k = 0; k < n; ++k) {
+        az(i).derivatives()(l).derivatives()(k).value() = 0.0;
+        az(i).derivatives()(l).derivatives()(k).derivatives() = Eigen::VectorXd::Zero(n);
+      }
+    }
+  }
+  return az;
+}
+
+// Extract T_l = D³F[v, v, e_l] from AD3 result.
+// f.derivatives()(l) is AD2: its Hessian gives ∂³F/∂z_l ∂z_i ∂z_j.
+// T_l = Σ_{ij} v_i v_j ∂³F/∂z_l ∂z_i ∂z_j.
+static Eigen::VectorXd extract_third_contract(const AD3& f, int n,
+                                               const Eigen::VectorXd& v) {
+  Eigen::VectorXd T(n);
+  for (int l = 0; l < n; ++l) {
+    // f.derivatives()(l) is AD2.
+    // Its Hessian: H3_{ij} = ∂³F/∂z_l ∂z_i ∂z_j
+    // = f.derivatives()(l).derivatives()(i).derivatives()(j)
+    double tl = 0;
+    for (int i = 0; i < n; ++i) {
+      const Eigen::VectorXd& row = f.derivatives()(l).derivatives()(i).derivatives();
+      for (int j = 0; j < n; ++j) {
+        tl += v(i) * v(j) * row(j);
+      }
+    }
+    T(l) = tl;
+  }
+  return T;
+}
+
 // ============================================================
 // Exponential cone barrier template
 // F(x,y,z) = -log(z - y*exp(x/y)) - log(y)
@@ -104,28 +183,9 @@ Eigen::MatrixXd exp_cone_hessian(const Eigen::VectorXd& z) {
 
 Eigen::VectorXd exp_cone_third_deriv(const Eigen::VectorXd& z,
                                       const Eigen::VectorXd& v) {
-  // T_l = v^T (dH/dz_l) v.
-  // Compute as d/dz_l [ v^T H(z) v ] using AD.
-  // Define g(z) = v^T grad(barrier)(z), then T = grad(g(z) dot v)... no.
-  // Simpler: h(z) = v^T H(z) v = d^2/dt^2 barrier(z + t*v)|_{t=0}.
-  // Then T_l = d/dz_l h(z).
-  //
-  // We compute h(z) via AD: h(z) = (d/dt barrier(z + t*v))|_{t=0} diff'd
-  // w.r.t. t twice. But this requires third-order AD.
-  //
-  // Instead, use finite differences of the Hessian (computed via AD2).
-  const int n = z.size();
-  const double h = 1e-5;
-  Eigen::VectorXd T(n);
-  for (int l = 0; l < n; ++l) {
-    Eigen::VectorXd zp = z, zm = z;
-    zp(l) += h;
-    zm(l) -= h;
-    Eigen::MatrixXd Hp = exp_cone_hessian(zp);
-    Eigen::MatrixXd Hm = exp_cone_hessian(zm);
-    T(l) = v.dot(((Hp - Hm) / (2.0 * h)) * v);
-  }
-  return T;
+  AV3 az = lift3(z);
+  AD3 f = exp_cone_barrier_impl(az);
+  return extract_third_contract(f, z.size(), v);
 }
 
 // ============================================================
@@ -147,14 +207,14 @@ static Scalar power_cone_barrier_impl(
   const int dim = p.size();
 
   // u = p(0..m-1), w = p(m..dim-1)
-  Scalar log_prod = Scalar(0);
+  Scalar log_prod = p(0) - p(0);  // zero in any AD type
   for (int i = 0; i < m; ++i)
-    log_prod += alpha(i) * log(p(i));
-  Scalar z = exp(Scalar(2) * log_prod);  // (prod u_i^a_i)^2
+    log_prod = log_prod + scale(alpha(i), log(p(i)));
+  Scalar z = exp(log_prod + log_prod);  // (prod u_i^a_i)^2
 
-  Scalar w_sq = Scalar(0);
+  Scalar w_sq = p(0) - p(0);  // zero
   for (int i = m; i < dim; ++i)
-    w_sq += p(i) * p(i);
+    w_sq = w_sq + p(i) * p(i);
 
   Scalar result = -log(z - w_sq);
   for (int i = 0; i < m; ++i)
@@ -188,18 +248,10 @@ Eigen::MatrixXd power_cone_hessian(const Eigen::VectorXd& z,
 Eigen::VectorXd power_cone_third_deriv(const Eigen::VectorXd& z,
                                         const Eigen::VectorXd& alpha,
                                         const Eigen::VectorXd& v) {
-  const int n = z.size();
-  const double h = 1e-5;
-  Eigen::VectorXd T(n);
-  for (int l = 0; l < n; ++l) {
-    Eigen::VectorXd zp = z, zm = z;
-    zp(l) += h;
-    zm(l) -= h;
-    Eigen::MatrixXd Hp = power_cone_hessian(zp, alpha);
-    Eigen::MatrixXd Hm = power_cone_hessian(zm, alpha);
-    T(l) = v.dot(((Hp - Hm) / (2.0 * h)) * v);
-  }
-  return T;
+  g_alpha = &alpha;
+  AV3 az = lift3(z);
+  AD3 f = power_cone_barrier_impl(az);
+  return extract_third_contract(f, z.size(), v);
 }
 
 // ============================================================
@@ -216,7 +268,7 @@ static Scalar rel_entropy_barrier_impl(
   const int d = (dim - 1) / 2;
   Scalar u = p(0);
 
-  Scalar rel_ent = Scalar(0);
+  Scalar rel_ent = p(0) - p(0);  // zero
   for (int i = 0; i < d; ++i) {
     Scalar vi = p(1 + i);
     Scalar wi = p(1 + d + i);
@@ -250,18 +302,9 @@ Eigen::MatrixXd rel_entropy_hessian(const Eigen::VectorXd& z) {
 
 Eigen::VectorXd rel_entropy_third_deriv(const Eigen::VectorXd& z,
                                          const Eigen::VectorXd& v) {
-  const int n = z.size();
-  const double h = 1e-5;
-  Eigen::VectorXd T(n);
-  for (int l = 0; l < n; ++l) {
-    Eigen::VectorXd zp = z, zm = z;
-    zp(l) += h;
-    zm(l) -= h;
-    Eigen::MatrixXd Hp = rel_entropy_hessian(zp);
-    Eigen::MatrixXd Hm = rel_entropy_hessian(zm);
-    T(l) = v.dot(((Hp - Hm) / (2.0 * h)) * v);
-  }
-  return T;
+  AV3 az = lift3(z);
+  AD3 f = rel_entropy_barrier_impl(az);
+  return extract_third_contract(f, z.size(), v);
 }
 
 // ============================================================
@@ -278,10 +321,10 @@ static Scalar hypo_geomean_barrier_impl(
   const int d = dim - 1;
   Scalar u = p(0);
 
-  Scalar log_sum = Scalar(0);
+  Scalar log_sum = p(0) - p(0);  // zero
   for (int i = 1; i < dim; ++i)
-    log_sum += log(p(i));
-  Scalar geomean = exp(log_sum / Scalar(d));
+    log_sum = log_sum + log(p(i));
+  Scalar geomean = exp(scale(1.0 / d, log_sum));
 
   Scalar result = -log(geomean - u);
   for (int i = 1; i < dim; ++i)
@@ -308,18 +351,9 @@ Eigen::MatrixXd hypo_geomean_hessian(const Eigen::VectorXd& z) {
 
 Eigen::VectorXd hypo_geomean_third_deriv(const Eigen::VectorXd& z,
                                           const Eigen::VectorXd& v) {
-  const int n = z.size();
-  const double h = 1e-5;
-  Eigen::VectorXd T(n);
-  for (int l = 0; l < n; ++l) {
-    Eigen::VectorXd zp = z, zm = z;
-    zp(l) += h;
-    zm(l) -= h;
-    Eigen::MatrixXd Hp = hypo_geomean_hessian(zp);
-    Eigen::MatrixXd Hm = hypo_geomean_hessian(zm);
-    T(l) = v.dot(((Hp - Hm) / (2.0 * h)) * v);
-  }
-  return T;
+  AV3 az = lift3(z);
+  AD3 f = hypo_geomean_barrier_impl(az);
+  return extract_third_contract(f, z.size(), v);
 }
 
 }  // namespace testing
