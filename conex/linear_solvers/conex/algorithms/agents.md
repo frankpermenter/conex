@@ -17,6 +17,13 @@ on the tree solver.  There are two paths for building a solver:
 | `equality_constrained_least_squares.cc` | `EqualityConstrainedLeastSquares` | min ‖Ax - b‖² s.t. Cx = d |
 | `irls.cc` | `SolveIRLS` | min ‖Ax - b‖₁ (L1 via IRLS) |
 | `barrier_qp.cc` | `SolveBarrierQP` | min 0.5 x'Qx + c'x s.t. Ax ≤ b |
+| `geodesic_ipm.cc` | `SolveGeodesicLP`, `SolveGeodesicBarrierLP`, `SolveGeodesicThetaContinuation`, `SolveGeodesicBarrierThetaContinuation`, `SolveGeodesicHSD`, `SolveGeodesicHybrid`, `SolveGeodesicPhaseOne` | Geodesic IPM for conic programs (LP/SDP/SOC/QP, symmetric and barrier cones) |
+| `geodesic_hsde.cc` | `SolveGeodesicHSDE` | HSDE with scalar k, 2x2 (d_tau, theta) solve |
+| `geodesic_hybrid_r.cc` | `SolveGeodesicThetaContinuationR`, `SolveGeodesicHybridR` | Theta-continuation and hybrid with per-component r-updates |
+| `alternating_projections.cc` | `SolveAlternatingProjections` | Alternating projections for feasibility |
+| `self_dual_embedding.cc` | `SolveSelfDualEmbedding` | HSD self-dual embedding |
+| `solve_lp.cc` | `SolveLP` | Classical barrier method LP solver |
+| `solve_strategies.h` | `GeodesicLP`, `GeodesicBarrierLP`, `ThetaContinuation`, etc. | Strategy structs wrapping algorithm entry points |
 | `finite_horizon.cc` | `SolveLQRFromSparseMatrices` | LQR via sparse matrices + clique ordering |
 | `lqr_tree_solver.cc` | `LQRTreeSolver` | LQR via direct chain tree construction |
 | `tree_solver_builder.cc` | `TreeSolverBuilder` | Declarative tree solver construction |
@@ -154,6 +161,13 @@ algorithms/              depends on common/, tree_solver/
   equality_constrained_least_squares.cc
   irls.cc
   barrier_qp.cc
+  geodesic_ipm.cc
+  geodesic_hsde.cc
+  geodesic_hybrid_r.cc
+  alternating_projections.cc
+  self_dual_embedding.cc
+  solve_lp.cc
+  solve_strategies.h
   finite_horizon.cc
   lqr_tree_solver.cc
   tree_solver_builder.cc
