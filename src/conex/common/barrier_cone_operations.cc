@@ -1,9 +1,11 @@
-// Default implementations for BarrierConeOpsThirdDeriv.
+// Default implementations for BarrierConeOperations and BarrierConeOpsThirdDeriv.
 
 #include "conex/common/symmetric_cone_operations.h"
+#include "conex/common/barrier_integrators.h"
 #include <Eigen/Dense>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <vector>
 
 namespace conex {

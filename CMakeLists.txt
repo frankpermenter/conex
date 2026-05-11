@@ -74,6 +74,7 @@ add_library(constraints
   src/conex/common/rel_entropy_cone_ops.cc
   src/conex/common/hypo_geomean_cone_ops.cc
   src/conex/common/barrier_cone_operations.cc
+  src/conex/common/barrier_integrators.cc
   src/conex/common/soc_linear_constraint.cc
 )
 target_link_libraries(constraints PUBLIC Eigen3::Eigen clique_ordering)
