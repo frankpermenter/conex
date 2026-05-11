@@ -218,6 +218,17 @@ class PolyhedralConeOps : public BarrierConeOperations {
     return static_cast<double>(C_.rows());
   }
 
+  double barrierValue(const double* z, int n) const override {
+    Eigen::Map<const Eigen::VectorXd> zv(z, n);
+    Eigen::VectorXd s = C_ * zv;
+    double val = 0;
+    for (int i = 0; i < s.size(); ++i) {
+      if (s(i) <= 0) return std::numeric_limits<double>::infinity();
+      val -= std::log(s(i));
+    }
+    return val;
+  }
+
   // Interior point: solve C*z > 0 with z = C^T * ones (C^T * 1 gives
   // a point with all slacks = C * C^T * 1, which is PD if C has full
   // row rank). Falls back to ones if that fails.

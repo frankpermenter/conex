@@ -3,6 +3,8 @@
 
 #pragma once
 #include <cmath>
+#include <limits>
+#include <Eigen/Dense>
 #include "conex/common/symmetric_cone_operations.h"
 
 namespace conex {
@@ -50,6 +52,17 @@ class PSDConeOps : public SymmetricConeOperations {
   double barrierParameter(int size) const override {
     int n = static_cast<int>(std::round(std::sqrt(size)));
     return static_cast<double>(n);
+  }
+
+  // PSD barrier value: -log det(W), W is n×n stored column-major.
+  double barrierValue(const double* z, int size) const override {
+    int n = static_cast<int>(std::round(std::sqrt(size)));
+    Eigen::Map<const Eigen::MatrixXd> W(z, n, n);
+    auto llt = W.selfadjointView<Eigen::Lower>().llt();
+    if (llt.info() != Eigen::Success) return std::numeric_limits<double>::infinity();
+    double logdet = 0;
+    for (int i = 0; i < n; ++i) logdet += std::log(llt.matrixL()(i, i));
+    return -2.0 * logdet;  // -log det = -2 * sum log(L_ii)
   }
 };
 

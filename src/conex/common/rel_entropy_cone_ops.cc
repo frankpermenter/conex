@@ -200,6 +200,21 @@ double RelEntropyConeOps::barrierParameter(int size) const {
   return static_cast<double>(size);  // nu = dim = 1 + 2d
 }
 
+double RelEntropyConeOps::barrierValue(const double* z, int size) const {
+  const int d = (size - 1) / 2;
+  double s = z[0];
+  for (int i = 0; i < d; ++i) {
+    double vi = z[1 + i], wi = z[1 + d + i];
+    s -= wi * std::log(wi / vi);
+  }
+  double val = -std::log(s);
+  for (int i = 0; i < d; ++i) {
+    val -= std::log(z[1 + i]);
+    val -= std::log(z[1 + d + i]);
+  }
+  return val;
+}
+
 void RelEntropyConeOps::getInteriorPoint(double* out, int size) const {
   const int d = (size - 1) / 2;
   // v_i = 1, w_i = 1 => log(w_i/v_i) = 0, so u > 0 suffices.

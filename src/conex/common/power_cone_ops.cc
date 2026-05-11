@@ -105,6 +105,13 @@ double PowerConeOps::barrierParameter(int /*size*/) const {
   return m_ + 2.0;
 }
 
+double PowerConeOps::barrierValue(const double* z, int size) const {
+  auto [phi, s] = computePhiS(z, size);
+  double val = -std::log(s);
+  for (int i = 0; i < m_; ++i) val -= std::log(z[i]);
+  return val;
+}
+
 void PowerConeOps::thirdDerivContract(double* out, const double* z,
                                        const double* v, int size) const {
   // F = -log(s) - sum log(u_i), so T_l = T_l^{log} + T_l^{diag}.

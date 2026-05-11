@@ -25,6 +25,7 @@ class HypoGeoMeanConeOps : public BarrierConeOpsThirdDeriv {
                       int size) const override;
   double barrierParameter(int size) const override;
   void getInteriorPoint(double* out, int size) const override;
+  double barrierValue(const double* z, int size) const override;
   void thirdDerivContract(double* out, const double* z,
                           const double* v, int size) const override;
 };

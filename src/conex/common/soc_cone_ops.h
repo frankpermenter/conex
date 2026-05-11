@@ -44,6 +44,13 @@ class SOCConeOps : public SymmetricConeOperations {
 
   // SOC barrier parameter is always 2 (rank of the Jordan algebra).
   double barrierParameter(int /*size*/) const override { return 2.0; }
+
+  // SOC barrier value: -log(w₀² - ||w₁||²).
+  double barrierValue(const double* z, int size) const override {
+    double det = z[0] * z[0];
+    for (int i = 1; i < size; ++i) det -= z[i] * z[i];
+    return -std::log(det);
+  }
 };
 
 const SOCConeOps& socConeOps();

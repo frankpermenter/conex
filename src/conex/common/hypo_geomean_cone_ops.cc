@@ -172,6 +172,16 @@ double HypoGeoMeanConeOps::barrierParameter(int size) const {
   return static_cast<double>(size);  // nu = dim = 1 + d
 }
 
+double HypoGeoMeanConeOps::barrierValue(const double* z, int size) const {
+  const int d = size - 1;
+  double log_sum = 0;
+  for (int i = 1; i < size; ++i) log_sum += std::log(z[i]);
+  double g = std::exp(log_sum / d);
+  double val = -std::log(g - z[0]);
+  for (int i = 1; i < size; ++i) val -= std::log(z[i]);
+  return val;
+}
+
 void HypoGeoMeanConeOps::getInteriorPoint(double* out, int size) const {
   // w_i = 1 => geomean = 1, u = 0.5 < 1.
   out[0] = 0.5;

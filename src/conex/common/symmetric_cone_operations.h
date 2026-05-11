@@ -84,16 +84,17 @@ class BarrierConeOperations {
   }
 
   // Geodesic step: z ← Exp_z(α(target - z)).
-  // Default: damped Euler step with backtracking to preserve feasibility.
-  // Override with exact geodesic (symmetric cones), Verlet
-  // (BarrierConeOpsThirdDeriv), or use barrier_integrators.h directly.
+  // Default: primal midpoint (second-order, time-reversible, no third
+  // derivatives needed). Override with exact geodesic (symmetric cones)
+  // or Verlet (BarrierConeOpsThirdDeriv).
   virtual void geodesicStepTarget(double* z, double alpha,
                                   const double* target, int size) const {
-    for (int i = 0; i < size; ++i) {
-      double z_new = z[i] + alpha * (target[i] - z[i]);
-      z[i] = z_new;
-    }
+    defaultGeodesicStep(z, alpha, target, size);
   }
+
+  // Non-virtual helper. Defined in barrier_cone_operations.cc.
+  void defaultGeodesicStep(double* z, double alpha,
+                           const double* target, int size) const;
 
   // Line search: max k with ||target0 + k·target1 - z||²_{H(z)} ≤ 1.
   // Quadratic in k: a + 2fk + pk² ≤ 1.
@@ -128,11 +129,14 @@ class BarrierConeOperations {
     for (int i = 0; i < size; ++i) out[i] = stored[i];
   }
 
+  // Barrier function value F(z). Required for default isInterior.
+  virtual double barrierValue(const double* z, int size) const = 0;
+
   // Interior check: returns true if z ∈ int(K).
-  // Default: check that computeGradient produces finite values AND
-  // that the barrier value is finite (gradient alone can be finite
-  // at some infeasible points).
-  virtual bool isInterior(const double* z, int size) const;
+  // Default: barrier value is finite.
+  virtual bool isInterior(const double* z, int size) const {
+    return std::isfinite(barrierValue(z, size));
+  }
 
   // Inner product <a, b>.  Default: Euclidean dot product.
   // Symmetric cones override with trace inner product.
@@ -315,6 +319,21 @@ class SymmetricConeOperations : public BarrierConeOperations {
   // Default: ν = n for nonneg/PSD. SOC overrides.
   double barrierParameter(int size) const override {
     return static_cast<double>(size);
+  }
+
+  // Barrier value: F(W) = -log det(W) for symmetric cones.
+  // For nonneg: -Σ log(W_i).  For PSD: -log det(W).  For SOC: -log(w₀²-||w₁||²).
+  // Default implementation uses eigenvalue decomposition via minEigenvalue
+  // as a stub — concrete classes should override for efficiency.
+  // For nonneg (stored as vector): -Σ log(w_i).
+  double barrierValue(const double* z, int size) const override {
+    // Generic: -Σ log(w_i) works for nonneg. PSD and SOC override.
+    double val = 0;
+    for (int i = 0; i < size; ++i) {
+      if (z[i] <= 0) return std::numeric_limits<double>::infinity();
+      val -= std::log(z[i]);
+    }
+    return val;
   }
 };
 
