@@ -1,4 +1,6 @@
 #include "conex/common/block_partition.h"
+#include "conex/common/arena.h"
+#include <cstring>
 
 namespace conex {
 
@@ -23,33 +25,59 @@ void DenseBlockPartition::GatherInto(Eigen::Ref<Eigen::MatrixXd> x) const {
 
 // --- StandaloneBlockPartition ---
 
+void StandaloneBlockPartition::BindArena(Arena& arena, int cols) {
+  size_t bytes = static_cast<size_t>(total_rows_) * cols * sizeof(double);
+  arena_data_ = static_cast<double*>(arena.Alloc(bytes));
+  std::memset(arena_data_, 0, bytes);
+  arena_cols_ = cols;
+}
+
 void StandaloneBlockPartition::Resize(int cols) {
+  if (arena_data_) return;  // arena-backed: already sized at BindArena
   if (data_.rows() != total_rows_ || data_.cols() != cols) {
     data_.resize(total_rows_, cols);
+  }
+}
+
+void StandaloneBlockPartition::SetZero() {
+  if (arena_data_) {
+    std::memset(arena_data_, 0,
+                static_cast<size_t>(total_rows_) * arena_cols_ * sizeof(double));
+  } else {
+    data_.setZero();
   }
 }
 
 void StandaloneBlockPartition::ScatterFrom(
     Eigen::Ref<const Eigen::MatrixXd> x) {
   const int n = static_cast<int>(perm_.size());
-  if (data_.rows() != total_rows_ || data_.cols() != x.cols())
-    data_.resize(total_rows_, x.cols());
-  data_.setZero();
-  // x may have fewer rows than perm_.size() (e.g., primal cost without
-  // dual variables).  Only scatter the rows that x provides.
+  const int nc = arena_data_ ? arena_cols_ : static_cast<int>(x.cols());
+  if (!arena_data_) {
+    if (data_.rows() != total_rows_ || data_.cols() != x.cols())
+      data_.resize(total_rows_, x.cols());
+  }
+  SetZero();
   const int x_rows = static_cast<int>(x.rows());
-  for (int i = 0; i < n && i < x_rows; ++i) {
-    int ep = perm_(i);
-    data_.row(ep) = x.row(i);
+  if (arena_data_) {
+    Eigen::Map<Eigen::MatrixXd> m(arena_data_, total_rows_, nc);
+    for (int i = 0; i < n && i < x_rows; ++i)
+      m.row(perm_(i)) = x.row(i);
+  } else {
+    for (int i = 0; i < n && i < x_rows; ++i)
+      data_.row(perm_(i)) = x.row(i);
   }
 }
 
 void StandaloneBlockPartition::GatherInto(
     Eigen::Ref<Eigen::MatrixXd> x) const {
   const int n = static_cast<int>(perm_.size());
-  for (int i = 0; i < n; ++i) {
-    int ep = perm_(i);
-    x.row(i) = data_.row(ep);
+  if (arena_data_) {
+    Eigen::Map<const Eigen::MatrixXd> m(arena_data_, total_rows_, arena_cols_);
+    for (int i = 0; i < n; ++i)
+      x.row(i) = m.row(perm_(i));
+  } else {
+    for (int i = 0; i < n; ++i)
+      x.row(i) = data_.row(perm_(i));
   }
 }
 

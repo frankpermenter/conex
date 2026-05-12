@@ -3,6 +3,8 @@
 
 namespace conex {
 
+class Arena;  // forward declaration
+
 // Abstract block partition of a vector.  After Solve(), the solver's
 // partition contains the solution distributed across blocks.  Algorithms
 // use this to compute residuals and products in block space without
@@ -100,29 +102,42 @@ class StandaloneBlockPartition : public BlockPartition {
   }
   int block_size(int k) const override { return block_sizes_[k]; }
   int num_variables() const override { return perm_.size(); }
-  int cols() const override { return data_.cols(); }
+  int cols() const override { return arena_data_ ? arena_cols_ : data_.cols(); }
 
   void Resize(int cols) override;
 
-  void SetZero() override { data_.setZero(); }
+  void SetZero() override;
 
   void ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> x) override;
 
   void GatherInto(Eigen::Ref<Eigen::MatrixXd> x) const override;
 
   Eigen::Ref<Eigen::MatrixXd> block(int k) override {
+    if (arena_data_) {
+      return Eigen::Map<Eigen::MatrixXd>(
+          arena_data_ + block_offsets_[k], block_sizes_[k], arena_cols_);
+    }
     return data_.middleRows(block_offsets_[k], block_sizes_[k]);
   }
   Eigen::Ref<const Eigen::MatrixXd> block(int k) const override {
+    if (arena_data_) {
+      return Eigen::Map<const Eigen::MatrixXd>(
+          arena_data_ + block_offsets_[k], block_sizes_[k], arena_cols_);
+    }
     return data_.middleRows(block_offsets_[k], block_sizes_[k]);
   }
+
+  // Bind arena memory instead of using MatrixXd.
+  void BindArena(Arena& arena, int cols);
 
  private:
   std::vector<int> block_sizes_;
   std::vector<int> block_offsets_;
   Eigen::VectorXi perm_, perm_inv_;
   int total_rows_ = 0;
-  Eigen::MatrixXd data_;
+  Eigen::MatrixXd data_;          // used when not arena-backed
+  double* arena_data_ = nullptr;  // used when arena-backed
+  int arena_cols_ = 0;
 };
 
 }  // namespace conex

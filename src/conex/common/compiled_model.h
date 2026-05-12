@@ -28,6 +28,9 @@ class CompiledModel {
   // Allocation (heap — backward compatible).
   RowSpace MakeRowSpace(int cols = 1) { return kkt_.MakeRowSpace(cols); }
   SolverRHS MakeSolverRHS(int cols = 1) { return kkt_.MakeSolverRHS(cols); }
+  SolverRHS AllocSolverRHS(int cols = 1) {
+    return kkt_.AllocSolverRHS(arena_, cols);
+  }
 
   // Arena allocation (zero heap allocation).
   Arena& arena() { return arena_; }
