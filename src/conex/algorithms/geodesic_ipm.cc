@@ -1602,10 +1602,10 @@ GeodesicResult SolveGeodesicLP(
   const double nu = barrierParameter(W);
   Arena arena;
   constexpr double theta = 0.0;
-  RowSpace ones_b = model.MakeRowSpace();
+  RowSpace ones_b = model.AllocRowSpace(arena);
   setOnes(ones_b);
 
-  RowSpace b = model.MakeRowSpace();
+  RowSpace b = model.AllocRowSpace(arena);
   auto cost_rhs_blend = model.MakeSolverRHS();
   GeodesicResult result{};
   int total_fac = 0;
@@ -1618,15 +1618,17 @@ GeodesicResult SolveGeodesicLP(
   }
 
   for (int outer = 0; outer < max_outer_iterations; ) {
-    b = addScaled(ones_b, model.GetAffineTerm(), theta, 1.0 - theta);
+    char* iter_mark = arena.SaveCursor();
+
+    addScaled(b, ones_b, model.GetAffineTerm(), theta, 1.0 - theta);
     cost_rhs_blend.SetZero();
     model.AccumulateAtranspose(ones_b, cost_rhs_blend);
     cost_rhs_blend *= theta;
     cost_rhs_blend.AddScaled(1.0 - theta, cost_rhs);
 
-    // Factor + decompose.
-    RowSpace d0 = model.MakeRowSpace();
-    RowSpace d1 = model.MakeRowSpace();
+    // Factor + decompose.  d0, d1 are arena-backed (from ComputeDecomposition).
+    RowSpace d0 = model.AllocRowSpace(arena);
+    RowSpace d1 = model.AllocRowSpace(arena);
     Eigen::VectorXd y0, y1;
     ComputeDecomposition(model, arena, cost_rhs_blend, b, W, d0, d1, &y0, &y1);
     total_fac += 1;
@@ -1647,7 +1649,8 @@ GeodesicResult SolveGeodesicLP(
     }
 
     // Evaluate direction at current k.
-    RowSpace d = addScaled(d0, d1, 1.0, k);
+    RowSpace d = model.AllocRowSpace(arena);
+    addScaled(d, d0, d1, 1.0, k);
     double d_inf = normInf(d);
     double d_sq = squaredNorm(d);
     double mu = 1.0 / (k * k);
@@ -1674,15 +1677,19 @@ GeodesicResult SolveGeodesicLP(
       result.total_factorizations = total_fac;
       result.total_solves = total_sol;
       result.x = y0 / k + y1;
-      RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-      RowSpace ones = model.MakeRowSpace();
-      setOnes(ones);
-      RowSpace lambda = quadraticRepresentation(sqrtW, ones + d);
+      // Lambda recovery (heap — outlives arena).
+      RowSpace sqrtW = model.AllocRowSpace(arena);
+      EuclideanJordanAlgebra::sqrt(sqrtW, W);
+      RowSpace ones_d = model.AllocRowSpace(arena);
+      setOnes(ones_d);
+      ones_d += d;  // e + d
+      RowSpace lambda = model.MakeRowSpace();
+      quadraticRepresentation(lambda, sqrtW, ones_d);
       lambda *= (1.0 / k);
-      result.lambda = lambda;
+      result.lambda = std::move(lambda);
       auto x_rhs = model.MakeSolverRHS();
       x_rhs = model.MakeBlockVariable(result.x);
-      result.optimality = CheckOptimality(model, x_rhs, lambda);
+      result.optimality = CheckOptimality(model, x_rhs, result.lambda);
       result.optimality.mu = result.mu;
       if (verbose) {
         printf("  Optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
@@ -1690,35 +1697,33 @@ GeodesicResult SolveGeodesicLP(
                result.optimality.min_slack,
                result.optimality.min_dual);
       }
+      arena.RestoreCursor(iter_mark);
       break;
     }
 
     // Save W₀ (frozen Jacobian point) before stepping.
-    RowSpace W0 = W;
+    RowSpace W0 = W;  // heap deep copy (W is heap-backed)
 
     // Geodesic step.
     double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
     geodesicUpdate(W, alpha, d);
 
-    // Frozen-Jacobian iterations: decompose d = d0 + k*d1 using stale
-    // Gram (at W₀) but correct RHS (at W_i). d1 is frozen (identical to
-    // the standard d1 since rhs1 depends only on W₀).
-    // Each iteration: 1 solve for d0, line search, step.
+    // Frozen-Jacobian iterations.
     if (max_centering_steps > 0) {
-      // d1 is frozen — reuse from the standard decomposition (same rhs1).
-      // Only refresh d0 at the current W_i (1 solve).
-      RowSpace d0_f = model.MakeRowSpace();
-      RowSpace d1_f = d1;  // frozen, same as standard d1
+      RowSpace d0_f = model.AllocRowSpace(arena);
+      RowSpace d1_f = d1;  // frozen (arena shallow copy — lives until iter_mark)
       Eigen::VectorXd y0_f;
       RefreshD0Frozen(model, arena, model.GetAffineTerm(), W0, W, d0_f, y0_f);
       total_sol += 1;
 
       for (int inner = 0; inner < max_centering_steps; ++inner) {
-        // Line search: find largest k_new with ||d0_f + k_new*d1_f||_inf <= 1.
+        char* inner_mark = arena.SaveCursor();
+
         double k_new_f = lineSearchK(d0_f, d1_f);
         if (k_new_f > k) k = k_new_f;
 
-        RowSpace d_f = addScaled(d0_f, d1_f, 1.0, k);
+        RowSpace d_f = model.AllocRowSpace(arena);
+        addScaled(d_f, d0_f, d1_f, 1.0, k);
         double d_inf_f = normInf(d_f);
         double d_sq_f = squaredNorm(d_f);
         double mu_f = 1.0 / (k * k);
@@ -1731,11 +1736,10 @@ GeodesicResult SolveGeodesicLP(
                  normInf(d0_f), normInf(d1_f));
         }
 
-        // Take geodesic step.
         double alpha_f = std::min(1.0, 2.0 / (d_inf_f * d_inf_f));
         geodesicUpdate(W, alpha_f, d_f);
+        arena.RestoreCursor(inner_mark);
 
-        // Re-solve only d0 with updated W_i (1 solve). d1 is frozen.
         if (inner + 1 < max_centering_steps) {
           RefreshD0Frozen(model, arena, model.GetAffineTerm(), W0, W, d0_f, y0_f);
           total_sol += 1;
@@ -1743,6 +1747,7 @@ GeodesicResult SolveGeodesicLP(
       }
     }
 
+    arena.RestoreCursor(iter_mark);
     ++outer;
   }
 
