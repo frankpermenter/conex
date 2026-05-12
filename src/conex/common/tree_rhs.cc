@@ -94,12 +94,26 @@ Variable& Variable::operator*=(double alpha) {
 }
 
 Variable& Variable::operator+=(const Variable& o) {
-  for (int i = 0; i < rows_ * cols_; ++i) data_[i] += o.data_[i];
+  for (int s = 0; s < num_constraints(); ++s) {
+    int sz = sizes[s];
+    for (int c = 0; c < cols_; ++c) {
+      double* p = data_ + offsets[s] + c * rows_;
+      const double* q = o.data_ + o.offsets[s] + c * o.rows_;
+      for (int j = 0; j < sz; ++j) p[j] += q[j];
+    }
+  }
   return *this;
 }
 
 Variable& Variable::operator-=(const Variable& o) {
-  for (int i = 0; i < rows_ * cols_; ++i) data_[i] -= o.data_[i];
+  for (int s = 0; s < num_constraints(); ++s) {
+    int sz = sizes[s];
+    for (int c = 0; c < cols_; ++c) {
+      double* p = data_ + offsets[s] + c * rows_;
+      const double* q = o.data_ + o.offsets[s] + c * o.rows_;
+      for (int j = 0; j < sz; ++j) p[j] -= q[j];
+    }
+  }
   return *this;
 }
 

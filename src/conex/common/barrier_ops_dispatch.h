@@ -13,7 +13,7 @@
 namespace conex {
 namespace EuclideanJordanAlgebra {
 
-// Helper: create a Variable with same layout as src.
+// Helper: create a Variable with same layout as src (heap-allocated).
 inline Variable like(const Variable& src) {
   Variable out;
   out.offsets = src.offsets;
@@ -23,10 +23,9 @@ inline Variable like(const Variable& src) {
   return out;
 }
 
-// out = alpha * a + beta * b.
-inline Variable addScaled(const Variable& a, const Variable& b,
-                          double alpha, double beta) {
-  Variable out = like(a);
+// out = alpha * a + beta * b (output-parameter form).
+inline void addScaled(Variable& out, const Variable& a, const Variable& b,
+                      double alpha, double beta) {
   for (int i = 0; i < a.num_constraints(); ++i) {
     int sz = a.sizes[i];
     const double* ap = a.segment_ptr(i);
@@ -35,6 +34,13 @@ inline Variable addScaled(const Variable& a, const Variable& b,
     for (int j = 0; j < sz; ++j)
       op[j] = alpha * ap[j] + beta * bp[j];
   }
+}
+
+// out = alpha * a + beta * b (allocating convenience wrapper).
+inline Variable addScaled(const Variable& a, const Variable& b,
+                          double alpha, double beta) {
+  Variable out = like(a);
+  addScaled(out, a, b, alpha, beta);
   return out;
 }
 
@@ -61,20 +67,30 @@ inline double squaredNorm(const Variable& a) {
   return result;
 }
 
-// Recover raw cone point from stored representation.
-inline Variable getConePoint(const Variable& stored) {
-  Variable out = like(stored);
+// Recover raw cone point from stored representation (output-parameter form).
+inline void getConePoint(Variable& out, const Variable& stored) {
   for (int i = 0; i < stored.num_constraints(); ++i)
     stored.ops[i]->getConePoint(out.segment_ptr(i), stored.segment_ptr(i),
                                 stored.sizes[i]);
+}
+
+// Recover raw cone point (allocating convenience wrapper).
+inline Variable getConePoint(const Variable& stored) {
+  Variable out = like(stored);
+  getConePoint(out, stored);
   return out;
 }
 
-// Interior point (e.g. identity for symmetric cones).
-inline Variable getInteriorPoint(const Variable& templ) {
-  Variable out = like(templ);
+// Interior point (output-parameter form).
+inline void getInteriorPoint(Variable& out, const Variable& templ) {
   for (int i = 0; i < templ.num_constraints(); ++i)
     templ.ops[i]->getInteriorPoint(out.segment_ptr(i), templ.sizes[i]);
+}
+
+// Interior point (allocating convenience wrapper).
+inline Variable getInteriorPoint(const Variable& templ) {
+  Variable out = like(templ);
+  getInteriorPoint(out, templ);
   return out;
 }
 
