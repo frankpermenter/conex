@@ -105,6 +105,14 @@ struct NewtonDecomposition {
 // Requires 1 factorization and 3 back-solves.
 NewtonDecomposition ComputeFullDecomposition(
     CompiledModel& model,
+    Arena& arena,
+    const RowSpace& b,
+    const RowSpace& W);
+
+// Convenience wrapper — arena persists to keep returned Variables alive.
+// Caller must keep the returned struct alive (its arena member owns the data).
+NewtonDecomposition ComputeFullDecomposition(
+    CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W);
 
@@ -348,10 +356,24 @@ GeodesicResult SolveGeodesicHybrid(
 // Frozen-Jacobian d0 refresh: 1 back-solve with stale Gram at W0.
 void RefreshD0Frozen(
     CompiledModel& model,
+    Arena& arena,
     const RowSpace& b,
     const RowSpace& W0,
     const RowSpace& Wi,
     RowSpace& d0_out,
     Eigen::VectorXd& y0_out);
+
+// Convenience wrapper (creates a local arena — safe because d0_out is
+// caller-owned heap, and only temporaries are arena-backed).
+inline void RefreshD0Frozen(
+    CompiledModel& model,
+    const RowSpace& b,
+    const RowSpace& W0,
+    const RowSpace& Wi,
+    RowSpace& d0_out,
+    Eigen::VectorXd& y0_out) {
+  Arena arena;
+  RefreshD0Frozen(model, arena, b, W0, Wi, d0_out, y0_out);
+}
 
 }  // namespace conex

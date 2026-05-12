@@ -53,10 +53,25 @@ class Arena {
   // RestoreCursor frees everything allocated after the save point.
   char* SaveCursor() const { return cursor_; }
   void RestoreCursor(char* saved) {
+    // Pop any blocks allocated after the save point.
+    while (blocks_.size() > 1) {
+      char* block_start = blocks_.back().get();
+      char* block_end = block_start + block_sizes_.back();
+      if (saved >= block_start && saved <= block_end) break;
+      // saved is not in this block — pop it.
 #ifndef NDEBUG
-    // Poison freed memory to catch use-after-free.
-    if (saved < cursor_) {
-      std::memset(saved, 0xCD, cursor_ - saved);
+      std::memset(block_start, 0xCD, block_sizes_.back());
+#endif
+      blocks_.pop_back();
+      block_sizes_.pop_back();
+    }
+    // Now saved is in the last (current) block.
+    end_ = blocks_.back().get() + block_sizes_.back();
+#ifndef NDEBUG
+    // Poison from saved to end of block (not to cursor_, which may be stale).
+    char* block_end = blocks_.back().get() + block_sizes_.back();
+    if (saved < block_end) {
+      std::memset(saved, 0xCD, block_end - saved);
     }
 #endif
     cursor_ = saved;

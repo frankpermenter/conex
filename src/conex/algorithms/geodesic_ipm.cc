@@ -236,6 +236,7 @@ static void ComputeDirectNewtonStep(
 // Factor, two back-solves, 2-column MultiplyA → compute d0, d1.
 static void ComputeDecomposition(
     CompiledModel& model,
+    Arena& arena,
     const SolverRHS& cost_rhs,
     const RowSpace& b,
     const RowSpace& W,
@@ -243,20 +244,21 @@ static void ComputeDecomposition(
     RowSpace& d1,
     Eigen::VectorXd* y0_out = nullptr,
     Eigen::VectorXd* y1_out = nullptr) {
+  char* mark = arena.SaveCursor();
   model.SetScaling(W);
   model.AssembleAndFactor();
 
-  RowSpace v = model.MakeRowSpace();
+  RowSpace v = model.AllocRowSpace(arena);
 
   auto rhs0 = model.MakeSolverRHS();
   rhs0.SetZero();
-  v = W;
+  v += W;  // per-segment copy
   v *= 2.0;
   model.AccumulateAtranspose(v, rhs0);
 
   auto rhs1 = model.MakeSolverRHS();
   rhs1 = cost_rhs;
-  v = quadraticRepresentation(W, b);
+  quadraticRepresentation(v, W, b);
   model.AccumulateAtranspose(v, rhs1);
   rhs1 *= -1;
   // Inject equality RHS: +d at dual positions.
@@ -279,20 +281,25 @@ static void ComputeDecomposition(
     if (y1_out) *y1_out = y_dense.col(1);
   }
 
-  auto row = model.MakeRowSpace(2);
+  auto row = model.AllocRowSpace(arena, 2);
   model.MultiplyA(y, row);
 
-  RowSpace ay0 = model.MakeRowSpace();
-  RowSpace ay1 = model.MakeRowSpace();
+  RowSpace ay0 = model.AllocRowSpace(arena);
+  RowSpace ay1 = model.AllocRowSpace(arena);
   ay0.col() = row.col(0);
   ay1.col() = row.col(1);
 
-  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-  d0 = model.MakeRowSpace();
+  RowSpace sqrtW = model.AllocRowSpace(arena);
+  EuclideanJordanAlgebra::sqrt(sqrtW, W);
   setOnes(d0);
-  d0 -= quadraticRepresentation(sqrtW, ay0);
+  RowSpace tmp = model.AllocRowSpace(arena);
+  quadraticRepresentation(tmp, sqrtW, ay0);
+  d0 -= tmp;
 
-  d1 = quadraticRepresentation(sqrtW, addScaled(b, ay1, -1.0, -1.0));
+  RowSpace neg_b_ay1 = model.AllocRowSpace(arena);
+  addScaled(neg_b_ay1, b, ay1, -1.0, -1.0);
+  quadraticRepresentation(d1, sqrtW, neg_b_ay1);
+  arena.RestoreCursor(mark);
 }
 
 // Build the "duality cost" for the V(tau)=0 identity:
@@ -314,48 +321,46 @@ static SolverRHS MakeDualityCost(CompiledModel& model) {
 
 NewtonDecomposition ComputeFullDecomposition(
     CompiledModel& model,
+    Arena& arena,
     const RowSpace& b,
     const RowSpace& W) {
   const auto& cost_rhs = model.cost_rhs();
+  char* mark = arena.SaveCursor();
   model.SetScaling(W);
   model.AssembleAndFactor();
 
-  RowSpace ones = model.MakeRowSpace();
+  RowSpace ones = model.AllocRowSpace(arena);
   setOnes(ones);
-  RowSpace v = model.MakeRowSpace();
+  RowSpace v = model.AllocRowSpace(arena);
 
   // rhs0: A^T(2W)  →  y0  (no equality RHS here — it goes in cost_rhs)
   auto rhs0 = model.MakeSolverRHS();
   rhs0.SetZero();
-  v = W;
+  v += W;  // per-segment copy
   v *= 2.0;
   model.AccumulateAtranspose(v, rhs0);
 
   // rhs1: -(c + A^T P(W) b_0) + d_eq  →  y1_0
-  // The +d_eq ensures C y1_0 = d (equality constraint RHS).
   auto rhs1 = model.MakeSolverRHS();
   rhs1 = cost_rhs;
-  v = quadraticRepresentation(W, b);
+  quadraticRepresentation(v, W, b);
   model.AccumulateAtranspose(v, rhs1);
   rhs1 *= -1;
-  // Inject equality RHS: +d at dual positions.
   auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
   if (ts && !ts->equality_sub_assemblers().empty()) {
     auto d_rhs = ts->EqualityAffineTermRHS();
     rhs1 += d_rhs;
   }
 
-  // rhs2 = (c + A^T P(W) b_0) - d_eq - A^T(e + P(W)e)  →  y1_theta
-  // The -d_eq ensures C y1_theta = -d, so at θ=1 the equality cancels:
-  // C(y1_0 + y1_theta) = d - d = 0.
+  // rhs2 = (c + A^T P(W) b_0) - d_eq - A^T(e + P(W)e)
   auto rhs2 = model.MakeSolverRHS();
   rhs2 = rhs1;
-  rhs2 *= -1;  // (c + A^T P(W) b_0) - d_eq
-  v = addScaled(ones, quadraticRepresentation(W, ones), 1.0, 1.0);
-  v *= -1.0;   // -(e + P(W)e)
+  rhs2 *= -1;
+  quadraticRepresentation(v, W, ones);  // v = P(W)e
+  v += ones;   // v = e + P(W)e
+  v *= -1.0;
   model.AccumulateAtranspose(v, rhs2);
 
-  // Solve all three.
   auto y = model.MakeSolverRHS(3);
   y.SetColumn(0, rhs0);
   y.SetColumn(1, rhs1);
@@ -366,41 +371,76 @@ NewtonDecomposition ComputeFullDecomposition(
   Eigen::MatrixXd y_dense(nr, 3);
   y.supernodes->GatherInto(y_dense);
 
-  // Multiply A * [y0, y1_0, y1_theta].
-  auto row = model.MakeRowSpace(3);
+  auto row = model.AllocRowSpace(arena, 3);
   model.MultiplyA(y, row);
 
-  RowSpace ay0 = model.MakeRowSpace();
-  RowSpace ay1_0 = model.MakeRowSpace();
-  RowSpace ay1_theta = model.MakeRowSpace();
+  RowSpace ay0 = model.AllocRowSpace(arena);
+  RowSpace ay1_0 = model.AllocRowSpace(arena);
+  RowSpace ay1_theta = model.AllocRowSpace(arena);
   ay0.col() = row.col(0);
   ay1_0.col() = row.col(1);
   ay1_theta.col() = row.col(2);
 
-  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  RowSpace sqrtW = model.AllocRowSpace(arena);
+  EuclideanJordanAlgebra::sqrt(sqrtW, W);
 
   // d0 = e - P(W^{1/2})(A y0)
-  RowSpace d0 = model.MakeRowSpace();
+  RowSpace d0 = model.AllocRowSpace(arena);
   setOnes(d0);
-  d0 -= quadraticRepresentation(sqrtW, ay0);
+  RowSpace tmp = model.AllocRowSpace(arena);
+  quadraticRepresentation(tmp, sqrtW, ay0);
+  d0 -= tmp;
 
   // d1_0 = P(W^{1/2})(-b_0 - A y1_0)
-  RowSpace d1_0 = quadraticRepresentation(sqrtW,
-      addScaled(b, ay1_0, -1.0, -1.0));
+  RowSpace d1_0 = model.AllocRowSpace(arena);
+  addScaled(tmp, b, ay1_0, -1.0, -1.0);
+  quadraticRepresentation(d1_0, sqrtW, tmp);
 
   // d1_theta = P(W^{1/2})(b_0 - e - A y1_theta)
-  RowSpace d1_theta = quadraticRepresentation(sqrtW,
-      addScaled(addScaled(b, ones, 1.0, -1.0), ay1_theta, 1.0, -1.0));
+  RowSpace d1_theta = model.AllocRowSpace(arena);
+  addScaled(v, b, ones, 1.0, -1.0);     // b - e
+  addScaled(tmp, v, ay1_theta, 1.0, -1.0);  // (b-e) - Ay1_theta
+  quadraticRepresentation(d1_theta, sqrtW, tmp);
+
+  // Don't RestoreCursor — d0, d1_0, d1_theta are arena-backed and
+  // returned to caller. Temps (sqrtW, ay*, row, v, tmp) waste space
+  // but are freed when the caller restores its own cursor.
 
   return {d0, d1_0, d1_theta,
           y_dense.col(0), y_dense.col(1), y_dense.col(2)};
 }
 
+// Backward-compatible wrapper: creates a local arena, then copies
+// results to heap so they outlive the arena.
+NewtonDecomposition ComputeFullDecomposition(
+    CompiledModel& model,
+    const RowSpace& b,
+    const RowSpace& W) {
+  Arena arena;
+  auto decomp = ComputeFullDecomposition(model, arena, b, W);
+  // Deep copy arena-backed Variables to heap.
+  auto copy = [&](const RowSpace& src) {
+    RowSpace dst = model.MakeRowSpace();
+    dst += src;  // per-segment copy
+    return dst;
+  };
+  return {copy(decomp.d0), copy(decomp.d1_0), copy(decomp.d1_theta),
+          decomp.y0, decomp.y1_0, decomp.y1_theta};
+}
+
+void EvaluateDirection(RowSpace& out, const NewtonDecomposition& decomp,
+                       double k, double tau, double theta) {
+  // d(k, tau, theta) = d0 + k * (tau * d1_0 + theta * d1_theta)
+  addScaled(out, decomp.d1_0, decomp.d1_theta, tau, theta);
+  addScaled(out, decomp.d0, out, 1.0, k);
+}
+
+// Allocating convenience wrapper.
 RowSpace EvaluateDirection(const NewtonDecomposition& decomp,
                            double k, double tau, double theta) {
-  // d(k, tau, theta) = d0 + k * (tau * d1_0 + theta * d1_theta)
-  RowSpace d1 = addScaled(decomp.d1_0, decomp.d1_theta, tau, theta);
-  return addScaled(decomp.d0, d1, 1.0, k);
+  RowSpace out = like(decomp.d0);
+  EvaluateDirection(out, decomp, k, tau, theta);
+  return out;
 }
 
 double MinNormK(const NewtonDecomposition& decomp, double tau, double theta) {
@@ -457,13 +497,17 @@ KTauResult SelectKTau(const DecompInnerProducts& ip) {
 
 DualityCoeffs ComputeDualityCoeffs(
     CompiledModel& model,
+    Arena& arena,
     const SolverRHS& duality_cost,
     const RowSpace& b,
     const RowSpace& W,
     const NewtonDecomposition& decomp) {
+  char* mark = arena.SaveCursor();
   // sigma1 = <b0, P(W^{1/2})(d1_0)>
-  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-  RowSpace Pw_d1_0 = quadraticRepresentation(sqrtW, decomp.d1_0);
+  RowSpace sqrtW = model.AllocRowSpace(arena);
+  EuclideanJordanAlgebra::sqrt(sqrtW, W);
+  RowSpace Pw_d1_0 = model.AllocRowSpace(arena);
+  quadraticRepresentation(Pw_d1_0, sqrtW, decomp.d1_0);
   double sigma1 = dot(b, Pw_d1_0);
 
   // gamma1 = duality_cost^T y1_0  (uses +d at dual positions, not -d)
@@ -477,6 +521,7 @@ DualityCoeffs ComputeDualityCoeffs(
   model.AccumulateQx(y1_rhs, qy1);
   double q11 = qy1.dot(y1_rhs);
 
+  arena.RestoreCursor(mark);
   return {sigma1, gamma1, q11};
 }
 
@@ -485,6 +530,7 @@ DualityCoeffs ComputeDualityCoeffs(
 // Returns tau = -1 if no positive root exists.
 static std::pair<double, double> EvalThetaCandidate(
     CompiledModel& model,
+    Arena& arena,
     const SolverRHS& duality_cost,
     const RowSpace& b,
     const RowSpace& W,
@@ -492,19 +538,24 @@ static std::pair<double, double> EvalThetaCandidate(
     double bT_ones,
     double theta_cand) {
   if (theta_cand <= 0) return {-1, 1e30};
+  char* mark = arena.SaveCursor();
   double k = 1.0 / std::sqrt(theta_cand);
   double mu = theta_cand;
 
-  // Compute violation quadratic coefficients: beta*tau^2 + (alpha-R)*tau + mu = 0
-  auto dc = ComputeDualityCoeffs(model, duality_cost, b, W, decomp);
+  auto dc = ComputeDualityCoeffs(model, arena, duality_cost, b, W, decomp);
   double beta = dc.sigma1 + dc.gamma1 + dc.q11;
 
-  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-  RowSpace ones_v = model.MakeRowSpace();
+  RowSpace sqrtW = model.AllocRowSpace(arena);
+  EuclideanJordanAlgebra::sqrt(sqrtW, W);
+  RowSpace ones_v = model.AllocRowSpace(arena);
   setOnes(ones_v);
-  RowSpace e_plus_d0 = ones_v + decomp.d0;
-  RowSpace arg = addScaled(e_plus_d0, decomp.d1_theta, 1.0, k * theta_cand);
-  double sigma0 = dot(b, quadraticRepresentation(sqrtW, arg)) / k;
+  RowSpace e_plus_d0 = model.AllocRowSpace(arena);
+  addScaled(e_plus_d0, ones_v, decomp.d0, 1.0, 1.0);
+  RowSpace arg = model.AllocRowSpace(arena);
+  addScaled(arg, e_plus_d0, decomp.d1_theta, 1.0, k * theta_cand);
+  RowSpace Parg = model.AllocRowSpace(arena);
+  quadraticRepresentation(Parg, sqrtW, arg);
+  double sigma0 = dot(b, Parg) / k;
 
   auto y0_rhs = model.MakeSolverRHS();
   y0_rhs = model.MakeBlockVariable(decomp.y0);
@@ -514,84 +565,6 @@ static std::pair<double, double> EvalThetaCandidate(
   double cT_yt = duality_cost.dot(yt_rhs);
   double gamma0 = cT_y0 / k + theta_cand * cT_yt;
 
-  // Quadratic cost: f = y0/k + theta*y1_theta.
-  Eigen::VectorXd f_vec = decomp.y0 / k + theta_cand * decomp.y1_theta;
-  auto f_rhs = model.MakeSolverRHS();
-  f_rhs = model.MakeBlockVariable(f_vec);
-  auto qf = model.MakeSolverRHS();
-  qf.SetZero();
-  model.AccumulateQx(f_rhs, qf);
-  double q_ff = qf.dot(f_rhs);
-  auto y1_rhs = model.MakeSolverRHS();
-  y1_rhs = model.MakeBlockVariable(decomp.y1_0);
-  double q_f1 = qf.dot(y1_rhs);
-
-  double alpha = sigma0 + gamma0 + 2.0 * q_f1;
-  double R = theta_cand * (bT_ones + 1.0);
-  double mu_eff = mu + q_ff;
-
-  // Solve quadratic: beta*tau^2 + (alpha - R)*tau + mu_eff = 0
-  double B = alpha - R;
-  double disc = B * B - 4.0 * beta * mu_eff;
-  if (disc < 0) return {-1, 1e30};
-
-  double sqrt_disc = std::sqrt(disc);
-  double tau1 = (-B + sqrt_disc) / (2.0 * beta);
-  double tau2 = (-B - sqrt_disc) / (2.0 * beta);
-
-  // Pick the positive root with smaller ||d||^2.
-  auto eval_dsq = [&](double tau) -> double {
-    if (tau <= 0) return 1e30;
-    RowSpace d = EvaluateDirection(decomp, k, tau, theta_cand);
-    return squaredNorm(d);
-  };
-
-  double dsq1 = eval_dsq(tau1);
-  double dsq2 = eval_dsq(tau2);
-
-  double tau, dsq;
-  if (tau1 > 0 && (tau2 <= 0 || dsq1 <= dsq2)) {
-    tau = tau1; dsq = dsq1;
-  } else if (tau2 > 0) {
-    tau = tau2; dsq = dsq2;
-  } else {
-    return {-1, 1e30};
-  }
-
-  RowSpace d = EvaluateDirection(decomp, k, tau, theta_cand);
-  return {tau, normInf(d)};
-}
-
-// Frozen-Jacobian variant of EvalThetaCandidate.
-// Uses W0 for the Jacobian (Gram, sqrt, P(W)) and Wi for the value
-// (the b^T Wi/k term in sigma0).  decomp contains d0 refreshed at Wi,
-// d1_0 and d1_theta frozen at W0.
-static std::pair<double, double> FrozenEvalThetaCandidate(
-    CompiledModel& model,
-    const SolverRHS& duality_cost,
-    const RowSpace& b,
-    const RowSpace& Wi,       // current iterate
-    const RowSpace& sqrtW0,   // precomputed sqrt(W0)
-    const NewtonDecomposition& decomp,
-    double bT_ones,
-    double beta,              // precomputed sigma1 + gamma1 + q11
-    double theta_cand) {
-  if (theta_cand <= 0) return {-1, 1e30};
-  double k = 1.0 / std::sqrt(theta_cand);
-  double mu = theta_cand;
-  RowSpace arg = addScaled(decomp.d0, decomp.d1_theta, 1.0, k * theta_cand);
-  double sigma0 = dot(b, Wi) / k
-                 + dot(b, quadraticRepresentation(sqrtW0, arg)) / k;
-
-  auto y0_rhs = model.MakeSolverRHS();
-  y0_rhs = model.MakeBlockVariable(decomp.y0);
-  double cT_y0 = duality_cost.dot(y0_rhs);
-  auto yt_rhs = model.MakeSolverRHS();
-  yt_rhs = model.MakeBlockVariable(decomp.y1_theta);
-  double cT_yt = duality_cost.dot(yt_rhs);
-  double gamma0 = cT_y0 / k + theta_cand * cT_yt;
-
-  // Quadratic cost: f = y0/k + theta*y1_theta.
   Eigen::VectorXd f_vec = decomp.y0 / k + theta_cand * decomp.y1_theta;
   auto f_rhs = model.MakeSolverRHS();
   f_rhs = model.MakeBlockVariable(f_vec);
@@ -609,7 +582,7 @@ static std::pair<double, double> FrozenEvalThetaCandidate(
 
   double B = alpha - R;
   double disc = B * B - 4.0 * beta * mu_eff;
-  if (disc < 0) return {-1, 1e30};
+  if (disc < 0) { arena.RestoreCursor(mark); return {-1, 1e30}; }
 
   double sqrt_disc = std::sqrt(disc);
   double tau1 = (-B + sqrt_disc) / (2.0 * beta);
@@ -617,8 +590,12 @@ static std::pair<double, double> FrozenEvalThetaCandidate(
 
   auto eval_dsq = [&](double tau) -> double {
     if (tau <= 0) return 1e30;
-    RowSpace d = EvaluateDirection(decomp, k, tau, theta_cand);
-    return squaredNorm(d);
+    char* em = arena.SaveCursor();
+    RowSpace d = model.AllocRowSpace(arena);
+    EvaluateDirection(d, decomp, k, tau, theta_cand);
+    double r = squaredNorm(d);
+    arena.RestoreCursor(em);
+    return r;
   };
 
   double dsq1 = eval_dsq(tau1);
@@ -630,44 +607,142 @@ static std::pair<double, double> FrozenEvalThetaCandidate(
   } else if (tau2 > 0) {
     tau_out = tau2;
   } else {
+    arena.RestoreCursor(mark);
     return {-1, 1e30};
   }
 
-  RowSpace d = EvaluateDirection(decomp, k, tau_out, theta_cand);
-  return {tau_out, normInf(d)};
+  RowSpace d = model.AllocRowSpace(arena);
+  EvaluateDirection(d, decomp, k, tau_out, theta_cand);
+  double dinf = normInf(d);
+  arena.RestoreCursor(mark);
+  return {tau_out, dinf};
+}
+
+// Frozen-Jacobian variant of EvalThetaCandidate.
+// Uses W0 for the Jacobian (Gram, sqrt, P(W)) and Wi for the value
+// (the b^T Wi/k term in sigma0).  decomp contains d0 refreshed at Wi,
+// d1_0 and d1_theta frozen at W0.
+static std::pair<double, double> FrozenEvalThetaCandidate(
+    CompiledModel& model,
+    Arena& arena,
+    const SolverRHS& duality_cost,
+    const RowSpace& b,
+    const RowSpace& Wi,       // current iterate
+    const RowSpace& sqrtW0,   // precomputed sqrt(W0)
+    const NewtonDecomposition& decomp,
+    double bT_ones,
+    double beta,              // precomputed sigma1 + gamma1 + q11
+    double theta_cand) {
+  if (theta_cand <= 0) return {-1, 1e30};
+  char* mark = arena.SaveCursor();
+  double k = 1.0 / std::sqrt(theta_cand);
+  double mu = theta_cand;
+  RowSpace arg = model.AllocRowSpace(arena);
+  addScaled(arg, decomp.d0, decomp.d1_theta, 1.0, k * theta_cand);
+  RowSpace Parg = model.AllocRowSpace(arena);
+  quadraticRepresentation(Parg, sqrtW0, arg);
+  double sigma0 = dot(b, Wi) / k + dot(b, Parg) / k;
+
+  auto y0_rhs = model.MakeSolverRHS();
+  y0_rhs = model.MakeBlockVariable(decomp.y0);
+  double cT_y0 = duality_cost.dot(y0_rhs);
+  auto yt_rhs = model.MakeSolverRHS();
+  yt_rhs = model.MakeBlockVariable(decomp.y1_theta);
+  double cT_yt = duality_cost.dot(yt_rhs);
+  double gamma0 = cT_y0 / k + theta_cand * cT_yt;
+
+  Eigen::VectorXd f_vec = decomp.y0 / k + theta_cand * decomp.y1_theta;
+  auto f_rhs = model.MakeSolverRHS();
+  f_rhs = model.MakeBlockVariable(f_vec);
+  auto qf = model.MakeSolverRHS();
+  qf.SetZero();
+  model.AccumulateQx(f_rhs, qf);
+  double q_ff = qf.dot(f_rhs);
+  auto y1_rhs = model.MakeSolverRHS();
+  y1_rhs = model.MakeBlockVariable(decomp.y1_0);
+  double q_f1 = qf.dot(y1_rhs);
+
+  double alpha = sigma0 + gamma0 + 2.0 * q_f1;
+  double R = theta_cand * (bT_ones + 1.0);
+  double mu_eff = mu + q_ff;
+
+  double B = alpha - R;
+  double disc = B * B - 4.0 * beta * mu_eff;
+  if (disc < 0) { arena.RestoreCursor(mark); return {-1, 1e30}; }
+
+  double sqrt_disc = std::sqrt(disc);
+  double tau1 = (-B + sqrt_disc) / (2.0 * beta);
+  double tau2 = (-B - sqrt_disc) / (2.0 * beta);
+
+  auto eval_dsq = [&](double tau) -> double {
+    if (tau <= 0) return 1e30;
+    char* em = arena.SaveCursor();
+    RowSpace d = model.AllocRowSpace(arena);
+    EvaluateDirection(d, decomp, k, tau, theta_cand);
+    double r = squaredNorm(d);
+    arena.RestoreCursor(em);
+    return r;
+  };
+
+  double dsq1 = eval_dsq(tau1);
+  double dsq2 = eval_dsq(tau2);
+
+  double tau_out;
+  if (tau1 > 0 && (tau2 <= 0 || dsq1 <= dsq2)) {
+    tau_out = tau1;
+  } else if (tau2 > 0) {
+    tau_out = tau2;
+  } else {
+    arena.RestoreCursor(mark);
+    return {-1, 1e30};
+  }
+
+  RowSpace d = model.AllocRowSpace(arena);
+  EvaluateDirection(d, decomp, k, tau_out, theta_cand);
+  double dinf = normInf(d);
+  arena.RestoreCursor(mark);
+  return {tau_out, dinf};
 }
 
 // Core frozen-Jacobian d0 refresh: 1 back-solve with stale Gram.
 // Computes d0 = P(sqrt(W0))(Wi^{-1} - Ay0) and optionally outputs y0.
 void RefreshD0Frozen(
     CompiledModel& model,
+    Arena& arena,
     const RowSpace& b,
     const RowSpace& W0,
     const RowSpace& Wi,
     RowSpace& d0_out,
     Eigen::VectorXd& y0_out) {
-  RowSpace Wi_inv = EuclideanJordanAlgebra::inverse(Wi);
-  RowSpace sqrtW0 = EuclideanJordanAlgebra::sqrt(W0);
+  char* mark = arena.SaveCursor();
+  RowSpace Wi_inv = model.AllocRowSpace(arena);
+  EuclideanJordanAlgebra::inverse(Wi_inv, Wi);
+  RowSpace sqrtW0 = model.AllocRowSpace(arena);
+  EuclideanJordanAlgebra::sqrt(sqrtW0, W0);
 
-  // Centering-only solve: cone_rhs = Wi + P(W0)(Wi^{-1}), no cost.
-  RowSpace center = addScaled(Wi, quadraticRepresentation(W0, Wi_inv), 1.0, 1.0);
+  RowSpace PW0_Winv = model.AllocRowSpace(arena);
+  quadraticRepresentation(PW0_Winv, W0, Wi_inv);
+  RowSpace center = model.AllocRowSpace(arena);
+  addScaled(center, Wi, PW0_Winv, 1.0, 1.0);
   auto var_rhs = model.MakeSolverRHS();
   var_rhs.SetZero();
   RowSpace Ax = SolveConeSystem(model, var_rhs, center, &y0_out);
 
-  // d0 = P(sqrt(W0))(Wi^{-1} - Ax)
-  d0_out = quadraticRepresentation(sqrtW0,
-      addScaled(Wi_inv, Ax, 1.0, -1.0));
+  RowSpace tmp = model.AllocRowSpace(arena);
+  addScaled(tmp, Wi_inv, Ax, 1.0, -1.0);
+  quadraticRepresentation(d0_out, sqrtW0, tmp);
+  arena.RestoreCursor(mark);
 }
 
 // Overload for NewtonDecomposition (ThetaCont frozen-J).
 static void RefreshD0Frozen(
     CompiledModel& model,
+    Arena& arena,
     const RowSpace& b,
     const RowSpace& W0,
     const RowSpace& Wi,
     NewtonDecomposition& decomp) {
-  RefreshD0Frozen(model, b, W0, Wi, decomp.d0, decomp.y0);
+  RefreshD0Frozen(model, arena, b, W0, Wi, decomp.d0, decomp.y0);
 }
 
 // Forward declaration (defined later in this file).
@@ -691,6 +766,7 @@ GeodesicResult SolveGeodesicHSD(
   const RowSpace b = model.GetAffineTerm();
   const int m = W.total_rows();
   const double nu = barrierParameter(W);
+  Arena arena;
 
   RowSpace ones = model.MakeRowSpace();
   setOnes(ones);
@@ -747,7 +823,7 @@ GeodesicResult SolveGeodesicHSD(
   for (int iter = 0; iter < max_iterations; ++iter) {
     model.SetScaling(W);
     if (!model.AssembleAndFactor()) break;
-    auto decomp = ComputeFullDecomposition(model, b, W);
+    auto decomp = ComputeFullDecomposition(model, arena, b, W);
     total_fac++;
     total_sol += 3;
 
@@ -934,6 +1010,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
   const RowSpace b = model.GetAffineTerm();
   const int m = W.total_rows();
   const double nu = barrierParameter(W);
+  Arena arena;
 
   RowSpace ones_bTe = model.MakeRowSpace();
   setOnes(ones_bTe);
@@ -958,7 +1035,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
     // Decompose at current W.
-    auto decomp = ComputeFullDecomposition(model, b, W);
+    auto decomp = ComputeFullDecomposition(model, arena, b, W);
     total_fac++;
     total_sol += 3;
 
@@ -973,7 +1050,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
         // Use arithmetic mean since theta_lo can be 0 (geometric mean→0).
         double theta_mid = 0.5 * (theta_lo + theta_hi);
         auto [tau_try, d_inf_try] = EvalThetaCandidate(
-            model, duality_cost, b, W, decomp, bT_ones, theta_mid);
+            model, arena, duality_cost, b, W, decomp, bT_ones, theta_mid);
         if (tau_try > 0 && d_inf_try <= beta_target) {
           theta_hi = theta_mid;  // can go lower
         } else {
@@ -985,7 +1062,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     k = 1.0 / std::sqrt(theta);
     // Evaluate tau at the chosen theta via hard constraint (V(tau)=0).
     auto [tau_sel, d_inf_sel] = EvalThetaCandidate(
-        model, duality_cost, b, W, decomp, bT_ones, theta);
+        model, arena, duality_cost, b, W, decomp, bT_ones, theta);
     if (tau_sel <= 0) {
       // No positive root — abort this outer iteration.
       result.iterations = outer + 1;
@@ -1041,7 +1118,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     constexpr bool refactor_inner = false;
 
     RowSpace sqrtW0_f = EuclideanJordanAlgebra::sqrt(W0);
-    auto dc_f = ComputeDualityCoeffs(model, duality_cost, b, W0, decomp);
+    auto dc_f = ComputeDualityCoeffs(model, arena, duality_cost, b, W0, decomp);
     double beta_f = dc_f.sigma1 + dc_f.gamma1 + dc_f.q11;
 
     for (int inner = 0; inner < max_centering_steps; ++inner) {
@@ -1049,13 +1126,13 @@ GeodesicResult SolveGeodesicThetaContinuation(
         // Full refactor: makes inner iteration identical to outer.
         W0 = W;
         sqrtW0_f = EuclideanJordanAlgebra::sqrt(W0);
-        dc_f = ComputeDualityCoeffs(model, duality_cost, b, W0, decomp);
+        dc_f = ComputeDualityCoeffs(model, arena, duality_cost, b, W0, decomp);
         beta_f = dc_f.sigma1 + dc_f.gamma1 + dc_f.q11;
-        decomp = ComputeFullDecomposition(model, b, W);
+        decomp = ComputeFullDecomposition(model, arena, b, W);
         total_fac++;
         total_sol += 3;
       } else {
-        RefreshD0Frozen(model, b, W0, W, decomp);
+        RefreshD0Frozen(model, arena, b, W0, W, decomp);
         total_sol += 1;
       }
 
@@ -1073,10 +1150,10 @@ GeodesicResult SolveGeodesicThetaContinuation(
         std::pair<double, double> result_try;
         if (refactor_inner) {
           result_try = EvalThetaCandidate(
-              model, duality_cost, b, W, decomp, bT_ones, theta_mid);
+              model, arena, duality_cost, b, W, decomp, bT_ones, theta_mid);
         } else {
           result_try = FrozenEvalThetaCandidate(
-              model, duality_cost, b, W, sqrtW0_f, decomp,
+              model, arena, duality_cost, b, W, sqrtW0_f, decomp,
               bT_ones, beta_f, theta_mid);
         }
         auto [tau_try, d_inf_try] = result_try;
@@ -1091,10 +1168,10 @@ GeodesicResult SolveGeodesicThetaContinuation(
       std::pair<double, double> result_sel;
       if (refactor_inner) {
         result_sel = EvalThetaCandidate(
-            model, duality_cost, b, W, decomp, bT_ones, theta_f);
+            model, arena, duality_cost, b, W, decomp, bT_ones, theta_f);
       } else {
         result_sel = FrozenEvalThetaCandidate(
-            model, duality_cost, b, W, sqrtW0_f, decomp,
+            model, arena, duality_cost, b, W, sqrtW0_f, decomp,
             bT_ones, beta_f, theta_f);
       }
       auto [tau_f, d_inf_f] = result_sel;
@@ -1185,7 +1262,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
   // Recover primal x.  De-homogenize: x_phys = x_lifted / tau.
   if (k > 0 && tau > 0) {
-    auto decomp = ComputeFullDecomposition(model, b, W);
+    auto decomp = ComputeFullDecomposition(model, arena, b, W);
     Eigen::VectorXd x_lifted =
         decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
     result.x = x_lifted / tau;
@@ -1221,10 +1298,11 @@ GeodesicResult SolveGeodesicThetaContinuation(
 double GeodesicLineSearch(
     CompiledModel& model,
     const RowSpace& W) {
+  Arena arena;
   const RowSpace b = model.GetAffineTerm();
   RowSpace d0 = model.MakeRowSpace();
   RowSpace d1 = model.MakeRowSpace();
-  ComputeDecomposition(model, model.cost_rhs(), b, W, d0, d1);
+  ComputeDecomposition(model, arena, model.cost_rhs(), b, W, d0, d1);
 
   return lineSearchK(d0, d1);
 }
@@ -1242,9 +1320,10 @@ static std::pair<double, double> EvalKCandidate(
     double theta_val,
     double k_cand) {
   if (k_cand <= 0) return {-1, 1e30};
+  Arena arena;
   double mu = 1.0 / (k_cand * k_cand);
 
-  auto dc = ComputeDualityCoeffs(model, duality_cost, b, W, decomp);
+  auto dc = ComputeDualityCoeffs(model, arena, duality_cost, b, W, decomp);
   double beta_coeff = dc.sigma1 + dc.gamma1 + dc.q11;
 
   RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
@@ -1312,6 +1391,7 @@ GeodesicResult SolveGeodesicPhaseOne(
   const RowSpace b = model.GetAffineTerm();
   const int m = W.total_rows();
   const double nu = barrierParameter(W);
+  Arena arena;
 
   RowSpace ones_bTe = model.MakeRowSpace();
   setOnes(ones_bTe);
@@ -1336,7 +1416,7 @@ GeodesicResult SolveGeodesicPhaseOne(
   bool theta_zero = false;
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
-    auto decomp = ComputeFullDecomposition(model, b, W);
+    auto decomp = ComputeFullDecomposition(model, arena, b, W);
     total_fac++;
     total_sol += 3;
 
@@ -1488,7 +1568,7 @@ GeodesicResult SolveGeodesicPhaseOne(
 
   // Recover primal x.  De-homogenize: x_phys = x_lifted / tau.
   if (k > 0 && tau > 0) {
-    auto decomp = ComputeFullDecomposition(model, b, W);
+    auto decomp = ComputeFullDecomposition(model, arena, b, W);
     Eigen::VectorXd x_lifted =
         decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
     result.x = x_lifted / tau;
@@ -1520,6 +1600,7 @@ GeodesicResult SolveGeodesicLP(
   double k = 0.0;
   const int m = W.total_rows();
   const double nu = barrierParameter(W);
+  Arena arena;
   constexpr double theta = 0.0;
   RowSpace ones_b = model.MakeRowSpace();
   setOnes(ones_b);
@@ -1547,7 +1628,7 @@ GeodesicResult SolveGeodesicLP(
     RowSpace d0 = model.MakeRowSpace();
     RowSpace d1 = model.MakeRowSpace();
     Eigen::VectorXd y0, y1;
-    ComputeDecomposition(model, cost_rhs_blend, b, W, d0, d1, &y0, &y1);
+    ComputeDecomposition(model, arena, cost_rhs_blend, b, W, d0, d1, &y0, &y1);
     total_fac += 1;
     total_sol += 2;
 
@@ -1629,7 +1710,7 @@ GeodesicResult SolveGeodesicLP(
       RowSpace d0_f = model.MakeRowSpace();
       RowSpace d1_f = d1;  // frozen, same as standard d1
       Eigen::VectorXd y0_f;
-      RefreshD0Frozen(model, model.GetAffineTerm(), W0, W, d0_f, y0_f);
+      RefreshD0Frozen(model, arena, model.GetAffineTerm(), W0, W, d0_f, y0_f);
       total_sol += 1;
 
       for (int inner = 0; inner < max_centering_steps; ++inner) {
@@ -1656,7 +1737,7 @@ GeodesicResult SolveGeodesicLP(
 
         // Re-solve only d0 with updated W_i (1 solve). d1 is frozen.
         if (inner + 1 < max_centering_steps) {
-          RefreshD0Frozen(model, model.GetAffineTerm(), W0, W, d0_f, y0_f);
+          RefreshD0Frozen(model, arena, model.GetAffineTerm(), W0, W, d0_f, y0_f);
           total_sol += 1;
         }
       }
@@ -2527,6 +2608,7 @@ GeodesicResult SolveGeodesicHybrid(
     double tau,
     HybridSwitchPolicy policy) {
   const auto& cost_rhs = model.cost_rhs();
+  Arena arena;
   RowSpace b = model.GetAffineTerm();
   const int m = b.total_rows();
 
@@ -2558,7 +2640,7 @@ GeodesicResult SolveGeodesicHybrid(
   } else {
     RowSpace d0 = model.MakeRowSpace();
     RowSpace d1 = model.MakeRowSpace();
-    ComputeDecomposition(model, cost_scaled, b, W, d0, d1);
+    ComputeDecomposition(model, arena, cost_scaled, b, W, d0, d1);
     double d0d1 = dot(d0, d1);
     double d1sq = squaredNorm(d1);
     if (d1sq > 1e-30) {
