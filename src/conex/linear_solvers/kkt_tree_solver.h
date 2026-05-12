@@ -523,9 +523,18 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<NodeScatterInfo> solve_scatter_info_;  // indexed by solve_order pos
   void AllocateSolveArena();
 
-  // Owned separator scratches for MakeSolverRHS allocations.
-  std::vector<std::unique_ptr<SeparatorScratch>> owned_solver_rhs_scratches_;
+  // Cached separator metadata (computed once at FinalizeStructure).
+  std::vector<int> cached_sep_rows_;       // sep_rows[k] per subsystem
+  std::vector<int> cached_sep_offsets_;    // double offset per subsystem
+  int cached_sep_total_per_col_ = 0;       // sum of sep_rows
 
+  // Build a SeparatorScratch from a data buffer + cached metadata.
+  SeparatorScratch MakeSepScratch(double* buf, int cols);
+
+  // Owned storage for SeparatorScratch instances and their block_ptrs arrays.
+  std::vector<std::unique_ptr<SeparatorScratch>> owned_solver_rhs_scratches_;
+  std::vector<std::unique_ptr<double*[]>> owned_sep_block_ptrs_;
+  std::vector<std::unique_ptr<double[]>> owned_sep_buffers_;
 };
 
 }  // namespace conex

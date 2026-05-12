@@ -14,70 +14,17 @@
 
 namespace conex {
 
-// Arena-allocated separator scratch: one block per subsystem, contiguous
-// in memory.  Used for separator temporaries during blocked solve and
-// vector multiply.
+// Separator scratch: per-subsystem buffers for the blocked solve.
+// Non-owning view: pointers into arena or externally managed memory.
 struct SeparatorScratch {
-  std::vector<int> sep_rows;
-  std::vector<int> offsets;
-  int total_rows = 0;
-  int reserved_cols = 0;
-  std::unique_ptr<void, decltype(&std::free)> arena{nullptr, &std::free};
-  std::vector<double*> block_ptrs;
-
-  template <typename Subsystem>
-  void Init(const std::vector<Subsystem*>& subsystems, int cols,
-            Arena* ext_arena = nullptr) {
-    sep_rows.clear();
-    offsets.clear();
-    int off = 0;
-    for (auto* s : subsystems) {
-      int sr = static_cast<int>(s->separators().size());
-      sep_rows.push_back(sr);
-      offsets.push_back(off);
-      off += sr * cols;
-    }
-    total_rows = 0;
-    for (int sr : sep_rows) total_rows += sr;
-    reserved_cols = cols;
-
-    double* base = nullptr;
-    if (ext_arena) {
-      // Arena-backed: allocate from external arena.
-      if (off > 0) {
-        base = ext_arena->AllocArray<double>(off);
-        std::memset(base, 0, off * sizeof(double));
-      }
-      arena.reset(nullptr);
-    } else {
-      // Self-owned: posix_memalign.
-      constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
-      size_t bytes = static_cast<size_t>(off) * sizeof(double);
-      bytes = ((bytes + kAlign - 1) / kAlign) * kAlign;
-      if (bytes > 0) {
-        void* raw = nullptr;
-        if (posix_memalign(&raw, kAlign, bytes) != 0) throw std::bad_alloc();
-        arena.reset(raw);
-      }
-      base = static_cast<double*>(arena.get());
-    }
-    block_ptrs.resize(sep_rows.size());
-    for (size_t k = 0; k < sep_rows.size(); ++k) {
-      block_ptrs[k] = base ? base + offsets[k] : nullptr;
-    }
-  }
+  double** block_ptrs = nullptr;  // block_ptrs[k] = start of block k
+  const int* sep_rows = nullptr;  // sep_rows[k] = rows in block k
+  int num_blocks = 0;
+  int total_doubles = 0;          // total buffer size for SetZero
 
   void SetZero() const {
-    size_t total_doubles = 0;
-    if (!sep_rows.empty()) {
-      total_doubles = offsets.back() + sep_rows.back() * reserved_cols;
-    }
-    if (total_doubles == 0) return;
-    if (arena) {
-      std::memset(arena.get(), 0, total_doubles * sizeof(double));
-    } else if (!block_ptrs.empty() && block_ptrs[0]) {
+    if (total_doubles > 0 && block_ptrs && block_ptrs[0])
       std::memset(block_ptrs[0], 0, total_doubles * sizeof(double));
-    }
   }
 
   Eigen::Map<Eigen::MatrixXd> block(int k, int cols) const {

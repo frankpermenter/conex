@@ -244,8 +244,6 @@ void T::SolveBlockedInPlace(BlockPartition& supernodes) const {
 void T::SolveBlockedInPlace(BlockPartition& supernodes,
                              SeparatorScratch& scratch) const {
   const int nc = supernodes.cols();
-  CONEX_DEMAND(nc <= scratch.reserved_cols,
-               "BlockVariable has more columns than reserved at FinalizeStructure.");
 
   const int num_solve = static_cast<int>(solve_order_.size());
 
@@ -767,8 +765,29 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols) {
   ComputeEliminationOrder(clique_tree);
   BindContributors(adapter_to_clique);
   AllocateSolveArena();
-  sep_scratch_.Init(subsystems_, rhs_cols);
-  sep_scratch_out_.Init(subsystems_, rhs_cols);
+
+  // Cache separator metadata (once, shared by all SeparatorScratch instances).
+  cached_sep_rows_.clear();
+  cached_sep_offsets_.clear();
+  int sep_off = 0;
+  for (auto* sub : subsystems_) {
+    int sr = static_cast<int>(sub->separators().size());
+    cached_sep_rows_.push_back(sr);
+    cached_sep_offsets_.push_back(sep_off);
+    sep_off += sr;
+  }
+  cached_sep_total_per_col_ = sep_off;
+
+  // Build internal separator scratches (heap-backed data).
+  {
+    int total = cached_sep_total_per_col_ * rhs_cols;
+    auto buf1 = std::unique_ptr<double[]>(new double[total]());
+    sep_scratch_ = MakeSepScratch(buf1.get(), rhs_cols);
+    owned_sep_buffers_.push_back(std::move(buf1));
+    auto buf2 = std::unique_ptr<double[]>(new double[total]());
+    sep_scratch_out_ = MakeSepScratch(buf2.get(), rhs_cols);
+    owned_sep_buffers_.push_back(std::move(buf2));
+  }
 }
 
 void T::SetEliminationTree(const std::vector<int>& parent) {
@@ -1009,6 +1028,20 @@ void T::push_back(std::unique_ptr<AssemblerAdapter>&& system) {
   contributors_.emplace_back(std::move(system));
 }
 
+SeparatorScratch T::MakeSepScratch(double* buf, int cols) {
+  const int ns = static_cast<int>(cached_sep_rows_.size());
+  auto ptrs = std::make_unique<double*[]>(ns);
+  for (int k = 0; k < ns; ++k)
+    ptrs[k] = buf ? buf + cached_sep_offsets_[k] * cols : nullptr;
+  SeparatorScratch s;
+  s.block_ptrs = ptrs.get();
+  s.sep_rows = cached_sep_rows_.data();
+  s.num_blocks = ns;
+  s.total_doubles = cached_sep_total_per_col_ * cols;
+  owned_sep_block_ptrs_.push_back(std::move(ptrs));
+  return s;
+}
+
 SolverRHS T::MakeSolverRHS(int cols) {
   SolverRHS rhs;
   auto p = MakePartition();
@@ -1016,10 +1049,16 @@ SolverRHS T::MakeSolverRHS(int cols) {
   p->SetZero();
   rhs.supernodes = p.get();
   owned_tree_rhs_partitions_.push_back(std::move(p));
-  auto sep = std::make_unique<SeparatorScratch>();
-  sep->Init(subsystems_, cols);
-  rhs.separators = sep.get();
-  owned_solver_rhs_scratches_.push_back(std::move(sep));
+
+  // Allocate separator data (heap).
+  int total = cached_sep_total_per_col_ * cols;
+  auto sep_buf_owned = std::make_unique<double[]>(total);
+  std::memset(sep_buf_owned.get(), 0, total * sizeof(double));
+  auto scratch = MakeSepScratch(sep_buf_owned.get(), cols);
+  owned_sep_buffers_.push_back(std::move(sep_buf_owned));
+  auto sp = std::make_unique<SeparatorScratch>(scratch);
+  rhs.separators = sp.get();
+  owned_solver_rhs_scratches_.push_back(std::move(sp));
   rhs.blocks_fully_gathered = false;
   return rhs;
 }
@@ -1037,11 +1076,17 @@ SolverRHS T::AllocSolverRHS(Arena& arena, int cols) {
   rhs.supernodes = p.get();
   owned_tree_rhs_partitions_.push_back(std::move(p));
 
-  auto sep = std::make_unique<SeparatorScratch>();
-  sep->Init(subsystems_, cols, &arena);
-  rhs.separators = sep.get();
-  owned_solver_rhs_scratches_.push_back(std::move(sep));
-
+  // Allocate separator data from arena.
+  int total = cached_sep_total_per_col_ * cols;
+  double* sep_buf = nullptr;
+  if (total > 0) {
+    sep_buf = arena.AllocArray<double>(total);
+    std::memset(sep_buf, 0, total * sizeof(double));
+  }
+  auto scratch = MakeSepScratch(sep_buf, cols);
+  auto sp = std::make_unique<SeparatorScratch>(scratch);
+  rhs.separators = sp.get();
+  owned_solver_rhs_scratches_.push_back(std::move(sp));
   rhs.blocks_fully_gathered = false;
   return rhs;
 }
