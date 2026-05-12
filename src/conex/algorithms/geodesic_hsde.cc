@@ -164,7 +164,7 @@ GeodesicResult SolveGeodesicHSDE(
     bool verbose) {
   const auto& cost_rhs = model.cost_rhs();
   RowSpace b = model.GetAffineTerm();
-  RowSpace ones = model.MakeRowSpace();
+  RowSpace ones = model.AllocRowSpace();
   setOnes(ones);
   const double nu = barrierParameter(W);
   const double bT_ones = dot(b, ones);
