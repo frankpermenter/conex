@@ -1801,7 +1801,7 @@ TEST(GeodesicBarrierQP, BarrierLP_SDP) {
   std::vector<Eigen::SparseMatrix<double>> A_list;
   auto make_sym = [](int n) {
     MatrixXd M = MatrixXd::Random(n, n);
-    return (M + M.transpose()) / 2.0;
+    return MatrixXd((M + M.transpose()) / 2.0);
   };
   for (int i = 0; i < p; ++i)
     A_list.push_back(toSparse(make_sym(n_psd)));
@@ -1894,7 +1894,7 @@ TEST(GeodesicBarrierQP, FrozenJacobian_SDP) {
   std::vector<Eigen::SparseMatrix<double>> A_list;
   auto make_sym = [](int n) {
     MatrixXd M = MatrixXd::Random(n, n);
-    return (M + M.transpose()) / 2.0;
+    return MatrixXd((M + M.transpose()) / 2.0);
   };
   for (int i = 0; i < p; ++i)
     A_list.push_back(toSparse(make_sym(n_psd)));
@@ -2070,7 +2070,7 @@ TEST(GeodesicBarrierQP, FrozenJacobian_ThetaCont_SDP) {
   std::vector<Eigen::SparseMatrix<double>> A_list;
   auto make_sym = [](int n) {
     MatrixXd M = MatrixXd::Random(n, n);
-    return (M + M.transpose()) / 2.0;
+    return MatrixXd((M + M.transpose()) / 2.0);
   };
   for (int i = 0; i < p; ++i)
     A_list.push_back(toSparse(make_sym(n_psd)));
@@ -2117,7 +2117,7 @@ TEST(GeodesicBarrierQP, ThetaContR_2x2_Canary) {
   std::vector<Eigen::SparseMatrix<double>> A_list;
   auto make_sym = [](int n) {
     MatrixXd M = MatrixXd::Random(n, n);
-    return (M + M.transpose()) / 2.0;
+    return MatrixXd((M + M.transpose()) / 2.0);
   };
   for (int i = 0; i < p; ++i)
     A_list.push_back(toSparse(make_sym(n_psd)));
@@ -2227,7 +2227,7 @@ TEST(GeodesicBarrierQP, HSDE_Affinity) {
   std::vector<Eigen::SparseMatrix<double>> A_list;
   auto make_sym = [](int n) {
     MatrixXd M = MatrixXd::Random(n, n);
-    return (M + M.transpose()) / 2.0;
+    return MatrixXd((M + M.transpose()) / 2.0);
   };
   for (int i = 0; i < p; ++i)
     A_list.push_back(toSparse(make_sym(n_psd)));
@@ -2377,7 +2377,7 @@ TEST(GeodesicBarrierQP, HSDE_QuadraticFallback) {
   std::vector<Eigen::SparseMatrix<double>> A_list;
   auto make_sym = [](int n) {
     MatrixXd M = MatrixXd::Random(n, n);
-    return (M + M.transpose()) / 2.0;
+    return MatrixXd((M + M.transpose()) / 2.0);
   };
   for (int i = 0; i < p; ++i)
     A_list.push_back(toSparse(make_sym(n_psd)));
@@ -2469,7 +2469,7 @@ TEST(GeodesicBarrierQP, CompareAlgorithms_SDP) {
   std::vector<Eigen::SparseMatrix<double>> A_list;
   auto make_sym = [](int n) {
     MatrixXd M = MatrixXd::Random(n, n);
-    return (M + M.transpose()) / 2.0;
+    return MatrixXd((M + M.transpose()) / 2.0);
   };
   for (int i = 0; i < p; ++i)
     A_list.push_back(toSparse(make_sym(n_psd)));
@@ -2578,7 +2578,7 @@ TEST(GeodesicBarrierQP, AlgorithmSweep_SDP) {
 
   auto make_sym = [](int n) {
     MatrixXd M = MatrixXd::Random(n, n);
-    return (M + M.transpose()) / 2.0;
+    return MatrixXd((M + M.transpose()) / 2.0);
   };
 
   for (auto& cfg : configs) {
