@@ -42,7 +42,11 @@ TEST(LineSearchBug, EvaluatedNormExceedsBound) {
 
   // Decompose at the exit W (same state as phase 1's last decomp).
   RowSpace b = kkt->GetAffineTerm();
-  auto decomp = ComputeFullDecomposition(cm, b, W);
+  NewtonDecomposition decomp;
+  decomp.d0 = cm.MakeRowSpace();
+  decomp.d1_0 = cm.MakeRowSpace();
+  decomp.d1_theta = cm.MakeRowSpace();
+  ComputeFullDecomposition(cm, b, W, decomp);
 
   // Reproduce lineSearchK call from phase 1.
   RowSpace tau_d1_0 = decomp.d1_0;

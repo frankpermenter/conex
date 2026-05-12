@@ -103,18 +103,12 @@ struct NewtonDecomposition {
 
 // Factor the Gram system and compute the three-term decomposition.
 // Requires 1 factorization and 3 back-solves.
-NewtonDecomposition ComputeFullDecomposition(
-    CompiledModel& model,
-    Arena& arena,
-    const RowSpace& b,
-    const RowSpace& W);
-
-// Convenience wrapper — arena persists to keep returned Variables alive.
-// Caller must keep the returned struct alive (its arena member owns the data).
-NewtonDecomposition ComputeFullDecomposition(
+// Caller pre-allocates decomp.d0, d1_0, d1_theta (arena or heap).
+void ComputeFullDecomposition(
     CompiledModel& model,
     const RowSpace& b,
-    const RowSpace& W);
+    const RowSpace& W,
+    NewtonDecomposition& decomp);
 
 // Evaluate d(k, tau, theta) = d0 + k * (tau * d1_0 + theta * d1_theta).
 // tau weights the original problem data, theta weights the identity centering.

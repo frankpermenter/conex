@@ -134,7 +134,11 @@ TEST(GeodesicBarrierQP, FullDecomposition) {
 
   const RowSpace b_rs = kkt->GetAffineTerm();
 
-  auto decomp = ComputeFullDecomposition(cm, b_rs, W);
+  NewtonDecomposition decomp;
+  decomp.d0 = cm.MakeRowSpace();
+  decomp.d1_0 = cm.MakeRowSpace();
+  decomp.d1_theta = cm.MakeRowSpace();
+  ComputeFullDecomposition(cm, b_rs, W, decomp);
 
   // Test several (k, theta) pairs.
   double test_ks[] = {0.5, 1.0, 2.0, 5.0};

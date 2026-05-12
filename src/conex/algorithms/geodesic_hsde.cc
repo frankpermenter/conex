@@ -203,7 +203,11 @@ GeodesicResult SolveGeodesicHSDE(
     // The end-of-loop also calls SetScaling + AssembleAndFactor after the step,
     // but this is redundant with the next iteration's ComputeFullDecomposition.
     // So we count 1 factorization per iteration here.
-    auto decomp = ComputeFullDecomposition(model, b, W);
+    NewtonDecomposition decomp;
+    decomp.d0 = model.AllocRowSpace();
+    decomp.d1_0 = model.AllocRowSpace();
+    decomp.d1_theta = model.AllocRowSpace();
+    ComputeFullDecomposition(model, b, W, decomp);
     total_sol += 3;
 
     // Precompute k-independent coefficients for the 2x2 system.
@@ -470,7 +474,7 @@ GeodesicResult SolveGeodesicHSDE(
       char* inner_mark = arena.SaveCursor();
       if (refactor_inner) {
         // Full refactor: recompute everything (should match next outer iter).
-        decomp = ComputeFullDecomposition(model, b, W);
+        ComputeFullDecomposition(model, b, W, decomp);
         total_fac++;
         total_sol += 3;
         EuclideanJordanAlgebra::sqrt(sqrtW, W);
@@ -604,7 +608,11 @@ GeodesicResult SolveGeodesicHSDE(
     char* recover_mark = arena.SaveCursor();
     auto sel = SolveDTauTheta(
         HSDECoeffs{}, k);  // need to recompute — use decomp directly
-    auto decomp = ComputeFullDecomposition(model, b, W);
+    NewtonDecomposition decomp;
+    decomp.d0 = model.AllocRowSpace();
+    decomp.d1_0 = model.AllocRowSpace();
+    decomp.d1_theta = model.AllocRowSpace();
+    ComputeFullDecomposition(model, b, W, decomp);
     // Re-solve for (tau, theta) at final k — recompute coefficients.
     RowSpace sqrtW = model.AllocRowSpace(arena);
     EuclideanJordanAlgebra::sqrt(sqrtW, W);

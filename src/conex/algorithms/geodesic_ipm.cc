@@ -336,13 +336,14 @@ static SolverRHS MakeDualityCost(CompiledModel& model) {
   return duality_cost;
 }
 
-NewtonDecomposition ComputeFullDecomposition(
+void ComputeFullDecomposition(
     CompiledModel& model,
-    Arena& arena,
     const RowSpace& b,
-    const RowSpace& W) {
-  const auto& cost_rhs = model.cost_rhs();
+    const RowSpace& W,
+    NewtonDecomposition& decomp) {
+  Arena& arena = model.arena();
   char* mark = arena.SaveCursor();
+  const auto& cost_rhs = model.cost_rhs();
   model.SetScaling(W);
   model.AssembleAndFactor();
 
@@ -350,14 +351,12 @@ NewtonDecomposition ComputeFullDecomposition(
   setOnes(ones);
   RowSpace v = model.AllocRowSpace(arena);
 
-  // rhs0: A^T(2W)  →  y0  (no equality RHS here — it goes in cost_rhs)
   auto rhs0 = model.MakeSolverRHS();
   rhs0.SetZero();
-  v += W;  // per-segment copy
+  v += W;
   v *= 2.0;
   model.AccumulateAtranspose(v, rhs0);
 
-  // rhs1: -(c + A^T P(W) b_0) + d_eq  →  y1_0
   auto rhs1 = model.MakeSolverRHS();
   rhs1 = cost_rhs;
   quadraticRepresentation(v, W, b);
@@ -365,16 +364,14 @@ NewtonDecomposition ComputeFullDecomposition(
   rhs1 *= -1;
   auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
   if (ts && !ts->equality_sub_assemblers().empty()) {
-    auto d_rhs = ts->EqualityAffineTermRHS();
-    rhs1 += d_rhs;
+    rhs1 += ts->EqualityAffineTermRHS();
   }
 
-  // rhs2 = (c + A^T P(W) b_0) - d_eq - A^T(e + P(W)e)
   auto rhs2 = model.MakeSolverRHS();
   rhs2 = rhs1;
   rhs2 *= -1;
-  quadraticRepresentation(v, W, ones);  // v = P(W)e
-  v += ones;   // v = e + P(W)e
+  quadraticRepresentation(v, W, ones);
+  v += ones;
   v *= -1.0;
   model.AccumulateAtranspose(v, rhs2);
 
@@ -387,6 +384,9 @@ NewtonDecomposition ComputeFullDecomposition(
   int nr = model.number_of_variables();
   Eigen::MatrixXd y_dense(nr, 3);
   y.supernodes->GatherInto(y_dense);
+  decomp.y0 = y_dense.col(0);
+  decomp.y1_0 = y_dense.col(1);
+  decomp.y1_theta = y_dense.col(2);
 
   auto row = model.AllocRowSpace(arena, 3);
   model.MultiplyA(y, row);
@@ -402,45 +402,21 @@ NewtonDecomposition ComputeFullDecomposition(
   EuclideanJordanAlgebra::sqrt(sqrtW, W);
 
   // d0 = e - P(W^{1/2})(A y0)
-  RowSpace d0 = model.AllocRowSpace(arena);
-  setOnes(d0);
+  setOnes(decomp.d0);
   RowSpace tmp = model.AllocRowSpace(arena);
   quadraticRepresentation(tmp, sqrtW, ay0);
-  d0 -= tmp;
+  decomp.d0 -= tmp;
 
   // d1_0 = P(W^{1/2})(-b_0 - A y1_0)
-  RowSpace d1_0 = model.AllocRowSpace(arena);
   addScaled(tmp, b, ay1_0, -1.0, -1.0);
-  quadraticRepresentation(d1_0, sqrtW, tmp);
+  quadraticRepresentation(decomp.d1_0, sqrtW, tmp);
 
   // d1_theta = P(W^{1/2})(b_0 - e - A y1_theta)
-  RowSpace d1_theta = model.AllocRowSpace(arena);
-  addScaled(v, b, ones, 1.0, -1.0);     // b - e
-  addScaled(tmp, v, ay1_theta, 1.0, -1.0);  // (b-e) - Ay1_theta
-  quadraticRepresentation(d1_theta, sqrtW, tmp);
+  addScaled(v, b, ones, 1.0, -1.0);
+  addScaled(tmp, v, ay1_theta, 1.0, -1.0);
+  quadraticRepresentation(decomp.d1_theta, sqrtW, tmp);
 
-  // Don't RestoreCursor — d0, d1_0, d1_theta are arena-backed and
-  // returned to caller. Temps (sqrtW, ay*, row, v, tmp) waste space
-  // but are freed when the caller restores its own cursor.
-
-  return {d0, d1_0, d1_theta,
-          y_dense.col(0), y_dense.col(1), y_dense.col(2)};
-}
-
-// Wrapper: returns heap-backed decomp (deep copy) for callers that
-// may mutate the returned Variables (e.g. test code doing d1_0 *= tau).
-NewtonDecomposition ComputeFullDecomposition(
-    CompiledModel& model,
-    const RowSpace& b,
-    const RowSpace& W) {
-  auto decomp = ComputeFullDecomposition(model, model.arena(), b, W);
-  auto copy = [&](const RowSpace& src) {
-    RowSpace dst = model.MakeRowSpace();
-    dst += src;
-    return dst;
-  };
-  return {copy(decomp.d0), copy(decomp.d1_0), copy(decomp.d1_theta),
-          decomp.y0, decomp.y1_0, decomp.y1_theta};
+  arena.RestoreCursor(mark);
 }
 
 void EvaluateDirection(RowSpace& out, const NewtonDecomposition& decomp,
@@ -838,7 +814,11 @@ GeodesicResult SolveGeodesicHSD(
   for (int iter = 0; iter < max_iterations; ++iter) {
     model.SetScaling(W);
     if (!model.AssembleAndFactor()) break;
-    auto decomp = ComputeFullDecomposition(model, arena, b, W);
+    NewtonDecomposition decomp;
+    decomp.d0 = model.AllocRowSpace();
+    decomp.d1_0 = model.AllocRowSpace();
+    decomp.d1_theta = model.AllocRowSpace();
+    ComputeFullDecomposition(model, b, W, decomp);
     total_fac++;
     total_sol += 3;
 
@@ -1066,7 +1046,11 @@ GeodesicResult SolveGeodesicThetaContinuation(
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
     char* outer_mark = arena.SaveCursor();
     // Decompose at current W.
-    auto decomp = ComputeFullDecomposition(model, arena, b, W);
+    NewtonDecomposition decomp;
+    decomp.d0 = model.AllocRowSpace();
+    decomp.d1_0 = model.AllocRowSpace();
+    decomp.d1_theta = model.AllocRowSpace();
+    ComputeFullDecomposition(model, b, W, decomp);
     total_fac++;
     total_sol += 3;
 
@@ -1165,7 +1149,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
         EuclideanJordanAlgebra::sqrt(sqrtW0_f, W0);
         dc_f = ComputeDualityCoeffs(model, arena, duality_cost, b, W0, decomp);
         beta_f = dc_f.sigma1 + dc_f.gamma1 + dc_f.q11;
-        decomp = ComputeFullDecomposition(model, arena, b, W);
+        ComputeFullDecomposition(model, b, W, decomp);
         total_fac++;
         total_sol += 3;
       } else {
@@ -1303,7 +1287,11 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
   // Recover primal x.  De-homogenize: x_phys = x_lifted / tau.
   if (k > 0 && tau > 0) {
-    auto decomp = ComputeFullDecomposition(model, arena, b, W);
+    NewtonDecomposition decomp;
+    decomp.d0 = model.AllocRowSpace();
+    decomp.d1_0 = model.AllocRowSpace();
+    decomp.d1_theta = model.AllocRowSpace();
+    ComputeFullDecomposition(model, b, W, decomp);
     Eigen::VectorXd x_lifted =
         decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
     result.x = x_lifted / tau;
@@ -1467,7 +1455,11 @@ GeodesicResult SolveGeodesicPhaseOne(
   bool theta_zero = false;
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
-    auto decomp = ComputeFullDecomposition(model, arena, b, W);
+    NewtonDecomposition decomp;
+    decomp.d0 = model.AllocRowSpace();
+    decomp.d1_0 = model.AllocRowSpace();
+    decomp.d1_theta = model.AllocRowSpace();
+    ComputeFullDecomposition(model, b, W, decomp);
     total_fac++;
     total_sol += 3;
 
@@ -1625,7 +1617,11 @@ GeodesicResult SolveGeodesicPhaseOne(
 
   // Recover primal x.  De-homogenize: x_phys = x_lifted / tau.
   if (k > 0 && tau > 0) {
-    auto decomp = ComputeFullDecomposition(model, arena, b, W);
+    NewtonDecomposition decomp;
+    decomp.d0 = model.AllocRowSpace();
+    decomp.d1_0 = model.AllocRowSpace();
+    decomp.d1_theta = model.AllocRowSpace();
+    ComputeFullDecomposition(model, b, W, decomp);
     Eigen::VectorXd x_lifted =
         decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
     result.x = x_lifted / tau;

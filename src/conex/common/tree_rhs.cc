@@ -8,13 +8,11 @@ namespace EuclideanJordanAlgebra {
 Variable::Variable(const Variable& o)
     : offsets(o.offsets), sizes(o.sizes), ops(o.ops),
       data_(nullptr), rows_(o.rows_), cols_(o.cols_) {
-  if (o.heap_storage_ && o.rows_ > 0 && o.cols_ > 0) {
+  if (o.data_ && o.rows_ > 0 && o.cols_ > 0) {
+    // Copy constructor has no buffer — must heap-allocate.
     heap_storage_ = std::shared_ptr<double[]>(new double[rows_ * cols_]);
     data_ = heap_storage_.get();
     std::memcpy(data_, o.data_, rows_ * cols_ * sizeof(double));
-  } else if (o.data_) {
-    // Arena-backed: share the pointer (arena manages lifetime).
-    data_ = o.data_;
   }
 }
 
@@ -23,14 +21,23 @@ Variable& Variable::operator=(const Variable& o) {
   offsets = o.offsets;
   sizes = o.sizes;
   ops = o.ops;
-  rows_ = o.rows_;
-  cols_ = o.cols_;
-  if (o.heap_storage_ && o.rows_ > 0 && o.cols_ > 0) {
-    heap_storage_ = std::shared_ptr<double[]>(new double[rows_ * cols_]);
-    data_ = heap_storage_.get();
+  if (o.data_ && o.rows_ > 0 && o.cols_ > 0) {
+    if (data_ && rows_ * cols_ >= o.rows_ * o.cols_) {
+      // Reuse existing buffer (arena or heap) — no allocation.
+      rows_ = o.rows_;
+      cols_ = o.cols_;
+    } else {
+      // Need a larger buffer — heap-allocate.
+      rows_ = o.rows_;
+      cols_ = o.cols_;
+      heap_storage_ = std::shared_ptr<double[]>(new double[rows_ * cols_]);
+      data_ = heap_storage_.get();
+    }
     std::memcpy(data_, o.data_, rows_ * cols_ * sizeof(double));
   } else {
-    data_ = o.data_;
+    rows_ = o.rows_;
+    cols_ = o.cols_;
+    data_ = nullptr;
     heap_storage_ = nullptr;
   }
   return *this;
