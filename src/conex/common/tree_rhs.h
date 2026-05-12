@@ -78,9 +78,16 @@ struct SolverRHS {
     return *this;
   }
 
-  // Assign from another SolverRHS (copy blocks + sep).
+  // Assign from another SolverRHS (copy blocks + sep, or shallow copy if uninitialized).
   SolverRHS& operator=(const SolverRHS& other) {
     if (this == &other) return *this;
+    if (!supernodes) {
+      // Uninitialized destination: shallow copy (pointer sharing).
+      supernodes = other.supernodes;
+      separators = other.separators;
+      blocks_fully_gathered = other.blocks_fully_gathered;
+      return *this;
+    }
     int nb = supernodes->num_blocks();
     for (int k = 0; k < nb; ++k)
       supernodes->block(k) = other.supernodes->block(k);

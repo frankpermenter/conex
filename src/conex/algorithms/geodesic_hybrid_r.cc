@@ -246,7 +246,6 @@ HybridRDecomposition ComputeHybridRDecomposition(
   // Temporaries use SaveCursor/RestoreCursor; output members are allocated
   // from the arena BEFORE the temp mark so they survive.
   const auto& cost_rhs = model.cost_rhs();
-  int nv = model.number_of_variables();
 
   HybridRDecomposition decomp;
   // Allocate output RowSpace members from the arena (these must survive).
@@ -258,7 +257,18 @@ HybridRDecomposition ComputeHybridRDecomposition(
   decomp.lam_theta = model.AllocRowSpace(arena);
   decomp.delta_cost = model.AllocRowSpace(arena);
   decomp.delta_center = model.AllocRowSpace(arena);
-  // y_center/y_cost are set by SetTheta().
+  // Allocate SolverRHS members (heap, survive arena restore).
+  auto initRHS = [&](SolverRHS& dest) {
+    SolverRHS tmp = model.MakeSolverRHS();
+    dest.supernodes = tmp.supernodes;
+    dest.separators = tmp.separators;
+    dest.blocks_fully_gathered = tmp.blocks_fully_gathered;
+  };
+  initRHS(decomp.x0);
+  initRHS(decomp.x1);
+  initRHS(decomp.x_theta);
+  initRHS(decomp.y_center);
+  initRHS(decomp.y_cost);
 
   auto mark = arena.SaveCursor();  // temps below this mark get freed
 
@@ -303,9 +313,6 @@ HybridRDecomposition ComputeHybridRDecomposition(
   y.SetColumn(2, rhs2);
   model.SolveSolverRHS(y);
 
-  Eigen::MatrixXd y_dense(nv, 3);
-  y.supernodes->GatherInto(y_dense);
-
   // Multiply A * [x0, x1, x_theta].
   auto row = model.AllocRowSpace(arena, 3);
   model.MultiplyA(y, row);
@@ -314,9 +321,13 @@ HybridRDecomposition ComputeHybridRDecomposition(
   decomp.ax1.col() = row.col(1);
   decomp.ax_theta.col() = row.col(2);
 
-  decomp.x0 = y_dense.col(0);
-  decomp.x1 = y_dense.col(1);
-  decomp.x_theta = y_dense.col(2);
+  // Extract columns block-by-block into SolverRHS members.
+  int nb = y.num_blocks();
+  for (int k = 0; k < nb; ++k) {
+    decomp.x0.supernodes->block(k).col(0) = y.supernodes->block(k).col(0);
+    decomp.x1.supernodes->block(k).col(0) = y.supernodes->block(k).col(1);
+    decomp.x_theta.supernodes->block(k).col(0) = y.supernodes->block(k).col(2);
+  }
 
   // lambda(tau,theta) = lam0 + tau*lam1 + theta*lam_theta
   RowSpace e_minus_b = model.AllocRowSpace(arena);
@@ -374,9 +385,9 @@ int UpdateX0(HybridRDecomposition& decomp,
   model.AccumulateAtranspose(v, rhs0);
   model.SolveSolverRHS(rhs0);
 
-  int nv = model.number_of_variables();
-  decomp.x0.resize(nv);
-  rhs0.supernodes->GatherInto(decomp.x0);
+  int nb = rhs0.num_blocks();
+  for (int k = 0; k < nb; ++k)
+    decomp.x0.supernodes->block(k) = rhs0.supernodes->block(k);
 
   model.MultiplyA(rhs0, decomp.ax0);
 
@@ -409,7 +420,8 @@ void SetTheta(HybridRDecomposition& decomp,
               const RowSpace& r,
               double theta) {
   auto mark = arena.SaveCursor();
-  decomp.y_center = decomp.x0 + theta * decomp.x_theta;
+  decomp.y_center = decomp.x0;
+  decomp.y_center.AddScaled(theta, decomp.x_theta);
   decomp.y_cost = decomp.x1;
 
   // delta_center = r - applyMt(M, A*f + theta*(e-b))  (M-frame)
@@ -547,23 +559,16 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       RowSpace rp = model.AllocRowSpace(arena);
       addScaled(rp, b, ones, 1.0, -1.0);  // b - e
 
-      auto x0_rhs = model.AllocSolverRHS();
-      x0_rhs = model.MakeBlockVariable(decomp.x0);
-      auto x1_rhs = model.AllocSolverRHS();
-      x1_rhs = model.MakeBlockVariable(decomp.x1);
-      auto xth_rhs = model.AllocSolverRHS();
-      xth_rhs = model.MakeBlockVariable(decomp.x_theta);
-
       double bTl0 = dot(b, decomp.lam0);
       double bTl1 = dot(b, decomp.lam1);
       double bTlth = dot(b, decomp.lam_theta);
-      double cTx0 = duality_cost.dot(x0_rhs);
-      double cTx1 = duality_cost.dot(x1_rhs);
-      double cTxth = duality_cost.dot(xth_rhs);
+      double cTx0 = duality_cost.dot(decomp.x0);
+      double cTx1 = duality_cost.dot(decomp.x1);
+      double cTxth = duality_cost.dot(decomp.x_theta);
 
-      RowSpace Ax0_v = model.AllocRowSpace(arena); model.MultiplyA(x0_rhs, Ax0_v);
-      RowSpace Ax1_v = model.AllocRowSpace(arena); model.MultiplyA(x1_rhs, Ax1_v);
-      RowSpace Axth_v = model.AllocRowSpace(arena); model.MultiplyA(xth_rhs, Axth_v);
+      RowSpace Ax0_v = model.AllocRowSpace(arena); model.MultiplyA(decomp.x0, Ax0_v);
+      RowSpace Ax1_v = model.AllocRowSpace(arena); model.MultiplyA(decomp.x1, Ax1_v);
+      RowSpace Axth_v = model.AllocRowSpace(arena); model.MultiplyA(decomp.x_theta, Axth_v);
 
       double rpTl0 = dot(rp, decomp.lam0);
       double rpTl1 = dot(rp, decomp.lam1);
@@ -604,13 +609,15 @@ GeodesicResult SolveGeodesicThetaContinuationR(
           double n1 = N1 / Nth;
           double e1 = eta / Nth;
 
-          Eigen::VectorXd f0_vec = decomp.x0 - e1 * decomp.x_theta;
-          Eigen::VectorXd h_vec = decomp.x1 - n1 * decomp.x_theta;
+          auto f0_rhs = model.AllocSolverRHS();
+          f0_rhs = decomp.x0;
+          f0_rhs.AddScaled(-e1, decomp.x_theta);
+          auto h_rhs = model.AllocSolverRHS();
+          h_rhs = decomp.x1;
+          h_rhs.AddScaled(-n1, decomp.x_theta);
 
           double qff = 0, qfh = 0, qhh = 0;
           {
-            auto f0_rhs = model.AllocSolverRHS(); f0_rhs = model.MakeBlockVariable(f0_vec);
-            auto h_rhs = model.AllocSolverRHS(); h_rhs = model.MakeBlockVariable(h_vec);
             auto Qf0 = model.AllocSolverRHS(); Qf0.SetZero(); model.AccumulateQx(f0_rhs, Qf0);
             auto Qh = model.AllocSolverRHS(); Qh.SetZero(); model.AccumulateQx(h_rhs, Qh);
             qff = Qf0.dot(f0_rhs);
@@ -659,10 +666,10 @@ GeodesicResult SolveGeodesicThetaContinuationR(
           double kappa_val = r_tau * (1.0 - d_tau) / (w_tau > 1e-30 ? w_tau : 1e-30);
           double gap_linear = bTl0 + tau * bTl1 + cTx0 + tau * cTx1 + kappa_val;
 
-          Eigen::VectorXd x_est = decomp.x0 + tau * decomp.x1
-                                + theta * decomp.x_theta;
           auto x_rhs = model.AllocSolverRHS();
-          x_rhs = model.MakeBlockVariable(x_est);
+          x_rhs = decomp.x0;
+          x_rhs.AddScaled(tau, decomp.x1);
+          x_rhs.AddScaled(theta, decomp.x_theta);
           auto qx = model.AllocSolverRHS(); qx.SetZero();
           model.AccumulateQx(x_rhs, qx);
           double xQx = qx.dot(x_rhs);
@@ -697,9 +704,9 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       addScaled(r_plus_delta, r_var, delta_vec, 1.0, 1.0);
       RowSpace lam_v = model.AllocRowSpace(arena);
       applyM(lam_v, M, r_plus_delta);
-      Eigen::VectorXd x_vec = decomp.y_center + tau * decomp.y_cost;
       auto x_rhs = model.AllocSolverRHS();
-      x_rhs = model.MakeBlockVariable(x_vec);
+      x_rhs = decomp.y_center;
+      x_rhs.AddScaled(tau, decomp.y_cost);
       auto qx = model.AllocSolverRHS(); qx.SetZero();
       model.AccumulateQx(x_rhs, qx);
 
@@ -795,8 +802,12 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
   // Recover x (de-homogenized by tau).
   {
-    Eigen::VectorXd x_lifted = decomp.y_center + tau * decomp.y_cost;
-    result.x = x_lifted / tau;
+    auto x_rhs = model.AllocSolverRHS();
+    x_rhs = decomp.y_center;
+    x_rhs.AddScaled(tau, decomp.y_cost);
+    x_rhs *= (1.0 / tau);
+    result.x.resize(model.number_of_variables());
+    x_rhs.supernodes->GatherInto(result.x);
   }
 
   // Lambda and optimality.

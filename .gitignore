@@ -16,3 +16,4 @@ doc/.*.swp
 doc/.*.swo
 build_asan/
 build_rel/
+build_debug/

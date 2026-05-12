@@ -22,6 +22,7 @@
 #include <Eigen/Dense>
 #include "conex/common/arena.h"
 #include "conex/common/compiled_model.h"
+#include "conex/common/tree_rhs.h"
 
 namespace conex {
 
@@ -99,11 +100,11 @@ std::pair<double, double> VerifyHybridREquations(
 //   delta(tau) = delta_center + tau*delta_cost
 struct HybridRDecomposition {
   // Combined two-term for direction evaluation.
-  Eigen::VectorXd y_center, y_cost;  // x(tau) = y_center + tau*y_cost
+  SolverRHS y_center, y_cost;  // x(tau) = y_center + tau*y_cost
   RowSpace delta_center, delta_cost;  // delta(tau) = delta_center + tau*delta_cost
 
   // Raw three-solve components for joint (tau, theta) selection.
-  Eigen::VectorXd x0, x1, x_theta;
+  SolverRHS x0, x1, x_theta;
   RowSpace lam0, lam1, lam_theta;
 
   // Cached A*x products (avoid recomputing in SetTheta).
