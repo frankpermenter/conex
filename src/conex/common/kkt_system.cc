@@ -20,21 +20,23 @@ KKTSystem::KKTSystem(KKTSystem&&) noexcept = default;
 KKTSystem& KKTSystem::operator=(KKTSystem&&) noexcept = default;
 
 KKTSystem KKTSystem::Build(const Model& model,
-                           const SolverConfiguration& config) {
+                           const SolverConfiguration& config,
+                           Arena* arena) {
   KKTSystem s;
   if (config.use_quotient_amd) {
-    s.BuildQuotientAMD(model, config);
+    s.BuildQuotientAMD(model, config, arena);
   } else {
-    s.BuildInternal(model, config);
+    s.BuildInternal(model, config, nullptr, arena);
   }
   return s;
 }
 
 KKTSystem KKTSystem::Build(const Model& model,
                            const TreeSpec& tree,
-                           const SolverConfiguration& config) {
+                           const SolverConfiguration& config,
+                           Arena* arena) {
   KKTSystem s;
-  s.BuildFromTree(model, tree, config);
+  s.BuildFromTree(model, tree, config, arena);
   return s;
 }
 
@@ -48,9 +50,10 @@ KKTSystem KKTSystem::BuildDense(const Model& model) {
 
 KKTSystem KKTSystem::Build(const Model& model,
                            const CliqueTree& tree,
-                           const SolverConfiguration& config) {
+                           const SolverConfiguration& config,
+                           Arena* arena) {
   KKTSystem s;
-  s.BuildInternal(model, config, &tree);
+  s.BuildInternal(model, config, &tree, arena);
   return s;
 }
 
@@ -76,7 +79,8 @@ const std::vector<int>& KKTSystem::dual_variables(ConstraintId id) const {
 
 void KKTSystem::BuildInternal(const Model& model,
                               const SolverConfiguration& config,
-                              const CliqueTree* tree_override) {
+                              const CliqueTree* tree_override,
+                              Arena* arena) {
   const int n = model.num_variables();
   cm_ = std::make_unique<ConstraintManager>(n);
 
@@ -165,20 +169,21 @@ void KKTSystem::BuildInternal(const Model& model,
     }
     ts->SetUseGenericFactorization(config.tree.use_generic_factorization);
     ts->SetUseLUForIndefinite(config.tree.use_lu_for_indefinite);
-    ts->FinalizeStructure(*tree_override, config.rhs_cols);
+    ts->FinalizeStructure(*tree_override, config.rhs_cols, arena);
     ts->SetFactorizationMode(config.tree.left_looking);
     ts->EnableAutoUpdateAtAssemble(true);
     ts->SetNumThreads(config.num_threads);
     tree_solver_ = std::move(ts);
   } else {
-    tree_solver_ = MakeTreeSolver(cm_.get(), config);
+    tree_solver_ = MakeTreeSolver(cm_.get(), config, arena);
   }
   RegisterAssemblersWithTreeSolver();
 }
 
 void KKTSystem::BuildFromTree(const Model& model,
                               const TreeSpec& tree,
-                              const SolverConfiguration& config) {
+                              const SolverConfiguration& config,
+                              Arena* arena) {
   auto builder = std::make_unique<TreeSolverBuilder>();
 
   std::vector<int> cids(tree.num_cliques());
@@ -227,17 +232,18 @@ void KKTSystem::BuildFromTree(const Model& model,
   }
 
   auto result = builder->Build();
-  BuildInternal(model, config, &result.clique_tree);
+  BuildInternal(model, config, &result.clique_tree, arena);
 }
 
 void KKTSystem::BuildQuotientAMD(const Model& model,
-                                 const SolverConfiguration& config) {
+                                 const SolverConfiguration& config,
+                                 Arena* arena) {
   TreeSpec tree;
   for (int i = 0; i < model.num_constraints(); ++i) {
     tree.AddClique();
     tree.Assign(i, i);
   }
-  BuildFromTree(model, tree, config);
+  BuildFromTree(model, tree, config, arena);
 }
 
 void KKTSystem::RegisterAssemblersWithTreeSolver() {

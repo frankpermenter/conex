@@ -26,7 +26,8 @@ Solver Solver::Build(const Model& model,
     s.reduced_linear_cost_ = reduced.linear_cost();
     s.reduced_model_ = std::move(reduced);
   }
-  s.system_ = KKTSystem::Build(s.reduced_model_, config);
+  s.system_ = KKTSystem::Build(s.reduced_model_, config, &s.arena_);
+  s.kkt_cursor_ = s.arena_.SaveCursor();
   return s;
 }
 
@@ -39,7 +40,8 @@ Solver Solver::Build(const Model& model,
   std::iota(s.expansion_.col_map.begin(), s.expansion_.col_map.end(), 0);
   s.reduced_linear_cost_ = model.linear_cost();
   s.reduced_model_ = model;
-  s.system_ = KKTSystem::Build(s.reduced_model_, tree, config);
+  s.system_ = KKTSystem::Build(s.reduced_model_, tree, config, &s.arena_);
+  s.kkt_cursor_ = s.arena_.SaveCursor();
   return s;
 }
 
@@ -52,7 +54,8 @@ Solver Solver::Build(const Model& model,
   std::iota(s.expansion_.col_map.begin(), s.expansion_.col_map.end(), 0);
   s.reduced_linear_cost_ = model.linear_cost();
   s.reduced_model_ = model;
-  s.system_ = KKTSystem::Build(s.reduced_model_, tree, config);
+  s.system_ = KKTSystem::Build(s.reduced_model_, tree, config, &s.arena_);
+  s.kkt_cursor_ = s.arena_.SaveCursor();
   return s;
 }
 

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <memory>
+#include "conex/common/arena.h"
 #include "conex/common/block_partition.h"
 #include "conex/common/cone_constraint.h"
 #include "conex/common/kkt_solver_interface.h"
@@ -280,7 +281,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
  public:
   int number_of_variables() const override;
 
-  void FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols = 1);
+  void FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols = 1,
+                         Arena* arena = nullptr);
 
   void SetFactorizationMode(bool left_looking);
   void SetScatterToParent(bool enable);
@@ -473,7 +475,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void CreateSubsystems(const std::vector<bool>& needs_indefinite);
   void ComputeEliminationOrder(const CliqueTree& clique_tree);
   void BindContributors(const std::vector<int>& adapter_to_clique);
-  void AllocateArenaAndBind(int rhs_cols);
+  void AllocateArenaAndBind(int rhs_cols, Arena* arena = nullptr);
 
   std::vector<KKTSubsystemBase*> roots_;
   std::vector<KKTSubsystemBase*> subsystems_;
@@ -501,6 +503,9 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr,
                                                             &std::free};
   size_t arena_bytes_ = 0;
+  // When using shared arena: factorization memory range for zeroing.
+  char* shared_fac_start_ = nullptr;
+  size_t shared_fac_bytes_ = 0;
   // Block-partitioned solve data (mutable: scratch space used in const solve).
   mutable SupernodePartitionMatrix solve_matrix_;
 
