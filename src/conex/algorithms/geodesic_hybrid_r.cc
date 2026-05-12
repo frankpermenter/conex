@@ -309,7 +309,7 @@ HybridRDecomposition ComputeHybridRDecomposition(
   y.supernodes->GatherInto(y_dense);
 
   // Multiply A * [x0, x1, x_theta].
-  auto row = model.MakeRowSpace(3);
+  auto row = model.AllocRowSpace(arena, 3);
   model.MultiplyA(y, row);
 
   decomp.ax0.col() = row.col(0);
