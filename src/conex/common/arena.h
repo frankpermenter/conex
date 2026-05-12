@@ -52,7 +52,15 @@ class Arena {
   // Save the current cursor position (for scoped allocation).
   // RestoreCursor frees everything allocated after the save point.
   char* SaveCursor() const { return cursor_; }
-  void RestoreCursor(char* saved) { cursor_ = saved; }
+  void RestoreCursor(char* saved) {
+#ifndef NDEBUG
+    // Poison freed memory to catch use-after-free.
+    if (saved < cursor_) {
+      std::memset(saved, 0xCD, cursor_ - saved);
+    }
+#endif
+    cursor_ = saved;
+  }
 
   void Reset() {
     if (!blocks_.empty()) {

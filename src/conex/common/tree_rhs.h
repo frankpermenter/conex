@@ -252,26 +252,88 @@ class Variable {
   }
 
   // Raw pointer to segment data (for BarrierConeOperations dispatch).
-  double* segment_ptr(int i) { return &data_(offsets[i], 0); }
-  const double* segment_ptr(int i) const { return &data_(offsets[i], 0); }
+  // Arena path: returns aligned pointer via padded offsets.
+  double* segment_ptr(int i) {
+    return use_arena_ ? arena_buf_ + offsets[i] : &data_(offsets[i], 0);
+  }
+  const double* segment_ptr(int i) const {
+    return use_arena_ ? arena_buf_ + offsets[i] : &data_(offsets[i], 0);
+  }
 
   // Column access (for KKT interface: SetWeights, GetAffineTerm, etc.).
-  auto col(int c = 0) { return data_.col(c); }
-  auto col(int c = 0) const { return data_.col(c); }
+  // Arena path: returns a Map over the padded buffer.
+  Eigen::Map<Eigen::VectorXd> col(int c = 0) {
+    if (use_arena_) {
+      return Eigen::Map<Eigen::VectorXd>(
+          arena_buf_ + c * arena_total_padded_, arena_total_padded_);
+    }
+    return Eigen::Map<Eigen::VectorXd>(data_.col(c).data(), data_.rows());
+  }
+  Eigen::Map<const Eigen::VectorXd> col(int c = 0) const {
+    if (use_arena_) {
+      return Eigen::Map<const Eigen::VectorXd>(
+          arena_buf_ + c * arena_total_padded_, arena_total_padded_);
+    }
+    return Eigen::Map<const Eigen::VectorXd>(data_.col(c).data(), data_.rows());
+  }
 
-  int total_rows() const { return static_cast<int>(data_.rows()); }
-  int cols() const { return static_cast<int>(data_.cols()); }
+  int total_rows() const {
+    return use_arena_ ? arena_total_padded_ : static_cast<int>(data_.rows());
+  }
+  int cols() const {
+    return use_arena_ ? arena_cols_ : static_cast<int>(data_.cols());
+  }
   int num_constraints() const { return static_cast<int>(sizes.size()); }
-  void SetZero() { data_.setZero(); }
+  void SetZero() {
+    if (use_arena_) {
+      std::memset(arena_buf_, 0,
+                  arena_total_padded_ * arena_cols_ * sizeof(double));
+    } else {
+      data_.setZero();
+    }
+  }
 
   // Set all entries to a scalar value (bypasses cone dispatch).
   // Useful for setting per-row scalar weights uniformly (e.g., identity
   // Gram weights where setOnes would produce the EJA identity element).
   void SetScalarWeights(double val) { data_.setConstant(val); }
 
-  Variable& operator*=(double alpha) { data_ *= alpha; return *this; }
-  Variable& operator+=(const Variable& o) { data_ += o.data_; return *this; }
-  Variable& operator-=(const Variable& o) { data_ -= o.data_; return *this; }
+  Variable& operator*=(double alpha) {
+    if (use_arena_) {
+      for (int i = 0; i < arena_total_padded_ * arena_cols_; ++i)
+        arena_buf_[i] *= alpha;
+    } else {
+      data_ *= alpha;
+    }
+    return *this;
+  }
+  Variable& operator+=(const Variable& o) {
+    if (use_arena_ && o.use_arena_) {
+      for (int i = 0; i < arena_total_padded_ * arena_cols_; ++i)
+        arena_buf_[i] += o.arena_buf_[i];
+    } else if (!use_arena_ && !o.use_arena_) {
+      data_ += o.data_;
+    } else {
+      // Mixed: operate per-segment.
+      for (int s = 0; s < num_constraints(); ++s)
+        for (int j = 0; j < sizes[s]; ++j)
+          segment_ptr(s)[j] += o.segment_ptr(s)[j];
+    }
+    return *this;
+  }
+  Variable& operator-=(const Variable& o) {
+    if (use_arena_ && o.use_arena_) {
+      for (int i = 0; i < arena_total_padded_ * arena_cols_; ++i)
+        arena_buf_[i] -= o.arena_buf_[i];
+    } else if (!use_arena_ && !o.use_arena_) {
+      data_ -= o.data_;
+    } else {
+      for (int s = 0; s < num_constraints(); ++s)
+        for (int j = 0; j < sizes[s]; ++j)
+          segment_ptr(s)[j] -= o.segment_ptr(s)[j];
+    }
+    return *this;
+  }
 
   friend Variable operator+(const Variable& a, const Variable& b) {
     Variable out = a;
@@ -311,8 +373,32 @@ class Variable {
     return out;
   }
 
+  // Bind to arena-allocated memory with padded segment offsets.
+  // After binding, segment_ptr(i) returns aligned pointers.
+  // The data is NOT owned by this Variable — the arena owns it.
+  void BindArenaData(double* buf, const std::vector<int>& padded_offsets,
+                     const std::vector<int>& seg_sizes, int ncols) {
+    offsets = padded_offsets;
+    sizes = seg_sizes;
+    arena_buf_ = buf;
+    arena_total_padded_ = padded_offsets.empty() ? 0 :
+        padded_offsets.back() + ((seg_sizes.back() + 3) & ~3);  // approx
+    arena_cols_ = ncols;
+    // Point data_ at the arena buffer (non-owning via Map).
+    // We use a 1-row dummy to keep data_.rows()/cols() working for
+    // total_rows() and cols() queries. Segment access goes through arena_buf_.
+    new (&data_) Eigen::MatrixXd(0, 0);  // empty, not used for storage
+    use_arena_ = true;
+  }
+
+  bool uses_arena() const { return use_arena_; }
+
  private:
-  Eigen::MatrixXd data_;
+  Eigen::MatrixXd data_;     // heap-owned storage (non-arena path)
+  double* arena_buf_ = nullptr;
+  int arena_total_padded_ = 0;
+  int arena_cols_ = 0;
+  bool use_arena_ = false;
 };
 
 // Pretty-print a Variable.  PSD segments (n² rows where n = sqrt(size))
