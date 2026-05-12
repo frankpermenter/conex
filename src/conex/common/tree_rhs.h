@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <Eigen/Dense>
+#include "conex/common/arena.h"
 #include "conex/common/block_partition.h"
 #include "conex/common/block_variable.h"
 #include "conex/common/symmetric_cone_operations.h"
@@ -25,7 +26,8 @@ struct SeparatorScratch {
   std::vector<double*> block_ptrs;
 
   template <typename Subsystem>
-  void Init(const std::vector<Subsystem*>& subsystems, int cols) {
+  void Init(const std::vector<Subsystem*>& subsystems, int cols,
+            Arena* ext_arena = nullptr) {
     sep_rows.clear();
     offsets.clear();
     int off = 0;
@@ -33,34 +35,48 @@ struct SeparatorScratch {
       int sr = static_cast<int>(s->separators().size());
       sep_rows.push_back(sr);
       offsets.push_back(off);
-      off += sr * cols;  // Each block occupies sr * cols doubles.
+      off += sr * cols;
     }
     total_rows = 0;
     for (int sr : sep_rows) total_rows += sr;
     reserved_cols = cols;
-    constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
-    size_t bytes = static_cast<size_t>(off) * sizeof(double);
-    bytes = ((bytes + kAlign - 1) / kAlign) * kAlign;
-    if (bytes > 0) {
-      void* raw = nullptr;
-      if (posix_memalign(&raw, kAlign, bytes) != 0) throw std::bad_alloc();
-      arena.reset(raw);
+
+    double* base = nullptr;
+    if (ext_arena) {
+      // Arena-backed: allocate from external arena.
+      if (off > 0) {
+        base = ext_arena->AllocArray<double>(off);
+        std::memset(base, 0, off * sizeof(double));
+      }
+      arena.reset(nullptr);
+    } else {
+      // Self-owned: posix_memalign.
+      constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
+      size_t bytes = static_cast<size_t>(off) * sizeof(double);
+      bytes = ((bytes + kAlign - 1) / kAlign) * kAlign;
+      if (bytes > 0) {
+        void* raw = nullptr;
+        if (posix_memalign(&raw, kAlign, bytes) != 0) throw std::bad_alloc();
+        arena.reset(raw);
+      }
+      base = static_cast<double*>(arena.get());
     }
     block_ptrs.resize(sep_rows.size());
-    double* base = static_cast<double*>(arena.get());
     for (size_t k = 0; k < sep_rows.size(); ++k) {
       block_ptrs[k] = base ? base + offsets[k] : nullptr;
     }
   }
 
   void SetZero() const {
+    size_t total_doubles = 0;
+    if (!sep_rows.empty()) {
+      total_doubles = offsets.back() + sep_rows.back() * reserved_cols;
+    }
+    if (total_doubles == 0) return;
     if (arena) {
-      // Total doubles = last offset + last block's size * cols.
-      size_t total_doubles = 0;
-      if (!sep_rows.empty()) {
-        total_doubles = offsets.back() + sep_rows.back() * reserved_cols;
-      }
       std::memset(arena.get(), 0, total_doubles * sizeof(double));
+    } else if (!block_ptrs.empty() && block_ptrs[0]) {
+      std::memset(block_ptrs[0], 0, total_doubles * sizeof(double));
     }
   }
 
