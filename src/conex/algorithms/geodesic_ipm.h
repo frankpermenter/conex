@@ -374,8 +374,7 @@ inline void RefreshD0Frozen(
     const RowSpace& Wi,
     RowSpace& d0_out,
     Eigen::VectorXd& y0_out) {
-  Arena arena;
-  RefreshD0Frozen(model, arena, b, W0, Wi, d0_out, y0_out);
+  RefreshD0Frozen(model, model.arena(), b, W0, Wi, d0_out, y0_out);
 }
 
 }  // namespace conex

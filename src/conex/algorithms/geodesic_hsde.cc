@@ -185,7 +185,7 @@ GeodesicResult SolveGeodesicHSDE(
   int total_fac = 0;
   int total_sol = 0;
 
-  Arena arena;
+  Arena& arena = model.arena();
 
   GeodesicResult result{};
 

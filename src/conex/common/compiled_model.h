@@ -25,11 +25,15 @@ class CompiledModel {
   SolverRHS MakeSolverRHS(int cols = 1) { return kkt_.MakeSolverRHS(cols); }
 
   // Arena allocation (zero heap allocation).
+  Arena& arena() { return arena_; }
   RowSpace AllocRowSpace(Arena& arena, int cols = 1) {
     if (!layout_cached_) CacheLayout();
     auto rs = row_layout_.Alloc(arena, cols);
     rs.ops = ops_cache_;
     return rs;
+  }
+  RowSpace AllocRowSpace(int cols = 1) {
+    return AllocRowSpace(arena_, cols);
   }
 
   const RowSpaceLayout& row_space_layout() {
@@ -80,6 +84,7 @@ class CompiledModel {
 
   KKTSolverBase& kkt_;
   SolverRHS cost_rhs_;
+  Arena arena_;
 
   // Cached layout for arena allocation.
   RowSpaceLayout row_layout_;

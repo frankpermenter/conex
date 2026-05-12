@@ -492,7 +492,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     ThetaContRSwitchPolicy policy,
     double compl_tol,
     double theta_rate) {
-  Arena arena;
+  Arena& arena = model.arena();
   const auto& cost_rhs = model.cost_rhs();
   RowSpace b = model.GetAffineTerm();
 
@@ -843,7 +843,7 @@ GeodesicResult SolveGeodesicHybridR(
     int max_iterations,
     double tolerance,
     bool verbose) {
-  Arena arena;
+  Arena& arena = model.arena();
   const auto& cost_rhs = model.cost_rhs();
   RowSpace b = model.GetAffineTerm();
   const int m = b.total_rows();

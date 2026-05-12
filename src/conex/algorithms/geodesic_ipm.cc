@@ -766,7 +766,7 @@ GeodesicResult SolveGeodesicHSD(
   const RowSpace b = model.GetAffineTerm();
   const int m = W.total_rows();
   const double nu = barrierParameter(W);
-  Arena arena;
+  Arena& arena = model.arena();
 
   RowSpace ones = model.MakeRowSpace();
   setOnes(ones);
@@ -1010,7 +1010,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
   const RowSpace b = model.GetAffineTerm();
   const int m = W.total_rows();
   const double nu = barrierParameter(W);
-  Arena arena;
+  Arena& arena = model.arena();
 
   RowSpace ones_bTe = model.MakeRowSpace();
   setOnes(ones_bTe);
@@ -1298,7 +1298,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
 double GeodesicLineSearch(
     CompiledModel& model,
     const RowSpace& W) {
-  Arena arena;
+  Arena& arena = model.arena();
   const RowSpace b = model.GetAffineTerm();
   RowSpace d0 = model.MakeRowSpace();
   RowSpace d1 = model.MakeRowSpace();
@@ -1320,7 +1320,7 @@ static std::pair<double, double> EvalKCandidate(
     double theta_val,
     double k_cand) {
   if (k_cand <= 0) return {-1, 1e30};
-  Arena arena;
+  Arena& arena = model.arena();
   double mu = 1.0 / (k_cand * k_cand);
 
   auto dc = ComputeDualityCoeffs(model, arena, duality_cost, b, W, decomp);
@@ -1391,7 +1391,7 @@ GeodesicResult SolveGeodesicPhaseOne(
   const RowSpace b = model.GetAffineTerm();
   const int m = W.total_rows();
   const double nu = barrierParameter(W);
-  Arena arena;
+  Arena& arena = model.arena();
 
   RowSpace ones_bTe = model.MakeRowSpace();
   setOnes(ones_bTe);
@@ -1600,7 +1600,7 @@ GeodesicResult SolveGeodesicLP(
   double k = 0.0;
   const int m = W.total_rows();
   const double nu = barrierParameter(W);
-  Arena arena;
+  Arena& arena = model.arena();
   constexpr double theta = 0.0;
   RowSpace ones_b = model.AllocRowSpace(arena);
   setOnes(ones_b);
@@ -1781,7 +1781,7 @@ GeodesicResult SolveGeodesicBarrierLP(
   int total_sol = 0;
 
   // Arena for temporary RowSpaces (zero heap allocation in the loop).
-  Arena arena;
+  Arena& arena = model.arena();
 
   if (verbose) {
     printf("  %3s  %12s  %12s  %12s  %12s  %12s\n",
@@ -2154,7 +2154,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
   const double nu = barrierParameter(z);
 
   // Arena for temporary RowSpaces (zero heap allocation in the loop).
-  Arena arena;
+  Arena& arena = model.arena();
 
   // Starting point z_0 = z (the initial interior point).
   RowSpace z0 = model.AllocRowSpace(arena);
@@ -2613,7 +2613,7 @@ GeodesicResult SolveGeodesicHybrid(
     double tau,
     HybridSwitchPolicy policy) {
   const auto& cost_rhs = model.cost_rhs();
-  Arena arena;
+  Arena& arena = model.arena();
   RowSpace b = model.GetAffineTerm();
   const int m = b.total_rows();
 
