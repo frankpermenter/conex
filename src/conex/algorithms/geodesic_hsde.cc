@@ -185,6 +185,8 @@ GeodesicResult SolveGeodesicHSDE(
   int total_fac = 0;
   int total_sol = 0;
 
+  Arena arena;
+
   GeodesicResult result{};
 
   if (verbose) {
@@ -196,6 +198,7 @@ GeodesicResult SolveGeodesicHSDE(
   }
 
   for (int iter = 0; iter < max_iterations; ++iter) {
+    char* iter_mark = arena.SaveCursor();
     // ComputeFullDecomposition calls SetScaling + AssembleAndFactor + 3 solves.
     // The end-of-loop also calls SetScaling + AssembleAndFactor after the step,
     // but this is redundant with the next iteration's ComputeFullDecomposition.
@@ -204,13 +207,20 @@ GeodesicResult SolveGeodesicHSDE(
     total_sol += 3;
 
     // Precompute k-independent coefficients for the 2x2 system.
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace rp = addScaled(b, ones, 1.0, -1.0);  // b - e
+    RowSpace sqrtW = model.AllocRowSpace(arena);
+    EuclideanJordanAlgebra::sqrt(sqrtW, W);
+    RowSpace rp = model.AllocRowSpace(arena);
+    addScaled(rp, b, ones, 1.0, -1.0);  // b - e
 
     // Lambda/x components (all k-independent).
-    RowSpace pw_d1_0 = quadraticRepresentation(sqrtW, decomp.d1_0);
-    RowSpace pw_d1_th = quadraticRepresentation(sqrtW, decomp.d1_theta);
-    RowSpace pw_ed0 = quadraticRepresentation(sqrtW, ones + decomp.d0);
+    RowSpace pw_d1_0 = model.AllocRowSpace(arena);
+    quadraticRepresentation(pw_d1_0, sqrtW, decomp.d1_0);
+    RowSpace pw_d1_th = model.AllocRowSpace(arena);
+    quadraticRepresentation(pw_d1_th, sqrtW, decomp.d1_theta);
+    RowSpace tmp_ed0 = model.AllocRowSpace(arena);
+    addScaled(tmp_ed0, ones, decomp.d0, 1.0, 1.0);
+    RowSpace pw_ed0 = model.AllocRowSpace(arena);
+    quadraticRepresentation(pw_ed0, sqrtW, tmp_ed0);
 
     auto x0_rhs = model.MakeSolverRHS();
     x0_rhs = model.MakeBlockVariable(decomp.y0);
@@ -219,9 +229,9 @@ GeodesicResult SolveGeodesicHSDE(
     auto xth_rhs = model.MakeSolverRHS();
     xth_rhs = model.MakeBlockVariable(decomp.y1_theta);
 
-    RowSpace Ax0 = model.MakeRowSpace(); model.MultiplyA(x0_rhs, Ax0);
-    RowSpace Ax1 = model.MakeRowSpace(); model.MultiplyA(x1_rhs, Ax1);
-    RowSpace Axth = model.MakeRowSpace(); model.MultiplyA(xth_rhs, Axth);
+    RowSpace Ax0 = model.AllocRowSpace(arena); model.MultiplyA(x0_rhs, Ax0);
+    RowSpace Ax1 = model.AllocRowSpace(arena); model.MultiplyA(x1_rhs, Ax1);
+    RowSpace Axth = model.AllocRowSpace(arena); model.MultiplyA(xth_rhs, Axth);
 
     double bTl1 = dot(b, pw_d1_0);
     double bTlth = dot(b, pw_d1_th);
@@ -301,7 +311,8 @@ GeodesicResult SolveGeodesicHSDE(
     double theta = sel.theta;
     double d_tau = sel.d_tau;
 
-    RowSpace d = EvaluateDirection(decomp, k, tau, theta);
+    RowSpace d = model.AllocRowSpace(arena);
+    EvaluateDirection(d, decomp, k, tau, theta);
     double d_inf = std::max(normInf(d), std::abs(d_tau));
     double d_sq = squaredNorm(d);
     double mu = 1.0 / (k * k);
@@ -309,16 +320,22 @@ GeodesicResult SolveGeodesicHSDE(
 
     // Affinity check: d(k) should be affine in k.
     if (verbose && iter < 3) {
+      char* affine_mark = arena.SaveCursor();
       double k1 = std::max(k, 1.0), k2 = 2*k1, k3 = 3*k1;
       auto e1 = SolveDTauTheta(coeff, k1);
       auto e2 = SolveDTauTheta(coeff, k2);
       auto e3 = SolveDTauTheta(coeff, k3);
       if (e1.valid && e2.valid && e3.valid) {
-        RowSpace d1v = EvaluateDirection(decomp, k1, e1.tau, e1.theta);
-        RowSpace d2v = EvaluateDirection(decomp, k2, e2.tau, e2.theta);
-        RowSpace d3v = EvaluateDirection(decomp, k3, e3.tau, e3.theta);
-        RowSpace avg = addScaled(d1v, d3v, 0.5, 0.5);
-        RowSpace err = addScaled(d2v, avg, 1.0, -1.0);
+        RowSpace d1v = model.AllocRowSpace(arena);
+        EvaluateDirection(d1v, decomp, k1, e1.tau, e1.theta);
+        RowSpace d2v = model.AllocRowSpace(arena);
+        EvaluateDirection(d2v, decomp, k2, e2.tau, e2.theta);
+        RowSpace d3v = model.AllocRowSpace(arena);
+        EvaluateDirection(d3v, decomp, k3, e3.tau, e3.theta);
+        RowSpace avg = model.AllocRowSpace(arena);
+        addScaled(avg, d1v, d3v, 0.5, 0.5);
+        RowSpace err = model.AllocRowSpace(arena);
+        addScaled(err, d2v, avg, 1.0, -1.0);
         double d_err = normInf(err);
         double dtau_avg = 0.5 * (e1.d_tau + e3.d_tau);
         double dtau_err = std::abs(e2.d_tau - dtau_avg);
@@ -326,13 +343,18 @@ GeodesicResult SolveGeodesicHSDE(
                "  Q=%s\n", k1, k2, k3, d_err, dtau_err,
                coeff.has_Q ? "yes" : "no");
       }
+      arena.RestoreCursor(affine_mark);
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
     result.iterations = iter + 1;
 
     if (verbose) {
-      RowSpace lam_v = quadraticRepresentation(sqrtW, ones + d);
+      char* verbose_mark = arena.SaveCursor();
+      RowSpace tmp_ed = model.AllocRowSpace(arena);
+      addScaled(tmp_ed, ones, d, 1.0, 1.0);
+      RowSpace lam_v = model.AllocRowSpace(arena);
+      quadraticRepresentation(lam_v, sqrtW, tmp_ed);
       lam_v *= (1.0 / k);
       double bTl = dot(b, lam_v);
       Eigen::VectorXd x_vec = decomp.y0 / k + tau * decomp.y1_0
@@ -351,8 +373,9 @@ GeodesicResult SolveGeodesicHSDE(
       double dual_phys = (std::abs(tau) > 1e-30) ? -bTl / tau : 0.0;
 
       // Normalization: rp'lam + rd'x + rg*tau should = -alpha.
-      RowSpace rp_v = addScaled(b, ones, 1.0, -1.0);
-      RowSpace Ax_v = model.MakeRowSpace(); model.MultiplyA(x_rhs_v, Ax_v);
+      RowSpace rp_v = model.AllocRowSpace(arena);
+      addScaled(rp_v, b, ones, 1.0, -1.0);
+      RowSpace Ax_v = model.AllocRowSpace(arena); model.MultiplyA(x_rhs_v, Ax_v);
       double eTl = dot(ones, lam_v);
       double norm_val = (bTl - eTl) + (cTx - dot(ones, Ax_v))
                         + (-(bT_ones + 1.0)) * tau;
@@ -369,6 +392,7 @@ GeodesicResult SolveGeodesicHSDE(
              "  %12.4e  %12.4e  %12.4e  eq=%.1e  nrm=%.1e  cpl=%.1e\n",
              iter, theta, tau, k, d_inf, d_tau, gap,
              dual_phys, primal_phys, mu_tau, eq_err, norm_err, compl_err);
+      arena.RestoreCursor(verbose_mark);
     }
 
     if (!std::isfinite(d_inf) || !std::isfinite(gap)) {
@@ -382,14 +406,19 @@ GeodesicResult SolveGeodesicHSDE(
     // Line search for k: d(k) is affine in k.
     // Evaluate at two k values, extract D0 + k*D1, use lineSearchK.
     {
+      char* ls_mark = arena.SaveCursor();
       double ka = k, kb = k + 1.0;
       auto sa = SolveDTauTheta(coeff, ka);
       auto sb = SolveDTauTheta(coeff, kb);
       if (sa.valid && sb.valid) {
-        RowSpace da = EvaluateDirection(decomp, ka, sa.tau, sa.theta);
-        RowSpace db = EvaluateDirection(decomp, kb, sb.tau, sb.theta);
-        RowSpace D1 = addScaled(db, da, 1.0, -1.0);
-        RowSpace D0 = addScaled(da, D1, 1.0, -ka);
+        RowSpace da = model.AllocRowSpace(arena);
+        EvaluateDirection(da, decomp, ka, sa.tau, sa.theta);
+        RowSpace db = model.AllocRowSpace(arena);
+        EvaluateDirection(db, decomp, kb, sb.tau, sb.theta);
+        RowSpace D1 = model.AllocRowSpace(arena);
+        addScaled(D1, db, da, 1.0, -1.0);
+        RowSpace D0 = model.AllocRowSpace(arena);
+        addScaled(D0, da, D1, 1.0, -ka);
         double k_new = lineSearchK(D0, D1);
 
         // Clamp for d_tau constraint.
@@ -415,10 +444,11 @@ GeodesicResult SolveGeodesicHSDE(
           tau = ev.tau;
           theta = ev.theta;
           d_tau = ev.d_tau;
-          d = EvaluateDirection(decomp, k, tau, theta);
+          EvaluateDirection(d, decomp, k, tau, theta);
           d_inf = std::max(normInf(d), std::abs(d_tau));
         }
       }
+      arena.RestoreCursor(ls_mark);
     }
 
     // Geodesic step.
@@ -437,29 +467,32 @@ GeodesicResult SolveGeodesicHSDE(
     constexpr bool refactor_inner = false;
 
     for (int inner = 0; inner < max_frozen_steps; ++inner) {
+      char* inner_mark = arena.SaveCursor();
       if (refactor_inner) {
         // Full refactor: recompute everything (should match next outer iter).
         decomp = ComputeFullDecomposition(model, b, W);
         total_fac++;
         total_sol += 3;
-        sqrtW = EuclideanJordanAlgebra::sqrt(W);
-        pw_d1_0 = quadraticRepresentation(sqrtW, decomp.d1_0);
-        pw_d1_th = quadraticRepresentation(sqrtW, decomp.d1_theta);
-        pw_ed0 = quadraticRepresentation(sqrtW, ones + decomp.d0);
+        EuclideanJordanAlgebra::sqrt(sqrtW, W);
+        quadraticRepresentation(pw_d1_0, sqrtW, decomp.d1_0);
+        quadraticRepresentation(pw_d1_th, sqrtW, decomp.d1_theta);
+        RowSpace tmp_ed0_r = model.AllocRowSpace(arena);
+        addScaled(tmp_ed0_r, ones, decomp.d0, 1.0, 1.0);
+        quadraticRepresentation(pw_ed0, sqrtW, tmp_ed0_r);
         x0_rhs = model.MakeBlockVariable(decomp.y0);
         x1_rhs = model.MakeBlockVariable(decomp.y1_0);
         xth_rhs = model.MakeBlockVariable(decomp.y1_theta);
-        Ax0 = model.MakeRowSpace(); model.MultiplyA(x0_rhs, Ax0);
-        Ax1 = model.MakeRowSpace(); model.MultiplyA(x1_rhs, Ax1);
-        Axth = model.MakeRowSpace(); model.MultiplyA(xth_rhs, Axth);
+        RowSpace Ax0_r = model.AllocRowSpace(arena); model.MultiplyA(x0_rhs, Ax0_r);
+        RowSpace Ax1_r = model.AllocRowSpace(arena); model.MultiplyA(x1_rhs, Ax1_r);
+        RowSpace Axth_r = model.AllocRowSpace(arena); model.MultiplyA(xth_rhs, Axth_r);
         bTl1 = dot(b, pw_d1_0); bTlth = dot(b, pw_d1_th);
         bTl0_raw = dot(b, pw_ed0);
         cTx1 = duality_cost.dot(x1_rhs); cTxth = duality_cost.dot(xth_rhs);
         cTx0_raw = duality_cost.dot(x0_rhs);
         rpTl1 = dot(rp, pw_d1_0); rpTlth = dot(rp, pw_d1_th);
         rpTl0_raw = dot(rp, pw_ed0);
-        rdTx1 = cTx1 - dot(ones, Ax1); rdTxth = cTxth - dot(ones, Axth);
-        rdTx0_raw = cTx0_raw - dot(ones, Ax0);
+        rdTx1 = cTx1 - dot(ones, Ax1_r); rdTxth = cTxth - dot(ones, Axth_r);
+        rdTx0_raw = cTx0_raw - dot(ones, Ax0_r);
         double wt = w_tau, rt = r_tau;
         coeff.G_dtau = wt*rt*(bTl1+cTx1) - rt/wt;
         coeff.G_theta = bTlth + cTxth - R;
@@ -481,11 +514,13 @@ GeodesicResult SolveGeodesicHSDE(
         decomp.y0 = y0_new;
         total_sol += 1;
         // Update d0-dependent coefficients.
-        RowSpace sqrtW0 = EuclideanJordanAlgebra::sqrt(W0);
-        RowSpace pw_d0_f = quadraticRepresentation(sqrtW0, decomp.d0);
+        RowSpace sqrtW0 = model.AllocRowSpace(arena);
+        EuclideanJordanAlgebra::sqrt(sqrtW0, W0);
+        RowSpace pw_d0_f = model.AllocRowSpace(arena);
+        quadraticRepresentation(pw_d0_f, sqrtW0, decomp.d0);
         auto x0_rhs_f = model.MakeSolverRHS();
         x0_rhs_f = model.MakeBlockVariable(decomp.y0);
-        RowSpace Ax0_f = model.MakeRowSpace();
+        RowSpace Ax0_f = model.AllocRowSpace(arena);
         model.MultiplyA(x0_rhs_f, Ax0_f);
         double cTx0_f = duality_cost.dot(x0_rhs_f);
         double rdTx0_f = cTx0_f - dot(ones, Ax0_f);
@@ -502,16 +537,20 @@ GeodesicResult SolveGeodesicHSDE(
 
       // 2x2 solve + line search (same as outer).
       auto sel_f = SolveDTauTheta(coeff, k);
-      if (!sel_f.valid) break;
+      if (!sel_f.valid) { arena.RestoreCursor(inner_mark); break; }
 
       double ka = k, kb = k + 1.0;
       auto sa = SolveDTauTheta(coeff, ka);
       auto sb = SolveDTauTheta(coeff, kb);
       if (sa.valid && sb.valid) {
-        RowSpace da = EvaluateDirection(decomp, ka, sa.tau, sa.theta);
-        RowSpace db = EvaluateDirection(decomp, kb, sb.tau, sb.theta);
-        RowSpace D1 = addScaled(db, da, 1.0, -1.0);
-        RowSpace D0 = addScaled(da, D1, 1.0, -ka);
+        RowSpace da = model.AllocRowSpace(arena);
+        EvaluateDirection(da, decomp, ka, sa.tau, sa.theta);
+        RowSpace db = model.AllocRowSpace(arena);
+        EvaluateDirection(db, decomp, kb, sb.tau, sb.theta);
+        RowSpace D1 = model.AllocRowSpace(arena);
+        addScaled(D1, db, da, 1.0, -1.0);
+        RowSpace D0 = model.AllocRowSpace(arena);
+        addScaled(D0, da, D1, 1.0, -ka);
         double k_new = lineSearchK(D0, D1);
 
         if (k_new > k) {
@@ -533,7 +572,8 @@ GeodesicResult SolveGeodesicHSDE(
       // Re-evaluate at new k.
       auto ev_f = SolveDTauTheta(coeff, k);
       double tau_f = ev_f.tau, theta_f = ev_f.theta, d_tau_f = ev_f.d_tau;
-      RowSpace d_f = EvaluateDirection(decomp, k, tau_f, theta_f);
+      RowSpace d_f = model.AllocRowSpace(arena);
+      EvaluateDirection(d_f, decomp, k, tau_f, theta_f);
       double d_inf_f = std::max(normInf(d_f), std::abs(d_tau_f));
 
       if (verbose) {
@@ -550,7 +590,10 @@ GeodesicResult SolveGeodesicHSDE(
       geodesicUpdate(W, alpha_f, d_f);
       w_tau *= std::exp(d_tau_f * alpha_f);
       r_tau = 1.0 / k;
+      arena.RestoreCursor(inner_mark);
     }
+
+    arena.RestoreCursor(iter_mark);
   }
 
   result.mu = 1.0 / (k * k);
@@ -562,24 +605,32 @@ GeodesicResult SolveGeodesicHSDE(
 
   // Recover x and lambda.
   {
+    char* recover_mark = arena.SaveCursor();
     auto sel = SolveDTauTheta(
         HSDECoeffs{}, k);  // need to recompute — use decomp directly
     auto decomp = ComputeFullDecomposition(model, b, W);
     // Re-solve for (tau, theta) at final k — recompute coefficients.
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace pw_d1_0 = quadraticRepresentation(sqrtW, decomp.d1_0);
-    RowSpace pw_d1_th = quadraticRepresentation(sqrtW, decomp.d1_theta);
-    RowSpace pw_ed0 = quadraticRepresentation(sqrtW, ones + decomp.d0);
+    RowSpace sqrtW = model.AllocRowSpace(arena);
+    EuclideanJordanAlgebra::sqrt(sqrtW, W);
+    RowSpace pw_d1_0 = model.AllocRowSpace(arena);
+    quadraticRepresentation(pw_d1_0, sqrtW, decomp.d1_0);
+    RowSpace pw_d1_th = model.AllocRowSpace(arena);
+    quadraticRepresentation(pw_d1_th, sqrtW, decomp.d1_theta);
+    RowSpace tmp_ed0_r = model.AllocRowSpace(arena);
+    addScaled(tmp_ed0_r, ones, decomp.d0, 1.0, 1.0);
+    RowSpace pw_ed0 = model.AllocRowSpace(arena);
+    quadraticRepresentation(pw_ed0, sqrtW, tmp_ed0_r);
     auto x0_rhs = model.MakeSolverRHS();
     x0_rhs = model.MakeBlockVariable(decomp.y0);
     auto x1_rhs = model.MakeSolverRHS();
     x1_rhs = model.MakeBlockVariable(decomp.y1_0);
     auto xth_rhs = model.MakeSolverRHS();
     xth_rhs = model.MakeBlockVariable(decomp.y1_theta);
-    RowSpace rp = addScaled(b, ones, 1.0, -1.0);
-    RowSpace Ax0 = model.MakeRowSpace(); model.MultiplyA(x0_rhs, Ax0);
-    RowSpace Ax1 = model.MakeRowSpace(); model.MultiplyA(x1_rhs, Ax1);
-    RowSpace Axth = model.MakeRowSpace(); model.MultiplyA(xth_rhs, Axth);
+    RowSpace rp = model.AllocRowSpace(arena);
+    addScaled(rp, b, ones, 1.0, -1.0);
+    RowSpace Ax0 = model.AllocRowSpace(arena); model.MultiplyA(x0_rhs, Ax0);
+    RowSpace Ax1 = model.AllocRowSpace(arena); model.MultiplyA(x1_rhs, Ax1);
+    RowSpace Axth = model.AllocRowSpace(arena); model.MultiplyA(xth_rhs, Axth);
 
     double bTl1 = dot(b, pw_d1_0), bTlth = dot(b, pw_d1_th);
     double bTl0_raw = dot(b, pw_ed0);
@@ -613,8 +664,13 @@ GeodesicResult SolveGeodesicHSDE(
     result.x = x_lifted / tau;
     result.tau = tau;
 
-    RowSpace d_cur = EvaluateDirection(decomp, k, tau, theta);
-    RowSpace lambda = quadraticRepresentation(sqrtW, ones + d_cur);
+    RowSpace d_cur = model.AllocRowSpace(arena);
+    EvaluateDirection(d_cur, decomp, k, tau, theta);
+    RowSpace tmp_ed_cur = model.AllocRowSpace(arena);
+    addScaled(tmp_ed_cur, ones, d_cur, 1.0, 1.0);
+    // result.lambda outlives the arena — use heap allocation.
+    RowSpace lambda = model.MakeRowSpace();
+    quadraticRepresentation(lambda, sqrtW, tmp_ed_cur);
     lambda *= (1.0 / (k * tau));
     result.lambda = lambda;
 
@@ -629,6 +685,7 @@ GeodesicResult SolveGeodesicHSDE(
              result.optimality.min_slack,
              result.optimality.min_dual);
     }
+    arena.RestoreCursor(recover_mark);
   }
 
   return result;

@@ -118,6 +118,8 @@ NewtonDecomposition ComputeFullDecomposition(
 
 // Evaluate d(k, tau, theta) = d0 + k * (tau * d1_0 + theta * d1_theta).
 // tau weights the original problem data, theta weights the identity centering.
+void EvaluateDirection(RowSpace& out, const NewtonDecomposition& decomp,
+                       double k, double tau, double theta);
 RowSpace EvaluateDirection(const NewtonDecomposition& decomp,
                            double k, double tau, double theta);
 
