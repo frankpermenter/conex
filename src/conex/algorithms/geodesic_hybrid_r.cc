@@ -58,7 +58,7 @@ HybridRDirection ComputeHybridRDirection(
   sqrt(sqrtW, W);
 
   // RHS = -(c + A^T P(W)(b_theta)) + 2*A^T P(W^{1/2})(r) + d_eq
-  auto y = model.MakeSolverRHS();
+  auto y = model.AllocSolverRHS();
   y = cost_rhs;
   RowSpace v = model.AllocRowSpace(arena);
   quadraticRepresentation(v, W, b_theta);
@@ -129,7 +129,7 @@ static HybridRDirection ComputeHybridRDirectionM(
   RowSpace b_theta = BlendAffine(model, arena, b, theta);
 
   // RHS = -(c + A^T P(W)(b_theta)) + 2*A^T applyM(M, r) + d_eq
-  auto y = model.MakeSolverRHS();
+  auto y = model.AllocSolverRHS();
   y = cost_rhs;
   RowSpace v = model.AllocRowSpace(arena);
   quadraticRepresentation(v, W, b_theta);
@@ -182,7 +182,7 @@ std::pair<double, double> VerifyHybridREquations(
 
   // --- Primal check ---
   // delta should equal r - P(W^{1/2})(b_theta + A*y).
-  auto y_rhs = model.MakeSolverRHS();
+  auto y_rhs = model.AllocSolverRHS();
   y_rhs = model.MakeBlockVariable(y);
   RowSpace Ay = model.AllocRowSpace(arena);
   model.MultiplyA(y_rhs, Ay);
@@ -201,12 +201,12 @@ std::pair<double, double> VerifyHybridREquations(
   addScaled(r_plus_delta, r, delta, 1.0, 1.0);
   RowSpace lambda = model.AllocRowSpace(arena);
   quadraticRepresentation(lambda, sqrtW, r_plus_delta);
-  auto at_lambda = model.MakeSolverRHS();
+  auto at_lambda = model.AllocSolverRHS();
   at_lambda.SetZero();
   model.AccumulateAtranspose(lambda, at_lambda);
 
   // - Qy
-  auto qy = model.MakeSolverRHS();
+  auto qy = model.AllocSolverRHS();
   qy.SetZero();
   model.AccumulateQx(y_rhs, qy);
   at_lambda -= qy;
@@ -269,14 +269,14 @@ HybridRDecomposition ComputeHybridRDecomposition(
   setOnes(ones);
 
   // rhs0 = 2*A' * applyM(M, r)
-  auto rhs0 = model.MakeSolverRHS();
+  auto rhs0 = model.AllocSolverRHS();
   rhs0.SetZero();
   applyM(v, M, r);
   v *= 2.0;
   model.AccumulateAtranspose(v, rhs0);
 
   // rhs1 = -(c + A'P(W)(b)) + d_eq
-  auto rhs1 = model.MakeSolverRHS();
+  auto rhs1 = model.AllocSolverRHS();
   rhs1 = cost_rhs;
   quadraticRepresentation(v, W, b);
   model.AccumulateAtranspose(v, rhs1);
@@ -287,7 +287,7 @@ HybridRDecomposition ComputeHybridRDecomposition(
   }
 
   // rhs2 = -rhs1 - A'(e + P(W)(e))
-  auto rhs2 = model.MakeSolverRHS();
+  auto rhs2 = model.AllocSolverRHS();
   rhs2 = rhs1;
   rhs2 *= -1;  // (c + A'P(W)(b)) - d_eq
   RowSpace qr_ones = model.AllocRowSpace(arena);
@@ -297,7 +297,7 @@ HybridRDecomposition ComputeHybridRDecomposition(
   model.AccumulateAtranspose(v, rhs2);
 
   // Solve all three with one factorization.
-  auto y = model.MakeSolverRHS(3);
+  auto y = model.AllocSolverRHS(3);
   y.SetColumn(0, rhs0);
   y.SetColumn(1, rhs1);
   y.SetColumn(2, rhs2);
@@ -369,7 +369,7 @@ int UpdateX0(HybridRDecomposition& decomp,
   RowSpace v = model.AllocRowSpace(arena);
   applyM(v, M, r);
   v *= 2.0;
-  auto rhs0 = model.MakeSolverRHS();
+  auto rhs0 = model.AllocSolverRHS();
   rhs0.SetZero();
   model.AccumulateAtranspose(v, rhs0);
   model.SolveSolverRHS(rhs0);
@@ -482,7 +482,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   const double R = bT_ones + 1.0;
 
   // Duality cost (cost_rhs + equality dual correction).
-  auto duality_cost = model.MakeSolverRHS();
+  auto duality_cost = model.AllocSolverRHS();
   duality_cost = cost_rhs;
   auto* ts_init = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
   if (ts_init && !ts_init->equality_sub_assemblers().empty()) {
@@ -547,11 +547,11 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       RowSpace rp = model.AllocRowSpace(arena);
       addScaled(rp, b, ones, 1.0, -1.0);  // b - e
 
-      auto x0_rhs = model.MakeSolverRHS();
+      auto x0_rhs = model.AllocSolverRHS();
       x0_rhs = model.MakeBlockVariable(decomp.x0);
-      auto x1_rhs = model.MakeSolverRHS();
+      auto x1_rhs = model.AllocSolverRHS();
       x1_rhs = model.MakeBlockVariable(decomp.x1);
-      auto xth_rhs = model.MakeSolverRHS();
+      auto xth_rhs = model.AllocSolverRHS();
       xth_rhs = model.MakeBlockVariable(decomp.x_theta);
 
       double bTl0 = dot(b, decomp.lam0);
@@ -609,10 +609,10 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
           double qff = 0, qfh = 0, qhh = 0;
           {
-            auto f0_rhs = model.MakeSolverRHS(); f0_rhs = model.MakeBlockVariable(f0_vec);
-            auto h_rhs = model.MakeSolverRHS(); h_rhs = model.MakeBlockVariable(h_vec);
-            auto Qf0 = model.MakeSolverRHS(); Qf0.SetZero(); model.AccumulateQx(f0_rhs, Qf0);
-            auto Qh = model.MakeSolverRHS(); Qh.SetZero(); model.AccumulateQx(h_rhs, Qh);
+            auto f0_rhs = model.AllocSolverRHS(); f0_rhs = model.MakeBlockVariable(f0_vec);
+            auto h_rhs = model.AllocSolverRHS(); h_rhs = model.MakeBlockVariable(h_vec);
+            auto Qf0 = model.AllocSolverRHS(); Qf0.SetZero(); model.AccumulateQx(f0_rhs, Qf0);
+            auto Qh = model.AllocSolverRHS(); Qh.SetZero(); model.AccumulateQx(h_rhs, Qh);
             qff = Qf0.dot(f0_rhs);
             qfh = Qf0.dot(h_rhs);
             qhh = Qh.dot(h_rhs);
@@ -661,9 +661,9 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
           Eigen::VectorXd x_est = decomp.x0 + tau * decomp.x1
                                 + theta * decomp.x_theta;
-          auto x_rhs = model.MakeSolverRHS();
+          auto x_rhs = model.AllocSolverRHS();
           x_rhs = model.MakeBlockVariable(x_est);
-          auto qx = model.MakeSolverRHS(); qx.SetZero();
+          auto qx = model.AllocSolverRHS(); qx.SetZero();
           model.AccumulateQx(x_rhs, qx);
           double xQx = qx.dot(x_rhs);
           double xQx_tau = (std::abs(tau) > 1e-30) ? xQx / tau : 0.0;
@@ -698,9 +698,9 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       RowSpace lam_v = model.AllocRowSpace(arena);
       applyM(lam_v, M, r_plus_delta);
       Eigen::VectorXd x_vec = decomp.y_center + tau * decomp.y_cost;
-      auto x_rhs = model.MakeSolverRHS();
+      auto x_rhs = model.AllocSolverRHS();
       x_rhs = model.MakeBlockVariable(x_vec);
-      auto qx = model.MakeSolverRHS(); qx.SetZero();
+      auto qx = model.AllocSolverRHS(); qx.SetZero();
       model.AccumulateQx(x_rhs, qx);
 
       double bTl = dot(b, lam_v);
@@ -801,7 +801,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
   // Lambda and optimality.
   {
-    auto x_rhs = model.MakeSolverRHS();
+    auto x_rhs = model.AllocSolverRHS();
     x_rhs = model.MakeBlockVariable(result.x);
     // result.lambda must outlive the arena -> heap allocation.
     RowSpace r_plus_delta = model.AllocRowSpace(arena);
@@ -930,7 +930,7 @@ GeodesicResult SolveGeodesicHybridR(
     model.AssembleAndFactor();
     RowSpace b_theta = BlendAffine(model, arena, b, theta);
 
-    auto y = model.MakeSolverRHS();
+    auto y = model.AllocSolverRHS();
     y = cost_rhs;
     RowSpace v = model.AllocRowSpace(arena);
     quadraticRepresentation(v, W, b_theta);
@@ -953,7 +953,7 @@ GeodesicResult SolveGeodesicHybridR(
   // Lambda and optimality.
   // lambda = M*(r+delta)*M^T  (in physical frame, from M-frame r and delta)
   {
-    auto x_rhs = model.MakeSolverRHS();
+    auto x_rhs = model.AllocSolverRHS();
     x_rhs = model.MakeBlockVariable(result.x);
     RowSpace r_plus_delta = model.AllocRowSpace(arena);
     addScaled(r_plus_delta, r, last_delta, 1.0, 1.0);

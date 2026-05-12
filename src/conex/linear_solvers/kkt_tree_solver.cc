@@ -1024,6 +1024,26 @@ SolverRHS T::MakeSolverRHS(int cols) {
   return rhs;
 }
 
+SolverRHS T::AllocSolverRHS(Arena& arena, int cols) {
+  SolverRHS rhs;
+  auto p = MakePartition();
+  auto* sbp = dynamic_cast<StandaloneBlockPartition*>(p.get());
+  if (sbp) {
+    sbp->BindArena(arena, cols);
+  } else {
+    p->Resize(cols);
+    p->SetZero();
+  }
+  rhs.supernodes = p.get();
+  owned_tree_rhs_partitions_.push_back(std::move(p));
+  auto sep = std::make_unique<SeparatorScratch>();
+  sep->Init(subsystems_, cols);
+  rhs.separators = sep.get();
+  owned_solver_rhs_scratches_.push_back(std::move(sep));
+  rhs.blocks_fully_gathered = false;
+  return rhs;
+}
+
 KKTSolverBase::RowSpaceInfo T::GetRowSpaceInfo() const {
   RowSpaceInfo info;
   for (auto* lc : cone_constraints_) {

@@ -114,15 +114,17 @@ class StandaloneBlockPartition : public BlockPartition {
 
   Eigen::Ref<Eigen::MatrixXd> block(int k) override {
     if (arena_data_) {
-      return Eigen::Map<Eigen::MatrixXd>(
-          arena_data_ + block_offsets_[k], block_sizes_[k], arena_cols_);
+      return Eigen::Map<Eigen::MatrixXd, 0, Eigen::OuterStride<>>(
+          arena_data_ + block_offsets_[k], block_sizes_[k], arena_cols_,
+          Eigen::OuterStride<>(total_rows_));
     }
     return data_.middleRows(block_offsets_[k], block_sizes_[k]);
   }
   Eigen::Ref<const Eigen::MatrixXd> block(int k) const override {
     if (arena_data_) {
-      return Eigen::Map<const Eigen::MatrixXd>(
-          arena_data_ + block_offsets_[k], block_sizes_[k], arena_cols_);
+      return Eigen::Map<const Eigen::MatrixXd, 0, Eigen::OuterStride<>>(
+          arena_data_ + block_offsets_[k], block_sizes_[k], arena_cols_,
+          Eigen::OuterStride<>(total_rows_));
     }
     return data_.middleRows(block_offsets_[k], block_sizes_[k]);
   }

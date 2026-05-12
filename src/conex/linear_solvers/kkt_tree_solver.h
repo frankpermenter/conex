@@ -371,6 +371,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
 
   // --- KKTSolverBase overrides ---
   SolverRHS MakeSolverRHS(int cols = 1) override;
+  SolverRHS AllocSolverRHS(Arena& arena, int cols = 1) override;
   RowSpace MakeRowSpace(int cols = 1) override;
   RowSpaceInfo GetRowSpaceInfo() const override;
   void MultiplyA(const SolverRHS& x, RowSpace& out) override;

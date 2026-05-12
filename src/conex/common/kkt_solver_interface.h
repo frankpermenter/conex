@@ -57,7 +57,7 @@ class KKTSolverBase {
   // Create a SolverRHS with owned partition, no separator scratch.
   // Tree solver overrides to provide separator scratch.
   virtual SolverRHS MakeSolverRHS(int cols = 1);
-  SolverRHS AllocSolverRHS(Arena& arena, int cols = 1);
+  virtual SolverRHS AllocSolverRHS(Arena& arena, int cols = 1);
 
   virtual RowSpace MakeRowSpace(int cols = 1) = 0;
 
