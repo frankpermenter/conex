@@ -27,8 +27,7 @@ ContributionType ClassifyCliqueContribution(
 std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     const std::vector<CliqueProvider*>& clique_assemblers_ptrs_,
     int num_primal_vars,
-    const SolverConfiguration& config,
-    Arena* arena) {
+    const SolverConfiguration& config) {
   vector<vector<int>> cliques;
   for (const auto& assembler : clique_assemblers_ptrs_) {
     auto c_cliques = assembler->get_cliques();
@@ -210,7 +209,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     tree_solver_->SetUseGenericFactorization(
         config.tree.use_generic_factorization);
     tree_solver_->SetUseLUForIndefinite(config.tree.use_lu_for_indefinite);
-    tree_solver_->FinalizeStructure(clique_tree, config.rhs_cols, arena);
+    tree_solver_->FinalizeStructure(clique_tree, config.rhs_cols);
     tree_solver_->SetFactorizationMode(config.tree.left_looking);
     tree_solver_->EnableAutoUpdateAtAssemble(true);
     tree_solver_->SetNumThreads(config.num_threads);
@@ -316,7 +315,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
   tree_solver_->SetUseGenericFactorization(
       config.tree.use_generic_factorization);
   tree_solver_->SetUseLUForIndefinite(config.tree.use_lu_for_indefinite);
-  tree_solver_->FinalizeStructure(clique_tree, config.rhs_cols, arena);
+  tree_solver_->FinalizeStructure(clique_tree, config.rhs_cols);
   tree_solver_->SetFactorizationMode(config.tree.left_looking);
   tree_solver_->EnableAutoUpdateAtAssemble(true);
   tree_solver_->SetNumThreads(config.num_threads);

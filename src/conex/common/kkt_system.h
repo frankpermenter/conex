@@ -3,7 +3,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "conex/common/arena.h"
 #include "conex/common/clique_tree.h"
 #include "conex/common/conex.h"
 #include "conex/common/kkt_solver_interface.h"
@@ -31,20 +30,17 @@ class KKTSystem {
   // Build a KKT system from a Model.  No preprocessing is performed —
   // the caller is responsible for passing a reduced Model if desired.
   static KKTSystem Build(const Model& model,
-                         const SolverConfiguration& config = {},
-                         Arena* arena = nullptr);
+                         const SolverConfiguration& config = {});
 
   static KKTSystem Build(const Model& model,
                          const TreeSpec& tree,
-                         const SolverConfiguration& config = {},
-                         Arena* arena = nullptr);
+                         const SolverConfiguration& config = {});
 
   static KKTSystem BuildDense(const Model& model);
 
   static KKTSystem Build(const Model& model,
                          const CliqueTree& tree,
-                         const SolverConfiguration& config = {},
-                         Arena* arena = nullptr);
+                         const SolverConfiguration& config = {});
 
   KKTSolverBase* kkt();
   const KKTSolverBase* kkt() const;
@@ -74,15 +70,12 @@ class KKTSystem {
  private:
   void BuildInternal(const Model& model,
                      const SolverConfiguration& config,
-                     const CliqueTree* tree_override = nullptr,
-                     Arena* arena = nullptr);
+                     const CliqueTree* tree_override = nullptr);
   void BuildFromTree(const Model& model,
                      const TreeSpec& tree,
-                     const SolverConfiguration& config,
-                     Arena* arena = nullptr);
+                     const SolverConfiguration& config);
   void BuildQuotientAMD(const Model& model,
-                        const SolverConfiguration& config,
-                        Arena* arena = nullptr);
+                        const SolverConfiguration& config);
   void RegisterAssemblersWithTreeSolver();
 
   std::unique_ptr<TreeSolverBuilder> builder_;

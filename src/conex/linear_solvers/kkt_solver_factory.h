@@ -8,15 +8,13 @@ namespace conex {
 std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     const std::vector<CliqueProvider*>& assemblers,
     int num_primal_variables,
-    const SolverConfiguration& config,
-    Arena* arena = nullptr);
+    const SolverConfiguration& config);
 
 // Legacy: extract assemblers from ConstraintManager.
 inline std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
-    ConstraintManager* c, const SolverConfiguration& config,
-    Arena* arena = nullptr) {
+    ConstraintManager* c, const SolverConfiguration& config) {
   return MakeTreeSolver(c->clique_assemblers(),
-                        c->GetNumberOfVariables(), config, arena);
+                        c->GetNumberOfVariables(), config);
 }
 
 }  // namespace conex

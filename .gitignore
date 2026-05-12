@@ -15,4 +15,3 @@ doc/*.synctex.gz
 doc/.*.swp
 doc/.*.swo
 build_asan/
-build_rel/

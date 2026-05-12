@@ -463,8 +463,6 @@ void T::UpdateAssemblerData() {
   START_TIMER(Memset)
   if (arena_memory_) {
     std::memset(arena_memory_.get(), 0, arena_bytes_);
-  } else if (shared_fac_start_) {
-    std::memset(shared_fac_start_, 0, shared_fac_bytes_);
   }
   END_TIMER
   ResetUpdateDataTimers();
@@ -747,8 +745,7 @@ void T::BindContributors(const std::vector<int>& adapter_to_clique) {
   }
 }
 
-void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
-                          Arena* arena) {
+void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols) {
   std::vector<bool> needs_indefinite;
   auto adapter_to_clique = ClassifyCliques(clique_tree, &needs_indefinite);
 
@@ -762,7 +759,7 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
     ++i;
   }
 
-  AllocateArenaAndBind(rhs_cols, arena);
+  AllocateArenaAndBind(rhs_cols);
   for (auto& s : subsystems_) {
     s->Initialize();
   }
@@ -803,88 +800,76 @@ void T::SetScatterToParent(bool enable) {
   }
 }
 
-void T::AllocateArenaAndBind(int rhs_cols, Arena* arena) {
+void T::AllocateArenaAndBind(int rhs_cols) {
   constexpr size_t kAlign = EIGEN_MAX_ALIGN_BYTES;
+  auto align = [kAlign](size_t v) {
+    return ((v + kAlign - 1) / kAlign) * kAlign;
+  };
 
-  if (arena) {
-    // Allocate from the shared arena. Track the range for zeroing.
-    char* fac_start = nullptr;
-    size_t fac_bytes = 0;
-    for (auto* subsystem : subsystems_) {
-      const size_t bytes = subsystem->RequiredArenaBytes();
-      if (bytes == 0) continue;
-      double* ptr = static_cast<double*>(arena->Alloc(bytes));
-      if (!fac_start) fac_start = reinterpret_cast<char*>(ptr);
-      fac_bytes = reinterpret_cast<char*>(ptr) + bytes - fac_start;
-      std::memset(ptr, 0, bytes);
-      subsystem->BindArenaMemory(ptr, bytes);
-    }
-    shared_fac_start_ = fac_start;
-    shared_fac_bytes_ = fac_bytes;
-    for (auto* subsystem : subsystems_) {
-      const auto& sn = subsystem->supernodes();
-      int sn_rows = static_cast<int>(sn.size());
-      int sep_rows = static_cast<int>(subsystem->separators().size());
-      double* ws1 = static_cast<double*>(arena->Alloc(sn_rows * rhs_cols * sizeof(double)));
-      std::memset(ws1, 0, sn_rows * rhs_cols * sizeof(double));
-      double* ws2 = static_cast<double*>(arena->Alloc(sn_rows * rhs_cols * sizeof(double)));
-      std::memset(ws2, 0, sn_rows * rhs_cols * sizeof(double));
-      double* ws3 = static_cast<double*>(arena->Alloc(sep_rows * rhs_cols * sizeof(double)));
-      std::memset(ws3, 0, sep_rows * rhs_cols * sizeof(double));
-      subsystem->BindSolveWorkspace(ws1, sn_rows, rhs_cols,
-                                    ws2, sn_rows, rhs_cols,
-                                    ws3, sep_rows, rhs_cols);
-    }
-  } else {
-    // Self-owned allocation (no external arena).
-    auto align = [kAlign](size_t v) {
-      return ((v + kAlign - 1) / kAlign) * kAlign;
-    };
-    size_t factorization_bytes = 0;
-    for (const auto* subsystem : subsystems_)
-      factorization_bytes += align(subsystem->RequiredArenaBytes());
-    size_t workspace_bytes = 0;
-    for (const auto* subsystem : subsystems_) {
-      int sn_rows = static_cast<int>(subsystem->supernodes().size());
-      int sep_rows = static_cast<int>(subsystem->separators().size());
-      workspace_bytes += align(sn_rows * rhs_cols * sizeof(double));
-      workspace_bytes += align(sn_rows * rhs_cols * sizeof(double));
-      workspace_bytes += align(sep_rows * rhs_cols * sizeof(double));
-    }
-    size_t total_bytes = factorization_bytes + workspace_bytes;
-    if (total_bytes == 0) { arena_memory_.reset(); arena_bytes_ = 0; return; }
-    void* raw_ptr = nullptr;
-    if (posix_memalign(&raw_ptr, kAlign, total_bytes) != 0) throw std::bad_alloc();
-    arena_memory_.reset(raw_ptr);
-    arena_bytes_ = total_bytes;
-    std::memset(raw_ptr, 0, total_bytes);
+  // Compute factorization storage.
+  size_t factorization_bytes = 0;
+  for (const auto* subsystem : subsystems_) {
+    factorization_bytes += align(subsystem->RequiredArenaBytes());
+  }
+  // Compute solve workspace (3 buffers per subsystem).
+  size_t workspace_bytes = 0;
+  for (const auto* subsystem : subsystems_) {
+    const auto& sn = subsystem->supernodes();
+    int sn_rows = static_cast<int>(sn.size());
+    int sep_rows = static_cast<int>(subsystem->separators().size());
+    workspace_bytes += align(sn_rows * rhs_cols * sizeof(double));
+    workspace_bytes += align(sn_rows * rhs_cols * sizeof(double));
+    workspace_bytes += align(sep_rows * rhs_cols * sizeof(double));
+  }
 
-    std::uintptr_t cursor = reinterpret_cast<std::uintptr_t>(arena_memory_.get());
-    for (auto* subsystem : subsystems_) {
-      const size_t bytes = subsystem->RequiredArenaBytes();
-      if (bytes == 0) continue;
-      cursor = (cursor + (kAlign - 1)) & ~(static_cast<std::uintptr_t>(kAlign - 1));
-      subsystem->BindArenaMemory(reinterpret_cast<double*>(cursor), bytes);
-      cursor += bytes;
-    }
-    char* ws_base = static_cast<char*>(arena_memory_.get()) + factorization_bytes;
-    size_t ws_cursor = 0;
-    for (auto* subsystem : subsystems_) {
-      int sn_rows = static_cast<int>(subsystem->supernodes().size());
-      int sep_rows = static_cast<int>(subsystem->separators().size());
-      ws_cursor = align(ws_cursor);
-      double* ws1 = reinterpret_cast<double*>(ws_base + ws_cursor);
-      ws_cursor += sn_rows * rhs_cols * sizeof(double);
-      ws_cursor = align(ws_cursor);
-      double* ws2 = reinterpret_cast<double*>(ws_base + ws_cursor);
-      ws_cursor += sn_rows * rhs_cols * sizeof(double);
-      ws_cursor = align(ws_cursor);
-      double* ws3 = reinterpret_cast<double*>(ws_base + ws_cursor);
-      ws_cursor += sep_rows * rhs_cols * sizeof(double);
-      subsystem->BindSolveWorkspace(ws1, sn_rows, rhs_cols,
-                                    ws2, sn_rows, rhs_cols,
-                                    ws3, sep_rows, rhs_cols);
-    }
+  size_t total_bytes = factorization_bytes + workspace_bytes;
+  if (total_bytes == 0) {
+    arena_memory_.reset();
+    arena_bytes_ = 0;
+    return;
+  }
+
+  void* raw_ptr = nullptr;
+  if (posix_memalign(&raw_ptr, kAlign, total_bytes) != 0) {
+    throw std::bad_alloc();
+  }
+  arena_memory_.reset(raw_ptr);
+  arena_bytes_ = total_bytes;
+  std::memset(raw_ptr, 0, total_bytes);
+
+  // Bind factorization storage.
+  std::uintptr_t cursor = reinterpret_cast<std::uintptr_t>(arena_memory_.get());
+  for (auto* subsystem : subsystems_) {
+    const size_t bytes = subsystem->RequiredArenaBytes();
+    if (bytes == 0) continue;
+    cursor = (cursor + (kAlign - 1)) & ~(static_cast<std::uintptr_t>(kAlign - 1));
+    subsystem->BindArenaMemory(reinterpret_cast<double*>(cursor), bytes);
+    cursor += bytes;
+  }
+
+  // Bind solve workspace.
+  char* ws_base = static_cast<char*>(arena_memory_.get()) + factorization_bytes;
+  size_t ws_cursor = 0;
+  for (auto* subsystem : subsystems_) {
+    const auto& sn = subsystem->supernodes();
+    int sn_rows = static_cast<int>(sn.size());
+    int sep_rows = static_cast<int>(subsystem->separators().size());
+
+    ws_cursor = align(ws_cursor);
+    double* ws1 = reinterpret_cast<double*>(ws_base + ws_cursor);
+    ws_cursor += sn_rows * rhs_cols * sizeof(double);
+
+    ws_cursor = align(ws_cursor);
+    double* ws2 = reinterpret_cast<double*>(ws_base + ws_cursor);
+    ws_cursor += sn_rows * rhs_cols * sizeof(double);
+
+    ws_cursor = align(ws_cursor);
+    double* ws3 = reinterpret_cast<double*>(ws_base + ws_cursor);
+    ws_cursor += sep_rows * rhs_cols * sizeof(double);
+
+    subsystem->BindSolveWorkspace(ws1, sn_rows, rhs_cols,
+                                  ws2, sn_rows, rhs_cols,
+                                  ws3, sep_rows, rhs_cols);
   }
   reserved_solve_workspace_cols_ = rhs_cols;
 }

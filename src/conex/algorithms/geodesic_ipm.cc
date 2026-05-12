@@ -19,12 +19,14 @@ std::pair<double, double> VerifyNewtonEquations(
     double k,
     double theta) {
   const auto& cost_rhs_data = model.cost_rhs();
+  Arena& arena = model.arena();
 
-  RowSpace ones = model.MakeRowSpace();
+  RowSpace ones = model.AllocRowSpace();
   setOnes(ones);
 
   // Blended b and c.
-  RowSpace b = addScaled(ones, b_data, theta, 1.0 - theta);
+  RowSpace b = model.AllocRowSpace();
+  addScaled(b, ones, b_data, theta, 1.0 - theta);
 
   auto cost_rhs = model.MakeSolverRHS();
   cost_rhs.SetZero();
@@ -35,7 +37,8 @@ std::pair<double, double> VerifyNewtonEquations(
   const int n = model.number_of_variables();
 
   // --- Primal check: d should equal e + P(W^{1/2})(-k*b - A*y) ---
-  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
+  RowSpace sqrtW = model.AllocRowSpace();
+  EuclideanJordanAlgebra::sqrt(sqrtW, W);
   RowSpace I_minus_d = ones - d;
   // W^{-1/2} = P(W^{-1/4})... actually for the check we use:
   // d = I + P(W^{1/2})(S) where S = -k*b - A*y.
@@ -45,18 +48,22 @@ std::pair<double, double> VerifyNewtonEquations(
   // Or simpler: verify d - I = P(W^{1/2})(-k*b - A*y).
   auto y_rhs = model.MakeSolverRHS();
   y_rhs = model.MakeBlockVariable(y);
-  RowSpace Ay = model.MakeRowSpace();
+  RowSpace Ay = model.AllocRowSpace();
   model.MultiplyA(y_rhs, Ay);
-  RowSpace slack = addScaled(b, Ay, -k, -1.0);  // -k*b - Ay
-  RowSpace d_expected = quadraticRepresentation(sqrtW, slack);
+  RowSpace slack = model.AllocRowSpace();
+  addScaled(slack, b, Ay, -k, -1.0);  // -k*b - Ay
+  RowSpace d_expected = model.AllocRowSpace();
+  quadraticRepresentation(d_expected, sqrtW, slack);
   d_expected += ones;  // I + P(W^{1/2})(S)
 
   RowSpace primal_err = d - d_expected;
   double primal_res = normInf(primal_err);
 
   // --- Dual check: A^T lambda = k*c where lambda = P(W^{1/2})(I + d) / k ---
-  RowSpace I_plus_d = ones + d;
-  RowSpace lambda = quadraticRepresentation(sqrtW, I_plus_d);
+  RowSpace I_plus_d = model.AllocRowSpace();
+  addScaled(I_plus_d, ones, d, 1.0, 1.0);
+  RowSpace lambda = model.AllocRowSpace();
+  quadraticRepresentation(lambda, sqrtW, I_plus_d);
   lambda *= (1.0 / k);
 
   auto at_lambda = model.MakeSolverRHS();
@@ -76,10 +83,11 @@ OptimalityReport CheckOptimality(
     const SolverRHS& x_rhs,
     const RowSpace& lambda) {
   OptimalityReport report;
+  Arena& arena = model.arena();
   int n = model.number_of_variables();
 
   // s = Ax + b.
-  RowSpace s = model.MakeRowSpace();
+  RowSpace s = model.AllocRowSpace();
   model.MultiplyA(x_rhs, s);
   s += model.GetAffineTerm();
 
@@ -108,7 +116,8 @@ static RowSpace SolveConeSystem(
     x_out->resize(nr);
     var_rhs.supernodes->GatherInto(*x_out);
   }
-  RowSpace Ax = model.MakeRowSpace();
+  Arena& arena = model.arena();
+  RowSpace Ax = model.AllocRowSpace();
   model.MultiplyA(var_rhs, Ax);
   return Ax;
 }
@@ -160,13 +169,14 @@ GeodesicResult GeodesicCenter(
   const double nu = barrierParameter(W);
   const double mu = 1.0 / (k * k);
   const RowSpace b = model.GetAffineTerm();
+  Arena& arena = model.arena();
 
   GeodesicResult result{};
   result.mu = mu;
 
   for (int iter = 0; iter < max_iterations; ++iter) {
-    RowSpace d = model.MakeRowSpace();
-    RowSpace slack = model.MakeRowSpace();
+    RowSpace d = model.AllocRowSpace();
+    RowSpace slack = model.AllocRowSpace();
     Eigen::VectorXd y_direct;
     ComputeDirectNewtonStep(model, b, W, k, d, y_direct, &slack);
 
@@ -212,19 +222,26 @@ static void ComputeDirectNewtonStep(
     RowSpace& d_out,
     Eigen::VectorXd& y_out,
     RowSpace* slack_out) {
+  Arena& arena = model.arena();
   model.SetScaling(W);
   model.AssembleAndFactor();
 
   // Combined RHS: centering (2W) + cost (-k·P(W)(b)) in cone space,
   //               -k·c + k·d_eq in variable space.
   auto var_rhs = MakeCostVarRHS(model, model.cost_rhs(), k);
-  RowSpace cone_rhs = addScaled(quadraticRepresentation(W, b), W, -k, 2.0);
+  RowSpace tmp_qr = model.AllocRowSpace();
+  quadraticRepresentation(tmp_qr, W, b);
+  RowSpace cone_rhs = model.AllocRowSpace();
+  addScaled(cone_rhs, tmp_qr, W, -k, 2.0);
   RowSpace Ax = SolveConeSystem(model, var_rhs, cone_rhs);
-  RowSpace slack = addScaled(b, Ax, -k, -1.0);
+  RowSpace slack = model.AllocRowSpace();
+  addScaled(slack, b, Ax, -k, -1.0);
   if (slack_out) *slack_out = slack;
 
-  d_out = quadraticRepresentation(EuclideanJordanAlgebra::sqrt(W), slack);
-  RowSpace ones = model.MakeRowSpace();
+  RowSpace sqrtW = model.AllocRowSpace();
+  EuclideanJordanAlgebra::sqrt(sqrtW, W);
+  quadraticRepresentation(d_out, sqrtW, slack);
+  RowSpace ones = model.AllocRowSpace();
   setOnes(ones);
   d_out += ones;
 
@@ -768,7 +785,7 @@ GeodesicResult SolveGeodesicHSD(
   const double nu = barrierParameter(W);
   Arena& arena = model.arena();
 
-  RowSpace ones = model.MakeRowSpace();
+  RowSpace ones = model.AllocRowSpace();
   setOnes(ones);
   const double bT_ones = dot(b, ones);
 
@@ -794,7 +811,7 @@ GeodesicResult SolveGeodesicHSD(
 
   // rp = b - e (RowSpace): slack residual at the fixed point.
   // At (x=0, tau=1, theta=1): slack = e, and rp'e + rg = -(m+1).
-  RowSpace rp = model.MakeRowSpace();
+  RowSpace rp = model.AllocRowSpace();
   rp = b;
   rp -= ones;
   // rd = A'e - c (SolverRHS): dual residual at the fixed point.
@@ -827,10 +844,16 @@ GeodesicResult SolveGeodesicHSD(
     total_fac++;
     total_sol += 3;
 
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace pwd1_0 = quadraticRepresentation(sqrtW, decomp.d1_0);
-    RowSpace pwd1_t = quadraticRepresentation(sqrtW, decomp.d1_theta);
-    RowSpace pwed0 = quadraticRepresentation(sqrtW, ones + decomp.d0);
+    RowSpace sqrtW = model.AllocRowSpace();
+    EuclideanJordanAlgebra::sqrt(sqrtW, W);
+    RowSpace pwd1_0 = model.AllocRowSpace();
+    quadraticRepresentation(pwd1_0, sqrtW, decomp.d1_0);
+    RowSpace pwd1_t = model.AllocRowSpace();
+    quadraticRepresentation(pwd1_t, sqrtW, decomp.d1_theta);
+    RowSpace e_plus_d0 = model.AllocRowSpace();
+    addScaled(e_plus_d0, ones, decomp.d0, 1.0, 1.0);
+    RowSpace pwed0 = model.AllocRowSpace();
+    quadraticRepresentation(pwed0, sqrtW, e_plus_d0);
 
     double rp_pwd10 = dot(rp, pwd1_0);
     double rp_pwd1t = dot(rp, pwd1_t);
@@ -889,7 +912,8 @@ GeodesicResult SolveGeodesicHSD(
       }
     }
 
-    RowSpace d = EvaluateDirection(decomp, k, tau, theta);
+    RowSpace d = model.AllocRowSpace();
+    EvaluateDirection(d, decomp, k, tau, theta);
     double d_inf = normInf(d);
     double d_sq = squaredNorm(d);
     double gap = mu * (nu - d_sq);
@@ -899,14 +923,18 @@ GeodesicResult SolveGeodesicHSD(
     // x = y0/k + tau*y1_0 + theta*y1_theta
     // Norm: rp'*lambda + rd'*x + rg*tau should = -alpha
     {
-      RowSpace lam = quadraticRepresentation(sqrtW, ones + d);
+      RowSpace ones_plus_d = model.AllocRowSpace();
+      addScaled(ones_plus_d, ones, d, 1.0, 1.0);
+      RowSpace lam = model.AllocRowSpace();
+      quadraticRepresentation(lam, sqrtW, ones_plus_d);
       lam *= (1.0 / k);  // lambda_phys = lambda_lifted / k ... wait
       // Actually lambda = k * P(W^{1/2})(e+d), not divided by k.
       // Normalization in LIFTED space:
       //   rp'*lambda_lifted + rd'*x_lifted + rg*tau = -alpha
       // lambda_lifted = (1/k) * P(W^{1/2})(e+d)
       // x_lifted = y0/k + tau*y1_0 + theta*y1_theta
-      RowSpace lam_lifted = quadraticRepresentation(sqrtW, ones + d);
+      RowSpace lam_lifted = model.AllocRowSpace();
+      quadraticRepresentation(lam_lifted, sqrtW, ones_plus_d);
       lam_lifted *= (1.0 / k);
       double rp_lam = dot(rp, lam_lifted);
 
@@ -961,10 +989,14 @@ GeodesicResult SolveGeodesicHSD(
       result.x = x_lifted / tau;
 
       // lambda_phys = lambda_lifted / tau.
-      RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-      RowSpace ones_v = model.MakeRowSpace();
+      RowSpace sqrtW_c = model.AllocRowSpace();
+      EuclideanJordanAlgebra::sqrt(sqrtW_c, W);
+      RowSpace ones_v = model.AllocRowSpace();
       setOnes(ones_v);
-      result.lambda = quadraticRepresentation(sqrtW, ones_v + d);
+      RowSpace ones_v_plus_d = model.AllocRowSpace();
+      addScaled(ones_v_plus_d, ones_v, d, 1.0, 1.0);
+      result.lambda = model.MakeRowSpace();
+      quadraticRepresentation(result.lambda, sqrtW_c, ones_v_plus_d);
       result.lambda *= (1.0 / (k * tau));
 
       auto x_rhs = model.MakeSolverRHS();
@@ -1012,7 +1044,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
   const double nu = barrierParameter(W);
   Arena& arena = model.arena();
 
-  RowSpace ones_bTe = model.MakeRowSpace();
+  RowSpace ones_bTe = model.AllocRowSpace();
   setOnes(ones_bTe);
   const double bT_ones = dot(b, ones_bTe);
 
@@ -1034,6 +1066,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
   }
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
+    char* outer_mark = arena.SaveCursor();
     // Decompose at current W.
     auto decomp = ComputeFullDecomposition(model, arena, b, W);
     total_fac++;
@@ -1073,16 +1106,21 @@ GeodesicResult SolveGeodesicThetaContinuation(
     // Evaluate the direction and reported quantities at the consistent
     // (W, decomp, tau) BEFORE the geodesic step, so V(tau)=0 holds
     // exactly and reported eq_err ≈ machine precision.
-    RowSpace d_step = EvaluateDirection(decomp, k, tau, theta);
+    RowSpace d_step = model.AllocRowSpace();
+    EvaluateDirection(d_step, decomp, k, tau, theta);
     double d_inf = normInf(d_step);
     double d_sq = squaredNorm(d_step);
     double mu = 1.0 / (k * k);
     double gap = mu * (nu - d_sq);
 
-    RowSpace sqrtW_step = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace ones_step = model.MakeRowSpace();
+    RowSpace sqrtW_step = model.AllocRowSpace();
+    EuclideanJordanAlgebra::sqrt(sqrtW_step, W);
+    RowSpace ones_step = model.AllocRowSpace();
     setOnes(ones_step);
-    RowSpace lam_step = quadraticRepresentation(sqrtW_step, ones_step + d_step);
+    RowSpace ones_step_plus_d = model.AllocRowSpace();
+    addScaled(ones_step_plus_d, ones_step, d_step, 1.0, 1.0);
+    RowSpace lam_step = model.AllocRowSpace();
+    quadraticRepresentation(lam_step, sqrtW_step, ones_step_plus_d);
     lam_step *= (1.0 / k);
     double bT_lambda = dot(b, lam_step);
     Eigen::VectorXd x_step = decomp.y0 / k + tau * decomp.y1_0
@@ -1117,7 +1155,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
     // trajectory as baseline ThetaCont.  Any difference is a bug.
     constexpr bool refactor_inner = false;
 
-    RowSpace sqrtW0_f = EuclideanJordanAlgebra::sqrt(W0);
+    RowSpace sqrtW0_f = model.AllocRowSpace();
+    EuclideanJordanAlgebra::sqrt(sqrtW0_f, W0);
     auto dc_f = ComputeDualityCoeffs(model, arena, duality_cost, b, W0, decomp);
     double beta_f = dc_f.sigma1 + dc_f.gamma1 + dc_f.q11;
 
@@ -1125,7 +1164,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
       if (refactor_inner) {
         // Full refactor: makes inner iteration identical to outer.
         W0 = W;
-        sqrtW0_f = EuclideanJordanAlgebra::sqrt(W0);
+        EuclideanJordanAlgebra::sqrt(sqrtW0_f, W0);
         dc_f = ComputeDualityCoeffs(model, arena, duality_cost, b, W0, decomp);
         beta_f = dc_f.sigma1 + dc_f.gamma1 + dc_f.q11;
         decomp = ComputeFullDecomposition(model, arena, b, W);
@@ -1177,7 +1216,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
       auto [tau_f, d_inf_f] = result_sel;
       if (tau_f <= 0) break;
 
-      RowSpace d_f = EvaluateDirection(decomp, k_f, tau_f, theta_f);
+      RowSpace d_f = model.AllocRowSpace();
+      EvaluateDirection(d_f, decomp, k_f, tau_f, theta_f);
       double d_inf_fv = normInf(d_f);
       if (verbose) {
         double mu_f = 1.0 / (k_f * k_f);
@@ -1185,9 +1225,11 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
         // Check V(tau)=0: b^T lambda + c^T x + xQx/tau + mu/tau = theta*R.
         // Frozen-J lambda: Wi/k + P(sqrtW0)(d)/k.
-        RowSpace lam_f = W;  // Wi term
+        RowSpace lam_f = model.AllocRowSpace();
+        lam_f += W;  // Wi term (per-segment copy)
         lam_f *= (1.0 / k_f);
-        RowSpace Pd = quadraticRepresentation(sqrtW0_f, d_f);
+        RowSpace Pd = model.AllocRowSpace();
+        quadraticRepresentation(Pd, sqrtW0_f, d_f);
         Pd *= (1.0 / k_f);
         lam_f += Pd;  // + P(sqrtW0)(d)/k
 
@@ -1258,6 +1300,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
       if (verbose) printf("  TERMINATED: reached max_outer_iterations = %d\n",
                           max_outer_iterations);
     }
+    arena.RestoreCursor(outer_mark);
   }
 
   // Recover primal x.  De-homogenize: x_phys = x_lifted / tau.
@@ -1270,18 +1313,22 @@ GeodesicResult SolveGeodesicThetaContinuation(
     // Compute lambda at the CURRENT (k, tau, theta) — consistent with x.
     // lambda_lifted = (1/k) P(W^{1/2})(e + d(k,tau,theta));
     // lambda_phys   = lambda_lifted / tau.
-    RowSpace d_cur = EvaluateDirection(decomp, k, tau, theta);
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace ones = model.MakeRowSpace();
-    setOnes(ones);
-    RowSpace lambda = quadraticRepresentation(sqrtW, ones + d_cur);
-    lambda *= (1.0 / (k * tau));
+    RowSpace d_cur = model.AllocRowSpace();
+    EvaluateDirection(d_cur, decomp, k, tau, theta);
+    RowSpace sqrtW_r = model.AllocRowSpace();
+    EuclideanJordanAlgebra::sqrt(sqrtW_r, W);
+    RowSpace ones_r = model.AllocRowSpace();
+    setOnes(ones_r);
+    RowSpace ones_plus_dcur = model.AllocRowSpace();
+    addScaled(ones_plus_dcur, ones_r, d_cur, 1.0, 1.0);
+    result.lambda = model.MakeRowSpace();
+    quadraticRepresentation(result.lambda, sqrtW_r, ones_plus_dcur);
+    result.lambda *= (1.0 / (k * tau));
 
     auto x_rhs = model.MakeSolverRHS();
     x_rhs = model.MakeBlockVariable(result.x);
-    result.optimality = CheckOptimality(model, x_rhs, lambda);
+    result.optimality = CheckOptimality(model, x_rhs, result.lambda);
     result.optimality.mu = result.mu;
-    result.lambda = lambda;
 
     if (verbose) {
       printf("  Optimality: compl=%.2e, "
@@ -1300,8 +1347,8 @@ double GeodesicLineSearch(
     const RowSpace& W) {
   Arena& arena = model.arena();
   const RowSpace b = model.GetAffineTerm();
-  RowSpace d0 = model.MakeRowSpace();
-  RowSpace d1 = model.MakeRowSpace();
+  RowSpace d0 = model.AllocRowSpace();
+  RowSpace d1 = model.AllocRowSpace();
   ComputeDecomposition(model, arena, model.cost_rhs(), b, W, d0, d1);
 
   return lineSearchK(d0, d1);
@@ -1326,12 +1373,17 @@ static std::pair<double, double> EvalKCandidate(
   auto dc = ComputeDualityCoeffs(model, arena, duality_cost, b, W, decomp);
   double beta_coeff = dc.sigma1 + dc.gamma1 + dc.q11;
 
-  RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-  RowSpace ones_v = model.MakeRowSpace();
+  RowSpace sqrtW = model.AllocRowSpace();
+  EuclideanJordanAlgebra::sqrt(sqrtW, W);
+  RowSpace ones_v = model.AllocRowSpace();
   setOnes(ones_v);
-  RowSpace e_plus_d0 = ones_v + decomp.d0;
-  RowSpace arg = addScaled(e_plus_d0, decomp.d1_theta, 1.0, k_cand * theta_val);
-  double sigma0 = dot(b, quadraticRepresentation(sqrtW, arg)) / k_cand;
+  RowSpace e_plus_d0 = model.AllocRowSpace();
+  addScaled(e_plus_d0, ones_v, decomp.d0, 1.0, 1.0);
+  RowSpace arg = model.AllocRowSpace();
+  addScaled(arg, e_plus_d0, decomp.d1_theta, 1.0, k_cand * theta_val);
+  RowSpace Parg = model.AllocRowSpace();
+  quadraticRepresentation(Parg, sqrtW, arg);
+  double sigma0 = dot(b, Parg) / k_cand;
 
   auto y0_rhs = model.MakeSolverRHS();
   y0_rhs = model.MakeBlockVariable(decomp.y0);
@@ -1367,7 +1419,8 @@ static std::pair<double, double> EvalKCandidate(
 
   auto eval_dinf = [&](double tau) -> std::pair<double, double> {
     if (tau <= 0) return {-1, 1e30};
-    RowSpace d = EvaluateDirection(decomp, k_cand, tau, theta_val);
+    RowSpace d = model.AllocRowSpace();
+    EvaluateDirection(d, decomp, k_cand, tau, theta_val);
     return {tau, normInf(d)};
   };
 
@@ -1393,7 +1446,7 @@ GeodesicResult SolveGeodesicPhaseOne(
   const double nu = barrierParameter(W);
   Arena& arena = model.arena();
 
-  RowSpace ones_bTe = model.MakeRowSpace();
+  RowSpace ones_bTe = model.AllocRowSpace();
   setOnes(ones_bTe);
   const double bT_ones = dot(b, ones_bTe);
 
@@ -1441,15 +1494,16 @@ GeodesicResult SolveGeodesicPhaseOne(
           result.total_factorizations = total_fac;
           result.total_solves = total_sol;
           if (verbose) {
-            RowSpace d_p1 = EvaluateDirection(decomp, k, tau, 0.0);
+            RowSpace d_p1 = model.AllocRowSpace();
+            EvaluateDirection(d_p1, decomp, k, tau, 0.0);
             double dinf_p1 = normInf(d_p1);
 
             RowSpace b_sc = model.GetAffineTerm(); b_sc *= tau;
             auto c_sc = model.MakeSolverRHS(); c_sc = cost_rhs; c_sc *= tau;
-            RowSpace r_chk = model.MakeRowSpace();
+            RowSpace r_chk = model.AllocRowSpace();
             setOnes(r_chk); r_chk *= (1.0 / k);
-            RowSpace d_hyb = model.MakeRowSpace();
-            RowSpace delta_hyb = model.MakeRowSpace();
+            RowSpace d_hyb = model.AllocRowSpace();
+            RowSpace delta_hyb = model.AllocRowSpace();
             ComputeHybridDirection(model, b_sc, W, r_chk,
                                     d_hyb, delta_hyb, tau);
             double dinf_hyb = normInf(d_hyb);
@@ -1498,22 +1552,27 @@ GeodesicResult SolveGeodesicPhaseOne(
 
     // Evaluate quantities at the consistent (W, decomp, tau, k, theta)
     // BEFORE the geodesic step, so reported values are coherent.
-    RowSpace d_step = EvaluateDirection(decomp, k, tau, theta);
+    RowSpace d_step = model.AllocRowSpace();
+    EvaluateDirection(d_step, decomp, k, tau, theta);
     double d_inf = normInf(d_step);
     double d_sq = squaredNorm(d_step);
     double mu = 1.0 / (k * k);
     double gap = mu * (nu - d_sq);
 
-    RowSpace sqrtW_step = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace ones_step = model.MakeRowSpace();
+    RowSpace sqrtW_step = model.AllocRowSpace();
+    EuclideanJordanAlgebra::sqrt(sqrtW_step, W);
+    RowSpace ones_step = model.AllocRowSpace();
     setOnes(ones_step);
-    RowSpace lam_step = quadraticRepresentation(sqrtW_step, ones_step + d_step);
+    RowSpace ones_step_plus_d = model.AllocRowSpace();
+    addScaled(ones_step_plus_d, ones_step, d_step, 1.0, 1.0);
+    RowSpace lam_step = model.AllocRowSpace();
+    quadraticRepresentation(lam_step, sqrtW_step, ones_step_plus_d);
     lam_step *= (1.0 / k);
     double bT_lambda = dot(b, lam_step);
-    Eigen::VectorXd x_step = decomp.y0 / k + tau * decomp.y1_0
+    Eigen::VectorXd x_step_v = decomp.y0 / k + tau * decomp.y1_0
                              + theta * decomp.y1_theta;
     auto x_rhs_step = model.MakeSolverRHS();
-    x_rhs_step = model.MakeBlockVariable(x_step);
+    x_rhs_step = model.MakeBlockVariable(x_step_v);
     double cT_x = cost_rhs.dot(x_rhs_step);
     double dT_nu = duality_cost.dot(x_rhs_step) - cT_x;
     auto qx_rhs = model.MakeSolverRHS();
@@ -1572,17 +1631,21 @@ GeodesicResult SolveGeodesicPhaseOne(
     Eigen::VectorXd x_lifted =
         decomp.y0 / k + tau * decomp.y1_0 + theta * decomp.y1_theta;
     result.x = x_lifted / tau;
-    RowSpace d_cur = EvaluateDirection(decomp, k, tau, theta);
-    RowSpace sqrtW = EuclideanJordanAlgebra::sqrt(W);
-    RowSpace ones = model.MakeRowSpace();
-    setOnes(ones);
-    RowSpace lambda = quadraticRepresentation(sqrtW, ones + d_cur);
-    lambda *= (1.0 / (k * tau));
+    RowSpace d_cur = model.AllocRowSpace();
+    EvaluateDirection(d_cur, decomp, k, tau, theta);
+    RowSpace sqrtW_p = model.AllocRowSpace();
+    EuclideanJordanAlgebra::sqrt(sqrtW_p, W);
+    RowSpace ones_p = model.AllocRowSpace();
+    setOnes(ones_p);
+    RowSpace ones_plus_dcur = model.AllocRowSpace();
+    addScaled(ones_plus_dcur, ones_p, d_cur, 1.0, 1.0);
+    result.lambda = model.MakeRowSpace();
+    quadraticRepresentation(result.lambda, sqrtW_p, ones_plus_dcur);
+    result.lambda *= (1.0 / (k * tau));
     auto x_rhs = model.MakeSolverRHS();
     x_rhs = model.MakeBlockVariable(result.x);
-    result.optimality = CheckOptimality(model, x_rhs, lambda);
+    result.optimality = CheckOptimality(model, x_rhs, result.lambda);
     result.optimality.mu = result.mu;
-    result.lambda = lambda;
   }
   return result;
 }
@@ -2586,15 +2649,17 @@ HybridDirection HybridCenteringStep(
     CompiledModel& model,
     RowSpace& W,
     RowSpace& r) {
+  Arena& arena = model.arena();
   const RowSpace b = model.GetAffineTerm();
   // HybridCenteringStep is a single-step helper used by tests.
   // Use M-based approach: initialize M = sqrt(W), update, recover W.
-  RowSpace M = EuclideanJordanAlgebra::sqrt(W);
+  RowSpace M = model.AllocRowSpace();
+  EuclideanJordanAlgebra::sqrt(M, W);
   model.SetScaling(W);
   model.AssembleAndFactor();
 
-  RowSpace d = model.MakeRowSpace();
-  RowSpace delta = model.MakeRowSpace();
+  RowSpace d = model.AllocRowSpace();
+  RowSpace delta = model.AllocRowSpace();
   auto info = ComputeHybridDirectionM(model, b, M, W, r, d, delta);
 
   double alpha = std::min(1.0, 2.0 / (info.d_inf * info.d_inf));
@@ -2626,11 +2691,11 @@ GeodesicResult SolveGeodesicHybrid(
     cost_scaled *= tau;
   }
 
-  RowSpace r = model.MakeRowSpace();
+  RowSpace r = model.AllocRowSpace();
   setOnes(r);
 
   // M-based automorphism: M tracks the full automorphism, r stays in M-frame.
-  RowSpace M = model.MakeRowSpace();
+  RowSpace M = model.AllocRowSpace();
   setOnes(M);  // M = I initially
 
   // Initial scaling: use caller-supplied k if positive, otherwise
@@ -2643,8 +2708,8 @@ GeodesicResult SolveGeodesicHybrid(
   if (initial_k > 0) {
     r *= (1.0 / initial_k);
   } else {
-    RowSpace d0 = model.MakeRowSpace();
-    RowSpace d1 = model.MakeRowSpace();
+    RowSpace d0 = model.AllocRowSpace();
+    RowSpace d1 = model.AllocRowSpace();
     ComputeDecomposition(model, arena, cost_scaled, b, W, d0, d1);
     double d0d1 = dot(d0, d1);
     double d1sq = squaredNorm(d1);
@@ -2660,7 +2725,7 @@ GeodesicResult SolveGeodesicHybrid(
   GeodesicResult result{};
   int r_updates = 0;
 
-  RowSpace ones = model.MakeRowSpace();
+  RowSpace ones = model.AllocRowSpace();
   setOnes(ones);
 
   int r_updates_this_fac = 0;
@@ -2680,11 +2745,11 @@ GeodesicResult SolveGeodesicHybrid(
     printf("  %s\n", std::string(100, '-').c_str());
   }
 
-  RowSpace last_delta = model.MakeRowSpace();
+  RowSpace last_delta = model.AllocRowSpace();
 
   for (int iter = 0; iter < max_iterations; ++iter) {
-    RowSpace d = model.MakeRowSpace();
-    RowSpace delta = model.MakeRowSpace();
+    RowSpace d = model.AllocRowSpace();
+    RowSpace delta = model.AllocRowSpace();
     auto info = ComputeHybridDirectionM(model, b, M, W, r, d, delta, tau);
     last_delta = delta;
     total_sol++;
@@ -2725,8 +2790,8 @@ GeodesicResult SolveGeodesicHybrid(
     // Recompute direction at current (W, r).  After a W-update this uses
     // the fresh factorization; after an r-update it reuses the existing one.
     {
-      RowSpace d2 = model.MakeRowSpace();
-      RowSpace delta2 = model.MakeRowSpace();
+      RowSpace d2 = model.AllocRowSpace();
+      RowSpace delta2 = model.AllocRowSpace();
       auto info2 = ComputeHybridDirectionM(model, b, M, W, r, d2, delta2, tau);
       total_sol++;
       g = info2.gap;
@@ -2739,14 +2804,21 @@ GeodesicResult SolveGeodesicHybrid(
       double mu_r = squaredNorm(r) / m;
       // Compute physical bTl and cTx (divided by tau).
       // lambda_lifted = applyM(M, r + delta2).
-      RowSpace lam_v = applyM(M, r + last_delta);
+      RowSpace r_plus_delta = model.AllocRowSpace();
+      addScaled(r_plus_delta, r, last_delta, 1.0, 1.0);
+      RowSpace lam_v = model.AllocRowSpace();
+      applyM(lam_v, M, r_plus_delta);
       double bTl_phys = dot(b_unscaled, lam_v) / tau;
       // cTx + dTnu: re-solve and dot with duality_cost (includes d_eq).
       auto y_v = model.MakeSolverRHS();
       y_v = cost_scaled;
       y_v *= -1;
-      RowSpace v_v = addScaled(quadraticRepresentation(W, b),
-                               applyM(M, r), -1, 2.0);
+      RowSpace Mr = model.AllocRowSpace();
+      applyM(Mr, M, r);
+      RowSpace PWb = model.AllocRowSpace();
+      quadraticRepresentation(PWb, W, b);
+      RowSpace v_v = model.AllocRowSpace();
+      addScaled(v_v, PWb, Mr, -1, 2.0);
       model.AccumulateAtranspose(v_v, y_v);
       auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
       if (ts && !ts->equality_sub_assemblers().empty()) {
@@ -2785,8 +2857,12 @@ GeodesicResult SolveGeodesicHybrid(
     auto y = model.MakeSolverRHS();
     y = cost_scaled;
     y *= -1;
-    RowSpace v = addScaled(quadraticRepresentation(W, b),
-                           applyM(M, r), -1, 2.0);
+    RowSpace PWb_r = model.AllocRowSpace();
+    quadraticRepresentation(PWb_r, W, b);
+    RowSpace Mr_r = model.AllocRowSpace();
+    applyM(Mr_r, M, r);
+    RowSpace v = model.AllocRowSpace();
+    addScaled(v, PWb_r, Mr_r, -1, 2.0);
     model.AccumulateAtranspose(v, y);
     auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
     if (ts && !ts->equality_sub_assemblers().empty()) {
@@ -2805,7 +2881,10 @@ GeodesicResult SolveGeodesicHybrid(
   {
     auto x_rhs = model.MakeSolverRHS();
     x_rhs = model.MakeBlockVariable(result.x);
-    RowSpace lambda = applyM(M, r + last_delta);
+    RowSpace r_plus_delta_o = model.AllocRowSpace();
+    addScaled(r_plus_delta_o, r, last_delta, 1.0, 1.0);
+    RowSpace lambda = model.MakeRowSpace();
+    applyM(lambda, M, r_plus_delta_o);
     if (tau != 1.0 && tau > 0) lambda *= (1.0 / tau);
     result.optimality = CheckOptimality(model, x_rhs, lambda);
     result.optimality.mu = result.mu;
