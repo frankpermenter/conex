@@ -108,8 +108,7 @@ HybridRDirection ComputeHybridRDirection(
     RowSpace& d,
     RowSpace& delta,
     Eigen::VectorXd* y_out) {
-  Arena arena;
-  return ComputeHybridRDirection(model, arena, b, W, r, theta, d, delta, y_out);
+  return ComputeHybridRDirection(model, model.arena(), b, W, r, theta, d, delta, y_out);
 }
 
 // M-based variant: uses M (full automorphism, no polar split) instead of W.
@@ -234,8 +233,7 @@ std::pair<double, double> VerifyHybridREquations(
     const RowSpace& d,
     const RowSpace& delta,
     const Eigen::VectorXd& y) {
-  Arena arena;
-  return VerifyHybridREquations(model, arena, b, W, r, theta, d, delta, y);
+  return VerifyHybridREquations(model, model.arena(), b, W, r, theta, d, delta, y);
 }
 
 HybridRDecomposition ComputeHybridRDecomposition(
@@ -351,29 +349,13 @@ HybridRDecomposition ComputeHybridRDecomposition(
   return decomp;
 }
 
-// Backward-compat wrapper: creates local arena, deep-copies results to heap.
 HybridRDecomposition ComputeHybridRDecomposition(
     CompiledModel& model,
     const RowSpace& b,
     const RowSpace& M,
     const RowSpace& W,
     const RowSpace& r) {
-  Arena arena;
-  auto decomp = ComputeHybridRDecomposition(model, arena, b, M, W, r);
-  auto copy = [&](const RowSpace& src) {
-    RowSpace dst = model.MakeRowSpace();
-    dst += src;
-    return dst;
-  };
-  decomp.ax0 = copy(decomp.ax0);
-  decomp.ax1 = copy(decomp.ax1);
-  decomp.ax_theta = copy(decomp.ax_theta);
-  decomp.lam0 = copy(decomp.lam0);
-  decomp.lam1 = copy(decomp.lam1);
-  decomp.lam_theta = copy(decomp.lam_theta);
-  decomp.delta_cost = copy(decomp.delta_cost);
-  decomp.delta_center = copy(decomp.delta_center);
-  return decomp;
+  return ComputeHybridRDecomposition(model, model.arena(), b, M, W, r);
 }
 
 int UpdateX0(HybridRDecomposition& decomp,
@@ -416,8 +398,7 @@ int UpdateX0(HybridRDecomposition& decomp,
              const RowSpace& M,
              const RowSpace& W,
              const RowSpace& r) {
-  Arena arena;
-  return UpdateX0(decomp, model, arena, M, W, r);
+  return UpdateX0(decomp, model, model.arena(), M, W, r);
 }
 
 void SetTheta(HybridRDecomposition& decomp,
@@ -453,8 +434,7 @@ void SetTheta(HybridRDecomposition& decomp,
               const RowSpace& M,
               const RowSpace& r,
               double theta) {
-  Arena arena;
-  SetTheta(decomp, model, arena, b, M, r, theta);
+  SetTheta(decomp, model, model.arena(), b, M, r, theta);
 }
 
 HybridRDirection EvalHybridRAtTau(
@@ -479,8 +459,7 @@ HybridRDirection EvalHybridRAtTau(
     double tau,
     RowSpace& d,
     RowSpace& delta) {
-  Arena arena;
-  return EvalHybridRAtTau(model, arena, decomp, r, tau, d, delta);
+  return EvalHybridRAtTau(model, model.arena(), decomp, r, tau, d, delta);
 }
 
 GeodesicResult SolveGeodesicThetaContinuationR(
