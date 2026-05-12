@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -10,9 +11,14 @@ namespace conex {
 // Monotonic bump allocator. Allocations are fast (pointer bump).
 // Individual deallocations are not supported — the entire arena is
 // freed at once when destroyed or Reset().
+//
+// All allocations are aligned to kAlign bytes (32 = AVX).
+// Use SaveCursor/RestoreCursor for scoped temporary allocations.
 class Arena {
  public:
-  explicit Arena(size_t initial_bytes = 4096) {
+  static constexpr size_t kAlign = 32;  // AVX alignment
+
+  explicit Arena(size_t initial_bytes = 65536) {
     GrowTo(initial_bytes);
   }
 
@@ -20,11 +26,21 @@ class Arena {
   Arena& operator=(const Arena&) = delete;
 
   void* Alloc(size_t bytes) {
-    // Align to 8 bytes.
-    bytes = (bytes + 7) & ~size_t(7);
-    if (cursor_ + bytes > end_) GrowTo(bytes);
-    void* p = cursor_;
-    cursor_ += bytes;
+    // Round up cursor to alignment boundary.
+    uintptr_t cur = reinterpret_cast<uintptr_t>(cursor_);
+    uintptr_t aligned = (cur + kAlign - 1) & ~(kAlign - 1);
+    size_t padding = aligned - cur;
+    size_t total = padding + bytes;
+    if (cursor_ + total > end_) {
+      GrowTo(total);
+      // Recompute after grow (new block).
+      cur = reinterpret_cast<uintptr_t>(cursor_);
+      aligned = (cur + kAlign - 1) & ~(kAlign - 1);
+      padding = aligned - cur;
+      total = padding + bytes;
+    }
+    void* p = reinterpret_cast<void*>(aligned);
+    cursor_ = reinterpret_cast<char*>(aligned) + bytes;
     return p;
   }
 
@@ -32,6 +48,11 @@ class Arena {
   T* AllocArray(size_t n) {
     return static_cast<T*>(Alloc(n * sizeof(T)));
   }
+
+  // Save the current cursor position (for scoped allocation).
+  // RestoreCursor frees everything allocated after the save point.
+  char* SaveCursor() const { return cursor_; }
+  void RestoreCursor(char* saved) { cursor_ = saved; }
 
   void Reset() {
     if (!blocks_.empty()) {
@@ -45,11 +66,17 @@ class Arena {
     }
   }
 
+  size_t TotalAllocated() const {
+    size_t total = 0;
+    for (size_t s : block_sizes_) total += s;
+    return total;
+  }
+
  private:
   void GrowTo(size_t min_bytes) {
-    size_t sz = std::max(min_bytes, size_t(65536));
+    // Ensure new block is aligned.
+    size_t sz = std::max(min_bytes + kAlign, size_t(65536));
     if (!blocks_.empty()) {
-      // At least double previous block.
       sz = std::max(sz, block_sizes_.back() * 2);
     }
     blocks_.push_back(std::unique_ptr<char[]>(new char[sz]));
@@ -65,7 +92,7 @@ class Arena {
 };
 
 // Fixed-size contiguous array allocated from an Arena.
-// Cannot grow after creation.
+// Aligned to Arena::kAlign. Cannot grow after creation.
 template <typename T>
 struct ArenaVec {
   T* data = nullptr;
@@ -95,7 +122,6 @@ class ArenaIntMap {
   ArenaIntMap() = default;
 
   void Init(Arena& arena, int capacity) {
-    // Round up to power of 2.
     int cap = 1;
     while (cap < capacity) cap <<= 1;
     mask_ = cap - 1;
