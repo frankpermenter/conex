@@ -1024,6 +1024,16 @@ SolverRHS T::MakeSolverRHS(int cols) {
   return rhs;
 }
 
+KKTSolverBase::RowSpaceInfo T::GetRowSpaceInfo() const {
+  RowSpaceInfo info;
+  for (auto* lc : cone_constraints_) {
+    info.sizes.push_back(lc->num_rows());
+    auto* ops = lc->cone_ops();
+    info.ops.push_back(ops ? ops : &EuclideanJordanAlgebra::nonnegOrthantOps());
+  }
+  return info;
+}
+
 RowSpace T::MakeRowSpace(int cols) {
   RowSpace rs;
   int offset = 0;

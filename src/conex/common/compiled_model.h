@@ -1,4 +1,6 @@
 #pragma once
+#include "conex/common/arena.h"
+#include "conex/common/arena_layout.h"
 #include "conex/common/kkt_solver_interface.h"
 
 namespace conex {
@@ -18,9 +20,22 @@ class CompiledModel {
   int number_of_variables() const { return kkt_.number_of_variables(); }
   const SolverRHS& cost_rhs() const { return cost_rhs_; }
 
-  // Allocation.
+  // Allocation (heap — backward compatible).
   RowSpace MakeRowSpace(int cols = 1) { return kkt_.MakeRowSpace(cols); }
   SolverRHS MakeSolverRHS(int cols = 1) { return kkt_.MakeSolverRHS(cols); }
+
+  // Arena allocation (zero heap allocation).
+  RowSpace AllocRowSpace(Arena& arena, int cols = 1) {
+    if (!layout_cached_) CacheLayout();
+    auto rs = row_layout_.Alloc(arena, cols);
+    rs.ops = ops_cache_;
+    return rs;
+  }
+
+  const RowSpaceLayout& row_space_layout() {
+    if (!layout_cached_) CacheLayout();
+    return row_layout_;
+  }
   BlockVariable MakeBlockVariable(int cols = 1) {
     return kkt_.MakeBlockVariable(cols);
   }
@@ -56,8 +71,20 @@ class CompiledModel {
   const KKTSolverBase& kkt() const { return kkt_; }
 
  private:
+  void CacheLayout() {
+    auto info = kkt_.GetRowSpaceInfo();
+    row_layout_ = RowSpaceLayout::Build(info.sizes);
+    ops_cache_ = std::move(info.ops);
+    layout_cached_ = true;
+  }
+
   KKTSolverBase& kkt_;
   SolverRHS cost_rhs_;
+
+  // Cached layout for arena allocation.
+  RowSpaceLayout row_layout_;
+  std::vector<const EuclideanJordanAlgebra::BarrierConeOperations*> ops_cache_;
+  bool layout_cached_ = false;
 };
 
 }  // namespace conex

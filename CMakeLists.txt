@@ -371,7 +371,12 @@ target_link_libraries(power_cone_ops_test PRIVATE
 gtest_discover_tests(power_cone_ops_test)
 
 add_executable(arena_layout_test tests/arena_layout_test.cc)
-target_link_libraries(arena_layout_test PRIVATE Eigen3::Eigen GTest::gtest_main)
+target_link_libraries(arena_layout_test PRIVATE
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  GTest::gtest_main
+)
 gtest_discover_tests(arena_layout_test)
 
 add_executable(rel_entropy_cone_ops_test tests/rel_entropy_cone_ops_test.cc)

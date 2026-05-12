@@ -59,6 +59,14 @@ class KKTSolverBase {
   virtual SolverRHS MakeSolverRHS(int cols = 1);
 
   virtual RowSpace MakeRowSpace(int cols = 1) = 0;
+
+  // Row space layout: segment sizes and ops pointers, determined by
+  // the clique tree. Used for arena allocation of RowSpace instances.
+  struct RowSpaceInfo {
+    std::vector<int> sizes;
+    std::vector<const EuclideanJordanAlgebra::BarrierConeOperations*> ops;
+  };
+  virtual RowSpaceInfo GetRowSpaceInfo() const = 0;
   virtual void MultiplyA(const SolverRHS& x, RowSpace& out) = 0;
   virtual void AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) = 0;
   virtual void AccumulateQx(const SolverRHS& x, SolverRHS& rhs) = 0;

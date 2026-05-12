@@ -1,7 +1,10 @@
 // Test arena-based RowSpace allocation with aligned segments.
 #include <gtest/gtest.h>
+#include <Eigen/Sparse>
 #include "conex/common/arena.h"
 #include "conex/common/arena_layout.h"
+#include "conex/common/model.h"
+#include "conex/common/solver.h"
 
 using namespace conex;
 
@@ -107,4 +110,45 @@ TEST(ArenaLayout, SetZero) {
 
   for (int i = 0; i < 3; ++i) EXPECT_DOUBLE_EQ(rs.segment_ptr(0)[i], 0.0);
   for (int i = 0; i < 4; ++i) EXPECT_DOUBLE_EQ(rs.segment_ptr(1)[i], 0.0);
+}
+
+TEST(ArenaLayout, CompiledModelAllocRowSpace) {
+  // Build a small LP model.
+  Model model;
+  Eigen::SparseMatrix<double> A(3, 2);
+  A.insert(0, 0) = 1; A.insert(1, 1) = 1; A.insert(2, 0) = 1; A.insert(2, 1) = 1;
+  A.makeCompressed();
+  Eigen::VectorXd b(3); b << 1, 1, 2;
+  std::vector<int> vars = {0, 1};
+  model.AddLinearConstraint(A, b, vars);
+  model.SetLinearCost(Eigen::VectorXd::Ones(2));
+
+  auto solver = Solver::Build(model);
+  auto cm = solver.MakeCompiledModel();
+
+  Arena arena;
+
+  // Allocate from arena.
+  auto rs = cm.AllocRowSpace(arena);
+
+  // Verify aligned segments.
+  for (int i = 0; i < rs.num_constraints(); ++i) {
+    uintptr_t addr = reinterpret_cast<uintptr_t>(rs.segment_ptr(i));
+    EXPECT_EQ(addr % Arena::kAlign, 0) << "segment " << i << " not aligned";
+  }
+
+  // Verify ops are set.
+  EXPECT_GT(rs.num_constraints(), 0);
+  EXPECT_NE(rs.ops[0], nullptr);
+
+  // Verify read/write.
+  for (int i = 0; i < rs.num_constraints(); ++i)
+    for (int j = 0; j < rs.sizes[i]; ++j)
+      rs.segment_ptr(i)[j] = 1.0;
+
+  // Compare with heap-allocated RowSpace.
+  auto rs_heap = cm.MakeRowSpace();
+  EXPECT_EQ(rs.num_constraints(), rs_heap.num_constraints());
+  for (int i = 0; i < rs.num_constraints(); ++i)
+    EXPECT_EQ(rs.sizes[i], rs_heap.sizes[i]);
 }
