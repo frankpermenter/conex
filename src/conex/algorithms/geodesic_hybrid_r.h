@@ -16,9 +16,11 @@
 //
 // Switching: W-update if gap < 0 or theta progress stalls.
 // Complementarity freeze: stop W-updates when gap + tau*kappa != theta*alpha.
+// Theta-rate trigger forces W-updates when r-updates stall.
 
 #include <functional>
 #include <Eigen/Dense>
+#include "conex/common/arena.h"
 #include "conex/common/compiled_model.h"
 
 namespace conex {
@@ -35,8 +37,22 @@ struct HybridRDirection {
 
 // Compute the Newton direction at (W, r, theta).
 // b_theta = theta * e + (1 - theta) * b.
-// Assumes the KKT system is already factored with weights W².
+// Assumes the KKT system is already factored with weights W^2.
 // Returns d, delta (via output params), and derived quantities.
+//
+// Arena-based (preferred): all temporaries allocated from arena.
+HybridRDirection ComputeHybridRDirection(
+    CompiledModel& model,
+    Arena& arena,
+    const RowSpace& b,
+    const RowSpace& W,
+    const RowSpace& r,
+    double theta,
+    RowSpace& d,
+    RowSpace& delta,
+    Eigen::VectorXd* y_out = nullptr);
+
+// Backward-compatible wrapper (heap allocation).
 HybridRDirection ComputeHybridRDirection(
     CompiledModel& model,
     const RowSpace& b,
@@ -51,6 +67,18 @@ HybridRDirection ComputeHybridRDirection(
 //   Primal: delta = r - P(W^{1/2})(b_theta + A*y)
 //   Dual:   A^T P(W^{1/2})(r + delta) + Q*y = c + A^T P(W)(b_theta) - 2*A^T P(W^{1/2})(r)
 // Returns (primal_residual, dual_residual) norms.
+std::pair<double, double> VerifyHybridREquations(
+    CompiledModel& model,
+    Arena& arena,
+    const RowSpace& b,
+    const RowSpace& W,
+    const RowSpace& r,
+    double theta,
+    const RowSpace& d,
+    const RowSpace& delta,
+    const Eigen::VectorXd& y);
+
+// Backward-compatible wrapper (heap allocation).
 std::pair<double, double> VerifyHybridREquations(
     CompiledModel& model,
     const RowSpace& b,
@@ -89,6 +117,15 @@ struct HybridRDecomposition {
 // Call SetTheta() to form the two-term combination at a specific theta.
 HybridRDecomposition ComputeHybridRDecomposition(
     CompiledModel& model,
+    Arena& arena,
+    const RowSpace& b,
+    const RowSpace& M,
+    const RowSpace& W,
+    const RowSpace& r);
+
+// Backward-compatible wrapper (heap allocation).
+HybridRDecomposition ComputeHybridRDecomposition(
+    CompiledModel& model,
     const RowSpace& b,
     const RowSpace& M,
     const RowSpace& W,
@@ -98,12 +135,29 @@ HybridRDecomposition ComputeHybridRDecomposition(
 // Returns 1 (number of solves performed).
 int UpdateX0(HybridRDecomposition& decomp,
              CompiledModel& model,
+             Arena& arena,
+             const RowSpace& M,
+             const RowSpace& W,
+             const RowSpace& r);
+
+// Backward-compatible wrapper (heap allocation).
+int UpdateX0(HybridRDecomposition& decomp,
+             CompiledModel& model,
              const RowSpace& M,
              const RowSpace& W,
              const RowSpace& r);
 
 // Update the two-term combination (y_center, y_cost, delta_center, delta_cost)
-// at a given theta.  Uses cached ax0, ax_theta — no MultiplyA needed.
+// at a given theta.  Uses cached ax0, ax_theta -- no MultiplyA needed.
+void SetTheta(HybridRDecomposition& decomp,
+              CompiledModel& model,
+              Arena& arena,
+              const RowSpace& b,
+              const RowSpace& M,
+              const RowSpace& r,
+              double theta);
+
+// Backward-compatible wrapper (heap allocation).
 void SetTheta(HybridRDecomposition& decomp,
               CompiledModel& model,
               const RowSpace& b,
@@ -113,6 +167,16 @@ void SetTheta(HybridRDecomposition& decomp,
 
 // Evaluate the direction at a specific tau from the decomposition.
 // Returns (d, delta, gap, d_inf).
+HybridRDirection EvalHybridRAtTau(
+    CompiledModel& model,
+    Arena& arena,
+    const HybridRDecomposition& decomp,
+    const RowSpace& r,
+    double tau,
+    RowSpace& d,
+    RowSpace& delta);
+
+// Backward-compatible wrapper (heap allocation).
 HybridRDirection EvalHybridRAtTau(
     CompiledModel& model,
     const HybridRDecomposition& decomp,
