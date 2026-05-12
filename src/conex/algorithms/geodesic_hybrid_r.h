@@ -19,7 +19,7 @@
 // Theta-rate trigger forces W-updates when r-updates stall.
 
 #include <functional>
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include "conex/common/arena.h"
 #include "conex/common/compiled_model.h"
 #include "conex/common/tree_rhs.h"

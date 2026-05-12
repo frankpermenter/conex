@@ -4,7 +4,7 @@
 #include "conex/common/block_variable.h"
 #include "conex/common/error_checking_macros.h"
 #include "conex/common/tree_rhs.h"
-#include <Eigen/Dense>
+#include <Eigen/Core>
 
 namespace conex {
 

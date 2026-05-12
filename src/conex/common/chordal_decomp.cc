@@ -6,7 +6,7 @@
 #include <set>
 #include <vector>
 
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include <Eigen/Sparse>
 
 #include "conex/common/clique_ordering.h"

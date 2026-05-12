@@ -7,7 +7,7 @@
 // (sparse matrices in, clique ordering discovers structure) and the
 // structured path (user specifies tree topology) through a single API.
 #pragma once
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include <list>
 #include <memory>
 #include <set>

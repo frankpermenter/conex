@@ -1,7 +1,7 @@
 // Solve a linear program and verify feasibility.
 
 #pragma once
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include "conex/common/model.h"
 
 namespace conex {

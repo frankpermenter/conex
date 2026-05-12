@@ -5,7 +5,7 @@
 #include <vector>
 
 #include <Eigen/Cholesky>
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include <Eigen/Sparse>
 
 namespace conex {

@@ -1,6 +1,6 @@
 #pragma once
 #include <vector>
-#include <Eigen/Dense>
+#include <Eigen/Core>
 
 namespace conex {
 

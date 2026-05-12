@@ -11,7 +11,7 @@
 
 #pragma once
 
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include "conex/common/symmetric_cone_operations.h"
 
 namespace conex {

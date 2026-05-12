@@ -1,7 +1,7 @@
 #pragma once
 #include <unordered_map>
 
-#include <Eigen/Dense>
+#include <Eigen/Core>
 
 #include "conex/common/block_partition.h"
 #include "conex/common/blas_wrapper.h"

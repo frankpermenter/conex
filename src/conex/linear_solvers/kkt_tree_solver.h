@@ -10,7 +10,7 @@
 #include "conex/linear_solvers/kkt_subsystem.h"
 #include "conex/linear_solvers/assembler_adapter.h"
 #include "conex/linear_solvers/tree_utils.h"
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include <Eigen/Sparse>
 
 namespace conex {

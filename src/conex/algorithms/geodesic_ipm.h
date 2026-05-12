@@ -36,7 +36,7 @@
 #pragma once
 #include <functional>
 #include <vector>
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include "conex/common/compiled_model.h"
 
 namespace conex {

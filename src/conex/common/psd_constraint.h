@@ -9,7 +9,7 @@
 #pragma once
 #include <vector>
 
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include <Eigen/Sparse>
 
 #include "conex/common/cone_constraint.h"

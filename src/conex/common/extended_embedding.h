@@ -20,7 +20,7 @@
 //
 // Fixed point: x_hat=e, s_hat=e, w_hat=0, y_hat=0, tau_hat=1, kappa_hat=1.
 
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include <Eigen/Sparse>
 
 #include "conex/common/clique_tree.h"

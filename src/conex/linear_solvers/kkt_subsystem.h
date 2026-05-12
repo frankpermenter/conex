@@ -8,7 +8,7 @@
 #include "conex/common/arena_allocatable.h"
 #include "conex/common/debug_macros.h"
 #include "conex/common/error_checking_macros.h"
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include <Eigen/Sparse>
 // A KKT sub-system is a symmetric system of linear equations of the
 // form:

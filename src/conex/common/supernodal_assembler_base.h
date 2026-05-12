@@ -2,7 +2,7 @@
 #include <memory>
 #include <vector>
 
-#include <Eigen/Dense>
+#include <Eigen/Core>
 namespace conex {
 
 // A block contribution request: where to write and what region of the

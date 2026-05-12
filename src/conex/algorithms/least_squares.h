@@ -3,7 +3,7 @@
 // and equality_constrained_least_squares.cc which still call
 // SparseLeastSquares internally.
 #pragma once
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include <Eigen/Sparse>
 
 namespace conex {

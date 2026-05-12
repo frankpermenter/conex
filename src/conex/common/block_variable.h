@@ -1,5 +1,5 @@
 #pragma once
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include <memory>
 
 #include "conex/common/block_partition.h"

@@ -3,7 +3,7 @@
 // where R = diag(1,-1,...,-1) and det(w) = w0^2 - ||w1||^2.
 
 #pragma once
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include "conex/common/linear_constraint.h"
 #include "conex/common/soc_cone_ops.h"
 

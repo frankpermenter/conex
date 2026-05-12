@@ -5,7 +5,7 @@
 // methods without knowing the cone type.
 
 #pragma once
-#include <Eigen/Dense>
+#include <Eigen/Core>
 
 #include "conex/common/arena_allocatable.h"
 #include "conex/common/supernodal_assembler_base.h"

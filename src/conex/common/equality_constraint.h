@@ -6,7 +6,7 @@
 #include "conex/common/block_partition.h"
 #include "conex/common/error_checking_macros.h"
 #include "conex/common/supernodal_assembler_base.h"
-#include <Eigen/Dense>
+#include <Eigen/Core>
 namespace conex {
 
 // Per-clique equality constraint Cx = d.  Produces the indefinite

@@ -8,7 +8,7 @@
 #include "conex/common/kkt_solver_interface.h"
 #include "conex/gpu_tree_solver/gpu_device_arena.h"
 #include "conex/gpu_tree_solver/gpu_extend_add.cuh"
-#include <Eigen/Dense>
+#include <Eigen/Core>
 
 // Forward declarations for CUDA handles (avoid including CUDA headers here).
 struct cusolverDnContext;

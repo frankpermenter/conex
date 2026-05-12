@@ -15,7 +15,7 @@
 // Returns the rescaled problem + scaling info for solution recovery.
 
 #pragma once
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include "conex/common/model.h"
 
 namespace conex {

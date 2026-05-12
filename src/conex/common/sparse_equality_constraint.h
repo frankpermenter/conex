@@ -2,7 +2,7 @@
 #include <list>
 #include <vector>
 
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include <Eigen/Sparse>
 
 #include "conex/common/equality_constraint.h"

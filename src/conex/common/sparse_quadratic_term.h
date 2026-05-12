@@ -9,7 +9,7 @@
 #include "conex/common/error_checking_macros.h"
 #include "conex/common/supernodal_assembler_base.h"
 #include "conex/common/tree_rhs.h"
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include <Eigen/Sparse>
 
 namespace conex {

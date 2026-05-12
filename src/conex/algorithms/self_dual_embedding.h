@@ -13,7 +13,7 @@
 // where x = P(W^{1/2})(e + d), s = P(W^{-1/2})(e - d).
 
 #pragma once
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include "conex/common/kkt_solver_interface.h"
 
 namespace conex {

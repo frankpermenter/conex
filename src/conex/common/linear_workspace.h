@@ -1,6 +1,6 @@
 #pragma once
 #include "conex/common/memory_utils.h"
-#include <Eigen/Dense>
+#include <Eigen/Core>
 namespace conex {
 
 struct WorkspaceLinear {

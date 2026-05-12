@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-#include <Eigen/Dense>
+#include <Eigen/Core>
 #include "conex/common/arena.h"
 #include "conex/common/block_partition.h"
 #include "conex/common/block_variable.h"
