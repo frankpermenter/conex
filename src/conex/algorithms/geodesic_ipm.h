@@ -98,7 +98,7 @@ struct NewtonDecomposition {
   RowSpace d0;
   RowSpace d1_0;       // standard optimality direction
   RowSpace d1_theta;   // theta correction direction
-  Eigen::VectorXd y0, y1_0, y1_theta;
+  SolverRHS y0, y1_0, y1_theta;  // primal variables in block form
 };
 
 // Factor the Gram system and compute the three-term decomposition.
@@ -357,7 +357,7 @@ void RefreshD0Frozen(
     const RowSpace& W0,
     const RowSpace& Wi,
     RowSpace& d0_out,
-    Eigen::VectorXd& y0_out);
+    SolverRHS& y0_out);
 
 // Convenience wrapper (creates a local arena — safe because d0_out is
 // caller-owned heap, and only temporaries are arena-backed).
@@ -367,7 +367,7 @@ inline void RefreshD0Frozen(
     const RowSpace& W0,
     const RowSpace& Wi,
     RowSpace& d0_out,
-    Eigen::VectorXd& y0_out) {
+    SolverRHS& y0_out) {
   RefreshD0Frozen(model, model.arena(), b, W0, Wi, d0_out, y0_out);
 }
 

@@ -226,23 +226,16 @@ GeodesicResult SolveGeodesicHSDE(
     RowSpace pw_ed0 = model.AllocRowSpace(arena);
     quadraticRepresentation(pw_ed0, sqrtW, tmp_ed0);
 
-    auto x0_rhs = model.AllocSolverRHS();
-    x0_rhs = model.MakeBlockVariable(decomp.y0);
-    auto x1_rhs = model.AllocSolverRHS();
-    x1_rhs = model.MakeBlockVariable(decomp.y1_0);
-    auto xth_rhs = model.AllocSolverRHS();
-    xth_rhs = model.MakeBlockVariable(decomp.y1_theta);
-
-    RowSpace Ax0 = model.AllocRowSpace(arena); model.MultiplyA(x0_rhs, Ax0);
-    RowSpace Ax1 = model.AllocRowSpace(arena); model.MultiplyA(x1_rhs, Ax1);
-    RowSpace Axth = model.AllocRowSpace(arena); model.MultiplyA(xth_rhs, Axth);
+    RowSpace Ax0 = model.AllocRowSpace(arena); model.MultiplyA(decomp.y0, Ax0);
+    RowSpace Ax1 = model.AllocRowSpace(arena); model.MultiplyA(decomp.y1_0, Ax1);
+    RowSpace Axth = model.AllocRowSpace(arena); model.MultiplyA(decomp.y1_theta, Axth);
 
     double bTl1 = dot(b, pw_d1_0);
     double bTlth = dot(b, pw_d1_th);
     double bTl0_raw = dot(b, pw_ed0);  // multiply by 1/k
-    double cTx1 = duality_cost.dot(x1_rhs);
-    double cTxth = duality_cost.dot(xth_rhs);
-    double cTx0_raw = duality_cost.dot(x0_rhs);  // multiply by 1/k
+    double cTx1 = duality_cost.dot(decomp.y1_0);
+    double cTxth = duality_cost.dot(decomp.y1_theta);
+    double cTx0_raw = duality_cost.dot(decomp.y0);  // multiply by 1/k
 
     double rpTl1 = dot(rp, pw_d1_0);
     double rpTlth = dot(rp, pw_d1_th);
@@ -296,17 +289,17 @@ GeodesicResult SolveGeodesicHSDE(
     coeff.q11 = coeff.q1t = coeff.qtt = 0;
     if (coeff.has_Q) {
       auto Qy0 = model.AllocSolverRHS(); Qy0.SetZero();
-      model.AccumulateQx(x0_rhs, Qy0);
+      model.AccumulateQx(decomp.y0, Qy0);
       auto Qy1 = model.AllocSolverRHS(); Qy1.SetZero();
-      model.AccumulateQx(x1_rhs, Qy1);
+      model.AccumulateQx(decomp.y1_0, Qy1);
       auto Qyth = model.AllocSolverRHS(); Qyth.SetZero();
-      model.AccumulateQx(xth_rhs, Qyth);
-      coeff.q00 = Qy0.dot(x0_rhs);
-      coeff.q01 = Qy0.dot(x1_rhs);
-      coeff.q0t = Qy0.dot(xth_rhs);
-      coeff.q11 = Qy1.dot(x1_rhs);
-      coeff.q1t = Qy1.dot(xth_rhs);
-      coeff.qtt = Qyth.dot(xth_rhs);
+      model.AccumulateQx(decomp.y1_theta, Qyth);
+      coeff.q00 = Qy0.dot(decomp.y0);
+      coeff.q01 = Qy0.dot(decomp.y1_0);
+      coeff.q0t = Qy0.dot(decomp.y1_theta);
+      coeff.q11 = Qy1.dot(decomp.y1_0);
+      coeff.q1t = Qy1.dot(decomp.y1_theta);
+      coeff.qtt = Qyth.dot(decomp.y1_theta);
     }
 
     // Solve 2x2 at current k.
@@ -361,10 +354,11 @@ GeodesicResult SolveGeodesicHSDE(
       quadraticRepresentation(lam_v, sqrtW, tmp_ed);
       lam_v *= (1.0 / k);
       double bTl = dot(b, lam_v);
-      Eigen::VectorXd x_vec = decomp.y0 / k + tau * decomp.y1_0
-                             + theta * decomp.y1_theta;
       auto x_rhs_v = model.AllocSolverRHS();
-      x_rhs_v = model.MakeBlockVariable(x_vec);
+      x_rhs_v.SetZero();
+      x_rhs_v.AddScaled(1.0 / k, decomp.y0);
+      x_rhs_v.AddScaled(tau, decomp.y1_0);
+      x_rhs_v.AddScaled(theta, decomp.y1_theta);
       double cTx = duality_cost.dot(x_rhs_v);
       double kappa_v = rt * (1.0 - d_tau) / std::max(wt, 1e-30);
       auto qx = model.AllocSolverRHS(); qx.SetZero();
@@ -483,16 +477,13 @@ GeodesicResult SolveGeodesicHSDE(
         RowSpace tmp_ed0_r = model.AllocRowSpace(arena);
         addScaled(tmp_ed0_r, ones, decomp.d0, 1.0, 1.0);
         quadraticRepresentation(pw_ed0, sqrtW, tmp_ed0_r);
-        x0_rhs = model.MakeBlockVariable(decomp.y0);
-        x1_rhs = model.MakeBlockVariable(decomp.y1_0);
-        xth_rhs = model.MakeBlockVariable(decomp.y1_theta);
-        RowSpace Ax0_r = model.AllocRowSpace(arena); model.MultiplyA(x0_rhs, Ax0_r);
-        RowSpace Ax1_r = model.AllocRowSpace(arena); model.MultiplyA(x1_rhs, Ax1_r);
-        RowSpace Axth_r = model.AllocRowSpace(arena); model.MultiplyA(xth_rhs, Axth_r);
+        RowSpace Ax0_r = model.AllocRowSpace(arena); model.MultiplyA(decomp.y0, Ax0_r);
+        RowSpace Ax1_r = model.AllocRowSpace(arena); model.MultiplyA(decomp.y1_0, Ax1_r);
+        RowSpace Axth_r = model.AllocRowSpace(arena); model.MultiplyA(decomp.y1_theta, Axth_r);
         bTl1 = dot(b, pw_d1_0); bTlth = dot(b, pw_d1_th);
         bTl0_raw = dot(b, pw_ed0);
-        cTx1 = duality_cost.dot(x1_rhs); cTxth = duality_cost.dot(xth_rhs);
-        cTx0_raw = duality_cost.dot(x0_rhs);
+        cTx1 = duality_cost.dot(decomp.y1_0); cTxth = duality_cost.dot(decomp.y1_theta);
+        cTx0_raw = duality_cost.dot(decomp.y0);
         rpTl1 = dot(rp, pw_d1_0); rpTlth = dot(rp, pw_d1_th);
         rpTl0_raw = dot(rp, pw_ed0);
         rdTx1 = cTx1 - dot(ones, Ax1_r); rdTxth = cTxth - dot(ones, Axth_r);
@@ -518,11 +509,9 @@ GeodesicResult SolveGeodesicHSDE(
         EuclideanJordanAlgebra::sqrt(sqrtW0, W0);
         RowSpace pw_d0_f = model.AllocRowSpace(arena);
         quadraticRepresentation(pw_d0_f, sqrtW0, decomp.d0);
-        auto x0_rhs_f = model.AllocSolverRHS();
-        x0_rhs_f = model.MakeBlockVariable(decomp.y0);
         RowSpace Ax0_f = model.AllocRowSpace(arena);
-        model.MultiplyA(x0_rhs_f, Ax0_f);
-        double cTx0_f = duality_cost.dot(x0_rhs_f);
+        model.MultiplyA(decomp.y0, Ax0_f);
+        double cTx0_f = duality_cost.dot(decomp.y0);
         double rdTx0_f = cTx0_f - dot(ones, Ax0_f);
         coeff.G_0_raw = dot(b, W) + dot(b, pw_d0_f) + cTx0_f;
         coeff.N_0_raw = dot(rp, W) + dot(rp, pw_d0_f) + rdTx0_f;
@@ -624,22 +613,16 @@ GeodesicResult SolveGeodesicHSDE(
     addScaled(tmp_ed0_r, ones, decomp.d0, 1.0, 1.0);
     RowSpace pw_ed0 = model.AllocRowSpace(arena);
     quadraticRepresentation(pw_ed0, sqrtW, tmp_ed0_r);
-    auto x0_rhs = model.AllocSolverRHS();
-    x0_rhs = model.MakeBlockVariable(decomp.y0);
-    auto x1_rhs = model.AllocSolverRHS();
-    x1_rhs = model.MakeBlockVariable(decomp.y1_0);
-    auto xth_rhs = model.AllocSolverRHS();
-    xth_rhs = model.MakeBlockVariable(decomp.y1_theta);
     RowSpace rp = model.AllocRowSpace(arena);
     addScaled(rp, b, ones, 1.0, -1.0);
-    RowSpace Ax0 = model.AllocRowSpace(arena); model.MultiplyA(x0_rhs, Ax0);
-    RowSpace Ax1 = model.AllocRowSpace(arena); model.MultiplyA(x1_rhs, Ax1);
-    RowSpace Axth = model.AllocRowSpace(arena); model.MultiplyA(xth_rhs, Axth);
+    RowSpace Ax0 = model.AllocRowSpace(arena); model.MultiplyA(decomp.y0, Ax0);
+    RowSpace Ax1 = model.AllocRowSpace(arena); model.MultiplyA(decomp.y1_0, Ax1);
+    RowSpace Axth = model.AllocRowSpace(arena); model.MultiplyA(decomp.y1_theta, Axth);
 
     double bTl1 = dot(b, pw_d1_0), bTlth = dot(b, pw_d1_th);
     double bTl0_raw = dot(b, pw_ed0);
-    double cTx1 = duality_cost.dot(x1_rhs), cTxth = duality_cost.dot(xth_rhs);
-    double cTx0_raw = duality_cost.dot(x0_rhs);
+    double cTx1 = duality_cost.dot(decomp.y1_0), cTxth = duality_cost.dot(decomp.y1_theta);
+    double cTx0_raw = duality_cost.dot(decomp.y0);
     double rpTl1 = dot(rp, pw_d1_0), rpTlth = dot(rp, pw_d1_th);
     double rpTl0_raw = dot(rp, pw_ed0);
     double rdTx1 = cTx1 - dot(ones, Ax1), rdTxth = cTxth - dot(ones, Axth);
@@ -663,9 +646,17 @@ GeodesicResult SolveGeodesicHSDE(
     double tau = final_sel.tau;
     double theta = final_sel.theta;
 
-    Eigen::VectorXd x_lifted = decomp.y0 / k + tau * decomp.y1_0
-                               + theta * decomp.y1_theta;
-    result.x = x_lifted / tau;
+    {
+      auto x_rhs = model.AllocSolverRHS();
+      x_rhs.SetZero();
+      x_rhs.AddScaled(1.0 / k, decomp.y0);
+      x_rhs.AddScaled(tau, decomp.y1_0);
+      x_rhs.AddScaled(theta, decomp.y1_theta);
+      x_rhs *= (1.0 / tau);
+      int nr = model.number_of_variables();
+      result.x.resize(nr);
+      x_rhs.supernodes->GatherInto(result.x);
+    }
     result.tau = tau;
 
     RowSpace d_cur = model.AllocRowSpace(arena);
@@ -678,9 +669,11 @@ GeodesicResult SolveGeodesicHSDE(
     lambda *= (1.0 / (k * tau));
     result.lambda = lambda;
 
-    auto x_rhs_final = model.AllocSolverRHS();
-    x_rhs_final = model.MakeBlockVariable(result.x);
-    result.optimality = CheckOptimality(model, x_rhs_final, lambda);
+    {
+      auto x_rhs_final = model.AllocSolverRHS();
+      x_rhs_final = model.MakeBlockVariable(result.x);
+      result.optimality = CheckOptimality(model, x_rhs_final, lambda);
+    }
     result.optimality.mu = result.mu;
 
     if (verbose) {

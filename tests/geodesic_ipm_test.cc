@@ -145,13 +145,27 @@ TEST(GeodesicBarrierQP, FullDecomposition) {
   double test_thetas[] = {0.0, 0.1, 0.5, 1.0};
 
   double test_taus[] = {0.0, 0.5, 1.0};
+  Arena& arena = cm.arena();
   for (double k : test_ks) {
     for (double tau : test_taus) {
       for (double theta : test_thetas) {
+        char* loop_mark = arena.SaveCursor();
         RowSpace d = EvaluateDirection(decomp, k, tau, theta);
 
         // Reconstruct y = y0 + k * (tau * y1_0 + theta * y1_theta).
-        Eigen::VectorXd y = decomp.y0 + k * (tau * decomp.y1_0 + theta * decomp.y1_theta);
+        auto y_rhs = cm.AllocSolverRHS();
+        y_rhs.SetZero();
+        y_rhs += decomp.y0;
+        {
+          auto tmp_rhs = cm.AllocSolverRHS();
+          tmp_rhs.SetZero();
+          tmp_rhs.AddScaled(tau, decomp.y1_0);
+          tmp_rhs.AddScaled(theta, decomp.y1_theta);
+          y_rhs.AddScaled(k, tmp_rhs);
+        }
+        int nr = cm.number_of_variables();
+        Eigen::VectorXd y(nr);
+        y_rhs.supernodes->GatherInto(y);
 
         // VerifyNewtonEquations uses a single blend parameter theta
         // (b = theta*e + (1-theta)*b_0), which only matches the decoupled
@@ -164,6 +178,7 @@ TEST(GeodesicBarrierQP, FullDecomposition) {
           EXPECT_LT(p_res, 1e-10);
           EXPECT_LT(d_res, 1e-10);
         }
+        arena.RestoreCursor(loop_mark);
       }
     }
   }
