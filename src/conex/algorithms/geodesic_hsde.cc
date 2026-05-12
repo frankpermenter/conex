@@ -507,11 +507,7 @@ GeodesicResult SolveGeodesicHSDE(
         coeff.rpTl1=rpTl1; coeff.rdTx1=rdTx1; coeff.rg=rg;
       } else {
         // Frozen-J: refresh d0 only, keep d1_0/d1_theta frozen.
-        RowSpace d0_new = model.MakeRowSpace();
-        Eigen::VectorXd y0_new;
-        RefreshD0Frozen(model, b, W0, W, d0_new, y0_new);
-        decomp.d0 = d0_new;
-        decomp.y0 = y0_new;
+        RefreshD0Frozen(model, b, W0, W, decomp.d0, decomp.y0);
         total_sol += 1;
         // Update d0-dependent coefficients.
         RowSpace sqrtW0 = model.AllocRowSpace(arena);
