@@ -280,7 +280,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
  public:
   int number_of_variables() const override;
 
-  void FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols = 1);
+  void FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols = 1,
+                         Arena* arena = nullptr);
 
   void SetFactorizationMode(bool left_looking);
   void SetScatterToParent(bool enable);
@@ -474,7 +475,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void CreateSubsystems(const std::vector<bool>& needs_indefinite);
   void ComputeEliminationOrder(const CliqueTree& clique_tree);
   void BindContributors(const std::vector<int>& adapter_to_clique);
-  void AllocateArenaAndBind(int rhs_cols);
+  void AllocateArenaAndBind(int rhs_cols, Arena* arena = nullptr);
 
   std::vector<KKTSubsystemBase*> roots_;
   std::vector<KKTSubsystemBase*> subsystems_;

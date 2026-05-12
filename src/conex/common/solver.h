@@ -77,7 +77,7 @@ class Solver {
 
   // Build a CompiledModel for direct algorithm use.
   CompiledModel MakeCompiledModel() {
-    arena_.Reset();
+    if (kkt_cursor_) arena_.RestoreCursor(kkt_cursor_);
     return CompiledModel(*kkt(), MakeCostRHS(), arena_);
   }
 
@@ -98,6 +98,7 @@ class Solver {
 
   KKTSystem system_;
   Arena arena_;
+  char* kkt_cursor_ = nullptr;
   Model reduced_model_;
   Expansion expansion_;
   RowScaling row_scaling_;

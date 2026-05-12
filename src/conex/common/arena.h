@@ -27,7 +27,7 @@ class Arena {
   Arena(Arena&&) = default;
   Arena& operator=(Arena&&) = default;
 
-  void* Alloc(size_t bytes) {
+  void* Alloc(size_t bytes, bool zero = false) {
     // Round up cursor to alignment boundary.
     uintptr_t cur = reinterpret_cast<uintptr_t>(cursor_);
     uintptr_t aligned = (cur + kAlign - 1) & ~(kAlign - 1);
@@ -35,7 +35,6 @@ class Arena {
     size_t total = padding + bytes;
     if (cursor_ + total > end_) {
       GrowTo(total);
-      // Recompute after grow (new block).
       cur = reinterpret_cast<uintptr_t>(cursor_);
       aligned = (cur + kAlign - 1) & ~(kAlign - 1);
       padding = aligned - cur;
@@ -43,12 +42,13 @@ class Arena {
     }
     void* p = reinterpret_cast<void*>(aligned);
     cursor_ = reinterpret_cast<char*>(aligned) + bytes;
+    if (zero) std::memset(p, 0, bytes);
     return p;
   }
 
   template <typename T>
-  T* AllocArray(size_t n) {
-    return static_cast<T*>(Alloc(n * sizeof(T)));
+  T* AllocArray(size_t n, bool zero = false) {
+    return static_cast<T*>(Alloc(n * sizeof(T), zero));
   }
 
   // Save the current cursor position (for scoped allocation).
