@@ -51,8 +51,8 @@ static RunResult RunIPM(Model& prob, const Eigen::VectorXd& cost,
   RunResult result;
   result.iterations = r.iterations;
   result.mu = r.mu;
-  result.x = r.x.head(n_primal);
-  result.cost_val = cost.head(n_primal).dot(result.x);
+  { auto rx = Eigen::Map<const Eigen::VectorXd>(r.x.data(), r.x.size()); result.x = rx.head(n_primal); }
+  result.cost_val = cost.head(n_primal).dot(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
   for (const auto& s : r.iter_stats) {
     result.mu_trace.push_back(s.mu);
     result.dinf_trace.push_back(s.d_inf);
@@ -80,7 +80,7 @@ int main() {
 
     resA = RunIPM(p, cost, 2);
     printf("Case A: iters=%d, mu=%.2e, x=[%.6f, %.6f], cost=%.6f\n",
-           resA.iterations, resA.mu, resA.x(0), resA.x(1), resA.cost_val);
+           resA.iterations, resA.mu, resA.x[0], resA.x[1], resA.cost_val);
 
     if (resA.cost_val > 1e-3) {
       printf("FAIL: Case A cost too large: %.6f\n", resA.cost_val);
@@ -116,11 +116,11 @@ int main() {
 
     resB = RunIPM(p, cost, 3);
     printf("Case B: iters=%d, mu=%.2e, x=[%.6f, %.6f], z=%.6f, cost=%.6f\n",
-           resB.iterations, resB.mu, resB.x(0), resB.x(1), resB.x(2),
+           resB.iterations, resB.mu, resB.x[0], resB.x[1], resB.x[2],
            resB.cost_val);
 
-    if (std::abs(resB.x(2) - 4.0) > 1e-3) {
-      printf("FAIL: Case B z should be 4, got %.6f\n", resB.x(2));
+    if (std::abs(resB.x[2] - 4.0) > 1e-3) {
+      printf("FAIL: Case B z should be 4, got %.6f\n", resB.x[2]);
       pass = false;
     }
   }
@@ -187,15 +187,15 @@ int main() {
 
     auto resC = RunIPM(p, cost, 2);
     printf("Case C: iters=%d, mu=%.2e, x=[%.6f, %.6f], cost=%.6f\n",
-           resC.iterations, resC.mu, resC.x(0), resC.x(1), resC.cost_val);
+           resC.iterations, resC.mu, resC.x[0], resC.x[1], resC.cost_val);
 
     if (std::abs(resC.cost_val - 1.0) > 1e-3) {
       printf("FAIL: Case C cost should be 1.0, got %.6f\n", resC.cost_val);
       pass = false;
     }
-    if (std::abs(resC.x(0) - 0.5) > 1e-3 || std::abs(resC.x(1) - 0.5) > 1e-3) {
+    if (std::abs(resC.x[0] - 0.5) > 1e-3 || std::abs(resC.x[1] - 0.5) > 1e-3) {
       printf("FAIL: Case C x should be [0.5, 0.5], got [%.6f, %.6f]\n",
-             resC.x(0), resC.x(1));
+             resC.x[0], resC.x[1]);
       pass = false;
     }
   }

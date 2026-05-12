@@ -72,6 +72,6 @@ int main() {
          (int)r.x.size(), r.mu, r.iterations);
   if (r.x.size() >= 2) {
     printf("IPM solve: x=[%.6f, %.6f], cost=%.6f\n",
-           r.x(0), r.x(1), cost.dot(r.x.head(2)));
+           r.x[0], r.x[1], cost.dot(Eigen::Map<const Eigen::VectorXd>(r.x.data(), r.x.size()).head(2)));
   }
 }

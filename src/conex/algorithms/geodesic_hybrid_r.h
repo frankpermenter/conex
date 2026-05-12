@@ -19,7 +19,8 @@
 // Theta-rate trigger forces W-updates when r-updates stall.
 
 #include <functional>
-#include <Eigen/Core>
+#include <vector>
+
 #include "conex/common/arena.h"
 #include "conex/common/compiled_model.h"
 #include "conex/common/tree_rhs.h"
@@ -51,7 +52,7 @@ HybridRDirection ComputeHybridRDirection(
     double theta,
     RowSpace& d,
     RowSpace& delta,
-    Eigen::VectorXd* y_out = nullptr);
+    std::vector<double>* y_out = nullptr);
 
 // Backward-compatible wrapper (heap allocation).
 HybridRDirection ComputeHybridRDirection(
@@ -62,7 +63,7 @@ HybridRDirection ComputeHybridRDirection(
     double theta,
     RowSpace& d,
     RowSpace& delta,
-    Eigen::VectorXd* y_out = nullptr);
+    std::vector<double>* y_out = nullptr);
 
 // Verify the Newton direction satisfies its defining equations:
 //   Primal: delta = r - P(W^{1/2})(b_theta + A*y)
@@ -77,7 +78,7 @@ std::pair<double, double> VerifyHybridREquations(
     double theta,
     const RowSpace& d,
     const RowSpace& delta,
-    const Eigen::VectorXd& y);
+    const std::vector<double>& y);
 
 // Backward-compatible wrapper (heap allocation).
 std::pair<double, double> VerifyHybridREquations(
@@ -88,7 +89,7 @@ std::pair<double, double> VerifyHybridREquations(
     double theta,
     const RowSpace& d,
     const RowSpace& delta,
-    const Eigen::VectorXd& y);
+    const std::vector<double>& y);
 
 // Three-solve decomposition for the r-parameterization.
 // x(tau,theta) = x0 + tau*x1 + theta*x_theta

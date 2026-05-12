@@ -95,7 +95,7 @@ static QPSolution SolveBarrierFromProblem(
 
   auto result = SolveBarrierQP(*kkt, c_rhs, x);
   QPSolution sol;
-  sol.x = solver.ExpandSolution(result.x);
+  sol.x = solver.ExpandSolution(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
   VectorXd c = problem.has_linear_cost()
       ? problem.linear_cost() : VectorXd::Zero(problem.num_variables());
   sol.objective = c.dot(sol.x);
@@ -129,10 +129,10 @@ TEST_P(QPSolverTest, UnconstrainedInsideFeasible) {
 
   VectorXd x0(n); x0 << 0.3, 0.3;
   auto sol = GetParam()(problem, x0);
-  EXPECT_NEAR(sol.x(0), 0.0, 0.01);
-  EXPECT_NEAR(sol.x(1), 0.0, 0.01);
+  EXPECT_NEAR(sol.x[0], 0.0, 0.01);
+  EXPECT_NEAR(sol.x[1], 0.0, 0.01);
   printf("  obj=%.6f, x=[%.4f, %.4f], gap=%.2e\n",
-         sol.objective, sol.x(0), sol.x(1), sol.gap);
+         sol.objective, sol.x[0], sol.x[1], sol.gap);
 }
 
 TEST_P(QPSolverTest, ActiveConstraint) {
@@ -158,10 +158,10 @@ TEST_P(QPSolverTest, ActiveConstraint) {
 
   VectorXd x0(n); x0 << 0.3, 0.3;
   auto sol = GetParam()(problem, x0);
-  EXPECT_LT(sol.x(0), 0.05);
-  EXPECT_GE(sol.x(0), -0.01);
+  EXPECT_LT(sol.x[0], 0.05);
+  EXPECT_GE(sol.x[0], -0.01);
   printf("  obj=%.6f, x=[%.4f, %.4f], gap=%.2e\n",
-         sol.objective, sol.x(0), sol.x(1), sol.gap);
+         sol.objective, sol.x[0], sol.x[1], sol.gap);
 }
 
 TEST_P(QPSolverTest, MultipleConstraints) {
@@ -194,10 +194,10 @@ TEST_P(QPSolverTest, MultipleConstraints) {
 
   VectorXd x0 = VectorXd::Constant(n, 0.3);
   auto sol = GetParam()(problem, x0);
-  EXPECT_NEAR(sol.x(0), 0.0, 0.01);
-  EXPECT_NEAR(sol.x(1), 0.0, 0.01);
+  EXPECT_NEAR(sol.x[0], 0.0, 0.01);
+  EXPECT_NEAR(sol.x[1], 0.0, 0.01);
   printf("  obj=%.6f, x=[%.4f, %.4f], gap=%.2e\n",
-         sol.objective, sol.x(0), sol.x(1), sol.gap);
+         sol.objective, sol.x[0], sol.x[1], sol.gap);
 }
 
 static QPSolution SolveGeodesicFromProblem(
@@ -214,7 +214,7 @@ static QPSolution SolveGeodesicFromProblem(
   auto result = SolveGeodesicLP(cm, W, 30, 0, 1e-8);
 
   QPSolution sol;
-  sol.x = solver.ExpandSolution(result.x);
+  sol.x = solver.ExpandSolution(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
   VectorXd c = problem.has_linear_cost()
       ? problem.linear_cost() : VectorXd::Zero(problem.num_variables());
   sol.objective = c.dot(sol.x);
@@ -2580,8 +2580,8 @@ TEST(SolverSolve, EqualityConstraints) {
   EXPECT_GE(result.duals.slack[0].minCoeff(), -1e-3);
 
   // Equality: x0+x1 ≈ 0.5, x2+x3 ≈ 0.5.
-  double eq1_err = std::abs(result.x(0) + result.x(1) - 0.5);
-  double eq2_err = std::abs(result.x(2) + result.x(3) - 0.5);
+  double eq1_err = std::abs(result.x[0] + result.x[1] - 0.5);
+  double eq2_err = std::abs(result.x[2] + result.x[3] - 0.5);
   printf("  equality errors: %.2e, %.2e\n", eq1_err, eq2_err);
   EXPECT_LT(eq1_err, 1e-2);
   EXPECT_LT(eq2_err, 1e-2);
@@ -2924,8 +2924,8 @@ TEST(SolverSolve, AllConstraintTypes) {
   }
 
   // --- Equality ---
-  double eq1_err = std::abs(result.x(0) + result.x(1) - 0.5);
-  double eq2_err = std::abs(result.x(8) + result.x(9) - 0.3);
+  double eq1_err = std::abs(result.x[0] + result.x[1] - 0.5);
+  double eq2_err = std::abs(result.x[8] + result.x[9] - 0.3);
   printf("  equality errors: %.2e, %.2e\n", eq1_err, eq2_err);
   EXPECT_LT(eq1_err, 1e-2);
   EXPECT_LT(eq2_err, 1e-2);

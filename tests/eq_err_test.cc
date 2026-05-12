@@ -49,7 +49,7 @@ static TestResult RunTest(const char* name, Model& prob,
   double obj_val = 0;
   if (r.x.size() > 0 && prob.has_linear_cost()) {
     int nc = std::min((int)cost.size(), (int)r.x.size());
-    obj_val = cost.head(nc).dot(r.x.head(nc));
+    obj_val = cost.head(nc).dot(Eigen::Map<const Eigen::VectorXd>(r.x.data(), r.x.size()).head(nc));
     // Add quadratic cost if present.
     for (const auto& c : prob.constraints()) {
       if (auto* qc = std::get_if<Model::QuadraticCostData>(&c)) {
@@ -59,7 +59,7 @@ static TestResult RunTest(const char* name, Model& prob,
           for (Eigen::SparseMatrix<double>::InnerIterator it(Q, k); it; ++it) {
             int i = vars[it.row()], j = vars[it.col()];
             if (i < (int)r.x.size() && j < (int)r.x.size())
-              obj_val += 0.5 * it.value() * r.x(i) * r.x(j);
+              obj_val += 0.5 * it.value() * r.x[i] * r.x[j];
           }
       }
     }

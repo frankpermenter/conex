@@ -49,8 +49,8 @@ int main() {
   int np = 3;  // primal vars
   printf("nv=%d, x.size=%d\n", nv, (int)r.x.size());
 
-  Eigen::VectorXd x = r.x.head(np);
-  double nu = (r.x.size() > np) ? r.x(np) : 0.0;
+  Eigen::VectorXd x = Eigen::Map<const Eigen::VectorXd>(r.x.data(), r.x.size()).head(np);
+  double nu = (r.x.size() > np) ? r.x[np] : 0.0;
   printf("x = [%.8f, %.8f, %.8f]\n", x(0), x(1), x(2));
   printf("nu = %.8f\n", nu);
   printf("Cx - d = %.8e\n", (C * x - d)(0));

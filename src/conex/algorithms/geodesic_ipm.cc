@@ -15,7 +15,7 @@ std::pair<double, double> VerifyNewtonEquations(
     const RowSpace& b_data,
     const RowSpace& W,
     const RowSpace& d,
-    const Eigen::VectorXd& y,
+    const std::vector<double>& y,
     double k,
     double theta) {
   const auto& cost_rhs_data = model.cost_rhs();
@@ -47,7 +47,7 @@ std::pair<double, double> VerifyNewtonEquations(
   //   S_computed = P(W^{-1/2})(d - I) should equal -k*b - A*y.
   // Or simpler: verify d - I = P(W^{1/2})(-k*b - A*y).
   auto y_rhs = model.AllocSolverRHS();
-  y_rhs = model.MakeBlockVariable(y);
+  y_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(y.data(), y.size()));
   RowSpace Ay = model.AllocRowSpace();
   model.MultiplyA(y_rhs, Ay);
   RowSpace slack = model.AllocRowSpace();
@@ -195,14 +195,14 @@ GeodesicResult GeodesicCenter(
 
     if (verbose) {
       auto [p_res, d_res] = VerifyNewtonEquations(
-          model, b, W, d, y_direct, k, 0.0);
+          model, b, W, d, std::vector<double>(y_direct.data(), y_direct.data() + y_direct.size()), k, 0.0);
       printf("  i=%2d  mu=%.2e  d_sqr=%.2e  d_inf=%.2e  "
              "s_dot_x=%.2e  alpha=%.4f  newton_err=(%.1e, %.1e)\n",
              iter, mu, d_sq, d_inf, s_dot_x, alpha, p_res, d_res);
     }
 
     if (d_inf < tolerance) {
-      result.x = y_direct / k;
+      { Eigen::VectorXd tmp = y_direct / k; result.x.assign(tmp.data(), tmp.data() + tmp.size()); }
       break;
     }
 
@@ -990,7 +990,8 @@ GeodesicResult SolveGeodesicHSD(
         x_rhs *= (1.0 / tau);
         int nr = model.number_of_variables();
         result.x.resize(nr);
-        x_rhs.supernodes->GatherInto(result.x);
+        result.x.resize(model.number_of_variables());
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
       }
 
       // lambda_phys = lambda_lifted / tau.
@@ -1006,7 +1007,7 @@ GeodesicResult SolveGeodesicHSD(
 
       {
         auto x_rhs = model.AllocSolverRHS();
-        x_rhs = model.MakeBlockVariable(result.x);
+        x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
         result.optimality = CheckOptimality(model, x_rhs, result.lambda);
       }
       result.optimality.mu = mu;
@@ -1029,7 +1030,7 @@ GeodesicResult SolveGeodesicHSD(
 
   // Non-convergence fallback.
   if (result.x.size() == 0) {
-    result.x = Eigen::VectorXd::Zero(model.number_of_variables());
+    result.x.assign(model.number_of_variables(), 0.0);
     result.mu = (k > 0) ? 1.0 / (k * k) : 1.0;
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
@@ -1332,7 +1333,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
       x_rhs *= (1.0 / tau);
       int nr = model.number_of_variables();
       result.x.resize(nr);
-      x_rhs.supernodes->GatherInto(result.x);
+      result.x.resize(model.number_of_variables());
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
     }
 
     // Compute lambda at the CURRENT (k, tau, theta) — consistent with x.
@@ -1352,7 +1354,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
     {
       auto x_rhs = model.AllocSolverRHS();
-      x_rhs = model.MakeBlockVariable(result.x);
+      x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
       result.optimality = CheckOptimality(model, x_rhs, result.lambda);
       result.optimality.mu = result.mu;
     }
@@ -1668,7 +1670,8 @@ GeodesicResult SolveGeodesicPhaseOne(
       x_rhs *= (1.0 / tau);
       int nr = model.number_of_variables();
       result.x.resize(nr);
-      x_rhs.supernodes->GatherInto(result.x);
+      result.x.resize(model.number_of_variables());
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
     }
     RowSpace d_cur = model.AllocRowSpace();
     EvaluateDirection(d_cur, decomp, k, tau, theta);
@@ -1683,7 +1686,7 @@ GeodesicResult SolveGeodesicPhaseOne(
     result.lambda *= (1.0 / (k * tau));
     {
       auto x_rhs = model.AllocSolverRHS();
-      x_rhs = model.MakeBlockVariable(result.x);
+      x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
       result.optimality = CheckOptimality(model, x_rhs, result.lambda);
     }
     result.optimality.mu = result.mu;
@@ -1787,7 +1790,8 @@ GeodesicResult SolveGeodesicLP(
         x_rhs_conv += y1;
         int nr = model.number_of_variables();
         result.x.resize(nr);
-        x_rhs_conv.supernodes->GatherInto(result.x);
+        result.x.resize(model.number_of_variables());
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs_conv.supernodes->GatherInto(xm); }
       }
       // Lambda recovery (heap — outlives arena).
       RowSpace sqrtW = model.AllocRowSpace(arena);
@@ -1800,7 +1804,7 @@ GeodesicResult SolveGeodesicLP(
       lambda *= (1.0 / k);
       result.lambda = std::move(lambda);
       auto x_rhs = model.AllocSolverRHS();
-      x_rhs = model.MakeBlockVariable(result.x);
+      x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
       result.optimality = CheckOptimality(model, x_rhs, result.lambda);
       result.optimality.mu = result.mu;
       if (verbose) {
@@ -1866,7 +1870,7 @@ GeodesicResult SolveGeodesicLP(
   // If the loop exited without converging, populate result with last known
   // state so that Solver::Solve doesn't crash on an empty x vector.
   if (result.x.size() == 0) {
-    result.x = Eigen::VectorXd::Zero(model.number_of_variables());
+    result.x.assign(model.number_of_variables(), 0.0);
     result.mu = (k > 0) ? 1.0 / (k * k) : 1.0;
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
@@ -2019,7 +2023,8 @@ GeodesicResult SolveGeodesicBarrierLP(
         x_rhs_conv += y1;
         int nr = model.number_of_variables();
         result.x.resize(nr);
-        x_rhs_conv.supernodes->GatherInto(result.x);
+        result.x.resize(model.number_of_variables());
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs_conv.supernodes->GatherInto(xm); }
       }
 
       // Lambda recovery: λ = (1/k)(-2∇F(z) - H(z)·target_k).
@@ -2459,7 +2464,8 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
         x_rhs *= (1.0 / tau);
         int nr = model.number_of_variables();
         result.x.resize(nr);
-        x_rhs.supernodes->GatherInto(result.x);
+        result.x.resize(model.number_of_variables());
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
       }
 
       // Lambda recovery (heap — outlives arena).
@@ -2665,7 +2671,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
   }
 
   if (result.x.size() == 0) {
-    result.x = Eigen::VectorXd::Zero(model.number_of_variables());
+    result.x.assign(model.number_of_variables(), 0.0);
     result.mu = (k > 0) ? 1.0 / (k * k) : 1.0;
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
@@ -2951,14 +2957,15 @@ GeodesicResult SolveGeodesicHybrid(
     model.SolveSolverRHS(y);
     int nr = model.number_of_variables();
     result.x.resize(nr);
-    y.supernodes->GatherInto(result.x);
-    if (tau != 1.0 && tau > 0) result.x /= tau;
+    result.x.resize(model.number_of_variables());
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); y.supernodes->GatherInto(xm); }
+    if (tau != 1.0 && tau > 0) for (auto& v : result.x) v /= tau;
   }
 
   // Optimality check against the UNSCALED problem.
   {
     auto x_rhs = model.AllocSolverRHS();
-    x_rhs = model.MakeBlockVariable(result.x);
+    x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
     RowSpace r_plus_delta_o = model.AllocRowSpace();
     addScaled(r_plus_delta_o, r, last_delta, 1.0, 1.0);
     RowSpace lambda = model.MakeRowSpace();

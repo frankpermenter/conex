@@ -196,7 +196,7 @@ TEST(ExtendedEmbedding, ThetaVsMuOnCentralPath) {
       printf("  %10.4f %10.6f  (no result)\n", k_target, mu_target);
       continue;
     }
-    auto x_model = solver.ExpandSolution(raw.x);
+    auto x_model = solver.ExpandSolution(Eigen::Map<const Eigen::VectorXd>(raw.x.data(), raw.x.size()));
     double theta = x_model(info.theta_idx());
     double tau = x_model(info.tau_idx());
     double kappa = x_model(info.kappa_idx());

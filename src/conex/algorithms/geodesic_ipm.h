@@ -36,7 +36,6 @@
 #pragma once
 #include <functional>
 #include <vector>
-#include <Eigen/Core>
 #include "conex/common/compiled_model.h"
 
 namespace conex {
@@ -71,7 +70,7 @@ struct GeodesicResult {
   double complementarity;  // mu * (rank - ||d||^2)
   int total_factorizations = 0;
   int total_solves = 0;
-  Eigen::VectorXd x;  // primal variable: x = y/k from last Newton solve
+  std::vector<double> x;  // primal variable: x = y/k from last Newton solve
   RowSpace lambda;     // dual variable (cone multipliers), reduced space
   std::vector<GeodesicIterStats> iter_stats;
   OptimalityReport optimality;
@@ -86,7 +85,7 @@ std::pair<double, double> VerifyNewtonEquations(
     const RowSpace& b,
     const RowSpace& W,
     const RowSpace& d,
-    const Eigen::VectorXd& y,
+    const std::vector<double>& y,
     double k,
     double theta = 0.0);
 

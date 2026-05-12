@@ -50,7 +50,7 @@ HybridRDirection ComputeHybridRDirection(
     double theta,
     RowSpace& d,
     RowSpace& delta,
-    Eigen::VectorXd* y_out) {
+    std::vector<double>* y_out) {
   auto mark = arena.SaveCursor();
   const auto& cost_rhs = model.cost_rhs();
   RowSpace b_theta = BlendAffine(model, arena, b, theta);
@@ -80,7 +80,7 @@ HybridRDirection ComputeHybridRDirection(
   if (y_out) {
     int nv = model.number_of_variables();
     y_out->resize(nv);
-    y.supernodes->GatherInto(*y_out);
+    { Eigen::Map<Eigen::VectorXd> ym(y_out->data(), y_out->size()); y.supernodes->GatherInto(ym); }
   }
 
   // delta = r - P(W^{1/2})(b_theta + A*y)
@@ -107,7 +107,7 @@ HybridRDirection ComputeHybridRDirection(
     double theta,
     RowSpace& d,
     RowSpace& delta,
-    Eigen::VectorXd* y_out) {
+    std::vector<double>* y_out) {
   return ComputeHybridRDirection(model, model.arena(), b, W, r, theta, d, delta, y_out);
 }
 
@@ -173,7 +173,7 @@ std::pair<double, double> VerifyHybridREquations(
     double theta,
     const RowSpace& d,
     const RowSpace& delta,
-    const Eigen::VectorXd& y) {
+    const std::vector<double>& y) {
   auto mark = arena.SaveCursor();
   const auto& cost_rhs = model.cost_rhs();
   RowSpace b_theta = BlendAffine(model, arena, b, theta);
@@ -183,7 +183,7 @@ std::pair<double, double> VerifyHybridREquations(
   // --- Primal check ---
   // delta should equal r - P(W^{1/2})(b_theta + A*y).
   auto y_rhs = model.AllocSolverRHS();
-  y_rhs = model.MakeBlockVariable(y);
+  y_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(y.data(), y.size()));
   RowSpace Ay = model.AllocRowSpace(arena);
   model.MultiplyA(y_rhs, Ay);
   RowSpace slack = model.AllocRowSpace(arena);
@@ -232,7 +232,7 @@ std::pair<double, double> VerifyHybridREquations(
     double theta,
     const RowSpace& d,
     const RowSpace& delta,
-    const Eigen::VectorXd& y) {
+    const std::vector<double>& y) {
   return VerifyHybridREquations(model, model.arena(), b, W, r, theta, d, delta, y);
 }
 
@@ -807,13 +807,14 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     x_rhs.AddScaled(tau, decomp.y_cost);
     x_rhs *= (1.0 / tau);
     result.x.resize(model.number_of_variables());
-    x_rhs.supernodes->GatherInto(result.x);
+    result.x.resize(model.number_of_variables());
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
   }
 
   // Lambda and optimality.
   {
     auto x_rhs = model.AllocSolverRHS();
-    x_rhs = model.MakeBlockVariable(result.x);
+    x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
     // result.lambda must outlive the arena -> heap allocation.
     RowSpace r_plus_delta = model.AllocRowSpace(arena);
     addScaled(r_plus_delta, r_var, last_delta, 1.0, 1.0);
@@ -958,14 +959,14 @@ GeodesicResult SolveGeodesicHybridR(
     model.SolveSolverRHS(y);
     int nr = model.number_of_variables();
     result.x.resize(nr);
-    y.supernodes->GatherInto(result.x);
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); y.supernodes->GatherInto(xm); }
   }
 
   // Lambda and optimality.
   // lambda = M*(r+delta)*M^T  (in physical frame, from M-frame r and delta)
   {
     auto x_rhs = model.AllocSolverRHS();
-    x_rhs = model.MakeBlockVariable(result.x);
+    x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
     RowSpace r_plus_delta = model.AllocRowSpace(arena);
     addScaled(r_plus_delta, r, last_delta, 1.0, 1.0);
     // result.lambda must outlive the arena -> heap allocation.

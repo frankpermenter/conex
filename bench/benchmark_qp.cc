@@ -57,7 +57,7 @@ AlgoResult RunAlgo(const char* name, KKTSolverBase& kkt,
 
   double primal_cost = 0;
   if (result.x.size() > 0) {
-    Eigen::VectorXd x = solver.ExpandSolution(result.x);
+    Eigen::VectorXd x = solver.ExpandSolution(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
     // c'x
     if (problem.has_linear_cost()) {
       int nc = std::min((int)problem.linear_cost().size(), (int)x.size());

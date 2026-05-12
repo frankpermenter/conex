@@ -115,8 +115,9 @@ SolveResult Solver::Solve(const Algorithm& algo) {
   auto raw = algo.Run(model);
 
   SolveResult result;
-  result.x = ExpandSolution(raw.x);
-  result.objective = ComputeObjective(model.cost_rhs(), raw.x);
+  Eigen::Map<const Eigen::VectorXd> raw_x(raw.x.data(), raw.x.size());
+  result.x = ExpandSolution(raw_x);
+  result.objective = ComputeObjective(model.cost_rhs(), raw_x);
   result.mu = raw.mu;
   result.tau = raw.tau;
   result.kappa = raw.kappa;
@@ -125,8 +126,8 @@ SolveResult Solver::Solve(const Algorithm& algo) {
   result.iterations = raw.iterations;
   result.factorizations = raw.total_factorizations;
   if (raw.lambda.total_rows() > 0) {
-    result.optimality = ComputeOptimality(model.cost_rhs(), raw.x, raw.lambda);
-    result.duals = ExtractDuals(raw.x, raw.lambda, model.cost_rhs());
+    result.optimality = ComputeOptimality(model.cost_rhs(), raw_x, raw.lambda);
+    result.duals = ExtractDuals(raw_x, raw.lambda, model.cost_rhs());
   }
   result.converged = result.optimality.complementarity < 1e-4 &&
                      result.duals.stationarity_gradient.norm() < 1e-4;

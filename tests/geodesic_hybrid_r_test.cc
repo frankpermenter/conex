@@ -108,7 +108,7 @@ TEST(GeodesicHybridR, DirectionEquations) {
     y_rhs.supernodes->GatherInto(y);
 
     auto [p_res, d_res] = VerifyHybridREquations(
-        cm, b, W, r, theta, d, delta, y);
+        cm, b, W, r, theta, d, delta, std::vector<double>(y.data(), y.data() + y.size()));
     printf("  theta=%.1f: gap=%.2e d_inf=%.4f primal_res=%.2e dual_res=%.2e\n",
            theta, info.gap, info.d_inf, p_res, d_res);
     EXPECT_LT(p_res, 1e-10);
@@ -165,7 +165,7 @@ TEST(GeodesicHybridR, DirectionEquationsNonUniformR) {
     y_rhs.supernodes->GatherInto(y);
 
     auto [p_res, d_res] = VerifyHybridREquations(
-        cm, b, W, r, theta, d, delta, y);
+        cm, b, W, r, theta, d, delta, std::vector<double>(y.data(), y.data() + y.size()));
     printf("  theta=%.1f: primal_res=%.2e dual_res=%.2e\n",
            theta, p_res, d_res);
     EXPECT_LT(p_res, 1e-10);

@@ -71,7 +71,7 @@ TEST(TreeStructure, DiagonalQPWithOneEquality) {
 
     auto result = solver.Solve(GeodesicLP{1e-10, 20, 0, true});
     printf("  obj=%.6e  x[0]=%.4f  sum(x)=%.4f\n",
-           result.objective, result.x(0), result.x.sum());
+           result.objective, result.x[0], result.x.sum());
     EXPECT_NEAR(result.x.sum(), 1.0, 1e-6);
   }
 }
@@ -122,8 +122,8 @@ TEST(TreeStructure, DiagonalQPWithTwoEqualities) {
   auto result = solver.Solve(ThetaContinuation{1e-10});
   printf("  obj=%.6e  sum(x[0:5])=%.4f  sum(x[5:10])=%.4f\n",
          result.objective,
-         result.x.head(5).sum(), result.x.tail(5).sum());
-  EXPECT_NEAR(result.x.head(5).sum(), 1.0, 1e-6);
+         Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()).head(5).sum(), result.x.tail(5).sum());
+  EXPECT_NEAR(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()).head(5).sum(), 1.0, 1e-6);
   EXPECT_NEAR(result.x.tail(5).sum(), 1.0, 1e-6);
 }
 
@@ -169,7 +169,7 @@ TEST(TreeStructure, DiagonalQPWithChainEqualities) {
   auto result = solver.Solve(ThetaContinuation{1e-10});
   printf("  obj=%.6e\n", result.objective);
   for (int i = 0; i < n; i += 2) {
-    double pair_sum = result.x(i) + result.x(i + 1);
+    double pair_sum = result.x[i] + result.x(i + 1);
     printf("    x[%d]+x[%d]=%.4f\n", i, i + 1, pair_sum);
     EXPECT_NEAR(pair_sum, 1.0, 1e-6);
   }

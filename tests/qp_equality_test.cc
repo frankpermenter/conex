@@ -23,7 +23,7 @@ bool TestToy() {
   p.SetLinearCost(Eigen::VectorXd::Zero(2));
 
   auto r = SolveQPEquality(p);
-  printf("  x = [%.8f, %.8f]\n", r.x(0), r.x(1));
+  printf("  x = [%.8f, %.8f]\n", r.x[0], r.x[1]);
   printf("  obj = %.8f (expected 0.5)\n", r.objective);
   printf("  Cx-d = %.2e\n", (C * r.x - d).norm());
   bool ok = r.success && std::abs(r.objective - 0.5) < 1e-6;
@@ -49,7 +49,7 @@ bool TestToy2() {
   p.SetLinearCost(c);
 
   auto r = SolveQPEquality(p);
-  printf("  x = [%.8f, %.8f, %.8f]\n", r.x(0), r.x(1), r.x(2));
+  printf("  x = [%.8f, %.8f, %.8f]\n", r.x[0], r.x[1], r.x[2]);
   printf("  obj = %.8f\n", r.objective);
   printf("  Cx-d = %.2e\n", (C * r.x - d).norm());
   printf("  %s\n\n", r.success ? "PASS" : "FAIL");
@@ -92,7 +92,7 @@ bool TestLOTSCHD() {
   if (!r.success) { printf("  FAIL\n\n"); return false; }
 
   printf("  x =");
-  for (int i = 0; i < r.x.size(); ++i) printf(" %.4f", r.x(i));
+  for (int i = 0; i < r.x.size(); ++i) printf(" %.4f", r.x[i]);
   printf("\n");
   printf("  obj = %.8f\n", r.objective);
 

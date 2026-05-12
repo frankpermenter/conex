@@ -77,7 +77,7 @@ bool TestStandardFormLP() {
   auto r = SolveGeodesicThetaContinuation(
       cm, W, 500, 1, 1e-8, true);
 
-  Eigen::VectorXd x = r.x.head(n);
+  Eigen::VectorXd x = Eigen::Map<const Eigen::VectorXd>(r.x.data(), r.x.size()).head(n);
   double obj = cost.dot(x);
   Eigen::VectorXd eq_res = A_dense * x - b;
   double eq_err = eq_res.norm();
@@ -116,7 +116,7 @@ bool TestStandardFormLP() {
     auto r2 = SolveGeodesicThetaContinuation(cm2, W2, 500, 1, 1e-8, false);
 
     double obj2 = cost.dot(x_feas);
-    if (r2.x.size() >= nz) obj2 += rc.dot(r2.x.head(nz));
+    if (r2.x.size() >= nz) obj2 += rc.dot(Eigen::Map<const Eigen::VectorXd>(r2.x.data(), r2.x.size()).head(nz));
     printf("  Reduced obj = %.6f, Equality obj = %.6f, |diff| = %.2e\n",
            obj2, obj, std::abs(obj - obj2));
     if (std::abs(obj - obj2) > 1e-2) {
@@ -215,7 +215,7 @@ bool TestMaxcutSDP() {
   auto r = SolveGeodesicThetaContinuation(
       cm, W, 500, 1, 1e-8, true);
 
-  Eigen::VectorXd x = r.x.head(nvar);
+  Eigen::VectorXd x = Eigen::Map<const Eigen::VectorXd>(r.x.data(), r.x.size()).head(nvar);
   double obj = cost.dot(x);
   double maxcut_bound = (sum_w - obj) / 4.0;
 

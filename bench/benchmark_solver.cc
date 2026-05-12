@@ -142,7 +142,7 @@ AlgoResult RunAlgo(const char* name, CompiledModel& model,
   double primal_cost = 0;
   if (result.x.size() > 0) {
     // Expand to original space for cost computation.
-    VectorXd x = solver.ExpandSolution(result.x);
+    VectorXd x = solver.ExpandSolution(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
     if (problem.has_linear_cost()) {
       int nc = std::min((int)problem.linear_cost().size(), (int)x.size());
       primal_cost += problem.linear_cost().head(nc).dot(x.head(nc));

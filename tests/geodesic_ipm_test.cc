@@ -14,6 +14,11 @@
 #include "conex/common/soc_cone_ops.h"
 #include "conex/common/solver.h"
 
+// Helper to wrap std::vector<double> as Eigen::Map for arithmetic.
+static Eigen::Map<const Eigen::VectorXd> asEigen(const std::vector<double>& v) {
+  return {v.data(), static_cast<Eigen::Index>(v.size())};
+}
+
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
@@ -172,7 +177,7 @@ TEST(GeodesicBarrierQP, FullDecomposition) {
         // (tau, theta) when tau=1, theta=0 (original problem, no blend).
         if (tau == 1.0 && theta == 0.0) {
           auto [p_res, d_res] = VerifyNewtonEquations(
-              cm, b_rs, W, d, y, k, 0.0);
+              cm, b_rs, W, d, std::vector<double>(y.data(), y.data() + y.size()), k, 0.0);
           printf("  k=%.1f tau=%.1f theta=%.1f: primal=%.2e  dual=%.2e\n",
                  k, tau, theta, p_res, d_res);
           EXPECT_LT(p_res, 1e-10);
@@ -1490,7 +1495,7 @@ static void CheckIsomorphicIterations(const char* name,
                      sdp_r.total_factorizations), 1)
       << name;
   if (soc_r.x.size() == sdp_r.x.size()) {
-    EXPECT_LT((soc_r.x - sdp_r.x).norm(), 1e-6) << name;
+    EXPECT_LT((asEigen(soc_r.x) - asEigen(sdp_r.x)).norm(), 1e-6) << name;
   }
 }
 
@@ -1575,7 +1580,7 @@ static void CompareBarrierVsClassic(const char* name, const Model& model) {
     EXPECT_LT(rel_gap, 5e-3) << name << ": gap at iter " << i;
   }
 
-  EXPECT_LT((rw.x - rz.x).norm(), 1e-5) << name << ": solution";
+  EXPECT_LT((asEigen(rw.x) - asEigen(rz.x)).norm(), 1e-5) << name << ": solution";
 
   double lam_diff = 0, lam_norm = 0;
   for (int i = 0; i < rw.lambda.total_rows(); ++i) {
@@ -1691,8 +1696,8 @@ static void CompareThetaContBarrierVsClassic(const char* name,
 
   // Solutions should match.
   if (rw.x.size() > 0 && rz.x.size() > 0) {
-    printf("  x_diff = %.2e\n", (rw.x - rz.x).norm());
-    EXPECT_LT((rw.x - rz.x).norm(), 1e-4) << name << ": solution mismatch";
+    printf("  x_diff = %.2e\n", (asEigen(rw.x) - asEigen(rz.x)).norm());
+    EXPECT_LT((asEigen(rw.x) - asEigen(rz.x)).norm(), 1e-4) << name << ": solution mismatch";
   }
 }
 

@@ -89,7 +89,7 @@ static void PrintResult(const char* label, const GeodesicResult& r) {
          r.complementarity);
   if (r.x.size() > 0) {
     printf("[%s] x=", label);
-    for (int i = 0; i < r.x.size(); ++i) printf(" %.16e", r.x(i));
+    for (int i = 0; i < r.x.size(); ++i) printf(" %.16e", r.x[i]);
     printf("\n");
   }
   printf("[%s] opt: dual_res=%.16e compl=%.16e mins=%.16e mind=%.16e\n",

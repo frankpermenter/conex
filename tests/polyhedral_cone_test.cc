@@ -190,7 +190,7 @@ TEST(PolyhedralCone, NonnegVsPolyhedral) {
   printf("\n=== Nonneg formulation ===\n");
   printf("  iters=%d, gap=%.2e, mu=%.2e, c^Tx=%.6f\n",
          nonneg_result.iterations, nonneg_result.complementarity,
-         nonneg_result.mu, c.dot(nonneg_result.x));
+         nonneg_result.mu, c.dot(Eigen::Map<const Eigen::VectorXd>(nonneg_result.x.data(), nonneg_result.x.size())));
 
   // === Polyhedral formulation ===
   const int np = n + 1;
@@ -248,13 +248,13 @@ TEST(PolyhedralCone, NonnegVsPolyhedral) {
   // Extract x from w = [x; y].  The solver works in reduced space;
   // poly_result.x has n+1 components (plus equality duals).
   // x_poly = poly_result.x(0..n-1).
-  VectorXd x_poly = poly_result.x.head(n);
+  VectorXd x_poly = Eigen::Map<const Eigen::VectorXd>(poly_result.x.data(), poly_result.x.size()).head(n);
   double obj_poly = c.dot(x_poly);
   printf("  x_poly = [");
   for (int i = 0; i < n; ++i) printf("%.4f%s", x_poly(i), i<n-1?", ":"");
   printf("], c^Tx=%.6f\n", obj_poly);
 
-  VectorXd x_nn = nonneg_result.x;
+  VectorXd x_nn = Eigen::Map<const Eigen::VectorXd>(nonneg_result.x.data(), nonneg_result.x.size());
   double obj_nn = c.dot(x_nn);
   printf("  x_nn   = [");
   for (int i = 0; i < n; ++i) printf("%.4f%s", x_nn(i), i<n-1?", ":"");

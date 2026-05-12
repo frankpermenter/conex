@@ -655,7 +655,8 @@ GeodesicResult SolveGeodesicHSDE(
       x_rhs *= (1.0 / tau);
       int nr = model.number_of_variables();
       result.x.resize(nr);
-      x_rhs.supernodes->GatherInto(result.x);
+      result.x.resize(model.number_of_variables());
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
     }
     result.tau = tau;
 
@@ -671,7 +672,7 @@ GeodesicResult SolveGeodesicHSDE(
 
     {
       auto x_rhs_final = model.AllocSolverRHS();
-      x_rhs_final = model.MakeBlockVariable(result.x);
+      x_rhs_final = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
       result.optimality = CheckOptimality(model, x_rhs_final, lambda);
     }
     result.optimality.mu = result.mu;

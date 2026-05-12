@@ -262,8 +262,8 @@ TEST(SolverSolve, EqualityConstraints) {
   EXPECT_GE(result.duals.slack[0].minCoeff(), -1e-5);
 
   // Equality: x0+x1 ≈ 0.5, x2+x3 ≈ 0.5.
-  double eq1_err = std::abs(result.x(0) + result.x(1) - 0.5);
-  double eq2_err = std::abs(result.x(2) + result.x(3) - 0.5);
+  double eq1_err = std::abs(result.x[0] + result.x[1] - 0.5);
+  double eq2_err = std::abs(result.x[2] + result.x[3] - 0.5);
   printf("  equality errors: %.2e, %.2e\n", eq1_err, eq2_err);
   EXPECT_LT(eq1_err, 1e-5);
   EXPECT_LT(eq2_err, 1e-5);
@@ -603,8 +603,8 @@ TEST(SolverSolve, AllConstraintTypes) {
   }
 
   // --- Equality ---
-  double eq1_err = std::abs(result.x(0) + result.x(1) - 0.5);
-  double eq2_err = std::abs(result.x(8) + result.x(9) - 0.3);
+  double eq1_err = std::abs(result.x[0] + result.x[1] - 0.5);
+  double eq2_err = std::abs(result.x[8] + result.x[9] - 0.3);
   printf("  equality errors: %.2e, %.2e\n", eq1_err, eq2_err);
   EXPECT_LT(eq1_err, 1e-5);
   EXPECT_LT(eq2_err, 1e-5);
@@ -739,8 +739,8 @@ TEST(SolverSolve, GeodesicLP_WithEquality) {
          result.mu, result.objective);
 
   // Equality: x0+x1 ≈ 0.5, x2+x3 ≈ 0.5.
-  double eq1_err = std::abs(result.x(0) + result.x(1) - 0.5);
-  double eq2_err = std::abs(result.x(2) + result.x(3) - 0.5);
+  double eq1_err = std::abs(result.x[0] + result.x[1] - 0.5);
+  double eq2_err = std::abs(result.x[2] + result.x[3] - 0.5);
   printf("  equality errors: %.2e, %.2e\n", eq1_err, eq2_err);
   EXPECT_LT(eq1_err, 1e-5);
   EXPECT_LT(eq2_err, 1e-5);
@@ -870,7 +870,7 @@ TEST(SolverSolve, StationarityWithEquality) {
     printf("  %s: mu=%.2e obj=%.6e\n", name, result.mu, result.objective);
 
     // Equality feasibility: Cx = d.
-    double eq_err = std::abs(result.x(0) + result.x(1) - 0.5);
+    double eq_err = std::abs(result.x[0] + result.x[1] - 0.5);
     printf("    eq_err=%.2e\n", eq_err);
     EXPECT_LT(eq_err, 1e-3) << name << ": equality violated";
 
