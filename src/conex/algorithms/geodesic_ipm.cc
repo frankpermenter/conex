@@ -427,18 +427,16 @@ NewtonDecomposition ComputeFullDecomposition(
           y_dense.col(0), y_dense.col(1), y_dense.col(2)};
 }
 
-// Backward-compatible wrapper: creates a local arena, then copies
-// results to heap so they outlive the arena.
+// Wrapper: returns heap-backed decomp (deep copy) for callers that
+// may mutate the returned Variables (e.g. test code doing d1_0 *= tau).
 NewtonDecomposition ComputeFullDecomposition(
     CompiledModel& model,
     const RowSpace& b,
     const RowSpace& W) {
-  Arena arena;
-  auto decomp = ComputeFullDecomposition(model, arena, b, W);
-  // Deep copy arena-backed Variables to heap.
+  auto decomp = ComputeFullDecomposition(model, model.arena(), b, W);
   auto copy = [&](const RowSpace& src) {
     RowSpace dst = model.MakeRowSpace();
-    dst += src;  // per-segment copy
+    dst += src;
     return dst;
   };
   return {copy(decomp.d0), copy(decomp.d1_0), copy(decomp.d1_theta),
