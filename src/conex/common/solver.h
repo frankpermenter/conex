@@ -71,9 +71,14 @@ class Solver {
   // Build the cost RHS in solver format (reduced space).
   SolverRHS MakeCostRHS();
 
+  // Arena for algorithm temporaries. Persists across solves; Reset()
+  // between solves to reclaim memory without reallocating.
+  Arena& arena() { return arena_; }
+
   // Build a CompiledModel for direct algorithm use.
   CompiledModel MakeCompiledModel() {
-    return CompiledModel(*kkt(), MakeCostRHS());
+    arena_.Reset();
+    return CompiledModel(*kkt(), MakeCostRHS(), arena_);
   }
 
   Solver();
@@ -92,6 +97,7 @@ class Solver {
                                const SolverRHS& cost_rhs);
 
   KKTSystem system_;
+  Arena arena_;
   Model reduced_model_;
   Expansion expansion_;
   RowScaling row_scaling_;

@@ -24,6 +24,8 @@ class Arena {
 
   Arena(const Arena&) = delete;
   Arena& operator=(const Arena&) = delete;
+  Arena(Arena&&) = default;
+  Arena& operator=(Arena&&) = default;
 
   void* Alloc(size_t bytes) {
     // Round up cursor to alignment boundary.

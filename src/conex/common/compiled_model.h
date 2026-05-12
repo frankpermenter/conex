@@ -12,8 +12,13 @@ namespace conex {
 // Created by Solver::Build() or directly from a KKTSolverBase + cost.
 class CompiledModel {
  public:
+  CompiledModel(KKTSolverBase& kkt, SolverRHS cost_rhs, Arena& arena)
+      : kkt_(kkt), cost_rhs_(std::move(cost_rhs)), arena_(arena) {}
+
+  // Backward-compat: uses a default internal arena.
   CompiledModel(KKTSolverBase& kkt, SolverRHS cost_rhs)
-      : kkt_(kkt), cost_rhs_(std::move(cost_rhs)) {}
+      : kkt_(kkt), cost_rhs_(std::move(cost_rhs)),
+        owned_arena_(std::make_unique<Arena>()), arena_(*owned_arena_) {}
 
   // Model properties.
   bool has_quadratic_cost() const { return kkt_.has_quadratic_cost(); }
@@ -84,7 +89,8 @@ class CompiledModel {
 
   KKTSolverBase& kkt_;
   SolverRHS cost_rhs_;
-  Arena arena_;
+  std::unique_ptr<Arena> owned_arena_;  // only set by 2-arg ctor
+  Arena& arena_;
 
   // Cached layout for arena allocation.
   RowSpaceLayout row_layout_;
