@@ -26,6 +26,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/tests)
 
 # --- Tree solver core ---
 add_library(tree_solver
+  src/conex/common/tree_rhs.cc
   src/conex/linear_solvers/kkt_tree_solver.cc
   src/conex/linear_solvers/kkt_subsystem.cc
   src/conex/linear_solvers/assembler_adapter.cc

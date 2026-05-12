@@ -232,195 +232,79 @@ class SymmetricConeOperations;     // forward declaration
 // Element of a product of Euclidean Jordan algebras.
 // Single-column by default; supports n-column for batched operations.
 // Each segment has an associated BarrierConeOperations for dispatching.
+// Variable: segmented vector for cone operations.
+//
+// Storage is a raw double* buffer (not Eigen::MatrixXd). The Variable
+// can own its memory (heap via shared_ptr) or borrow it (arena).
+// This enables zero-allocation solve loops when backed by an arena.
+//
+// Each segment starts at offsets[i] doubles from the buffer start.
+// segment_ptr(i) returns a raw pointer; segment(i) returns an Eigen::Map.
 class Variable {
  public:
-  // Segment metadata (public for read access by MakeRowSpace builders).
+  // Segment metadata.
   std::vector<int> offsets;
   std::vector<int> sizes;
-  std::vector<const BarrierConeOperations*> ops;  // one per segment (non-owning)
+  std::vector<const BarrierConeOperations*> ops;
 
-  // Allocate storage.
-  void resize(int rows, int ncols) { data_.resize(rows, ncols); }
-  void setZero(int rows, int ncols) { data_.setZero(rows, ncols); }
+  Variable() = default;
 
-  // Multi-column block for constraint i (rows x cols).
-  Eigen::Block<Eigen::MatrixXd> segment(int i) {
-    return data_.block(offsets[i], 0, sizes[i], data_.cols());
-  }
-  const Eigen::Block<const Eigen::MatrixXd> segment(int i) const {
-    return data_.block(offsets[i], 0, sizes[i], data_.cols());
-  }
+  // Deep copy: heap-backed Variables always get their own buffer.
+  Variable(const Variable& o);
+  Variable& operator=(const Variable& o);
+  Variable(Variable&&) = default;
+  Variable& operator=(Variable&&) = default;
 
-  // Raw pointer to segment data (for BarrierConeOperations dispatch).
-  // Arena path: returns aligned pointer via padded offsets.
-  double* segment_ptr(int i) {
-    return use_arena_ ? arena_buf_ + offsets[i] : &data_(offsets[i], 0);
-  }
-  const double* segment_ptr(int i) const {
-    return use_arena_ ? arena_buf_ + offsets[i] : &data_(offsets[i], 0);
-  }
+  // Heap allocation.
+  void resize(int rows, int ncols);
+  void setZero(int rows, int ncols);
 
-  // Column access (for KKT interface: SetWeights, GetAffineTerm, etc.).
-  // Arena path: returns a Map over the padded buffer.
-  Eigen::Map<Eigen::VectorXd> col(int c = 0) {
-    if (use_arena_) {
-      return Eigen::Map<Eigen::VectorXd>(
-          arena_buf_ + c * arena_total_padded_, arena_total_padded_);
-    }
-    return Eigen::Map<Eigen::VectorXd>(data_.col(c).data(), data_.rows());
-  }
-  Eigen::Map<const Eigen::VectorXd> col(int c = 0) const {
-    if (use_arena_) {
-      return Eigen::Map<const Eigen::VectorXd>(
-          arena_buf_ + c * arena_total_padded_, arena_total_padded_);
-    }
-    return Eigen::Map<const Eigen::VectorXd>(data_.col(c).data(), data_.rows());
-  }
-
-  int total_rows() const {
-    return use_arena_ ? arena_total_padded_ : static_cast<int>(data_.rows());
-  }
-  int cols() const {
-    return use_arena_ ? arena_cols_ : static_cast<int>(data_.cols());
-  }
-  int num_constraints() const { return static_cast<int>(sizes.size()); }
-  void SetZero() {
-    if (use_arena_) {
-      std::memset(arena_buf_, 0,
-                  arena_total_padded_ * arena_cols_ * sizeof(double));
-    } else {
-      data_.setZero();
-    }
-  }
-
-  // Set all entries to a scalar value (bypasses cone dispatch).
-  // Useful for setting per-row scalar weights uniformly (e.g., identity
-  // Gram weights where setOnes would produce the EJA identity element).
-  void SetScalarWeights(double val) { data_.setConstant(val); }
-
-  Variable& operator*=(double alpha) {
-    if (use_arena_) {
-      for (int i = 0; i < arena_total_padded_ * arena_cols_; ++i)
-        arena_buf_[i] *= alpha;
-    } else {
-      data_ *= alpha;
-    }
-    return *this;
-  }
-  Variable& operator+=(const Variable& o) {
-    if (use_arena_ && o.use_arena_) {
-      for (int i = 0; i < arena_total_padded_ * arena_cols_; ++i)
-        arena_buf_[i] += o.arena_buf_[i];
-    } else if (!use_arena_ && !o.use_arena_) {
-      data_ += o.data_;
-    } else {
-      // Mixed: operate per-segment.
-      for (int s = 0; s < num_constraints(); ++s)
-        for (int j = 0; j < sizes[s]; ++j)
-          segment_ptr(s)[j] += o.segment_ptr(s)[j];
-    }
-    return *this;
-  }
-  Variable& operator-=(const Variable& o) {
-    if (use_arena_ && o.use_arena_) {
-      for (int i = 0; i < arena_total_padded_ * arena_cols_; ++i)
-        arena_buf_[i] -= o.arena_buf_[i];
-    } else if (!use_arena_ && !o.use_arena_) {
-      data_ -= o.data_;
-    } else {
-      for (int s = 0; s < num_constraints(); ++s)
-        for (int j = 0; j < sizes[s]; ++j)
-          segment_ptr(s)[j] -= o.segment_ptr(s)[j];
-    }
-    return *this;
-  }
-
-  friend Variable operator+(const Variable& a, const Variable& b) {
-    Variable out = a;
-    out += b;
-    return out;
-  }
-
-  friend Variable operator-(const Variable& a, const Variable& b) {
-    Variable out = a;
-    out -= b;
-    return out;
-  }
-
-  friend Variable operator*(double alpha, const Variable& a) {
-    Variable out = a;
-    out *= alpha;
-    return out;
-  }
-
-  friend Variable operator*(const Variable& a, double alpha) {
-    return alpha * a;
-  }
-
-  // Jordan product: a * b.
-  //   Nonneg: elementwise a_i * b_i.
-  //   PSD: (AB + BA) / 2.
-  friend Variable operator*(const Variable& a, const Variable& b) {
-    Variable out;
-    out.offsets = a.offsets;
-    out.sizes = a.sizes;
-    out.ops = a.ops;
-    out.data_.resizeLike(a.data_);
-    for (int i = 0; i < a.num_constraints(); ++i)
-      static_cast<const SymmetricConeOperations*>(a.ops[i])->product(
-          out.segment_ptr(i), a.segment_ptr(i),
-          b.segment_ptr(i), a.sizes[i]);
-    return out;
-  }
-
-  // Bind to arena-allocated memory with padded segment offsets.
-  // After binding, segment_ptr(i) returns aligned pointers.
-  // The data is NOT owned by this Variable — the arena owns it.
+  // Arena allocation (zero heap allocation).
   void BindArenaData(double* buf, const std::vector<int>& padded_offsets,
-                     const std::vector<int>& seg_sizes, int ncols) {
-    offsets = padded_offsets;
-    sizes = seg_sizes;
-    arena_buf_ = buf;
-    arena_total_padded_ = padded_offsets.empty() ? 0 :
-        padded_offsets.back() + ((seg_sizes.back() + 3) & ~3);  // approx
-    arena_cols_ = ncols;
-    // Point data_ at the arena buffer (non-owning via Map).
-    // We use a 1-row dummy to keep data_.rows()/cols() working for
-    // total_rows() and cols() queries. Segment access goes through arena_buf_.
-    new (&data_) Eigen::MatrixXd(0, 0);  // empty, not used for storage
-    use_arena_ = true;
-  }
+                     const std::vector<int>& seg_sizes, int ncols);
 
-  bool uses_arena() const { return use_arena_; }
+  // Segment access (with outer stride matching the full buffer layout).
+  using SegmentMap = Eigen::Map<Eigen::MatrixXd, 0, Eigen::OuterStride<>>;
+  using ConstSegmentMap = Eigen::Map<const Eigen::MatrixXd, 0, Eigen::OuterStride<>>;
+  SegmentMap segment(int i);
+  ConstSegmentMap segment(int i) const;
+  double* segment_ptr(int i) { return data_ + offsets[i]; }
+  const double* segment_ptr(int i) const { return data_ + offsets[i]; }
+
+  // Column access.
+  Eigen::Map<Eigen::VectorXd> col(int c = 0);
+  Eigen::Map<const Eigen::VectorXd> col(int c = 0) const;
+
+  int total_rows() const { return rows_; }
+  int cols() const { return cols_; }
+  int num_constraints() const { return static_cast<int>(sizes.size()); }
+
+  void SetZero();
+  void SetScalarWeights(double val);
+
+  Variable& operator*=(double alpha);
+  Variable& operator+=(const Variable& o);
+  Variable& operator-=(const Variable& o);
+
+  friend Variable operator+(const Variable& a, const Variable& b);
+  friend Variable operator-(const Variable& a, const Variable& b);
+  friend Variable operator*(double alpha, const Variable& a);
+  friend Variable operator*(const Variable& a, double alpha);
+  friend Variable operator*(const Variable& a, const Variable& b);
+
+  bool uses_arena() const { return !heap_storage_; }
+  double* data() { return data_; }
+  const double* data() const { return data_; }
 
  private:
-  Eigen::MatrixXd data_;     // heap-owned storage (non-arena path)
-  double* arena_buf_ = nullptr;
-  int arena_total_padded_ = 0;
-  int arena_cols_ = 0;
-  bool use_arena_ = false;
+  double* data_ = nullptr;
+  int rows_ = 0;
+  int cols_ = 0;
+  std::shared_ptr<double[]> heap_storage_;
 };
 
-// Pretty-print a Variable.  PSD segments (n² rows where n = sqrt(size))
-// are reshaped into n×n matrices.  Nonneg segments print as vectors.
-inline std::ostream& operator<<(std::ostream& os, const Variable& v) {
-  for (int i = 0; i < v.num_constraints(); ++i) {
-    int sz = v.sizes[i];
-    int n = static_cast<int>(std::round(std::sqrt(static_cast<double>(sz))));
-    bool is_square = (n * n == sz && n > 1);
-    os << "segment " << i << " (" << sz << " entries)";
-    if (is_square) {
-      os << " [" << n << "x" << n << " matrix]:\n";
-      Eigen::Map<const Eigen::MatrixXd> M(v.segment_ptr(i), n, n);
-      os << M << "\n";
-    } else {
-      os << ":\n";
-      Eigen::Map<const Eigen::VectorXd> vec(v.segment_ptr(i), sz);
-      os << vec.transpose() << "\n";
-    }
-  }
-  return os;
-}
+// Pretty-print.
+std::ostream& operator<<(std::ostream& os, const Variable& v);
 
 }  // namespace EuclideanJordanAlgebra
 
