@@ -525,6 +525,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
 
   // Owned separator scratches for MakeSolverRHS allocations.
   std::vector<std::unique_ptr<SeparatorScratch>> owned_solver_rhs_scratches_;
+
 };
 
 }  // namespace conex

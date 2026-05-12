@@ -1036,10 +1036,12 @@ SolverRHS T::AllocSolverRHS(Arena& arena, int cols) {
   }
   rhs.supernodes = p.get();
   owned_tree_rhs_partitions_.push_back(std::move(p));
+
   auto sep = std::make_unique<SeparatorScratch>();
   sep->Init(subsystems_, cols, &arena);
   rhs.separators = sep.get();
   owned_solver_rhs_scratches_.push_back(std::move(sep));
+
   rhs.blocks_fully_gathered = false;
   return rhs;
 }
