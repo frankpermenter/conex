@@ -3,6 +3,7 @@ project(conex CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # Eigen
 find_package(Eigen3 REQUIRED)
@@ -736,3 +737,29 @@ add_executable(delayed_ordering_test tests/delayed_ordering_test.cc)
 target_link_libraries(delayed_ordering_test clique_ordering)
 add_executable(analyze_tree bench/analyze_tree.cc)
 target_link_libraries(analyze_tree algorithms constraints sparse_linear_constraint clique_ordering kkt_solver_factory tree_solver structural_rank)
+
+# --- Python bindings (optional) ---
+find_package(Python3 COMPONENTS Interpreter Development)
+find_package(pybind11 QUIET)
+if(NOT pybind11_FOUND AND Python3_FOUND)
+  execute_process(
+    COMMAND ${Python3_EXECUTABLE} -m pybind11 --cmakedir
+    OUTPUT_VARIABLE pybind11_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+  if(pybind11_DIR)
+    find_package(pybind11 PATHS ${pybind11_DIR} NO_DEFAULT_PATH)
+  endif()
+endif()
+
+if(pybind11_FOUND)
+  pybind11_add_module(_conex python/conex_pybind.cc)
+  target_link_libraries(_conex PRIVATE
+    algorithms constraints sparse_linear_constraint
+    clique_ordering kkt_solver_factory tree_solver
+    structural_rank
+  )
+  message(STATUS "Python bindings enabled")
+else()
+  message(STATUS "pybind11 not found — skipping Python bindings")
+endif()
