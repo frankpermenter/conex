@@ -1119,43 +1119,13 @@ GeodesicResult SolveGeodesicThetaContinuation(
     }
     tau = tau_sel;
 
-    // Evaluate the direction and reported quantities at the consistent
-    // (W, decomp, tau) BEFORE the geodesic step, so V(tau)=0 holds
-    // exactly and reported eq_err ≈ machine precision.
+    // Evaluate direction for the first step.
     RowSpace d_step = model.AllocRowSpace();
     EvaluateDirection(d_step, decomp, k, tau, theta);
     double d_inf = normInf(d_step);
     double d_sq = squaredNorm(d_step);
     double mu = 1.0 / (k * k);
     double gap = mu * (nu - d_sq);
-
-    RowSpace sqrtW_step = model.AllocRowSpace();
-    EuclideanJordanAlgebra::sqrt(sqrtW_step, W);
-    RowSpace ones_step = model.AllocRowSpace();
-    setOnes(ones_step);
-    RowSpace ones_step_plus_d = model.AllocRowSpace();
-    addScaled(ones_step_plus_d, ones_step, d_step, 1.0, 1.0);
-    RowSpace lam_step = model.AllocRowSpace();
-    quadraticRepresentation(lam_step, sqrtW_step, ones_step_plus_d);
-    lam_step *= (1.0 / k);
-    double bT_lambda = dot(b, lam_step);
-    auto x_rhs_step = model.AllocSolverRHS();
-    x_rhs_step.SetZero();
-    x_rhs_step.AddScaled(1.0 / k, decomp.y0);
-    x_rhs_step.AddScaled(tau, decomp.y1_0);
-    x_rhs_step.AddScaled(theta, decomp.y1_theta);
-    // c'x (primal cost only, no equality dual).
-    double cT_x = cost_rhs.dot(x_rhs_step);
-    // d'ν (equality dual contribution to the dual objective).
-    double dT_nu = duality_cost.dot(x_rhs_step) - cT_x;
-    // x'Qx/(2τ) (quadratic cost contribution).
-    auto qx_rhs = model.AllocSolverRHS();
-    qx_rhs.SetZero();
-    model.AccumulateQx(x_rhs_step, qx_rhs);
-    double xQx_over_tau = (tau > 1e-30) ? qx_rhs.dot(x_rhs_step) / tau : 0.0;
-    double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
-    double eq_err_final = std::abs(bT_lambda + cT_x + dT_nu + xQx_over_tau
-                                    + mu_over_tau - theta * (bT_ones + 1.0));
 
     // Take geodesic step.
     RowSpace W0 = W;  // save frozen Jacobian point
@@ -1281,22 +1251,54 @@ GeodesicResult SolveGeodesicThetaContinuation(
       k = k_f;
       tau = tau_f;
     }
-    int centering_iters = 0;
-
+    // Recompute objectives at the final (theta, k, tau) after frozen-J.
+    mu = 1.0 / (k * k);
     if (verbose) {
-      double kappa = mu_over_tau;
-      // De-homogenize: x_phys = x/τ.
-      // Primal obj = c'x_phys + (1/2)x_phys'Qx_phys
-      // Dual obj   = -(b'λ_phys + d'ν_phys + (1/2)x_phys'Qx_phys)
-      double half_xQx_phys = (tau > 1e-30)
-          ? 0.5 * qx_rhs.dot(x_rhs_step) / (tau * tau) : 0.0;
+      // Compute lambda and x at current (k, tau, theta, decomp, W_before_last_step).
+      // We use W0 (the W before frozen-J) for the outer step's lambda,
+      // or the current W for the frozen-J steps' lambda.
+      // For the summary line, recompute from the final direction.
+      RowSpace d_final = model.AllocRowSpace();
+      EvaluateDirection(d_final, decomp, k, tau, theta);
+      d_inf = normInf(d_final);
+      d_sq = squaredNorm(d_final);
+      gap = mu * (nu - d_sq);
+
+      RowSpace sqrtW0 = model.AllocRowSpace();
+      EuclideanJordanAlgebra::sqrt(sqrtW0, W0);
+      RowSpace ones_v = model.AllocRowSpace();
+      setOnes(ones_v);
+      RowSpace ed = model.AllocRowSpace();
+      addScaled(ed, ones_v, d_final, 1.0, 1.0);
+      RowSpace lam_v = model.AllocRowSpace();
+      quadraticRepresentation(lam_v, sqrtW0, ed);
+      lam_v *= (1.0 / k);
+
+      double bT_lambda = dot(b, lam_v);
+      auto x_rhs_v = model.AllocSolverRHS();
+      x_rhs_v.SetZero();
+      x_rhs_v.AddScaled(1.0 / k, decomp.y0);
+      x_rhs_v.AddScaled(tau, decomp.y1_0);
+      x_rhs_v.AddScaled(theta, decomp.y1_theta);
+      double cT_x = cost_rhs.dot(x_rhs_v);
+      double dT_nu = duality_cost.dot(x_rhs_v) - cT_x;
+      auto qx_rhs = model.AllocSolverRHS(); qx_rhs.SetZero();
+      model.AccumulateQx(x_rhs_v, qx_rhs);
+      double xQx = qx_rhs.dot(x_rhs_v);
+      double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
+      double xQx_over_tau = (tau > 1e-30) ? xQx / tau : 0.0;
+      double eq_err = std::abs(bT_lambda + cT_x + dT_nu + xQx_over_tau
+                                + mu_over_tau - theta * (bT_ones + 1.0));
+
+      double half_xQx_phys = (tau > 1e-30) ? 0.5 * xQx / (tau * tau) : 0.0;
       double primal_phys = (tau > 1e-30) ? cT_x / tau + half_xQx_phys : 0.0;
       double dual_phys = (tau > 1e-30)
           ? -((bT_lambda + dT_nu) / tau + half_xQx_phys) : 0.0;
       printf("  %3d  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
              "  %12.4e  %12.4e  %12.4e  %12.2e  %3d\n",
-             outer, theta, tau, kappa, k, d_inf, d_sq, gap,
-             dual_phys, primal_phys, mu_over_tau, eq_err_final, centering_iters);
+             outer, theta, tau, mu_over_tau, k, d_inf, d_sq, gap,
+             dual_phys, primal_phys, mu_over_tau, eq_err,
+             max_centering_steps);
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
