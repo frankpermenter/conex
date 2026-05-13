@@ -548,22 +548,31 @@ DualityCoeffs ComputeDualityCoeffs(
 // Given a decomposition and candidate theta, solve the hard-constraint
 // violation quadratic V(tau)=0, evaluate d, return (tau, d_inf).
 // Returns tau = -1 if no positive root exists.
-static std::pair<double, double> EvalThetaCandidate(
-    CompiledModel& model,
-    Arena& arena,
-    const SolverRHS& duality_cost,
-    const RowSpace& b,
-    const RowSpace& W,
-    const NewtonDecomposition& decomp,
-    double bT_ones,
-    double theta_cand) {
-  if (theta_cand <= 0) return {-1, 1e30};
+// Precomputed theta-independent quantities for EvalThetaCandidate.
+struct ThetaCandidateCoeffs {
+  double beta;         // sigma1 + gamma1 + q11
+  double bT_P_ed0;    // dot(b, P(sqrtW, e+d0))
+  double bT_P_d1t;    // dot(b, P(sqrtW, d1_theta))
+  double cT_y0, cT_yt;
+  double bT_ones;
+  // Q dot products: f = y0/k + theta*y_theta, need q00, q0t, qtt, q01, qt1
+  double q00, q0t, qtt, q01, qt1;
+  bool has_Q;
+  // ||d||^2 inner products for root selection.
+  DecompInnerProducts ip;
+};
+
+static ThetaCandidateCoeffs PrecomputeThetaCoeffs(
+    CompiledModel& model, Arena& arena,
+    const SolverRHS& duality_cost, const RowSpace& b,
+    const RowSpace& W, const NewtonDecomposition& decomp,
+    double bT_ones) {
   char* mark = arena.SaveCursor();
-  double k = 1.0 / std::sqrt(theta_cand);
-  double mu = theta_cand;
+  ThetaCandidateCoeffs c;
+  c.bT_ones = bT_ones;
 
   auto dc = ComputeDualityCoeffs(model, arena, duality_cost, b, W, decomp);
-  double beta = dc.sigma1 + dc.gamma1 + dc.q11;
+  c.beta = dc.sigma1 + dc.gamma1 + dc.q11;
 
   RowSpace sqrtW = model.AllocRowSpace(arena);
   EuclideanJordanAlgebra::sqrt(sqrtW, W);
@@ -571,50 +580,83 @@ static std::pair<double, double> EvalThetaCandidate(
   setOnes(ones_v);
   RowSpace e_plus_d0 = model.AllocRowSpace(arena);
   addScaled(e_plus_d0, ones_v, decomp.d0, 1.0, 1.0);
-  RowSpace arg = model.AllocRowSpace(arena);
-  addScaled(arg, e_plus_d0, decomp.d1_theta, 1.0, k * theta_cand);
-  RowSpace Parg = model.AllocRowSpace(arena);
-  quadraticRepresentation(Parg, sqrtW, arg);
-  double sigma0 = dot(b, Parg) / k;
 
-  double cT_y0 = duality_cost.dot(decomp.y0);
-  double cT_yt = duality_cost.dot(decomp.y1_theta);
-  double gamma0 = cT_y0 / k + theta_cand * cT_yt;
+  RowSpace P_ed0 = model.AllocRowSpace(arena);
+  quadraticRepresentation(P_ed0, sqrtW, e_plus_d0);
+  c.bT_P_ed0 = dot(b, P_ed0);
 
-  auto f_rhs = model.AllocSolverRHS();
-  f_rhs.SetZero();
-  f_rhs.AddScaled(1.0 / k, decomp.y0);
-  f_rhs.AddScaled(theta_cand, decomp.y1_theta);
-  auto qf = model.AllocSolverRHS();
-  qf.SetZero();
-  model.AccumulateQx(f_rhs, qf);
-  double q_ff = qf.dot(f_rhs);
-  double q_f1 = qf.dot(decomp.y1_0);
+  RowSpace P_d1t = model.AllocRowSpace(arena);
+  quadraticRepresentation(P_d1t, sqrtW, decomp.d1_theta);
+  c.bT_P_d1t = dot(b, P_d1t);
+
+  c.cT_y0 = duality_cost.dot(decomp.y0);
+  c.cT_yt = duality_cost.dot(decomp.y1_theta);
+
+  // Q dot products.
+  c.has_Q = model.has_quadratic_cost();
+  c.q00 = c.q0t = c.qtt = c.q01 = c.qt1 = 0;
+  if (c.has_Q) {
+    auto Qy0 = model.AllocSolverRHS(); Qy0.SetZero();
+    model.AccumulateQx(decomp.y0, Qy0);
+    auto Qyt = model.AllocSolverRHS(); Qyt.SetZero();
+    model.AccumulateQx(decomp.y1_theta, Qyt);
+    c.q00 = Qy0.dot(decomp.y0);
+    c.q0t = Qy0.dot(decomp.y1_theta);
+    c.qtt = Qyt.dot(decomp.y1_theta);
+    c.q01 = Qy0.dot(decomp.y1_0);
+    c.qt1 = Qyt.dot(decomp.y1_0);
+  }
+
+  c.ip = ComputeInnerProducts(decomp);
+
+  arena.RestoreCursor(mark);
+  return c;
+}
+
+// Fast theta evaluation using precomputed coefficients (no eigendecomps).
+static std::pair<double, double> EvalThetaFast(
+    const ThetaCandidateCoeffs& c,
+    const DecompInnerProducts& ip,
+    double theta_cand) {
+  if (theta_cand <= 0) return {-1, 1e30};
+  double k = 1.0 / std::sqrt(theta_cand);
+  double mu = theta_cand;
+
+  // sigma0 = dot(b, P(sqrtW, e+d0 + k*theta*d1_theta)) / k
+  //        = (bT_P_ed0 + k*theta*bT_P_d1t) / k
+  //        = bT_P_ed0/k + theta*bT_P_d1t
+  double sigma0 = c.bT_P_ed0 / k + theta_cand * c.bT_P_d1t;
+
+  double gamma0 = c.cT_y0 / k + theta_cand * c.cT_yt;
+
+  // q_ff = (y0/k + theta*yt)' Q (y0/k + theta*yt)
+  double q_ff = c.q00 / (k * k) + 2 * theta_cand * c.q0t / k
+              + theta_cand * theta_cand * c.qtt;
+  // q_f1 = (y0/k + theta*yt)' Q y1_0
+  double q_f1 = c.q01 / k + theta_cand * c.qt1;
 
   double alpha = sigma0 + gamma0 + 2.0 * q_f1;
-  double R = theta_cand * (bT_ones + 1.0);
+  double R = theta_cand * (c.bT_ones + 1.0);
   double mu_eff = mu + q_ff;
 
   double B = alpha - R;
-  double disc = B * B - 4.0 * beta * mu_eff;
-  if (disc < 0) { arena.RestoreCursor(mark); return {-1, 1e30}; }
+  double disc = B * B - 4.0 * c.beta * mu_eff;
+  if (disc < 0) return {-1, 1e30};
 
   double sqrt_disc = std::sqrt(disc);
-  double tau1 = (-B + sqrt_disc) / (2.0 * beta);
-  double tau2 = (-B - sqrt_disc) / (2.0 * beta);
+  double tau1 = (-B + sqrt_disc) / (2.0 * c.beta);
+  double tau2 = (-B - sqrt_disc) / (2.0 * c.beta);
 
-  auto eval_dsq = [&](double tau) -> double {
+  // ||d||^2 from inner products: d = d0 + k*(tau*d1_0 + theta*d1_theta)
+  auto dsq = [&](double tau) -> double {
     if (tau <= 0) return 1e30;
-    char* em = arena.SaveCursor();
-    RowSpace d = model.AllocRowSpace(arena);
-    EvaluateDirection(d, decomp, k, tau, theta_cand);
-    double r = squaredNorm(d);
-    arena.RestoreCursor(em);
-    return r;
+    double t = tau, th = theta_cand;
+    // ||d0 + k*(t*d1_0 + th*d1_theta)||^2
+    return ip.a + 2*k*(t*ip.f + th*ip.g) + k*k*(t*t*ip.p + 2*t*th*ip.q + th*th*ip.r);
   };
 
-  double dsq1 = eval_dsq(tau1);
-  double dsq2 = eval_dsq(tau2);
+  double dsq1 = dsq(tau1);
+  double dsq2 = dsq(tau2);
 
   double tau_out;
   if (tau1 > 0 && (tau2 <= 0 || dsq1 <= dsq2)) {
@@ -622,15 +664,40 @@ static std::pair<double, double> EvalThetaCandidate(
   } else if (tau2 > 0) {
     tau_out = tau2;
   } else {
-    arena.RestoreCursor(mark);
     return {-1, 1e30};
   }
 
+  // d_inf from ||d||^2: approximate as sqrt(dsq) for feasibility check.
+  // For exact d_inf we'd need normInf, but for bisection the quadratic
+  // tau selection already ensures ||d||_inf <= 1 when ||d||^2 <= nu.
+  // Use the exact direction only for the final evaluation.
+  double d_sq = dsq(tau_out);
+  // Approximate d_inf from d_sq: for nonneg cones, d_inf <= sqrt(d_sq).
+  // For PSD, d_inf = max eigenvalue, bounded by sqrt(rank * d_sq).
+  // Use sqrt(d_sq) as conservative estimate.
+  double d_inf_approx = std::sqrt(d_sq);
+
+  return {tau_out, d_inf_approx};
+}
+
+// Full evaluation (with exact d_inf) for the final chosen theta.
+static std::pair<double, double> EvalThetaCandidate(
+    CompiledModel& model,
+    Arena& arena,
+    const ThetaCandidateCoeffs& c,
+    const NewtonDecomposition& decomp,
+    double theta_cand) {
+  auto [tau, d_inf_approx] = EvalThetaFast(c, c.ip, theta_cand);
+  if (tau <= 0) return {-1, 1e30};
+
+  // Compute exact d_inf via normInf.
+  char* mark = arena.SaveCursor();
+  double k = 1.0 / std::sqrt(theta_cand);
   RowSpace d = model.AllocRowSpace(arena);
-  EvaluateDirection(d, decomp, k, tau_out, theta_cand);
+  EvaluateDirection(d, decomp, k, tau, theta_cand);
   double dinf = normInf(d);
   arena.RestoreCursor(mark);
-  return {tau_out, dinf};
+  return {tau, dinf};
 }
 
 // Frozen-Jacobian variant of EvalThetaCandidate.
@@ -1088,30 +1155,30 @@ GeodesicResult SolveGeodesicThetaContinuation(
     total_fac++;
     total_sol += 3;
 
-    // Binary search for the smallest theta with ||d||_inf <= beta,
-    // using the hard-constraint (V(tau)=0) tau selection.
+    // Precompute theta-independent quantities (one sqrt(W), one P(W), dot products).
+    auto tc = PrecomputeThetaCoeffs(model, arena, duality_cost, b, W, decomp, bT_ones);
+
+    // Binary search for the smallest theta with tau > 0 and ||d||_inf <= beta.
     constexpr double beta_target = 1.0;
     double theta_prev = theta;
     {
-      double theta_lo = 0.0;     // allow theta to reach 0
-      double theta_hi = theta;   // current (centered) theta
+      double theta_lo = 0.0;
+      double theta_hi = theta;
       for (int bisect = 0; bisect < 30; ++bisect) {
-        // Use arithmetic mean since theta_lo can be 0 (geometric mean→0).
         double theta_mid = 0.5 * (theta_lo + theta_hi);
-        auto [tau_try, d_inf_try] = EvalThetaCandidate(
-            model, arena, duality_cost, b, W, decomp, bT_ones, theta_mid);
+        auto [tau_try, d_inf_try] = EvalThetaFast(tc, tc.ip, theta_mid);
         if (tau_try > 0 && d_inf_try <= beta_target) {
-          theta_hi = theta_mid;  // can go lower
+          theta_hi = theta_mid;
         } else {
-          theta_lo = theta_mid;  // too aggressive
+          theta_lo = theta_mid;
         }
       }
       theta = theta_hi;
     }
     k = 1.0 / std::sqrt(theta);
-    // Evaluate tau at the chosen theta via hard constraint (V(tau)=0).
+    // Final evaluation with exact d_inf (normInf, not sqrt(d_sq) approximation).
     auto [tau_sel, d_inf_sel] = EvalThetaCandidate(
-        model, arena, duality_cost, b, W, decomp, bT_ones, theta);
+        model, arena, tc, decomp, theta);
     if (tau_sel <= 0) {
       // No positive root — abort this outer iteration.
       result.iterations = outer + 1;
@@ -1177,8 +1244,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
         double theta_mid = 0.5 * (theta_lo_f + theta_hi_f);
         std::pair<double, double> result_try;
         if (refactor_inner) {
-          result_try = EvalThetaCandidate(
-              model, arena, duality_cost, b, W, decomp, bT_ones, theta_mid);
+          auto tc_r = PrecomputeThetaCoeffs(model, arena, duality_cost, b, W, decomp, bT_ones);
+          result_try = EvalThetaCandidate(model, arena, tc_r, decomp, theta_mid);
         } else {
           result_try = FrozenEvalThetaCandidate(
               model, arena, duality_cost, b, W, sqrtW0_f, decomp,
@@ -1195,8 +1262,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
       double k_f = 1.0 / std::sqrt(theta_f);
       std::pair<double, double> result_sel;
       if (refactor_inner) {
-        result_sel = EvalThetaCandidate(
-            model, arena, duality_cost, b, W, decomp, bT_ones, theta_f);
+        auto tc_r = PrecomputeThetaCoeffs(model, arena, duality_cost, b, W, decomp, bT_ones);
+        result_sel = EvalThetaCandidate(model, arena, tc_r, decomp, theta_f);
       } else {
         result_sel = FrozenEvalThetaCandidate(
             model, arena, duality_cost, b, W, sqrtW0_f, decomp,
