@@ -174,7 +174,8 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
                       const SolverConfiguration& config,
                       double objective_constant = 0,
                       const std::string& algo_filter = "",
-                      double tol_override = 1e-8) {
+                      double tol_override = 1e-8,
+                      bool verbose = false) {
   auto should_run = [&](const char* aname) {
     return algo_filter.empty() ||
            std::string(aname).find(algo_filter) != std::string::npos;
@@ -207,43 +208,43 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   if (should_run("ThetaCont")) {
     results.push_back(RunAlgo("ThetaCont", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicThetaContinuation(model, W, max_iters, 0, tol);
+        return SolveGeodesicThetaContinuation(model, W, max_iters, 0, tol, verbose);
       }));
   }
   if (should_run("TC+frzJ")) {
     results.push_back(RunAlgo("TC+frzJ", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicThetaContinuation(model, W, max_iters, 1, tol);
+        return SolveGeodesicThetaContinuation(model, W, max_iters, 1, tol, verbose);
       }));
   }
   if (should_run("HSDE")) {
     results.push_back(RunAlgo("HSDE", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicHSDE(model, W, max_iters, 0, tol, true);
+        return SolveGeodesicHSDE(model, W, max_iters, 0, tol, verbose);
       }));
   }
   if (should_run("HSDE+frzJ")) {
     results.push_back(RunAlgo("HSDE+frzJ", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicHSDE(model, W, max_iters, 1, tol);
+        return SolveGeodesicHSDE(model, W, max_iters, 1, tol, verbose);
       }));
   }
   if (should_run("GeodesicLP")) {
     results.push_back(RunAlgo("GeodesicLP", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicLP(model, W, 30, 0, tol);
+        return SolveGeodesicLP(model, W, 30, 0, tol, verbose);
       }));
   }
   if (should_run("LP+frzJ")) {
     results.push_back(RunAlgo("LP+frzJ", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicLP(model, W, 30, 1, tol);
+        return SolveGeodesicLP(model, W, 30, 1, tol, verbose);
       }));
   }
   if (should_run("PhaseOne")) {
     results.push_back(RunAlgo("PhaseOne", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicPhaseOne(model, W, max_iters, 1, tol);
+        return SolveGeodesicPhaseOne(model, W, max_iters, 1, tol, verbose);
       }));
   }
   if (should_run("Ph1+Hybrid")) {
@@ -262,13 +263,13 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   if (should_run("HybridR")) {
     results.push_back(RunAlgo("HybridR", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicHybridR(model, W, max_iters, tol);
+        return SolveGeodesicHybridR(model, W, max_iters, tol, verbose);
       }));
   }
   if (should_run("ThetaContR")) {
     results.push_back(RunAlgo("ThetaContR", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicThetaContinuationR(model, W, max_iters, tol);
+        return SolveGeodesicThetaContinuationR(model, W, max_iters, tol, verbose);
       }));
   }
   for (double ct : {1e-8, 1e-10, 1e-12, 1e-14}) {
@@ -569,6 +570,7 @@ int main(int argc, char* argv[]) {
   int max_profile_iters = -1;
   std::string algo_filter;
   double tol = 1e-8;
+  bool verbose = false;
   std::vector<int> sweep_threads, sweep_merge;
   std::string arg1 = argv[1];
 
@@ -604,6 +606,8 @@ int main(int argc, char* argv[]) {
       algo_filter = argv[++i];
     } else if (arg == "--tol" && i + 1 < argc) {
       tol = std::stod(argv[++i]);
+    } else if (arg == "--verbose" || arg == "-v") {
+      verbose = true;
     }
   }
 
@@ -639,7 +643,7 @@ int main(int argc, char* argv[]) {
       auto res = conex::ProfileFactorization(problem, name, cfg, max_profile_iters);
       conex::PrintProfileResult(res, cfg);
     } else {
-      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter, tol);
+      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter, tol, verbose);
     }
     return 0;
   }
@@ -669,7 +673,7 @@ int main(int argc, char* argv[]) {
           conex::PrintProfileResult(res, cfg);
         } else {
           conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                                   info.objective_constant, algo_filter, tol);
+                                   info.objective_constant, algo_filter, tol, verbose);
         }
         count++;
       } catch (const std::exception& e) {
@@ -720,7 +724,7 @@ int main(int argc, char* argv[]) {
       printf("Stages:  build=solver construction, asm+fac/solve are median of repeated runs\n");
     } else {
       conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                               info.objective_constant, algo_filter, tol);
+                               info.objective_constant, algo_filter, tol, verbose);
     }
   } catch (const std::exception& e) {
     printf("Error: %s\n", e.what());
