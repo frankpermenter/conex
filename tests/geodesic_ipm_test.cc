@@ -13,6 +13,7 @@
 #include "conex/common/psd_cone_ops.h"
 #include "conex/common/soc_cone_ops.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 
 // Helper to wrap std::vector<double> as Eigen::Map for arithmetic.
 static Eigen::Map<const Eigen::VectorXd> asEigen(const std::vector<double>& v) {
@@ -343,7 +344,7 @@ TEST(GeodesicBarrierQP, HybridCenteringLoop) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
@@ -421,7 +422,7 @@ TEST(GeodesicSDP, CenterConvergence) {
   auto* kkt = solver.kkt();
 
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
   CompiledModel cm(*kkt, cost_rhs);
 
   // Initialize W = I + small perturbation (symmetric).
@@ -580,7 +581,7 @@ TEST(GeodesicSDP, NonDiagonalCenter) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
   CompiledModel cm(*kkt, cost_rhs);
 
   // Center at k=1 from W=I (should be 1 iter since already centered).
@@ -642,7 +643,7 @@ TEST(GeodesicSDP, NonDiagonalLP) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
   CompiledModel cm(*kkt, cost_rhs);
 
   RowSpace W = kkt->MakeRowSpace();
@@ -692,7 +693,7 @@ TEST(GeodesicSDP, HybridCenteringLoop) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
@@ -787,7 +788,7 @@ TEST(GeodesicSOC, CenterConvergence) {
   auto solver = Solver::Build(tp.problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(tp.c);
+  cost_rhs = MakeBlockVariable(*kkt, tp.c);
   CompiledModel cm(*kkt, cost_rhs);
 
   // Perturb W from identity.
@@ -817,7 +818,7 @@ TEST(GeodesicSOC, LP) {
   auto solver = Solver::Build(tp.problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c_lp);
+  cost_rhs = MakeBlockVariable(*kkt, c_lp);
   CompiledModel cm(*kkt, cost_rhs);
 
   RowSpace W = kkt->MakeRowSpace();
@@ -841,7 +842,7 @@ TEST(GeodesicSOC, HybridCenteringLoop) {
   auto solver = Solver::Build(tp.problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(tp.c);
+  cost_rhs = MakeBlockVariable(*kkt, tp.c);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
@@ -881,7 +882,7 @@ TEST(GeodesicSOC, Hybrid) {
   auto solver = Solver::Build(tp.problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(tp.c);
+  cost_rhs = MakeBlockVariable(*kkt, tp.c);
   CompiledModel cm(*kkt, cost_rhs);
 
   RowSpace W = kkt->MakeRowSpace();
@@ -1071,7 +1072,7 @@ TEST(GeodesicSDP, MixedPSDNonneg) {
   auto* kkt = solver.kkt();
 
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
   CompiledModel cm(*kkt, cost_rhs);
 
   // At W=I, k=1: d should be ~0.
@@ -1132,7 +1133,7 @@ TEST(GeodesicSDP, MixedPSDNonnegDisjoint) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
   CompiledModel cm(*kkt, cost_rhs);
 
   RowSpace W = kkt->MakeRowSpace();

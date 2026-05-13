@@ -461,10 +461,10 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void SolveBlockedInPlace() const;
   void SetEliminationOrder(
       const std::vector<int>& variable_to_elimination_position);
-  Eigen::MatrixXd DoKKTMatrix(
-      bool permute_to_elimination_order = true) const override;
-  void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
-                      bool in_original_order) const;
+  void DenseSolveInPlace(double* data, int rows, int cols,
+                         bool in_original_order) const override;
+  void DenseKKTMatrix(double* data, int n,
+                      bool permute_to_elimination_order) const override;
 
   void DoAssemble() override;
   bool DoAssembleAndFactor() override;

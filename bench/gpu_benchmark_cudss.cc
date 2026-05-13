@@ -4,6 +4,7 @@
 // The gpu_tree_solver library itself is compiled with CUDA 11.5.
 
 #include "conex/gpu_tree_solver/gpu_tree_solver.h"
+#include "conex/common/kkt_solver_dense.h"
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -524,7 +525,7 @@ TimingResult BenchCpuTreeSolver(const BenchProblem& prob, int warmup,
     auto solver = MakeTreeSolver(&cm, cfg);
     solver->AssembleAndFactor();
     auto t1 = std::chrono::high_resolution_clock::now();
-    x_cpu = solver->Solve(prob.rhs);
+    x_cpu = KKTSolve(*solver, prob.rhs);
     auto t2 = std::chrono::high_resolution_clock::now();
 
     if (t >= warmup) {

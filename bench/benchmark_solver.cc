@@ -39,6 +39,7 @@
 #include "conex/common/rescale.h"
 #include "conex/common/sdpa_reader.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 
 namespace conex {
@@ -422,12 +423,12 @@ ProfileResult ProfileFactorization(const Model& problem,
   VectorXd rhs = VectorXd::Random(n_solve);
 
   // Solve timing.
-  kkt->Solve(rhs);  // warm up
+  KKTSolve(*kkt, rhs);  // warm up
   std::vector<double> s_times(iters);
   VectorXd sol;
   for (int i = 0; i < iters; ++i) {
     auto ta = Clock::now();
-    sol = kkt->Solve(rhs);
+    sol = KKTSolve(*kkt, rhs);
     auto tb = Clock::now();
     s_times[i] = us(ta, tb);
   }

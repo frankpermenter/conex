@@ -21,6 +21,7 @@
 #include "conex/common/rescale.h"
 #include "conex/common/sdpa_reader.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 
 namespace conex {
@@ -304,7 +305,7 @@ void RunCenteringRaw(Model& problem, const std::string& name, int max_iters) {
   // Use the problem's actual linear cost.
   auto cost_rhs = kkt->MakeSolverRHS();
   if (problem.has_linear_cost()) {
-    cost_rhs = kkt->MakeBlockVariable(problem.linear_cost());
+    cost_rhs = MakeBlockVariable(*kkt, problem.linear_cost());
   } else {
     cost_rhs.SetZero();
   }

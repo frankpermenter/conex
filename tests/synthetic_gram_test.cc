@@ -13,6 +13,7 @@
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/kkt_solver_interface.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
 
@@ -58,7 +59,7 @@ void RunCase(const std::string& name,
   for (int i = 0; i < nvars; ++i) x(i) = dist(gen);
 
   auto x_rhs = kkt->MakeSolverRHS();
-  x_rhs = kkt->MakeBlockVariable(x);
+  x_rhs = MakeBlockVariable(*kkt, x);
   auto Ax = kkt->MakeRowSpace();
   kkt->MultiplyA(x_rhs, Ax);
   auto b_rhs = kkt->MakeSolverRHS();

@@ -7,6 +7,7 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 #include "conex/common/equality_constraint.h"
@@ -19,7 +20,7 @@ static SolverRHS BuildCostRHS(KKTSolverBase& kkt,
   int n = std::min((int)cost.size(), nv);
   cost_full.head(n) = cost.head(n);
   auto rhs = kkt.MakeSolverRHS();
-  rhs = kkt.MakeBlockVariable(cost_full);
+  rhs = MakeBlockVariable(kkt, cost_full);
   return rhs;
 }
 

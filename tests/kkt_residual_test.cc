@@ -8,6 +8,7 @@
 #include <Eigen/Sparse>
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/common/qps_reader.h"
 #include "conex/common/equality_constraint.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
@@ -115,7 +116,7 @@ bool TestInstance(const char* name, const char* path,
     }
   }
 
-  Eigen::VectorXd sol = kkt->Solve(rhs);
+  Eigen::VectorXd sol = KKTSolve(*kkt, rhs);
 
   // Build the KKT matrix manually from Q and C.
   Eigen::MatrixXd K = Eigen::MatrixXd::Zero(nv, nv);

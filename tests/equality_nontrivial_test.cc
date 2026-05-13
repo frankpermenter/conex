@@ -8,6 +8,7 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 #include "conex/common/equality_constraint.h"
@@ -20,7 +21,7 @@ static SolverRHS BuildCostRHS(KKTSolverBase& kkt,
   int nc = std::min((int)cost.size(), nv);
   cost_full.head(nc) = cost.head(nc);
   auto rhs = kkt.MakeSolverRHS();
-  rhs = kkt.MakeBlockVariable(cost_full);
+  rhs = MakeBlockVariable(kkt, cost_full);
   return rhs;
 }
 
@@ -109,7 +110,7 @@ bool TestStandardFormLP() {
     auto s2 = Solver::Build(reduced);
     auto* k2 = s2.kkt();
     auto cr2 = k2->MakeSolverRHS();
-    cr2 = k2->MakeBlockVariable(rc);
+    cr2 = MakeBlockVariable(*k2, rc);
     RowSpace W2 = k2->MakeRowSpace();
     setOnes(W2); k2->SetScaling(W2); k2->AssembleAndFactor();
     CompiledModel cm2(*k2, cr2);

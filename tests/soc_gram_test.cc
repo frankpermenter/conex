@@ -5,6 +5,7 @@
 #include <Eigen/Sparse>
 #include "conex/common/soc_cone_ops.h"
 #include "conex/common/kkt_solver_interface.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
 
@@ -164,7 +165,7 @@ TEST(SOCGram, SolverGramMatchesFormula) {
   for (int j = 0; j < p; ++j) {
     VectorXd ej = VectorXd::Zero(p);
     ej(j) = 1.0;
-    G_solver.col(j) = kkt->Solve(ej);
+    G_solver.col(j) = KKTSolve(*kkt, ej);
   }
   // G_solver is Gram^{-1}.  Invert to get Gram.
   MatrixXd Gram_solver = G_solver.inverse();

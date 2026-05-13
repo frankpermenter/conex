@@ -1,4 +1,5 @@
 #include "conex/common/sparse_linear_constraint.h"
+#include "conex/common/kkt_solver_dense.h"
 
 #include <numeric>
 #include <set>
@@ -106,7 +107,7 @@ GTEST_TEST(Multithreading, LeftLookingFactorization) {
   config1.num_threads = 1;
   auto solver1 = MakeTreeSolver(&s1.cm, config1);
   ASSERT_TRUE(solver1->AssembleAndFactor());
-  VectorXd sol1 = solver1->Solve(rhs);
+  VectorXd sol1 = KKTSolve(*solver1, rhs);
   EXPECT_NEAR((sol1 - x_true).norm(), 0, 1e-8 * x_true.norm());
 
   // Multi-threaded (4 threads).
@@ -115,7 +116,7 @@ GTEST_TEST(Multithreading, LeftLookingFactorization) {
   config2.num_threads = 4;
   auto solver2 = MakeTreeSolver(&s2.cm, config2);
   ASSERT_TRUE(solver2->AssembleAndFactor());
-  VectorXd sol2 = solver2->Solve(rhs);
+  VectorXd sol2 = KKTSolve(*solver2, rhs);
   EXPECT_NEAR((sol2 - x_true).norm(), 0, 1e-8 * x_true.norm());
   EXPECT_NEAR((sol1 - sol2).norm(), 0, 1e-10 * x_true.norm());
 }
@@ -136,7 +137,7 @@ GTEST_TEST(Multithreading, ParallelRecursiveSolve) {
   SolverConfiguration config1;
   auto solver1 = MakeTreeSolver(&s1.cm, config1);
   ASSERT_TRUE(solver1->AssembleAndFactor());
-  VectorXd sol1 = solver1->Solve(rhs);
+  VectorXd sol1 = KKTSolve(*solver1, rhs);
   EXPECT_NEAR((sol1 - x_true).norm(), 0, 1e-8 * x_true.norm());
 
   // Recursive solve, single-threaded.
@@ -146,7 +147,7 @@ GTEST_TEST(Multithreading, ParallelRecursiveSolve) {
   auto solver2 = MakeTreeSolver(&s2.cm, config2);
   solver2->SetUseRecursiveSolve(true);
   ASSERT_TRUE(solver2->AssembleAndFactor());
-  VectorXd sol2 = solver2->Solve(rhs);
+  VectorXd sol2 = KKTSolve(*solver2, rhs);
   EXPECT_NEAR((sol2 - x_true).norm(), 0, 1e-8 * x_true.norm());
   EXPECT_NEAR((sol1 - sol2).norm(), 0, 1e-10 * x_true.norm());
 
@@ -157,7 +158,7 @@ GTEST_TEST(Multithreading, ParallelRecursiveSolve) {
   auto solver3 = MakeTreeSolver(&s3.cm, config3);
   solver3->SetUseRecursiveSolve(true);
   ASSERT_TRUE(solver3->AssembleAndFactor());
-  VectorXd sol3 = solver3->Solve(rhs);
+  VectorXd sol3 = KKTSolve(*solver3, rhs);
   EXPECT_NEAR((sol3 - x_true).norm(), 0, 1e-8 * x_true.norm());
   EXPECT_NEAR((sol1 - sol3).norm(), 0, 1e-10 * x_true.norm());
 }
@@ -178,7 +179,7 @@ GTEST_TEST(Multithreading, LeafParallelFactorization) {
     VectorXd x = VectorXd::Random(A.cols());
     MatrixXd Ad(A);
     VectorXd rhs = Ad.transpose() * (Ad * x);
-    VectorXd ref = sol1->Solve(rhs);
+    VectorXd ref = KKTSolve(*sol1, rhs);
 
     for (int threads : {1, 2, 4}) {
       auto s = MakeSetup(A);
@@ -186,7 +187,7 @@ GTEST_TEST(Multithreading, LeafParallelFactorization) {
       cfg.num_threads = threads;
       auto solver = MakeTreeSolver(&s.cm, cfg);
       ASSERT_TRUE(solver->AssembleAndFactor());
-      VectorXd sol = solver->Solve(rhs);
+      VectorXd sol = KKTSolve(*solver, rhs);
       EXPECT_NEAR((sol - ref).norm(), 0, 1e-10 * ref.norm())
           << "star threads=" << threads;
     }
@@ -214,7 +215,7 @@ GTEST_TEST(Multithreading, LeafParallelFactorization) {
     VectorXd x = VectorXd::Random(n);
     MatrixXd Ad(A);
     VectorXd rhs = Ad.transpose() * (Ad * x);
-    VectorXd ref = sol1->Solve(rhs);
+    VectorXd ref = KKTSolve(*sol1, rhs);
 
     for (int threads : {1, 2, 4}) {
       auto s = MakeSetup(A);
@@ -222,7 +223,7 @@ GTEST_TEST(Multithreading, LeafParallelFactorization) {
       cfg.num_threads = threads;
       auto solver = MakeTreeSolver(&s.cm, cfg);
       ASSERT_TRUE(solver->AssembleAndFactor());
-      VectorXd sol = solver->Solve(rhs);
+      VectorXd sol = KKTSolve(*solver, rhs);
       EXPECT_NEAR((sol - ref).norm(), 0, 1e-10 * ref.norm())
           << "banded threads=" << threads;
     }
@@ -241,7 +242,7 @@ GTEST_TEST(Multithreading, LeafParallelFactorization) {
     VectorXd x = VectorXd::Random(A.cols());
     MatrixXd Ad(A);
     VectorXd rhs = Ad.transpose() * (Ad * x);
-    VectorXd ref = sol1->Solve(rhs);
+    VectorXd ref = KKTSolve(*sol1, rhs);
 
     for (int threads : {1, 4}) {
       auto s = MakeSetup(A);
@@ -249,7 +250,7 @@ GTEST_TEST(Multithreading, LeafParallelFactorization) {
       cfg.num_threads = threads;
       auto solver = MakeTreeSolver(&s.cm, cfg);
       ASSERT_TRUE(solver->AssembleAndFactor());
-      VectorXd sol = solver->Solve(rhs);
+      VectorXd sol = KKTSolve(*solver, rhs);
       EXPECT_NEAR((sol - ref).norm(), 0, 1e-10 * ref.norm())
           << "blkdiag threads=" << threads;
     }

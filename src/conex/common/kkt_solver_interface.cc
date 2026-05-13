@@ -1,5 +1,6 @@
 #include "conex/common/kkt_solver_interface.h"
 #include "conex/common/arena.h"
+#include <Eigen/Core>
 
 namespace conex {
 
@@ -29,43 +30,6 @@ bool KKTSolverBase::Factor() {
     factored_ = false;
   }
   return factored_;
-}
-
-Eigen::MatrixXd KKTSolverBase::Solve(
-    Eigen::Ref<const Eigen::MatrixXd> b,
-    bool permute_to_elimination_order) const {
-  CONEX_DEMAND(factored_, "System has not been factored.");
-  Eigen::MatrixXd x = b;
-  DoSolveInPlace(x, permute_to_elimination_order);
-  return x;
-}
-
-Eigen::MatrixXd KKTSolverBase::KKTMatrix(
-    bool permute_to_elimination_order) const {
-  CONEX_DEMAND(assembled_,
-               "System has not been assembled or is factored in place.");
-  return DoKKTMatrix(permute_to_elimination_order);
-}
-
-BlockVariable KKTSolverBase::MakeBlockVariable(int cols) {
-  return BlockVariable(MakePartition(), cols);
-}
-
-BlockVariable KKTSolverBase::MakeBlockVariable(
-    Eigen::Ref<const Eigen::MatrixXd> x) {
-  auto bv = MakeBlockVariable(x.cols());
-  bv.ScatterFrom(x);
-  return bv;
-}
-
-void KKTSolverBase::SolveInto(const BlockVariable& rhs,
-                               BlockVariable& dest) const {
-  CONEX_DEMAND(factored_, "System has not been factored.");
-  if (DoSolveBlocked(rhs.partition(), dest.partition())) return;
-  // Fallback: dense round-trip.
-  Eigen::MatrixXd b = rhs.Gather();
-  Eigen::MatrixXd x = Solve(b);
-  dest.ScatterFrom(x);
 }
 
 SolverRHS KKTSolverBase::MakeSolverRHS(int cols) {
@@ -99,7 +63,7 @@ void KKTSolverBase::SolveSolverRHS(SolverRHS& rhs) {
   CONEX_DEMAND(factored_, "System has not been factored.");
   Eigen::MatrixXd b(number_of_variables(), rhs.cols());
   rhs.supernodes->GatherInto(b);
-  DoSolveInPlace(b, true);
+  DenseSolveInPlace(b.data(), b.rows(), b.cols(), true);
   rhs.supernodes->ScatterFrom(b);
 }
 

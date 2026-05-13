@@ -1,4 +1,5 @@
 #include "conex/common/sparse_linear_constraint.h"
+#include "conex/common/kkt_solver_dense.h"
 
 #include <algorithm>
 #include <chrono>
@@ -68,7 +69,7 @@ double BenchAssembleAndFactor(const Eigen::SparseMatrix<double>& A,
   VectorXd x_true = VectorXd::Random(nv);
   MatrixXd Ad(A);
   VectorXd rhs = Ad.transpose() * (Ad * x_true);
-  VectorXd sol = solver->Solve(rhs);
+  VectorXd sol = KKTSolve(*solver, rhs);
   double err = (sol - x_true).norm() / x_true.norm();
   if (err > 1e-8) {
     fprintf(stderr, "ERROR: residual %.2e (scatter_to_parent=%d)\n",

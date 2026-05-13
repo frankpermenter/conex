@@ -6,6 +6,7 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 #include "conex/common/equality_constraint.h"
@@ -50,7 +51,7 @@ int main() {
     const auto& dd = ec->affine_term();
     for (int i = 0; i < (int)dv.size(); ++i) rhs(dv[i]) = dd(i);
   }
-  Eigen::VectorXd sol = kkt->Solve(rhs);
+  Eigen::VectorXd sol = KKTSolve(*kkt, rhs);
   printf("Dense solve: x = [%.6f, %.6f], cost = %.6f\n",
          sol(0), sol(1), cost.dot(sol.head(2)));
 
@@ -59,7 +60,7 @@ int main() {
   Eigen::VectorXd cost_full = Eigen::VectorXd::Zero(nv);
   cost_full.head(cost.size()) = cost;
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(cost_full);
+  cost_rhs = MakeBlockVariable(*kkt, cost_full);
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
   // Manual first decomp to check.

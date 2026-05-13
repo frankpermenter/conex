@@ -8,6 +8,7 @@
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/kkt_solver_interface.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/algorithms/geodesic_ipm.h"
@@ -25,7 +26,7 @@ TEST(LineSearchBug, EvaluatedNormExceedsBound) {
 
   auto cost_rhs = kkt->MakeSolverRHS();
   if (problem.has_linear_cost())
-    cost_rhs = kkt->MakeBlockVariable(problem.linear_cost());
+    cost_rhs = MakeBlockVariable(*kkt, problem.linear_cost());
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);

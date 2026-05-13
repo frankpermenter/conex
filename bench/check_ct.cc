@@ -7,6 +7,7 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 using namespace conex;
@@ -18,7 +19,7 @@ void Check(const char* name, Model& prob, const Eigen::VectorXd& cost) {
 
   auto cost_rhs = kkt->MakeSolverRHS();
   if (prob.has_linear_cost())
-    cost_rhs = kkt->MakeBlockVariable(cost);
+    cost_rhs = MakeBlockVariable(*kkt, cost);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
@@ -31,7 +32,7 @@ void Check(const char* name, Model& prob, const Eigen::VectorXd& cost) {
   // For each of y0, y1_0, y1_theta: compute AccumulateCtranspose contribution.
   auto check_col = [&](const Eigen::VectorXd& y_col, const char* col_name) {
     auto y_rhs = kkt->MakeSolverRHS();
-    y_rhs = kkt->MakeBlockVariable(y_col);
+    y_rhs = MakeBlockVariable(*kkt, y_col);
 
     // Ct contribution.
     auto ct_out = kkt->MakeSolverRHS();

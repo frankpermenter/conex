@@ -730,10 +730,10 @@ void GpuTreeSolver::BackwardSolve(double* d_x, int cols) const {
   }
 }
 
-void GpuTreeSolver::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
-                                    bool permute) const {
+void GpuTreeSolver::DenseSolveInPlace(double* data, int rows, int cols,
+                                       bool permute) const {
+  Eigen::Map<Eigen::MatrixXd> b(data, rows, cols);
   const int n = num_vars_;
-  const int cols = static_cast<int>(b.cols());
 
   // Permute to elimination order on host.
   Eigen::MatrixXd b_perm(n, cols);
@@ -770,14 +770,14 @@ void GpuTreeSolver::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
 
 }
 
-Eigen::MatrixXd GpuTreeSolver::DoKKTMatrix(bool /*permute*/) const {
+void GpuTreeSolver::DenseKKTMatrix(double* data, int n,
+                                    bool /*permute*/) const {
   // Not performance-critical. Download assembled matrix from device.
-  const int n = num_vars_;
-  Eigen::MatrixXd M = Eigen::MatrixXd::Zero(n, n);
+  Eigen::Map<Eigen::MatrixXd> M(data, n, n);
+  M.setZero();
 
   // TODO: reconstruct from per-supernode blocks on device.
   // For now, return zeros (assembly verification uses host data).
-  return M;
 }
 
 }  // namespace conex

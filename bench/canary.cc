@@ -8,6 +8,7 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 #include "conex/common/equality_constraint.h"
@@ -104,7 +105,7 @@ static SolverRHS BuildCostRHS(KKTSolverBase& kkt,
   int nc = std::min((int)cost.size(), nv);
   cf.head(nc) = cost.head(nc);
   auto rhs = kkt.MakeSolverRHS();
-  rhs = kkt.MakeBlockVariable(cf);
+  rhs = MakeBlockVariable(kkt, cf);
   return rhs;
 }
 
@@ -115,7 +116,7 @@ int main() {
     auto* kkt = solver.kkt();
     Eigen::VectorXd c(4); c << 1, 2, 3, 4;
     auto cost_rhs = kkt->MakeSolverRHS();
-    cost_rhs = kkt->MakeBlockVariable(c);
+    cost_rhs = MakeBlockVariable(*kkt, c);
 
     CompiledModel cm(*kkt, cost_rhs);
 
@@ -140,7 +141,7 @@ int main() {
     auto* kkt = solver.kkt();
     Eigen::VectorXd c(4); c << 1, 2, 3, 4;
     auto cost_rhs = kkt->MakeSolverRHS();
-    cost_rhs = kkt->MakeBlockVariable(c);
+    cost_rhs = MakeBlockVariable(*kkt, c);
     CompiledModel cm(*kkt, cost_rhs);
     RowSpace W = kkt->MakeRowSpace(); setOnes(W);
     kkt->SetScaling(W); kkt->AssembleAndFactor();
@@ -154,7 +155,7 @@ int main() {
     auto* kkt = solver.kkt();
     Eigen::VectorXd c(4); c << 1, 2, 3, 4;
     auto cost_rhs = kkt->MakeSolverRHS();
-    cost_rhs = kkt->MakeBlockVariable(c);
+    cost_rhs = MakeBlockVariable(*kkt, c);
     CompiledModel cm(*kkt, cost_rhs);
     RowSpace W = kkt->MakeRowSpace(); setOnes(W);
     kkt->SetScaling(W); kkt->AssembleAndFactor();
@@ -168,7 +169,7 @@ int main() {
     auto* kkt = solver.kkt();
     Eigen::VectorXd c(4); c << 1, 2, 3, 4;
     auto cost_rhs = kkt->MakeSolverRHS();
-    cost_rhs = kkt->MakeBlockVariable(c);
+    cost_rhs = MakeBlockVariable(*kkt, c);
     CompiledModel cm(*kkt, cost_rhs);
     RowSpace W = kkt->MakeRowSpace(); setOnes(W);
     kkt->SetScaling(W); kkt->AssembleAndFactor();
@@ -182,7 +183,7 @@ int main() {
     auto* kkt = solver.kkt();
     Eigen::VectorXd c(6); c << 1, 0.5, 0.3, 2, 0.1, 3;
     auto cost_rhs = kkt->MakeSolverRHS();
-    cost_rhs = kkt->MakeBlockVariable(c);
+    cost_rhs = MakeBlockVariable(*kkt, c);
     CompiledModel cm(*kkt, cost_rhs);
     RowSpace W = kkt->MakeRowSpace(); setOnes(W);
     auto r = SolveGeodesicLP(cm, W, 30, 0, 1e-8);
@@ -195,7 +196,7 @@ int main() {
     auto* kkt = solver.kkt();
     Eigen::VectorXd c(6); c << 1, 0.5, 0.3, 2, 0.1, 3;
     auto cost_rhs = kkt->MakeSolverRHS();
-    cost_rhs = kkt->MakeBlockVariable(c);
+    cost_rhs = MakeBlockVariable(*kkt, c);
     CompiledModel cm(*kkt, cost_rhs);
     RowSpace W = kkt->MakeRowSpace(); setOnes(W);
     kkt->SetScaling(W); kkt->AssembleAndFactor();

@@ -8,6 +8,7 @@
 #include "conex/algorithms/self_dual_embedding.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/kkt_solver_interface.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/common/model.h"
 #include "conex/common/sdpa_reader.h"
 #include "conex/common/solver.h"
@@ -41,7 +42,7 @@ TEST(HSD, SmallLP) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 
@@ -73,7 +74,7 @@ TEST(HSD, SmallSDP) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 
@@ -91,7 +92,7 @@ TEST(HSD, Buck3) {
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   if (problem.has_linear_cost())
-    cost_rhs = kkt->MakeBlockVariable(problem.linear_cost());
+    cost_rhs = MakeBlockVariable(*kkt, problem.linear_cost());
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
 

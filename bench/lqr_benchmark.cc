@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "conex/common/kkt_solver_interface.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
@@ -124,7 +125,7 @@ void RunLQR(int nx, int nu, int T) {
   int n_total = kkt->number_of_variables();
   Eigen::VectorXd rhs = Eigen::VectorXd::Zero(n_total);
   for (int j = 0; j < n_eq; ++j) rhs(duals[j]) = d_eq(j);
-  Eigen::VectorXd sol = kkt->Solve(rhs);
+  Eigen::VectorXd sol = KKTSolve(*kkt, rhs);
   auto t4 = Clock::now();
 
   // Check initial condition.

@@ -16,6 +16,7 @@
 #include "conex/common/constraint_manager.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/common/sparse_linear_constraint.h"
 #include "conex/common/sparse_quadratic_term.h"
 #include "conex/linear_solvers/kkt_solver_factory.h"
@@ -91,7 +92,7 @@ static QPSolution SolveBarrierFromProblem(
 
   auto c_rhs = solver.MakeCostRHS();
   auto x = kkt->MakeSolverRHS();
-  x = kkt->MakeBlockVariable(solver.ReduceVector(x0));
+  x = MakeBlockVariable(*kkt, solver.ReduceVector(x0));
 
   auto result = SolveBarrierQP(*kkt, c_rhs, x);
   QPSolution sol;
@@ -319,11 +320,11 @@ TEST(ProblemSolver, LeastSquares) {
 
   VectorXd rhs_dense = Eigen::MatrixXd(A).transpose() *
                         (Eigen::MatrixXd(A) * VectorXd::Random(n));
-  auto rhs = solver.kkt()->MakeBlockVariable(rhs_dense);
-  auto x = solver.kkt()->MakeBlockVariable();
-  solver.kkt()->SolveInto(rhs, x);
+  auto rhs = MakeBlockVariable(*solver.kkt(), rhs_dense);
+  auto x = MakeBlockVariable(*solver.kkt());
+  SolveInto(*solver.kkt(), rhs, x);
 
-  VectorXd x_dense = solver.kkt()->Solve(rhs_dense);
+  VectorXd x_dense = KKTSolve(*solver.kkt(), rhs_dense);
   VectorXd x_block = x.Gather();
   double err = (x_block - x_dense).norm() / x_dense.norm();
   EXPECT_LT(err, 1e-10) << "BlockVariable solve doesn't match dense";
@@ -350,7 +351,7 @@ TEST(ProblemSolver, QuadraticCostPlusLinear) {
   ASSERT_TRUE(solver.kkt()->AssembleAndFactor());
 
   VectorXd rhs = VectorXd::Random(n);
-  VectorXd x_sol = solver.kkt()->Solve(rhs);
+  VectorXd x_sol = KKTSolve(*solver.kkt(), rhs);
 
   MatrixXd M = Q + A.transpose() * A;
   VectorXd x_ref = M.ldlt().solve(rhs);
@@ -379,7 +380,7 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
 
   ASSERT_TRUE(kkt->AssembleAndFactor());
   VectorXd rhs = VectorXd::Random(n);
-  VectorXd x1 = kkt->Solve(rhs);
+  VectorXd x1 = KKTSolve(*kkt, rhs);
 
   MatrixXd M1 = A.transpose() * A;
   VectorXd x1_ref = M1.ldlt().solve(rhs);
@@ -389,7 +390,7 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
   // Use MultiplyA to discover the internal row ordering, then assign
   // weights that depend on row content (self-consistent with ordering).
   auto x_rhs = kkt->MakeSolverRHS();
-  x_rhs = kkt->MakeBlockVariable(VectorXd::Ones(n));
+  x_rhs = MakeBlockVariable(*kkt, VectorXd::Ones(n));
   auto row = kkt->MakeRowSpace();
   kkt->MultiplyA(x_rhs, row);
   // weights_i = 1 + |row_i| — non-uniform, but ordering-consistent.
@@ -398,11 +399,11 @@ TEST(ProblemSolver, SetWeightsAndResolve) {
     weights.col()(i) = 1.0 + std::abs(row.col()(i));
   kkt->SetWeights(weights);
   ASSERT_TRUE(kkt->AssembleAndFactor());
-  VectorXd x2 = kkt->Solve(rhs);
+  VectorXd x2 = KKTSolve(*kkt, rhs);
 
   // Verify via round-trip: A^T W A x2 should equal rhs.
   auto x2_rhs = kkt->MakeSolverRHS();
-  x2_rhs = kkt->MakeBlockVariable(x2);
+  x2_rhs = MakeBlockVariable(*kkt, x2);
   auto ax2 = kkt->MakeRowSpace();
   kkt->MultiplyA(x2_rhs, ax2);
   // Compute A^T (W * A * x2) via generic interface.
@@ -449,7 +450,7 @@ TEST(ProblemSolver, Preprocess) {
 
   VectorXd rhs_full = VectorXd::Random(n);
   VectorXd rhs_reduced = expansion.Reduce(rhs_full);
-  VectorXd x_reduced = solver.kkt()->Solve(rhs_reduced);
+  VectorXd x_reduced = KKTSolve(*solver.kkt(), rhs_reduced);
   VectorXd x_full = expansion.Expand(x_reduced);
 
   EXPECT_NEAR(x_full(4), 0.0, 1e-15);
@@ -486,13 +487,13 @@ TEST(ProblemSolver, CustomTree) {
   ASSERT_TRUE(solver_custom.kkt()->AssembleAndFactor());
 
   VectorXd rhs = VectorXd::Random(4);
-  VectorXd x_custom = solver_custom.kkt()->Solve(rhs);
+  VectorXd x_custom = KKTSolve(*solver_custom.kkt(), rhs);
 
   auto solver_auto = Solver::Build(problem);
   ASSERT_TRUE(solver_auto.kkt()->AssembleAndFactor());
   // Auto solver preprocesses; reduce RHS and expand solution to compare.
   VectorXd rhs_r = solver_auto.ReduceVector(rhs);
-  VectorXd x_auto_r = solver_auto.kkt()->Solve(rhs_r);
+  VectorXd x_auto_r = KKTSolve(*solver_auto.kkt(), rhs_r);
   VectorXd x_auto = solver_auto.ExpandSolution(x_auto_r);
 
   double err = (x_custom - x_auto).norm() / x_auto.norm();
@@ -582,9 +583,9 @@ TEST(ProblemSolver, LQR) {
   VectorXd rhs = VectorXd::Zero(solver.kkt()->number_of_variables());
   for (int i = 0; i < nx; ++i) rhs(ic_duals[i]) = x0(i);
 
-  auto rhs_bv = solver.kkt()->MakeBlockVariable(rhs);
-  auto x_bv = solver.kkt()->MakeBlockVariable();
-  solver.kkt()->SolveInto(rhs_bv, x_bv);
+  auto rhs_bv = MakeBlockVariable(*solver.kkt(), rhs);
+  auto x_bv = MakeBlockVariable(*solver.kkt());
+  SolveInto(*solver.kkt(), rhs_bv, x_bv);
   VectorXd sol = x_bv.Gather();
 
   VectorXd x_0_sol(nx);
@@ -649,9 +650,9 @@ TEST(ProblemSolver, EqualityConstrainedLS) {
   rhs.head(n) = A.transpose() * b;
   for (int i = 0; i < p; ++i) rhs(dual_vars[i]) = d(i);
 
-  auto rhs_bv = solver.kkt()->MakeBlockVariable(rhs);
-  auto x_bv = solver.kkt()->MakeBlockVariable();
-  solver.kkt()->SolveInto(rhs_bv, x_bv);
+  auto rhs_bv = MakeBlockVariable(*solver.kkt(), rhs);
+  auto x_bv = MakeBlockVariable(*solver.kkt());
+  SolveInto(*solver.kkt(), rhs_bv, x_bv);
   VectorXd sol = x_bv.Gather();
 
   VectorXd x_sol = sol.head(n);
@@ -699,7 +700,7 @@ TEST(ProblemSolver, DenseSolverPD) {
   ASSERT_TRUE(solver.kkt()->AssembleAndFactor());
 
   VectorXd rhs = VectorXd::Random(n);
-  VectorXd x_sol = solver.kkt()->Solve(rhs);
+  VectorXd x_sol = KKTSolve(*solver.kkt(), rhs);
 
   MatrixXd M = Q + A.transpose() * A;
   VectorXd x_ref = M.ldlt().solve(rhs);
@@ -739,9 +740,9 @@ TEST(ProblemSolver, DenseSolverIndefinite) {
   for (int i = 0; i < p; ++i) rhs(dual_vars[i]) = d(i);
 
   // Solve via BlockVariable.
-  auto rhs_bv = solver.kkt()->MakeBlockVariable(rhs);
-  auto x_bv = solver.kkt()->MakeBlockVariable();
-  solver.kkt()->SolveInto(rhs_bv, x_bv);
+  auto rhs_bv = MakeBlockVariable(*solver.kkt(), rhs);
+  auto x_bv = MakeBlockVariable(*solver.kkt());
+  SolveInto(*solver.kkt(), rhs_bv, x_bv);
   VectorXd sol = x_bv.Gather().col(0);
 
   VectorXd x_sol = sol.head(n);
@@ -810,7 +811,7 @@ TEST(ProblemSolver, EqualityConstraintVectorOps) {
       rhs_dense(dv[i]) = d_local(i);
   }
 
-  VectorXd sol = kkt->Solve(rhs_dense);
+  VectorXd sol = KKTSolve(*kkt, rhs_dense);
   VectorXd x_sol = sol.head(n);
 
   // --- Verify using generic interface ---
@@ -917,7 +918,7 @@ TEST(ProblemSolver, RankDeficientEqualities) {
   for (int i = 0; i < static_cast<int>(duals.size()); ++i)
     rhs(duals[i]) = eq->d(i);
 
-  VectorXd sol = solver.kkt()->Solve(rhs);
+  VectorXd sol = KKTSolve(*solver.kkt(), rhs);
   VectorXd x_sol = expansion.Expand(sol.head(expansion.col_map.size()));
 
   double constraint_err = (Eigen::MatrixXd(C) * x_sol - d).norm();
@@ -1008,7 +1009,7 @@ TEST(ProblemSolver, BlockDiagonalPattern) {
   auto solver = Solver::Build(problem);
   ASSERT_TRUE(solver.kkt()->AssembleAndFactor());
 
-  VectorXd x_sol = solver.kkt()->Solve(rhs);
+  VectorXd x_sol = KKTSolve(*solver.kkt(), rhs);
   double err = (x_sol - x_true).norm() / x_true.norm();
   EXPECT_LT(err, 1e-8);
   printf("ProblemSolver.BlockDiagonalPattern: err=%.2e\n", err);
@@ -1042,7 +1043,7 @@ TEST(ProblemSolver, BandedPattern) {
   auto solver = Solver::Build(problem);
   ASSERT_TRUE(solver.kkt()->AssembleAndFactor());
 
-  VectorXd x_sol = solver.kkt()->Solve(rhs);
+  VectorXd x_sol = KKTSolve(*solver.kkt(), rhs);
   double err = (x_sol - x_true).norm() / x_true.norm();
   EXPECT_LT(err, 1e-8);
   printf("ProblemSolver.BandedPattern: err=%.2e\n", err);
@@ -1072,8 +1073,8 @@ TEST(ProblemSolver, QuotientAMD) {
   ASSERT_TRUE(solver_v.kkt()->AssembleAndFactor());
 
   VectorXd rhs = VectorXd::Random(n);
-  VectorXd x_q = solver_q.kkt()->Solve(rhs);
-  VectorXd x_v = solver_v.kkt()->Solve(rhs);
+  VectorXd x_q = KKTSolve(*solver_q.kkt(), rhs);
+  VectorXd x_v = KKTSolve(*solver_v.kkt(), rhs);
 
   // Both should match the reference.
   MatrixXd M = Q + A.transpose() * A;
@@ -1111,8 +1112,8 @@ TEST(ProblemSolver, QuotientAMDChain) {
   ASSERT_TRUE(solver_d.kkt()->AssembleAndFactor());
 
   VectorXd rhs = VectorXd::Random(n);
-  VectorXd x_q = solver.kkt()->Solve(rhs);
-  VectorXd x_d = solver_d.kkt()->Solve(rhs);
+  VectorXd x_q = KKTSolve(*solver.kkt(), rhs);
+  VectorXd x_d = KKTSolve(*solver_d.kkt(), rhs);
 
   double err = (x_q - x_d).norm() / x_d.norm();
   EXPECT_LT(err, 1e-10);
@@ -1152,7 +1153,7 @@ TEST(ProblemSolver, MultiThreaded) {
     auto solver = Solver::Build(problem, cfg);
     ASSERT_TRUE(solver.kkt()->AssembleAndFactor());
 
-    VectorXd x_sol = solver.kkt()->Solve(rhs);
+    VectorXd x_sol = KKTSolve(*solver.kkt(), rhs);
     if (threads == 1) {
       x_ref = x_sol;
     } else {
@@ -1201,7 +1202,7 @@ TEST(ProblemSolver, PQTreeReorder) {
     auto solver = Solver::Build(problem, cfg);
     ASSERT_TRUE(solver.kkt()->AssembleAndFactor());
 
-    VectorXd x_sol = solver.kkt()->Solve(rhs);
+    VectorXd x_sol = KKTSolve(*solver.kkt(), rhs);
     if (method == 0) {
       x_ref = x_sol;
     }
@@ -1237,7 +1238,7 @@ TEST(ProblemSolver, AggressiveCliqueMerging) {
     cfg.tree.max_merge_supernode_size = merge_size;
     auto solver = Solver::Build(problem, cfg);
     ASSERT_TRUE(solver.kkt()->AssembleAndFactor());
-    VectorXd sol = solver.kkt()->Solve(rhs);
+    VectorXd sol = KKTSolve(*solver.kkt(), rhs);
     double err = (sol - x_true).norm() / x_true.norm();
     EXPECT_LT(err, 1e-8) << "merge_size=" << merge_size;
   }
@@ -1269,7 +1270,7 @@ TEST(ProblemSolver, LeftLookingVsRightLooking) {
     cfg.tree.left_looking = left_looking;
     auto solver = Solver::Build(problem, cfg);
     ASSERT_TRUE(solver.kkt()->AssembleAndFactor());
-    VectorXd sol = solver.kkt()->Solve(rhs);
+    VectorXd sol = KKTSolve(*solver.kkt(), rhs);
     double err = (sol - x_true).norm() / x_true.norm();
     EXPECT_LT(err, 1e-8) << (left_looking ? "left" : "right") << "-looking";
   }
@@ -1301,7 +1302,7 @@ TEST(ProblemSolver, GenericFactorization) {
     cfg.tree.use_generic_factorization = generic;
     auto solver = Solver::Build(problem, cfg);
     ASSERT_TRUE(solver.kkt()->AssembleAndFactor());
-    VectorXd sol = solver.kkt()->Solve(rhs);
+    VectorXd sol = KKTSolve(*solver.kkt(), rhs);
     double err = (sol - x_true).norm() / x_true.norm();
     EXPECT_LT(err, 1e-8) << (generic ? "generic" : "llt");
   }
@@ -1330,7 +1331,7 @@ TEST(ProblemSolver, MultiColumnSolve) {
   for (int ncols : {1, 2, 3}) {
     MatrixXd X_true = MatrixXd::Random(n, ncols);
     MatrixXd rhs = ATA * X_true;
-    MatrixXd sol = kkt->Solve(rhs);
+    MatrixXd sol = KKTSolve(*kkt, rhs);
     double err = (sol - X_true).norm() / X_true.norm();
     EXPECT_LT(err, 1e-8) << "ncols=" << ncols;
   }
@@ -1363,7 +1364,7 @@ TEST(ProblemSolver, RepeatedAssembleAndFactor) {
   // Factor and solve multiple times — should produce identical results.
   for (int iter = 0; iter < 3; ++iter) {
     ASSERT_TRUE(kkt->AssembleAndFactor());
-    VectorXd sol = kkt->Solve(rhs);
+    VectorXd sol = KKTSolve(*kkt, rhs);
     double err = (sol - x_true).norm() / x_true.norm();
     EXPECT_LT(err, 1e-8) << "iter=" << iter;
   }
@@ -1397,7 +1398,7 @@ TEST(ProblemSolver, LUForIndefinite) {
     cfg.tree.use_lu_for_indefinite = lu;
     auto solver = Solver::Build(problem, cfg);
     ASSERT_TRUE(solver.kkt()->AssembleAndFactor());
-    VectorXd sol = solver.kkt()->Solve(rhs);
+    VectorXd sol = KKTSolve(*solver.kkt(), rhs);
     double err = (sol - x_true).norm() / x_true.norm();
     EXPECT_LT(err, 1e-8) << (lu ? "lu" : "rldlt");
   }
@@ -1525,7 +1526,7 @@ TEST(ProblemSolver, StochasticCustomVsAutomatic) {
     const auto& ic_duals = solver_c.dual_variables(c_ic);
     VectorXd rhs_c = VectorXd::Zero(solver_c.kkt()->number_of_variables());
     for (int j = 0; j < nx; ++j) rhs_c(ic_duals[j]) = x0(j);
-    VectorXd sol_c = solver_c.kkt()->Solve(rhs_c);
+    VectorXd sol_c = KKTSolve(*solver_c.kkt(), rhs_c);
     auto tc1 = clock::now();
     double custom_us = std::chrono::duration<double, std::micro>(tc1 - tc0).count();
 
@@ -1589,7 +1590,7 @@ TEST(ProblemSolver, StochasticCustomVsAutomatic) {
     const auto& duals_a = solver_a.dual_variables(ceq_a);
     VectorXd rhs_a = VectorXd::Zero(solver_a.kkt()->number_of_variables());
     for (int j = 0; j < n_eq; ++j) rhs_a(duals_a[j]) = d_eq(j);
-    VectorXd sol_a = solver_a.kkt()->Solve(rhs_a);
+    VectorXd sol_a = KKTSolve(*solver_a.kkt(), rhs_a);
     auto ta1 = clock::now();
     double auto_us = std::chrono::duration<double, std::micro>(ta1 - ta0).count();
 
@@ -1752,7 +1753,7 @@ TEST(ProblemSolver, LQRCustomVsAutomatic) {
     const auto& ic_duals = solver_c.dual_variables(c_ic);
     VectorXd rhs_c = VectorXd::Zero(solver_c.kkt()->number_of_variables());
     for (int i = 0; i < nx; ++i) rhs_c(ic_duals[i]) = x0(i);
-    VectorXd sol_c = solver_c.kkt()->Solve(rhs_c);
+    VectorXd sol_c = KKTSolve(*solver_c.kkt(), rhs_c);
     auto tc3 = clock::now();
     double custom_us = std::chrono::duration<double, std::micro>(tc3 - tc0).count();
 
@@ -1769,7 +1770,7 @@ TEST(ProblemSolver, LQRCustomVsAutomatic) {
     VectorXd d_eq = VectorXd::Zero(n_eq);
     d_eq.tail(nx) = x0;
     for (int i = 0; i < n_eq; ++i) rhs_a(duals_a[i]) = d_eq(i);
-    VectorXd sol_a = solver_a.kkt()->Solve(rhs_a);
+    VectorXd sol_a = KKTSolve(*solver_a.kkt(), rhs_a);
     auto ta3 = clock::now();
     double auto_us = std::chrono::duration<double, std::micro>(ta3 - ta0).count();
 
@@ -1897,9 +1898,9 @@ TEST(ProblemSolver, GaussianMRF) {
     auto t2 = clock::now();
 
     VectorXd h = VectorXd::Random(n_vars);
-    auto rhs_bv = solver.kkt()->MakeBlockVariable(h);
-    auto x_bv = solver.kkt()->MakeBlockVariable();
-    solver.kkt()->SolveInto(rhs_bv, x_bv);
+    auto rhs_bv = MakeBlockVariable(*solver.kkt(), h);
+    auto x_bv = MakeBlockVariable(*solver.kkt());
+    SolveInto(*solver.kkt(), rhs_bv, x_bv);
     VectorXd x = x_bv.Gather().col(0);
     auto t3 = clock::now();
 
@@ -1974,13 +1975,13 @@ TEST(ProblemSolver, DISABLED_MultipleConstraintsGenericInterface) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.kkt();
   ASSERT_TRUE(kkt->AssembleAndFactor());
-  VectorXd x_sol = kkt->Solve(rhs_ref);
+  VectorXd x_sol = KKTSolve(*kkt, rhs_ref);
   double err_solve = (x_sol - x_ref).norm() / x_ref.norm();
   EXPECT_LT(err_solve, 1e-10);
 
   // --- Test generic interface: MultiplyA ---
   auto x_rhs = kkt->MakeSolverRHS();
-  x_rhs = kkt->MakeBlockVariable(x_ref);
+  x_rhs = MakeBlockVariable(*kkt, x_ref);
   auto row = kkt->MakeRowSpace();
   kkt->MultiplyA(x_rhs, row);
 
@@ -2013,9 +2014,9 @@ TEST(ProblemSolver, DISABLED_MultipleConstraintsGenericInterface) {
     auto x_mc = kkt->MakeSolverRHS(2);
     // Pack two columns: col0 = x_ref, col1 = x2.
     auto tmp0 = kkt->MakeSolverRHS();
-    tmp0 = kkt->MakeBlockVariable(x_ref);
+    tmp0 = MakeBlockVariable(*kkt, x_ref);
     auto tmp1 = kkt->MakeSolverRHS();
-    tmp1 = kkt->MakeBlockVariable(x2);
+    tmp1 = MakeBlockVariable(*kkt, x2);
     // Gather into dense, build 2-col, scatter back.
     Eigen::MatrixXd dense_x(n, 2);
     tmp0.supernodes->GatherInto(dense_x.col(0));
@@ -2071,7 +2072,7 @@ TEST(ProblemSolver, DISABLED_MultipleConstraintsGenericInterface) {
   MatrixXd M_w = Q1 + Q2 +
       2.0 * A1.transpose() * A1 + 3.0 * A2.transpose() * A2;
   VectorXd x_w_ref = M_w.ldlt().solve(rhs_ref);
-  VectorXd x_w_sol = kkt->Solve(rhs_ref);
+  VectorXd x_w_sol = KKTSolve(*kkt, rhs_ref);
   double err_w = (x_w_sol - x_w_ref).norm() / x_w_ref.norm();
   EXPECT_LT(err_w, 1e-10);
 
@@ -2127,13 +2128,13 @@ TEST(ProblemSolver, DISABLED_MultipleConstraintsGenericInterface) {
     ASSERT_TRUE(ts->AssembleAndFactor());
 
     // Verify solve (dense path).
-    VectorXd x_sol2 = ts->Solve(rhs_ref);
+    VectorXd x_sol2 = KKTSolve(*ts, rhs_ref);
     double err_s2 = (x_sol2 - x_ref).norm() / x_ref.norm();
     EXPECT_LT(err_s2, 1e-10);
 
     // Test round-trip: A^T(A*x) should equal (A1^T A1 + A2^T A2) * x.
     auto x_rhs2 = ts->MakeSolverRHS();
-    x_rhs2 = ts->MakeBlockVariable(x_ref);
+    x_rhs2 = MakeBlockVariable(*ts, x_ref);
     auto row2 = ts->MakeRowSpace();
     ts->MultiplyA(x_rhs2, row2);
 
@@ -2324,7 +2325,7 @@ TEST(ProblemSolver, LinearConstraintNonIdentityVars) {
   VectorXd Atb = A_dense.transpose() * b_test;
   rhs(5) = Atb(0);
   rhs(10) = Atb(1);
-  VectorXd sol = solver.kkt()->Solve(rhs);
+  VectorXd sol = KKTSolve(*solver.kkt(), rhs);
 
   Eigen::MatrixXd M = A_dense.transpose() * A_dense + 0.01 * Eigen::MatrixXd::Identity(2, 2);
   VectorXd x_ref = M.ldlt().solve(Atb);

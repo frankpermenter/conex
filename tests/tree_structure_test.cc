@@ -8,6 +8,7 @@
 #include "conex/common/extended_embedding.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 
 using Eigen::MatrixXd;
@@ -246,7 +247,7 @@ TEST(TreeStructure, AccumulateCtransposeStarTree) {
   VectorXd input = VectorXd::Random(nv_dense);
 
   auto in_dense = ts_dense->MakeSolverRHS();
-  in_dense = ts_dense->MakeBlockVariable(input);
+  in_dense = MakeBlockVariable(*ts_dense, input);
   auto out_dense = ts_dense->MakeSolverRHS();
   out_dense.SetZero();
   ts_dense->AccumulateCtranspose(in_dense, out_dense);
@@ -255,7 +256,7 @@ TEST(TreeStructure, AccumulateCtransposeStarTree) {
   out_dense.supernodes->GatherInto(ct_dense);
 
   auto in_star = ts_star->MakeSolverRHS();
-  in_star = ts_star->MakeBlockVariable(input);
+  in_star = MakeBlockVariable(*ts_star, input);
   auto out_star = ts_star->MakeSolverRHS();
   out_star.SetZero();
   ts_star->AccumulateCtranspose(in_star, out_star);
@@ -273,13 +274,13 @@ TEST(TreeStructure, AccumulateCtransposeStarTree) {
   VectorXd rhs_vec = VectorXd::Random(nv_dense);
 
   auto rhs_dense = ts_dense->MakeSolverRHS();
-  rhs_dense = ts_dense->MakeBlockVariable(rhs_vec);
+  rhs_dense = MakeBlockVariable(*ts_dense, rhs_vec);
   ts_dense->SolveSolverRHS(rhs_dense);
   VectorXd x_dense(nv_dense);
   rhs_dense.supernodes->GatherInto(x_dense);
 
   auto rhs_star = ts_star->MakeSolverRHS();
-  rhs_star = ts_star->MakeBlockVariable(rhs_vec);
+  rhs_star = MakeBlockVariable(*ts_star, rhs_vec);
   ts_star->SolveSolverRHS(rhs_star);
   VectorXd x_star(nv_star);
   rhs_star.supernodes->GatherInto(x_star);
@@ -327,13 +328,13 @@ TEST(TreeStructure, EmbeddingCustomTree) {
   VectorXd rhs_vec = VectorXd::Random(nv);
 
   auto rhs_d = solver_dense.kkt()->MakeSolverRHS();
-  rhs_d = solver_dense.kkt()->MakeBlockVariable(rhs_vec);
+  rhs_d = MakeBlockVariable(*solver_dense.kkt(), rhs_vec);
   solver_dense.kkt()->SolveSolverRHS(rhs_d);
   VectorXd x_dense(nv);
   rhs_d.supernodes->GatherInto(x_dense);
 
   auto rhs_t = solver_tree.kkt()->MakeSolverRHS();
-  rhs_t = solver_tree.kkt()->MakeBlockVariable(rhs_vec);
+  rhs_t = MakeBlockVariable(*solver_tree.kkt(), rhs_vec);
   solver_tree.kkt()->SolveSolverRHS(rhs_t);
   VectorXd x_tree(nv);
   rhs_t.supernodes->GatherInto(x_tree);

@@ -392,8 +392,9 @@ void T::SolveBlockedInPlace() const {
   }
 }
 
-void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
-                       bool in_original_order) const {
+void T::DenseSolveInPlace(double* data, int rows, int cols,
+                          bool in_original_order) const {
+  Eigen::Map<Eigen::MatrixXd> b(data, rows, cols);
   const int n = cached_num_vars_ > 0 ? cached_num_vars_ : number_of_variables();
   CONEX_CHECK(b.rows() == n);
   if (b.cols() == 0) {
@@ -1014,23 +1015,24 @@ int T::number_of_variables() const {
   return max + 1;
 }
 
-Eigen::MatrixXd T::DoKKTMatrix(bool permute_to_elimination_order) const {
-  int num_vars = number_of_variables();
-  Eigen::MatrixXd M(num_vars, num_vars);
+void T::DenseKKTMatrix(double* data, int n,
+                       bool permute_to_elimination_order) const {
+  CONEX_CHECK(n == number_of_variables());
+  Eigen::Map<Eigen::MatrixXd> out(data, n, n);
+  Eigen::MatrixXd M(n, n);
   M.setZero();
   for (auto root : roots_) {
     root->MakeKKTMatrix(&M);
     M = M.selfadjointView<Eigen::Lower>();
   }
   if (permute_to_elimination_order) {
-    return M;
+    out = M;
   } else {
-    CONEX_CHECK(static_cast<int>(variable_to_elimination_position_.size()) ==
-                number_of_variables());
-    Eigen::PermutationMatrix<-1> P(number_of_variables());
+    CONEX_CHECK(static_cast<int>(variable_to_elimination_position_.size()) == n);
+    Eigen::PermutationMatrix<-1> P(n);
     P.indices() = Eigen::Map<const Eigen::VectorXi>(
-        variable_to_elimination_position_.data(), number_of_variables());
-    return P.transpose() * M * P;
+        variable_to_elimination_position_.data(), n);
+    out = P.transpose() * M * P;
   }
 }
 

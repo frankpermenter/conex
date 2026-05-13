@@ -15,6 +15,7 @@
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/kkt_solver_interface.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/common/model.h"
 #include "conex/common/sdpa_reader.h"
 #include "conex/common/solver.h"
@@ -58,7 +59,7 @@ int main(int argc, char** argv) {
   for (int i = 0; i < nvars; ++i) x(i) = dist(gen);
 
   auto x_rhs = kkt->MakeSolverRHS();
-  x_rhs = kkt->MakeBlockVariable(x);
+  x_rhs = MakeBlockVariable(*kkt, x);
 
   // Compute Ax (RowSpace).
   auto Ax = kkt->MakeRowSpace();
@@ -107,7 +108,7 @@ int main(int argc, char** argv) {
     Eigen::VectorXd ei = Eigen::VectorXd::Zero(nvars);
     ei(i) = 1.0;
     auto ei_rhs = kkt->MakeSolverRHS();
-    ei_rhs = kkt->MakeBlockVariable(ei);
+    ei_rhs = MakeBlockVariable(*kkt, ei);
 
     auto Aei = kkt->MakeRowSpace();
     kkt->MultiplyA(ei_rhs, Aei);

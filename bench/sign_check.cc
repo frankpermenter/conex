@@ -6,6 +6,7 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 using namespace conex;
@@ -37,7 +38,7 @@ int main() {
   auto solver = Solver::Build(p);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
   kkt->SetScaling(W); kkt->AssembleAndFactor();

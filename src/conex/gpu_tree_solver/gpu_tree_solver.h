@@ -73,9 +73,10 @@ class GpuTreeSolver : public KKTSolverBase {
   void DoAssemble() override;
   bool DoFactor() override;
   bool DoAssembleAndFactor() override;
-  void DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
+  void DenseSolveInPlace(double* data, int rows, int cols,
+                         bool permute_to_elimination_order) const override;
+  void DenseKKTMatrix(double* data, int n,
                       bool permute_to_elimination_order) const override;
-  Eigen::MatrixXd DoKKTMatrix(bool permute_to_elimination_order) const override;
 
   // Factor one level of the tree (all supernodes at this depth).
   bool FactorLevel(int level);

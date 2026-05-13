@@ -18,6 +18,7 @@
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/kkt_solver_interface.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
@@ -80,7 +81,7 @@ double GramRoundTripError(const Model& p, int seed,
   Eigen::VectorXd x = Eigen::VectorXd::Random(nvars);
 
   auto x_rhs = kkt->MakeSolverRHS();
-  x_rhs = kkt->MakeBlockVariable(x);
+  x_rhs = MakeBlockVariable(*kkt, x);
   auto Ax = kkt->MakeRowSpace();
   kkt->MultiplyA(x_rhs, Ax);
   auto b_rhs = kkt->MakeSolverRHS();
@@ -255,7 +256,7 @@ TEST(PSDMultiCliqueGram, DenseRoundTripMulti) {
 
   // Get the Gram BEFORE factor by calling Assemble (not AssembleAndFactor).
   kkt->Assemble();
-  Eigen::MatrixXd G_pre = kkt->KKTMatrix(false);
+  Eigen::MatrixXd G_pre = KKTMatrix(*kkt, false);
   G_pre = G_pre.selfadjointView<Eigen::Lower>();
 
   ASSERT_TRUE(kkt->AssembleAndFactor());
@@ -263,7 +264,7 @@ TEST(PSDMultiCliqueGram, DenseRoundTripMulti) {
   std::srand(42);
   Eigen::VectorXd x = Eigen::VectorXd::Random(n);
   Eigen::VectorXd b = G_pre * x;
-  Eigen::VectorXd y = kkt->Solve(b);
+  Eigen::VectorXd y = KKTSolve(*kkt, b);
   double err = (y - x).cwiseAbs().maxCoeff();
   std::cerr << "G_pre=\n" << G_pre << "\n";
   std::cerr << "Dense round-trip err = " << err << "\n";
@@ -284,7 +285,7 @@ TEST(PSDMultiCliqueGram, CompareAssembledVsPrimitives) {
   kkt->SetScaling(W);
   // Capture true (pre-factor) Gram.
   kkt->Assemble();
-  Eigen::MatrixXd G_true = kkt->KKTMatrix(false);
+  Eigen::MatrixXd G_true = KKTMatrix(*kkt, false);
   G_true = G_true.selfadjointView<Eigen::Lower>();
   ASSERT_TRUE(kkt->AssembleAndFactor());
 
@@ -294,7 +295,7 @@ TEST(PSDMultiCliqueGram, CompareAssembledVsPrimitives) {
     Eigen::VectorXd ej = Eigen::VectorXd::Zero(n);
     ej(j) = 1.0;
     auto x_rhs = kkt->MakeSolverRHS();
-    x_rhs = kkt->MakeBlockVariable(ej);
+    x_rhs = MakeBlockVariable(*kkt, ej);
     auto Ax = kkt->MakeRowSpace();
     kkt->MultiplyA(x_rhs, Ax);
     auto b_rhs = kkt->MakeSolverRHS();
@@ -311,7 +312,7 @@ TEST(PSDMultiCliqueGram, CompareAssembledVsPrimitives) {
   }
 
   // Get the assembled KKT matrix (in original variable order).
-  Eigen::MatrixXd G_asm = kkt->KKTMatrix();
+  Eigen::MatrixXd G_asm = KKTMatrix(*kkt);
   // Symmetrize lower → full (DoKKTMatrix may only fill lower triangle).
   G_asm = G_asm.selfadjointView<Eigen::Lower>();
 

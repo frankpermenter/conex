@@ -14,6 +14,7 @@
 #include "conex/common/model.h"
 #include "conex/common/qps_reader.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 
 using namespace conex;
 using Clock = std::chrono::high_resolution_clock;
@@ -62,7 +63,7 @@ int main(int argc, char** argv) {
   // Use the original problem's linear cost.
   auto cost_rhs = kkt->MakeSolverRHS();
   if (problem.has_linear_cost()) {
-    cost_rhs = kkt->MakeBlockVariable(problem.linear_cost());
+    cost_rhs = MakeBlockVariable(*kkt, problem.linear_cost());
   } else {
     cost_rhs.SetZero();
   }

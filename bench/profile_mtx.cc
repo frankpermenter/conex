@@ -11,6 +11,7 @@
 #include "conex/common/mtx_reader.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 
 #include <Eigen/Dense>
@@ -103,12 +104,12 @@ ProfileResult ProfileMatrix(const Model& problem,
   Eigen::VectorXd rhs = Eigen::VectorXd::Random(n_solve);
 
   // Solve timing.
-  kkt->Solve(rhs);  // warm up
+  KKTSolve(*kkt, rhs);  // warm up
   std::vector<double> s_times(iters);
   Eigen::VectorXd sol;
   for (int i = 0; i < iters; ++i) {
     auto ta = Clock::now();
-    sol = kkt->Solve(rhs);
+    sol = KKTSolve(*kkt, rhs);
     auto tb = Clock::now();
     s_times[i] = us(ta, tb);
   }
@@ -116,7 +117,7 @@ ProfileResult ProfileMatrix(const Model& problem,
   res.solve_us = s_times[iters / 2];
 
   // Residual: solve twice, check consistency.
-  Eigen::VectorXd sol2 = kkt->Solve(rhs);
+  Eigen::VectorXd sol2 = KKTSolve(*kkt, rhs);
   res.residual = (sol - sol2).norm() / (sol.norm() + 1e-15);
   return res;
 }

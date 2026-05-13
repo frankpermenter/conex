@@ -13,6 +13,7 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/algorithms/geodesic_ipm.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 using namespace conex;
@@ -32,7 +33,7 @@ static TestResult RunTest(const char* name, Model& prob,
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
   if (prob.has_linear_cost())
-    cost_rhs = kkt->MakeBlockVariable(prob.linear_cost());
+    cost_rhs = MakeBlockVariable(*kkt, prob.linear_cost());
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
   kkt->SetScaling(W);

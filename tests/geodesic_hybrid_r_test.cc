@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include "conex/common/kkt_solver_dense.h"
 #include <numeric>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -63,7 +64,7 @@ TEST(GeodesicHybridR, DirectionEquations) {
     at_e.supernodes->GatherInto(c);
   }
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
@@ -191,7 +192,7 @@ TEST(GeodesicHybridR, CenteredFixedPoint) {
   VectorXd c(kkt->number_of_variables());
   at_e.supernodes->GatherInto(c);
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);
@@ -229,7 +230,7 @@ TEST(GeodesicHybridR, SolveSmallLP) {
   VectorXd c(kkt->number_of_variables());
   at_e.supernodes->GatherInto(c);
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
 
   RowSpace W = kkt->MakeRowSpace();
   setOnes(W);

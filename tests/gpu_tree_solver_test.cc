@@ -10,6 +10,7 @@
 #include "conex/common/sparse_linear_constraint.h"
 #include "conex/linear_solvers/kkt_solver_factory.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
+#include "conex/common/kkt_solver_dense.h"
 
 #include <set>
 #include <unordered_map>
@@ -69,7 +70,7 @@ TestProblem MakeBlockDiagonal(int blocks, int rows_per_block, int cols_per_block
   SolverConfiguration cfg;
   auto cpu_solver = MakeTreeSolver(&cm, cfg);
   EXPECT_TRUE(cpu_solver->AssembleAndFactor());
-  p.x_cpu = cpu_solver->Solve(p.rhs);
+  p.x_cpu = KKTSolve(*cpu_solver, p.rhs);
 
   // Extract clique tree from the CPU solver's internal state.
   // We rebuild it here since the CPU solver doesn't expose it directly.
@@ -120,7 +121,7 @@ TestProblem MakeBanded(int n, int bandwidth, int rows_per_group, int seed = 42) 
   SolverConfiguration cfg;
   auto cpu_solver = MakeTreeSolver(&cm, cfg);
   EXPECT_TRUE(cpu_solver->AssembleAndFactor());
-  p.x_cpu = cpu_solver->Solve(p.rhs);
+  p.x_cpu = KKTSolve(*cpu_solver, p.rhs);
 
   // Clique tree.
   auto slc2 = std::make_unique<SparseLinearConstraint>(p.A, b_zero);
@@ -273,7 +274,7 @@ Eigen::VectorXd SolveOnGpu(const TestProblem& prob) {
   }
 
   EXPECT_TRUE(gpu.AssembleAndFactor());
-  return gpu.Solve(prob.rhs);
+  return KKTSolve(gpu,prob.rhs);
 }
 
 // --- Tests ---
@@ -350,7 +351,7 @@ TEST(GpuTreeSolver, RepeatedSolve) {
     srand(100 + trial);
     Eigen::VectorXd x_true = Eigen::VectorXd::Random(n);
     Eigen::VectorXd rhs = AtA * x_true;
-    Eigen::VectorXd x_gpu = gpu.Solve(rhs);
+    Eigen::VectorXd x_gpu = KKTSolve(gpu,rhs);
 
     double rel_err = (x_gpu - x_true).norm() / x_true.norm();
     EXPECT_LT(rel_err, 1e-10)

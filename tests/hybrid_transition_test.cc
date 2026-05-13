@@ -9,6 +9,7 @@
 #include "conex/common/conex.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/kkt_solver_interface.h"
+#include "conex/common/kkt_solver_dense.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/algorithms/geodesic_ipm.h"
@@ -38,7 +39,7 @@ TEST(HybridTransition, TrivialCentering) {
 
   // Prepare cost RHS.
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs = MakeBlockVariable(*kkt, c);
 
   // Phase 1 with phase1_only: should transition immediately.
   RowSpace W = kkt->MakeRowSpace();
