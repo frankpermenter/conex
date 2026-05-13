@@ -71,12 +71,6 @@ class Solver {
   // Build the cost RHS in solver format (reduced space).
   SolverRHS MakeCostRHS();
 
-  // Direct linear solve: factor the Gram at identity scaling, then solve.
-  // rhs is in reduced variable space; result is in original variable space.
-  std::vector<double> SolveLinearSystem(const std::vector<double>& rhs);
-
-  // Factor the Gram at identity scaling (for direct linear solves).
-  bool AssembleAndFactor();
 
   // Arena for algorithm temporaries. Persists across solves; Reset()
   // between solves to reclaim memory without reallocating.

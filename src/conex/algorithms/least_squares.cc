@@ -6,6 +6,7 @@
 #include <Eigen/Core>
 #include <Eigen/Sparse>
 
+#include "conex/algorithms/solve_strategies.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
 
@@ -30,26 +31,19 @@ SparseLeastSquaresResult SparseLeastSquares(
 
   auto t1 = clock::now();
 
-  bool ok = solver.AssembleAndFactor();
-  CONEX_DEMAND(ok, "AssembleAndFactor failed.");
+  Eigen::VectorXd rhs_r = solver.ReduceVector(rhs);
+  DirectSolve strategy;
+  strategy.rhs.assign(rhs_r.data(), rhs_r.data() + rhs_r.size());
+  auto raw = solver.Solve(strategy);
 
   auto t2 = clock::now();
 
-  std::vector<double> rhs_reduced_vec;
-  {
-    Eigen::VectorXd rhs_r = solver.ReduceVector(rhs);
-    rhs_reduced_vec.assign(rhs_r.data(), rhs_r.data() + rhs_r.size());
-  }
-  { auto xv = solver.SolveLinearSystem(rhs_reduced_vec); result.x = Eigen::Map<Eigen::VectorXd>(xv.data(), xv.size()); }
-
-  auto t3 = clock::now();
-
+  result.x = Eigen::Map<Eigen::VectorXd>(raw.x.data(), raw.x.size());
   result.construction_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
-  result.assemble_and_factor_time_us =
-      std::chrono::duration<double, std::micro>(t2 - t1).count();
+  result.assemble_and_factor_time_us = 0;
   result.solve_time_us =
-      std::chrono::duration<double, std::micro>(t3 - t2).count();
+      std::chrono::duration<double, std::micro>(t2 - t1).count();
   result.grouping_us = 0;
   result.add_constraints_us = 0;
   result.init_workspace_us = 0;
@@ -80,26 +74,19 @@ SparseQuadraticTermLeastSquaresResult SparseQuadraticTermLeastSquares(
 
   auto t1 = clock::now();
 
-  bool ok = solver.AssembleAndFactor();
-  CONEX_DEMAND(ok, "AssembleAndFactor failed.");
+  Eigen::VectorXd rhs_r = solver.ReduceVector(rhs);
+  DirectSolve strategy;
+  strategy.rhs.assign(rhs_r.data(), rhs_r.data() + rhs_r.size());
+  auto raw = solver.Solve(strategy);
 
   auto t2 = clock::now();
 
-  std::vector<double> rhs_reduced_vec;
-  {
-    Eigen::VectorXd rhs_r = solver.ReduceVector(rhs);
-    rhs_reduced_vec.assign(rhs_r.data(), rhs_r.data() + rhs_r.size());
-  }
-  { auto xv = solver.SolveLinearSystem(rhs_reduced_vec); result.x = Eigen::Map<Eigen::VectorXd>(xv.data(), xv.size()); }
-
-  auto t3 = clock::now();
-
+  result.x = Eigen::Map<Eigen::VectorXd>(raw.x.data(), raw.x.size());
   result.construction_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
-  result.factor_time_us =
-      std::chrono::duration<double, std::micro>(t2 - t1).count();
+  result.factor_time_us = 0;
   result.solve_time_us =
-      std::chrono::duration<double, std::micro>(t3 - t2).count();
+      std::chrono::duration<double, std::micro>(t2 - t1).count();
 
   return result;
 }

@@ -6,6 +6,7 @@
 #include "conex/common/kkt_solver_interface.h"
 
 #include "conex/common/model.h"
+#include "conex/algorithms/solve_strategies.h"
 #include "conex/common/solver.h"
 
 namespace conex {
@@ -89,8 +90,6 @@ LQRFromSparseMatricesResult SolveLQRFromSparseMatrices(
 
   auto t1 = clock::now();
 
-  bool ok = solver.AssembleAndFactor();
-  CONEX_DEMAND(ok, "AssembleAndFactor failed.");
 
   auto t2 = clock::now();
 
@@ -100,9 +99,10 @@ LQRFromSparseMatricesResult SolveLQRFromSparseMatrices(
   for (int i = 0; i < n_eq; ++i)
     rhs(dual_vars[i]) = d_eq(i);
 
-  std::vector<double> rhs_vec(rhs.data(), rhs.data() + rhs.size());
-  auto sol_vec = solver.SolveLinearSystem(rhs_vec);
-  Eigen::Map<Eigen::VectorXd> sol(sol_vec.data(), sol_vec.size());
+  DirectSolve strategy;
+  strategy.rhs.assign(rhs.data(), rhs.data() + rhs.size());
+  auto raw = solver.Solve(strategy);
+  Eigen::Map<Eigen::VectorXd> sol(raw.x.data(), raw.x.size());
 
   auto t3 = clock::now();
 

@@ -3,7 +3,7 @@
 #include <chrono>
 #include <numeric>
 
-#include "conex/common/kkt_solver_interface.h"
+#include "conex/algorithms/solve_strategies.h"
 #include "conex/common/solver.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 
@@ -39,8 +39,6 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
   auto solver = Solver::Build(problem);
   auto t1 = clock::now();
 
-  bool ok = solver.AssembleAndFactor();
-  CONEX_DEMAND(ok, "AssembleAndFactor failed.");
   auto t2 = clock::now();
 
   // Build RHS = [-c; d] = [A'b; d].
@@ -57,9 +55,10 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
       rhs(duals[i]) = eq->d(i);
   }
 
-  std::vector<double> rhs_vec(rhs.data(), rhs.data() + rhs.size());
-  auto sol_vec = solver.SolveLinearSystem(rhs_vec);
-  Eigen::Map<Eigen::VectorXd> sol(sol_vec.data(), sol_vec.size());
+  DirectSolve strategy;
+  strategy.rhs.assign(rhs.data(), rhs.data() + rhs.size());
+  auto raw = solver.Solve(strategy);
+  Eigen::Map<Eigen::VectorXd> sol(raw.x.data(), raw.x.size());
   auto t3 = clock::now();
 
   result.x = sol.head(n);
@@ -109,8 +108,6 @@ QPEqualityResult SolveQPEquality(const Model& problem) {
 
   auto solver = Solver::Build(qp);
 
-  bool ok = solver.AssembleAndFactor();
-  if (!ok) return {{}, 0, false};
 
   // Build RHS = [-c; d_1; d_2; ...].
   int nv = solver.kkt()->number_of_variables();
@@ -131,9 +128,10 @@ QPEqualityResult SolveQPEquality(const Model& problem) {
     }
   }
 
-  std::vector<double> rhs_vec(rhs.data(), rhs.data() + rhs.size());
-  auto sol_vec = solver.SolveLinearSystem(rhs_vec);
-  Eigen::Map<Eigen::VectorXd> sol(sol_vec.data(), sol_vec.size());
+  DirectSolve strategy;
+  strategy.rhs.assign(rhs.data(), rhs.data() + rhs.size());
+  auto raw = solver.Solve(strategy);
+  Eigen::Map<Eigen::VectorXd> sol(raw.x.data(), raw.x.size());
   Eigen::VectorXd x = sol.head(n);
 
   // Compute objective.

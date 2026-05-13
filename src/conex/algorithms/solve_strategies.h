@@ -200,4 +200,33 @@ struct GeodesicHSDE {
   }
 };
 
+// Strategy: direct linear solve (one factorization, one back-solve).
+// Solves (A'WA + Q)x = rhs at W = identity. No iteration.
+// rhs is in reduced variable space.
+struct DirectSolve {
+  std::vector<double> rhs;  // right-hand side in reduced space
+
+  GeodesicResult Run(CompiledModel& model) const {
+    RowSpace W = model.AllocRowSpace();
+    setOnes(W);
+    model.SetScaling(W);
+    model.AssembleAndFactor();
+
+    auto rhs_blk = model.AllocSolverRHS();
+    rhs_blk = model.MakeBlockVariable(
+        Eigen::Map<const Eigen::VectorXd>(rhs.data(), rhs.size()));
+    model.SolveSolverRHS(rhs_blk);
+
+    GeodesicResult result{};
+    int nr = model.number_of_variables();
+    result.x.resize(nr);
+    Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr);
+    rhs_blk.supernodes->GatherInto(xm);
+    result.iterations = 1;
+    result.total_factorizations = 1;
+    result.total_solves = 1;
+    return result;
+  }
+};
+
 }  // namespace conex
