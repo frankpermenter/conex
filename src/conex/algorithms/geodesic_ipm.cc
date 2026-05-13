@@ -1193,6 +1193,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
     // Precompute theta-independent quantities (one sqrt(W), one P(W), dot products).
     auto tc = PrecomputeThetaCoeffs(model, arena, duality_cost, b, W, decomp, bT_ones);
+    double last_eq_err = 0;
 
     // Binary search for the smallest theta with tau > 0 and ||d||_inf <= beta.
     constexpr double beta_target = 1.0;
@@ -1337,6 +1338,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
         double xQx_tau_f = (tau_f > 1e-30) ? xQx_f / tau_f : 0;
         double R_f = theta_f * (bT_ones + 1.0);
         double eq_err_f = std::abs(bTl_f + cTx_f + xQx_tau_f + mu_tau_f - R_f);
+        last_eq_err = eq_err_f;
 
         double cTx_cost_f = cost_rhs.dot(x_rhs_f);
         double dTnu_f = cTx_f - cTx_cost_f;
@@ -1388,10 +1390,10 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
       double dual_phys = primal_phys + gap / std::max(std::abs(tau), 1e-30);
 
-      printf("  %3d  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
-             "  %12.4e  %12.4e  %12.4e\n",
+      printf("  %3d    %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
+             "  %12.4e  %12.4e  %12.4e  %12.2e\n",
              outer, theta, tau, mu_over_tau, k, d_inf, d_sq, gap,
-             dual_phys, primal_phys, mu_over_tau);
+             dual_phys, primal_phys, mu_over_tau, last_eq_err);
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
