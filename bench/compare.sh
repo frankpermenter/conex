@@ -37,6 +37,7 @@ c_fac_n=$(echo "$conex_out" | grep "  Factor:" | sed 's/.*(\([0-9]*\) calls.*/\1
 c_solve=$(echo "$conex_out" | grep "  Solve:" | awk '{print $2}')
 c_solve_n=$(echo "$conex_out" | grep "  Solve:" | sed 's/.*(\([0-9]*\) calls.*/\1/')
 c_cone=$(echo "$conex_out" | grep "Cone ops:" | awk '{print $3}')
+c_select=$(echo "$conex_out" | grep "Selection:" | awk '{print $2}')
 c_iter=$(echo "$conex_out" | grep "Total solve:" | sed 's/.*(\([0-9]*\) iter.*/\1/')
 c_nfac=$(echo "$conex_out" | grep "Total solve:" | sed 's/.*, \([0-9]*\) fac.*/\1/')
 c_obj=$(echo "$conex_out" | grep "Objective:" | awk '{print $2}')
@@ -60,6 +61,7 @@ k_obj=$(echo "$clar_out" | grep "^ *[0-9]" | tail -1 | awk '{print $2}')
 c_fac_avg=$(div "$c_fac" "$c_fac_n")
 c_solve_avg=$(div "$c_solve" "$c_solve_n")
 c_cone_avg=$(div "$c_cone" "$c_iter")
+c_select_avg=$(div "${c_select:-0}" "$c_iter")
 k_fac_avg=$(div "$k_fac" "$k_iter")
 k_solve_avg=$(div "$k_solve" "$k_iter")
 k_cone_avg=$(div "$k_cone" "$k_iter")
@@ -78,6 +80,8 @@ printf "  %-28s  %11s us  %11s us\n" "Back-solve time (sum)" "$c_solve" "$k_solv
 printf "  %-28s  %11s us  %11s us\n" "  per solve (avg)" "$c_solve_avg" "$k_solve_avg"
 printf "  %-28s  %11s us  %11s us\n" "Cone ops (sum)" "$c_cone" "$k_cone"
 printf "  %-28s  %11s us  %11s us\n" "  per iteration (avg)" "$c_cone_avg" "$k_cone_avg"
+printf "  %-28s  %11s us  %14s\n"    "Selection/other (sum)" "${c_select:-0}" "—"
+printf "  %-28s  %11s us  %14s\n"    "  per iteration (avg)" "${c_select_avg:-0}" "—"
 printf "\n"
 printf "  %-28s  %14s  %14s\n"       "Objective" "$c_obj" "$k_obj"
 printf "  %-28s  %14s  %14s\n"       "Status/Gap" "$c_gap" "$k_status"

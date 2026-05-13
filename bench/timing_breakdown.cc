@@ -35,8 +35,9 @@ int main(int argc, char** argv) {
            stats.solve_us, stats.solve_count,
            stats.solve_count > 0 ? stats.solve_us / stats.solve_count : 0.0);
     printf("  Cone ops:   %10.0f us\n", stats.cone_us);
-    double accounted = stats.factor_us + stats.solve_us + stats.cone_us;
-    printf("  Other:      %10.0f us\n", total_us - accounted);
+    printf("  Selection:  %10.0f us\n", stats.other_us);
+    double accounted = stats.factor_us + stats.solve_us + stats.cone_us + stats.other_us;
+    printf("  Unaccounted:%10.0f us\n", total_us - accounted);
     printf("Objective:    %.6f\n", result.objective);
     printf("Gap:          %.2e\n", result.gap);
   };
