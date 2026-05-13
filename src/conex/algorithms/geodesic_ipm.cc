@@ -1251,30 +1251,18 @@ GeodesicResult SolveGeodesicThetaContinuation(
       k = k_f;
       tau = tau_f;
     }
-    // Recompute objectives at the final (theta, k, tau) after frozen-J.
+    // Report final state. Use saved values from last step (outer or frozen-J).
     mu = 1.0 / (k * k);
-    if (verbose) {
-      // Compute lambda and x at current (k, tau, theta, decomp, W_before_last_step).
-      // We use W0 (the W before frozen-J) for the outer step's lambda,
-      // or the current W for the frozen-J steps' lambda.
-      // For the summary line, recompute from the final direction.
+    // d_inf, d_sq, gap are from the outer step; update if frozen-J ran.
+    if (max_centering_steps > 0) {
       RowSpace d_final = model.AllocRowSpace();
       EvaluateDirection(d_final, decomp, k, tau, theta);
       d_inf = normInf(d_final);
       d_sq = squaredNorm(d_final);
       gap = mu * (nu - d_sq);
-
-      RowSpace sqrtW0 = model.AllocRowSpace();
-      EuclideanJordanAlgebra::sqrt(sqrtW0, W0);
-      RowSpace ones_v = model.AllocRowSpace();
-      setOnes(ones_v);
-      RowSpace ed = model.AllocRowSpace();
-      addScaled(ed, ones_v, d_final, 1.0, 1.0);
-      RowSpace lam_v = model.AllocRowSpace();
-      quadraticRepresentation(lam_v, sqrtW0, ed);
-      lam_v *= (1.0 / k);
-
-      double bT_lambda = dot(b, lam_v);
+    }
+    if (verbose) {
+      // x = y0/k + tau*y1_0 + theta*y1_theta
       auto x_rhs_v = model.AllocSolverRHS();
       x_rhs_v.SetZero();
       x_rhs_v.AddScaled(1.0 / k, decomp.y0);
@@ -1286,18 +1274,21 @@ GeodesicResult SolveGeodesicThetaContinuation(
       model.AccumulateQx(x_rhs_v, qx_rhs);
       double xQx = qx_rhs.dot(x_rhs_v);
       double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
-      double xQx_over_tau = (tau > 1e-30) ? xQx / tau : 0.0;
-      double eq_err = std::abs(bT_lambda + cT_x + dT_nu + xQx_over_tau
-                                + mu_over_tau - theta * (bT_ones + 1.0));
 
+      // Physical objectives: de-homogenize by tau.
       double half_xQx_phys = (tau > 1e-30) ? 0.5 * xQx / (tau * tau) : 0.0;
       double primal_phys = (tau > 1e-30) ? cT_x / tau + half_xQx_phys : 0.0;
-      double dual_phys = (tau > 1e-30)
-          ? -((bT_lambda + dT_nu) / tau + half_xQx_phys) : 0.0;
+
+      // Dual objective: b'lambda where lambda is recovered from the last
+      // consistent (W, d) pair. Since W has been updated past the last
+      // direction, we report the primal objective only.
+      // dual = -(primal + gap/tau) by weak duality.
+      double dual_phys = primal_phys + gap / std::max(std::abs(tau), 1e-30);
+
       printf("  %3d  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
-             "  %12.4e  %12.4e  %12.4e  %12.2e  %3d\n",
+             "  %12.4e  %12.4e  %12.4e  %3d\n",
              outer, theta, tau, mu_over_tau, k, d_inf, d_sq, gap,
-             dual_phys, primal_phys, mu_over_tau, eq_err,
+             dual_phys, primal_phys, mu_over_tau,
              max_centering_steps);
     }
 
