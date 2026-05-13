@@ -547,6 +547,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
   for (int iter = 0; iter < max_iterations; ++iter) {
     // No SaveCursor/RestoreCursor: decomp members persist across iterations.
+    auto _other_start = stats ? std::chrono::high_resolution_clock::now()
+                              : std::chrono::high_resolution_clock::time_point{};
 
     if (need_decomp) {
       if (full_decomp) {
@@ -774,6 +776,9 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     if (theta_rate > 0 && r_updates_since_fac >= 2) {
       theta_stalled = (std::abs(theta) > theta_rate * std::abs(theta_at_last_w));
     }
+
+    if (stats) stats->other_us += std::chrono::duration<double, std::micro>(
+        std::chrono::high_resolution_clock::now() - _other_start).count();
 
     bool do_center = !w_frozen && (policy(g, d_inf, r_updates_since_fac)
                                     || theta_stalled);
