@@ -81,16 +81,14 @@ class PSDConstraint : public ConeConstraint {
   const EuclideanJordanAlgebra::BarrierConeOperations* cone_ops() const override;
 
   Eigen::MatrixXd MultiplyA(
-      const BlockPartition& supernodes, const SeparatorScratch& sep,
-      int nc) const override {
-    return psd_assembler_.SparseMultiplyA(supernodes, sep, nc);
+      const SolverRHS& rhs, int nc) const override {
+    return psd_assembler_.SparseMultiplyA(*rhs.supernodes, *rhs.separators, nc);
   }
 
   void ContributeAtranspose(
       const Eigen::Ref<const Eigen::MatrixXd>& V,
-      BlockPartition& supernodes, SeparatorScratch& sep,
-      int nc) const override {
-    psd_assembler_.SparseContributeAtranspose(V, supernodes, sep, nc);
+      SolverRHS& rhs, int nc) const override {
+    psd_assembler_.SparseContributeAtranspose(V, *rhs.supernodes, *rhs.separators, nc);
   }
 
   void SetScaling(const Eigen::VectorXd& scaling) override;

@@ -1133,11 +1133,13 @@ void T::MultiplyA(const SolverRHS& x, RowSpace& out) {
   } else {
     ScatterSeparators(*x.supernodes, sep_scratch_);
   }
-  const auto& sep_read = x.has_separators() ? *x.separators : sep_scratch_;
+  SolverRHS x_read;
+  x_read.supernodes = x.supernodes;
+  x_read.separators = x.has_separators()
+      ? x.separators : &sep_scratch_;
   int nc = x.cols();
   for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
-    auto result = cone_constraints_[ci]->MultiplyA(
-        *x.supernodes, sep_read, nc);
+    auto result = cone_constraints_[ci]->MultiplyA(x_read, nc);
     out.segment(ci) = result.leftCols(out.cols());
   }
 }
@@ -1146,7 +1148,7 @@ void T::AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) {
   int nc = rhs.cols();
   for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
     cone_constraints_[ci]->ContributeAtranspose(
-        v.segment(ci), *rhs.supernodes, *rhs.separators, nc);
+        v.segment(ci), rhs, nc);
   }
   // ContributeAtranspose writes to separators, so the RHS is no longer
   // in "fully gathered" form (supernodes only).

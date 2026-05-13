@@ -197,16 +197,14 @@ class LinearConstraint : public ConeConstraint {
   }
 
   Eigen::MatrixXd MultiplyA(
-      const BlockPartition& supernodes, const SeparatorScratch& sep,
-      int nc) const override {
-    return gram().MultiplyA(supernodes, sep, nc);
+      const SolverRHS& rhs, int nc) const override {
+    return gram().MultiplyA(*rhs.supernodes, *rhs.separators, nc);
   }
 
   void ContributeAtranspose(
       const Eigen::Ref<const Eigen::MatrixXd>& V,
-      BlockPartition& supernodes, SeparatorScratch& sep,
-      int nc) const override {
-    gram().ContributeAtranspose(V, supernodes, sep, nc);
+      SolverRHS& rhs, int nc) const override {
+    gram().ContributeAtranspose(V, *rhs.supernodes, *rhs.separators, nc);
   }
 
   // Access the GramEvaluator (used by default MultiplyA/ContributeAtranspose).

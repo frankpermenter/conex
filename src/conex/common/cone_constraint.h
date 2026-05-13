@@ -9,11 +9,10 @@
 
 #include "conex/common/arena_allocatable.h"
 #include "conex/common/supernodal_assembler_base.h"
+#include "conex/common/tree_rhs.h"
 
 namespace conex {
 
-class BlockPartition;
-struct SeparatorScratch;
 namespace EuclideanJordanAlgebra { class BarrierConeOperations; }
 
 class ConeConstraint : public SupernodalAssemblerBase, public ArenaAllocatable {
@@ -23,12 +22,11 @@ class ConeConstraint : public SupernodalAssemblerBase, public ArenaAllocatable {
   virtual BlockAssembler* GetBlockAssembler() = 0;
 
   virtual Eigen::MatrixXd MultiplyA(
-      const BlockPartition& supernodes, const SeparatorScratch& sep,
-      int nc) const = 0;
+      const SolverRHS& rhs, int nc) const = 0;
 
   virtual void ContributeAtranspose(
       const Eigen::Ref<const Eigen::MatrixXd>& V,
-      BlockPartition& supernodes, SeparatorScratch& sep, int nc) const = 0;
+      SolverRHS& rhs, int nc) const = 0;
 
   virtual void SetScaling(const Eigen::VectorXd& w) = 0;
   virtual void SetWeights(const Eigen::VectorXd& w) = 0;
