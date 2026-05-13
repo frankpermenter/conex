@@ -38,9 +38,17 @@ class BlockPartition {
 
   // Scatter a vector in original variable order into block storage.
   virtual void ScatterFrom(Eigen::Ref<const Eigen::MatrixXd> x) = 0;
+  void ScatterFrom(const double* data, int rows, int cols = 1) {
+    Eigen::Map<const Eigen::MatrixXd> m(data, rows, cols);
+    ScatterFrom(m);
+  }
 
   // Gather from block storage into a vector in original variable order.
   virtual void GatherInto(Eigen::Ref<Eigen::MatrixXd> x) const = 0;
+  void GatherInto(double* data, int rows, int cols = 1) const {
+    Eigen::Map<Eigen::MatrixXd> m(data, rows, cols);
+    GatherInto(m);
+  }
 
   // Access block k (mutable).
   virtual Eigen::Ref<Eigen::MatrixXd> block(int k) = 0;

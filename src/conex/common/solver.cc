@@ -72,7 +72,7 @@ SolverRHS Solver::MakeCostRHS() {
   auto* k = kkt();
   auto rhs = k->MakeSolverRHS();
   if (reduced_linear_cost_.size() > 0) {
-    rhs = k->MakeBlockVariable(reduced_linear_cost_);
+    rhs.ScatterFrom(reduced_linear_cost_.data(), reduced_linear_cost_.size());
   } else {
     rhs.SetZero();
   }
@@ -83,7 +83,7 @@ double Solver::ComputeObjective(const SolverRHS& cost_rhs,
                                 const Eigen::VectorXd& x_reduced) {
   auto* k = kkt();
   auto x_rhs = k->MakeSolverRHS();
-  x_rhs = k->MakeBlockVariable(x_reduced);
+  x_rhs.ScatterFrom(x_reduced.data(), x_reduced.size());
 
   auto qx = k->MakeSolverRHS();
   qx.SetZero();
@@ -99,7 +99,7 @@ OptimalitySummary Solver::ComputeOptimality(
     const RowSpace& lambda) {
   auto* k = kkt();
   auto x_rhs = k->MakeSolverRHS();
-  x_rhs = k->MakeBlockVariable(x_reduced);
+  x_rhs.ScatterFrom(x_reduced.data(), x_reduced.size());
 
   // s = Ax + b.
   RowSpace s = k->MakeRowSpace();
@@ -137,7 +137,7 @@ ConstraintDuals Solver::ExtractDuals(
 
   // Compute slacks via KKT (handles tree decomposition correctly).
   auto x_rhs = k->MakeSolverRHS();
-  x_rhs = k->MakeBlockVariable(x_reduced);
+  x_rhs.ScatterFrom(x_reduced.data(), x_reduced.size());
   RowSpace slack_rs = k->MakeRowSpace();
   k->MultiplyA(x_rhs, slack_rs);
   slack_rs += k->GetAffineTerm();
@@ -235,7 +235,7 @@ ConstraintDuals Solver::ExtractDuals(
     }
     // Pack into SolverRHS and subtract.
     auto ctnu_rhs = k->MakeSolverRHS();
-    ctnu_rhs = k->MakeBlockVariable(Ctnu);
+    ctnu_rhs.ScatterFrom(Ctnu.data(), Ctnu.size());
     grad -= ctnu_rhs;
   }
   int n = k->number_of_variables();

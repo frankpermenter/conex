@@ -48,13 +48,6 @@ class CompiledModel {
     if (!layout_cached_) CacheLayout();
     return row_layout_;
   }
-  BlockVariable MakeBlockVariable(int cols = 1) {
-    return kkt_.MakeBlockVariable(cols);
-  }
-  BlockVariable MakeBlockVariable(Eigen::Ref<const Eigen::MatrixXd> x) {
-    return kkt_.MakeBlockVariable(x);
-  }
-
   // Model operations.
   void MultiplyA(const SolverRHS& x, RowSpace& out) {
     kkt_.MultiplyA(x, out);

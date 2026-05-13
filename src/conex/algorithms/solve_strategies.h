@@ -213,8 +213,7 @@ struct DirectSolve {
     model.AssembleAndFactor();
 
     auto rhs_blk = model.AllocSolverRHS();
-    rhs_blk = model.MakeBlockVariable(
-        Eigen::Map<const Eigen::VectorXd>(rhs.data(), rhs.size()));
+    rhs_blk.ScatterFrom(rhs.data(), rhs.size());
     model.SolveSolverRHS(rhs_blk);
 
     GeodesicResult result{};

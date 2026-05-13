@@ -137,7 +137,7 @@ Eigen::VectorXd LQRTreeSolver::Solve(const Eigen::VectorXd& x0) {
   for (int i = 0; i < nx_; ++i)
     rhs_dense(LicIdx() + i) = x0(i);
   auto rhs_blk = solver_->MakeSolverRHS();
-  rhs_blk = solver_->MakeBlockVariable(rhs_dense);
+  rhs_blk.ScatterFrom(rhs_dense.data(), rhs_dense.size());
   solver_->SolveSolverRHS(rhs_blk);
   Eigen::VectorXd sol(n_vars_);
   rhs_blk.supernodes->GatherInto(sol);

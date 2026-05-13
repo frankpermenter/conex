@@ -1216,7 +1216,7 @@ SolverRHS T::EqualityAffineTermRHS() {
     for (int i = 0; i < static_cast<int>(dv.size()); ++i)
       d_vec(dv[i]) += d(i);
   }
-  rhs = MakeBlockVariable(d_vec);
+  rhs.supernodes->ScatterFrom(d_vec.data(), d_vec.size());
   return rhs;
 }
 

@@ -183,7 +183,7 @@ std::pair<double, double> VerifyHybridREquations(
   // --- Primal check ---
   // delta should equal r - P(W^{1/2})(b_theta + A*y).
   auto y_rhs = model.AllocSolverRHS();
-  y_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(y.data(), y.size()));
+  y_rhs.ScatterFrom(y.data(), y.size());
   RowSpace Ay = model.AllocRowSpace(arena);
   model.MultiplyA(y_rhs, Ay);
   RowSpace slack = model.AllocRowSpace(arena);
@@ -814,7 +814,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   // Lambda and optimality.
   {
     auto x_rhs = model.AllocSolverRHS();
-    x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
+    x_rhs.ScatterFrom(result.x.data(), result.x.size());
     // result.lambda must outlive the arena -> heap allocation.
     RowSpace r_plus_delta = model.AllocRowSpace(arena);
     addScaled(r_plus_delta, r_var, last_delta, 1.0, 1.0);
@@ -966,7 +966,7 @@ GeodesicResult SolveGeodesicHybridR(
   // lambda = M*(r+delta)*M^T  (in physical frame, from M-frame r and delta)
   {
     auto x_rhs = model.AllocSolverRHS();
-    x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
+    x_rhs.ScatterFrom(result.x.data(), result.x.size());
     RowSpace r_plus_delta = model.AllocRowSpace(arena);
     addScaled(r_plus_delta, r, last_delta, 1.0, 1.0);
     // result.lambda must outlive the arena -> heap allocation.

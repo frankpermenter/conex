@@ -47,7 +47,7 @@ std::pair<double, double> VerifyNewtonEquations(
   //   S_computed = P(W^{-1/2})(d - I) should equal -k*b - A*y.
   // Or simpler: verify d - I = P(W^{1/2})(-k*b - A*y).
   auto y_rhs = model.AllocSolverRHS();
-  y_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(y.data(), y.size()));
+  y_rhs.ScatterFrom(y.data(), y.size());
   RowSpace Ay = model.AllocRowSpace();
   model.MultiplyA(y_rhs, Ay);
   RowSpace slack = model.AllocRowSpace();
@@ -1007,7 +1007,7 @@ GeodesicResult SolveGeodesicHSD(
 
       {
         auto x_rhs = model.AllocSolverRHS();
-        x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
+        x_rhs.ScatterFrom(result.x.data(), result.x.size());
         result.optimality = CheckOptimality(model, x_rhs, result.lambda);
       }
       result.optimality.mu = mu;
@@ -1354,7 +1354,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
     {
       auto x_rhs = model.AllocSolverRHS();
-      x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
+      x_rhs.ScatterFrom(result.x.data(), result.x.size());
       result.optimality = CheckOptimality(model, x_rhs, result.lambda);
       result.optimality.mu = result.mu;
     }
@@ -1686,7 +1686,7 @@ GeodesicResult SolveGeodesicPhaseOne(
     result.lambda *= (1.0 / (k * tau));
     {
       auto x_rhs = model.AllocSolverRHS();
-      x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
+      x_rhs.ScatterFrom(result.x.data(), result.x.size());
       result.optimality = CheckOptimality(model, x_rhs, result.lambda);
     }
     result.optimality.mu = result.mu;
@@ -1804,7 +1804,7 @@ GeodesicResult SolveGeodesicLP(
       lambda *= (1.0 / k);
       result.lambda = std::move(lambda);
       auto x_rhs = model.AllocSolverRHS();
-      x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
+      x_rhs.ScatterFrom(result.x.data(), result.x.size());
       result.optimality = CheckOptimality(model, x_rhs, result.lambda);
       result.optimality.mu = result.mu;
       if (verbose) {
@@ -2965,7 +2965,7 @@ GeodesicResult SolveGeodesicHybrid(
   // Optimality check against the UNSCALED problem.
   {
     auto x_rhs = model.AllocSolverRHS();
-    x_rhs = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
+    x_rhs.ScatterFrom(result.x.data(), result.x.size());
     RowSpace r_plus_delta_o = model.AllocRowSpace();
     addScaled(r_plus_delta_o, r, last_delta, 1.0, 1.0);
     RowSpace lambda = model.MakeRowSpace();

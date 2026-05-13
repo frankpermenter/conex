@@ -169,7 +169,7 @@ BarrierQPResult SolveBarrierQP(
 
   auto c_rhs = solver.MakeCostRHS();
   auto x = kkt->MakeSolverRHS();
-  x = kkt->MakeBlockVariable(solver.ReduceVector(x0));
+  { auto rv = solver.ReduceVector(x0); x.ScatterFrom(rv.data(), rv.size()); }
 
   auto result = SolveBarrierQP(*kkt, c_rhs, x,
                                 max_outer_iterations, max_newton_steps,

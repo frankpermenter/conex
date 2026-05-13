@@ -50,7 +50,7 @@ HSDResult SolveHSD(
     kkt.AccumulateAtranspose(W, AW); AW *= -1;
 
     auto b_rhs = kkt.MakeSolverRHS();
-    b_rhs = kkt.MakeBlockVariable(b_old);
+    b_rhs.ScatterFrom(b_old.data(), b_old.size());
 
     double wc = dot(W, c);
     double cQc = dot(c, QWc);
@@ -118,7 +118,7 @@ HSDResult SolveHSD(
       double cw = wt * (1 + dt) - sq;
 
       RowSpace Ay = kkt.MakeRowSpace();
-      { auto yr = kkt.MakeSolverRHS(); yr = kkt.MakeBlockVariable(y);
+      { auto yr = kkt.MakeSolverRHS(); yr.ScatterFrom(y.data(), y.size());
         kkt.MultiplyA(yr, Ay); }
 
       slack_out = c; slack_out *= cw;

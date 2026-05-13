@@ -198,7 +198,7 @@ void RunSDPComparison(int n, int p, int seed) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs.ScatterFrom(c.data(), c.size());
   CompiledModel cm(*kkt, cost_rhs);
 
   // ===== Geodesic IPM (0 centering steps) =====
@@ -246,7 +246,7 @@ void RunSOCPComparison(int vec_dim, int p, int seed) {
   auto solver = Solver::Build(problem);
   auto* kkt = solver.kkt();
   auto cost_rhs = kkt->MakeSolverRHS();
-  cost_rhs = kkt->MakeBlockVariable(c);
+  cost_rhs.ScatterFrom(c.data(), c.size());
   CompiledModel cm(*kkt, cost_rhs);
 
   // ===== Geodesic IPM (0 centering steps) =====

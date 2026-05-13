@@ -672,7 +672,7 @@ GeodesicResult SolveGeodesicHSDE(
 
     {
       auto x_rhs_final = model.AllocSolverRHS();
-      x_rhs_final = model.MakeBlockVariable(Eigen::Map<const Eigen::VectorXd>(result.x.data(), result.x.size()));
+      x_rhs_final.ScatterFrom(result.x.data(), result.x.size());
       result.optimality = CheckOptimality(model, x_rhs_final, lambda);
     }
     result.optimality.mu = result.mu;
