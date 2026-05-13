@@ -1338,10 +1338,16 @@ GeodesicResult SolveGeodesicThetaContinuation(
         double R_f = theta_f * (bT_ones + 1.0);
         double eq_err_f = std::abs(bTl_f + cTx_f + xQx_tau_f + mu_tau_f - R_f);
 
-        printf("  %3d.%d  %10.2e  %10.2e  %12s  %12.4e  %12.4e  %12s  %12.4e"
-               "  %12s  %12s  %12s  eq=%.2e  (frozen-J)\n",
-               outer, inner + 1, theta_f, tau_f, "", k_f, d_inf_fv, "",
-               gap_f, "", "", "", eq_err_f);
+        double cTx_cost_f = cost_rhs.dot(x_rhs_f);
+        double dTnu_f = cTx_f - cTx_cost_f;
+        double half_xQx_f = (tau_f > 1e-30) ? 0.5 * xQx_f / (tau_f * tau_f) : 0.0;
+        double primal_f = (tau_f > 1e-30) ? cTx_cost_f / tau_f + half_xQx_f : 0.0;
+        double dual_f = primal_f + gap_f / std::max(std::abs(tau_f), 1e-30);
+
+        printf("  %3d.%d  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
+               "  %12.4e  %12.4e  %12.4e  %12.2e  (frozen-J)\n",
+               outer, inner + 1, theta_f, tau_f, mu_tau_f, k_f, d_inf_fv,
+               squaredNorm(d_f), gap_f, dual_f, primal_f, mu_tau_f, eq_err_f);
       }
 
       if (d_inf_fv > 1e-14) {
@@ -1380,17 +1386,12 @@ GeodesicResult SolveGeodesicThetaContinuation(
       double half_xQx_phys = (tau > 1e-30) ? 0.5 * xQx / (tau * tau) : 0.0;
       double primal_phys = (tau > 1e-30) ? cT_x / tau + half_xQx_phys : 0.0;
 
-      // Dual objective: b'lambda where lambda is recovered from the last
-      // consistent (W, d) pair. Since W has been updated past the last
-      // direction, we report the primal objective only.
-      // dual = -(primal + gap/tau) by weak duality.
       double dual_phys = primal_phys + gap / std::max(std::abs(tau), 1e-30);
 
       printf("  %3d  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
-             "  %12.4e  %12.4e  %12.4e  %3d\n",
+             "  %12.4e  %12.4e  %12.4e\n",
              outer, theta, tau, mu_over_tau, k, d_inf, d_sq, gap,
-             dual_phys, primal_phys, mu_over_tau,
-             max_centering_steps);
+             dual_phys, primal_phys, mu_over_tau);
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
