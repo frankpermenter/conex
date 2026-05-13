@@ -14,13 +14,14 @@ struct ThetaContinuationR {
   ThetaContRSwitchPolicy policy = DefaultThetaContRPolicy;
   double compl_tol = 1e-12;
   double theta_rate = 0.1;  // center if theta hasn't decreased by this factor
+  mutable SolveStats stats;
 
   GeodesicResult Run(CompiledModel& model) const {
     RowSpace W = model.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicThetaContinuationR(
         model, W, max_iterations, tolerance, verbose, policy,
-        compl_tol, theta_rate);
+        compl_tol, theta_rate, &stats);
   }
 };
 
@@ -29,12 +30,13 @@ struct HybridR {
   double tolerance = 1e-8;
   int max_iterations = 500;
   bool verbose = false;
+  mutable SolveStats stats;
 
   GeodesicResult Run(CompiledModel& model) const {
     RowSpace W = model.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicHybridR(
-        model, W, max_iterations, tolerance, verbose);
+        model, W, max_iterations, tolerance, verbose, &stats);
   }
 };
 
@@ -58,13 +60,14 @@ struct ThetaContinuation {
   int max_iterations = 500;
   int max_centering_steps = 1;
   bool verbose = false;
+  mutable SolveStats stats;
 
   GeodesicResult Run(CompiledModel& model) const {
     RowSpace W = model.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicThetaContinuation(
         model, W, max_iterations, max_centering_steps,
-        tolerance, verbose);
+        tolerance, verbose, &stats);
   }
 };
 
@@ -132,13 +135,14 @@ struct GeodesicLP {
   int max_iterations = 30;
   int max_centering_steps = 0;
   bool verbose = false;
+  mutable SolveStats stats;
 
   GeodesicResult Run(CompiledModel& model) const {
     RowSpace W = model.MakeRowSpace();
     setOnes(W);
     return SolveGeodesicLP(
         model, W, max_iterations, max_centering_steps,
-        tolerance, verbose);
+        tolerance, verbose, false, &stats);
   }
 };
 
@@ -150,6 +154,7 @@ struct GeodesicBarrierLP {
   int max_frozen_steps = 0;
   bool verbose = false;
   Eigen::VectorXd initial_z;  // empty → setOnes (symmetric cone default)
+  mutable SolveStats stats;
 
   GeodesicResult Run(CompiledModel& model) const {
     RowSpace z = model.MakeRowSpace();
@@ -159,7 +164,8 @@ struct GeodesicBarrierLP {
       setOnes(z);
     }
     return SolveGeodesicBarrierLP(
-        model, z, max_iterations, max_frozen_steps, tolerance, verbose);
+        model, z, max_iterations, max_frozen_steps, tolerance, verbose,
+        &stats);
   }
 };
 
@@ -170,6 +176,7 @@ struct GeodesicBarrierThetaContinuation {
   int max_centering_steps = 1;
   bool verbose = false;
   Eigen::VectorXd initial_z;  // empty → setOnes
+  mutable SolveStats stats;
 
   GeodesicResult Run(CompiledModel& model) const {
     RowSpace z = model.MakeRowSpace();
@@ -180,7 +187,7 @@ struct GeodesicBarrierThetaContinuation {
     }
     return SolveGeodesicBarrierThetaContinuation(
         model, z, max_iterations, max_centering_steps,
-        tolerance, verbose);
+        tolerance, verbose, &stats);
   }
 };
 

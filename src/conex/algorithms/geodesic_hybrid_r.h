@@ -19,6 +19,7 @@
 // Theta-rate trigger forces W-updates when r-updates stall.
 
 #include <functional>
+#include "conex/common/solve_stats.h"
 #include <vector>
 
 #include "conex/common/arena.h"
@@ -210,7 +211,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     bool verbose = false,
     ThetaContRSwitchPolicy policy = DefaultThetaContRPolicy,
     double compl_tol = 1e-12,
-    double theta_rate = 0.1);  // center if theta hasn't decreased by this
+    double theta_rate = 0.1,
+    SolveStats* stats = nullptr);  // center if theta hasn't decreased by this
                                 // factor since last W-update (0 = disabled)
 
 // Original HybridR: theta = |gap|/m heuristic.
@@ -219,6 +221,7 @@ GeodesicResult SolveGeodesicHybridR(
     RowSpace& W,
     int max_iterations = 500,
     double tolerance = 1e-8,
-    bool verbose = false);
+    bool verbose = false,
+    SolveStats* stats = nullptr);
 
 }  // namespace conex

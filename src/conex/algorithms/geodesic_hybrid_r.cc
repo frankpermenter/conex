@@ -482,7 +482,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     bool verbose,
     ThetaContRSwitchPolicy policy,
     double compl_tol,
-    double theta_rate) {
+    double theta_rate,
+    SolveStats* stats) {
   Arena& arena = model.arena();
   const auto& cost_rhs = model.cost_rhs();
   RowSpace b = model.GetAffineTerm();
@@ -514,8 +515,11 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   RowSpace M = model.AllocRowSpace(arena);
   setOnes(M);  // M = I initially
   squareM(W, M);  // W = I initially
-  model.SetScaling(W);
-  model.AssembleAndFactor();
+  { CONEX_TIMER(stats, factor_us);
+    model.SetScaling(W);
+    model.AssembleAndFactor();
+  }
+  if (stats) stats->factor_count++;
   int total_fac = 1;
   int total_sol = 0;
 
@@ -546,11 +550,16 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
     if (need_decomp) {
       if (full_decomp) {
-        decomp = ComputeHybridRDecomposition(model, arena, b, M, W, r_var);
+        { CONEX_TIMER(stats, solve_us);
+          decomp = ComputeHybridRDecomposition(model, arena, b, M, W, r_var);
+        }
+        if (stats) stats->solve_count += 3;
         total_sol += 3;
       } else {
-        // Only r changed -- re-solve x0, keep x1 and x_theta.
-        total_sol += UpdateX0(decomp, model, arena, M, W, r_var);
+        { CONEX_TIMER(stats, solve_us);
+          total_sol += UpdateX0(decomp, model, arena, M, W, r_var);
+        }
+        if (stats) stats->solve_count++;
       }
       need_decomp = false;
       full_decomp = false;
@@ -769,22 +778,28 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     bool do_center = !w_frozen && (policy(g, d_inf, r_updates_since_fac)
                                     || theta_stalled);
     if (do_center) {
-      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      updateM(M, r_var, alpha, d_vec);
-      squareM(W, M);
-      w_tau *= std::exp(d_tau * alpha);
-      model.SetScaling(W);
-      if (!model.AssembleAndFactor()) {
-  
-        break;
+      { CONEX_TIMER(stats, cone_us);
+        double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+        updateM(M, r_var, alpha, d_vec);
+        squareM(W, M);
+        w_tau *= std::exp(d_tau * alpha);
       }
+      bool fac_ok;
+      { CONEX_TIMER(stats, factor_us);
+        model.SetScaling(W);
+        fac_ok = model.AssembleAndFactor();
+      }
+      if (!fac_ok) break;
+      if (stats) stats->factor_count++;
       total_fac++;
       r_updates_since_fac = 0;
       theta_at_last_w = theta;
       need_decomp = true;
       full_decomp = true;  // W changed, need all 3 solves
     } else {
-      shrinkR(r_var, delta_vec);
+      { CONEX_TIMER(stats, cone_us);
+        shrinkR(r_var, delta_vec);
+      }
       r_tau = 0.5 * r_tau * (1.0 + std::abs(d_tau));
       r_updates_since_fac++;
       need_decomp = true;
@@ -833,7 +848,8 @@ GeodesicResult SolveGeodesicHybridR(
     RowSpace& W,
     int max_iterations,
     double tolerance,
-    bool verbose) {
+    bool verbose,
+    SolveStats* stats) {
   Arena& arena = model.arena();
   const auto& cost_rhs = model.cost_rhs();
   RowSpace b = model.GetAffineTerm();
@@ -848,8 +864,11 @@ GeodesicResult SolveGeodesicHybridR(
   RowSpace M = model.AllocRowSpace(arena);
   setOnes(M);  // M = I initially
   squareM(W, M);
-  model.SetScaling(W);
-  model.AssembleAndFactor();
+  { CONEX_TIMER(stats, factor_us);
+    model.SetScaling(W);
+    model.AssembleAndFactor();
+  }
+  if (stats) stats->factor_count++;
   int total_fac = 1;
   int total_sol = 0;
 
@@ -869,8 +888,12 @@ GeodesicResult SolveGeodesicHybridR(
   for (int iter = 0; iter < max_iterations; ++iter) {
     RowSpace d = model.AllocRowSpace(arena);
     RowSpace delta = model.AllocRowSpace(arena);
-    auto info = ComputeHybridRDirectionM(model, arena, b, M, W, r, theta,
-                                          d, delta);
+    HybridRDirection info;
+    { CONEX_TIMER(stats, solve_us);
+      info = ComputeHybridRDirectionM(model, arena, b, M, W, r, theta,
+                                            d, delta);
+    }
+    if (stats) stats->solve_count++;
     last_delta = delta;
     total_sol++;
     double d_inf_pre = info.d_inf;
@@ -888,19 +911,25 @@ GeodesicResult SolveGeodesicHybridR(
 
     if (do_center) {
       // W-update: M_new = M * exp(aD/2). No polar decomposition.
-      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      updateM(M, r, alpha, d);
-      squareM(W, M);
-      model.SetScaling(W);
-      if (!model.AssembleAndFactor()) {
-  
-        break;
+      { CONEX_TIMER(stats, cone_us);
+        double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+        updateM(M, r, alpha, d);
+        squareM(W, M);
       }
+      bool fac_ok;
+      { CONEX_TIMER(stats, factor_us);
+        model.SetScaling(W);
+        fac_ok = model.AssembleAndFactor();
+      }
+      if (!fac_ok) break;
+      if (stats) stats->factor_count++;
       total_fac++;
       r_updates_since_fac = 0;
     } else {
       // r-update + theta update.
-      shrinkR(r, delta);
+      { CONEX_TIMER(stats, cone_us);
+        shrinkR(r, delta);
+      }
       r_updates_since_fac++;
       theta = std::abs(g) / m;
     }

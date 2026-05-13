@@ -1045,7 +1045,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
     int max_outer_iterations,
     int max_centering_steps,
     double tolerance,
-    bool verbose) {
+    bool verbose,
+    SolveStats* stats) {
   const auto& cost_rhs = model.cost_rhs();
   const RowSpace b = model.GetAffineTerm();
   const int m = W.total_rows();
@@ -1080,7 +1081,10 @@ GeodesicResult SolveGeodesicThetaContinuation(
     decomp.d0 = model.AllocRowSpace();
     decomp.d1_0 = model.AllocRowSpace();
     decomp.d1_theta = model.AllocRowSpace();
-    ComputeFullDecomposition(model, b, W, decomp);
+    { CONEX_TIMER(stats, factor_us);
+      ComputeFullDecomposition(model, b, W, decomp);
+    }
+    if (stats) { stats->factor_count++; stats->solve_count += 3; }
     total_fac++;
     total_sol += 3;
 
@@ -1155,9 +1159,11 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
     // Take geodesic step.
     RowSpace W0 = W;  // save frozen Jacobian point
-    if (d_inf > 1e-14) {
-      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-      geodesicUpdate(W, alpha, d_step);
+    { CONEX_TIMER(stats, cone_us);
+      if (d_inf > 1e-14) {
+        double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+        geodesicUpdate(W, alpha, d_step);
+      }
     }
 
     // Frozen-Jacobian steps: refresh d0 (1 solve), redo theta binary
@@ -1702,7 +1708,8 @@ GeodesicResult SolveGeodesicLP(
     int max_centering_steps,
     double tolerance,
     bool verbose,
-    bool mehrotra_correction) {
+    bool mehrotra_correction,
+    SolveStats* stats) {
   const auto& cost_rhs = model.cost_rhs();
   double k = 0.0;
   const int m = W.total_rows();
@@ -1737,12 +1744,18 @@ GeodesicResult SolveGeodesicLP(
     RowSpace d0 = model.AllocRowSpace(arena);
     RowSpace d1 = model.AllocRowSpace(arena);
     SolverRHS y0{}, y1{};
-    ComputeDecomposition(model, arena, cost_rhs_blend, b, W, d0, d1, &y0, &y1);
+    { CONEX_TIMER(stats, factor_us);
+      ComputeDecomposition(model, arena, cost_rhs_blend, b, W, d0, d1, &y0, &y1);
+    }
+    if (stats) { stats->factor_count++; stats->solve_count++; }
     total_fac += 1;
     total_sol += 2;
 
     // Line search for k (fresh factorization).
-    double k_new = lineSearchK(d0, d1);
+    double k_new;
+    { CONEX_TIMER(stats, cone_us);
+      k_new = lineSearchK(d0, d1);
+    }
     double k_prev = k;
     if (k_new > k) {
       k = k_new;
@@ -1821,8 +1834,10 @@ GeodesicResult SolveGeodesicLP(
     RowSpace W0 = W;  // heap deep copy (W is heap-backed)
 
     // Geodesic step.
-    double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
-    geodesicUpdate(W, alpha, d);
+    { CONEX_TIMER(stats, cone_us);
+      double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
+      geodesicUpdate(W, alpha, d);
+    }
 
     // Frozen-Jacobian iterations.
     if (max_centering_steps > 0) {
@@ -1885,7 +1900,8 @@ GeodesicResult SolveGeodesicBarrierLP(
     int max_outer_iterations,
     int max_frozen_steps,
     double tolerance,
-    bool verbose) {
+    bool verbose,
+    SolveStats* stats) {
   const auto& cost_rhs = model.cost_rhs();
   const RowSpace b = model.GetAffineTerm();
   const int m = z.total_rows();
@@ -1909,8 +1925,13 @@ GeodesicResult SolveGeodesicBarrierLP(
     char* iter_mark = arena.SaveCursor();
 
     // 0. Sync z to constraint workspaces and factor Gram = A^T H(z) A.
-    model.SetScaling(z);
-    if (!model.AssembleAndFactor()) { arena.RestoreCursor(iter_mark); break; }
+    bool factor_ok;
+    { CONEX_TIMER(stats, factor_us);
+      model.SetScaling(z);
+      factor_ok = model.AssembleAndFactor();
+    }
+    if (!factor_ok) { arena.RestoreCursor(iter_mark); break; }
+    if (stats) stats->factor_count++;
 
     // 1. Centering RHS: A^T(-2∇F(z)).
     RowSpace grad = model.AllocRowSpace(arena);
@@ -1938,7 +1959,10 @@ GeodesicResult SolveGeodesicBarrierLP(
     auto y = model.AllocSolverRHS(2);
     y.SetColumn(0, rhs0);
     y.SetColumn(1, rhs1);
-    model.SolveSolverRHS(y);
+    { CONEX_TIMER(stats, solve_us);
+      model.SolveSolverRHS(y);
+    }
+    if (stats) stats->solve_count += 2;
 
     total_fac += 1;
     total_sol += 2;
@@ -1964,7 +1988,10 @@ GeodesicResult SolveGeodesicBarrierLP(
     target1 += b;
 
     // 6. Line search for k.
-    double k_new = lineSearchTarget(z, target0, target1);
+    double k_new;
+    { CONEX_TIMER(stats, cone_us);
+      k_new = lineSearchTarget(z, target0, target1);
+    }
     double k_prev = k;
 
     // Minimum-norm fallback (same logic as SolveGeodesicLP).
@@ -2047,7 +2074,9 @@ GeodesicResult SolveGeodesicBarrierLP(
     } else {
       // Save z₀ for frozen-J, then step.
       RowSpace z0 = z;
-      geodesicStepTarget(z, alpha, target_k);
+      { CONEX_TIMER(stats, cone_us);
+        geodesicStepTarget(z, alpha, target_k);
+      }
 
       // Frozen-Jacobian inner steps: use stale Gram (H(z₀)) with
       // frozen centering = -∇F(z_i) + H(z₀)·z_i.
@@ -2274,7 +2303,8 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
     int max_outer_iterations,
     int max_centering_steps,
     double tolerance,
-    bool verbose) {
+    bool verbose,
+    SolveStats* stats) {
   const auto& cost_rhs = model.cost_rhs();
   const RowSpace b = model.GetAffineTerm();
   const int m = z.total_rows();
@@ -2314,8 +2344,13 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
     char* iter_mark = arena.SaveCursor();
 
     // 0. Factor Gram = A^T H(z) A.
-    model.SetScaling(z);
-    if (!model.AssembleAndFactor()) { arena.RestoreCursor(iter_mark); break; }
+    bool factor_ok;
+    { CONEX_TIMER(stats, factor_us);
+      model.SetScaling(z);
+      factor_ok = model.AssembleAndFactor();
+    }
+    if (!factor_ok) { arena.RestoreCursor(iter_mark); break; }
+    if (stats) stats->factor_count++;
 
     // 1. Build 3 RHS vectors.
     RowSpace grad = model.AllocRowSpace(arena);
@@ -2357,7 +2392,10 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
     y.SetColumn(0, rhs0);
     y.SetColumn(1, rhs1);
     y.SetColumn(2, rhs2);
-    model.SolveSolverRHS(y);
+    { CONEX_TIMER(stats, solve_us);
+      model.SolveSolverRHS(y);
+    }
+    if (stats) stats->solve_count += 3;
     total_fac++;
     total_sol += 3;
 
@@ -2487,7 +2525,9 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
     } else {
       // Geodesic step (always take — d_inf may be ≤ 1 by design in ThetaCont).
       RowSpace z_outer = z;  // heap deep copy (z is heap-backed)
-      geodesicStepTarget(z, alpha, target_k);
+      { CONEX_TIMER(stats, cone_us);
+        geodesicStepTarget(z, alpha, target_k);
+      }
 
       // Frozen-Jacobian inner steps: use stale Gram (H(z_outer)) with
       // frozen centering = -∇F(z_i) + H(z_outer)·z_i.

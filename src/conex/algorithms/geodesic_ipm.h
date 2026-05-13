@@ -37,6 +37,7 @@
 #include <functional>
 #include <vector>
 #include "conex/common/compiled_model.h"
+#include "conex/common/solve_stats.h"
 
 namespace conex {
 
@@ -197,7 +198,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
     int max_outer_iterations = 50,
     int max_centering_steps = 10,
     double tolerance = 1e-8,
-    bool verbose = false);
+    bool verbose = false,
+    SolveStats* stats = nullptr);
 
 // Aggressive θ→0 / increase-k method (a.k.a. "phase one" then "phase two").
 //
@@ -247,7 +249,8 @@ GeodesicResult SolveGeodesicLP(
     int max_centering_steps = 1,
     double tolerance = 1e-8,
     bool verbose = false,
-    bool mehrotra_correction = false);
+    bool mehrotra_correction = false,
+    SolveStats* stats = nullptr);
 
 // z-space geodesic LP for cones with log-homogeneous barriers.
 // Uses only the z-space operations on CompiledModel (ComputeGradient,
@@ -259,7 +262,8 @@ GeodesicResult SolveGeodesicBarrierLP(
     int max_outer_iterations = 30,
     int max_frozen_steps = 0,
     double tolerance = 1e-8,
-    bool verbose = false);
+    bool verbose = false,
+    SolveStats* stats = nullptr);
 
 // z-space θ-continuation for cones with log-homogeneous barriers.
 // Generalizes SolveGeodesicThetaContinuation using only z-space ops.
@@ -270,7 +274,8 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
     int max_outer_iterations = 500,
     int max_centering_steps = 1,
     double tolerance = 1e-8,
-    bool verbose = false);
+    bool verbose = false,
+    SolveStats* stats = nullptr);
 
 // Find the largest k such that ||d(k)||_inf <= 1, where d(k) = d0 + k * d1.
 // Requires W to be centered (d ≈ 0 at the current k).  Uses one factorization

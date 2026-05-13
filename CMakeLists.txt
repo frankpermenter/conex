@@ -773,3 +773,6 @@ if(pybind11_FOUND)
 else()
   message(STATUS "pybind11 not found — skipping Python bindings")
 endif()
+
+add_executable(timing_breakdown bench/timing_breakdown.cc)
+target_link_libraries(timing_breakdown algorithms)
