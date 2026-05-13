@@ -1195,33 +1195,59 @@ GeodesicResult SolveGeodesicThetaContinuation(
     auto tc = PrecomputeThetaCoeffs(model, arena, duality_cost, b, W, decomp, bT_ones);
     double last_eq_err = 0;
 
-    // Binary search for the smallest theta with tau > 0 and ||d||_inf <= beta.
+    // Line search for k: d(k) is affine in k (for Q=0).
+    // Evaluate at two k values, extract D0 + k*D1, use lineSearchK.
     constexpr double beta_target = 1.0;
     double theta_prev = theta;
     {
-      double theta_lo = 0.0;
-      double theta_hi = theta;
-      for (int bisect = 0; bisect < 30; ++bisect) {
-        double theta_mid = 0.5 * (theta_lo + theta_hi);
-        auto [tau_try, d_inf_try] = EvalThetaCandidate(model, arena, tc, decomp, theta_mid);
-        if (tau_try > 0 && d_inf_try <= beta_target) {
-          theta_hi = theta_mid;
-        } else {
-          theta_lo = theta_mid;
+      char* ls_mark = arena.SaveCursor();
+      double ka = k > 0 ? k : 1.0;
+      double kb = ka + 1.0;
+      // Solve for (tau, theta) at each k.
+      auto [tau_a, dinf_a] = EvalThetaFast(tc, tc.ip, 1.0 / (ka * ka));
+      auto [tau_b, dinf_b] = EvalThetaFast(tc, tc.ip, 1.0 / (kb * kb));
+      double theta_a = 1.0 / (ka * ka), theta_b = 1.0 / (kb * kb);
+      if (tau_a > 0 && tau_b > 0) {
+        RowSpace da = model.AllocRowSpace(arena);
+        EvaluateDirection(da, decomp, ka, tau_a, theta_a);
+        RowSpace db = model.AllocRowSpace(arena);
+        EvaluateDirection(db, decomp, kb, tau_b, theta_b);
+        // d(k) = D0 + k*D1, extract: D1 = (db - da)/(kb - ka), D0 = da - ka*D1
+        RowSpace D1 = model.AllocRowSpace(arena);
+        addScaled(D1, db, da, 1.0, -1.0);  // D1 = db - da (since kb - ka = 1)
+        RowSpace D0 = model.AllocRowSpace(arena);
+        addScaled(D0, da, D1, 1.0, -ka);   // D0 = da - ka*D1
+        double k_new = lineSearchK(D0, D1);
+        if (k_new > 0) {
+          k = k_new;
+          theta = 1.0 / (k * k);
+          auto [tau_new, dinf_new] = EvalThetaFast(tc, tc.ip, theta);
+          tau = tau_new;
         }
       }
-      theta = theta_hi;
+      // Fallback: if affine line search failed, try bisection.
+      if (tau <= 0 || k <= 0) {
+        double theta_lo = 0.0, theta_hi = theta_prev;
+        for (int bisect = 0; bisect < 30; ++bisect) {
+          double theta_mid = 0.5 * (theta_lo + theta_hi);
+          auto [tau_try, d_inf_try] = EvalThetaCandidate(model, arena, tc, decomp, theta_mid);
+          if (tau_try > 0 && d_inf_try <= beta_target) {
+            theta_hi = theta_mid;
+          } else {
+            theta_lo = theta_mid;
+          }
+        }
+        theta = theta_hi;
+        k = 1.0 / std::sqrt(theta);
+        auto [tau_try, d_inf_try] = EvalThetaCandidate(model, arena, tc, decomp, theta);
+        tau = tau_try;
+      }
+      arena.RestoreCursor(ls_mark);
     }
-    k = 1.0 / std::sqrt(theta);
-    // Final evaluation with exact d_inf (normInf, not sqrt(d_sq) approximation).
-    auto [tau_sel, d_inf_sel] = EvalThetaCandidate(
-        model, arena, tc, decomp, theta);
-    if (tau_sel <= 0) {
-      // No positive root — abort this outer iteration.
+    if (tau <= 0) {
       result.iterations = outer + 1;
       break;
     }
-    tau = tau_sel;
 
     // Evaluate direction for the first step.
     RowSpace d_step = model.AllocRowSpace();
