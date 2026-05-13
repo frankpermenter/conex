@@ -374,9 +374,9 @@ int main(int argc, char* argv[]) {
         printf("  AMD tree: %d cliques, %d vars\n", ns, ts->number_of_variables());
         for (int k = 0; k < ns; ++k) {
           printf("    clique %d: sn={", k);
-          for (int v : amd_tree.supernodes[k]) printf("%d,", pinv(v));
+          for (int v : amd_tree.supernodes[k]) printf("%d,", pinv[v]);
           printf("} sep={");
-          for (int v : amd_tree.separators[k]) printf("%d,", pinv(v));
+          for (int v : amd_tree.separators[k]) printf("%d,", pinv[v]);
           printf("} parent=%d\n", amd_tree.node_to_parent[k]);
         }
         // Print variable legend.

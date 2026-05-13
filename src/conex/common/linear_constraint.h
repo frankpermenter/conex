@@ -1,4 +1,5 @@
 #pragma once
+#include <cstring>
 #include <unordered_map>
 
 #include <Eigen/Core>
@@ -175,23 +176,27 @@ class LinearConstraint : public ConeConstraint {
     return &gram_evaluator_;
   }
 
-  Eigen::MatrixXd affine_term() const override { return constraint_affine_; }
+  void GetAffineTerm(double* out, int size) const override {
+    CONEX_DEMAND(size == constraint_affine_.size(),
+                 "Output size must match affine term size.");
+    std::memcpy(out, constraint_affine_.data(), size * sizeof(double));
+  }
   int num_rows() const override { return constraint_matrix_.rows(); }
   const EuclideanJordanAlgebra::BarrierConeOperations* cone_ops() const override {
     return cone_ops_;
   }
 
-  void SetWeights(const Eigen::VectorXd& weights) override {
-    CONEX_DEMAND(weights.size() == constraint_matrix_.rows(),
+  void SetWeights(const double* w, int size) override {
+    CONEX_DEMAND(size == constraint_matrix_.rows(),
                  "Weight vector size must match number of constraint rows.");
-    workspace_.W = weights.array().sqrt().matrix();
+    workspace_.W = Eigen::Map<const Eigen::VectorXd>(w, size).array().sqrt().matrix();
     gram_evaluator_.update_weights();
   }
 
-  void SetScaling(const Eigen::VectorXd& scaling) override {
-    CONEX_DEMAND(scaling.size() == constraint_matrix_.rows(),
+  void SetScaling(const double* w, int size) override {
+    CONEX_DEMAND(size == constraint_matrix_.rows(),
                  "Scaling vector size must match number of constraint rows.");
-    workspace_.W = scaling;
+    workspace_.W = Eigen::Map<const Eigen::VectorXd>(w, size);
     gram_evaluator_.update_weights();
   }
 

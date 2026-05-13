@@ -7,6 +7,8 @@
 // Memory: O(n² + Σ nnz_k) vs O(n²·p) for the dense vectorized approach.
 
 #pragma once
+#include <cassert>
+#include <cstring>
 #include <vector>
 
 #include <Eigen/Core>
@@ -76,7 +78,10 @@ class PSDConstraint : public ConeConstraint {
     return &psd_assembler_;
   }
 
-  Eigen::MatrixXd affine_term() const override { return b_vec_; }
+  void GetAffineTerm(double* out, int size) const override {
+    assert(size == static_cast<int>(b_vec_.size()));
+    std::memcpy(out, b_vec_.data(), size * sizeof(double));
+  }
   int num_rows() const override { return psd_n_ * psd_n_; }
   const EuclideanJordanAlgebra::BarrierConeOperations* cone_ops() const override;
 
@@ -91,8 +96,8 @@ class PSDConstraint : public ConeConstraint {
     psd_assembler_.SparseContributeAtranspose(V, *rhs.supernodes, *rhs.separators, nc);
   }
 
-  void SetScaling(const Eigen::VectorXd& scaling) override;
-  void SetWeights(const Eigen::VectorXd& weights) override;
+  void SetScaling(const double* w, int size) override;
+  void SetWeights(const double* w, int size) override;
 
   size_t RequiredArenaBytes() const override;
   void BindArenaMemory(double* ptr, size_t bytes) override;

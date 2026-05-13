@@ -65,21 +65,20 @@ void SOCGramEvaluator::set_order(const std::vector<int>& perm) {
 
 // --- SOCLinearConstraint ---
 
-void SOCLinearConstraint::SetScaling(const Eigen::VectorXd& scaling) {
-  CONEX_DEMAND(scaling.size() == constraint_matrix_.rows(),
+void SOCLinearConstraint::SetScaling(const double* w, int size) {
+  CONEX_DEMAND(size == constraint_matrix_.rows(),
                "Scaling vector size must match number of constraint rows.");
-  workspace_.W = scaling;
+  workspace_.W = Eigen::Map<const Eigen::VectorXd>(w, size);
   soc_gram_.update_weights();
 }
 
-void SOCLinearConstraint::SetWeights(const Eigen::VectorXd& weights) {
-  CONEX_DEMAND(weights.size() == constraint_matrix_.rows(),
+void SOCLinearConstraint::SetWeights(const double* w, int size) {
+  CONEX_DEMAND(size == constraint_matrix_.rows(),
                "Weight vector size must match number of constraint rows.");
-  int size = weights.size();
-  Eigen::VectorXd w(size);
+  Eigen::VectorXd ws(size);
   EuclideanJordanAlgebra::socConeOps().sqrt(
-      w.data(), weights.data(), size);
-  workspace_.W = w;
+      ws.data(), w, size);
+  workspace_.W = ws;
   soc_gram_.update_weights();
 }
 

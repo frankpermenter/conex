@@ -32,7 +32,7 @@ class SupernodePartitionMatrix {
   // perm_inv maps elimination position -> original variable index.
   void SetPartition(const std::vector<KKTSubsystemBase*>& subsystems,
                     int num_vars,
-                    const Eigen::VectorXi& perm_inv);
+                    const std::vector<int>& perm_inv);
 
   // (Re)allocate arena for the given number of columns.
   void Resize(int cols);
@@ -323,8 +323,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   }
 
   // Access the elimination permutation.
-  const Eigen::VectorXi& perm() const { return cached_perm_; }
-  const Eigen::VectorXi& perm_inv() const { return cached_perm_inv_; }
+  const std::vector<int>& perm() const { return cached_perm_; }
+  const std::vector<int>& perm_inv() const { return cached_perm_inv_; }
 
   // Extract the CliqueTree (variable IDs in original numbering).
   CliqueTree GetCliqueTree() const {
@@ -498,8 +498,8 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<KKTSubsystemBase*> solve_order_;
   // Cached permutation data for solve (avoids per-solve allocations).
   int cached_num_vars_ = 0;
-  Eigen::VectorXi cached_perm_;         // variable -> elimination position
-  Eigen::VectorXi cached_perm_inv_;     // elimination position -> variable
+  std::vector<int> cached_perm_;         // variable -> elimination position
+  std::vector<int> cached_perm_inv_;     // elimination position -> variable
   std::unique_ptr<void, decltype(&std::free)> arena_memory_{nullptr,
                                                             &std::free};
   size_t arena_bytes_ = 0;

@@ -48,12 +48,12 @@ class SOCLinearConstraint : public LinearConstraint {
 
   // SetScaling: w is the SOC weight (t, x₁, ..., xₙ).
   // Store directly — the SOCGramEvaluator reads from workspace_.W.
-  void SetScaling(const Eigen::VectorXd& scaling) override;
+  void SetScaling(const double* w, int size) override;
 
   // SetWeights: receives W² (same convention as nonneg).
   // For SOC: W² in Jordan algebra is (t²+||x||², 2tx).
   // We need to recover W from W². Use spectral sqrt.
-  void SetWeights(const Eigen::VectorXd& weights) override;
+  void SetWeights(const double* w, int size) override;
 
  private:
   SOCGramEvaluator soc_gram_;

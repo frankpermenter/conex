@@ -1,6 +1,7 @@
 #include "conex/common/psd_cone_ops.h"
 
 #include <cmath>
+#include <limits>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 
@@ -427,6 +428,16 @@ void PSDConeOps::geodesicUpdateFromSlack(double* W_out, const double* W,
   // W_new = expm(α(I + WS)) · W.
   Out = ExpmPade(WS) * Wm;
   Symmetrize(Out);
+}
+
+double PSDConeOps::barrierValue(const double* z, int size) const {
+  int n = static_cast<int>(std::round(std::sqrt(size)));
+  Eigen::Map<const Eigen::MatrixXd> W(z, n, n);
+  auto llt = W.selfadjointView<Eigen::Lower>().llt();
+  if (llt.info() != Eigen::Success) return std::numeric_limits<double>::infinity();
+  double logdet = 0;
+  for (int i = 0; i < n; ++i) logdet += std::log(llt.matrixL()(i, i));
+  return -2.0 * logdet;  // -log det = -2 * sum log(L_ii)
 }
 
 const PSDConeOps& psdConeOps() {

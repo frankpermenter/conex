@@ -149,18 +149,18 @@ const EuclideanJordanAlgebra::BarrierConeOperations* PSDConstraint::cone_ops() c
   return &EuclideanJordanAlgebra::psdConeOps();
 }
 
-void PSDConstraint::SetScaling(const Eigen::VectorXd& scaling) {
-  workspace_.W = scaling;
+void PSDConstraint::SetScaling(const double* w, int size) {
+  workspace_.W = Eigen::Map<const Eigen::VectorXd>(w, size);
   psd_assembler_.update_weights();
 }
 
-void PSDConstraint::SetWeights(const Eigen::VectorXd& weights) {
-  Eigen::Map<const Eigen::MatrixXd> W2(weights.data(), psd_n_, psd_n_);
+void PSDConstraint::SetWeights(const double* w, int size) {
+  Eigen::Map<const Eigen::MatrixXd> W2(w, psd_n_, psd_n_);
   Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> eig(W2);
   Eigen::MatrixXd W_mat = eig.eigenvectors() *
       eig.eigenvalues().cwiseMax(0.0).cwiseSqrt().asDiagonal() *
       eig.eigenvectors().transpose();
-  workspace_.W = Eigen::Map<Eigen::VectorXd>(W_mat.data(), weights.size());
+  workspace_.W = Eigen::Map<Eigen::VectorXd>(W_mat.data(), size);
   psd_assembler_.update_weights();
 }
 

@@ -57,13 +57,13 @@ class BarrierLinearConstraint : public LinearConstraint {
 
   const GramEvaluator& gram() const override { return barrier_gram_; }
 
-  void SetScaling(const Eigen::VectorXd& scaling) override {
-    workspace_.W = scaling;
+  void SetScaling(const double* w, int size) override {
+    workspace_.W = Eigen::Map<const Eigen::VectorXd>(w, size);
     barrier_gram_.update_weights();
   }
 
-  void SetWeights(const Eigen::VectorXd& weights) override {
-    workspace_.W = weights;
+  void SetWeights(const double* w, int size) override {
+    workspace_.W = Eigen::Map<const Eigen::VectorXd>(w, size);
     barrier_gram_.update_weights();
   }
 

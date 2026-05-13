@@ -78,10 +78,10 @@ int main() {
     printf("\n  clique %d (parent=%d):\n", k, amd_tree.node_to_parent[k]);
     printf("    sn(%d)=[", (int)amd_tree.supernodes[k].size());
     for (int v : amd_tree.supernodes[k])
-      printf("%s,", var_name(pinv(v)).c_str());
+      printf("%s,", var_name(pinv[v]).c_str());
     printf("]\n    sep(%d)=[", (int)amd_tree.separators[k].size());
     for (int v : amd_tree.separators[k])
-      printf("%s,", var_name(pinv(v)).c_str());
+      printf("%s,", var_name(pinv[v]).c_str());
     printf("]\n");
   }
 

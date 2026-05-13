@@ -61,10 +61,10 @@ void StandaloneBlockPartition::ScatterFrom(
   if (arena_data_) {
     Eigen::Map<Eigen::MatrixXd> m(arena_data_, total_rows_, arena_cols_);
     for (int i = 0; i < n && i < x_rows; ++i)
-      m.row(perm_(i)) = x.row(i).head(arena_cols_);
+      m.row(perm_[i]) = x.row(i).head(arena_cols_);
   } else {
     for (int i = 0; i < n && i < x_rows; ++i)
-      data_.row(perm_(i)) = x.row(i);
+      data_.row(perm_[i]) = x.row(i);
   }
 }
 
@@ -74,10 +74,10 @@ void StandaloneBlockPartition::GatherInto(
   if (arena_data_) {
     Eigen::Map<const Eigen::MatrixXd> m(arena_data_, total_rows_, arena_cols_);
     for (int i = 0; i < n; ++i)
-      x.row(i).head(arena_cols_) = m.row(perm_(i));
+      x.row(i).head(arena_cols_) = m.row(perm_[i]);
   } else {
     for (int i = 0; i < n; ++i)
-      x.row(i) = data_.row(perm_(i));
+      x.row(i) = data_.row(perm_[i]);
   }
 }
 

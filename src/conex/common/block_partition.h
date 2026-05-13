@@ -1,4 +1,5 @@
 #pragma once
+#include <vector>
 #include <Eigen/Core>
 
 namespace conex {
@@ -90,18 +91,18 @@ class StandaloneBlockPartition : public BlockPartition {
   // perm[orig_var] = elimination position, perm_inv[elim_pos] = orig_var.
   StandaloneBlockPartition(const std::vector<int>& block_sizes,
                            const std::vector<int>& block_starts,
-                           const Eigen::VectorXi& perm,
-                           const Eigen::VectorXi& perm_inv)
+                           const std::vector<int>& perm,
+                           const std::vector<int>& perm_inv)
       : block_sizes_(block_sizes), block_offsets_(block_starts),
         perm_(perm), perm_inv_(perm_inv) {
-    total_rows_ = perm.size();
+    total_rows_ = static_cast<int>(perm.size());
   }
 
   int num_blocks() const override {
     return static_cast<int>(block_sizes_.size());
   }
   int block_size(int k) const override { return block_sizes_[k]; }
-  int num_variables() const override { return perm_.size(); }
+  int num_variables() const override { return static_cast<int>(perm_.size()); }
   int cols() const override { return arena_data_ ? arena_cols_ : data_.cols(); }
 
   void Resize(int cols) override;
@@ -135,7 +136,7 @@ class StandaloneBlockPartition : public BlockPartition {
  private:
   std::vector<int> block_sizes_;
   std::vector<int> block_offsets_;
-  Eigen::VectorXi perm_, perm_inv_;
+  std::vector<int> perm_, perm_inv_;
   int total_rows_ = 0;
   Eigen::MatrixXd data_;          // used when not arena-backed
   double* arena_data_ = nullptr;  // used when arena-backed

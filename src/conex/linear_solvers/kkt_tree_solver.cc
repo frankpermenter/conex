@@ -23,7 +23,7 @@ namespace conex {
 
 void SupernodePartitionMatrix::SetPartition(
     const std::vector<KKTSubsystemBase*>& subsystems, int num_vars,
-    const Eigen::VectorXi& perm_inv) {
+    const std::vector<int>& perm_inv) {
   const int n = static_cast<int>(subsystems.size());
   blocks_.resize(n);
   for (int k = 0; k < n; ++k) {
@@ -39,7 +39,7 @@ void SupernodePartitionMatrix::SetPartition(
   for (int k = 0; k < n; ++k) {
     const auto& sn = subsystems[k]->supernodes();
     for (int i = 0; i < static_cast<int>(sn.size()); ++i) {
-      int orig_var = perm_inv(sn[i]);
+      int orig_var = perm_inv[sn[i]];
       var_mapping_[orig_var] = {k, i};
     }
   }
@@ -210,10 +210,10 @@ void T::SetEliminationOrder(
   cached_num_vars_ = static_cast<int>(variable_to_elimination_position.size());
   const int n = cached_num_vars_;
   cached_perm_.resize(n);
-  cached_perm_inv_.setConstant(n, -1);
+  cached_perm_inv_.assign(n, -1);
   for (int i = 0; i < n; ++i) {
-    cached_perm_(i) = variable_to_elimination_position_[i];
-    cached_perm_inv_(variable_to_elimination_position_[i]) = i;
+    cached_perm_[i] = variable_to_elimination_position_[i];
+    cached_perm_inv_[variable_to_elimination_position_[i]] = i;
   }
 }
 bool T::DoSolveBlocked(const BlockPartition& rhs,
@@ -429,7 +429,7 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
   if (in_original_order) {
     Eigen::MatrixXd elim_b(n, b.cols());
     for (int i = 0; i < n; ++i) {
-      elim_b.row(cached_perm_(i)) = b.row(i);
+      elim_b.row(cached_perm_[i]) = b.row(i);
     }
     ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
                 [&](size_t i) {
@@ -438,7 +438,7 @@ void T::DoSolveInPlace(Eigen::Ref<Eigen::MatrixXd> b,
                   root->ApplyInverseOfRightFactor(elim_b);
                 });
     for (int i = 0; i < n; ++i) {
-      b.row(i) = elim_b.row(cached_perm_(i));
+      b.row(i) = elim_b.row(cached_perm_[i]);
     }
   } else {
     ForEachTask(roots_.size(), EffectiveThreadCount(num_threads_),
@@ -1223,20 +1223,20 @@ SolverRHS T::EqualityAffineTermRHS() {
 RowSpace T::GetAffineTerm() {
   RowSpace rs = MakeRowSpace();
   for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
-    rs.segment(ci) = cone_constraints_[ci]->affine_term();
+    cone_constraints_[ci]->GetAffineTerm(rs.segment_ptr(ci), rs.sizes[ci]);
   }
   return rs;
 }
 
 void T::SetWeights(const RowSpace& w) {
   for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
-    cone_constraints_[ci]->SetWeights(w.segment(ci));
+    cone_constraints_[ci]->SetWeights(w.segment_ptr(ci), w.sizes[ci]);
   }
 }
 
 void T::SetScaling(const RowSpace& w) {
   for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
-    cone_constraints_[ci]->SetScaling(w.segment(ci));
+    cone_constraints_[ci]->SetScaling(w.segment_ptr(ci), w.sizes[ci]);
   }
 }
 

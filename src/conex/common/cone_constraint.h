@@ -5,7 +5,6 @@
 // methods without knowing the cone type.
 
 #pragma once
-#include <Eigen/Core>
 
 #include "conex/common/arena_allocatable.h"
 #include "conex/common/supernodal_assembler_base.h"
@@ -30,9 +29,9 @@ class ConeConstraint : public SupernodalAssemblerBase, public ArenaAllocatable {
   virtual void ContributeAtranspose(
       const double* v, int v_rows, SolverRHS& rhs, int nc) const = 0;
 
-  virtual void SetScaling(const Eigen::VectorXd& w) = 0;
-  virtual void SetWeights(const Eigen::VectorXd& w) = 0;
-  virtual Eigen::MatrixXd affine_term() const = 0;
+  virtual void SetScaling(const double* w, int size) = 0;
+  virtual void SetWeights(const double* w, int size) = 0;
+  virtual void GetAffineTerm(double* out, int size) const = 0;
   virtual int num_rows() const = 0;
   virtual const EuclideanJordanAlgebra::BarrierConeOperations* cone_ops() const = 0;
 
