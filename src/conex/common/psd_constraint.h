@@ -38,9 +38,9 @@ class PSDBlockAssembler : public GramEvaluator {
   void update_weights() override;
   void ContributeBlocks(int clique_id) override;
 
-  Eigen::MatrixXd SparseMultiplyA(
+  void SparseMultiplyA(
       const BlockPartition& supernodes, const SeparatorScratch& sep,
-      int nc) const;
+      int nc, Eigen::Ref<Eigen::MatrixXd> result) const;
 
   void SparseContributeAtranspose(
       const Eigen::Ref<const Eigen::MatrixXd>& V,
@@ -80,14 +80,14 @@ class PSDConstraint : public ConeConstraint {
   int num_rows() const override { return psd_n_ * psd_n_; }
   const EuclideanJordanAlgebra::BarrierConeOperations* cone_ops() const override;
 
-  Eigen::MatrixXd MultiplyA(
-      const SolverRHS& rhs, int nc) const override {
-    return psd_assembler_.SparseMultiplyA(*rhs.supernodes, *rhs.separators, nc);
+  void MultiplyA(const SolverRHS& rhs, double* out, int nc) const override {
+    Eigen::Map<Eigen::MatrixXd> result(out, num_rows(), nc);
+    psd_assembler_.SparseMultiplyA(*rhs.supernodes, *rhs.separators, nc, result);
   }
 
   void ContributeAtranspose(
-      const Eigen::Ref<const Eigen::MatrixXd>& V,
-      SolverRHS& rhs, int nc) const override {
+      const double* v, int v_rows, SolverRHS& rhs, int nc) const override {
+    Eigen::Map<const Eigen::MatrixXd> V(v, v_rows, nc);
     psd_assembler_.SparseContributeAtranspose(V, *rhs.supernodes, *rhs.separators, nc);
   }
 

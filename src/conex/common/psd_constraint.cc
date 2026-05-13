@@ -89,12 +89,10 @@ void PSDBlockAssembler::ContributeBlocks(int clique_id) {
   }
 }
 
-Eigen::MatrixXd PSDBlockAssembler::SparseMultiplyA(
+void PSDBlockAssembler::SparseMultiplyA(
     const BlockPartition& supernodes, const SeparatorScratch& sep,
-    int nc) const {
+    int nc, Eigen::Ref<Eigen::MatrixXd> result) const {
   const int n = psd_n_;
-  const int n2 = n * n;
-  Eigen::MatrixXd result = Eigen::MatrixXd::Zero(n2, nc);
   for (const auto& vbc : vector_blocks_) {
     auto blk = vbc.dest_is_sn
         ? supernodes.block(vbc.dest_block)
@@ -109,7 +107,6 @@ Eigen::MatrixXd PSDBlockAssembler::SparseMultiplyA(
       }
     }
   }
-  return result;
 }
 
 void PSDBlockAssembler::SparseContributeAtranspose(

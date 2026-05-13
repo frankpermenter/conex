@@ -1138,17 +1138,41 @@ void T::MultiplyA(const SolverRHS& x, RowSpace& out) {
   x_read.separators = x.has_separators()
       ? x.separators : &sep_scratch_;
   int nc = x.cols();
+  int out_nc = out.cols();
   for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
-    auto result = cone_constraints_[ci]->MultiplyA(x_read, nc);
-    out.segment(ci) = result.leftCols(out.cols());
+    int rows = cone_constraints_[ci]->num_rows();
+    // Use segment_ptr for single-column (contiguous, no stride issue).
+    // For multi-column, the RowSpace segment has OuterStride = total_rows,
+    // which matches a contiguous buffer only if sizes[ci] == total_rows.
+    // In practice, single-column is the hot path; multi-column uses the
+    // segment Map for correctness.
+    if (out_nc == 1) {
+      double* seg = out.segment_ptr(ci);
+      std::memset(seg, 0, rows * sizeof(double));
+      cone_constraints_[ci]->MultiplyA(x_read, seg, nc);
+    } else {
+      // Multi-column: use contiguous temp, copy into strided segment.
+      Eigen::MatrixXd tmp = Eigen::MatrixXd::Zero(rows, out_nc);
+      cone_constraints_[ci]->MultiplyA(x_read, tmp.data(), nc);
+      out.segment(ci) = tmp;
+    }
   }
 }
 
 void T::AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) {
   int nc = rhs.cols();
+  int v_nc = v.cols();
   for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
-    cone_constraints_[ci]->ContributeAtranspose(
-        v.segment(ci), rhs, nc);
+    int rows = cone_constraints_[ci]->num_rows();
+    if (v_nc == 1) {
+      cone_constraints_[ci]->ContributeAtranspose(
+          v.segment_ptr(ci), rows, rhs, nc);
+    } else {
+      // Multi-column: copy strided segment to contiguous temp.
+      Eigen::MatrixXd tmp = v.segment(ci);
+      cone_constraints_[ci]->ContributeAtranspose(
+          tmp.data(), rows, rhs, nc);
+    }
   }
   // ContributeAtranspose writes to separators, so the RHS is no longer
   // in "fully gathered" form (supernodes only).

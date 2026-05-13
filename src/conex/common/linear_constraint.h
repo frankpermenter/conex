@@ -87,11 +87,11 @@ class GramEvaluator : public BlockAssembler {
     }
   }
 
-  // Compute A_perm_ * x by reading from supernode blocks and separator scratch.
+  // Compute result += A_perm_ * x by reading from supernode blocks and separator scratch.
   template <typename SepAccessor>
-  Eigen::MatrixXd MultiplyA(
-      const BlockPartition& supernodes, const SepAccessor& sep, int nc) const {
-    Eigen::MatrixXd result = Eigen::MatrixXd::Zero(A_perm_.rows(), nc);
+  void MultiplyA(
+      const BlockPartition& supernodes, const SepAccessor& sep, int nc,
+      Eigen::Ref<Eigen::MatrixXd> result) const {
     for (const auto& vbc : vector_blocks_) {
       auto cols = A_perm_.middleCols(vbc.q_start, vbc.length);
       if (vbc.dest_is_sn) {
@@ -106,7 +106,6 @@ class GramEvaluator : public BlockAssembler {
         result.noalias() += cols * blk.middleRows(vbc.dest_offset, vbc.length);
       }
     }
-    return result;
   }
 
   void ContributeBlocks(int clique_id) override {
@@ -196,14 +195,14 @@ class LinearConstraint : public ConeConstraint {
     gram_evaluator_.update_weights();
   }
 
-  Eigen::MatrixXd MultiplyA(
-      const SolverRHS& rhs, int nc) const override {
-    return gram().MultiplyA(*rhs.supernodes, *rhs.separators, nc);
+  void MultiplyA(const SolverRHS& rhs, double* out, int nc) const override {
+    Eigen::Map<Eigen::MatrixXd> result(out, num_rows(), nc);
+    gram().MultiplyA(*rhs.supernodes, *rhs.separators, nc, result);
   }
 
   void ContributeAtranspose(
-      const Eigen::Ref<const Eigen::MatrixXd>& V,
-      SolverRHS& rhs, int nc) const override {
+      const double* v, int v_rows, SolverRHS& rhs, int nc) const override {
+    Eigen::Map<const Eigen::MatrixXd> V(v, v_rows, nc);
     gram().ContributeAtranspose(V, *rhs.supernodes, *rhs.separators, nc);
   }
 

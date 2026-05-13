@@ -21,12 +21,14 @@ class ConeConstraint : public SupernodalAssemblerBase, public ArenaAllocatable {
 
   virtual BlockAssembler* GetBlockAssembler() = 0;
 
-  virtual Eigen::MatrixXd MultiplyA(
-      const SolverRHS& rhs, int nc) const = 0;
+  // Compute out += A * x, where x is read from rhs and out is a raw
+  // column-major buffer of size num_rows() x nc.
+  virtual void MultiplyA(const SolverRHS& rhs, double* out, int nc) const = 0;
 
+  // Accumulate A^T * V into rhs, where V is a raw column-major buffer
+  // of size num_rows() x nc.
   virtual void ContributeAtranspose(
-      const Eigen::Ref<const Eigen::MatrixXd>& V,
-      SolverRHS& rhs, int nc) const = 0;
+      const double* v, int v_rows, SolverRHS& rhs, int nc) const = 0;
 
   virtual void SetScaling(const Eigen::VectorXd& w) = 0;
   virtual void SetWeights(const Eigen::VectorXd& w) = 0;
