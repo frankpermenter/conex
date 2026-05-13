@@ -208,7 +208,7 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   if (should_run("ThetaCont")) {
     results.push_back(RunAlgo("ThetaCont", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicThetaContinuation(model, W, max_iters, 0, tol, verbose);
+        return SolveGeodesicThetaContinuation(model, W, max_iters, 1, tol, verbose);
       }));
   }
   if (should_run("TC+frzJ")) {

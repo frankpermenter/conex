@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
     auto t2 = hrclock::now();
     print_stats("BarrierLP", result, algo.stats, us(t1, t2));
   } else if (alg == "thetacont") {
-    conex::ThetaContinuation algo{1e-6, 50, 10, false};
+    conex::ThetaContinuation algo{1e-6, 500, 1, false};
     auto t1 = hrclock::now();
     auto result = solver.Solve(algo);
     auto t2 = hrclock::now();
