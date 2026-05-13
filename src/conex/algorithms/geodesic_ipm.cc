@@ -1267,7 +1267,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
         double R_f = theta_f * (bT_ones + 1.0);
         double eq_err_f = std::abs(bTl_f + cTx_f + xQx_tau_f + mu_tau_f - R_f);
 
-        printf("  %3d.%d  %8.6f  %10.2e  %12s  %12.4e  %12.4e  %12s  %12.4e"
+        printf("  %3d.%d  %10.2e  %10.2e  %12s  %12.4e  %12.4e  %12s  %12.4e"
                "  %12s  %12s  %12s  eq=%.2e  (frozen-J)\n",
                outer, inner + 1, theta_f, tau_f, "", k_f, d_inf_fv, "",
                gap_f, "", "", "", eq_err_f);
@@ -1293,7 +1293,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
       double primal_phys = (tau > 1e-30) ? cT_x / tau + half_xQx_phys : 0.0;
       double dual_phys = (tau > 1e-30)
           ? -((bT_lambda + dT_nu) / tau + half_xQx_phys) : 0.0;
-      printf("  %3d  %8.6f  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
+      printf("  %3d  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
              "  %12.4e  %12.4e  %12.4e  %12.2e  %3d\n",
              outer, theta, tau, kappa, k, d_inf, d_sq, gap,
              dual_phys, primal_phys, mu_over_tau, eq_err_final, centering_iters);
@@ -2474,7 +2474,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
     double gap = mu * (nu - d_sq);
 
     if (verbose) {
-      printf("  %3d  %8.6f  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e\n",
+      printf("  %3d  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e\n",
              outer, theta, tau, k, d_sq, gap, mu);
     }
 
@@ -2655,7 +2655,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
             double d_sq_r = hessianNormSquared(z, target_k_r);
             double mu_r = theta;
             double gap_r = mu_r * (nu - d_sq_r);
-            printf("  %3d.%d  %8.6f  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  (frozen-J)\n",
+            printf("  %3d.%d  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  (frozen-J)\n",
                    outer, inner + 1, theta, tau, k, d_sq_r, gap_r, mu_r);
           }
           geodesicStepTarget(z, alpha_r, target_k_r);
@@ -2698,7 +2698,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
             double d_sq_f = hessianNormSquared(z, target_k_f);
             double mu_f = theta;
             double gap_f = mu_f * (nu - d_sq_f);
-            printf("  %3d.%d  %8.6f  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  (frozen-J)\n",
+            printf("  %3d.%d  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  (frozen-J)\n",
                    outer, inner + 1, theta, tau, k, d_sq_f, gap_f, mu_f);
           }
 

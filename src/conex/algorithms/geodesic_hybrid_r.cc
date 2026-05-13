@@ -744,7 +744,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       double tau_kappa = r_tau*r_tau*(1.0 - d_tau*d_tau);
       double compl_err_v = (info.gap + tau_kappa) - theta * alpha_v;
 
-      printf("  %3d  %10.2e  %10.2e  %8.4f  %8.4f  %12.4e  %12.4e  %12.4e"
+      printf("  %3d  %10.2e  %10.2e  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e"
              "  %12.4e  %12.4e  %12.4e  %12.2e  %8.2e  %10.4e  %10.4e  %10.2e  %3d\n",
              iter, theta, tau, w_tau, r_tau, d_inf, d_tau, g,
              dual_phys, primal_phys, mu_v/std::max(std::abs(tau), 1e-30),
@@ -952,7 +952,7 @@ GeodesicResult SolveGeodesicHybridR(
     }
 
     if (verbose) {
-      printf("  %3d %6.4f  %12.4e  %10.4e %10.4e  %12.4e  %6d  %s\n",
+      printf("  %3d %10.2e  %12.4e  %10.4e %10.4e  %12.4e  %6d  %s\n",
              iter, theta, g, d_inf_pre, d_inf,
              squaredNorm(r) / m, r_updates_since_fac,
              do_center ? "center" : "r+theta");
