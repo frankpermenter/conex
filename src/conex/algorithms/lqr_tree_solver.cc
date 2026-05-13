@@ -133,10 +133,15 @@ bool LQRTreeSolver::AssembleAndFactor() {
 }
 
 Eigen::VectorXd LQRTreeSolver::Solve(const Eigen::VectorXd& x0) {
-  Eigen::VectorXd rhs = Eigen::VectorXd::Zero(n_vars_);
+  Eigen::VectorXd rhs_dense = Eigen::VectorXd::Zero(n_vars_);
   for (int i = 0; i < nx_; ++i)
-    rhs(LicIdx() + i) = x0(i);
-  return solver_->Solve(rhs);
+    rhs_dense(LicIdx() + i) = x0(i);
+  auto rhs_blk = solver_->MakeSolverRHS();
+  rhs_blk = solver_->MakeBlockVariable(rhs_dense);
+  solver_->SolveSolverRHS(rhs_blk);
+  Eigen::VectorXd sol(n_vars_);
+  rhs_blk.supernodes->GatherInto(sol);
+  return sol;
 }
 
 Eigen::MatrixXd LQRTreeSolver::ExtractStates(

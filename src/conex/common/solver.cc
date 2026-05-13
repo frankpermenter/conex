@@ -67,6 +67,31 @@ Solver Solver::BuildDense(const Model& model) {
   return Build(model, tree);
 }
 
+bool Solver::AssembleAndFactor() {
+  auto model = MakeCompiledModel();
+  RowSpace W = model.AllocRowSpace();
+  setOnes(W);
+  model.SetScaling(W);
+  return model.AssembleAndFactor();
+}
+
+std::vector<double> Solver::SolveLinearSystem(const std::vector<double>& rhs) {
+  auto* k = kkt();
+  // Scatter rhs into block form.
+  Eigen::Map<const Eigen::VectorXd> rhs_eigen(rhs.data(), rhs.size());
+  auto rhs_blk = k->MakeSolverRHS();
+  rhs_blk = k->MakeBlockVariable(rhs_eigen);
+  // Solve in place.
+  k->SolveSolverRHS(rhs_blk);
+  // Gather to dense in reduced space.
+  int nr = k->number_of_variables();
+  Eigen::VectorXd x_reduced(nr);
+  rhs_blk.supernodes->GatherInto(x_reduced);
+  // Expand to original variable space.
+  Eigen::VectorXd x_full = expansion_.Expand(x_reduced);
+  return std::vector<double>(x_full.data(), x_full.data() + x_full.size());
+}
+
 SolverRHS Solver::MakeCostRHS() {
   auto* k = kkt();
   auto rhs = k->MakeSolverRHS();

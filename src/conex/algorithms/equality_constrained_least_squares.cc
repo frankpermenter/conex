@@ -37,15 +37,14 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
   auto c_eq = problem.AddEqualityConstraint(C, d, vars);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.kkt();
   auto t1 = clock::now();
 
-  bool ok = kkt->AssembleAndFactor();
+  bool ok = solver.AssembleAndFactor();
   CONEX_DEMAND(ok, "AssembleAndFactor failed.");
   auto t2 = clock::now();
 
   // Build RHS = [-c; d] = [A'b; d].
-  int nv = kkt->number_of_variables();
+  int nv = solver.kkt()->number_of_variables();
   Eigen::VectorXd rhs = Eigen::VectorXd::Zero(nv);
   rhs.head(n) = -c;  // = A'b
 
@@ -58,7 +57,9 @@ EqualityConstrainedLeastSquaresResult EqualityConstrainedLeastSquares(
       rhs(duals[i]) = eq->d(i);
   }
 
-  Eigen::VectorXd sol = kkt->Solve(rhs);
+  std::vector<double> rhs_vec(rhs.data(), rhs.data() + rhs.size());
+  auto sol_vec = solver.SolveLinearSystem(rhs_vec);
+  Eigen::Map<Eigen::VectorXd> sol(sol_vec.data(), sol_vec.size());
   auto t3 = clock::now();
 
   result.x = sol.head(n);
@@ -107,13 +108,12 @@ QPEqualityResult SolveQPEquality(const Model& problem) {
     qp.SetLinearCost(problem.linear_cost());
 
   auto solver = Solver::Build(qp);
-  auto* kkt = solver.kkt();
 
-  bool ok = kkt->AssembleAndFactor();
+  bool ok = solver.AssembleAndFactor();
   if (!ok) return {{}, 0, false};
 
   // Build RHS = [-c; d_1; d_2; ...].
-  int nv = kkt->number_of_variables();
+  int nv = solver.kkt()->number_of_variables();
   Eigen::VectorXd rhs = Eigen::VectorXd::Zero(nv);
   if (qp.has_linear_cost()) {
     int nc = std::min(n, (int)qp.linear_cost().size());
@@ -131,7 +131,9 @@ QPEqualityResult SolveQPEquality(const Model& problem) {
     }
   }
 
-  Eigen::VectorXd sol = kkt->Solve(rhs);
+  std::vector<double> rhs_vec(rhs.data(), rhs.data() + rhs.size());
+  auto sol_vec = solver.SolveLinearSystem(rhs_vec);
+  Eigen::Map<Eigen::VectorXd> sol(sol_vec.data(), sol_vec.size());
   Eigen::VectorXd x = sol.head(n);
 
   // Compute objective.

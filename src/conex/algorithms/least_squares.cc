@@ -3,7 +3,8 @@
 #include <chrono>
 #include <numeric>
 
-#include "conex/common/kkt_solver_interface.h"
+#include <Eigen/Core>
+#include <Eigen/Sparse>
 
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
@@ -26,21 +27,23 @@ SparseLeastSquaresResult SparseLeastSquares(
   problem.AddLinearConstraint(A, Eigen::VectorXd::Zero(A.rows()), vars);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.kkt();
 
   auto t1 = clock::now();
 
-  bool ok = kkt->AssembleAndFactor();
+  bool ok = solver.AssembleAndFactor();
   CONEX_DEMAND(ok, "AssembleAndFactor failed.");
 
   auto t2 = clock::now();
 
-  Eigen::VectorXd rhs_reduced = solver.ReduceVector(rhs);
-  Eigen::VectorXd x_reduced = kkt->Solve(rhs_reduced);
+  std::vector<double> rhs_reduced_vec;
+  {
+    Eigen::VectorXd rhs_r = solver.ReduceVector(rhs);
+    rhs_reduced_vec.assign(rhs_r.data(), rhs_r.data() + rhs_r.size());
+  }
+  { auto xv = solver.SolveLinearSystem(rhs_reduced_vec); result.x = Eigen::Map<Eigen::VectorXd>(xv.data(), xv.size()); }
 
   auto t3 = clock::now();
 
-  result.x = solver.ExpandSolution(x_reduced);
   result.construction_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
   result.assemble_and_factor_time_us =
@@ -74,21 +77,23 @@ SparseQuadraticTermLeastSquaresResult SparseQuadraticTermLeastSquares(
   problem.AddQuadraticCost(Q, vars);
 
   auto solver = Solver::Build(problem);
-  auto* kkt = solver.kkt();
 
   auto t1 = clock::now();
 
-  bool ok = kkt->AssembleAndFactor();
+  bool ok = solver.AssembleAndFactor();
   CONEX_DEMAND(ok, "AssembleAndFactor failed.");
 
   auto t2 = clock::now();
 
-  Eigen::VectorXd rhs_reduced = solver.ReduceVector(rhs);
-  Eigen::VectorXd x = kkt->Solve(rhs_reduced);
+  std::vector<double> rhs_reduced_vec;
+  {
+    Eigen::VectorXd rhs_r = solver.ReduceVector(rhs);
+    rhs_reduced_vec.assign(rhs_r.data(), rhs_r.data() + rhs_r.size());
+  }
+  { auto xv = solver.SolveLinearSystem(rhs_reduced_vec); result.x = Eigen::Map<Eigen::VectorXd>(xv.data(), xv.size()); }
 
   auto t3 = clock::now();
 
-  result.x = solver.ExpandSolution(x);
   result.construction_time_us =
       std::chrono::duration<double, std::micro>(t1 - t0).count();
   result.factor_time_us =
