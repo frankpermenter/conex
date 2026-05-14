@@ -509,6 +509,16 @@ target_link_libraries(benchmark_solver
 )
 target_compile_options(benchmark_solver PRIVATE -O2)
 
+add_executable(benchmark_expcone
+  bench/benchmark_expcone.cc
+)
+target_link_libraries(benchmark_expcone
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+)
+target_compile_options(benchmark_expcone PRIVATE -O2)
+
 add_executable(benchmark_center
   bench/benchmark_center.cc
 )

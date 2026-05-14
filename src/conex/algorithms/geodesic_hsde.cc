@@ -345,6 +345,26 @@ GeodesicResult SolveGeodesicHSDE(
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
     result.iterations = iter + 1;
+    result.mu = mu;
+    result.d_inf_norm = d_inf;
+    result.d_sq_norm = d_sq;
+    result.complementarity = gap;
+    result.total_factorizations = total_fac;
+    result.total_solves = total_sol;
+
+    // Recover x = (y0/k + tau*y1_0 + theta*y1_theta) / tau.
+    if (tau > 0) {
+      auto x_rhs = model.AllocSolverRHS();
+      x_rhs.SetZero();
+      x_rhs.AddScaled(1.0 / k, decomp.y0);
+      x_rhs.AddScaled(tau, decomp.y1_0);
+      x_rhs.AddScaled(theta, decomp.y1_theta);
+      x_rhs *= (1.0 / tau);
+      int nr = model.number_of_variables();
+      result.x.resize(nr);
+      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs.supernodes->GatherInto(xm); }
+    }
+    result.tau = w_tau * r_tau;
 
     if (verbose) {
       char* verbose_mark = arena.SaveCursor();
@@ -398,8 +418,11 @@ GeodesicResult SolveGeodesicHSDE(
       break;
     }
 
-    if (std::abs(gap) < tolerance && d_inf <= 1.001)
+    if (std::abs(gap) < tolerance && d_inf <= 1.001) {
+      if (verbose) printf("  TERMINATED: gap = %.2e < tolerance, d_inf = %.2e\n",
+                          gap, d_inf);
       break;
+    }
 
     // Line search for k: d(k) is affine in k.
     // Evaluate at two k values, extract D0 + k*D1, use lineSearchK.
@@ -585,18 +608,9 @@ GeodesicResult SolveGeodesicHSDE(
     arena.RestoreCursor(iter_mark);
   }
 
-  result.mu = 1.0 / (k * k);
-  result.complementarity = result.iter_stats.empty() ? 0 :
-      result.iter_stats.back().complementarity;
-  result.tau = w_tau * r_tau;  // approximate
-  result.total_factorizations = total_fac;
-  result.total_solves = total_sol;
-
-  // Recover x and lambda.
-  {
+  // Recover lambda and optimality (requires re-factorization).
+  if (k > 0 && result.x.size() > 0) {
     char* recover_mark = arena.SaveCursor();
-    auto sel = SolveDTauTheta(
-        HSDECoeffs{}, k);  // need to recompute — use decomp directly
     NewtonDecomposition decomp;
     decomp.d0 = model.AllocRowSpace();
     decomp.d1_0 = model.AllocRowSpace();
@@ -645,20 +659,6 @@ GeodesicResult SolveGeodesicHSDE(
     auto final_sel = SolveDTauTheta(coeff, k);
     double tau = final_sel.tau;
     double theta = final_sel.theta;
-
-    {
-      auto x_rhs = model.AllocSolverRHS();
-      x_rhs.SetZero();
-      x_rhs.AddScaled(1.0 / k, decomp.y0);
-      x_rhs.AddScaled(tau, decomp.y1_0);
-      x_rhs.AddScaled(theta, decomp.y1_theta);
-      x_rhs *= (1.0 / tau);
-      int nr = model.number_of_variables();
-      result.x.resize(nr);
-      result.x.resize(model.number_of_variables());
-    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
-    }
-    result.tau = tau;
 
     RowSpace d_cur = model.AllocRowSpace(arena);
     EvaluateDirection(d_cur, decomp, k, tau, theta);

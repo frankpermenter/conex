@@ -208,13 +208,25 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
   if (should_run("ThetaCont")) {
     results.push_back(RunAlgo("ThetaCont", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
-        return SolveGeodesicThetaContinuation(model, W, max_iters, 1, tol, verbose);
+        return SolveGeodesicThetaContinuation(model, W, max_iters, 0, tol, verbose);
       }));
   }
   if (should_run("TC+frzJ")) {
     results.push_back(RunAlgo("TC+frzJ", model, problem, solver,
       [&](CompiledModel& model, RowSpace& W) {
         return SolveGeodesicThetaContinuation(model, W, max_iters, 1, tol, verbose);
+      }));
+  }
+  if (should_run("BarrierTC")) {
+    results.push_back(RunAlgo("BarrierTC", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicBarrierThetaContinuation(model, W, max_iters, 0, tol, verbose);
+      }));
+  }
+  if (should_run("BarrierTC+frzJ")) {
+    results.push_back(RunAlgo("BarrierTC+frzJ", model, problem, solver,
+      [&](CompiledModel& model, RowSpace& W) {
+        return SolveGeodesicBarrierThetaContinuation(model, W, max_iters, 1, tol, verbose);
       }));
   }
   if (should_run("HSDE")) {

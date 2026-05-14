@@ -1093,8 +1093,7 @@ GeodesicResult SolveGeodesicHSD(
         x_rhs *= (1.0 / tau);
         int nr = model.number_of_variables();
         result.x.resize(nr);
-        result.x.resize(model.number_of_variables());
-    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
+        { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs.supernodes->GatherInto(xm); }
       }
 
       // lambda_phys = lambda_lifted / tau.
@@ -1245,6 +1244,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
       arena.RestoreCursor(ls_mark);
     }
     if (tau <= 0) {
+      if (verbose) printf("  TERMINATED: tau <= 0 at iteration %d\n", outer);
       result.iterations = outer + 1;
       break;
     }
@@ -1432,6 +1432,19 @@ GeodesicResult SolveGeodesicThetaContinuation(
     result.total_factorizations = total_fac;
     result.total_solves = total_sol;
 
+    // Recover x = (y0/k + tau*y1_0 + theta*y1_theta) / tau.
+    {
+      auto x_rhs = model.AllocSolverRHS();
+      x_rhs.SetZero();
+      x_rhs.AddScaled(1.0 / k, decomp.y0);
+      x_rhs.AddScaled(tau, decomp.y1_0);
+      x_rhs.AddScaled(theta, decomp.y1_theta);
+      x_rhs *= (1.0 / tau);
+      int nr = model.number_of_variables();
+      result.x.resize(nr);
+      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs.supernodes->GatherInto(xm); }
+    }
+
     // Termination: mu below tolerance with d_inf small.  Same criterion
     // for both algorithms so iteration counts are directly comparable.
     if (mu < tolerance && d_inf <= 1.001) {
@@ -1446,31 +1459,16 @@ GeodesicResult SolveGeodesicThetaContinuation(
     arena.RestoreCursor(outer_mark);
   }
 
-  // Recover primal x.  De-homogenize: x_phys = x_lifted / tau.
-  if (k > 0 && tau > 0) {
-    NewtonDecomposition decomp;
-    decomp.d0 = model.AllocRowSpace();
-    decomp.d1_0 = model.AllocRowSpace();
-    decomp.d1_theta = model.AllocRowSpace();
-    ComputeFullDecomposition(model, b, W, decomp);
-    {
-      auto x_rhs = model.AllocSolverRHS();
-      x_rhs.SetZero();
-      x_rhs.AddScaled(1.0 / k, decomp.y0);
-      x_rhs.AddScaled(tau, decomp.y1_0);
-      x_rhs.AddScaled(theta, decomp.y1_theta);
-      x_rhs *= (1.0 / tau);
-      int nr = model.number_of_variables();
-      result.x.resize(nr);
-      result.x.resize(model.number_of_variables());
-    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
-    }
+  // Recover lambda and optimality (requires re-factorization for decomp).
+  if (k > 0 && tau > 0 && result.x.size() > 0) {
+    NewtonDecomposition decomp_r;
+    decomp_r.d0 = model.AllocRowSpace();
+    decomp_r.d1_0 = model.AllocRowSpace();
+    decomp_r.d1_theta = model.AllocRowSpace();
+    ComputeFullDecomposition(model, b, W, decomp_r);
 
-    // Compute lambda at the CURRENT (k, tau, theta) — consistent with x.
-    // lambda_lifted = (1/k) P(W^{1/2})(e + d(k,tau,theta));
-    // lambda_phys   = lambda_lifted / tau.
     RowSpace d_cur = model.AllocRowSpace();
-    EvaluateDirection(d_cur, decomp, k, tau, theta);
+    EvaluateDirection(d_cur, decomp_r, k, tau, theta);
     RowSpace sqrtW_r = model.AllocRowSpace();
     EuclideanJordanAlgebra::sqrt(sqrtW_r, W);
     RowSpace ones_r = model.AllocRowSpace();
@@ -1481,16 +1479,13 @@ GeodesicResult SolveGeodesicThetaContinuation(
     quadraticRepresentation(result.lambda, sqrtW_r, ones_plus_dcur);
     result.lambda *= (1.0 / (k * tau));
 
-    {
-      auto x_rhs = model.AllocSolverRHS();
-      x_rhs.ScatterFrom(result.x.data(), result.x.size());
-      result.optimality = CheckOptimality(model, x_rhs, result.lambda);
-      result.optimality.mu = result.mu;
-    }
+    auto x_rhs = model.AllocSolverRHS();
+    x_rhs.ScatterFrom(result.x.data(), result.x.size());
+    result.optimality = CheckOptimality(model, x_rhs, result.lambda);
+    result.optimality.mu = result.mu;
 
     if (verbose) {
-      printf("  Optimality: compl=%.2e, "
-             "min_s=%.2e, min_lam=%.2e\n",
+      printf("  Optimality: compl=%.2e, min_s=%.2e, min_lam=%.2e\n",
              result.optimality.complementarity,
              result.optimality.min_slack,
              result.optimality.min_dual);
@@ -1908,27 +1903,28 @@ GeodesicResult SolveGeodesicLP(
 
     result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});
     result.iterations = outer + 1;
+    result.mu = mu;
+    result.d_inf_norm = d_inf;
+    result.d_sq_norm = d_sq;
+    result.complementarity = s_dot_x;
+    result.total_factorizations = total_fac;
+    result.total_solves = total_sol;
+
+    // Recover x = y0/k + y1.
+    {
+      auto x_rhs_conv = model.AllocSolverRHS();
+      x_rhs_conv.SetZero();
+      x_rhs_conv.AddScaled(1.0 / k, y0);
+      x_rhs_conv += y1;
+      int nr = model.number_of_variables();
+      result.x.resize(nr);
+      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs_conv.supernodes->GatherInto(xm); }
+    }
 
     bool converged = (s_dot_x < tolerance && d_inf < 1.01);
     bool last_iter = (outer + 1 >= max_outer_iterations);
 
     if (converged || last_iter) {
-      result.mu = mu;
-      result.d_inf_norm = d_inf;
-      result.d_sq_norm = d_sq;
-      result.complementarity = s_dot_x;
-      result.total_factorizations = total_fac;
-      result.total_solves = total_sol;
-      {
-        auto x_rhs_conv = model.AllocSolverRHS();
-        x_rhs_conv.SetZero();
-        x_rhs_conv.AddScaled(1.0 / k, y0);
-        x_rhs_conv += y1;
-        int nr = model.number_of_variables();
-        result.x.resize(nr);
-        result.x.resize(model.number_of_variables());
-    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs_conv.supernodes->GatherInto(xm); }
-      }
       // Lambda recovery (heap — outlives arena).
       RowSpace sqrtW = model.AllocRowSpace(arena);
       EuclideanJordanAlgebra::sqrt(sqrtW, W);
@@ -2005,15 +2001,6 @@ GeodesicResult SolveGeodesicLP(
     ++outer;
   }
 
-  // If the loop exited without converging, populate result with last known
-  // state so that Solver::Solve doesn't crash on an empty x vector.
-  if (result.x.size() == 0) {
-    result.x.assign(model.number_of_variables(), 0.0);
-    result.mu = (k > 0) ? 1.0 / (k * k) : 1.0;
-    result.total_factorizations = total_fac;
-    result.total_solves = total_sol;
-  }
-
   return result;
 }
 
@@ -2053,7 +2040,10 @@ GeodesicResult SolveGeodesicBarrierLP(
       model.SetScaling(z);
       factor_ok = model.AssembleAndFactor();
     }
-    if (!factor_ok) { arena.RestoreCursor(iter_mark); break; }
+    if (!factor_ok) {
+      if (verbose) printf("  TERMINATED: factorization failed at iteration %d\n", outer);
+      arena.RestoreCursor(iter_mark); break;
+    }
     if (stats) stats->factor_count++;
 
     // 1. Centering RHS: A^T(-2∇F(z)).
@@ -2155,27 +2145,28 @@ GeodesicResult SolveGeodesicBarrierLP(
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
     result.iterations = outer + 1;
+    result.mu = mu;
+    result.d_inf_norm = d_inf;
+    result.d_sq_norm = d_sq;
+    result.complementarity = gap;
+    result.total_factorizations = total_fac;
+    result.total_solves = total_sol;
+
+    // Recover x = y0/k + y1.
+    {
+      auto x_rhs_conv = model.AllocSolverRHS();
+      x_rhs_conv.SetZero();
+      x_rhs_conv.AddScaled(1.0 / k, y0);
+      x_rhs_conv += y1;
+      int nr = model.number_of_variables();
+      result.x.resize(nr);
+      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs_conv.supernodes->GatherInto(xm); }
+    }
 
     bool converged = (gap < tolerance && d_inf < 1.01);
     bool last_iter = (outer + 1 == max_outer_iterations);
 
     if (converged || last_iter) {
-      result.mu = mu;
-      result.d_inf_norm = d_inf;
-      result.d_sq_norm = d_sq;
-      result.complementarity = gap;
-      result.total_factorizations = total_fac;
-      result.total_solves = total_sol;
-      {
-        auto x_rhs_conv = model.AllocSolverRHS();
-        x_rhs_conv.SetZero();
-        x_rhs_conv.AddScaled(1.0 / k, y0);
-        x_rhs_conv += y1;
-        int nr = model.number_of_variables();
-        result.x.resize(nr);
-        result.x.resize(model.number_of_variables());
-    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs_conv.supernodes->GatherInto(xm); }
-      }
 
       // Lambda recovery: λ = (1/k)(-2∇F(z) - H(z)·target_k).
       // Use heap for lambda since it outlives the arena.
@@ -2443,11 +2434,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
   // Precompute ∇F(z_0) (constant throughout).
   RowSpace grad_z0 = model.AllocRowSpace(arena);
   computeGradient(z0, grad_z0);
-
-  RowSpace neg_grad_z0 = model.AllocRowSpace(arena);
-  computeGradient(z0, neg_grad_z0);
-  neg_grad_z0 *= -1.0;
-  const double R_theta1 = dot(b, neg_grad_z0) + 1.0;
+  const double R_theta1 = -dot(b, grad_z0) + 1.0;
 
   // Duality cost (with +d at equality dual positions).
   auto duality_cost = MakeDualityCost(model);
@@ -2472,7 +2459,10 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
       model.SetScaling(z);
       factor_ok = model.AssembleAndFactor();
     }
-    if (!factor_ok) { arena.RestoreCursor(iter_mark); break; }
+    if (!factor_ok) {
+      if (verbose) printf("  TERMINATED: factorization failed at iteration %d\n", outer);
+      arena.RestoreCursor(iter_mark); break;
+    }
     if (stats) stats->factor_count++;
 
     // 1. Build 3 RHS vectors.
@@ -2579,6 +2569,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
         model, arena, duality_cost, z, z, b, grad, ay0, t1_tau, t1_th,
         y0_vec, y1_0_vec, y1_theta_vec, nu, R_theta1, theta);
     if (tau_sel <= 0) {
+      if (verbose) printf("  TERMINATED: tau <= 0 at iteration %d (theta=%.2e)\n", outer, theta);
       result.iterations = outer + 1;
       arena.RestoreCursor(iter_mark);
       break;
@@ -2603,32 +2594,31 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
     result.iterations = outer + 1;
+    result.mu = mu;
+    result.tau = tau;
+    result.d_inf_norm = d_inf;
+    result.d_sq_norm = d_sq;
+    result.complementarity = gap;
+    result.total_factorizations = total_fac;
+    result.total_solves = total_sol;
+
+    // Recover x = (y0/k + tau*y1_0 + theta*y1_theta) / tau.
+    {
+      auto x_rhs = model.AllocSolverRHS();
+      x_rhs.SetZero();
+      x_rhs.AddScaled(1.0 / k, y0_vec);
+      x_rhs.AddScaled(tau, y1_0_vec);
+      x_rhs.AddScaled(theta, y1_theta_vec);
+      x_rhs *= (1.0 / tau);
+      int nr = model.number_of_variables();
+      result.x.resize(nr);
+      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs.supernodes->GatherInto(xm); }
+    }
 
     bool converged = (mu < tolerance);
     bool last_iter = (outer + 1 == max_outer_iterations);
 
     if (converged || last_iter) {
-      result.mu = mu;
-      result.tau = tau;
-      result.d_inf_norm = d_inf;
-      result.d_sq_norm = d_sq;
-      result.complementarity = gap;
-      result.total_factorizations = total_fac;
-      result.total_solves = total_sol;
-
-      {
-        auto x_rhs = model.AllocSolverRHS();
-        x_rhs.SetZero();
-        x_rhs.AddScaled(1.0 / k, y0_vec);
-        x_rhs.AddScaled(tau, y1_0_vec);
-        x_rhs.AddScaled(theta, y1_theta_vec);
-        x_rhs *= (1.0 / tau);
-        int nr = model.number_of_variables();
-        result.x.resize(nr);
-        result.x.resize(model.number_of_variables());
-    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
-      }
-
       // Lambda recovery (heap — outlives arena).
       RowSpace lambda = model.MakeRowSpace();
       computeGradient(z, lambda);
