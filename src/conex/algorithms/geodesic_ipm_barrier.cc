@@ -56,7 +56,7 @@ GeodesicResult SolveGeodesicBarrierLP(
   }
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
-    char* iter_mark = arena.SaveCursor();
+    ArenaFrame iter_frame(arena);
 
     // 0. Sync z to constraint workspaces and factor Gram = A^T H(z) A.
     bool factor_ok;
@@ -66,7 +66,7 @@ GeodesicResult SolveGeodesicBarrierLP(
     }
     if (!factor_ok) {
       if (verbose) printf("  TERMINATED: factorization failed at iteration %d\n", outer);
-      arena.RestoreCursor(iter_mark); break;
+      break;
     }
     if (stats) stats->factor_count++;
 
@@ -207,7 +207,6 @@ GeodesicResult SolveGeodesicBarrierLP(
       if (verbose) {
         printf("  Optimality: mu=%.2e\n", result.mu);
       }
-      arena.RestoreCursor(iter_mark);
       break;
     } else {
       // Save z₀ for frozen-J, then step.
@@ -228,7 +227,7 @@ GeodesicResult SolveGeodesicBarrierLP(
       constexpr bool refactor_inner = false;
 
       for (int inner = 0; inner < max_frozen_steps; ++inner) {
-        char* inner_mark = arena.SaveCursor();
+        ArenaFrame inner_frame(arena);
 
         RowSpace target0_f = model.AllocRowSpace(arena);
         RowSpace target1_f = target1;  // default: frozen
@@ -314,10 +313,8 @@ GeodesicResult SolveGeodesicBarrierLP(
         }
 
         geodesicStepTarget(z, alpha_f, target_k_f);
-        arena.RestoreCursor(inner_mark);
       }
     }
-    arena.RestoreCursor(iter_mark);
   }
 
   return result;
@@ -363,7 +360,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
   }
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
-    char* iter_mark = arena.SaveCursor();
+    ArenaFrame iter_frame(arena);
 
     // 0. Factor Gram = A^T H(z) A.
     bool factor_ok;
@@ -373,7 +370,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
     }
     if (!factor_ok) {
       if (verbose) printf("  TERMINATED: factorization failed at iteration %d\n", outer);
-      arena.RestoreCursor(iter_mark); break;
+      break;
     }
     if (stats) stats->factor_count++;
 
@@ -483,7 +480,6 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
     if (tau_sel <= 0) {
       if (verbose) printf("  TERMINATED: tau <= 0 at iteration %d (theta=%.2e)\n", outer, theta);
       result.iterations = outer + 1;
-      arena.RestoreCursor(iter_mark);
       break;
     }
     tau = tau_sel;
@@ -545,7 +541,6 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
       if (verbose) {
         printf("  Optimality: mu=%.2e\n", result.mu);
       }
-      arena.RestoreCursor(iter_mark);
       if (converged) break;
     } else {
       // Geodesic step (always take — d_inf may be ≤ 1 by design in ThetaCont).
@@ -565,7 +560,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
       constexpr bool refactor_inner = false;
 
       for (int inner = 0; inner < max_centering_steps; ++inner) {
-        char* inner_mark = arena.SaveCursor();
+        ArenaFrame inner_frame(arena);
 
         RowSpace ay0_f = model.AllocRowSpace(arena);
         SolverRHS y0_f{}, y1_0_f = y1_0_vec, y1_theta_f = y1_theta_vec;
@@ -667,7 +662,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
               ay0_f, t1_tau_f, t1_th_f,
               y0_f, y1_0_f, y1_theta_f,
               nu, R_theta1, theta);
-          if (tau_r <= 0) { arena.RestoreCursor(inner_mark); break; }
+          if (tau_r <= 0) { break; }
           tau = tau_r;
 
           RowSpace t1_comb_r = model.AllocRowSpace(arena);
@@ -729,10 +724,8 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
 
           geodesicStepTarget(z, alpha_f, target_k_f);
         }
-        arena.RestoreCursor(inner_mark);
       }
     }
-    arena.RestoreCursor(iter_mark);
   }
 
   if (result.x.size() == 0) {

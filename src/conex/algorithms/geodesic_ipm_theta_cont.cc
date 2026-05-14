@@ -71,7 +71,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
   }
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
-    char* outer_mark = arena.SaveCursor();
+    ArenaFrame outer_frame(arena);
     // Decompose at current W.
     NewtonDecomposition decomp;
     decomp.d0 = model.AllocRowSpace();
@@ -93,7 +93,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     constexpr double beta_target = 1.0;
     double theta_prev = theta;
     {
-      char* ls_mark = arena.SaveCursor();
+      ArenaFrame ls_frame(arena);
       double ka = k > 0 ? k : 1.0;
       double kb = ka + 1.0;
       // Solve for (tau, theta) at each k.
@@ -123,7 +123,6 @@ GeodesicResult SolveGeodesicThetaContinuation(
         auto sr = BisectTheta(model, arena, tc, decomp, 0.0, theta_prev, beta_target);
         theta = sr.theta; k = sr.k; tau = sr.tau;
       }
-      arena.RestoreCursor(ls_mark);
     }
     if (tau <= 0) {
       if (verbose) printf("  TERMINATED: tau <= 0 at iteration %d\n", outer);
@@ -166,15 +165,14 @@ GeodesicResult SolveGeodesicThetaContinuation(
     double frozen_bT_P_d1t = tc.bT_P_d1t;  // from outer precomputation with sqrtW
     // Recompute bT_P_d1t using sqrtW0 (the frozen Jacobian point).
     {
-      char* mark2 = arena.SaveCursor();
+      ArenaFrame mark2_frame(arena);
       RowSpace P_d1t_f = model.AllocRowSpace(arena);
       quadraticRepresentation(P_d1t_f, sqrtW0_f, decomp.d1_theta);
       frozen_bT_P_d1t = dot(b, P_d1t_f);
-      arena.RestoreCursor(mark2);
     }
 
     for (int inner = 0; inner < max_centering_steps; ++inner) {
-      char* inner_mark = arena.SaveCursor();
+      ArenaFrame inner_frame(arena);
       if (refactor_inner) {
         W0 = W;
         EuclideanJordanAlgebra::sqrt(sqrtW0_f, W0);
@@ -201,7 +199,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
       double theta_lo_f = refactor_inner ? 0.0 : theta * 0.1;
       auto sr_f = BisectTheta(model, arena, tc_f, decomp, theta_lo_f, theta, beta_target);
       double theta_f = sr_f.theta, k_f = sr_f.k, tau_f = sr_f.tau;
-      if (tau_f <= 0) { arena.RestoreCursor(inner_mark); break; }
+      if (tau_f <= 0) { break; }
 
       RowSpace d_f = model.AllocRowSpace();
       EvaluateDirection(d_f, decomp, k_f, tau_f, theta_f);
@@ -221,7 +219,6 @@ GeodesicResult SolveGeodesicThetaContinuation(
       theta = theta_f;
       k = k_f;
       tau = tau_f;
-      arena.RestoreCursor(inner_mark);
     }
     // Report final state. Use saved values from last step (outer or frozen-J).
     mu = 1.0 / (k * k);
@@ -272,7 +269,6 @@ GeodesicResult SolveGeodesicThetaContinuation(
       if (verbose) printf("  TERMINATED: reached max_outer_iterations = %d\n",
                           max_outer_iterations);
     }
-    arena.RestoreCursor(outer_mark);
   }
 
   // Recover lambda and optimality (requires re-factorization for decomp).
@@ -325,7 +321,7 @@ static std::pair<double, double> EvalKCandidate(
     double k_cand) {
   if (k_cand <= 0) return {-1, 1e30};
   Arena& arena = model.arena();
-  char* mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   double mu = 1.0 / (k_cand * k_cand);
 
   auto dc = ComputeDualityCoeffs(model, arena, duality_cost, b, W, decomp);
@@ -364,7 +360,7 @@ static std::pair<double, double> EvalKCandidate(
 
   double B = alpha_coeff - R;
   double disc = B * B - 4.0 * beta_coeff * mu_eff;
-  if (disc < 0) { arena.RestoreCursor(mark); return {-1, 1e30}; }
+  if (disc < 0) { return {-1, 1e30}; }
 
   double sqrt_disc = std::sqrt(disc);
   double tau1 = (-B + sqrt_disc) / (2.0 * beta_coeff);
@@ -372,18 +368,16 @@ static std::pair<double, double> EvalKCandidate(
 
   auto eval_dinf = [&](double tau) -> std::pair<double, double> {
     if (tau <= 0) return {-1, 1e30};
-    char* eval_mark = arena.SaveCursor();
+    ArenaFrame eval_frame(arena);
     RowSpace d = model.AllocRowSpace(arena);
     EvaluateDirection(d, decomp, k_cand, tau, theta_val);
     double dinf = normInf(d);
-    arena.RestoreCursor(eval_mark);
     return {tau, dinf};
   };
 
   auto [t1, dinf1] = eval_dinf(tau1);
   auto [t2, dinf2] = eval_dinf(tau2);
 
-  arena.RestoreCursor(mark);
   if (t1 > 0 && (t2 <= 0 || dinf1 <= dinf2)) return {t1, dinf1};
   if (t2 > 0) return {t2, dinf2};
   return {-1, 1e30};
@@ -426,7 +420,7 @@ GeodesicResult SolveGeodesicPhaseOne(
   bool theta_zero = false;
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
-    char* outer_mark = arena.SaveCursor();
+    ArenaFrame outer_frame(arena);
     NewtonDecomposition decomp;
     decomp.d0 = model.AllocRowSpace();
     decomp.d1_0 = model.AllocRowSpace();
@@ -578,17 +572,14 @@ GeodesicResult SolveGeodesicPhaseOne(
     if (!phase1_only && mu < tolerance && d_inf <= 1.001) {
       if (verbose) printf("  TERMINATED: mu = %.2e < tolerance, d_inf = %.2e\n",
                           mu, d_inf);
-      arena.RestoreCursor(outer_mark);
       break;
     }
     // Phase 2 divergence guard.
     if (theta_zero && d_inf > 10.0) {
       if (verbose) printf("  TERMINATED: phase 2 diverging (d_inf = %.2e)\n",
                           d_inf);
-      arena.RestoreCursor(outer_mark);
       break;
     }
-    arena.RestoreCursor(outer_mark);
   }
 
   // Recover primal x.  De-homogenize: x_phys = x_lifted / tau.

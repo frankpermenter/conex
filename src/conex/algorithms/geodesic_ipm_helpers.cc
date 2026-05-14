@@ -203,7 +203,7 @@ void ComputeDecomposition(
     SolverRHS* y0_out,
     SolverRHS* y1_out) {
   // Allocate outputs as heap-backed SolverRHS so they survive
-  // RestoreCursor (arena allocations would be freed).
+  // ArenaFrame (arena allocations would be freed).
   // Copy pointers directly (operator= does deep copy which needs non-null supernodes).
   auto initRHS = [&](SolverRHS& dest) {
     SolverRHS tmp = model.MakeSolverRHS();
@@ -213,7 +213,7 @@ void ComputeDecomposition(
   };
   if (y0_out) initRHS(*y0_out);
   if (y1_out) initRHS(*y1_out);
-  char* mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   model.SetScaling(W);
   model.AssembleAndFactor();
 
@@ -272,7 +272,6 @@ void ComputeDecomposition(
   RowSpace neg_b_ay1 = model.AllocRowSpace(arena);
   addScaled(neg_b_ay1, b, ay1, -1.0, -1.0);
   quadraticRepresentation(d1, sqrtW, neg_b_ay1);
-  arena.RestoreCursor(mark);
 }
 
 // Build the "duality cost" for the V(tau)=0 identity:
@@ -299,8 +298,8 @@ void ComputeFullDecomposition(
     NewtonDecomposition& decomp) {
   Arena& arena = model.arena();
   // Allocate outputs as heap-backed SolverRHS so they survive
-  // RestoreCursor (arena allocations would be freed).
-  // Heap-allocate outputs so they survive RestoreCursor.
+  // ArenaFrame (arena allocations would be freed).
+  // Heap-allocate outputs so they survive ArenaFrame.
   // Copy pointers directly (operator= does deep copy which requires
   // supernodes != null, but default-constructed SolverRHS has null).
   auto initRHS = [&](SolverRHS& dest) {
@@ -312,7 +311,7 @@ void ComputeFullDecomposition(
   initRHS(decomp.y0);
   initRHS(decomp.y1_0);
   initRHS(decomp.y1_theta);
-  char* mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   const auto& cost_rhs = model.cost_rhs();
   model.SetScaling(W);
   model.AssembleAndFactor();
@@ -387,8 +386,6 @@ void ComputeFullDecomposition(
   addScaled(v, b, ones, 1.0, -1.0);
   addScaled(tmp, v, ay1_theta, 1.0, -1.0);
   quadraticRepresentation(decomp.d1_theta, sqrtW, tmp);
-
-  arena.RestoreCursor(mark);
 }
 
 void EvaluateDirection(RowSpace& out, const NewtonDecomposition& decomp,
@@ -465,7 +462,7 @@ DualityCoeffs ComputeDualityCoeffs(
     const RowSpace& b,
     const RowSpace& W,
     const NewtonDecomposition& decomp) {
-  char* mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   // sigma1 = <b0, P(W^{1/2})(d1_0)>
   RowSpace sqrtW = model.AllocRowSpace(arena);
   EuclideanJordanAlgebra::sqrt(sqrtW, W);
@@ -482,7 +479,6 @@ DualityCoeffs ComputeDualityCoeffs(
   model.AccumulateQx(decomp.y1_0, qy1);
   double q11 = qy1.dot(decomp.y1_0);
 
-  arena.RestoreCursor(mark);
   return {sigma1, gamma1, q11};
 }
 
@@ -491,7 +487,7 @@ ThetaCandidateCoeffs PrecomputeThetaCoeffs(
     const SolverRHS& duality_cost, const RowSpace& b,
     const RowSpace& W, const NewtonDecomposition& decomp,
     double bT_ones) {
-  char* mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   ThetaCandidateCoeffs c;
   c.bT_ones = bT_ones;
 
@@ -533,7 +529,6 @@ ThetaCandidateCoeffs PrecomputeThetaCoeffs(
 
   c.ip = ComputeInnerProducts(decomp);
 
-  arena.RestoreCursor(mark);
   return c;
 }
 
@@ -605,7 +600,7 @@ ThetaCandidateCoeffs RefreshFrozenThetaCoeffs(
     double frozen_bT_P_d1t,   // dot(b, P(sqrtW0, d1_theta)) — frozen
     double frozen_beta,       // sigma1 + gamma1 + q11 — frozen
     const ThetaCandidateCoeffs& frozen_base) {
-  char* mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   ThetaCandidateCoeffs c = frozen_base;  // copy frozen Q products etc.
   c.beta = frozen_beta;
   c.bT_P_d1t = frozen_bT_P_d1t;
@@ -636,7 +631,6 @@ ThetaCandidateCoeffs RefreshFrozenThetaCoeffs(
 
   c.ip = ComputeInnerProducts(decomp);
 
-  arena.RestoreCursor(mark);
   return c;
 }
 
@@ -651,12 +645,11 @@ std::pair<double, double> EvalThetaCandidate(
   if (tau <= 0) return {-1, 1e30};
 
   // Compute exact d_inf via normInf.
-  char* mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   double k = 1.0 / std::sqrt(theta_cand);
   RowSpace d = model.AllocRowSpace(arena);
   EvaluateDirection(d, decomp, k, tau, theta_cand);
   double dinf = normInf(d);
-  arena.RestoreCursor(mark);
   return {tau, dinf};
 }
 
@@ -676,7 +669,7 @@ std::pair<double, double> FrozenEvalThetaCandidate(
     double beta,              // precomputed sigma1 + gamma1 + q11
     double theta_cand) {
   if (theta_cand <= 0) return {-1, 1e30};
-  char* mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   double k = 1.0 / std::sqrt(theta_cand);
   double mu = theta_cand;
   RowSpace arg = model.AllocRowSpace(arena);
@@ -705,7 +698,7 @@ std::pair<double, double> FrozenEvalThetaCandidate(
 
   double B = alpha - R;
   double disc = B * B - 4.0 * beta * mu_eff;
-  if (disc < 0) { arena.RestoreCursor(mark); return {-1, 1e30}; }
+  if (disc < 0) { return {-1, 1e30}; }
 
   double sqrt_disc = std::sqrt(disc);
   double tau1 = (-B + sqrt_disc) / (2.0 * beta);
@@ -713,11 +706,10 @@ std::pair<double, double> FrozenEvalThetaCandidate(
 
   auto eval_dsq = [&](double tau) -> double {
     if (tau <= 0) return 1e30;
-    char* em = arena.SaveCursor();
+    ArenaFrame eval_frame(arena);
     RowSpace d = model.AllocRowSpace(arena);
     EvaluateDirection(d, decomp, k, tau, theta_cand);
     double r = squaredNorm(d);
-    arena.RestoreCursor(em);
     return r;
   };
 
@@ -730,14 +722,12 @@ std::pair<double, double> FrozenEvalThetaCandidate(
   } else if (tau2 > 0) {
     tau_out = tau2;
   } else {
-    arena.RestoreCursor(mark);
     return {-1, 1e30};
   }
 
   RowSpace d = model.AllocRowSpace(arena);
   EvaluateDirection(d, decomp, k, tau_out, theta_cand);
   double dinf = normInf(d);
-  arena.RestoreCursor(mark);
   return {tau_out, dinf};
 }
 
@@ -819,7 +809,7 @@ void RefreshD0Frozen(
     const RowSpace& Wi,
     RowSpace& d0_out,
     SolverRHS& y0_out) {
-  char* mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   RowSpace Wi_inv = model.AllocRowSpace(arena);
   EuclideanJordanAlgebra::inverse(Wi_inv, Wi);
   RowSpace sqrtW0 = model.AllocRowSpace(arena);
@@ -842,7 +832,6 @@ void RefreshD0Frozen(
   RowSpace tmp = model.AllocRowSpace(arena);
   addScaled(tmp, Wi_inv, Ax, 1.0, -1.0);
   quadraticRepresentation(d0_out, sqrtW0, tmp);
-  arena.RestoreCursor(mark);
 }
 
 // Overload for NewtonDecomposition (ThetaCont frozen-J).
@@ -880,7 +869,7 @@ std::pair<double, double> EvalBarrierThetaCandidate(
     const SolverRHS& y1_theta_rhs,
     double nu, double R_theta1, double theta_cand) {
   if (theta_cand <= 0) return {-1, 1e30};
-  char* mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
 
   double k = 1.0 / std::sqrt(theta_cand);
   double k2 = k * k;
@@ -930,7 +919,7 @@ std::pair<double, double> EvalBarrierThetaCandidate(
 
   // Solve: β·τ² + B·τ + μ_eff = 0.
   double disc = B * B - 4.0 * beta * mu_eff;
-  if (disc < 0) { arena.RestoreCursor(mark); return {-1, 1e30}; }
+  if (disc < 0) { return {-1, 1e30}; }
 
   double sqrt_disc = std::sqrt(disc);
   double tau1 = (-B + sqrt_disc) / (2.0 * beta);
@@ -939,7 +928,7 @@ std::pair<double, double> EvalBarrierThetaCandidate(
   // Pick the positive root with smaller ||d||_H².
   auto eval = [&](double tau) -> std::pair<double, double> {
     if (tau <= 0) return {1e30, 1e30};
-    char* eval_mark = arena.SaveCursor();
+    ArenaFrame eval_frame(arena);
     RowSpace t1_combined = model.AllocRowSpace(arena);
     addScaled(t1_combined, t1_tau, t1_th, tau, theta_cand);
     RowSpace target_k = model.AllocRowSpace(arena);
@@ -947,7 +936,6 @@ std::pair<double, double> EvalBarrierThetaCandidate(
     double d_sq = hessianNormSquared(z, target_k);
     double k_max = lineSearchTarget(z, ay0, t1_combined);
     double d_inf = (k_max >= k) ? 0.0 : 2.0;  // feasible or not
-    arena.RestoreCursor(eval_mark);
     return {d_sq, d_inf};
   };
 
@@ -960,11 +948,9 @@ std::pair<double, double> EvalBarrierThetaCandidate(
   } else if (tau2 > 0) {
     tau_out = tau2; d_inf_out = dinf2;
   } else {
-    arena.RestoreCursor(mark);
     return {-1, 1e30};
   }
 
-  arena.RestoreCursor(mark);
   return {tau_out, d_inf_out};
 }
 

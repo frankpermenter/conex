@@ -55,7 +55,7 @@ HybridRDirection ComputeHybridRDirection(
     RowSpace& d,
     RowSpace& delta,
     std::vector<double>* y_out) {
-  auto mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   const auto& cost_rhs = model.cost_rhs();
   RowSpace b_theta = BlendAffine(model, arena, b, theta);
   RowSpace sqrtW = model.AllocRowSpace(arena);
@@ -98,7 +98,6 @@ HybridRDirection ComputeHybridRDirection(
   solveLyapunovForD(d, r, delta);
 
   auto result = HybridRDirection{gap(r, delta), normInf(d), squaredNorm(d), minSlack(r, delta)};
-  arena.RestoreCursor(mark);
   return result;
 }
 
@@ -128,7 +127,7 @@ static HybridRDirection ComputeHybridRDirectionM(
     double theta,
     RowSpace& d,
     RowSpace& delta) {
-  auto mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   const auto& cost_rhs = model.cost_rhs();
   RowSpace b_theta = BlendAffine(model, arena, b, theta);
 
@@ -164,7 +163,6 @@ static HybridRDirection ComputeHybridRDirectionM(
   solveLyapunovForD(d, r, delta);
 
   auto result = HybridRDirection{gap(r, delta), normInf(d), squaredNorm(d), minSlack(r, delta)};
-  arena.RestoreCursor(mark);
   return result;
 }
 
@@ -178,7 +176,7 @@ std::pair<double, double> VerifyHybridREquations(
     const RowSpace& d,
     const RowSpace& delta,
     const std::vector<double>& y) {
-  auto mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   const auto& cost_rhs = model.cost_rhs();
   RowSpace b_theta = BlendAffine(model, arena, b, theta);
   RowSpace sqrtW = model.AllocRowSpace(arena);
@@ -223,7 +221,6 @@ std::pair<double, double> VerifyHybridREquations(
   at_lambda.supernodes->GatherInto(dual_err);
   double dual_res = dual_err.norm();
 
-  arena.RestoreCursor(mark);
   return {primal_res, dual_res};
 }
 
@@ -247,7 +244,7 @@ HybridRDecomposition ComputeHybridRDecomposition(
     const RowSpace& M,
     const RowSpace& W,
     const RowSpace& r) {
-  // Temporaries use SaveCursor/RestoreCursor; output members are allocated
+  // Temporaries use ArenaFrame; output members are allocated
   // from the arena BEFORE the temp mark so they survive.
   const auto& cost_rhs = model.cost_rhs();
 
@@ -274,7 +271,7 @@ HybridRDecomposition ComputeHybridRDecomposition(
   initRHS(decomp.y_center);
   initRHS(decomp.y_cost);
 
-  auto mark = arena.SaveCursor();  // temps below this mark get freed
+  ArenaFrame frame(arena);  // temps below this point get freed
 
   RowSpace v = model.AllocRowSpace(arena);
 
@@ -358,8 +355,6 @@ HybridRDecomposition ComputeHybridRDecomposition(
   applyMt(decomp.delta_cost, M, arg1);
   decomp.delta_cost *= -1.0;
 
-  arena.RestoreCursor(mark);  // free temporaries, output members survive
-
   // y_center, y_cost, delta_center are set by SetTheta().
   return decomp;
 }
@@ -379,7 +374,7 @@ int UpdateX0(HybridRDecomposition& decomp,
              const RowSpace& M,
              const RowSpace& W,
              const RowSpace& r) {
-  auto mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   // rhs0 = 2*A' * applyM(M, r)
   RowSpace v = model.AllocRowSpace(arena);
   applyM(v, M, r);
@@ -403,7 +398,6 @@ int UpdateX0(HybridRDecomposition& decomp,
   quadraticRepresentation(qr_ax0, W, decomp.ax0);
   addScaled(decomp.lam0, Mr2, qr_ax0, 1.0, -1.0);
 
-  arena.RestoreCursor(mark);
   return 1;  // 1 solve
 }
 
@@ -423,7 +417,7 @@ void SetTheta(HybridRDecomposition& decomp,
               const RowSpace& M,
               const RowSpace& r,
               double theta) {
-  auto mark = arena.SaveCursor();
+  ArenaFrame frame(arena);
   decomp.y_center = decomp.x0;
   decomp.y_center.AddScaled(theta, decomp.x_theta);
   decomp.y_cost = decomp.x1;
@@ -440,7 +434,6 @@ void SetTheta(HybridRDecomposition& decomp,
   RowSpace mt_tmp = model.AllocRowSpace(arena);
   applyMt(mt_tmp, M, dc_arg);
   addScaled(decomp.delta_center, r, mt_tmp, 1.0, -1.0);
-  arena.RestoreCursor(mark);
 }
 
 // Backward-compat wrapper (no arena).
@@ -550,7 +543,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   double d_tau = 0;
 
   for (int iter = 0; iter < max_iterations; ++iter) {
-    // No SaveCursor/RestoreCursor: decomp members persist across iterations.
+    // No ArenaFrame here: decomp members persist across iterations.
     auto _other_start = stats ? std::chrono::high_resolution_clock::now()
                               : std::chrono::high_resolution_clock::time_point{};
 

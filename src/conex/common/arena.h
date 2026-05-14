@@ -116,6 +116,25 @@ class Arena {
   char* end_ = nullptr;
 };
 
+// RAII scope guard for arena allocations. Saves the cursor on construction,
+// restores it on destruction. Use in loops and scoped blocks to prevent
+// unbounded arena growth:
+//
+//   for (...) {
+//     ArenaFrame frame(arena);
+//     auto* p = arena.Alloc(...);  // freed when frame goes out of scope
+//   }
+class ArenaFrame {
+ public:
+  explicit ArenaFrame(Arena& arena) : arena_(arena), saved_(arena.SaveCursor()) {}
+  ~ArenaFrame() { arena_.RestoreCursor(saved_); }
+  ArenaFrame(const ArenaFrame&) = delete;
+  ArenaFrame& operator=(const ArenaFrame&) = delete;
+ private:
+  Arena& arena_;
+  char* saved_;
+};
+
 // Fixed-size contiguous array allocated from an Arena.
 // Aligned to Arena::kAlign. Cannot grow after creation.
 template <typename T>

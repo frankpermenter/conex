@@ -37,7 +37,7 @@ GeodesicResult GeodesicCenter(
   result.mu = mu;
 
   for (int iter = 0; iter < max_iterations; ++iter) {
-    char* iter_mark = arena.SaveCursor();
+    ArenaFrame iter_frame(arena);
     RowSpace d = model.AllocRowSpace();
     RowSpace slack = model.AllocRowSpace();
     Eigen::VectorXd y_direct;
@@ -66,12 +66,10 @@ GeodesicResult GeodesicCenter(
 
     if (d_inf < tolerance) {
       { Eigen::VectorXd tmp = y_direct / k; result.x.assign(tmp.data(), tmp.data() + tmp.size()); }
-      arena.RestoreCursor(iter_mark);
       break;
     }
 
     geodesicUpdateFromSlack(W, alpha, slack);
-    arena.RestoreCursor(iter_mark);
   }
 
   return result;
@@ -386,7 +384,7 @@ GeodesicResult SolveGeodesicLP(
   }
 
   for (int outer = 0; outer < max_outer_iterations; ) {
-    char* iter_mark = arena.SaveCursor();
+    ArenaFrame iter_frame(arena);
 
     addScaled(b, ones_b, model.GetAffineTerm(), theta, 1.0 - theta);
     cost_rhs_blend.SetZero();
@@ -481,7 +479,6 @@ GeodesicResult SolveGeodesicLP(
                result.optimality.min_slack,
                result.optimality.min_dual);
       }
-      arena.RestoreCursor(iter_mark);
       break;
     }
 
@@ -503,7 +500,7 @@ GeodesicResult SolveGeodesicLP(
       total_sol += 1;
 
       for (int inner = 0; inner < max_centering_steps; ++inner) {
-        char* inner_mark = arena.SaveCursor();
+        ArenaFrame inner_frame(arena);
 
         double k_new_f = lineSearchK(d0_f, d1_f);
         if (k_new_f > k) k = k_new_f;
@@ -524,7 +521,6 @@ GeodesicResult SolveGeodesicLP(
 
         double alpha_f = std::min(1.0, 2.0 / (d_inf_f * d_inf_f));
         geodesicUpdate(W, alpha_f, d_f);
-        arena.RestoreCursor(inner_mark);
 
         if (inner + 1 < max_centering_steps) {
           RefreshD0Frozen(model, arena, model.GetAffineTerm(), W0, W, d0_f, y0_f);
@@ -533,7 +529,6 @@ GeodesicResult SolveGeodesicLP(
       }
     }
 
-    arena.RestoreCursor(iter_mark);
     ++outer;
   }
 

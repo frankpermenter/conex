@@ -164,7 +164,7 @@ static double HSDELineSearch(
     CompiledModel& model, Arena& arena,
     const NewtonDecomposition& decomp,
     const HSDECoeffs& coeff, double k) {
-  char* ls_mark = arena.SaveCursor();
+  ArenaFrame ls_frame(arena);
   double ka = k, kb = k + 1.0;
   auto sa = SolveDTauTheta(coeff, ka);
   auto sb = SolveDTauTheta(coeff, kb);
@@ -196,7 +196,6 @@ static double HSDELineSearch(
       if (k_new > k) k_out = k_new;
     }
   }
-  arena.RestoreCursor(ls_mark);
   return k_out;
 }
 
@@ -243,7 +242,7 @@ GeodesicResult SolveGeodesicHSDE(
   }
 
   for (int iter = 0; iter < max_iterations; ++iter) {
-    char* iter_mark = arena.SaveCursor();
+    ArenaFrame iter_frame(arena);
     // ComputeFullDecomposition calls SetScaling + AssembleAndFactor + 3 solves.
     // The end-of-loop also calls SetScaling + AssembleAndFactor after the step,
     // but this is redundant with the next iteration's ComputeFullDecomposition.
@@ -362,7 +361,7 @@ GeodesicResult SolveGeodesicHSDE(
 
     // Affinity check: d(k) should be affine in k.
     if (verbose && iter < 3) {
-      char* affine_mark = arena.SaveCursor();
+      ArenaFrame affine_frame(arena);
       double k1 = std::max(k, 1.0), k2 = 2*k1, k3 = 3*k1;
       auto e1 = SolveDTauTheta(coeff, k1);
       auto e2 = SolveDTauTheta(coeff, k2);
@@ -385,7 +384,6 @@ GeodesicResult SolveGeodesicHSDE(
                "  Q=%s\n", k1, k2, k3, d_err, dtau_err,
                coeff.has_Q ? "yes" : "no");
       }
-      arena.RestoreCursor(affine_mark);
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
@@ -412,7 +410,7 @@ GeodesicResult SolveGeodesicHSDE(
     result.tau = w_tau * r_tau;
 
     if (verbose) {
-      char* verbose_mark = arena.SaveCursor();
+      ArenaFrame verbose_frame(arena);
       RowSpace tmp_ed = model.AllocRowSpace(arena);
       addScaled(tmp_ed, ones, d, 1.0, 1.0);
       RowSpace lam_v = model.AllocRowSpace(arena);
@@ -455,19 +453,16 @@ GeodesicResult SolveGeodesicHSDE(
              "  %12.4e  %12.4e  %12.4e  eq=%.1e  nrm=%.1e  cpl=%.1e\n",
              iter, theta, tau, k, d_inf, d_tau, gap,
              dual_phys, primal_phys, mu_tau, eq_err, norm_err, compl_err);
-      arena.RestoreCursor(verbose_mark);
     }
 
     if (!std::isfinite(d_inf) || !std::isfinite(gap)) {
       if (verbose) printf("  TERMINATED: nan\n");
-      arena.RestoreCursor(iter_mark);
       break;
     }
 
     if (std::abs(gap) < tolerance && d_inf <= 1.001) {
       if (verbose) printf("  TERMINATED: gap = %.2e < tolerance, d_inf = %.2e\n",
                           gap, d_inf);
-      arena.RestoreCursor(iter_mark);
       break;
     }
 
@@ -501,7 +496,7 @@ GeodesicResult SolveGeodesicHSDE(
     constexpr bool refactor_inner = false;
 
     for (int inner = 0; inner < max_frozen_steps; ++inner) {
-      char* inner_mark = arena.SaveCursor();
+      ArenaFrame inner_frame(arena);
       if (refactor_inner) {
         // Full refactor: recompute everything (should match next outer iter).
         ComputeFullDecomposition(model, b, W, decomp);
@@ -562,7 +557,7 @@ GeodesicResult SolveGeodesicHSDE(
 
       // 2x2 solve + line search (same as outer).
       auto sel_f = SolveDTauTheta(coeff, k);
-      if (!sel_f.valid) { arena.RestoreCursor(inner_mark); break; }
+      if (!sel_f.valid) { break; }
 
       double k_new = HSDELineSearch(model, arena, decomp, coeff, k);
       if (k_new > k) k = k_new;
@@ -588,15 +583,12 @@ GeodesicResult SolveGeodesicHSDE(
       geodesicUpdate(W, alpha_f, d_f);
       w_tau *= std::exp(d_tau_f * alpha_f);
       r_tau = 1.0 / k;
-      arena.RestoreCursor(inner_mark);
     }
-
-    arena.RestoreCursor(iter_mark);
   }
 
   // Recover lambda and optimality (requires re-factorization).
   if (k > 0 && result.x.size() > 0) {
-    char* recover_mark = arena.SaveCursor();
+    ArenaFrame recover_frame(arena);
     NewtonDecomposition decomp;
     decomp.d0 = model.AllocRowSpace();
     decomp.d1_0 = model.AllocRowSpace();
@@ -669,7 +661,6 @@ GeodesicResult SolveGeodesicHSDE(
              result.optimality.min_slack,
              result.optimality.min_dual);
     }
-    arena.RestoreCursor(recover_mark);
   }
 
   return result;
