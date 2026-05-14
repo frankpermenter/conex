@@ -115,8 +115,11 @@ add_library(algorithms
   src/conex/common/affine_projection.cc
   src/conex/algorithms/irls.cc
   src/conex/algorithms/barrier_qp.cc
-  src/conex/algorithms/geodesic_ipm.cc
-  src/conex/algorithms/geodesic_hybrid_r.cc
+  src/conex/algorithms/geodesic_ipm_helpers.cc
+  src/conex/algorithms/geodesic_ipm_lp.cc
+  src/conex/algorithms/geodesic_ipm_theta_cont.cc
+  src/conex/algorithms/geodesic_ipm_barrier.cc
+  src/conex/algorithms/geodesic_ipm_hybrid.cc
   src/conex/algorithms/geodesic_hsde.cc
   src/conex/algorithms/alternating_projections.cc
   src/conex/algorithms/solve_lp.cc

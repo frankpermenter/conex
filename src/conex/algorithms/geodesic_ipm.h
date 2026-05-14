@@ -172,6 +172,7 @@ struct DualityCoeffs {
 // (with +d at equality dual positions, not -d).
 DualityCoeffs ComputeDualityCoeffs(
     CompiledModel& model,
+    Arena& arena,
     const SolverRHS& duality_cost,
     const RowSpace& b,
     const RowSpace& W,
