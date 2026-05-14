@@ -174,6 +174,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     }
 
     for (int inner = 0; inner < max_centering_steps; ++inner) {
+      char* inner_mark = arena.SaveCursor();
       if (refactor_inner) {
         W0 = W;
         EuclideanJordanAlgebra::sqrt(sqrtW0_f, W0);
@@ -200,7 +201,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
       double theta_lo_f = refactor_inner ? 0.0 : theta * 0.1;
       auto sr_f = BisectTheta(model, arena, tc_f, decomp, theta_lo_f, theta, beta_target);
       double theta_f = sr_f.theta, k_f = sr_f.k, tau_f = sr_f.tau;
-      if (tau_f <= 0) break;
+      if (tau_f <= 0) { arena.RestoreCursor(inner_mark); break; }
 
       RowSpace d_f = model.AllocRowSpace();
       EvaluateDirection(d_f, decomp, k_f, tau_f, theta_f);
@@ -220,6 +221,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
       theta = theta_f;
       k = k_f;
       tau = tau_f;
+      arena.RestoreCursor(inner_mark);
     }
     // Report final state. Use saved values from last step (outer or frozen-J).
     mu = 1.0 / (k * k);
@@ -323,20 +325,21 @@ static std::pair<double, double> EvalKCandidate(
     double k_cand) {
   if (k_cand <= 0) return {-1, 1e30};
   Arena& arena = model.arena();
+  char* mark = arena.SaveCursor();
   double mu = 1.0 / (k_cand * k_cand);
 
   auto dc = ComputeDualityCoeffs(model, arena, duality_cost, b, W, decomp);
   double beta_coeff = dc.sigma1 + dc.gamma1 + dc.q11;
 
-  RowSpace sqrtW = model.AllocRowSpace();
+  RowSpace sqrtW = model.AllocRowSpace(arena);
   EuclideanJordanAlgebra::sqrt(sqrtW, W);
-  RowSpace ones_v = model.AllocRowSpace();
+  RowSpace ones_v = model.AllocRowSpace(arena);
   setOnes(ones_v);
-  RowSpace e_plus_d0 = model.AllocRowSpace();
+  RowSpace e_plus_d0 = model.AllocRowSpace(arena);
   addScaled(e_plus_d0, ones_v, decomp.d0, 1.0, 1.0);
-  RowSpace arg = model.AllocRowSpace();
+  RowSpace arg = model.AllocRowSpace(arena);
   addScaled(arg, e_plus_d0, decomp.d1_theta, 1.0, k_cand * theta_val);
-  RowSpace Parg = model.AllocRowSpace();
+  RowSpace Parg = model.AllocRowSpace(arena);
   quadraticRepresentation(Parg, sqrtW, arg);
   double sigma0 = dot(b, Parg) / k_cand;
 
@@ -361,7 +364,7 @@ static std::pair<double, double> EvalKCandidate(
 
   double B = alpha_coeff - R;
   double disc = B * B - 4.0 * beta_coeff * mu_eff;
-  if (disc < 0) return {-1, 1e30};
+  if (disc < 0) { arena.RestoreCursor(mark); return {-1, 1e30}; }
 
   double sqrt_disc = std::sqrt(disc);
   double tau1 = (-B + sqrt_disc) / (2.0 * beta_coeff);
@@ -369,14 +372,18 @@ static std::pair<double, double> EvalKCandidate(
 
   auto eval_dinf = [&](double tau) -> std::pair<double, double> {
     if (tau <= 0) return {-1, 1e30};
-    RowSpace d = model.AllocRowSpace();
+    char* eval_mark = arena.SaveCursor();
+    RowSpace d = model.AllocRowSpace(arena);
     EvaluateDirection(d, decomp, k_cand, tau, theta_val);
-    return {tau, normInf(d)};
+    double dinf = normInf(d);
+    arena.RestoreCursor(eval_mark);
+    return {tau, dinf};
   };
 
   auto [t1, dinf1] = eval_dinf(tau1);
   auto [t2, dinf2] = eval_dinf(tau2);
 
+  arena.RestoreCursor(mark);
   if (t1 > 0 && (t2 <= 0 || dinf1 <= dinf2)) return {t1, dinf1};
   if (t2 > 0) return {t2, dinf2};
   return {-1, 1e30};
@@ -419,6 +426,7 @@ GeodesicResult SolveGeodesicPhaseOne(
   bool theta_zero = false;
 
   for (int outer = 0; outer < max_outer_iterations; ++outer) {
+    char* outer_mark = arena.SaveCursor();
     NewtonDecomposition decomp;
     decomp.d0 = model.AllocRowSpace();
     decomp.d1_0 = model.AllocRowSpace();
@@ -570,14 +578,17 @@ GeodesicResult SolveGeodesicPhaseOne(
     if (!phase1_only && mu < tolerance && d_inf <= 1.001) {
       if (verbose) printf("  TERMINATED: mu = %.2e < tolerance, d_inf = %.2e\n",
                           mu, d_inf);
+      arena.RestoreCursor(outer_mark);
       break;
     }
     // Phase 2 divergence guard.
     if (theta_zero && d_inf > 10.0) {
       if (verbose) printf("  TERMINATED: phase 2 diverging (d_inf = %.2e)\n",
                           d_inf);
+      arena.RestoreCursor(outer_mark);
       break;
     }
+    arena.RestoreCursor(outer_mark);
   }
 
   // Recover primal x.  De-homogenize: x_phys = x_lifted / tau.

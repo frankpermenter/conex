@@ -37,6 +37,7 @@ GeodesicResult GeodesicCenter(
   result.mu = mu;
 
   for (int iter = 0; iter < max_iterations; ++iter) {
+    char* iter_mark = arena.SaveCursor();
     RowSpace d = model.AllocRowSpace();
     RowSpace slack = model.AllocRowSpace();
     Eigen::VectorXd y_direct;
@@ -65,10 +66,12 @@ GeodesicResult GeodesicCenter(
 
     if (d_inf < tolerance) {
       { Eigen::VectorXd tmp = y_direct / k; result.x.assign(tmp.data(), tmp.data() + tmp.size()); }
+      arena.RestoreCursor(iter_mark);
       break;
     }
 
     geodesicUpdateFromSlack(W, alpha, slack);
+    arena.RestoreCursor(iter_mark);
   }
 
   return result;
