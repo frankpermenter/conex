@@ -1,37 +1,8 @@
-// Geodesic interior-point method for linear programs.
+// Geodesic interior-point method for conic programs.
 //
-// Parameterization
-// ----------------
-// The primal slack s and dual variable lambda are parameterized on the
-// central path via a weight vector W = exp(v):
-//
-//   s(mu)      = sqrt(mu) * exp(-v)
-//   lambda(mu) = sqrt(mu) * exp(v)
-//
-// so that s * lambda = mu identically.  The weight W_i = exp(v_i) is the
-// sole state variable; mu = 1/k^2 is the barrier parameter.
-//
-// Newton step
-// -----------
-// A Newton step computes a direction d in v-space.  The linearizations
-//
-//   exp(v - d) ≈ exp(v) (1 - d)      (primal slack update)
-//   exp(v + d) ≈ exp(v) (1 + d)      (dual variable update)
-//
-// lead to the KKT system (A^T diag(W^2) A) y = RHS, from which d is
-// recovered as d = 1 + W .* (k*b - A*y).  The centering term "1"
-// pulls s*lambda toward mu; the A*y term moves toward optimality.
-//
-// The geodesic update W *= exp(alpha * d) preserves positivity and
-// corresponds to a step along the geodesic on the manifold of positive
-// diagonal scalings.
-//
-// Convergence
-// -----------
-// At the central path, d = 0 and complementarity = mu * m.  The step
-// size alpha = min(1, 2/||d||^2_inf) ensures convergence.  The line
-// search for k exploits d(k) = d0 + k * d1 (affine in k) to find the
-// largest k with ||d||_inf <= 1 analytically.
+// Public API: result types and solver functions.
+// Internal utilities (decomposition, direction evaluation, etc.) are in
+// geodesic_ipm_helpers.h — include that header for unit-testing internals.
 
 #pragma once
 #include <functional>
@@ -40,6 +11,10 @@
 #include "conex/common/solve_stats.h"
 
 namespace conex {
+
+// =====================================================================
+// Result types
+// =====================================================================
 
 struct GeodesicIterStats {
   double mu;
@@ -77,162 +52,11 @@ struct GeodesicResult {
   OptimalityReport optimality;
 };
 
-// Verify the Newton direction satisfies its defining equations:
-//   Primal: P(W^{-1/2})(I - d) = k*(Ay + b)   (slack condition)
-//   Dual:   A^T P(W^{1/2})(I + d) / k = c      (cost condition)
-// Returns (primal_residual, dual_residual) norms.
-std::pair<double, double> VerifyNewtonEquations(
-    CompiledModel& model,
-    const RowSpace& b,
-    const RowSpace& W,
-    const RowSpace& d,
-    const std::vector<double>& y,
-    double k,
-    double theta = 0.0);
+// =====================================================================
+// Solver functions
+// =====================================================================
 
-// Decomposition of the Newton direction into components that are
-// independent of k and theta:
-//   d(k, theta) = d0 + k * (d1_0 + theta * d1_theta)
-//   y(k, theta) = y0 + k * (y1_0 + theta * y1_theta)
-struct NewtonDecomposition {
-  RowSpace d0;
-  RowSpace d1_0;       // standard optimality direction
-  RowSpace d1_theta;   // theta correction direction
-  SolverRHS y0, y1_0, y1_theta;  // primal variables in block form
-};
-
-// Factor the Gram system and compute the three-term decomposition.
-// Requires 1 factorization and 3 back-solves.
-// Caller pre-allocates decomp.d0, d1_0, d1_theta (arena or heap).
-void ComputeFullDecomposition(
-    CompiledModel& model,
-    const RowSpace& b,
-    const RowSpace& W,
-    NewtonDecomposition& decomp);
-
-// Evaluate d(k, tau, theta) = d0 + k * (tau * d1_0 + theta * d1_theta).
-// tau weights the original problem data, theta weights the identity centering.
-void EvaluateDirection(RowSpace& out, const NewtonDecomposition& decomp,
-                       double k, double tau, double theta);
-RowSpace EvaluateDirection(const NewtonDecomposition& decomp,
-                           double k, double tau, double theta);
-
-// Find the k that minimizes ||d(k, tau, theta)||^2 at fixed (tau, theta):
-//   k* = -<d0, tau*d1_0 + theta*d1_theta> / ||tau*d1_0 + theta*d1_theta||^2
-double MinNormK(const NewtonDecomposition& decomp, double tau, double theta);
-
-// Six inner products that determine ||d||^2 as a function of (k, tau, theta).
-struct DecompInnerProducts {
-  double a;  // ||d0||^2
-  double f;  // <d0, d1_0>
-  double g;  // <d0, d1_theta>
-  double p;  // ||d1_0||^2
-  double q;  // <d1_0, d1_theta>
-  double r;  // ||d1_theta||^2
-};
-
-DecompInnerProducts ComputeInnerProducts(const NewtonDecomposition& decomp);
-
-// Joint (k, tau) selection with theta = 1/k^2.
-// Returns (k, tau) that minimize ||d||^2 using only the six inner products.
-struct KTauResult {
-  double k;
-  double tau;
-  double theta;   // = 1/k^2
-  double d_sq;    // ||d||^2 at the optimum
-};
-
-KTauResult SelectKTau(const DecompInnerProducts& ip);
-
-// Duality identity and tau selection
-// -----------------------------------
-// The HSD duality identity in lifted variables is:
-//
-//   b'λ + c'x + d'ν + (1/τ) x'Qx + μ/τ = θ·R           (*)
-//
-// See doc/geodesic_newton_direction.tex §6 for the derivation.
-//
-// Substituting x = f + τ·y₁₀ (f = y₀/k + θ·y₁θ) and multiplying
-// by τ gives V(τ)·τ = β·τ² + (α − R)·τ + μ_eff = 0, with
-//
-//   β     = σ₁ + γ₁ + y₁₀'Qy₁₀           (tau-independent)
-//   α     = σ₀ + γ₀ + 2·f'Qy₁₀            (depends on k, θ)
-//   μ_eff = μ + f'Qf                       (depends on k, θ)
-
-// Coefficients for the duality equation violation (quadratic in tau when
-// multiplied by tau): beta*tau^2 + (alpha - R)*tau + mu_eff = 0.
-struct DualityCoeffs {
-  double sigma1;  // <b0, P(W^{1/2})(d1_0)>
-  double gamma1;  // duality_cost^T y1_0
-  double q11;     // y1_0' Q y1_0  (quadratic cost; enters beta as q11/2)
-};
-
-// Compute the tau-independent duality coefficients (sigma1, gamma1, q11).
-// duality_cost must be the corrected cost vector from MakeDualityCost()
-// (with +d at equality dual positions, not -d).
-DualityCoeffs ComputeDualityCoeffs(
-    CompiledModel& model,
-    Arena& arena,
-    const SolverRHS& duality_cost,
-    const RowSpace& b,
-    const RowSpace& W,
-    const NewtonDecomposition& decomp);
-
-// Geodesic HSD: joint (τ, θ) selection via gap + normalization equations.
-// No external θ schedule — θ is determined by the normalization equation,
-// τ by a quadratic from the gap equation.  Uses ComputeFullDecomposition
-// (3 back-solves per factorization).  Single loop, no centering phase.
-GeodesicResult SolveGeodesicHSD(
-    CompiledModel& model,
-    RowSpace& W,
-    int max_iterations = 30,
-    double tolerance = 1e-8,
-    bool verbose = false);
-
-// θ-continuation geodesic IPM: start at θ=1 (trivially centered feasibility
-// problem) and decrease θ toward 0 (original problem).  At each θ, center
-// with MinNormK, then shrink θ by an amount determined by ||d1_theta||.
-// Uses ComputeFullDecomposition (3 back-solves per factorization).
-GeodesicResult SolveGeodesicThetaContinuation(
-    CompiledModel& model,
-    RowSpace& W,
-    int max_outer_iterations = 50,
-    int max_centering_steps = 10,
-    double tolerance = 1e-8,
-    bool verbose = false,
-    SolveStats* stats = nullptr);
-
-// Aggressive θ→0 / increase-k method (a.k.a. "phase one" then "phase two").
-//
-// Phase 1: at each outer iteration, *eagerly* try θ=0.  Use lineSearchK to
-// find a positive k with ||d0 + k·τ·d1_0||_inf ≤ 1.1.  If one exists,
-// commit θ←0 and the new k.  Otherwise binary-search for the smallest θ>0
-// admitting a hard-constraint (V(τ)=0) τ with d_inf ≤ 1, with k tied to
-// θ via k = 1/√θ (so μ = θ).
-//
-// Phase 2 (θ=0): τ frozen, find the largest k with ||d||_inf ≤ 1 by
-// lineSearchK on (d0, τ·d1_0).  μ = 1/k² then decreases independently
-// of any θ schedule.
-//
-// Goal: trade off θ-continuation centering work for an aggressive μ
-// reduction once feasibility is established.
-GeodesicResult SolveGeodesicPhaseOne(
-    CompiledModel& model,
-    RowSpace& W,
-    int max_outer_iterations = 50,
-    int max_centering_steps = 10,
-    double tolerance = 1e-8,
-    bool verbose = false,
-    bool phase1_only = false);
-
-// Run the geodesic centering iteration with fixed barrier parameter k = 1/sqrt(mu).
-// Maintains weight vector W as the sole state variable, updated via W *= exp(alpha * d).
-//
-// cost_rhs: the cost vector c in SolverRHS format (for min c^T x s.t. Ax <= b).
-// W: initial weight vector (m-dimensional, positive). Modified in-place.
-// k: barrier parameter 1/sqrt(mu), held fixed.
-// max_iterations: iteration limit.
-// tolerance: stop when ||d||_inf < tolerance.
+// Geodesic centering at fixed barrier parameter k.
 GeodesicResult GeodesicCenter(
     CompiledModel& model,
     RowSpace& W,
@@ -241,8 +65,7 @@ GeodesicResult GeodesicCenter(
     double tolerance,
     bool verbose = false);
 
-// Run the full geodesic IPM: repeated line-search for k then center.
-// Returns per-outer-iteration stats for comparison with barrier method.
+// Full geodesic IPM: repeated line-search for k then center.
 GeodesicResult SolveGeodesicLP(
     CompiledModel& model,
     RowSpace& W,
@@ -253,97 +76,66 @@ GeodesicResult SolveGeodesicLP(
     bool mehrotra_correction = false,
     SolveStats* stats = nullptr);
 
-// z-space geodesic LP for cones with log-homogeneous barriers.
-// Uses only the z-space operations on CompiledModel (ComputeGradient,
-// HessianProduct, LineSearch, StepSize, GeodesicStep).
-// For symmetric cones, produces bit-identical results to SolveGeodesicLP.
+// Line search for k at current W.
+double GeodesicLineSearch(
+    CompiledModel& model,
+    const RowSpace& W);
+
+// Geodesic HSD: joint (τ, θ) selection via gap + normalization.
+GeodesicResult SolveGeodesicHSD(
+    CompiledModel& model,
+    RowSpace& W,
+    int max_iterations = 30,
+    double tolerance = 1e-8,
+    bool verbose = false);
+
+// θ-continuation geodesic IPM.
+GeodesicResult SolveGeodesicThetaContinuation(
+    CompiledModel& model,
+    RowSpace& W,
+    int max_outer_iterations = 50,
+    int max_centering_steps = 10,
+    double tolerance = 1e-8,
+    bool verbose = false,
+    SolveStats* stats = nullptr);
+
+// Aggressive θ→0 / increase-k (phase-one then phase-two).
+GeodesicResult SolveGeodesicPhaseOne(
+    CompiledModel& model,
+    RowSpace& W,
+    int max_outer_iterations = 50,
+    int max_centering_steps = 10,
+    double tolerance = 1e-8,
+    bool verbose = false,
+    bool phase1_only = false);
+
+// z-space geodesic LP for general log-homogeneous barriers.
 GeodesicResult SolveGeodesicBarrierLP(
     CompiledModel& model,
-    RowSpace& z,                    // internal state (W for symmetric cones)
+    RowSpace& z,
     int max_outer_iterations = 30,
     int max_frozen_steps = 0,
     double tolerance = 1e-8,
     bool verbose = false,
     SolveStats* stats = nullptr);
 
-// z-space θ-continuation for cones with log-homogeneous barriers.
-// Generalizes SolveGeodesicThetaContinuation using only z-space ops.
-// For symmetric cones with z_0 = e (ones), produces bit-identical results.
+// z-space θ-continuation for general log-homogeneous barriers.
 GeodesicResult SolveGeodesicBarrierThetaContinuation(
     CompiledModel& model,
-    RowSpace& z,                    // internal state (W for symmetric cones)
+    RowSpace& z,
     int max_outer_iterations = 500,
     int max_centering_steps = 1,
     double tolerance = 1e-8,
     bool verbose = false,
     SolveStats* stats = nullptr);
 
-// Find the largest k such that ||d(k)||_inf <= 1, where d(k) = d0 + k * d1.
-// Requires W to be centered (d ≈ 0 at the current k).  Uses one factorization
-// and two back-solves.  Returns the new k (>= current k).
-double GeodesicLineSearch(
-    CompiledModel& model,
-    const RowSpace& W);
-
-// =====================================================================
-// Generalized geodesic IPM with per-component centering vector r.
-//
-// Parameterization:
-//   s_i = r_i * exp(-v_i),   lambda_i = r_i * exp(v_i)
-//   s_i * lambda_i = r_i^2
-//
-// When r = sqrt(mu) * ones, this reduces to the scalar-mu version above.
-// =====================================================================
-
-// Result of a single hybrid direction computation.
-struct HybridDirection {
-  double gap;
-  double d_inf;
-  double d_sq;
-  double min_slack;
-};
-
-// Check optimality conditions given primal x (as SolverRHS) and dual λ (as RowSpace).
-// Computes s = Ax + b, dual residual A^T λ - Qx - c, complementarity <s, λ>.
-OptimalityReport CheckOptimality(
-    CompiledModel& model,
-    const SolverRHS& x_rhs,
-    const RowSpace& lambda);
-
-// Compute the hybrid Newton direction at (W, r).
-// Assumes the KKT system is already factored with weights W².
-// Returns d, delta (via output params), and derived quantities.
-// Performs one back-solve (no factorization).
-HybridDirection ComputeHybridDirection(
-    CompiledModel& model,
-    const RowSpace& b,
-    const RowSpace& W,
-    const RowSpace& r,
-    RowSpace& d,
-    RowSpace& delta,
-    double tau_scale = 1.0);
-
-// Single centering step: factor with W², compute direction, take
-// geodesic/automorphism step.  Modifies W and r in place.
-// Returns the direction info (gap, d_inf, etc.).
-HybridDirection HybridCenteringStep(
-    CompiledModel& model,
-    RowSpace& W,
-    RowSpace& r);
-
 // Switching policy for the hybrid algorithm.
-// Returns true to center (W-update), false to shrink (r-update).
-// Arguments: gap, d_inf, number of r-updates since last centering.
 using HybridSwitchPolicy = std::function<bool(double, double, int)>;
-
-// Default policy: center if gap < 0.
 inline bool DefaultHybridPolicy(double gap, double, int) {
   return gap < 0;
 }
 
-// Hybrid geodesic IPM: alternates between centering (when gap < 0)
-// and shrinking per-component centering targets r (when gap >= 0).
-// gap(r, d) = <r.*(1+d), r.*(1-d)> = sum(r_i^2 * (1 - d_i^2)).
+// Hybrid geodesic IPM: alternates centering and r-shrinking.
 GeodesicResult SolveGeodesicHybrid(
     CompiledModel& model,
     RowSpace& W,
@@ -353,27 +145,5 @@ GeodesicResult SolveGeodesicHybrid(
     double initial_k = -1,
     double tau = 1.0,
     HybridSwitchPolicy policy = DefaultHybridPolicy);
-
-// Frozen-Jacobian d0 refresh: 1 back-solve with stale Gram at W0.
-void RefreshD0Frozen(
-    CompiledModel& model,
-    Arena& arena,
-    const RowSpace& b,
-    const RowSpace& W0,
-    const RowSpace& Wi,
-    RowSpace& d0_out,
-    SolverRHS& y0_out);
-
-// Convenience wrapper (creates a local arena — safe because d0_out is
-// caller-owned heap, and only temporaries are arena-backed).
-inline void RefreshD0Frozen(
-    CompiledModel& model,
-    const RowSpace& b,
-    const RowSpace& W0,
-    const RowSpace& Wi,
-    RowSpace& d0_out,
-    SolverRHS& y0_out) {
-  RefreshD0Frozen(model, model.arena(), b, W0, Wi, d0_out, y0_out);
-}
 
 }  // namespace conex

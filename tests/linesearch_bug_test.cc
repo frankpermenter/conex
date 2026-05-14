@@ -12,6 +12,7 @@
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/algorithms/geodesic_ipm.h"
+#include "conex/algorithms/geodesic_ipm_helpers.h"
 #include "conex/common/sdpa_reader.h"
 
 namespace conex {

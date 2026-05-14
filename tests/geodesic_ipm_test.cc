@@ -6,6 +6,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/geodesic_ipm.h"
+#include "conex/algorithms/geodesic_ipm_helpers.h"
 #include "conex/algorithms/solve_strategies.h"
 #include "conex/common/compiled_model.h"
 #include "conex/common/eja_ops.h"

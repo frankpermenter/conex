@@ -10,6 +10,7 @@
 #include "conex/common/solver.h"
 #include "conex/common/kkt_solver_dense.h"
 #include "conex/algorithms/geodesic_ipm.h"
+#include "conex/algorithms/geodesic_ipm_helpers.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 #include "conex/common/equality_constraint.h"
 using namespace conex;

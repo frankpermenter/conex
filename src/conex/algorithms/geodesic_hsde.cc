@@ -1,5 +1,6 @@
 #include "conex/algorithms/geodesic_hsde.h"
 #include "conex/algorithms/geodesic_ipm.h"
+#include "conex/algorithms/geodesic_ipm_helpers.h"
 #include "conex/common/eja_ops.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 

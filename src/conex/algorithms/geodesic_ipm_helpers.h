@@ -6,9 +6,139 @@
 
 namespace conex {
 
-// Forward declarations.
-struct NewtonDecomposition;
 class Arena;
+
+// =====================================================================
+// Internal types (used by algorithm implementations and tests)
+// =====================================================================
+
+// Decomposition of the Newton direction into components that are
+// independent of k and theta:
+//   d(k, theta) = d0 + k * (d1_0 + theta * d1_theta)
+//   y(k, theta) = y0 + k * (y1_0 + theta * y1_theta)
+struct NewtonDecomposition {
+  RowSpace d0;
+  RowSpace d1_0;       // standard optimality direction
+  RowSpace d1_theta;   // theta correction direction
+  SolverRHS y0, y1_0, y1_theta;  // primal variables in block form
+};
+
+// Six inner products that determine ||d||^2 as a function of (k, tau, theta).
+struct DecompInnerProducts {
+  double a;  // ||d0||^2
+  double f;  // <d0, d1_0>
+  double g;  // <d0, d1_theta>
+  double p;  // ||d1_0||^2
+  double q;  // <d1_0, d1_theta>
+  double r;  // ||d1_theta||^2
+};
+
+struct KTauResult {
+  double k;
+  double tau;
+  double theta;   // = 1/k^2
+  double d_sq;    // ||d||^2 at the optimum
+};
+
+struct DualityCoeffs {
+  double sigma1;
+  double gamma1;
+  double q11;
+};
+
+struct HybridDirection {
+  double gap;
+  double d_inf;
+  double d_sq;
+  double min_slack;
+};
+
+// =====================================================================
+// Internal utility functions
+// =====================================================================
+
+// Verify the Newton direction satisfies its defining equations.
+std::pair<double, double> VerifyNewtonEquations(
+    CompiledModel& model,
+    const RowSpace& b,
+    const RowSpace& W,
+    const RowSpace& d,
+    const std::vector<double>& y,
+    double k,
+    double theta = 0.0);
+
+// Check optimality conditions given primal x and dual λ.
+OptimalityReport CheckOptimality(
+    CompiledModel& model,
+    const SolverRHS& x_rhs,
+    const RowSpace& lambda);
+
+// Factor the Gram system and compute the three-term decomposition.
+void ComputeFullDecomposition(
+    CompiledModel& model,
+    const RowSpace& b,
+    const RowSpace& W,
+    NewtonDecomposition& decomp);
+
+// Evaluate d(k, tau, theta) = d0 + k * (tau * d1_0 + theta * d1_theta).
+void EvaluateDirection(RowSpace& out, const NewtonDecomposition& decomp,
+                       double k, double tau, double theta);
+RowSpace EvaluateDirection(const NewtonDecomposition& decomp,
+                           double k, double tau, double theta);
+
+// Find k that minimizes ||d(k, tau, theta)||^2.
+double MinNormK(const NewtonDecomposition& decomp, double tau, double theta);
+
+DecompInnerProducts ComputeInnerProducts(const NewtonDecomposition& decomp);
+KTauResult SelectKTau(const DecompInnerProducts& ip);
+
+// Tau-independent duality coefficients.
+DualityCoeffs ComputeDualityCoeffs(
+    CompiledModel& model,
+    Arena& arena,
+    const SolverRHS& duality_cost,
+    const RowSpace& b,
+    const RowSpace& W,
+    const NewtonDecomposition& decomp);
+
+// Hybrid direction computation.
+HybridDirection ComputeHybridDirection(
+    CompiledModel& model,
+    const RowSpace& b,
+    const RowSpace& W,
+    const RowSpace& r,
+    RowSpace& d,
+    RowSpace& delta,
+    double tau_scale = 1.0);
+
+HybridDirection HybridCenteringStep(
+    CompiledModel& model,
+    RowSpace& W,
+    RowSpace& r);
+
+// Frozen-Jacobian d0 refresh.
+void RefreshD0Frozen(
+    CompiledModel& model,
+    Arena& arena,
+    const RowSpace& b,
+    const RowSpace& W0,
+    const RowSpace& Wi,
+    RowSpace& d0_out,
+    SolverRHS& y0_out);
+
+inline void RefreshD0Frozen(
+    CompiledModel& model,
+    const RowSpace& b,
+    const RowSpace& W0,
+    const RowSpace& Wi,
+    RowSpace& d0_out,
+    SolverRHS& y0_out) {
+  RefreshD0Frozen(model, model.arena(), b, W0, Wi, d0_out, y0_out);
+}
+
+// =====================================================================
+// Theta-continuation internal helpers
+// =====================================================================
 
 // Precomputed theta-independent quantities for EvalThetaCandidate.
 struct ThetaCandidateCoeffs {

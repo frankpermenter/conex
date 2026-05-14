@@ -14,6 +14,7 @@
 #include <Eigen/Sparse>
 
 #include "conex/algorithms/geodesic_ipm.h"
+#include "conex/algorithms/geodesic_ipm_helpers.h"
 #include "conex/common/cbf_reader.h"
 #include "conex/common/eja_ops.h"
 #include "conex/common/mps_reader.h"
