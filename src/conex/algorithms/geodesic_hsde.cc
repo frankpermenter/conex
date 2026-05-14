@@ -155,6 +155,50 @@ static DTauTheta SolveDTauTheta(const HSDECoeffs& c, double k) {
   return {d_tau, theta, tau, true};
 }
 
+// Affine line search for k with d_tau clamping.
+// Evaluates d(k) at two points, fits affine model, finds k with ||d||_inf=1,
+// then bisects to enforce |d_tau| <= 1.  Returns new k (or current k if no
+// improvement).
+static double HSDELineSearch(
+    CompiledModel& model, Arena& arena,
+    const NewtonDecomposition& decomp,
+    const HSDECoeffs& coeff, double k) {
+  char* ls_mark = arena.SaveCursor();
+  double ka = k, kb = k + 1.0;
+  auto sa = SolveDTauTheta(coeff, ka);
+  auto sb = SolveDTauTheta(coeff, kb);
+  double k_out = k;
+  if (sa.valid && sb.valid) {
+    RowSpace da = model.AllocRowSpace(arena);
+    EvaluateDirection(da, decomp, ka, sa.tau, sa.theta);
+    RowSpace db = model.AllocRowSpace(arena);
+    EvaluateDirection(db, decomp, kb, sb.tau, sb.theta);
+    RowSpace D1 = model.AllocRowSpace(arena);
+    addScaled(D1, db, da, 1.0, -1.0);
+    RowSpace D0 = model.AllocRowSpace(arena);
+    addScaled(D0, da, D1, 1.0, -ka);
+    double k_new = lineSearchK(D0, D1);
+
+    // Clamp for d_tau constraint.
+    if (k_new > k) {
+      auto ev = SolveDTauTheta(coeff, k_new);
+      if (!ev.valid || std::abs(ev.d_tau) > 1.0) {
+        double lo = k, hi = k_new;
+        for (int bs = 0; bs < 50; ++bs) {
+          double mid = 0.5 * (lo + hi);
+          auto evm = SolveDTauTheta(coeff, mid);
+          if (evm.valid && std::abs(evm.d_tau) <= 1.0) lo = mid;
+          else hi = mid;
+        }
+        k_new = lo;
+      }
+      if (k_new > k) k_out = k_new;
+    }
+  }
+  arena.RestoreCursor(ls_mark);
+  return k_out;
+}
+
 GeodesicResult SolveGeodesicHSDE(
     CompiledModel& model,
     RowSpace& W,
@@ -415,61 +459,29 @@ GeodesicResult SolveGeodesicHSDE(
 
     if (!std::isfinite(d_inf) || !std::isfinite(gap)) {
       if (verbose) printf("  TERMINATED: nan\n");
+      arena.RestoreCursor(iter_mark);
       break;
     }
 
     if (std::abs(gap) < tolerance && d_inf <= 1.001) {
       if (verbose) printf("  TERMINATED: gap = %.2e < tolerance, d_inf = %.2e\n",
                           gap, d_inf);
+      arena.RestoreCursor(iter_mark);
       break;
     }
 
     // Line search for k: d(k) is affine in k.
-    // Evaluate at two k values, extract D0 + k*D1, use lineSearchK.
     {
-      char* ls_mark = arena.SaveCursor();
-      double ka = k, kb = k + 1.0;
-      auto sa = SolveDTauTheta(coeff, ka);
-      auto sb = SolveDTauTheta(coeff, kb);
-      if (sa.valid && sb.valid) {
-        RowSpace da = model.AllocRowSpace(arena);
-        EvaluateDirection(da, decomp, ka, sa.tau, sa.theta);
-        RowSpace db = model.AllocRowSpace(arena);
-        EvaluateDirection(db, decomp, kb, sb.tau, sb.theta);
-        RowSpace D1 = model.AllocRowSpace(arena);
-        addScaled(D1, db, da, 1.0, -1.0);
-        RowSpace D0 = model.AllocRowSpace(arena);
-        addScaled(D0, da, D1, 1.0, -ka);
-        double k_new = lineSearchK(D0, D1);
-
-        // Clamp for d_tau constraint.
-        if (k_new > k) {
-          auto ev = SolveDTauTheta(coeff, k_new);
-          if (!ev.valid || std::abs(ev.d_tau) > 1.0) {
-            double lo = k, hi = k_new;
-            for (int bs = 0; bs < 50; ++bs) {
-              double mid = 0.5 * (lo + hi);
-              auto evm = SolveDTauTheta(coeff, mid);
-              if (evm.valid && std::abs(evm.d_tau) <= 1.0)
-                lo = mid;
-              else
-                hi = mid;
-            }
-            k_new = lo;
-          }
-        }
-
-        if (k_new > k) {
-          k = k_new;
-          auto ev = SolveDTauTheta(coeff, k);
-          tau = ev.tau;
-          theta = ev.theta;
-          d_tau = ev.d_tau;
-          EvaluateDirection(d, decomp, k, tau, theta);
-          d_inf = std::max(normInf(d), std::abs(d_tau));
-        }
+      double k_new = HSDELineSearch(model, arena, decomp, coeff, k);
+      if (k_new > k) {
+        k = k_new;
+        auto ev = SolveDTauTheta(coeff, k);
+        tau = ev.tau;
+        theta = ev.theta;
+        d_tau = ev.d_tau;
+        EvaluateDirection(d, decomp, k, tau, theta);
+        d_inf = std::max(normInf(d), std::abs(d_tau));
       }
-      arena.RestoreCursor(ls_mark);
     }
 
     // Geodesic step.
@@ -551,35 +563,8 @@ GeodesicResult SolveGeodesicHSDE(
       auto sel_f = SolveDTauTheta(coeff, k);
       if (!sel_f.valid) { arena.RestoreCursor(inner_mark); break; }
 
-      double ka = k, kb = k + 1.0;
-      auto sa = SolveDTauTheta(coeff, ka);
-      auto sb = SolveDTauTheta(coeff, kb);
-      if (sa.valid && sb.valid) {
-        RowSpace da = model.AllocRowSpace(arena);
-        EvaluateDirection(da, decomp, ka, sa.tau, sa.theta);
-        RowSpace db = model.AllocRowSpace(arena);
-        EvaluateDirection(db, decomp, kb, sb.tau, sb.theta);
-        RowSpace D1 = model.AllocRowSpace(arena);
-        addScaled(D1, db, da, 1.0, -1.0);
-        RowSpace D0 = model.AllocRowSpace(arena);
-        addScaled(D0, da, D1, 1.0, -ka);
-        double k_new = lineSearchK(D0, D1);
-
-        if (k_new > k) {
-          auto ev = SolveDTauTheta(coeff, k_new);
-          if (!ev.valid || std::abs(ev.d_tau) > 1.0) {
-            double lo = k, hi = k_new;
-            for (int bs = 0; bs < 50; ++bs) {
-              double mid = 0.5 * (lo + hi);
-              auto evm = SolveDTauTheta(coeff, mid);
-              if (evm.valid && std::abs(evm.d_tau) <= 1.0) lo = mid;
-              else hi = mid;
-            }
-            k_new = lo;
-          }
-          if (k_new > k) k = k_new;
-        }
-      }
+      double k_new = HSDELineSearch(model, arena, decomp, coeff, k);
+      if (k_new > k) k = k_new;
 
       // Re-evaluate at new k.
       auto ev_f = SolveDTauTheta(coeff, k);

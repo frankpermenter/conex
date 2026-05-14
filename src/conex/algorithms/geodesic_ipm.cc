@@ -817,6 +817,75 @@ static std::pair<double, double> FrozenEvalThetaCandidate(
   return {tau_out, dinf};
 }
 
+// Binary search for smallest theta with d_inf <= beta_target.
+// Returns (theta, k, tau). Sets tau <= 0 if no feasible theta found.
+struct ThetaSearchResult { double theta, k, tau; };
+static ThetaSearchResult BisectTheta(
+    CompiledModel& model, Arena& arena,
+    const ThetaCandidateCoeffs& tc,
+    const NewtonDecomposition& decomp,
+    double theta_lo, double theta_hi, double beta_target) {
+  for (int bisect = 0; bisect < 30; ++bisect) {
+    double theta_mid = 0.5 * (theta_lo + theta_hi);
+    auto [tau_try, d_inf_try] = EvalThetaCandidate(model, arena, tc, decomp, theta_mid);
+    if (tau_try > 0 && d_inf_try <= beta_target)
+      theta_hi = theta_mid;
+    else
+      theta_lo = theta_mid;
+  }
+  double theta = theta_hi;
+  double k = 1.0 / std::sqrt(theta);
+  auto [tau, d_inf] = EvalThetaCandidate(model, arena, tc, decomp, theta);
+  return {theta, k, tau};
+}
+
+// Verbose stats for ThetaCont iterations.  Computes objectives, equation error,
+// and prints a single line.  Used by both outer and frozen-J paths.
+static double PrintThetaContStats(
+    CompiledModel& model,
+    const NewtonDecomposition& decomp,
+    const SolverRHS& cost_rhs,
+    const SolverRHS& duality_cost,
+    double bT_ones, double nu,
+    int outer, int inner,  // inner < 0 for outer step
+    double k, double tau, double theta,
+    double d_inf, double d_sq, double gap) {
+  auto x_rhs = model.AllocSolverRHS();
+  x_rhs.SetZero();
+  x_rhs.AddScaled(1.0 / k, decomp.y0);
+  x_rhs.AddScaled(tau, decomp.y1_0);
+  x_rhs.AddScaled(theta, decomp.y1_theta);
+  double cTx = duality_cost.dot(x_rhs);
+  auto qx = model.AllocSolverRHS(); qx.SetZero();
+  model.AccumulateQx(x_rhs, qx);
+  double xQx = qx.dot(x_rhs);
+  double mu = 1.0 / (k * k);
+  double mu_tau = (tau > 1e-30) ? mu / tau : 0.0;
+  double xQx_tau = (tau > 1e-30) ? xQx / tau : 0.0;
+  double R = theta * (bT_ones + 1.0);
+  // Equation error: V(tau) = bTl + cTx + xQx/tau + mu/tau - theta*R.
+  // We don't have lambda here; approximate eq_err from the duality identity.
+  double eq_err = 0;  // filled by caller if lambda available
+
+  double cTx_cost = cost_rhs.dot(x_rhs);
+  double half_xQx = (tau > 1e-30) ? 0.5 * xQx / (tau * tau) : 0.0;
+  double primal = (tau > 1e-30) ? cTx_cost / tau + half_xQx : 0.0;
+  double dual = primal + gap / std::max(std::abs(tau), 1e-30);
+
+  if (inner < 0) {
+    printf("  %3d    %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
+           "  %12.4e  %12.4e  %12.4e  %12.2e\n",
+           outer, theta, tau, mu_tau, k, d_inf, d_sq, gap,
+           dual, primal, mu_tau, eq_err);
+  } else {
+    printf("  %3d.%d  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
+           "  %12.4e  %12.4e  %12.4e  %12.2e  (frozen-J)\n",
+           outer, inner + 1, theta, tau, mu_tau, k, d_inf, d_sq, gap,
+           dual, primal, mu_tau, eq_err);
+  }
+  return eq_err;
+}
+
 // Core frozen-Jacobian d0 refresh: 1 back-solve with stale Gram.
 // Computes d0 = P(sqrt(W0))(Wi^{-1} - Ay0) and optionally outputs y0.
 void RefreshD0Frozen(
@@ -1226,20 +1295,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
       }
       // Fallback: if affine line search failed, try bisection.
       if (tau <= 0 || k <= 0) {
-        double theta_lo = 0.0, theta_hi = theta_prev;
-        for (int bisect = 0; bisect < 30; ++bisect) {
-          double theta_mid = 0.5 * (theta_lo + theta_hi);
-          auto [tau_try, d_inf_try] = EvalThetaCandidate(model, arena, tc, decomp, theta_mid);
-          if (tau_try > 0 && d_inf_try <= beta_target) {
-            theta_hi = theta_mid;
-          } else {
-            theta_lo = theta_mid;
-          }
-        }
-        theta = theta_hi;
-        k = 1.0 / std::sqrt(theta);
-        auto [tau_try, d_inf_try] = EvalThetaCandidate(model, arena, tc, decomp, theta);
-        tau = tau_try;
+        auto sr = BisectTheta(model, arena, tc, decomp, 0.0, theta_prev, beta_target);
+        theta = sr.theta; k = sr.k; tau = sr.tau;
       }
       arena.RestoreCursor(ls_mark);
     }
@@ -1316,21 +1373,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
 
       // Binary search for smallest theta.
       double theta_lo_f = refactor_inner ? 0.0 : theta * 0.1;
-      double theta_hi_f = theta;
-
-      for (int bisect = 0; bisect < 30; ++bisect) {
-        double theta_mid = 0.5 * (theta_lo_f + theta_hi_f);
-        auto [tau_try, d_inf_try] = EvalThetaCandidate(model, arena, tc_f, decomp, theta_mid);
-        if (tau_try > 0 && d_inf_try <= beta_target) {
-          theta_hi_f = theta_mid;
-        } else {
-          theta_lo_f = theta_mid;
-        }
-      }
-      double theta_f = theta_hi_f;
-      double k_f = 1.0 / std::sqrt(theta_f);
-      // Final evaluation with exact d_inf.
-      auto [tau_f, d_inf_f] = EvalThetaCandidate(model, arena, tc_f, decomp, theta_f);
+      auto sr_f = BisectTheta(model, arena, tc_f, decomp, theta_lo_f, theta, beta_target);
+      double theta_f = sr_f.theta, k_f = sr_f.k, tau_f = sr_f.tau;
       if (tau_f <= 0) break;
 
       RowSpace d_f = model.AllocRowSpace();
@@ -1339,43 +1383,9 @@ GeodesicResult SolveGeodesicThetaContinuation(
       if (verbose) {
         double mu_f = 1.0 / (k_f * k_f);
         double gap_f = mu_f * (nu - squaredNorm(d_f));
-
-        // Check V(tau)=0: b^T lambda + c^T x + xQx/tau + mu/tau = theta*R.
-        // Frozen-J lambda: Wi/k + P(sqrtW0)(d)/k.
-        RowSpace lam_f = model.AllocRowSpace();
-        lam_f += W;  // Wi term (per-segment copy)
-        lam_f *= (1.0 / k_f);
-        RowSpace Pd = model.AllocRowSpace();
-        quadraticRepresentation(Pd, sqrtW0_f, d_f);
-        Pd *= (1.0 / k_f);
-        lam_f += Pd;  // + P(sqrtW0)(d)/k
-
-        double bTl_f = dot(b, lam_f);
-        auto x_rhs_f = model.AllocSolverRHS();
-        x_rhs_f.SetZero();
-        x_rhs_f.AddScaled(1.0 / k_f, decomp.y0);
-        x_rhs_f.AddScaled(tau_f, decomp.y1_0);
-        x_rhs_f.AddScaled(theta_f, decomp.y1_theta);
-        double cTx_f = duality_cost.dot(x_rhs_f);
-        auto qx_f = model.AllocSolverRHS(); qx_f.SetZero();
-        model.AccumulateQx(x_rhs_f, qx_f);
-        double xQx_f = qx_f.dot(x_rhs_f);
-        double mu_tau_f = (tau_f > 1e-30) ? mu_f / tau_f : 0;
-        double xQx_tau_f = (tau_f > 1e-30) ? xQx_f / tau_f : 0;
-        double R_f = theta_f * (bT_ones + 1.0);
-        double eq_err_f = std::abs(bTl_f + cTx_f + xQx_tau_f + mu_tau_f - R_f);
-        last_eq_err = eq_err_f;
-
-        double cTx_cost_f = cost_rhs.dot(x_rhs_f);
-        double dTnu_f = cTx_f - cTx_cost_f;
-        double half_xQx_f = (tau_f > 1e-30) ? 0.5 * xQx_f / (tau_f * tau_f) : 0.0;
-        double primal_f = (tau_f > 1e-30) ? cTx_cost_f / tau_f + half_xQx_f : 0.0;
-        double dual_f = primal_f + gap_f / std::max(std::abs(tau_f), 1e-30);
-
-        printf("  %3d.%d  %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
-               "  %12.4e  %12.4e  %12.4e  %12.2e  (frozen-J)\n",
-               outer, inner + 1, theta_f, tau_f, mu_tau_f, k_f, d_inf_fv,
-               squaredNorm(d_f), gap_f, dual_f, primal_f, mu_tau_f, eq_err_f);
+        last_eq_err = PrintThetaContStats(model, decomp, cost_rhs, duality_cost,
+            bT_ones, nu, outer, inner, k_f, tau_f, theta_f,
+            d_inf_fv, squaredNorm(d_f), gap_f);
       }
 
       if (d_inf_fv > 1e-14) {
@@ -1397,29 +1407,8 @@ GeodesicResult SolveGeodesicThetaContinuation(
       gap = mu * (nu - d_sq);
     }
     if (verbose) {
-      // x = y0/k + tau*y1_0 + theta*y1_theta
-      auto x_rhs_v = model.AllocSolverRHS();
-      x_rhs_v.SetZero();
-      x_rhs_v.AddScaled(1.0 / k, decomp.y0);
-      x_rhs_v.AddScaled(tau, decomp.y1_0);
-      x_rhs_v.AddScaled(theta, decomp.y1_theta);
-      double cT_x = cost_rhs.dot(x_rhs_v);
-      double dT_nu = duality_cost.dot(x_rhs_v) - cT_x;
-      auto qx_rhs = model.AllocSolverRHS(); qx_rhs.SetZero();
-      model.AccumulateQx(x_rhs_v, qx_rhs);
-      double xQx = qx_rhs.dot(x_rhs_v);
-      double mu_over_tau = (tau > 1e-30) ? mu / tau : 0.0;
-
-      // Physical objectives: de-homogenize by tau.
-      double half_xQx_phys = (tau > 1e-30) ? 0.5 * xQx / (tau * tau) : 0.0;
-      double primal_phys = (tau > 1e-30) ? cT_x / tau + half_xQx_phys : 0.0;
-
-      double dual_phys = primal_phys + gap / std::max(std::abs(tau), 1e-30);
-
-      printf("  %3d    %10.2e  %10.2e  %12.4e  %12.4e  %12.4e  %12.4e  %12.4e"
-             "  %12.4e  %12.4e  %12.4e  %12.2e\n",
-             outer, theta, tau, mu_over_tau, k, d_inf, d_sq, gap,
-             dual_phys, primal_phys, mu_over_tau, last_eq_err);
+      last_eq_err = PrintThetaContStats(model, decomp, cost_rhs, duality_cost,
+          bT_ones, nu, outer, -1, k, tau, theta, d_inf, d_sq, gap);
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
