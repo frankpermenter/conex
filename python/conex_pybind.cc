@@ -137,8 +137,8 @@ PYBIND11_MODULE(_conex, m) {
            py::arg("tol") = 1e-8, py::arg("max_iter") = 500,
            py::arg("max_centering") = 1,
            "Solve with barrier theta-continuation (z-space)")
-      // Raw solve: returns GeodesicResult without ExpandSolution.
-      // For use by CVXPY where the Model is already in reduced space.
+      // Solve and expand x to original variable space (for CVXPY).
+      // Skips ComputeOptimality which crashes on barrier cones.
       .def("solve_raw",
            [](Solver& self, const std::string& algo,
               double tol, int max_iter, int max_centering) {
@@ -154,9 +154,11 @@ PYBIND11_MODULE(_conex, m) {
                raw = GeodesicLP{tol, max_iter}.Run(model);
              else
                throw std::invalid_argument("Unknown algorithm: " + algo);
-             // Return as dict-like: x, objective, converged, iterations
+             // Expand x to original variable space.
+             Eigen::Map<const Eigen::VectorXd> raw_x(raw.x.data(), raw.x.size());
+             Eigen::VectorXd x_expanded = self.ExpandSolution(raw_x);
              py::dict result;
-             result["x"] = py::array_t<double>(raw.x.size(), raw.x.data());
+             result["x"] = py::array_t<double>(x_expanded.size(), x_expanded.data());
              result["converged"] = raw.mu < tol;
              result["iterations"] = raw.iterations;
              result["mu"] = raw.mu;
@@ -165,5 +167,5 @@ PYBIND11_MODULE(_conex, m) {
            },
            py::arg("algo"), py::arg("tol") = 1e-8,
            py::arg("max_iter") = 500, py::arg("max_centering") = 1,
-           "Raw solve: returns dict with x in reduced space (for CVXPY)");
+           "Solve and return x in original variable space (for CVXPY)");
 }
