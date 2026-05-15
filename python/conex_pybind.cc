@@ -151,7 +151,13 @@ PYBIND11_MODULE(_conex, m) {
              else if (algo == "barrier_lp")
                raw = GeodesicBarrierLP{tol, max_iter}.Run(model);
              else if (algo == "geodesic_lp")
-               raw = GeodesicLP{tol, max_iter}.Run(model);
+               raw = GeodesicLP{tol, max_iter, max_centering}.Run(model);
+             else if (algo == "theta_cont_r")
+               raw = ThetaContinuationR{tol, max_iter}.Run(model);
+             else if (algo == "hybrid_r")
+               raw = HybridR{tol, max_iter}.Run(model);
+             else if (algo == "hsde")
+               raw = GeodesicHSDE{tol, max_iter, max_centering}.Run(model);
              else
                throw std::invalid_argument("Unknown algorithm: " + algo);
              // Expand x to original variable space.
