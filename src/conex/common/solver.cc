@@ -119,11 +119,17 @@ OptimalitySummary Solver::ComputeOptimality(
   Eigen::VectorXd dual_res(n);
   dual_rhs.supernodes->GatherInto(dual_res);
 
+  // Use raw Eigen operations for complementarity and min eigenvalue.
+  // The EJA dispatch (dot, minEigenvalue) requires SymmetricConeOperations
+  // which is not available for barrier cones (exp, power).
+  Eigen::Map<const Eigen::VectorXd> s_vec(s.col().data(), s.col().size());
+  Eigen::Map<const Eigen::VectorXd> l_vec(lambda.col().data(), lambda.col().size());
+
   OptimalitySummary opt;
   opt.dual_residual = dual_res.norm();
-  opt.complementarity = dot(s, lambda);
-  opt.min_slack = minEigenvalue(s);
-  opt.min_dual = minEigenvalue(lambda);
+  opt.complementarity = s_vec.dot(l_vec);
+  opt.min_slack = s_vec.minCoeff();
+  opt.min_dual = l_vec.minCoeff();
   return opt;
 }
 

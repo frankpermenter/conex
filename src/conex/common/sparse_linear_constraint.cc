@@ -19,8 +19,9 @@ bool IsSubset(const std::vector<int>& a, const std::vector<int>& b) {
 }  // namespace
 
 SparseLinearConstraint::SparseLinearConstraint(
-    const Eigen::SparseMatrix<double>& A, const Eigen::VectorXd& b)
-    : A_(A), b_(b) {
+    const Eigen::SparseMatrix<double>& A, const Eigen::VectorXd& b,
+    bool keep_zero_rows)
+    : A_(A), b_(b), keep_zero_rows_(keep_zero_rows) {
   CONEX_DEMAND(A.rows() == b.rows(),
                "A and b must have the same number of rows.");
 
@@ -33,20 +34,35 @@ SparseLinearConstraint::SparseLinearConstraint(
     }
   }
 
-  // Group rows by identical support.
-  std::vector<int> row_order(A.rows());
-  std::iota(row_order.begin(), row_order.end(), 0);
-  std::sort(row_order.begin(), row_order.end(), [&](int a, int b) {
-    return row_supports[a] < row_supports[b];
-  });
+  if (keep_zero_rows_) {
+    // Barrier cones: all rows must stay together as one inseparable block.
+    // Compute the union of all row supports.
+    std::vector<int> full_support;
+    for (const auto& rs : row_supports)
+      for (int c : rs)
+        full_support.push_back(c);
+    std::sort(full_support.begin(), full_support.end());
+    full_support.erase(std::unique(full_support.begin(), full_support.end()),
+                       full_support.end());
+    support_groups_.push_back({full_support, {}});
+    for (int r = 0; r < A.rows(); ++r)
+      support_groups_.back().rows.push_back(r);
+  } else {
+    // Group rows by identical support.
+    std::vector<int> row_order(A.rows());
+    std::iota(row_order.begin(), row_order.end(), 0);
+    std::sort(row_order.begin(), row_order.end(), [&](int a, int b) {
+      return row_supports[a] < row_supports[b];
+    });
 
-  for (int row : row_order) {
-    if (row_supports[row].empty()) continue;
-    if (support_groups_.empty() ||
-        support_groups_.back().support != row_supports[row]) {
-      support_groups_.push_back({row_supports[row], {}});
+    for (int row : row_order) {
+      if (row_supports[row].empty()) continue;
+      if (support_groups_.empty() ||
+          support_groups_.back().support != row_supports[row]) {
+        support_groups_.push_back({row_supports[row], {}});
+      }
+      support_groups_.back().rows.push_back(row);
     }
-    support_groups_.back().rows.push_back(row);
   }
 
   unique_supports_.reserve(support_groups_.size());

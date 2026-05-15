@@ -133,7 +133,8 @@ void KKTSystem::BuildInternal(const Model& model,
 
       } else if constexpr (std::is_same_v<T,
                                           Model::BarrierConstraintData>) {
-        auto slc = std::make_unique<SparseLinearConstraint>(data.A, data.b);
+        auto slc = std::make_unique<SparseLinearConstraint>(data.A, data.b,
+                                                              /*keep_zero_rows=*/true);
         auto asm_ptr = std::make_unique<SparseBarrierConstraintAssembler>(
             std::move(slc), data.vars, data.ops);
         linear_assemblers_[i] = asm_ptr.get();

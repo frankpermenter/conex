@@ -18,7 +18,8 @@ namespace conex {
 class SparseLinearConstraint {
  public:
   SparseLinearConstraint(const Eigen::SparseMatrix<double>& A,
-                         const Eigen::VectorXd& b);
+                         const Eigen::VectorXd& b,
+                         bool keep_zero_rows = false);
 
   struct RowGroup {
     Eigen::MatrixXd A;
@@ -44,6 +45,7 @@ class SparseLinearConstraint {
  private:
   Eigen::SparseMatrix<double> A_;
   Eigen::VectorXd b_;
+  bool keep_zero_rows_ = false;
 
   struct SupportGroup {
     std::vector<int> support;
