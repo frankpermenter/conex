@@ -189,7 +189,7 @@ inline double normInf(const Variable& a) {
 
 inline void setOnes(Variable& v) {
   for (int i = 0; i < v.num_constraints(); ++i)
-    sym_ops(v.ops[i])->setIdentity(v.segment_ptr(i), v.sizes[i]);
+    v.ops[i]->getInteriorPoint(v.segment_ptr(i), v.sizes[i]);
 }
 
 // --- Composite operations ---

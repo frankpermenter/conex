@@ -6,6 +6,7 @@
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
 #include "conex/common/solve_result.h"
+#include "conex/common/exp_cone_ops.h"
 #include "conex/algorithms/solve_strategies.h"
 
 namespace py = pybind11;
@@ -64,6 +65,22 @@ PYBIND11_MODULE(_conex, m) {
            },
            py::arg("C"), py::arg("d"), py::arg("vars"),
            "Add Cx = d (equality constraint)")
+      .def("add_barrier_constraint",
+           [](Model& self, const Eigen::SparseMatrix<double>& A,
+              const Eigen::VectorXd& b, const std::vector<int>& vars,
+              const std::string& cone_type) {
+             const EuclideanJordanAlgebra::BarrierConeOperations* ops = nullptr;
+             if (cone_type == "exp") {
+               ops = &EuclideanJordanAlgebra::expConeOps();
+             } else {
+               throw std::invalid_argument("Unknown cone type: " + cone_type
+                   + ". Supported: 'exp'");
+             }
+             self.AddBarrierConstraint(A, b, vars, ops);
+           },
+           py::arg("A"), py::arg("b"), py::arg("vars"),
+           py::arg("cone_type") = "exp",
+           "Add barrier constraint (A*x + b in cone). cone_type: 'exp'")
       .def("add_quadratic_cost",
            [](Model& self, const Eigen::SparseMatrix<double>& Q,
               const std::vector<int>& vars) {
