@@ -321,7 +321,7 @@ class DynamicSubsystem : public KKTSubsystem {
       lu_.compute(sn_full);
       // Check for singular or NaN blocks.
       double det = std::abs(lu_.determinant());
-      if (!(det > 0)) {  // catches 0, NaN, -0
+      if (!(det > 0)) {
         return false;
       }
       return true;

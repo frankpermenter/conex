@@ -582,6 +582,7 @@ void T::ComputeOffsets(const KKTSubsystemBase* descendant, int start_index) {
 }
 
 bool T::AssembleAndFactor() {
+  last_factor_failed_ = false;
   for (auto child : children_) {
     if (!child->AssembleAndFactor()) {
       return false;
@@ -594,6 +595,7 @@ bool T::AssembleAndFactor() {
   }
   START_TIMER(Eliminate)
   if (!DoEliminateSupernodeColumns()) {
+    last_factor_failed_ = true;
     return false;
   }
   END_TIMER

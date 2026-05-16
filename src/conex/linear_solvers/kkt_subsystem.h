@@ -171,6 +171,7 @@ class KKTSubsystemBase : public ArenaAllocatable {
   bool Factor();
   void MakeKKTMatrix(Eigen::MatrixXd* full_matrix) const;
   bool AssembleAndFactor();
+  bool last_factor_failed() const { return last_factor_failed_; }
 
   KKTSubsystemBase* parent() const { return parent_; }
 
@@ -302,6 +303,7 @@ class KKTSubsystemBase : public ArenaAllocatable {
   mutable double* ws3_data_ = nullptr;
   int ws1_rows_ = 0, ws2_rows_ = 0, ws3_rows_ = 0;
   bool ws_arena_bound_ = false;
+  bool last_factor_failed_ = false;
   // Owned storage (used when NOT arena-bound).
   mutable Eigen::MatrixXd solve_workspace1_;
   mutable Eigen::MatrixXd solve_workspace2_;

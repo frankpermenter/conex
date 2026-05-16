@@ -158,6 +158,72 @@ PYBIND11_MODULE(_conex, m) {
              return result;
            },
            "Get clique tree structure")
+      .def("try_factor",
+           [](Solver& self) -> py::dict {
+             // Set W=I, assemble, factor. Return success + failing clique info.
+             auto model = self.MakeCompiledModel();
+             auto W = model.MakeRowSpace();
+             EuclideanJordanAlgebra::setOnes(W);
+             model.SetScaling(W);
+             bool ok = model.AssembleAndFactor();
+             py::dict result;
+             result["success"] = ok;
+             if (!ok) {
+               auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(
+                   &model.kkt());
+               if (ts) {
+                 int fi = ts->last_failed_subsystem();
+                 result["failed_clique"] = fi;
+                 if (fi >= 0) {
+                   auto ct = ts->GetCliqueTree();
+                   result["failed_supernodes"] = py::cast(ct.supernodes[fi]);
+                   result["failed_separators"] = py::cast(ct.separators[fi]);
+                 }
+               }
+             }
+             return result;
+           },
+           "Try W=I factorization, return failing clique info")
+      .def("check_rcond",
+           [](Solver& self, double rcond_tol) -> py::dict {
+             // Assemble at W=I (no factor), check rcond of each supernode.
+             auto model = self.MakeCompiledModel();
+             auto W = model.MakeRowSpace();
+             EuclideanJordanAlgebra::setOnes(W);
+             model.SetScaling(W);
+             // Assemble only (recursive post-order, no factoring).
+             auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(
+                 &model.kkt());
+             py::dict result;
+             if (!ts) { result["success"] = true; return result; }
+             ts->Assemble();
+             auto ct = ts->GetCliqueTree();
+             int ns = static_cast<int>(ct.supernodes.size());
+             for (int k = 0; k < ns; ++k) {
+               auto sn_mat = ts->subsystem(k)->supernode_submatrix();
+               int nr = sn_mat.rows();
+               if (nr <= 1) continue;
+               Eigen::MatrixXd full(nr, nr);
+               full.triangularView<Eigen::Lower>() = sn_mat;
+               full.triangularView<Eigen::StrictlyUpper>() = full.transpose();
+               Eigen::JacobiSVD<Eigen::MatrixXd> svd(full);
+               double smax = svd.singularValues()(0);
+               double smin = svd.singularValues()(nr - 1);
+               double rc = (smax > 0) ? smin / smax : 0;
+               if (!(rc > rcond_tol)) {
+                 result["success"] = false;
+                 result["failed_clique"] = k;
+                 result["failed_supernodes"] = py::cast(ct.supernodes[k]);
+                 result["failed_separators"] = py::cast(ct.separators[k]);
+                 result["rcond"] = rc;
+                 return result;
+               }
+             }
+             result["success"] = true;
+             return result;
+           },
+           py::arg("rcond_tol") = 1e-12,
+           "Check rcond of assembled supernodes at W=I")
       .def("solve_geodesic_lp",
            [](Solver& self, double tol, int max_iter) {
              return self.Solve(GeodesicLP{tol, max_iter});

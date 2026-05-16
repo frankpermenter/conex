@@ -487,13 +487,23 @@ void T::DoAssemble() {
 // Numeric phase: assemble matrix values from contributors and factor.
 // Sparsity structure was fixed by FinalizeStructure; this updates values only.
 bool T::DoAssembleAndFactor() {
+  last_failed_subsystem_ = -1;
   if (auto_update_assemblers_) {
     UpdateAssemblerData();
   }
   if (num_threads_ <= 1) {
     // Serial: recursive post-order factorization per root.
     for (auto* root : roots_) {
-      if (!root->AssembleAndFactor()) return false;
+      if (!root->AssembleAndFactor()) {
+        // Find which subsystem failed (first in post-order that would fail).
+        for (int k = 0; k < static_cast<int>(subsystems_.size()); ++k) {
+          if (subsystems_[k]->last_factor_failed()) {
+            last_failed_subsystem_ = k;
+            break;
+          }
+        }
+        return false;
+      }
     }
     return true;
   }

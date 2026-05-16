@@ -487,6 +487,13 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   std::vector<int> subsystem_to_parent_;
   bool auto_update_assemblers_ = false;
   int num_threads_ = 1;
+
+ public:
+  // Index of the subsystem that last failed factorization (-1 if none).
+  int last_failed_subsystem() const { return last_failed_subsystem_; }
+  KKTSubsystemBase* subsystem(int k) { return subsystems_.at(k); }
+ private:
+  int last_failed_subsystem_ = -1;
   bool use_recursive_solve_ = false;
   bool use_generic_factorization_ = false;
   bool use_lu_for_indefinite_ = false;
