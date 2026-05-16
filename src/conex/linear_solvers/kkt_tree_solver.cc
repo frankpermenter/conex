@@ -638,6 +638,21 @@ std::vector<int> T::ClassifyCliques(
     }
   }
 
+  // Propagate indefiniteness up the elimination tree: if a child clique
+  // is indefinite, its Schur complement (passed to the parent) is also
+  // indefinite, so every ancestor must use an indefinite factorization.
+  const auto& parent = clique_tree.node_to_parent;
+  for (size_t i = 0; i < num_nodes; ++i) {
+    if ((*needs_indefinite)[i]) {
+      int p = (i < parent.size()) ? parent[i] : -1;
+      while (p >= 0 && p < static_cast<int>(num_nodes) &&
+             !(*needs_indefinite)[p]) {
+        (*needs_indefinite)[p] = true;
+        p = (static_cast<size_t>(p) < parent.size()) ? parent[p] : -1;
+      }
+    }
+  }
+
   return adapter_to_clique;
 }
 

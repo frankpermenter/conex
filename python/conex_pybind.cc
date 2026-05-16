@@ -8,6 +8,8 @@
 #include "conex/common/solve_result.h"
 #include "conex/common/exp_cone_ops.h"
 #include "conex/algorithms/solve_strategies.h"
+#include "conex/algorithms/geodesic_ipm_helpers.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 
 namespace py = pybind11;
 using namespace conex;
@@ -96,8 +98,66 @@ PYBIND11_MODULE(_conex, m) {
   // --- Solver ---
   py::class_<Solver>(m, "Solver")
       .def_static("build",
-           [](const Model& model) { return Solver::Build(model); },
-           py::arg("model"), "Build solver from model")
+           [](const Model& model, bool use_lu_for_indefinite) {
+             SolverConfiguration config;
+             config.tree.use_lu_for_indefinite = use_lu_for_indefinite;
+             return Solver::Build(model, config);
+           },
+           py::arg("model"), py::arg("use_lu_for_indefinite") = false,
+           "Build solver from model")
+      .def_static("build_with_clique_tree",
+           [](const Model& model,
+              const std::vector<std::vector<int>>& supernodes,
+              const std::vector<std::vector<int>>& separators,
+              const std::vector<int>& node_to_parent,
+              bool use_lu_for_indefinite) {
+             CliqueTree ct;
+             ct.supernodes = supernodes;
+             ct.separators = separators;
+             ct.node_to_parent = node_to_parent;
+             int nc = static_cast<int>(supernodes.size());
+             ct.post_order_position_to_clique.resize(nc);
+             for (int i = 0; i < nc; ++i)
+               ct.post_order_position_to_clique[i] = i;
+             SolverConfiguration config;
+             config.tree.use_lu_for_indefinite = use_lu_for_indefinite;
+             return Solver::Build(model, ct, config);
+           },
+           py::arg("model"), py::arg("supernodes"),
+           py::arg("separators"), py::arg("node_to_parent"),
+           py::arg("use_lu_for_indefinite") = false,
+           "Build solver from model with user-provided clique tree")
+      .def("clique_tree_info",
+           [](Solver& self) {
+             auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(
+                 const_cast<SymmetricLinearSystemTreeSolver*>(self.tree_solver()));
+             if (!ts) return py::dict();
+             auto ct = ts->GetCliqueTree();
+             py::list supernodes, separators, children_list;
+             int ns = ct.supernodes.size();
+             // Build children map
+             std::vector<std::vector<int>> ch(ns);
+             for (int i = 0; i < ns; ++i) {
+               int p = ct.node_to_parent[i];
+               if (p >= 0) ch[p].push_back(i);
+             }
+             for (int i = 0; i < ns; ++i) {
+               supernodes.append(py::cast(ct.supernodes[i]));
+               separators.append(py::cast(ct.separators[i]));
+               children_list.append(py::cast(ch[i]));
+             }
+             py::dict result;
+             result["supernodes"] = supernodes;
+             result["separators"] = separators;
+             result["parent"] = py::cast(ct.node_to_parent);
+             result["children"] = children_list;
+             result["perm"] = py::cast(std::vector<int>(
+                 ts->perm().begin(), ts->perm().end()));
+             result["perm_inv"] = py::cast(std::vector<int>(
+                 ts->perm_inv().begin(), ts->perm_inv().end()));
+             return result;
+           },
+           "Get clique tree structure")
       .def("solve_geodesic_lp",
            [](Solver& self, double tol, int max_iter) {
              return self.Solve(GeodesicLP{tol, max_iter});
@@ -158,7 +218,15 @@ PYBIND11_MODULE(_conex, m) {
                raw = HybridR{tol, max_iter}.Run(model);
              else if (algo == "hsde")
                raw = GeodesicHSDE{tol, max_iter, max_centering}.Run(model);
-             else
+             else if (algo == "direct_solve") {
+               // Direct linear solve using cost + equality RHS.
+               auto duality_cost = MakeDualityCost(model);
+               int nr = model.number_of_variables();
+               std::vector<double> rhs_vec(nr);
+               Eigen::Map<Eigen::VectorXd> rhs_map(rhs_vec.data(), nr);
+               duality_cost.supernodes->GatherInto(rhs_map);
+               raw = DirectSolve{rhs_vec}.Run(model);
+             } else
                throw std::invalid_argument("Unknown algorithm: " + algo);
              // Expand x to original variable space.
              Eigen::Map<const Eigen::VectorXd> raw_x(raw.x.data(), raw.x.size());
