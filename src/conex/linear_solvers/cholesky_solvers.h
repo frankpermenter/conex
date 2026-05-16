@@ -299,17 +299,23 @@ class DynamicSubsystem : public KKTSubsystem {
   }
 
  private:
-  bool use_lu() const {
+  // Runtime dispatch: LU is preferred when requested, but falls back
+  // to RLDLT if the supernode block is ill-conditioned.
+  bool use_lu_active() const {
     return indefinite_ &&
-           indefinite_factorization_ == IndefiniteFactorization::kLU;
+           indefinite_factorization_ == IndefiniteFactorization::kLU &&
+           !lu_fell_back_;
   }
-  bool use_rldlt() const {
-    return indefinite_ &&
-           indefinite_factorization_ == IndefiniteFactorization::kRLDLT;
+  bool use_rldlt_active() const {
+    return (indefinite_ &&
+            indefinite_factorization_ == IndefiniteFactorization::kRLDLT) ||
+           lu_fell_back_;
   }
 
   bool DoEliminateSupernodeColumns() override {
-    if (use_lu()) {
+    lu_fell_back_ = false;
+    if (indefinite_ &&
+        indefinite_factorization_ == IndefiniteFactorization::kLU) {
       const int nr = supernode_submatrix().rows();
       if (nr == 0) return true;
       // Supernode submatrix is stored lower-triangular (symmetric).
@@ -318,15 +324,23 @@ class DynamicSubsystem : public KKTSubsystem {
       sn_full.triangularView<Eigen::Lower>() = supernode_submatrix();
       sn_full.triangularView<Eigen::StrictlyUpper>() =
           sn_full.transpose();
-      lu_.compute(sn_full);
-      // Check for singular or NaN blocks.
-      double det = std::abs(lu_.determinant());
-      if (!(det > 0)) {
-        return false;
+      // Check conditioning via reciprocal condition number.
+      // If well-conditioned, use LU; otherwise fall back to RLDLT.
+      Eigen::JacobiSVD<MatrixXd> svd(sn_full,
+          Eigen::ComputeThinU | Eigen::ComputeThinV);
+      double smax = svd.singularValues()(0);
+      double smin = svd.singularValues()(nr - 1);
+      double rcond = (smax > 0) ? smin / smax : 0;
+      if (rcond > 1e-11) {
+        lu_.compute(sn_full);
+        return true;
       }
-      return true;
+      // Ill-conditioned — fall back to RLDLT for this clique.
+      lu_fell_back_ = true;
+      rldlt_.compute(supernode_submatrix());
+      return rldlt_.info() == Eigen::Success;
     }
-    if (use_rldlt()) {
+    if (use_rldlt_active()) {
       rldlt_.compute(supernode_submatrix());
       return rldlt_.info() == Eigen::Success;
     }
@@ -337,7 +351,7 @@ class DynamicSubsystem : public KKTSubsystem {
   void DoComputeSeparatorSchurComplement() override {
     if (separator_rows().rows() == 0 || separator_rows().cols() == 0) return;
     const int sep = separator_rows().rows();
-    if (use_lu()) {
+    if (use_lu_active()) {
       temp_ = lu_.solve(separator_rows().transpose());
       for (int j = 0; j < sep; j++) {
         separator_schur_complement().col(j).tail(sep - j).noalias() -=
@@ -345,7 +359,7 @@ class DynamicSubsystem : public KKTSubsystem {
       }
       return;
     }
-    if (use_rldlt()) {
+    if (use_rldlt_active()) {
       temp_.noalias() = rldlt_.solve(separator_rows().transpose());
       for (int j = 0; j < sep; j++) {
         separator_schur_complement().col(j).tail(sep - j).noalias() -=
@@ -364,9 +378,9 @@ class DynamicSubsystem : public KKTSubsystem {
   void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
       Eigen::Ref<MatrixXd> y) const override {
     if (y.rows() == 0) return;
-    if (use_lu()) {
+    if (use_lu_active()) {
       y = lu_.solve(y);
-    } else if (use_rldlt()) {
+    } else if (use_rldlt_active()) {
       y = rldlt_.solve(y);
     } else {
       llt_.matrixL().solveInPlace(y);
@@ -379,10 +393,11 @@ class DynamicSubsystem : public KKTSubsystem {
     if (!indefinite_) {
       llt_.matrixL().transpose().solveInPlace(y);
     }
-    // LU and RLDLT: right factor is identity (Schur complement mode).
+    // LU, RLDLT: right factor is identity (Schur complement mode).
   }
 
   bool indefinite_ = false;
+  bool lu_fell_back_ = false;  // true if LU was requested but RLDLT used
   IndefiniteFactorization indefinite_factorization_ =
       IndefiniteFactorization::kRLDLT;
   Eigen::LLT<MatrixXd> llt_;
