@@ -1,5 +1,6 @@
 #include "conex/linear_solvers/kkt_tree_solver.h"
 #include "conex/linear_solvers/cholesky_solvers.h"
+#include "conex/common/eja_ops.h"
 #include "conex/common/nonneg_orthant_ops.h"
 #include "conex/common/equality_constraint.h"
 #include "conex/common/linear_constraint.h"
@@ -813,7 +814,14 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
         auto* ds = dynamic_cast<DynamicSubsystem*>(sub);
         if (ds) ds->SetLUDetThreshold(1e-6);
       }
-      // Assemble at initial weights (W=I for cones, saddle-point for equalities).
+      // Set W=I scaling (matching what theta_cont does at iteration 0),
+      // then assemble.  This ensures the trial sees the same matrix as
+      // the first solve iteration.
+      {
+        auto W = MakeRowSpace();
+        EuclideanJordanAlgebra::setOnes(W);
+        SetScaling(W);
+      }
       UpdateAssemblerData();
       int failed_clique = -1;
       for (auto* node : solve_order_) {
