@@ -864,7 +864,7 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
   // Reset det threshold to 0 for runtime factorizations.
   for (auto* sub : subsystems_) {
     auto* ds = dynamic_cast<DynamicSubsystem*>(sub);
-    if (ds) ds->SetLUDetThreshold(0);
+    if (ds) ds->SetLUDetThreshold(1e-10);
   }
 
   // --- Finalize: solve arena and separator metadata ---
