@@ -297,6 +297,7 @@ class DynamicSubsystem : public KKTSubsystem {
   void SetIndefiniteFactorization(IndefiniteFactorization f) {
     indefinite_factorization_ = f;
   }
+  void SetLUDetThreshold(double tol) { lu_det_threshold_ = tol; }
 
  private:
   // Runtime dispatch: LU is preferred when requested, but falls back
@@ -325,14 +326,16 @@ class DynamicSubsystem : public KKTSubsystem {
       sn_full.triangularView<Eigen::StrictlyUpper>() =
           sn_full.transpose();
       lu_.compute(sn_full);
-      double det = std::abs(lu_.determinant());
-      if (det > 1e-9) {
-        return true;
+      // Check the minimum absolute diagonal of U (LU pivot).
+      // This is a better conditioning measure than det for large matrices.
+      double min_pivot = lu_.matrixLU().diagonal().cwiseAbs().minCoeff();
+      if (!(min_pivot > lu_det_threshold_)) {
+        // Fall back to RLDLT for this clique.
+        lu_fell_back_ = true;
+        rldlt_.compute(supernode_submatrix());
+        return rldlt_.info() == Eigen::Success;
       }
-      // Near-singular — fall back to RLDLT for this clique.
-      lu_fell_back_ = true;
-      rldlt_.compute(supernode_submatrix());
-      return rldlt_.info() == Eigen::Success;
+      return true;
     }
     if (use_rldlt_active()) {
       rldlt_.compute(supernode_submatrix());
@@ -392,6 +395,7 @@ class DynamicSubsystem : public KKTSubsystem {
 
   bool indefinite_ = false;
   bool lu_fell_back_ = false;  // true if LU was requested but RLDLT used
+  double lu_det_threshold_ = 0;  // |det| below this triggers RLDLT fallback
   IndefiniteFactorization indefinite_factorization_ =
       IndefiniteFactorization::kRLDLT;
   Eigen::LLT<MatrixXd> llt_;

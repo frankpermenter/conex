@@ -1,4 +1,5 @@
 #include "conex/linear_solvers/kkt_tree_solver.h"
+#include "conex/linear_solvers/cholesky_solvers.h"
 #include "conex/common/nonneg_orthant_ops.h"
 #include "conex/common/equality_constraint.h"
 #include "conex/common/linear_constraint.h"
@@ -807,6 +808,11 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
 
     // --- Trial factorization to detect ill-conditioned supernodes ---
     if (do_repair) {
+      // Use stricter pivot threshold for trial to catch near-singular blocks.
+      for (auto* sub : subsystems_) {
+        auto* ds = dynamic_cast<DynamicSubsystem*>(sub);
+        if (ds) ds->SetLUDetThreshold(1e-6);
+      }
       // Assemble at initial weights (W=I for cones, saddle-point for equalities).
       UpdateAssemblerData();
       int failed_clique = -1;
@@ -853,6 +859,12 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
       }
     }
     break;  // Trial succeeded or repair not applicable.
+  }
+
+  // Reset det threshold to 0 for runtime factorizations.
+  for (auto* sub : subsystems_) {
+    auto* ds = dynamic_cast<DynamicSubsystem*>(sub);
+    if (ds) ds->SetLUDetThreshold(0);
   }
 
   // --- Finalize: solve arena and separator metadata ---
