@@ -281,7 +281,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   int number_of_variables() const override;
 
   void FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols = 1,
-                         Arena* arena = nullptr);
+                         Arena* arena = nullptr, int num_primal_vars = -1);
 
   void SetFactorizationMode(bool left_looking);
   void SetScatterToParent(bool enable);

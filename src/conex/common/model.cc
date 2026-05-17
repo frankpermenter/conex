@@ -204,9 +204,52 @@ std::pair<Model, Expansion> RemoveStructuralRankDeficiency(
 
         // Drop structurally dependent rows.
         std::vector<int> row_map;
-        Eigen::SparseMatrix<double> C_reduced =
+        Eigen::SparseMatrix<double> C_struct_reduced =
             DropStructurallyDependentRows(C_remapped, &row_map);
 
+        // Drop numerically dependent rows via QR with column pivoting.
+        // The structural check misses cases like QSCORPIO (280 eqs,
+        // rank 250) where rows are structurally independent but
+        // numerically dependent.  Only run on small-to-medium matrices
+        // to avoid O(mn²) cost on large problems.
+        int p_struct = C_struct_reduced.rows();
+        if (p_struct > 0 && C_struct_reduced.cols() > 0 &&
+            p_struct <= 5000 && C_struct_reduced.cols() <= 5000) {
+          // QR on transpose to find independent rows.
+          Eigen::MatrixXd Cs_dense(C_struct_reduced);
+          Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(Cs_dense.transpose());
+          int num_rank = qr.rank();
+          if (num_rank < p_struct) {
+            // The pivoting permutation tells us which rows are independent.
+            auto piv = qr.colsPermutation().indices();
+            std::vector<int> keep_local(piv.data(), piv.data() + num_rank);
+            std::sort(keep_local.begin(), keep_local.end());
+            // Map back to original row indices.
+            std::vector<int> new_row_map;
+            new_row_map.reserve(num_rank);
+            for (int k : keep_local)
+              new_row_map.push_back(row_map[k]);
+            row_map = std::move(new_row_map);
+            // Rebuild the sparse matrix with kept rows only.
+            std::vector<Eigen::Triplet<double>> t2;
+            for (int ki = 0; ki < num_rank; ++ki) {
+              int orig_row = keep_local[ki];
+              for (Eigen::SparseMatrix<double>::InnerIterator it(
+                       C_struct_reduced, 0);
+                   false; ++it) {}  // unused — iterate outer
+              for (int col = 0; col < C_struct_reduced.cols(); ++col) {
+                double v = Cs_dense(orig_row, col);
+                if (v != 0) t2.emplace_back(ki, col, v);
+              }
+            }
+            Eigen::SparseMatrix<double> C_num_reduced(
+                num_rank, C_struct_reduced.cols());
+            C_num_reduced.setFromTriplets(t2.begin(), t2.end());
+            C_struct_reduced = C_num_reduced;
+          }
+        }
+
+        Eigen::SparseMatrix<double>& C_reduced = C_struct_reduced;
         int p_orig = data.C.rows();
         int p_reduced = C_reduced.rows();
 

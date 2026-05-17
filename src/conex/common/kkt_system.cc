@@ -170,7 +170,7 @@ void KKTSystem::BuildInternal(const Model& model,
     }
     ts->SetUseGenericFactorization(config.tree.use_generic_factorization);
     ts->SetUseLUForIndefinite(config.tree.use_lu_for_indefinite);
-    ts->FinalizeStructure(*tree_override, config.rhs_cols, arena);
+    ts->FinalizeStructure(*tree_override, config.rhs_cols, arena, num_primal);
     ts->SetFactorizationMode(config.tree.left_looking);
     ts->EnableAutoUpdateAtAssemble(true);
     ts->SetNumThreads(config.num_threads);

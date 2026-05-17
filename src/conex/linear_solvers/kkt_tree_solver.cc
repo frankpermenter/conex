@@ -772,30 +772,92 @@ void T::BindContributors(const std::vector<int>& adapter_to_clique) {
 }
 
 void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
-                          Arena* arena) {
-  std::vector<bool> needs_indefinite;
-  auto adapter_to_clique = ClassifyCliques(clique_tree, &needs_indefinite);
+                          Arena* arena, int num_primal_vars) {
+  CliqueTree working_tree = clique_tree;
 
-  CreateSubsystems(needs_indefinite);
+  // Check if tree has dual variables (equality constraints).
+  bool has_duals = false;
+  if (num_primal_vars > 0) {
+    for (const auto& sn : working_tree.supernodes) {
+      for (int v : sn) {
+        if (v >= num_primal_vars) { has_duals = true; break; }
+      }
+      if (has_duals) break;
+    }
+  }
+  bool do_repair = use_lu_for_indefinite_ && has_duals;
 
-  CONEX_CHECK(clique_tree.supernodes.size() == subsystems_.size());
-  int i = 0;
-  for (auto& s : subsystems_) {
-    s->SetSupernodes(clique_tree.supernodes.at(i));
-    s->SetSeparators(clique_tree.separators.at(i));
-    ++i;
+  for (int repair_iter = 0; repair_iter < 20; ++repair_iter) {
+    // --- Build subsystems from current tree ---
+    std::vector<bool> needs_indefinite;
+    auto adapter_to_clique = ClassifyCliques(working_tree, &needs_indefinite);
+    CreateSubsystems(needs_indefinite);
+
+    CONEX_CHECK(working_tree.supernodes.size() == subsystems_.size());
+    for (int i = 0; i < static_cast<int>(subsystems_.size()); ++i) {
+      subsystems_[i]->SetSupernodes(working_tree.supernodes.at(i));
+      subsystems_[i]->SetSeparators(working_tree.separators.at(i));
+    }
+
+    AllocateArenaAndBind(rhs_cols, arena);
+    for (auto& s : subsystems_) s->Initialize();
+
+    ComputeEliminationOrder(working_tree);
+    BindContributors(adapter_to_clique);
+
+    // --- Trial factorization to detect ill-conditioned supernodes ---
+    if (do_repair) {
+      // Assemble at initial weights (W=I for cones, saddle-point for equalities).
+      UpdateAssemblerData();
+      int failed_clique = -1;
+      for (auto* node : solve_order_) {
+        if (!node->children().empty()) node->GatherFromChildren();
+        if (!node->DoEliminateSupernodeColumns()) {
+          // Find subsystem index.
+          for (int k = 0; k < static_cast<int>(subsystems_.size()); ++k) {
+            if (subsystems_[k] == node) { failed_clique = k; break; }
+          }
+          break;
+        }
+        node->DoComputeSeparatorSchurComplement();
+      }
+
+      if (failed_clique >= 0) {
+        auto& sn = working_tree.supernodes[failed_clique];
+        int parent = working_tree.node_to_parent[failed_clique];
+
+        // Find last dual in the supernode.
+        int demoted = -1;
+        int demoted_pos = -1;
+        for (int j = static_cast<int>(sn.size()) - 1; j >= 0; --j) {
+          if (sn[j] >= num_primal_vars) {
+            demoted = sn[j];
+            demoted_pos = j;
+            break;
+          }
+        }
+
+        if (demoted >= 0 && parent >= 0) {
+          // Demote: supernode → separator of this clique,
+          //         add as supernode of parent clique.
+          sn.erase(sn.begin() + demoted_pos);
+          working_tree.separators[failed_clique].push_back(demoted);
+          working_tree.supernodes[parent].push_back(demoted);
+          CONEX_CHECK(working_tree.CheckRunningIntersectionProperty());
+          // Clear state for rebuild.
+          owned_sep_buffers_.clear();
+          continue;  // Retry with repaired tree.
+        }
+        // Cannot demote (no dual or root clique) — accept and let
+        // per-clique RLDLT fallback handle it at solve time.
+      }
+    }
+    break;  // Trial succeeded or repair not applicable.
   }
 
-  AllocateArenaAndBind(rhs_cols, arena);
-  for (auto& s : subsystems_) {
-    s->Initialize();
-  }
-
-  ComputeEliminationOrder(clique_tree);
-  BindContributors(adapter_to_clique);
+  // --- Finalize: solve arena and separator metadata ---
   AllocateSolveArena();
 
-  // Cache separator metadata (once, shared by all SeparatorScratch instances).
   cached_sep_rows_.clear();
   cached_sep_offsets_.clear();
   int sep_off = 0;
@@ -807,7 +869,6 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
   }
   cached_sep_total_per_col_ = sep_off;
 
-  // Build internal separator scratches (heap-backed data).
   {
     int total = cached_sep_total_per_col_ * rhs_cols;
     auto buf1 = std::unique_ptr<double[]>(new double[total]());

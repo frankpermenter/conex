@@ -324,18 +324,12 @@ class DynamicSubsystem : public KKTSubsystem {
       sn_full.triangularView<Eigen::Lower>() = supernode_submatrix();
       sn_full.triangularView<Eigen::StrictlyUpper>() =
           sn_full.transpose();
-      // Check conditioning via reciprocal condition number.
-      // If well-conditioned, use LU; otherwise fall back to RLDLT.
-      Eigen::JacobiSVD<MatrixXd> svd(sn_full,
-          Eigen::ComputeThinU | Eigen::ComputeThinV);
-      double smax = svd.singularValues()(0);
-      double smin = svd.singularValues()(nr - 1);
-      double rcond = (smax > 0) ? smin / smax : 0;
-      if (rcond > 1e-11) {
-        lu_.compute(sn_full);
+      lu_.compute(sn_full);
+      double det = std::abs(lu_.determinant());
+      if (det > 1e-9) {
         return true;
       }
-      // Ill-conditioned — fall back to RLDLT for this clique.
+      // Near-singular — fall back to RLDLT for this clique.
       lu_fell_back_ = true;
       rldlt_.compute(supernode_submatrix());
       return rldlt_.info() == Eigen::Success;
