@@ -828,7 +828,7 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
       // Use stricter pivot threshold for trial to catch near-singular blocks.
       for (auto* sub : subsystems_) {
         auto* ds = dynamic_cast<DynamicSubsystem*>(sub);
-        if (ds) ds->SetLUDetThreshold(1e-6);
+        if (ds) ds->SetPivotCheckThreshold(1e-6);
       }
       // Set W=I scaling (matching what theta_cont does at iteration 0),
       // then assemble.  This ensures the trial sees the same matrix as
@@ -878,8 +878,11 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
           owned_sep_buffers_.clear();
           continue;  // Retry with repaired tree.
         }
-        // Cannot demote (no dual or root clique) — accept and let
-        // per-clique RLDLT fallback handle it at solve time.
+        // Cannot demote (no dual or root clique) — switch this
+        // subsystem to RLDLT for the solve phase.
+        auto* ds = dynamic_cast<DynamicSubsystem*>(
+            subsystems_[failed_clique]);
+        if (ds) ds->SetIndefiniteFactorization(IndefiniteFactorization::kRLDLT);
       }
     }
     // Trial factorization succeeded — mark as factored so the
@@ -891,7 +894,7 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
   // Reset det threshold for runtime factorizations.
   for (auto* sub : subsystems_) {
     auto* ds = dynamic_cast<DynamicSubsystem*>(sub);
-    if (ds) ds->SetLUDetThreshold(1e-10);
+    if (ds) ds->SetPivotCheckThreshold(1e-10);
   }
 
   // --- Finalize: solve arena and separator metadata ---
