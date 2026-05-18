@@ -495,6 +495,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
  private:
   int last_failed_subsystem_ = -1;
   bool factored_at_current_scaling_ = false;
+  bool last_factor_ok_ = false;
   double last_scaling_hash_ = -1;  // impossible initial value
   bool use_recursive_solve_ = false;
   bool use_generic_factorization_ = false;

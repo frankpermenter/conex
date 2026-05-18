@@ -491,7 +491,7 @@ void T::DoAssemble() {
 bool T::DoAssembleAndFactor() {
   // Skip if already factored at the current scaling (SetScaling not called since).
   if (factored_at_current_scaling_) {
-    return true;
+    return last_factor_ok_;
   }
   last_failed_subsystem_ = -1;
   if (auto_update_assemblers_) {
@@ -508,16 +508,20 @@ bool T::DoAssembleAndFactor() {
             break;
           }
         }
+        factored_at_current_scaling_ = true;
+        last_factor_ok_ = false;
         return false;
       }
     }
     factored_at_current_scaling_ = true;
+    last_factor_ok_ = true;
     return true;
   }
   // Multi-threaded: task-parallel factorization. See
   // DoAssembleAndFactorLeafParallel for details.
   bool ok = DoAssembleAndFactorLeafParallel();
-  if (ok) factored_at_current_scaling_ = true;
+  factored_at_current_scaling_ = true;
+  last_factor_ok_ = ok;
   return ok;
 }
 
