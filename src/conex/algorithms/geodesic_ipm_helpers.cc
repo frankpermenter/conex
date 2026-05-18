@@ -165,7 +165,6 @@ void ComputeDirectNewtonStep(
     RowSpace* slack_out) {
   Arena& arena = model.arena();
   model.SetScaling(W);
-  model.AssembleAndFactor();
 
   // Combined RHS: centering (2W) + cost (-k·P(W)(b)) in cone space,
   //               -k·c + k·d_eq in variable space.
@@ -215,7 +214,6 @@ void ComputeDecomposition(
   if (y1_out) initRHS(*y1_out);
   ArenaFrame frame(arena);
   model.SetScaling(W);
-  model.AssembleAndFactor();
 
   RowSpace v = model.AllocRowSpace(arena);
 
@@ -314,7 +312,6 @@ void ComputeFullDecomposition(
   ArenaFrame frame(arena);
   const auto& cost_rhs = model.cost_rhs();
   model.SetScaling(W);
-  model.AssembleAndFactor();
 
   RowSpace ones = model.AllocRowSpace(arena);
   setOnes(ones);

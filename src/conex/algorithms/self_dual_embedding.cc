@@ -31,7 +31,6 @@ HSDResult SolveHSD(
 
   for (int iter = 0; iter < max_iterations; ++iter) {
     kkt.SetScaling(W);
-    kkt.AssembleAndFactor();
 
     RowSpace QWc = quadraticRepresentation(W, c);
     RowSpace QWe = quadraticRepresentation(W, e);

@@ -235,7 +235,6 @@ GeodesicResult SolveGeodesicBarrierLP(
         if (refactor_inner) {
           // Full refactor: makes inner iteration identical to outer.
           model.SetScaling(z);
-          model.AssembleAndFactor();
           total_fac++;
 
           // Recompute centering RHS: A^T(-2∇F(z_i)).
@@ -575,7 +574,6 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
           z_outer = z;
           z_hess_f = z;
           model.SetScaling(z);
-          model.AssembleAndFactor();
           total_fac++;
 
           // Recompute all 3 RHS.

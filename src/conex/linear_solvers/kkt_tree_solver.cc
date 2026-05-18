@@ -1354,6 +1354,7 @@ void T::SetWeights(const RowSpace& w) {
   for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
     cone_constraints_[ci]->SetWeights(w.segment_ptr(ci), w.sizes[ci]);
   }
+  factored_at_current_scaling_ = false;
 }
 
 void T::SetScaling(const RowSpace& w) {

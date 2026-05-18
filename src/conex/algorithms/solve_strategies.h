@@ -217,7 +217,6 @@ struct DirectSolve {
     RowSpace W = model.AllocRowSpace();
     setOnes(W);
     model.SetScaling(W);
-    model.AssembleAndFactor();
 
     auto rhs_blk = model.AllocSolverRHS();
     rhs_blk.ScatterFrom(rhs.data(), rhs.size());

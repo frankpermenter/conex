@@ -517,7 +517,6 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   squareM(W, M);  // W = I initially
   { CONEX_TIMER(stats, factor_us);
     model.SetScaling(W);
-    model.AssembleAndFactor();
   }
   if (stats) stats->factor_count++;
   int total_fac = 1;
@@ -870,7 +869,6 @@ GeodesicResult SolveGeodesicHybridR(
   squareM(W, M);
   { CONEX_TIMER(stats, factor_us);
     model.SetScaling(W);
-    model.AssembleAndFactor();
   }
   if (stats) stats->factor_count++;
   int total_fac = 1;
@@ -972,7 +970,6 @@ GeodesicResult SolveGeodesicHybridR(
   // Recover x.
   {
     model.SetScaling(W);
-    model.AssembleAndFactor();
     RowSpace b_theta = BlendAffine(model, arena, b, theta);
 
     auto y = model.AllocSolverRHS();

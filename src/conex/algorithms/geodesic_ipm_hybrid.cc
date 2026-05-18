@@ -514,7 +514,6 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   squareM(W, M);  // W = I initially
   { CONEX_TIMER(stats, factor_us);
     model.SetScaling(W);
-    model.AssembleAndFactor();
   }
   if (stats) stats->factor_count++;
   int total_fac = 1;
@@ -867,7 +866,6 @@ GeodesicResult SolveGeodesicHybridR(
   squareM(W, M);
   { CONEX_TIMER(stats, factor_us);
     model.SetScaling(W);
-    model.AssembleAndFactor();
   }
   if (stats) stats->factor_count++;
   int total_fac = 1;
@@ -969,7 +967,6 @@ GeodesicResult SolveGeodesicHybridR(
   // Recover x.
   {
     model.SetScaling(W);
-    model.AssembleAndFactor();
     RowSpace b_theta = BlendAffine(model, arena, b, theta);
 
     auto y = model.AllocSolverRHS();
@@ -1069,7 +1066,6 @@ HybridDirection HybridCenteringStep(
   RowSpace M = model.AllocRowSpace();
   EuclideanJordanAlgebra::sqrt(M, W);
   model.SetScaling(W);
-  model.AssembleAndFactor();
 
   RowSpace d = model.AllocRowSpace();
   RowSpace delta = model.AllocRowSpace();
@@ -1115,7 +1111,6 @@ GeodesicResult SolveGeodesicHybrid(
   // decompose at W to find the minimum-norm k.
   if (initial_k <= 0) {
     model.SetScaling(W);
-    model.AssembleAndFactor();
   }
   // When initial_k > 0, reuse the existing factorization from the caller.
   if (initial_k > 0) {
@@ -1266,7 +1261,6 @@ GeodesicResult SolveGeodesicHybrid(
   // Recover x: solve Gram * y = RHS at the final (W, r).
   {
     model.SetScaling(W);
-    model.AssembleAndFactor();
     auto y = model.AllocSolverRHS();
     y = cost_scaled;
     y *= -1;
