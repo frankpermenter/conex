@@ -34,6 +34,7 @@
 #include "conex/common/conex.h"
 #include "conex/common/model.h"
 #include "conex/common/solver.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -62,12 +63,14 @@ std::vector<int> Range(int n) {
 struct TestResult {
   bool converged;
   Eigen::VectorXd x;
+  int num_demotions;
 };
 TestResult SolveWith(const Model& model, const SolverConfiguration& config,
                       double tol = 1e-8, int max_iter = 200) {
   auto solver = Solver::Build(model, config);
+  int nd = solver.tree_solver() ? solver.tree_solver()->num_demotions() : 0;
   auto result = solver.Solve(ThetaContinuation{tol, max_iter, 1});
-  return {result.converged, result.x};
+  return {result.converged, result.x, nd};
 }
 TestResult SolveRLDLT(const Model& m) { return SolveWith(m, {}); }
 TestResult SolveLU(const Model& m) {
@@ -94,8 +97,14 @@ TEST(EqualityRepair, BasicEqualityPlusInequality) {
   model.AddLinearConstraint(
       ToDense(MatrixXd::Identity(n, n)), VectorXd::Zero(n), Range(n));
 
-  for (auto [name, solve] : {std::pair{"RLDLT", &SolveRLDLT},
-                              {"LU", &SolveLU},
+  // RLDLT: no trial, no demotions.
+  {
+    auto r = SolveRLDLT(model);
+    EXPECT_TRUE(r.converged);
+    EXPECT_EQ(r.num_demotions, 0);
+  }
+  // LU and LAPACK: trial runs, may demote.
+  for (auto [name, solve] : {std::pair{"LU", &SolveLU},
                               {"LAPACK", &SolveLAPACK}}) {
     SCOPED_TRACE(name);
     auto r = solve(model);
@@ -169,8 +178,14 @@ TEST(EqualityRepair, NetworkFlowStructure) {
   model.AddLinearConstraint(
       ToDense(MatrixXd::Identity(n, n)), VectorXd::Zero(n), Range(n));
 
-  for (auto [name, solve] : {std::pair{"RLDLT", &SolveRLDLT},
-                              {"LU", &SolveLU},
+  // RLDLT: no trial, no demotions.
+  {
+    auto r = SolveRLDLT(model);
+    EXPECT_TRUE(r.converged);
+    EXPECT_EQ(r.num_demotions, 0);
+  }
+  // LU/LAPACK: tree repair handles any singular supernodes.
+  for (auto [name, solve] : {std::pair{"LU", &SolveLU},
                               {"LAPACK", &SolveLAPACK}}) {
     SCOPED_TRACE(name);
     auto r = solve(model);
@@ -243,6 +258,44 @@ TEST(EqualityRepair, EqualityWithTightBounds) {
     EXPECT_TRUE(r.converged);
     EXPECT_NEAR(r.x[0], 1.0, 1e-3);
     EXPECT_NEAR(r.x[1], 1.0, 1e-3);
+  }
+}
+
+// Test 6: Verify demotion counter is accessible and consistent.
+// RLDLT never runs the trial (no demotions).  LU/LAPACK run the trial;
+// demotion count depends on the elimination ordering.
+TEST(EqualityRepair, DemotionCounter) {
+  const int n = 3;
+  Model model;
+  model.AddQuadraticCost(ToDense(MatrixXd::Identity(n, n)), Range(n));
+  model.SetLinearCost(VectorXd::Zero(n));
+  MatrixXd A_eq(1, n); A_eq << 1, 1, 1;
+  model.AddEqualityConstraint(ToDense(A_eq), VectorXd::Ones(1), Range(n));
+  model.AddLinearConstraint(
+      ToDense(MatrixXd::Identity(n, n)), VectorXd::Zero(n), Range(n));
+
+  // RLDLT: no trial → 0 demotions.
+  {
+    auto solver = Solver::Build(model);
+    EXPECT_EQ(solver.tree_solver()->num_demotions(), 0);
+    auto r = solver.Solve(ThetaContinuation{1e-8, 200, 1});
+    EXPECT_TRUE(r.converged);
+  }
+  // LU: trial runs → demotion count is non-negative.
+  {
+    SolverConfiguration c; c.tree.use_lu_for_indefinite = true;
+    auto solver = Solver::Build(model, c);
+    EXPECT_GE(solver.tree_solver()->num_demotions(), 0);
+    auto r = solver.Solve(ThetaContinuation{1e-8, 200, 1});
+    EXPECT_TRUE(r.converged);
+  }
+  // LAPACK: same.
+  {
+    SolverConfiguration c; c.tree.use_lapack_for_indefinite = true;
+    auto solver = Solver::Build(model, c);
+    EXPECT_GE(solver.tree_solver()->num_demotions(), 0);
+    auto r = solver.Solve(ThetaContinuation{1e-8, 200, 1});
+    EXPECT_TRUE(r.converged);
   }
 }
 

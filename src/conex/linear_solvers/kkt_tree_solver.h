@@ -492,11 +492,13 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   int num_threads_ = 1;
 
  public:
-  // Index of the subsystem that last failed factorization (-1 if none).
   int last_failed_subsystem() const { return last_failed_subsystem_; }
   KKTSubsystemBase* subsystem(int k) { return subsystems_.at(k); }
+  // Number of dual demotions performed during FinalizeStructure trial.
+  int num_demotions() const { return num_demotions_; }
  private:
   int last_failed_subsystem_ = -1;
+  int num_demotions_ = 0;
   bool factored_at_current_scaling_ = false;
   bool last_factor_ok_ = false;
   double last_scaling_hash_ = -1;  // impossible initial value

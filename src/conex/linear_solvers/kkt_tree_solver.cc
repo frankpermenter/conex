@@ -791,6 +791,7 @@ void T::BindContributors(const std::vector<int>& adapter_to_clique) {
 void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
                           Arena* arena, int num_primal_vars) {
   CliqueTree working_tree = clique_tree;
+  num_demotions_ = 0;
 
   // Check if tree has dual variables (equality constraints).
   bool has_duals = false;
@@ -874,6 +875,7 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
           working_tree.separators[failed_clique].push_back(demoted);
           working_tree.supernodes[parent].push_back(demoted);
           CONEX_CHECK(working_tree.CheckRunningIntersectionProperty());
+          ++num_demotions_;
           // Clear state for rebuild.
           owned_sep_buffers_.clear();
           continue;  // Retry with repaired tree.
