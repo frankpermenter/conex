@@ -158,6 +158,7 @@ PYBIND11_MODULE(_conex, m) {
                  ts->perm().begin(), ts->perm().end()));
              result["perm_inv"] = py::cast(std::vector<int>(
                  ts->perm_inv().begin(), ts->perm_inv().end()));
+             result["num_demotions"] = ts->num_demotions();
              return result;
            },
            "Get clique tree structure")
