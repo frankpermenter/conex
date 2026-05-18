@@ -299,5 +299,70 @@ TEST(EqualityRepair, DemotionCounter) {
   }
 }
 
+// Test 7: Forced demotion with user-specified clique tree.
+// A clique tree that puts 3 duals in a supernode with only 3 primals,
+// where the equation restriction is rank-deficient.
+// RLDLT regularizes the zero pivot; LU after demotion degrades.
+TEST(EqualityRepair, ForcedBadCliqueTree) {
+  const int n = 10;
+  Model model;
+  model.AddQuadraticCost(ToDense(MatrixXd::Identity(n, n)), Range(n));
+  model.SetLinearCost(VectorXd::Zero(n));
+
+  // 3 equations on vars {0..5} with rank-deficient restriction on {0,1,2}:
+  // eq0: x1 + x2 + x4 = 3
+  // eq1: x0 + x3 - x2 = 1
+  // eq2: x5 - x0 - x1 = 1
+  // Restricted to {0,1,2}: eq0+eq2 = -eq1 → rank 2.
+  MatrixXd A_eq = MatrixXd::Zero(3, n);
+  A_eq(0, 1) = 1; A_eq(0, 2) = 1; A_eq(0, 4) = 1;
+  A_eq(1, 0) = 1; A_eq(1, 3) = 1; A_eq(1, 2) = -1;
+  A_eq(2, 5) = 1; A_eq(2, 0) = -1; A_eq(2, 1) = -1;
+  VectorXd b_eq(3); b_eq << 3, 1, 1;
+  model.AddEqualityConstraint(ToDense(A_eq), b_eq, Range(n));
+  model.AddLinearConstraint(
+      ToDense(MatrixXd::Identity(n, n)), VectorXd::Zero(n), Range(n));
+
+  // Force clique tree: clique 0 has primals {0,1,2} + duals {10,11,12}
+  // with separators {3,4,5}. The 3x3 equation restriction is rank 2.
+  CliqueTree ct;
+  ct.supernodes = {{0,1,2, 10,11,12}, {3,4,5,6,7,8,9}};
+  ct.separators = {{3,4,5}, {}};
+  ct.node_to_parent = {1, -1};
+  ct.post_order_position_to_clique = {0, 1};
+
+  // RLDLT: regularizes the rank-deficient block, small residuals.
+  {
+    auto solver = Solver::Build(model, ct);
+    auto result = solver.Solve(ThetaContinuation{1e-8, 200, 1});
+    EXPECT_TRUE(result.converged);
+    double eq_res = 0;
+    for (const auto& r : result.duals.eq_residual)
+      eq_res = std::max(eq_res, r.norm());
+    EXPECT_LT(eq_res, 1e-3);
+    EXPECT_LT(result.duals.stationarity_gradient.norm(), 1e-2);
+  }
+
+  // LU: demotion fires (1 dual demoted), but residual degrades.
+  {
+    SolverConfiguration lu_config;
+    lu_config.tree.use_lu_for_indefinite = true;
+    auto solver = Solver::Build(model, ct, lu_config);
+    int nd = solver.tree_solver() ? solver.tree_solver()->num_demotions() : 0;
+    EXPECT_GT(nd, 0);  // demotion must occur
+    auto result = solver.Solve(ThetaContinuation{1e-8, 200, 1});
+    // LU after demotion has degraded residuals on this pathological tree.
+    // The test documents this known limitation.
+    double eq_res = 0;
+    for (const auto& r : result.duals.eq_residual)
+      eq_res = std::max(eq_res, r.norm());
+    printf("  LU forced tree: conv=%d iter=%d dem=%d eq_res=%.2e stat=%.2e\n",
+           result.converged, result.iterations, nd, eq_res,
+           result.duals.stationarity_gradient.norm());
+    // We don't assert convergence here — this is a known pathological case.
+    // The test verifies that demotion fires and the solver doesn't crash.
+  }
+}
+
 }  // namespace
 }  // namespace conex
