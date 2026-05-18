@@ -489,6 +489,10 @@ void T::DoAssemble() {
 // Numeric phase: assemble matrix values from contributors and factor.
 // Sparsity structure was fixed by FinalizeStructure; this updates values only.
 bool T::DoAssembleAndFactor() {
+  // Skip if already factored at the current scaling (SetScaling not called since).
+  if (factored_at_current_scaling_) {
+    return true;
+  }
   last_failed_subsystem_ = -1;
   if (auto_update_assemblers_) {
     UpdateAssemblerData();
@@ -507,11 +511,14 @@ bool T::DoAssembleAndFactor() {
         return false;
       }
     }
+    factored_at_current_scaling_ = true;
     return true;
   }
   // Multi-threaded: task-parallel factorization. See
   // DoAssembleAndFactorLeafParallel for details.
-  return DoAssembleAndFactorLeafParallel();
+  bool ok = DoAssembleAndFactorLeafParallel();
+  if (ok) factored_at_current_scaling_ = true;
+  return ok;
 }
 
 bool T::DoFactor() {
@@ -866,10 +873,13 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
         // per-clique RLDLT fallback handle it at solve time.
       }
     }
+    // Trial factorization succeeded — mark as factored so the
+    // algorithm's first AssembleAndFactor at the same W=I is a no-op.
+    if (do_repair) factored_at_current_scaling_ = true;
     break;  // Trial succeeded or repair not applicable.
   }
 
-  // Reset det threshold to 0 for runtime factorizations.
+  // Reset det threshold for runtime factorizations.
   for (auto* sub : subsystems_) {
     auto* ds = dynamic_cast<DynamicSubsystem*>(sub);
     if (ds) ds->SetLUDetThreshold(1e-10);
@@ -1346,6 +1356,7 @@ void T::SetScaling(const RowSpace& w) {
   for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
     cone_constraints_[ci]->SetScaling(w.segment_ptr(ci), w.sizes[ci]);
   }
+  factored_at_current_scaling_ = false;
 }
 
 

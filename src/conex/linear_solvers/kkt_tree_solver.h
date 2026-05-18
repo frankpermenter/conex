@@ -494,6 +494,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   KKTSubsystemBase* subsystem(int k) { return subsystems_.at(k); }
  private:
   int last_failed_subsystem_ = -1;
+  bool factored_at_current_scaling_ = false;
   bool use_recursive_solve_ = false;
   bool use_generic_factorization_ = false;
   bool use_lu_for_indefinite_ = false;
