@@ -644,6 +644,17 @@ target_link_libraries(equality_nontrivial_test
   structural_rank
 )
 
+add_executable(equality_constraint_repair_test
+  tests/equality_constraint_repair_test.cc
+)
+target_link_libraries(equality_constraint_repair_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
+  gtest gtest_main
+)
+gtest_discover_tests(equality_constraint_repair_test)
+
 add_executable(canary bench/canary.cc)
 target_link_libraries(canary
   algorithms constraints sparse_linear_constraint

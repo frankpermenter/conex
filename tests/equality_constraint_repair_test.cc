@@ -1,0 +1,254 @@
+// Tests for equality constraint handling in the supernodal solver.
+//
+// Each test constructs a minimal QP that reproduces a specific failure mode
+// discovered on the Maros-Meszaros benchmark suite:
+//
+// 1. Indefiniteness propagation (CONT-050, AUG2DCQP):
+//    Equality constraints create indefinite child cliques whose Schur
+//    complement must propagate indefiniteness to LLT-only parent cliques.
+//    Without propagation, parent uses Cholesky on indefinite data → segfault.
+//
+// 2. Dependent equality removal (QSCORPIO: 280 eqs, rank 250):
+//    Structurally independent but numerically dependent equations create
+//    a 30-dimensional null space in the dual block. No tree repair can
+//    fix this — the equations must be reduced before building the KKT.
+//
+// 3. Tree repair via dual demotion (QSHARE2B):
+//    Network flow constraints where 3 equations restricted to a supernode's
+//    3 primals are rank 2 (they sum to zero on the supernode variables).
+//    The trial factorization detects the singular supernode and demotes
+//    a dual variable to the separator, resolving the singularity.
+//
+// 4. LU fallback to RLDLT (QGROW7, QSHARE2B):
+//    Even after tree repair, some supernodes become near-singular at
+//    non-identity W during the iterative solve. The per-clique RLDLT
+//    fallback (triggered by min LU pivot < threshold) handles these
+//    without divergence.
+
+#include <gtest/gtest.h>
+
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
+
+#include "conex/algorithms/solve_strategies.h"
+#include "conex/common/conex.h"
+#include "conex/common/model.h"
+#include "conex/common/solver.h"
+
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
+
+namespace conex {
+namespace {
+
+// Helper: build a sparse matrix from dense.
+Eigen::SparseMatrix<double> ToDense(const MatrixXd& M) {
+  Eigen::SparseMatrix<double> S(M.rows(), M.cols());
+  std::vector<Eigen::Triplet<double>> t;
+  for (int i = 0; i < M.rows(); ++i)
+    for (int j = 0; j < M.cols(); ++j)
+      if (M(i, j) != 0) t.emplace_back(i, j, M(i, j));
+  S.setFromTriplets(t.begin(), t.end());
+  return S;
+}
+
+std::vector<int> Range(int n) {
+  std::vector<int> v(n);
+  std::iota(v.begin(), v.end(), 0);
+  return v;
+}
+
+// Test 1: Equality + inequality constraints (indefiniteness propagation).
+// min 0.5 x'x  s.t.  x0 + x1 + x2 = 1,  x >= 0.
+// Optimal: x = (1/3, 1/3, 1/3), obj = 1/6.
+TEST(EqualityRepair, BasicEqualityPlusInequality) {
+  const int n = 3;
+  Model model;
+  model.AddQuadraticCost(ToDense(MatrixXd::Identity(n, n)), Range(n));
+  model.SetLinearCost(VectorXd::Zero(n));
+
+  // Equality: x0 + x1 + x2 = 1.
+  MatrixXd A_eq(1, n);
+  A_eq << 1, 1, 1;
+  model.AddEqualityConstraint(ToDense(A_eq), VectorXd::Ones(1), Range(n));
+
+  // Inequality: x >= 0.
+  model.AddLinearConstraint(
+      ToDense(MatrixXd::Identity(n, n)), VectorXd::Zero(n), Range(n));
+
+  // RLDLT path.
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(ThetaContinuation{1e-8, 200, 1});
+  EXPECT_TRUE(result.converged);
+  EXPECT_NEAR(result.x[0], 1.0 / 3, 1e-4);
+  EXPECT_NEAR(result.x[1], 1.0 / 3, 1e-4);
+  EXPECT_NEAR(result.x[2], 1.0 / 3, 1e-4);
+
+  // LU path (exercises indefiniteness propagation + tree repair).
+  SolverConfiguration lu_config;
+  lu_config.tree.use_lu_for_indefinite = true;
+  auto solver_lu = Solver::Build(model, lu_config);
+  auto result_lu = solver_lu.Solve(ThetaContinuation{1e-8, 200, 1});
+  EXPECT_TRUE(result_lu.converged);
+  EXPECT_NEAR(result_lu.x[0], 1.0 / 3, 1e-4);
+}
+
+// Test 2: Dependent equalities (QSCORPIO-like).
+// 3 equations on 4 variables, but eq0 + eq1 = eq2 → rank 2.
+// min 0.5 x'x  s.t.  x0+x1=2, x2+x3=2, x0+x1+x2+x3=4,  x >= -10.
+TEST(EqualityRepair, DependentEquations) {
+  const int n = 4;
+  Model model;
+  model.AddQuadraticCost(ToDense(MatrixXd::Identity(n, n)), Range(n));
+  model.SetLinearCost(VectorXd::Zero(n));
+
+  MatrixXd A_eq(3, n);
+  A_eq << 1, 1, 0, 0,   // x0 + x1 = 2
+          0, 0, 1, 1,   // x2 + x3 = 2
+          1, 1, 1, 1;   // x0+x1+x2+x3 = 4 (dependent: row0 + row1)
+  VectorXd b_eq(3);
+  b_eq << 2, 2, 4;
+  model.AddEqualityConstraint(ToDense(A_eq), b_eq, Range(n));
+
+  model.AddLinearConstraint(
+      ToDense(MatrixXd::Identity(n, n)),
+      10 * VectorXd::Ones(n), Range(n));
+
+  // Should solve despite dependent equation (presolve removes it).
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(ThetaContinuation{1e-8, 200, 1});
+  EXPECT_TRUE(result.converged);
+  EXPECT_NEAR(result.x[0], 1.0, 1e-3);
+  EXPECT_NEAR(result.x[1], 1.0, 1e-3);
+  EXPECT_NEAR(result.x[2], 1.0, 1e-3);
+  EXPECT_NEAR(result.x[3], 1.0, 1e-3);
+
+  // LU path should also work.
+  SolverConfiguration lu_config;
+  lu_config.tree.use_lu_for_indefinite = true;
+  auto solver_lu = Solver::Build(model, lu_config);
+  auto result_lu = solver_lu.Solve(ThetaContinuation{1e-8, 200, 1});
+  EXPECT_TRUE(result_lu.converged);
+  EXPECT_NEAR(result_lu.x[0], 1.0, 1e-3);
+}
+
+// Test 3: Network flow structure (QSHARE2B-like).
+// Flow conservation: each internal variable appears with +1 in one eq,
+// -1 in another, so equations sum to zero on internal variables.
+// This creates a rank-deficient supernode block requiring tree repair.
+//
+// min 0.5 x'x  s.t. flow conservation, x >= 0.
+// Variables: x0..x5 (6 vars), 3 flow equations.
+// eq0:  x1 + x2 + x4 = 3
+// eq1:  x0 + x3 - x2 = 1
+// eq2:  x5 - x0 - x1 = 1
+// Sum: x3 + x4 + x5 = 5  (internal vars x0,x1,x2 cancel).
+TEST(EqualityRepair, NetworkFlowStructure) {
+  const int n = 6;
+  Model model;
+  model.AddQuadraticCost(ToDense(MatrixXd::Identity(n, n)), Range(n));
+  model.SetLinearCost(VectorXd::Zero(n));
+
+  MatrixXd A_eq(3, n);
+  //        x0  x1  x2  x3  x4  x5
+  A_eq << 0,  1,  1,  0,  1,  0,   // eq0
+          1,  0, -1,  1,  0,  0,   // eq1
+         -1, -1,  0,  0,  0,  1;   // eq2
+  VectorXd b_eq(3);
+  b_eq << 3, 1, 1;
+  model.AddEqualityConstraint(ToDense(A_eq), b_eq, Range(n));
+
+  model.AddLinearConstraint(
+      ToDense(MatrixXd::Identity(n, n)), VectorXd::Zero(n), Range(n));
+
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(ThetaContinuation{1e-8, 200, 1});
+  EXPECT_TRUE(result.converged);
+
+  // Verify feasibility: check equality constraints.
+  VectorXd x = Eigen::Map<const VectorXd>(result.x.data(), n);
+  VectorXd residual = A_eq * x - b_eq;
+  EXPECT_LT(residual.norm(), 1e-4);
+
+  // LU path (exercises tree repair).
+  SolverConfiguration lu_config;
+  lu_config.tree.use_lu_for_indefinite = true;
+  auto solver_lu = Solver::Build(model, lu_config);
+  auto result_lu = solver_lu.Solve(ThetaContinuation{1e-8, 200, 1});
+  EXPECT_TRUE(result_lu.converged);
+  VectorXd x_lu = Eigen::Map<const VectorXd>(result_lu.x.data(), n);
+  VectorXd residual_lu = A_eq * x_lu - b_eq;
+  EXPECT_LT(residual_lu.norm(), 1e-4);
+}
+
+// Test 4: Multiple equalities with bounds (exercises multiple cliques with duals).
+// min 0.5 x'x  s.t. A_eq x = b_eq, x >= 0.
+// 10 vars, 3 equalities, all x >= 0.
+TEST(EqualityRepair, MultipleEqualitiesWithBounds) {
+  const int n = 10, m_eq = 3;
+  Model model;
+  model.AddQuadraticCost(ToDense(MatrixXd::Identity(n, n)), Range(n));
+  model.SetLinearCost(VectorXd::Zero(n));
+
+  // Sparse equalities touching different variable subsets.
+  MatrixXd A_eq = MatrixXd::Zero(m_eq, n);
+  A_eq(0, 0) = 1; A_eq(0, 1) = 1; A_eq(0, 2) = 1;  // x0+x1+x2 = 3
+  A_eq(1, 3) = 1; A_eq(1, 4) = 1; A_eq(1, 5) = 1;  // x3+x4+x5 = 3
+  A_eq(2, 6) = 1; A_eq(2, 7) = 1; A_eq(2, 8) = 1;  // x6+x7+x8 = 3
+  VectorXd b_eq = 3.0 * VectorXd::Ones(m_eq);
+  model.AddEqualityConstraint(ToDense(A_eq), b_eq, Range(n));
+
+  model.AddLinearConstraint(
+      ToDense(MatrixXd::Identity(n, n)), VectorXd::Zero(n), Range(n));
+
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(ThetaContinuation{1e-8, 200, 1});
+  EXPECT_TRUE(result.converged);
+
+  // Each equality group should have x_i = 1.
+  for (int i = 0; i < 9; ++i)
+    EXPECT_NEAR(result.x[i], 1.0, 1e-3);
+
+  // LU path.
+  SolverConfiguration lu_config;
+  lu_config.tree.use_lu_for_indefinite = true;
+  auto solver_lu = Solver::Build(model, lu_config);
+  auto result_lu = solver_lu.Solve(ThetaContinuation{1e-8, 200, 1});
+  EXPECT_TRUE(result_lu.converged);
+  for (int i = 0; i < 9; ++i)
+    EXPECT_NEAR(result_lu.x[i], 1.0, 1e-3);
+}
+
+// Test 5: Equality with tight bounds (exercises saddle-point structure).
+// min 0.5 x'x  s.t.  x0 + x1 = 2, 0 <= x <= 3.
+// Optimal: x = (1, 1), obj = 1.
+TEST(EqualityRepair, EqualityWithTightBounds) {
+  const int n = 2;
+  Model model;
+  model.AddQuadraticCost(ToDense(MatrixXd::Identity(n, n)), Range(n));
+  model.SetLinearCost(VectorXd::Zero(n));
+
+  MatrixXd A_eq(1, n);
+  A_eq << 1, 1;
+  VectorXd b_eq(1);
+  b_eq << 2;
+  model.AddEqualityConstraint(ToDense(A_eq), b_eq, Range(n));
+
+  // Lower bound: x >= 0, upper bound: 3 - x >= 0.
+  MatrixXd A_ineq(2 * n, n);
+  A_ineq.topRows(n) = MatrixXd::Identity(n, n);
+  A_ineq.bottomRows(n) = -MatrixXd::Identity(n, n);
+  VectorXd b_ineq(2 * n);
+  b_ineq.head(n) = VectorXd::Zero(n);
+  b_ineq.tail(n) = 3.0 * VectorXd::Ones(n);
+  model.AddLinearConstraint(ToDense(A_ineq), b_ineq, Range(n));
+
+  auto solver = Solver::Build(model);
+  auto result = solver.Solve(ThetaContinuation{1e-8, 200, 1});
+  EXPECT_TRUE(result.converged);
+  EXPECT_NEAR(result.x[0], 1.0, 1e-3);
+  EXPECT_NEAR(result.x[1], 1.0, 1e-3);
+}
+
+}  // namespace
+}  // namespace conex
