@@ -9,10 +9,11 @@ namespace conex {
 int DynamicSubsystem::Dsytrf(int n, double* A, int lda, int* ipiv,
                               double* work, int lwork) {
 #ifdef EIGEN_USE_BLAS
-  (void)work;
-  (void)lwork;
-  // LAPACKE_dsytrf handles workspace internally.
-  return LAPACKE_dsytrf(LAPACK_COL_MAJOR, 'L', n, A, lda, ipiv);
+  // Use LAPACKE row-major wrapper which handles workspace internally.
+  // Note: LAPACK_COL_MAJOR matches Eigen's column-major storage.
+  lapack_int info = LAPACKE_dsytrf_work(LAPACK_COL_MAJOR, 'L', n, A, lda,
+                                         ipiv, work, lwork);
+  return static_cast<int>(info);
 #else
   // Fallback: use Eigen's LDLT.
   Eigen::Map<Eigen::MatrixXd> M(A, n, n);
@@ -20,7 +21,7 @@ int DynamicSubsystem::Dsytrf(int n, double* A, int lda, int* ipiv,
   auto D = ldlt.vectorD();
   for (int i = 0; i < n; ++i) {
     A[i * lda + i] = D(i);
-    ipiv[i] = i + 1;  // 1-based, positive = 1x1 pivot
+    ipiv[i] = i + 1;
   }
   if (work) work[0] = 1;
   return (ldlt.info() == Eigen::Success) ? 0 : 1;
@@ -32,7 +33,6 @@ void DynamicSubsystem::Dsytrs(int n, int nrhs, const double* A, int lda,
 #ifdef EIGEN_USE_BLAS
   LAPACKE_dsytrs(LAPACK_COL_MAJOR, 'L', n, nrhs, A, lda, ipiv, B, ldb);
 #else
-  // Fallback: re-factor and solve.
   Eigen::Map<const Eigen::MatrixXd> M(A, n, n);
   Eigen::Map<Eigen::MatrixXd> Bm(B, ldb, nrhs);
   Eigen::MatrixXd full(n, n);
