@@ -210,6 +210,9 @@ SparseEqualityConstraintAssembler::Decompose(
 
   auto groups = sec_->GetConstraints(local_cliques, row_to_dual_);
 
+  // Clear state from previous Decompose calls.
+  owned_assemblers_.clear();
+
   std::vector<SupernodalAssemblerBase*> result;
   for (auto& group : groups) {
     owned_assemblers_.emplace_back(

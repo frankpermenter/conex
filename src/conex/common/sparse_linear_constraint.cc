@@ -175,9 +175,14 @@ SparseLinearConstraintAssembler::Decompose(
   auto local_cliques = RemapCliquesToLocal(maximal_cliques);
   auto groups = slc_->GetConstraints(local_cliques);
 
+  // Clear state from previous Decompose calls (needed for tree repair
+  // where Decompose is called multiple times on the same assembler).
+  owned_constraints_.clear();
+  owned_workspace_memory_.clear();
+
   // Build row mapping: global row → (constraint index, local row).
   num_global_rows_ = slc_->A().rows();
-  row_map_.resize(num_global_rows_, {-1, -1});
+  row_map_.assign(num_global_rows_, {-1, -1});
 
   std::vector<SupernodalAssemblerBase*> result;
   int constraint_index = 0;
