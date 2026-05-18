@@ -5,7 +5,9 @@
 #include <unordered_set>
 
 #include "conex/common/clique_ordering.h"
+#include "conex/common/eja_ops.h"
 #include "conex/common/sparse_linear_constraint.h"
+#include "conex/linear_solvers/cholesky_solvers.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 #include "conex/linear_solvers/low_rank_diagonal_subsystem.h"
 #include "conex/linear_solvers/tree_utils.h"
@@ -194,28 +196,102 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
 
   // If no cliques use structured path, skip the mixed logic entirely.
   if (num_structured == 0) {
-    vector<SupernodalAssemblerBase*> decomposed;
-    for (auto* assembler : clique_assemblers_ptrs_) {
-      auto subs = assembler->Decompose(maximal_cliques);
-      decomposed.insert(decomposed.end(), subs.begin(), subs.end());
+    bool do_repair = (config.tree.use_lu_for_indefinite ||
+                      config.tree.use_lapack_for_indefinite) &&
+                     !delayed_vars.empty();
+    int total_demotions = 0;
+
+    for (int repair_iter = 0; repair_iter < 20; ++repair_iter) {
+      // Decompose assemblers against current clique tree.
+      tree_solver_ =
+          std::make_unique<SymmetricLinearSystemTreeSolver>();
+      // Recompute maximal cliques from the (possibly repaired) tree.
+      maximal_cliques.resize(clique_tree.supernodes.size());
+      for (int i = 0; i < (int)clique_tree.supernodes.size(); ++i) {
+        maximal_cliques[i] = clique_tree.supernodes[i];
+        maximal_cliques[i].insert(maximal_cliques[i].end(),
+                                  clique_tree.separators[i].begin(),
+                                  clique_tree.separators[i].end());
+        std::sort(maximal_cliques[i].begin(), maximal_cliques[i].end());
+      }
+      vector<SupernodalAssemblerBase*> decomposed;
+      for (auto* assembler : clique_assemblers_ptrs_) {
+        auto subs = assembler->Decompose(maximal_cliques);
+        decomposed.insert(decomposed.end(), subs.begin(), subs.end());
+      }
+      for (auto* assembler : decomposed) {
+        auto adapter =
+            std::make_unique<AssemblerAdapter>(assembler);
+        adapter->set_contribution_type(
+            ClassifyCliqueContribution(assembler, num_primal_vars));
+        tree_solver_->push_back(std::move(adapter));
+      }
+      tree_solver_->SetUseGenericFactorization(
+          config.tree.use_generic_factorization);
+      tree_solver_->SetUseLUForIndefinite(config.tree.use_lu_for_indefinite);
+      tree_solver_->SetUseLAPACKForIndefinite(
+          config.tree.use_lapack_for_indefinite);
+      tree_solver_->FinalizeStructure(clique_tree, config.rhs_cols, arena,
+                                      num_primal_vars);
+      tree_solver_->SetFactorizationMode(config.tree.left_looking);
+      tree_solver_->EnableAutoUpdateAtAssemble(true);
+      tree_solver_->SetNumThreads(config.num_threads);
+
+      if (!do_repair) break;
+
+      // Trial factorization at W=I to detect ill-conditioned supernodes.
+      for (auto* sub : tree_solver_->subsystems()) {
+        auto* ds = dynamic_cast<DynamicSubsystem*>(sub);
+        if (ds) ds->SetPivotCheckThreshold(1e-6);
+      }
+      // Set W=I via cone interface (bypass SetScaling's AssembleAndFactor).
+      auto W = tree_solver_->MakeRowSpace();
+      EuclideanJordanAlgebra::setOnes(W);
+      for (int ci = 0; ci < (int)tree_solver_->cone_constraints().size(); ++ci)
+        tree_solver_->cone_constraints()[ci]->SetScaling(
+            W.segment_ptr(ci), W.sizes[ci]);
+      // Assemble and factor.  EnableAutoUpdateAtAssemble is already set.
+      bool trial_ok = tree_solver_->AssembleAndFactor();
+      int failed_clique = trial_ok ? -1 :
+          tree_solver_->last_failed_subsystem();
+
+      // Reset pivot threshold for runtime.
+      for (auto* sub : tree_solver_->subsystems()) {
+        auto* ds = dynamic_cast<DynamicSubsystem*>(sub);
+        if (ds) ds->SetPivotCheckThreshold(0);
+      }
+
+      if (failed_clique < 0) {
+        // Trial succeeded. Mark as factored for the algorithm's first iter.
+        tree_solver_->set_factored_at_current_scaling(true);
+        break;
+      }
+
+      // Demote a dual from the failing supernode.
+      auto& sn = clique_tree.supernodes[failed_clique];
+      int parent = clique_tree.node_to_parent[failed_clique];
+      int demoted = -1, demoted_pos = -1;
+      for (int j = (int)sn.size() - 1; j >= 0; --j) {
+        if (sn[j] >= num_primal_vars) {
+          demoted = sn[j];
+          demoted_pos = j;
+          break;
+        }
+      }
+      if (demoted >= 0 && parent >= 0) {
+        sn.erase(sn.begin() + demoted_pos);
+        clique_tree.separators[failed_clique].push_back(demoted);
+        clique_tree.supernodes[parent].push_back(demoted);
+        ++total_demotions;
+        continue;  // Retry with repaired tree + fresh decomposition.
+      }
+      // Cannot demote — switch root to RLDLT.
+      auto* ds = dynamic_cast<DynamicSubsystem*>(
+          tree_solver_->subsystem(failed_clique));
+      if (ds) ds->SetIndefiniteFactorization(IndefiniteFactorization::kRLDLT);
+      break;
     }
-    int num_primal_d = num_primal_vars;
-    for (auto* assembler : decomposed) {
-      auto adapter =
-          std::make_unique<AssemblerAdapter>(assembler);
-      adapter->set_contribution_type(
-          ClassifyCliqueContribution(assembler, num_primal_d));
-      tree_solver_->push_back(std::move(adapter));
-    }
-    tree_solver_->SetUseGenericFactorization(
-        config.tree.use_generic_factorization);
-    tree_solver_->SetUseLUForIndefinite(config.tree.use_lu_for_indefinite);
-    tree_solver_->SetUseLAPACKForIndefinite(config.tree.use_lapack_for_indefinite);
-    tree_solver_->FinalizeStructure(clique_tree, config.rhs_cols, arena,
-                                    num_primal_vars);
-    tree_solver_->SetFactorizationMode(config.tree.left_looking);
-    tree_solver_->EnableAutoUpdateAtAssemble(true);
-    tree_solver_->SetNumThreads(config.num_threads);
+    tree_solver_->set_num_demotions(total_demotions);
     return tree_solver_;
   }
 

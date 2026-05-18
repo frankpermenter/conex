@@ -494,8 +494,20 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
  public:
   int last_failed_subsystem() const { return last_failed_subsystem_; }
   KKTSubsystemBase* subsystem(int k) { return subsystems_.at(k); }
-  // Number of dual demotions performed during FinalizeStructure trial.
+  const std::vector<KKTSubsystemBase*>& subsystems() const {
+    return subsystems_;
+  }
+  const std::vector<KKTSubsystemBase*>& solve_order() const {
+    return solve_order_;
+  }
+  const std::vector<ConeConstraint*>& cone_constraints() const {
+    return cone_constraints_;
+  }
   int num_demotions() const { return num_demotions_; }
+  void set_num_demotions(int n) { num_demotions_ = n; }
+  void set_factored_at_current_scaling(bool v) {
+    factored_at_current_scaling_ = v;
+  }
  private:
   int last_failed_subsystem_ = -1;
   int num_demotions_ = 0;

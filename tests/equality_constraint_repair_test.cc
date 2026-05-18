@@ -343,24 +343,27 @@ TEST(EqualityRepair, ForcedBadCliqueTree) {
     EXPECT_LT(result.duals.stationarity_gradient.norm(), 1e-2);
   }
 
-  // LU: demotion fires (1 dual demoted), but residual degrades.
+  // LU with user-provided bad tree: no repair (user takes responsibility).
+  // The singular supernode causes LU to fail.  We just verify no crash.
   {
     SolverConfiguration lu_config;
     lu_config.tree.use_lu_for_indefinite = true;
     auto solver = Solver::Build(model, ct, lu_config);
-    int nd = solver.tree_solver() ? solver.tree_solver()->num_demotions() : 0;
-    EXPECT_GT(nd, 0);  // demotion must occur
+    // No demotion — user-provided trees are not repaired.
+    EXPECT_EQ(solver.tree_solver()->num_demotions(), 0);
+    // Solve may fail or produce bad residuals — that's expected.
     auto result = solver.Solve(ThetaContinuation{1e-8, 200, 1});
-    // LU after demotion has degraded residuals on this pathological tree.
-    // The test documents this known limitation.
-    double eq_res = 0;
-    for (const auto& r : result.duals.eq_residual)
-      eq_res = std::max(eq_res, r.norm());
-    printf("  LU forced tree: conv=%d iter=%d dem=%d eq_res=%.2e stat=%.2e\n",
-           result.converged, result.iterations, nd, eq_res,
-           result.duals.stationarity_gradient.norm());
-    // We don't assert convergence here — this is a known pathological case.
-    // The test verifies that demotion fires and the solver doesn't crash.
+    printf("  LU user tree: conv=%d iter=%d\n",
+           result.converged, result.iterations);
+  }
+
+  // LU with default AMD tree: the repair in MakeTreeSolver handles it.
+  // This problem is small enough that AMD avoids the bad grouping,
+  // so no demotion is needed.  Verify convergence.
+  {
+    auto r = SolveLU(model);
+    EXPECT_TRUE(r.converged);
+    EXPECT_LT(r.eq_residual_norm, 1e-3);
   }
 }
 

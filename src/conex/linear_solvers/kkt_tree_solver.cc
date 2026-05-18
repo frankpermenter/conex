@@ -1,6 +1,4 @@
 #include "conex/linear_solvers/kkt_tree_solver.h"
-#include "conex/linear_solvers/cholesky_solvers.h"
-#include "conex/common/eja_ops.h"
 #include "conex/common/nonneg_orthant_ops.h"
 #include "conex/common/equality_constraint.h"
 #include "conex/common/linear_constraint.h"
@@ -789,115 +787,22 @@ void T::BindContributors(const std::vector<int>& adapter_to_clique) {
 }
 
 void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
-                          Arena* arena, int num_primal_vars) {
-  CliqueTree working_tree = clique_tree;
-  num_demotions_ = 0;
+                          Arena* arena, int /*num_primal_vars*/) {
+  std::vector<bool> needs_indefinite;
+  auto adapter_to_clique = ClassifyCliques(clique_tree, &needs_indefinite);
+  CreateSubsystems(needs_indefinite);
 
-  // Check if tree has dual variables (equality constraints).
-  bool has_duals = false;
-  if (num_primal_vars > 0) {
-    for (const auto& sn : working_tree.supernodes) {
-      for (int v : sn) {
-        if (v >= num_primal_vars) { has_duals = true; break; }
-      }
-      if (has_duals) break;
-    }
-  }
-  bool do_repair = (use_lu_for_indefinite_ || use_lapack_for_indefinite_) &&
-                    has_duals;
-
-  for (int repair_iter = 0; repair_iter < 20; ++repair_iter) {
-    // --- Build subsystems from current tree ---
-    std::vector<bool> needs_indefinite;
-    auto adapter_to_clique = ClassifyCliques(working_tree, &needs_indefinite);
-    CreateSubsystems(needs_indefinite);
-
-    CONEX_CHECK(working_tree.supernodes.size() == subsystems_.size());
-    for (int i = 0; i < static_cast<int>(subsystems_.size()); ++i) {
-      subsystems_[i]->SetSupernodes(working_tree.supernodes.at(i));
-      subsystems_[i]->SetSeparators(working_tree.separators.at(i));
-    }
-
-    AllocateArenaAndBind(rhs_cols, arena);
-    for (auto& s : subsystems_) s->Initialize();
-
-    ComputeEliminationOrder(working_tree);
-    BindContributors(adapter_to_clique);
-
-    // --- Trial factorization to detect ill-conditioned supernodes ---
-    if (do_repair) {
-      // Use stricter pivot threshold for trial to catch near-singular blocks.
-      for (auto* sub : subsystems_) {
-        auto* ds = dynamic_cast<DynamicSubsystem*>(sub);
-        if (ds) ds->SetPivotCheckThreshold(1e-6);
-      }
-      // Set W=I scaling (matching what theta_cont does at iteration 0),
-      // then assemble.  This ensures the trial sees the same matrix as
-      // the first solve iteration.
-      {
-        auto W = MakeRowSpace();
-        EuclideanJordanAlgebra::setOnes(W);
-        SetScaling(W);
-      }
-      UpdateAssemblerData();
-      int failed_clique = -1;
-      for (auto* node : solve_order_) {
-        if (!node->children().empty()) node->GatherFromChildren();
-        if (!node->DoEliminateSupernodeColumns()) {
-          // Find subsystem index.
-          for (int k = 0; k < static_cast<int>(subsystems_.size()); ++k) {
-            if (subsystems_[k] == node) { failed_clique = k; break; }
-          }
-          break;
-        }
-        node->DoComputeSeparatorSchurComplement();
-      }
-
-      if (failed_clique >= 0) {
-        auto& sn = working_tree.supernodes[failed_clique];
-        int parent = working_tree.node_to_parent[failed_clique];
-
-        // Find last dual in the supernode.
-        int demoted = -1;
-        int demoted_pos = -1;
-        for (int j = static_cast<int>(sn.size()) - 1; j >= 0; --j) {
-          if (sn[j] >= num_primal_vars) {
-            demoted = sn[j];
-            demoted_pos = j;
-            break;
-          }
-        }
-
-        if (demoted >= 0 && parent >= 0) {
-          // Demote: supernode → separator of this clique,
-          //         add as supernode of parent clique.
-          sn.erase(sn.begin() + demoted_pos);
-          working_tree.separators[failed_clique].push_back(demoted);
-          working_tree.supernodes[parent].push_back(demoted);
-          CONEX_CHECK(working_tree.CheckRunningIntersectionProperty());
-          ++num_demotions_;
-          // Clear state for rebuild.
-          owned_sep_buffers_.clear();
-          continue;  // Retry with repaired tree.
-        }
-        // Cannot demote (no dual or root clique) — switch this
-        // subsystem to RLDLT for the solve phase.
-        auto* ds = dynamic_cast<DynamicSubsystem*>(
-            subsystems_[failed_clique]);
-        if (ds) ds->SetIndefiniteFactorization(IndefiniteFactorization::kRLDLT);
-      }
-    }
-    // Trial factorization succeeded — mark as factored so the
-    // algorithm's first AssembleAndFactor at the same W=I is a no-op.
-    if (do_repair) factored_at_current_scaling_ = true;
-    break;  // Trial succeeded or repair not applicable.
+  CONEX_CHECK(clique_tree.supernodes.size() == subsystems_.size());
+  for (int i = 0; i < static_cast<int>(subsystems_.size()); ++i) {
+    subsystems_[i]->SetSupernodes(clique_tree.supernodes.at(i));
+    subsystems_[i]->SetSeparators(clique_tree.separators.at(i));
   }
 
-  // Reset det threshold for runtime factorizations.
-  for (auto* sub : subsystems_) {
-    auto* ds = dynamic_cast<DynamicSubsystem*>(sub);
-    if (ds) ds->SetPivotCheckThreshold(1e-10);
-  }
+  AllocateArenaAndBind(rhs_cols, arena);
+  for (auto& s : subsystems_) s->Initialize();
+
+  ComputeEliminationOrder(clique_tree);
+  BindContributors(adapter_to_clique);
 
   // --- Finalize: solve arena and separator metadata ---
   AllocateSolveArena();

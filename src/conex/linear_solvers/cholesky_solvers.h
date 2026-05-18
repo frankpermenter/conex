@@ -304,15 +304,18 @@ class DynamicSubsystem : public KKTSubsystem {
  private:
   bool use_lu_active() const {
     return indefinite_ &&
-           indefinite_factorization_ == IndefiniteFactorization::kLU;
+           indefinite_factorization_ == IndefiniteFactorization::kLU &&
+           !use_rldlt_fallback_;
   }
   bool use_lapack_active() const {
     return indefinite_ &&
-           indefinite_factorization_ == IndefiniteFactorization::kLAPACK;
+           indefinite_factorization_ == IndefiniteFactorization::kLAPACK &&
+           !use_rldlt_fallback_;
   }
   bool use_rldlt_active() const {
-    return indefinite_ &&
-           indefinite_factorization_ == IndefiniteFactorization::kRLDLT;
+    return (indefinite_ &&
+            indefinite_factorization_ == IndefiniteFactorization::kRLDLT) ||
+           use_rldlt_fallback_;
   }
 
   // LAPACK dsytrf: symmetric indefinite factorization with Bunch-Kaufman
@@ -325,6 +328,7 @@ class DynamicSubsystem : public KKTSubsystem {
 
   bool DoEliminateSupernodeColumns() override {
     failed_pivot_index_ = -1;
+    use_rldlt_fallback_ = false;
     if (indefinite_ &&
         indefinite_factorization_ == IndefiniteFactorization::kLU) {
       const int nr = supernode_submatrix().rows();
@@ -334,15 +338,21 @@ class DynamicSubsystem : public KKTSubsystem {
       sn_full.triangularView<Eigen::StrictlyUpper>() =
           sn_full.transpose();
       lu_.compute(sn_full);
-      // Check pivots: trial uses configurable threshold, runtime
-      // checks for exact singularity (min_pivot == 0).
-      double tol = (pivot_check_threshold_ > 0)
-                       ? pivot_check_threshold_
-                       : 0;
-      for (int i = 0; i < nr; ++i) {
-        if (!(std::abs(lu_.matrixLU()(i, i)) > tol)) {
-          failed_pivot_index_ = i;
-          return false;
+      if (pivot_check_threshold_ > 0) {
+        // Trial mode: report failure for demotion.
+        for (int i = 0; i < nr; ++i) {
+          if (!(std::abs(lu_.matrixLU()(i, i)) > pivot_check_threshold_)) {
+            failed_pivot_index_ = i;
+            return false;
+          }
+        }
+      } else {
+        // Runtime: fall back to RLDLT on exact singularity.
+        double min_pivot = lu_.matrixLU().diagonal().cwiseAbs().minCoeff();
+        if (!(min_pivot > 0)) {
+          rldlt_.compute(supernode_submatrix());
+          use_rldlt_fallback_ = true;
+          return rldlt_.info() == Eigen::Success;
         }
       }
       return true;
@@ -477,6 +487,7 @@ class DynamicSubsystem : public KKTSubsystem {
   }
 
   bool indefinite_ = false;
+  bool use_rldlt_fallback_ = false;  // runtime fallback on exact singularity
   double pivot_check_threshold_ = 0;  // 0 = disabled (runtime), >0 = trial
   int failed_pivot_index_ = -1;  // pivot index that caused fallback
   IndefiniteFactorization indefinite_factorization_ =
