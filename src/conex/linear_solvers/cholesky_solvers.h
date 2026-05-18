@@ -288,7 +288,7 @@ class CholeskySolver : public KKTSubsystemBase {
 };
 
 // Factorization mode for DynamicSubsystem.
-enum class IndefiniteFactorization { kRLDLT, kLU };
+enum class IndefiniteFactorization { kRLDLT, kLU, kLAPACK };
 
 class DynamicSubsystem : public KKTSubsystem {
  public:
@@ -298,6 +298,8 @@ class DynamicSubsystem : public KKTSubsystem {
     indefinite_factorization_ = f;
   }
   void SetLUDetThreshold(double tol) { lu_det_threshold_ = tol; }
+  // Index of the zero/small pivot that caused failure (-1 if none).
+  int failed_pivot_index() const { return failed_pivot_index_; }
 
  private:
   // Runtime dispatch: LU is preferred when requested, but falls back
@@ -307,33 +309,105 @@ class DynamicSubsystem : public KKTSubsystem {
            indefinite_factorization_ == IndefiniteFactorization::kLU &&
            !lu_fell_back_;
   }
+  bool use_lapack_active() const {
+    return indefinite_ &&
+           indefinite_factorization_ == IndefiniteFactorization::kLAPACK &&
+           !lu_fell_back_;
+  }
   bool use_rldlt_active() const {
     return (indefinite_ &&
             indefinite_factorization_ == IndefiniteFactorization::kRLDLT) ||
            lu_fell_back_;
   }
 
+  // LAPACK dsytrf: symmetric indefinite factorization with Bunch-Kaufman
+  // pivoting.  Returns info (0 = success, k > 0 = zero pivot at position k).
+  static int Dsytrf(int n, double* A, int lda, int* ipiv, double* work,
+                    int lwork);
+  // LAPACK dsytrs: solve using factored output from dsytrf.
+  static void Dsytrs(int n, int nrhs, const double* A, int lda,
+                     const int* ipiv, double* B, int ldb);
+
   bool DoEliminateSupernodeColumns() override {
     lu_fell_back_ = false;
+    failed_pivot_index_ = -1;
     if (indefinite_ &&
         indefinite_factorization_ == IndefiniteFactorization::kLU) {
       const int nr = supernode_submatrix().rows();
       if (nr == 0) return true;
-      // Supernode submatrix is stored lower-triangular (symmetric).
-      // LU needs the full symmetric matrix, copied to owned storage.
       MatrixXd sn_full(nr, nr);
       sn_full.triangularView<Eigen::Lower>() = supernode_submatrix();
       sn_full.triangularView<Eigen::StrictlyUpper>() =
           sn_full.transpose();
       lu_.compute(sn_full);
-      // Check the minimum absolute diagonal of U (LU pivot).
-      // This is a better conditioning measure than det for large matrices.
       double min_pivot = lu_.matrixLU().diagonal().cwiseAbs().minCoeff();
       if (!(min_pivot > lu_det_threshold_)) {
-        // Fall back to RLDLT for this clique.
+        // Record which pivot failed.
+        for (int i = 0; i < nr; ++i) {
+          if (!(std::abs(lu_.matrixLU()(i, i)) > lu_det_threshold_)) {
+            failed_pivot_index_ = i;
+            break;
+          }
+        }
         lu_fell_back_ = true;
         rldlt_.compute(supernode_submatrix());
         return rldlt_.info() == Eigen::Success;
+      }
+      return true;
+    }
+    if (indefinite_ &&
+        indefinite_factorization_ == IndefiniteFactorization::kLAPACK) {
+      const int nr = supernode_submatrix().rows();
+      if (nr == 0) return true;
+      // dsytrf operates on a full symmetric matrix (lower triangle).
+      // Copy the lower triangle from the supernode submatrix.
+      lapack_sn_.resize(nr, nr);
+      lapack_sn_.triangularView<Eigen::Lower>() = supernode_submatrix();
+      lapack_sn_.triangularView<Eigen::StrictlyUpper>() =
+          lapack_sn_.transpose();
+      lapack_ipiv_.resize(nr);
+      // Workspace query.
+      double work_query;
+      Dsytrf(nr, lapack_sn_.data(), nr, lapack_ipiv_.data(), &work_query, -1);
+      int lwork = static_cast<int>(work_query);
+      lapack_work_.resize(lwork);
+      // Factor.
+      int info = Dsytrf(nr, lapack_sn_.data(), nr, lapack_ipiv_.data(),
+                        lapack_work_.data(), lwork);
+      if (info > 0) {
+        // Exact singularity at pivot info-1 (0-based).
+        failed_pivot_index_ = info - 1;
+        lu_fell_back_ = true;
+        rldlt_.compute(supernode_submatrix());
+        return rldlt_.info() == Eigen::Success;
+      }
+      // Check for near-singular pivots in D.
+      // D has 1x1 and 2x2 blocks indicated by ipiv.
+      for (int i = 0; i < nr; ) {
+        if (lapack_ipiv_[i] > 0) {
+          // 1x1 pivot.
+          if (!(std::abs(lapack_sn_(i, i)) > lu_det_threshold_)) {
+            failed_pivot_index_ = i;
+            lu_fell_back_ = true;
+            rldlt_.compute(supernode_submatrix());
+            return rldlt_.info() == Eigen::Success;
+          }
+          ++i;
+        } else {
+          // 2x2 pivot at (i, i+1).
+          // Check if the 2x2 block is near-singular.
+          double a = lapack_sn_(i, i);
+          double b = lapack_sn_(i + 1, i);
+          double d = lapack_sn_(i + 1, i + 1);
+          double det2 = a * d - b * b;
+          if (!(std::abs(det2) > lu_det_threshold_ * lu_det_threshold_)) {
+            failed_pivot_index_ = i;
+            lu_fell_back_ = true;
+            rldlt_.compute(supernode_submatrix());
+            return rldlt_.info() == Eigen::Success;
+          }
+          i += 2;
+        }
       }
       return true;
     }
@@ -350,6 +424,18 @@ class DynamicSubsystem : public KKTSubsystem {
     const int sep = separator_rows().rows();
     if (use_lu_active()) {
       temp_ = lu_.solve(separator_rows().transpose());
+      for (int j = 0; j < sep; j++) {
+        separator_schur_complement().col(j).tail(sep - j).noalias() -=
+            separator_rows().bottomRows(sep - j) * temp_.col(j);
+      }
+      return;
+    }
+    if (use_lapack_active()) {
+      // Solve A * X = S' using dsytrs.
+      const int nr = lapack_sn_.rows();
+      temp_ = separator_rows().transpose();
+      Dsytrs(nr, sep, lapack_sn_.data(), nr, lapack_ipiv_.data(),
+             temp_.data(), nr);
       for (int j = 0; j < sep; j++) {
         separator_schur_complement().col(j).tail(sep - j).noalias() -=
             separator_rows().bottomRows(sep - j) * temp_.col(j);
@@ -377,6 +463,10 @@ class DynamicSubsystem : public KKTSubsystem {
     if (y.rows() == 0) return;
     if (use_lu_active()) {
       y = lu_.solve(y);
+    } else if (use_lapack_active()) {
+      const int nr = lapack_sn_.rows();
+      Dsytrs(nr, y.cols(), lapack_sn_.data(), nr, lapack_ipiv_.data(),
+             y.data(), y.outerStride());
     } else if (use_rldlt_active()) {
       y = rldlt_.solve(y);
     } else {
@@ -390,17 +480,22 @@ class DynamicSubsystem : public KKTSubsystem {
     if (!indefinite_) {
       llt_.matrixL().transpose().solveInPlace(y);
     }
-    // LU, RLDLT: right factor is identity (Schur complement mode).
+    // LU, LAPACK, RLDLT: right factor is identity (Schur complement mode).
   }
 
   bool indefinite_ = false;
-  bool lu_fell_back_ = false;  // true if LU was requested but RLDLT used
-  double lu_det_threshold_ = 0;  // |det| below this triggers RLDLT fallback
+  bool lu_fell_back_ = false;  // true if LU/LAPACK was requested but RLDLT used
+  double lu_det_threshold_ = 0;
+  int failed_pivot_index_ = -1;  // pivot index that caused fallback
   IndefiniteFactorization indefinite_factorization_ =
       IndefiniteFactorization::kRLDLT;
   Eigen::LLT<MatrixXd> llt_;
   Eigen::RLDLT<MatrixXd> rldlt_;
   Eigen::PartialPivLU<MatrixXd> lu_;
+  // LAPACK dsytrf storage.
+  MatrixXd lapack_sn_;
+  Eigen::VectorXi lapack_ipiv_;
+  Eigen::VectorXd lapack_work_;
   MatrixXd temp_;
 };
 

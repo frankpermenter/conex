@@ -690,14 +690,18 @@ void T::CreateSubsystems(const std::vector<bool>& needs_indefinite) {
     } else if (needs_indefinite[i]) {
         auto ds = std::make_unique<DynamicSubsystem>();
         ds->MarkIndefinite();
-        if (use_lu_for_indefinite_) {
+        if (use_lapack_for_indefinite_) {
+          ds->SetIndefiniteFactorization(IndefiniteFactorization::kLAPACK);
+        } else if (use_lu_for_indefinite_) {
           ds->SetIndefiniteFactorization(IndefiniteFactorization::kLU);
         }
         subsystems_.push_back(ds.get());
         owned_subsystems_.push_back(std::move(ds));
     } else if (use_generic_factorization_) {
         auto ds = std::make_unique<DynamicSubsystem>();
-        if (use_lu_for_indefinite_) {
+        if (use_lapack_for_indefinite_) {
+          ds->SetIndefiniteFactorization(IndefiniteFactorization::kLAPACK);
+        } else if (use_lu_for_indefinite_) {
           ds->SetIndefiniteFactorization(IndefiniteFactorization::kLU);
         }
         subsystems_.push_back(ds.get());
@@ -798,7 +802,8 @@ void T::FinalizeStructure(const CliqueTree& clique_tree, int rhs_cols,
       if (has_duals) break;
     }
   }
-  bool do_repair = use_lu_for_indefinite_ && has_duals;
+  bool do_repair = (use_lu_for_indefinite_ || use_lapack_for_indefinite_) &&
+                    has_duals;
 
   for (int repair_iter = 0; repair_iter < 20; ++repair_iter) {
     // --- Build subsystems from current tree ---

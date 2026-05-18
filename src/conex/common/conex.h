@@ -13,6 +13,9 @@ struct TreeSolverOptions {
   bool use_generic_factorization = false;
   // Use LU instead of RLDLT for indefinite cliques.
   bool use_lu_for_indefinite = false;
+  // Use LAPACK dsytrf (Bunch-Kaufman) for indefinite cliques.
+  // Returns zero-pivot index on failure for targeted demotion.
+  bool use_lapack_for_indefinite = false;
   int supernode_reorder_method = 0;  // SUPERNODE_REORDER_BFS_GREEDY
   int max_merge_supernode_size = 5;
 };

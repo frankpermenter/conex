@@ -31,6 +31,7 @@ add_library(tree_solver
   src/conex/linear_solvers/kkt_subsystem.cc
   src/conex/linear_solvers/assembler_adapter.cc
   src/conex/linear_solvers/tree_utils.cc
+  src/conex/linear_solvers/lapack_wrapper.cc
 )
 find_package(BLAS)
 target_link_libraries(tree_solver PUBLIC Eigen3::Eigen)

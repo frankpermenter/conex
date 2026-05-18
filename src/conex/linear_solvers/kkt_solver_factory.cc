@@ -210,6 +210,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
     tree_solver_->SetUseGenericFactorization(
         config.tree.use_generic_factorization);
     tree_solver_->SetUseLUForIndefinite(config.tree.use_lu_for_indefinite);
+    tree_solver_->SetUseLAPACKForIndefinite(config.tree.use_lapack_for_indefinite);
     tree_solver_->FinalizeStructure(clique_tree, config.rhs_cols, arena,
                                     num_primal_vars);
     tree_solver_->SetFactorizationMode(config.tree.left_looking);
@@ -317,6 +318,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
   tree_solver_->SetUseGenericFactorization(
       config.tree.use_generic_factorization);
   tree_solver_->SetUseLUForIndefinite(config.tree.use_lu_for_indefinite);
+  tree_solver_->SetUseLAPACKForIndefinite(config.tree.use_lapack_for_indefinite);
   tree_solver_->FinalizeStructure(clique_tree, config.rhs_cols, arena,
                                   num_primal_vars);
   tree_solver_->SetFactorizationMode(config.tree.left_looking);
