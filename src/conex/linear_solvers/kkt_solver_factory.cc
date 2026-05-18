@@ -262,8 +262,12 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
       }
 
       if (failed_clique < 0) {
-        // Trial succeeded. Mark as factored for the algorithm's first iter.
-        tree_solver_->set_factored_at_current_scaling(true);
+        if (total_demotions > 0) {
+          // Tree was repaired. Rebuild one more time without the trial
+          // to get a clean tree solver with no trial state.
+          do_repair = false;
+          continue;
+        }
         break;
       }
 
