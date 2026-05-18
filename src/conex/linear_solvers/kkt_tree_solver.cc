@@ -1353,10 +1353,23 @@ void T::SetWeights(const RowSpace& w) {
 }
 
 void T::SetScaling(const RowSpace& w) {
+  // Cheap hash: sum of first element of each segment + total L1 norm.
+  double hash = 0;
+  for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
+    const double* p = w.segment_ptr(ci);
+    int sz = w.sizes[ci];
+    if (sz > 0) hash += p[0];
+    for (int j = 0; j < sz; ++j) hash += std::abs(p[j]);
+  }
+  if (hash == last_scaling_hash_ && factored_at_current_scaling_) {
+    return;  // Same scaling, already factored — no-op.
+  }
   for (int ci = 0; ci < static_cast<int>(cone_constraints_.size()); ++ci) {
     cone_constraints_[ci]->SetScaling(w.segment_ptr(ci), w.sizes[ci]);
   }
+  last_scaling_hash_ = hash;
   factored_at_current_scaling_ = false;
+  AssembleAndFactor();
 }
 
 
