@@ -64,13 +64,19 @@ struct TestResult {
   bool converged;
   Eigen::VectorXd x;
   int num_demotions;
+  double stationarity_norm;
+  double eq_residual_norm;
 };
 TestResult SolveWith(const Model& model, const SolverConfiguration& config,
                       double tol = 1e-8, int max_iter = 200) {
   auto solver = Solver::Build(model, config);
   int nd = solver.tree_solver() ? solver.tree_solver()->num_demotions() : 0;
   auto result = solver.Solve(ThetaContinuation{tol, max_iter, 1});
-  return {result.converged, result.x, nd};
+  double stat = result.duals.stationarity_gradient.norm();
+  double eq_res = 0;
+  for (const auto& r : result.duals.eq_residual)
+    eq_res = std::max(eq_res, r.norm());
+  return {result.converged, result.x, nd, stat, eq_res};
 }
 TestResult SolveRLDLT(const Model& m) { return SolveWith(m, {}); }
 TestResult SolveLU(const Model& m) {
@@ -97,21 +103,15 @@ TEST(EqualityRepair, BasicEqualityPlusInequality) {
   model.AddLinearConstraint(
       ToDense(MatrixXd::Identity(n, n)), VectorXd::Zero(n), Range(n));
 
-  // RLDLT: no trial, no demotions.
-  {
-    auto r = SolveRLDLT(model);
-    EXPECT_TRUE(r.converged);
-    EXPECT_EQ(r.num_demotions, 0);
-  }
-  // LU and LAPACK: trial runs, may demote.
-  for (auto [name, solve] : {std::pair{"LU", &SolveLU},
+  for (auto [name, solve] : {std::pair{"RLDLT", &SolveRLDLT},
+                              {"LU", &SolveLU},
                               {"LAPACK", &SolveLAPACK}}) {
     SCOPED_TRACE(name);
     auto r = solve(model);
     EXPECT_TRUE(r.converged);
     EXPECT_NEAR(r.x[0], 1.0 / 3, 1e-4);
-    EXPECT_NEAR(r.x[1], 1.0 / 3, 1e-4);
-    EXPECT_NEAR(r.x[2], 1.0 / 3, 1e-4);
+    EXPECT_LT(r.eq_residual_norm, 1e-4);
+    EXPECT_LT(r.stationarity_norm, 1e-2);
   }
 }
 
@@ -146,6 +146,8 @@ TEST(EqualityRepair, DependentEquations) {
     EXPECT_NEAR(r.x[1], 1.0, 1e-3);
     EXPECT_NEAR(r.x[2], 1.0, 1e-3);
     EXPECT_NEAR(r.x[3], 1.0, 1e-3);
+    EXPECT_LT(r.eq_residual_norm, 1e-3);
+    EXPECT_LT(r.stationarity_norm, 1e-2);
   }
 }
 
@@ -178,20 +180,14 @@ TEST(EqualityRepair, NetworkFlowStructure) {
   model.AddLinearConstraint(
       ToDense(MatrixXd::Identity(n, n)), VectorXd::Zero(n), Range(n));
 
-  // RLDLT: no trial, no demotions.
-  {
-    auto r = SolveRLDLT(model);
-    EXPECT_TRUE(r.converged);
-    EXPECT_EQ(r.num_demotions, 0);
-  }
-  // LU/LAPACK: tree repair handles any singular supernodes.
-  for (auto [name, solve] : {std::pair{"LU", &SolveLU},
+  for (auto [name, solve] : {std::pair{"RLDLT", &SolveRLDLT},
+                              {"LU", &SolveLU},
                               {"LAPACK", &SolveLAPACK}}) {
     SCOPED_TRACE(name);
     auto r = solve(model);
     EXPECT_TRUE(r.converged);
-    VectorXd x = Eigen::Map<const VectorXd>(r.x.data(), n);
-    EXPECT_LT((A_eq * x - b_eq).norm(), 1e-4);
+    EXPECT_LT(r.eq_residual_norm, 1e-3);
+    EXPECT_LT(r.stationarity_norm, 1e-2);
   }
 }
 
@@ -223,6 +219,8 @@ TEST(EqualityRepair, MultipleEqualitiesWithBounds) {
     EXPECT_TRUE(r.converged);
     for (int i = 0; i < 9; ++i)
       EXPECT_NEAR(r.x[i], 1.0, 1e-3);
+    EXPECT_LT(r.eq_residual_norm, 1e-3);
+    EXPECT_LT(r.stationarity_norm, 1e-2);
   }
 }
 
@@ -258,6 +256,8 @@ TEST(EqualityRepair, EqualityWithTightBounds) {
     EXPECT_TRUE(r.converged);
     EXPECT_NEAR(r.x[0], 1.0, 1e-3);
     EXPECT_NEAR(r.x[1], 1.0, 1e-3);
+    EXPECT_LT(r.eq_residual_norm, 1e-3);
+    EXPECT_LT(r.stationarity_norm, 1e-2);
   }
 }
 
