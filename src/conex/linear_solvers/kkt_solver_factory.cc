@@ -201,7 +201,7 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
                      !delayed_vars.empty();
     int total_demotions = 0;
 
-    for (int repair_iter = 0; repair_iter < 20; ++repair_iter) {
+    for (int repair_iter = 0; repair_iter < 2000; ++repair_iter) {
       // Decompose assemblers against current clique tree.
       tree_solver_ =
           std::make_unique<SymmetricLinearSystemTreeSolver>();
@@ -254,7 +254,6 @@ std::unique_ptr<SymmetricLinearSystemTreeSolver> MakeTreeSolver(
       bool trial_ok = tree_solver_->AssembleAndFactor();
       int failed_clique = trial_ok ? -1 :
           tree_solver_->last_failed_subsystem();
-
       // Reset pivot threshold for runtime.
       for (auto* sub : tree_solver_->subsystems()) {
         auto* ds = dynamic_cast<DynamicSubsystem*>(sub);
