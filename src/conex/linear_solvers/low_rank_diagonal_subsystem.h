@@ -297,6 +297,7 @@ class StackedLowRankAdapter : public AssemblerAdapter {
         clique_variables_(clique_variables) {}
 
   std::vector<int> variables() const override { return clique_variables_; }
+  void RegisterWithLazy() override {}  // No lazy registration needed.
 
   void BindSubsystem(LowRankPlusDiagonalSubsystem* subsystem) {
     subsystem_ = subsystem;

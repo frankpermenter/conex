@@ -20,7 +20,7 @@ class AssemblerAdapter {
 
   // Bind a contributor and register block info with the lazy evaluator.
   void BindContributor(std::unique_ptr<SubmatrixContributor> contributor);
-  void RegisterWithLazy();
+  virtual void RegisterWithLazy();
 
   // Original variable indices from the assembler.
   virtual std::vector<int> variables() const { return assembler_->variables(); }

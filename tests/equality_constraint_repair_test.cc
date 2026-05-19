@@ -545,5 +545,52 @@ TEST(EqualityRepair, FindDependentEquationsQSCORPIO) {
   EXPECT_EQ(qr.rank(), kept);
 }
 
+// Test 10: FindDependentEquations on a large full-rank system.
+// Uses QSCRS8 data (384x1169) to reproduce a crash in the
+// structured clique path of MakeTreeSolver.
+TEST(EqualityRepair, FindDependentEquationsLarge) {
+  const char* path = "tests/data/QSCRS8_eq.bin";
+  FILE* fp = fopen(path, "rb");
+  if (!fp) fp = fopen("../tests/data/QSCRS8_eq.bin", "rb");
+  if (fp) {
+    int32_t dims[3];
+    ASSERT_EQ(fread(dims, sizeof(int32_t), 3, fp), 3u);
+    const int m_file = dims[0], n_file = dims[1], nnz = dims[2];
+    std::vector<int32_t> indptr(n_file + 1), indices(nnz);
+    std::vector<double> data(nnz);
+    ASSERT_EQ(fread(indptr.data(), 4, n_file + 1, fp), (size_t)(n_file + 1));
+    ASSERT_EQ(fread(indices.data(), 4, nnz, fp), (size_t)nnz);
+    ASSERT_EQ(fread(data.data(), 8, nnz, fp), (size_t)nnz);
+    fclose(fp);
+    Eigen::SparseMatrix<double> C(m_file, n_file);
+    std::vector<Eigen::Triplet<double>> trips;
+    for (int j = 0; j < n_file; ++j)
+      for (int k = indptr[j]; k < indptr[j + 1]; ++k)
+        trips.emplace_back(indices[k], j, data[k]);
+    C.setFromTriplets(trips.begin(), trips.end());
+    auto dep = FindDependentEquations(C, Range(n_file));
+    printf("  QSCRS8: %dx%d, dep=%d\n", m_file, n_file, (int)dep.size());
+    EXPECT_EQ(dep.size(), 0u);
+    return;
+  }
+  // Fallback: random matrix.
+  const int m = 200, n = 400;
+  std::vector<Eigen::Triplet<double>> trips;
+  srand(42);
+  for (int i = 0; i < m; ++i)
+    for (int j = 0; j < n; ++j)
+      if (rand() % 100 < 5)
+        trips.emplace_back(i, j, (double)rand() / RAND_MAX + 0.01);
+  for (int i = 0; i < m; ++i)
+    trips.emplace_back(i, i, 1.0);
+  Eigen::SparseMatrix<double> C(m, n);
+  C.setFromTriplets(trips.begin(), trips.end());
+  auto vars = Range(n);
+
+  auto dep = FindDependentEquations(C, vars);
+  printf("  Large: %dx%d, dep=%d\n", m, n, (int)dep.size());
+  EXPECT_EQ(dep.size(), 0u);
+}
+
 }  // namespace
 }  // namespace conex

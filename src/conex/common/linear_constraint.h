@@ -196,6 +196,9 @@ class LinearConstraint : public ConeConstraint {
   void SetScaling(const double* w, int size) override {
     CONEX_DEMAND(size == constraint_matrix_.rows(),
                  "Scaling vector size must match number of constraint rows.");
+    // Ensure the gram evaluator is bound to our workspace (may not
+    // have been called via GetBlockAssembler for structured cliques).
+    gram_evaluator_.bind(&workspace_, &constraint_matrix_);
     workspace_.W = Eigen::Map<const Eigen::VectorXd>(w, size);
     gram_evaluator_.update_weights();
   }

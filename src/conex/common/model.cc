@@ -16,14 +16,38 @@ namespace conex {
 std::vector<int> FindDependentEquations(
     const Eigen::SparseMatrix<double>& C,
     const std::vector<int>& primal_vars,
-    double threshold) {
+    double threshold,
+    Arena* external_arena) {
   const int m = C.rows();  // number of equations
   if (m == 0) return {};
 
-  // Build a model with m variables and one linear constraint A = C^T.
-  // The KKT normal equations form A^T*W*A = C*W*C^T.  At W=I, this
-  // is C*C^T, whose rank equals the row rank of C.
-  Eigen::SparseMatrix<double> Ct = C.transpose();  // n × m
+  // Remove zero columns from C before building the gram model.
+  // Zero columns correspond to primal variables not touched by any
+  // equation — they can't contribute to row dependencies.
+  std::vector<int> col_nnz(C.cols(), 0);
+  for (int k = 0; k < C.outerSize(); ++k)
+    for (Eigen::SparseMatrix<double>::InnerIterator it(C, k); it; ++it)
+      col_nnz[it.col()]++;
+  std::vector<int> keep_cols;
+  for (int j = 0; j < C.cols(); ++j)
+    if (col_nnz[j] > 0) keep_cols.push_back(j);
+
+  // Build C_reduced with only non-zero columns.
+  std::vector<int> col_remap(C.cols(), -1);
+  for (int i = 0; i < (int)keep_cols.size(); ++i)
+    col_remap[keep_cols[i]] = i;
+  std::vector<Eigen::Triplet<double>> trips;
+  for (int k = 0; k < C.outerSize(); ++k)
+    for (Eigen::SparseMatrix<double>::InnerIterator it(C, k); it; ++it) {
+      int nc = col_remap[it.col()];
+      if (nc >= 0) trips.emplace_back(it.row(), nc, it.value());
+    }
+  Eigen::SparseMatrix<double> C_nz(m, (int)keep_cols.size());
+  C_nz.setFromTriplets(trips.begin(), trips.end());
+
+  // Build a model with m variables and one linear constraint A = C_nz^T.
+  // The KKT normal equations form A^T*W*A = C_nz*C_nz^T = C*C^T.
+  Eigen::SparseMatrix<double> Ct = C_nz.transpose();
   std::vector<int> eq_vars(m);
   std::iota(eq_vars.begin(), eq_vars.end(), 0);
 
@@ -39,13 +63,15 @@ std::vector<int> FindDependentEquations(
     s->SetThreshold(thr);
     return s;
   };
-  Arena arena;
-  auto system = KKTSystem::Build(gram_model, config, &arena);
+  Arena local_arena;
+  Arena* arena = external_arena ? external_arena : &local_arena;
+  auto cursor = arena->SaveCursor();
+  auto system = KKTSystem::Build(gram_model, config, arena);
   auto* kkt = system.kkt();
   auto* ts = system.tree_solver();
   if (!ts) return {};
 
-  // Set W = I and factor via the tree solver.
+  // Set W=I and factor via the tree solver.
   auto w = kkt->MakeRowSpace();
   EuclideanJordanAlgebra::setOnes(w);
   kkt->SetScaling(w);
@@ -70,6 +96,9 @@ std::vector<int> FindDependentEquations(
   }
 
   std::sort(dependent.begin(), dependent.end());
+
+  // Release arena memory used by the temporary tree solver.
+  if (cursor) arena->RestoreCursor(cursor);
   return dependent;
 }
 
@@ -266,39 +295,64 @@ std::pair<Model, Expansion> RemoveStructuralRankDeficiency(
         Eigen::SparseMatrix<double> C_remapped(data.C.rows(), new_ncols);
         C_remapped.setFromTriplets(t.begin(), t.end());
 
-        // Drop structurally dependent rows.
-        std::vector<int> row_map;
-        Eigen::SparseMatrix<double> C_struct_reduced =
-            DropStructurallyDependentRows(C_remapped, &row_map);
+        // Detect numerically dependent rows via C*C^T tree factorization
+        // (CholeskySkipZero detects zero pivots).  Run on the remapped
+        // matrix directly — this supersedes structural reduction.
+        int p_orig = C_remapped.rows();
+        std::vector<int> dep_rows;
+        // Run numerical dependency check when the system is
+        // underdetermined (more columns than rows) and non-trivial.
+        if (p_orig > 1 && new_ncols > p_orig) {
+          dep_rows = FindDependentEquations(C_remapped, new_primal);
+        }
 
-        // Numerically dependent equations are handled lazily:
-        // the tree repair in FinalizeStructure demotes duals from
-        // singular supernodes.  If demotion reaches the root,
-        // the RLDLT fallback regularizes the zero pivot — this is
-        // equivalent to a small quadratic penalty on the redundant
-        // multiplier, which doesn't affect the primal solution.
+        // Fall back to structural reduction when numerical check
+        // didn't run (overdetermined or degenerate systems).
+        if (dep_rows.empty() && p_orig > 1) {
+          std::vector<int> struct_row_map;
+          auto C_struct = DropStructurallyDependentRows(C_remapped,
+                                                        &struct_row_map);
+          if (C_struct.rows() < p_orig) {
+            // Mark rows NOT in struct_row_map as dependent.
+            std::set<int> kept(struct_row_map.begin(),
+                               struct_row_map.end());
+            for (int r = 0; r < p_orig; ++r)
+              if (!kept.count(r)) dep_rows.push_back(r);
+          }
+        }
 
-        Eigen::SparseMatrix<double>& C_reduced = C_struct_reduced;
-        int p_orig = data.C.rows();
-        int p_reduced = C_reduced.rows();
+        if (!dep_rows.empty()) {
+          std::set<int> dep_set(dep_rows.begin(), dep_rows.end());
+          // Build kept rows.
+          std::vector<int> kept;
+          for (int r = 0; r < p_orig; ++r)
+            if (!dep_set.count(r)) kept.push_back(r);
+          int p_kept = static_cast<int>(kept.size());
 
-        if (p_reduced < p_orig) {
+          std::vector<int> row_remap(p_orig, -1);
+          for (int i = 0; i < p_kept; ++i) row_remap[kept[i]] = i;
+
+          std::vector<Eigen::Triplet<double>> trips;
+          for (int k = 0; k < C_remapped.outerSize(); ++k)
+            for (Eigen::SparseMatrix<double>::InnerIterator it(C_remapped, k);
+                 it; ++it) {
+              int nr = row_remap[it.row()];
+              if (nr >= 0) trips.emplace_back(nr, it.col(), it.value());
+            }
+          Eigen::SparseMatrix<double> C_kept(p_kept, new_ncols);
+          C_kept.setFromTriplets(trips.begin(), trips.end());
+          Eigen::VectorXd d_kept(p_kept);
+          for (int i = 0; i < p_kept; ++i)
+            d_kept(i) = data.d(kept[i]);
+
           // Check consistency of dropped rows.
-          Eigen::VectorXd d_reduced(p_reduced);
-          for (int r = 0; r < p_reduced; ++r)
-            d_reduced(r) = data.d(row_map[r]);
-
-          std::set<int> kept(row_map.begin(), row_map.end());
-          Eigen::MatrixXd C_dense(C_remapped);
-
-          if (p_reduced > 0 && C_reduced.cols() > 0) {
-            Eigen::MatrixXd Cr_dense(C_reduced);
+          if (p_kept > 0) {
+            Eigen::MatrixXd Ck_dense(C_kept);
             Eigen::VectorXd x_check =
-                Cr_dense.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV)
-                    .solve(d_reduced);
-
-            for (int r = 0; r < p_orig; ++r) {
-              if (kept.count(r)) continue;
+                Ck_dense.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV)
+                    .solve(d_kept);
+            Eigen::MatrixXd C_dense(C_remapped);
+            for (int r : dep_rows) {
               double lhs = C_dense.row(r).dot(x_check);
               double rhs_val = data.d(r);
               if (std::abs(lhs - rhs_val) > 1e-6 * (1 + std::abs(rhs_val))) {
@@ -309,8 +363,7 @@ std::pair<Model, Expansion> RemoveStructuralRankDeficiency(
               }
             }
           }
-
-          reduced.AddEqualityConstraint(C_reduced, d_reduced, new_primal);
+          reduced.AddEqualityConstraint(C_kept, d_kept, new_primal);
         } else {
           reduced.AddEqualityConstraint(C_remapped, data.d, new_primal);
         }

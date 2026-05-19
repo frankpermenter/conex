@@ -8,6 +8,7 @@
 #include "conex/common/error_checking_macros.h"
 
 namespace conex {
+class Arena;
 namespace EuclideanJordanAlgebra {
 class BarrierConeOperations;
 class SymmetricConeOperations;
@@ -345,12 +346,14 @@ std::pair<Model, Expansion> RemoveStructuralRankDeficiency(
     const Model& problem);
 
 // Find numerically dependent rows in an equality constraint matrix C.
-// Builds a tree solver for C*C^T, factors with RLDLT, and returns
-// the indices of rows whose pivots are below the threshold.
+// Builds a tree solver for C*C^T, factors with CholeskySkipZero, and
+// returns the indices of rows whose pivots are below the threshold.
+// If arena is provided, uses it for temporary allocations (reset after).
 std::vector<int> FindDependentEquations(
     const Eigen::SparseMatrix<double>& C,
     const std::vector<int>& primal_vars,
-    double threshold = 1e-9);
+    double threshold = 1e-9,
+    Arena* arena = nullptr);
 
 // Legacy alias.
 inline std::pair<Model, Expansion> Preprocess(const Model& problem) {

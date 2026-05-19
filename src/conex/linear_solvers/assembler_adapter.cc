@@ -45,6 +45,7 @@ void T::SetEliminationPosition(
 
 void T::RegisterWithLazy() {
   CONEX_DEMAND(contributor_, "Contributor not bound.");
+  CONEX_DEMAND(assembler_, "Assembler pointer is null.");
   auto* block_assembler = assembler_->GetBlockAssembler();
   CONEX_DEMAND(block_assembler, "Assembler must provide a block assembler.");
   contributor_->Register(*block_assembler, variable_index_to_elimination_position_);
