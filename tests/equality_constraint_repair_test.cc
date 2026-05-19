@@ -490,5 +490,60 @@ TEST(EqualityRepair, QSCORPIO) {
   }
 }
 
+// Test 9: FindDependentEquations on QSCORPIO.
+// QSCORPIO has 280 equations, rank 250 → 30 dependent.
+TEST(EqualityRepair, FindDependentEquationsQSCORPIO) {
+  const char* path = "tests/data/QSCORPIO.bin";
+  FILE* f = fopen(path, "rb");
+  if (!f) f = fopen("../tests/data/QSCORPIO.bin", "rb");
+  if (!f) { GTEST_SKIP() << "QSCORPIO.bin not found"; }
+
+  int32_t n;
+  ASSERT_EQ(fread(&n, sizeof(int32_t), 1, f), 1u);
+  auto P = ReadCSC(f);
+  auto q = ReadVec(f);
+  auto A_eq = ReadCSC(f);
+  auto b_eq = ReadVec(f);
+  fclose(f);
+
+  ASSERT_EQ(A_eq.rows(), 280);
+  auto vars = Range(n);
+
+  auto dep = FindDependentEquations(A_eq, vars);
+  printf("  FindDependentEquations: %d dependent rows out of %d\n",
+         (int)dep.size(), (int)A_eq.rows());
+
+  // QSCORPIO has rank 250, so 30 dependent equations.
+  EXPECT_EQ(dep.size(), 30u);
+
+  // Verify: removing dependent rows gives full-rank C.
+  std::set<int> dep_set(dep.begin(), dep.end());
+  std::vector<Eigen::Triplet<double>> trips;
+  int new_row = 0;
+  for (int r = 0; r < A_eq.rows(); ++r) {
+    if (dep_set.count(r)) continue;
+    for (Eigen::SparseMatrix<double>::InnerIterator it(A_eq, 0); it; ++it) {}
+    // Use column-major iteration.
+    new_row++;
+  }
+  int kept = A_eq.rows() - (int)dep.size();
+  printf("  Kept %d equations (expected rank 250)\n", kept);
+  EXPECT_EQ(kept, 250);
+
+  // Build a reduced equality matrix and check its rank with QR.
+  std::vector<int> kept_rows;
+  for (int r = 0; r < A_eq.rows(); ++r)
+    if (!dep_set.count(r)) kept_rows.push_back(r);
+
+  Eigen::MatrixXd C_kept(kept, A_eq.cols());
+  for (int i = 0; i < kept; ++i)
+    C_kept.row(i) = Eigen::MatrixXd(A_eq).row(kept_rows[i]);
+
+  Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(C_kept);
+  qr.setThreshold(1e-10);
+  printf("  Kept matrix rank: %lld (should be %d)\n", qr.rank(), kept);
+  EXPECT_EQ(qr.rank(), kept);
+}
+
 }  // namespace
 }  // namespace conex

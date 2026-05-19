@@ -301,6 +301,7 @@ class DynamicSubsystem : public KKTSubsystem {
   // Index of the zero/small pivot that caused failure (-1 if none).
   int failed_pivot_index() const { return failed_pivot_index_; }
 
+
  private:
   bool use_lu_active() const {
     return indefinite_ &&
@@ -502,6 +503,124 @@ class DynamicSubsystem : public KKTSubsystem {
   MatrixXd temp_;
 };
 
+
+// LDL^T factorization that skips zero pivots: sets D(k)=0 and L(:,k)=0
+// so the Schur complement propagated to the parent is exact.  Used by
+// FindDependentEquations to detect numerically rank-deficient equations
+// via the tree solver for C*C^T.
+class CholeskySkipZero : public KKTSubsystem {
+ public:
+  void SetThreshold(double tol) { tol_ = tol; }
+
+  const std::vector<int>& zero_pivot_positions() const {
+    return zero_pivots_;
+  }
+
+ private:
+  // LDL^T factorization that skips zero pivots: sets D(k)=0 and
+  // L(:,k)=0 so the Schur complement is computed as if that
+  // row/column were absent.  The remaining pivots are exact.
+  bool DoEliminateSupernodeColumns() override {
+    auto sn = supernode_submatrix();
+    const int nr = sn.rows();
+    if (nr == 0) return true;
+    zero_pivots_.clear();
+    temp_.resize(nr);
+    // Symmetrize (tree stores lower triangle only).
+    for (int j = 0; j < nr; ++j)
+      for (int i = 0; i < j; ++i)
+        sn(i, j) = sn(j, i);
+
+    for (int k = 0; k < nr; ++k) {
+      int rs = nr - k - 1;
+      auto A21 = sn.col(k).tail(rs);
+      auto A10 = sn.row(k).head(k);
+      auto A20 = sn.bottomLeftCorner(rs, k);
+      // Schur complement update (D=0 for skipped pivots → no contribution).
+      if (k > 0) {
+        temp_.head(k) = sn.diagonal().head(k).asDiagonal() * A10.transpose();
+        sn(k, k) -= A10.dot(temp_.head(k));
+        if (rs > 0) A21.noalias() -= A20 * temp_.head(k);
+      }
+      double pivot = sn(k, k);
+      if (std::abs(pivot) <= tol_) {
+        sn(k, k) = 0;
+        if (rs > 0) A21.setZero();
+        zero_pivots_.push_back(k);
+      } else {
+        if (rs > 0) A21 /= pivot;
+      }
+    }
+    return true;
+  }
+
+  // Schur complement: S * A^{-1} * S^T where A = LDL^T with skipped pivots.
+  // Solve A * X = S^T via L^{-1}, D^{-1} (skip zeros), L^{-T}.
+  void DoComputeSeparatorSchurComplement() override {
+    const int sep = separator_rows().rows();
+    if (sep == 0 || separator_rows().cols() == 0) return;
+    const auto& sn = supernode_submatrix();
+    const int nr = sn.rows();
+    solve_buf_ = separator_rows().transpose();  // nr × sep
+    // L^{-1}.
+    for (int k = 0; k < nr; ++k)
+      for (int j = k + 1; j < nr; ++j)
+        solve_buf_.row(j) -= sn(j, k) * solve_buf_.row(k);
+    // D^{-1} (skip zero pivots).
+    for (int k = 0; k < nr; ++k) {
+      double dk = sn(k, k);
+      if (std::abs(dk) > tol_)
+        solve_buf_.row(k) /= dk;
+      else
+        solve_buf_.row(k).setZero();
+    }
+    // L^{-T}.
+    for (int k = nr - 1; k >= 0; --k)
+      for (int j = k + 1; j < nr; ++j)
+        solve_buf_.row(k) -= sn(j, k) * solve_buf_.row(j);
+    // Accumulate into separator Schur complement.
+    for (int j = 0; j < sep; j++) {
+      separator_schur_complement().col(j).tail(sep - j).noalias() -=
+          separator_rows().bottomRows(sep - j) * solve_buf_.col(j);
+    }
+  }
+
+  // Solve is not needed for dependency detection, but implement for
+  // completeness (same L D L^T solve with zero-pivot skip).
+  void DoApplyInverseOfLeftFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    if (y.rows() == 0) return;
+    const auto& sn = supernode_submatrix();
+    const int nr = sn.rows();
+    // L^{-1}.
+    for (int k = 0; k < nr; ++k)
+      for (int j = k + 1; j < nr; ++j)
+        y.row(j) -= sn(j, k) * y.row(k);
+    // D^{-1} (skip zero pivots).
+    for (int k = 0; k < nr; ++k) {
+      double dk = sn(k, k);
+      if (std::abs(dk) > tol_)
+        y.row(k) /= dk;
+      else
+        y.row(k).setZero();
+    }
+    // L^{-T}.
+    for (int k = nr - 1; k >= 0; --k)
+      for (int j = k + 1; j < nr; ++j)
+        y.row(k) -= sn(j, k) * y.row(j);
+  }
+
+  void DoApplyInverseOfRightFactorOfSupernodeSubmatrix(
+      Eigen::Ref<MatrixXd> y) const override {
+    // Schur complement mode: right factor is identity.
+    (void)y;
+  }
+
+  double tol_ = 1e-9;
+  std::vector<int> zero_pivots_;
+  Eigen::VectorXd temp_;
+  MatrixXd solve_buf_;
+};
 
 class WorkingLLTSubsystem : public KKTSubsystem {
  public:

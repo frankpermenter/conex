@@ -1,6 +1,10 @@
 #pragma once
+#include <functional>
+#include <memory>
 
 namespace conex {
+
+class KKTSubsystemBase;
 
 enum : int {
   CONEX_KKT_SOLVER_TREE = 3,
@@ -18,6 +22,9 @@ struct TreeSolverOptions {
   bool use_lapack_for_indefinite = false;
   int supernode_reorder_method = 0;  // SUPERNODE_REORDER_BFS_GREEDY
   int max_merge_supernode_size = 5;
+  // Optional factory for custom subsystem types (e.g., CholeskySkipZero).
+  // If set, all non-indefinite cliques use this instead of LLT.
+  std::function<std::unique_ptr<KKTSubsystemBase>()> subsystem_factory;
 };
 
 struct SolverConfiguration {

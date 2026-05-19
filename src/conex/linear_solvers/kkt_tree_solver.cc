@@ -695,6 +695,10 @@ void T::CreateSubsystems(const std::vector<bool>& needs_indefinite) {
         }
         subsystems_.push_back(ds.get());
         owned_subsystems_.push_back(std::move(ds));
+    } else if (subsystem_factory_) {
+        auto sub = subsystem_factory_();
+        subsystems_.push_back(sub.get());
+        owned_subsystems_.push_back(std::move(sub));
     } else if (use_generic_factorization_) {
         auto ds = std::make_unique<DynamicSubsystem>();
         if (use_lapack_for_indefinite_) {

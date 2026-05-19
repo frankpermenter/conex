@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include "conex/common/block_partition.h"
 #include "conex/common/cone_constraint.h"
@@ -290,6 +291,12 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   void SetUseGenericFactorization(bool enable) {
     use_generic_factorization_ = enable;
   }
+  // Optional factory for custom subsystem types (e.g., CholeskySkipZero).
+  // If set, overrides use_generic_factorization for non-indefinite cliques.
+  using SubsystemFactory = std::function<std::unique_ptr<KKTSubsystemBase>()>;
+  void SetSubsystemFactory(SubsystemFactory factory) {
+    subsystem_factory_ = std::move(factory);
+  }
   void SetUseLUForIndefinite(bool enable) {
     use_lu_for_indefinite_ = enable;
   }
@@ -516,6 +523,7 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
   double last_scaling_hash_ = -1;  // impossible initial value
   bool use_recursive_solve_ = false;
   bool use_generic_factorization_ = false;
+  SubsystemFactory subsystem_factory_;
   bool use_lu_for_indefinite_ = false;
   bool use_lapack_for_indefinite_ = false;
   // Leaf-parallel factorization: launch tasks from leaves, propagate up.

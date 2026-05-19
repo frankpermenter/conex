@@ -5,9 +5,73 @@
 #include <set>
 #include <stdexcept>
 
+#include "conex/common/eja_ops.h"
+#include "conex/common/kkt_system.h"
 #include "conex/common/structural_rank.h"
+#include "conex/linear_solvers/cholesky_solvers.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 
 namespace conex {
+
+std::vector<int> FindDependentEquations(
+    const Eigen::SparseMatrix<double>& C,
+    const std::vector<int>& primal_vars,
+    double threshold) {
+  const int m = C.rows();  // number of equations
+  if (m == 0) return {};
+
+  // Build a model with m variables and one linear constraint A = C^T.
+  // The KKT normal equations form A^T*W*A = C*W*C^T.  At W=I, this
+  // is C*C^T, whose rank equals the row rank of C.
+  Eigen::SparseMatrix<double> Ct = C.transpose();  // n × m
+  std::vector<int> eq_vars(m);
+  std::iota(eq_vars.begin(), eq_vars.end(), 0);
+
+  Model gram_model;
+  gram_model.AddLinearConstraint(Ct, Eigen::VectorXd::Zero(Ct.rows()), eq_vars);
+
+  // Build tree solver with CholeskySkipZero subsystems.
+  SolverConfiguration config;
+  double thr = threshold;
+  config.tree.subsystem_factory = [thr]()
+      -> std::unique_ptr<KKTSubsystemBase> {
+    auto s = std::make_unique<CholeskySkipZero>();
+    s->SetThreshold(thr);
+    return s;
+  };
+  Arena arena;
+  auto system = KKTSystem::Build(gram_model, config, &arena);
+  auto* kkt = system.kkt();
+  auto* ts = system.tree_solver();
+  if (!ts) return {};
+
+  // Set W = I and factor via the tree solver.
+  auto w = kkt->MakeRowSpace();
+  EuclideanJordanAlgebra::setOnes(w);
+  kkt->SetScaling(w);
+  kkt->AssembleAndFactor();
+
+  // Collect zero pivots from all subsystems and map back to
+  // original equation indices via the elimination permutation.
+  const auto& perm_inv = ts->perm_inv();
+  std::vector<int> dependent;
+  int elim_pos = 0;
+  for (auto* sub : ts->solve_order()) {
+    auto* csz = dynamic_cast<CholeskySkipZero*>(sub);
+    if (!csz) {
+      auto* ks = dynamic_cast<KKTSubsystem*>(sub);
+      if (ks) elim_pos += ks->supernode_submatrix().rows();
+      continue;
+    }
+    for (int local_idx : csz->zero_pivot_positions()) {
+      dependent.push_back(perm_inv[elim_pos + local_idx]);
+    }
+    elim_pos += csz->supernode_submatrix().rows();
+  }
+
+  std::sort(dependent.begin(), dependent.end());
+  return dependent;
+}
 
 std::pair<Model, Expansion> RemoveStructuralRankDeficiency(
     const Model& problem) {
