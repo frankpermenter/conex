@@ -153,14 +153,23 @@ struct SolverRHS {
     return *this;
   }
 
-  // Dot product (block-wise, no dense gather).
+  // Dot product (block-wise, includes separator contributions).
   double dot(const SolverRHS& other) const {
     double result = 0;
     int nb = supernodes->num_blocks();
+    int nc = supernodes->cols();
     for (int k = 0; k < nb; ++k)
       result += supernodes->block(k)
                     .cwiseProduct(other.supernodes->block(k))
                     .sum();
+    // Include separator data when not fully gathered into supernodes.
+    if (has_separators() && other.has_separators() &&
+        (!blocks_fully_gathered || !other.blocks_fully_gathered)) {
+      for (int k = 0; k < nb; ++k)
+        result += separators->block(k, nc)
+                      .cwiseProduct(other.separators->block(k, nc))
+                      .sum();
+    }
     return result;
   }
 
