@@ -122,18 +122,20 @@ Model LiftEqualitiesToPenalty(const Model& problem, double alpha) {
 
     // C^T C in primal_vars space → map to global.
     // C is m×p (p = pv.size()), C^T C is p×p.
-    // AddQuadraticCost(Q) contributes (1/2)x'Qx, so we need
-    // Q = 2*alpha*C'C to get alpha*x'C'Cx in the objective.
+    // Penalty alpha*|Cx-d|^2 = (1/2)x'(alpha*C'C)x - alpha*d'Cx + const.
+    // AddQuadraticCost(Q) contributes (1/2)x'Qx, so Q = alpha*C'C.
+    // Linear contribution: -alpha*C'd.
+    // Dual recovery: nu = alpha*(Cx-d) satisfies C'nu = alpha*C'(Cx-d).
     Eigen::SparseMatrix<double> CtC = (C.transpose() * C).pruned();
     for (int k = 0; k < CtC.outerSize(); ++k)
       for (Eigen::SparseMatrix<double>::InnerIterator it(CtC, k); it; ++it)
         ctc_trips.emplace_back(pv[it.row()], pv[it.col()],
-                               2.0 * alpha * it.value());
+                               alpha * it.value());
 
-    // -2 * alpha * C^T d in primal_vars space → map to global.
+    // -alpha * C^T d in primal_vars space → map to global.
     Eigen::VectorXd Ctd = Eigen::VectorXd(C.transpose() * d);
     for (int j = 0; j < (int)pv.size(); ++j)
-      penalty_linear(pv[j]) -= 2.0 * alpha * Ctd(j);
+      penalty_linear(pv[j]) -= alpha * Ctd(j);
   }
 
   // Build penalty quadratic cost (n×n sparse).

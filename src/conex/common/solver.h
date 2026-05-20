@@ -154,7 +154,10 @@ SolveResult Solver::Solve(const Algorithm& algo) {
         xv(j) = result.x(peq.primal_vars[j]);
       Eigen::VectorXd res = Eigen::MatrixXd(peq.C) * xv - peq.d;
       result.duals.eq_residual.push_back(res);
-      result.duals.nu.push_back(2.0 * peq.alpha * res);
+      // Convention: Lagrangian L = f(x) - nu'(Cx-d), so stationarity
+      // is Px + q - C'nu - A'lam = 0.  The penalty gradient is
+      // +alpha*C'(Cx-d), hence nu = -alpha*(Cx-d).
+      result.duals.nu.push_back(-peq.alpha * res);
     }
     // Stationarity gradient is already correct: the penalty Q term
     // 2*alpha*C'(Cx-d) equals C'nu, so grad_penalty = c + Qx + 2*alpha*C'(Cx-d) - A'lambda
