@@ -102,6 +102,82 @@ std::vector<int> FindDependentEquations(
   return dependent;
 }
 
+Model LiftEqualitiesToPenalty(const Model& problem, double alpha) {
+  // Accumulate the penalty quadratic and linear terms across all
+  // equality constraints, then build a new model without them.
+  const int n = problem.num_variables();
+  Eigen::VectorXd penalty_linear = Eigen::VectorXd::Zero(n);
+
+  // Collect C^T C triplets in the full n×n space.
+  std::vector<Eigen::Triplet<double>> ctc_trips;
+
+  for (int i = 0; i < problem.num_constraints(); ++i) {
+    const auto& c = problem.constraint(i);
+    auto* eq = std::get_if<Model::EqualityConstraintData>(&c);
+    if (!eq) continue;
+
+    const auto& C = eq->C;
+    const auto& d = eq->d;
+    const auto& pv = eq->primal_vars;
+
+    // C^T C in primal_vars space → map to global.
+    // C is m×p (p = pv.size()), C^T C is p×p.
+    Eigen::SparseMatrix<double> CtC = (C.transpose() * C).pruned();
+    for (int k = 0; k < CtC.outerSize(); ++k)
+      for (Eigen::SparseMatrix<double>::InnerIterator it(CtC, k); it; ++it)
+        ctc_trips.emplace_back(pv[it.row()], pv[it.col()],
+                               alpha * it.value());
+
+    // -2 * alpha * C^T d in primal_vars space → map to global.
+    Eigen::VectorXd Ctd = Eigen::VectorXd(C.transpose() * d);
+    for (int j = 0; j < (int)pv.size(); ++j)
+      penalty_linear(pv[j]) -= 2.0 * alpha * Ctd(j);
+  }
+
+  // Build penalty quadratic cost (n×n sparse).
+  Eigen::SparseMatrix<double> Q_penalty(n, n);
+  if (!ctc_trips.empty())
+    Q_penalty.setFromTriplets(ctc_trips.begin(), ctc_trips.end());
+
+  // Build new model: copy everything except equality constraints,
+  // add the penalty quadratic and adjust the linear cost.
+  Model result;
+  std::vector<int> all_vars(n);
+  std::iota(all_vars.begin(), all_vars.end(), 0);
+
+  for (int i = 0; i < problem.num_constraints(); ++i) {
+    std::visit([&](const auto& data) {
+      using T = std::decay_t<decltype(data)>;
+      if constexpr (std::is_same_v<T, Model::EqualityConstraintData>) {
+        // Skip — lifted into penalty.
+      } else if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
+        result.AddLinearConstraint(data.A, data.b, data.vars);
+      } else if constexpr (std::is_same_v<T, Model::SOCConstraintData>) {
+        result.AddSOCConstraint(data.A, data.b, data.vars);
+      } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
+        result.AddPSDConstraint(data.A_list, data.B, data.vars,
+                                data.use_chordal);
+      } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
+        result.AddQuadraticCost(data.Q_sparse, data.vars);
+      } else if constexpr (std::is_same_v<T, Model::BarrierConstraintData>) {
+        result.AddBarrierConstraint(data.A, data.b, data.vars, data.ops);
+      }
+    }, problem.constraint(i));
+  }
+
+  // Add penalty quadratic cost.
+  if (Q_penalty.nonZeros() > 0)
+    result.AddQuadraticCost(Q_penalty, all_vars);
+
+  // Combine original linear cost with penalty linear term.
+  Eigen::VectorXd combined_cost = penalty_linear;
+  if (problem.has_linear_cost())
+    combined_cost += problem.linear_cost();
+  result.SetLinearCost(combined_cost);
+
+  return result;
+}
+
 std::pair<Model, Expansion> RemoveStructuralRankDeficiency(
     const Model& problem) {
   const int n = problem.num_variables();

@@ -340,6 +340,12 @@ struct Expansion {
   }
 };
 
+// Lift equality constraints Cx=d into a quadratic penalty alpha*|Cx-d|^2
+// in the objective.  Returns a new Model with no equality constraints.
+// The penalty term adds alpha*C^TC to the quadratic cost and
+// -2*alpha*C^Td to the linear cost.
+Model LiftEqualitiesToPenalty(const Model& problem, double alpha = 1e6);
+
 // Drop structurally rank-deficient columns from linear constraints.
 // Returns (reduced_problem, expansion).
 std::pair<Model, Expansion> RemoveStructuralRankDeficiency(

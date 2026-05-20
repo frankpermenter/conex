@@ -95,6 +95,10 @@ PYBIND11_MODULE(_conex, m) {
       .def("num_variables", &Model::num_variables)
       .def("num_constraints", &Model::num_constraints);
 
+  m.def("lift_equalities_to_penalty", &LiftEqualitiesToPenalty,
+        py::arg("model"), py::arg("alpha") = 1e6,
+        "Lift Cx=d into alpha*|Cx-d|^2 penalty; returns model without equalities");
+
   // --- Solver ---
   py::class_<Solver>(m, "Solver")
       .def_static("build",
