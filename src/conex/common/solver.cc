@@ -14,8 +14,24 @@ Solver& Solver::operator=(Solver&&) noexcept = default;
 
 Solver Solver::Build(const Model& model,
                      const SolverConfiguration& config) {
-  auto [reduced, expansion] = RemoveStructuralRankDeficiency(model);
+  // Penalty formulation: lift equalities into objective before presolve.
+  const Model* input = &model;
+  Model penalized;
   Solver s;
+  if (config.penalty_alpha > 0) {
+    // Stash original equality constraints for post-solve dual reconstruction.
+    for (int i = 0; i < model.num_constraints(); ++i) {
+      auto* eq = std::get_if<Model::EqualityConstraintData>(&model.constraint(i));
+      if (eq) {
+        s.penalty_eqs_.push_back(
+            {config.penalty_alpha, eq->C, eq->d, eq->primal_vars});
+      }
+    }
+    penalized = LiftEqualitiesToPenalty(model, config.penalty_alpha);
+    input = &penalized;
+  }
+
+  auto [reduced, expansion] = RemoveStructuralRankDeficiency(*input);
   s.expansion_ = std::move(expansion);
   if (config.row_scale) {
     auto [scaled, row_scaling] = RowScaleModel(reduced);

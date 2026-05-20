@@ -103,14 +103,16 @@ PYBIND11_MODULE(_conex, m) {
   py::class_<Solver>(m, "Solver")
       .def_static("build",
            [](const Model& model, bool use_lu_for_indefinite,
-              bool use_lapack_for_indefinite) {
+              bool use_lapack_for_indefinite, double penalty_alpha) {
              SolverConfiguration config;
              config.tree.use_lu_for_indefinite = use_lu_for_indefinite;
              config.tree.use_lapack_for_indefinite = use_lapack_for_indefinite;
+             config.penalty_alpha = penalty_alpha;
              return Solver::Build(model, config);
            },
            py::arg("model"), py::arg("use_lu_for_indefinite") = false,
            py::arg("use_lapack_for_indefinite") = false,
+           py::arg("penalty_alpha") = 0.0,
            "Build solver from model")
       .def_static("build_with_clique_tree",
            [](const Model& model,

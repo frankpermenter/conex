@@ -46,6 +46,12 @@ struct SolverConfiguration {
   // for problems with large b values (e.g., bound constraints with big bounds).
   bool row_scale = false;
 
+  // If > 0, lift equality constraints Cx=d into a quadratic penalty
+  // alpha*|Cx-d|^2 in the objective, removing all equality constraints.
+  // Post-solve, equality duals are reconstructed as nu = alpha*(Cx-d).
+  // Use with HSDE algorithm (solve_raw("hsde")) for best results.
+  double penalty_alpha = 0;
+
   TreeSolverOptions tree;
 };
 

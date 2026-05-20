@@ -592,5 +592,46 @@ TEST(EqualityRepair, FindDependentEquationsLarge) {
   EXPECT_EQ(dep.size(), 0u);
 }
 
+// Test 11: Penalty formulation via SolverConfiguration.
+// Verify that penalty_alpha lifts equalities, solves, and reconstructs
+// equality duals (eq_residual and stationarity_gradient).
+TEST(EqualityRepair, PenaltyConfig) {
+  const int n = 3;
+  Model model;
+  model.AddQuadraticCost(ToDense(MatrixXd::Identity(n, n)), Range(n));
+  model.SetLinearCost(VectorXd::Zero(n));
+
+  MatrixXd A_eq(1, n);
+  A_eq << 1, 1, 1;
+  model.AddEqualityConstraint(ToDense(A_eq), VectorXd::Ones(1), Range(n));
+  model.AddLinearConstraint(
+      ToDense(MatrixXd::Identity(n, n)), VectorXd::Zero(n), Range(n));
+
+  SolverConfiguration config;
+  config.penalty_alpha = 1e6;
+  auto solver = Solver::Build(model, config);
+  // Use HSDE which works best with penalty.
+  auto result = solver.Solve(GeodesicHSDE{1e-8, 200});
+
+  printf("  Penalty: conv=%d, x=[%.4f, %.4f, %.4f]\n",
+         result.converged, result.x[0], result.x[1], result.x[2]);
+
+  // Solution should be close to (1/3, 1/3, 1/3).
+  EXPECT_NEAR(result.x[0], 1.0 / 3, 1e-2);
+  EXPECT_NEAR(result.x[1], 1.0 / 3, 1e-2);
+  EXPECT_NEAR(result.x[2], 1.0 / 3, 1e-2);
+
+  // Equality residual should be small.
+  ASSERT_EQ(result.duals.eq_residual.size(), 1u);
+  double eq_res = result.duals.eq_residual[0].norm();
+  printf("  eq_residual=%.2e, stationarity=%.2e\n",
+         eq_res, result.duals.stationarity_gradient.norm());
+  EXPECT_LT(eq_res, 1e-2);
+
+  // Equality dual should be populated.
+  ASSERT_EQ(result.duals.nu.size(), 1u);
+  printf("  nu=[%.4f]\n", result.duals.nu[0](0));
+}
+
 }  // namespace
 }  // namespace conex

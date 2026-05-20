@@ -104,6 +104,16 @@ class Solver {
   Expansion expansion_;
   RowScaling row_scaling_;
   Eigen::VectorXd reduced_linear_cost_;
+
+  // Penalty formulation state: original equality constraints stashed
+  // before lifting into the objective.  Used to reconstruct duals.
+  struct PenaltyInfo {
+    double alpha = 0;
+    Eigen::SparseMatrix<double> C;   // original equality matrix
+    Eigen::VectorXd d;               // original RHS
+    std::vector<int> primal_vars;    // original variable indices
+  };
+  std::vector<PenaltyInfo> penalty_eqs_;
 };
 
 // =====================================================================
@@ -130,6 +140,28 @@ SolveResult Solver::Solve(const Algorithm& algo) {
     result.optimality = ComputeOptimality(model.cost_rhs(), raw_x, raw.lambda);
     result.duals = ExtractDuals(raw_x, raw.lambda, model.cost_rhs());
   }
+
+  // Penalty formulation: reconstruct equality duals from primal solution.
+  // The penalty model's stationarity gradient already includes the
+  // 2*alpha*C'(Cx-d) term via the penalty Q.  We report it as the
+  // equality dual nu, and rewrite the stationarity gradient in terms
+  // of the original model: grad_original = grad_penalty - 2*alpha*C'(Cx-d) + C'nu
+  //                                      = grad_penalty  (since nu = 2*alpha*(Cx-d))
+  if (!penalty_eqs_.empty()) {
+    for (const auto& peq : penalty_eqs_) {
+      Eigen::VectorXd xv(peq.primal_vars.size());
+      for (int j = 0; j < (int)peq.primal_vars.size(); ++j)
+        xv(j) = result.x(peq.primal_vars[j]);
+      Eigen::VectorXd res = Eigen::MatrixXd(peq.C) * xv - peq.d;
+      result.duals.eq_residual.push_back(res);
+      result.duals.nu.push_back(2.0 * peq.alpha * res);
+    }
+    // Stationarity gradient is already correct: the penalty Q term
+    // 2*alpha*C'(Cx-d) equals C'nu, so grad_penalty = c + Qx + 2*alpha*C'(Cx-d) - A'lambda
+    //                                                = c + Qx + C'nu - A'lambda
+    // which is the original model's stationarity condition.
+  }
+
   result.converged = result.optimality.complementarity < 1e-4 &&
                      result.duals.stationarity_gradient.norm() < 1e-4;
   return result;
