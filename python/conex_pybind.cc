@@ -286,23 +286,23 @@ PYBIND11_MODULE(_conex, m) {
       // Skips ComputeOptimality which crashes on barrier cones.
       .def("solve_raw",
            [](Solver& self, const std::string& algo,
-              double tol, int max_iter, int max_centering) {
+              double tol, int max_iter, int max_centering, bool verbose) {
              auto model = self.MakeCompiledModel();
              GeodesicResult raw;
              if (algo == "barrier_theta_cont")
                raw = GeodesicBarrierThetaContinuation{tol, max_iter, max_centering}.Run(model);
              else if (algo == "theta_cont")
-               raw = ThetaContinuation{tol, max_iter, max_centering}.Run(model);
+               raw = ThetaContinuation{tol, max_iter, max_centering, verbose}.Run(model);
              else if (algo == "barrier_lp")
                raw = GeodesicBarrierLP{tol, max_iter}.Run(model);
              else if (algo == "geodesic_lp")
                raw = GeodesicLP{tol, max_iter, max_centering}.Run(model);
              else if (algo == "theta_cont_r")
-               raw = ThetaContinuationR{tol, max_iter}.Run(model);
+               raw = ThetaContinuationR{tol, max_iter, verbose}.Run(model);
              else if (algo == "hybrid_r")
-               raw = HybridR{tol, max_iter}.Run(model);
+               raw = HybridR{tol, max_iter, verbose}.Run(model);
              else if (algo == "hsde")
-               raw = GeodesicHSDE{tol, max_iter, max_centering}.Run(model);
+               raw = GeodesicHSDE{tol, max_iter, max_centering, verbose}.Run(model);
              else if (algo == "direct_solve") {
                // Direct linear solve using cost + equality RHS.
                auto duality_cost = MakeDualityCost(model);
@@ -326,19 +326,21 @@ PYBIND11_MODULE(_conex, m) {
            },
            py::arg("algo"), py::arg("tol") = 1e-8,
            py::arg("max_iter") = 500, py::arg("max_centering") = 1,
+           py::arg("verbose") = false,
            "Solve and return x in original variable space (for CVXPY)")
       // Full solve returning SolveResult with duals.
       .def("solve",
            [](Solver& self, const std::string& algo,
-              double tol, int max_iter, int max_centering) -> SolveResult {
+              double tol, int max_iter, int max_centering,
+              bool verbose) -> SolveResult {
              if (algo == "theta_cont")
-               return self.Solve(ThetaContinuation{tol, max_iter, max_centering});
+               return self.Solve(ThetaContinuation{tol, max_iter, max_centering, verbose});
              else if (algo == "theta_cont_r")
-               return self.Solve(ThetaContinuationR{tol, max_iter});
+               return self.Solve(ThetaContinuationR{tol, max_iter, verbose});
              else if (algo == "hybrid_r")
-               return self.Solve(HybridR{tol, max_iter});
+               return self.Solve(HybridR{tol, max_iter, verbose});
              else if (algo == "hsde")
-               return self.Solve(GeodesicHSDE{tol, max_iter, max_centering});
+               return self.Solve(GeodesicHSDE{tol, max_iter, max_centering, verbose});
              else if (algo == "geodesic_lp")
                return self.Solve(GeodesicLP{tol, max_iter, max_centering});
              else if (algo == "barrier_theta_cont")
@@ -348,5 +350,6 @@ PYBIND11_MODULE(_conex, m) {
            },
            py::arg("algo") = "theta_cont", py::arg("tol") = 1e-8,
            py::arg("max_iter") = 500, py::arg("max_centering") = 1,
+           py::arg("verbose") = false,
            "Solve and return full SolveResult with duals");
 }
