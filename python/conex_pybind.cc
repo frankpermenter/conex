@@ -24,6 +24,14 @@ PYBIND11_MODULE(_conex, m) {
       .def_readonly("min_slack", &OptimalitySummary::min_slack)
       .def_readonly("min_dual", &OptimalitySummary::min_dual);
 
+  py::class_<ConstraintDuals>(m, "ConstraintDuals")
+      .def_readonly("lambda_", &ConstraintDuals::lambda)
+      .def_readonly("slack", &ConstraintDuals::slack)
+      .def_readonly("nu", &ConstraintDuals::nu)
+      .def_readonly("eq_residual", &ConstraintDuals::eq_residual)
+      .def_readonly("stationarity_gradient",
+                    &ConstraintDuals::stationarity_gradient);
+
   py::class_<SolveResult>(m, "SolveResult")
       .def_readonly("x", &SolveResult::x)
       .def_readonly("objective", &SolveResult::objective)
@@ -32,7 +40,8 @@ PYBIND11_MODULE(_conex, m) {
       .def_readonly("iterations", &SolveResult::iterations)
       .def_readonly("factorizations", &SolveResult::factorizations)
       .def_readonly("converged", &SolveResult::converged)
-      .def_readonly("optimality", &SolveResult::optimality);
+      .def_readonly("optimality", &SolveResult::optimality)
+      .def_readonly("duals", &SolveResult::duals);
 
   // --- Model ---
   py::class_<Model>(m, "Model")
@@ -317,5 +326,27 @@ PYBIND11_MODULE(_conex, m) {
            },
            py::arg("algo"), py::arg("tol") = 1e-8,
            py::arg("max_iter") = 500, py::arg("max_centering") = 1,
-           "Solve and return x in original variable space (for CVXPY)");
+           "Solve and return x in original variable space (for CVXPY)")
+      // Full solve returning SolveResult with duals.
+      .def("solve",
+           [](Solver& self, const std::string& algo,
+              double tol, int max_iter, int max_centering) -> SolveResult {
+             if (algo == "theta_cont")
+               return self.Solve(ThetaContinuation{tol, max_iter, max_centering});
+             else if (algo == "theta_cont_r")
+               return self.Solve(ThetaContinuationR{tol, max_iter});
+             else if (algo == "hybrid_r")
+               return self.Solve(HybridR{tol, max_iter});
+             else if (algo == "hsde")
+               return self.Solve(GeodesicHSDE{tol, max_iter, max_centering});
+             else if (algo == "geodesic_lp")
+               return self.Solve(GeodesicLP{tol, max_iter, max_centering});
+             else if (algo == "barrier_theta_cont")
+               return self.Solve(GeodesicBarrierThetaContinuation{tol, max_iter, max_centering});
+             else
+               throw std::invalid_argument("Unknown algorithm: " + algo);
+           },
+           py::arg("algo") = "theta_cont", py::arg("tol") = 1e-8,
+           py::arg("max_iter") = 500, py::arg("max_centering") = 1,
+           "Solve and return full SolveResult with duals");
 }
