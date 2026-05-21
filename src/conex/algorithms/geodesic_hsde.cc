@@ -403,8 +403,9 @@ GeodesicResult SolveGeodesicHSDE(
       double xQx_tau = (std::abs(tau) > 1e-30) ? xQx / tau : 0.0;
       double eq_err = std::abs(bTl + cTx + xQx_tau + kappa_v - theta * R);
       double mu_tau = (std::abs(tau) > 1e-30) ? mu / tau : 0.0;
-      double primal_phys = (std::abs(tau) > 1e-30) ? cTx / tau : 0.0;
-      double dual_phys = (std::abs(tau) > 1e-30) ? -bTl / tau : 0.0;
+      double half_xQx_phys = (std::abs(tau) > 1e-30) ? 0.5 * xQx / (tau * tau) : 0.0;
+      double primal_phys = (std::abs(tau) > 1e-30) ? cTx / tau + half_xQx_phys : 0.0;
+      double dual_phys = (std::abs(tau) > 1e-30) ? -(bTl / tau + half_xQx_phys) : 0.0;
 
       // Normalization: rp'lam + rd'x + rg*tau should = -alpha.
       RowSpace rp_v = model.AllocRowSpace(arena);
