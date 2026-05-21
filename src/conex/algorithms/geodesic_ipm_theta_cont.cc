@@ -138,6 +138,11 @@ GeodesicResult SolveGeodesicThetaContinuation(
     double mu = 1.0 / (k * k);
     double gap = mu * (nu - d_sq);
 
+    if (verbose) {
+      last_eq_err = PrintThetaContStats(model, decomp, cost_rhs, duality_cost,
+          bT_ones, nu, outer, -1, k, tau, theta, d_inf, d_sq, gap);
+    }
+
     // Take geodesic step.
     RowSpace W0 = W;  // save frozen Jacobian point
     { CONEX_TIMER(stats, cone_us);
@@ -229,10 +234,6 @@ GeodesicResult SolveGeodesicThetaContinuation(
       d_inf = normInf(d_final);
       d_sq = squaredNorm(d_final);
       gap = mu * (nu - d_sq);
-    }
-    if (verbose) {
-      last_eq_err = PrintThetaContStats(model, decomp, cost_rhs, duality_cost,
-          bT_ones, nu, outer, -1, k, tau, theta, d_inf, d_sq, gap);
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, gap});
