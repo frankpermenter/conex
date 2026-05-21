@@ -535,6 +535,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   RowSpace last_delta = model.AllocRowSpace(arena);
   RowSpace d_vec = model.AllocRowSpace(arena);      // pre-allocated direction
   RowSpace delta_vec = model.AllocRowSpace(arena);   // pre-allocated delta
+  RowSpace last_lambda = model.AllocRowSpace(arena);  // M*(r+delta) for lambda extraction
   bool need_decomp = true;
   bool full_decomp = true;  // true = all 3 solves, false = only x0
   HybridRDecomposition decomp;
@@ -756,8 +757,19 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     }
 
     result.iterations = iter + 1;
-    if (std::abs(theta) < tolerance && std::abs(g) < tolerance && d_inf <= 1.001) {
 
+    // Extract x from current decomposition (before centering/shrink).
+    {
+      auto x_rhs = model.AllocSolverRHS();
+      x_rhs = decomp.y_center;
+      x_rhs.AddScaled(tau, decomp.y_cost);
+      x_rhs *= (1.0 / tau);
+      result.x.resize(model.number_of_variables());
+      Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size());
+      x_rhs.supernodes->GatherInto(xm);
+    }
+
+    if (std::abs(theta) < tolerance && std::abs(g) < tolerance && d_inf <= 1.001) {
       break;
     }
 
@@ -775,6 +787,13 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
     if (stats) stats->other_us += std::chrono::duration<double, std::micro>(
         std::chrono::high_resolution_clock::now() - _other_start).count();
+
+    // Save lambda = M*(r+delta) before centering/shrink updates M and r.
+    {
+      RowSpace r_plus_d = model.AllocRowSpace(arena);
+      addScaled(r_plus_d, r_var, delta_vec, 1.0, 1.0);
+      applyM(last_lambda, M, r_plus_d);
+    }
 
     bool do_center = !w_frozen && (policy(g, d_inf, r_updates_since_fac)
                                     || theta_stalled);
@@ -816,25 +835,13 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   result.total_factorizations = total_fac;
   result.total_solves = total_sol;
 
-  // Recover x (de-homogenized by tau).
-  {
-    auto x_rhs = model.AllocSolverRHS();
-    x_rhs = decomp.y_center;
-    x_rhs.AddScaled(tau, decomp.y_cost);
-    x_rhs *= (1.0 / tau);
-    result.x.resize(model.number_of_variables());
-    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
-  }
-
-  // Lambda and optimality.
+  // Lambda and optimality — x and last_lambda were saved at the same
+  // point inside the loop (before centering/shrink).
   {
     auto x_rhs = model.AllocSolverRHS();
     x_rhs.ScatterFrom(result.x.data(), result.x.size());
-    // result.lambda must outlive the arena -> heap allocation.
-    RowSpace r_plus_delta = model.AllocRowSpace(arena);
-    addScaled(r_plus_delta, r_var, last_delta, 1.0, 1.0);
     result.lambda = model.MakeRowSpace();  // heap
-    applyM(result.lambda, M, r_plus_delta);
+    addScaled(result.lambda, last_lambda, last_lambda, 1.0, 0.0);
     if (tau > 0 && tau != 1.0) result.lambda *= (1.0 / tau);
     result.optimality = CheckOptimality(model, x_rhs, result.lambda);
     result.optimality.mu = result.mu;
