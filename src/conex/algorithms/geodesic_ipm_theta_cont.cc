@@ -131,7 +131,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     }
 
     // Evaluate direction for the first step.
-    RowSpace d_step = model.AllocRowSpace();
+    RowSpace d_step = model.AllocRowSpace(arena);
     EvaluateDirection(d_step, decomp, k, tau, theta);
     double d_inf = normInf(d_step);
     double d_sq = squaredNorm(d_step);
@@ -155,7 +155,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     // trajectory as baseline ThetaCont.  Any difference is a bug.
     constexpr bool refactor_inner = false;
 
-    RowSpace sqrtW0_f = model.AllocRowSpace();
+    RowSpace sqrtW0_f = model.AllocRowSpace(arena);
     EuclideanJordanAlgebra::sqrt(sqrtW0_f, W0);
     auto dc_f = ComputeDualityCoeffs(model, arena, duality_cost, b, W0, decomp);
     double beta_f = dc_f.sigma1 + dc_f.gamma1 + dc_f.q11;
@@ -201,7 +201,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
       double theta_f = sr_f.theta, k_f = sr_f.k, tau_f = sr_f.tau;
       if (tau_f <= 0) { break; }
 
-      RowSpace d_f = model.AllocRowSpace();
+      RowSpace d_f = model.AllocRowSpace(arena);
       EvaluateDirection(d_f, decomp, k_f, tau_f, theta_f);
       double d_inf_fv = normInf(d_f);
       if (verbose) {
@@ -224,7 +224,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
     mu = 1.0 / (k * k);
     // d_inf, d_sq, gap are from the outer step; update if frozen-J ran.
     if (max_centering_steps > 0) {
-      RowSpace d_final = model.AllocRowSpace();
+      RowSpace d_final = model.AllocRowSpace(arena);
       EvaluateDirection(d_final, decomp, k, tau, theta);
       d_inf = normInf(d_final);
       d_sq = squaredNorm(d_final);
@@ -274,18 +274,18 @@ GeodesicResult SolveGeodesicThetaContinuation(
   // Recover lambda and optimality (requires re-factorization for decomp).
   if (k > 0 && tau > 0 && result.x.size() > 0) {
     NewtonDecomposition decomp_r;
-    decomp_r.d0 = model.AllocRowSpace();
-    decomp_r.d1_0 = model.AllocRowSpace();
-    decomp_r.d1_theta = model.AllocRowSpace();
+    decomp_r.d0 = model.AllocRowSpace(arena);
+    decomp_r.d1_0 = model.AllocRowSpace(arena);
+    decomp_r.d1_theta = model.AllocRowSpace(arena);
     ComputeFullDecomposition(model, b, W, decomp_r);
 
-    RowSpace d_cur = model.AllocRowSpace();
+    RowSpace d_cur = model.AllocRowSpace(arena);
     EvaluateDirection(d_cur, decomp_r, k, tau, theta);
-    RowSpace sqrtW_r = model.AllocRowSpace();
+    RowSpace sqrtW_r = model.AllocRowSpace(arena);
     EuclideanJordanAlgebra::sqrt(sqrtW_r, W);
-    RowSpace ones_r = model.AllocRowSpace();
+    RowSpace ones_r = model.AllocRowSpace(arena);
     setOnes(ones_r);
-    RowSpace ones_plus_dcur = model.AllocRowSpace();
+    RowSpace ones_plus_dcur = model.AllocRowSpace(arena);
     addScaled(ones_plus_dcur, ones_r, d_cur, 1.0, 1.0);
     result.lambda = model.MakeRowSpace();
     quadraticRepresentation(result.lambda, sqrtW_r, ones_plus_dcur);
