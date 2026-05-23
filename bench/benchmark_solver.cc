@@ -233,8 +233,14 @@ std::vector<AlgoResult> ProfileAlgorithm(
                       double tol_override = 1e-8,
                       bool verbose = false) {
   auto should_run = [&](const char* aname) {
-    return algo_filter.empty() ||
-           std::string(aname).find(algo_filter) != std::string::npos;
+    if (algo_filter.empty()) return true;
+    // Support comma-separated filters: "TC+frzJ,HSDE" matches either.
+    std::istringstream ss(algo_filter);
+    std::string token;
+    while (std::getline(ss, token, ',')) {
+      if (std::string(aname).find(token) != std::string::npos) return true;
+    }
+    return false;
   };
   printf("=== %s ===\n", name.c_str());
   printf("  Variables: %d, Constraints: %d\n",
