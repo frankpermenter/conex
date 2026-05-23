@@ -165,6 +165,8 @@ Eigen::VectorXd ComputeColumnNorms(const Model& problem, int n, int mode) {
         AccumulateColumnNorms(data.A, data.vars, col_norms, mode);
       } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
         AccumulatePSDColumnNorms(data.A_list, data.vars, col_norms, mode);
+      } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
+        AccumulateColumnNorms(data.Q_sparse, data.vars, col_norms, mode);
       }
     }, problem.constraint(i));
   }
