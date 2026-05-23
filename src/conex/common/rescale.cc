@@ -241,13 +241,13 @@ Model ApplyColumnScaling(const Model& problem,
         scaled.AddSOCConstraint(A, data.b, data.vars);
 
       } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
+        // x = D * x_new → x'Qx = x_new' (D*Q*D) x_new → Q_new = D*Q*D.
         Eigen::SparseMatrix<double> Q = data.Q_sparse;
         for (int k = 0; k < Q.outerSize(); ++k)
           for (Eigen::SparseMatrix<double>::InnerIterator it(Q, k); it; ++it) {
             double sr = D(data.vars[it.row()]);
             double sc = D(data.vars[it.col()]);
-            if (sr > 1e-15 && sc > 1e-15)
-              it.valueRef() /= (sr * sc);
+            it.valueRef() *= (sr * sc);
           }
         scaled.AddQuadraticCost(Q, data.vars);
 
