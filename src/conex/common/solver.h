@@ -96,10 +96,15 @@ class Solver {
   ConstraintDuals ExtractDuals(const Eigen::VectorXd& x_reduced,
                                const RowSpace& lambda,
                                const SolverRHS& cost_rhs);
+  // Recompute residuals from the original (pre-presolve) Model and
+  // the expanded x.  Overwrites eq_residual, slack, objective, and
+  // min_slack with values computed directly from Model data.
+  void ComputeModelSpaceResiduals(SolveResult& result) const;
 
   KKTSystem system_;
   Arena arena_;
   char* kkt_cursor_ = nullptr;
+  Model original_model_;    // stashed for Model-space residual checks
   Model reduced_model_;
   Expansion expansion_;
   RowScaling row_scaling_;
@@ -164,6 +169,9 @@ SolveResult Solver::Solve(const Algorithm& algo) {
     //                                                = c + Qx + C'nu - A'lambda
     // which is the original model's stationarity condition.
   }
+
+  // Recompute primal residuals from the original Model + expanded x.
+  ComputeModelSpaceResiduals(result);
 
   result.converged = result.optimality.complementarity < 1e-4 &&
                      result.duals.stationarity_gradient.norm() < 1e-4;

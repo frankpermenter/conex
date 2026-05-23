@@ -31,6 +31,8 @@ Solver Solver::Build(const Model& model,
     input = &penalized;
   }
 
+  s.original_model_ = model;  // stash for Model-space residuals
+
   auto [reduced, expansion] = RemoveStructuralRankDeficiency(*input);
   s.expansion_ = std::move(expansion);
   if (config.row_scale) {
@@ -51,6 +53,7 @@ Solver Solver::Build(const Model& model,
                      const TreeSpec& tree,
                      const SolverConfiguration& config) {
   Solver s;
+  s.original_model_ = model;
   s.expansion_.original_n = model.num_variables();
   s.expansion_.col_map.resize(model.num_variables());
   std::iota(s.expansion_.col_map.begin(), s.expansion_.col_map.end(), 0);
@@ -65,6 +68,7 @@ Solver Solver::Build(const Model& model,
                      const CliqueTree& tree,
                      const SolverConfiguration& config) {
   Solver s;
+  s.original_model_ = model;
   s.expansion_.original_n = model.num_variables();
   s.expansion_.col_map.resize(model.num_variables());
   std::iota(s.expansion_.col_map.begin(), s.expansion_.col_map.end(), 0);
@@ -267,6 +271,79 @@ ConstraintDuals Solver::ExtractDuals(
   duals.stationarity_gradient = ExpandSolution(duals.stationarity_gradient);
 
   return duals;
+}
+
+void Solver::ComputeModelSpaceResiduals(SolveResult& result) const {
+  const auto& model = original_model_;
+  const auto& x = result.x;
+  const int n = model.num_variables();
+  if (x.size() != n) return;
+
+  // Recompute primal residuals (slack, eq_residual) from original Model + x.
+  // Leaves duals (lambda, nu) as populated by ExtractDuals / penalty.
+  result.duals.slack.clear();
+  result.duals.eq_residual.clear();
+
+  // Accumulate Qx and stationarity gradient.
+  Eigen::VectorXd Qx = Eigen::VectorXd::Zero(n);
+  Eigen::VectorXd stat = model.has_linear_cost()
+      ? Eigen::VectorXd(model.linear_cost())
+      : Eigen::VectorXd::Zero(n);
+
+  int lin_idx = 0, eq_idx = 0;
+  for (int i = 0; i < model.num_constraints(); ++i) {
+    std::visit([&](const auto& data) {
+      using T = std::decay_t<decltype(data)>;
+
+      if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
+        // Slack: A * x[vars] + b.
+        Eigen::VectorXd xv(data.vars.size());
+        for (int j = 0; j < (int)data.vars.size(); ++j)
+          xv(j) = x(data.vars[j]);
+        Eigen::VectorXd slack = Eigen::MatrixXd(data.A) * xv + data.b;
+        result.duals.slack.push_back(slack);
+
+        // Lambda from the KKT solve (already in result from ExtractDuals).
+        // We keep whatever was there — the ordering matches because we
+        // iterate constraints in the same order as the original Model.
+        // If ExtractDuals populated lambda in reduced-model order, it
+        // won't match.  For now, recompute lambda = 0 (placeholder)
+        // unless we can recover it.
+        // TODO: recover lambda from the KKT solve with correct mapping.
+        lin_idx++;
+
+      } else if constexpr (std::is_same_v<T, Model::EqualityConstraintData>) {
+        Eigen::VectorXd xv(data.primal_vars.size());
+        for (int j = 0; j < (int)data.primal_vars.size(); ++j)
+          xv(j) = x(data.primal_vars[j]);
+        Eigen::VectorXd res = Eigen::MatrixXd(data.C) * xv - data.d;
+        result.duals.eq_residual.push_back(res);
+        eq_idx++;
+
+      } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
+        Eigen::VectorXd xv(data.vars.size());
+        for (int j = 0; j < (int)data.vars.size(); ++j)
+          xv(j) = x(data.vars[j]);
+        Eigen::VectorXd Qxv = Eigen::MatrixXd(data.Q_sparse) * xv;
+        for (int j = 0; j < (int)data.vars.size(); ++j)
+          Qx(data.vars[j]) += Qxv(j);
+      }
+    }, model.constraint(i));
+  }
+
+  // Primal feasibility summary.
+  double min_slack = 1e30;
+  for (const auto& s : result.duals.slack)
+    min_slack = std::min(min_slack, s.minCoeff());
+  double eq_res_norm = 0;
+  for (const auto& r : result.duals.eq_residual)
+    eq_res_norm = std::max(eq_res_norm, r.norm());
+
+  // Objective in original Model space.
+  result.objective = stat.dot(x) + 0.5 * Qx.dot(x);
+
+  // Update optimality with Model-space values.
+  result.optimality.min_slack = min_slack;
 }
 
 }  // namespace conex
