@@ -188,16 +188,20 @@ void WriteJSON(const std::string& path,
       << ", \"n\": " << inst.n << ", \"m\": " << inst.m
       << ", \"c0\": " << inst.objective_constant
       << ", \"algorithms\": [\n";
+    auto jnum = [](double v) -> std::string {
+      if (std::isnan(v) || std::isinf(v)) return "null";
+      char buf[32]; snprintf(buf, sizeof(buf), "%.6e", v); return buf;
+    };
     for (size_t j = 0; j < inst.algorithms.size(); ++j) {
       const auto& a = inst.algorithms[j];
       f << "      {\"name\": \"" << a.name << "\""
         << ", \"iter\": " << a.iterations
         << ", \"fac\": " << a.factorizations
-        << ", \"mu\": " << a.mu
-        << ", \"obj\": " << a.primal_cost + inst.objective_constant
-        << ", \"dual_res\": " << a.dual_residual
-        << ", \"compl\": " << a.complementarity
-        << ", \"time_ms\": " << a.time_ms
+        << ", \"mu\": " << jnum(a.mu)
+        << ", \"obj\": " << jnum(a.primal_cost + inst.objective_constant)
+        << ", \"dual_res\": " << jnum(a.dual_residual)
+        << ", \"compl\": " << jnum(a.complementarity)
+        << ", \"time_ms\": " << jnum(a.time_ms)
         << ", \"converged\": " << (a.converged ? "true" : "false")
         << "}" << (j + 1 < inst.algorithms.size() ? "," : "") << "\n";
     }
@@ -666,6 +670,8 @@ int main(int argc, char* argv[]) {
             ir.objective_constant = info.objective_constant;
             ir.algorithms = std::move(algos);
             all_results.push_back(std::move(ir));
+            // Write after each instance so partial results survive crashes.
+            conex::WriteJSON(json_path, all_results, cfg, tol, algo_filter);
           }
         }
         count++;
@@ -677,7 +683,8 @@ int main(int argc, char* argv[]) {
     printf("Completed %d / %d instances.\n", count, (int)files.size());
     if (!json_path.empty()) {
       conex::WriteJSON(json_path, all_results, cfg, tol, algo_filter);
-      printf("Results written to %s\n", json_path.c_str());
+      printf("Results written to %s (%d instances)\n",
+             json_path.c_str(), (int)all_results.size());
     }
     return 0;
   }
