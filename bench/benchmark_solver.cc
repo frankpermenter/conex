@@ -6,9 +6,16 @@
 //   ./benchmark_solver <file> --profile                  (factorization timing)
 //   ./benchmark_solver <file> --profile --sweep-threads 1,2,4
 //   ./benchmark_solver <directory>                       (all QPS files)
+//   ./benchmark_solver <directory> --json results.json   (JSON output)
 //   ./benchmark_solver --synthetic lp <m> <n> [seed]
 //   ./benchmark_solver --synthetic sdp <n> <p> [seed]
 //   ./benchmark_solver --synthetic socp <dim> <p> [seed]
+//
+// Flags:
+//   --json <file>     Write results as JSON (for leaderboard tracking)
+//   --lu              Use LU for indefinite factorization
+//   --penalty <alpha> Lift equalities into penalty objective
+//   --algo <filter>   Only run algorithms matching filter
 
 #include <algorithm>
 #include <chrono>
@@ -16,6 +23,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <numeric>
 #include <sstream>
@@ -129,6 +137,75 @@ struct AlgoResult {
   bool converged;
 };
 
+// Per-instance results for JSON output.
+struct InstanceResult {
+  std::string name;
+  int n = 0, m = 0;
+  double objective_constant = 0;
+  std::vector<AlgoResult> algorithms;
+};
+
+// Get git SHA (best-effort, returns "unknown" on failure).
+std::string GetGitSHA() {
+  char buf[64] = {};
+  FILE* p = popen("git rev-parse --short HEAD 2>/dev/null", "r");
+  if (p) { fgets(buf, sizeof(buf), p); pclose(p); }
+  std::string s(buf);
+  while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
+  return s.empty() ? "unknown" : s;
+}
+
+// Get ISO timestamp.
+std::string GetTimestamp() {
+  auto now = std::chrono::system_clock::now();
+  auto t = std::chrono::system_clock::to_time_t(now);
+  char buf[32];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", gmtime(&t));
+  return buf;
+}
+
+// Write results as JSON.
+void WriteJSON(const std::string& path,
+               const std::vector<InstanceResult>& instances,
+               const SolverConfiguration& cfg,
+               double tol, const std::string& algo_filter) {
+  std::ofstream f(path);
+  f << "{\n";
+  f << "  \"git_sha\": \"" << GetGitSHA() << "\",\n";
+  f << "  \"timestamp\": \"" << GetTimestamp() << "\",\n";
+  f << "  \"config\": {\"threads\": " << cfg.num_threads
+    << ", \"merge\": " << cfg.tree.max_merge_supernode_size
+    << ", \"tol\": " << tol
+    << ", \"lu\": " << (cfg.tree.use_lu_for_indefinite ? "true" : "false")
+    << ", \"penalty_alpha\": " << cfg.penalty_alpha;
+  if (!algo_filter.empty())
+    f << ", \"algo_filter\": \"" << algo_filter << "\"";
+  f << "},\n";
+  f << "  \"instances\": [\n";
+  for (size_t i = 0; i < instances.size(); ++i) {
+    const auto& inst = instances[i];
+    f << "    {\"name\": \"" << inst.name << "\""
+      << ", \"n\": " << inst.n << ", \"m\": " << inst.m
+      << ", \"c0\": " << inst.objective_constant
+      << ", \"algorithms\": [\n";
+    for (size_t j = 0; j < inst.algorithms.size(); ++j) {
+      const auto& a = inst.algorithms[j];
+      f << "      {\"name\": \"" << a.name << "\""
+        << ", \"iter\": " << a.iterations
+        << ", \"fac\": " << a.factorizations
+        << ", \"mu\": " << a.mu
+        << ", \"obj\": " << a.primal_cost + inst.objective_constant
+        << ", \"dual_res\": " << a.dual_residual
+        << ", \"compl\": " << a.complementarity
+        << ", \"time_ms\": " << a.time_ms
+        << ", \"converged\": " << (a.converged ? "true" : "false")
+        << "}" << (j + 1 < inst.algorithms.size() ? "," : "") << "\n";
+    }
+    f << "    ]}" << (i + 1 < instances.size() ? "," : "") << "\n";
+  }
+  f << "  ]\n}\n";
+}
+
 // Run an algorithm via Solver::Solve, which handles x expansion,
 // objective computation, and optimality checking in Model space.
 template <typename Strategy>
@@ -148,7 +225,8 @@ AlgoResult RunAlgo(const char* name, const Model& problem,
           ms, result.converged};
 }
 
-void ProfileAlgorithm(const Model& problem, const std::string& name,
+std::vector<AlgoResult> ProfileAlgorithm(
+                      const Model& problem, const std::string& name,
                       const SolverConfiguration& config,
                       double objective_constant = 0,
                       const std::string& algo_filter = "",
@@ -243,6 +321,7 @@ void ProfileAlgorithm(const Model& problem, const std::string& name,
     printf("\n  Objective includes constant c0 = %.6e\n", c0);
   }
   printf("\n");
+  return results;
 }
 
 // =====================================================================
@@ -462,6 +541,7 @@ int main(int argc, char* argv[]) {
   std::string algo_filter;
   double tol = 1e-8;
   bool verbose = false;
+  std::string json_path;
   std::vector<int> sweep_threads, sweep_merge;
   std::string arg1 = argv[1];
 
@@ -499,6 +579,12 @@ int main(int argc, char* argv[]) {
       tol = std::stod(argv[++i]);
     } else if (arg == "--verbose" || arg == "-v") {
       verbose = true;
+    } else if (arg == "--json" && i + 1 < argc) {
+      json_path = argv[++i];
+    } else if (arg == "--lu") {
+      cfg.tree.use_lu_for_indefinite = true;
+    } else if (arg == "--penalty" && i + 1 < argc) {
+      cfg.penalty_alpha = std::stod(argv[++i]);
     }
   }
 
@@ -552,6 +638,7 @@ int main(int argc, char* argv[]) {
     std::sort(files.begin(), files.end());
     printf("Found %d QPS files (sorted by size)\n\n", (int)files.size());
 
+    std::vector<conex::InstanceResult> all_results;
     int count = 0;
     for (const auto& [sz, filepath] : files) {
       if (limit > 0 && count >= limit) break;
@@ -563,8 +650,17 @@ int main(int argc, char* argv[]) {
               info.problem, info.name, cfg, max_profile_iters);
           conex::PrintProfileResult(res, cfg);
         } else {
-          conex::ProfileAlgorithm(info.problem, info.name, cfg,
+          auto algos = conex::ProfileAlgorithm(info.problem, info.name, cfg,
                                    info.objective_constant, algo_filter, tol, verbose);
+          if (!json_path.empty()) {
+            conex::InstanceResult ir;
+            ir.name = fs::path(filepath).stem().string();
+            ir.n = info.problem.num_variables();
+            ir.m = info.problem.num_constraints();
+            ir.objective_constant = info.objective_constant;
+            ir.algorithms = std::move(algos);
+            all_results.push_back(std::move(ir));
+          }
         }
         count++;
       } catch (const std::exception& e) {
@@ -573,6 +669,10 @@ int main(int argc, char* argv[]) {
       }
     }
     printf("Completed %d / %d instances.\n", count, (int)files.size());
+    if (!json_path.empty()) {
+      conex::WriteJSON(json_path, all_results, cfg, tol, algo_filter);
+      printf("Results written to %s\n", json_path.c_str());
+    }
     return 0;
   }
 
@@ -592,6 +692,20 @@ int main(int argc, char* argv[]) {
       } else {
         printf("Rescaling had no effect.\n");
       }
+    }
+
+    if (!profile_mode && !json_path.empty()) {
+      auto algos = conex::ProfileAlgorithm(info.problem, info.name, cfg,
+                                            info.objective_constant, algo_filter, tol, verbose);
+      conex::InstanceResult ir;
+      ir.name = fs::path(arg1).stem().string();
+      ir.n = info.problem.num_variables();
+      ir.m = info.problem.num_constraints();
+      ir.objective_constant = info.objective_constant;
+      ir.algorithms = std::move(algos);
+      conex::WriteJSON(json_path, {ir}, cfg, tol, algo_filter);
+      printf("Results written to %s\n", json_path.c_str());
+      return 0;
     }
 
     if (profile_mode) {
