@@ -392,9 +392,8 @@ RuizResult RuizEquilibrate(const Model& problem, int n,
       }
     }
 
-    cumul_D = cumul_D.cwiseProduct(D);
-
     if (any_col_scale) {
+      cumul_D = cumul_D.cwiseProduct(D);
       // Strip cost before column scaling (ApplyColumnScaling also scales cost).
       Eigen::VectorXd saved_cost;
       bool had_cost = current.has_linear_cost();

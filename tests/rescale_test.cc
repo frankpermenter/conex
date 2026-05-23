@@ -8,8 +8,10 @@
 #include <numeric>
 #include <vector>
 
+#include "conex/algorithms/solve_strategies.h"
 #include "conex/common/model.h"
 #include "conex/common/rescale.h"
+#include "conex/common/solver.h"
 
 namespace conex {
 namespace {
@@ -230,6 +232,116 @@ TEST(Rescale, NoScalingNeeded) {
   Eigen::VectorXd x = Eigen::VectorXd::Ones(n);
   Eigen::VectorXd xr = info.Unscale(x);
   EXPECT_GT(xr.norm(), 0);
+}
+
+TEST(Rescale, QuadraticCostPreservesObjective) {
+  // Verify that rescaling a QP preserves the objective value:
+  //   (1/2) x'Qx + c'x = (1/2) x_new' Q_new x_new + c_new' x_new
+  // where x = D * x_new, Q_new = D*Q*D, c_new = D*c.
+  int n = 5;
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  // Random PSD Q.
+  Eigen::MatrixXd R = Eigen::MatrixXd::Random(n, n);
+  Eigen::MatrixXd Q_dense = R.transpose() * R + 0.1 * Eigen::MatrixXd::Identity(n, n);
+
+  // Poorly-scaled constraints to trigger Ruiz.
+  Eigen::MatrixXd A_dense = Eigen::MatrixXd::Random(10, n);
+  for (int j = 0; j < n; ++j)
+    A_dense.col(j) *= std::pow(10.0, 3.0 * j / (n - 1) - 1.5);
+  Eigen::VectorXd b = Eigen::VectorXd::Ones(10) * 5.0;
+  Eigen::VectorXd c = Eigen::VectorXd::Random(n);
+
+  Model p;
+  p.AddQuadraticCost(MakeSparse(Q_dense), vars);
+  p.AddLinearConstraint(MakeSparse(A_dense), b, vars);
+  p.SetLinearCost(c);
+
+  Eigen::VectorXd x_orig = Eigen::VectorXd::Random(n);
+  double obj_orig = 0.5 * x_orig.dot(Q_dense * x_orig) + c.dot(x_orig);
+
+  for (auto strategy : {ColumnScaling::MaxAbsValue,
+                        ColumnScaling::L2Norm,
+                        ColumnScaling::Ruiz}) {
+    auto [rescaled, info] = RescaleProblem(p, strategy);
+    if (!info.was_rescaled) continue;
+
+    // x_new = D^{-1} * x_orig
+    Eigen::VectorXd x_new(n);
+    for (int j = 0; j < n; ++j)
+      x_new(j) = x_orig(j) / info.col_scale(j);
+
+    // Verify Q_new = D*Q*D and c_new = D*c directly.
+    const auto& D = info.col_scale;
+    Eigen::MatrixXd Q_expected = D.asDiagonal() * Q_dense * D.asDiagonal();
+    Eigen::VectorXd c_expected = D.cwiseProduct(c);
+
+    // Extract Q_new from rescaled model.
+    Eigen::MatrixXd Q_new = Eigen::MatrixXd::Zero(n, n);
+    for (int i = 0; i < rescaled.num_constraints(); ++i) {
+      auto* qd = std::get_if<Model::QuadraticCostData>(&rescaled.constraint(i));
+      if (qd) Q_new += Eigen::MatrixXd(qd->Q_sparse);
+    }
+
+    double q_err = (Q_new - Q_expected).norm();
+    double c_err = (rescaled.linear_cost() - c_expected).norm();
+    if (q_err > 1e-6) {
+      printf("  strategy=%d D=[%.4f", static_cast<int>(strategy), D(0));
+      for (int j = 1; j < n; ++j) printf(",%.4f", D(j));
+      printf("]\n");
+      printf("  Q_new(0,0)=%.6f Q_expected(0,0)=%.6f Q_orig(0,0)=%.6f\n",
+             Q_new(0,0), Q_expected(0,0), Q_dense(0,0));
+      printf("  Q_new(1,1)=%.6f Q_expected(1,1)=%.6f\n", Q_new(1,1), Q_expected(1,1));
+    }
+    EXPECT_LT(q_err, 1e-10 * Q_expected.norm())
+        << "Q scaling error for strategy " << static_cast<int>(strategy);
+    EXPECT_LT(c_err, 1e-10 * c_expected.norm())
+        << "c scaling error for strategy " << static_cast<int>(strategy);
+
+    double obj_new = 0.5 * x_new.dot(Q_new * x_new) + rescaled.linear_cost().dot(x_new);
+    EXPECT_NEAR(obj_new, obj_orig, 1e-8 * std::abs(obj_orig) + 1e-12)
+        << "Objective mismatch for strategy " << static_cast<int>(strategy);
+  }
+}
+
+TEST(Rescale, QuadraticCostSolveEquivalence) {
+  // Verify that solving the rescaled QP and unscaling gives the same
+  // solution as solving the original.
+  int n = 4;
+  std::vector<int> vars(n);
+  std::iota(vars.begin(), vars.end(), 0);
+
+  // min 0.5 x'Qx + c'x s.t. Ax + b >= 0
+  Eigen::MatrixXd Q_dense = Eigen::MatrixXd::Identity(n, n);
+  Q_dense(0, 0) = 100;  // Poorly conditioned Q.
+  Eigen::VectorXd c = Eigen::VectorXd::Zero(n);
+  c(0) = -1;
+
+  // Poorly-scaled A.
+  Eigen::MatrixXd A_dense = Eigen::MatrixXd::Identity(n, n);
+  A_dense(0, 0) = 1000;  // Large column 0.
+  Eigen::VectorXd b = Eigen::VectorXd::Ones(n);
+
+  Model p;
+  p.AddQuadraticCost(MakeSparse(Q_dense), vars);
+  p.AddLinearConstraint(MakeSparse(A_dense), b, vars);
+  p.SetLinearCost(c);
+
+  // Solve original.
+  auto s1 = Solver::Build(p);
+  auto r1 = s1.Solve(ThetaContinuation{1e-10, 200, 1});
+
+  // Solve rescaled.
+  auto [rescaled, info] = RescaleProblem(p, ColumnScaling::Ruiz);
+  auto s2 = Solver::Build(rescaled);
+  auto r2 = s2.Solve(ThetaContinuation{1e-10, 200, 1});
+  Eigen::VectorXd x2_orig = info.Unscale(r2.x);
+
+  EXPECT_LT((r1.x - x2_orig).norm(), 1e-4)
+      << "Rescaled solution differs from original.\n"
+      << "  x_orig = " << r1.x.transpose() << "\n"
+      << "  x_resc = " << x2_orig.transpose();
 }
 
 }  // namespace

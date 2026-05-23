@@ -591,7 +591,9 @@ add_executable(rescale_test
   tests/rescale_test.cc
 )
 target_link_libraries(rescale_test
-  sparse_linear_constraint
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver
+  structural_rank
   GTest::gtest_main
 )
 gtest_discover_tests(rescale_test)
