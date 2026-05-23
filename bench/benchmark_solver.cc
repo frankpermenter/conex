@@ -135,6 +135,9 @@ struct AlgoResult {
   double complementarity;
   double time_ms;
   bool converged;
+  // Model-space residuals (from original problem data).
+  double eq_residual = 0;   // max ||Cx - d|| across equality constraints
+  double min_slack = 0;     // min entry of Ax + b across inequality constraints
 };
 
 // Per-instance results for JSON output.
@@ -202,6 +205,8 @@ void WriteJSON(const std::string& path,
         << ", \"dual_res\": " << jnum(a.dual_residual)
         << ", \"compl\": " << jnum(a.complementarity)
         << ", \"time_ms\": " << jnum(a.time_ms)
+        << ", \"eq_res\": " << jnum(a.eq_residual)
+        << ", \"min_slack\": " << jnum(a.min_slack)
         << ", \"converged\": " << (a.converged ? "true" : "false")
         << "}" << (j + 1 < inst.algorithms.size() ? "," : "") << "\n";
     }
@@ -222,11 +227,17 @@ AlgoResult RunAlgo(const char* name, const Model& problem,
   auto t1 = Clock::now();
   double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
+  // Model-space residuals.
+  double eq_res = 0;
+  for (const auto& r : result.duals.eq_residual)
+    eq_res = std::max(eq_res, r.norm());
+
   return {name, result.iterations, result.factorizations,
           result.mu, result.objective,
           result.optimality.dual_residual,
           result.optimality.complementarity,
-          ms, result.converged};
+          ms, result.converged,
+          eq_res, result.optimality.min_slack};
 }
 
 std::vector<AlgoResult> ProfileAlgorithm(
@@ -314,16 +325,17 @@ std::vector<AlgoResult> ProfileAlgorithm(
   }
 
   // --- Summary table ---
-  printf("  %-14s %5s %5s %10s %14s %10s %10s %8s %s\n",
+  printf("  %-14s %5s %5s %10s %14s %10s %10s %10s %10s %8s %s\n",
          "Algorithm", "fac", "iter", "mu", "cost", "dual_res",
-         "compl", "ms", "ok");
-  printf("  %s\n", std::string(90, '-').c_str());
+         "compl", "eq_res", "min_slk", "ms", "ok");
+  printf("  %s\n", std::string(115, '-').c_str());
   double c0 = objective_constant;
   for (const auto& r : results) {
-    printf("  %-14s %5d %5d %10.2e %14.6e %10.2e %10.2e %8.1f %s\n",
+    printf("  %-14s %5d %5d %10.2e %14.6e %10.2e %10.2e %10.2e %10.2e %8.1f %s\n",
            r.name, r.factorizations, r.iterations,
            r.mu, r.primal_cost + c0, r.dual_residual,
-           r.complementarity, r.time_ms,
+           r.complementarity, r.eq_residual, r.min_slack,
+           r.time_ms,
            r.converged ? "yes" : "NO");
   }
 
