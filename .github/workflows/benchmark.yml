@@ -1,0 +1,63 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y libeigen3-dev libopenblas-dev liblapacke-dev
+
+      - name: Build
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j$(nproc) --target benchmark_solver
+
+      - name: Run benchmark
+        run: |
+          ./build/benchmark_solver data/QPS_Files \
+            --json bench/results/current.json \
+            --algo "TC+frzJ" \
+            --limit 0
+        continue-on-error: true
+
+      - name: Show leaderboard
+        run: python3 bench/leaderboard.py bench/results/current.json
+
+      - name: Compare with baseline
+        if: hashFiles('bench/results/baseline.json') != ''
+        run: |
+          echo "## Benchmark comparison" > /tmp/bench_comment.md
+          echo '```' >> /tmp/bench_comment.md
+          python3 bench/leaderboard.py bench/results/baseline.json bench/results/current.json >> /tmp/bench_comment.md
+          echo '```' >> /tmp/bench_comment.md
+          cat /tmp/bench_comment.md
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request' && hashFiles('bench/results/baseline.json') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: /tmp/bench_comment.md
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: bench/results/current.json
+
+      - name: Update baseline (main branch only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          cp bench/results/current.json bench/results/baseline.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bench/results/baseline.json
+          git diff --cached --quiet || git commit -m "Update benchmark baseline [skip ci]"
+          git push
