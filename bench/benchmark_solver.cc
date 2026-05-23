@@ -654,6 +654,13 @@ int main(int argc, char* argv[]) {
       if (limit > 0 && count >= limit) break;
       try {
         auto info = conex::ReadProblemFile(filepath);
+        if (do_rescale) {
+          auto [rescaled, rinfo] = conex::RescaleProblem(info.problem, strategy);
+          if (rinfo.was_rescaled) {
+            info.problem = std::move(rescaled);
+            info.name += " [rescaled]";
+          }
+        }
         if (profile_mode) {
           conex::PrintProfileHeader();
           auto res = conex::ProfileFactorization(
