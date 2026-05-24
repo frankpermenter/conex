@@ -305,10 +305,11 @@ void Solver::ComputeModelSpaceResiduals(SolveResult& result) const {
   const int n = model.num_variables();
   if (x.size() != n) return;
 
-  // Recompute primal residuals (slack, eq_residual) from original Model + x.
-  // Leaves duals (lambda, nu) as populated by ExtractDuals / penalty.
-  result.duals.slack.clear();
-  result.duals.eq_residual.clear();
+  // Recompute primal feasibility from original Model + x.
+  // Does NOT overwrite result.duals (slack, eq_residual, lambda, nu)
+  // which are populated by ExtractDuals / penalty.
+  double min_slack_model = 1e30;
+  double eq_res_model = 0;
 
   // Accumulate Qx and stationarity gradient.
   Eigen::VectorXd Qx = Eigen::VectorXd::Zero(n);
@@ -327,7 +328,7 @@ void Solver::ComputeModelSpaceResiduals(SolveResult& result) const {
         for (int j = 0; j < (int)data.vars.size(); ++j)
           xv(j) = x(data.vars[j]);
         Eigen::VectorXd slack = Eigen::MatrixXd(data.A) * xv + data.b;
-        result.duals.slack.push_back(slack);
+        min_slack_model = std::min(min_slack_model, slack.minCoeff());
 
         // Lambda from the KKT solve (already in result from ExtractDuals).
         // We keep whatever was there — the ordering matches because we
@@ -343,7 +344,7 @@ void Solver::ComputeModelSpaceResiduals(SolveResult& result) const {
         for (int j = 0; j < (int)data.primal_vars.size(); ++j)
           xv(j) = x(data.primal_vars[j]);
         Eigen::VectorXd res = Eigen::MatrixXd(data.C) * xv - data.d;
-        result.duals.eq_residual.push_back(res);
+        eq_res_model = std::max(eq_res_model, res.norm());
         eq_idx++;
 
       } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
@@ -357,19 +358,11 @@ void Solver::ComputeModelSpaceResiduals(SolveResult& result) const {
     }, model.constraint(i));
   }
 
-  // Primal feasibility summary.
-  double min_slack = 1e30;
-  for (const auto& s : result.duals.slack)
-    min_slack = std::min(min_slack, s.minCoeff());
-  double eq_res_norm = 0;
-  for (const auto& r : result.duals.eq_residual)
-    eq_res_norm = std::max(eq_res_norm, r.norm());
-
   // Objective in original Model space.
   result.objective = stat.dot(x) + 0.5 * Qx.dot(x);
 
   // Update optimality with Model-space values.
-  result.optimality.min_slack = min_slack;
+  result.optimality.min_slack = min_slack_model;
 }
 
 }  // namespace conex
