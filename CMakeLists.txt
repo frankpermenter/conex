@@ -129,7 +129,6 @@ add_library(algorithms
   src/conex/algorithms/finite_horizon.cc
   src/conex/algorithms/lqr_tree_solver.cc
   src/conex/algorithms/tree_solver_builder.cc
-  src/conex/algorithms/self_dual_embedding.cc
   src/conex/common/kkt_system.cc
   src/conex/common/solver.cc
 )
@@ -598,16 +597,6 @@ target_link_libraries(rescale_test
 )
 gtest_discover_tests(rescale_test)
 
-add_executable(self_dual_embedding_test
-  tests/self_dual_embedding_test.cc
-)
-target_link_libraries(self_dual_embedding_test
-  algorithms constraints sparse_linear_constraint
-  clique_ordering kkt_solver_factory tree_solver
-  structural_rank
-  GTest::gtest_main
-)
-gtest_discover_tests(self_dual_embedding_test)
 
 add_executable(linesearch_bug_test
   tests/linesearch_bug_test.cc
