@@ -128,27 +128,37 @@ OptimalitySummary Solver::ComputeOptimality(
   s += k->GetAffineTerm();
 
   // Dual residual: A'λ + C'ν - Qx - c.
-  // The equality dual ν is embedded in x_reduced via the saddle-point
-  // formulation [0,C';C,0].  The saddle-point ν has opposite sign to
-  // the Lagrangian ν, so we subtract AccumulateCtranspose (which adds
-  // [C'ν_sp; Cx]) to get the Lagrangian C'ν contribution.
-  auto dual_rhs = k->MakeSolverRHS();
-  dual_rhs.SetZero();
-  k->AccumulateAtranspose(lambda, dual_rhs);
+  // Compute in dense space to avoid separator/supernode bookkeeping issues.
+  int n = k->number_of_variables();
+
+  auto at_lam = k->MakeSolverRHS();
+  at_lam.SetZero();
+  k->AccumulateAtranspose(lambda, at_lam);
+  Eigen::VectorXd at_lam_vec(n);
+  k->GatherInto(at_lam, at_lam_vec);
+
   auto qx = k->MakeSolverRHS();
   qx.SetZero();
   k->AccumulateQx(x_rhs, qx);
-  dual_rhs -= qx;
-  dual_rhs -= cost_rhs;
+  Eigen::VectorXd qx_vec(n);
+  k->GatherInto(qx, qx_vec);
+
+  Eigen::VectorXd cost_vec(n);
+  { auto cost_copy = cost_rhs; k->GatherInto(cost_copy, cost_vec); }
+
+  Eigen::VectorXd dual_res = at_lam_vec - qx_vec - cost_vec;
+
+  // The equality dual ν is embedded in x_reduced via the saddle-point
+  // formulation [0,C';C,0].  The saddle-point ν has opposite sign to
+  // the Lagrangian ν, so we subtract AccumulateCtranspose.
   if (auto* ts = tree_solver()) {
     auto c_trans = k->MakeSolverRHS();
     c_trans.SetZero();
     ts->AccumulateCtranspose(x_rhs, c_trans);
-    dual_rhs -= c_trans;
+    Eigen::VectorXd ct_vec(n);
+    k->GatherInto(c_trans, ct_vec);
+    dual_res -= ct_vec;
   }
-  int n = k->number_of_variables();
-  Eigen::VectorXd dual_res(n);
-  k->GatherInto(dual_rhs, dual_res);
 
   // Stationarity norm: only over primal variables (exclude equality dual slots).
   int n_primal = reduced_linear_cost_.size() > 0
