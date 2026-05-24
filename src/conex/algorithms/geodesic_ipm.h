@@ -25,6 +25,7 @@ struct GeodesicIterStats {
   double min_slack = 0;    // min(r_i - |r_i * d_i|)
   double theta = 0;        // homotopy parameter (ThetaContR)
   int factorizations = 0;  // cumulative factorizations at this iteration
+  double gap_error = 0;    // |mu*(nu-d_sqr) - (b'lam + c'x + x'Qx + d'nu)|
 };
 
 struct OptimalityReport {

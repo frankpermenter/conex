@@ -428,9 +428,9 @@ GeodesicResult SolveGeodesicLP(
     double mu = 1.0 / (k * k);
     double s_dot_x = mu * (nu - d_sq);
 
-    if (verbose) {
-      // Duality gap check: compare mu*(nu - ||d||^2) with b'lambda + c'x.
-      // lambda = (1/k)*P(sqrt(W))(e+d), x = y0/k + y1.
+    // Duality gap check: compare mu*(nu - ||d||^2) with b'lambda + c'x + x'Qx + d'nu.
+    double gap_error = 0;
+    {
       RowSpace sqrtW_v = model.AllocRowSpace(arena);
       EuclideanJordanAlgebra::sqrt(sqrtW_v, W);
       RowSpace ed = model.AllocRowSpace(arena);
@@ -440,8 +440,6 @@ GeodesicResult SolveGeodesicLP(
       quadraticRepresentation(lam_v, sqrtW_v, ed);
       lam_v *= (1.0 / k);
       double b_lam = dot(model.GetAffineTerm(), lam_v);
-
-      auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
 
       auto x_rhs_v = model.AllocSolverRHS();
       x_rhs_v.SetZero();
@@ -458,23 +456,28 @@ GeodesicResult SolveGeodesicLP(
       }
 
       double d_nu = 0;
+      auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
       if (ts && !ts->equality_sub_assemblers().empty()) {
         auto d_rhs = ts->EqualityAffineTermRHS();
         d_nu = model.dot(d_rhs, x_rhs_v);
       }
 
       double gap_primal_dual = b_lam + c_x + qx_gap + d_nu;
-      double gap_compl = s_dot_x;
-      printf("  %3d  %10.4e  %10.4e  %10.4e  %10.4e"
-             "  gap_sl=%.2e  gap_pd=%.2e  err=%.2e"
-             "  [b'l=%.2e c'x=%.2e xQx=%.2e d'v=%.2e]\n",
-             outer, k_prev, k, d_inf, d_sq,
-             gap_compl, gap_primal_dual,
-             std::abs(gap_compl - gap_primal_dual),
-             b_lam, c_x, qx_gap, d_nu);
+      gap_error = std::abs(s_dot_x - gap_primal_dual);
+
+      if (verbose) {
+        printf("  %3d  %10.4e  %10.4e  %10.4e  %10.4e"
+               "  gap_sl=%.2e  gap_pd=%.2e  err=%.2e"
+               "  [b'l=%.2e c'x=%.2e xQx=%.2e d'v=%.2e]\n",
+               outer, k_prev, k, d_inf, d_sq,
+               s_dot_x, gap_primal_dual, gap_error,
+               b_lam, c_x, qx_gap, d_nu);
+      }
     }
 
-    result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});
+    { GeodesicIterStats st{mu, d_inf, d_sq, s_dot_x};
+      st.gap_error = gap_error;
+      result.iter_stats.push_back(st); }
     result.iterations = outer + 1;
     result.mu = mu;
     result.d_inf_norm = d_inf;
