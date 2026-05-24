@@ -184,7 +184,7 @@ GeodesicResult SolveGeodesicBarrierLP(
       x_rhs_conv += y1;
       int nr = model.number_of_variables();
       result.x.resize(nr);
-      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs_conv.supernodes->GatherInto(xm); }
+      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); model.GatherInto(x_rhs_conv, xm); }
     }
 
     bool converged = (gap < tolerance && d_inf < 1.01);
@@ -519,7 +519,7 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
       x_rhs *= (1.0 / tau);
       int nr = model.number_of_variables();
       result.x.resize(nr);
-      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs.supernodes->GatherInto(xm); }
+      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); model.GatherInto(x_rhs, xm); }
     }
 
     bool converged = (mu < tolerance);

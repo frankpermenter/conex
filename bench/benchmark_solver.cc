@@ -261,6 +261,25 @@ std::vector<AlgoResult> ProfileAlgorithm(
   printf("  Variables: %d, Constraints: %d\n",
          problem.num_variables(), problem.num_constraints());
 
+  // Print problem data norms.
+  {
+    double c_norm = problem.has_linear_cost() ? problem.linear_cost().norm() : 0;
+    double A_norm = 0, b_norm = 0, Q_norm = 0;
+    for (const auto& cdata : problem.constraints()) {
+      std::visit([&](const auto& d) {
+        using T = std::decay_t<decltype(d)>;
+        if constexpr (std::is_same_v<T, Model::LinearConstraintData>) {
+          A_norm = std::max(A_norm, Eigen::MatrixXd(d.A).norm());
+          b_norm = std::max(b_norm, d.b.norm());
+        } else if constexpr (std::is_same_v<T, Model::QuadraticCostData>) {
+          Q_norm = std::max(Q_norm, Eigen::MatrixXd(d.Q_sparse).norm());
+        }
+      }, cdata);
+    }
+    printf("  ||c||=%.2e  ||A||=%.2e  ||b||=%.2e  ||Q||=%.2e\n",
+           c_norm, A_norm, b_norm, Q_norm);
+  }
+
   {
     auto t0 = Clock::now();
     auto solver = Solver::Build(problem, config);

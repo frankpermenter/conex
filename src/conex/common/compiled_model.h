@@ -60,6 +60,11 @@ class CompiledModel {
   }
   RowSpace GetAffineTerm() { return kkt_.GetAffineTerm(); }
 
+  // Gather full solution vector (folds separators for tree solvers).
+  void GatherInto(SolverRHS& rhs, Eigen::Ref<Eigen::MatrixXd> x) {
+    kkt_.GatherInto(rhs, x);
+  }
+
   // Inner products.
   double dot(SolverRHS& a, SolverRHS& b) { return kkt_.dot(a, b); }
   double dot(SolverRHS& a, const BlockVariable& b) {

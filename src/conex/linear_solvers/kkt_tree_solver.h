@@ -401,6 +401,11 @@ class SymmetricLinearSystemTreeSolver : public KKTSolverBase {
     rhs.blocks_fully_gathered = true;
   }
 
+  void GatherInto(SolverRHS& rhs, Eigen::Ref<Eigen::MatrixXd> x) override {
+    if (!rhs.blocks_fully_gathered) GatherSeparators(rhs);
+    rhs.supernodes->GatherInto(x);
+  }
+
   double dot(SolverRHS& a, SolverRHS& b) override {
     if (!a.blocks_fully_gathered) GatherSeparators(a);
     if (!b.blocks_fully_gathered) GatherSeparators(b);

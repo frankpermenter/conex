@@ -46,6 +46,12 @@ class KKTSolverBase {
   virtual double dot(SolverRHS& a, SolverRHS& b) { return a.dot(b); }
   virtual double dot(SolverRHS& a, const BlockVariable& b) { return a.dot(b); }
 
+  // Gather the full solution vector from a SolverRHS into a dense vector.
+  // The tree solver overrides to fold separator data into supernodes first.
+  virtual void GatherInto(SolverRHS& rhs, Eigen::Ref<Eigen::MatrixXd> x) {
+    rhs.supernodes->GatherInto(x);
+  }
+
   virtual void SolveSolverRHS(SolverRHS& rhs);
 
   // Dense solve (raw pointer interface). Solves in-place on column-major data.

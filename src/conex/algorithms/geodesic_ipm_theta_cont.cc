@@ -256,7 +256,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
       x_rhs *= (1.0 / tau);
       int nr = model.number_of_variables();
       result.x.resize(nr);
-      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs.supernodes->GatherInto(xm); }
+      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); model.GatherInto(x_rhs, xm); }
     }
 
     // Termination: mu below tolerance with d_inf small.  Same criterion
@@ -600,7 +600,7 @@ GeodesicResult SolveGeodesicPhaseOne(
       int nr = model.number_of_variables();
       result.x.resize(nr);
       result.x.resize(model.number_of_variables());
-    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); model.GatherInto(x_rhs, xm); }
     }
     RowSpace d_cur = model.AllocRowSpace();
     EvaluateDirection(d_cur, decomp, k, tau, theta);

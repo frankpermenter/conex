@@ -4,6 +4,7 @@
 
 #include "conex/common/eja_ops.h"
 #include "conex/common/structural_rank.h"
+#include "conex/linear_solvers/kkt_tree_solver.h"
 
 namespace conex {
 
@@ -126,7 +127,11 @@ OptimalitySummary Solver::ComputeOptimality(
   k->MultiplyA(x_rhs, s);
   s += k->GetAffineTerm();
 
-  // Dual residual: A'λ - Qx - c.
+  // Dual residual: A'λ + C'ν - Qx - c.
+  // The equality dual ν is embedded in x_reduced via the saddle-point
+  // formulation [0,C';C,0].  The saddle-point ν has opposite sign to
+  // the Lagrangian ν, so we subtract AccumulateCtranspose (which adds
+  // [C'ν_sp; Cx]) to get the Lagrangian C'ν contribution.
   auto dual_rhs = k->MakeSolverRHS();
   dual_rhs.SetZero();
   k->AccumulateAtranspose(lambda, dual_rhs);
@@ -135,9 +140,20 @@ OptimalitySummary Solver::ComputeOptimality(
   k->AccumulateQx(x_rhs, qx);
   dual_rhs -= qx;
   dual_rhs -= cost_rhs;
+  if (auto* ts = tree_solver()) {
+    auto c_trans = k->MakeSolverRHS();
+    c_trans.SetZero();
+    ts->AccumulateCtranspose(x_rhs, c_trans);
+    dual_rhs -= c_trans;
+  }
   int n = k->number_of_variables();
   Eigen::VectorXd dual_res(n);
-  dual_rhs.supernodes->GatherInto(dual_res);
+  k->GatherInto(dual_rhs, dual_res);
+
+  // Stationarity norm: only over primal variables (exclude equality dual slots).
+  int n_primal = reduced_linear_cost_.size() > 0
+                     ? static_cast<int>(reduced_linear_cost_.size())
+                     : n;
 
   // Use raw Eigen operations for complementarity and min eigenvalue.
   // The EJA dispatch (dot, minEigenvalue) requires SymmetricConeOperations
@@ -146,7 +162,7 @@ OptimalitySummary Solver::ComputeOptimality(
   Eigen::Map<const Eigen::VectorXd> l_vec(lambda.col().data(), lambda.col().size());
 
   OptimalitySummary opt;
-  opt.dual_residual = dual_res.norm();
+  opt.dual_residual = dual_res.head(n_primal).norm();
   opt.complementarity = s_vec.dot(l_vec);
   opt.min_slack = s_vec.minCoeff();
   opt.min_dual = l_vec.minCoeff();
