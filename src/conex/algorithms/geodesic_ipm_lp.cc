@@ -441,31 +441,15 @@ GeodesicResult SolveGeodesicLP(
       lam_v *= (1.0 / k);
       double b_lam = dot(model.GetAffineTerm(), lam_v);
 
+      // Compute gap terms via dense vectors to avoid
+      // separator double-counting in SolverRHS::dot / AccumulateQx.
+      auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
+      int nv = model.number_of_variables();
+
       auto x_rhs_v = model.AllocSolverRHS();
       x_rhs_v.SetZero();
       x_rhs_v.AddScaled(1.0 / k, y0);
       x_rhs_v += y1;
-      double c_x = cost_rhs.dot(x_rhs_v);
-
-      double qx_gap = 0;
-      if (model.has_quadratic_cost()) {
-        auto qx_v = model.AllocSolverRHS();
-        qx_v.SetZero();
-        model.AccumulateQx(x_rhs_v, qx_v);
-        qx_gap = model.dot(x_rhs_v, qx_v);
-      }
-
-      // Equality constraint contribution: d'ν.
-      double d_nu = 0;
-      auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
-      if (ts && !ts->equality_sub_assemblers().empty()) {
-        auto d_rhs = ts->EqualityAffineTermRHS();
-        d_nu = model.dot(d_rhs, x_rhs_v);
-      }
-
-      // Compute c'x, x'Qx, d'nu via dense vectors to avoid
-      // separator double-counting in SolverRHS::dot.
-      int nv = model.number_of_variables();
       Eigen::VectorXd x_vec(nv);
       x_rhs_v.supernodes->GatherInto(x_vec);
 
@@ -499,7 +483,7 @@ GeodesicResult SolveGeodesicLP(
              outer, k_prev, k, d_inf, d_sq,
              gap_compl, gap_primal_dual,
              std::abs(gap_compl - gap_primal_dual),
-             b_lam, c_x_dense, qx_dense, d_nu_dense);
+             b_lam, c_x, qx_gap, d_nu);
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});

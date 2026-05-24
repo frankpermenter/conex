@@ -597,6 +597,13 @@ target_link_libraries(rescale_test
 )
 gtest_discover_tests(rescale_test)
 
+add_executable(kkt_accuracy_test tests/kkt_accuracy_test.cc)
+target_link_libraries(kkt_accuracy_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver structural_rank
+  GTest::gtest_main)
+gtest_discover_tests(kkt_accuracy_test)
+
 
 add_executable(linesearch_bug_test
   tests/linesearch_bug_test.cc
