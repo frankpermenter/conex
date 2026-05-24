@@ -246,7 +246,8 @@ std::vector<AlgoResult> ProfileAlgorithm(
                       double objective_constant = 0,
                       const std::string& algo_filter = "",
                       double tol_override = 1e-8,
-                      bool verbose = false) {
+                      bool verbose = false,
+                      int max_iter_override = -1) {
   auto should_run = [&](const char* aname) {
     if (algo_filter.empty()) return true;
     // Support comma-separated filters: "TC+frzJ,HSDE" matches either.
@@ -293,7 +294,7 @@ std::vector<AlgoResult> ProfileAlgorithm(
     }
   }
 
-  const int max_iters = 500;
+  const int max_iters = (max_iter_override > 0) ? max_iter_override : 500;
   const double tol = tol_override;
 
   std::vector<AlgoResult> results;
@@ -324,11 +325,11 @@ std::vector<AlgoResult> ProfileAlgorithm(
   }
   if (should_run("GeodesicLP")) {
     results.push_back(RunAlgo("GeodesicLP", problem, config,
-        GeodesicLP{tol, 30, 0, verbose}));
+        GeodesicLP{tol, max_iters, 0, verbose}));
   }
   if (should_run("LP+frzJ")) {
     results.push_back(RunAlgo("LP+frzJ", problem, config,
-        GeodesicLP{tol, 30, 1, verbose}));
+        GeodesicLP{tol, max_iters, 1, verbose}));
   }
   if (should_run("PhaseOne")) {
     results.push_back(RunAlgo("PhaseOne", problem, config,
@@ -581,6 +582,7 @@ int main(int argc, char* argv[]) {
   int max_profile_iters = -1;
   std::string algo_filter;
   double tol = 1e-8;
+  int max_algo_iters = -1;
   bool verbose = false;
   std::string json_path;
   std::vector<int> sweep_threads, sweep_merge;
@@ -618,6 +620,8 @@ int main(int argc, char* argv[]) {
       algo_filter = argv[++i];
     } else if (arg == "--tol" && i + 1 < argc) {
       tol = std::stod(argv[++i]);
+    } else if (arg == "--maxiter" && i + 1 < argc) {
+      max_algo_iters = std::stoi(argv[++i]);
     } else if (arg == "--verbose" || arg == "-v") {
       verbose = true;
     } else if (arg == "--json" && i + 1 < argc) {
@@ -661,7 +665,7 @@ int main(int argc, char* argv[]) {
       auto res = conex::ProfileFactorization(problem, name, cfg, max_profile_iters);
       conex::PrintProfileResult(res, cfg);
     } else {
-      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter, tol, verbose);
+      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter, tol, verbose, max_algo_iters);
     }
     return 0;
   }
@@ -699,7 +703,7 @@ int main(int argc, char* argv[]) {
           conex::PrintProfileResult(res, cfg);
         } else {
           auto algos = conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                                   info.objective_constant, algo_filter, tol, verbose);
+                                   info.objective_constant, algo_filter, tol, verbose, max_algo_iters);
           if (!json_path.empty()) {
             conex::InstanceResult ir;
             ir.name = fs::path(filepath).stem().string();
@@ -747,7 +751,7 @@ int main(int argc, char* argv[]) {
 
     if (!profile_mode && !json_path.empty()) {
       auto algos = conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                                            info.objective_constant, algo_filter, tol, verbose);
+                                            info.objective_constant, algo_filter, tol, verbose, max_algo_iters);
       conex::InstanceResult ir;
       ir.name = fs::path(arg1).stem().string();
       ir.n = info.problem.num_variables();
@@ -780,7 +784,7 @@ int main(int argc, char* argv[]) {
       printf("Stages:  build=solver construction, asm+fac/solve are median of repeated runs\n");
     } else {
       conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                               info.objective_constant, algo_filter, tol, verbose);
+                               info.objective_constant, algo_filter, tol, verbose, max_algo_iters);
     }
   } catch (const std::exception& e) {
     printf("Error: %s\n", e.what());
