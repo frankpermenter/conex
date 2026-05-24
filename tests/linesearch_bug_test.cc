@@ -2,6 +2,7 @@
 // the evaluated norm exceeds 1.
 
 #include <gtest/gtest.h>
+#include <fstream>
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
@@ -19,8 +20,9 @@ namespace conex {
 namespace {
 
 TEST(LineSearchBug, EvaluatedNormExceedsBound) {
-  auto [problem, info] = ReadSDPA(
-      "/agent-workspace/problem_libraries/SDPLIB/data/truss8.dat-s");
+  const char* path = "/agent-workspace/problem_libraries/SDPLIB/data/truss8.dat-s";
+  if (!std::ifstream(path).good()) GTEST_SKIP() << "Test data not found: " << path;
+  auto [problem, info] = ReadSDPA(path);
   SolverConfiguration cfg;
   auto solver = Solver::Build(problem, cfg);
   auto* kkt = solver.kkt();
