@@ -826,7 +826,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     x_rhs.AddScaled(tau, decomp.y_cost);
     x_rhs *= (1.0 / tau);
     result.x.resize(model.number_of_variables());
-    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); model.GatherInto(x_rhs, xm); }
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); x_rhs.supernodes->GatherInto(xm); }
   }
 
   // Lambda and optimality.
@@ -989,7 +989,7 @@ GeodesicResult SolveGeodesicHybridR(
     model.SolveSolverRHS(y);
     int nr = model.number_of_variables();
     result.x.resize(nr);
-    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); model.GatherInto(y, xm); }
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); y.supernodes->GatherInto(xm); }
   }
 
   // Lambda and optimality.

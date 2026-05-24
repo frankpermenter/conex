@@ -293,7 +293,7 @@ GeodesicResult SolveGeodesicHSD(
         x_rhs *= (1.0 / tau);
         int nr = model.number_of_variables();
         result.x.resize(nr);
-        { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); model.GatherInto(x_rhs, xm); }
+        { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs.supernodes->GatherInto(xm); }
       }
 
       // lambda_phys = lambda_lifted / tau.
@@ -452,7 +452,7 @@ GeodesicResult SolveGeodesicLP(
       x_rhs_conv += y1;
       int nr = model.number_of_variables();
       result.x.resize(nr);
-      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); model.GatherInto(x_rhs_conv, xm); }
+      { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs_conv.supernodes->GatherInto(xm); }
     }
 
     bool converged = (s_dot_x < tolerance && d_inf < 1.01);

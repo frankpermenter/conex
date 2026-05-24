@@ -766,7 +766,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       x_rhs *= (1.0 / tau);
       result.x.resize(model.number_of_variables());
       Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size());
-      model.GatherInto(x_rhs, xm);
+      x_rhs.supernodes->GatherInto(xm);
     }
 
     if (std::abs(theta) < tolerance && std::abs(g) < tolerance && d_inf <= 1.001) {
@@ -993,7 +993,7 @@ GeodesicResult SolveGeodesicHybridR(
     model.SolveSolverRHS(y);
     int nr = model.number_of_variables();
     result.x.resize(nr);
-    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); model.GatherInto(y, xm); }
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); y.supernodes->GatherInto(xm); }
   }
 
   // Lambda and optimality.
@@ -1288,7 +1288,7 @@ GeodesicResult SolveGeodesicHybrid(
     int nr = model.number_of_variables();
     result.x.resize(nr);
     result.x.resize(model.number_of_variables());
-    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); model.GatherInto(y, xm); }
+    { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size()); y.supernodes->GatherInto(xm); }
     if (tau != 1.0 && tau > 0) for (auto& v : result.x) v /= tau;
   }
 
