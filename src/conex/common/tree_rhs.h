@@ -47,7 +47,8 @@ struct SolverRHS {
   void SetZero() {
     supernodes->SetZero();
     if (has_separators()) separators->SetZero();
-    blocks_fully_gathered = !has_separators();
+    // After zeroing, all data is in supernodes (trivially: everything is 0).
+    blocks_fully_gathered = true;
   }
 
   // Scatter a dense vector into supernode blocks + zero separators.

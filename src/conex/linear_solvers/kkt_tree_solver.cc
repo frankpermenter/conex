@@ -1110,7 +1110,8 @@ SolverRHS T::MakeSolverRHS(int cols) {
   auto sp = std::make_unique<SeparatorScratch>(scratch);
   rhs.separators = sp.get();
   owned_solver_rhs_scratches_.push_back(std::move(sp));
-  rhs.blocks_fully_gathered = false;
+  // Supernodes zeroed, separators zeroed — all data is in supernodes.
+  rhs.blocks_fully_gathered = true;
   return rhs;
 }
 
