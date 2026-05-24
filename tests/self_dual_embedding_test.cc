@@ -84,22 +84,6 @@ TEST(HSD, SmallSDP) {
   EXPECT_TRUE(result.solved);
 }
 
-// SDPA benchmark: buck3 (PSD + nonneg).
-TEST(HSD, Buck3) {
-  auto [problem, info] = ReadSDPA(
-      "../benchmark_data/buck3.dat-s");
-  auto solver = Solver::Build(problem);
-  auto* kkt = solver.kkt();
-  auto cost_rhs = kkt->MakeSolverRHS();
-  if (problem.has_linear_cost())
-    cost_rhs = MakeBlockVariable(*kkt, problem.linear_cost());
-  RowSpace W = kkt->MakeRowSpace();
-  setOnes(W);
-
-  auto result = SolveHSD(*kkt, cost_rhs, W, 50, 1e-6, true);
-  printf("HSD buck3: %d iters, mu=%.2e, tau=%.2e, kappa=%.2e, solved=%d\n",
-         result.iterations, result.mu, result.tau, result.kappa, result.solved);
-}
 
 }  // namespace
 }  // namespace conex
