@@ -429,10 +429,77 @@ GeodesicResult SolveGeodesicLP(
     double s_dot_x = mu * (nu - d_sq);
 
     if (verbose) {
-      printf("  %3d  %10.4e  %10.4e  %10.4e  %10.4e  %10.4e"
-             "  d0=%.2e d1=%.2e\n",
-             outer, k_prev, k, d_inf, d_sq, s_dot_x,
-             normInf(d0), normInf(d1));
+      // Duality gap check: compare mu*(nu - ||d||^2) with b'lambda + c'x.
+      // lambda = (1/k)*P(sqrt(W))(e+d), x = y0/k + y1.
+      RowSpace sqrtW_v = model.AllocRowSpace(arena);
+      EuclideanJordanAlgebra::sqrt(sqrtW_v, W);
+      RowSpace ed = model.AllocRowSpace(arena);
+      setOnes(ed);
+      ed += d;
+      RowSpace lam_v = model.AllocRowSpace(arena);
+      quadraticRepresentation(lam_v, sqrtW_v, ed);
+      lam_v *= (1.0 / k);
+      double b_lam = dot(model.GetAffineTerm(), lam_v);
+
+      auto x_rhs_v = model.AllocSolverRHS();
+      x_rhs_v.SetZero();
+      x_rhs_v.AddScaled(1.0 / k, y0);
+      x_rhs_v += y1;
+      double c_x = cost_rhs.dot(x_rhs_v);
+
+      double qx_gap = 0;
+      if (model.has_quadratic_cost()) {
+        auto qx_v = model.AllocSolverRHS();
+        qx_v.SetZero();
+        model.AccumulateQx(x_rhs_v, qx_v);
+        qx_gap = model.dot(x_rhs_v, qx_v);
+      }
+
+      // Equality constraint contribution: d'ν.
+      double d_nu = 0;
+      auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
+      if (ts && !ts->equality_sub_assemblers().empty()) {
+        auto d_rhs = ts->EqualityAffineTermRHS();
+        d_nu = model.dot(d_rhs, x_rhs_v);
+      }
+
+      // Compute c'x, x'Qx, d'nu via dense vectors to avoid
+      // separator double-counting in SolverRHS::dot.
+      int nv = model.number_of_variables();
+      Eigen::VectorXd x_vec(nv);
+      x_rhs_v.supernodes->GatherInto(x_vec);
+
+      Eigen::VectorXd c_vec(nv);
+      { auto cc = cost_rhs; cc.supernodes->GatherInto(c_vec); }
+      double c_x = c_vec.dot(x_vec);
+
+      double qx_gap = 0;
+      if (model.has_quadratic_cost()) {
+        auto qx_v = model.AllocSolverRHS();
+        qx_v.SetZero();
+        model.AccumulateQx(x_rhs_v, qx_v);
+        Eigen::VectorXd qx_vec(nv);
+        model.kkt().GatherInto(qx_v, qx_vec);
+        qx_gap = x_vec.dot(qx_vec);
+      }
+
+      double d_nu = 0;
+      if (ts && !ts->equality_sub_assemblers().empty()) {
+        auto d_rhs = ts->EqualityAffineTermRHS();
+        Eigen::VectorXd d_vec(nv);
+        d_rhs.supernodes->GatherInto(d_vec);
+        d_nu = d_vec.dot(x_vec);
+      }
+
+      double gap_primal_dual = b_lam + c_x + qx_gap + d_nu;
+      double gap_compl = s_dot_x;
+      printf("  %3d  %10.4e  %10.4e  %10.4e  %10.4e"
+             "  gap_sl=%.2e  gap_pd=%.2e  err=%.2e"
+             "  [b'l=%.2e c'x=%.2e xQx=%.2e d'v=%.2e]\n",
+             outer, k_prev, k, d_inf, d_sq,
+             gap_compl, gap_primal_dual,
+             std::abs(gap_compl - gap_primal_dual),
+             b_lam, c_x_dense, qx_dense, d_nu_dense);
     }
 
     result.iter_stats.push_back({mu, d_inf, d_sq, s_dot_x});
