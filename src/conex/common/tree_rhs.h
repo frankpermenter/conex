@@ -47,7 +47,6 @@ struct SolverRHS {
   void SetZero() {
     supernodes->SetZero();
     if (has_separators()) separators->SetZero();
-    // After zeroing, all data is in supernodes (trivially: everything is 0).
     blocks_fully_gathered = true;
   }
 

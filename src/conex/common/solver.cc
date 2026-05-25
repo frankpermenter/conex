@@ -144,7 +144,7 @@ OptimalitySummary Solver::ComputeOptimality(
   k->GatherInto(qx, qx_vec);
 
   Eigen::VectorXd cost_vec(n);
-  { auto cost_copy = cost_rhs; k->GatherInto(cost_copy, cost_vec); }
+  cost_rhs.supernodes->GatherInto(cost_vec);
 
   Eigen::VectorXd dual_res = at_lam_vec - qx_vec - cost_vec;
 
