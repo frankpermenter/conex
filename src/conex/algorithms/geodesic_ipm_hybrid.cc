@@ -693,6 +693,9 @@ GeodesicResult SolveGeodesicThetaContinuationR(
           }
         }
       }
+      // Guard against NaN from degenerate theta/tau selection.
+      if (std::isnan(theta) || std::isinf(theta)) theta = 0.0;
+      if (std::isnan(tau) || std::isinf(tau)) tau = 1.0;
       SetTheta(decomp, model, arena, b, M, r_var, theta);
     }
 
