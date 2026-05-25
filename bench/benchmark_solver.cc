@@ -299,7 +299,8 @@ std::vector<AlgoResult> ProfileAlgorithm(
 
   {
     auto t0 = Clock::now();
-    auto solver = Solver::Build(problem, config);
+    auto solver = use_dense ? Solver::BuildDense(problem)
+                            : Solver::Build(problem, config);
     auto t1 = Clock::now();
     double build_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
     auto* kkt = solver.kkt();
