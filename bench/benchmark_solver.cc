@@ -250,13 +250,27 @@ std::vector<AlgoResult> ProfileAlgorithm(
                       bool verbose = false,
                       int max_iter_override = -1,
                       bool use_dense = false) {
+  // Algorithm names for exact-match detection.
+  static const char* algo_names[] = {
+    "ThetaCont", "TC+frzJ", "BarrierTC", "BarrierTC+frzJ",
+    "HSDE", "HSDE+frzJ", "GeodesicLP", "LP+frzJ",
+    "PhaseOne", "HybridR", "ThetaContR"
+  };
   auto should_run = [&](const char* aname) {
     if (algo_filter.empty()) return true;
-    // Support comma-separated filters: "TC+frzJ,HSDE" matches either.
+    // Comma-separated filters.  Use exact match when the token matches
+    // a known algorithm name; otherwise use substring match.
     std::istringstream ss(algo_filter);
     std::string token;
     while (std::getline(ss, token, ',')) {
-      if (std::string(aname).find(token) != std::string::npos) return true;
+      bool token_is_exact_name = false;
+      for (auto* nm : algo_names)
+        if (token == nm) { token_is_exact_name = true; break; }
+      if (token_is_exact_name) {
+        if (token == aname) return true;
+      } else {
+        if (std::string(aname).find(token) != std::string::npos) return true;
+      }
     }
     return false;
   };
