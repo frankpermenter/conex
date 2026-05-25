@@ -463,7 +463,9 @@ GeodesicResult SolveGeodesicLP(
       }
 
       double gap_primal_dual = b_lam + c_x + qx_gap + d_nu;
-      gap_error = std::abs(s_dot_x - gap_primal_dual);
+      double abs_err = std::abs(s_dot_x - gap_primal_dual);
+      double denom = std::max(std::abs(s_dot_x), std::abs(gap_primal_dual));
+      gap_error = (denom > 1e-30) ? abs_err / denom : abs_err;
 
       if (verbose) {
         double mu_new = (k > 0) ? 1.0 / (k * k) : 0;

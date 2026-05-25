@@ -80,12 +80,9 @@ TEST(GapConsistency, GeodesicLP_BandedQP) {
 
   ASSERT_GE((int)raw.iter_stats.size(), 3);
   for (int i = 0; i < 3; ++i) {
-    double err = raw.iter_stats[i].gap_error;
-    double gap = std::abs(raw.iter_stats[i].complementarity);
-    double rel = (gap > 1e-30) ? err / gap : err;
-    EXPECT_LT(rel, 1e-10)
-        << "Gap error at iteration " << i << ": abs=" << err
-        << " gap=" << gap << " rel=" << rel;
+    double rel_err = raw.iter_stats[i].gap_error;  // already relative
+    EXPECT_LT(rel_err, 1e-10)
+        << "Relative gap error at iteration " << i << ": " << rel_err;
   }
 }
 
