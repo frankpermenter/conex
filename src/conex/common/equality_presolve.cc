@@ -57,9 +57,17 @@ EqualityPresolveResult EliminateEqualities(const Model& problem) {
   // Null space basis: last nz columns of Q.
   result.N = Q.rightCols(nz);
 
-  // Particular solution: x0 = C' * (C*C')^{-1} * d.
-  Eigen::MatrixXd CCt = C * C.transpose();
-  result.x0 = C.transpose() * CCt.ldlt().solve(d);
+  // Particular solution: x0 = C^+ * d (minimum-norm via QR of C').
+  // C' = Q * R * P' where Q is n×n, R is n×p, P is permutation.
+  // x0 = Q * R^{-T} * P' * d (using only the first `rank` rows of R).
+  Eigen::VectorXd Pd = qr.colsPermutation().transpose() * d;
+  Eigen::MatrixXd R = qr.matrixQR().topLeftCorner(rank, rank)
+                          .triangularView<Eigen::Upper>();
+  Eigen::VectorXd y = R.transpose().triangularView<Eigen::Lower>()
+                          .solve(Pd.head(rank));
+  Eigen::VectorXd Qy = Eigen::VectorXd::Zero(n);
+  Qy.head(rank) = y;
+  result.x0 = qr.householderQ() * Qy;
 
   // Build reduced problem in z (nz variables).
   // x = x0 + N*z
