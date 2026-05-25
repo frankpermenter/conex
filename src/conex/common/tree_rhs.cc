@@ -8,7 +8,7 @@ namespace conex {
 void SolverRHS::SetZero() {
   supernodes->SetZero();
   if (has_separators()) separators->SetZero();
-  blocks_fully_gathered = !has_separators();
+  blocks_fully_gathered = true;
 }
 
 namespace EuclideanJordanAlgebra {
