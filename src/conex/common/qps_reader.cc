@@ -152,7 +152,11 @@ std::pair<Model, QPSInfo> ReadQPS(const std::string& filename) {
       add_entry(f.f4, f.f5);
     } else if (section == "RHS") {
       auto f = ParseFields(trimmed);
-      // f.f1 is the RHS vector name (ignored), then pairs.
+      // RHS lines: [SETNAME] ROWNAME VALUE [ROWNAME VALUE]
+      // Detect missing set name: if f.f1 is a known row name, there's
+      // no set name and pairs start at f.f1.
+      bool has_set_name = (row_index.find(f.f1) == row_index.end() &&
+                           f.f1 != obj_row);
       auto add_rhs = [&](const std::string& rname, const std::string& val) {
         if (rname.empty() || val.empty()) return;
         double v = std::stod(val);
@@ -160,31 +164,55 @@ std::pair<Model, QPSInfo> ReadQPS(const std::string& filename) {
         auto it = row_index.find(rname);
         if (it != row_index.end()) rhs_vals[it->second] = v;
       };
-      add_rhs(f.f2, f.f3);
-      add_rhs(f.f4, f.f5);
+      if (has_set_name) {
+        add_rhs(f.f2, f.f3);
+        add_rhs(f.f4, f.f5);
+      } else {
+        add_rhs(f.f1, f.f2);
+        add_rhs(f.f3, f.f4);
+      }
     } else if (section == "RANGES") {
       auto f = ParseFields(trimmed);
+      // Same set name detection as RHS.
+      bool has_set_name_r = (row_index.find(f.f1) == row_index.end() &&
+                             f.f1 != obj_row);
       auto add_range = [&](const std::string& rname, const std::string& val) {
         if (rname.empty() || val.empty()) return;
         double v = std::stod(val);
         auto it = row_index.find(rname);
         if (it != row_index.end()) range_vals[it->second] = v;
       };
-      add_range(f.f2, f.f3);
-      add_range(f.f4, f.f5);
+      if (has_set_name_r) {
+        add_range(f.f2, f.f3);
+        add_range(f.f4, f.f5);
+      } else {
+        add_range(f.f1, f.f2);
+        add_range(f.f3, f.f4);
+      }
     } else if (section == "BOUNDS") {
       auto f = ParseFields(trimmed);
       std::string btype = f.f1;
-      // f.f2 is the bound set name (ignored).
-      std::string cname = f.f3;
+      // BOUNDS lines: TYPE [SETNAME] VARNAME VALUE
+      // When set name is omitted, we get 3 tokens instead of 4.
+      std::string cname;
+      std::string val_str;
+      if (!f.f4.empty()) {
+        // 4+ tokens: f2=setname, f3=varname, f4=value
+        cname = f.f3;
+        val_str = f.f4;
+      } else {
+        // 3 tokens: f2=varname, f3=value (no set name)
+        cname = f.f2;
+        val_str = f.f3;
+      }
       int ci = get_col(cname);
       auto& bd = bounds[ci];
       if (btype == "LO") {
-        bd.lo = std::stod(f.f4);
+        bd.lo = std::stod(val_str);
       } else if (btype == "UP") {
-        bd.up = std::stod(f.f4);
+        bd.up = std::stod(val_str);
       } else if (btype == "FX") {
-        double v = std::stod(f.f4);
+        double v = std::stod(val_str);
         bd.lo = v;
         bd.up = v;
       } else if (btype == "FR") {
