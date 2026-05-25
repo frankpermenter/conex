@@ -67,6 +67,21 @@ std::pair<double, double> VerifyNewtonEquations(
     double k,
     double theta = 0.0);
 
+// Verify KKT conditions at d(k):
+//   Dual:   A'λ(k) = Q*x + c   where λ(k) = W(e + d(k)), x = y/k
+//   Primal: A*x + b = s(k)      where s(k) = W^{-1}(e - d(k))
+// Returns (primal_res, dual_res) as infinity norms.
+struct KKTResidual {
+  double primal;
+  double dual;
+};
+KKTResidual VerifyKKT(
+    CompiledModel& model,
+    const RowSpace& W,
+    const RowSpace& d,
+    const std::vector<double>& x,
+    double k);
+
 // Check optimality conditions given primal x and dual λ.
 OptimalityReport CheckOptimality(
     CompiledModel& model,

@@ -86,6 +86,80 @@ std::pair<double, double> VerifyNewtonEquations(
   return {primal_res, dual_res};
 }
 
+KKTResidual VerifyKKT(
+    CompiledModel& model,
+    const RowSpace& W,
+    const RowSpace& d,
+    const std::vector<double>& x,
+    double k) {
+  const int n = model.number_of_variables();
+  const auto& cost_rhs = model.cost_rhs();
+
+  RowSpace ones = model.AllocRowSpace();
+  setOnes(ones);
+  RowSpace sqrtW = model.AllocRowSpace();
+  EuclideanJordanAlgebra::sqrt(sqrtW, W);
+
+  // λ(k) = (1/k) * P(W^{1/2})(e + d(k))
+  RowSpace e_plus_d = model.AllocRowSpace();
+  addScaled(e_plus_d, ones, d, 1.0, 1.0);
+  RowSpace lambda = model.AllocRowSpace();
+  quadraticRepresentation(lambda, sqrtW, e_plus_d);
+  lambda *= (1.0 / k);
+
+  // s(k) = (1/k) * P(W^{-1/2})(e - d(k))
+  RowSpace e_minus_d = model.AllocRowSpace();
+  addScaled(e_minus_d, ones, d, 1.0, -1.0);
+  RowSpace sqrtWinv = model.AllocRowSpace();
+  EuclideanJordanAlgebra::inverse(sqrtWinv, sqrtW);
+  RowSpace s = model.AllocRowSpace();
+  quadraticRepresentation(s, sqrtWinv, e_minus_d);
+  s *= (1.0 / k);
+
+  auto x_rhs = model.AllocSolverRHS();
+  x_rhs.ScatterFrom(x.data(), x.size());
+
+  // Primal: A*x + b - s = 0
+  RowSpace Ax = model.AllocRowSpace();
+  model.MultiplyA(x_rhs, Ax);
+  Ax += model.GetAffineTerm();
+  Ax -= s;
+  double primal_res = normInf(Ax);
+
+  // Dual: A'λ + C'ν - Q*x - c = 0
+  // (ν is the equality dual embedded in x at saddle-point positions;
+  //  C'ν comes from AccumulateCtranspose.)
+  auto dual_rhs = model.AllocSolverRHS();
+  dual_rhs.SetZero();
+  model.AccumulateAtranspose(lambda, dual_rhs);
+  // Add C'ν via saddle-point: AccumulateCtranspose(x) gives [C'ν; Cx].
+  // Subtract because saddle-point ν has opposite sign to Lagrangian ν.
+  auto* ts = dynamic_cast<SymmetricLinearSystemTreeSolver*>(&model.kkt());
+  if (ts && !ts->equality_sub_assemblers().empty()) {
+    auto ct = model.kkt().MakeSolverRHS();
+    ct.SetZero();
+    ts->AccumulateCtranspose(x_rhs, ct);
+    dual_rhs -= ct;
+  }
+  if (model.has_quadratic_cost()) {
+    auto qx = model.AllocSolverRHS();
+    qx.SetZero();
+    model.AccumulateQx(x_rhs, qx);
+    dual_rhs -= qx;
+  }
+  dual_rhs -= cost_rhs;
+  // Subtract equality affine term (d at dual positions).
+  if (ts && !ts->equality_sub_assemblers().empty()) {
+    auto d_rhs = ts->EqualityAffineTermRHS();
+    dual_rhs += d_rhs;
+  }
+  Eigen::VectorXd dual_err(n);
+  model.kkt().GatherInto(dual_rhs, dual_err);
+  double dual_res = dual_err.cwiseAbs().maxCoeff();
+
+  return {primal_res, dual_res};
+}
+
 OptimalityReport CheckOptimality(
     CompiledModel& model,
     const SolverRHS& x_rhs,

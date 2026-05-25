@@ -528,6 +528,21 @@ GeodesicResult SolveGeodesicLP(
       break;
     }
 
+    // Verify KKT conditions before stepping.
+    if (verbose) {
+      int nv = model.number_of_variables();
+      std::vector<double> x_vec(nv);
+      { auto x_rhs = model.AllocSolverRHS();
+        x_rhs.SetZero();
+        x_rhs.AddScaled(1.0 / k, y0);
+        x_rhs += y1;
+        x_rhs.blocks_fully_gathered = true;
+        x_rhs.supernodes->GatherInto(x_vec.data(), nv); }
+      auto kkt_res = VerifyKKT(model, W, d, x_vec, k);
+      printf("    kkt: primal=%.2e  dual=%.2e\n",
+             kkt_res.primal, kkt_res.dual);
+    }
+
     // Save W₀ (frozen Jacobian point) before stepping.
     RowSpace W0 = W;  // heap deep copy (W is heap-backed)
 
