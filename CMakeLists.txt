@@ -131,6 +131,7 @@ add_library(algorithms
   src/conex/algorithms/tree_solver_builder.cc
   src/conex/common/kkt_system.cc
   src/conex/common/solver.cc
+  src/conex/common/equality_presolve.cc
 )
 target_link_libraries(algorithms PUBLIC sparse_linear_constraint)
 

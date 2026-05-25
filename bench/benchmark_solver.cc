@@ -43,6 +43,7 @@
 #include "conex/common/eja_ops.h"
 #include "conex/common/mps_reader.h"
 #include "conex/common/mtx_reader.h"
+#include "conex/common/equality_presolve.h"
 #include "conex/common/model.h"
 #include "conex/common/qps_reader.h"
 #include "conex/common/rescale.h"
@@ -593,6 +594,7 @@ int main(int argc, char* argv[]) {
   conex::SolverConfiguration cfg;
   bool profile_mode = false;
   bool do_rescale = false;
+  bool elim_eq = false;
   bool randomize = false;
   conex::ColumnScaling strategy = conex::ColumnScaling::Ruiz;
   int limit = 0;
@@ -634,6 +636,8 @@ int main(int argc, char* argv[]) {
       cfg.tree.use_generic_factorization = true;
     } else if (arg == "--dense") {
       use_dense = true;
+    } else if (arg == "--elim-eq") {
+      elim_eq = true;
     } else if (arg == "--iters" && i + 1 < argc) {
       max_profile_iters = std::stoi(argv[++i]);
     } else if (arg == "--algo" && i + 1 < argc) {
@@ -755,6 +759,17 @@ int main(int argc, char* argv[]) {
   // --- Single file ---
   try {
     auto info = conex::ReadProblemFile(arg1);
+
+    if (elim_eq) {
+      auto eq_result = conex::EliminateEqualities(info.problem);
+      if (eq_result.N.cols() < eq_result.original_n) {
+        printf("EliminateEqualities: %d -> %d vars (%d eq removed)\n",
+               eq_result.original_n, (int)eq_result.N.cols(),
+               eq_result.original_n - (int)eq_result.N.cols());
+        info.problem = std::move(eq_result.reduced);
+        info.name += " [elim-eq]";
+      }
+    }
 
     if (do_rescale) {
       const char* sname[] = {"MaxAbsValue", "L2Norm", "Ruiz"};
