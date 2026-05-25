@@ -420,6 +420,7 @@ std::pair<Model, QPSInfo> ReadQPS(const std::string& filename) {
       prob.AddLinearConstraint(A_up, b_up, all_vars);
     }
     info.num_bounded_vars = lo_count + up_count;
+    info.num_inequality_rows += lo_count + up_count;
 
     // Fixed variables (lo == up): add equality constraint.
     std::vector<Eigen::Triplet<double>> fx_trips;

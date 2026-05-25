@@ -540,7 +540,7 @@ ProblemWithInfo ReadProblemFile(const std::string& filename) {
     result.problem = std::move(p);
     result.objective_constant = info.objective_constant;
     char buf[256];
-    snprintf(buf, sizeof(buf), "QPS: %s (%d vars, %d eq, %d ineq, %d quad)",
+    snprintf(buf, sizeof(buf), "QPS: %s (%d vars, %d eq, %d ineq, %d Qnnz)",
              info.name.c_str(), info.num_variables,
              info.num_equality_rows, info.num_inequality_rows,
              info.num_quadratic_entries);
