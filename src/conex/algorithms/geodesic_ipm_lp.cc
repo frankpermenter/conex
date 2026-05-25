@@ -378,9 +378,9 @@ GeodesicResult SolveGeodesicLP(
   int total_sol = 0;
 
   if (verbose) {
-    printf("  %3s  %12s  %12s  %12s  %12s  %12s\n",
-           "fac", "k", "k_new", "d_inf", "d_sqr", "gap");
-    printf("  %s\n", std::string(72, '-').c_str());
+    printf("  %3s  %10s  %10s  %10s  %10s  %10s  %10s\n",
+           "fac", "mu", "d_inf", "d_sqr", "gap", "gap_pd", "gap_err");
+    printf("  %s\n", std::string(73, '-').c_str());
   }
 
   for (int outer = 0; outer < max_outer_iterations; ) {
@@ -466,12 +466,10 @@ GeodesicResult SolveGeodesicLP(
       gap_error = std::abs(s_dot_x - gap_primal_dual);
 
       if (verbose) {
-        printf("  %3d  %10.4e  %10.4e  %10.4e  %10.4e"
-               "  gap_sl=%.2e  gap_pd=%.2e  err=%.2e"
-               "  [b'l=%.2e c'x=%.2e xQx=%.2e d'v=%.2e]\n",
-               outer, k_prev, k, d_inf, d_sq,
-               s_dot_x, gap_primal_dual, gap_error,
-               b_lam, c_x, qx_gap, d_nu);
+        double mu_new = (k > 0) ? 1.0 / (k * k) : 0;
+        printf("  %3d  %10.2e  %10.2e  %10.2e  %10.2e  %10.2e  %10.2e\n",
+               outer, mu_new, d_inf, d_sq,
+               s_dot_x, gap_primal_dual, gap_error);
       }
     }
 
