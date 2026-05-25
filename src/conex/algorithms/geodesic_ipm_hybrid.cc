@@ -758,7 +758,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
     result.iterations = iter + 1;
 
-    // Extract x from current decomposition (before centering/shrink).
+    // Extract x and lambda from current iterate (before centering/shrink).
     {
       auto x_rhs = model.AllocSolverRHS();
       x_rhs = decomp.y_center;
@@ -767,6 +767,11 @@ GeodesicResult SolveGeodesicThetaContinuationR(
       result.x.resize(model.number_of_variables());
       Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size());
       x_rhs.supernodes->GatherInto(xm);
+    }
+    {
+      RowSpace r_plus_d = model.AllocRowSpace(arena);
+      addScaled(r_plus_d, r_var, delta_vec, 1.0, 1.0);
+      applyM(last_lambda, M, r_plus_d);
     }
 
     if (std::abs(theta) < tolerance && std::abs(g) < tolerance && d_inf <= 1.001) {
@@ -788,12 +793,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     if (stats) stats->other_us += std::chrono::duration<double, std::micro>(
         std::chrono::high_resolution_clock::now() - _other_start).count();
 
-    // Save lambda = M*(r+delta) before centering/shrink updates M and r.
-    {
-      RowSpace r_plus_d = model.AllocRowSpace(arena);
-      addScaled(r_plus_d, r_var, delta_vec, 1.0, 1.0);
-      applyM(last_lambda, M, r_plus_d);
-    }
+    // last_lambda was already saved above (before convergence check).
 
     bool do_center = !w_frozen && (policy(g, d_inf, r_updates_since_fac)
                                     || theta_stalled);
