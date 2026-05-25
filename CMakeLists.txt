@@ -612,6 +612,13 @@ target_link_libraries(gap_consistency_test
 gtest_discover_tests(gap_consistency_test)
 
 
+add_executable(equality_rhs_test tests/equality_rhs_test.cc)
+target_link_libraries(equality_rhs_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver structural_rank
+  GTest::gtest_main)
+gtest_discover_tests(equality_rhs_test)
+
 add_executable(linesearch_bug_test
   tests/linesearch_bug_test.cc
 )
