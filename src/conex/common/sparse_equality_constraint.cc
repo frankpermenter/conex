@@ -115,14 +115,19 @@ SparseEqualityConstraint::GetConstraints(
   // Build RowGroups from the per-target entries.
   std::vector<RowGroup> result;
   for (int ti = 0; ti < num_targets; ++ti) {
-    if (entries_per_target[ti].empty()) continue;
-
     // Collect unique rows and columns for this target.
+    // Include rows whose RHS d(row) is assigned here, even if they
+    // have no C entries in this target (their primal support may be
+    // entirely in other cliques).
     std::set<int> row_set, col_set;
     for (const auto& e : entries_per_target[ti]) {
       row_set.insert(e.row);
       col_set.insert(e.col);
     }
+    for (int row = 0; row < num_rows; ++row) {
+      if (rhs_target[row] == ti) row_set.insert(row);
+    }
+    if (row_set.empty()) continue;
     std::vector<int> rows(row_set.begin(), row_set.end());
     std::vector<int> cols(col_set.begin(), col_set.end());
     int nrows = static_cast<int>(rows.size());
