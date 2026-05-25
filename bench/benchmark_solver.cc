@@ -220,8 +220,9 @@ void WriteJSON(const std::string& path,
 template <typename Strategy>
 AlgoResult RunAlgo(const char* name, const Model& problem,
                    const SolverConfiguration& config,
-                   Strategy strategy) {
-  auto solver = Solver::Build(problem, config);
+                   Strategy strategy, bool use_dense = false) {
+  auto solver = use_dense ? Solver::BuildDense(problem)
+                          : Solver::Build(problem, config);
   auto t0 = Clock::now();
   auto result = solver.Solve(strategy);
   auto t1 = Clock::now();
@@ -247,7 +248,8 @@ std::vector<AlgoResult> ProfileAlgorithm(
                       const std::string& algo_filter = "",
                       double tol_override = 1e-8,
                       bool verbose = false,
-                      int max_iter_override = -1) {
+                      int max_iter_override = -1,
+                      bool use_dense = false) {
   auto should_run = [&](const char* aname) {
     if (algo_filter.empty()) return true;
     // Support comma-separated filters: "TC+frzJ,HSDE" matches either.
@@ -301,47 +303,47 @@ std::vector<AlgoResult> ProfileAlgorithm(
 
   if (should_run("ThetaCont")) {
     results.push_back(RunAlgo("ThetaCont", problem, config,
-        ThetaContinuation{tol, max_iters, 0, verbose}));
+        ThetaContinuation{tol, max_iters, 0, verbose}, use_dense));
   }
   if (should_run("TC+frzJ")) {
     results.push_back(RunAlgo("TC+frzJ", problem, config,
-        ThetaContinuation{tol, max_iters, 1, verbose}));
+        ThetaContinuation{tol, max_iters, 1, verbose}, use_dense));
   }
   if (should_run("BarrierTC")) {
     results.push_back(RunAlgo("BarrierTC", problem, config,
-        GeodesicBarrierThetaContinuation{tol, max_iters, 0, verbose}));
+        GeodesicBarrierThetaContinuation{tol, max_iters, 0, verbose}, use_dense));
   }
   if (should_run("BarrierTC+frzJ")) {
     results.push_back(RunAlgo("BarrierTC+frzJ", problem, config,
-        GeodesicBarrierThetaContinuation{tol, max_iters, 1, verbose}));
+        GeodesicBarrierThetaContinuation{tol, max_iters, 1, verbose}, use_dense));
   }
   if (should_run("HSDE")) {
     results.push_back(RunAlgo("HSDE", problem, config,
-        GeodesicHSDE{tol, max_iters, 0, verbose}));
+        GeodesicHSDE{tol, max_iters, 0, verbose}, use_dense));
   }
   if (should_run("HSDE+frzJ")) {
     results.push_back(RunAlgo("HSDE+frzJ", problem, config,
-        GeodesicHSDE{tol, max_iters, 1, verbose}));
+        GeodesicHSDE{tol, max_iters, 1, verbose}, use_dense));
   }
   if (should_run("GeodesicLP")) {
     results.push_back(RunAlgo("GeodesicLP", problem, config,
-        GeodesicLP{tol, max_iters, 0, verbose}));
+        GeodesicLP{tol, max_iters, 0, verbose}, use_dense));
   }
   if (should_run("LP+frzJ")) {
     results.push_back(RunAlgo("LP+frzJ", problem, config,
-        GeodesicLP{tol, max_iters, 1, verbose}));
+        GeodesicLP{tol, max_iters, 1, verbose}, use_dense));
   }
   if (should_run("PhaseOne")) {
     results.push_back(RunAlgo("PhaseOne", problem, config,
-        PhaseOne{tol, max_iters, 1, verbose}));
+        PhaseOne{tol, max_iters, 1, verbose}, use_dense));
   }
   if (should_run("HybridR")) {
     results.push_back(RunAlgo("HybridR", problem, config,
-        HybridR{tol, max_iters, verbose}));
+        HybridR{tol, max_iters, verbose}, use_dense));
   }
   if (should_run("ThetaContR")) {
     results.push_back(RunAlgo("ThetaContR", problem, config,
-        ThetaContinuationR{tol, max_iters, verbose}));
+        ThetaContinuationR{tol, max_iters, verbose}, use_dense));
   }
 
   // --- Summary table ---
@@ -584,6 +586,7 @@ int main(int argc, char* argv[]) {
   double tol = 1e-8;
   int max_algo_iters = -1;
   bool verbose = false;
+  bool use_dense = false;
   std::string json_path;
   std::vector<int> sweep_threads, sweep_merge;
   std::string arg1 = argv[1];
@@ -614,6 +617,8 @@ int main(int argc, char* argv[]) {
       cfg.tree.supernode_reorder_method = std::stoi(argv[++i]);
     } else if (arg == "--generic") {
       cfg.tree.use_generic_factorization = true;
+    } else if (arg == "--dense") {
+      use_dense = true;
     } else if (arg == "--iters" && i + 1 < argc) {
       max_profile_iters = std::stoi(argv[++i]);
     } else if (arg == "--algo" && i + 1 < argc) {
@@ -665,7 +670,7 @@ int main(int argc, char* argv[]) {
       auto res = conex::ProfileFactorization(problem, name, cfg, max_profile_iters);
       conex::PrintProfileResult(res, cfg);
     } else {
-      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter, tol, verbose, max_algo_iters);
+      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter, tol, verbose, max_algo_iters, use_dense);
     }
     return 0;
   }
@@ -690,7 +695,7 @@ int main(int argc, char* argv[]) {
       try {
         auto info = conex::ReadProblemFile(filepath);
         if (do_rescale) {
-          auto [rescaled, rinfo] = conex::RescaleProblem(info.problem, strategy);
+          auto [rescaled, rinfo] = conex::RescaleProblem(info.problem, strategy, verbose);
           if (rinfo.was_rescaled) {
             info.problem = std::move(rescaled);
             info.name += " [rescaled]";
@@ -703,7 +708,7 @@ int main(int argc, char* argv[]) {
           conex::PrintProfileResult(res, cfg);
         } else {
           auto algos = conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                                   info.objective_constant, algo_filter, tol, verbose, max_algo_iters);
+                                   info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense);
           if (!json_path.empty()) {
             conex::InstanceResult ir;
             ir.name = fs::path(filepath).stem().string();
@@ -738,7 +743,7 @@ int main(int argc, char* argv[]) {
     if (do_rescale) {
       const char* sname[] = {"MaxAbsValue", "L2Norm", "Ruiz"};
       printf("Column scaling: %s\n", sname[static_cast<int>(strategy)]);
-      auto [rescaled, rinfo] = conex::RescaleProblem(info.problem, strategy);
+      auto [rescaled, rinfo] = conex::RescaleProblem(info.problem, strategy, verbose);
       if (rinfo.was_rescaled) {
         printf("Rescaled (col_scale range: [%.2e, %.2e])\n",
                rinfo.col_scale.minCoeff(), rinfo.col_scale.maxCoeff());
@@ -751,7 +756,7 @@ int main(int argc, char* argv[]) {
 
     if (!profile_mode && !json_path.empty()) {
       auto algos = conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                                            info.objective_constant, algo_filter, tol, verbose, max_algo_iters);
+                                            info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense);
       conex::InstanceResult ir;
       ir.name = fs::path(arg1).stem().string();
       ir.n = info.problem.num_variables();
@@ -784,7 +789,7 @@ int main(int argc, char* argv[]) {
       printf("Stages:  build=solver construction, asm+fac/solve are median of repeated runs\n");
     } else {
       conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                               info.objective_constant, algo_filter, tol, verbose, max_algo_iters);
+                               info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense);
     }
   } catch (const std::exception& e) {
     printf("Error: %s\n", e.what());

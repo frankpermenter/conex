@@ -343,15 +343,31 @@ struct RuizResult {
 };
 
 RuizResult RuizEquilibrate(const Model& problem, int n,
-                           int max_iters = 10, double tol = 0.1) {
+                           int max_iters = 10, double tol = 0.1,
+                           bool verbose = false) {
   Eigen::VectorXd cumul_D = Eigen::VectorXd::Ones(n);
   int nc = problem.num_constraints();
   std::vector<Eigen::VectorXd> cumul_E(nc);
 
   Model current = problem;  // copy — will be overwritten each iteration
-  if (current.has_linear_cost()) {
-    // Preserve cost through iterations (applied at the end).
-  }
+
+  auto print_norms = [&](const char* label, const Model& m) {
+    if (!verbose) return;
+    auto row_n = ComputeRowNorms(m);
+    auto col_n = ComputeColumnNorms(m, n, 0);
+    double col_min = col_n.minCoeff(), col_max = col_n.maxCoeff();
+    double row_min = 1e30, row_max = 0;
+    for (const auto& rn : row_n) {
+      if (rn.size() > 0) {
+        row_min = std::min(row_min, rn.minCoeff());
+        row_max = std::max(row_max, rn.maxCoeff());
+      }
+    }
+    if (row_min > 1e29) { row_min = 0; row_max = 0; }
+    printf("  Ruiz %s: col=[%.2e, %.2e]  row=[%.2e, %.2e]\n",
+           label, col_min, col_max, row_min, row_max);
+  };
+  print_norms("before", current);
 
   for (int iter = 0; iter < max_iters; ++iter) {
     // Step 1: Row scaling (nonneg and SOC only).
@@ -428,13 +444,15 @@ RuizResult RuizEquilibrate(const Model& problem, int n,
     current.SetLinearCost(current.linear_cost().cwiseProduct(cumul_D));
   }
 
+  print_norms("after ", current);
   return {std::move(current), cumul_D, cumul_E};
 }
 
 }  // namespace
 
 std::pair<Model, RescaleInfo> RescaleProblem(const Model& problem,
-                                               ColumnScaling strategy) {
+                                               ColumnScaling strategy,
+                                               bool verbose) {
   int n = problem.num_variables();
   RescaleInfo info;
   info.original_n = n;
@@ -495,7 +513,7 @@ std::pair<Model, RescaleInfo> RescaleProblem(const Model& problem,
   if (strategy == ColumnScaling::Ruiz) {
     // Iterative Ruiz equilibration: alternates row and column scaling
     // using l∞-norm with square-root damping.
-    auto result = RuizEquilibrate(rescaled, n);
+    auto result = RuizEquilibrate(rescaled, n, 10, 0.1, verbose);
     info.col_scale = result.col_scale;
     info.row_scale = std::move(result.row_scale);
     // Check if any scaling was applied.

@@ -44,6 +44,7 @@ struct RescaleInfo {
 // Modifies the cost accordingly.
 std::pair<Model, RescaleInfo> RescaleProblem(
     const Model& problem,
-    ColumnScaling strategy = ColumnScaling::Ruiz);
+    ColumnScaling strategy = ColumnScaling::Ruiz,
+    bool verbose = false);
 
 }  // namespace conex
