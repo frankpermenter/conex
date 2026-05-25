@@ -61,20 +61,26 @@ std::pair<double, double> VerifyNewtonEquations(
   RowSpace primal_err = d - d_expected;
   double primal_res = normInf(primal_err);
 
-  // --- Dual check: A^T lambda = k*c where lambda = P(W^{1/2})(I + d) / k ---
+  // --- Dual check: A'λ + (1/k)*Q*y = c ---
+  // where λ = (1/k) * P(W^{1/2})(e + d).
   RowSpace I_plus_d = model.AllocRowSpace();
   addScaled(I_plus_d, ones, d, 1.0, 1.0);
   RowSpace lambda = model.AllocRowSpace();
   quadraticRepresentation(lambda, sqrtW, I_plus_d);
   lambda *= (1.0 / k);
 
-  auto at_lambda = model.AllocSolverRHS();
-  at_lambda.SetZero();
-  model.AccumulateAtranspose(lambda, at_lambda);
-  // Should equal c (the cost_rhs).
-  at_lambda -= cost_rhs;
+  auto dual_rhs = model.AllocSolverRHS();
+  dual_rhs.SetZero();
+  model.AccumulateAtranspose(lambda, dual_rhs);
+  if (model.has_quadratic_cost()) {
+    auto qy = model.AllocSolverRHS();
+    qy.SetZero();
+    model.AccumulateQx(y_rhs, qy);
+    dual_rhs.AddScaled(1.0 / k, qy);
+  }
+  dual_rhs -= cost_rhs;
   Eigen::VectorXd dual_err(n);
-  at_lambda.supernodes->GatherInto(dual_err);
+  dual_rhs.supernodes->GatherInto(dual_err);
   double dual_res = dual_err.norm();
 
   return {primal_res, dual_res};
