@@ -519,6 +519,7 @@ CliqueTree MakeCliqueTreeImpl(
 
   for (int step = 0; step < n; step++) {
     auto t0 = Clock::now();
+    min_bucket = 0;  // Rescan from 0 — fill-in can leave vertices below prior min.
 
     // Pop the minimum-degree vertex that passes gate checks.
     // Primals always pass.  Delayed variables must claim an unclaimed
@@ -566,6 +567,7 @@ CliqueTree MakeCliqueTreeImpl(
     }
 
     auto t1 = Clock::now();
+
 
     order.push_back(best);
 
