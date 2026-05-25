@@ -3,7 +3,18 @@
 #include <cstring>
 
 namespace conex {
+
+
+void SolverRHS::SetZero() {
+  supernodes->SetZero();
+  if (has_separators()) separators->SetZero();
+  blocks_fully_gathered = !has_separators();
+}
+
 namespace EuclideanJordanAlgebra {
+
+
+
 
 Variable::Variable(const Variable& o)
     : offsets(o.offsets), sizes(o.sizes), ops(o.ops),

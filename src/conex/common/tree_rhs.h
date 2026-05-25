@@ -44,11 +44,7 @@ struct SolverRHS {
 
   bool has_separators() const { return separators != nullptr; }
 
-  void SetZero() {
-    supernodes->SetZero();
-    if (has_separators()) separators->SetZero();
-    blocks_fully_gathered = true;
-  }
+  void SetZero();
 
   // Scatter a dense vector into supernode blocks + zero separators.
   void ScatterFrom(const double* data, int size) {
