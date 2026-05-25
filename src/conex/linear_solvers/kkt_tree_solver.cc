@@ -1221,26 +1221,34 @@ void T::AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) {
 }
 
 void T::AccumulateQx(const SolverRHS& x, SolverRHS& rhs) {
-  if (x.blocks_fully_gathered) {
-    ScatterSeparators(*x.supernodes, sep_scratch_);
-  }
-  const auto& sep_read = x.blocks_fully_gathered ? sep_scratch_ : *x.separators;
+  // Populate sep_scratch_ with separator variable values so
+  // clique-local operations can read them.
+  ScatterSeparators(*x.supernodes, sep_scratch_);
   int nc = x.cols();
+  if (!x.blocks_fully_gathered) {
+    int nb = x.supernodes->num_blocks();
+    for (int k = 0; k < nb; ++k)
+      sep_scratch_.block(k, nc) += x.separators->block(k, nc);
+  }
   for (auto* eval : quadratic_sub_assemblers_) {
-    eval->MultiplyQx(*x.supernodes, sep_read,
+    eval->MultiplyQx(*x.supernodes, sep_scratch_,
                       *rhs.supernodes, *rhs.separators, nc);
   }
   rhs.blocks_fully_gathered = false;
 }
 
 void T::AccumulateCtranspose(const SolverRHS& x, SolverRHS& rhs) {
-  if (x.blocks_fully_gathered) {
-    ScatterSeparators(*x.supernodes, sep_scratch_);
-  }
-  const auto& sep_read = x.blocks_fully_gathered ? sep_scratch_ : *x.separators;
+  // Populate sep_scratch_ with separator variable values so
+  // clique-local operations can read them.
+  ScatterSeparators(*x.supernodes, sep_scratch_);
   int nc = x.cols();
+  if (!x.blocks_fully_gathered) {
+    int nb = x.supernodes->num_blocks();
+    for (int k = 0; k < nb; ++k)
+      sep_scratch_.block(k, nc) += x.separators->block(k, nc);
+  }
   for (auto* ec : equality_sub_assemblers_) {
-    ec->MultiplySaddlePoint(*x.supernodes, sep_read,
+    ec->MultiplySaddlePoint(*x.supernodes, sep_scratch_,
                             *rhs.supernodes, *rhs.separators, nc);
   }
   rhs.blocks_fully_gathered = false;
