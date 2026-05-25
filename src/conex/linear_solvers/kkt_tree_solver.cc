@@ -1221,34 +1221,30 @@ void T::AccumulateAtranspose(const RowSpace& v, SolverRHS& rhs) {
 }
 
 void T::AccumulateQx(const SolverRHS& x, SolverRHS& rhs) {
-  // Populate sep_scratch_ with separator variable values so
-  // clique-local operations can read them.
-  ScatterSeparators(*x.supernodes, sep_scratch_);
-  int nc = x.cols();
-  if (!x.blocks_fully_gathered) {
-    int nb = x.supernodes->num_blocks();
-    for (int k = 0; k < nb; ++k)
-      sep_scratch_.block(k, nc) += x.separators->block(k, nc);
+  // When fully gathered, scatter supernodes to sep_scratch_ so
+  // clique-local MultiplyQx can read separator variables.
+  // When ungathered, separators already have live data from the
+  // solve path — read from them directly.
+  if (x.blocks_fully_gathered) {
+    ScatterSeparators(*x.supernodes, sep_scratch_);
   }
+  const auto& sep_read = x.blocks_fully_gathered ? sep_scratch_ : *x.separators;
+  int nc = x.cols();
   for (auto* eval : quadratic_sub_assemblers_) {
-    eval->MultiplyQx(*x.supernodes, sep_scratch_,
+    eval->MultiplyQx(*x.supernodes, sep_read,
                       *rhs.supernodes, *rhs.separators, nc);
   }
   rhs.blocks_fully_gathered = false;
 }
 
 void T::AccumulateCtranspose(const SolverRHS& x, SolverRHS& rhs) {
-  // Populate sep_scratch_ with separator variable values so
-  // clique-local operations can read them.
-  ScatterSeparators(*x.supernodes, sep_scratch_);
-  int nc = x.cols();
-  if (!x.blocks_fully_gathered) {
-    int nb = x.supernodes->num_blocks();
-    for (int k = 0; k < nb; ++k)
-      sep_scratch_.block(k, nc) += x.separators->block(k, nc);
+  if (x.blocks_fully_gathered) {
+    ScatterSeparators(*x.supernodes, sep_scratch_);
   }
+  const auto& sep_read = x.blocks_fully_gathered ? sep_scratch_ : *x.separators;
+  int nc = x.cols();
   for (auto* ec : equality_sub_assemblers_) {
-    ec->MultiplySaddlePoint(*x.supernodes, sep_scratch_,
+    ec->MultiplySaddlePoint(*x.supernodes, sep_read,
                             *rhs.supernodes, *rhs.separators, nc);
   }
   rhs.blocks_fully_gathered = false;

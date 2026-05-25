@@ -445,6 +445,10 @@ GeodesicResult SolveGeodesicLP(
       x_rhs_v.SetZero();
       x_rhs_v.AddScaled(1.0 / k, y0);
       x_rhs_v += y1;
+      // y0/y1 have all data in supernodes (from MakeSolverRHS + supernode
+      // copy in ComputeDecomposition). Mark as fully gathered so
+      // AccumulateQx scatters correctly.
+      x_rhs_v.blocks_fully_gathered = true;
       double c_x = cost_rhs.dot(x_rhs_v);
 
       double qx_gap = 0;
