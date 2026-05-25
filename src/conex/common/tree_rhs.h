@@ -58,18 +58,7 @@ struct SolverRHS {
 
   // Copy a single-column SolverRHS into column `col` of this multi-column
   // SolverRHS (supernodes and separators).
-  void SetColumn(int col, const SolverRHS& src) {
-    int nb = supernodes->num_blocks();
-    for (int k = 0; k < nb; ++k)
-      supernodes->block(k).col(col) = src.supernodes->block(k).col(0);
-    if (has_separators() && src.has_separators()) {
-      int nc = cols();
-      int src_nc = src.cols();
-      for (int k = 0; k < nb; ++k)
-        separators->block(k, nc).col(col) =
-            src.separators->block(k, src_nc).col(0);
-    }
-  }
+  void SetColumn(int col, const SolverRHS& src);
 
   // Assign from a BlockVariable (copies supernode blocks, zeros sep).
   SolverRHS& operator=(const BlockVariable& bv) {

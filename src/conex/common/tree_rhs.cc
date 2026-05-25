@@ -11,6 +11,20 @@ void SolverRHS::SetZero() {
   blocks_fully_gathered = true;
 }
 
+void SolverRHS::SetColumn(int col, const SolverRHS& src) {
+  int nb = supernodes->num_blocks();
+  for (int k = 0; k < nb; ++k)
+    supernodes->block(k).col(col) = src.supernodes->block(k).col(0);
+  if (has_separators() && src.has_separators()) {
+    int nc = cols();
+    int src_nc = src.cols();
+    for (int k = 0; k < nb; ++k)
+      separators->block(k, nc).col(col) =
+          src.separators->block(k, src_nc).col(0);
+  }
+  if (!src.blocks_fully_gathered) blocks_fully_gathered = false;
+}
+
 namespace EuclideanJordanAlgebra {
 
 
