@@ -708,6 +708,7 @@ int main(int argc, char* argv[]) {
       if (limit > 0 && count >= limit) break;
       try {
         auto info = conex::ReadProblemFile(filepath);
+        info.name = fs::path(filepath).stem().string() + "  " + info.name;
         if (do_rescale) {
           auto [rescaled, rinfo] = conex::RescaleProblem(info.problem, strategy, verbose);
           if (rinfo.was_rescaled) {
