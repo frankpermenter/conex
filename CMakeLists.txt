@@ -620,6 +620,13 @@ target_link_libraries(equality_elimination_test
   GTest::gtest_main)
 gtest_discover_tests(equality_elimination_test)
 
+add_executable(thetacontr_embedding_test tests/thetacontr_embedding_test.cc)
+target_link_libraries(thetacontr_embedding_test
+  algorithms constraints sparse_linear_constraint
+  clique_ordering kkt_solver_factory tree_solver structural_rank
+  GTest::gtest_main)
+gtest_discover_tests(thetacontr_embedding_test)
+
 add_executable(equality_rhs_test tests/equality_rhs_test.cc)
 target_link_libraries(equality_rhs_test
   algorithms constraints sparse_linear_constraint
