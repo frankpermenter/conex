@@ -100,6 +100,7 @@ class Solver {
   // the expanded x.  Overwrites eq_residual, slack, objective, and
   // min_slack with values computed directly from Model data.
   void ComputeModelSpaceResiduals(SolveResult& result) const;
+  void RecoverEqualityDuals(SolveResult& result) const;
 
   KKTSystem system_;
   Arena arena_;
@@ -184,6 +185,13 @@ SolveResult Solver::Solve(const Algorithm& algo) {
     // 2*alpha*C'(Cx-d) equals C'nu, so grad_penalty = c + Qx + 2*alpha*C'(Cx-d) - A'lambda
     //                                                = c + Qx + C'nu - A'lambda
     // which is the original model's stationarity condition.
+  }
+
+  // Equality elimination: recover duals ν from stationarity.
+  // Stationarity: Qx + c - A'λ - C'ν = 0, so C'ν = Qx + c - A'λ = grad.
+  // ν = (CC')^{-1} C * grad.
+  if (eq_eliminated_) {
+    RecoverEqualityDuals(result);
   }
 
   // Recompute primal residuals from the original Model + expanded x.

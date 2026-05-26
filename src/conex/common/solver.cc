@@ -314,6 +314,86 @@ ConstraintDuals Solver::ExtractDuals(
   return duals;
 }
 
+void Solver::RecoverEqualityDuals(SolveResult& result) const {
+  // After equality elimination, recover ν from stationarity:
+  //   Qx + c - A'λ - C'ν = 0
+  //   C'ν = Qx + c - A'λ  →  ν = (CC')^{-1} C (Qx + c - A'λ)
+  //
+  // The reduced-space stationarity gradient is grad_z = N'(Qx + c - A'λ).
+  // The full-space residual is grad_x = Qx + c - A'λ = C'ν + N*grad_z
+  // (decomposition into range(C') + range(N)).
+  // So ν = (CC')^{-1} C * grad_x.
+  //
+  // Since grad_z = N'*grad_x and N has orthonormal columns,
+  // grad_x = N*grad_z + (I - NN')*grad_x.  But we don't have grad_x.
+  //
+  // Instead, compute grad_x directly in original space using x and lambda.
+  // The stationarity_gradient from ExtractDuals is in reduced (z) space.
+  // We can project: grad_x = N * stationarity_gradient  gives the N-component.
+  // The C'-component is: grad_x_perp = grad_x - N*N'*grad_x.
+  // But we need grad_x first.
+  //
+  // Simplest: recompute grad_x = Qx + c, subtract A'λ using original
+  // model's A and the cone duals (which are invariant under substitution).
+  const auto& model = original_model_;
+  const auto& x = result.x;
+  const int n = model.num_variables();
+  if (x.size() != n) return;
+
+  // grad = Qx + c.
+  Eigen::VectorXd grad = model.has_linear_cost()
+      ? Eigen::VectorXd(model.linear_cost())
+      : Eigen::VectorXd::Zero(n);
+  for (int i = 0; i < model.num_constraints(); ++i) {
+    if (auto* qc = std::get_if<Model::QuadraticCostData>(
+            &model.constraint(i))) {
+      Eigen::VectorXd xv(qc->vars.size());
+      for (int j = 0; j < (int)qc->vars.size(); ++j)
+        xv(j) = x(qc->vars[j]);
+      Eigen::VectorXd Qxv = Eigen::MatrixXd(qc->Q_sparse) * xv;
+      for (int j = 0; j < (int)qc->vars.size(); ++j)
+        grad(qc->vars[j]) += Qxv(j);
+    }
+  }
+
+  // Subtract A'λ using original model constraints + cone duals.
+  int lam_idx = 0;
+  for (int i = 0; i < model.num_constraints(); ++i) {
+    if (auto* lc = std::get_if<Model::LinearConstraintData>(
+            &model.constraint(i))) {
+      if (lam_idx < (int)result.duals.lambda.size()) {
+        const auto& lam = result.duals.lambda[lam_idx];
+        Eigen::VectorXd Atlam = Eigen::MatrixXd(lc->A).transpose() * lam;
+        for (int j = 0; j < (int)lc->vars.size(); ++j)
+          grad(lc->vars[j]) -= Atlam(j);
+      }
+      lam_idx++;
+    }
+  }
+
+  // Now grad = Qx + c - A'λ = C'ν (the stationarity residual).
+  // Recover ν for each equality constraint.
+  for (int i = 0; i < model.num_constraints(); ++i) {
+    if (auto* eq = std::get_if<Model::EqualityConstraintData>(
+            &model.constraint(i))) {
+      // Equality residual Cx - d (should be ~0).
+      Eigen::VectorXd xv(eq->primal_vars.size());
+      for (int j = 0; j < (int)eq->primal_vars.size(); ++j)
+        xv(j) = x(eq->primal_vars[j]);
+      result.duals.eq_residual.push_back(
+          Eigen::MatrixXd(eq->C) * xv - eq->d);
+
+      // ν = (CC')^{-1} C * grad[primal_vars].
+      Eigen::VectorXd grad_local(eq->primal_vars.size());
+      for (int j = 0; j < (int)eq->primal_vars.size(); ++j)
+        grad_local(j) = grad(eq->primal_vars[j]);
+      Eigen::MatrixXd C_dense = Eigen::MatrixXd(eq->C);
+      Eigen::MatrixXd CCt = C_dense * C_dense.transpose();
+      result.duals.nu.push_back(CCt.ldlt().solve(C_dense * grad_local));
+    }
+  }
+}
+
 void Solver::ComputeModelSpaceResiduals(SolveResult& result) const {
   const auto& model = original_model_;
   const auto& x = result.x;
