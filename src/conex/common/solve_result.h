@@ -86,30 +86,4 @@ struct DimacsErrors {
   bool converged(double tol = 1e-6) const { return max_err() < tol; }
 };
 
-inline DimacsErrors ComputeDimacsErrors(const SolveResult& result) {
-  DimacsErrors e;
-
-  double x_norm = result.x.norm();
-
-  // Dual error: ||A'λ + C'ν - Qx - c|| normalized by max(1, ||x||).
-  // Use optimality.dual_residual which is computed in reduced solver space
-  // and is consistent across equality-eliminated and non-eliminated problems.
-  e.dual_err = result.optimality.dual_residual / std::max(1.0, x_norm);
-
-  // Equality error: max_k ||C_k x - d_k|| normalized by max(1, ||x||).
-  for (const auto& r : result.duals.eq_residual) {
-    e.eq_err = std::max(e.eq_err, r.norm());
-  }
-  e.eq_err /= std::max(1.0, x_norm);
-
-  // Complementarity error: |<s, λ>| normalized by max(1, |objective|).
-  e.compl_err = std::abs(result.optimality.complementarity)
-                / std::max(1.0, std::abs(result.objective));
-
-  // Primal infeasibility: how negative is the most-violated slack.
-  e.prim_err = std::max(0.0, -result.optimality.min_slack);
-
-  return e;
-}
-
 }  // namespace conex

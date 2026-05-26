@@ -46,6 +46,7 @@
 #include "conex/common/equality_presolve.h"
 #include "conex/common/model.h"
 #include "conex/common/qps_reader.h"
+#include "conex/common/dimacs_errors.h"
 #include "conex/common/rescale.h"
 #include "conex/common/sdpa_reader.h"
 #include "conex/common/solver.h"
@@ -235,7 +236,7 @@ AlgoResult RunAlgo(const char* name, const Model& problem,
   for (const auto& r : result.duals.eq_residual)
     eq_res = std::max(eq_res, r.norm());
 
-  auto dimacs = ComputeDimacsErrors(result);
+  auto dimacs = ComputeDimacsErrors(problem, result);
 
   return {name, result.iterations, result.factorizations,
           result.mu, result.objective,
@@ -370,15 +371,16 @@ std::vector<AlgoResult> ProfileAlgorithm(
 
   // --- Summary table ---
   printf("  %-14s %5s %5s %10s %14s %10s %10s %10s %10s %8s %s\n",
-         "Algorithm", "fac", "iter", "mu", "cost", "dual_res",
-         "compl", "eq_res", "min_slk", "ms", "ok");
+         "Algorithm", "fac", "iter", "mu", "cost", "dual",
+         "eq", "compl", "prim", "ms", "ok");
   printf("  %s\n", std::string(115, '-').c_str());
   double c0 = objective_constant;
   for (const auto& r : results) {
+    const auto& d = r.dimacs;
     printf("  %-14s %5d %5d %10.2e %14.6e %10.2e %10.2e %10.2e %10.2e %8.1f %s\n",
            r.name, r.factorizations, r.iterations,
-           r.mu, r.primal_cost + c0, r.dual_residual,
-           r.complementarity, r.eq_residual, r.min_slack,
+           r.mu, r.primal_cost + c0, d.dual_err,
+           d.eq_err, d.compl_err, d.prim_err,
            r.time_ms,
            r.converged ? "yes" : "NO");
   }
