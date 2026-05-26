@@ -213,8 +213,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     ThetaContRSwitchPolicy policy = DefaultThetaContRPolicy,
     double compl_tol = 1e-12,
     double theta_rate = 0.1,
-    SolveStats* stats = nullptr);  // center if theta hasn't decreased by this
-                                // factor since last W-update (0 = disabled)
+    SolveStats* stats = nullptr,
+    int max_r_updates = 0);  // force W-update after this many r-updates (0 = disabled)
 
 // Original HybridR: theta = |gap|/m heuristic.
 GeodesicResult SolveGeodesicHybridR(

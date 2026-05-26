@@ -480,7 +480,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     ThetaContRSwitchPolicy policy,
     double compl_tol,
     double theta_rate,
-    SolveStats* stats) {
+    SolveStats* stats,
+    int max_r_updates) {
   Arena& arena = model.arena();
   const auto& cost_rhs = model.cost_rhs();
   RowSpace b = model.GetAffineTerm();
@@ -785,7 +786,9 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     double alpha_check = alpha_norm;
     double tau_kappa_check = r_tau*r_tau*(1.0 - d_tau*d_tau);
     double compl_err = std::abs(info.gap + tau_kappa_check - theta * alpha_check);
-    bool w_frozen = (compl_err > compl_tol);
+    bool w_frozen = (compl_tol < 0)
+        ? (compl_err > std::abs(theta))
+        : (compl_err > compl_tol);
 
     // Theta-rate check.
     bool theta_stalled = false;
@@ -798,7 +801,8 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
     // last_lambda was already saved above (before convergence check).
 
-    bool do_center = !w_frozen && theta < -1e-8;
+    bool force_center = (max_r_updates > 0 && r_updates_since_fac >= max_r_updates);
+    bool do_center = !w_frozen && (theta < -1e-8 || force_center);
     if (do_center) {
       { CONEX_TIMER(stats, cone_us);
         double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));

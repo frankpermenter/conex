@@ -255,7 +255,8 @@ std::vector<AlgoResult> ProfileAlgorithm(
                       bool verbose = false,
                       int max_iter_override = -1,
                       bool use_dense = false,
-                      double kkt_error_tol = 1e-12) {
+                      double kkt_error_tol = 1e-12,
+                      int max_factorization_reuse = 0) {
   // Algorithm names for exact-match detection.
   static const char* algo_names[] = {
     "ThetaCont", "TC+frzJ", "BarrierTC", "BarrierTC+frzJ",
@@ -324,7 +325,8 @@ std::vector<AlgoResult> ProfileAlgorithm(
 
   if (should_run("ThetaCont")) {
     results.push_back(RunAlgo("ThetaCont", problem, config,
-        ThetaContinuation{tol, max_iters, 0, verbose}, use_dense));
+        ThetaContinuation{tol, max_iters, max_factorization_reuse, verbose},
+        use_dense));
   }
   if (should_run("TC+frzJ")) {
     results.push_back(RunAlgo("TC+frzJ", problem, config,
@@ -365,7 +367,8 @@ std::vector<AlgoResult> ProfileAlgorithm(
   if (should_run("ThetaContR")) {
     results.push_back(RunAlgo("ThetaContR", problem, config,
         ThetaContinuationR{tol, max_iters, verbose,
-                           DefaultThetaContRPolicy, kkt_error_tol},
+                           DefaultThetaContRPolicy, kkt_error_tol,
+                           0.1, max_factorization_reuse},
         use_dense));
   }
 
@@ -611,6 +614,7 @@ int main(int argc, char* argv[]) {
   double tol = 1e-8;
   double kkt_error_tol = 1e-12;
   int max_algo_iters = -1;
+  int max_factorization_reuse = 0;
   bool verbose = false;
   bool use_dense = false;
   std::string json_path;
@@ -665,6 +669,8 @@ int main(int argc, char* argv[]) {
       cfg.penalty_alpha = std::stod(argv[++i]);
     } else if (arg == "--kkt_error_tol" && i + 1 < argc) {
       kkt_error_tol = std::stod(argv[++i]);
+    } else if (arg == "--max_factorization_reuse" && i + 1 < argc) {
+      max_factorization_reuse = std::stoi(argv[++i]);
     }
   }
 
@@ -700,7 +706,7 @@ int main(int argc, char* argv[]) {
       auto res = conex::ProfileFactorization(problem, name, cfg, max_profile_iters);
       conex::PrintProfileResult(res, cfg);
     } else {
-      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter, tol, verbose, max_algo_iters, use_dense, kkt_error_tol);
+      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter, tol, verbose, max_algo_iters, use_dense, kkt_error_tol, max_factorization_reuse);
     }
     return 0;
   }
@@ -725,6 +731,9 @@ int main(int argc, char* argv[]) {
       try {
         auto info = conex::ReadProblemFile(filepath);
         info.name = fs::path(filepath).stem().string() + "  " + info.name;
+        if (elim_eq) {
+          cfg.eliminate_equalities = true;
+        }
         if (do_rescale) {
           auto [rescaled, rinfo] = conex::RescaleProblem(info.problem, strategy, verbose);
           if (rinfo.was_rescaled) {
@@ -739,7 +748,7 @@ int main(int argc, char* argv[]) {
           conex::PrintProfileResult(res, cfg);
         } else {
           auto algos = conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                                   info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense, kkt_error_tol);
+                                   info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense, kkt_error_tol, max_factorization_reuse);
           if (!json_path.empty()) {
             conex::InstanceResult ir;
             ir.name = fs::path(filepath).stem().string();
@@ -791,7 +800,7 @@ int main(int argc, char* argv[]) {
 
     if (!profile_mode && !json_path.empty()) {
       auto algos = conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                                            info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense, kkt_error_tol);
+                                            info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense, kkt_error_tol, max_factorization_reuse);
       conex::InstanceResult ir;
       ir.name = fs::path(arg1).stem().string();
       ir.n = info.problem.num_variables();
@@ -824,7 +833,7 @@ int main(int argc, char* argv[]) {
       printf("Stages:  build=solver construction, asm+fac/solve are median of repeated runs\n");
     } else {
       conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                               info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense, kkt_error_tol);
+                               info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense, kkt_error_tol, max_factorization_reuse);
     }
   } catch (const std::exception& e) {
     printf("Error: %s\n", e.what());
