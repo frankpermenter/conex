@@ -1,4 +1,6 @@
 #pragma once
+#include <algorithm>
+#include <cmath>
 #include <vector>
 #include <Eigen/Core>
 
@@ -60,5 +62,54 @@ struct SolveResult {
   OptimalitySummary optimality;
   ConstraintDuals duals;
 };
+
+// DIMACS-like normalized errors for convergence checking.
+//
+// Errors are normalized by problem data norms so that a single tolerance
+// (e.g. 1e-6) is meaningful across differently-scaled problems.
+//
+//   dual_err   = ||grad|| / max(1, ||c|| + ||Q|| * ||x||)
+//   eq_err     = max_k ||C_k x - d_k|| / max(1, ||d_k||)
+//   compl_err  = |<s, λ>| / max(1, |objective|)
+//   prim_err   = max(0, -min_slack)  (unnormalized, zero means feasible)
+//
+struct DimacsErrors {
+  double dual_err = 0;
+  double eq_err = 0;
+  double compl_err = 0;
+  double prim_err = 0;
+
+  double max_err() const {
+    return std::max({dual_err, eq_err, compl_err, prim_err});
+  }
+
+  bool converged(double tol = 1e-6) const { return max_err() < tol; }
+};
+
+inline DimacsErrors ComputeDimacsErrors(const SolveResult& result) {
+  DimacsErrors e;
+
+  double x_norm = result.x.norm();
+
+  // Dual error: ||A'λ + C'ν - Qx - c|| normalized by max(1, ||x||).
+  // Use optimality.dual_residual which is computed in reduced solver space
+  // and is consistent across equality-eliminated and non-eliminated problems.
+  e.dual_err = result.optimality.dual_residual / std::max(1.0, x_norm);
+
+  // Equality error: max_k ||C_k x - d_k|| normalized by max(1, ||x||).
+  for (const auto& r : result.duals.eq_residual) {
+    e.eq_err = std::max(e.eq_err, r.norm());
+  }
+  e.eq_err /= std::max(1.0, x_norm);
+
+  // Complementarity error: |<s, λ>| normalized by max(1, |objective|).
+  e.compl_err = std::abs(result.optimality.complementarity)
+                / std::max(1.0, std::abs(result.objective));
+
+  // Primal infeasibility: how negative is the most-violated slack.
+  e.prim_err = std::max(0.0, -result.optimality.min_slack);
+
+  return e;
+}
 
 }  // namespace conex

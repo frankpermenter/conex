@@ -139,6 +139,7 @@ struct AlgoResult {
   // Model-space residuals (from original problem data).
   double eq_residual = 0;   // max ||Cx - d|| across equality constraints
   double min_slack = 0;     // min entry of Ax + b across inequality constraints
+  DimacsErrors dimacs;      // normalized errors for convergence
 };
 
 // Per-instance results for JSON output.
@@ -234,12 +235,14 @@ AlgoResult RunAlgo(const char* name, const Model& problem,
   for (const auto& r : result.duals.eq_residual)
     eq_res = std::max(eq_res, r.norm());
 
+  auto dimacs = ComputeDimacsErrors(result);
+
   return {name, result.iterations, result.factorizations,
           result.mu, result.objective,
           result.optimality.dual_residual,
           result.optimality.complementarity,
-          ms, result.converged,
-          eq_res, result.optimality.min_slack};
+          ms, dimacs.converged(1e-6),
+          eq_res, result.optimality.min_slack, dimacs};
 }
 
 std::vector<AlgoResult> ProfileAlgorithm(
