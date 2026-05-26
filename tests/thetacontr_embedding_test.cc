@@ -127,7 +127,7 @@ TEST(ThetaContREmbedding, WithDualEqualities) {
 
   const int max_iters = 20;
 
-  // ThetaContR on the dual problem.
+  // ThetaContR on the dual problem (disable theta_rate to match HybridOnly).
   std::vector<double> theta_tcr;
   {
     SolverConfiguration cfg;
@@ -150,8 +150,8 @@ TEST(ThetaContREmbedding, WithDualEqualities) {
   }
 
   // Compare iterations 1-8 (shifted by 1).
-  // Check early iterations before switching policies diverge.
-  int len = std::min({(int)theta_tcr.size() - 1, (int)theta_hybrid.size(), 5});
+  // Print all, check early iterations.
+  int len = std::min((int)theta_tcr.size() - 1, (int)theta_hybrid.size());
 
   printf("  iter  theta_TCR[i+1]  theta_Hybrid[i] diff\n");
   printf("  %s\n", std::string(55, '-').c_str());
@@ -163,10 +163,12 @@ TEST(ThetaContREmbedding, WithDualEqualities) {
            i, tcr_val, hyb_val, diff);
     double denom = std::max(std::abs(tcr_val), std::abs(hyb_val));
     double rel = (denom > 1e-30) ? diff / denom : diff;
-    EXPECT_LT(rel, 1e-4)
-        << "theta mismatch at iteration " << i
-        << ": TCR[" << i+1 << "]=" << tcr_val
-        << " Hybrid[" << i << "]=" << hyb_val;
+    if (i < 5) {
+      EXPECT_LT(rel, 1e-4)
+          << "theta mismatch at iteration " << i
+          << ": TCR[" << i+1 << "]=" << tcr_val
+          << " Hybrid[" << i << "]=" << hyb_val;
+    }
   }
 }
 
