@@ -250,7 +250,8 @@ std::vector<AlgoResult> ProfileAlgorithm(
                       double tol_override = 1e-8,
                       bool verbose = false,
                       int max_iter_override = -1,
-                      bool use_dense = false) {
+                      bool use_dense = false,
+                      double kkt_error_tol = 1e-12) {
   // Algorithm names for exact-match detection.
   static const char* algo_names[] = {
     "ThetaCont", "TC+frzJ", "BarrierTC", "BarrierTC+frzJ",
@@ -359,7 +360,9 @@ std::vector<AlgoResult> ProfileAlgorithm(
   }
   if (should_run("ThetaContR")) {
     results.push_back(RunAlgo("ThetaContR", problem, config,
-        ThetaContinuationR{tol, max_iters, verbose}, use_dense));
+        ThetaContinuationR{tol, max_iters, verbose,
+                           DefaultThetaContRPolicy, kkt_error_tol},
+        use_dense));
   }
 
   // --- Summary table ---
@@ -601,6 +604,7 @@ int main(int argc, char* argv[]) {
   int max_profile_iters = -1;
   std::string algo_filter;
   double tol = 1e-8;
+  double kkt_error_tol = 1e-12;
   int max_algo_iters = -1;
   bool verbose = false;
   bool use_dense = false;
@@ -654,6 +658,8 @@ int main(int argc, char* argv[]) {
       cfg.tree.use_lu_for_indefinite = true;
     } else if (arg == "--penalty" && i + 1 < argc) {
       cfg.penalty_alpha = std::stod(argv[++i]);
+    } else if (arg == "--kkt_error_tol" && i + 1 < argc) {
+      kkt_error_tol = std::stod(argv[++i]);
     }
   }
 
@@ -689,7 +695,7 @@ int main(int argc, char* argv[]) {
       auto res = conex::ProfileFactorization(problem, name, cfg, max_profile_iters);
       conex::PrintProfileResult(res, cfg);
     } else {
-      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter, tol, verbose, max_algo_iters, use_dense);
+      conex::ProfileAlgorithm(problem, name, cfg, 0, algo_filter, tol, verbose, max_algo_iters, use_dense, kkt_error_tol);
     }
     return 0;
   }
@@ -728,7 +734,7 @@ int main(int argc, char* argv[]) {
           conex::PrintProfileResult(res, cfg);
         } else {
           auto algos = conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                                   info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense);
+                                   info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense, kkt_error_tol);
           if (!json_path.empty()) {
             conex::InstanceResult ir;
             ir.name = fs::path(filepath).stem().string();
@@ -780,7 +786,7 @@ int main(int argc, char* argv[]) {
 
     if (!profile_mode && !json_path.empty()) {
       auto algos = conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                                            info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense);
+                                            info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense, kkt_error_tol);
       conex::InstanceResult ir;
       ir.name = fs::path(arg1).stem().string();
       ir.n = info.problem.num_variables();
@@ -813,7 +819,7 @@ int main(int argc, char* argv[]) {
       printf("Stages:  build=solver construction, asm+fac/solve are median of repeated runs\n");
     } else {
       conex::ProfileAlgorithm(info.problem, info.name, cfg,
-                               info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense);
+                               info.objective_constant, algo_filter, tol, verbose, max_algo_iters, use_dense, kkt_error_tol);
     }
   } catch (const std::exception& e) {
     printf("Error: %s\n", e.what());
