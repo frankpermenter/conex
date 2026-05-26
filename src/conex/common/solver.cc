@@ -3,6 +3,7 @@
 #include <numeric>
 
 #include "conex/common/eja_ops.h"
+#include "conex/common/equality_presolve.h"
 #include "conex/common/structural_rank.h"
 #include "conex/linear_solvers/kkt_tree_solver.h"
 
@@ -34,7 +35,21 @@ Solver Solver::Build(const Model& model,
 
   s.original_model_ = model;  // stash for Model-space residuals
 
-  auto [reduced, expansion] = RemoveStructuralRankDeficiency(*input);
+  // Equality elimination: x = x0 + N*z.
+  const Model* presolve_input = input;
+  Model eq_eliminated_model;
+  if (config.eliminate_equalities) {
+    auto eq_result = EliminateEqualities(*input);
+    if (eq_result.N.cols() < eq_result.original_n) {
+      s.eq_eliminated_ = true;
+      s.eq_null_space_ = std::move(eq_result.N);
+      s.eq_particular_ = std::move(eq_result.x0);
+      eq_eliminated_model = std::move(eq_result.reduced);
+      presolve_input = &eq_eliminated_model;
+    }
+  }
+
+  auto [reduced, expansion] = RemoveStructuralRankDeficiency(*presolve_input);
   s.expansion_ = std::move(expansion);
   if (config.row_scale) {
     auto [scaled, row_scaling] = RowScaleModel(reduced);

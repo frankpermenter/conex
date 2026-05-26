@@ -761,15 +761,7 @@ int main(int argc, char* argv[]) {
     auto info = conex::ReadProblemFile(arg1);
 
     if (elim_eq) {
-      auto eq_result = conex::EliminateEqualities(info.problem);
-      if (eq_result.N.cols() < eq_result.original_n) {
-        printf("EliminateEqualities: %d -> %d vars (rank %d, %d eq rows)\n",
-               eq_result.original_n, (int)eq_result.N.cols(),
-               eq_result.original_n - (int)eq_result.N.cols(),
-               eq_result.original_n - (int)eq_result.N.cols());
-        info.problem = std::move(eq_result.reduced);
-        info.name += " [elim-eq]";
-      }
+      cfg.eliminate_equalities = true;
     }
 
     if (do_rescale) {

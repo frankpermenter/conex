@@ -52,6 +52,12 @@ struct SolverConfiguration {
   // Use with HSDE algorithm (solve_raw("hsde")) for best results.
   double penalty_alpha = 0;
 
+  // If true, eliminate equality constraints Cx=d by substituting
+  // x = x0 + N*z where N is the null space of C and x0 is a particular
+  // solution.  The reduced problem has n-rank(C) variables and no
+  // equality constraints.  Post-solve maps z back to x.
+  bool eliminate_equalities = false;
+
   TreeSolverOptions tree;
 };
 

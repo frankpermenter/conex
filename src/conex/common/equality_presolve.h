@@ -17,4 +17,11 @@ struct EqualityPresolveResult {
 // The original solution is recovered via x = x0 + N*z.
 EqualityPresolveResult EliminateEqualities(const Model& problem);
 
+// Map reduced-space solution z back to original-space x = x0 + N*z.
+inline Eigen::VectorXd ExpandSolution(
+    const EqualityPresolveResult& presolve,
+    const Eigen::VectorXd& z) {
+  return presolve.x0 + presolve.N * z;
+}
+
 }  // namespace conex

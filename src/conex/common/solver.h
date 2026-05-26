@@ -119,6 +119,11 @@ class Solver {
     std::vector<int> primal_vars;    // original variable indices
   };
   std::vector<PenaltyInfo> penalty_eqs_;
+
+  // Equality elimination state (from EliminateEqualities).
+  bool eq_eliminated_ = false;
+  Eigen::MatrixXd eq_null_space_;   // N: original_n × reduced_n
+  Eigen::VectorXd eq_particular_;   // x0: original_n × 1
 };
 
 // =====================================================================
@@ -135,8 +140,14 @@ SolveResult Solver::Solve(const Algorithm& algo) {
     Eigen::Map<const Eigen::VectorXd> raw_x(raw.x.data(), raw.x.size());
     result.x = ExpandSolution(raw_x);
     result.objective = ComputeObjective(model.cost_rhs(), raw_x);
+    // Post-solve: map z back to x = x0 + N*z.
+    if (eq_eliminated_) {
+      result.x = eq_particular_ + eq_null_space_ * result.x;
+    }
   } else {
-    result.x = Eigen::VectorXd::Zero(expansion_.original_n);
+    int orig_n = eq_eliminated_ ? (int)eq_particular_.size()
+                                : expansion_.original_n;
+    result.x = Eigen::VectorXd::Zero(orig_n);
   }
   result.mu = raw.mu;
   result.tau = raw.tau;
