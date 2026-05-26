@@ -138,7 +138,8 @@ TEST(ThetaContREmbedding, WithDualEqualities) {
       theta_tcr.push_back(st.theta);
   }
 
-  // HybridOnly on the extended embedding.
+  // HybridOnly on the extended embedding — extract embedding theta
+  // variable at each iteration via increasing maxiter.
   std::vector<double> theta_hybrid;
   for (int it = 1; it <= max_iters; ++it) {
     auto solver = Solver::Build(emb_model, emb_tree);
