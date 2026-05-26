@@ -798,8 +798,7 @@ GeodesicResult SolveGeodesicThetaContinuationR(
 
     // last_lambda was already saved above (before convergence check).
 
-    bool do_center = !w_frozen && (policy(g, d_inf, r_updates_since_fac)
-                                    || theta_stalled);
+    bool do_center = !w_frozen && theta < -1e-8;
     if (do_center) {
       { CONEX_TIMER(stats, cone_us);
         double alpha = std::min(1.0, 2.0 / (d_inf * d_inf));
