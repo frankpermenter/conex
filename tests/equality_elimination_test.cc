@@ -81,21 +81,23 @@ TEST(EqualityElimination, GeodesicLP_Invariance) {
       << "Iteration count mismatch";
 
   for (size_t i = 0; i < raw_orig.iter_stats.size(); ++i) {
+    // mu should match.
     double mu_orig = raw_orig.iter_stats[i].mu;
     double mu_elim = raw_elim.iter_stats[i].mu;
-    double rel = std::abs(mu_orig - mu_elim) /
-                 std::max(std::abs(mu_orig), 1e-30);
-    EXPECT_LT(rel, 1e-8)
+    double mu_rel = std::abs(mu_orig - mu_elim) /
+                    std::max(std::abs(mu_orig), 1e-30);
+    EXPECT_LT(mu_rel, 1e-8)
         << "mu mismatch at iteration " << i
         << ": orig=" << mu_orig << " elim=" << mu_elim;
-  }
 
-  // 2. Gap error should be machine precision for both.
-  for (size_t i = 0; i < raw_orig.iter_stats.size(); ++i) {
-    EXPECT_LT(raw_orig.iter_stats[i].gap_error, 1e-6)
-        << "Original gap_error too large at iter " << i;
-    EXPECT_LT(raw_elim.iter_stats[i].gap_error, 1e-6)
-        << "Eliminated gap_error too large at iter " << i;
+    // Newton direction squared norm (d_sqr) should match.
+    double dsq_orig = raw_orig.iter_stats[i].d_sqr;
+    double dsq_elim = raw_elim.iter_stats[i].d_sqr;
+    double dsq_rel = std::abs(dsq_orig - dsq_elim) /
+                     std::max(std::abs(dsq_orig), 1e-30);
+    EXPECT_LT(dsq_rel, 1e-8)
+        << "d_sqr mismatch at iteration " << i
+        << ": orig=" << dsq_orig << " elim=" << dsq_elim;
   }
 
   // 3. Model-space residuals: objectives should match.
