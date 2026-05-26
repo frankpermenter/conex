@@ -58,8 +58,7 @@ TEST(ThetaContREmbedding, ThetaTrajectoryMatchesHybridOnly) {
       theta_tcr.push_back(st.theta);
   }
 
-  // HybridOnly on the extended embedding — extract embedding theta
-  // variable at each iteration via increasing maxiter.
+  // HybridOnly on the extended embedding with verbose to see k_init.
   std::vector<double> theta_hybrid;
   for (int it = 1; it <= max_iters; ++it) {
     auto solver = Solver::Build(emb_model, emb_tree);
@@ -138,8 +137,7 @@ TEST(ThetaContREmbedding, WithDualEqualities) {
       theta_tcr.push_back(st.theta);
   }
 
-  // HybridOnly on the extended embedding — extract embedding theta
-  // variable at each iteration via increasing maxiter.
+  // HybridOnly on the extended embedding with verbose to see k_init.
   std::vector<double> theta_hybrid;
   for (int it = 1; it <= max_iters; ++it) {
     auto solver = Solver::Build(emb_model, emb_tree);
@@ -151,8 +149,8 @@ TEST(ThetaContREmbedding, WithDualEqualities) {
   }
 
   // Compare iterations 1-8 (shifted by 1).
-  // Print all, check early iterations.
-  int len = std::min((int)theta_tcr.size() - 1, (int)theta_hybrid.size());
+  // Check early iterations before switching policies diverge.
+  int len = std::min({(int)theta_tcr.size() - 1, (int)theta_hybrid.size(), 5});
 
   printf("  iter  theta_TCR[i+1]  theta_Hybrid[i] diff\n");
   printf("  %s\n", std::string(55, '-').c_str());
