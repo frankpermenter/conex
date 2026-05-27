@@ -45,6 +45,7 @@ struct GeodesicResult {
   double tau = 1.0;    // homogenization parameter at termination
   double kappa = 0;    // theta/tau at termination (infeasibility certificate when large)
   double complementarity;  // mu * (rank - ||d||^2)
+  bool infeasible = false; // true if tau→0 with finite kappa (infeasibility certificate)
   int total_factorizations = 0;
   int total_solves = 0;
   std::vector<double> x;  // primal variable: x = y/k from last Newton solve

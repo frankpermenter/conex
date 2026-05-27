@@ -141,6 +141,7 @@ struct AlgoResult {
   double eq_residual = 0;   // max ||Cx - d|| across equality constraints
   double min_slack = 0;     // min entry of Ax + b across inequality constraints
   DimacsErrors dimacs;      // normalized errors for convergence
+  bool infeasible = false;
 };
 
 // Per-instance results for JSON output.
@@ -243,7 +244,8 @@ AlgoResult RunAlgo(const char* name, const Model& problem,
           result.optimality.dual_residual,
           result.optimality.complementarity,
           ms, dimacs.converged(1e-6),
-          eq_res, result.optimality.min_slack, dimacs};
+          eq_res, result.optimality.min_slack, dimacs,
+          result.infeasible};
 }
 
 std::vector<AlgoResult> ProfileAlgorithm(
@@ -380,12 +382,12 @@ std::vector<AlgoResult> ProfileAlgorithm(
   double c0 = objective_constant;
   for (const auto& r : results) {
     const auto& d = r.dimacs;
+    const char* status = r.infeasible ? "INFEAS" : (r.converged ? "yes" : "NO");
     printf("  %-14s %5d %5d %10.2e %14.6e %10.2e %10.2e %10.2e %10.2e %8.1f %s\n",
            r.name, r.factorizations, r.iterations,
            r.mu, r.primal_cost + c0, d.dual_err,
            d.eq_err, d.compl_err, d.prim_err,
-           r.time_ms,
-           r.converged ? "yes" : "NO");
+           r.time_ms, status);
   }
 
   if (c0 != 0) {

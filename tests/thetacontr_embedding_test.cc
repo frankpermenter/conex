@@ -168,4 +168,110 @@ TEST(ThetaContREmbedding, WithDualEqualities) {
   }
 }
 
+// Helper: build the dual LP model for ThetaContR from primal LP data.
+// Primal: min c'x s.t. Ax = b, x >= 0.
+// Dual:   min -b'y s.t. A'y <= c, i.e., (-A')y + c >= 0.
+static Model BuildDualModel(const Eigen::SparseMatrix<double>& A,
+                            const VectorXd& b, const VectorXd& c) {
+  const int m = A.rows();
+  std::vector<int> vars(m);
+  std::iota(vars.begin(), vars.end(), 0);
+  Eigen::SparseMatrix<double> neg_At = toSparse(-MatrixXd(A.transpose()));
+  Model model;
+  model.AddLinearConstraint(neg_At, c, vars);
+  model.SetLinearCost(-b);
+  return model;
+}
+
+// Test primal infeasibility detection for a given algorithm.
+template <typename Algo>
+void TestPrimalInfeasible(const char* name, const Algo& algo) {
+  // Primal LP: min c'x s.t. Ax = b, x >= 0.
+  // Infeasible: x1 = 1, x2 = -1 with x >= 0 (x2 < 0 violates bounds).
+  // A is full rank (identity). The dual min -b'y s.t. A'y <= c is unbounded.
+  const int m = 2, n = 2;
+  Eigen::SparseMatrix<double> A(m, n);
+  A.insert(0, 0) = 1;
+  A.insert(1, 1) = 1;
+  A.makeCompressed();
+  VectorXd b(m); b << 1, -1;
+  VectorXd c(n); c << 1, 1;
+
+  auto dual = BuildDualModel(A, b, c);
+  auto solver = Solver::Build(dual, SolverConfiguration{});
+  auto result = solver.Solve(algo);
+
+  EXPECT_TRUE(result.infeasible)
+      << name << ": expected primal infeasibility, tau=" << result.tau;
+
+  ASSERT_EQ(result.x.size(), m);
+  VectorXd y = result.x;
+  if (-b.dot(y) > 0) y = -y;
+
+  VectorXd slack = c - A.transpose() * y;
+  double obj_dir = -b.dot(y);
+  printf("  %s primal infeas: -b'y=%.4e  min(c-A'y)=%.4e\n",
+         name, obj_dir, slack.minCoeff());
+  EXPECT_LT(obj_dir, 0);
+  EXPECT_GT(slack.minCoeff(), -0.1);
+}
+
+// Test dual infeasibility (primal unbounded) detection for a given algorithm.
+template <typename Algo>
+void TestDualInfeasible(const char* name, const Algo& algo) {
+  // Primal LP: min -x1 - x2 s.t. x1 - x2 = 0, x >= 0.
+  // Feasible: x1 = x2 = t, cost = -2t → -∞. Primal unbounded.
+  // Dual: y <= -1 and y >= 1 → infeasible. ThetaContR sees tau→0.
+  const int m = 1, n = 2;
+  Eigen::SparseMatrix<double> A(m, n);
+  A.insert(0, 0) = 1; A.insert(0, 1) = -1;
+  A.makeCompressed();
+  VectorXd b(m); b << 0;
+  VectorXd c(n); c << -1, -1;
+
+  auto dual = BuildDualModel(A, b, c);
+  auto solver = Solver::Build(dual, SolverConfiguration{});
+  auto result = solver.Solve(algo);
+
+  EXPECT_TRUE(result.infeasible)
+      << name << ": expected dual infeasibility, tau=" << result.tau;
+
+  // Certificate: s >= 0 with As = 0 and c's < 0.
+  if (!result.duals.lambda.empty()) {
+    VectorXd s = result.duals.lambda[0];
+    VectorXd As = A * s;
+    double cTs = c.dot(s);
+    if (cTs > 0) { s = -s; cTs = c.dot(s); As = A * s; }
+    printf("  %s dual infeas: c's=%.4e  ||As||=%.4e  min(s)=%.4e\n",
+           name, cTs, As.norm(), s.minCoeff());
+    EXPECT_GT(s.minCoeff(), -0.1);
+    EXPECT_LT(As.norm(), 0.1);
+    EXPECT_LT(cTs, 0);
+  }
+}
+
+TEST(ThetaContREmbedding, PrimalInfeasible_ThetaContR) {
+  TestPrimalInfeasible("ThetaContR", ThetaContinuationR{1e-8, 500});
+}
+
+TEST(ThetaContREmbedding, DualInfeasible_ThetaContR) {
+  TestDualInfeasible("ThetaContR", ThetaContinuationR{1e-8, 500});
+}
+
+TEST(ThetaContREmbedding, PrimalInfeasible_ThetaCont) {
+  TestPrimalInfeasible("ThetaCont", ThetaContinuation{1e-8, 500});
+}
+
+TEST(ThetaContREmbedding, DualInfeasible_ThetaCont) {
+  TestDualInfeasible("ThetaCont", ThetaContinuation{1e-12, 5000});
+}
+
+TEST(ThetaContREmbedding, PrimalInfeasible_HSDE) {
+  TestPrimalInfeasible("HSDE", GeodesicHSDE{1e-8, 500});
+}
+
+TEST(ThetaContREmbedding, DualInfeasible_HSDE) {
+  TestDualInfeasible("HSDE", GeodesicHSDE{1e-8, 500});
+}
+
 }  // namespace conex

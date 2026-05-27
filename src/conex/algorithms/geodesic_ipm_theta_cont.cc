@@ -253,7 +253,7 @@ GeodesicResult SolveGeodesicThetaContinuation(
       x_rhs.AddScaled(1.0 / k, decomp.y0);
       x_rhs.AddScaled(tau, decomp.y1_0);
       x_rhs.AddScaled(theta, decomp.y1_theta);
-      x_rhs *= (1.0 / tau);
+      if (tau > 1e-6) x_rhs *= (1.0 / tau);
       int nr = model.number_of_variables();
       result.x.resize(nr);
       { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs.supernodes->GatherInto(xm); }
@@ -272,8 +272,12 @@ GeodesicResult SolveGeodesicThetaContinuation(
     }
   }
 
+  // Infeasibility detection: tau→0.
+  const double tau_tol = 1e-6;
+  result.infeasible = (tau < tau_tol);
+
   // Recover lambda and optimality (requires re-factorization for decomp).
-  if (k > 0 && tau > 0 && result.x.size() > 0) {
+  if (k > 0 && tau > tau_tol && result.x.size() > 0) {
     NewtonDecomposition decomp_r;
     decomp_r.d0 = model.AllocRowSpace(arena);
     decomp_r.d1_0 = model.AllocRowSpace(arena);
@@ -583,8 +587,11 @@ GeodesicResult SolveGeodesicPhaseOne(
     }
   }
 
+  // Infeasibility detection: tau→0.
+  result.infeasible = (tau < 1e-6);
+
   // Recover primal x.  De-homogenize: x_phys = x_lifted / tau.
-  if (k > 0 && tau > 0) {
+  if (k > 0 && tau > 1e-6) {
     NewtonDecomposition decomp;
     decomp.d0 = model.AllocRowSpace();
     decomp.d1_0 = model.AllocRowSpace();

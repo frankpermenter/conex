@@ -58,6 +58,7 @@ struct SolveResult {
   int iterations = 0;
   int factorizations = 0;
   bool converged = false;
+  bool infeasible = false;  // tau→0 with finite kappa: infeasibility certificate
 
   OptimalitySummary optimality;
   ConstraintDuals duals;

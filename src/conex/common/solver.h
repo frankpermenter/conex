@@ -157,6 +157,7 @@ SolveResult Solver::Solve(const Algorithm& algo) {
   result.d_inf = raw.d_inf_norm;
   result.iterations = raw.iterations;
   result.factorizations = raw.total_factorizations;
+  result.infeasible = raw.infeasible;
   if (!raw.x.empty() && raw.lambda.total_rows() > 0) {
     Eigen::Map<const Eigen::VectorXd> raw_x(raw.x.data(), raw.x.size());
     result.optimality = ComputeOptimality(model.cost_rhs(), raw_x, raw.lambda);

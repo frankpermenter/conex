@@ -763,11 +763,12 @@ GeodesicResult SolveGeodesicThetaContinuationR(
     result.iterations = iter + 1;
 
     // Extract x and lambda from current iterate (before centering/shrink).
+    // Save x_internal = y_center + tau*y_cost (before tau division).
     {
       auto x_rhs = model.AllocSolverRHS();
       x_rhs = decomp.y_center;
       x_rhs.AddScaled(tau, decomp.y_cost);
-      x_rhs *= (1.0 / tau);
+      if (tau > 1e-30) x_rhs *= (1.0 / tau);
       result.x.resize(model.number_of_variables());
       Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size());
       x_rhs.supernodes->GatherInto(xm);
@@ -841,14 +842,28 @@ GeodesicResult SolveGeodesicThetaContinuationR(
   result.total_factorizations = total_fac;
   result.total_solves = total_sol;
 
+  // Infeasibility detection: tau→0 means the HSD converged to an
+  // infeasibility certificate rather than a solution.
+  const double tau_tol = 1e-6;
+  result.infeasible = (tau < tau_tol);
+
   // Lambda and optimality — x and last_lambda were saved at the same
   // point inside the loop (before centering/shrink).
   {
     auto x_rhs = model.AllocSolverRHS();
-    x_rhs.ScatterFrom(result.x.data(), result.x.size());
     result.lambda = model.MakeRowSpace();  // heap
     addScaled(result.lambda, last_lambda, last_lambda, 1.0, 0.0);
-    if (tau > 0 && tau != 1.0) result.lambda *= (1.0 / tau);
+    if (result.infeasible) {
+      // Re-extract x without tau division for infeasibility certificate.
+      x_rhs = decomp.y_center;
+      x_rhs.AddScaled(tau, decomp.y_cost);
+      result.x.resize(model.number_of_variables());
+      Eigen::Map<Eigen::VectorXd> xm(result.x.data(), result.x.size());
+      x_rhs.supernodes->GatherInto(xm);
+    } else {
+      if (tau > 0 && tau != 1.0) result.lambda *= (1.0 / tau);
+    }
+    x_rhs.ScatterFrom(result.x.data(), result.x.size());
     result.optimality = CheckOptimality(model, x_rhs, result.lambda);
     result.optimality.mu = result.mu;
   }
