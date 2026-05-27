@@ -274,4 +274,12 @@ TEST(ThetaContREmbedding, DualInfeasible_HSDE) {
   TestDualInfeasible("HSDE", GeodesicHSDE{1e-8, 500});
 }
 
+TEST(ThetaContREmbedding, PrimalInfeasible_BarrierTC) {
+  TestPrimalInfeasible("BarrierTC", GeodesicBarrierThetaContinuation{1e-8, 500});
+}
+
+TEST(ThetaContREmbedding, DualInfeasible_BarrierTC) {
+  TestDualInfeasible("BarrierTC", GeodesicBarrierThetaContinuation{1e-8, 500});
+}
+
 }  // namespace conex

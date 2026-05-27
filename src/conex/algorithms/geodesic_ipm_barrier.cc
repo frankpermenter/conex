@@ -516,16 +516,19 @@ GeodesicResult SolveGeodesicBarrierThetaContinuation(
       x_rhs.AddScaled(1.0 / k, y0_vec);
       x_rhs.AddScaled(tau, y1_0_vec);
       x_rhs.AddScaled(theta, y1_theta_vec);
-      x_rhs *= (1.0 / tau);
+      if (tau > 1e-6) x_rhs *= (1.0 / tau);
       int nr = model.number_of_variables();
       result.x.resize(nr);
       { Eigen::Map<Eigen::VectorXd> xm(result.x.data(), nr); x_rhs.supernodes->GatherInto(xm); }
     }
 
+    // Infeasibility detection: tau→0.
+    result.infeasible = (tau < 1e-6);
+
     bool converged = (mu < tolerance);
     bool last_iter = (outer + 1 == max_outer_iterations);
 
-    if (converged || last_iter) {
+    if (!result.infeasible && (converged || last_iter)) {
       // Lambda recovery (heap — outlives arena).
       RowSpace lambda = model.MakeRowSpace();
       computeGradient(z, lambda);

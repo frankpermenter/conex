@@ -336,7 +336,7 @@ std::vector<AlgoResult> ProfileAlgorithm(
   }
   if (should_run("BarrierTC")) {
     results.push_back(RunAlgo("BarrierTC", problem, config,
-        GeodesicBarrierThetaContinuation{tol, max_iters, 0, verbose}, use_dense));
+        GeodesicBarrierThetaContinuation{tol, max_iters, max_factorization_reuse, verbose}, use_dense));
   }
   if (should_run("BarrierTC+frzJ")) {
     results.push_back(RunAlgo("BarrierTC+frzJ", problem, config,
