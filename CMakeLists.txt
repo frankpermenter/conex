@@ -108,6 +108,7 @@ add_library(sparse_linear_constraint
   src/conex/common/extended_embedding.cc
   src/conex/common/model.cc
   src/conex/common/chordal_decomp.cc
+  src/conex/common/dimacs_errors.cc
 )
 target_link_libraries(sparse_linear_constraint PUBLIC constraints kkt_solver_factory structural_rank)
 
