@@ -539,8 +539,7 @@ GeodesicResult SolveGeodesicLP(
         x_rhs.blocks_fully_gathered = true;
         x_rhs.supernodes->GatherInto(x_vec.data(), nv); }
       auto kkt_res = VerifyKKT(model, W, d, x_vec, k);
-      printf("    kkt: primal=%.2e  dual=%.2e\n",
-             kkt_res.primal, kkt_res.dual);
+      (void)kkt_res;
     }
 
     // Save W₀ (frozen Jacobian point) before stepping.
@@ -574,10 +573,9 @@ GeodesicResult SolveGeodesicLP(
         double s_dot_x_f = mu_f * (nu - d_sq_f);
 
         if (verbose) {
-          printf("  %3d.%d  %10s  %10.4e  %10.4e  %10.4e  %10.4e"
-                 "  d0=%.2e d1=%.2e  (frozen-J)\n",
-                 outer, inner + 1, "", k, d_inf_f, d_sq_f, s_dot_x_f,
-                 normInf(d0_f), normInf(d1_f));
+          double mu_f = 1.0 / (k * k);
+          printf("  %3d.%d  %10.2e  %10.2e  %10.2e  %10.2e  %10s  %10s  (frozen-J)\n",
+                 outer, inner + 1, mu_f, d_inf_f, d_sq_f, s_dot_x_f, "", "");
         }
 
         double alpha_f = std::min(1.0, 2.0 / (d_inf_f * d_inf_f));
