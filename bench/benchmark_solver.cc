@@ -352,7 +352,7 @@ std::vector<AlgoResult> ProfileAlgorithm(
   }
   if (should_run("GeodesicLP")) {
     results.push_back(RunAlgo("GeodesicLP", problem, config,
-        GeodesicLP{tol, max_iters, 0, verbose}, use_dense));
+        GeodesicLP{tol, max_iters, max_factorization_reuse, verbose}, use_dense));
   }
   if (should_run("LP+frzJ")) {
     results.push_back(RunAlgo("LP+frzJ", problem, config,
