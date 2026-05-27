@@ -82,7 +82,8 @@ struct DimacsErrors {
   double min_dual = 0;  // min eigenvalue of lambda (dual feasibility)
 
   double max_err() const {
-    return std::max({dual_err, eq_err, compl_err, prim_err});
+    return std::max({dual_err, eq_err, compl_err,
+                     std::max(0.0, -prim_err)});
   }
 
   bool converged(double tol = 1e-6) const { return max_err() < tol; }

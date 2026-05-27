@@ -185,7 +185,7 @@ inline DimacsErrors ComputeDimacsErrors(
     e.compl_err = std::abs(compl_gap) / std::max(1.0, std::abs(objective));
   }
   e.prim_err = (min_slack < std::numeric_limits<double>::infinity())
-                   ? std::max(0.0, -min_slack) : 0.0;
+                   ? min_slack : 0.0;
   e.min_dual = (min_dual < std::numeric_limits<double>::infinity())
                    ? min_dual : 0.0;
 
