@@ -376,8 +376,8 @@ std::vector<AlgoResult> ProfileAlgorithm(
 
   // --- Summary table ---
   printf("  %-14s %5s %5s %10s %14s %10s %10s %10s %10s %8s %s\n",
-         "Algorithm", "fac", "iter", "mu", "cost", "dual",
-         "eq", "compl", "prim", "ms", "ok");
+         "Algorithm", "fac", "iter", "mu", "cost", "dual_res",
+         "eq_res", "comp", "min(s)", "ms", "ok");
   printf("  %s\n", std::string(115, '-').c_str());
   double c0 = objective_constant;
   for (const auto& r : results) {
@@ -659,7 +659,7 @@ int main(int argc, char* argv[]) {
       algo_filter = argv[++i];
     } else if (arg == "--tol" && i + 1 < argc) {
       tol = std::stod(argv[++i]);
-    } else if (arg == "--maxiter" && i + 1 < argc) {
+    } else if (arg == "--max-iter" && i + 1 < argc) {
       max_algo_iters = std::stoi(argv[++i]);
     } else if (arg == "--verbose" || arg == "-v") {
       verbose = true;
@@ -669,9 +669,9 @@ int main(int argc, char* argv[]) {
       cfg.tree.use_lu_for_indefinite = true;
     } else if (arg == "--penalty" && i + 1 < argc) {
       cfg.penalty_alpha = std::stod(argv[++i]);
-    } else if (arg == "--kkt_error_tol" && i + 1 < argc) {
+    } else if (arg == "--kkt-error-tol" && i + 1 < argc) {
       kkt_error_tol = std::stod(argv[++i]);
-    } else if (arg == "--max_factorization_reuse" && i + 1 < argc) {
+    } else if (arg == "--max-factorization-reuse" && i + 1 < argc) {
       max_factorization_reuse = std::stoi(argv[++i]);
     }
   }
