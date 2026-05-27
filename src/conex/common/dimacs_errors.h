@@ -9,39 +9,36 @@
 
 namespace conex {
 
-// Compute DIMACS-like normalized errors from a Model and a candidate solution,
-// recomputing all residuals independently from the raw problem data.
+// Compute DIMACS-like normalized errors from a Model and a candidate solution.
 //
-// Inputs:
-//   model      — the original optimization problem
-//   x          — primal solution (num_variables)
-//   lambda     — dual multipliers for inequality constraints (Linear/SOC/Barrier),
-//                matched by insertion order in Model::constraints()
-//   nu         — dual multipliers for equality constraints
-//   psd_lambda — dual matrices for PSD constraints
+// When infeasible=false (optimal solution):
+//   dual_err  = ||c + Qx - A'λ - C'ν|| / max(1, ||c|| + ||Qx||)
+//   eq_err    = max ||Cx - d|| / max(1, max ||d||)
+//   compl_err = |<s,λ>| / max(1, |objective|)    where s = Ax + b
+//   prim_err  = max(0, -min(s))                   where s = Ax + b
 //
-// Errors:
-//   dual_err   = ||c + Qx - A'λ - C'ν - Σ tr(A_k·Λ)|| / max(1, ||c|| + ||Qx||)
-//   eq_err     = max_k ||C_k x - d_k|| / max(1, max_k ||d_k||)
-//   compl_err  = |Σ <s_i, λ_i> + Σ tr(S_j·Λ_j)| / max(1, |c'x + ½x'Qx|)
-//   prim_err   = max(0, -min(s_i), -min_eig(S_j)) across all constraints
+// When infeasible=true (certificate ray, not divided by tau):
+//   dual_err  = ||Qx - A'λ - C'ν|| / max(1, ||Qx||)   (no c)
+//   eq_err    = max ||Cx|| / max(1, ||x||)              (no d)
+//   compl_err = |<Ax, λ>| / max(1, ||x|| * ||λ||)      (no b)
+//   prim_err  = max(0, -min(Ax))                        (no b)
 //
 inline DimacsErrors ComputeDimacsErrors(
     const Model& model,
     const Eigen::VectorXd& x,
     const std::vector<Eigen::VectorXd>& lambda,
     const std::vector<Eigen::VectorXd>& nu,
-    const std::vector<Eigen::MatrixXd>& psd_lambda) {
+    const std::vector<Eigen::MatrixXd>& psd_lambda,
+    bool infeasible = false) {
   const int n = model.num_variables();
 
-  // Cost vector.
+  // Cost vector (omitted for infeasibility certificate).
   Eigen::VectorXd c = Eigen::VectorXd::Zero(n);
-  if (model.has_linear_cost()) {
+  if (!infeasible && model.has_linear_cost()) {
     const auto& lc = model.linear_cost();
     c.head(std::min(n, (int)lc.size())) = lc.head(std::min(n, (int)lc.size()));
   }
 
-  // Stationarity gradient: starts as c, subtract A'λ + C'ν + tr(A_k·Λ), add Qx.
   Eigen::VectorXd grad = c;
   double c_norm = c.norm();
   double Qx_norm = 0;
@@ -54,6 +51,8 @@ inline DimacsErrors ComputeDimacsErrors(
   double eq_err = 0;
   double compl_gap = 0;
   double min_slack = std::numeric_limits<double>::infinity();
+  double min_dual = std::numeric_limits<double>::infinity();
+  double total_lam_norm = 0;
 
   for (const auto& cdata : model.constraints()) {
     std::visit([&](const auto& data) {
@@ -63,11 +62,14 @@ inline DimacsErrors ComputeDimacsErrors(
         Eigen::VectorXd xv(data.vars.size());
         for (int j = 0; j < (int)data.vars.size(); ++j)
           xv(j) = x(data.vars[j]);
-        Eigen::VectorXd slack = data.A * xv + data.b;
+        Eigen::VectorXd slack = data.A * xv;
+        if (!infeasible) slack += data.b;
         min_slack = std::min(min_slack, slack.minCoeff());
 
         if (ineq_idx < (int)lambda.size()) {
           const auto& lam = lambda[ineq_idx];
+          min_dual = std::min(min_dual, lam.minCoeff());
+          total_lam_norm += lam.norm();
           compl_gap += slack.dot(lam);
           Eigen::VectorXd Atl = data.A.transpose() * lam;
           for (int j = 0; j < (int)data.vars.size(); ++j)
@@ -79,7 +81,8 @@ inline DimacsErrors ComputeDimacsErrors(
         Eigen::VectorXd xv(data.vars.size());
         for (int j = 0; j < (int)data.vars.size(); ++j)
           xv(j) = x(data.vars[j]);
-        Eigen::VectorXd slack = data.A * xv + data.b;
+        Eigen::VectorXd slack = data.A * xv;
+        if (!infeasible) slack += data.b;
         if (slack.size() > 1) {
           double s0 = slack(0);
           double s1_norm = slack.tail(slack.size() - 1).norm();
@@ -88,6 +91,10 @@ inline DimacsErrors ComputeDimacsErrors(
 
         if (ineq_idx < (int)lambda.size()) {
           const auto& lam = lambda[ineq_idx];
+          if (lam.size() > 1) {
+            min_dual = std::min(min_dual, lam(0) - lam.tail(lam.size()-1).norm());
+          }
+          total_lam_norm += lam.norm();
           compl_gap += slack.dot(lam);
           Eigen::VectorXd Atl = data.A.transpose() * lam;
           for (int j = 0; j < (int)data.vars.size(); ++j)
@@ -99,11 +106,14 @@ inline DimacsErrors ComputeDimacsErrors(
         Eigen::VectorXd xv(data.vars.size());
         for (int j = 0; j < (int)data.vars.size(); ++j)
           xv(j) = x(data.vars[j]);
-        Eigen::VectorXd slack = data.A * xv + data.b;
+        Eigen::VectorXd slack = data.A * xv;
+        if (!infeasible) slack += data.b;
         min_slack = std::min(min_slack, slack.minCoeff());
 
         if (ineq_idx < (int)lambda.size()) {
           const auto& lam = lambda[ineq_idx];
+          min_dual = std::min(min_dual, lam.minCoeff());
+          total_lam_norm += lam.norm();
           compl_gap += slack.dot(lam);
           Eigen::VectorXd Atl = data.A.transpose() * lam;
           for (int j = 0; j < (int)data.vars.size(); ++j)
@@ -115,9 +125,13 @@ inline DimacsErrors ComputeDimacsErrors(
         Eigen::VectorXd xv(data.primal_vars.size());
         for (int j = 0; j < (int)data.primal_vars.size(); ++j)
           xv(j) = x(data.primal_vars[j]);
-        Eigen::VectorXd res = data.C * xv - data.d;
+        Eigen::VectorXd res = data.C * xv;
+        if (!infeasible) res -= data.d;
         eq_err = std::max(eq_err, res.norm());
-        max_d_norm = std::max(max_d_norm, data.d.norm());
+        if (infeasible)
+          max_d_norm = std::max(max_d_norm, x.norm());
+        else
+          max_d_norm = std::max(max_d_norm, data.d.norm());
 
         if (eq_idx < (int)nu.size()) {
           Eigen::VectorXd Ctnu = data.C.transpose() * nu[eq_idx];
@@ -137,21 +151,20 @@ inline DimacsErrors ComputeDimacsErrors(
           grad(data.vars[j]) += Qxv(j);
 
       } else if constexpr (std::is_same_v<T, Model::PSDConstraintData>) {
-        // Slack: S = Σ A_k x_k + B
-        const int dim = data.B.rows();
-        Eigen::MatrixXd S = Eigen::MatrixXd(data.B);
+        Eigen::MatrixXd S = infeasible
+            ? Eigen::MatrixXd::Zero(data.B.rows(), data.B.cols())
+            : Eigen::MatrixXd(data.B);
         for (int k = 0; k < (int)data.vars.size(); ++k)
           S += x(data.vars[k]) * Eigen::MatrixXd(data.A_list[k]);
 
-        // Primal feasibility: min eigenvalue of S.
         Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(S, Eigen::EigenvaluesOnly);
         min_slack = std::min(min_slack, es.eigenvalues().minCoeff());
 
         if (psd_idx < (int)psd_lambda.size()) {
           const auto& Lam = psd_lambda[psd_idx];
-          // Complementarity: tr(S · Λ)
+          Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> el(Lam, Eigen::EigenvaluesOnly);
+          min_dual = std::min(min_dual, el.eigenvalues().minCoeff());
           compl_gap += (S.array() * Lam.array()).sum();
-          // Stationarity: grad_k -= tr(A_k · Λ)
           for (int k = 0; k < (int)data.vars.size(); ++k) {
             Eigen::MatrixXd Ak = Eigen::MatrixXd(data.A_list[k]);
             grad(data.vars[k]) -= (Ak.array() * Lam.array()).sum();
@@ -165,9 +178,16 @@ inline DimacsErrors ComputeDimacsErrors(
   DimacsErrors e;
   e.dual_err = grad.norm() / std::max(1.0, c_norm + Qx_norm);
   e.eq_err = eq_err / std::max(1.0, max_d_norm);
-  e.compl_err = std::abs(compl_gap) / std::max(1.0, std::abs(objective));
+  if (infeasible) {
+    double norm_prod = std::max(1.0, x.norm() * total_lam_norm);
+    e.compl_err = std::abs(compl_gap) / norm_prod;
+  } else {
+    e.compl_err = std::abs(compl_gap) / std::max(1.0, std::abs(objective));
+  }
   e.prim_err = (min_slack < std::numeric_limits<double>::infinity())
                    ? std::max(0.0, -min_slack) : 0.0;
+  e.min_dual = (min_dual < std::numeric_limits<double>::infinity())
+                   ? min_dual : 0.0;
 
   return e;
 }
@@ -177,7 +197,7 @@ inline DimacsErrors ComputeDimacsErrors(const Model& model,
                                         const SolveResult& result) {
   return ComputeDimacsErrors(model, result.x,
                              result.duals.lambda, result.duals.nu,
-                             result.duals.psd_lambda);
+                             result.duals.psd_lambda, result.infeasible);
 }
 
 }  // namespace conex

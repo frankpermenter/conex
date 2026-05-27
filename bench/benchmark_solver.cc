@@ -375,18 +375,18 @@ std::vector<AlgoResult> ProfileAlgorithm(
   }
 
   // --- Summary table ---
-  printf("  %-14s %5s %5s %10s %14s %10s %10s %10s %10s %8s %s\n",
+  printf("  %-14s %5s %5s %10s %14s %10s %10s %10s %10s %10s %8s %s\n",
          "Algorithm", "fac", "iter", "mu", "cost", "dual_res",
-         "eq_res", "comp", "min(s)", "ms", "ok");
-  printf("  %s\n", std::string(115, '-').c_str());
+         "eq_res", "comp", "min(s)", "min(l)", "ms", "status");
+  printf("  %s\n", std::string(125, '-').c_str());
   double c0 = objective_constant;
   for (const auto& r : results) {
     const auto& d = r.dimacs;
     const char* status = r.infeasible ? "INFEAS" : (r.converged ? "yes" : "NO");
-    printf("  %-14s %5d %5d %10.2e %14.6e %10.2e %10.2e %10.2e %10.2e %8.1f %s\n",
+    printf("  %-14s %5d %5d %10.2e %14.6e %10.2e %10.2e %10.2e %10.2e %10.2e %8.1f %s\n",
            r.name, r.factorizations, r.iterations,
            r.mu, r.primal_cost + c0, d.dual_err,
-           d.eq_err, d.compl_err, d.prim_err,
+           d.eq_err, d.compl_err, d.prim_err, d.min_dual,
            r.time_ms, status);
   }
 
