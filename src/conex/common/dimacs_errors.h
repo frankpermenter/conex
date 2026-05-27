@@ -53,6 +53,7 @@ inline DimacsErrors ComputeDimacsErrors(
   double min_slack = std::numeric_limits<double>::infinity();
   double min_dual = std::numeric_limits<double>::infinity();
   double total_lam_norm = 0;
+  double total_slack_norm = 0;
 
   for (const auto& cdata : model.constraints()) {
     std::visit([&](const auto& data) {
@@ -65,6 +66,7 @@ inline DimacsErrors ComputeDimacsErrors(
         Eigen::VectorXd slack = data.A * xv;
         if (!infeasible) slack += data.b;
         min_slack = std::min(min_slack, slack.minCoeff());
+        total_slack_norm += slack.squaredNorm();
 
         if (ineq_idx < (int)lambda.size()) {
           const auto& lam = lambda[ineq_idx];
@@ -83,6 +85,7 @@ inline DimacsErrors ComputeDimacsErrors(
           xv(j) = x(data.vars[j]);
         Eigen::VectorXd slack = data.A * xv;
         if (!infeasible) slack += data.b;
+        total_slack_norm += slack.squaredNorm();
         if (slack.size() > 1) {
           double s0 = slack(0);
           double s1_norm = slack.tail(slack.size() - 1).norm();
@@ -109,6 +112,7 @@ inline DimacsErrors ComputeDimacsErrors(
         Eigen::VectorXd slack = data.A * xv;
         if (!infeasible) slack += data.b;
         min_slack = std::min(min_slack, slack.minCoeff());
+        total_slack_norm += slack.squaredNorm();
 
         if (ineq_idx < (int)lambda.size()) {
           const auto& lam = lambda[ineq_idx];
@@ -159,6 +163,7 @@ inline DimacsErrors ComputeDimacsErrors(
 
         Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> es(S, Eigen::EigenvaluesOnly);
         min_slack = std::min(min_slack, es.eigenvalues().minCoeff());
+        total_slack_norm += S.squaredNorm();
 
         if (psd_idx < (int)psd_lambda.size()) {
           const auto& Lam = psd_lambda[psd_idx];
@@ -184,10 +189,11 @@ inline DimacsErrors ComputeDimacsErrors(
   } else {
     e.compl_err = std::abs(compl_gap) / std::max(1.0, std::abs(objective));
   }
+  double slack_norm = std::sqrt(total_slack_norm);
   e.prim_err = (min_slack < std::numeric_limits<double>::infinity())
-                   ? min_slack : 0.0;
+                   ? min_slack / std::max(1.0, slack_norm) : 0.0;
   e.min_dual = (min_dual < std::numeric_limits<double>::infinity())
-                   ? min_dual : 0.0;
+                   ? min_dual / std::max(1.0, total_lam_norm) : 0.0;
 
   return e;
 }
