@@ -1,0 +1,1646 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{bm}
+\usepackage{hyperref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{example}{Example}
+\newtheorem{corollary}{Corollary}
+\newtheorem{lemma}{Lemma}
+\newtheorem{remark}{Remark}
+
+\DeclareMathOperator{\dist}{dist}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\ip}[2]{\left\langle #1,#2\right\rangle}
+\newcommand{\norm}[1]{\left\lVert #1\right\rVert}
+
+\title{Finite-Distortion Estimates and Modulus-Computed Level Sets}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Setup}
+
+Let $\phi$ be a strictly convex barrier on a convex domain $\Omega\subseteq\R^n$. Define
+\[
+    g(x) := \nabla \phi(x),
+    \qquad
+    H(x) := \nabla^2 \phi(x).
+\]
+The Hessian metric induces the local primal and dual norms
+\[
+    \norm{u}_x^2 := u^\top H(x)u,
+    \qquad
+    \norm{w}_{x,*}^2 := w^\top H(x)^{-1}w.
+\]
+Let $d_R$ denote the Riemannian distance induced by the Hessian metric $H$.
+
+For $x,y\in\Omega$, define the Jeffreys divergence
+\[
+    V(x,y)
+    :=
+    \ip{x-y}{g(x)-g(y)}.
+\]
+We also define the endpoint primal-dual residual
+\[
+    d(x,y)
+    :=
+    \norm{x-y}_x^2
+    +
+    \norm{g(x)-g(y)}_{x,*}^2.
+\]
+
+Throughout, assume global two-sided Hessian stability with modulus
+\[
+    \rho:[0,\infty)\to[1,\infty),
+    \qquad
+    \rho(0)=1,
+    \qquad
+    \rho \text{ nondecreasing},
+\]
+meaning that for all $x,z\in\Omega$,
+\[
+    \rho(d_R(x,z))^{-1}H(x)
+    \preceq
+    H(z)
+    \preceq
+    \rho(d_R(x,z))H(x).
+\]
+
+For $R\ge 0$, define
+\[
+    \Psi_\rho(R)
+    :=
+    2\int_0^R (R-r)\sqrt{\rho(r)}\,dr,
+\]
+and define the finite-distortion remainder
+\[
+    D_\rho(R)
+    :=
+    2\int_0^R
+    (R-r)\left(\sqrt{\rho(r)}-1\right)\,dr.
+\]
+Thus
+\[
+    \Psi_\rho(R)=R^2+D_\rho(R).
+\]
+
+\section{The valid geodesic upper envelope}
+
+\begin{proposition}[Upper envelope for the Jeffreys divergence]
+For all $x,y\in\Omega$,
+\[
+    V(x,y)
+    \le
+    \Psi_\rho(d_R(x,y))
+    =
+    d_R(x,y)^2 + D_\rho(d_R(x,y)).
+\]
+\end{proposition}
+
+\begin{proof}
+Let $\gamma:[0,R]\to\Omega$ be a unit-speed geodesic from $y$ to $x$, where
+$R=d_R(x,y)$. Then
+\[
+    x-y=\int_0^R \gamma'(a)\,da,
+    \qquad
+    g(x)-g(y)=\int_0^R H(\gamma(b))\gamma'(b)\,db.
+\]
+Thus
+\[
+    V(x,y)
+    =
+    \int_0^R\int_0^R
+    \ip{\gamma'(a)}{H(\gamma(b))\gamma'(b)}\,da\,db.
+\]
+By Cauchy-Schwarz in the metric at $\gamma(b)$,
+\[
+    \ip{\gamma'(a)}{H(\gamma(b))\gamma'(b)}
+    \le
+    \norm{\gamma'(a)}_{\gamma(b)}\norm{\gamma'(b)}_{\gamma(b)}.
+\]
+Since $\gamma$ has unit speed, $\norm{\gamma'(b)}_{\gamma(b)}=1$. By Hessian stability,
+\[
+    H(\gamma(b))
+    \preceq
+    \rho(d_R(\gamma(a),\gamma(b)))H(\gamma(a))
+    \preceq
+    \rho(|a-b|)H(\gamma(a)).
+\]
+Hence
+\[
+    \norm{\gamma'(a)}_{\gamma(b)}
+    \le
+    \sqrt{\rho(|a-b|)}.
+\]
+Therefore
+\[
+    V(x,y)
+    \le
+    \int_0^R\int_0^R \sqrt{\rho(|a-b|)}\,da\,db.
+\]
+By symmetry of the square,
+\[
+    \int_0^R\int_0^R \sqrt{\rho(|a-b|)}\,da\,db
+    =
+    2\int_0^R (R-r)\sqrt{\rho(r)}\,dr.
+\]
+This proves the claim.
+\end{proof}
+
+\begin{proposition}[Endpoint finite-distortion identity]
+Let $\gamma:[0,R]\to\Omega$ be a unit-speed geodesic and define
+\[
+    w(s):=V(\gamma(s),\gamma(0)).
+\]
+Then
+\[
+    w(R)=\int_0^R (R-s)w''(s)\,ds
+\]
+and
+\[
+    \int_0^R (R-s)w''(s)\,ds
+    \le
+    R^2+D_\rho(R).
+\]
+\end{proposition}
+
+\begin{proof}
+Since $w(0)=0$ and $w'(0)=0$, Taylor's formula gives
+\[
+    w(R)=\int_0^R (R-s)w''(s)\,ds.
+\]
+The previous proposition applied to the pair $(\gamma(R),\gamma(0))$ gives
+\[
+    w(R)=V(\gamma(R),\gamma(0))
+    \le
+    R^2+D_\rho(R).
+\]
+\end{proof}
+
+\section{Target-dependent second variation}
+
+The endpoint estimate above should not be confused with a target-independent estimate for
+$V(x(t),y)$ when $y$ is an external fixed target. In that case a residual term appears.
+
+Let $x(t)$ be a unit-time geodesic with constant kinetic energy
+\[
+    E:=\norm{\dot x(t)}_{x(t)}^2.
+\]
+For a unit-time geodesic, the step length is
+\[
+    R=d_R(x(0),x(1))=\sqrt{E}.
+\]
+Fix $y\in\Omega$ and define
+\[
+    v(t):=V(x(t),y).
+\]
+Define the target residual
+\[
+    U(t)
+    :=
+    (x(t)-y)
+    -
+    H(x(t))^{-1}\bigl(g(x(t))-g(y)\bigr).
+\]
+
+\begin{proposition}[Residual-corrected second variation]
+Along the geodesic $x(t)$,
+\[
+    v''(t)
+    =
+    2E-\ip{\ddot x(t)}{U(t)}_{x(t)},
+\]
+where $\ip{a}{b}_{x}:=a^\top H(x)b$. Consequently,
+\[
+    v(1)
+    =
+    v(0)+v'(0)+E+\mathcal R_y[x],
+\]
+where
+\[
+    \mathcal R_y[x]
+    :=
+    -\int_0^1 (1-t)\ip{\ddot x(t)}{U(t)}_{x(t)}\,dt.
+\]
+In particular, if
+\[
+    v'(0)\le -(E+v(0)),
+\]
+then
+\[
+    V(x(1),y)=v(1)\le \mathcal R_y[x].
+\]
+\end{proposition}
+
+\begin{proof}
+Differentiate
+\[
+    v(t)=\ip{x(t)-y}{g(x(t))-g(y)}.
+\]
+The first derivative is
+\[
+    v'(t)
+    =
+    \ip{\dot x(t)}{g(x(t))-g(y)}
+    +
+    \ip{x(t)-y}{H(x(t))\dot x(t)}.
+\]
+Differentiating again gives
+\[
+\begin{aligned}
+    v''(t)
+    &=
+    \ip{\ddot x(t)}{g(x(t))-g(y)}
+    +
+    \ip{\dot x(t)}{H(x(t))\dot x(t)} \\
+    &\quad
+    +
+    \ip{\dot x(t)}{H(x(t))\dot x(t)}
+    +
+    D^3\phi(x(t))[\dot x(t),\dot x(t),x(t)-y]
+    +
+    \ip{x(t)-y}{H(x(t))\ddot x(t)}.
+\end{aligned}
+\]
+The two middle quadratic terms equal $2E$. For a Hessian geodesic,
+\[
+    \ip{\ddot x(t)}{w}_{x(t)}
+    =
+    -\frac12 D^3\phi(x(t))[\dot x(t),\dot x(t),w]
+\]
+for every vector $w$. Therefore
+\[
+    D^3\phi(x(t))[\dot x(t),\dot x(t),x(t)-y]
+    =
+    -2\ip{\ddot x(t)}{x(t)-y}_{x(t)}.
+\]
+Substituting yields
+\[
+\begin{aligned}
+    v''(t)
+    &=
+    2E
+    +
+    \ip{\ddot x(t)}{g(x(t))-g(y)}
+    +
+    \ip{x(t)-y}{H(x(t))\ddot x(t)}
+    -
+    2\ip{\ddot x(t)}{x(t)-y}_{x(t)} \\
+    &=
+    2E
+    +
+    \ip{\ddot x(t)}{g(x(t))-g(y)}
+    -
+    \ip{\ddot x(t)}{x(t)-y}_{x(t)} \\
+    &=
+    2E
+    -
+    \ip{\ddot x(t)}{(x(t)-y)-H(x(t))^{-1}(g(x(t))-g(y))}_{x(t)}.
+\end{aligned}
+\]
+This is the claimed identity. Taylor's formula gives
+\[
+    v(1)=v(0)+v'(0)+\int_0^1(1-t)v''(t)\,dt.
+\]
+Using $\int_0^1(1-t)2E\,dt=E$ gives the residual-corrected formula.
+\end{proof}
+
+
+\section{A geodesic bound for the asymmetry residual}
+
+The residual appearing in the target-dependent second variation has additional
+structure.  For two points $x,y\in\Omega$, define
+\[
+    U(x,y)
+    :=
+    (x-y)-H(x)^{-1}(g(x)-g(y)).
+\]
+This is the same quantity as $U(t)$ above with $x=x(t)$.  It measures the
+failure of the first-order Hessian approximation at $x$ to reproduce the
+primal displacement from $x$ to $y$.  In the quadratic or constant-Hessian
+case it vanishes identically.
+
+Define the residual modulus
+\[
+    J_\rho(R)
+    :=
+    \int_0^R
+    \left(
+        \sqrt{\rho(r)}-\frac{1}{\sqrt{\rho(r)}}
+    \right)dr .
+\]
+
+\begin{proposition}[Geodesic residual bound]
+For all $x,y\in\Omega$,
+\[
+    \norm{U(x,y)}_x
+    \le
+    J_\rho(d_R(x,y)).
+\]
+Consequently, if $d_R(x,y)^2\le V(x,y)$, then
+\[
+    \norm{U(x,y)}_x
+    \le
+    J_\rho\!\left(\sqrt{V(x,y)}\right).
+\]
+\end{proposition}
+
+\begin{proof}
+Let $R=d_R(x,y)$, and let $\gamma:[0,R]\to\Omega$ be a unit-speed geodesic
+with $\gamma(0)=x$ and $\gamma(R)=y$.  Then
+\[
+    x-y=-\int_0^R \gamma'(s)\,ds,
+\]
+and
+\[
+    g(x)-g(y)
+    =
+    -\int_0^R H(\gamma(s))\gamma'(s)\,ds.
+\]
+Thus
+\[
+\begin{aligned}
+    U(x,y)
+    &=(x-y)-H(x)^{-1}(g(x)-g(y)) \\
+    &=\int_0^R
+    \left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)\,ds .
+\end{aligned}
+\]
+It remains to bound the norm of the integrand.  Set
+\[
+    A_s:=H(x)^{-1/2}H(\gamma(s))H(x)^{-1/2},
+    \qquad
+    z_s:=H(x)^{1/2}\gamma'(s).
+\]
+By Hessian stability and $d_R(x,\gamma(s))=s$,
+\[
+    \rho(s)^{-1}I\preceq A_s\preceq \rho(s)I.
+\]
+Moreover, since $\gamma$ has unit speed,
+\[
+    z_s^\top A_s z_s
+    =
+    \gamma'(s)^\top H(\gamma(s))\gamma'(s)
+    =1.
+\]
+The $x$-norm of the integrand is
+\[
+\begin{aligned}
+    \left\|
+    \left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)
+    \right\|_x
+    &=
+    \|(A_s-I)z_s\|_2 .
+\end{aligned}
+\]
+Diagonalizing $A_s$, and using $z_s^\top A_s z_s=1$, gives
+\[
+    \|(A_s-I)z_s\|_2^2
+    \le
+    \max_{\lambda\in[\rho(s)^{-1},\rho(s)]}
+    \frac{(\lambda-1)^2}{\lambda}.
+\]
+The maximum equals
+\[
+    \rho(s)+\rho(s)^{-1}-2
+    =
+    \left(\sqrt{\rho(s)}-\frac{1}{\sqrt{\rho(s)}}\right)^2.
+\]
+Therefore
+\[
+    \left\|
+    \left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)
+    \right\|_x
+    \le
+    \sqrt{\rho(s)}-\frac{1}{\sqrt{\rho(s)}}.
+\]
+Integrating over $s\in[0,R]$ yields
+\[
+    \norm{U(x,y)}_x
+    \le
+    \int_0^R
+    \left(
+        \sqrt{\rho(s)}-\frac{1}{\sqrt{\rho(s)}}
+    \right)ds
+    =J_\rho(R).
+\]
+The final claim follows from monotonicity of $J_\rho$ and the coercivity
+$d_R(x,y)^2\le V(x,y)$.
+\end{proof}
+
+\begin{corollary}[Exponential stability specialization]
+Suppose
+\[
+    \rho(r)=e^{Lr}.
+\]
+Then
+\[
+    J_\rho(R)
+    =
+    \int_0^R \left(e^{Lr/2}-e^{-Lr/2}\right)dr
+    =
+    \frac{4}{L}\left(\cosh\left(\frac{LR}{2}\right)-1\right).
+\]
+Therefore
+\[
+    \norm{U(x,y)}_x
+    \le
+    \frac{4}{L}
+    \left(
+        \cosh\left(\frac{L}{2}d_R(x,y)\right)-1
+    \right).
+\]
+For the standard self-concordant normalization $L=2$, this becomes
+\[
+    \norm{U(x,y)}_x
+    \le
+    2\left(\cosh(d_R(x,y))-1\right).
+\]
+In particular, as $R=d_R(x,y)\downarrow0$,
+\[
+    J_\rho(R)=\frac{L}{2}R^2+O(R^4),
+\]
+so the residual is second order in geodesic distance.
+\end{corollary}
+
+
+
+\section{A corrected convergence statement}
+
+\begin{theorem}[Residual-controlled one-step convergence]
+Assume global two-sided Hessian stability with modulus $\rho$. Let $T(x)=x(1)$ be obtained from a unit-time geodesic $x(t)$ starting at $x(0)=x$, with step length $R=d_R(x,T(x))$ and kinetic energy $E=R^2$. Fix $y\in\Omega$ and define $v(t)=V(x(t),y)$.
+
+If
+\[
+    v'(0)\le -(E+v(0)),
+\]
+then
+\[
+    V(T(x),y)\le \mathcal R_y[x],
+\]
+where
+\[
+    \mathcal R_y[x]
+    :=
+    -\int_0^1 (1-t)\ip{\ddot x(t)}{U(t)}_{x(t)}\,dt,
+\]
+and
+\[
+    U(t)
+    :=
+    (x(t)-y)-H(x(t))^{-1}\bigl(g(x(t))-g(y)\bigr).
+\]
+Consequently, if a scalar function $G$ satisfies
+\[
+    \mathcal R_y[x]\le G(V(x,y))
+\]
+for all $x$ in a level set $\mathcal L_\delta(y):=\{x:V(x,y)\le\delta\}$, then
+\[
+    V(T(x),y)\le G(V(x,y))
+    \qquad
+    \forall x\in\mathcal L_\delta(y).
+\]
+If $G(v)\le v$ for all $v\in[0,\delta]$, then $\mathcal L_\delta(y)$ is invariant. If $G(v)\le v^2$ for all $v\in[0,\delta]$, then the iteration $x_{k+1}=T(x_k)$ satisfies
+\[
+    V(x_{k+1},y)\le V(x_k,y)^2
+\]
+whenever $x_k\in\mathcal L_\delta(y)$.
+\end{theorem}
+
+\begin{proof}
+This is immediate from the residual-corrected second variation formula. Under the descent condition,
+\[
+    V(T(x),y)=v(1)
+    \le
+    \mathcal R_y[x].
+\]
+The conclusions follow by substituting the scalar upper bound $G$ and iterating the scalar inequality.
+\end{proof}
+
+
+
+
+\section{A modulus-computed one-step map}
+
+The previous theorem is correct but not yet useful unless the residual term is bounded.
+We now show that, under the same update hypotheses and using only the stability modulus,
+one obtains a computable scalar map for the target divergence.
+
+Define
+\[
+    L_\rho
+    :=
+    \limsup_{r\downarrow0}\frac{\log \rho(r)}{r},
+\]
+and assume $L_\rho<\infty$.  Also define the first-order stability primitive
+\[
+    S_\rho(R)
+    :=
+    \int_0^R \sqrt{\rho(r)}\,dr.
+\]
+
+\begin{lemma}[Endpoint norm bounds from the modulus]
+For all $a,b\in\Omega$, with $R=d_R(a,b)$,
+\[
+    \norm{a-b}_a
+    \le
+    S_\rho(R),
+    \qquad
+    \norm{g(a)-g(b)}_{a,*}
+    \le
+    S_\rho(R).
+\]
+Consequently,
+\[
+    d(a,b)
+    \le
+    2S_\rho(d_R(a,b))^2.
+\]
+\end{lemma}
+
+\begin{proof}
+Let $\gamma:[0,R]\to\Omega$ be a unit-speed geodesic with $\gamma(0)=a$ and
+$\gamma(R)=b$.  Then
+\[
+    b-a=\int_0^R \gamma'(s)\,ds.
+\]
+Using Hessian stability between $a$ and $\gamma(s)$,
+\[
+    H(a)\preceq \rho(s)H(\gamma(s)).
+\]
+Therefore
+\[
+    \norm{\gamma'(s)}_a
+    \le
+    \sqrt{\rho(s)}\norm{\gamma'(s)}_{\gamma(s)}
+    =
+    \sqrt{\rho(s)}.
+\]
+Thus
+\[
+    \norm{b-a}_a
+    \le
+    \int_0^R \sqrt{\rho(s)}\,ds
+    =
+    S_\rho(R).
+\]
+For the dual term,
+\[
+    g(b)-g(a)=\int_0^R H(\gamma(s))\gamma'(s)\,ds.
+\]
+By duality,
+\[
+\begin{aligned}
+    \norm{g(b)-g(a)}_{a,*}
+    &=
+    \sup_{\norm{w}_a\le1}
+    \int_0^R \ip{w}{H(\gamma(s))\gamma'(s)}\,ds \\
+    &\le
+    \sup_{\norm{w}_a\le1}
+    \int_0^R \norm{w}_{\gamma(s)}\norm{\gamma'(s)}_{\gamma(s)}\,ds.
+\end{aligned}
+\]
+Again by stability, $H(\gamma(s))\preceq \rho(s)H(a)$, so
+$\norm{w}_{\gamma(s)}\le\sqrt{\rho(s)}\norm{w}_a$.  Since the geodesic has unit speed,
+\[
+    \norm{g(b)-g(a)}_{a,*}
+    \le
+    \int_0^R \sqrt{\rho(s)}\,ds
+    =
+    S_\rho(R).
+\]
+Squaring and adding gives the bound on $d(a,b)$.
+\end{proof}
+
+\begin{lemma}[Infinitesimal acceleration bound]
+Let $x(t)$ be a Hessian geodesic with constant kinetic energy
+\[
+    E=\norm{\dot x(t)}_{x(t)}^2.
+\]
+Then
+\[
+    \norm{\ddot x(t)}_{x(t)}
+    \le
+    \frac{L_\rho}{2}E.
+\]
+\end{lemma}
+
+\begin{proof}
+The local limit of the stability condition gives, for all $x,u,v$,
+\[
+    |D^3\phi(x)[v,u,u]|
+    \le
+    L_\rho\norm{v}_x\norm{u}_x^2.
+\]
+Indeed, apply the upper and lower Hessian stability inequalities to
+$x+\epsilon v/\norm{v}_x$ and let $\epsilon\downarrow0$.
+For a Hessian geodesic,
+\[
+    \ip{\ddot x(t)}{w}_{x(t)}
+    =
+    -\frac12 D^3\phi(x(t))[\dot x(t),\dot x(t),w].
+\]
+Hence, for $\norm{w}_{x(t)}\le1$,
+\[
+    |\ip{\ddot x(t)}{w}_{x(t)}|
+    \le
+    \frac{L_\rho}{2}\norm{\dot x(t)}_{x(t)}^2
+    =
+    \frac{L_\rho}{2}E.
+\]
+Taking the supremum over $\norm{w}_{x(t)}\le1$ gives the claim.
+\end{proof}
+
+For $v\ge0$, define
+\[
+    \Lambda_\rho(v)
+    :=
+    \sqrt v + \sqrt{2}\,S_\rho(\sqrt v),
+\]
+and define the modulus-computed one-step map
+\[
+    F_\rho(v)
+    :=
+    L_\rho\,S_\rho(\sqrt v)^2\,S_\rho(\Lambda_\rho(v)).
+\]
+
+\begin{theorem}[Modulus-computed one-step bound]
+Assume global two-sided Hessian stability with modulus $\rho$, $L_\rho<\infty$, and
+$ d_R(a,b)^2\le V(a,b)$ for all $a,b$.  Let $T(x)=x(1)$ be obtained from a
+unit-time geodesic $x(t)$ starting at $x(0)=x$, with step length
+$R=d_R(x,T(x))$ and kinetic energy $E=R^2$.  Fix $y\in\Omega$ and define
+$v(t)=V(x(t),y)$.
+
+Assume the update satisfies
+\[
+    v'(0)\le -(E+V(x,y))
+\]
+and the step compatibility condition
+\[
+    R^2\le d(x,y).
+\]
+Then
+\[
+    V(T(x),y)
+    \le
+    F_\rho(V(x,y)).
+\]
+Thus the scalar one-step estimate is derived from the modulus and the update
+conditions; it is not an additional assumption.
+\end{theorem}
+
+\begin{proof}
+Let $v_0:=V(x,y)$ and $r_0:=d_R(x,y)$.  By geodesic coercivity,
+\[
+    r_0\le \sqrt{v_0}.
+\]
+By the endpoint norm lemma,
+\[
+    d(x,y)
+    \le
+    2S_\rho(r_0)^2
+    \le
+    2S_\rho(\sqrt{v_0})^2.
+\]
+The step compatibility condition gives
+\[
+    R^2=E\le d(x,y)
+    \le
+    2S_\rho(\sqrt{v_0})^2.
+\]
+Therefore
+\[
+    R\le \sqrt{2}\,S_\rho(\sqrt{v_0}).
+\]
+For every $t\in[0,1]$,
+\[
+    d_R(x(t),y)
+    \le
+    d_R(x(t),x)+d_R(x,y)
+    \le
+    R+r_0
+    \le
+    \sqrt{2}\,S_\rho(\sqrt{v_0})+\sqrt{v_0}
+    =
+    \Lambda_\rho(v_0).
+\]
+Applying the endpoint norm lemma at the point $x(t)$ gives
+\[
+    \norm{x(t)-y}_{x(t)}
+    \le
+    S_\rho(\Lambda_\rho(v_0)),
+\]
+and
+\[
+    \norm{g(x(t))-g(y)}_{x(t),*}
+    \le
+    S_\rho(\Lambda_\rho(v_0)).
+\]
+Hence the target residual
+\[
+    U(t)=(x(t)-y)-H(x(t))^{-1}(g(x(t))-g(y))
+\]
+satisfies
+\[
+    \norm{U(t)}_{x(t)}
+    \le
+    2S_\rho(\Lambda_\rho(v_0)).
+\]
+By the residual-corrected second variation and the acceleration bound,
+\[
+\begin{aligned}
+    \mathcal R_y[x]
+    &:=
+    -\int_0^1(1-t)\ip{\ddot x(t)}{U(t)}_{x(t)}\,dt \\
+    &\le
+    \int_0^1(1-t)
+    \norm{\ddot x(t)}_{x(t)}\norm{U(t)}_{x(t)}\,dt \\
+    &\le
+    \int_0^1(1-t)
+    \frac{L_\rho}{2}E\cdot 2S_\rho(\Lambda_\rho(v_0))\,dt \\
+    &=
+    \frac{L_\rho}{2}E S_\rho(\Lambda_\rho(v_0)).
+\end{aligned}
+\]
+Using $E\le 2S_\rho(\sqrt{v_0})^2$ gives
+\[
+    \mathcal R_y[x]
+    \le
+    L_\rho S_\rho(\sqrt{v_0})^2S_\rho(\Lambda_\rho(v_0))
+    =
+    F_\rho(v_0).
+\]
+Finally, the descent condition and the residual-corrected formula give
+\[
+    V(T(x),y)\le \mathcal R_y[x].
+\]
+Combining the last two inequalities proves
+\[
+    V(T(x),y)\le F_\rho(V(x,y)).
+\]
+\end{proof}
+
+\section{Level sets and rates from the computed scalar map}
+
+\begin{corollary}[Modulus-computed invariant level set]
+Let $F_\rho$ be the scalar map defined above.  Define
+\[
+    \delta_{\rho,\mathrm{inv}}
+    :=
+    \sup\left\{
+        \delta\in(0,1]:
+        F_\rho(v)\le v
+        \ \text{for all }v\in[0,\delta]
+    \right\}.
+\]
+If every update satisfies the hypotheses of the modulus-computed one-step theorem and
+$V(x_0,y)\le\delta_{\rho,\mathrm{inv}}$, then the iterates $x_{k+1}=T(x_k)$ satisfy
+\[
+    V(x_k,y)\le\delta_{\rho,\mathrm{inv}}
+    \qquad\text{for all }k.
+\]
+Moreover,
+\[
+    V(x_{k+1},y)
+    \le
+    F_\rho(V(x_k,y))
+    \qquad\text{for all }k.
+\]
+\end{corollary}
+
+\begin{proof}
+If $V(x_k,y)\le\delta_{\rho,\mathrm{inv}}$, then the one-step theorem gives
+\[
+    V(x_{k+1},y)
+    \le
+    F_\rho(V(x_k,y))
+    \le
+    V(x_k,y)
+    \le
+    \delta_{\rho,\mathrm{inv}}.
+\]
+Induction proves the result.
+\end{proof}
+
+\begin{corollary}[Computed linear and superlinear rates]
+For any $\delta\le\delta_{\rho,\mathrm{inv}}$, define
+\[
+    q_\rho(\delta)
+    :=
+    \sup_{0<v\le\delta}\frac{F_\rho(v)}{v}.
+\]
+Then every sequence initialized in $\mathcal L_\delta(y):=\{x:V(x,y)\le\delta\}$ satisfies
+\[
+    V(x_{k+1},y)
+    \le
+    q_\rho(\delta)V(x_k,y).
+\]
+In particular, if $q_\rho(\delta)<1$, the convergence is linearly contracting on
+$\mathcal L_\delta(y)$ with contraction factor $q_\rho(\delta)$.
+
+If $\sqrt{\rho(r)}=1+O(r)$ as $r\downarrow0$, then
+\[
+    F_\rho(v)=O(v^{3/2}),
+\]
+so $q_\rho(\delta)\to0$ as $\delta\downarrow0$.  Thus the computed level sets yield
+asymptotically superlinear contraction.
+\end{corollary}
+
+\begin{proof}
+The first claim follows by dividing the one-step bound
+$V(x_{k+1},y)\le F_\rho(V(x_k,y))$ by $V(x_k,y)$ and taking the supremum over
+$0<v\le\delta$.
+For the asymptotic statement, $S_\rho(R)=R+O(R^2)$, hence
+\[
+    \Lambda_\rho(v)=(1+\sqrt2)\sqrt v+O(v).
+\]
+Therefore
+\[
+    F_\rho(v)
+    =
+    L_\rho\bigl(v+O(v^{3/2})\bigr)\bigl((1+\sqrt2)\sqrt v+O(v)\bigr)
+    =
+    O(v^{3/2}).
+\]
+\end{proof}
+
+\begin{remark}[Quadratic contraction]
+A quadratic level can still be defined by
+\[
+    \delta_{\rho,\mathrm{quad}}
+    :=
+    \sup\left\{
+        \delta\in(0,1]:
+        F_\rho(v)\le v^2
+        \ \text{for all }v\in[0,\delta]
+    \right\}.
+\]
+If this radius is positive, then initialization in $\mathcal L_{\delta_{\rho,\mathrm{quad}}}(y)$
+gives $V(x_{k+1},y)\le V(x_k,y)^2$ by the same induction.  For the usual exponential
+self-concordant modulus, the computable residual bound above scales like $v^{3/2}$;
+therefore this particular modulus-only argument gives superlinear contraction.  A
+quadratic theorem requires either a sharper algorithmic step estimate or a stronger
+step scaling than $R^2\le d(x,y)$.
+\end{remark}
+
+\begin{corollary}[Distance initialization]
+Let
+\[
+    r_{\rho,\mathrm{inv}}
+    :=
+    \sup\{r\ge0:\Psi_\rho(r)\le \delta_{\rho,\mathrm{inv}}\}.
+\]
+If $d_R(x_0,y)\le r_{\rho,\mathrm{inv}}$, then $V(x_0,y)\le\delta_{\rho,\mathrm{inv}}$ and
+therefore the invariant-level-set conclusion holds.
+\end{corollary}
+
+\begin{proof}
+By the geodesic upper envelope,
+\[
+    V(x_0,y)\le\Psi_\rho(d_R(x_0,y))\le\delta_{\rho,\mathrm{inv}}.
+\]
+Then apply the invariant level-set corollary.
+\end{proof}
+
+\section{Examples}
+
+\begin{example}[Constant Hessian]
+Suppose $H(x)\equiv H_0$ is constant. Then $\rho(r)\equiv1$, so
+\[
+    D_\rho(R)=0,
+    \qquad
+    L_\rho=0,
+    \qquad
+    S_\rho(R)=R.
+\]
+Consequently the modulus-computed one-step map is
+\[
+    F_\rho(v)=0.
+\]
+Geodesics are affine, so $\ddot x(t)=0$ and therefore
+\[
+    \mathcal R_y[x]=0
+\]
+for every target $y$. If the descent condition
+\[
+    v'(0)\le -(R^2+v(0))
+\]
+holds, then
+\[
+    V(T(x),y)=0.
+\]
+Thus the flat case has exact cancellation: the target-dependent residual term vanishes because the geodesic acceleration is zero.
+\end{example}
+
+\begin{example}[Exponential stability / self-concordant case]
+Suppose the Hessian metric satisfies exponential stability
+\[
+    e^{-L d_R(x,z)}H(x)
+    \preceq
+    H(z)
+    \preceq
+    e^{L d_R(x,z)}H(x).
+\]
+Then
+\[
+    \rho(r)=e^{Lr},
+    \qquad
+    \sqrt{\rho(r)}=e^{Lr/2}.
+\]
+The geodesic upper envelope is
+\[
+    \Psi_\rho(R)
+    =
+    2\int_0^R (R-r)e^{Lr/2}\,dr
+    =
+    \frac{8}{L^2}\left(e^{LR/2}-1\right)-\frac{4}{L}R.
+\]
+The finite endpoint distortion is
+\[
+    D_\rho(R)
+    =
+    \frac{8}{L^2}\left(e^{LR/2}-1\right)-\frac{4}{L}R-R^2.
+\]
+For small $R$,
+\[
+    D_\rho(R)=\frac{L}{3}R^3+O(R^4).
+\]
+The modulus-computed residual map uses
+\[
+    L_\rho=L,
+    \qquad
+    S_\rho(R)=\frac{2}{L}\left(e^{LR/2}-1\right).
+\]
+Therefore
+\[
+    \Lambda_\rho(v)
+    =
+    \sqrt v+\frac{2\sqrt2}{L}\left(e^{L\sqrt v/2}-1\right),
+\]
+and
+\[
+    F_\rho(v)
+    =
+    L\left[\frac{2}{L}\left(e^{L\sqrt v/2}-1\right)\right]^2
+    \left[\frac{2}{L}\left(e^{L\Lambda_\rho(v)/2}-1\right)\right].
+\]
+As $v\downarrow0$,
+\[
+    F_\rho(v)=L(1+\sqrt2)v^{3/2}+O(v^2).
+\]
+This gives a fully computable superlinear level-set map.  The endpoint distortion
+$D_\rho$ controls $V(x(1),x(0))$; the target-dependent map $F_\rho$ controls
+$V(x(1),y)$ under the descent and step compatibility hypotheses of the theorem.
+\end{example}
+
+\begin{example}[Self-concordant normalization $L=1$]
+For $L=1$, the exponential modulus is
+\[
+    \rho(r)=e^r.
+\]
+The upper envelope becomes
+\[
+    \Psi_\rho(R)
+    =
+    8\left(e^{R/2}-1\right)-4R,
+\]
+and the finite endpoint distortion is
+\[
+    D_\rho(R)
+    =
+    8\left(e^{R/2}-1\right)-4R-R^2.
+\]
+As $R\downarrow0$,
+\[
+    D_\rho(R)=\frac13 R^3+O(R^4).
+\]
+Here
+\[
+    S_\rho(R)=2(e^{R/2}-1),
+\]
+so
+\[
+    \Lambda_\rho(v)
+    =
+    \sqrt v+2\sqrt2(e^{\sqrt v/2}-1),
+\]
+and
+\[
+    F_\rho(v)
+    =
+    \bigl[2(e^{\sqrt v/2}-1)\bigr]^2
+    \bigl[2(e^{\Lambda_\rho(v)/2}-1)\bigr].
+\]
+As $v\downarrow0$,
+\[
+    F_\rho(v)=(1+\sqrt2)v^{3/2}+O(v^2).
+\]
+\end{example}
+
+\begin{example}[Why no $\rho$-only target bound can hold]
+Let $\phi(x)=-\log x$ on $(0,\infty)$. Then
+\[
+    H(x)=x^{-2},
+    \qquad
+    d_R(x,z)=|\log x-\log z|,
+\]
+and the metric has exponential stability. Let
+\[
+    x(t)=e^{Rt},
+    \qquad
+    x(0)=1,
+\]
+which is a geodesic of length $R$. For a fixed target $y>0$,
+\[
+    V(x(t),y)
+    =
+    \frac{e^{Rt}}{y}+y e^{-Rt}-2.
+\]
+Hence
+\[
+    V(x(1),y)-V(x(0),y)-v'(0)
+    =
+    \frac{e^R-1-R}{y}+y(e^{-R}-1+R).
+\]
+For fixed $R>0$, this expression is unbounded as $y\to\infty$. Therefore it cannot be bounded by a function of $R$ and $\rho$ alone. This demonstrates why the target residual $\mathcal R_y[x]$ is necessary.
+\end{example}
+
+
+
+
+
+
+\section{A self-concordant level-set estimate}
+
+Let \(\phi\) be a standard self-concordant barrier with
+\[
+    g(x):=\nabla \phi(x),
+    \qquad
+    H(x):=\nabla^2\phi(x).
+\]
+For a vector \(u\) and covector \(w\), write
+\[
+    \|u\|_x^2:=u^\top H(x)u,
+    \qquad
+    \|w\|_{x,*}^2:=w^\top H(x)^{-1}w.
+\]
+Define the Jeffreys divergence
+\[
+    V(x,y):=\langle x-y,g(x)-g(y)\rangle .
+\]
+
+Let \(x(t)\), \(t\in[0,1]\), be a unit-time geodesic for the Hessian metric, with constant kinetic energy
+\[
+    E:=\|\dot x(t)\|_{x(t)}^2.
+\]
+Fix a target point \(y\), and define
+\[
+    v(t):=V(x(t),y),
+    \qquad
+    v_0:=v(0)=V(x(0),y).
+\]
+Define the asymmetry residual
+\[
+    U(x,y):=(x-y)-H(x)^{-1}(g(x)-g(y)).
+\]
+
+Assume the descent condition
+\[
+    v'(0)\le -(E+v_0).
+\]
+Assume also the energy compatibility condition
+\[
+    E\le d(x(0),y),
+\]
+where
+\[
+    d(x,y)
+    :=
+    \|x-y\|_x^2
+    +
+    \|g(x)-g(y)\|_{x,*}^2.
+\]
+Finally, assume the geodesic path remains in the current \(V\)-sublevel set:
+\[
+    v(t)\le v_0
+    \qquad
+    \forall t\in[0,1].
+\]
+
+Then
+\[
+    v(1)
+    \le
+    \frac{(e^{\sqrt{v_0}}-1)^4}{e^{\sqrt{v_0}}}.
+\]
+In particular,
+\[
+    v(1)=v_0^2+O(v_0^3)
+    \qquad
+    (v_0\downarrow0).
+\]
+
+\begin{proof}
+For a self-concordant Hessian metric, the second-variation identity is
+\[
+    v''(t)
+    =
+    2E-\langle \ddot x(t),U(x(t),y)\rangle_{x(t)}.
+\]
+Taylor's formula gives the exact identity
+\[
+    v(1)
+    =
+    v_0+v'(0)+\int_0^1(1-t)v''(t)\,dt.
+\]
+Substituting the expression for \(v''\),
+\[
+    \int_0^1(1-t)v''(t)\,dt
+    =
+    E-\int_0^1(1-t)
+    \langle \ddot x(t),U(x(t),y)\rangle_{x(t)}\,dt.
+\]
+Hence
+\[
+    v(1)
+    =
+    v_0+v'(0)+E
+    -
+    \int_0^1(1-t)
+    \langle \ddot x(t),U(x(t),y)\rangle_{x(t)}\,dt.
+\]
+The descent condition gives
+\[
+    v_0+v'(0)+E\le 0.
+\]
+Therefore
+\[
+    v(1)
+    \le
+    \int_0^1(1-t)
+    \left|
+    \langle \ddot x(t),U(x(t),y)\rangle_{x(t)}
+    \right|dt.
+\]
+
+By self-concordance and the geodesic equation,
+\[
+    \|\ddot x(t)\|_{x(t)}\le E.
+\]
+Thus
+\[
+    \left|
+    \langle \ddot x(t),U(x(t),y)\rangle_{x(t)}
+    \right|
+    \le
+    E\|U(x(t),y)\|_{x(t)}.
+\]
+
+The exponential geodesic residual bound for standard self-concordance is
+\[
+    \|U(z,y)\|_z
+    \le
+    2\left(\cosh\sqrt{V(z,y)}-1\right).
+\]
+Since \(v(t)=V(x(t),y)\le v_0\), this gives
+\[
+    \|U(x(t),y)\|_{x(t)}
+    \le
+    2\left(\cosh\sqrt{v_0}-1\right).
+\]
+Therefore
+\[
+\begin{aligned}
+    v(1)
+    &\le
+    \int_0^1(1-t)
+    E\cdot
+    2\left(\cosh\sqrt{v_0}-1\right)dt  \\
+    &=
+    E\left(\cosh\sqrt{v_0}-1\right).
+\end{aligned}
+\]
+
+It remains to bound \(E\) in terms of \(v_0\). By assumption,
+\[
+    E\le d(x(0),y).
+\]
+For standard self-concordance, exponential Hessian stability gives
+\[
+    d(x,y)
+    \le
+    2\left(e^{\sqrt{V(x,y)}}-1\right)^2.
+\]
+Thus
+\[
+    E
+    \le
+    2\left(e^{\sqrt{v_0}}-1\right)^2.
+\]
+Substituting this into the previous estimate yields
+\[
+    v(1)
+    \le
+    2\left(e^{\sqrt{v_0}}-1\right)^2
+    \left(\cosh\sqrt{v_0}-1\right).
+\]
+Using
+\[
+    2(\cosh s-1)
+    =
+    \frac{(e^s-1)^2}{e^s},
+\]
+with \(s=\sqrt{v_0}\), we obtain
+\[
+    v(1)
+    \le
+    \frac{(e^{\sqrt{v_0}}-1)^4}{e^{\sqrt{v_0}}}.
+\]
+\end{proof}
+
+
+
+
+
+
+\subsection*{Quadratic convergence interpretation}
+
+Define
+\[
+    F(v)
+    :=
+    \frac{(e^{\sqrt v}-1)^4}{e^{\sqrt v}}.
+\]
+Then the estimate above says
+\[
+    v(1)\le F(v_0).
+\]
+Moreover,
+\[
+    \frac{F(v)}{v^2}
+    =
+    \left(
+        \frac{e^{\sqrt v}-1}{\sqrt v}
+    \right)^4
+    e^{-\sqrt v}.
+\]
+Hence
+\[
+    \lim_{v\downarrow0}\frac{F(v)}{v^2}=1.
+\]
+Thus
+\[
+    v(1)\le v_0^2(1+o(1)).
+\]
+Equivalently, for every \(\varepsilon>0\), there exists \(\delta_\varepsilon>0\) such that
+\[
+    0<v_0\le \delta_\varepsilon
+    \quad\Longrightarrow\quad
+    v(1)\le (1+\varepsilon)v_0^2.
+\]
+
+For a finite-region statement, define
+\[
+    C_\delta
+    :=
+    \sup_{0<v\le\delta}\frac{F(v)}{v^2}
+    =
+    \left(
+        \frac{e^{\sqrt\delta}-1}{\sqrt\delta}
+    \right)^4
+    e^{-\sqrt\delta}.
+\]
+Then, whenever \(v_0\le\delta\),
+\[
+    v(1)\le C_\delta v_0^2.
+\]
+For example,
+\[
+    C_{1/4}
+    =
+    \left(
+        \frac{e^{1/2}-1}{1/2}
+    \right)^4e^{-1/2}
+    \approx 1.730.
+\]
+Therefore
+\[
+    v_0\le \frac14
+    \quad\Longrightarrow\quad
+    v(1)\le 1.730\,v_0^2.
+\]
+
+The same scalar bound gives strict contraction on the region where
+\[
+    F(v)<v.
+\]
+Numerically,
+\[
+    F(v)<v
+    \qquad\text{for}\qquad
+    0<v<0.4671709662\ldots.
+\]
+Thus this estimate certifies strict decrease for approximately
+\[
+    v_0<0.46717.
+\]
+
+\section{General modulus version}
+
+Now suppose instead that the Hessian metric satisfies global two-sided stability with modulus
+\[
+    \rho:[0,\infty)\to[1,\infty),
+    \qquad
+    \rho(0)=1,
+    \qquad
+    \rho \text{ nondecreasing},
+\]
+meaning
+\[
+    \rho(d_R(x,z))^{-1}H(x)
+    \preceq
+    H(z)
+    \preceq
+    \rho(d_R(x,z))H(x)
+    \qquad
+    \forall x,z.
+\]
+Define
+\[
+    K_\rho(r):=\sqrt{\rho(r)},
+\]
+\[
+    S_\rho(R):=\int_0^R K_\rho(s)\,ds,
+\]
+and
+\[
+    J_\rho(R):=
+    \int_0^R
+    \left(
+        K_\rho(s)-K_\rho(s)^{-1}
+    \right)ds.
+\]
+Assume also that the modulus has finite infinitesimal logarithmic slope
+\[
+    L_\rho
+    :=
+    \limsup_{r\downarrow0}
+    \frac{\log\rho(r)}{r}
+    <\infty.
+\]
+
+Let \(x(t)\), \(v(t)\), \(v_0\), \(E\), and \(U\) be as above. Assume
+\[
+    v'(0)\le -(E+v_0),
+\]
+\[
+    E\le d(x(0),y),
+\]
+and
+\[
+    v(t)\le v_0
+    \qquad
+    \forall t\in[0,1].
+\]
+Then
+\[
+    v(1)
+    \le
+    F_\rho(v_0),
+\]
+where
+\[
+    F_\rho(v)
+    :=
+    \frac{L_\rho}{2}
+    S_\rho(\sqrt v)^2
+    J_\rho(\sqrt v).
+\]
+
+\begin{proof}
+The same second-variation identity gives
+\[
+    v(1)
+    \le
+    \int_0^1(1-t)
+    \left|
+    \langle \ddot x(t),U(x(t),y)\rangle_{x(t)}
+    \right|dt.
+\]
+
+The finite infinitesimal slope \(L_\rho\) gives the geodesic acceleration bound
+\[
+    \|\ddot x(t)\|_{x(t)}
+    \le
+    \frac{L_\rho}{2}E.
+\]
+Hence
+\[
+    \left|
+    \langle \ddot x(t),U(x(t),y)\rangle_{x(t)}
+    \right|
+    \le
+    \frac{L_\rho}{2}E\|U(x(t),y)\|_{x(t)}.
+\]
+
+The modulus gives the residual bound
+\[
+    \|U(z,y)\|_z
+    \le
+    J_\rho(d_R(z,y)).
+\]
+Since \(d_R(z,y)^2\le V(z,y)\), and since \(v(t)\le v_0\), we get
+\[
+    \|U(x(t),y)\|_{x(t)}
+    \le
+    J_\rho(\sqrt{v_0}).
+\]
+Therefore
+\[
+    v(1)
+    \le
+    \frac{L_\rho}{2}EJ_\rho(\sqrt{v_0})
+    \int_0^1(1-t)dt
+    =
+    \frac{L_\rho}{4}EJ_\rho(\sqrt{v_0}).
+\]
+
+It remains to bound \(E\). By the energy compatibility condition,
+\[
+    E\le d(x(0),y).
+\]
+Let \(R=d_R(x(0),y)\). The modulus gives
+\[
+    \|x(0)-y\|_{x(0)}\le S_\rho(R),
+\]
+and
+\[
+    \|g(x(0))-g(y)\|_{x(0),*}\le S_\rho(R).
+\]
+Therefore
+\[
+    d(x(0),y)
+    \le
+    2S_\rho(R)^2.
+\]
+Since
+\[
+    R^2=d_R(x(0),y)^2\le V(x(0),y)=v_0,
+\]
+we have
+\[
+    E
+    \le
+    2S_\rho(\sqrt{v_0})^2.
+\]
+Substituting this into the previous bound gives
+\[
+    v(1)
+    \le
+    \frac{L_\rho}{4}
+    \left[
+        2S_\rho(\sqrt{v_0})^2
+    \right]
+    J_\rho(\sqrt{v_0})
+    =
+    \frac{L_\rho}{2}
+    S_\rho(\sqrt{v_0})^2
+    J_\rho(\sqrt{v_0}).
+\]
+\end{proof}
+
+\subsection*{Quadratic rate for a general modulus}
+
+If
+\[
+    \rho(r)=1+L_\rho r+O(r^2)
+    \qquad
+    (r\downarrow0),
+\]
+then
+\[
+    S_\rho(\sqrt v)
+    =
+    \sqrt v+O(v),
+\]
+and
+\[
+    J_\rho(\sqrt v)
+    =
+    \frac{L_\rho}{2}v+O(v^{3/2}).
+\]
+Therefore
+\[
+    F_\rho(v)
+    =
+    \frac{L_\rho}{2}
+    \left(v+O(v^{3/2})\right)
+    \left(\frac{L_\rho}{2}v+O(v^{3/2})\right),
+\]
+so
+\[
+    F_\rho(v)
+    =
+    \frac{L_\rho^2}{4}v^2+O(v^{5/2}).
+\]
+Thus the generalized estimate is quadratically convergent in the sense that
+\[
+    v(1)\le C_\delta(\rho)v_0^2
+\]
+on any level set \(0<v_0\le\delta\) with
+\[
+    C_\delta(\rho)
+    :=
+    \sup_{0<v\le\delta}
+    \frac{F_\rho(v)}{v^2}
+    <\infty.
+\]
+Moreover,
+\[
+    \lim_{\delta\downarrow0}C_\delta(\rho)
+    =
+    \frac{L_\rho^2}{4}.
+\]
+
+\subsection*{Exponential modulus}
+
+If
+\[
+    \rho(r)=e^{Lr},
+\]
+then
+\[
+    K_\rho(r)=e^{Lr/2},
+\]
+\[
+    S_\rho(R)
+    =
+    \frac{2}{L}
+    \left(e^{LR/2}-1\right),
+\]
+and
+\[
+    J_\rho(R)
+    =
+    \frac{4}{L}
+    \left(
+        \cosh\left(\frac{LR}{2}\right)-1
+    \right).
+\]
+Hence
+\[
+\begin{aligned}
+    F_L(v)
+    &=
+    \frac{L}{2}
+    \left[
+        \frac{2}{L}
+        \left(e^{L\sqrt v/2}-1\right)
+    \right]^2
+    \cdot
+    \frac{4}{L}
+    \left[
+        \cosh\left(\frac{L\sqrt v}{2}\right)-1
+    \right]  \\
+    &=
+    \frac{8}{L^2}
+    \left(e^{L\sqrt v/2}-1\right)^2
+    \left[
+        \cosh\left(\frac{L\sqrt v}{2}\right)-1
+    \right].
+\end{aligned}
+\]
+Using
+\[
+    2(\cosh a-1)=\frac{(e^a-1)^2}{e^a},
+\]
+this simplifies to
+\[
+    F_L(v)
+    =
+    \frac{4}{L^2}
+    \frac{
+        \left(e^{L\sqrt v/2}-1\right)^4
+    }{
+        e^{L\sqrt v/2}
+    }.
+\]
+For standard self-concordance, \(L=2\), this becomes
+\[
+    F_2(v)
+    =
+    \frac{(e^{\sqrt v}-1)^4}{e^{\sqrt v}},
+\]
+recovering the self-concordant estimate above.
+
+
+
+
+\end{document}

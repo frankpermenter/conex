@@ -1,0 +1,468 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools,booktabs}
+\usepackage[hidelinks]{hyperref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\newtheorem{remark}{Remark}
+
+\newcommand{\ip}[2]{\left\langle #1,#2\right\rangle}
+\newcommand{\norm}[1]{\left\lVert #1\right\rVert}
+\newcommand{\R}{\mathbb R}
+\newcommand{\dd}{\mathrm d}
+\newcommand{\D}{\mathrm D}
+
+\title{Exact Geodesic Steps versus Euler Steps in the Self-Concordant Level-Set Analysis}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setup}
+
+Let $\phi$ be a strictly convex $C^3$ barrier with
+\[
+    g(x):=\nabla \phi(x),
+    \qquad
+    H(x):=\nabla^2\phi(x).
+\]
+The Hessian metric defines
+\[
+    \norm{u}_x^2:=u^\top H(x)u,
+    \qquad
+    \norm{w}_{x,*}^2:=w^\top H(x)^{-1}w.
+\]
+We write
+\[
+    V(x,y):=\ip{x-y}{g(x)-g(y)}
+\]
+for the Jeffreys divergence. Let $d_R$ denote the Riemannian distance induced by $H$.
+
+Throughout this note we use the standard self-concordance normalization
+\[
+    |\D^3\phi(x)[p,q,q]|
+    \le
+    2\norm{p}_x\norm{q}_x^2.
+\]
+Equivalently, the Hessian metric satisfies the exponential stability estimate
+\[
+    e^{-2d_R(x,z)}H(x)
+    \preceq
+    H(z)
+    \preceq
+    e^{2d_R(x,z)}H(x).
+\]
+We also use the geodesic coercivity inequality
+\[
+    d_R(x,y)^2\le V(x,y).
+\]
+
+For fixed $x,y$, define
+\[
+    a:=x-y,
+    \qquad
+    b:=H(x)^{-1}\bigl(g(x)-g(y)\bigr),
+\]
+so that
+\[
+    V(x,y)=\ip{a}{b}_x,
+    \qquad
+    \ip{p}{q}_x:=p^\top H(x)q.
+\]
+Define also the asymmetry residual
+\[
+    U(x,y):=a-b.
+\]
+
+\section{Projected tangent and descent identity}
+
+Let $L\subseteq \R^n$ be a fixed linear subspace, and let $L^\perp$ denote its Euclidean orthogonal complement. The projected tangent $\dot x$ is defined by
+\[
+    x+\dot x\in y+L,
+    \qquad
+    -g(x)-H(x)\dot x\in -g(y)+L^\perp.
+\]
+Let $P=P_L^x$ be the $H(x)$-orthogonal projection onto $L$, and let $Q=I-P$.
+
+\begin{lemma}[Projection formula]
+The projected tangent satisfies
+\[
+    \dot x=-Pb-Qa.
+\]
+Consequently
+\[
+    a+\dot x=PU,
+    \qquad
+    b+\dot x=-QU.
+\]
+\end{lemma}
+
+\begin{proof}
+The condition $x+\dot x\in y+L$ is equivalent to
+\[
+    a+\dot x\in L.
+\]
+The dual condition says
+\[
+    -g(x)-H\dot x+g(y)\in L^\perp,
+\]
+or equivalently
+\[
+    H(b+\dot x)\in L^\perp.
+\]
+Since $L^\perp$ is Euclidean orthogonal, this means
+\[
+    b+\dot x\in L_x^\perp,
+\]
+where $L_x^\perp$ is the $H(x)$-orthogonal complement of $L$.
+Thus $a+\dot x$ is the $L$ component of $a-b=U$, while $b+\dot x$ is minus the $L_x^\perp$ component of $U$. Hence
+\[
+    a+\dot x=PU,
+    \qquad
+    b+\dot x=-QU.
+\]
+Solving either identity gives
+\[
+    \dot x=PU-a=-Pb-Qa.
+\]
+\end{proof}
+
+Let $x(t)$ be the exact geodesic with $x(0)=x$ and $\dot x(0)=\dot x$. Let
+\[
+    v(t):=V(x(t),y),
+    \qquad
+    E:=\norm{\dot x}_x^2.
+\]
+
+\begin{lemma}[Exact descent identity]
+The projected tangent gives
+\[
+    v'(0)=-(E+V(x,y)).
+\]
+\end{lemma}
+
+\begin{proof}
+The Riemannian gradient of $V(\cdot,y)$ at $x$ is
+\[
+    \nabla_R V(x,y)=a+b.
+\]
+Therefore
+\[
+    v'(0)=\ip{a+b}{\dot x}_x.
+\]
+Using $\dot x=-Pb-Qa$ and orthogonality of $P$ and $Q$,
+\[
+\begin{aligned}
+    -v'(0)
+    &=\ip{a+b}{Pb+Qa}_x  \\
+    &=\ip{Pa+Pb}{Pb}_x+\ip{Qa+Qb}{Qa}_x \\
+    &=\ip{a}{b}_x+\norm{Pb}_x^2+\norm{Qa}_x^2.
+\end{aligned}
+\]
+But
+\[
+    E=\norm{\dot x}_x^2=\norm{Pb}_x^2+\norm{Qa}_x^2
+\]
+and $V(x,y)=\ip{a}{b}_x$. Hence $v'(0)=-(E+V(x,y))$.
+\end{proof}
+
+\section{Residual and energy bounds}
+
+For standard self-concordance, define
+\[
+    j(v):=2\bigl(\cosh\sqrt v-1\bigr).
+\]
+
+\begin{lemma}[Residual bound]
+For all $x,y$,
+\[
+    \norm{U(x,y)}_x
+    \le
+    2\bigl(\cosh d_R(x,y)-1\bigr).
+\]
+Consequently,
+\[
+    \norm{U(x,y)}_x\le j(V(x,y)).
+\]
+\end{lemma}
+
+\begin{proof}
+Let $R=d_R(x,y)$ and let $\gamma:[0,R]\to\Omega$ be a unit-speed geodesic from $x$ to $y$. Then
+\[
+    x-y=-\int_0^R\gamma'(s)\,\dd s,
+\]
+and
+\[
+    g(x)-g(y)=-\int_0^R H(\gamma(s))\gamma'(s)\,\dd s.
+\]
+Therefore
+\[
+    U(x,y)=\int_0^R\left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)\,\dd s.
+\]
+Set
+\[
+    A_s:=H(x)^{-1/2}H(\gamma(s))H(x)^{-1/2}.
+\]
+Exponential stability gives
+\[
+    e^{-2s}I\preceq A_s\preceq e^{2s}I.
+\]
+A spectral calculation gives
+\[
+    \left\|\left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)\right\|_x
+    \le
+    e^s-e^{-s}.
+\]
+Integrating,
+\[
+    \norm{U(x,y)}_x
+    \le
+    \int_0^R(e^s-e^{-s})\,\dd s
+    =2(\cosh R-1).
+\]
+The $V$-bound follows from $R^2\le V(x,y)$.
+\end{proof}
+
+\begin{lemma}[Sharp energy envelope from descent]
+Let $v:=V(x,y)$ and $u:=\norm{U(x,y)}_x$. Then
+\[
+    E
+    \le
+    B(v,u)
+    :=
+    \left(
+    \frac{\sqrt{4v+u^2}+u}{2}
+    \right)^2.
+\]
+In particular,
+\[
+    E\le B(v):=
+    \left(
+    \frac{\sqrt{4v+j(v)^2}+j(v)}{2}
+    \right)^2.
+\]
+\end{lemma}
+
+\begin{proof}
+By Cauchy-Schwarz and the descent identity,
+\[
+    E+v=-v'(0)
+    \le
+    \sqrt E\,\norm{\nabla_R V(x,y)}_x.
+\]
+Since $\nabla_R V(x,y)=a+b$ and $U=a-b$,
+\[
+    \norm{\nabla_R V(x,y)}_x^2
+    =\norm{a+b}_x^2
+    =4V(x,y)+\norm{U(x,y)}_x^2.
+\]
+Let $s=\sqrt E$. Then
+\[
+    s^2+v\le s\sqrt{4v+u^2}.
+\]
+Solving this quadratic inequality in $s$ gives
+\[
+    s\le \frac{\sqrt{4v+u^2}+u}{2},
+\]
+and the result follows. The second bound follows from $u\le j(v)$.
+\end{proof}
+
+\begin{remark}[Why this improves the crude energy bound]
+The crude projection bound gives $E\le d(x,y)$. Since
+\[
+    d(x,y)=2V(x,y)+\norm{U(x,y)}_x^2,
+\]
+it has leading behavior $E\lesssim 2V$ near the target. The sharper descent envelope satisfies
+\[
+    E\le B(V)=V+O(V^{3/2}),
+\]
+because $j(V)=V+O(V^2)$. This leading constant improvement is one reason the exact-geodesic basin below is larger than the Euler basin certified by a chord-remainder estimate.
+\end{remark}
+
+\section{Exact geodesic work bound}
+
+The second-variation identity for Hessian geodesics is
+\[
+    v''(t)=2E-\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}.
+\]
+For standard self-concordance,
+\[
+    \norm{\ddot x(t)}_{x(t)}\le E.
+\]
+Thus, whenever $v(t)\le v_0$ on an interval, the residual bound gives
+\[
+    \norm{U(x(t),y)}_{x(t)}\le j(v_0).
+\]
+
+\begin{theorem}[Exact geodesic scalar bound]
+Let $v_0=V(x,y)$ and define
+\[
+    F_{\rm geo}(v):=\frac12 B(v)j(v).
+\]
+If
+\[
+    F_{\rm geo}(v_0)\le v_0,
+\]
+then the exact geodesic step stays in the current sublevel set,
+\[
+    V(x(t),y)\le v_0,\qquad 0\le t\le1,
+\]
+and satisfies
+\[
+    V(x(1),y)\le F_{\rm geo}(v_0).
+\]
+\end{theorem}
+
+\begin{proof}
+For any prefix $s\in[0,1]$, Taylor's formula and the descent identity give
+\[
+\begin{aligned}
+    v(s)
+    &=v_0+s v'(0)+\int_0^s(s-t)v''(t)\,\dd t \\
+    &\le v_0-s(E+v_0)+Es^2
+    +\int_0^s(s-t)\left|\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}\right|\,\dd t.
+\end{aligned}
+\]
+As long as the prefix remains in $V(\cdot,y)\le v_0$,
+\[
+    \left|\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}\right|
+    \le E j(v_0).
+\]
+Using $E\le B(v_0)$,
+\[
+    v(s)
+    \le
+    (1-s)v_0-s(1-s)E+\frac{s^2}{2}B(v_0)j(v_0)
+    \le
+    (1-s)v_0+s^2 F_{\rm geo}(v_0).
+\]
+If $F_{\rm geo}(v_0)\le v_0$, the right side is at most $v_0$ for $s\in[0,1]$. A first-exit argument proves the sublevel condition, and at $s=1$ gives $v(1)\le F_{\rm geo}(v_0)$.
+\end{proof}
+
+\section{Euler endpoint and the discrete work defect}
+
+Let the explicit Euler endpoint be
+\[
+    x_E:=x+\dot x.
+\]
+Define the nonlinear gradient remainder
+\[
+    R_{\rm nl}:=H(x)^{-1}\bigl(g(x_E)-g(x)-H(x)\dot x\bigr).
+\]
+
+\begin{lemma}[Euler work identity]
+The Euler endpoint satisfies
+\[
+    V(x_E,y)=\ip{PU}{R_{\rm nl}}_x.
+\]
+\end{lemma}
+
+\begin{proof}
+From the projection identities,
+\[
+    x_E-y=a+\dot x=PU.
+\]
+Moreover,
+\[
+    H(x)^{-1}(g(x_E)-g(y))
+    =b+\dot x+R_{\rm nl}
+    =-QU+R_{\rm nl}.
+\]
+Hence
+\[
+    V(x_E,y)=\ip{PU}{-QU+R_{\rm nl}}_x.
+\]
+Since $PU\in L$ and $QU\in L_x^\perp$, the cross term vanishes, giving the result.
+\end{proof}
+
+The identity says that $R_{\rm nl}$ is the discrete curvature defect, and that pairing it with $PU$ gives the Euler analogue of the integrated curvature work remaining after the flat cancellation.
+
+We use the standard self-concordant gradient-remainder estimate: if $r=\norm{\dot x}_x=\sqrt E<1$, then
+\[
+    \norm{R_{\rm nl}}_x
+    \le
+    \frac{r^2}{1-r}
+    =
+    \frac{E}{1-\sqrt E}.
+\]
+Therefore
+\[
+    V(x_E,y)
+    \le
+    \norm{U(x,y)}_x\frac{E}{1-\sqrt E}.
+\]
+Using $\norm{U(x,y)}_x\le j(v)$ and $E\le B(v)$ gives the scalar Euler bound
+\[
+    F_{\rm Euler}(v)
+    :=
+    j(v)\frac{B(v)}{1-\sqrt{B(v)}}.
+\]
+This bound is meaningful when $B(v)<1$.
+
+\section{Certified basins for exact geodesic versus Euler}
+
+The following numerical values are obtained by solving scalar equations involving the functions above.
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Bound & Scalar condition & Largest certified value \\
+\midrule
+Exact geodesic contraction & $F_{\rm geo}(v)\le v$ & $v\le 0.7633246011$ \\
+Exact geodesic normalized quadratic & $F_{\rm geo}(v)\le v^2$ & $v\le 0.4190890308$ \\
+Euler Dikin-domain condition & $B(v)<1$ & $v<0.4898377813$ \\
+Euler contraction & $F_{\rm Euler}(v)\le v$ & $v\le 0.2323044740$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Thus, under these sufficient estimates, exact geodesic tracing certifies a substantially larger self-concordant attraction region than the Euler endpoint. The comparison is not a statement that the exact geodesic endpoint always has smaller $V$ than every numerical endpoint. Rather, exact geodesic tracing removes the discrete nonlinear-gradient remainder that appears in the Euler work identity, leading to the larger certified basin.
+
+Asymptotically,
+\[
+    j(v)=v+O(v^2),
+    \qquad
+    B(v)=v+O(v^{3/2}),
+\]
+so
+\[
+    F_{\rm geo}(v)=\frac12 v^2+O(v^{5/2}),
+\]
+whereas
+\[
+    F_{\rm Euler}(v)=v^2+O(v^{5/2}).
+\]
+Both are quadratic-type bounds, but the exact geodesic bound has a better leading constant and a larger certified contraction basin.
+
+\section{Interpretation}
+
+The exact geodesic analysis controls the continuous integrated work term
+\[
+    -\int_0^1(1-t)\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}\,\dd t.
+\]
+The Euler analysis controls the discrete work term
+\[
+    \ip{PU}{R_{\rm nl}}_x.
+\]
+Both are the nonlinear remainder that survives after the projected tangent cancels the flat contribution through
+\[
+    v'(0)=-(E+V).
+\]
+
+A higher-order or work-certified geodesic integrator can be analyzed by comparing its discrete work defect to the exact geodesic work, or directly by proving a bound of the form
+\[
+    V(\widehat x,y)
+    \le
+    \Omega(V(x,y)).
+\]
+The latter is a discrete Lyapunov proof for the actual numerical map and need not first prove that the numerical endpoint is worse than the exact geodesic endpoint. In general, the difference
+\[
+    V(\widehat x,y)-V(x_{\rm geo}(1),y)
+\]
+has no fixed sign.
+
+\end{document}

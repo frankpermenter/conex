@@ -1,0 +1,956 @@
+
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{microtype}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue]{hyperref}
+
+\newtheorem{definition}{Definition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}
+\newtheorem{remark}{Remark}
+
+\newcommand{\ip}[2]{\left\langle #1,#2\right\rangle}
+\newcommand{\norm}[1]{\left\lVert #1\right\rVert}
+
+\title{A Self-Concordant Level-Set Estimate via the $E\|U\|$ Bound}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Definitions}
+
+Let $\phi$ be a $C^3$ strictly convex barrier on a convex domain. Write
+\[
+    g(x):=\nabla \phi(x),
+    \qquad
+    H(x):=\nabla^2\phi(x).
+\]
+The Hessian metric defines the local primal and dual norms
+\[
+    \|u\|_x^2:=u^\top H(x)u,
+    \qquad
+    \|w\|_{x,*}^2:=w^\top H(x)^{-1}w.
+\]
+The corresponding Riemannian distance is denoted by $d_R$.
+
+The Jeffreys divergence is
+\[
+    V(x,y):=\ip{x-y}{g(x)-g(y)}.
+\]
+We also use the endpoint residual energy
+\[
+    d(x,y):=\|x-y\|_x^2+\|g(x)-g(y)\|_{x,*}^2,
+\]
+and the asymmetry residual
+\[
+    U(x,y):=(x-y)-H(x)^{-1}\bigl(g(x)-g(y)\bigr).
+\]
+
+\begin{definition}[Hessian stability]
+Let $\rho:[0,\infty)\to[1,\infty)$ satisfy $\rho(0)=1$. We say that the Hessian metric is $\rho$-stable if, for all $x,z$,
+\[
+    \rho(d_R(x,z))^{-1}H(x)
+    \preceq H(z)
+    \preceq \rho(d_R(x,z))H(x).
+\]
+For a standard self-concordant barrier, the corresponding exponential stability modulus is
+\[
+    \rho(r)=e^{2r}.
+\]
+\end{definition}
+
+Throughout the self-concordant part below we use the standard convention
+\[
+    |D^3\phi(x)[a,b,b]|
+    \le
+    2\|a\|_x\|b\|_x^2.
+\]
+
+\section{The basic integral error bound}
+
+Let $x(t)$, $t\in[0,1]$, be a unit-time geodesic for the Hessian metric. Assume it has constant kinetic energy
+\[
+    E:=\|\dot x(t)\|_{x(t)}^2.
+\]
+Fix a target point $y$ and define
+\[
+    v(t):=V(x(t),y),
+    \qquad
+    v_0:=v(0).
+\]
+
+\begin{lemma}[Exact integral error under descent]
+Assume that along the geodesic one has the second-variation identity
+\[
+    v''(t)
+    =
+    2E-\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}.
+\]
+If the descent condition
+\[
+    v'(0)\le -(E+v_0)
+\]
+holds, then
+\[
+    v(1)
+    \le
+    \int_0^1(1-t)
+    \left|
+    \ip{\ddot x(t)}{U(x(t),y)}_{x(t)}
+    \right|dt.
+\]
+If, in addition, the barrier is standard self-concordant, then
+\[
+    \|\ddot x(t)\|_{x(t)}\le E,
+\]
+and hence
+\[
+    v(1)
+    \le
+    E\int_0^1(1-t)\|U(x(t),y)\|_{x(t)}dt.
+\]
+\end{lemma}
+
+\begin{proof}
+Taylor's formula in integral form gives the exact identity
+\[
+    v(1)=v(0)+v'(0)+\int_0^1(1-t)v''(t)dt.
+\]
+Using the assumed second-variation identity,
+\[
+\begin{aligned}
+    \int_0^1(1-t)v''(t)dt
+    &=
+    \int_0^1(1-t)\left(2E-\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}\right)dt \\
+    &=
+    E-
+    \int_0^1(1-t)\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}dt,
+\end{aligned}
+\]
+because $2E\int_0^1(1-t)dt=E$. Therefore
+\[
+    v(1)
+    =
+    v_0+v'(0)+E
+    -
+    \int_0^1(1-t)\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}dt.
+\]
+The descent condition gives $v_0+v'(0)+E\le0$, so
+\[
+    v(1)
+    \le
+    -\int_0^1(1-t)\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}dt.
+\]
+Taking absolute values gives the first claim.
+
+For the second claim, the geodesic equation and standard self-concordance give
+\[
+    \|\ddot x(t)\|_{x(t)}\le E.
+\]
+Thus
+\[
+    \left|\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}\right|
+    \le
+    E\|U(x(t),y)\|_{x(t)},
+\]
+and the result follows.
+\end{proof}
+
+\section{Self-concordant exponential bounds}
+
+The next two lemmas provide the two estimates used to turn the integral bound into a scalar level-set recursion.
+
+\begin{lemma}[Exponential bound on $U$]
+For a standard self-concordant barrier,
+\[
+    \|U(x,y)\|_x
+    \le
+    2\left(\cosh d_R(x,y)-1\right).
+\]
+Consequently, since $d_R(x,y)^2\le V(x,y)$,
+\[
+    \|U(x,y)\|_x
+    \le
+    2\left(\cosh\sqrt{V(x,y)}-1\right).
+\]
+\end{lemma}
+
+\begin{proof}
+Let $\gamma:[0,R]\to\operatorname{dom}\phi$ be a unit-speed geodesic from $x$ to $y$, where $R=d_R(x,y)$. Then
+\[
+    y-x=\int_0^R \gamma'(s)ds,
+    \qquad
+    g(y)-g(x)=\int_0^R H(\gamma(s))\gamma'(s)ds.
+\]
+Therefore
+\[
+    U(x,y)
+    =
+    \int_0^R
+    \left[I-H(x)^{-1}H(\gamma(s))\right]\gamma'(s)ds,
+\]
+up to an overall sign, which is irrelevant after taking norms.
+
+Let
+\[
+    A_s:=H(x)^{-1/2}H(\gamma(s))H(x)^{-1/2}.
+\]
+Standard self-concordance gives exponential Hessian stability,
+\[
+    e^{-2s}I\preceq A_s\preceq e^{2s}I.
+\]
+Let $v_s:=H(x)^{1/2}\gamma'(s)$. Since $\gamma$ has unit speed,
+\[
+    v_s^\top A_s v_s=\|\gamma'(s)\|_{\gamma(s)}^2=1.
+\]
+A spectral calculation gives
+\[
+    \|(A_s-I)v_s\|
+    \le
+    e^s-e^{-s}.
+\]
+Indeed, after setting $w=A_s^{1/2}v_s$, so that $\|w\|=1$,
+\[
+    (A_s-I)v_s=(A_s-I)A_s^{-1/2}w,
+\]
+and the operator norm of $(A_s-I)A_s^{-1/2}$ is
+\[
+    \max_{\lambda\in[e^{-2s},e^{2s}]}
+    \frac{|\lambda-1|}{\sqrt\lambda}
+    =e^s-e^{-s}.
+\]
+Thus
+\[
+    \|U(x,y)\|_x
+    \le
+    \int_0^R(e^s-e^{-s})ds
+    =2(\cosh R-1).
+\]
+Finally, $R^2=d_R(x,y)^2\le V(x,y)$, and the second claim follows by monotonicity of $\cosh$ on $[0,\infty)$.
+\end{proof}
+
+\begin{lemma}[Exponential bound on $d(x,y)$]
+For a standard self-concordant barrier,
+\[
+    d(x,y)
+    \le
+    2\left(e^{\sqrt{V(x,y)}}-1\right)^2.
+\]
+\end{lemma}
+
+\begin{proof}
+Let $R=d_R(x,y)$, and let $\gamma:[0,R]\to\operatorname{dom}\phi$ be a unit-speed geodesic from $x$ to $y$. As above,
+\[
+    y-x=\int_0^R \gamma'(s)ds,
+    \qquad
+    g(y)-g(x)=\int_0^R H(\gamma(s))\gamma'(s)ds.
+\]
+By exponential Hessian stability,
+\[
+    H(\gamma(s))\succeq e^{-2s}H(x),
+\]
+so
+\[
+    \|\gamma'(s)\|_x
+    \le
+    e^s\|\gamma'(s)\|_{\gamma(s)}=e^s.
+\]
+Therefore
+\[
+    \|x-y\|_x
+    \le
+    \int_0^R e^sds
+    =e^R-1.
+\]
+Similarly,
+\[
+    \|H(\gamma(s))\gamma'(s)\|_{x,*}
+    \le
+    e^s\|\gamma'(s)\|_{\gamma(s)}=e^s,
+\]
+and hence
+\[
+    \|g(x)-g(y)\|_{x,*}
+    \le
+    e^R-1.
+\]
+Thus
+\[
+    d(x,y)
+    =
+    \|x-y\|_x^2+
+    \|g(x)-g(y)\|_{x,*}^2
+    \le
+    2(e^R-1)^2.
+\]
+Using $R^2\le V(x,y)$ gives
+\[
+    d(x,y)
+    \le
+    2\left(e^{\sqrt{V(x,y)}}-1\right)^2.
+\]
+\end{proof}
+
+\section{Main self-concordant consequence}
+
+
+\begin{lemma}[Sublevel invariance along the geodesic step]
+Let \(x(t)\), \(t\in[0,1]\), be a unit-time Hessian geodesic with constant
+kinetic energy
+\[
+    E:=\|\dot x(t)\|_{x(t)}^2 .
+\]
+Fix \(y\), and define
+\[
+    v(t):=V(x(t),y),
+    \qquad
+    v_0:=v(0).
+\]
+Assume the descent condition
+\[
+    v'(0)\le -(E+v_0),
+\]
+and the energy compatibility condition
+\[
+    E\le d(x(0),y),
+\]
+where
+\[
+    d(x,y):=\|x-y\|_x^2+\|g(x)-g(y)\|_{x,*}^2.
+\]
+Assume \(\phi\) is standard self-concordant. Define
+\[
+    F(v)
+    :=
+    2(e^{\sqrt v}-1)^2(\cosh\sqrt v-1)
+    =
+    \frac{(e^{\sqrt v}-1)^4}{e^{\sqrt v}}.
+\]
+If
+\[
+    F(v_0)<v_0,
+\]
+then
+\[
+    v(t)<v_0
+    \qquad
+    \forall t\in(0,1].
+\]
+In particular, the entire geodesic segment remains in the initial strict
+sublevel set of \(V(\cdot,y)\).
+\end{lemma}
+
+\begin{proof}
+For any \(t\in[0,1]\), Taylor's integral formula gives
+\[
+    v(t)
+    =
+    v_0+t v'(0)+\int_0^t(t-s)v''(s)\,ds.
+\]
+Using
+\[
+    v''(s)
+    =
+    2E-\langle \ddot x(s),U(x(s),y)\rangle_{x(s)},
+\]
+we obtain
+\[
+\begin{aligned}
+    v(t)
+    &=
+    v_0+t v'(0)+E t^2
+    -
+    \int_0^t(t-s)
+    \langle \ddot x(s),U(x(s),y)\rangle_{x(s)}\,ds.
+\end{aligned}
+\]
+By the descent condition,
+\[
+    t v'(0)\le -t(E+v_0),
+\]
+and hence
+\[
+\begin{aligned}
+    v(t)
+    &\le
+    v_0-tv_0-Et(1-t)
+    +
+    \int_0^t(t-s)
+    \left|
+    \langle \ddot x(s),U(x(s),y)\rangle_{x(s)}
+    \right|ds.
+\end{aligned}
+\]
+
+We now estimate the final integral on any interval on which
+\(v(s)\le v_0\).  Standard self-concordance and the geodesic equation imply
+\[
+    \|\ddot x(s)\|_{x(s)}\le E.
+\]
+Moreover, the exponential residual bound gives
+\[
+    \|U(z,y)\|_z
+    \le
+    2\left(\cosh\sqrt{V(z,y)}-1\right).
+\]
+Thus, whenever \(v(s)\le v_0\),
+\[
+    \|U(x(s),y)\|_{x(s)}
+    \le
+    2\left(\cosh\sqrt{v_0}-1\right).
+\]
+Therefore
+\[
+\begin{aligned}
+    \int_0^t(t-s)
+    \left|
+    \langle \ddot x(s),U(x(s),y)\rangle_{x(s)}
+    \right|ds
+    &\le
+    E\cdot 2\left(\cosh\sqrt{v_0}-1\right)
+    \int_0^t(t-s)\,ds  \\
+    &=
+    E\left(\cosh\sqrt{v_0}-1\right)t^2.
+\end{aligned}
+\]
+Consequently, as long as \(v(s)\le v_0\) on \([0,t]\),
+\[
+    v(t)
+    \le
+    v_0-tv_0-Et(1-t)
+    +
+    E\left(\cosh\sqrt{v_0}-1\right)t^2.
+\]
+Dropping the nonpositive term \(-Et(1-t)\) and using \(t^2\le t\), we get
+\[
+    v(t)
+    \le
+    v_0
+    -
+    t v_0
+    +
+    tE\left(\cosh\sqrt{v_0}-1\right).
+\]
+By the energy compatibility condition and the self-concordant endpoint bound,
+\[
+    E\le d(x(0),y)
+    \le
+    2(e^{\sqrt{v_0}}-1)^2.
+\]
+Hence
+\[
+    E\left(\cosh\sqrt{v_0}-1\right)
+    \le
+    2(e^{\sqrt{v_0}}-1)^2(\cosh\sqrt{v_0}-1)
+    =
+    F(v_0).
+\]
+Therefore, as long as \(v(s)\le v_0\) on \([0,t]\),
+\[
+    v(t)
+    \le
+    v_0-t\bigl(v_0-F(v_0)\bigr).
+\]
+
+Now suppose, for contradiction, that the geodesic segment exits the initial
+sublevel set. Since \(v'(0)\le -(E+v_0)<0\) whenever \(v_0>0\), the path
+initially enters the strict sublevel set. Let \(\tau>0\) be the first exit
+time, so that
+\[
+    v(\tau)=v_0,
+    \qquad
+    v(t)<v_0 \quad \text{for }0<t<\tau.
+\]
+The preceding estimate is valid on \([0,\tau]\), and gives
+\[
+    v(\tau)
+    \le
+    v_0-\tau\bigl(v_0-F(v_0)\bigr).
+\]
+If \(F(v_0)<v_0\), then the right-hand side is strictly less than \(v_0\),
+contradicting \(v(\tau)=v_0\). Therefore no such first exit time exists, and
+\[
+    v(t)<v_0
+    \qquad
+    \forall t\in(0,1].
+\]
+\end{proof}
+
+
+
+\begin{corollary}[Self-concordant level-set recursion]
+Let $\phi$ be a standard self-concordant barrier. Let $x(t)$ be a unit-time geodesic with energy $E$, and let
+\[
+    v(t):=V(x(t),y),
+    \qquad
+    v_0:=v(0).
+\]
+Assume
+\[
+    v'(0)\le -(E+v_0),
+\]
+\[
+    E\le d(x(0),y),
+\]
+and
+\[
+    v(t)
+    \le
+    v_0
+    \qquad
+    \forall t\in[0,1].
+\]
+Then
+\[
+    v(1)
+    \le
+    F(v_0),
+\]
+where
+\[
+    F(v):=\frac{(e^{\sqrt v}-1)^4}{e^{\sqrt v}}.
+\]
+Consequently,
+\[
+    \lim_{v\downarrow0}\frac{F(v)}{v^2}=1.
+\]
+Thus the estimate is quadratically convergent in the sense that
+\[
+    v(1)\le v_0^2(1+o(1)).
+\]
+\end{corollary}
+
+\begin{proof}
+By the integral error lemma and the self-concordant acceleration bound,
+\[
+    v(1)
+    \le
+    E\int_0^1(1-t)\|U(x(t),y)\|_{x(t)}dt.
+\]
+Since $v(t)\le v_0$, the exponential bound on $U$ gives
+\[
+    \|U(x(t),y)\|_{x(t)}
+    \le
+    2(\cosh\sqrt{v_0}-1).
+\]
+Therefore
+\[
+    v(1)
+    \le
+    E(\cosh\sqrt{v_0}-1).
+\]
+The assumption $E\le d(x(0),y)$ and the exponential bound on $d$ give
+\[
+    E
+    \le
+    2(e^{\sqrt{v_0}}-1)^2.
+\]
+Hence
+\[
+    v(1)
+    \le
+    2(e^{\sqrt{v_0}}-1)^2(\cosh\sqrt{v_0}-1).
+\]
+Using
+\[
+    2(\cosh s-1)=\frac{(e^s-1)^2}{e^s}
+\]
+with $s=\sqrt{v_0}$ gives
+\[
+    v(1)
+    \le
+    \frac{(e^{\sqrt{v_0}}-1)^4}{e^{\sqrt{v_0}}}.
+\]
+Finally,
+\[
+    \frac{F(v)}{v^2}
+    =
+    \left(\frac{e^{\sqrt v}-1}{\sqrt v}\right)^4e^{-\sqrt v}
+    \to1
+    \qquad(v\downarrow0).
+\]
+\end{proof}
+
+\begin{remark}[Explicit finite constants]
+For any $\delta>0$, define
+\[
+    C_\delta
+    :=
+    \sup_{0<v\le\delta}\frac{F(v)}{v^2}
+    =
+    \left(\frac{e^{\sqrt\delta}-1}{\sqrt\delta}\right)^4e^{-\sqrt\delta}.
+\]
+Then $v_0\le\delta$ implies
+\[
+    v(1)\le C_\delta v_0^2.
+\]
+For example,
+\[
+    C_{1/4}
+    =
+    \left(\frac{e^{1/2}-1}{1/2}\right)^4e^{-1/2}
+    \approx1.730.
+\]
+Moreover, $F(v)<v$ for
+\[
+    0<v<0.4671709662\ldots,
+\]
+so the bound certifies strict decrease on this level range.
+\end{remark}
+
+\section{Follow-up: bounds for a general stability modulus}
+
+The same proof gives a general-modulus version once the exponential bounds are replaced by the corresponding modulus integrals.
+
+\begin{definition}[Modulus primitives]
+Given a nondecreasing Hessian-stability modulus $\rho$, define
+\[
+    K_\rho(r):=\sqrt{\rho(r)},
+\]
+\[
+    S_\rho(R):=\int_0^R K_\rho(s)ds,
+\]
+and
+\[
+    J_\rho(R):=\int_0^R\left(K_\rho(s)-K_\rho(s)^{-1}\right)ds.
+\]
+Also define the infinitesimal logarithmic slope
+\[
+    L_\rho:=\limsup_{r\downarrow0}\frac{\log\rho(r)}{r}.
+\]
+\end{definition}
+
+\begin{lemma}[General-modulus bounds on $U$ and $d$]
+Assume the Hessian metric is $\rho$-stable. Then
+\[
+    \|U(x,y)\|_x
+    \le
+    J_\rho(d_R(x,y))
+    \le
+    J_\rho(\sqrt{V(x,y)}),
+\]
+and
+\[
+    d(x,y)
+    \le
+    2S_\rho(d_R(x,y))^2
+    \le
+    2S_\rho(\sqrt{V(x,y)})^2.
+\]
+\end{lemma}
+
+\begin{proof}
+The proof is identical to the self-concordant geodesic proof, replacing the exponential bounds $e^{\pm 2s}$ by $\rho(s)^{\pm1}$. Along a unit-speed geodesic $\gamma$ from $x$ to $y$, Hessian stability gives
+\[
+    \rho(s)^{-1}H(x)
+    \preceq
+    H(\gamma(s))
+    \preceq
+    \rho(s)H(x).
+\]
+The bound on $d(x,y)$ follows from
+\[
+    \|\gamma'(s)\|_x\le K_\rho(s)
+\]
+and
+\[
+    \|H(\gamma(s))\gamma'(s)\|_{x,*}\le K_\rho(s),
+\]
+which integrate to
+\[
+    \|x-y\|_x\le S_\rho(d_R(x,y)),
+    \qquad
+    \|g(x)-g(y)\|_{x,*}\le S_\rho(d_R(x,y)).
+\]
+For $U$, the same spectral calculation as in the self-concordant proof gives the integrand bound
+\[
+    K_\rho(s)-K_\rho(s)^{-1},
+\]
+and hence
+\[
+    \|U(x,y)\|_x\le J_\rho(d_R(x,y)).
+\]
+Finally, $d_R(x,y)^2\le V(x,y)$ and monotonicity of $S_\rho,J_\rho$ give the $V$-based versions.
+\end{proof}
+
+\begin{corollary}[General-modulus level-set recursion]
+Assume the Hessian metric is $\rho$-stable and $L_\rho<\infty$. Let $x(t)$ be a unit-time geodesic with energy $E$, and let
+\[
+    v(t):=V(x(t),y),
+    \qquad
+    v_0:=v(0).
+\]
+Assume
+\[
+    v'(0)\le -(E+v_0),
+\]
+\[
+    E\le d(x(0),y),
+\]
+and
+\[
+    v(t)
+    \le
+    v_0
+    \qquad
+    \forall t\in[0,1].
+\]
+Then
+\[
+    v(1)
+    \le
+    F_\rho(v_0),
+\]
+where
+\[
+    F_\rho(v)
+    :=
+    \frac{L_\rho}{2}
+    S_\rho(\sqrt v)^2
+    J_\rho(\sqrt v).
+\]
+\end{corollary}
+
+\begin{proof}
+The integral error lemma gives
+\[
+    v(1)
+    \le
+    \int_0^1(1-t)
+    \left|\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}\right|dt.
+\]
+The finite value of $L_\rho$ gives the acceleration bound
+\[
+    \|\ddot x(t)\|_{x(t)}
+    \le
+    \frac{L_\rho}{2}E.
+\]
+Since $v(t)\le v_0$, the general-modulus bound on $U$ gives
+\[
+    \|U(x(t),y)\|_{x(t)}
+    \le
+    J_\rho(\sqrt{v_0}).
+\]
+Therefore
+\[
+    v(1)
+    \le
+    \frac{L_\rho}{2}EJ_\rho(\sqrt{v_0})
+    \int_0^1(1-t)dt
+    =
+    \frac{L_\rho}{4}EJ_\rho(\sqrt{v_0}).
+\]
+Using $E\le d(x(0),y)$ and the general-modulus bound on $d$,
+\[
+    E
+    \le
+    2S_\rho(\sqrt{v_0})^2.
+\]
+Thus
+\[
+    v(1)
+    \le
+    \frac{L_\rho}{2}
+    S_\rho(\sqrt{v_0})^2
+    J_\rho(\sqrt{v_0}).
+\]
+\end{proof}
+
+\begin{remark}[Local quadratic rate]
+If
+\[
+    \rho(r)=1+L_\rho r+O(r^2)
+    \qquad(r\downarrow0),
+\]
+then
+\[
+    S_\rho(\sqrt v)=\sqrt v+O(v),
+    \qquad
+    J_\rho(\sqrt v)=\frac{L_\rho}{2}v+O(v^{3/2}).
+\]
+Therefore
+\[
+    F_\rho(v)=\frac{L_\rho^2}{4}v^2+O(v^{5/2}).
+\]
+So the general-modulus recursion is quadratically convergent in the usual sense, with asymptotic constant $L_\rho^2/4$.
+\end{remark}
+
+\begin{remark}[Exponential modulus]
+For $\rho(r)=e^{Lr}$,
+\[
+    S_\rho(R)=\frac{2}{L}\left(e^{LR/2}-1\right),
+\]
+and
+\[
+    J_\rho(R)=\frac{4}{L}\left(\cosh\left(\frac{LR}{2}\right)-1\right).
+\]
+Thus
+\[
+    F_L(v)
+    =
+    \frac{4}{L^2}
+    \frac{\left(e^{L\sqrt v/2}-1\right)^4}{e^{L\sqrt v/2}}.
+\]
+For $L=2$, this recovers
+\[
+    F_2(v)=\frac{(e^{\sqrt v}-1)^4}{e^{\sqrt v}}.
+\]
+\end{remark}
+
+
+
+\section{Bounds from Hessian stability}
+
+\begin{lemma}[Exponential upper bound on \(V\) by geodesic distance]
+Assume the Hessian metric satisfies exponential stability with parameter \(L\):
+\[
+    e^{-L d_R(x,z)}H(x)
+    \preceq
+    H(z)
+    \preceq
+    e^{L d_R(x,z)}H(x)
+    \qquad
+    \forall x,z.
+\]
+Then, for all \(x,y\),
+\[
+    V(x,y)
+    \le
+    \Psi_L(d_R(x,y)),
+\]
+where
+\[
+    \Psi_L(R)
+    :=
+    2\int_0^R (R-r)e^{Lr/2}\,dr.
+\]
+Equivalently, for \(L>0\),
+\[
+    \Psi_L(R)
+    =
+    \frac{8}{L^2}\left(e^{LR/2}-1\right)
+    -
+    \frac{4}{L}R.
+\]
+Thus
+\[
+    \boxed{
+    V(x,y)
+    \le
+    \frac{8}{L^2}\left(e^{\frac{L}{2}d_R(x,y)}-1\right)
+    -
+    \frac{4}{L}d_R(x,y).
+    }
+\]
+For standard self-concordance, \(L=2\), this becomes
+\[
+    \boxed{
+    V(x,y)
+    \le
+    2\left(e^{d_R(x,y)}-1-d_R(x,y)\right).
+    }
+\]
+\end{lemma}
+
+\begin{proof}
+Let \(R:=d_R(x,y)\), and let \(\gamma:[0,R]\to\operatorname{dom}\phi\) be a unit-speed geodesic from \(x\) to \(y\), so
+\[
+    \gamma(0)=x,
+    \qquad
+    \gamma(R)=y,
+    \qquad
+    \|\gamma'(s)\|_{\gamma(s)}=1.
+\]
+We have
+\[
+    y-x=\int_0^R \gamma'(a)\,da
+\]
+and
+\[
+    g(y)-g(x)
+    =
+    \int_0^R H(\gamma(b))\gamma'(b)\,db.
+\]
+Therefore
+\[
+\begin{aligned}
+    V(x,y)
+    &=
+    \langle y-x,g(y)-g(x)\rangle \\
+    &=
+    \int_0^R\int_0^R
+    \left\langle
+        \gamma'(a),
+        H(\gamma(b))\gamma'(b)
+    \right\rangle
+    da\,db .
+\end{aligned}
+\]
+By Cauchy--Schwarz in the metric \(H(\gamma(b))\),
+\[
+    \left\langle
+        \gamma'(a),
+        H(\gamma(b))\gamma'(b)
+    \right\rangle
+    \le
+    \|\gamma'(a)\|_{\gamma(b)}
+    \|\gamma'(b)\|_{\gamma(b)}.
+\]
+Since \(\gamma\) is unit speed,
+\[
+    \|\gamma'(b)\|_{\gamma(b)}=1.
+\]
+Exponential stability gives
+\[
+    H(\gamma(b))
+    \preceq
+    e^{L d_R(\gamma(a),\gamma(b))}H(\gamma(a)).
+\]
+Because \(\gamma\) is unit speed,
+\[
+    d_R(\gamma(a),\gamma(b))\le |a-b|.
+\]
+Thus
+\[
+    \|\gamma'(a)\|_{\gamma(b)}
+    \le
+    e^{L|a-b|/2}
+    \|\gamma'(a)\|_{\gamma(a)}
+    =
+    e^{L|a-b|/2}.
+\]
+Hence
+\[
+    V(x,y)
+    \le
+    \int_0^R\int_0^R e^{L|a-b|/2}\,da\,db.
+\]
+Using the standard identity
+\[
+    \int_0^R\int_0^R f(|a-b|)\,da\,db
+    =
+    2\int_0^R (R-r)f(r)\,dr,
+\]
+with \(f(r)=e^{Lr/2}\), we obtain
+\[
+    V(x,y)
+    \le
+    2\int_0^R (R-r)e^{Lr/2}\,dr
+    =
+    \Psi_L(R).
+\]
+Finally, evaluating the integral gives
+\[
+    \Psi_L(R)
+    =
+    \frac{8}{L^2}\left(e^{LR/2}-1\right)
+    -
+    \frac{4}{L}R.
+\]
+\end{proof}
+
+\end{document}

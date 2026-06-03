@@ -1,0 +1,624 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=blue!60!black,
+  urlcolor=blue!60!black
+}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\ip}[2]{\left\langle #1,#2\right\rangle}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+\newcommand{\distR}{d_R}
+\newcommand{\grad}{\nabla}
+\newcommand{\preceqq}{\preceq}
+
+\title{A Short-Step IPM Analysis from Geodesic Bookkeeping and Bregman Centering}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a short-step predictor-corrector analysis in a Hessian metric.  The analysis separates two roles.  The Riemannian geodesic distance is used for transport of centering error because it has a triangle inequality and is symmetric under the primal-dual gradient map.  The Jeffreys divergence
+\[
+  V(x,y)=\ip{x-y}{\grad\phi(x)-\grad\phi(y)}
+\]
+is used as the computable centering certificate.  A log-homogeneous central-path normalization gives a closed-form expression for the target movement cost.  A Bregman-balanced centering step gives a global square-completion estimate
+\[
+  V(x^+,y)\le \frac14\norm{U(x,y)}_x^2,
+  \qquad
+  U(x,y):=(x-y)-H(x)^{-1}(\grad\phi(x)-\grad\phi(y)).
+\]
+Combining these estimates yields a scalar recurrence.  In the standard self-concordant case the recurrence implies a short-step rule with an explicit $O(\sqrt{\nu})$ number of barrier-parameter updates to reduce $\mu$ by a fixed multiplicative amount.
+\end{abstract}
+
+\section{Setup and notation}
+
+Let $\phi$ be a strictly convex barrier on the interior of a cone or convex domain, and write
+\[
+  g(x):=\grad\phi(x),
+  \qquad
+  H(x):=\grad^2\phi(x).
+\]
+The Hessian metric is
+\[
+  \ip{u}{v}_x := u^\top H(x)v,
+  \qquad
+  \norm{u}_x^2:=\ip{u}{u}_x,
+  \qquad
+  \norm{s}_{x,*}^2:=s^\top H(x)^{-1}s.
+\]
+Let $\distR$ denote the Riemannian distance induced by $H$.
+
+The main divergence is the symmetric Bregman, or Jeffreys, divergence
+\[
+  V(x,y):=\ip{x-y}{g(x)-g(y)}.
+\]
+We use the standard geodesic coercivity inequality
+\begin{equation}
+  \distR(x,y)^2\le V(x,y).        \label{eq:dist-lower}
+\end{equation}
+
+For a pair $(x,y)$ define
+\begin{equation}
+  a:=x-y,
+  \qquad
+  b:=H(x)^{-1}(g(x)-g(y)),
+  \qquad
+  U:=a-b.
+\end{equation}
+Then
+\begin{equation}
+  V(x,y)=\ip{a}{b}_x,
+  \qquad
+  U(x,y)=(x-y)-H(x)^{-1}(g(x)-g(y)).
+\end{equation}
+We also use the primal-dual residual energy
+\begin{equation}
+  d(x,y):=\norm{x-y}_x^2+\norm{g(x)-g(y)}_{x,*}^2
+  =\norm{a}_x^2+\norm{b}_x^2.
+\end{equation}
+The elementary identity
+\begin{equation}
+  d(x,y)=2V(x,y)+\norm{U(x,y)}_x^2                   \label{eq:d-identity}
+\end{equation}
+will be useful.
+
+\section{Hessian stability and the distance-to-divergence envelope}
+
+\begin{definition}[Hessian stability]
+A Hessian metric is $\rho$-stable if $\rho:[0,\infty)\to[1,\infty)$ is nondecreasing, $\rho(0)=1$, and for all $x,y$,
+\begin{equation}
+  \rho(\distR(x,y))^{-1}H(x)
+  \preceq
+  H(y)
+  \preceq
+  \rho(\distR(x,y))H(x).              \label{eq:rho-stability}
+\end{equation}
+Equivalently, writing $\rho(r)=\exp(A(r))$, the relative Hessian distortion is bounded by $A(\distR(x,y))$ in log scale.
+\end{definition}
+
+Define the two scalar functions
+\begin{equation}
+  \Psi_\rho(R):=2\int_0^R (R-r)\sqrt{\rho(r)}\,dr,          \label{eq:Psi-def}
+\end{equation}
+\begin{equation}
+  J_\rho(R):=\int_0^R\left(\sqrt{\rho(r)}-\frac{1}{\sqrt{\rho(r)}}\right)dr.    \label{eq:J-def}
+\end{equation}
+
+\begin{proposition}[Geodesic upper envelope for $V$]
+If the Hessian metric is $\rho$-stable, then
+\begin{equation}
+  V(x,y)\le \Psi_\rho(\distR(x,y)).                   \label{eq:V-upper-envelope}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Let $\gamma:[0,R]\to\operatorname{int}K$ be a unit-speed geodesic from $y$ to $x$, where $R=\distR(x,y)$. Then
+\[
+  x-y=\int_0^R\gamma'(a)\,da,
+  \qquad
+  g(x)-g(y)=\int_0^R H(\gamma(b))\gamma'(b)\,db.
+\]
+Thus
+\[
+  V(x,y)=\int_0^R\int_0^R
+  \ip{\gamma'(a)}{H(\gamma(b))\gamma'(b)}\,da\,db.
+\]
+By Cauchy-Schwarz in the metric at $\gamma(b)$,
+\[
+  \ip{\gamma'(a)}{H(\gamma(b))\gamma'(b)}
+  \le
+  \norm{\gamma'(a)}_{\gamma(b)}\norm{\gamma'(b)}_{\gamma(b)}.
+\]
+The second factor is $1$ because $\gamma$ is unit-speed.  By $\rho$-stability,
+\[
+  \norm{\gamma'(a)}_{\gamma(b)}^2
+  \le
+  \rho(|a-b|)\norm{\gamma'(a)}_{\gamma(a)}^2
+  =\rho(|a-b|).
+\]
+Therefore
+\[
+  V(x,y)\le \int_0^R\int_0^R \sqrt{\rho(|a-b|)}\,da\,db.
+\]
+The standard interval convolution identity
+\[
+  \int_0^R\int_0^R f(|a-b|)\,da\,db
+  =2\int_0^R(R-r)f(r)\,dr
+\]
+gives \eqref{eq:V-upper-envelope}.
+\end{proof}
+
+\begin{proposition}[Residual envelope]
+If the Hessian metric is $\rho$-stable, then
+\begin{equation}
+  \norm{U(x,y)}_x\le J_\rho(\distR(x,y)).               \label{eq:U-J-distance}
+\end{equation}
+Consequently,
+\begin{equation}
+  \norm{U(x,y)}_x\le J_\rho(\sqrt{V(x,y)}).             \label{eq:U-J-V}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Let $\gamma:[0,R]\to\operatorname{int}K$ be a unit-speed geodesic from $x$ to $y$, where $R=\distR(x,y)$. Then
+\[
+  x-y=-\int_0^R \gamma'(s)\,ds,
+  \qquad
+  g(x)-g(y)=-\int_0^R H(\gamma(s))\gamma'(s)\,ds.
+\]
+Therefore
+\[
+  U(x,y)=\int_0^R\left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)\,ds.
+\]
+Set $A_s=H(x)^{-1/2}H(\gamma(s))H(x)^{-1/2}$.  By stability,
+\[
+  \rho(s)^{-1}I\preceq A_s\preceq \rho(s)I.
+\]
+A spectral calculation, using $\norm{\gamma'(s)}_{\gamma(s)}=1$, gives
+\[
+  \left\|\left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)\right\|_x
+  \le
+  \sqrt{\rho(s)}-\frac{1}{\sqrt{\rho(s)}}.
+\]
+Integrating proves \eqref{eq:U-J-distance}.  The $V$-form \eqref{eq:U-J-V} follows from $\distR(x,y)^2\le V(x,y)$ and monotonicity of $J_\rho$.
+\end{proof}
+
+\section{Closed-form target movement on the normalized central path}
+
+Assume now that $\phi$ is $\nu$-log-homogeneous:
+\begin{equation}
+  \phi(tx)=\phi(x)-\nu\log t,
+  \qquad t>0.
+\end{equation}
+Then
+\begin{equation}
+  g(tx)=t^{-1}g(x),
+  \qquad
+  H(tx)=t^{-2}H(x),
+  \qquad
+  \ip{x}{g(x)}=-\nu.                    \label{eq:lh-identities}
+\end{equation}
+
+Let $x(\mu)$ denote a central-path point at parameter $\mu$.  We use the normalized variable
+\begin{equation}
+  z(\mu):=\frac{x(\mu)}{\sqrt{\mu}},                 \label{eq:z-normalization}
+\end{equation}
+which is the normalization satisfying
+\begin{equation}
+  g(z(\mu))=\sqrt{\mu}\,g(x(\mu)).
+\end{equation}
+
+We assume the standard primal-dual orthogonality relation for central-path points:
+\begin{equation}
+  \left\langle x(\mu_1)-x(\mu_2),\ \mu_1 g(x(\mu_1))-\mu_2 g(x(\mu_2))\right\rangle=0.       \label{eq:central-orth}
+\end{equation}
+
+\begin{proposition}[Closed form for central-path target movement]
+Let $z_i=z(\mu_i)$. Then
+\begin{equation}
+  c_{12}:=V(z_1,z_2)
+  =\nu\left(
+  \sqrt{\frac{\mu_1}{\mu_2}}
+  +
+  \sqrt{\frac{\mu_2}{\mu_1}}
+  -2
+  \right).                                      \label{eq:c-closed-form}
+\end{equation}
+Equivalently,
+\begin{equation}
+  c_{12}=2\nu\left[
+  \cosh\left(\frac12\log\frac{\mu_1}{\mu_2}\right)-1
+  \right].                                      \label{eq:c-hyperbolic}
+\end{equation}
+If $\mu_2=\sigma\mu_1$, then
+\begin{equation}
+  c_{12}=\nu\left(\sigma^{-1/2}+\sigma^{1/2}-2\right).       \label{eq:c-sigma}
+\end{equation}
+For $\sigma=1-\theta$ with $\theta$ small,
+\begin{equation}
+  c_{12}=\frac{\nu}{4}\theta^2+O(\nu\theta^3).       \label{eq:c-small-theta}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Write $x_i=x(\mu_i)$ and $g_i=g(x_i)$.  By log-homogeneity,
+\[
+  g(z_i)=\sqrt{\mu_i}g_i.
+\]
+Expanding $V(z_1,z_2)$ gives
+\begin{align*}
+  V(z_1,z_2)
+  &=\left\langle
+  \frac{x_1}{\sqrt{\mu_1}}-\frac{x_2}{\sqrt{\mu_2}},
+  \sqrt{\mu_1}g_1-\sqrt{\mu_2}g_2
+  \right\rangle \\
+  &=\ip{x_1}{g_1}+\ip{x_2}{g_2}
+  -\sqrt{\frac{\mu_2}{\mu_1}}\ip{x_1}{g_2}
+  -\sqrt{\frac{\mu_1}{\mu_2}}\ip{x_2}{g_1}.
+\end{align*}
+By \eqref{eq:lh-identities}, the diagonal terms are both $-\nu$.  Expanding \eqref{eq:central-orth} and using the same identities gives
+\[
+  \mu_1\ip{x_2}{g_1}+\mu_2\ip{x_1}{g_2}=-\nu(\mu_1+\mu_2).
+\]
+Dividing by $\sqrt{\mu_1\mu_2}$ yields the desired cross-term combination, and substituting gives \eqref{eq:c-closed-form}.  The hyperbolic and small-step forms are immediate.
+\end{proof}
+
+\section{Bregman-balanced centering step}
+
+Fix a target $y$ and a fixed linear subspace $L$.  Let $L^\perp$ denote the Euclidean orthogonal complement.  Given $x$, define a projected displacement $\eta$ by
+\begin{equation}
+  x+\eta\in y+L,
+  \qquad
+  -g(x)-H(x)\eta\in -g(y)+L^\perp.              \label{eq:eta-projected}
+\end{equation}
+Equivalently, with $a=x-y$, $b=H(x)^{-1}(g(x)-g(y))$, and with $P=P_L^x$ the $H(x)$-orthogonal projection onto $L$, $Q=I-P$,
+\begin{equation}
+  \eta=-Pb-Qa,
+  \qquad
+  a+\eta=PU,
+  \qquad
+  b+\eta=-QU.                                  \label{eq:eta-proj-identities}
+\end{equation}
+
+The Bregman-balanced centering step is the point $x^+$ satisfying
+\begin{equation}
+  g(x^+)-g(x)=H(x)\left(2\eta-(x^+-x)\right).        \label{eq:bregman-balance}
+\end{equation}
+Equivalently, it is the first-order condition of the strictly convex problem
+\begin{equation}
+  x^+=\arg\min_z\left\{
+  \frac12\norm{z-(x+2\eta)}_x^2+D_\phi(z,x)
+  \right\},                                      \label{eq:bregman-prox}
+\end{equation}
+where
+\[
+  D_\phi(z,x)=\phi(z)-\phi(x)-\ip{g(x)}{z-x}.
+\]
+The barrier term forces $x^+$ to remain in the domain.
+
+\begin{theorem}[Bregman square-completion estimate]
+The Bregman-balanced step satisfies
+\begin{equation}
+  V(x^+,y)\le \frac14\norm{U(x,y)}_x^2.             \label{eq:bregman-quarter-U}
+\end{equation}
+Consequently, under $\rho$-stability,
+\begin{equation}
+  V(x^+,y)\le F_\rho(V(x,y)),
+  \qquad
+  F_\rho(v):=\frac14 J_\rho(\sqrt v)^2.             \label{eq:F-rho-general}
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Write $\Delta=x^+-x$ and $\varepsilon=\Delta-\eta$.  From \eqref{eq:bregman-balance},
+\[
+  H(x)^{-1}(g(x^+)-g(x))=2\eta-\Delta=\eta-\varepsilon.
+\]
+Therefore, using \eqref{eq:eta-proj-identities},
+\[
+  x^+-y=a+\Delta=PU+\varepsilon,
+\]
+while
+\[
+  H(x)^{-1}(g(x^+)-g(y))=b+\eta-\varepsilon=-QU-\varepsilon.
+\]
+Thus
+\begin{align*}
+  V(x^+,y)
+  &=\ip{PU+\varepsilon}{-QU-\varepsilon}_x.
+\end{align*}
+Since $PU\perp_x QU$,
+\[
+  V(x^+,y)=-\ip{U}{\varepsilon}_x-\norm{\varepsilon}_x^2.
+\]
+Completing the square,
+\[
+  -\ip{U}{\varepsilon}_x-\norm{\varepsilon}_x^2
+  =\frac14\norm{U}_x^2-\norm{\varepsilon+\frac12U}_x^2
+  \le \frac14\norm{U}_x^2.
+\]
+This proves \eqref{eq:bregman-quarter-U}.  The scalar bound \eqref{eq:F-rho-general} follows from \eqref{eq:U-J-V}.
+\end{proof}
+
+\section{Standard self-concordant specialization}
+
+For a standard self-concordant barrier in the convention
+\[
+  |D^3\phi(x)[u,v,v]|\le 2\norm{u}_x\norm{v}_x^2,
+\]
+the stability modulus is
+\begin{equation}
+  \rho(r)=e^{2r}.                                      \label{eq:rho-sc}
+\end{equation}
+Therefore
+\begin{equation}
+  \Psi(R)=2\int_0^R (R-r)e^r\,dr=2(e^R-R-1),            \label{eq:Psi-sc}
+\end{equation}
+\begin{equation}
+  J(R)=\int_0^R(e^r-e^{-r})\,dr=2(\cosh R-1).            \label{eq:J-sc}
+\end{equation}
+The Bregman centering map becomes
+\begin{equation}
+  F(v)=\frac14J(\sqrt v)^2=(\cosh\sqrt v-1)^2.           \label{eq:F-sc}
+\end{equation}
+
+\begin{proposition}[Centering regions]
+For the self-concordant Bregman centering map \eqref{eq:F-sc}:
+\begin{enumerate}[label=(\roman*)]
+\item $F(v)\le v$ for $0\le v\le v_{\rm dec}$, where
+\begin{equation}
+  v_{\rm dec}\approx 2.6119004634.
+\end{equation}
+\item $F(v)\le v^2$ for $0\le v\le v_{\rm quad}$, where
+\begin{equation}
+  v_{\rm quad}\approx 8.8974963495.
+\end{equation}
+\item In particular, if $0\le v\le 1$, then
+\begin{equation}
+  F(v)\le v^2\le v.
+\end{equation}
+\end{enumerate}
+Moreover,
+\begin{equation}
+  F(v)=\frac14v^2+O(v^3)\qquad(v\downarrow0).
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+The expansion follows from $\cosh\sqrt v-1=v/2+O(v^2)$.  The numerical thresholds are the positive roots of $F(v)=v$ and $F(v)=v^2$, respectively.  The statement for $v\le1$ follows directly from $\cosh s-1\le s^2$ for $0\le s\le1$.
+\end{proof}
+
+\section{Predictor-corrector recurrence}
+
+Let $z_i=z(\mu_i)$ denote the normalized central-path target at iteration $i$, and let $w_i$ be the normalized current iterate. Define
+\begin{equation}
+  v_i:=V(w_i,z_i).
+\end{equation}
+Move the target from $z_i$ to $z_{i+1}$.  Let
+\begin{equation}
+  c_i:=V(z_i,z_{i+1})
+  =\nu\left(
+  \sqrt{\frac{\mu_i}{\mu_{i+1}}}
+  +
+  \sqrt{\frac{\mu_{i+1}}{\mu_i}}
+  -2
+  \right).                                      \label{eq:c-i}
+\end{equation}
+By \eqref{eq:dist-lower},
+\[
+  \distR(w_i,z_i)\le\sqrt{v_i},
+  \qquad
+  \distR(z_i,z_{i+1})\le\sqrt{c_i}.
+\]
+The triangle inequality gives
+\begin{equation}
+  \distR(w_i,z_{i+1})\le \sqrt{v_i}+\sqrt{c_i}.       \label{eq:triangle-target}
+\end{equation}
+Then the envelope \eqref{eq:V-upper-envelope} gives the retargeted divergence bound
+\begin{equation}
+  \widetilde v_i:=V(w_i,z_{i+1})
+  \le
+  \Psi_\rho\left(\sqrt{v_i}+\sqrt{c_i}\right).       \label{eq:vtilde-general}
+\end{equation}
+After applying one Bregman-balanced centering step with target $z_{i+1}$,
+\begin{equation}
+  v_{i+1}:=V(w_{i+1},z_{i+1})
+  \le
+  F_\rho(\widetilde v_i).                            \label{eq:after-center}
+\end{equation}
+Thus the scalar recurrence is
+\begin{equation}
+  \boxed{
+  v_{i+1}
+  \le
+  F_\rho\left(
+  \Psi_\rho\left(\sqrt{v_i}+\sqrt{c_i}\right)
+  \right).
+  }                                                  \label{eq:scalar-recurrence-general}
+\end{equation}
+
+For standard self-concordance, this becomes
+\begin{equation}
+  \widetilde v_i\le 2(e^{R_i}-R_i-1),
+  \qquad
+  R_i:=\sqrt{v_i}+\sqrt{c_i},                         \label{eq:vtilde-sc}
+\end{equation}
+\begin{equation}
+  v_{i+1}\le (\cosh\sqrt{\widetilde v_i}-1)^2.        \label{eq:recurrence-sc}
+\end{equation}
+
+\section{A short-step rule}
+
+The preceding recurrence gives a standard short-step rule.  Choose a predictor threshold $\alpha>0$ satisfying $F(\alpha)<\alpha$, and set
+\begin{equation}
+  \beta:=F(\alpha).                                   \label{eq:beta-alpha}
+\end{equation}
+Let $R_\alpha$ be the positive solution of
+\begin{equation}
+  \Psi(R_\alpha)=\alpha,
+  \qquad
+  \Psi(R)=2(e^R-R-1).                                  \label{eq:R-alpha}
+\end{equation}
+Define
+\begin{equation}
+  \bar c(\alpha):=\left(R_\alpha-\sqrt{\beta}\right)^2, \label{eq:cbar-alpha}
+\end{equation}
+provided $R_\alpha>\sqrt\beta$.
+
+\begin{theorem}[Invariant short-step cycle]
+Assume standard self-concordance.  Suppose $v_i\le\beta$ and the target movement satisfies
+\begin{equation}
+  c_i\le \bar c(\alpha).
+\end{equation}
+Then after retargeting and one Bregman-balanced centering step,
+\begin{equation}
+  v_{i+1}\le\beta.
+\end{equation}
+Moreover, the pre-centering divergence obeys
+\begin{equation}
+  \widetilde v_i\le\alpha.
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+By \eqref{eq:triangle-target},
+\[
+  \distR(w_i,z_{i+1})\le\sqrt{v_i}+\sqrt{c_i}
+  \le\sqrt\beta+\sqrt{\bar c(\alpha)}=R_\alpha.
+\]
+Since $\Psi$ is nondecreasing,
+\[
+  \widetilde v_i\le\Psi(R_\alpha)=\alpha.
+\]
+The Bregman centering estimate gives
+\[
+  v_{i+1}\le F(\widetilde v_i)\le F(\alpha)=\beta,
+\]
+using monotonicity of $F$.
+\end{proof}
+
+A simple conservative choice is $\alpha=1$.  Then
+\[
+  R_1=\Psi^{-1}(1)\approx 0.8576766739,
+  \qquad
+  \beta=F(1)=(\cosh1-1)^2\approx 0.2949365759,
+\]
+and
+\begin{equation}
+  \bar c(1)\approx 0.0989706678.                         \label{eq:cbar-alpha-one}
+\end{equation}
+
+A larger allowable central-path movement is obtained by optimizing \eqref{eq:cbar-alpha}.  Numerically,
+\begin{equation}
+  \alpha_*\approx 0.5320356547,
+  \qquad
+  \beta_*:=F(\alpha_*)\approx 0.0772969215,
+\end{equation}
+\begin{equation}
+  R_{\alpha_*}\approx 0.6505207180,
+  \qquad
+  \bar c_*:=\bar c(\alpha_*)\approx 0.1387543718.          \label{eq:cstar}
+\end{equation}
+Thus the best scalar short-step rule from this sufficient analysis is to maintain
+\begin{equation}
+  v_i\le\beta_*\approx0.07730
+\end{equation}
+and choose the next target so that
+\begin{equation}
+  c_i\le \bar c_*\approx0.13875.                         \label{eq:c-star-rule}
+\end{equation}
+
+\section{Number of $\mu$ updates}
+
+Let the target parameter be updated by
+\begin{equation}
+  \mu_{i+1}=\sigma\mu_i,
+  \qquad 0<\sigma<1.
+\end{equation}
+Then \eqref{eq:c-i} gives
+\begin{equation}
+  c_i=\nu\left(\sigma^{-1/2}+\sigma^{1/2}-2\right).      \label{eq:c-sigma-repeat}
+\end{equation}
+To enforce $c_i\le \bar c$, it suffices to choose $\sigma$ satisfying
+\begin{equation}
+  \sigma^{-1/2}+\sigma^{1/2}-2\le \frac{\bar c}{\nu}.     \label{eq:sigma-condition}
+\end{equation}
+Let $r=\sqrt\sigma$.  The equality case is
+\begin{equation}
+  r+r^{-1}=2+\frac{\bar c}{\nu}.
+\end{equation}
+The solution with $0<r<1$ is
+\begin{equation}
+  r_{\nu,\bar c}
+  =\frac{2+\bar c/\nu-\
+  \sqrt{(2+\bar c/\nu)^2-4}}{2},
+  \qquad
+  \sigma_{\nu,\bar c}=r_{\nu,\bar c}^2.                 \label{eq:sigma-exact}
+\end{equation}
+With $\bar c=\bar c_*$, this gives the maximal multiplicative decrease guaranteed by the optimized short-step constants above.
+
+For large $\nu$,
+\begin{equation}
+  1-\sigma_{\nu,\bar c}
+  =2\sqrt{\frac{\bar c}{\nu}}+O(\nu^{-1}).              \label{eq:sigma-asymptotic}
+\end{equation}
+Hence, to reduce $\mu$ by a factor $\epsilon\in(0,1)$, the number of target updates satisfies
+\begin{equation}
+  N
+  \le
+  \left\lceil
+  \frac{\log(\mu_0/\mu_N)}{-\log\sigma_{\nu,\bar c}}
+  \right\rceil
+  =
+  \left(\frac{\sqrt\nu}{2\sqrt{\bar c}}+o(\sqrt\nu)\right)
+  \log\frac{\mu_0}{\mu_N}.                              \label{eq:N-asymptotic}
+\end{equation}
+Using the optimized value $\bar c_*\approx0.1387543718$,
+\begin{equation}
+  \frac{1}{2\sqrt{\bar c_*}}\approx1.3422909639.          \label{eq:short-step-constant}
+\end{equation}
+Thus the method requires
+\begin{equation}
+  N=O\left(\sqrt\nu\log\frac{\mu_0}{\mu_N}\right)
+\end{equation}
+updates of $\mu$.  In particular, reducing $\mu$ by any fixed multiplicative factor requires $O(\sqrt\nu)$ target updates.
+
+\section{Interpretation}
+
+The analysis separates the two roles of the two distance-like quantities.
+\begin{itemize}[leftmargin=2em]
+\item The Riemannian geodesic distance is used for transport and target movement.  Its triangle inequality gives
+\[
+  \distR(w_i,z_{i+1})\le \sqrt{v_i}+\sqrt{c_i}.
+\]
+\item The divergence $V$ is used as the computable centering certificate.  It gives the target movement cost $c_i$ in closed form, via log-homogeneity and central-path orthogonality, and it is the quantity decreased by the Bregman-balanced centering step.
+\item Hessian stability supplies the bridge from distance back to divergence through $\Psi_\rho$, and from divergence to the asymmetry residual through $J_\rho$.
+\item The Bregman-balanced corrector is especially well suited to $V$ because it enforces a primal-dual endpoint balance.  This gives the global square-completion estimate $V^+\le \frac14\norm{U}^2$, without a Dikin radius restriction.
+\end{itemize}
+
+The scalar recurrence
+\[
+  v_{i+1}\le F_\rho\left(\Psi_\rho(\sqrt{v_i}+\sqrt{c_i})\right)
+\]
+is the compact form of the short-step IPM analysis.
+
+\end{document}

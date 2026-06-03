@@ -1,0 +1,563 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools,booktabs}
+\usepackage[hidelinks]{hyperref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\newtheorem{remark}{Remark}
+
+\newcommand{\ip}[2]{\left\langle #1,#2\right\rangle}
+\newcommand{\norm}[1]{\left\lVert #1\right\rVert}
+\newcommand{\R}{\mathbb R}
+\newcommand{\D}{\mathrm D}
+\newcommand{\dd}{\mathrm d}
+
+\title{Bregman-Balanced Integrators, Discrete Work, and Exact Geodesic Balance Defects}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setup}
+
+Let $\phi$ be a strictly convex $C^3$ barrier on a convex domain, and write
+\[
+    g(x):=\nabla\phi(x),
+    \qquad
+    H(x):=\nabla^2\phi(x).
+\]
+The Hessian metric defines
+\[
+    \ip{p}{q}_x:=p^\top H(x)q,
+    \qquad
+    \norm{p}_x^2:=\ip{p}{p}_x,
+    \qquad
+    \norm{w}_{x,*}^2:=w^\top H(x)^{-1}w.
+\]
+The Jeffreys divergence is
+\[
+    V(x,y):=\ip{x-y}{g(x)-g(y)}.
+\]
+Let $d_R$ denote the Riemannian distance induced by $H$.
+
+Throughout the numerical examples we use the standard self-concordant normalization
+\[
+    |\D^3\phi(x)[p,q,q]|
+    \le
+    2\norm{p}_x\norm{q}_x^2.
+\]
+Equivalently, the Hessian metric satisfies the exponential comparison
+\[
+    e^{-2d_R(x,z)}H(x)
+    \preceq
+    H(z)
+    \preceq
+    e^{2d_R(x,z)}H(x).
+\]
+We also use the standard geodesic coercivity inequality
+\[
+    d_R(x,y)^2\le V(x,y).
+\]
+
+For fixed $x,y$, define
+\[
+    a:=x-y,
+    \qquad
+    b:=H(x)^{-1}\bigl(g(x)-g(y)\bigr),
+\]
+so that
+\[
+    V(x,y)=\ip{a}{b}_x.
+\]
+Define the asymmetry residual
+\[
+    U(x,y):=a-b.
+\]
+This residual vanishes for quadratic/constant-Hessian barriers, and more generally measures the first nonlinear correction to the flat primal-dual matching.
+
+\section{Projected displacement}
+
+Let $L\subseteq \R^n$ be a fixed linear subspace, and let $L^\perp$ denote its Euclidean orthogonal complement. The projected displacement $\eta$ is defined by
+\[
+    x+\eta\in y+L,
+    \qquad
+    -g(x)-H(x)\eta\in -g(y)+L^\perp.
+\]
+Let $P=P_L^x$ be the $H(x)$-orthogonal projection onto $L$, and let $Q=I-P$.
+
+\begin{lemma}[Projection formula]
+The projected displacement satisfies
+\[
+    \eta=-Pb-Qa.
+\]
+Consequently,
+\[
+    a+\eta=PU,
+    \qquad
+    b+\eta=-QU.
+\]
+\end{lemma}
+
+\begin{proof}
+The primal condition $x+\eta\in y+L$ is equivalent to
+\[
+    a+\eta\in L.
+\]
+The dual condition says
+\[
+    -g(x)-H(x)\eta+g(y)\in L^\perp.
+\]
+Since $g(x)-g(y)=H(x)b$, this is equivalent to
+\[
+    H(x)(b+\eta)\in L^\perp.
+\]
+Because $L^\perp$ is Euclidean orthogonal, the last condition is equivalent to
+\[
+    b+\eta\in L_x^\perp,
+\]
+where $L_x^\perp$ is the $H(x)$-orthogonal complement of $L$.
+Thus $a+\eta$ is the $L$-component of $a-b=U$, while $b+\eta$ is the negative $L_x^\perp$-component of $U$. Hence
+\[
+    a+\eta=PU,
+    \qquad
+    b+\eta=-QU.
+\]
+Equivalently,
+\[
+    \eta=PU-a=-Pb-Qa.
+\]
+\end{proof}
+
+The projected energy is
+\[
+    E:=\norm{\eta}_x^2
+    =\norm{Pb}_x^2+\norm{Qa}_x^2.
+\]
+Moreover, if $x(t)$ is any curve with $x(0)=x$ and $\dot x(0)=\eta$, and $v(t):=V(x(t),y)$, then
+\[
+    \nabla_R V(x,y)=a+b,
+\]
+where $\nabla_R$ denotes the Riemannian gradient. Hence
+\[
+\begin{aligned}
+    v'(0)
+    &=\ip{a+b}{\eta}_x \\
+    &=\ip{a+b}{-Pb-Qa}_x \\
+    &=-\ip{a}{Pb}_x-\ip{b}{Pb}_x-\ip{a}{Qa}_x-\ip{b}{Qa}_x.
+\end{aligned}
+\]
+Using the $P/Q$ orthogonality and $\ip{a}{b}_x=V(x,y)$, this simplifies to
+\[
+    \boxed{v'(0)=-(E+V(x,y)).}
+\]
+Thus the projected displacement gives the exact descent identity that cancels the flat term in the second-variation analysis.
+
+\section{Original Bregman-balanced integrator analysis}
+
+Let $z_B=x+\Delta$ be the output of the Bregman-balanced integrator with predicted displacement $\eta$. Equivalently, $z_B$ satisfies
+\[
+    g(z_B)-g(x)=H(x)(2\eta-\Delta).
+\]
+This is the optimality condition for
+\[
+    \min_z\left\{
+    \frac12\norm{z-(x+2\eta)}_x^2+D_\phi(z,x)
+    \right\},
+\]
+where
+\[
+    D_\phi(z,x)=\phi(z)-\phi(x)-\ip{g(x)}{z-x}.
+\]
+The Bregman term keeps the minimizer in the interior of the domain under the usual barrier assumptions.
+
+Set
+\[
+    \varepsilon:=\Delta-\eta.
+\]
+Then
+\[
+    z_B-y=a+\Delta=(a+\eta)+\varepsilon=PU+\varepsilon.
+\]
+Also,
+\[
+\begin{aligned}
+    H(x)^{-1}\bigl(g(z_B)-g(y)\bigr)
+    &=b+H(x)^{-1}\bigl(g(z_B)-g(x)\bigr) \\
+    &=b+2\eta-\Delta \\
+    &=b+\eta-\varepsilon \\
+    &=-QU-\varepsilon.
+\end{aligned}
+\]
+Therefore
+\[
+\begin{aligned}
+    V(z_B,y)
+    &=\ip{PU+\varepsilon}{-QU-\varepsilon}_x \\
+    &=-\ip{U}{\varepsilon}_x-\norm{\varepsilon}_x^2.
+\end{aligned}
+\]
+Completing the square gives the exact identity
+\[
+    \boxed{
+    V(z_B,y)
+    =
+    \frac14\norm{U(x,y)}_x^2
+    -
+    \left\|\varepsilon+\frac12U(x,y)\right\|_x^2.
+    }
+\]
+Consequently,
+\[
+    \boxed{V(z_B,y)\le \frac14\norm{U(x,y)}_x^2.}
+\]
+This bound is global for the Bregman-balanced endpoint; no Dikin condition such as $\norm{\Delta}_x<1$ is needed. The reason is that the implicit Bregman equation pairs the primal endpoint correction and the dual endpoint correction with opposite signs, producing the negative square above.
+
+\section{Residual bound and scalar basin for self-concordance}
+
+The exponential Hessian comparison implies the residual estimate
+\[
+    \boxed{
+    \norm{U(x,y)}_x
+    \le
+    2\bigl(\cosh d_R(x,y)-1\bigr).
+    }
+\]
+Indeed, along a unit-speed geodesic $\gamma:[0,R]\to\operatorname{int}K$ from $x$ to $y$, with $R=d_R(x,y)$,
+\[
+    U(x,y)
+    =
+    \int_0^R
+    \left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)\,\dd s.
+\]
+The comparison
+\[
+    e^{-2s}H(x)\preceq H(\gamma(s))\preceq e^{2s}H(x)
+\]
+implies, by a spectral calculation,
+\[
+    \left\|
+    \left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)
+    \right\|_x
+    \le
+    e^s-e^{-s}=2\sinh s.
+\]
+Integrating gives
+\[
+    \norm{U(x,y)}_x\le \int_0^R 2\sinh s\,\dd s
+    =2(\cosh R-1).
+\]
+Since $d_R(x,y)^2\le V(x,y)$, define
+\[
+    j(v):=2\bigl(\cosh\sqrt v-1\bigr).
+\]
+Then
+\[
+    \norm{U(x,y)}_x\le j(V(x,y)).
+\]
+Combining this with the Bregman identity yields
+\[
+    \boxed{
+    V(z_B,y)
+    \le
+    F_B(V(x,y)),
+    \qquad
+    F_B(v):=\frac14j(v)^2=(\cosh\sqrt v-1)^2.
+    }
+\]
+Numerically,
+\[
+    F_B(v)\le v
+    \quad\text{for}\quad
+    0\le v\le 2.6119004634\ldots.
+\]
+Moreover,
+\[
+    F_B(v)\le v^2
+    \quad\text{for}\quad
+    0\le v\le 8.8974963495\ldots.
+\]
+In particular, on the simple level set $V(x,y)\le 1$,
+\[
+    \boxed{V(z_B,y)\le V(x,y)^2\le V(x,y).}
+\]
+Thus the Bregman-balanced integrator has a large certified quadratic basin in the normalized sense.
+
+\section{Exact geodesic as a Bregman-balanced step plus a defect}
+
+Let $\gamma:[0,R]\to\operatorname{int}K$ be the exact geodesic with
+\[
+    \gamma(0)=x,
+    \qquad
+    \gamma'(0)=u,
+    \qquad
+    \norm{\gamma'(s)}_{\gamma(s)}=1,
+\]
+and let the projected displacement be
+\[
+    \eta=Ru.
+\]
+Let
+\[
+    z_g:=\gamma(R),
+    \qquad
+    \Delta_g:=z_g-x,
+    \qquad
+    \varepsilon_g:=\Delta_g-\eta.
+\]
+For any candidate endpoint $z=x+\Delta$, define its Bregman balance defect by
+\[
+    \boxed{
+    R_{\rm bal}(z)
+    :=
+    H(x)^{-1}\bigl(g(z)-g(x)\bigr)-\bigl(2\eta-\Delta\bigr).
+    }
+\]
+The Bregman-balanced integrator is exactly characterized by $R_{\rm bal}(z_B)=0$.
+
+For a general endpoint $z=x+\Delta$, with $\varepsilon=\Delta-\eta$, we have
+\[
+    z-y=PU+\varepsilon,
+\]
+while
+\[
+    H(x)^{-1}\bigl(g(z)-g(y)\bigr)
+    =-QU-\varepsilon+R_{\rm bal}(z).
+\]
+Therefore
+\[
+\begin{aligned}
+    V(z,y)
+    &=\ip{PU+\varepsilon}{-QU-\varepsilon+R_{\rm bal}(z)}_x \\
+    &=
+    \frac14\norm{U}_x^2
+    -\left\|\varepsilon+\frac12U\right\|_x^2
+    +\ip{z-y}{R_{\rm bal}(z)}_x.
+\end{aligned}
+\]
+Thus
+\[
+    \boxed{
+    V(z,y)
+    \le
+    \frac14\norm{U}_x^2
+    +
+    \left|\ip{z-y}{R_{\rm bal}(z)}_x\right|.
+    }
+\]
+For the Bregman integrator, the last term vanishes. For the exact geodesic, the last term measures how far the geodesic endpoint is from satisfying the Bregman balance equation.
+
+\section{Bounding the geodesic balance defect}
+
+Let
+\[
+    H_s:=H(\gamma(s)),
+    \qquad
+    H_0:=H(x),
+    \qquad
+    C_s:=\D^3\phi(\gamma(s)).
+\]
+Define
+\[
+    W(s):=\gamma'(s)+H_0^{-1}H_s\gamma'(s).
+\]
+Using
+\[
+    g(z_g)-g(x)=\int_0^R H_s\gamma'(s)\,\dd s,
+    \qquad
+    z_g-x=\int_0^R\gamma'(s)\,\dd s,
+\]
+we get
+\[
+    R_{\rm bal}(z_g)=\int_0^R\bigl(W(s)-W(0)\bigr)\,\dd s
+    =\int_0^R(R-s)W'(s)\,\dd s.
+\]
+The geodesic equation in Hessian coordinates is
+\[
+    \gamma''(s)
+    =-\frac12H_s^{-1}C_s[\gamma'(s),\gamma'(s),\cdot].
+\]
+Set
+\[
+    c_s:=H_s^{-1}C_s[\gamma'(s),\gamma'(s),\cdot].
+\]
+Then $\gamma''(s)=-c_s/2$. Also,
+\[
+    \frac{\dd}{\dd s}\bigl(H_s\gamma'(s)\bigr)
+    =C_s[\gamma'(s),\gamma'(s),\cdot]+H_s\gamma''(s)
+    =\frac12H_sc_s.
+\]
+Hence
+\[
+    W'(s)
+    =-\frac12c_s+\frac12H_0^{-1}H_sc_s
+    =
+    \frac12\bigl(H_0^{-1}H_s-I\bigr)c_s.
+\]
+This is the key geodesic cancellation: the balance defect begins with the factor $H_0^{-1}H_s-I$, which vanishes at $s=0$.
+
+For standard self-concordance, $\norm{c_s}_{\gamma(s)}\le 2$. The exponential Hessian comparison gives
+\[
+    \left\|\bigl(H_0^{-1}H_s-I\bigr)c_s\right\|_x
+    \le
+    (e^s-e^{-s})\norm{c_s}_{\gamma(s)}.
+\]
+Therefore
+\[
+    \norm{W'(s)}_x
+    \le
+    2\sinh s.
+\]
+Consequently,
+\[
+    \boxed{
+    \norm{R_{\rm bal}(z_g)}_x
+    \le
+    \int_0^R(R-s)2\sinh s\,\dd s
+    =2(\sinh R-R).
+    }
+\]
+This is third order in the geodesic length:
+\[
+    2(\sinh R-R)=\frac13R^3+O(R^5).
+\]
+
+We also need a bound on $\norm{z_g-y}_x$. Since
+\[
+    z_g-y=PU+\varepsilon_g,
+\]
+we have
+\[
+    \norm{z_g-y}_x\le \norm{U}_x+\norm{\varepsilon_g}_x.
+\]
+Moreover
+\[
+    \varepsilon_g=\int_0^R(\gamma'(s)-\gamma'(0))\,\dd s
+    =\int_0^R(R-s)\gamma''(s)\,\dd s.
+\]
+Using $\norm{\gamma''(s)}_{\gamma(s)}\le 1$ and
+\[
+    \norm{w}_x\le e^s\norm{w}_{\gamma(s)},
+\]
+we obtain
+\[
+    \norm{\varepsilon_g}_x
+    \le
+    \int_0^R(R-s)e^s\,\dd s
+    =e^R-1-R.
+\]
+Thus
+\[
+    \boxed{
+    \norm{z_g-y}_x
+    \le
+    \norm{U}_x+e^R-1-R.
+    }
+\]
+Combining the previous estimates gives the exact-geodesic balance-defect bound
+\[
+    \boxed{
+    V(z_g,y)
+    \le
+    \frac14\norm{U}_x^2
+    +
+    \bigl(\norm{U}_x+e^R-1-R\bigr)
+    2(\sinh R-R).
+    }
+\]
+Here $R=\sqrt E$.
+
+Using the residual bound $\norm{U}_x\le j(v)$ and the sharp energy envelope
+\[
+    E\le B(v):=
+    \left(
+    \frac{\sqrt{4v+j(v)^2}+j(v)}{2}
+    \right)^2,
+    \qquad v:=V(x,y),
+\]
+one obtains a fully scalar sufficient bound by setting $R=\sqrt{B(v)}$ in the last display.
+
+As $v\downarrow0$, $j(v)=v+O(v^2)$ and $R=O(\sqrt v)$, so the balance-defect term is $O(v^{5/2})$. Therefore
+\[
+    V(z_g,y)
+    \le
+    \frac14v^2+O(v^{5/2}).
+\]
+This explains why exact geodesics and the Bregman-balanced integrator have the same leading square-completion behavior, while the exact geodesic carries an additional higher-order balance defect.
+
+\section{Why the Bregman integrator is well suited to decrease $V$}
+
+The Bregman-balanced integrator is not merely a numerical approximation to the geodesic. It enforces the endpoint relation
+\[
+    H(x)^{-1}\bigl(g(z_B)-g(x)\bigr)=2\eta-(z_B-x),
+\]
+which exactly balances the primal and dual endpoint residuals. This gives the identity
+\[
+    V(z_B,y)
+    =
+    \frac14\norm{U(x,y)}_x^2
+    -
+    \left\|\varepsilon+\frac12U(x,y)\right\|_x^2.
+\]
+Thus the nonlinear endpoint correction appears with a negative square. This is why the Bregman map is naturally suited to decreasing the target divergence $V$.
+
+By contrast, the exact geodesic satisfies the Bregman balance relation only up to the defect $R_{\rm bal}(z_g)$. The geodesic equation makes this defect third order, but it does not make it vanish. Therefore exact geodesic tracing is better for solving the geodesic ODE, while the Bregman-balanced step is better aligned with the discrete decrease of $V$.
+
+This is not a claim that $V(z_B,y)\le V(z_g,y)$ pointwise for every instance. Rather, it is a structural explanation of the certified bounds:
+\[
+    \text{Bregman step:}
+    \qquad
+    V(z_B,y)
+    \le
+    \frac14\norm{U}_x^2,
+\]
+whereas
+\[
+    \text{exact geodesic:}
+    \qquad
+    V(z_g,y)
+    \le
+    \frac14\norm{U}_x^2
+    +
+    \text{balance-defect work}.
+\]
+The additional work term is higher order locally, but can degrade global sufficient basins.
+
+For comparison, the direct exact-geodesic $v''$ estimate gives the scalar bound
+\[
+    F_{\rm geo}(v)=\frac12B(v)j(v),
+\]
+with
+\[
+    F_{\rm geo}(v)\le v
+    \quad\text{for}\quad
+    v\lesssim 0.7633246011,
+\]
+and
+\[
+    F_{\rm geo}(v)\le v^2
+    \quad\text{for}\quad
+    v\lesssim 0.4190890308.
+\]
+The Bregman-balanced scalar map
+\[
+    F_B(v)=(\cosh\sqrt v-1)^2
+\]
+satisfies
+\[
+    F_B(v)\le v
+    \quad\text{for}\quad
+    v\lesssim 2.6119004634,
+\]
+and, in particular,
+\[
+    V(x,y)\le1
+    \quad\Longrightarrow\quad
+    V(z_B,y)\le V(x,y)^2.
+\]
+These numbers are only sufficient bounds, not optimal basins, but they support the interpretation that the Bregman-balanced endpoint is especially well matched to the Lyapunov quantity $V$.
+
+\end{document}

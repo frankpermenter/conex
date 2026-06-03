@@ -1,0 +1,1239 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}
+
+\newtheorem{definition}{Definition}
+\newtheorem{assumption}{Assumption}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+\newtheorem{remark}{Remark}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\ip}[2]{\left\langle #1,#2\right\rangle}
+\newcommand{\ipx}[2]{\left\langle #1,#2\right\rangle_x}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+\newcommand{\dd}{\,d}
+
+\title{Level-Set Estimates from Hessian Stability and the Asymmetry Residual}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setup and notation}
+
+Let \(\phi\) be a strictly convex \(C^3\) function on a convex domain
+\(\Omega\subseteq\R^n\). Write
+\[
+    g(x):=\nabla \phi(x),
+    \qquad
+    H(x):=\nabla^2\phi(x).
+\]
+The Hessian metric defines the local primal and dual norms
+\[
+    \|u\|_x^2:=u^\top H(x)u,
+    \qquad
+    \|w\|_{x,*}^2:=w^\top H(x)^{-1}w.
+\]
+Let \(d_R\) denote the Riemannian distance induced by the Hessian metric. Define
+\[
+    V(x,y):=\ip{x-y}{g(x)-g(y)},
+\]
+\[
+    d(x,y):=
+    \|x-y\|_x^2+
+    \|g(x)-g(y)\|_{x,*}^2,
+\]
+and
+\[
+    U(x,y):=(x-y)-H(x)^{-1}\bigl(g(x)-g(y)\bigr).
+\]
+We use \(\ipx{a}{b}:=a^\top H(x)b\). Thus \(\|a\|_x^2=\ipx{a}{a}\).
+
+\begin{definition}[Hessian stability]
+Let \(\rho:[0,\infty)\to[1,\infty)\) be nondecreasing with \(\rho(0)=1\). We say that the Hessian metric is \(\rho\)-stable if, for all \(p,q\in\Omega\),
+\[
+    \rho(d_R(p,q))^{-1}H(p)
+    \preceq
+    H(q)
+    \preceq
+    \rho(d_R(p,q))H(p).
+\]
+We write
+\[
+    K_\rho(r):=\sqrt{\rho(r)}.
+\]
+The exponential case is \(\rho(r)=e^{Lr}\).
+\end{definition}
+
+\begin{lemma}[Universal distance-divergence lower bound]\label{lem:distance-V}
+For all \(x,y\in\Omega\),
+\[
+    d_R(x,y)^2\le V(x,y).
+\]
+\end{lemma}
+
+\begin{proof}
+Let \(h:=y-x\), and consider the chord \(c(t):=x+th\), \(t\in[0,1]\). Since \(\Omega\) is convex, the chord lies in \(\Omega\). Its Riemannian length is
+\[
+    \ell(c)=\int_0^1 \sqrt{h^\top H(c(t))h}\,dt.
+\]
+By Cauchy--Schwarz,
+\[
+    \ell(c)^2
+    \le
+    \int_0^1 h^\top H(c(t))h\,dt.
+\]
+The right-hand side equals
+\[
+    h^\top\left(\int_0^1 H(x+th)\,dt\right)h
+    =
+    h^\top(g(y)-g(x))
+    =
+    V(x,y).
+\]
+Since \(d_R(x,y)\le \ell(c)\), the claim follows.
+\end{proof}
+
+\section{Two estimates from Hessian stability}
+
+The next two lemmas are independent consequences of the same stability assumption. The first controls the asymmetry residual \(U\). The second controls \(V\) by geodesic distance.
+
+\begin{lemma}[Asymmetry residual bound]\label{lem:U-bound}
+Assume \(\rho\)-Hessian stability. Define
+\[
+    J_\rho(R):=
+    \int_0^R
+    \left(
+        K_\rho(s)-K_\rho(s)^{-1}
+    \right)ds.
+\]
+Then
+\[
+    \|U(x,y)\|_x
+    \le
+    J_\rho(d_R(x,y)).
+\]
+Equivalently,
+\[
+    \|U(x,y)\|_x
+    \le
+    \int_0^{d_R(x,y)}
+    \left(
+        \sqrt{\rho(s)}
+        -
+        \frac{1}{\sqrt{\rho(s)}}
+    \right)ds.
+\]
+\end{lemma}
+
+\begin{proof}
+Let \(R:=d_R(x,y)\), and let \(\gamma:[0,R]\to\Omega\) be a unit-speed geodesic from \(x\) to \(y\):
+\[
+    \gamma(0)=x,
+    \qquad
+    \gamma(R)=y,
+    \qquad
+    \|\gamma'(s)\|_{\gamma(s)}=1.
+\]
+By the fundamental theorem of calculus,
+\[
+    y-x=\int_0^R \gamma'(s)\,ds,
+\]
+and
+\[
+    g(y)-g(x)
+    =
+    \int_0^R H(\gamma(s))\gamma'(s)\,ds.
+\]
+Therefore
+\[
+\begin{aligned}
+    U(x,y)
+    &=
+    (x-y)-H(x)^{-1}(g(x)-g(y)) \\
+    &=
+    H(x)^{-1}(g(y)-g(x))-(y-x) \\
+    &=
+    \int_0^R
+    \left[
+        H(x)^{-1}H(\gamma(s))-I
+    \right]\gamma'(s)\,ds.
+\end{aligned}
+\]
+
+We bound the integrand in the \(x\)-norm. Define
+\[
+    M_s:=H(x)^{-1/2}H(\gamma(s))H(x)^{-1/2},
+    \qquad
+    u_s:=H(x)^{1/2}\gamma'(s).
+\]
+Then
+\[
+    \left\|
+    \left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)
+    \right\|_x
+    =
+    \|(M_s-I)u_s\|_2.
+\]
+By stability and \(d_R(x,\gamma(s))\le s\),
+\[
+    \rho(s)^{-1}I\preceq M_s\preceq \rho(s)I.
+\]
+Also, since \(\gamma\) is unit speed,
+\[
+    u_s^\top M_su_s
+    =
+    \gamma'(s)^\top H(\gamma(s))\gamma'(s)
+    =1.
+\]
+Diagonalize \(M_s\). Its eigenvalues \(\lambda_i\) lie in \([\rho(s)^{-1},\rho(s)]\). Writing \(u_s=\sum_i u_i e_i\), we have
+\[
+    \sum_i\lambda_i u_i^2=1,
+\]
+and
+\[
+    \|(M_s-I)u_s\|_2^2
+    =
+    \sum_i(\lambda_i-1)^2u_i^2.
+\]
+For every \(\lambda\in[\rho(s)^{-1},\rho(s)]\),
+\[
+    \frac{|\lambda-1|}{\sqrt\lambda}
+    \le
+    \sqrt{\rho(s)}-\frac{1}{\sqrt{\rho(s)}}.
+\]
+Thus
+\[
+    (\lambda_i-1)^2
+    \le
+    \left(
+        \sqrt{\rho(s)}-\frac{1}{\sqrt{\rho(s)}}
+    \right)^2\lambda_i.
+\]
+It follows that
+\[
+\begin{aligned}
+    \|(M_s-I)u_s\|_2^2
+    &\le
+    \left(
+        \sqrt{\rho(s)}-\frac{1}{\sqrt{\rho(s)}}
+    \right)^2
+    \sum_i\lambda_i u_i^2 \\
+    &=
+    \left(K_\rho(s)-K_\rho(s)^{-1}\right)^2.
+\end{aligned}
+\]
+Hence
+\[
+    \left\|
+    \left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)
+    \right\|_x
+    \le
+    K_\rho(s)-K_\rho(s)^{-1}.
+\]
+Integrating gives
+\[
+\begin{aligned}
+    \|U(x,y)\|_x
+    &\le
+    \int_0^R
+    \left\|
+    \left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)
+    \right\|_x\,ds \\
+    &\le
+    \int_0^R\left(K_\rho(s)-K_\rho(s)^{-1}\right)ds
+    =J_\rho(R).
+\end{aligned}
+\]
+\end{proof}
+
+\begin{lemma}[Jeffreys divergence bound]\label{lem:V-bound}
+Assume \(\rho\)-Hessian stability. Define
+\[
+    \Psi_\rho(R):=
+    2\int_0^R (R-r)K_\rho(r)\,dr.
+\]
+Then
+\[
+    V(x,y)
+    \le
+    \Psi_\rho(d_R(x,y)).
+\]
+Equivalently,
+\[
+    V(x,y)
+    \le
+    2\int_0^{d_R(x,y)}
+    \left(d_R(x,y)-r\right)\sqrt{\rho(r)}\,dr.
+\]
+\end{lemma}
+
+\begin{proof}
+Let \(R:=d_R(x,y)\), and let \(\gamma:[0,R]\to\Omega\) be a unit-speed geodesic from \(x\) to \(y\). Then
+\[
+    y-x=\int_0^R \gamma'(a)\,da,
+\]
+and
+\[
+    g(y)-g(x)
+    =
+    \int_0^R H(\gamma(b))\gamma'(b)\,db.
+\]
+Thus
+\[
+\begin{aligned}
+    V(x,y)
+    &=
+    \ip{x-y}{g(x)-g(y)} \\
+    &=
+    \ip{y-x}{g(y)-g(x)} \\
+    &=
+    \int_0^R\int_0^R
+    \left\langle
+        \gamma'(a),
+        H(\gamma(b))\gamma'(b)
+    \right\rangle
+    da\,db.
+\end{aligned}
+\]
+For each \(a,b\), Cauchy--Schwarz in the metric \(H(\gamma(b))\) gives
+\[
+    \left\langle
+        \gamma'(a),
+        H(\gamma(b))\gamma'(b)
+    \right\rangle
+    \le
+    \|\gamma'(a)\|_{\gamma(b)}
+    \|\gamma'(b)\|_{\gamma(b)}.
+\]
+Since \(\gamma\) is unit speed, \(\|\gamma'(b)\|_{\gamma(b)}=1\). By stability,
+\[
+    H(\gamma(b))
+    \preceq
+    \rho(d_R(\gamma(a),\gamma(b)))H(\gamma(a)).
+\]
+Since \(\gamma\) is unit speed,
+\[
+    d_R(\gamma(a),\gamma(b))\le |a-b|.
+\]
+Therefore
+\[
+    \|\gamma'(a)\|_{\gamma(b)}
+    \le
+    K_\rho(|a-b|)\|\gamma'(a)\|_{\gamma(a)}
+    =K_\rho(|a-b|).
+\]
+Thus
+\[
+    V(x,y)
+    \le
+    \int_0^R\int_0^R K_\rho(|a-b|)\,da\,db.
+\]
+Using the interval-pair identity
+\[
+    \int_0^R\int_0^R f(|a-b|)\,da\,db
+    =
+    2\int_0^R(R-r)f(r)\,dr,
+\]
+with \(f=K_\rho\), we obtain
+\[
+    V(x,y)
+    \le
+    2\int_0^R(R-r)K_\rho(r)\,dr
+    =
+    \Psi_\rho(R).
+\]
+\end{proof}
+
+
+\begin{corollary}[Exponential specialization]\label{cor:exp-stability-formulas}
+If \(\rho(r)=e^{Lr}\), then
+\[
+    J_\rho(R)=\frac{4}{L}\left(\cosh\left(\frac{LR}{2}\right)-1\right)
+\]
+and
+\[
+    \Psi_\rho(R)=\frac{8}{L^2}\left(e^{LR/2}-1\right)-\frac{4}{L}R.
+\]
+For standard self-concordance \((L=2)\),
+\[
+    \|U(x,y)\|_x\le 2\left(\cosh d_R(x,y)-1\right)
+\]
+and
+\[
+    V(x,y)\le 2\left(e^{d_R(x,y)}-1-d_R(x,y)\right).
+\]
+\end{corollary}
+
+\section{The parallelogram identity and energy control}
+
+The next identity removes the need for a separate direct bound on \(d(x,y)\). It expresses \(d(x,y)\) exactly in terms of \(V(x,y)\) and \(U(x,y)\).
+
+\begin{lemma}[Parallelogram identity]\label{lem:parallelogram}
+Let
+\[
+    p:=x-y,
+    \qquad
+    q:=H(x)^{-1}(g(x)-g(y)).
+\]
+Then
+\[
+    V(x,y)=\ipx{p}{q},
+    \qquad
+    d(x,y)=\|p\|_x^2+\|q\|_x^2,
+    \qquad
+    U(x,y)=p-q.
+\]
+Consequently,
+\[
+    d(x,y)=2V(x,y)+\|U(x,y)\|_x^2.
+\]
+\end{lemma}
+
+\begin{proof}
+The identities for \(V\), \(d\), and \(U\) follow immediately from the definitions. Then
+\[
+    \|U(x,y)\|_x^2
+    =
+    \|p-q\|_x^2
+    =
+    \|p\|_x^2+\|q\|_x^2-2\ipx{p}{q}
+    =
+    d(x,y)-2V(x,y).
+\]
+Rearranging proves the claim.
+\end{proof}
+
+\begin{corollary}[Energy control from the asymmetry residual]\label{cor:energy-control}
+Suppose an update satisfies
+\[
+    E\le d(x,y).
+\]
+If
+\[
+    \|U(x,y)\|_x\le A(V(x,y))
+\]
+for some scalar function \(A\), then
+\[
+    E\le 2V(x,y)+A(V(x,y))^2.
+\]
+\end{corollary}
+
+\begin{proof}
+By Lemma~\ref{lem:parallelogram},
+\[
+    d(x,y)=2V(x,y)+\|U(x,y)\|_x^2.
+\]
+Combining this with \(E\le d(x,y)\) and \(\|U(x,y)\|_x\le A(V(x,y))\) gives the result.
+\end{proof}
+
+
+\section{Cubic control and geodesic acceleration}
+
+The level-set estimates below require control of the geodesic acceleration.  For
+Hessian metrics this is an infinitesimal consequence of Hessian stability, provided
+that the stability modulus has a finite logarithmic slope at the origin.
+
+\begin{definition}[Compatible stability modulus]\label{def:compatible-modulus}
+A stability modulus \(\rho\) is called \emph{compatible} if the one-sided limit
+\[
+    L_\rho
+    :=
+    \lim_{r\downarrow0}\frac{\log \rho(r)}{r}
+\]
+exists and is finite.  In estimates below, the limit may be replaced by the
+corresponding \(\limsup\); assuming the limit exists simply avoids notational
+clutter.
+\end{definition}
+
+\begin{lemma}[Cubic bound from compatible Hessian stability]\label{lem:rho-to-cubic}
+Assume the Hessian metric is \(\rho\)-stable and that \(\rho\) is compatible with
+constant \(L_\rho\).  Then, for all \(x\in\Omega\) and all vectors \(a,b\),
+\[
+    |D^3\phi(x)[a,b,b]|
+    \le
+    L_\rho\|a\|_x\|b\|_x^2.
+\]
+\end{lemma}
+
+\begin{proof}
+If \(a=0\) there is nothing to prove.  Otherwise set
+\(\hat a:=a/\|a\|_x\).  For sufficiently small \(\varepsilon>0\), the point
+\[
+    y_\varepsilon:=x+\varepsilon \hat a
+\]
+lies in \(\Omega\), and the Riemannian distance satisfies
+\[
+    d_R(x,y_\varepsilon)=\varepsilon+o(\varepsilon).
+\]
+By compatibility,
+\[
+    \rho(d_R(x,y_\varepsilon))
+    =
+    1+L_\rho\varepsilon+o(\varepsilon).
+\]
+Hessian stability gives
+\[
+    D^2\phi(y_\varepsilon)[b,b]
+    \le
+    \rho(d_R(x,y_\varepsilon))D^2\phi(x)[b,b].
+\]
+Using \(C^3\)-smoothness,
+\[
+    D^2\phi(y_\varepsilon)[b,b]
+    =
+    D^2\phi(x)[b,b]
+    +
+    \varepsilon D^3\phi(x)[\hat a,b,b]
+    +o(\varepsilon).
+\]
+Combining the previous two displays and cancelling \(D^2\phi(x)[b,b]=\|b\|_x^2\)
+gives
+\[
+    D^3\phi(x)[\hat a,b,b]
+    \le
+    L_\rho\|b\|_x^2.
+\]
+Repeating the same argument with \(-\hat a\) in place of \(\hat a\) gives
+\[
+    -D^3\phi(x)[\hat a,b,b]
+    \le
+    L_\rho\|b\|_x^2.
+\]
+Thus
+\[
+    |D^3\phi(x)[\hat a,b,b]|
+    \le
+    L_\rho\|b\|_x^2.
+\]
+Multiplying by \(\|a\|_x\) proves the claim.
+\end{proof}
+
+\begin{lemma}[Acceleration from a cubic bound]\label{lem:acceleration}
+Suppose that, for some \(L\ge0\),
+\[
+    |D^3\phi(x)[a,b,b]|\le L\|a\|_x\|b\|_x^2
+\]
+for all \(x,a,b\). Let \(x(t)\) be a Hessian geodesic with constant energy
+\[
+    E:=\|\dot x(t)\|_{x(t)}^2.
+\]
+Then
+\[
+    \|\ddot x(t)\|_{x(t)}\le \frac{L}{2}E.
+\]
+In particular, standard self-concordance \((L=2)\) gives
+\[
+    \|\ddot x(t)\|_{x(t)}\le E.
+\]
+\end{lemma}
+
+\begin{proof}
+The Hessian geodesic equation is
+\[
+    H(x(t))\ddot x(t)
+    =-\frac12D^3\phi(x(t))[\dot x(t),\dot x(t),\cdot].
+\]
+Therefore, for any \(w\),
+\[
+    \ip{\ddot x(t)}{w}_{x(t)}
+    =-\frac12D^3\phi(x(t))[\dot x(t),\dot x(t),w].
+\]
+By symmetry of the cubic tensor and the assumed cubic bound,
+\[
+    \left|D^3\phi(x(t))[\dot x(t),\dot x(t),w]\right|
+    \le L\|w\|_{x(t)}\|\dot x(t)\|_{x(t)}^2
+    =L\|w\|_{x(t)}E.
+\]
+Taking the supremum over \(\|w\|_{x(t)}\le1\) gives the result.
+\end{proof}
+
+\begin{corollary}[Acceleration from compatible Hessian stability]\label{cor:rho-acceleration}
+If the Hessian metric is \(\rho\)-stable with compatible modulus \(\rho\), then every
+Hessian geodesic satisfies
+\[
+    \|\ddot x(t)\|_{x(t)}
+    \le
+    \frac{L_\rho}{2}E.
+\]
+\end{corollary}
+
+\begin{proof}
+Combine Lemma~\ref{lem:rho-to-cubic} with Lemma~\ref{lem:acceleration}.
+\end{proof}
+
+\section{Exact level-set calculus along a geodesic}
+
+Let \(x(t)\), \(t\in[0,1]\), be a unit-time Hessian geodesic with constant kinetic energy
+\[
+    E:=\|\dot x(t)\|_{x(t)}^2.
+\]
+Fix \(y\), and set
+\[
+    v(t):=V(x(t),y),
+    \qquad
+    v_0:=v(0).
+\]
+
+\begin{lemma}[Second variation identity]\label{lem:second-variation}
+Along a Hessian geodesic,
+\[
+    v''(t)=2E-\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}.
+\]
+Consequently, if
+\[
+    v'(0)\le -(E+v_0),
+\]
+then for every \(t\in[0,1]\),
+\[
+\begin{aligned}
+    v(t)
+    &\le
+    v_0-tv_0-Et(1-t) \\
+    &\quad+
+    \int_0^t(t-s)
+    \left|
+    \ip{\ddot x(s)}{U(x(s),y)}_{x(s)}
+    \right|ds.
+\end{aligned}
+\]
+In particular,
+\[
+    v(1)
+    \le
+    \int_0^1(1-t)
+    \left|
+    \ip{\ddot x(t)}{U(x(t),y)}_{x(t)}
+    \right|dt.
+\]
+\end{lemma}
+
+\begin{proof}
+Differentiating
+\[
+    v(t)=\ip{x(t)-y}{g(x(t))-g(y)}
+\]
+gives
+\[
+    v'(t)=
+    \ip{\dot x(t)}{g(x(t))-g(y)}+
+    \ip{x(t)-y}{H(x(t))\dot x(t)}.
+\]
+Differentiating again yields
+\[
+\begin{aligned}
+    v''(t)
+    &=
+    \ip{\ddot x(t)}{g(x(t))-g(y)}
+    +2\dot x(t)^\top H(x(t))\dot x(t) \\
+    &\quad+
+    \ip{\ddot x(t)}{H(x(t))(x(t)-y)}
+    +D^3\phi(x(t))[\dot x(t),\dot x(t),x(t)-y].
+\end{aligned}
+\]
+Since \(E=\dot x(t)^\top H(x(t))\dot x(t)\), the middle term is \(2E\). The Hessian geodesic equation is equivalent to
+\[
+    \ip{\ddot x(t)}{w}_{x(t)}
+    =
+    -\frac12D^3\phi(x(t))[\dot x(t),\dot x(t),w]
+    \qquad \text{for every }w.
+\]
+Taking \(w=x(t)-y\), we get
+\[
+    D^3\phi(x(t))[\dot x(t),\dot x(t),x(t)-y]
+    =
+    -2\ip{\ddot x(t)}{x(t)-y}_{x(t)}.
+\]
+Therefore
+\[
+\begin{aligned}
+    v''(t)
+    &=
+    2E+
+    \ip{\ddot x(t)}{g(x(t))-g(y)}
+    +\ip{\ddot x(t)}{x(t)-y}_{x(t)}
+    -2\ip{\ddot x(t)}{x(t)-y}_{x(t)} \\
+    &=
+    2E-
+    \ip{\ddot x(t)}{(x(t)-y)-H(x(t))^{-1}(g(x(t))-g(y))}_{x(t)} \\
+    &=
+    2E-
+    \ip{\ddot x(t)}{U(x(t),y)}_{x(t)}.
+\end{aligned}
+\]
+This proves the second variation identity.
+
+For the integral estimate, use the exact formula
+\[
+    v(t)=v_0+tv'(0)+\int_0^t(t-s)v''(s)\,ds.
+\]
+Substituting the second variation identity gives
+\[
+    v(t)=v_0+tv'(0)+Et^2-
+    \int_0^t(t-s)\ip{\ddot x(s)}{U(x(s),y)}_{x(s)}ds.
+\]
+Using \(v'(0)\le -(E+v_0)\), we obtain
+\[
+\begin{aligned}
+    v(t)
+    &\le
+    v_0-tv_0-Et(1-t)
+    +
+    \int_0^t(t-s)
+    \left|
+    \ip{\ddot x(s)}{U(x(s),y)}_{x(s)}
+    \right|ds.
+\end{aligned}
+\]
+Setting \(t=1\) proves the endpoint estimate.
+\end{proof}
+
+
+\begin{lemma}[Abstract sublevel bootstrap, signed-work form]
+Let \(x(t)\), \(t\in[0,1]\), be a unit-time Hessian geodesic with constant
+kinetic energy
+\[
+    E:=\|\dot x(t)\|_{x(t)}^2.
+\]
+Fix \(y\), and define
+\[
+    v(t):=V(x(t),y),
+    \qquad
+    v_0:=v(0).
+\]
+Assume \(v_0>0\) and
+\[
+    v'(0)\le -(E+v_0).
+\]
+Let
+\[
+    W(t):=\langle \ddot x(t),U(x(t),y)\rangle_{x(t)}.
+\]
+Suppose there is a nondecreasing function \(F:[0,\infty)\to[0,\infty)\)
+such that, whenever \(v(s)\le v_0\) on \([0,t]\),
+\[
+    \int_0^t (t-s)(-W(s))_+\,ds
+    \le
+    tF(v_0).
+\]
+If
+\[
+    F(v_0)<v_0,
+\]
+then
+\[
+    v(t)<v_0
+    \qquad
+    \forall t\in(0,1],
+\]
+and
+\[
+    v(1)\le F(v_0).
+\]
+\end{lemma}
+
+\begin{proof}
+For any \(t\in[0,1]\),
+\[
+    v(t)
+    =
+    v_0+t v'(0)+\int_0^t(t-s)v''(s)\,ds.
+\]
+Using
+\[
+    v''(s)=2E-W(s),
+\]
+we get
+\[
+    v(t)
+    =
+    v_0+t v'(0)+Et^2-\int_0^t(t-s)W(s)\,ds.
+\]
+The descent condition gives
+\[
+    t v'(0)\le -t(E+v_0),
+\]
+so
+\[
+    v(t)
+    \le
+    v_0-tv_0-Et(1-t)
+    -
+    \int_0^t(t-s)W(s)\,ds.
+\]
+Since
+\[
+    -W(s)\le (-W(s))_+,
+\]
+we have
+\[
+    -\int_0^t(t-s)W(s)\,ds
+    \le
+    \int_0^t(t-s)(-W(s))_+\,ds.
+\]
+Thus, on any interval where \(v(s)\le v_0\),
+\[
+    v(t)
+    \le
+    v_0-tv_0-Et(1-t)+tF(v_0).
+\]
+Dropping the nonpositive term \(-Et(1-t)\),
+\[
+    v(t)
+    \le
+    v_0-t\bigl(v_0-F(v_0)\bigr).
+\]
+If \(F(v_0)<v_0\), this is strictly less than \(v_0\) for all \(t>0\)
+as long as the estimate is valid. A first-exit argument then shows that
+the path cannot leave the initial sublevel set. Taking \(t=1\) gives
+\[
+    v(1)\le F(v_0).
+\]
+\end{proof}
+
+
+
+\begin{lemma}[Abstract sublevel bootstrap]\label{lem:bootstrap}
+Let \(x(t)\), \(t\in[0,1]\), be a unit-time Hessian geodesic with constant
+kinetic energy
+\[
+    E:=\|\dot x(t)\|_{x(t)}^2.
+\]
+Fix \(y\), and define
+\[
+    v(t):=V(x(t),y),
+    \qquad
+    v_0:=v(0).
+\]
+Assume \(v_0>0\) and the descent condition
+\[
+    v'(0)\le -(E+v_0).
+\]
+Suppose there is a nondecreasing function \(F:[0,\infty)\to[0,\infty)\)
+such that, for all \(s\in[0,1]\),
+\[
+    \frac12
+    \left|
+    \langle \ddot x(s),U(x(s),y)\rangle_{x(s)}
+    \right|
+    \le
+    F(v(s)).
+\]
+If
+\[
+    F(v_0)<v_0,
+\]
+then
+\[
+    v(t)<v_0
+    \qquad
+    \forall t\in(0,1],
+\]
+and
+\[
+    v(1)\le F(v_0).
+\]
+\end{lemma}
+
+\begin{proof}
+For any \(t\in[0,1]\), the exact integral identity gives
+\[
+    v(t)
+    =
+    v_0+t v'(0)+\int_0^t(t-s)v''(s)\,ds.
+\]
+Using
+\[
+    v''(s)
+    =
+    2E-\langle \ddot x(s),U(x(s),y)\rangle_{x(s)},
+\]
+we obtain
+\[
+\begin{aligned}
+    v(t)
+    &=
+    v_0+t v'(0)+Et^2
+    -
+    \int_0^t(t-s)
+    \langle \ddot x(s),U(x(s),y)\rangle_{x(s)}\,ds.
+\end{aligned}
+\]
+The descent condition implies
+\[
+    t v'(0)\le -t(E+v_0).
+\]
+Therefore
+\[
+\begin{aligned}
+    v(t)
+    &\le
+    v_0-tv_0-Et(1-t)
+    +
+    \int_0^t(t-s)
+    \left|
+    \langle \ddot x(s),U(x(s),y)\rangle_{x(s)}
+    \right|ds.
+\end{aligned}
+\]
+
+Now consider any interval \([0,t]\) on which
+\[
+    v(s)\le v_0
+    \qquad
+    \forall s\in[0,t].
+\]
+Since \(F\) is nondecreasing, the pointwise hypothesis gives
+\[
+    \left|
+    \langle \ddot x(s),U(x(s),y)\rangle_{x(s)}
+    \right|
+    \le
+    2F(v(s))
+    \le
+    2F(v_0)
+    \qquad
+    \forall s\in[0,t].
+\]
+Hence
+\[
+\begin{aligned}
+    v(t)
+    &\le
+    v_0-tv_0-Et(1-t)
+    +
+    2F(v_0)\int_0^t(t-s)\,ds  \\
+    &=
+    v_0-tv_0-Et(1-t)
+    +
+    F(v_0)t^2.
+\end{aligned}
+\]
+Dropping the nonpositive term \(-Et(1-t)\) and using \(t^2\le t\), we get
+\[
+    v(t)
+    \le
+    v_0-tv_0+tF(v_0)
+    =
+    v_0-t\bigl(v_0-F(v_0)\bigr).
+\]
+
+If \(F(v_0)<v_0\), this is strictly less than \(v_0\) for every \(t>0\),
+as long as the estimate is valid. We now use a first-exit argument. Since
+\[
+    v'(0)\le -(E+v_0)<0,
+\]
+the path initially enters the strict sublevel set. Suppose, for contradiction,
+that the path exits the initial sublevel set. Let \(\tau>0\) be the first time
+such that
+\[
+    v(\tau)=v_0,
+    \qquad
+    v(t)<v_0
+    \quad
+    \text{for }0<t<\tau.
+\]
+Then the preceding estimate is valid on \([0,\tau]\), and gives
+\[
+    v(\tau)
+    \le
+    v_0-\tau\bigl(v_0-F(v_0)\bigr)
+    <
+    v_0,
+\]
+contradicting \(v(\tau)=v_0\). Therefore no such first exit time exists, and
+\[
+    v(t)<v_0
+    \qquad
+    \forall t\in(0,1].
+\]
+
+Taking \(t=1\) in the estimate gives
+\[
+    v(1)
+    \le
+    v_0-\bigl(v_0-F(v_0)\bigr)
+    =
+    F(v_0).
+\]
+\end{proof}
+
+
+
+\section{Self-concordant specialization}
+
+We use the convention for standard self-concordance
+\[
+    |D^3\phi(x)[a,b,b]|
+    \le
+    2\|a\|_x\|b\|_x^2.
+\]
+The next lemma records the standard implication from self-concordance to
+exponential Hessian stability. This makes the use of \(\rho(r)=e^{2r}\) in this
+section self-contained.
+
+\begin{lemma}[Self-concordance implies exponential Hessian stability]\label{lem:sc-to-stability}
+Assume the more general cubic bound
+\[
+    |D^3\phi(x)[a,b,b]|
+    \le
+    L\|a\|_x\|b\|_x^2
+\]
+for all \(x,a,b\). Then the Hessian metric is exponentially stable with modulus
+\[
+    \rho(r)=e^{Lr}.
+\]
+That is, for all \(x,y\in\Omega\),
+\[
+    e^{-Ld_R(x,y)}H(x)
+    \preceq
+    H(y)
+    \preceq
+    e^{Ld_R(x,y)}H(x).
+\]
+In particular, standard self-concordance corresponds to \(L=2\), hence
+\(\rho(r)=e^{2r}\).
+\end{lemma}
+
+\begin{proof}
+Let \(R:=d_R(x,y)\), and let \(\gamma:[0,R]\to\Omega\) be a unit-speed
+geodesic from \(x\) to \(y\). Fix an arbitrary vector \(u\), and define
+\[
+    Q(s):=u^\top H(\gamma(s))u=\|u\|_{\gamma(s)}^2.
+\]
+Then
+\[
+    Q'(s)=D^3\phi(\gamma(s))[\gamma'(s),u,u].
+\]
+By the cubic bound and the unit-speed parametrization,
+\[
+    |Q'(s)|
+    \le
+    L\|\gamma'(s)\|_{\gamma(s)}\|u\|_{\gamma(s)}^2
+    =LQ(s).
+\]
+Thus
+\[
+    -L\le \frac{d}{ds}\log Q(s)\le L
+\]
+whenever \(Q(s)>0\). Integrating from \(0\) to \(R\) gives
+\[
+    e^{-LR}Q(0)\le Q(R)\le e^{LR}Q(0).
+\]
+Equivalently,
+\[
+    e^{-Ld_R(x,y)}u^\top H(x)u
+    \le
+    u^\top H(y)u
+    \le
+    e^{Ld_R(x,y)}u^\top H(x)u.
+\]
+Since this holds for every \(u\), the Loewner-order statement follows.
+\end{proof}
+
+By Lemma~\ref{lem:sc-to-stability}, standard self-concordance gives
+\(\rho(r)=e^{2r}\). Lemma~\ref{lem:acceleration} also gives
+\[
+    \|\ddot x(t)\|_{x(t)}\le E.
+\]
+
+\begin{theorem}[Self-concordant level-set recursion]\label{thm:sc-recursion}
+Assume standard self-concordance. Let \(x(t)\) be a unit-time Hessian geodesic with energy \(E\), and define \(v(t)=V(x(t),y)\), \(v_0=v(0)\). Suppose
+\[
+    v'(0)\le -(E+v_0),
+    \qquad
+    E\le d(x(0),y).
+\]
+Define
+\[
+    A_{\rm sc}(v):=2(\cosh\sqrt v-1),
+\]
+\[
+    D_{\rm sc}(v):=2v+A_{\rm sc}(v)^2,
+\]
+and
+\[
+    F_{\rm sc}(v):=\frac12D_{\rm sc}(v)A_{\rm sc}(v).
+\]
+If
+\[
+    F_{\rm sc}(v_0)<v_0,
+\]
+then
+\[
+    v(t)<v_0\qquad\forall t\in(0,1],
+\]
+and
+\[
+    v(1)\le F_{\rm sc}(v_0).
+\]
+Moreover,
+\[
+    F_{\rm sc}(v)=v^2+O(v^3)
+    \qquad (v\downarrow0).
+\]
+\end{theorem}
+
+\begin{proof}
+Since \(\rho(r)=e^{2r}\), Lemma~\ref{lem:U-bound} gives
+\[
+    \|U(z,y)\|_z
+    \le
+    2(\cosh d_R(z,y)-1).
+\]
+Using Lemma~\ref{lem:distance-V}, \(d_R(z,y)^2\le V(z,y)\), we get
+\[
+    \|U(z,y)\|_z
+    \le
+    A_{\rm sc}(V(z,y)).
+\]
+At the initial point, Lemma~\ref{lem:parallelogram} and \(E\le d(x(0),y)\) give
+\[
+    E
+    \le
+    2v_0+\|U(x(0),y)\|_{x(0)}^2
+    \le
+    D_{\rm sc}(v_0).
+\]
+By Lemma~\ref{lem:acceleration}, \(\|\ddot x(t)\|_{x(t)}\le E\). Hence Lemma~\ref{lem:bootstrap} applies.
+This proves the sublevel invariance and the one-step bound.
+
+Finally,
+\[
+    A_{\rm sc}(v)=2(\cosh\sqrt v-1)=v+\frac{v^2}{12}+O(v^3),
+\]
+so
+\[
+    F_{\rm sc}(v)
+    =
+    \frac12\bigl(2v+A_{\rm sc}(v)^2\bigr)A_{\rm sc}(v)
+    =v^2+O(v^3).
+\]
+\end{proof}
+
+\begin{corollary}[Quadratic convergence on a certified level set]
+Under the assumptions of Theorem~\ref{thm:sc-recursion}, the recurrence
+\[
+    v_{k+1}\le F_{\rm sc}(v_k)
+\]
+is quadratically convergent whenever the iterates remain in a level set where \(F_{\rm sc}(v)<v\). More precisely, if \(0<\delta<0.683412\ldots\), then \(F_{\rm sc}(v)<v\) for all \(0<v\le\delta\), and
+\[
+    v_{k+1}\le C_\delta v_k^2,
+    \qquad
+    C_\delta:=\sup_{0<v\le\delta}\frac{F_{\rm sc}(v)}{v^2}<\infty.
+\]
+In particular, the simple choice \(\delta=1/4\) is valid, and
+\[
+    C_{1/4}\approx 1.155.
+\]
+\end{corollary}
+
+
+\section{General modulus version}
+
+The preceding argument only uses three inputs: a bound on \(U\), the identity controlling \(d\) by \(V\) and \(U\), and an acceleration bound. The following theorem records the resulting general-modulus statement.
+
+\begin{theorem}[General-modulus level-set recursion]\label{thm:general-modulus}
+Assume \(\rho\)-Hessian stability. Define
+\[
+    A_\rho(v):=J_\rho(\sqrt v).
+\]
+Assume that Hessian geodesics satisfy the acceleration estimate
+\[
+    \|\ddot x(t)\|_{x(t)}\le \kappa_\rho E
+\]
+for some constant \(\kappa_\rho\).  In particular, if \(\rho\) is compatible, then
+Corollary~\ref{cor:rho-acceleration} allows the choice \(\kappa_\rho=L_\rho/2\).
+Let \(x(t)\) be a unit-time Hessian geodesic with energy \(E\), and define \(v(t)=V(x(t),y)\), \(v_0=v(0)\). Suppose
+\[
+    v'(0)\le -(E+v_0),
+    \qquad
+    E\le d(x(0),y).
+\]
+Define
+\[
+    F_\rho(v):=\frac{\kappa_\rho}{2}\bigl(2v+A_\rho(v)^2\bigr)A_\rho(v).
+\]
+If
+\[
+    F_\rho(v_0)<v_0,
+\]
+then the geodesic step remains in the initial sublevel set,
+\[
+    v(t)<v_0 \qquad \forall t\in(0,1],
+\]
+and
+\[
+    v(1)\le F_\rho(v_0).
+\]
+\end{theorem}
+
+\begin{proof}
+By Lemma~\ref{lem:U-bound} and Lemma~\ref{lem:distance-V},
+\[
+    \|U(x,y)\|_x\le A_\rho(V(x,y)).
+\]
+By Lemma~\ref{lem:parallelogram}, if \(E\le d(x,y)\), then
+\[
+    E\le 2V(x,y)+A_\rho(V(x,y))^2.
+\]
+Thus the hypotheses of Lemma~\ref{lem:bootstrap} holds. 
+The conclusion follows directly from Lemma~\ref{lem:bootstrap}.
+\end{proof}
+
+\begin{corollary}[Local quadratic rate from a differentiable modulus]
+Suppose, in addition, that
+\[
+    \rho(r)=1+L_\rho r+O(r^2)
+    \qquad (r\downarrow0),
+\]
+and that \(\kappa_\rho=L_\rho/2\). Then
+\[
+    F_\rho(v)=\frac{L_\rho^2}{4}v^2+O(v^{5/2}).
+\]
+\end{corollary}
+
+\begin{proof}
+Since
+\[
+    K_\rho(r)-K_\rho(r)^{-1}=L_\rho r+O(r^2),
+\]
+we have
+\[
+    A_\rho(v)=J_\rho(\sqrt v)=\frac{L_\rho}{2}v+O(v^{3/2}).
+\]
+Substituting this into the definition of \(F_\rho\) gives
+\[
+    F_\rho(v)
+    =\frac{L_\rho/2}{2}\left(2v+O(v^2)\right)
+      \left(\frac{L_\rho}{2}v+O(v^{3/2})\right)
+    =\frac{L_\rho^2}{4}v^2+O(v^{5/2}).
+\]
+\end{proof}
+
+\begin{corollary}[Exponential modulus]
+For \(\rho(r)=e^{Lr}\), one has
+\[
+    A_\rho(v)=\frac{4}{L}\left(\cosh\left(\frac{L}{2}\sqrt v\right)-1\right).
+\]
+If \(\kappa_\rho=L/2\), then
+\[
+    F_L(v)=
+    \frac{L}{4}
+    \left(2v+
+    \frac{16}{L^2}\left(\cosh\left(\frac{L}{2}\sqrt v\right)-1\right)^2
+    \right)
+    \frac{4}{L}\left(\cosh\left(\frac{L}{2}\sqrt v\right)-1\right).
+\]
+For \(L=2\), this recovers \(F_{\rm sc}\).
+\end{corollary}
+
+\end{document}

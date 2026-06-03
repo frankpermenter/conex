@@ -1,0 +1,580 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{hyperref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{corollary}{Corollary}
+\newtheorem{remark}{Remark}
+
+\newcommand{\R}{\mathbb R}
+\newcommand{\ip}[2]{\left\langle #1,#2\right\rangle}
+\newcommand{\norm}[1]{\left\lVert #1\right\rVert}
+\newcommand{\dd}{\mathrm d}
+
+\title{Residual Bounds and a Computable Self-Concordant Level Set}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Setup}
+
+Let $\phi$ be a strictly convex $C^3$ barrier on a convex domain $\Omega\subseteq\R^n$. Define
+\[
+    g(x):=\nabla\phi(x),
+    \qquad
+    H(x):=\nabla^2\phi(x).
+\]
+The Hessian metric induces the primal and dual local norms
+\[
+    \norm{u}_x^2:=u^\top H(x)u,
+    \qquad
+    \norm{w}_{x,*}^2:=w^\top H(x)^{-1}w.
+\]
+Let $d_R$ denote the corresponding Riemannian geodesic distance.
+
+For $x,y\in\Omega$, define the Jeffreys divergence
+\[
+    V(x,y):=\ip{x-y}{g(x)-g(y)}.
+\]
+We also define the endpoint primal-dual residual
+\[
+    d(x,y)
+    :=
+    \norm{x-y}_x^2
+    +
+    \norm{g(x)-g(y)}_{x,*}^2.
+\]
+
+Throughout the main self-concordant estimates we use the normalization
+\[
+    |D^3\phi(x)[a,b,b]|
+    \le
+    2\norm{a}_x\norm{b}_x^2.
+\]
+Equivalently, the Hessian metric satisfies the exponential stability estimate
+\[
+    e^{-2d_R(x,z)}H(x)
+    \preceq
+    H(z)
+    \preceq
+    e^{2d_R(x,z)}H(x).
+\]
+
+We will also use the standard geodesic coercivity inequality
+\[
+    d_R(x,y)^2\le V(x,y).
+\]
+
+\section{Two elementary consequences of exponential stability}
+
+\begin{lemma}[Endpoint residual energy bound]
+\label{lem:Ebound}
+For all $x,y\in\Omega$,
+\[
+    d(x,y)
+    \le
+    2\left(e^{d_R(x,y)}-1\right)^2.
+\]
+Consequently, if $d_R(x,y)^2\le V(x,y)$, then
+\[
+    d(x,y)
+    \le
+    2\left(e^{\sqrt{V(x,y)}}-1\right)^2.
+\]
+Thus any geodesic step with kinetic energy $E$ satisfying
+\[
+    E\le d(x,y)
+\]
+obeys
+\[
+    E
+    \le
+    2\left(e^{\sqrt{V(x,y)}}-1\right)^2.
+\]
+\end{lemma}
+
+\begin{proof}
+Let $R=d_R(x,y)$ and let $\gamma:[0,R]\to\Omega$ be a unit-speed geodesic with
+$\gamma(0)=x$ and $\gamma(R)=y$. Then
+\[
+    y-x=\int_0^R \gamma'(s)\,\dd s.
+\]
+Exponential stability gives
+\[
+    H(x)\preceq e^{2s}H(\gamma(s)),
+\]
+because $d_R(x,\gamma(s))=s$. Hence
+\[
+    \norm{\gamma'(s)}_x
+    \le
+    e^s\norm{\gamma'(s)}_{\gamma(s)}
+    =e^s.
+\]
+Therefore
+\[
+    \norm{x-y}_x
+    \le
+    \int_0^R e^s\,\dd s
+    =
+    e^R-1.
+\]
+
+For the dual term,
+\[
+    g(y)-g(x)=\int_0^R H(\gamma(s))\gamma'(s)\,\dd s.
+\]
+By duality,
+\[
+\begin{aligned}
+    \norm{g(y)-g(x)}_{x,*}
+    &=
+    \sup_{\norm{w}_x\le1}
+    \int_0^R \ip{w}{H(\gamma(s))\gamma'(s)}\,\dd s  \\
+    &\le
+    \sup_{\norm{w}_x\le1}
+    \int_0^R
+    \norm{w}_{\gamma(s)}\norm{\gamma'(s)}_{\gamma(s)}\,\dd s.
+\end{aligned}
+\]
+Since $H(\gamma(s))\preceq e^{2s}H(x)$, we have
+\[
+    \norm{w}_{\gamma(s)}\le e^s\norm{w}_x.
+\]
+The geodesic has unit speed, so
+\[
+    \norm{g(y)-g(x)}_{x,*}
+    \le
+    \int_0^R e^s\,\dd s
+    =
+    e^R-1.
+\]
+Squaring the primal and dual bounds and adding gives
+\[
+    d(x,y)\le 2(e^R-1)^2.
+\]
+The $V$-based bound follows from $R=d_R(x,y)\le\sqrt{V(x,y)}$.
+\end{proof}
+
+\begin{lemma}[Asymmetry residual bound]
+\label{lem:Ubound}
+Define
+\[
+    U(x,y):=(x-y)-H(x)^{-1}(g(x)-g(y)).
+\]
+Then
+\[
+    \norm{U(x,y)}_x
+    \le
+    2\left(\cosh(d_R(x,y))-1\right).
+\]
+Consequently, if $d_R(x,y)^2\le V(x,y)$, then
+\[
+    \norm{U(x,y)}_x
+    \le
+    2\left(\cosh\sqrt{V(x,y)}-1\right).
+\]
+\end{lemma}
+
+\begin{proof}
+Let $R=d_R(x,y)$, and let $\gamma:[0,R]\to\Omega$ be a unit-speed geodesic with
+$\gamma(0)=x$ and $\gamma(R)=y$. Then
+\[
+    x-y=-\int_0^R \gamma'(s)\,\dd s,
+\]
+and
+\[
+    g(x)-g(y)=-\int_0^R H(\gamma(s))\gamma'(s)\,\dd s.
+\]
+Thus
+\[
+\begin{aligned}
+    U(x,y)
+    &=(x-y)-H(x)^{-1}(g(x)-g(y)) \\
+    &=
+    \int_0^R
+    \left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)\,\dd s.
+\end{aligned}
+\]
+Set
+\[
+    A_s:=H(x)^{-1/2}H(\gamma(s))H(x)^{-1/2},
+    \qquad
+    z_s:=H(x)^{1/2}\gamma'(s).
+\]
+Exponential stability gives
+\[
+    e^{-2s}I\preceq A_s\preceq e^{2s}I.
+\]
+Since $\gamma$ has unit speed,
+\[
+    z_s^\top A_s z_s
+    =
+    \gamma'(s)^\top H(\gamma(s))\gamma'(s)
+    =1.
+\]
+The $x$-norm of the integrand equals
+\[
+    \left\|
+    \left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)
+    \right\|_x
+    =
+    \norm{(A_s-I)z_s}_2.
+\]
+Diagonalizing $A_s$, and using $z_s^\top A_s z_s=1$, gives
+\[
+    \norm{(A_s-I)z_s}_2^2
+    \le
+    \max_{\lambda\in[e^{-2s},e^{2s}]}
+    \frac{(\lambda-1)^2}{\lambda}.
+\]
+The maximum is attained at an endpoint and equals
+\[
+    e^{2s}+e^{-2s}-2
+    =
+    (e^s-e^{-s})^2.
+\]
+Therefore
+\[
+    \left\|
+    \left[H(x)^{-1}H(\gamma(s))-I\right]\gamma'(s)
+    \right\|_x
+    \le
+    e^s-e^{-s}.
+\]
+Integrating yields
+\[
+    \norm{U(x,y)}_x
+    \le
+    \int_0^R (e^s-e^{-s})\,\dd s
+    =
+    e^R+e^{-R}-2
+    =
+    2(\cosh R-1).
+\]
+The $V$-based bound follows from $R\le\sqrt{V(x,y)}$ and monotonicity of $\cosh R-1$ for $R\ge0$.
+\end{proof}
+
+\section{The target-dependent one-step estimate}
+
+Let $x(t)$, $t\in[0,1]$, be a unit-time Hessian geodesic with
+\[
+    x(0)=x,
+    \qquad
+    x(1)=T(x),
+\]
+and constant kinetic energy
+\[
+    E:=\norm{\dot x(t)}_{x(t)}^2.
+\]
+Fix a target point $y$ and define
+\[
+    v(t):=V(x(t),y),
+    \qquad
+    v_0:=v(0)=V(x,y).
+\]
+
+\begin{lemma}[Second-variation identity]
+\label{lem:secondvariation}
+Along $x(t)$,
+\[
+    v''(t)=2E-\ip{\ddot x(t)}{U(x(t),y)}_{x(t)},
+\]
+where $\ip{a}{b}_z:=a^\top H(z)b$.
+Consequently,
+\[
+    v(1)
+    =
+    v_0+v'(0)+E
+    -
+    \int_0^1(1-t)\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}\,\dd t.
+\]
+\end{lemma}
+
+\begin{proof}
+Differentiating
+\[
+    v(t)=\ip{x(t)-y}{g(x(t))-g(y)}
+\]
+gives
+\[
+    v'(t)
+    =
+    \ip{\dot x(t)}{g(x(t))-g(y)}
+    +
+    \ip{x(t)-y}{H(x(t))\dot x(t)}.
+\]
+Differentiating again yields
+\[
+\begin{aligned}
+    v''(t)
+    &=
+    \ip{\ddot x(t)}{g(x(t))-g(y)}
+    +2\dot x(t)^\top H(x(t))\dot x(t) \\
+    &\quad
+    +D^3\phi(x(t))[\dot x(t),\dot x(t),x(t)-y]
+    +\ip{x(t)-y}{H(x(t))\ddot x(t)}.
+\end{aligned}
+\]
+The Hessian geodesic equation implies that for every vector $w$,
+\[
+    \ip{\ddot x(t)}{w}_{x(t)}
+    =
+    -\frac12D^3\phi(x(t))[\dot x(t),\dot x(t),w].
+\]
+Using this with $w=x(t)-y$ and using
+$\dot x(t)^\top H(x(t))\dot x(t)=E$, we obtain
+\[
+\begin{aligned}
+    v''(t)
+    &=
+    2E
+    +\ip{\ddot x(t)}{g(x(t))-g(y)}
+    -\ip{\ddot x(t)}{x(t)-y}_{x(t)} \\
+    &=
+    2E
+    -\ip{\ddot x(t)}{(x(t)-y)-H(x(t))^{-1}(g(x(t))-g(y))}_{x(t)}.
+\end{aligned}
+\]
+This is the claimed identity. Taylor's formula with integral remainder gives
+\[
+    v(1)=v_0+v'(0)+\int_0^1(1-t)v''(t)\,\dd t,
+\]
+and $\int_0^1(1-t)2E\,\dd t=E$.
+\end{proof}
+
+\begin{lemma}[Acceleration bound]
+\label{lem:acceleration}
+For a standard self-concordant Hessian geodesic,
+\[
+    \norm{\ddot x(t)}_{x(t)}\le E.
+\]
+\end{lemma}
+
+\begin{proof}
+By the geodesic equation,
+\[
+    \ip{\ddot x(t)}{w}_{x(t)}
+    =
+    -\frac12D^3\phi(x(t))[\dot x(t),\dot x(t),w].
+\]
+The self-concordance inequality gives
+\[
+    |D^3\phi(x(t))[w,\dot x(t),\dot x(t)]|
+    \le
+    2\norm{w}_{x(t)}\norm{\dot x(t)}_{x(t)}^2
+    =
+    2E\norm{w}_{x(t)}.
+\]
+Since the cubic tensor is symmetric,
+\[
+    |\ip{\ddot x(t)}{w}_{x(t)}|
+    \le
+    E\norm{w}_{x(t)}.
+\]
+Taking the supremum over $\norm{w}_{x(t)}\le1$ gives
+\[
+    \norm{\ddot x(t)}_{x(t)}\le E.
+\]
+\end{proof}
+
+\begin{theorem}[Symbolic one-step bound]
+\label{thm:symbolic}
+Assume the descent condition
+\[
+    v'(0)
+    \le
+    -(E+v_0),
+\]
+the step-energy compatibility condition
+\[
+    E\le d(x,y),
+\]
+and the path sublevel condition
+\[
+    V(x(t),y)
+    \le
+    v_0
+    \qquad
+    \forall t\in[0,1].
+\]
+Then
+\[
+    V(T(x),y)
+    \le
+    f(v_0),
+\]
+where
+\[
+    f(v)
+    :=
+    2\left(e^{\sqrt v}-1\right)^2
+    \left(\cosh\sqrt v-1\right).
+\]
+In particular,
+\[
+    f(v)=v^2+O(v^{5/2})
+    \qquad
+    \text{as }v\downarrow0.
+\]
+\end{theorem}
+
+\begin{proof}
+By Lemma~\ref{lem:secondvariation},
+\[
+    v(1)
+    =
+    v_0+v'(0)+E
+    -
+    \int_0^1(1-t)\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}\,\dd t.
+\]
+The descent condition implies
+\[
+    v_0+v'(0)+E\le0.
+\]
+Therefore
+\[
+    v(1)
+    \le
+    \int_0^1(1-t)
+    |\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}|\,\dd t.
+\]
+By Lemma~\ref{lem:acceleration},
+\[
+    |\ip{\ddot x(t)}{U(x(t),y)}_{x(t)}|
+    \le
+    E\norm{U(x(t),y)}_{x(t)}.
+\]
+The path sublevel condition and Lemma~\ref{lem:Ubound} give
+\[
+    \norm{U(x(t),y)}_{x(t)}
+    \le
+    2(\cosh\sqrt{v_0}-1)
+    \qquad
+    \forall t\in[0,1].
+\]
+Therefore
+\[
+\begin{aligned}
+    v(1)
+    &\le
+    \int_0^1(1-t)
+    E\cdot 2(\cosh\sqrt{v_0}-1)\,\dd t \\
+    &=
+    E(\cosh\sqrt{v_0}-1).
+\end{aligned}
+\]
+Finally, by the step-energy compatibility condition and Lemma~\ref{lem:Ebound},
+\[
+    E\le d(x,y)
+    \le
+    2(e^{\sqrt{v_0}}-1)^2.
+\]
+Substituting this into the previous display yields
+\[
+    v(1)
+    \le
+    2(e^{\sqrt{v_0}}-1)^2(\cosh\sqrt{v_0}-1)
+    =f(v_0).
+\]
+The expansion follows from
+\[
+    (e^{\sqrt v}-1)^2=v+O(v^{3/2}),
+    \qquad
+    \cosh\sqrt v-1=\frac12v+O(v^2).
+\]
+\end{proof}
+
+\section{A concrete numerical level set}
+
+\begin{corollary}[Concrete contraction level]
+Let
+\[
+    f(v)
+    =
+    2\left(e^{\sqrt v}-1\right)^2
+    \left(\cosh\sqrt v-1\right).
+\]
+The equation
+\[
+    f(v)=v
+\]
+has a positive root
+\[
+    v_\star
+    \approx
+    0.4671709662.
+\]
+Moreover,
+\[
+    f(v)\le v
+    \qquad
+    \text{for }0\le v\le v_\star.
+\]
+Consequently, under the hypotheses of Theorem~\ref{thm:symbolic}, if
+\[
+    V(x,y)\le v_\star
+\]
+and the path sublevel condition holds, then
+\[
+    V(T(x),y)\le V(x,y).
+\]
+Thus $\mathcal L_{v_\star}(y):=\{x:V(x,y)\le v_\star\}$ is a computable contraction level set for this estimate.
+\end{corollary}
+
+\begin{proof}
+This is a one-dimensional numerical verification.  Solving
+\[
+    2(e^{\sqrt v}-1)^2(\cosh\sqrt v-1)=v
+\]
+gives
+\[
+    v_\star\approx0.4671709662.
+\]
+A direct check of the scalar function on the interval $[0,v_\star]$ gives
+$f(v)\le v$.  Since Theorem~\ref{thm:symbolic} gives
+$V(T(x),y)\le f(V(x,y))$, the result follows.
+\end{proof}
+
+\begin{corollary}[Concrete quadratic-rate bound]
+On the smaller level set $V(x,y)\le 1/4$, the same scalar estimate gives
+\[
+    V(T(x),y)
+    \le
+    1.719\,V(x,y)^2.
+\]
+More precisely,
+\[
+    \sup_{0<v\le1/4}\frac{f(v)}{v^2}
+    \approx
+    1.718720647.
+\]
+Thus this estimate gives standard quadratic convergence on $\mathcal L_{1/4}(y)$, with explicit quadratic constant $1.719$.
+\end{corollary}
+
+\begin{proof}
+The scalar ratio $f(v)/v^2$ is increasing on $0<v\le1/4$ for this function.  Hence
+\[
+    \sup_{0<v\le1/4}\frac{f(v)}{v^2}
+    =
+    \frac{f(1/4)}{(1/4)^2}
+    \approx
+    1.718720647.
+\]
+Combining this with Theorem~\ref{thm:symbolic} gives the claim.
+\end{proof}
+
+\begin{remark}[Normalized quadratic contraction]
+The scalar estimate $f(v)$ satisfies
+\[
+    f(v)=v^2+O(v^{5/2}).
+\]
+For small positive $v$, the higher-order correction is positive, so this particular bound does not certify the normalized estimate $f(v)\le v^2$ on any interval $0<v\le\delta$.  It does certify the usual quadratic rate $f(v)\le C_\delta v^2$ on every sufficiently small level set.
+\end{remark}
+
+\end{document}
